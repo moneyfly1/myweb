@@ -104,8 +104,17 @@ else
     exit 1
 fi
 
+# 检查是否有其他配置文件覆盖
+echo -e "${YELLOW}步骤 3: 检查是否有其他配置文件...${NC}"
+OTHER_CONFIGS=$(find /www/server/panel/vhost/nginx -name "*.conf" ! -name "${DOMAIN}.conf" ! -name "sspanel.conf*" 2>/dev/null | xargs grep -l "board.moneyfly.club" 2>/dev/null)
+if [ ! -z "$OTHER_CONFIGS" ]; then
+    echo -e "${YELLOW}发现其他可能冲突的配置文件:${NC}"
+    echo "$OTHER_CONFIGS" | sed 's/^/   /'
+    echo -e "${YELLOW}建议检查这些文件${NC}"
+fi
+
 # 重载 Nginx
-echo -e "${YELLOW}步骤 3: 重载 Nginx...${NC}"
+echo -e "${YELLOW}步骤 4: 重载 Nginx...${NC}"
 if systemctl reload nginx >/dev/null 2>&1; then
     echo -e "${GREEN}✓ Nginx 已重载${NC}"
 elif /etc/init.d/nginx reload >/dev/null 2>&1; then
@@ -119,6 +128,19 @@ else
     else
         echo -e "${RED}✗ Nginx 重载/重启失败，请手动执行: systemctl restart nginx${NC}"
     fi
+fi
+
+# 验证配置是否生效
+echo -e "${YELLOW}步骤 5: 验证配置是否生效...${NC}"
+sleep 2
+ACTIVE_ROOT=$(nginx -T 2>/dev/null | grep -A 20 "server_name ${DOMAIN}" | grep "root" | head -1 | awk '{print $2}' | tr -d ';')
+if [ "$ACTIVE_ROOT" = "${INSTALL_DIR}/public" ]; then
+    echo -e "${GREEN}✓ 配置已生效，root 路径正确: $ACTIVE_ROOT${NC}"
+else
+    echo -e "${RED}✗ 配置可能未生效！${NC}"
+    echo -e "${YELLOW}   期望: ${INSTALL_DIR}/public${NC}"
+    echo -e "${YELLOW}   实际: $ACTIVE_ROOT${NC}"
+    echo -e "${YELLOW}   请检查宝塔面板中的站点设置${NC}"
 fi
 
 # 检查文件权限
