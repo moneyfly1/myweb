@@ -801,7 +801,7 @@ deploy_project() {
         echo -e "${YELLOW}正在从 GitHub 克隆项目...${NC}"
         git clone https://github.com/moneyfly1/myweb.git sspanel
         cd sspanel
-        git config --global --add safe.directory /var/www/sspanel
+        git config --global --add safe.directory "$INSTALL_DIR"
     else
         cd sspanel
     fi
@@ -1140,7 +1140,7 @@ init_database() {
     echo -e "${BLUE}步骤 10: 初始化数据库${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    cd /var/www/sspanel
+    cd "$INSTALL_DIR"
     
     if [ ! -f vendor/autoload.php ]; then
         echo -e "${RED}错误: vendor/autoload.php 不存在，请先运行 composer install${NC}"
