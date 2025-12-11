@@ -936,18 +936,49 @@ set_permissions() {
         INSTALL_DIR="/var/www/sspanel"
     fi
     
-    chown -R ${WEB_USER}:${WEB_USER} "$INSTALL_DIR"
-    find "$INSTALL_DIR" -type d -exec chmod 755 {} \;
-    find "$INSTALL_DIR" -type f -exec chmod 644 {} \;
-    chmod -R 777 "$INSTALL_DIR/storage"
+    # 确保项目目录存在
+    if [ ! -d "$INSTALL_DIR" ]; then
+        echo -e "${RED}错误: 项目目录不存在: $INSTALL_DIR${NC}"
+        exit 1
+    fi
+    
+    cd "$INSTALL_DIR"
+    
+    # 先创建必要的目录（如果不存在）
+    echo -e "${YELLOW}创建必要的目录...${NC}"
+    mkdir -p storage/framework/smarty/cache
+    mkdir -p storage/framework/smarty/compile
+    mkdir -p storage/framework/twig/cache
+    mkdir -p storage/logs
+    mkdir -p public/clients
+    mkdir -p uploads/avatars
+    mkdir -p uploads/config
+    
+    # 设置文件所有者
+    echo -e "${YELLOW}设置文件所有者...${NC}"
+    chown -R ${WEB_USER}:${WEB_USER} "$INSTALL_DIR" 2>/dev/null || true
+    
+    # 设置目录权限
+    echo -e "${YELLOW}设置目录权限...${NC}"
+    find "$INSTALL_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    
+    # 设置文件权限
+    echo -e "${YELLOW}设置文件权限...${NC}"
+    find "$INSTALL_DIR" -type f -exec chmod 644 {} \; 2>/dev/null || true
+    
+    # 设置特殊目录权限
+    echo -e "${YELLOW}设置特殊目录权限...${NC}"
+    chmod -R 777 "$INSTALL_DIR/storage" 2>/dev/null || true
+    chmod -R 777 "$INSTALL_DIR/uploads" 2>/dev/null || true
     chmod 775 "$INSTALL_DIR/public/clients" 2>/dev/null || true
     
-    mkdir -p "$INSTALL_DIR/storage/framework/smarty/{cache,compile}"
-    mkdir -p "$INSTALL_DIR/storage/framework/twig/cache"
-    chmod -R 777 "$INSTALL_DIR/storage/framework"
-    
-    chmod 664 "$INSTALL_DIR/config/.config.php"
-    chmod 664 "$INSTALL_DIR/config/appprofile.php" 2>/dev/null || true
+    # 设置配置文件权限
+    if [ -f "$INSTALL_DIR/config/.config.php" ]; then
+        chmod 664 "$INSTALL_DIR/config/.config.php"
+    fi
+    if [ -f "$INSTALL_DIR/config/appprofile.php" ]; then
+        chmod 664 "$INSTALL_DIR/config/appprofile.php"
+    fi
     
     echo -e "${GREEN}权限设置完成${NC}"
 }
