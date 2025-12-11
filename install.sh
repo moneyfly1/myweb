@@ -846,7 +846,7 @@ deploy_project() {
             curl -sS https://getcomposer.org/installer | php
             mv composer.phar /usr/local/bin/composer
             chmod +x /usr/local/bin/composer
-            cd /var/www/sspanel
+            cd "$INSTALL_DIR"
         }
         COMPOSER_VER=$(composer --version 2>/dev/null | head -n 1 | grep -oP 'version \K[0-9.]+' || echo "unknown")
         echo -e "${GREEN}Composer 已升级到版本: $COMPOSER_VER${NC}"
@@ -962,6 +962,11 @@ configure_nginx() {
         read -p "请输入您的域名: " DOMAIN
     fi
     
+    # 使用全局安装目录变量
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
+    
     # 检测 PHP-FPM socket 路径
     PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
     PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
@@ -969,9 +974,9 @@ configure_nginx() {
     
     # 检测是否为宝塔面板
     PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
-    if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+    if [[ "$PHP_INI" == *"/www/server/php"* ]] || [[ "$INSTALL_DIR" == *"/www/wwwroot"* ]]; then
         # 宝塔面板
-        PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+        PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+' || echo "82")
         PHP_SOCKET="/tmp/php-cgi-${PHP_VERSION_DIR}.sock"
         # 检查宝塔面板的 Nginx 配置目录
         if [ -d "/www/server/panel/vhost/nginx" ]; then
@@ -1249,15 +1254,25 @@ main() {
     echo "安装完成！"
     echo "=========================================="
     echo -e "${NC}"
+    # 使用全局安装目录变量
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
+    
+    echo -e "安装目录: $INSTALL_DIR"
     echo -e "访问地址: https://${DOMAIN}"
     echo -e "管理后台: https://${DOMAIN}/auth/login"
     echo -e "节点采集: https://${DOMAIN}/admin/node/collector"
     echo ""
     echo -e "${YELLOW}下一步操作:${NC}"
-    echo "1. 登录管理后台"
-    echo "2. 配置节点采集功能"
-    echo "3. 添加采集源 URL"
-    echo "4. 测试节点采集"
+    echo "1. 创建管理员账号:"
+    echo "   cd $INSTALL_DIR"
+    echo "   wget https://raw.githubusercontent.com/moneyfly1/myweb/main/create_admin.sh"
+    echo "   chmod +x create_admin.sh && ./create_admin.sh"
+    echo "2. 登录管理后台"
+    echo "3. 配置节点采集功能"
+    echo "4. 添加采集源 URL"
+    echo "5. 测试节点采集"
     echo ""
 }
 
