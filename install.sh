@@ -52,6 +52,43 @@ detect_system() {
     esac
 }
 
+# 检测软件是否已安装
+check_installed() {
+    local software=$1
+    if command -v "$software" &> /dev/null; then
+        return 0  # 已安装
+    else
+        return 1  # 未安装
+    fi
+}
+
+# 检测 PHP 版本
+check_php_version() {
+    if command -v php &> /dev/null; then
+        PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
+        MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
+        MINOR=$(echo $PHP_VER | cut -d "." -f 2)
+        
+        if [ "$MAJOR" -ge 8 ] && [ "$MINOR" -ge 2 ]; then
+            return 0  # PHP 版本符合要求
+        else
+            return 1  # PHP 版本不符合要求
+        fi
+    else
+        return 1  # PHP 未安装
+    fi
+}
+
+# 检测服务是否运行
+check_service_running() {
+    local service=$1
+    if systemctl is-active --quiet "$service" 2>/dev/null; then
+        return 0  # 服务正在运行
+    else
+        return 1  # 服务未运行
+    fi
+}
+
 # 安装基础工具
 install_basic_tools() {
     echo -e "${BLUE}========================================${NC}"
@@ -81,6 +118,20 @@ install_nginx() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}步骤 2: 安装 Nginx${NC}"
     echo -e "${BLUE}========================================${NC}"
+    
+    # 检测 Nginx 是否已安装
+    if check_installed nginx; then
+        echo -e "${GREEN}✓ Nginx 已安装，版本: $(nginx -v 2>&1 | cut -d '/' -f 2)${NC}"
+        if check_service_running nginx; then
+            echo -e "${GREEN}✓ Nginx 服务正在运行${NC}"
+        else
+            echo -e "${YELLOW}启动 Nginx 服务...${NC}"
+            systemctl start nginx && systemctl enable nginx
+        fi
+        return 0
+    fi
+    
+    echo -e "${YELLOW}正在安装 Nginx...${NC}"
     
     if [[ "$OS" == "debian" ]]; then
         curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
@@ -154,6 +205,44 @@ install_php() {
     echo -e "${BLUE}步骤 3: 安装 PHP 8.2+${NC}"
     echo -e "${BLUE}========================================${NC}"
     
+    # 检测 PHP 是否已安装且版本符合要求
+    if check_php_version; then
+        PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
+        echo -e "${GREEN}✓ PHP 已安装，版本: $PHP_VER${NC}"
+        
+        # 检测 PHP-FPM 是否运行
+        if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+            PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
+            PHP_MINOR=$(echo $PHP_VER | cut -d "." -f 2)
+            FPM_SERVICE="php${PHP_MAJOR}.${PHP_MINOR}-fpm"
+            if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
+                if check_service_running "$FPM_SERVICE"; then
+                    echo -e "${GREEN}✓ PHP-FPM 服务正在运行${NC}"
+                else
+                    echo -e "${YELLOW}启动 PHP-FPM 服务...${NC}"
+                    systemctl start "$FPM_SERVICE" && systemctl enable "$FPM_SERVICE"
+                fi
+            fi
+        else
+            if check_service_running php-fpm; then
+                echo -e "${GREEN}✓ PHP-FPM 服务正在运行${NC}"
+            else
+                echo -e "${YELLOW}启动 PHP-FPM 服务...${NC}"
+                systemctl start php-fpm && systemctl enable php-fpm
+            fi
+        fi
+        return 0
+    elif check_installed php; then
+        PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
+        echo -e "${YELLOW}⚠ PHP 已安装但版本过低: $PHP_VER，需要 8.2+${NC}"
+        read -p "是否继续安装 PHP 8.2+? (y/N): " UPGRADE_PHP
+        if [[ "$UPGRADE_PHP" != "y" && "$UPGRADE_PHP" != "Y" ]]; then
+            echo -e "${YELLOW}跳过 PHP 安装${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${YELLOW}正在安装 PHP 8.2+...${NC}"
     PHP_VERSION="8.2"
     
     if [[ "$OS" == "debian" ]]; then
@@ -224,6 +313,37 @@ install_mariadb() {
     echo -e "${BLUE}步骤 4: 安装 MariaDB${NC}"
     echo -e "${BLUE}========================================${NC}"
     
+    # 检测 MariaDB/MySQL 是否已安装
+    if check_installed mariadb || check_installed mysql; then
+        if check_installed mariadb; then
+            echo -e "${GREEN}✓ MariaDB 已安装，版本: $(mariadb --version | cut -d " " -f 3 | cut -d "," -f 1)${NC}"
+        else
+            echo -e "${GREEN}✓ MySQL 已安装，版本: $(mysql --version | cut -d " " -f 5 | cut -d "," -f 1)${NC}"
+        fi
+        
+        if check_service_running mariadb || check_service_running mysql; then
+            echo -e "${GREEN}✓ 数据库服务正在运行${NC}"
+            echo -e "${YELLOW}请手动创建数据库和用户，或使用现有数据库${NC}"
+            read -p "请输入数据库密码（如果已设置）: " EXISTING_DB_PASSWORD
+            if [ ! -z "$EXISTING_DB_PASSWORD" ]; then
+                DB_PASSWORD="$EXISTING_DB_PASSWORD"
+                echo "$DB_PASSWORD" > /tmp/sspanel_db_password.txt
+                chmod 600 /tmp/sspanel_db_password.txt
+            else
+                read -p "请输入新数据库密码: " DB_PASSWORD
+                echo "$DB_PASSWORD" > /tmp/sspanel_db_password.txt
+                chmod 600 /tmp/sspanel_db_password.txt
+            fi
+            return 0
+        else
+            echo -e "${YELLOW}启动数据库服务...${NC}"
+            systemctl start mariadb 2>/dev/null || systemctl start mysql
+            systemctl enable mariadb 2>/dev/null || systemctl enable mysql
+        fi
+    fi
+    
+    echo -e "${YELLOW}正在安装 MariaDB...${NC}"
+    
     if [[ "$OS" == "debian" ]]; then
         mkdir -p /etc/apt/keyrings
         curl -o /etc/apt/keyrings/mariadb-keyring.pgp \
@@ -261,8 +381,8 @@ EOF
     echo -e "${YELLOW}数据库密码已生成: ${DB_PASSWORD}${NC}"
     echo -e "${YELLOW}请保存此密码，稍后需要配置到 .config.php${NC}"
     
-    # 创建数据库和用户
-    mariadb -u root <<EOF
+    # 创建数据库和用户（如果不存在）
+    mariadb -u root <<EOF 2>/dev/null || mysql -u root -p${DB_PASSWORD} <<EOF 2>/dev/null || mysql -u root <<EOF
 CREATE DATABASE IF NOT EXISTS sspanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'sspanel'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON sspanel.* TO 'sspanel'@'localhost';
@@ -284,6 +404,21 @@ install_redis() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}步骤 5: 安装 Redis${NC}"
     echo -e "${BLUE}========================================${NC}"
+    
+    # 检测 Redis 是否已安装
+    if check_installed redis-server || check_installed redis-cli; then
+        echo -e "${GREEN}✓ Redis 已安装${NC}"
+        if check_service_running redis-server || check_service_running redis; then
+            echo -e "${GREEN}✓ Redis 服务正在运行${NC}"
+        else
+            echo -e "${YELLOW}启动 Redis 服务...${NC}"
+            systemctl start redis-server 2>/dev/null || systemctl start redis
+            systemctl enable redis-server 2>/dev/null || systemctl enable redis
+        fi
+        return 0
+    fi
+    
+    echo -e "${YELLOW}正在安装 Redis...${NC}"
     
     if [[ "$OS" == "debian" ]]; then
         curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
@@ -322,6 +457,14 @@ install_composer() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}步骤 6: 安装 Composer${NC}"
     echo -e "${BLUE}========================================${NC}"
+    
+    # 检测 Composer 是否已安装
+    if check_installed composer; then
+        echo -e "${GREEN}✓ Composer 已安装，版本: $(composer --version | cut -d " " -f 3)${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}正在安装 Composer...${NC}"
     
     if [ ! -f /usr/local/bin/composer ]; then
         curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
