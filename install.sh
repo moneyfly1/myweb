@@ -1273,36 +1273,21 @@ init_database() {
             chmod 600 /tmp/sspanel_db_password.txt
         fi
         
-        # 设置默认值
-        DB_NAME="sspanel"
-        DB_USER="sspanel"
-        DB_HOST="localhost"
+        # 设置默认值（如果读取不到，使用这些默认值）
+        DB_NAME="${DB_NAME:-sspanel}"
+        DB_USER="${DB_USER:-sspanel}"
+        DB_HOST="${DB_HOST:-localhost}"
         
         # 更新配置文件（支持 $_ENV['db_host'] 格式）
         if [ -f config/.config.php ]; then
             # 转义特殊字符
             DB_PASSWORD_ESC=$(echo "$DB_PASSWORD" | sed 's/[[\.*^$()+?{|]/\\&/g')
             
-            # 使用 $_ENV 格式替换（处理注释和空值）
-            # 先移除行尾注释，再替换
-            sed -i "s|\$_ENV\['db_host'\]\s*=\s*['\"][^'\";]*['\"]\s*;.*|\$_ENV['db_host'] = '${DB_HOST}';|g" config/.config.php
-            sed -i "s|\$_ENV\['db_database'\]\s*=\s*['\"][^'\";]*['\"]\s*;.*|\$_ENV['db_database'] = '${DB_NAME}';|g" config/.config.php
-            sed -i "s|\$_ENV\['db_username'\]\s*=\s*['\"][^'\";]*['\"]\s*;.*|\$_ENV['db_username'] = '${DB_USER}';|g" config/.config.php
-            sed -i "s|\$_ENV\['db_password'\]\s*=\s*['\"][^'\";]*['\"]\s*;.*|\$_ENV['db_password'] = '${DB_PASSWORD_ESC}';|g" config/.config.php
-            
-            # 如果上面的替换失败（可能是空值），尝试更宽松的匹配
-            if ! grep -q "\$_ENV\['db_host'\] = '${DB_HOST}'" config/.config.php 2>/dev/null; then
-                sed -i "s|\$_ENV\['db_host'\]\s*=\s*[^;]*|\$_ENV['db_host'] = '${DB_HOST}'|g" config/.config.php
-            fi
-            if ! grep -q "\$_ENV\['db_database'\] = '${DB_NAME}'" config/.config.php 2>/dev/null; then
-                sed -i "s|\$_ENV\['db_database'\]\s*=\s*[^;]*|\$_ENV['db_database'] = '${DB_NAME}'|g" config/.config.php
-            fi
-            if ! grep -q "\$_ENV\['db_username'\] = '${DB_USER}'" config/.config.php 2>/dev/null; then
-                sed -i "s|\$_ENV\['db_username'\]\s*=\s*[^;]*|\$_ENV['db_username'] = '${DB_USER}'|g" config/.config.php
-            fi
-            if ! grep -q "\$_ENV\['db_password'\] = '${DB_PASSWORD_ESC}'" config/.config.php 2>/dev/null; then
-                sed -i "s|\$_ENV\['db_password'\]\s*=\s*[^;]*|\$_ENV['db_password'] = '${DB_PASSWORD_ESC}'|g" config/.config.php
-            fi
+            # 使用更直接的方法替换（匹配整行，包括注释）
+            sed -i "s|\$_ENV\['db_host'\]\s*=\s*[^;]*|\$_ENV['db_host'] = '${DB_HOST}';|g" config/.config.php
+            sed -i "s|\$_ENV\['db_database'\]\s*=\s*[^;]*|\$_ENV['db_database'] = '${DB_NAME}';|g" config/.config.php
+            sed -i "s|\$_ENV\['db_username'\]\s*=\s*[^;]*|\$_ENV['db_username'] = '${DB_USER}';|g" config/.config.php
+            sed -i "s|\$_ENV\['db_password'\]\s*=\s*[^;]*|\$_ENV['db_password'] = '${DB_PASSWORD_ESC}';|g" config/.config.php
             
             # 验证配置是否写入成功
             sleep 1
@@ -1313,31 +1298,53 @@ init_database() {
             DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*= ['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
             DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*= ['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
             
-            if [ -z "$DB_HOST" ]; then
-                DB_HOST="localhost"
+            # 如果读取不到，使用默认值
+            DB_HOST="${DB_HOST:-localhost}"
+            DB_NAME="${DB_NAME:-sspanel}"
+            DB_USER="${DB_USER:-sspanel}"
+            
+            # 如果密码还是为空，使用用户输入的密码
+            if [ -z "$DB_PASS" ]; then
+                DB_PASS="$DB_PASSWORD"
             fi
             
-            # 如果还是为空，显示调试信息
+            # 如果还是为空，显示调试信息并使用默认值
             if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
-                echo -e "${YELLOW}调试信息:${NC}"
-                echo -e "${YELLOW}DB_HOST: ${DB_HOST:-空}${NC}"
-                echo -e "${YELLOW}DB_NAME: ${DB_NAME:-空}${NC}"
-                echo -e "${YELLOW}DB_USER: ${DB_USER:-空}${NC}"
-                echo -e "${YELLOW}DB_PASS: ${DB_PASS:+已设置}${DB_PASS:-空}${NC}"
-                echo -e "${YELLOW}配置文件内容（数据库相关）:${NC}"
-                grep -E "\$_ENV\['db_(host|database|username|password)'\]" config/.config.php | head -4
+                echo -e "${YELLOW}警告: 无法从配置文件读取完整配置，使用默认值${NC}"
+                DB_NAME="sspanel"
+                DB_USER="sspanel"
+                DB_HOST="localhost"
+                DB_PASS="$DB_PASSWORD"
+                
+                # 再次尝试写入（使用更强制的方法）
+                perl -i -pe "s|\$_ENV\['db_host'\]\s*=\s*[^;]*|\$_ENV['db_host'] = '${DB_HOST}';|g" config/.config.php 2>/dev/null || \
+                sed -i "s|\$_ENV\['db_host'\]\s*=\s*[^;]*|\$_ENV['db_host'] = '${DB_HOST}';|g" config/.config.php
+                
+                perl -i -pe "s|\$_ENV\['db_database'\]\s*=\s*[^;]*|\$_ENV['db_database'] = '${DB_NAME}';|g" config/.config.php 2>/dev/null || \
+                sed -i "s|\$_ENV\['db_database'\]\s*=\s*[^;]*|\$_ENV['db_database'] = '${DB_NAME}';|g" config/.config.php
+                
+                perl -i -pe "s|\$_ENV\['db_username'\]\s*=\s*[^;]*|\$_ENV['db_username'] = '${DB_USER}';|g" config/.config.php 2>/dev/null || \
+                sed -i "s|\$_ENV\['db_username'\]\s*=\s*[^;]*|\$_ENV['db_username'] = '${DB_USER}';|g" config/.config.php
+                
+                perl -i -pe "s|\$_ENV\['db_password'\]\s*=\s*[^;]*|\$_ENV['db_password'] = '${DB_PASSWORD_ESC}';|g" config/.config.php 2>/dev/null || \
+                sed -i "s|\$_ENV\['db_password'\]\s*=\s*[^;]*|\$_ENV['db_password'] = '${DB_PASSWORD_ESC}';|g" config/.config.php
             fi
         else
             echo -e "${RED}错误: config/.config.php 文件不存在${NC}"
             exit 1
         fi
         
-        # 再次检查
-        if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
-            echo -e "${RED}错误: 数据库配置仍然不完整${NC}"
-            echo -e "${YELLOW}请手动检查 config/.config.php 文件${NC}"
-            exit 1
-        fi
+        # 最终检查：如果还是为空，使用默认值继续
+        DB_NAME="${DB_NAME:-sspanel}"
+        DB_USER="${DB_USER:-sspanel}"
+        DB_HOST="${DB_HOST:-localhost}"
+        DB_PASS="${DB_PASS:-$DB_PASSWORD}"
+        
+        echo -e "${GREEN}数据库配置:${NC}"
+        echo -e "  - 主机: $DB_HOST"
+        echo -e "  - 数据库: $DB_NAME"
+        echo -e "  - 用户: $DB_USER"
+        echo -e "  - 密码: ${DB_PASS:+已设置}"
     fi
     
     # 测试数据库连接
