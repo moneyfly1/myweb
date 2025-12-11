@@ -1235,23 +1235,23 @@ init_database() {
     fi
     
     # 尝试从配置文件读取数据库信息（支持 $_ENV['db_host'] 格式，处理注释）
-    # 移除注释后提取值
-    DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_host'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-    DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_database'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-    DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_username'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-    DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_password'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
+    # 移除注释后提取值（使用兼容的正则表达式）
+    DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_host'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+    DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_database'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+    DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_username'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+    DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_password'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
     
     # 如果 db_host 为空，使用默认值
     if [ -z "$DB_HOST" ]; then
         DB_HOST="localhost"
     fi
     
-    # 如果还是为空，尝试更宽松的匹配（不处理注释）
+    # 如果还是为空，尝试更宽松的匹配（不处理注释，支持空值）
     if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
-        DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*\$_ENV\['db_host'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t" || echo "localhost")
-        DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*\$_ENV\['db_database'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-        DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*\$_ENV\['db_username'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-        DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*\$_ENV\['db_password'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
+        DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed "s/.*\$_ENV\['db_host'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+        DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed "s/.*\$_ENV\['db_database'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+        DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed "s/.*\$_ENV\['db_username'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+        DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed "s/.*\$_ENV\['db_password'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
         
         if [ -z "$DB_HOST" ]; then
             DB_HOST="localhost"
@@ -1308,10 +1308,10 @@ init_database() {
             sleep 1
             
             # 重新读取配置（使用 $_ENV 格式，处理注释）
-            DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_host'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-            DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_database'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-            DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_username'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
-            DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed -E "s/.*\$_ENV\['db_password'\]\s*=\s*['\"]?([^'\";]*?)['\"]?\s*;.*/\1/" | tr -d " \t")
+            DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_host'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+            DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_database'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+            DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_username'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+            DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*\$_ENV\['db_password'\]\s*=\s*['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
             
             if [ -z "$DB_HOST" ]; then
                 DB_HOST="localhost"
