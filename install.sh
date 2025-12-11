@@ -762,18 +762,20 @@ deploy_project() {
     echo -e "${BLUE}步骤 7: 部署 SSPanel-UIM${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    # 使用全局安装目录变量，如果没有设置则使用默认值
+    # 使用全局安装目录变量，如果没有设置则使用当前目录
     if [ -z "$INSTALL_DIR" ]; then
-        INSTALL_DIR="/var/www/sspanel"
+        INSTALL_DIR="$(pwd)"
     fi
     
     # 获取域名
     if [ -z "$DOMAIN" ]; then
         read -p "请输入您的域名 (例如: board.moneyfly.club): " DOMAIN
         if [ -z "$DOMAIN" ]; then
-            # 如果目录是 board.moneyfly.club，自动提取域名
-            if [[ "$INSTALL_DIR" == *"board.moneyfly.club"* ]]; then
-                DOMAIN="board.moneyfly.club"
+            # 尝试从目录名提取域名
+            DIR_NAME=$(basename "$INSTALL_DIR")
+            if [[ "$DIR_NAME" == *"."* ]] && [[ "$DIR_NAME" != *"/"* ]]; then
+                DOMAIN="$DIR_NAME"
+                echo -e "${GREEN}从目录名自动提取域名: $DOMAIN${NC}"
             else
                 echo -e "${RED}错误: 域名不能为空${NC}"
                 exit 1

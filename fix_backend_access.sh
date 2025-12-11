@@ -21,33 +21,75 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}修复后台访问问题${NC}"
 echo -e "${BLUE}========================================${NC}"
 
-# 1. 检查项目目录
+# 1. 检查项目目录（优先使用当前目录）
 echo -e "${YELLOW}步骤 1: 检查项目目录...${NC}"
-if [ ! -d "/var/www/sspanel" ]; then
-    echo -e "${RED}✗ 项目目录不存在: /var/www/sspanel${NC}"
-    exit 1
+CURRENT_DIR=$(pwd)
+PROJECT_DIR=""
+
+# 首先检查当前目录
+if [ -d "$CURRENT_DIR" ] && [ -f "$CURRENT_DIR/config/.config.php" ]; then
+    PROJECT_DIR="$CURRENT_DIR"
+    echo -e "${GREEN}✓ 使用当前目录: $PROJECT_DIR${NC}"
+else
+    # 尝试查找常见目录
+    for dir in "/var/www/sspanel" "/www/wwwroot"*; do
+        if [ -d "$dir" ] && [ -f "$dir/config/.config.php" ]; then
+            PROJECT_DIR="$dir"
+            break
+        fi
+    done
+    
+    if [ -z "$PROJECT_DIR" ]; then
+        read -p "请输入项目目录路径: " PROJECT_DIR
+        if [ ! -d "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/config/.config.php" ]; then
+            echo -e "${RED}✗ 项目目录不存在或配置文件不存在${NC}"
+            exit 1
+        fi
+    fi
+    echo -e "${GREEN}✓ 项目目录: $PROJECT_DIR${NC}"
 fi
-echo -e "${GREEN}✓ 项目目录存在${NC}"
 
 # 2. 检查 Nginx 配置
 echo -e "${YELLOW}步骤 2: 检查 Nginx 配置...${NC}"
 
 # 查找 Nginx 配置文件
 NGINX_CONFIG=""
-for config in "/etc/nginx/conf.d/sspanel.conf" "/www/server/panel/vhost/nginx/board.moneyfly.club.conf" "/www/server/nginx/conf/vhost/board.moneyfly.club.conf"; do
-    if [ -f "$config" ]; then
-        NGINX_CONFIG="$config"
-        break
+# 尝试查找常见的 Nginx 配置目录
+for config_dir in "/etc/nginx/conf.d" "/www/server/panel/vhost/nginx" "/www/server/nginx/conf/vhost"; do
+    if [ -d "$config_dir" ]; then
+        # 查找包含项目目录名的配置文件
+        for config in "$config_dir"/*.conf; do
+            if [ -f "$config" ] && grep -q "$(basename "$PROJECT_DIR")" "$config" 2>/dev/null; then
+                NGINX_CONFIG="$config"
+                break 2
+            fi
+        done
+        # 如果没有找到，查找 sspanel.conf
+        if [ -f "$config_dir/sspanel.conf" ]; then
+            NGINX_CONFIG="$config_dir/sspanel.conf"
+            break
+        fi
     fi
 done
 
 if [ -z "$NGINX_CONFIG" ]; then
     echo -e "${YELLOW}⚠ 未找到 Nginx 配置文件，正在创建...${NC}"
     
-    # 获取域名
-    read -p "请输入您的域名 (例如: board.moneyfly.club): " DOMAIN
-    if [ -z "$DOMAIN" ]; then
-        DOMAIN="board.moneyfly.club"
+    # 获取域名（尝试从目录名提取）
+    DIR_NAME=$(basename "$PROJECT_DIR")
+    if [[ "$DIR_NAME" == *"."* ]] && [[ "$DIR_NAME" != *"/"* ]]; then
+        DEFAULT_DOMAIN="$DIR_NAME"
+    else
+        DEFAULT_DOMAIN=""
+    fi
+    
+    if [ -z "$DEFAULT_DOMAIN" ]; then
+        read -p "请输入您的域名: " DOMAIN
+    else
+        read -p "请输入您的域名 [默认: $DEFAULT_DOMAIN]: " DOMAIN
+        if [ -z "$DOMAIN" ]; then
+            DOMAIN="$DEFAULT_DOMAIN"
+        fi
     fi
     
     # 检测 PHP socket
@@ -73,7 +115,7 @@ server {
     listen [::]:80;
     server_name ${DOMAIN};
     
-    root /var/www/sspanel/public;
+    root PROJECT_DIR_PLACEHOLDER/public;
     index index.php;
     
     location / {
@@ -124,9 +166,9 @@ fi
 
 # 4. 检查文件权限
 echo -e "${YELLOW}步骤 4: 检查文件权限...${NC}"
-chown -R www-data:www-data /var/www/sspanel 2>/dev/null || chown -R nginx:nginx /var/www/sspanel 2>/dev/null || true
-chmod -R 755 /var/www/sspanel
-chmod -R 777 /var/www/sspanel/storage
+chown -R www-data:www-data "$PROJECT_DIR" 2>/dev/null || chown -R nginx:nginx "$PROJECT_DIR" 2>/dev/null || true
+chmod -R 755 "$PROJECT_DIR"
+chmod -R 777 "$PROJECT_DIR/storage"
 echo -e "${GREEN}✓ 文件权限已设置${NC}"
 
 # 5. 重启 Nginx
@@ -140,7 +182,7 @@ fi
 
 # 6. 检查数据库初始化
 echo -e "${YELLOW}步骤 6: 检查数据库初始化...${NC}"
-cd /var/www/sspanel
+cd "$PROJECT_DIR"
 
 if [ ! -f "vendor/autoload.php" ]; then
     echo -e "${RED}✗ vendor/autoload.php 不存在，请先运行 composer install${NC}"
@@ -162,11 +204,11 @@ echo -e "${GREEN}修复完成！${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${YELLOW}下一步操作:${NC}"
-echo "1. 访问: http://board.moneyfly.club"
+echo "1. 访问: http://${DOMAIN:-您的域名}"
 echo "2. 如果仍然 404，请检查:"
 echo "   - Nginx 配置文件: $NGINX_CONFIG"
-echo "   - 项目目录: /var/www/sspanel/public"
+echo "   - 项目目录: $PROJECT_DIR/public"
 echo "   - PHP-FPM 是否运行"
 echo ""
 echo -e "${YELLOW}创建管理员账号:${NC}"
-echo "运行: ./create_admin.sh"
+echo "运行: cd $PROJECT_DIR && ./create_admin.sh"
