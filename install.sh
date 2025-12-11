@@ -396,12 +396,21 @@ EOF
         echo -e "${YELLOW}请保存此密码，稍后需要配置到 .config.php${NC}"
         
         # 创建数据库和用户（如果不存在）
-        mariadb -u root <<EOF 2>/dev/null || mysql -u root <<EOF
+        if command -v mariadb &> /dev/null; then
+            mariadb -u root <<EOF 2>/dev/null
 CREATE DATABASE IF NOT EXISTS sspanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'sspanel'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON sspanel.* TO 'sspanel'@'localhost';
 FLUSH PRIVILEGES;
 EOF
+        else
+            mysql -u root <<EOF 2>/dev/null
+CREATE DATABASE IF NOT EXISTS sspanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'sspanel'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON sspanel.* TO 'sspanel'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+        fi
     fi
     
     echo -e "${GREEN}MariaDB 安装完成${NC}"
@@ -632,23 +641,23 @@ configure_nginx() {
         CONFIG_DIR="/etc/nginx/conf.d"
     fi
     
-    cat > ${CONFIG_DIR}/sspanel.conf <<EOF
+    cat > ${CONFIG_DIR}/sspanel.conf <<'EOF'
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN};
+    server_name DOMAIN_PLACEHOLDER;
     
     root /var/www/sspanel/public;
     index index.php;
     
     location / {
-        try_files \$uri /index.php?\$query_string;
+        try_files $uri /index.php?$query_string;
     }
     
-    location ~ \.php\$ {
-        fastcgi_pass unix:${PHP_SOCKET};
+    location ~ \.php$ {
+        fastcgi_pass unix:PHP_SOCKET_PLACEHOLDER;
         fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
         fastcgi_param HTTP_PROXY "";
         fastcgi_hide_header X-Powered-By;
@@ -663,6 +672,9 @@ server {
     }
 }
 EOF
+    # 替换占位符
+    sed -i "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" ${CONFIG_DIR}/sspanel.conf
+    sed -i "s|PHP_SOCKET_PLACEHOLDER|${PHP_SOCKET}|g" ${CONFIG_DIR}/sspanel.conf
     
     nginx -t && systemctl reload nginx
     echo -e "${GREEN}Nginx 配置完成${NC}"
