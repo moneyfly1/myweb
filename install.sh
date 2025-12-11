@@ -376,18 +376,33 @@ EOF
     
     systemctl start mariadb && systemctl enable mariadb
     
-    # 生成数据库密码
-    DB_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-    echo -e "${YELLOW}数据库密码已生成: ${DB_PASSWORD}${NC}"
-    echo -e "${YELLOW}请保存此密码，稍后需要配置到 .config.php${NC}"
+    # 检查数据库是否已存在
+    DB_EXISTS=$(mariadb -u root -e "SHOW DATABASES LIKE 'sspanel';" 2>/dev/null | grep -c sspanel || mysql -u root -e "SHOW DATABASES LIKE 'sspanel';" 2>/dev/null | grep -c sspanel || echo "0")
     
-    # 创建数据库和用户（如果不存在）
-    mariadb -u root <<EOF 2>/dev/null || mysql -u root -p${DB_PASSWORD} <<EOF 2>/dev/null || mysql -u root <<EOF
+    if [ "$DB_EXISTS" -gt 0 ]; then
+        echo -e "${GREEN}✓ 数据库 sspanel 已存在${NC}"
+        read -p "请输入数据库密码（如果已设置）: " EXISTING_DB_PASSWORD
+        if [ ! -z "$EXISTING_DB_PASSWORD" ]; then
+            DB_PASSWORD="$EXISTING_DB_PASSWORD"
+        else
+            # 生成新密码
+            DB_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+            echo -e "${YELLOW}数据库密码已生成: ${DB_PASSWORD}${NC}"
+        fi
+    else
+        # 生成数据库密码
+        DB_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+        echo -e "${YELLOW}数据库密码已生成: ${DB_PASSWORD}${NC}"
+        echo -e "${YELLOW}请保存此密码，稍后需要配置到 .config.php${NC}"
+        
+        # 创建数据库和用户（如果不存在）
+        mariadb -u root <<EOF 2>/dev/null || mysql -u root <<EOF
 CREATE DATABASE IF NOT EXISTS sspanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'sspanel'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON sspanel.* TO 'sspanel'@'localhost';
 FLUSH PRIVILEGES;
 EOF
+    fi
     
     echo -e "${GREEN}MariaDB 安装完成${NC}"
     echo -e "${YELLOW}数据库名: sspanel${NC}"
