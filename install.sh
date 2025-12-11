@@ -1194,7 +1194,7 @@ init_database() {
 # 配置定时任务
 configure_cron() {
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}步骤 11: 配置定时任务${NC}"
+    echo -e "${BLUE}步骤 12: 配置定时任务${NC}"
     echo -e "${BLUE}========================================${NC}"
     
     # 使用全局安装目录变量
@@ -1204,16 +1204,21 @@ configure_cron() {
     
     CRON_JOB="*/5 * * * * /usr/bin/php ${INSTALL_DIR}/xcat Cron >> /var/log/sspanel-cron.log 2>&1"
     
-    (crontab -l 2>/dev/null | grep -v "xcat Cron"; echo "$CRON_JOB") | crontab -
+    # 移除旧的定时任务
+    (crontab -l 2>/dev/null | grep -v "xcat Cron" | grep -v "${INSTALL_DIR}/xcat Cron") | crontab - 2>/dev/null || true
+    
+    # 添加新的定时任务
+    (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
     
     echo -e "${GREEN}定时任务配置完成${NC}"
     echo -e "${YELLOW}定时任务: 每 5 分钟执行一次${NC}"
+    echo -e "${YELLOW}任务路径: ${INSTALL_DIR}/xcat Cron${NC}"
 }
 
 # 配置 SSL
 configure_ssl() {
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}步骤 12: 配置 SSL 证书 (可选)${NC}"
+    echo -e "${BLUE}步骤 13: 配置 SSL 证书 (可选)${NC}"
     echo -e "${BLUE}========================================${NC}"
     
     read -p "是否现在配置 SSL 证书? (Y/n): " CONFIGURE_SSL
@@ -1277,6 +1282,7 @@ main() {
     set_permissions
     configure_nginx
     init_database
+    create_admin_account
     configure_cron
     configure_ssl
     
