@@ -1347,14 +1347,145 @@ init_database() {
         echo -e "  - 密码: ${DB_PASS:+已设置}"
     fi
     
-    # 测试数据库连接
-    if command -v mysql &> /dev/null; then
-        if ! mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1; then
-            echo -e "${RED}错误: 无法连接到数据库${NC}"
-            echo -e "${YELLOW}请检查数据库配置和服务状态${NC}"
+    # 测试数据库连接并创建数据库/用户（如果需要）
+    if command -v mysql &> /dev/null || command -v mariadb &> /dev/null; then
+        MYSQL_CMD="mysql"
+        if ! command -v mysql &> /dev/null; then
+            MYSQL_CMD="mariadb"
+        fi
+        
+        # 尝试使用 root 用户连接（用于创建数据库和用户）
+        ROOT_PASSWORD=""
+        if [ -f /tmp/sspanel_db_password.txt ]; then
+            # 尝试使用保存的密码作为 root 密码
+            ROOT_PASSWORD=$(cat /tmp/sspanel_db_password.txt)
+        fi
+        
+        # 尝试连接数据库
+        CONNECTED=0
+        
+        # 方法1: 使用配置的用户和密码
+        if mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1; then
+            CONNECTED=1
+            echo -e "${GREEN}✓ 数据库连接正常${NC}"
+        # 方法2: 使用 root 用户（无密码）
+        elif mysql -h"$DB_HOST" -uroot -e "SELECT 1;" >/dev/null 2>&1; then
+            echo -e "${YELLOW}使用 root 用户连接数据库...${NC}"
+            ROOT_PASSWORD=""
+            CONNECTED=2
+        # 方法3: 使用 root 用户（有密码）
+        elif [ ! -z "$ROOT_PASSWORD" ] && mysql -h"$DB_HOST" -uroot -p"$ROOT_PASSWORD" -e "SELECT 1;" >/dev/null 2>&1; then
+            echo -e "${YELLOW}使用 root 用户（带密码）连接数据库...${NC}"
+            CONNECTED=3
+        else
+            # 尝试询问 root 密码
+            echo -e "${YELLOW}无法使用配置的用户连接数据库${NC}"
+            read -sp "请输入 MySQL/MariaDB root 密码（如果设置了）: " ROOT_PASSWORD
+            echo ""
+            
+            if [ ! -z "$ROOT_PASSWORD" ]; then
+                if mysql -h"$DB_HOST" -uroot -p"$ROOT_PASSWORD" -e "SELECT 1;" >/dev/null 2>&1; then
+                    CONNECTED=3
+                fi
+            else
+                if mysql -h"$DB_HOST" -uroot -e "SELECT 1;" >/dev/null 2>&1; then
+                    CONNECTED=2
+                fi
+            fi
+        fi
+        
+        if [ $CONNECTED -eq 0 ]; then
+            echo -e "${RED}错误: 无法连接到数据库服务器${NC}"
+            echo -e "${YELLOW}请检查：${NC}"
+            echo -e "${YELLOW}  1. 数据库服务是否运行: systemctl status mariadb 或 systemctl status mysql${NC}"
+            echo -e "${YELLOW}  2. root 密码是否正确${NC}"
             exit 1
         fi
-        echo -e "${GREEN}✓ 数据库连接正常${NC}"
+        
+        # 如果使用 root 连接，创建数据库和用户
+        if [ $CONNECTED -eq 2 ] || [ $CONNECTED -eq 3 ]; then
+            echo -e "${YELLOW}正在创建数据库和用户...${NC}"
+            
+            # 构建 SQL 命令
+            if [ $CONNECTED -eq 2 ]; then
+                MYSQL_ROOT_CMD="mysql -h$DB_HOST -uroot"
+            else
+                MYSQL_ROOT_CMD="mysql -h$DB_HOST -uroot -p$ROOT_PASSWORD"
+            fi
+            
+            # 检查数据库是否存在
+            DB_EXISTS=$($MYSQL_ROOT_CMD -e "SHOW DATABASES LIKE '$DB_NAME';" 2>/dev/null | grep -c "$DB_NAME" || echo "0")
+            
+            if [ "$DB_EXISTS" -gt 0 ]; then
+                echo -e "${YELLOW}数据库 $DB_NAME 已存在${NC}"
+                read -p "是否删除并重新创建数据库 $DB_NAME? (y/N): " RECREATE_DB
+                if [[ "$RECREATE_DB" == "y" || "$RECREATE_DB" == "Y" ]]; then
+                    echo -e "${YELLOW}正在删除数据库 $DB_NAME...${NC}"
+                    $MYSQL_ROOT_CMD -e "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null
+                    DB_EXISTS=0
+                fi
+            fi
+            
+            # 创建数据库
+            if [ "$DB_EXISTS" -eq 0 ]; then
+                echo -e "${YELLOW}正在创建数据库 $DB_NAME...${NC}"
+                $MYSQL_ROOT_CMD <<EOF 2>/dev/null
+CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+EOF
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}✓ 数据库 $DB_NAME 创建成功${NC}"
+                else
+                    echo -e "${RED}错误: 创建数据库失败${NC}"
+                    exit 1
+                fi
+            fi
+            
+            # 检查用户是否存在
+            USER_EXISTS=$($MYSQL_ROOT_CMD -e "SELECT User FROM mysql.user WHERE User='$DB_USER' AND Host='localhost';" 2>/dev/null | grep -c "$DB_USER" || echo "0")
+            
+            if [ "$USER_EXISTS" -gt 0 ]; then
+                echo -e "${YELLOW}用户 $DB_USER 已存在${NC}"
+                read -p "是否删除并重新创建用户 $DB_USER? (y/N): " RECREATE_USER
+                if [[ "$RECREATE_USER" == "y" || "$RECREATE_USER" == "Y" ]]; then
+                    echo -e "${YELLOW}正在删除用户 $DB_USER...${NC}"
+                    $MYSQL_ROOT_CMD -e "DROP USER IF EXISTS '$DB_USER'@'localhost';" 2>/dev/null
+                    USER_EXISTS=0
+                else
+                    # 更新用户密码
+                    echo -e "${YELLOW}正在更新用户 $DB_USER 的密码...${NC}"
+                    $MYSQL_ROOT_CMD <<EOF 2>/dev/null
+ALTER USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
+FLUSH PRIVILEGES;
+EOF
+                fi
+            fi
+            
+            # 创建用户
+            if [ "$USER_EXISTS" -eq 0 ]; then
+                echo -e "${YELLOW}正在创建用户 $DB_USER...${NC}"
+                $MYSQL_ROOT_CMD <<EOF 2>/dev/null
+CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
+GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}✓ 用户 $DB_USER 创建成功${NC}"
+                else
+                    echo -e "${RED}错误: 创建用户失败${NC}"
+                    exit 1
+                fi
+            fi
+            
+            # 测试新创建的用户连接
+            if mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ 数据库连接正常${NC}"
+            else
+                echo -e "${RED}错误: 无法使用新创建的用户连接数据库${NC}"
+                exit 1
+            fi
+        fi
+    else
+        echo -e "${YELLOW}警告: 未找到 mysql 或 mariadb 命令，跳过数据库连接测试${NC}"
     fi
     
     echo -e "${YELLOW}正在运行数据库迁移...${NC}"
