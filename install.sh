@@ -781,30 +781,37 @@ deploy_project() {
         fi
     fi
     
-    # 创建项目目录
-    mkdir -p "$INSTALL_DIR"
-    cd "$(dirname "$INSTALL_DIR")"
-    
     # 检查是否已存在项目
-    if [ -d "sspanel" ] && [ "$(ls -A sspanel)" ]; then
+    if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
         read -p "项目目录已存在，是否删除并重新克隆? (y/N): " RECLONE
         if [[ "$RECLONE" == "y" || "$RECLONE" == "Y" ]]; then
-            rm -rf sspanel
+            echo -e "${YELLOW}正在删除旧目录...${NC}"
+            rm -rf "$INSTALL_DIR"
         else
             echo -e "${YELLOW}使用现有项目目录${NC}"
-            cd sspanel
-            git pull origin main || true
+            cd "$INSTALL_DIR"
+            # 更新代码
+            if [ -d ".git" ]; then
+                echo -e "${YELLOW}正在更新代码...${NC}"
+                git pull origin main || true
+            fi
+            git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+            export INSTALL_DIR
+            return 0
         fi
     fi
     
-    if [ ! -d "sspanel" ] || [ ! "$(ls -A sspanel)" ]; then
-        echo -e "${YELLOW}正在从 GitHub 克隆项目...${NC}"
-        git clone https://github.com/moneyfly1/myweb.git sspanel
-        cd sspanel
-        git config --global --add safe.directory "$INSTALL_DIR"
-    else
-        cd sspanel
-    fi
+    # 创建父目录（如果不存在）
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    
+    # 直接克隆到指定目录
+    echo -e "${YELLOW}正在从 GitHub 克隆项目到: $INSTALL_DIR${NC}"
+    git clone https://github.com/moneyfly1/myweb.git "$INSTALL_DIR"
+    
+    cd "$INSTALL_DIR"
+    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    
+    echo -e "${GREEN}✓ 项目已下载到: $INSTALL_DIR${NC}"
     
     # 安装依赖
     echo -e "${YELLOW}正在安装 Composer 依赖...${NC}"
@@ -1178,15 +1185,34 @@ init_database() {
         exit 1
     fi
     
+    # 检查数据库连接
+    echo -e "${YELLOW}检查数据库连接...${NC}"
+    DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
+    DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    
+    if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
+        echo -e "${RED}错误: 数据库配置不完整${NC}"
+        exit 1
+    fi
+    
+    # 测试数据库连接
+    if command -v mysql &> /dev/null; then
+        if ! mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1; then
+            echo -e "${RED}错误: 无法连接到数据库${NC}"
+            echo -e "${YELLOW}请检查数据库配置和服务状态${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✓ 数据库连接正常${NC}"
+    fi
+    
     echo -e "${YELLOW}正在运行数据库迁移...${NC}"
-    php xcat Migration new
+    php xcat Migration new || true
     php xcat Migration latest
     
     echo -e "${YELLOW}正在导入配置项...${NC}"
     php xcat Tool importSetting
-    
-    echo -e "${YELLOW}正在创建管理员账户...${NC}"
-    php xcat Tool createAdmin
     
     echo -e "${GREEN}数据库初始化完成${NC}"
 }
