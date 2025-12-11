@@ -677,13 +677,63 @@ install_composer() {
     echo -e "${BLUE}步骤 6: 安装 Composer${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    # 检测 Composer 是否已安装
+    # 检查 putenv 函数是否可用（Composer 需要）
+    echo -e "${YELLOW}检查 PHP putenv 函数...${NC}"
+    if ! php -r "if (!function_exists('putenv')) { exit(1); }" 2>/dev/null; then
+        echo -e "${YELLOW}⚠ putenv 函数不可用，检查 PHP 配置...${NC}"
+        PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+        
+        if [ -f "$PHP_INI" ]; then
+            # 检查 disable_functions 中是否包含 putenv
+            if grep -q "disable_functions.*putenv" "$PHP_INI" 2>/dev/null; then
+                echo -e "${YELLOW}  发现 putenv 在 disable_functions 中，正在移除...${NC}"
+                # 从 disable_functions 中移除 putenv
+                sed -i 's/disable_functions = \(.*\)putenv\(.*\)/disable_functions = \1\2/' "$PHP_INI" 2>/dev/null || \
+                sed -i 's/disable_functions = \(.*\),putenv\(.*\)/disable_functions = \1\2/' "$PHP_INI" 2>/dev/null || \
+                sed -i 's/disable_functions = putenv,\(.*\)/disable_functions = \1/' "$PHP_INI" 2>/dev/null || \
+                sed -i 's/disable_functions = putenv$/;disable_functions = /' "$PHP_INI" 2>/dev/null || true
+                
+                # 如果使用宝塔面板，还需要检查 FPM 配置
+                if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+                    PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+                    FPM_INI="/www/server/php/${PHP_VERSION_DIR}/etc/php.ini"
+                    if [ -f "$FPM_INI" ] && [ "$FPM_INI" != "$PHP_INI" ]; then
+                        sed -i 's/disable_functions = \(.*\)putenv\(.*\)/disable_functions = \1\2/' "$FPM_INI" 2>/dev/null || \
+                        sed -i 's/disable_functions = \(.*\),putenv\(.*\)/disable_functions = \1\2/' "$FPM_INI" 2>/dev/null || \
+                        sed -i 's/disable_functions = putenv,\(.*\)/disable_functions = \1/' "$FPM_INI" 2>/dev/null || \
+                        sed -i 's/disable_functions = putenv$/;disable_functions = /' "$FPM_INI" 2>/dev/null || true
+                    fi
+                fi
+                
+                echo -e "${GREEN}  ✓ putenv 已从 disable_functions 中移除${NC}"
+            fi
+        fi
+        
+        # 重新检查
+        if ! php -r "if (!function_exists('putenv')) { exit(1); }" 2>/dev/null; then
+            echo -e "${YELLOW}⚠ putenv 仍然不可用，可能需要重启 PHP-FPM${NC}"
+        fi
+    else
+        echo -e "${GREEN}✓ putenv 函数可用${NC}"
+    fi
+    
+    # 检测 Composer 是否已安装且可用
     if check_installed composer; then
-        echo -e "${GREEN}✓ Composer 已安装，版本: $(composer --version | cut -d " " -f 3)${NC}"
-        return 0
+        # 测试 Composer 是否正常工作
+        if composer --version >/dev/null 2>&1; then
+            COMPOSER_VER=$(composer --version 2>/dev/null | head -n 1 | grep -oP 'version \K[0-9.]+' || echo "unknown")
+            echo -e "${GREEN}✓ Composer 已安装，版本: $COMPOSER_VER${NC}"
+            return 0
+        else
+            echo -e "${YELLOW}⚠ Composer 已安装但无法运行，重新安装...${NC}"
+            rm -f /usr/local/bin/composer /usr/bin/composer 2>/dev/null || true
+        fi
     fi
     
     echo -e "${YELLOW}正在安装 Composer...${NC}"
+    
+    # 如果 Composer 已存在但损坏，先删除
+    rm -f /usr/local/bin/composer /usr/bin/composer 2>/dev/null || true
     
     if [ ! -f /usr/local/bin/composer ]; then
         curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
@@ -744,6 +794,22 @@ deploy_project() {
     # 在安装 Composer 依赖之前，再次检查 PHP 扩展
     echo -e "${YELLOW}检查 PHP 扩展...${NC}"
     install_php_extensions
+    
+    # 再次检查 putenv 函数（Composer 需要）
+    if ! php -r "if (!function_exists('putenv')) { exit(1); }" 2>/dev/null; then
+        echo -e "${RED}错误: putenv 函数不可用，Composer 无法运行${NC}"
+        echo -e "${YELLOW}请检查 PHP 配置文件中的 disable_functions${NC}"
+        PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+        echo -e "${YELLOW}PHP 配置文件: $PHP_INI${NC}"
+        exit 1
+    fi
+    
+    # 验证 Composer 是否可用
+    if ! composer --version >/dev/null 2>&1; then
+        echo -e "${RED}错误: Composer 无法运行${NC}"
+        echo -e "${YELLOW}请检查 putenv 函数是否可用${NC}"
+        exit 1
+    fi
     
     composer install --no-dev --optimize-autoloader
     
