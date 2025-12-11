@@ -148,10 +148,11 @@ else
 fi
 
 # 检查配置是否正确
-if grep -q "/var/www/sspanel/public" "$NGINX_CONFIG" 2>/dev/null; then
+if grep -q "$PROJECT_DIR/public" "$NGINX_CONFIG" 2>/dev/null; then
     echo -e "${GREEN}✓ 配置指向正确的目录${NC}"
 else
     echo -e "${YELLOW}⚠ 配置可能不正确，请检查 root 路径${NC}"
+    echo -e "${YELLOW}  期望路径: $PROJECT_DIR/public${NC}"
 fi
 
 # 3. 测试 Nginx 配置
