@@ -790,8 +790,23 @@ deploy_project() {
     if [ -d ".git" ]; then
         echo -e "${GREEN}✓ 当前目录已经是 Git 仓库${NC}"
         echo -e "${YELLOW}正在更新代码...${NC}"
-        git pull origin main || true
         git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+        
+        # 检查是否有本地修改
+        if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            echo -e "${YELLOW}检测到本地修改，正在保存...${NC}"
+            git stash push -m "Auto-stash before update $(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+        fi
+        
+        # 尝试更新
+        if git pull origin main 2>&1 | grep -q "error: Your local changes"; then
+            echo -e "${YELLOW}检测到冲突，正在强制更新...${NC}"
+            git fetch origin main
+            git reset --hard origin/main 2>/dev/null || true
+        else
+            git pull origin main || true
+        fi
+        
         return 0
     fi
     
@@ -1208,11 +1223,30 @@ init_database() {
     # 检查数据库连接
     echo -e "${YELLOW}检查数据库连接...${NC}"
     
-    # 尝试从配置文件读取数据库信息
-    DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
-    DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-    DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-    DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    # 确保配置文件存在
+    if [ ! -f config/.config.php ]; then
+        if [ -f config/.config.example.php ]; then
+            echo -e "${YELLOW}配置文件不存在，从示例文件创建...${NC}"
+            cp config/.config.example.php config/.config.php
+        else
+            echo -e "${RED}错误: config/.config.php 和 config/.config.example.php 都不存在${NC}"
+            exit 1
+        fi
+    fi
+    
+    # 尝试从配置文件读取数据库信息（使用多种模式匹配）
+    DB_HOST=$(grep -E "^\s*['\"]?db_host['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_host['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t" || echo "localhost")
+    DB_NAME=$(grep -E "^\s*['\"]?db_database['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_database['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+    DB_USER=$(grep -E "^\s*['\"]?db_username['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_username['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+    DB_PASS=$(grep -E "^\s*['\"]?db_password['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_password['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+    
+    # 如果还是为空，尝试更宽松的匹配
+    if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
+        DB_HOST=$(grep -i "db_host" config/.config.php 2>/dev/null | grep "=>" | head -1 | sed -E "s/.*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t" || echo "localhost")
+        DB_NAME=$(grep -i "db_database" config/.config.php 2>/dev/null | grep "=>" | head -1 | sed -E "s/.*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+        DB_USER=$(grep -i "db_username" config/.config.php 2>/dev/null | grep "=>" | head -1 | sed -E "s/.*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+        DB_PASS=$(grep -i "db_password" config/.config.php 2>/dev/null | grep "=>" | head -1 | sed -E "s/.*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+    fi
     
     # 如果配置不完整，尝试重新配置
     if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
@@ -1234,18 +1268,36 @@ init_database() {
         DB_USER="sspanel"
         DB_HOST="localhost"
         
-        # 更新配置文件
+        # 更新配置文件（使用更精确的替换）
         if [ -f config/.config.php ]; then
-            sed -i "s|'db_host' => '.*'|'db_host' => '${DB_HOST}'|g" config/.config.php
-            sed -i "s|'db_database' => '.*'|'db_database' => '${DB_NAME}'|g" config/.config.php
-            sed -i "s|'db_username' => '.*'|'db_username' => '${DB_USER}'|g" config/.config.php
-            sed -i "s|'db_password' => '.*'|'db_password' => '${DB_PASSWORD}'|g" config/.config.php
+            # 转义特殊字符
+            DB_PASSWORD_ESC=$(echo "$DB_PASSWORD" | sed 's/[[\.*^$()+?{|]/\\&/g')
             
-            # 重新读取配置
-            DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
-            DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-            DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-            DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+            # 使用更精确的 sed 替换
+            sed -i "s|\(['\"]db_host['\"]\s*=>\s*\)['\"][^'\"]*['\"]|\1'${DB_HOST}'|g" config/.config.php
+            sed -i "s|\(['\"]db_database['\"]\s*=>\s*\)['\"][^'\"]*['\"]|\1'${DB_NAME}'|g" config/.config.php
+            sed -i "s|\(['\"]db_username['\"]\s*=>\s*\)['\"][^'\"]*['\"]|\1'${DB_USER}'|g" config/.config.php
+            sed -i "s|\(['\"]db_password['\"]\s*=>\s*\)['\"][^'\"]*['\"]|\1'${DB_PASSWORD_ESC}'|g" config/.config.php
+            
+            # 验证配置是否写入成功
+            sleep 1
+            
+            # 重新读取配置（使用改进的方法）
+            DB_HOST=$(grep -E "^\s*['\"]?db_host['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_host['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t" || echo "localhost")
+            DB_NAME=$(grep -E "^\s*['\"]?db_database['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_database['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+            DB_USER=$(grep -E "^\s*['\"]?db_username['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_username['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+            DB_PASS=$(grep -E "^\s*['\"]?db_password['\"]?\s*=>" config/.config.php 2>/dev/null | head -1 | sed -E "s/.*['\"]?db_password['\"]?\s*=>\s*['\"]?([^'\"]+)['\"]?.*/\1/" | tr -d " \t")
+            
+            # 如果还是为空，显示调试信息
+            if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
+                echo -e "${YELLOW}调试信息:${NC}"
+                echo -e "${YELLOW}DB_HOST: ${DB_HOST:-空}${NC}"
+                echo -e "${YELLOW}DB_NAME: ${DB_NAME:-空}${NC}"
+                echo -e "${YELLOW}DB_USER: ${DB_USER:-空}${NC}"
+                echo -e "${YELLOW}DB_PASS: ${DB_PASS:+已设置}${DB_PASS:-空}${NC}"
+                echo -e "${YELLOW}配置文件内容（数据库相关）:${NC}"
+                grep -E "db_(host|database|username|password)" config/.config.php | head -4
+            fi
         else
             echo -e "${RED}错误: config/.config.php 文件不存在${NC}"
             exit 1
