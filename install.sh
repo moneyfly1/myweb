@@ -1403,78 +1403,53 @@ init_database() {
             exit 1
         fi
         
-        # 使用 root 连接，删除旧的数据库和用户，然后重新创建
-        echo -e "${YELLOW}正在准备创建数据库和用户（将删除旧的数据库和用户）...${NC}"
+        # 使用 root 连接，检查并创建数据库和用户（不删除，使用现有）
+        echo -e "${YELLOW}检查数据库和用户...${NC}"
         
-        # 删除旧的数据库（如果存在）
-        DB_EXISTS=$($MYSQL_ROOT_CMD -e "SHOW DATABASES LIKE '$DB_NAME';" 2>/dev/null | grep -c "$DB_NAME" | tail -1 || echo "0")
-        # 确保是数字
-        DB_EXISTS=$(echo "$DB_EXISTS" | tr -d '\n\r ' | grep -E '^[0-9]+$' || echo "0")
-        if [ "$DB_EXISTS" -gt 0 ] 2>/dev/null; then
-            echo -e "${YELLOW}删除旧的数据库 $DB_NAME...${NC}"
-            $MYSQL_ROOT_CMD -e "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null
+        # 检查数据库是否存在，不存在则创建
+        DB_EXISTS=$($MYSQL_ROOT_CMD -e "SHOW DATABASES LIKE '$DB_NAME';" 2>/dev/null | tail -n +2 | grep -c "^$DB_NAME$" || echo "0")
+        if [ "$DB_EXISTS" -eq 0 ]; then
+            echo -e "${YELLOW}数据库 $DB_NAME 不存在，正在创建...${NC}"
+            $MYSQL_ROOT_CMD -e "CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
             if [ $? -eq 0 ]; then
-                echo -e "${GREEN}✓ 旧数据库已删除${NC}"
+                echo -e "${GREEN}✓ 数据库创建成功${NC}"
+            else
+                echo -e "${RED}错误: 创建数据库失败${NC}"
+                exit 1
             fi
-        fi
-        
-        # 删除旧的用户（如果存在）
-        USER_EXISTS=$($MYSQL_ROOT_CMD -e "SELECT User FROM mysql.user WHERE User='$DB_USER' AND Host='localhost';" 2>/dev/null | grep -c "$DB_USER" | tail -1 || echo "0")
-        # 确保是数字
-        USER_EXISTS=$(echo "$USER_EXISTS" | tr -d '\n\r ' | grep -E '^[0-9]+$' || echo "0")
-        if [ "$USER_EXISTS" -gt 0 ] 2>/dev/null; then
-            echo -e "${YELLOW}删除旧的用户 $DB_USER...${NC}"
-            $MYSQL_ROOT_CMD -e "DROP USER IF EXISTS '$DB_USER'@'localhost';" 2>/dev/null
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}✓ 旧用户已删除${NC}"
-            fi
-        fi
-        
-        # 创建新的数据库（设置 SQL 模式以兼容迁移）
-        echo -e "${YELLOW}正在创建数据库 $DB_NAME...${NC}"
-        $MYSQL_ROOT_CMD <<EOF 2>/dev/null
-CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-EOF
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✓ 数据库 $DB_NAME 创建成功${NC}"
-            
-            # 设置数据库 SQL 模式（兼容迁移脚本）
-            echo -e "${YELLOW}配置数据库 SQL 模式...${NC}"
-            $MYSQL_ROOT_CMD <<EOF 2>/dev/null
-USE $DB_NAME;
-SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION';
-SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';
-EOF
-            echo -e "${GREEN}✓ SQL 模式已配置${NC}"
         else
-            echo -e "${RED}错误: 创建数据库失败${NC}"
-            exit 1
+            echo -e "${GREEN}✓ 数据库 $DB_NAME 已存在，直接使用${NC}"
         fi
         
-        # 创建新的用户
-        echo -e "${YELLOW}正在创建用户 $DB_USER...${NC}"
-        $MYSQL_ROOT_CMD <<EOF 2>/dev/null
+        # 检查用户是否存在，不存在则创建，存在则更新密码
+        USER_EXISTS=$($MYSQL_ROOT_CMD -e "SELECT User FROM mysql.user WHERE User='$DB_USER' AND Host='localhost';" 2>/dev/null | tail -n +2 | grep -c "^$DB_USER$" || echo "0")
+        if [ "$USER_EXISTS" -eq 0 ]; then
+            echo -e "${YELLOW}用户 $DB_USER 不存在，正在创建...${NC}"
+            $MYSQL_ROOT_CMD <<EOF 2>/dev/null
 CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 EOF
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✓ 用户 $DB_USER 创建成功${NC}"
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}✓ 用户创建成功${NC}"
+            else
+                echo -e "${RED}错误: 创建用户失败${NC}"
+                exit 1
+            fi
         else
-            echo -e "${RED}错误: 创建用户失败${NC}"
-            exit 1
+            echo -e "${GREEN}✓ 用户 $DB_USER 已存在，更新密码...${NC}"
+            $MYSQL_ROOT_CMD <<EOF 2>/dev/null
+ALTER USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
+FLUSH PRIVILEGES;
+EOF
         fi
         
-        # 测试新创建的用户连接
+        # 测试连接
         echo -e "${YELLOW}测试数据库连接...${NC}"
         if mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1; then
             echo -e "${GREEN}✓ 数据库连接正常${NC}"
         else
-            echo -e "${RED}错误: 无法使用新创建的用户连接数据库${NC}"
-            echo -e "${YELLOW}调试信息:${NC}"
-            echo -e "${YELLOW}  主机: $DB_HOST${NC}"
-            echo -e "${YELLOW}  用户: $DB_USER${NC}"
-            echo -e "${YELLOW}  数据库: $DB_NAME${NC}"
+            echo -e "${RED}错误: 无法使用配置的用户连接数据库${NC}"
             exit 1
         fi
     else
