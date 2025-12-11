@@ -1217,6 +1217,97 @@ init_database() {
     echo -e "${GREEN}数据库初始化完成${NC}"
 }
 
+# 创建管理员账号
+create_admin_account() {
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}步骤 11: 创建管理员账号${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    
+    # 使用全局安装目录变量
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
+    
+    cd "$INSTALL_DIR"
+    
+    if [ ! -f vendor/autoload.php ]; then
+        echo -e "${RED}错误: vendor/autoload.php 不存在${NC}"
+        exit 1
+    fi
+    
+    # 检查是否已有管理员
+    DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
+    DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    
+    if command -v mysql &> /dev/null; then
+        ADMIN_COUNT=$(mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT COUNT(*) FROM user WHERE is_admin = 1;" 2>/dev/null | tail -1 || echo "0")
+        if [ ! -z "$ADMIN_COUNT" ] && [ "$ADMIN_COUNT" -gt 0 ]; then
+            echo -e "${GREEN}✓ 已有管理员账号存在${NC}"
+            read -p "是否创建新的管理员账号? (y/N): " CREATE_NEW
+            if [[ "$CREATE_NEW" != "y" && "$CREATE_NEW" != "Y" ]]; then
+                echo -e "${YELLOW}跳过创建管理员账号${NC}"
+                return 0
+            fi
+        fi
+    fi
+    
+    echo -e "${YELLOW}请输入管理员信息:${NC}"
+    echo ""
+    
+    # 获取管理员邮箱
+    while true; do
+        read -p "管理员邮箱: " ADMIN_EMAIL
+        if [[ "$ADMIN_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            break
+        else
+            echo -e "${RED}邮箱格式不正确，请重新输入${NC}"
+        fi
+    done
+    
+    # 获取管理员密码
+    while true; do
+        read -sp "管理员密码 (至少8位): " ADMIN_PASSWORD
+        echo ""
+        if [ ${#ADMIN_PASSWORD} -ge 8 ]; then
+            read -sp "确认密码: " ADMIN_PASSWORD_CONFIRM
+            echo ""
+            if [ "$ADMIN_PASSWORD" == "$ADMIN_PASSWORD_CONFIRM" ]; then
+                break
+            else
+                echo -e "${RED}两次输入的密码不一致，请重新输入${NC}"
+            fi
+        else
+            echo -e "${RED}密码长度至少 8 位，请重新输入${NC}"
+        fi
+    done
+    
+    # 创建管理员账号
+    echo ""
+    echo -e "${YELLOW}正在创建管理员账号...${NC}"
+    
+    # 使用命令行工具创建（支持参数传递：php xcat Tool createAdmin email password）
+    php xcat Tool createAdmin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" 2>&1 | tee /tmp/create_admin.log
+    
+    if [ ${PIPESTATUS[0]} -eq 0 ]; then
+        if grep -q "创建成功\|创建完成" /tmp/create_admin.log 2>/dev/null; then
+            echo ""
+            echo -e "${GREEN}✓ 管理员账号创建完成！${NC}"
+            echo -e "${GREEN}邮箱: $ADMIN_EMAIL${NC}"
+            echo -e "${GREEN}密码: 已设置${NC}"
+        else
+            # 如果参数方式失败，尝试交互式
+            echo -e "${YELLOW}尝试交互式创建...${NC}"
+            (echo "$ADMIN_EMAIL"; echo "$ADMIN_PASSWORD"; echo "y") | php xcat Tool createAdmin 2>&1
+        fi
+    else
+        echo -e "${YELLOW}⚠ 创建管理员账号时可能遇到问题，请手动运行: php xcat Tool createAdmin${NC}"
+    fi
+    
+    rm -f /tmp/create_admin.log
+}
+
 # 配置定时任务
 configure_cron() {
     echo -e "${BLUE}========================================${NC}"
