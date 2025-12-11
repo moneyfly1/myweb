@@ -14,7 +14,7 @@ return new class() implements MigrationInterface {
                 `status` tinyint(1) unsigned NOT NULL DEFAULT 1 COMMENT '公告状态',
                 `sort` tinyint(3) unsigned NOT NULL DEFAULT 0 COMMENT '公告排序',
                 `date` datetime NOT NULL DEFAULT '1989-06-04 00:05:00' COMMENT '公告日期',
-                `content` longtext NOT NULL DEFAULT '' COMMENT '公告内容',
+                `content` longtext NOT NULL COMMENT '公告内容',
                 PRIMARY KEY (`id`),
                 KEY `status` (`status`),
                 KEY `sort` (`sort`)
@@ -75,7 +75,7 @@ return new class() implements MigrationInterface {
                 `sort` tinyint(3) unsigned NOT NULL DEFAULT 0 COMMENT '文档排序',
                 `date` datetime NOT NULL DEFAULT '1989-06-04 00:05:00' COMMENT '文档日期',
                 `title` varchar(255) NOT NULL DEFAULT '' COMMENT '文档标题',
-                `content` longtext NOT NULL DEFAULT '' COMMENT '文档内容',
+                `content` longtext NOT NULL COMMENT '文档内容',
                 PRIMARY KEY (`id`),
                 KEY `status` (`status`),
                 KEY `sort` (`sort`)
@@ -93,7 +93,7 @@ return new class() implements MigrationInterface {
 
             CREATE TABLE `gift_card` (
                 `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '礼品卡ID',
-                `card` text NOT NULL DEFAULT '' COMMENT '卡号',
+                `card` text NOT NULL COMMENT '卡号',
                 `balance` int(11) unsigned NOT NULL DEFAULT 0 COMMENT '余额',
                 `create_time` int(11) unsigned NOT NULL DEFAULT 0 COMMENT '创建时间',
                 `status` tinyint(1) unsigned NOT NULL DEFAULT 0 COMMENT '使用状态',
@@ -351,7 +351,7 @@ return new class() implements MigrationInterface {
                 `theme` varchar(255) NOT NULL DEFAULT 'tabler' COMMENT '网站主题',
                 `ga_token` varchar(255) NOT NULL DEFAULT '' COMMENT 'GA密钥',
                 `ga_enable` tinyint(1) unsigned NOT NULL DEFAULT 0 COMMENT 'GA开关',
-                `remark` text NOT NULL DEFAULT '' COMMENT '备注',
+                `remark` text NOT NULL COMMENT '备注',
                 `node_group` smallint(6) unsigned NOT NULL DEFAULT 0 COMMENT '节点分组',
                 `is_banned` tinyint(1) unsigned NOT NULL DEFAULT 0 COMMENT '是否封禁',
                 `banned_reason` varchar(255) NOT NULL DEFAULT '' COMMENT '封禁理由',
@@ -408,7 +408,7 @@ return new class() implements MigrationInterface {
                 `before` decimal(12,2) NOT NULL DEFAULT 0 COMMENT '用户变动前账户余额',
                 `after` decimal(12,2) NOT NULL DEFAULT 0 COMMENT '用户变动后账户余额',
                 `amount` decimal(12,2) NOT NULL DEFAULT 0 COMMENT '变动总额',
-                `remark` text NOT NULL DEFAULT '' COMMENT '备注',
+                `remark` text NOT NULL COMMENT '备注',
                 `create_time` int(11) unsigned NOT NULL DEFAULT 0 COMMENT '创建时间',
                 PRIMARY KEY (`id`),
                 KEY `user_id` (`user_id`)

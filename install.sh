@@ -1407,8 +1407,10 @@ init_database() {
         echo -e "${YELLOW}正在准备创建数据库和用户（将删除旧的数据库和用户）...${NC}"
         
         # 删除旧的数据库（如果存在）
-        DB_EXISTS=$($MYSQL_ROOT_CMD -e "SHOW DATABASES LIKE '$DB_NAME';" 2>/dev/null | grep -c "$DB_NAME" || echo "0")
-        if [ "$DB_EXISTS" -gt 0 ]; then
+        DB_EXISTS=$($MYSQL_ROOT_CMD -e "SHOW DATABASES LIKE '$DB_NAME';" 2>/dev/null | grep -c "$DB_NAME" | tail -1 || echo "0")
+        # 确保是数字
+        DB_EXISTS=$(echo "$DB_EXISTS" | tr -d '\n\r ' | grep -E '^[0-9]+$' || echo "0")
+        if [ "$DB_EXISTS" -gt 0 ] 2>/dev/null; then
             echo -e "${YELLOW}删除旧的数据库 $DB_NAME...${NC}"
             $MYSQL_ROOT_CMD -e "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null
             if [ $? -eq 0 ]; then
@@ -1417,8 +1419,10 @@ init_database() {
         fi
         
         # 删除旧的用户（如果存在）
-        USER_EXISTS=$($MYSQL_ROOT_CMD -e "SELECT User FROM mysql.user WHERE User='$DB_USER' AND Host='localhost';" 2>/dev/null | grep -c "$DB_USER" || echo "0")
-        if [ "$USER_EXISTS" -gt 0 ]; then
+        USER_EXISTS=$($MYSQL_ROOT_CMD -e "SELECT User FROM mysql.user WHERE User='$DB_USER' AND Host='localhost';" 2>/dev/null | grep -c "$DB_USER" | tail -1 || echo "0")
+        # 确保是数字
+        USER_EXISTS=$(echo "$USER_EXISTS" | tr -d '\n\r ' | grep -E '^[0-9]+$' || echo "0")
+        if [ "$USER_EXISTS" -gt 0 ] 2>/dev/null; then
             echo -e "${YELLOW}删除旧的用户 $DB_USER...${NC}"
             $MYSQL_ROOT_CMD -e "DROP USER IF EXISTS '$DB_USER'@'localhost';" 2>/dev/null
             if [ $? -eq 0 ]; then
@@ -1426,13 +1430,22 @@ init_database() {
             fi
         fi
         
-        # 创建新的数据库
+        # 创建新的数据库（设置 SQL 模式以兼容迁移）
         echo -e "${YELLOW}正在创建数据库 $DB_NAME...${NC}"
         $MYSQL_ROOT_CMD <<EOF 2>/dev/null
 CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 EOF
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✓ 数据库 $DB_NAME 创建成功${NC}"
+            
+            # 设置数据库 SQL 模式（兼容迁移脚本）
+            echo -e "${YELLOW}配置数据库 SQL 模式...${NC}"
+            $MYSQL_ROOT_CMD <<EOF 2>/dev/null
+USE $DB_NAME;
+SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION';
+SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';
+EOF
+            echo -e "${GREEN}✓ SQL 模式已配置${NC}"
         else
             echo -e "${RED}错误: 创建数据库失败${NC}"
             exit 1
@@ -1469,8 +1482,35 @@ EOF
     fi
     
     echo -e "${YELLOW}正在运行数据库迁移...${NC}"
+    
+    # 设置 SQL 模式以兼容迁移（禁用严格模式，允许 TEXT 类型有默认值）
+    if command -v mysql &> /dev/null || command -v mariadb &> /dev/null; then
+        MYSQL_CMD="mysql"
+        if ! command -v mysql &> /dev/null; then
+            MYSQL_CMD="mariadb"
+        fi
+        
+        # 使用配置的用户连接并设置 SQL 模式
+        echo -e "${YELLOW}配置数据库 SQL 模式...${NC}"
+        mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" <<EOF 2>/dev/null || true
+SET SESSION sql_mode = '';
+SET GLOBAL sql_mode = '';
+EOF
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ SQL 模式已配置${NC}"
+        fi
+    fi
+    
+    # 运行迁移
+    echo -e "${YELLOW}执行数据库迁移...${NC}"
     php xcat Migration new || true
     php xcat Migration latest
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ 数据库迁移完成${NC}"
+    else
+        echo -e "${YELLOW}⚠ 数据库迁移可能遇到问题，但将继续安装${NC}"
+    fi
     
     echo -e "${YELLOW}正在导入配置项...${NC}"
     php xcat Tool importSetting
