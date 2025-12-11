@@ -21,13 +21,33 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}创建管理员账号${NC}"
 echo -e "${BLUE}========================================${NC}"
 
-# 检查项目目录
-if [ ! -d "/var/www/sspanel" ]; then
-    echo -e "${RED}错误: 项目目录 /var/www/sspanel 不存在${NC}"
-    exit 1
+# 查找项目目录（优先使用当前目录）
+CURRENT_DIR=$(pwd)
+PROJECT_DIR=""
+
+# 首先检查当前目录
+if [ -d "$CURRENT_DIR" ] && [ -f "$CURRENT_DIR/config/.config.php" ]; then
+    PROJECT_DIR="$CURRENT_DIR"
+    echo -e "${GREEN}使用当前目录: $PROJECT_DIR${NC}"
+else
+    # 尝试查找常见目录
+    for dir in "/var/www/sspanel" "/www/wwwroot"*; do
+        if [ -d "$dir" ] && [ -f "$dir/config/.config.php" ]; then
+            PROJECT_DIR="$dir"
+            break
+        fi
+    done
+    
+    if [ -z "$PROJECT_DIR" ]; then
+        read -p "请输入项目目录路径: " PROJECT_DIR
+        if [ ! -d "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/config/.config.php" ]; then
+            echo -e "${RED}错误: 项目目录不存在或配置文件不存在${NC}"
+            exit 1
+        fi
+    fi
 fi
 
-cd /var/www/sspanel
+cd "$PROJECT_DIR"
 
 # 检查 vendor 目录
 if [ ! -f "vendor/autoload.php" ]; then

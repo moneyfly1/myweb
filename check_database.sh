@@ -21,18 +21,30 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}数据库检查和修复${NC}"
 echo -e "${BLUE}========================================${NC}"
 
-# 查找项目目录
+# 查找项目目录（优先使用当前目录）
 PROJECT_DIR=""
-for dir in "/var/www/sspanel" "/www/wwwroot/board.moneyfly.club"; do
-    if [ -d "$dir" ] && [ -f "$dir/config/.config.php" ]; then
-        PROJECT_DIR="$dir"
-        break
-    fi
-done
+CURRENT_DIR=$(pwd)
 
-if [ -z "$PROJECT_DIR" ]; then
-    echo -e "${RED}错误: 未找到项目目录${NC}"
-    exit 1
+# 首先检查当前目录
+if [ -d "$CURRENT_DIR" ] && [ -f "$CURRENT_DIR/config/.config.php" ]; then
+    PROJECT_DIR="$CURRENT_DIR"
+    echo -e "${GREEN}使用当前目录: $PROJECT_DIR${NC}"
+else
+    # 尝试查找常见目录
+    for dir in "/var/www/sspanel" "/www/wwwroot"*; do
+        if [ -d "$dir" ] && [ -f "$dir/config/.config.php" ]; then
+            PROJECT_DIR="$dir"
+            break
+        fi
+    done
+    
+    if [ -z "$PROJECT_DIR" ]; then
+        read -p "请输入项目目录路径: " PROJECT_DIR
+        if [ ! -d "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/config/.config.php" ]; then
+            echo -e "${RED}错误: 未找到项目目录或配置文件${NC}"
+            exit 1
+        fi
+    fi
 fi
 
 echo -e "${GREEN}项目目录: $PROJECT_DIR${NC}"

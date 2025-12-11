@@ -781,8 +781,31 @@ deploy_project() {
         fi
     fi
     
-    # 检查是否已存在项目
+    # 检查当前目录是否已经是项目目录（有 .git 目录）
+    if [ -d ".git" ] && [ "$(pwd)" == "$INSTALL_DIR" ]; then
+        echo -e "${GREEN}✓ 当前目录已经是 Git 仓库${NC}"
+        echo -e "${YELLOW}正在更新代码...${NC}"
+        git pull origin main || true
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+        export INSTALL_DIR
+        return 0
+    fi
+    
+    # 检查目标目录是否已存在项目
     if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            echo -e "${GREEN}✓ 目标目录已存在 Git 仓库${NC}"
+            read -p "是否更新现有代码? (Y/n): " UPDATE_CODE
+            if [[ "$UPDATE_CODE" != "n" && "$UPDATE_CODE" != "N" ]]; then
+                cd "$INSTALL_DIR"
+                echo -e "${YELLOW}正在更新代码...${NC}"
+                git pull origin main || true
+                git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+                export INSTALL_DIR
+                return 0
+            fi
+        fi
+        
         read -p "项目目录已存在，是否删除并重新克隆? (y/N): " RECLONE
         if [[ "$RECLONE" == "y" || "$RECLONE" == "Y" ]]; then
             echo -e "${YELLOW}正在删除旧目录...${NC}"
@@ -790,25 +813,26 @@ deploy_project() {
         else
             echo -e "${YELLOW}使用现有项目目录${NC}"
             cd "$INSTALL_DIR"
-            # 更新代码
-            if [ -d ".git" ]; then
-                echo -e "${YELLOW}正在更新代码...${NC}"
-                git pull origin main || true
-            fi
             git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
             export INSTALL_DIR
             return 0
         fi
     fi
     
-    # 创建父目录（如果不存在）
-    mkdir -p "$(dirname "$INSTALL_DIR")"
+    # 如果当前目录就是目标目录，直接克隆到当前目录
+    if [ "$(pwd)" == "$INSTALL_DIR" ]; then
+        echo -e "${YELLOW}正在从 GitHub 克隆项目到当前目录...${NC}"
+        git clone https://github.com/moneyfly1/myweb.git .
+    else
+        # 创建父目录（如果不存在）
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+        
+        # 克隆到指定目录
+        echo -e "${YELLOW}正在从 GitHub 克隆项目到: $INSTALL_DIR${NC}"
+        git clone https://github.com/moneyfly1/myweb.git "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+    fi
     
-    # 直接克隆到指定目录
-    echo -e "${YELLOW}正在从 GitHub 克隆项目到: $INSTALL_DIR${NC}"
-    git clone https://github.com/moneyfly1/myweb.git "$INSTALL_DIR"
-    
-    cd "$INSTALL_DIR"
     git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
     
     echo -e "${GREEN}✓ 项目已下载到: $INSTALL_DIR${NC}"
@@ -1367,43 +1391,17 @@ main() {
     CURRENT_DIR=$(pwd)
     echo -e "${YELLOW}当前目录: $CURRENT_DIR${NC}"
     
-    # 如果当前目录看起来像项目目录，直接使用
-    if [[ "$CURRENT_DIR" == *"board.moneyfly.club"* ]] || [[ "$CURRENT_DIR" == *"wwwroot"* ]] || [[ "$CURRENT_DIR" == *"sspanel"* ]]; then
-        INSTALL_DIR="$CURRENT_DIR"
-        echo -e "${GREEN}检测到项目目录，将安装到: $INSTALL_DIR${NC}"
-        read -p "确认在此目录安装? (Y/n): " CONFIRM
-        if [[ "$CONFIRM" == "n" || "$CONFIRM" == "N" ]]; then
-            read -p "请输入安装目录路径: " INSTALL_DIR
-            if [ -z "$INSTALL_DIR" ]; then
-                INSTALL_DIR="$CURRENT_DIR"
-            fi
+    # 默认使用当前目录
+    INSTALL_DIR="$CURRENT_DIR"
+    echo -e "${GREEN}将安装到当前目录: $INSTALL_DIR${NC}"
+    
+    # 询问是否使用当前目录
+    read -p "确认在此目录安装? (Y/n): " CONFIRM
+    if [[ "$CONFIRM" == "n" || "$CONFIRM" == "N" ]]; then
+        read -p "请输入安装目录路径: " INSTALL_DIR
+        if [ -z "$INSTALL_DIR" ]; then
+            INSTALL_DIR="$CURRENT_DIR"
         fi
-    else
-        # 询问安装目录
-        echo -e "${YELLOW}请选择安装目录:${NC}"
-        echo "1. 当前目录 ($CURRENT_DIR)"
-        echo "2. /www/wwwroot/board.moneyfly.club (宝塔面板)"
-        echo "3. /var/www/sspanel (标准安装)"
-        echo "4. 自定义目录"
-        read -p "请选择 (1/2/3/4) [默认: 1]: " INSTALL_DIR_CHOICE
-        
-        case "$INSTALL_DIR_CHOICE" in
-            2)
-                INSTALL_DIR="/www/wwwroot/board.moneyfly.club"
-                ;;
-            3)
-                INSTALL_DIR="/var/www/sspanel"
-                ;;
-            4)
-                read -p "请输入安装目录路径: " INSTALL_DIR
-                if [ -z "$INSTALL_DIR" ]; then
-                    INSTALL_DIR="$CURRENT_DIR"
-                fi
-                ;;
-            *)
-                INSTALL_DIR="$CURRENT_DIR"
-                ;;
-        esac
     fi
     
     # 确保是绝对路径

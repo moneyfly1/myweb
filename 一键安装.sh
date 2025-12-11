@@ -28,29 +28,17 @@ fi
 CURRENT_DIR=$(pwd)
 echo -e "${GREEN}当前目录: $CURRENT_DIR${NC}"
 
-# 如果当前目录看起来像项目目录，直接使用
-if [[ "$CURRENT_DIR" == *"board.moneyfly.club"* ]] || [[ "$CURRENT_DIR" == *"wwwroot"* ]]; then
-    INSTALL_DIR="$CURRENT_DIR"
-    echo -e "${GREEN}检测到项目目录，将安装到: $INSTALL_DIR${NC}"
-else
-    # 询问安装目录
-    echo -e "${YELLOW}请选择安装目录:${NC}"
-    echo "1. 当前目录 ($CURRENT_DIR)"
-    echo "2. /www/wwwroot/board.moneyfly.club (宝塔面板)"
-    echo "3. /var/www/sspanel (标准安装)"
-    read -p "请选择 (1/2/3) [默认: 1]: " DIR_CHOICE
-    
-    case "$DIR_CHOICE" in
-        2)
-            INSTALL_DIR="/www/wwwroot/board.moneyfly.club"
-            ;;
-        3)
-            INSTALL_DIR="/var/www/sspanel"
-            ;;
-        *)
-            INSTALL_DIR="$CURRENT_DIR"
-            ;;
-    esac
+# 默认使用当前目录
+INSTALL_DIR="$CURRENT_DIR"
+echo -e "${GREEN}将安装到当前目录: $INSTALL_DIR${NC}"
+
+# 询问是否使用当前目录
+read -p "确认在此目录安装? (Y/n): " CONFIRM
+if [[ "$CONFIRM" == "n" || "$CONFIRM" == "N" ]]; then
+    read -p "请输入安装目录路径: " INSTALL_DIR
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="$CURRENT_DIR"
+    fi
 fi
 
 # 确保是绝对路径
