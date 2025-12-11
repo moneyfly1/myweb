@@ -762,7 +762,7 @@ deploy_project() {
     echo -e "${BLUE}步骤 7: 部署 SSPanel-UIM${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    # 使用全局安装目录变量，如果没有设置则使用当前目录
+    # 使用全局安装目录变量
     if [ -z "$INSTALL_DIR" ]; then
         INSTALL_DIR="$(pwd)"
     fi
@@ -783,57 +783,21 @@ deploy_project() {
         fi
     fi
     
-    # 检查当前目录是否已经是项目目录（有 .git 目录）
-    if [ -d ".git" ] && [ "$(pwd)" == "$INSTALL_DIR" ]; then
+    # 确保在安装目录中
+    cd "$INSTALL_DIR"
+    
+    # 如果当前目录已经是 Git 仓库，更新代码
+    if [ -d ".git" ]; then
         echo -e "${GREEN}✓ 当前目录已经是 Git 仓库${NC}"
         echo -e "${YELLOW}正在更新代码...${NC}"
         git pull origin main || true
-        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-        export INSTALL_DIR
-        return 0
-    fi
-    
-    # 检查目标目录是否已存在项目
-    if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
-        if [ -d "$INSTALL_DIR/.git" ]; then
-            echo -e "${GREEN}✓ 目标目录已存在 Git 仓库${NC}"
-            read -p "是否更新现有代码? (Y/n): " UPDATE_CODE
-            if [[ "$UPDATE_CODE" != "n" && "$UPDATE_CODE" != "N" ]]; then
-                cd "$INSTALL_DIR"
-                echo -e "${YELLOW}正在更新代码...${NC}"
-                git pull origin main || true
-                git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-                export INSTALL_DIR
-                return 0
-            fi
-        fi
-        
-        read -p "项目目录已存在，是否删除并重新克隆? (y/N): " RECLONE
-        if [[ "$RECLONE" == "y" || "$RECLONE" == "Y" ]]; then
-            echo -e "${YELLOW}正在删除旧目录...${NC}"
-            rm -rf "$INSTALL_DIR"
-        else
-            echo -e "${YELLOW}使用现有项目目录${NC}"
-            cd "$INSTALL_DIR"
-            git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-            export INSTALL_DIR
-            return 0
-        fi
-    fi
-    
-    # 如果当前目录就是目标目录，直接克隆到当前目录
-    if [ "$(pwd)" == "$INSTALL_DIR" ]; then
+    else
+        # 克隆到当前目录
         echo -e "${YELLOW}正在从 GitHub 克隆项目到当前目录...${NC}"
         git clone https://github.com/moneyfly1/myweb.git .
-    else
-        # 创建父目录（如果不存在）
-        mkdir -p "$(dirname "$INSTALL_DIR")"
-        
-        # 克隆到指定目录
-        echo -e "${YELLOW}正在从 GitHub 克隆项目到: $INSTALL_DIR${NC}"
-        git clone https://github.com/moneyfly1/myweb.git "$INSTALL_DIR"
-        cd "$INSTALL_DIR"
     fi
+    
+    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
     
     git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
     
@@ -1389,30 +1353,11 @@ main() {
     echo "=========================================="
     echo -e "${NC}"
     
-    # 自动检测安装目录（使用当前工作目录）
-    CURRENT_DIR=$(pwd)
-    echo -e "${YELLOW}当前目录: $CURRENT_DIR${NC}"
-    
-    # 默认使用当前目录
-    INSTALL_DIR="$CURRENT_DIR"
-    echo -e "${GREEN}将安装到当前目录: $INSTALL_DIR${NC}"
-    
-    # 询问是否使用当前目录
-    read -p "确认在此目录安装? (Y/n): " CONFIRM
-    if [[ "$CONFIRM" == "n" || "$CONFIRM" == "N" ]]; then
-        read -p "请输入安装目录路径: " INSTALL_DIR
-        if [ -z "$INSTALL_DIR" ]; then
-            INSTALL_DIR="$CURRENT_DIR"
-        fi
-    fi
-    
-    # 确保是绝对路径
-    if [[ "$INSTALL_DIR" != /* ]]; then
-        INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)"
-    fi
-    
+    # 使用当前工作目录作为安装目录
+    INSTALL_DIR="$(pwd)"
     export INSTALL_DIR
     echo -e "${GREEN}安装目录: $INSTALL_DIR${NC}"
+    echo -e "${YELLOW}所有代码将下载到此目录${NC}"
     
     detect_system
     install_basic_tools
@@ -1444,12 +1389,11 @@ main() {
     echo -e "管理后台: https://${DOMAIN}/auth/login"
     echo -e "节点采集: https://${DOMAIN}/admin/node/collector"
     echo ""
+    echo -e "${GREEN}安装完成！管理员账号已在安装过程中创建。${NC}"
+    echo ""
     echo -e "${YELLOW}下一步操作:${NC}"
-    echo "1. 创建管理员账号:"
-    echo "   cd $INSTALL_DIR"
-    echo "   wget https://raw.githubusercontent.com/moneyfly1/myweb/main/create_admin.sh"
-    echo "   chmod +x create_admin.sh && ./create_admin.sh"
-    echo "2. 登录管理后台"
+    echo "1. 访问管理后台: https://${DOMAIN}/auth/login"
+    echo "2. 使用安装时设置的管理员账号登录"
     echo "3. 配置节点采集功能"
     echo "4. 添加采集源 URL"
     echo "5. 测试节点采集"

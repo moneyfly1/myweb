@@ -24,22 +24,10 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# 自动检测安装目录（使用当前工作目录）
+# 使用当前工作目录作为安装目录
 CURRENT_DIR=$(pwd)
 echo -e "${GREEN}当前目录: $CURRENT_DIR${NC}"
-
-# 默认使用当前目录
-INSTALL_DIR="$CURRENT_DIR"
-echo -e "${GREEN}将安装到当前目录: $INSTALL_DIR${NC}"
-
-# 询问是否使用当前目录
-read -p "确认在此目录安装? (Y/n): " CONFIRM
-if [[ "$CONFIRM" == "n" || "$CONFIRM" == "N" ]]; then
-    read -p "请输入安装目录路径: " INSTALL_DIR
-    if [ -z "$INSTALL_DIR" ]; then
-        INSTALL_DIR="$CURRENT_DIR"
-    fi
-fi
+echo -e "${GREEN}所有代码将下载到此目录${NC}"
 
 # 确保是绝对路径
 if [[ "$INSTALL_DIR" != /* ]]; then
