@@ -52,6 +52,14 @@ package-lock.json
 storage/LocalClientVersion.json
 storage/.install_lock
 
+# GeoIP2 数据库文件（太大，不提交）
+storage/GeoLite2-City/GeoLite2-City.mmdb
+storage/GeoLite2-Country/GeoLite2-Country.mmdb
+
+# GitHub Actions（需要 workflow 权限，暂时不提交）
+.github/workflows/*.yml
+.github/workflows/*.yaml
+
 # 节点采集功能相关文档（可选，如果不想提交可以取消注释）
 # 节点采集改造大纲.md
 # 实施确认.md
