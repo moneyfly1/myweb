@@ -24,16 +24,38 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# 询问安装目录
-echo -e "${YELLOW}请选择安装目录:${NC}"
-echo "1. /www/wwwroot/board.moneyfly.club (宝塔面板推荐)"
-echo "2. /var/www/sspanel (标准安装)"
-read -p "请选择 (1/2) [默认: 1]: " DIR_CHOICE
+# 自动检测安装目录（使用当前工作目录）
+CURRENT_DIR=$(pwd)
+echo -e "${GREEN}当前目录: $CURRENT_DIR${NC}"
 
-if [ "$DIR_CHOICE" == "2" ]; then
-    INSTALL_DIR="/var/www/sspanel"
+# 如果当前目录看起来像项目目录，直接使用
+if [[ "$CURRENT_DIR" == *"board.moneyfly.club"* ]] || [[ "$CURRENT_DIR" == *"wwwroot"* ]]; then
+    INSTALL_DIR="$CURRENT_DIR"
+    echo -e "${GREEN}检测到项目目录，将安装到: $INSTALL_DIR${NC}"
 else
-    INSTALL_DIR="/www/wwwroot/board.moneyfly.club"
+    # 询问安装目录
+    echo -e "${YELLOW}请选择安装目录:${NC}"
+    echo "1. 当前目录 ($CURRENT_DIR)"
+    echo "2. /www/wwwroot/board.moneyfly.club (宝塔面板)"
+    echo "3. /var/www/sspanel (标准安装)"
+    read -p "请选择 (1/2/3) [默认: 1]: " DIR_CHOICE
+    
+    case "$DIR_CHOICE" in
+        2)
+            INSTALL_DIR="/www/wwwroot/board.moneyfly.club"
+            ;;
+        3)
+            INSTALL_DIR="/var/www/sspanel"
+            ;;
+        *)
+            INSTALL_DIR="$CURRENT_DIR"
+            ;;
+    esac
+fi
+
+# 确保是绝对路径
+if [[ "$INSTALL_DIR" != /* ]]; then
+    INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)"
 fi
 
 echo -e "${GREEN}安装目录: $INSTALL_DIR${NC}"
@@ -44,7 +66,13 @@ if [ -z "$DOMAIN" ]; then
     if [[ "$INSTALL_DIR" == *"board.moneyfly.club"* ]]; then
         DOMAIN="board.moneyfly.club"
     else
-        DOMAIN="example.com"
+        # 尝试从目录名提取域名
+        DIR_NAME=$(basename "$INSTALL_DIR")
+        if [[ "$DIR_NAME" == *"."* ]]; then
+            DOMAIN="$DIR_NAME"
+        else
+            DOMAIN="example.com"
+        fi
     fi
 fi
 
