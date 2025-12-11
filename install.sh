@@ -1041,15 +1041,53 @@ EOF
     # 测试 Nginx 配置
     if nginx -t >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Nginx 配置测试通过${NC}"
-        # 重载 Nginx
-        if systemctl reload nginx >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ Nginx 已重载${NC}"
-        elif systemctl restart nginx >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ Nginx 已重启${NC}"
-        elif /etc/init.d/nginx reload >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ Nginx 已重载${NC}"
+        
+        # 确保 PID 文件目录存在
+        for pid_file in "/var/run/nginx.pid" "/run/nginx.pid"; do
+            pid_dir=$(dirname "$pid_file")
+            if [ ! -d "$pid_dir" ]; then
+                mkdir -p "$pid_dir"
+            fi
+        done
+        
+        # 检查 Nginx 是否正在运行
+        if pgrep -x nginx > /dev/null; then
+            # 重载 Nginx
+            if systemctl reload nginx >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Nginx 已重载${NC}"
+            elif /etc/init.d/nginx reload >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Nginx 已重载${NC}"
+            else
+                # 如果重载失败，尝试重启
+                if systemctl restart nginx >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已重启${NC}"
+                elif /etc/init.d/nginx restart >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已重启${NC}"
+                else
+                    echo -e "${YELLOW}⚠ 自动重载/重启失败，请手动重启 Nginx${NC}"
+                fi
+            fi
         else
-            echo -e "${YELLOW}⚠ 请手动重启 Nginx${NC}"
+            # 启动 Nginx
+            if systemctl start nginx >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Nginx 已启动${NC}"
+            elif /etc/init.d/nginx start >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Nginx 已启动${NC}"
+            elif nginx >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Nginx 已启动${NC}"
+            else
+                echo -e "${YELLOW}⚠ Nginx 启动失败，请检查配置${NC}"
+            fi
+        fi
+        
+        # 等待一下让 Nginx 完全启动
+        sleep 2
+        
+        # 验证 Nginx 是否运行
+        if pgrep -x nginx > /dev/null; then
+            echo -e "${GREEN}✓ Nginx 运行正常${NC}"
+        else
+            echo -e "${YELLOW}⚠ Nginx 可能未正确启动，请检查日志${NC}"
         fi
     else
         echo -e "${YELLOW}⚠ Nginx 配置测试失败，请检查配置${NC}"
