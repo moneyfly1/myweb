@@ -117,15 +117,18 @@ if [ -f "$BT_CONFIG" ]; then
     fi
     
     # 检查 PHP socket 配置
-    PHP_SOCKET=$(grep -E "fastcgi_pass\s+unix:" "$BT_CONFIG" | head -1 | awk '{print $2}' | tr -d ';')
-    echo "   PHP Socket: $PHP_SOCKET"
+    PHP_SOCKET_CONFIG=$(grep -E "fastcgi_pass\s+unix:" "$BT_CONFIG" | head -1 | awk '{print $2}' | tr -d ';')
+    PHP_SOCKET_PATH=$(echo "$PHP_SOCKET_CONFIG" | sed 's|unix:||')
+    echo "   PHP Socket 配置: $PHP_SOCKET_CONFIG"
+    echo "   PHP Socket 路径: $PHP_SOCKET_PATH"
     
-    if [ ! -z "$PHP_SOCKET" ]; then
-        if [ -S "$PHP_SOCKET" ] || [ -f "$PHP_SOCKET" ]; then
+    if [ ! -z "$PHP_SOCKET_PATH" ]; then
+        if [ -S "$PHP_SOCKET_PATH" ] || [ -f "$PHP_SOCKET_PATH" ]; then
             echo -e "${GREEN}   ✓ PHP Socket 存在${NC}"
         else
             echo -e "${RED}   ✗ PHP Socket 不存在！${NC}"
-            echo -e "${YELLOW}   这可能是导致 Nginx 启动失败的原因${NC}"
+            echo -e "${YELLOW}   这可能是导致网站无法访问的原因${NC}"
+            echo -e "${YELLOW}   需要启动 PHP-FPM 服务${NC}"
         fi
     fi
 else
