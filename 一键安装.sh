@@ -2,6 +2,7 @@
 
 # SSPanel-UIM 一键安装脚本（简化版）
 # 适用于 VPS 快速安装
+# 所有代码将下载到当前目录
 
 set -e
 
@@ -29,47 +30,11 @@ CURRENT_DIR=$(pwd)
 echo -e "${GREEN}当前目录: $CURRENT_DIR${NC}"
 echo -e "${GREEN}所有代码将下载到此目录${NC}"
 
-# 确保是绝对路径
-if [[ "$INSTALL_DIR" != /* ]]; then
-    INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)"
-fi
-
-echo -e "${GREEN}安装目录: $INSTALL_DIR${NC}"
-
-# 询问域名
-read -p "请输入您的域名 (例如: board.moneyfly.club): " DOMAIN
-if [ -z "$DOMAIN" ]; then
-    if [[ "$INSTALL_DIR" == *"board.moneyfly.club"* ]]; then
-        DOMAIN="board.moneyfly.club"
-    else
-        # 尝试从目录名提取域名
-        DIR_NAME=$(basename "$INSTALL_DIR")
-        if [[ "$DIR_NAME" == *"."* ]]; then
-            DOMAIN="$DIR_NAME"
-        else
-            DOMAIN="example.com"
-        fi
-    fi
-fi
-
-echo -e "${GREEN}域名: $DOMAIN${NC}"
-
 # 下载安装脚本
 echo -e "${YELLOW}正在下载安装脚本...${NC}"
-cd /tmp
+cd "$CURRENT_DIR"
 wget -q https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh -O install.sh
 chmod +x install.sh
 
-# 运行安装脚本（传递参数）
-export INSTALL_DIR="$INSTALL_DIR"
-export DOMAIN="$DOMAIN"
+# 运行安装脚本
 bash install.sh
-
-echo ""
-echo -e "${GREEN}=========================================="
-echo -e "安装完成！"
-echo -e "==========================================${NC}"
-echo ""
-echo -e "访问地址: https://${DOMAIN}"
-echo -e "管理后台: https://${DOMAIN}/auth/login"
-echo ""
