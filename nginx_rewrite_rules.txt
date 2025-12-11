@@ -1,0 +1,6 @@
+# SSPanel-UIM Nginx 伪静态规则
+# 复制以下内容到宝塔面板的"伪静态"设置中
+
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
