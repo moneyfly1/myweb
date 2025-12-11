@@ -59,6 +59,11 @@ install_basic_tools() {
     echo -e "${BLUE}========================================${NC}"
     
     if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+        # 清理错误的 PPA 仓库配置
+        echo -e "${YELLOW}清理错误的仓库配置...${NC}"
+        rm -f /etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-*.list 2>/dev/null || true
+        rm -f /etc/apt/sources.list.d/*questing*.list 2>/dev/null || true
+        
         apt update && apt upgrade -y
         apt install -y curl wget git unzip software-properties-common \
             apt-transport-https ca-certificates gnupg2 lsb-release
@@ -86,17 +91,32 @@ install_nginx() {
         echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
             | tee /etc/apt/preferences.d/99nginx
         apt update && apt install -y nginx
-        sed -i 's/^user.*/user www-data;/' /etc/nginx/nginx.conf
+        if [ -f /etc/nginx/nginx.conf ]; then
+            sed -i 's/^user.*/user www-data;/' /etc/nginx/nginx.conf
+        fi
     elif [[ "$OS" == "ubuntu" ]]; then
+        # 清理错误的 PPA 仓库
+        echo -e "${YELLOW}清理错误的 PPA 仓库...${NC}"
+        rm -f /etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-*.list 2>/dev/null || true
+        rm -f /etc/apt/sources.list.d/*questing*.list 2>/dev/null || true
+        
+        # 添加 Nginx 仓库
         curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
             | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+        UBUNTU_CODENAME=$(lsb_release -cs)
         echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-            http://nginx.org/packages/mainline/ubuntu $(lsb_release -cs) nginx" \
+            http://nginx.org/packages/mainline/ubuntu ${UBUNTU_CODENAME} nginx" \
             | tee /etc/apt/sources.list.d/nginx.list
         echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
             | tee /etc/apt/preferences.d/99nginx
-        apt update && apt install -y nginx
-        sed -i 's/^user.*/user www-data;/' /etc/nginx/nginx.conf
+        
+        # 更新并安装（忽略 PPA 错误）
+        apt update 2>&1 | grep -v "questing" || true
+        apt install -y nginx
+        
+        if [ -f /etc/nginx/nginx.conf ]; then
+            sed -i 's/^user.*/user www-data;/' /etc/nginx/nginx.conf
+        fi
     elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" ]]; then
         cat > /etc/yum.repos.d/nginx.repo <<EOF
 [nginx-mainline]
@@ -111,8 +131,21 @@ EOF
         dnf install -y nginx
     fi
     
-    systemctl start nginx && systemctl enable nginx
-    echo -e "${GREEN}Nginx 安装完成${NC}"
+    # 检查 Nginx 是否安装成功
+    if command -v nginx &> /dev/null; then
+        systemctl start nginx && systemctl enable nginx
+        echo -e "${GREEN}Nginx 安装完成${NC}"
+    else
+        echo -e "${RED}Nginx 安装失败，尝试使用系统仓库安装...${NC}"
+        if [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
+            apt install -y nginx
+            systemctl start nginx && systemctl enable nginx
+            echo -e "${GREEN}Nginx 安装完成（使用系统仓库）${NC}"
+        else
+            echo -e "${RED}Nginx 安装失败，请手动安装${NC}"
+            exit 1
+        fi
+    fi
 }
 
 # 安装 PHP
@@ -132,8 +165,17 @@ install_php() {
         apt install -y php${PHP_VERSION}-{bcmath,bz2,cli,common,curl,fpm,gd,gmp,igbinary,intl,mbstring,mysql,opcache,readline,redis,soap,xml,yaml,zip}
         apt install -y php${PHP_VERSION}-posix php${PHP_VERSION}-sodium || true
     elif [[ "$OS" == "ubuntu" ]]; then
+        # 清理错误的 PPA 仓库
+        rm -f /etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-*.list 2>/dev/null || true
+        rm -f /etc/apt/sources.list.d/*questing*.list 2>/dev/null || true
+        
+        # 添加 PHP PPA
         add-apt-repository ppa:ondrej/php -y
-        apt update
+        
+        # 更新（忽略错误）
+        apt update 2>&1 | grep -v "questing" || true
+        
+        # 安装 PHP
         apt install -y php${PHP_VERSION}-{bcmath,bz2,cli,common,curl,fpm,gd,gmp,intl,mbstring,mysql,opcache,readline,redis,soap,xml,yaml,zip}
         apt install -y php${PHP_VERSION}-posix php${PHP_VERSION}-sodium || true
     elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" ]]; then
