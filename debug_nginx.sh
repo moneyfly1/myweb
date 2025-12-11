@@ -127,7 +127,13 @@ echo -e "${YELLOW}8. 检查宝塔面板配置（如果使用）:${NC}"
 if [ -d "/www/server/panel" ]; then
     echo "   检测到宝塔面板"
     echo "   站点配置目录: /www/server/panel/vhost"
-    ls -la /www/server/panel/vhost/nginx/*.conf 2>/dev/null | grep -E "(sspanel|board)" | head -5
+    BT_CONFIGS=$(ls -la /www/server/panel/vhost/nginx/*.conf 2>/dev/null | grep -E "(sspanel|board)" | awk '{print $NF}')
+    for config in $BT_CONFIGS; do
+        echo "   配置文件: $config"
+        echo "   配置内容:"
+        cat "$config" | sed 's/^/      /'
+        echo ""
+    done
 else
     echo "   未检测到宝塔面板"
 fi
