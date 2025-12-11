@@ -908,12 +908,15 @@ deploy_project() {
         cp config/appprofile.example.php config/appprofile.php
     fi
     
-    # 读取数据库密码
+    # 读取数据库密码（保留文件供后续步骤使用）
     if [ -f /tmp/sspanel_db_password.txt ]; then
         DB_PASSWORD=$(cat /tmp/sspanel_db_password.txt)
-        rm -f /tmp/sspanel_db_password.txt
+        # 不删除文件，供 init_database 使用
     else
         read -p "请输入数据库密码: " DB_PASSWORD
+        # 保存密码到临时文件供后续使用
+        echo "$DB_PASSWORD" > /tmp/sspanel_db_password.txt
+        chmod 600 /tmp/sspanel_db_password.txt
     fi
     
     # 生成随机密钥
@@ -1215,12 +1218,15 @@ init_database() {
     if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
         echo -e "${YELLOW}数据库配置不完整，正在重新配置...${NC}"
         
-        # 尝试从 MariaDB 安装步骤中获取密码
+        # 尝试从临时文件或 MariaDB 安装步骤中获取密码
         if [ -f /tmp/sspanel_db_password.txt ]; then
             DB_PASSWORD=$(cat /tmp/sspanel_db_password.txt)
         else
             # 询问用户输入数据库密码
             read -p "请输入数据库密码: " DB_PASSWORD
+            # 保存密码到临时文件
+            echo "$DB_PASSWORD" > /tmp/sspanel_db_password.txt
+            chmod 600 /tmp/sspanel_db_password.txt
         fi
         
         # 设置默认值
@@ -1269,6 +1275,9 @@ init_database() {
     
     echo -e "${YELLOW}正在导入配置项...${NC}"
     php xcat Tool importSetting
+    
+    # 清理临时密码文件
+    rm -f /tmp/sspanel_db_password.txt
     
     echo -e "${GREEN}数据库初始化完成${NC}"
 }
