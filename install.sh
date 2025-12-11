@@ -762,16 +762,28 @@ deploy_project() {
     echo -e "${BLUE}步骤 7: 部署 SSPanel-UIM${NC}"
     echo -e "${BLUE}========================================${NC}"
     
+    # 使用全局安装目录变量，如果没有设置则使用默认值
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
+    
     # 获取域名
-    read -p "请输入您的域名 (例如: example.com): " DOMAIN
     if [ -z "$DOMAIN" ]; then
-        echo -e "${RED}错误: 域名不能为空${NC}"
-        exit 1
+        read -p "请输入您的域名 (例如: board.moneyfly.club): " DOMAIN
+        if [ -z "$DOMAIN" ]; then
+            # 如果目录是 board.moneyfly.club，自动提取域名
+            if [[ "$INSTALL_DIR" == *"board.moneyfly.club"* ]]; then
+                DOMAIN="board.moneyfly.club"
+            else
+                echo -e "${RED}错误: 域名不能为空${NC}"
+                exit 1
+            fi
+        fi
     fi
     
     # 创建项目目录
-    mkdir -p /var/www/sspanel
-    cd /var/www
+    mkdir -p "$INSTALL_DIR"
+    cd "$(dirname "$INSTALL_DIR")"
     
     # 检查是否已存在项目
     if [ -d "sspanel" ] && [ "$(ls -A sspanel)" ]; then
@@ -887,9 +899,12 @@ deploy_project() {
     # 配置 .config.php
     sed -i "s|ChangeMe|${KEY}|g" config/.config.php
     sed -i "s|https://example.com|https://${DOMAIN}|g" config/.config.php
-    sed -i "s|'sspanel'|'sspanel'|g" config/.config.php
-    sed -i "s|'root'|'sspanel'|g" config/.config.php
-    sed -i "s|'sspanel'|'${DB_PASSWORD}'|g" config/.config.php
+    sed -i "s|http://example.com|http://${DOMAIN}|g" config/.config.php
+    
+    # 配置数据库（更精确的替换）
+    sed -i "s|'db_database' => '.*'|'db_database' => 'sspanel'|g" config/.config.php
+    sed -i "s|'db_username' => '.*'|'db_username' => 'sspanel'|g" config/.config.php
+    sed -i "s|'db_password' => '.*'|'db_password' => '${DB_PASSWORD}'|g" config/.config.php
     
     # 更新 muKey
     if grep -q "muKey.*ChangeMe" config/.config.php; then
@@ -916,18 +931,23 @@ set_permissions() {
         WEB_USER="nginx"
     fi
     
-    chown -R ${WEB_USER}:${WEB_USER} /var/www/sspanel
-    find /var/www/sspanel -type d -exec chmod 755 {} \;
-    find /var/www/sspanel -type f -exec chmod 644 {} \;
-    chmod -R 777 /var/www/sspanel/storage
-    chmod 775 /var/www/sspanel/public/clients
+    # 使用全局安装目录变量
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
     
-    mkdir -p /var/www/sspanel/storage/framework/smarty/{cache,compile}
-    mkdir -p /var/www/sspanel/storage/framework/twig/cache
-    chmod -R 777 /var/www/sspanel/storage/framework
+    chown -R ${WEB_USER}:${WEB_USER} "$INSTALL_DIR"
+    find "$INSTALL_DIR" -type d -exec chmod 755 {} \;
+    find "$INSTALL_DIR" -type f -exec chmod 644 {} \;
+    chmod -R 777 "$INSTALL_DIR/storage"
+    chmod 775 "$INSTALL_DIR/public/clients" 2>/dev/null || true
     
-    chmod 664 /var/www/sspanel/config/.config.php
-    chmod 664 /var/www/sspanel/config/appprofile.php
+    mkdir -p "$INSTALL_DIR/storage/framework/smarty/{cache,compile}"
+    mkdir -p "$INSTALL_DIR/storage/framework/twig/cache"
+    chmod -R 777 "$INSTALL_DIR/storage/framework"
+    
+    chmod 664 "$INSTALL_DIR/config/.config.php"
+    chmod 664 "$INSTALL_DIR/config/appprofile.php" 2>/dev/null || true
     
     echo -e "${GREEN}权限设置完成${NC}"
 }
@@ -1009,7 +1029,7 @@ server {
     listen [::]:80;
     server_name DOMAIN_PLACEHOLDER;
     
-    root /var/www/sspanel/public;
+    root INSTALL_DIR_PLACEHOLDER/public;
     index index.php;
     
     location / {
@@ -1034,9 +1054,15 @@ server {
     }
 }
 EOF
+    # 使用全局安装目录变量
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
+    
     # 替换占位符
     sed -i "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" ${CONFIG_DIR}/sspanel.conf
     sed -i "s|PHP_SOCKET_PLACEHOLDER|${PHP_SOCKET}|g" ${CONFIG_DIR}/sspanel.conf
+    sed -i "s|INSTALL_DIR_PLACEHOLDER|${INSTALL_DIR}|g" ${CONFIG_DIR}/sspanel.conf
     
     # 测试 Nginx 配置
     if nginx -t >/dev/null 2>&1; then
@@ -1135,7 +1161,12 @@ configure_cron() {
     echo -e "${BLUE}步骤 11: 配置定时任务${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    CRON_JOB="*/5 * * * * /usr/bin/php /var/www/sspanel/xcat Cron >> /var/log/sspanel-cron.log 2>&1"
+    # 使用全局安装目录变量
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="/var/www/sspanel"
+    fi
+    
+    CRON_JOB="*/5 * * * * /usr/bin/php ${INSTALL_DIR}/xcat Cron >> /var/log/sspanel-cron.log 2>&1"
     
     (crontab -l 2>/dev/null | grep -v "xcat Cron"; echo "$CRON_JOB") | crontab -
     
@@ -1173,6 +1204,31 @@ main() {
     echo "SSPanel-UIM 节点采集版 - 一键安装脚本"
     echo "=========================================="
     echo -e "${NC}"
+    
+    # 询问安装目录
+    echo -e "${YELLOW}请选择安装目录:${NC}"
+    echo "1. /var/www/sspanel (默认)"
+    echo "2. /www/wwwroot/board.moneyfly.club (宝塔面板)"
+    echo "3. 自定义目录"
+    read -p "请选择 (1/2/3) [默认: 1]: " INSTALL_DIR_CHOICE
+    
+    case "$INSTALL_DIR_CHOICE" in
+        2)
+            INSTALL_DIR="/www/wwwroot/board.moneyfly.club"
+            ;;
+        3)
+            read -p "请输入安装目录路径: " INSTALL_DIR
+            if [ -z "$INSTALL_DIR" ]; then
+                INSTALL_DIR="/var/www/sspanel"
+            fi
+            ;;
+        *)
+            INSTALL_DIR="/var/www/sspanel"
+            ;;
+    esac
+    
+    export INSTALL_DIR
+    echo -e "${GREEN}安装目录: $INSTALL_DIR${NC}"
     
     detect_system
     install_basic_tools
