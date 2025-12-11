@@ -92,11 +92,35 @@ check_service_running() {
 # 检测 PHP 扩展是否已安装
 check_php_extension() {
     local ext=$1
+    # 首先检查 php -m 输出
     if php -m | grep -qi "^${ext}$"; then
         return 0  # 扩展已安装
-    else
-        return 1  # 扩展未安装
     fi
+    
+    # 对于某些扩展，检查别名或相关扩展
+    case "$ext" in
+        "mysql")
+            # mysql 扩展在 PHP 7.0+ 已移除，检查 mysqli 或 pdo_mysql
+            if php -m | grep -qi "^mysqli$\|^pdo_mysql$"; then
+                return 0
+            fi
+            ;;
+        "opcache")
+            # opcache 可能已编译但未启用，检查配置
+            PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+            if [ -f "$PHP_INI" ] && grep -qi "^zend_extension.*opcache\|^;zend_extension.*opcache" "$PHP_INI" 2>/dev/null; then
+                # 检查是否被注释
+                if ! grep -q "^;zend_extension.*opcache" "$PHP_INI" 2>/dev/null || grep -q "^zend_extension.*opcache" "$PHP_INI" 2>/dev/null; then
+                    # 尝试加载 opcache
+                    if php -r "if (function_exists('opcache_get_status')) exit(0); else exit(1);" 2>/dev/null; then
+                        return 0
+                    fi
+                fi
+            fi
+            ;;
+    esac
+    
+    return 1  # 扩展未安装
 }
 
 # 安装 PHP 扩展
@@ -108,14 +132,18 @@ install_php_extensions() {
     PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
     PHP_MINOR=$(echo $PHP_VER | cut -d "." -f 2)
     
-    # 必需的扩展列表
-    REQUIRED_EXTENSIONS=("fileinfo" "redis" "yaml" "gmp" "bcmath" "bz2" "curl" "gd" "intl" "mbstring" "mysql" "opcache" "soap" "xml" "zip")
+    # 必需的扩展列表（mysql 在 PHP 7.0+ 已被移除，使用 mysqli 或 pdo_mysql）
+    REQUIRED_EXTENSIONS=("fileinfo" "redis" "yaml" "gmp" "bcmath" "bz2" "curl" "gd" "intl" "mbstring" "mysqli" "opcache" "soap" "xml" "zip")
     
     MISSING_EXTENSIONS=()
     
     # 检测缺失的扩展
+    echo -e "${YELLOW}正在检测 PHP 扩展...${NC}"
     for ext in "${REQUIRED_EXTENSIONS[@]}"; do
-        if ! check_php_extension "$ext"; then
+        if check_php_extension "$ext"; then
+            echo -e "${GREEN}  ✓ $ext${NC}"
+        else
+            echo -e "${YELLOW}  ✗ $ext (缺失)${NC}"
             MISSING_EXTENSIONS+=("$ext")
         fi
     done
@@ -189,28 +217,61 @@ install_php_extensions() {
     
     # 对于 fileinfo 扩展，通常已经编译在 PHP 中，只需要在 php.ini 中启用
     if [[ " ${MISSING_EXTENSIONS[@]} " =~ " fileinfo " ]]; then
-        # 检查 php.ini 中是否禁用了 fileinfo
-        if grep -q "^extension=fileinfo" "$PHP_INI" 2>/dev/null || grep -q "^;extension=fileinfo" "$PHP_INI" 2>/dev/null; then
-            # 如果存在但被注释，取消注释
-            sed -i 's/^;extension=fileinfo/extension=fileinfo/' "$PHP_INI" 2>/dev/null || true
-        else
-            # 如果不存在，添加
-            echo "extension=fileinfo" >> "$PHP_INI" 2>/dev/null || true
-        fi
+        # fileinfo 在 PHP 5.3+ 已内置，无需配置
+        echo -e "${GREEN}  ✓ fileinfo 已内置（PHP 5.3+）${NC}"
+        MISSING_EXTENSIONS=("${MISSING_EXTENSIONS[@]/fileinfo}")
     fi
     
-    # 重新检测
+    # 重新检测（等待一下让系统更新）
+    sleep 1
+    echo -e "${YELLOW}重新检测扩展...${NC}"
     STILL_MISSING=()
     for ext in "${MISSING_EXTENSIONS[@]}"; do
-        if ! check_php_extension "$ext"; then
+        if check_php_extension "$ext"; then
+            echo -e "${GREEN}  ✓ $ext 已可用${NC}"
+        else
             STILL_MISSING+=("$ext")
+            echo -e "${YELLOW}  ✗ $ext 仍未检测到${NC}"
         fi
     done
     
     if [ ${#STILL_MISSING[@]} -gt 0 ]; then
-        echo -e "${YELLOW}⚠ 以下扩展可能需要手动安装: ${STILL_MISSING[*]}${NC}"
-        echo -e "${YELLOW}请检查 PHP 配置文件: $PHP_INI${NC}"
-        return 1
+        echo -e "${YELLOW}⚠ 以下扩展可能需要手动检查: ${STILL_MISSING[*]}${NC}"
+        echo -e "${YELLOW}提示:${NC}"
+        echo -e "${YELLOW}  1. 运行 'php -m' 查看所有已加载的扩展${NC}"
+        echo -e "${YELLOW}  2. 检查 PHP 配置文件: $PHP_INI${NC}"
+        if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+            echo -e "${YELLOW}  3. 如果使用宝塔面板，请在面板中检查扩展状态${NC}"
+            PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+            echo -e "${YELLOW}  4. 扩展目录: /www/server/php/${PHP_VERSION_DIR}/lib/php/extensions/${NC}"
+        fi
+        echo -e "${YELLOW}  5. 某些扩展（如 opcache, gmp）可能已安装但需要重启 PHP-FPM${NC}"
+        
+        # 尝试重启 PHP-FPM
+        if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+            PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+            FPM_SERVICE="php-fpm-${PHP_VERSION_DIR}"
+            if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
+                echo -e "${YELLOW}  正在重启 PHP-FPM 服务...${NC}"
+                systemctl restart "$FPM_SERVICE" 2>/dev/null || /etc/init.d/php-fpm-${PHP_VERSION_DIR} restart 2>/dev/null || true
+            fi
+        fi
+        
+        # 最后再检测一次
+        sleep 1
+        FINAL_MISSING=()
+        for ext in "${STILL_MISSING[@]}"; do
+            if ! check_php_extension "$ext"; then
+                FINAL_MISSING+=("$ext")
+            fi
+        done
+        
+        if [ ${#FINAL_MISSING[@]} -eq 0 ]; then
+            echo -e "${GREEN}✓ 所有扩展在重启后已可用${NC}"
+            return 0
+        else
+            return 1
+        fi
     else
         echo -e "${GREEN}✓ 所有必需的 PHP 扩展已成功安装${NC}"
         return 0
@@ -680,10 +741,16 @@ deploy_project() {
         rm -f composer.lock
     fi
     
+    # 在安装 Composer 依赖之前，再次检查 PHP 扩展
+    echo -e "${YELLOW}检查 PHP 扩展...${NC}"
+    install_php_extensions
+    
     composer install --no-dev --optimize-autoloader
     
     if [ ! -f vendor/autoload.php ]; then
         echo -e "${RED}错误: Composer 依赖安装失败${NC}"
+        echo -e "${YELLOW}请检查 PHP 扩展是否已正确安装${NC}"
+        echo -e "${YELLOW}运行 'php -m' 查看已安装的扩展${NC}"
         exit 1
     fi
     

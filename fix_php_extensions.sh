@@ -49,19 +49,41 @@ echo -e "${GREEN}检测到系统: $OS${NC}"
 PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
 echo -e "${GREEN}PHP 配置文件: $PHP_INI${NC}"
 
-# 必需的扩展列表
-REQUIRED_EXTENSIONS=("fileinfo" "redis" "yaml" "gmp" "bcmath" "bz2" "curl" "gd" "intl" "mbstring" "mysql" "opcache" "soap" "xml" "zip")
+# 必需的扩展列表（mysql 在 PHP 7.0+ 已被移除，使用 mysqli 或 pdo_mysql）
+REQUIRED_EXTENSIONS=("fileinfo" "redis" "yaml" "gmp" "bcmath" "bz2" "curl" "gd" "intl" "mbstring" "mysqli" "opcache" "soap" "xml" "zip")
 
 MISSING_EXTENSIONS=()
 
 # 检测缺失的扩展
 echo -e "${YELLOW}正在检测缺失的扩展...${NC}"
 for ext in "${REQUIRED_EXTENSIONS[@]}"; do
-    if ! php -m | grep -qi "^${ext}$"; then
+    # 改进的检测逻辑
+    FOUND=0
+    if php -m | grep -qi "^${ext}$"; then
+        FOUND=1
+    fi
+    
+    # 特殊处理
+    case "$ext" in
+        "mysqli")
+            # 检查 mysqli 或 pdo_mysql
+            if php -m | grep -qi "^mysqli$\|^pdo_mysql$"; then
+                FOUND=1
+            fi
+            ;;
+        "opcache")
+            # opcache 需要特殊检测
+            if php -r "if (function_exists('opcache_get_status')) exit(0); else exit(1);" 2>/dev/null; then
+                FOUND=1
+            fi
+            ;;
+    esac
+    
+    if [ $FOUND -eq 1 ]; then
+        echo -e "${GREEN}✓ 已安装: $ext${NC}"
+    else
         MISSING_EXTENSIONS+=("$ext")
         echo -e "${RED}✗ 缺失: $ext${NC}"
-    else
-        echo -e "${GREEN}✓ 已安装: $ext${NC}"
     fi
 done
 
@@ -82,29 +104,52 @@ if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
         echo -e "${YELLOW}使用 apt 安装扩展...${NC}"
         apt update
         
+        PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+        
         for ext in "${MISSING_EXTENSIONS[@]}"; do
             case "$ext" in
                 "fileinfo")
-                    echo -e "${YELLOW}fileinfo 扩展通常已编译在 PHP 中，检查配置...${NC}"
-                    # 检查并启用 fileinfo
-                    if ! grep -q "^extension=fileinfo" "$PHP_INI" 2>/dev/null; then
-                        if grep -q "^;extension=fileinfo" "$PHP_INI" 2>/dev/null; then
-                            sed -i 's/^;extension=fileinfo/extension=fileinfo/' "$PHP_INI"
-                            echo -e "${GREEN}✓ 已启用 fileinfo 扩展${NC}"
+                    echo -e "${GREEN}✓ fileinfo 已内置（PHP 5.3+），无需安装${NC}"
+                    ;;
+                "opcache")
+                    echo -e "${YELLOW}检查 opcache 配置...${NC}"
+                    # 检查 opcache 是否已编译但未启用
+                    if [ -f "$PHP_INI" ]; then
+                        if grep -q "^;zend_extension.*opcache" "$PHP_INI" 2>/dev/null; then
+                            sed -i 's/^;zend_extension.*opcache/zend_extension=opcache/' "$PHP_INI"
+                            sed -i 's/^;opcache\./opcache./' "$PHP_INI"
+                            echo -e "${GREEN}✓ opcache 已启用${NC}"
+                        elif grep -q "^zend_extension.*opcache" "$PHP_INI" 2>/dev/null; then
+                            echo -e "${GREEN}✓ opcache 配置已存在${NC}"
                         else
-                            echo "extension=fileinfo" >> "$PHP_INI"
-                            echo -e "${GREEN}✓ 已添加 fileinfo 扩展${NC}"
+                            echo -e "${YELLOW}⚠ opcache 配置未找到，可能需要手动配置${NC}"
                         fi
                     fi
+                    ;;
+                "gmp")
+                    # 检查 gmp.so 是否存在
+                    EXT_DIR="/www/server/php/${PHP_VERSION_DIR}/lib/php/extensions"
+                    if find "$EXT_DIR" -name "gmp.so" 2>/dev/null | grep -q .; then
+                        echo -e "${YELLOW}发现 gmp.so 文件，检查配置...${NC}"
+                        if grep -q "^;extension.*gmp" "$PHP_INI" 2>/dev/null; then
+                            sed -i 's/^;extension.*gmp/extension=gmp/' "$PHP_INI"
+                            echo -e "${GREEN}✓ gmp 已启用${NC}"
+                        elif ! grep -q "^extension.*gmp" "$PHP_INI" 2>/dev/null; then
+                            echo "extension=gmp" >> "$PHP_INI"
+                            echo -e "${GREEN}✓ gmp 配置已添加${NC}"
+                        fi
+                    else
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-gmp 2>/dev/null && echo -e "${GREEN}✓ 已安装 gmp${NC}" || echo -e "${RED}✗ gmp 安装失败${NC}"
+                    fi
+                    ;;
+                "mysqli"|"pdo_mysql")
+                    apt install -y php${PHP_MAJOR}.${PHP_MINOR}-mysql 2>/dev/null && echo -e "${GREEN}✓ 已安装 mysql 扩展${NC}" || echo -e "${RED}✗ mysql 扩展安装失败${NC}"
                     ;;
                 "redis")
                     apt install -y php${PHP_MAJOR}.${PHP_MINOR}-redis 2>/dev/null && echo -e "${GREEN}✓ 已安装 redis${NC}" || echo -e "${RED}✗ redis 安装失败${NC}"
                     ;;
                 "yaml")
                     apt install -y php${PHP_MAJOR}.${PHP_MINOR}-yaml 2>/dev/null && echo -e "${GREEN}✓ 已安装 yaml${NC}" || echo -e "${RED}✗ yaml 安装失败${NC}"
-                    ;;
-                "gmp")
-                    apt install -y php${PHP_MAJOR}.${PHP_MINOR}-gmp 2>/dev/null && echo -e "${GREEN}✓ 已安装 gmp${NC}" || echo -e "${RED}✗ gmp 安装失败${NC}"
                     ;;
                 *)
                     apt install -y php${PHP_MAJOR}.${PHP_MINOR}-${ext} 2>/dev/null && echo -e "${GREEN}✓ 已安装 ${ext}${NC}" || echo -e "${YELLOW}⚠ ${ext} 可能需要手动安装${NC}"
@@ -132,6 +177,17 @@ else
     fi
 fi
 
+# 重启 PHP-FPM（如果存在）
+if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+    PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+    FPM_SERVICE="php-fpm-${PHP_VERSION_DIR}"
+    if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
+        echo -e "${YELLOW}重启 PHP-FPM 服务以加载新扩展...${NC}"
+        systemctl restart "$FPM_SERVICE" 2>/dev/null || /etc/init.d/php-fpm-${PHP_VERSION_DIR} restart 2>/dev/null || true
+        sleep 2
+    fi
+fi
+
 # 重新检测
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}重新检测扩展...${NC}"
@@ -139,7 +195,26 @@ echo -e "${BLUE}========================================${NC}"
 
 STILL_MISSING=()
 for ext in "${MISSING_EXTENSIONS[@]}"; do
+    FOUND=0
     if php -m | grep -qi "^${ext}$"; then
+        FOUND=1
+    fi
+    
+    # 特殊处理
+    case "$ext" in
+        "mysqli")
+            if php -m | grep -qi "^mysqli$\|^pdo_mysql$"; then
+                FOUND=1
+            fi
+            ;;
+        "opcache")
+            if php -r "if (function_exists('opcache_get_status')) exit(0); else exit(1);" 2>/dev/null; then
+                FOUND=1
+            fi
+            ;;
+    esac
+    
+    if [ $FOUND -eq 1 ]; then
         echo -e "${GREEN}✓ ${ext} 已安装${NC}"
     else
         STILL_MISSING+=("$ext")
@@ -161,13 +236,6 @@ else
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}✓ 所有扩展已成功安装！${NC}"
     echo -e "${GREEN}========================================${NC}"
-    
-    # 重启 PHP-FPM（如果存在）
-    if systemctl list-units --type=service | grep -q "php.*-fpm"; then
-        FPM_SERVICE=$(systemctl list-units --type=service | grep "php.*-fpm" | head -n 1 | awk '{print $1}')
-        echo -e "${YELLOW}重启 PHP-FPM 服务: $FPM_SERVICE${NC}"
-        systemctl restart "$FPM_SERVICE" 2>/dev/null || true
-    fi
     
     exit 0
 fi
