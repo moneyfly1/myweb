@@ -1481,35 +1481,21 @@ EOF
         echo -e "${YELLOW}警告: 未找到 mysql 或 mariadb 命令，跳过数据库连接测试${NC}"
     fi
     
-    echo -e "${YELLOW}正在运行数据库迁移...${NC}"
+    echo -e "${YELLOW}正在初始化数据库...${NC}"
     
-    # 设置 SQL 模式以兼容迁移（禁用严格模式，允许 TEXT 类型有默认值）
-    if command -v mysql &> /dev/null || command -v mariadb &> /dev/null; then
-        MYSQL_CMD="mysql"
-        if ! command -v mysql &> /dev/null; then
-            MYSQL_CMD="mariadb"
-        fi
-        
-        # 使用配置的用户连接并设置 SQL 模式
-        echo -e "${YELLOW}配置数据库 SQL 模式...${NC}"
-        mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" <<EOF 2>/dev/null || true
+    # 设置 SQL 模式以兼容迁移（禁用严格模式）
+    mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" <<EOF 2>/dev/null || true
 SET SESSION sql_mode = '';
-SET GLOBAL sql_mode = '';
 EOF
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✓ SQL 模式已配置${NC}"
-        fi
-    fi
     
-    # 运行迁移
-    echo -e "${YELLOW}执行数据库迁移...${NC}"
-    php xcat Migration new || true
-    php xcat Migration latest
+    # 运行迁移（初始化数据库结构）
+    php xcat Migration new
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ 数据库迁移完成${NC}"
+        echo -e "${GREEN}✓ 数据库初始化完成${NC}"
     else
-        echo -e "${YELLOW}⚠ 数据库迁移可能遇到问题，但将继续安装${NC}"
+        echo -e "${YELLOW}⚠ 数据库初始化可能遇到问题，尝试继续...${NC}"
+        php xcat Migration latest || true
     fi
     
     echo -e "${YELLOW}正在导入配置项...${NC}"
