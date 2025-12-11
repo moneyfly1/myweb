@@ -791,11 +791,38 @@ deploy_project() {
         echo -e "${GREEN}✓ 当前目录已经是 Git 仓库${NC}"
         echo -e "${YELLOW}正在更新代码...${NC}"
         git pull origin main || true
-    else
-        # 克隆到当前目录
-        echo -e "${YELLOW}正在从 GitHub 克隆项目到当前目录...${NC}"
-        git clone https://github.com/moneyfly1/myweb.git .
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+        return 0
     fi
+    
+    # 如果当前目录不为空，询问用户如何处理
+    if [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+        echo -e "${YELLOW}当前目录不为空，包含以下内容:${NC}"
+        ls -la "$INSTALL_DIR" | head -10
+        echo ""
+        read -p "请选择操作: [1] 清空目录并重新克隆 [2] 使用现有目录 [3] 取消 (1/2/3) [默认: 1]: " HANDLE_EXISTING
+        
+        case "$HANDLE_EXISTING" in
+            2)
+                echo -e "${YELLOW}使用现有目录，跳过克隆${NC}"
+                git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+                return 0
+                ;;
+            3)
+                echo -e "${RED}用户取消操作${NC}"
+                exit 1
+                ;;
+            *)
+                echo -e "${YELLOW}正在清空目录...${NC}"
+                # 保留隐藏文件 .git（如果有）和 .gitignore，删除其他所有内容
+                find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name '.gitignore' -exec rm -rf {} +
+                ;;
+        esac
+    fi
+    
+    # 克隆到当前目录
+    echo -e "${YELLOW}正在从 GitHub 克隆项目到当前目录...${NC}"
+    git clone https://github.com/moneyfly1/myweb.git .
     
     git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
     
