@@ -127,6 +127,10 @@ if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
                     fi
                     ;;
                 "gmp")
+                    # 先安装系统依赖
+                    echo -e "${YELLOW}安装 gmp 系统库依赖...${NC}"
+                    apt install -y libgmp-dev libgmpxx4ldbl 2>/dev/null || apt install -y libgmp3-dev 2>/dev/null || true
+                    
                     # 检查 gmp.so 是否存在
                     EXT_DIR="/www/server/php/${PHP_VERSION_DIR}/lib/php/extensions"
                     if find "$EXT_DIR" -name "gmp.so" 2>/dev/null | grep -q .; then
@@ -137,9 +141,13 @@ if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
                         elif ! grep -q "^extension.*gmp" "$PHP_INI" 2>/dev/null; then
                             echo "extension=gmp" >> "$PHP_INI"
                             echo -e "${GREEN}✓ gmp 配置已添加${NC}"
+                        else
+                            echo -e "${GREEN}✓ gmp 配置已存在${NC}"
                         fi
                     else
-                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-gmp 2>/dev/null && echo -e "${GREEN}✓ 已安装 gmp${NC}" || echo -e "${RED}✗ gmp 安装失败${NC}"
+                        echo -e "${YELLOW}尝试通过宝塔面板安装 gmp 扩展...${NC}"
+                        echo -e "${YELLOW}如果失败，请在宝塔面板中手动安装${NC}"
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-gmp 2>/dev/null && echo -e "${GREEN}✓ 已安装 gmp${NC}" || echo -e "${YELLOW}⚠ gmp 需要通过宝塔面板安装，请确保已安装 libgmp-dev${NC}"
                     fi
                     ;;
                 "mysqli"|"pdo_mysql")
