@@ -89,6 +89,134 @@ check_service_running() {
     fi
 }
 
+# 检测 PHP 扩展是否已安装
+check_php_extension() {
+    local ext=$1
+    if php -m | grep -qi "^${ext}$"; then
+        return 0  # 扩展已安装
+    else
+        return 1  # 扩展未安装
+    fi
+}
+
+# 安装 PHP 扩展
+install_php_extensions() {
+    echo -e "${BLUE}检查并安装 PHP 扩展...${NC}"
+    
+    # 获取 PHP 版本
+    PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
+    PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
+    PHP_MINOR=$(echo $PHP_VER | cut -d "." -f 2)
+    
+    # 必需的扩展列表
+    REQUIRED_EXTENSIONS=("fileinfo" "redis" "yaml" "gmp" "bcmath" "bz2" "curl" "gd" "intl" "mbstring" "mysql" "opcache" "soap" "xml" "zip")
+    
+    MISSING_EXTENSIONS=()
+    
+    # 检测缺失的扩展
+    for ext in "${REQUIRED_EXTENSIONS[@]}"; do
+        if ! check_php_extension "$ext"; then
+            MISSING_EXTENSIONS+=("$ext")
+        fi
+    done
+    
+    # 如果没有缺失的扩展，直接返回
+    if [ ${#MISSING_EXTENSIONS[@]} -eq 0 ]; then
+        echo -e "${GREEN}✓ 所有必需的 PHP 扩展已安装${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}检测到缺失的 PHP 扩展: ${MISSING_EXTENSIONS[*]}${NC}"
+    echo -e "${YELLOW}正在安装缺失的扩展...${NC}"
+    
+    # 检测 PHP 安装路径（宝塔面板或其他）
+    PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+    PHP_DIR=$(dirname "$PHP_INI")
+    
+    # 判断 PHP 安装方式
+    if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+        # 宝塔面板安装的 PHP
+        echo -e "${YELLOW}检测到宝塔面板 PHP 安装，尝试通过宝塔方式安装扩展...${NC}"
+        
+        # 尝试通过 apt/yum 安装扩展
+        if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+            for ext in "${MISSING_EXTENSIONS[@]}"; do
+                case "$ext" in
+                    "fileinfo")
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-fileinfo 2>/dev/null || echo "fileinfo 扩展需要手动启用"
+                        ;;
+                    "redis")
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-redis 2>/dev/null || true
+                        ;;
+                    "yaml")
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-yaml 2>/dev/null || true
+                        ;;
+                    "gmp")
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-gmp 2>/dev/null || true
+                        ;;
+                    *)
+                        apt install -y php${PHP_MAJOR}.${PHP_MINOR}-${ext} 2>/dev/null || true
+                        ;;
+                esac
+            done
+        elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" ]]; then
+            for ext in "${MISSING_EXTENSIONS[@]}"; do
+                case "$ext" in
+                    "redis")
+                        dnf install -y php-redis 2>/dev/null || yum install -y php-redis 2>/dev/null || true
+                        ;;
+                    "yaml")
+                        dnf install -y php-yaml 2>/dev/null || yum install -y php-yaml 2>/dev/null || true
+                        ;;
+                    *)
+                        dnf install -y php-${ext} 2>/dev/null || yum install -y php-${ext} 2>/dev/null || true
+                        ;;
+                esac
+            done
+        fi
+    else
+        # 标准安装的 PHP
+        if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+            for ext in "${MISSING_EXTENSIONS[@]}"; do
+                apt install -y php${PHP_MAJOR}.${PHP_MINOR}-${ext} 2>/dev/null || true
+            done
+        elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" ]]; then
+            for ext in "${MISSING_EXTENSIONS[@]}"; do
+                dnf install -y php-${ext} 2>/dev/null || yum install -y php-${ext} 2>/dev/null || true
+            done
+        fi
+    fi
+    
+    # 对于 fileinfo 扩展，通常已经编译在 PHP 中，只需要在 php.ini 中启用
+    if [[ " ${MISSING_EXTENSIONS[@]} " =~ " fileinfo " ]]; then
+        # 检查 php.ini 中是否禁用了 fileinfo
+        if grep -q "^extension=fileinfo" "$PHP_INI" 2>/dev/null || grep -q "^;extension=fileinfo" "$PHP_INI" 2>/dev/null; then
+            # 如果存在但被注释，取消注释
+            sed -i 's/^;extension=fileinfo/extension=fileinfo/' "$PHP_INI" 2>/dev/null || true
+        else
+            # 如果不存在，添加
+            echo "extension=fileinfo" >> "$PHP_INI" 2>/dev/null || true
+        fi
+    fi
+    
+    # 重新检测
+    STILL_MISSING=()
+    for ext in "${MISSING_EXTENSIONS[@]}"; do
+        if ! check_php_extension "$ext"; then
+            STILL_MISSING+=("$ext")
+        fi
+    done
+    
+    if [ ${#STILL_MISSING[@]} -gt 0 ]; then
+        echo -e "${YELLOW}⚠ 以下扩展可能需要手动安装: ${STILL_MISSING[*]}${NC}"
+        echo -e "${YELLOW}请检查 PHP 配置文件: $PHP_INI${NC}"
+        return 1
+    else
+        echo -e "${GREEN}✓ 所有必需的 PHP 扩展已成功安装${NC}"
+        return 0
+    fi
+}
+
 # 安装基础工具
 install_basic_tools() {
     echo -e "${BLUE}========================================${NC}"
@@ -210,6 +338,9 @@ install_php() {
         PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
         echo -e "${GREEN}✓ PHP 已安装，版本: $PHP_VER${NC}"
         
+        # 检测并安装缺失的 PHP 扩展
+        install_php_extensions
+        
         # 检测 PHP-FPM 是否运行
         if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
             PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
@@ -305,6 +436,9 @@ install_php() {
     fi
     
     echo -e "${GREEN}PHP ${PHP_VERSION} 安装完成${NC}"
+    
+    # 安装完成后，再次检查扩展
+    install_php_extensions
 }
 
 # 安装 MariaDB
