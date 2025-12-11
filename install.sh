@@ -1204,14 +1204,53 @@ init_database() {
     
     # 检查数据库连接
     echo -e "${YELLOW}检查数据库连接...${NC}"
-    DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
-    DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-    DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-    DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
     
+    # 尝试从配置文件读取数据库信息
+    DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
+    DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    
+    # 如果配置不完整，尝试重新配置
     if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
-        echo -e "${RED}错误: 数据库配置不完整${NC}"
-        exit 1
+        echo -e "${YELLOW}数据库配置不完整，正在重新配置...${NC}"
+        
+        # 尝试从 MariaDB 安装步骤中获取密码
+        if [ -f /tmp/sspanel_db_password.txt ]; then
+            DB_PASSWORD=$(cat /tmp/sspanel_db_password.txt)
+        else
+            # 询问用户输入数据库密码
+            read -p "请输入数据库密码: " DB_PASSWORD
+        fi
+        
+        # 设置默认值
+        DB_NAME="sspanel"
+        DB_USER="sspanel"
+        DB_HOST="localhost"
+        
+        # 更新配置文件
+        if [ -f config/.config.php ]; then
+            sed -i "s|'db_host' => '.*'|'db_host' => '${DB_HOST}'|g" config/.config.php
+            sed -i "s|'db_database' => '.*'|'db_database' => '${DB_NAME}'|g" config/.config.php
+            sed -i "s|'db_username' => '.*'|'db_username' => '${DB_USER}'|g" config/.config.php
+            sed -i "s|'db_password' => '.*'|'db_password' => '${DB_PASSWORD}'|g" config/.config.php
+            
+            # 重新读取配置
+            DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
+            DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+            DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+            DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php 2>/dev/null | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+        else
+            echo -e "${RED}错误: config/.config.php 文件不存在${NC}"
+            exit 1
+        fi
+        
+        # 再次检查
+        if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
+            echo -e "${RED}错误: 数据库配置仍然不完整${NC}"
+            echo -e "${YELLOW}请手动检查 config/.config.php 文件${NC}"
+            exit 1
+        fi
     fi
     
     # 测试数据库连接
