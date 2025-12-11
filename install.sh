@@ -942,15 +942,66 @@ configure_nginx() {
         read -p "请输入您的域名: " DOMAIN
     fi
     
-    if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
-        PHP_SOCKET="/run/php/php8.2-fpm.sock"
-        [ ! -f "$PHP_SOCKET" ] && PHP_SOCKET="/run/php/php8.3-fpm.sock"
-        [ ! -f "$PHP_SOCKET" ] && PHP_SOCKET="/run/php/php8.4-fpm.sock"
-        CONFIG_DIR="/etc/nginx/conf.d"
+    # 检测 PHP-FPM socket 路径
+    PHP_VER=$(php -v | head -n 1 | cut -d " " -f 2 | cut -d "." -f 1,2)
+    PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
+    PHP_MINOR=$(echo $PHP_VER | cut -d "." -f 2)
+    
+    # 检测是否为宝塔面板
+    PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+    if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+        # 宝塔面板
+        PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+        PHP_SOCKET="/tmp/php-cgi-${PHP_VERSION_DIR}.sock"
+        # 检查宝塔面板的 Nginx 配置目录
+        if [ -d "/www/server/panel/vhost/nginx" ]; then
+            CONFIG_DIR="/www/server/panel/vhost/nginx"
+        elif [ -d "/www/server/nginx/conf/vhost" ]; then
+            CONFIG_DIR="/www/server/nginx/conf/vhost"
+        else
+            CONFIG_DIR="/etc/nginx/conf.d"
+        fi
     else
-        PHP_SOCKET="/run/php-fpm/www.sock"
+        # 标准安装
+        if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+            PHP_SOCKET="/run/php/php${PHP_MAJOR}.${PHP_MINOR}-fpm.sock"
+            [ ! -S "$PHP_SOCKET" ] && PHP_SOCKET="/run/php/php8.2-fpm.sock"
+            [ ! -S "$PHP_SOCKET" ] && PHP_SOCKET="/run/php/php8.3-fpm.sock"
+            [ ! -S "$PHP_SOCKET" ] && PHP_SOCKET="/run/php/php8.4-fpm.sock"
+        else
+            PHP_SOCKET="/run/php-fpm/www.sock"
+        fi
         CONFIG_DIR="/etc/nginx/conf.d"
     fi
+    
+    # 确保配置目录存在
+    if [ ! -d "$CONFIG_DIR" ]; then
+        echo -e "${YELLOW}创建 Nginx 配置目录: $CONFIG_DIR${NC}"
+        mkdir -p "$CONFIG_DIR"
+    fi
+    
+    # 检测 PHP socket 是否存在
+    if [ ! -S "$PHP_SOCKET" ]; then
+        echo -e "${YELLOW}⚠ PHP socket 未找到: $PHP_SOCKET${NC}"
+        echo -e "${YELLOW}正在查找 PHP-FPM socket...${NC}"
+        
+        # 尝试查找其他可能的 socket 路径
+        for sock in "/tmp/php-cgi-${PHP_VERSION_DIR}.sock" "/run/php/php${PHP_MAJOR}.${PHP_MINOR}-fpm.sock" "/run/php/php8.2-fpm.sock" "/run/php/php8.3-fpm.sock" "/run/php/php8.4-fpm.sock" "/run/php-fpm/www.sock"; do
+            if [ -S "$sock" ]; then
+                PHP_SOCKET="$sock"
+                echo -e "${GREEN}  找到 PHP socket: $PHP_SOCKET${NC}"
+                break
+            fi
+        done
+        
+        if [ ! -S "$PHP_SOCKET" ]; then
+            echo -e "${YELLOW}⚠ 未找到 PHP socket，将使用默认路径${NC}"
+            PHP_SOCKET="/tmp/php-cgi-${PHP_VERSION_DIR}.sock"
+        fi
+    fi
+    
+    echo -e "${GREEN}使用配置目录: $CONFIG_DIR${NC}"
+    echo -e "${GREEN}使用 PHP socket: $PHP_SOCKET${NC}"
     
     cat > ${CONFIG_DIR}/sspanel.conf <<'EOF'
 server {
@@ -987,8 +1038,31 @@ EOF
     sed -i "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" ${CONFIG_DIR}/sspanel.conf
     sed -i "s|PHP_SOCKET_PLACEHOLDER|${PHP_SOCKET}|g" ${CONFIG_DIR}/sspanel.conf
     
-    nginx -t && systemctl reload nginx
+    # 测试 Nginx 配置
+    if nginx -t >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Nginx 配置测试通过${NC}"
+        # 重载 Nginx
+        if systemctl reload nginx >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Nginx 已重载${NC}"
+        elif systemctl restart nginx >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Nginx 已重启${NC}"
+        elif /etc/init.d/nginx reload >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Nginx 已重载${NC}"
+        else
+            echo -e "${YELLOW}⚠ 请手动重启 Nginx${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ Nginx 配置测试失败，请检查配置${NC}"
+        nginx -t
+    fi
+    
     echo -e "${GREEN}Nginx 配置完成${NC}"
+    echo -e "${YELLOW}配置文件位置: ${CONFIG_DIR}/sspanel.conf${NC}"
+    
+    # 如果使用宝塔面板，提示用户
+    if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+        echo -e "${YELLOW}提示: 如果使用宝塔面板，可能需要在面板中添加站点${NC}"
+    fi
 }
 
 # 初始化数据库
