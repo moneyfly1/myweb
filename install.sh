@@ -723,7 +723,17 @@ install_composer() {
         if composer --version >/dev/null 2>&1; then
             COMPOSER_VER=$(composer --version 2>/dev/null | head -n 1 | grep -oP 'version \K[0-9.]+' || echo "unknown")
             echo -e "${GREEN}✓ Composer 已安装，版本: $COMPOSER_VER${NC}"
-            return 0
+            
+            # 检查 Composer 版本是否满足要求（需要 >= 2.1）
+            MAJOR_VER=$(echo "$COMPOSER_VER" | cut -d '.' -f 1)
+            MINOR_VER=$(echo "$COMPOSER_VER" | cut -d '.' -f 2)
+            
+            if [ "$MAJOR_VER" -lt 2 ] || ([ "$MAJOR_VER" -eq 2 ] && [ "$MINOR_VER" -lt 1 ]); then
+                echo -e "${YELLOW}⚠ Composer 版本过低 ($COMPOSER_VER)，需要 >= 2.1，正在升级...${NC}"
+                rm -f /usr/local/bin/composer /usr/bin/composer 2>/dev/null || true
+            else
+                return 0
+            fi
         else
             echo -e "${YELLOW}⚠ Composer 已安装但无法运行，重新安装...${NC}"
             rm -f /usr/local/bin/composer /usr/bin/composer 2>/dev/null || true
@@ -811,7 +821,41 @@ deploy_project() {
         exit 1
     fi
     
-    composer install --no-dev --optimize-autoloader
+    # 检查 Composer 版本并升级（如果需要）
+    COMPOSER_VER=$(composer --version 2>/dev/null | head -n 1 | grep -oP 'version \K[0-9.]+' || echo "0.0.0")
+    MAJOR_VER=$(echo "$COMPOSER_VER" | cut -d '.' -f 1)
+    MINOR_VER=$(echo "$COMPOSER_VER" | cut -d '.' -f 2)
+    
+    if [ "$MAJOR_VER" -lt 2 ] || ([ "$MAJOR_VER" -eq 2 ] && [ "$MINOR_VER" -lt 1 ]); then
+        echo -e "${YELLOW}Composer 版本过低 ($COMPOSER_VER)，需要 >= 2.1，正在升级...${NC}"
+        composer self-update --stable 2>/dev/null || {
+            echo -e "${YELLOW}自动升级失败，手动升级...${NC}"
+            cd /tmp
+            curl -sS https://getcomposer.org/installer | php
+            mv composer.phar /usr/local/bin/composer
+            chmod +x /usr/local/bin/composer
+            cd /var/www/sspanel
+        }
+        COMPOSER_VER=$(composer --version 2>/dev/null | head -n 1 | grep -oP 'version \K[0-9.]+' || echo "unknown")
+        echo -e "${GREEN}Composer 已升级到版本: $COMPOSER_VER${NC}"
+    fi
+    
+    # 如果 composer.lock 存在但版本不兼容，更新依赖
+    if [ -f composer.lock ]; then
+        echo -e "${YELLOW}检测到 composer.lock，检查兼容性...${NC}"
+        if ! composer validate --no-check-publish 2>/dev/null || composer install --dry-run 2>&1 | grep -q "composer-runtime-api"; then
+            echo -e "${YELLOW}composer.lock 可能不兼容，尝试更新依赖...${NC}"
+            composer update --no-dev --optimize-autoloader --no-interaction 2>&1 | head -20 || {
+                echo -e "${YELLOW}更新失败，尝试删除 composer.lock 并重新安装...${NC}"
+                rm -f composer.lock
+                composer install --no-dev --optimize-autoloader
+            }
+        else
+            composer install --no-dev --optimize-autoloader
+        fi
+    else
+        composer install --no-dev --optimize-autoloader
+    fi
     
     if [ ! -f vendor/autoload.php ]; then
         echo -e "${RED}错误: Composer 依赖安装失败${NC}"
