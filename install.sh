@@ -226,11 +226,84 @@ install_php_extensions() {
         fi
     fi
     
-    # 对于 fileinfo 扩展，通常已经编译在 PHP 中，只需要在 php.ini 中启用
+    # 对于 fileinfo 扩展，通常已经编译在 PHP 中，但需要确保在 php.ini 中启用
     if [[ " ${MISSING_EXTENSIONS[@]} " =~ " fileinfo " ]]; then
-        # fileinfo 在 PHP 5.3+ 已内置，无需配置
-        echo -e "${GREEN}  ✓ fileinfo 已内置（PHP 5.3+）${NC}"
-        MISSING_EXTENSIONS=("${MISSING_EXTENSIONS[@]/fileinfo}")
+        echo -e "${YELLOW}  检查并启用 fileinfo 扩展...${NC}"
+        PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+        
+        # 检查 fileinfo 是否已启用
+        if php -m | grep -qi "fileinfo"; then
+            echo -e "${GREEN}  ✓ fileinfo 已启用${NC}"
+            MISSING_EXTENSIONS=("${MISSING_EXTENSIONS[@]/fileinfo}")
+        else
+            # 尝试在 php.ini 中启用
+            if [ -f "$PHP_INI" ]; then
+                # 检查是否被禁用
+                if grep -q "disable_functions.*fileinfo" "$PHP_INI" 2>/dev/null; then
+                    echo -e "${YELLOW}  fileinfo 在 disable_functions 中，正在移除...${NC}"
+                    sed -i 's/disable_functions = \(.*\)fileinfo\(.*\)/disable_functions = \1\2/' "$PHP_INI" 2>/dev/null || true
+                fi
+                
+                # 确保 extension=fileinfo 存在（虽然通常不需要，因为已内置）
+                if ! grep -q "extension.*fileinfo" "$PHP_INI" 2>/dev/null; then
+                    # fileinfo 是内置的，不需要 extension=fileinfo，但确保没有被禁用
+                    echo -e "${YELLOW}  fileinfo 是内置扩展，确保未被禁用...${NC}"
+                fi
+                
+                # 对于宝塔面板，还需要检查 FPM 配置
+                if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+                    PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+' || echo "82")
+                    FPM_INI="/www/server/php/${PHP_VERSION_DIR}/etc/php.ini"
+                    if [ -f "$FPM_INI" ] && [ "$FPM_INI" != "$PHP_INI" ]; then
+                        if grep -q "disable_functions.*fileinfo" "$FPM_INI" 2>/dev/null; then
+                            sed -i 's/disable_functions = \(.*\)fileinfo\(.*\)/disable_functions = \1\2/' "$FPM_INI" 2>/dev/null || true
+                        fi
+                    fi
+                fi
+                
+                # 重新检测
+                sleep 1
+                if php -m | grep -qi "fileinfo"; then
+                    echo -e "${GREEN}  ✓ fileinfo 已启用${NC}"
+                    MISSING_EXTENSIONS=("${MISSING_EXTENSIONS[@]/fileinfo}")
+                else
+                    echo -e "${YELLOW}  ⚠ fileinfo 可能需要重启 PHP-FPM 才能生效${NC}"
+                    echo -e "${GREEN}  ✓ fileinfo 已内置（PHP 5.3+），将在重启后生效${NC}"
+                    MISSING_EXTENSIONS=("${MISSING_EXTENSIONS[@]/fileinfo}")
+                fi
+            else
+                echo -e "${GREEN}  ✓ fileinfo 已内置（PHP 5.3+）${NC}"
+                MISSING_EXTENSIONS=("${MISSING_EXTENSIONS[@]/fileinfo}")
+            fi
+        fi
+    fi
+    
+    # 安装扩展后，立即重启 PHP-FPM（宝塔面板必需）
+    if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+        PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+' || echo "82")
+        FPM_SERVICE="php-fpm-${PHP_VERSION_DIR}"
+        if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
+            echo -e "${YELLOW}正在重启 PHP-FPM 服务以使扩展生效（宝塔面板必需）...${NC}"
+            systemctl restart "$FPM_SERVICE" 2>/dev/null || /etc/init.d/php-fpm-${PHP_VERSION_DIR} restart 2>/dev/null || true
+            sleep 2  # 等待服务重启完成
+        fi
+    elif [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+        # 标准安装的 PHP-FPM
+        PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
+        PHP_MINOR=$(echo $PHP_VER | cut -d "." -f 1,2)
+        FPM_SERVICE="php${PHP_MAJOR}.${PHP_MINOR}-fpm"
+        if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
+            echo -e "${YELLOW}正在重启 PHP-FPM 服务以使扩展生效...${NC}"
+            systemctl restart "$FPM_SERVICE" 2>/dev/null || true
+            sleep 2
+        fi
+    else
+        # CentOS/RHEL
+        if systemctl list-units --type=service | grep -q "php-fpm"; then
+            echo -e "${YELLOW}正在重启 PHP-FPM 服务以使扩展生效...${NC}"
+            systemctl restart php-fpm 2>/dev/null || true
+            sleep 2
+        fi
     fi
     
     # 重新检测（等待一下让系统更新）
@@ -253,19 +326,10 @@ install_php_extensions() {
         echo -e "${YELLOW}  2. 检查 PHP 配置文件: $PHP_INI${NC}"
         if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
             echo -e "${YELLOW}  3. 如果使用宝塔面板，请在面板中检查扩展状态${NC}"
-            PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
+            PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+' || echo "82")
             echo -e "${YELLOW}  4. 扩展目录: /www/server/php/${PHP_VERSION_DIR}/lib/php/extensions/${NC}"
-        fi
-        echo -e "${YELLOW}  5. 某些扩展（如 opcache, gmp）可能已安装但需要重启 PHP-FPM${NC}"
-        
-        # 尝试重启 PHP-FPM
-        if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
-            PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+')
-            FPM_SERVICE="php-fpm-${PHP_VERSION_DIR}"
-            if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
-                echo -e "${YELLOW}  正在重启 PHP-FPM 服务...${NC}"
-                systemctl restart "$FPM_SERVICE" 2>/dev/null || /etc/init.d/php-fpm-${PHP_VERSION_DIR} restart 2>/dev/null || true
-            fi
+            echo -e "${YELLOW}  5. 在宝塔面板中：软件商店 → PHP ${PHP_VERSION_DIR} → 设置 → 安装扩展${NC}"
+            echo -e "${YELLOW}  6. 确保已安装并启用: gmp 和 opcache${NC}"
         fi
         
         # 最后再检测一次
@@ -334,10 +398,29 @@ install_nginx() {
     echo -e "${YELLOW}正在安装 Nginx...${NC}"
     
     if [[ "$OS" == "debian" ]]; then
+        # 检测 Debian 版本，使用对应的仓库
+        DEBIAN_CODENAME="bookworm"  # 默认 Debian 12
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            case "$VERSION_CODENAME" in
+                bullseye)
+                    DEBIAN_CODENAME="bullseye"
+                    echo -e "${YELLOW}检测到 Debian 11 (bullseye)，使用对应的仓库${NC}"
+                    ;;
+                bookworm)
+                    DEBIAN_CODENAME="bookworm"
+                    echo -e "${YELLOW}检测到 Debian 12 (bookworm)，使用对应的仓库${NC}"
+                    ;;
+                *)
+                    echo -e "${YELLOW}使用默认仓库配置 (bookworm)${NC}"
+                    ;;
+            esac
+        fi
+        
         curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
             | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
         echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-            http://nginx.org/packages/mainline/debian bookworm nginx" \
+            http://nginx.org/packages/mainline/debian ${DEBIAN_CODENAME} nginx" \
             | tee /etc/apt/sources.list.d/nginx.list
         echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
             | tee /etc/apt/preferences.d/99nginx
@@ -465,10 +548,29 @@ install_php() {
     PHP_VERSION="8.2"
     
     if [[ "$OS" == "debian" ]]; then
+        # 检测 Debian 版本，使用对应的仓库
+        DEBIAN_CODENAME="bookworm"  # 默认 Debian 12
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            case "$VERSION_CODENAME" in
+                bullseye)
+                    DEBIAN_CODENAME="bullseye"
+                    echo -e "${YELLOW}检测到 Debian 11 (bullseye)，使用对应的仓库${NC}"
+                    ;;
+                bookworm)
+                    DEBIAN_CODENAME="bookworm"
+                    echo -e "${YELLOW}检测到 Debian 12 (bookworm)，使用对应的仓库${NC}"
+                    ;;
+                *)
+                    echo -e "${YELLOW}使用默认仓库配置 (bookworm)${NC}"
+                    ;;
+            esac
+        fi
+        
         curl -sSLo /tmp/php.gpg https://packages.sury.org/php/apt.gpg
         gpg --dearmor < /tmp/php.gpg > /usr/share/keyrings/php-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/php-archive-keyring.gpg] \
-            https://packages.sury.org/php/ bookworm main" > /etc/apt/sources.list.d/php.list
+            https://packages.sury.org/php/ ${DEBIAN_CODENAME} main" > /etc/apt/sources.list.d/php.list
         apt update
         apt install -y php${PHP_VERSION}-{bcmath,bz2,cli,common,curl,fpm,gd,gmp,igbinary,intl,mbstring,mysql,opcache,readline,redis,soap,xml,yaml,zip}
         apt install -y php${PHP_VERSION}-posix php${PHP_VERSION}-sodium || true
@@ -535,7 +637,56 @@ install_mariadb() {
     echo -e "${BLUE}步骤 4: 安装 MariaDB${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    # 检测 MariaDB/MySQL 是否已安装
+    # 宝塔面板环境：如果已安装数据库，直接跳过安装
+    if [ "$IS_BT" = true ]; then
+        if check_installed mariadb || check_installed mysql; then
+            if check_installed mariadb; then
+                echo -e "${GREEN}✓ 检测到宝塔面板环境，MariaDB 已安装，版本: $(mariadb --version | cut -d " " -f 3 | cut -d "," -f 1)${NC}"
+            else
+                echo -e "${GREEN}✓ 检测到宝塔面板环境，MySQL 已安装，版本: $(mysql --version | cut -d " " -f 5 | cut -d "," -f 1)${NC}"
+            fi
+            
+            if check_service_running mariadb || check_service_running mysql; then
+                echo -e "${GREEN}✓ 数据库服务正在运行${NC}"
+                echo -e "${YELLOW}宝塔面板环境：请使用宝塔面板创建数据库，或使用现有数据库${NC}"
+                echo -e "${YELLOW}提示：数据库 root 密码可在宝塔面板的数据库设置中查看${NC}"
+                read -p "请输入数据库 root 密码（从宝塔面板获取）: " EXISTING_DB_PASSWORD
+                if [ ! -z "$EXISTING_DB_PASSWORD" ]; then
+                    DB_PASSWORD="$EXISTING_DB_PASSWORD"
+                    echo "$DB_PASSWORD" > /tmp/sspanel_db_password.txt
+                    chmod 600 /tmp/sspanel_db_password.txt
+                else
+                    echo -e "${YELLOW}将使用空密码尝试连接（宝塔面板默认可能为空）${NC}"
+                    DB_PASSWORD=""
+                    echo "" > /tmp/sspanel_db_password.txt
+                    chmod 600 /tmp/sspanel_db_password.txt
+                fi
+                return 0
+            else
+                echo -e "${YELLOW}启动数据库服务...${NC}"
+                systemctl start mariadb 2>/dev/null || systemctl start mysql
+                systemctl enable mariadb 2>/dev/null || systemctl enable mysql
+                echo -e "${YELLOW}请使用宝塔面板创建数据库，或使用现有数据库${NC}"
+                read -p "请输入数据库 root 密码（从宝塔面板获取）: " EXISTING_DB_PASSWORD
+                if [ ! -z "$EXISTING_DB_PASSWORD" ]; then
+                    DB_PASSWORD="$EXISTING_DB_PASSWORD"
+                    echo "$DB_PASSWORD" > /tmp/sspanel_db_password.txt
+                    chmod 600 /tmp/sspanel_db_password.txt
+                else
+                    DB_PASSWORD=""
+                    echo "" > /tmp/sspanel_db_password.txt
+                    chmod 600 /tmp/sspanel_db_password.txt
+                fi
+                return 0
+            fi
+        else
+            echo -e "${YELLOW}宝塔面板环境：未检测到数据库，请在宝塔面板中先安装 MariaDB/MySQL${NC}"
+            echo -e "${YELLOW}安装完成后，重新运行此脚本${NC}"
+            return 0
+        fi
+    fi
+    
+    # 非宝塔面板环境：检测 MariaDB/MySQL 是否已安装
     if check_installed mariadb || check_installed mysql; then
         if check_installed mariadb; then
             echo -e "${GREEN}✓ MariaDB 已安装，版本: $(mariadb --version | cut -d " " -f 3 | cut -d "," -f 1)${NC}"
@@ -567,6 +718,25 @@ install_mariadb() {
     echo -e "${YELLOW}正在安装 MariaDB...${NC}"
     
     if [[ "$OS" == "debian" ]]; then
+        # 检测 Debian 版本，使用对应的仓库
+        DEBIAN_CODENAME="bookworm"  # 默认 Debian 12
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            case "$VERSION_CODENAME" in
+                bullseye)
+                    DEBIAN_CODENAME="bullseye"
+                    echo -e "${YELLOW}检测到 Debian 11 (bullseye)，使用对应的仓库${NC}"
+                    ;;
+                bookworm)
+                    DEBIAN_CODENAME="bookworm"
+                    echo -e "${YELLOW}检测到 Debian 12 (bookworm)，使用对应的仓库${NC}"
+                    ;;
+                *)
+                    echo -e "${YELLOW}使用默认仓库配置 (bookworm)${NC}"
+                    ;;
+            esac
+        fi
+        
         mkdir -p /etc/apt/keyrings
         curl -o /etc/apt/keyrings/mariadb-keyring.pgp \
             'https://mariadb.org/mariadb_release_signing_key.pgp'
@@ -574,7 +744,7 @@ install_mariadb() {
 X-RepoLib-Name: MariaDB
 Types: deb
 URIs: https://deb.mariadb.org/11.8/debian
-Suites: bookworm
+Suites: ${DEBIAN_CODENAME}
 Components: main
 Signed-By: /etc/apt/keyrings/mariadb-keyring.pgp
 EOF
@@ -667,9 +837,28 @@ install_redis() {
     echo -e "${YELLOW}正在安装 Redis...${NC}"
     
     if [[ "$OS" == "debian" ]]; then
+        # 检测 Debian 版本，使用对应的仓库
+        DEBIAN_CODENAME="bookworm"  # 默认 Debian 12
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            case "$VERSION_CODENAME" in
+                bullseye)
+                    DEBIAN_CODENAME="bullseye"
+                    echo -e "${YELLOW}检测到 Debian 11 (bullseye)，使用对应的仓库${NC}"
+                    ;;
+                bookworm)
+                    DEBIAN_CODENAME="bookworm"
+                    echo -e "${YELLOW}检测到 Debian 12 (bookworm)，使用对应的仓库${NC}"
+                    ;;
+                *)
+                    echo -e "${YELLOW}使用默认仓库配置 (bookworm)${NC}"
+                    ;;
+            esac
+        fi
+        
         curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] \
-            https://packages.redis.io/deb bookworm main" | tee /etc/apt/sources.list.d/redis.list
+            https://packages.redis.io/deb ${DEBIAN_CODENAME} main" | tee /etc/apt/sources.list.d/redis.list
         apt update && apt install -y redis
     elif [[ "$OS" == "ubuntu" ]]; then
         curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
@@ -846,9 +1035,29 @@ deploy_project() {
         
         case "$HANDLE_EXISTING" in
             2)
-                echo -e "${YELLOW}使用现有目录，跳过克隆${NC}"
+                echo -e "${YELLOW}使用现有目录，检查项目代码...${NC}"
                 git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-                return 0
+                
+                # 检查是否是 Git 仓库或是否有项目文件
+                if [ -d ".git" ]; then
+                    echo -e "${GREEN}✓ 检测到 Git 仓库${NC}"
+                    # 检查是否有项目文件
+                    if [ ! -f "composer.json" ] && [ ! -f "config/.config.example.php" ]; then
+                        echo -e "${YELLOW}⚠ 目录是 Git 仓库但缺少项目文件，尝试拉取代码...${NC}"
+                        git pull origin main 2>/dev/null || git fetch origin main && git reset --hard origin/main 2>/dev/null || {
+                            echo -e "${RED}无法拉取代码，请选择其他选项${NC}"
+                            exit 1
+                        }
+                    fi
+                elif [ -f "composer.json" ] || [ -f "config/.config.example.php" ]; then
+                    echo -e "${GREEN}✓ 检测到项目文件${NC}"
+                else
+                    echo -e "${RED}错误: 目录中没有项目代码${NC}"
+                    echo -e "${YELLOW}请选择 [1] 清空目录并重新克隆，或手动克隆代码到此目录${NC}"
+                    exit 1
+                fi
+                
+                # 不 return，继续执行后续的 composer install 等步骤
                 ;;
             3)
                 echo -e "${RED}用户取消操作${NC}"
@@ -862,18 +1071,32 @@ deploy_project() {
         esac
     fi
     
-    # 克隆到当前目录
-    echo -e "${YELLOW}正在从 GitHub 克隆项目到当前目录...${NC}"
-    git clone https://github.com/moneyfly1/myweb.git .
+    # 如果选择了"使用现有目录"但还没有代码，需要克隆
+    if [ ! -d ".git" ] && [ ! -f "composer.json" ] && [ ! -f "config/.config.example.php" ]; then
+        # 克隆到当前目录
+        echo -e "${YELLOW}正在从 GitHub 克隆项目到当前目录...${NC}"
+        git clone https://github.com/moneyfly1/myweb.git .
+        
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+        
+        echo -e "${GREEN}✓ 项目已下载到: $INSTALL_DIR${NC}"
+    fi
     
-    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    # 安装依赖（无论是否是新克隆的代码，都需要检查并安装）
+    if [ ! -f "composer.json" ]; then
+        echo -e "${RED}错误: 未找到 composer.json，项目代码可能不完整${NC}"
+        echo -e "${YELLOW}请确保项目代码已正确克隆到此目录${NC}"
+        exit 1
+    fi
     
-    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    # 检查 vendor/autoload.php 是否存在
+    if [ -f "vendor/autoload.php" ]; then
+        echo -e "${GREEN}✓ Composer 依赖已安装${NC}"
+        echo -e "${YELLOW}检查是否需要更新依赖...${NC}"
+    else
+        echo -e "${YELLOW}正在安装 Composer 依赖...${NC}"
+    fi
     
-    echo -e "${GREEN}✓ 项目已下载到: $INSTALL_DIR${NC}"
-    
-    # 安装依赖
-    echo -e "${YELLOW}正在安装 Composer 依赖...${NC}"
     if php -v | grep -q "PHP 8.4"; then
         echo -e "${YELLOW}检测到 PHP 8.4，删除 composer.lock 以优化兼容性${NC}"
         rm -f composer.lock
@@ -921,18 +1144,35 @@ deploy_project() {
     # 如果 composer.lock 存在但版本不兼容，更新依赖
     if [ -f composer.lock ]; then
         echo -e "${YELLOW}检测到 composer.lock，检查兼容性...${NC}"
-        if ! composer validate --no-check-publish 2>/dev/null || composer install --dry-run 2>&1 | grep -q "composer-runtime-api"; then
+        
+        # 先检查 fileinfo 扩展是否可用
+        if ! php -m | grep -qi "fileinfo"; then
+            echo -e "${YELLOW}⚠ fileinfo 扩展未检测到，使用 --ignore-platform-req 参数继续安装...${NC}"
+            echo -e "${YELLOW}  注意：fileinfo 扩展是必需的，安装完成后请确保在宝塔面板中启用${NC}"
+            COMPOSER_IGNORE_PLATFORM="--ignore-platform-req=ext-fileinfo"
+        else
+            COMPOSER_IGNORE_PLATFORM=""
+        fi
+        
+        if ! composer validate --no-check-publish 2>/dev/null || composer install --dry-run $COMPOSER_IGNORE_PLATFORM 2>&1 | grep -q "composer-runtime-api"; then
             echo -e "${YELLOW}composer.lock 可能不兼容，尝试更新依赖...${NC}"
-            composer update --no-dev --optimize-autoloader --no-interaction 2>&1 | head -20 || {
+            composer update --no-dev --optimize-autoloader --no-interaction $COMPOSER_IGNORE_PLATFORM 2>&1 | head -20 || {
                 echo -e "${YELLOW}更新失败，尝试删除 composer.lock 并重新安装...${NC}"
                 rm -f composer.lock
-                composer install --no-dev --optimize-autoloader
+                composer install --no-dev --optimize-autoloader $COMPOSER_IGNORE_PLATFORM
             }
+        else
+            composer install --no-dev --optimize-autoloader $COMPOSER_IGNORE_PLATFORM
+        fi
+    else
+        # 检查 fileinfo 扩展是否可用
+        if ! php -m | grep -qi "fileinfo"; then
+            echo -e "${YELLOW}⚠ fileinfo 扩展未检测到，使用 --ignore-platform-req 参数继续安装...${NC}"
+            echo -e "${YELLOW}  注意：fileinfo 扩展是必需的，安装完成后请确保在宝塔面板中启用${NC}"
+            composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-fileinfo
         else
             composer install --no-dev --optimize-autoloader
         fi
-    else
-        composer install --no-dev --optimize-autoloader
     fi
     
     if [ ! -f vendor/autoload.php ]; then
