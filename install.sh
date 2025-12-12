@@ -19,6 +19,12 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# 检测是否为宝塔面板
+IS_BT=false
+if [ -d "/www/server/panel" ] || [ -f "/www/server/panel/BT-Panel" ]; then
+    IS_BT=true
+fi
+
 # 检测系统
 detect_system() {
     if [ -f /etc/os-release ]; then
@@ -31,6 +37,11 @@ detect_system() {
     fi
     
     echo -e "${GREEN}检测到系统: $OS $VER${NC}"
+    
+    # 检测宝塔面板
+    if [ "$IS_BT" = true ]; then
+        echo -e "${GREEN}✓ 检测到宝塔面板环境${NC}"
+    fi
     
     case $OS in
         debian)
@@ -403,7 +414,23 @@ install_php() {
         install_php_extensions
         
         # 检测 PHP-FPM 是否运行
-        if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+        PHP_INI=$(php --ini | grep "Loaded Configuration File" | awk '{print $4}')
+        if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+            # 宝塔面板 PHP-FPM
+            PHP_VERSION_DIR=$(echo "$PHP_INI" | grep -oP '/www/server/php/\K[0-9]+' || echo "82")
+            FPM_SERVICE="php-fpm-${PHP_VERSION_DIR}"
+            if systemctl list-units --type=service | grep -q "$FPM_SERVICE"; then
+                if check_service_running "$FPM_SERVICE"; then
+                    echo -e "${GREEN}✓ PHP-FPM 服务正在运行 (宝塔面板)${NC}"
+                else
+                    echo -e "${YELLOW}启动 PHP-FPM 服务...${NC}"
+                    systemctl start "$FPM_SERVICE" && systemctl enable "$FPM_SERVICE" 2>/dev/null || true
+                fi
+            else
+                echo -e "${YELLOW}⚠ 未找到 PHP-FPM 服务: $FPM_SERVICE${NC}"
+                echo -e "${YELLOW}   请在宝塔面板中检查 PHP-FPM 服务状态${NC}"
+            fi
+        elif [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
             PHP_MAJOR=$(echo $PHP_VER | cut -d "." -f 1)
             PHP_MINOR=$(echo $PHP_VER | cut -d "." -f 2)
             FPM_SERVICE="php${PHP_MAJOR}.${PHP_MINOR}-fpm"
@@ -967,7 +994,11 @@ set_permissions() {
     echo -e "${BLUE}步骤 8: 设置文件权限${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    if [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
+    # 检测 Web 用户（宝塔面板使用 www，标准系统使用 www-data 或 nginx）
+    if [ "$IS_BT" = true ] || id www &>/dev/null; then
+        WEB_USER="www"
+        echo -e "${GREEN}检测到宝塔面板，使用 Web 用户: www${NC}"
+    elif [[ "$OS" == "debian" || "$OS" == "ubuntu" ]]; then
         WEB_USER="www-data"
     else
         WEB_USER="nginx"
@@ -1032,7 +1063,14 @@ configure_nginx() {
     echo -e "${BLUE}========================================${NC}"
     
     if [ -z "$DOMAIN" ]; then
+        if [ "$IS_BT" = true ]; then
+            echo -e "${YELLOW}检测到宝塔面板，建议在面板中添加站点${NC}"
+        fi
         read -p "请输入您的域名: " DOMAIN
+        if [ -z "$DOMAIN" ]; then
+            echo -e "${RED}错误: 域名不能为空${NC}"
+            exit 1
+        fi
     fi
     
     # 使用全局安装目录变量
@@ -1078,57 +1116,112 @@ configure_nginx() {
         mkdir -p "$CONFIG_DIR"
     fi
     
+    # 宝塔面板：如果使用宝塔面板，提示用户
+    if [ "$IS_BT" = true ]; then
+        echo -e "${YELLOW}检测到宝塔面板，Nginx 配置将保存到: ${CONFIG_DIR}/${NC}"
+        echo -e "${YELLOW}建议在宝塔面板中添加站点，脚本生成的配置仅供参考${NC}"
+        read -p "是否继续生成 Nginx 配置? (Y/n): " GENERATE_CONFIG
+        if [[ "$GENERATE_CONFIG" == "n" || "$GENERATE_CONFIG" == "N" ]]; then
+            echo -e "${YELLOW}跳过 Nginx 配置生成，请在宝塔面板中手动配置${NC}"
+            return 0
+        fi
+    fi
+    
     # 检测 PHP socket 是否存在
     if [ ! -S "$PHP_SOCKET" ]; then
         echo -e "${YELLOW}⚠ PHP socket 未找到: $PHP_SOCKET${NC}"
         echo -e "${YELLOW}正在查找 PHP-FPM socket...${NC}"
         
         # 尝试查找其他可能的 socket 路径
-        for sock in "/tmp/php-cgi-${PHP_VERSION_DIR}.sock" "/run/php/php${PHP_MAJOR}.${PHP_MINOR}-fpm.sock" "/run/php/php8.2-fpm.sock" "/run/php/php8.3-fpm.sock" "/run/php/php8.4-fpm.sock" "/run/php-fpm/www.sock"; do
+        SOCKET_CANDIDATES=()
+        
+        if [ "$IS_BT" = true ] || [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+            # 宝塔面板可能的 socket 路径
+            for version in "82" "83" "84" "80" "81"; do
+                SOCKET_CANDIDATES+=("/tmp/php-cgi-${version}.sock")
+            done
+        fi
+        
+        # 标准系统可能的 socket 路径
+        SOCKET_CANDIDATES+=("/run/php/php${PHP_MAJOR}.${PHP_MINOR}-fpm.sock")
+        SOCKET_CANDIDATES+=("/run/php/php8.2-fpm.sock")
+        SOCKET_CANDIDATES+=("/run/php/php8.3-fpm.sock")
+        SOCKET_CANDIDATES+=("/run/php/php8.4-fpm.sock")
+        SOCKET_CANDIDATES+=("/run/php-fpm/www.sock")
+        
+        for sock in "${SOCKET_CANDIDATES[@]}"; do
             if [ -S "$sock" ]; then
                 PHP_SOCKET="$sock"
-                echo -e "${GREEN}  找到 PHP socket: $PHP_SOCKET${NC}"
+                echo -e "${GREEN}  ✓ 找到 PHP socket: $PHP_SOCKET${NC}"
                 break
             fi
         done
         
         if [ ! -S "$PHP_SOCKET" ]; then
             echo -e "${YELLOW}⚠ 未找到 PHP socket，将使用默认路径${NC}"
-            PHP_SOCKET="/tmp/php-cgi-${PHP_VERSION_DIR}.sock"
+            if [ "$IS_BT" = true ]; then
+                PHP_SOCKET="/tmp/php-cgi-${PHP_VERSION_DIR}.sock"
+            else
+                PHP_SOCKET="/run/php/php${PHP_MAJOR}.${PHP_MINOR}-fpm.sock"
+            fi
+            echo -e "${YELLOW}   如果 Nginx 配置失败，请手动检查 PHP-FPM socket 路径${NC}"
         fi
     fi
     
     echo -e "${GREEN}使用配置目录: $CONFIG_DIR${NC}"
     echo -e "${GREEN}使用 PHP socket: $PHP_SOCKET${NC}"
     
-    cat > ${CONFIG_DIR}/sspanel.conf <<'EOF'
+    # 宝塔面板使用域名作为配置文件名
+    if [ "$IS_BT" = true ]; then
+        CONFIG_FILE="${CONFIG_DIR}/${DOMAIN}.conf"
+    else
+        CONFIG_FILE="${CONFIG_DIR}/sspanel.conf"
+    fi
+    
+    cat > ${CONFIG_FILE} <<'EOF'
 server {
     listen 80;
     listen [::]:80;
     server_name DOMAIN_PLACEHOLDER;
     
     root INSTALL_DIR_PLACEHOLDER/public;
-    index index.php;
+    index index.php index.html;
     
+    # 日志配置
+    access_log /var/log/nginx/sspanel_access.log;
+    error_log /var/log/nginx/sspanel_error.log;
+    
+    # 主 location 块
     location / {
-        try_files $uri /index.php?$query_string;
+        try_files $uri $uri/ /index.php?$query_string;
     }
     
+    # PHP 处理
     location ~ \.php$ {
+        try_files $uri =404;
         fastcgi_pass unix:PHP_SOCKET_PLACEHOLDER;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
         fastcgi_param HTTP_PROXY "";
         fastcgi_hide_header X-Powered-By;
+        fastcgi_read_timeout 300;
     }
     
+    # 禁止访问隐藏文件
     location ~ /\.(?!well-known).* {
         deny all;
     }
     
+    # 禁止访问配置目录
     location ~ /config/ {
         deny all;
+    }
+    
+    # 静态文件缓存
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
     }
 }
 EOF
@@ -1138,72 +1231,108 @@ EOF
     fi
     
     # 替换占位符
-    sed -i "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" ${CONFIG_DIR}/sspanel.conf
-    sed -i "s|PHP_SOCKET_PLACEHOLDER|${PHP_SOCKET}|g" ${CONFIG_DIR}/sspanel.conf
-    sed -i "s|INSTALL_DIR_PLACEHOLDER|${INSTALL_DIR}|g" ${CONFIG_DIR}/sspanel.conf
+    sed -i "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" ${CONFIG_FILE}
+    sed -i "s|PHP_SOCKET_PLACEHOLDER|${PHP_SOCKET}|g" ${CONFIG_FILE}
+    sed -i "s|INSTALL_DIR_PLACEHOLDER|${INSTALL_DIR}|g" ${CONFIG_FILE}
     
     # 测试 Nginx 配置
     if nginx -t >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Nginx 配置测试通过${NC}"
         
-        # 确保 PID 文件目录存在
-        for pid_file in "/var/run/nginx.pid" "/run/nginx.pid"; do
-            pid_dir=$(dirname "$pid_file")
-            if [ ! -d "$pid_dir" ]; then
-                mkdir -p "$pid_dir"
+        if [ "$IS_BT" = true ]; then
+            # 宝塔面板：提示用户在面板中重载
+            echo -e "${YELLOW}宝塔面板用户：请在面板中重载 Nginx 配置${NC}"
+            echo -e "${YELLOW}   网站 → ${DOMAIN} → 设置 → 重载配置${NC}"
+            read -p "是否尝试自动重载 Nginx? (Y/n): " RELOAD_NGINX
+            if [[ "$RELOAD_NGINX" != "n" && "$RELOAD_NGINX" != "N" ]]; then
+                # 尝试重载（可能失败，但不影响）
+                systemctl reload nginx >/dev/null 2>&1 || /etc/init.d/nginx reload >/dev/null 2>&1 || true
+                echo -e "${GREEN}✓ 已尝试重载 Nginx${NC}"
             fi
-        done
-        
-        # 检查 Nginx 是否正在运行
-        if pgrep -x nginx > /dev/null; then
-            # 重载 Nginx
-            if systemctl reload nginx >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ Nginx 已重载${NC}"
-            elif /etc/init.d/nginx reload >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ Nginx 已重载${NC}"
-            else
-                # 如果重载失败，尝试重启
-                if systemctl restart nginx >/dev/null 2>&1; then
-                    echo -e "${GREEN}✓ Nginx 已重启${NC}"
-                elif /etc/init.d/nginx restart >/dev/null 2>&1; then
-                    echo -e "${GREEN}✓ Nginx 已重启${NC}"
+        else
+            # 标准系统：自动重载
+            # 确保 PID 文件目录存在
+            for pid_file in "/var/run/nginx.pid" "/run/nginx.pid"; do
+                pid_dir=$(dirname "$pid_file")
+                if [ ! -d "$pid_dir" ]; then
+                    mkdir -p "$pid_dir"
+                fi
+            done
+            
+            # 检查 Nginx 是否正在运行
+            if pgrep -x nginx > /dev/null; then
+                # 重载 Nginx
+                if systemctl reload nginx >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已重载${NC}"
+                elif /etc/init.d/nginx reload >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已重载${NC}"
                 else
-                    echo -e "${YELLOW}⚠ 自动重载/重启失败，请手动重启 Nginx${NC}"
+                    # 如果重载失败，尝试重启
+                    if systemctl restart nginx >/dev/null 2>&1; then
+                        echo -e "${GREEN}✓ Nginx 已重启${NC}"
+                    elif /etc/init.d/nginx restart >/dev/null 2>&1; then
+                        echo -e "${GREEN}✓ Nginx 已重启${NC}"
+                    else
+                        echo -e "${YELLOW}⚠ 自动重载/重启失败，请手动重启 Nginx${NC}"
+                    fi
+                fi
+            else
+                # 启动 Nginx
+                if systemctl start nginx >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已启动${NC}"
+                elif /etc/init.d/nginx start >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已启动${NC}"
+                elif nginx >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Nginx 已启动${NC}"
+                else
+                    echo -e "${YELLOW}⚠ Nginx 启动失败，请检查配置${NC}"
                 fi
             fi
-        else
-            # 启动 Nginx
-            if systemctl start nginx >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ Nginx 已启动${NC}"
-            elif /etc/init.d/nginx start >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ Nginx 已启动${NC}"
-            elif nginx >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ Nginx 已启动${NC}"
+            
+            # 等待一下让 Nginx 完全启动
+            sleep 2
+            
+            # 验证 Nginx 是否运行
+            if pgrep -x nginx > /dev/null; then
+                echo -e "${GREEN}✓ Nginx 运行正常${NC}"
             else
-                echo -e "${YELLOW}⚠ Nginx 启动失败，请检查配置${NC}"
+                echo -e "${YELLOW}⚠ Nginx 可能未正确启动，请检查日志${NC}"
             fi
-        fi
-        
-        # 等待一下让 Nginx 完全启动
-        sleep 2
-        
-        # 验证 Nginx 是否运行
-        if pgrep -x nginx > /dev/null; then
-            echo -e "${GREEN}✓ Nginx 运行正常${NC}"
-        else
-            echo -e "${YELLOW}⚠ Nginx 可能未正确启动，请检查日志${NC}"
         fi
     else
         echo -e "${YELLOW}⚠ Nginx 配置测试失败，请检查配置${NC}"
         nginx -t
+        if [ "$IS_BT" = true ]; then
+            echo -e "${YELLOW}宝塔面板用户：建议在面板中手动配置 Nginx${NC}"
+        fi
     fi
     
     echo -e "${GREEN}Nginx 配置完成${NC}"
-    echo -e "${YELLOW}配置文件位置: ${CONFIG_DIR}/sspanel.conf${NC}"
+    if [ "$IS_BT" = true ]; then
+        echo -e "${YELLOW}配置文件位置: ${CONFIG_DIR}/${DOMAIN}.conf${NC}"
+        echo -e "${YELLOW}注意: 宝塔面板会自动管理配置文件，建议在面板中添加站点${NC}"
+    else
+        echo -e "${YELLOW}配置文件位置: ${CONFIG_DIR}/sspanel.conf${NC}"
+    fi
     
-    # 如果使用宝塔面板，提示用户
-    if [[ "$PHP_INI" == *"/www/server/php"* ]]; then
-        echo -e "${YELLOW}提示: 如果使用宝塔面板，可能需要在面板中添加站点${NC}"
+    # 如果使用宝塔面板，提供详细提示
+    if [ "$IS_BT" = true ] || [[ "$PHP_INI" == *"/www/server/php"* ]]; then
+        echo ""
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${GREEN}宝塔面板配置提示：${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${GREEN}1. 登录宝塔面板${NC}"
+        echo -e "${GREEN}2. 进入 网站 → 添加站点${NC}"
+        echo -e "${GREEN}3. 填写信息：${NC}"
+        echo -e "${BLUE}   - 域名: ${DOMAIN}${NC}"
+        echo -e "${BLUE}   - 根目录: ${INSTALL_DIR}/public${NC}"
+        echo -e "${BLUE}   - PHP版本: 选择 PHP 8.2 或更高版本${NC}"
+        echo -e "${GREEN}4. 在网站设置中：${NC}"
+        echo -e "${BLUE}   - 运行目录: /public${NC}"
+        echo -e "${BLUE}   - 伪静态: 选择 thinkphp 或手动添加规则${NC}"
+        echo -e "${GREEN}5. 配置 SSL 证书（推荐）${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
     fi
 }
 
@@ -1360,6 +1489,10 @@ init_database() {
         
         # 首先尝试询问 root 密码
         echo -e "${YELLOW}需要使用 MySQL/MariaDB root 权限来创建数据库和用户${NC}"
+        if [ "$IS_BT" = true ]; then
+            echo -e "${GREEN}提示: 宝塔面板的数据库 root 密码可以在面板中查看：${NC}"
+            echo -e "${BLUE}   数据库 → 点击 root 密码旁的查看/修改${NC}"
+        fi
         read -sp "请输入 MySQL/MariaDB root 密码（如果未设置密码，直接按回车）: " ROOT_PASSWORD
         echo ""
         
@@ -1390,7 +1523,13 @@ init_database() {
                 echo -e "${RED}错误: root 密码不正确或无法连接数据库服务器${NC}"
                 echo -e "${YELLOW}请检查：${NC}"
                 echo -e "${YELLOW}  1. 数据库服务是否运行: systemctl status mariadb 或 systemctl status mysql${NC}"
-                echo -e "${YELLOW}  2. root 密码是否正确${NC}"
+                if [ "$IS_BT" = true ]; then
+                    echo -e "${YELLOW}  2. 在宝塔面板中检查数据库服务状态${NC}"
+                    echo -e "${YELLOW}  3. 在宝塔面板中查看 root 密码：数据库 → root 密码${NC}"
+                else
+                    echo -e "${YELLOW}  2. root 密码是否正确${NC}"
+                fi
+                echo -e "${YELLOW}  3. 可以尝试在宝塔面板中重置 root 密码${NC}"
                 exit 1
             fi
         fi
@@ -1399,7 +1538,13 @@ init_database() {
             echo -e "${RED}错误: 无法连接到数据库服务器${NC}"
             echo -e "${YELLOW}请检查：${NC}"
             echo -e "${YELLOW}  1. 数据库服务是否运行: systemctl status mariadb 或 systemctl status mysql${NC}"
-            echo -e "${YELLOW}  2. root 密码是否正确${NC}"
+            if [ "$IS_BT" = true ]; then
+                echo -e "${YELLOW}  2. 在宝塔面板中检查数据库服务：软件商店 → MariaDB/MySQL → 设置 → 服务${NC}"
+                echo -e "${YELLOW}  3. 在宝塔面板中查看 root 密码：数据库 → root 密码${NC}"
+                echo -e "${YELLOW}  4. 如果忘记密码，可以在宝塔面板中重置${NC}"
+            else
+                echo -e "${YELLOW}  2. root 密码是否正确${NC}"
+            fi
             exit 1
         fi
         
@@ -1500,11 +1645,16 @@ create_admin_account() {
         exit 1
     fi
     
-    # 检查是否已有管理员
-    DB_HOST=$(grep -E "^\s*['\"]db_host['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"" || echo "localhost")
-    DB_NAME=$(grep -E "^\s*['\"]db_database['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-    DB_USER=$(grep -E "^\s*['\"]db_username['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
-    DB_PASS=$(grep -E "^\s*['\"]db_password['\"]" config/.config.php | head -1 | sed "s/.*=>\s*['\"]\(.*\)['\"].*/\1/" | tr -d "',\"")
+    # 检查是否已有管理员（使用 $_ENV 格式）
+    DB_HOST=$(grep -E "\$_ENV\['db_host'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*= ['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t" || echo "localhost")
+    DB_NAME=$(grep -E "\$_ENV\['db_database'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*= ['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+    DB_USER=$(grep -E "\$_ENV\['db_username'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*= ['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+    DB_PASS=$(grep -E "\$_ENV\['db_password'\]" config/.config.php 2>/dev/null | head -1 | sed 's|//.*||' | sed "s/.*= ['\"]\([^'\"]*\)['\"].*/\1/" | tr -d " \t")
+    
+    # 如果读取失败，使用默认值
+    DB_HOST="${DB_HOST:-localhost}"
+    DB_NAME="${DB_NAME:-sspanel}"
+    DB_USER="${DB_USER:-sspanel}"
     
     if command -v mysql &> /dev/null; then
         ADMIN_COUNT=$(mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT COUNT(*) FROM user WHERE is_admin = 1;" 2>/dev/null | tail -1 || echo "0")
@@ -1581,20 +1731,48 @@ configure_cron() {
     
     # 使用全局安装目录变量
     if [ -z "$INSTALL_DIR" ]; then
-        INSTALL_DIR="/var/www/sspanel"
+        INSTALL_DIR="$(pwd)"
     fi
     
-    CRON_JOB="*/5 * * * * /usr/bin/php ${INSTALL_DIR}/xcat Cron >> /var/log/sspanel-cron.log 2>&1"
+    # 检测 PHP 路径
+    PHP_CMD=$(which php || echo "/usr/bin/php")
     
-    # 移除旧的定时任务
-    (crontab -l 2>/dev/null | grep -v "xcat Cron" | grep -v "${INSTALL_DIR}/xcat Cron") | crontab - 2>/dev/null || true
+    if [ "$IS_BT" = true ]; then
+        # 宝塔面板：提示用户在面板中配置
+        echo -e "${YELLOW}检测到宝塔面板，请在面板中配置定时任务：${NC}"
+        echo -e "${GREEN}1. 登录宝塔面板${NC}"
+        echo -e "${GREEN}2. 进入 计划任务 → 添加计划任务${NC}"
+        echo -e "${GREEN}3. 任务类型: Shell 脚本${NC}"
+        echo -e "${GREEN}4. 任务名称: SSPanel 定时任务${NC}"
+        echo -e "${GREEN}5. 执行周期: N分钟，设置为 5${NC}"
+        echo -e "${GREEN}6. 脚本内容:${NC}"
+        echo -e "${BLUE}   ${PHP_CMD} ${INSTALL_DIR}/xcat Cron${NC}"
+        echo ""
+        echo -e "${YELLOW}或者，是否现在自动添加到系统 crontab? (y/N): ${NC}"
+        read -p "" ADD_TO_CRONTAB
+        if [[ "$ADD_TO_CRONTAB" == "y" || "$ADD_TO_CRONTAB" == "Y" ]]; then
+            CRON_JOB="*/5 * * * * ${PHP_CMD} ${INSTALL_DIR}/xcat Cron >> /var/log/sspanel-cron.log 2>&1"
+            (crontab -l 2>/dev/null | grep -v "xcat Cron" | grep -v "${INSTALL_DIR}/xcat Cron") | crontab - 2>/dev/null || true
+            (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+            echo -e "${GREEN}✓ 已添加到系统 crontab${NC}"
+        else
+            echo -e "${YELLOW}跳过 crontab 配置，请手动在宝塔面板中配置${NC}"
+        fi
+    else
+        # 标准系统：直接添加到 crontab
+        CRON_JOB="*/5 * * * * ${PHP_CMD} ${INSTALL_DIR}/xcat Cron >> /var/log/sspanel-cron.log 2>&1"
+        
+        # 移除旧的定时任务
+        (crontab -l 2>/dev/null | grep -v "xcat Cron" | grep -v "${INSTALL_DIR}/xcat Cron") | crontab - 2>/dev/null || true
+        
+        # 添加新的定时任务
+        (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+        
+        echo -e "${GREEN}✓ 定时任务配置完成${NC}"
+    fi
     
-    # 添加新的定时任务
-    (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
-    
-    echo -e "${GREEN}定时任务配置完成${NC}"
     echo -e "${YELLOW}定时任务: 每 5 分钟执行一次${NC}"
-    echo -e "${YELLOW}任务路径: ${INSTALL_DIR}/xcat Cron${NC}"
+    echo -e "${YELLOW}任务路径: ${PHP_CMD} ${INSTALL_DIR}/xcat Cron${NC}"
 }
 
 # 配置 SSL
