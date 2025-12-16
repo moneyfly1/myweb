@@ -180,19 +180,19 @@ func GetInviteCodes(c *gin.Context) {
 	var result []gin.H
 	for _, code := range inviteCodes {
 		inviteLink := baseURL + "/register?invite=" + code.Code
-		
+
 		// 处理 max_uses（sql.NullInt64 -> int 或 null）
 		var maxUses interface{} = nil
 		if code.MaxUses.Valid {
 			maxUses = int(code.MaxUses.Int64)
 		}
-		
+
 		// 处理 expires_at（sql.NullTime -> string 或 null）
 		var expiresAt interface{} = nil
 		if code.ExpiresAt.Valid {
 			expiresAt = code.ExpiresAt.Time.Format("2006-01-02 15:04:05")
 		}
-		
+
 		// 计算是否有效
 		isValid := code.IsActive
 		if isValid && code.ExpiresAt.Valid {
@@ -201,7 +201,7 @@ func GetInviteCodes(c *gin.Context) {
 		if isValid && code.MaxUses.Valid {
 			isValid = code.UsedCount < int(code.MaxUses.Int64)
 		}
-		
+
 		result = append(result, gin.H{
 			"id":             code.ID,
 			"code":           code.Code,
