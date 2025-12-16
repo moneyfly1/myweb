@@ -996,10 +996,21 @@ func (s *ConfigUpdateService) addInfoAndReminderNodes(proxies []*ProxyNode, subs
 
 // getSiteURL 获取网站域名
 func (s *ConfigUpdateService) getSiteURL() string {
-	// 从系统配置获取
+	// 优先从系统配置获取 domain_name
 	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil {
-		return config.Value
+	if err := s.db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
+		domain := strings.TrimSpace(config.Value)
+		// 如果配置的域名包含协议，直接使用
+		if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+			return strings.TrimSuffix(domain, "/")
+		}
+		// 否则默认使用 https
+		return "https://" + domain
+	}
+
+	// 其次查找 site_url 或 base_url
+	if err := s.db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil && config.Value != "" {
+		return strings.TrimSpace(config.Value)
 	}
 
 	// 从环境变量获取
@@ -1007,7 +1018,7 @@ func (s *ConfigUpdateService) getSiteURL() string {
 		return baseURL
 	}
 
-	// 默认值
+	// 默认值（不应该使用，应该配置 domain_name）
 	return "https://your-domain.com"
 }
 
