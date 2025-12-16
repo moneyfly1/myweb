@@ -10,13 +10,13 @@
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
-      <el-select v-model="filters.status" placeholder="状态筛选" clearable style="width: 150px">
+      <el-select v-model="filters.status" placeholder="状态筛选" clearable style="width: 150px" @change="handleFilterChange">
         <el-option label="待处理" value="pending" />
         <el-option label="处理中" value="processing" />
         <el-option label="已解决" value="resolved" />
         <el-option label="已关闭" value="closed" />
       </el-select>
-      <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 150px">
+      <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 150px" @change="handleFilterChange">
         <el-option label="技术问题" value="technical" />
         <el-option label="账单问题" value="billing" />
         <el-option label="账户问题" value="account" />
@@ -397,6 +397,11 @@ const getPriorityTagType = (priority) => {
     urgent: 'danger'
   }
   return map[priority] || ''
+}
+
+const handleFilterChange = () => {
+  pagination.page = 1 // 重置到第一页
+  loadTickets()
 }
 
 onMounted(() => {

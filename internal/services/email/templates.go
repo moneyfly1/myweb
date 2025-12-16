@@ -20,7 +20,12 @@ func NewEmailTemplateBuilder() *EmailTemplateBuilder {
 	return &EmailTemplateBuilder{}
 }
 
-// getBaseURL 获取基础URL
+// GetBaseURL 获取基础URL（公开方法）
+func (b *EmailTemplateBuilder) GetBaseURL() string {
+	return b.getBaseURL()
+}
+
+// getBaseURL 获取基础URL（内部方法）
 func (b *EmailTemplateBuilder) getBaseURL() string {
 	// 优先从数据库配置获取
 	db := database.GetDB()
@@ -35,12 +40,12 @@ func (b *EmailTemplateBuilder) getBaseURL() string {
 			return domain
 		}
 	}
-	
+
 	// 从配置文件获取
 	if config.AppConfig.BaseURL != "" {
 		return config.AppConfig.BaseURL
 	}
-	
+
 	// 默认值
 	return "http://localhost:5173"
 }
@@ -49,7 +54,7 @@ func (b *EmailTemplateBuilder) getBaseURL() string {
 func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string) string {
 	currentYear := time.Now().Year()
 	siteName := "网络服务"
-	
+
 	baseTemplate := `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -148,7 +153,7 @@ func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificatio
                 <p><strong>⚠️ 安全提示：</strong></p>
                 <p>请勿将验证码告知他人。如果这不是您本人的操作，请忽略此邮件。您的账户安全对我们非常重要。</p>
             </div>`, username, verificationCode)
-	
+
 	return b.GetBaseTemplate(title, content, "完成注册，开启您的专属网络体验")
 }
 
@@ -191,7 +196,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink stri
                 </ul>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">如果您没有请求重置密码，请忽略此邮件</p>`, username, username, resetLink, resetLink)
-	
+
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
 
@@ -219,14 +224,14 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
                 <p><strong>⚠️ 安全提示：</strong></p>
                 <p>请勿将验证码告知他人。如果这不是您本人的操作，请立即忽略此邮件并联系客服。您的账户安全对我们非常重要。</p>
             </div>`, username, verificationCode)
-	
+
 	return b.GetBaseTemplate(title, content, "安全重置您的账户密码")
 }
 
 // GetSubscriptionTemplate 获取订阅信息邮件模板
 func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, v2rayURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
 	title := "服务配置信息"
-	
+
 	urlList := ""
 	if v2rayURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">
@@ -242,12 +247,12 @@ func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, v2rayURL, clash
                         <code class="url-code">%s</code>
                     </div>`, clashURL)
 	}
-	
+
 	remainingColor := "#e74c3c"
 	if remainingDays > 7 {
 		remainingColor = "#27ae60"
 	}
-	
+
 	content := fmt.Sprintf(`<h2>您的服务配置信息</h2>
             <p>亲爱的 %s，</p>
             <p>您的服务配置已生成完成，请查收以下信息：</p>
@@ -273,7 +278,7 @@ func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, v2rayURL, clash
                     <li>服务到期前会收到续费提醒邮件</li>
                 </ul>
             </div>`, username, remainingColor, expireTime, remainingColor, remainingDays, deviceLimit, currentDevices, deviceLimit, urlList)
-	
+
 	return b.GetBaseTemplate(title, content, "享受高速稳定的网络服务")
 }
 
@@ -304,7 +309,7 @@ func (b *EmailTemplateBuilder) GetOrderConfirmationTemplate(username, orderNo, p
                 </ul>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">感谢您选择我们的服务！</p>`, username, orderNo, packageName, amount, paymentMethod, orderTime)
-	
+
 	return b.GetBaseTemplate(title, content, "开启您的专属网络体验")
 }
 
@@ -335,19 +340,19 @@ func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, pack
                 </ul>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, orderNo, packageName, amount, paymentMethod, paymentTime)
-	
+
 	return b.GetBaseTemplate(title, content, "感谢您的信任")
 }
 
 // GetWelcomeTemplate 获取欢迎邮件模板
 func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL string, hasPassword bool, password string) string {
 	title := "欢迎加入我们！"
-	
+
 	passwordRow := ""
 	if hasPassword && password != "" {
 		passwordRow = fmt.Sprintf(`<tr><th>登录密码</th><td style="color: #667eea; font-weight: bold; font-size: 16px;">%s</td></tr>`, password)
 	}
-	
+
 	content := fmt.Sprintf(`<h2>您的账户注册成功</h2>
             <p>亲爱的 %s，</p>
             <p>欢迎加入我们的网络服务平台！您的账户已成功创建，现在可以开始使用我们的服务了。</p>
@@ -371,7 +376,7 @@ func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL stri
             <div style="text-align: center; margin: 30px 0;">
                 <a href="%s" class="btn">立即登录</a>
             </div>`, username, username, email, passwordRow, loginURL, loginURL, loginURL)
-	
+
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }
 
@@ -410,14 +415,14 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
                 </ul>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, changeTime, loginURL)
-	
+
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
 
 // GetSubscriptionResetTemplate 获取订阅重置邮件模板
 func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, v2rayURL, clashURL, expireTime, resetTime, resetReason string) string {
 	title := "订阅重置通知"
-	
+
 	urlList := ""
 	if v2rayURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">
@@ -433,9 +438,9 @@ func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, v2rayURL, 
                         <code class="url-code">%s</code>
                     </div>`, clashURL)
 	}
-	
+
 	baseURL := b.getBaseURL()
-	
+
 	content := fmt.Sprintf(`<h2>🔄 您的订阅已重置</h2>
             <p>亲爱的 %s，</p>
             <p>您的订阅地址已被重置，请使用新的订阅地址更新您的客户端配置。</p>
@@ -475,7 +480,7 @@ func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, v2rayURL, 
                 <a href="%s/dashboard" class="btn">查看订阅详情</a>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, resetTime, resetReason, expireTime, urlList, baseURL)
-	
+
 	return b.GetBaseTemplate(title, content, "请及时更新您的客户端配置")
 }
 
@@ -501,7 +506,7 @@ func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate
                 </ul>
             </div>
             <p>感谢您曾经选择我们的服务！</p>`, username, reason, deletionDate, dataRetentionPeriod)
-	
+
 	return b.GetBaseTemplate(title, content, "感谢您曾经选择我们的服务")
 }
 
@@ -510,7 +515,7 @@ func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email
 	title := "账号删除提醒"
 	baseURL := b.getBaseURL()
 	loginURL := fmt.Sprintf("%s/login", baseURL)
-	
+
 	content := fmt.Sprintf(`<h2>⚠️ 账号删除提醒</h2>
             <p>亲爱的 %s，</p>
             <p>我们注意到您的账号已经<strong>30天未登录</strong>，且<strong>没有有效的付费套餐</strong>。</p>
@@ -545,7 +550,7 @@ func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email
                 </ul>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, email, lastLogin, daysUntilDeletion, loginURL, loginURL)
-	
+
 	return b.GetBaseTemplate(title, content, "请及时登录以保留您的账号")
 }
 
@@ -555,9 +560,9 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
 	if !isExpired {
 		title = "订阅即将到期"
 	}
-	
+
 	baseURL := b.getBaseURL()
-	
+
 	var headerContent string
 	if isExpired {
 		headerContent = fmt.Sprintf(`<h2>⚠️ 服务已到期</h2>
@@ -584,12 +589,12 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
                 </ul>
             </div>`, username, expireDate)
 	}
-	
+
 	remainingDaysRow := ""
 	if !isExpired && remainingDays > 0 {
 		remainingDaysRow = fmt.Sprintf(`<tr><th>剩余天数</th><td style="color: #ffc107; font-weight: bold;">%d 天</td></tr>`, remainingDays)
 	}
-	
+
 	warningBox := ""
 	if isExpired {
 		warningBox = `<div class="warning-box">
@@ -601,12 +606,12 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
                 </ul>
             </div>`
 	}
-	
+
 	buttonText := "查看订阅详情"
 	if isExpired {
 		buttonText = "立即续费"
 	}
-	
+
 	content := fmt.Sprintf(`%s
             <div class="info-box">
                 <h3>📋 订阅详情</h3>
@@ -632,7 +637,7 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
                 </ul>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, headerContent, username, packageName, expireDate, remainingDaysRow, deviceLimit, currentDevices, deviceLimit, warningBox, baseURL, buttonText)
-	
+
 	return b.GetBaseTemplate(title, content, "我们期待继续为您服务")
 }
 
@@ -640,7 +645,7 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
 func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageName, oldExpiryDate, newExpiryDate, renewalDate string, amount float64) string {
 	title := "续费成功"
 	baseURL := b.getBaseURL()
-	
+
 	content := fmt.Sprintf(`<h2>🎉 续费成功！</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
             <p>恭喜！您的服务续费已成功完成，服务时间已自动延长。</p>
@@ -667,14 +672,14 @@ func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageN
                 <a href="%s/dashboard" class="btn">查看订阅详情</a>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">感谢您的续费，祝您使用愉快！</p>`, username, packageName, oldExpiryDate, newExpiryDate, amount, renewalDate, baseURL)
-	
+
 	return b.GetBaseTemplate(title, content, "开启您的专属网络体验")
 }
 
 // GetMarketingEmailTemplate 获取营销邮件模板
 func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) string {
 	baseURL := b.getBaseURL()
-	
+
 	emailContent := fmt.Sprintf(`<h2>%s</h2>
             <div class="info-box">
                 <div style="line-height: 1.8; color: #555;">%s</div>
@@ -683,7 +688,7 @@ func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) 
                 <a href="%s/dashboard" class="btn">查看详情</a>
             </div>
             <p style="text-align: center; color: #666; font-size: 14px;">此邮件来自 网络服务</p>`, title, strings.ReplaceAll(content, "\n", "<br>"), baseURL)
-	
+
 	return b.GetBaseTemplate(title, emailContent, "感谢您的关注")
 }
 
@@ -693,7 +698,192 @@ func (b *EmailTemplateBuilder) GetBroadcastNotificationTemplate(title, content s
                 <h2>%s</h2>
                 <div style="line-height: 1.8; color: #555;">%s</div>
             </div>`, title, strings.ReplaceAll(content, "\n", "<br>"))
-	
+
 	return b.GetBaseTemplate(title, emailContent, "此邮件由系统自动发送，请勿回复。")
 }
 
+// GetAdminNotificationTemplate 获取管理员通知邮件模板（规范工整格式）
+func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, title, body string, data map[string]interface{}) string {
+	var content string
+
+	switch notificationType {
+	case "order_paid":
+		orderNo := getStringFromData(data, "order_no", "N/A")
+		username := getStringFromData(data, "username", "N/A")
+		amount := getFloatFromData(data, "amount", 0)
+		packageName := getStringFromData(data, "package_name", "未知套餐")
+		paymentMethod := getStringFromData(data, "payment_method", "未知")
+		paymentTime := getStringFromData(data, "payment_time", "N/A")
+		content = fmt.Sprintf(`<h2>💰 新订单支付成功</h2>
+            <p>系统检测到一笔新的订单支付，详情如下：</p>
+            <div class="success-box">
+                <h3>📋 订单信息</h3>
+                <table class="info-table">
+                    <tr><th>订单号</th><td><strong style="font-family: 'Courier New', monospace;">%s</strong></td></tr>
+                    <tr><th>用户账号</th><td>%s</td></tr>
+                    <tr><th>套餐名称</th><td><strong>%s</strong></td></tr>
+                    <tr><th>支付金额</th><td style="color: #27ae60; font-weight: bold; font-size: 18px;">¥%.2f</td></tr>
+                    <tr><th>支付方式</th><td>%s</td></tr>
+                    <tr><th>支付时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>订单已自动处理，订阅已激活，用户可立即使用服务。</p>
+            </div>`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
+
+	case "user_registered":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		registerTime := getStringFromData(data, "register_time", "N/A")
+		content = fmt.Sprintf(`<h2>👤 新用户注册</h2>
+            <p>系统检测到新用户注册，详情如下：</p>
+            <div class="info-box">
+                <h3>📋 用户信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>注册邮箱</th><td>%s</td></tr>
+                    <tr><th>注册时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>新用户已自动创建默认订阅，可引导用户购买套餐激活服务。</p>
+            </div>`, username, email, registerTime)
+
+	case "password_reset":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		resetTime := getStringFromData(data, "reset_time", "N/A")
+		content = fmt.Sprintf(`<h2>🔐 用户重置密码</h2>
+            <p>系统检测到用户重置密码操作，详情如下：</p>
+            <div class="warning-box">
+                <h3>📋 重置信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>重置时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="warning-box">
+                <p><strong>⚠️ 安全提醒：</strong>如非用户本人操作，请及时检查账户安全。</p>
+            </div>`, username, email, resetTime)
+
+	case "subscription_sent":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		sendTime := getStringFromData(data, "send_time", "N/A")
+		content = fmt.Sprintf(`<h2>📧 用户发送订阅</h2>
+            <p>系统检测到用户发送订阅邮件，详情如下：</p>
+            <div class="info-box">
+                <h3>📋 发送信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>发送时间</th><td>%s</td></tr>
+                </table>
+            </div>`, username, email, sendTime)
+
+	case "subscription_reset":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		resetTime := getStringFromData(data, "reset_time", "N/A")
+		content = fmt.Sprintf(`<h2>🔄 用户重置订阅</h2>
+            <p>系统检测到用户重置订阅地址，详情如下：</p>
+            <div class="info-box">
+                <h3>📋 重置信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>重置时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>订阅地址已重置，旧地址已失效，用户设备记录已清空。</p>
+            </div>`, username, email, resetTime)
+
+	case "subscription_expired":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		expireTime := getStringFromData(data, "expire_time", "N/A")
+		content = fmt.Sprintf(`<h2>⏰ 订阅已过期</h2>
+            <p>系统检测到用户订阅已过期，详情如下：</p>
+            <div class="warning-box">
+                <h3>📋 过期信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>过期时间</th><td style="color: #e74c3c; font-weight: bold;">%s</td></tr>
+                </table>
+            </div>
+            <div class="warning-box">
+                <p><strong>💡 提示：</strong>用户订阅已过期，建议引导用户续费以恢复服务。</p>
+            </div>`, username, email, expireTime)
+
+	case "user_created":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		createdBy := getStringFromData(data, "created_by", "N/A")
+		createTime := getStringFromData(data, "create_time", "N/A")
+		content = fmt.Sprintf(`<h2>📋 管理员创建用户</h2>
+            <p>系统检测到管理员创建新用户，详情如下：</p>
+            <div class="success-box">
+                <h3>📋 账户信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong style="font-family: 'Courier New', monospace;">%s</strong></td></tr>
+                    <tr><th>注册邮箱</th><td>%s</td></tr>
+                    <tr><th>创建者</th><td>👤 %s</td></tr>
+                    <tr><th>创建时间</th><td>⏰ %s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>✅ 用户账户已成功创建</strong></p>
+            </div>`, username, email, createdBy, createTime)
+
+	case "subscription_created":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		packageName := getStringFromData(data, "package_name", "未知套餐")
+		createTime := getStringFromData(data, "create_time", "N/A")
+		content = fmt.Sprintf(`<h2>📦 订阅创建</h2>
+            <p>系统检测到新订阅创建，详情如下：</p>
+            <div class="success-box">
+                <h3>📋 订阅信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>套餐名称</th><td><strong>%s</strong></td></tr>
+                    <tr><th>创建时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>订阅已创建并激活，用户可立即使用服务。</p>
+            </div>`, username, email, packageName, createTime)
+
+	default:
+		content = fmt.Sprintf(`<div class="content">
+                <h2>%s</h2>
+                <div style="line-height: 1.8; color: #555;">%s</div>
+            </div>`, title, strings.ReplaceAll(body, "\n", "<br>"))
+	}
+
+	return b.GetBaseTemplate(title, content, "此邮件由系统自动发送，请勿回复。")
+}
+
+// Helper functions for template
+func getStringFromData(data map[string]interface{}, key string, defaultValue string) string {
+	if val, ok := data[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+		return fmt.Sprintf("%v", val)
+	}
+	return defaultValue
+}
+
+func getFloatFromData(data map[string]interface{}, key string, defaultValue float64) float64 {
+	if val, ok := data[key]; ok {
+		if f, ok := val.(float64); ok {
+			return f
+		}
+	}
+	return defaultValue
+}

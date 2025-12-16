@@ -10,6 +10,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
 
@@ -33,9 +34,27 @@ func GetPaymentMethods(c *gin.Context) {
 	// 只返回必要信息，不返回敏感配置
 	result := make([]map[string]interface{}, 0)
 	for _, method := range methods {
+		// 支付方式名称映射
+		nameMap := map[string]string{
+			"alipay":   "支付宝",
+			"wechat":   "微信支付",
+			"yipay":    "易支付",
+			"paypal":   "PayPal",
+			"applepay": "Apple Pay",
+			"stripe":   "Stripe",
+			"bank":     "银行转账",
+		}
+
+		name := nameMap[method.PayType]
+		if name == "" {
+			name = method.PayType
+		}
+
 		result = append(result, map[string]interface{}{
 			"id":       method.ID,
+			"key":      method.PayType, // 前端使用的key
 			"pay_type": method.PayType,
+			"name":     name, // 显示名称
 			"status":   method.Status,
 		})
 	}
@@ -134,24 +153,43 @@ func CreatePayment(c *gin.Context) {
 
 	// 根据支付方式调用相应的支付接口
 	var paymentURL string
-	var err error
+	var paymentErr error
 
 	paymentMethod := paymentConfig.PayType
-	if paymentMethod == "alipay" {
+	switch paymentMethod {
+	case "alipay":
 		alipayService, err := payment.NewAlipayService(&paymentConfig)
 		if err == nil {
-			paymentURL, err = alipayService.CreatePayment(&order, float64(amount)/100)
+			paymentURL, paymentErr = alipayService.CreatePayment(&order, float64(amount)/100)
+		} else {
+			paymentErr = err
 		}
-	} else if paymentMethod == "wechat" {
+	case "wechat":
 		wechatService, err := payment.NewWechatService(&paymentConfig)
 		if err == nil {
-			paymentURL, err = wechatService.CreatePayment(&order, float64(amount)/100)
+			paymentURL, paymentErr = wechatService.CreatePayment(&order, float64(amount)/100)
+		} else {
+			paymentErr = err
+		}
+	case "paypal":
+		paypalService, err := payment.NewPayPalService(&paymentConfig)
+		if err == nil {
+			paymentURL, paymentErr = paypalService.CreatePayment(&order, float64(amount)/100)
+		} else {
+			paymentErr = err
+		}
+	case "applepay":
+		applePayService, err := payment.NewApplePayService(&paymentConfig)
+		if err == nil {
+			paymentURL, paymentErr = applePayService.CreatePayment(&order, float64(amount)/100)
+		} else {
+			paymentErr = err
 		}
 	}
 
-	if err != nil {
+	if paymentErr != nil {
 		// 不向客户端返回详细错误信息，防止信息泄露
-		utils.LogError("CreatePayment: generate payment URL", err, map[string]interface{}{
+		utils.LogError("CreatePayment: generate payment URL", paymentErr, map[string]interface{}{
 			"order_id":       order.ID,
 			"payment_method": paymentMethod,
 		})
@@ -180,36 +218,55 @@ func PaymentNotify(c *gin.Context) {
 
 	// 获取回调参数
 	params := make(map[string]string)
-	if paymentType == "alipay" {
-		// 支付宝回调参数在 query 中
+	// 优先从 form 获取（POST回调）
+	if err := c.Request.ParseForm(); err == nil {
+		for k, v := range c.Request.PostForm {
+			if len(v) > 0 {
+				params[k] = v[0]
+			}
+		}
+	}
+	// 如果form中没有，从query获取
+	if len(params) == 0 {
 		for k, v := range c.Request.URL.Query() {
 			if len(v) > 0 {
 				params[k] = v[0]
 			}
 		}
-	} else if paymentType == "wechat" {
-		// 微信回调参数在 body 中（XML格式）
-		// 这里简化处理，实际需要解析 XML
 	}
 
 	// 获取支付配置
 	var paymentConfig models.PaymentConfig
-	if err := db.Where("type = ? AND is_active = ?", paymentType, true).First(&paymentConfig).Error; err != nil {
+	if err := db.Where("pay_type = ? AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+		utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
+			"payment_type": paymentType,
+		})
 		c.String(http.StatusBadRequest, "支付配置不存在")
 		return
 	}
 
 	// 验证签名
 	var verified bool
-	if paymentType == "alipay" {
+	switch paymentType {
+	case "alipay":
 		alipayService, err := payment.NewAlipayService(&paymentConfig)
 		if err == nil {
 			verified = alipayService.VerifyNotify(params)
 		}
-	} else if paymentType == "wechat" {
+	case "wechat":
 		wechatService, err := payment.NewWechatService(&paymentConfig)
 		if err == nil {
 			verified = wechatService.VerifyNotify(params)
+		}
+	case "paypal":
+		paypalService, err := payment.NewPayPalService(&paymentConfig)
+		if err == nil {
+			verified = paypalService.VerifyNotify(params)
+		}
+	case "applepay":
+		applePayService, err := payment.NewApplePayService(&paymentConfig)
+		if err == nil {
+			verified = applePayService.VerifyNotify(params)
 		}
 	}
 
@@ -226,6 +283,26 @@ func PaymentNotify(c *gin.Context) {
 	// 获取订单号和外部交易号（用于幂等性检查）
 	orderNo := params["out_trade_no"]
 	externalTransactionID := params["trade_no"] // 支付宝/微信的交易号
+
+	// 支付宝回调中，trade_status 字段表示交易状态
+	// TRADE_SUCCESS: 交易成功
+	// TRADE_FINISHED: 交易完成
+	// WAIT_BUYER_PAY: 等待买家付款
+	// TRADE_CLOSED: 交易关闭
+	if paymentType == "alipay" {
+		tradeStatus := params["trade_status"]
+		if tradeStatus != "TRADE_SUCCESS" && tradeStatus != "TRADE_FINISHED" {
+			// 如果不是成功状态，记录日志但返回success，避免支付宝重复回调
+			utils.LogError("PaymentNotify: trade status not success", nil, map[string]interface{}{
+				"payment_type": paymentType,
+				"order_no":     orderNo,
+				"trade_status": tradeStatus,
+			})
+			c.String(http.StatusOK, "success")
+			return
+		}
+	}
+
 	if orderNo == "" {
 		utils.LogError("PaymentNotify: missing order number", nil, map[string]interface{}{
 			"payment_type": paymentType,
@@ -339,7 +416,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 提交事务
+	// 提交事务（只有在事务成功提交后，订单状态才会真正更新为 paid）
 	if err := tx.Commit().Error; err != nil {
 		utils.LogError("PaymentNotify: failed to commit transaction", err, map[string]interface{}{
 			"order_no": orderNo,
@@ -348,96 +425,171 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
-	// 获取用户信息
-	var user models.User
-	if err := db.First(&user, order.UserID).Error; err != nil {
-		fmt.Printf("获取用户信息失败: %v\n", err)
-		c.String(http.StatusOK, "success") // 仍然返回成功，避免支付平台重复回调
-		return
-	}
+	// 事务提交成功后，订单状态已更新为 paid
+	// 现在可以安全地处理后续逻辑（订阅、邮件等）
+	// 处理不同类型的订单（在事务外处理，避免长时间占用事务）
+	go func() {
+		// 获取最新的订单信息
+		var latestOrder models.Order
+		if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&latestOrder).Error; err != nil {
+			utils.LogError("PaymentNotify: failed to reload order", err, map[string]interface{}{
+				"order_no": orderNo,
+			})
+			return
+		}
 
-	// 处理不同类型的订单
-	if order.PackageID > 0 {
-		// 套餐订单：开通或延长订阅
-		var pkg models.Package
-		if err := db.First(&pkg, order.PackageID).Error; err == nil {
-			subscription, err := processPaidOrderInPayment(db, &order, &pkg, &user)
-			if err != nil {
-				utils.LogError("PaymentNotify: process subscription failed", err, map[string]interface{}{
-					"order_id": order.ID,
-				})
-			} else if subscription != nil {
-				// 发送支付成功邮件
-				go func() {
-					emailService := email.NewEmailService()
-					templateBuilder := email.NewEmailTemplateBuilder()
+		// 关键验证：只有在订单状态确实为 "paid" 时才处理
+		// 这确保只有在支付回调验证成功、订单状态已更新为已支付后，才发送邮件和处理订阅
+		if latestOrder.Status != "paid" {
+			utils.LogError("PaymentNotify: order status is not paid, skipping processing", nil, map[string]interface{}{
+				"order_no":     orderNo,
+				"order_status": latestOrder.Status,
+			})
+			return
+		}
+
+		// 获取用户信息
+		var latestUser models.User
+		if err := db.First(&latestUser, latestOrder.UserID).Error; err != nil {
+			utils.LogError("PaymentNotify: failed to get user", err, map[string]interface{}{
+				"user_id": latestOrder.UserID,
+			})
+			return
+		}
+
+		// 处理套餐订单
+		if latestOrder.PackageID > 0 {
+			var pkg models.Package
+			if err := db.First(&pkg, latestOrder.PackageID).Error; err == nil {
+				subscription, err := processPaidOrderInPayment(db, &latestOrder, &pkg, &latestUser)
+				if err != nil {
+					utils.LogError("PaymentNotify: process subscription failed", err, map[string]interface{}{
+						"order_id": latestOrder.ID,
+					})
+				} else if subscription != nil {
+					// 再次验证订单状态为 paid（双重检查，确保安全）
+					var verifyOrder models.Order
+					if err := db.Where("order_no = ? AND status = ?", orderNo, "paid").First(&verifyOrder).Error; err != nil {
+						utils.LogError("PaymentNotify: order status verification failed, not sending email", err, map[string]interface{}{
+							"order_no": orderNo,
+						})
+						return
+					}
+
+					// 准备支付信息（用于管理员通知和客户邮件）
 					paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
-					paidAmount := order.Amount
-					if order.FinalAmount.Valid {
-						paidAmount = order.FinalAmount.Float64
+					paidAmount := latestOrder.Amount
+					if latestOrder.FinalAmount.Valid {
+						paidAmount = latestOrder.FinalAmount.Float64
 					}
 					paymentMethod := "在线支付"
-					if order.PaymentMethodName.Valid {
-						paymentMethod = order.PaymentMethodName.String
+					if latestOrder.PaymentMethodName.Valid {
+						paymentMethod = latestOrder.PaymentMethodName.String
 					}
-					content := templateBuilder.GetPaymentSuccessTemplate(
-						user.Username,
-						order.OrderNo,
-						pkg.Name,
-						paidAmount,
-						paymentMethod,
-						paymentTime,
-					)
-					subject := "支付成功通知"
-					_ = emailService.QueueEmail(user.Email, subject, content, "payment_success")
-				}()
-			}
-		}
-	} else {
-		// 设备升级订单：从 ExtraData 中解析升级信息
-		var additionalDevices int
-		var additionalDays int
 
-		if order.ExtraData.Valid && order.ExtraData.String != "" {
-			// 解析 JSON
-			var extraData map[string]interface{}
-			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-				if extraData["type"] == "device_upgrade" {
-					if devices, ok := extraData["additional_devices"].(float64); ok {
-						additionalDevices = int(devices)
-					}
-					if days, ok := extraData["additional_days"].(float64); ok {
-						additionalDays = int(days)
-					}
-				}
-			}
-		}
+					// 发送订阅信息邮件（付款成功后直接发送订阅信息，不再发送支付成功通知）
+					// 检查客户通知开关
+					if notification.ShouldSendCustomerNotification("new_order") {
+						go func() {
+							emailService := email.NewEmailService()
+							templateBuilder := email.NewEmailTemplateBuilder()
 
-		// 如果有升级信息，处理订阅升级
-		if additionalDevices > 0 || additionalDays > 0 {
-			var subscription models.Subscription
-			if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err == nil {
-				// 升级设备数量
-				if additionalDevices > 0 {
-					subscription.DeviceLimit += additionalDevices
+							// 获取订阅信息
+							var subscriptionInfo models.Subscription
+							if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
+								// 使用 EmailTemplateBuilder 的 GetBaseURL 方法获取基础URL
+								baseURL := templateBuilder.GetBaseURL()
+								timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+								v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)
+								clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)
+
+								// 计算到期时间和剩余天数
+								expireTime := "未设置"
+								remainingDays := 0
+								if !subscriptionInfo.ExpireTime.IsZero() {
+									expireTime = subscriptionInfo.ExpireTime.Format("2006-01-02 15:04:05")
+									now := utils.GetBeijingTime()
+									diff := subscriptionInfo.ExpireTime.Sub(now)
+									if diff > 0 {
+										remainingDays = int(diff.Hours() / 24)
+									}
+								}
+
+								content := templateBuilder.GetSubscriptionTemplate(
+									latestUser.Username,
+									v2rayURL,
+									clashURL,
+									expireTime,
+									remainingDays,
+									subscriptionInfo.DeviceLimit,
+									subscriptionInfo.CurrentDevices,
+								)
+								subject := "服务配置信息"
+								_ = emailService.QueueEmail(latestUser.Email, subject, content, "subscription")
+							}
+						}()
+					}
+
+					// 发送管理员通知
+					go func() {
+						notificationService := notification.NewNotificationService()
+						_ = notificationService.SendAdminNotification("order_paid", map[string]interface{}{
+							"order_no":       latestOrder.OrderNo,
+							"username":       latestUser.Username,
+							"amount":         paidAmount,
+							"package_name":   pkg.Name,
+							"payment_method": paymentMethod,
+							"payment_time":   paymentTime,
+						})
+					}()
 				}
-				// 延长订阅时间
-				if additionalDays > 0 {
-					now := utils.GetBeijingTime()
-					if subscription.ExpireTime.Before(now) {
-						subscription.ExpireTime = now.AddDate(0, 0, additionalDays)
-					} else {
-						subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, additionalDays)
+			}
+		} else {
+			// 设备升级订单：从 ExtraData 中解析升级信息
+			var additionalDevices int
+			var additionalDays int
+
+			if latestOrder.ExtraData.Valid && latestOrder.ExtraData.String != "" {
+				// 解析 JSON
+				var extraData map[string]interface{}
+				if err := json.Unmarshal([]byte(latestOrder.ExtraData.String), &extraData); err == nil {
+					if extraData["type"] == "device_upgrade" {
+						if devices, ok := extraData["additional_devices"].(float64); ok {
+							additionalDevices = int(devices)
+						}
+						if days, ok := extraData["additional_days"].(float64); ok {
+							additionalDays = int(days)
+						}
 					}
 				}
-				if err := db.Save(&subscription).Error; err != nil {
-					utils.LogError("PaymentNotify: upgrade devices failed", err, map[string]interface{}{
-						"order_id": order.ID,
-					})
+			}
+
+			// 如果有升级信息，处理订阅升级
+			if additionalDevices > 0 || additionalDays > 0 {
+				var subscription models.Subscription
+				if err := db.Where("user_id = ?", latestUser.ID).First(&subscription).Error; err == nil {
+					// 升级设备数量
+					if additionalDevices > 0 {
+						subscription.DeviceLimit += additionalDevices
+					}
+					// 延长订阅时间
+					if additionalDays > 0 {
+						now := utils.GetBeijingTime()
+						if subscription.ExpireTime.Before(now) {
+							subscription.ExpireTime = now.AddDate(0, 0, additionalDays)
+						} else {
+							subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, additionalDays)
+						}
+					}
+					if err := db.Save(&subscription).Error; err != nil {
+						utils.LogError("PaymentNotify: upgrade devices failed", err, map[string]interface{}{
+							"order_id": latestOrder.ID,
+						})
+					}
 				}
 			}
 		}
-	}
+	}()
 
 	c.String(http.StatusOK, "success")
 }
@@ -466,13 +618,17 @@ func processPaidOrderInPayment(db *gorm.DB, order *models.Order, pkg *models.Pac
 		if err := db.Create(&subscription).Error; err != nil {
 			return nil, fmt.Errorf("创建订阅失败: %v", err)
 		}
+		fmt.Printf("processPaidOrderInPayment: ✅ 创建新订阅成功 - user_id=%d, package_id=%d, device_limit=%d, duration_days=%d, expire_time=%s\n",
+			user.ID, pkg.ID, pkg.DeviceLimit, pkg.DurationDays, expireTime.Format("2006-01-02 15:04:05"))
 	} else {
 		// 延长订阅
+		oldExpireTime := subscription.ExpireTime
 		if subscription.ExpireTime.Before(now) {
 			subscription.ExpireTime = now.AddDate(0, 0, pkg.DurationDays)
 		} else {
 			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, pkg.DurationDays)
 		}
+		oldDeviceLimit := subscription.DeviceLimit
 		subscription.DeviceLimit = pkg.DeviceLimit
 		subscription.IsActive = true
 		subscription.Status = "active"
@@ -482,6 +638,8 @@ func processPaidOrderInPayment(db *gorm.DB, order *models.Order, pkg *models.Pac
 		if err := db.Save(&subscription).Error; err != nil {
 			return nil, fmt.Errorf("更新订阅失败: %v", err)
 		}
+		fmt.Printf("processPaidOrderInPayment: ✅ 更新订阅成功 - user_id=%d, package_id=%d, device_limit: %d->%d, expire_time: %s->%s\n",
+			user.ID, pkg.ID, oldDeviceLimit, pkg.DeviceLimit, oldExpireTime.Format("2006-01-02 15:04:05"), subscription.ExpireTime.Format("2006-01-02 15:04:05"))
 	}
 
 	// 2. 更新用户累计消费

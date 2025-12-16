@@ -477,8 +477,8 @@ export default {
             username: data.username || '',
             email: data.email || '',
             is_verified: data.is_verified !== undefined ? data.is_verified : false,
-            last_login: data.last_login || null,
-            created_at: data.created_at || null,
+            last_login: data.last_login || data.lastLogin || data.last_login_time || null,
+            created_at: data.created_at || data.createdAt || null,
             status: data.is_active !== undefined ? (data.is_active ? 'active' : 'inactive') : 'active'
           }
           

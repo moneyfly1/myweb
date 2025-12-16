@@ -243,6 +243,36 @@
 
         <el-form-item label="应用ID" v-if="configForm.pay_type === 'alipay' || configForm.pay_type === 'wechat'">
           <el-input v-model="configForm.app_id" placeholder="请输入应用ID" style="width: 100%" />
+          <div class="form-tip" v-if="configForm.pay_type === 'alipay'">
+            <strong>⚠️ 重要提示：使用支付宝支付前必须完成以下步骤：</strong><br>
+            <strong>第一步：签约产品（必须）</strong><br>
+            1. 登录 <a href="https://open.alipay.com" target="_blank">支付宝开放平台</a><br>
+            2. 进入"控制台" → "应用管理" → 选择您的应用<br>
+            3. 在"产品列表"中，找到"当面付"产品<br>
+            4. 点击"签约"，完成产品签约（可能需要企业认证）<br>
+            5. 等待签约审核通过（通常需要1-3个工作日）<br><br>
+            <strong>第二步：应用上线（必须）</strong><br>
+            1. 在应用管理页面，确保应用状态为"已上线"<br>
+            2. 如果应用状态是"开发中"，需要提交审核并上线<br>
+            3. 只有已上线的应用才能使用支付接口<br><br>
+            <strong>第三步：配置密钥（必须）</strong><br>
+            1. 完成应用私钥和支付宝公钥的配置（见下方说明）<br>
+            2. 确保应用公钥已上传到支付宝后台<br><br>
+            <strong>第四步：配置回调地址（必须）</strong><br>
+            1. 在下方"异步回调地址"中填写：https://go.moneyfly.top/api/v1/payment/notify/alipay<br>
+            2. 在下方"同步回调地址"中填写：https://go.moneyfly.top/api/v1/payment/success<br>
+            3. <strong>重要：</strong>登录支付宝开放平台 → 开发设置 → 应用网关，填写相同的异步回调地址<br>
+            4. <strong>重要：</strong>登录支付宝开放平台 → 开发设置 → 收单异步通知，配置通知地址<br><br>
+            <strong>⚠️ 关于权限不足（40006错误）：</strong><br>
+            • <strong>权限不足的主要原因：</strong>未签约"当面付"产品或应用未上线<br>
+            • <strong>回调地址未配置不会导致权限不足，但会导致无法接收支付回调</strong><br>
+            • 必须先完成产品签约和应用上线，然后配置回调地址<br><br>
+            <strong>常见错误：</strong><br>
+            • <strong>40006 / insufficient-isv-permissions：</strong>未签约产品或应用未上线（与回调地址无关）<br>
+            • <strong>40004：</strong>AppID和私钥不匹配，或应用公钥未正确配置<br>
+            • <strong>40001：</strong>签名错误，检查私钥格式是否正确<br>
+            • <strong>无法接收回调：</strong>应用网关未配置或回调地址不正确
+          </div>
         </el-form-item>
         <el-form-item label="商户ID" v-if="configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay'">
           <el-input v-model="configForm.yipay_pid" placeholder="请输入易支付商户ID" style="width: 100%" />
@@ -303,20 +333,54 @@
           <el-input
             v-model="configForm.alipay_public_key"
             type="textarea"
-            :rows="isMobile ? 6 : 4"
-            placeholder="请输入支付宝公钥"
+            :rows="isMobile ? 8 : 6"
+            placeholder="请输入支付宝公钥（支持以下格式）：&#10;1. 完整PEM格式（推荐）：&#10;-----BEGIN PUBLIC KEY-----&#10;MIGfMA0GCSqGSIb3...&#10;-----END PUBLIC KEY-----&#10;&#10;2. 仅公钥内容（系统会自动格式化）：&#10;MIGfMA0GCSqGSIb3..."
             style="width: 100%"
           />
+          <div class="form-tip">
+            <strong>支付宝公钥获取步骤：</strong><br>
+            1. 登录支付宝开放平台：<a href="https://open.alipay.com" target="_blank">https://open.alipay.com</a><br>
+            2. 进入"控制台" → "应用管理" → 选择您的应用<br>
+            3. 在"接口加签方式"中，点击"查看"或"下载"<br>
+            4. 复制"支付宝公钥"（不是应用公钥！）<br>
+            5. 粘贴到此处（支持完整PEM格式或仅公钥内容）<br>
+            <strong>注意：</strong>这是支付宝提供的公钥，用于验证支付宝回调签名，不是您自己生成的应用公钥
+          </div>
         </el-form-item>
 
         <el-form-item label="商户私钥" v-if="configForm.pay_type === 'alipay'">
           <el-input
             v-model="configForm.merchant_private_key"
             type="textarea"
-            :rows="isMobile ? 6 : 4"
-            placeholder="请输入商户私钥"
+            :rows="isMobile ? 8 : 6"
+            placeholder="请输入商户私钥（支持以下格式）：&#10;1. 完整PEM格式（推荐）：&#10;-----BEGIN RSA PRIVATE KEY-----&#10;MIIEpAIBAAKCAQEA...&#10;-----END RSA PRIVATE KEY-----&#10;&#10;2. 仅私钥内容（系统会自动格式化）：&#10;MIIEpAIBAAKCAQEA..."
             style="width: 100%"
           />
+          <div class="form-tip">
+            <strong>应用私钥获取完整步骤：</strong><br>
+            <strong>第一步：生成密钥对</strong><br>
+            1. 下载"支付宝开发平台开发助手"：<a href="https://opendocs.alipay.com/common/02kkv7" target="_blank">下载链接</a><br>
+            2. 打开开发助手，选择"RSA2(SHA256)密钥"<br>
+            3. 点击"生成密钥"，生成密钥对（私钥和公钥）<br>
+            4. <strong>保存私钥文件</strong>（通常是 rsa_private_key.pem 或 rsa_private_key_pkcs8.pem）<br><br>
+            <strong>第二步：上传应用公钥到支付宝</strong><br>
+            1. 登录支付宝开放平台：<a href="https://open.alipay.com" target="_blank">https://open.alipay.com</a><br>
+            2. 进入"控制台" → "应用管理" → 选择您的应用<br>
+            3. 在"接口加签方式"中，点击"设置"<br>
+            4. 选择"公钥"模式，粘贴"应用公钥"（从开发助手复制的公钥）<br>
+            5. 保存设置<br><br>
+            <strong>第三步：配置私钥到系统</strong><br>
+            1. 打开保存的私钥文件（.pem文件）<br>
+            2. 复制完整内容（包括 BEGIN 和 END 标记）<br>
+            3. 粘贴到此处（支持以下格式）：<br>
+            &nbsp;&nbsp;• <strong>完整PEM格式（推荐）：</strong>包含 BEGIN 和 END 标记<br>
+            &nbsp;&nbsp;• <strong>简化格式：</strong>仅私钥内容（系统会自动格式化）<br>
+            &nbsp;&nbsp;• <strong>支持格式：</strong>PKCS1 或 PKCS8 格式的 RSA2 私钥（2048位）<br><br>
+            <strong>重要提示：</strong><br>
+            • 应用私钥：您自己生成的私钥，用于签名请求（配置在此处）<br>
+            • 应用公钥：从私钥生成的公钥，需要上传到支付宝后台<br>
+            • 支付宝公钥：支付宝提供的公钥，用于验证回调（配置在"支付宝公钥"字段）
+          </div>
         </el-form-item>
 
         <el-form-item label="支付宝网关" v-if="configForm.pay_type === 'alipay'">
@@ -395,12 +459,31 @@
           <el-input v-model="configForm.account_holder" placeholder="请输入账户持有人姓名" style="width: 100%" />
         </el-form-item>
 
-        <el-form-item label="同步回调地址">
+        <el-form-item label="同步回调地址" v-if="configForm.pay_type === 'alipay'">
+          <el-input v-model="configForm.return_url" placeholder="请输入同步回调地址" style="width: 100%" />
+          <div class="form-tip">
+            <strong>用途：</strong>支付完成后，用户浏览器跳转的地址（用于显示支付结果页面）<br>
+            <strong>填写示例：</strong>https://go.moneyfly.top/api/v1/payment/success<br>
+            <strong>注意：</strong>必须是公网可访问的HTTPS地址（生产环境）或HTTP地址（沙箱环境）
+          </div>
+        </el-form-item>
+
+        <el-form-item label="异步回调地址" v-if="configForm.pay_type === 'alipay'">
+          <el-input v-model="configForm.notify_url" placeholder="请输入异步回调地址" style="width: 100%" />
+          <div class="form-tip">
+            <strong>用途：</strong>支付完成后，支付宝服务器主动通知您的服务器的地址（用于更新订单状态）<br>
+            <strong>填写示例：</strong>https://go.moneyfly.top/api/v1/payment/notify/alipay<br>
+            <strong>注意：</strong>必须是公网可访问的HTTPS地址（生产环境）或HTTP地址（沙箱环境）<br>
+            <strong>⚠️ 重要：</strong>此地址需要同时在支付宝开放平台的"开发设置" → "应用网关"中配置，否则无法接收回调通知
+          </div>
+        </el-form-item>
+
+        <el-form-item label="同步回调地址" v-if="configForm.pay_type !== 'alipay'">
           <el-input v-model="configForm.return_url" placeholder="请输入同步回调地址" style="width: 100%" />
           <div class="form-tip">支付完成后跳转的地址</div>
         </el-form-item>
 
-        <el-form-item label="异步回调地址">
+        <el-form-item label="异步回调地址" v-if="configForm.pay_type !== 'alipay'">
           <el-input v-model="configForm.notify_url" placeholder="请输入异步回调地址" style="width: 100%" />
           <div class="form-tip">支付完成后服务器通知的地址</div>
         </el-form-item>
@@ -645,11 +728,44 @@ export default {
             configList = response.data
           }
         }
-        // 确保 status 是数字类型（1 或 0）
-        paymentConfigs.value = configList.map(config => ({
-          ...config,
-          status: config.status === 1 || config.status === true || config.status === '1' ? 1 : 0
-        }))
+        // 确保 status 是数字类型（1 或 0），并处理 sql.NullString 格式的字段
+        paymentConfigs.value = configList.map(config => {
+          // 处理 sql.NullString 格式的字段（可能是 {String: "...", Valid: true} 或直接字符串）
+          const extractValue = (value) => {
+            if (value === null || value === undefined) return ''
+            if (typeof value === 'string') return value
+            if (typeof value === 'object' && value.String !== undefined) {
+              return value.Valid ? value.String : ''
+            }
+            return String(value)
+          }
+
+          return {
+            ...config,
+            status: config.status === 1 || config.status === true || config.status === '1' ? 1 : 0,
+            // 提取 sql.NullString 字段的值
+            app_id: extractValue(config.app_id),
+            merchant_private_key: extractValue(config.merchant_private_key),
+            alipay_public_key: extractValue(config.alipay_public_key),
+            wechat_app_id: extractValue(config.wechat_app_id),
+            wechat_mch_id: extractValue(config.wechat_mch_id),
+            wechat_api_key: extractValue(config.wechat_api_key),
+            paypal_client_id: extractValue(config.paypal_client_id),
+            paypal_secret: extractValue(config.paypal_secret),
+            stripe_publishable_key: extractValue(config.stripe_publishable_key),
+            stripe_secret_key: extractValue(config.stripe_secret_key),
+            bank_name: extractValue(config.bank_name),
+            account_name: extractValue(config.account_name),
+            account_number: extractValue(config.account_number),
+            wallet_address: extractValue(config.wallet_address),
+            return_url: extractValue(config.return_url),
+            notify_url: extractValue(config.notify_url),
+            // 解析 config_json（可能是字符串或对象）
+            config_json: typeof config.config_json === 'string' 
+              ? (config.config_json ? JSON.parse(config.config_json) : {})
+              : (config.config_json || {})
+          }
+        })
         
         // 检查是否有易支付配置
         const yipayConfig = paymentConfigs.value.find(c => c.pay_type === 'yipay_alipay' || c.pay_type === 'yipay_wxpay')
@@ -679,19 +795,24 @@ export default {
         const requestData = {
           pay_type: configForm.pay_type,
           status: configForm.status,
-          return_url: configForm.return_url,
-          notify_url: configForm.notify_url,
+          return_url: configForm.return_url || '',
+          notify_url: configForm.notify_url || '',
           sort_order: configForm.sort_order || 0
         }
 
         // 根据支付类型添加特定配置
         if (configForm.pay_type === 'alipay') {
-          requestData.app_id = configForm.app_id
-          requestData.merchant_private_key = configForm.merchant_private_key
-          requestData.alipay_public_key = configForm.alipay_public_key
+          // 确保所有字段都被发送，即使为空字符串（后端需要指针类型才能更新）
+          requestData.app_id = configForm.app_id !== undefined ? configForm.app_id : ''
+          requestData.merchant_private_key = configForm.merchant_private_key !== undefined ? configForm.merchant_private_key : ''
+          requestData.alipay_public_key = configForm.alipay_public_key !== undefined ? configForm.alipay_public_key : ''
           // 将 gateway_url 保存到 config_json 中（统一使用 gateway_url 键名）
+          // 同时保存 is_production 标志（根据网关地址判断）
+          const gateway = configForm.alipay_gateway || 'https://openapi.alipay.com/gateway.do'
+          const isProduction = !gateway.includes('alipaydev.com')
           requestData.config_json = {
-            gateway_url: configForm.alipay_gateway || 'https://openapi.alipay.com/gateway.do'
+            gateway_url: gateway,
+            is_production: isProduction
           }
         } else if (configForm.pay_type === 'wechat') {
           requestData.app_id = configForm.app_id
@@ -782,8 +903,8 @@ export default {
         alipay_public_key: config.alipay_public_key || configData.alipay_public_key || '',
         alipay_gateway: configData.gateway_url || configData.alipay_gateway || config.gateway_url || config.alipay_gateway || 'https://openapi.alipay.com/gateway.do',
         // 微信支付配置
-        wechat_mch_id: config.wechat_mch_id || configData.mch_id || '',
-        wechat_api_key: config.wechat_api_key || configData.api_key || '',
+        wechat_mch_id: config.wechat_mch_id || '',
+        wechat_api_key: config.wechat_api_key || '',
         // 易支付配置
         yipay_type: configData.yipay_type || 'alipay',  // 支付类型
         yipay_sign_type: configData.yipay_sign_type || 'RSA',  // 签名类型
@@ -793,13 +914,13 @@ export default {
         yipay_gateway: configData.yipay_gateway || 'https://pay.yi-zhifu.cn/',
         yipay_md5_key: configData.yipay_md5_key || '',
         // PayPal配置
-        paypal_client_id: config.paypal_client_id || configData.paypal_client_id || configData.client_id || '',
-        paypal_secret: config.paypal_secret || configData.paypal_secret || configData.secret || '',
-        paypal_mode: config.paypal_mode || configData.paypal_mode || 'sandbox',
+        paypal_client_id: config.paypal_client_id || '',
+        paypal_secret: config.paypal_secret || '',
+        paypal_mode: configData.paypal_mode || configData.is_production === false ? 'sandbox' : 'production',
         // Stripe配置
-        stripe_publishable_key: config.stripe_publishable_key || configData.stripe_publishable_key || configData.publishable_key || '',
-        stripe_secret_key: config.stripe_secret_key || configData.stripe_secret_key || configData.secret_key || '',
-        stripe_webhook_secret: config.stripe_webhook_secret || configData.stripe_webhook_secret || '',
+        stripe_publishable_key: config.stripe_publishable_key || '',
+        stripe_secret_key: config.stripe_secret_key || '',
+        stripe_webhook_secret: config.stripe_webhook_secret || '',
         // 码支付配置
         codepay_id: configData.codepay_id || '',
         codepay_token: configData.codepay_token || '',
@@ -814,6 +935,14 @@ export default {
         status: config.status !== undefined ? config.status : 1,
         sort_order: config.sort_order || 0
       })
+      
+      // 确保所有字段都有值（避免 undefined）
+      Object.keys(configForm).forEach(key => {
+        if (configForm[key] === undefined) {
+          configForm[key] = ''
+        }
+      })
+      
       showAddDialog.value = true
     }
 

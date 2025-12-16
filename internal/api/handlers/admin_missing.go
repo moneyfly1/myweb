@@ -514,8 +514,8 @@ func UpdateUserLevel(c *gin.Context) {
 		MinConsumption float64 `json:"min_consumption"`
 		DiscountRate   float64 `json:"discount_rate"`
 		Color          string  `json:"color"`
-		IconURL        string  `json:"icon_url"`
-		Benefits       string  `json:"benefits"`
+		IconURL        *string `json:"icon_url"` // 使用指针以区分空字符串和未传递
+		Benefits       *string `json:"benefits"` // 使用指针以区分空字符串和未传递
 		IsActive       *bool   `json:"is_active"`
 	}
 
@@ -563,11 +563,13 @@ func UpdateUserLevel(c *gin.Context) {
 	if req.Color != "" {
 		userLevel.Color = req.Color
 	}
-	if req.IconURL != "" {
-		userLevel.IconURL = database.NullString(req.IconURL)
+	// 如果传递了IconURL字段（包括空字符串），则更新
+	if req.IconURL != nil {
+		userLevel.IconURL = database.NullString(*req.IconURL)
 	}
-	if req.Benefits != "" {
-		userLevel.Benefits = database.NullString(req.Benefits)
+	// 如果传递了Benefits字段（包括空字符串），则更新
+	if req.Benefits != nil {
+		userLevel.Benefits = database.NullString(*req.Benefits)
 	}
 	if req.IsActive != nil {
 		userLevel.IsActive = *req.IsActive
@@ -1254,11 +1256,74 @@ func GetPaymentConfig(c *gin.Context) {
 		return
 	}
 
+	// 转换数据格式，将 sql.NullString 转换为字符串
+	type PaymentConfigResponse struct {
+		ID                   uint                   `json:"id"`
+		PayType              string                 `json:"pay_type"`
+		AppID                string                 `json:"app_id,omitempty"`
+		MerchantPrivateKey   string                 `json:"merchant_private_key,omitempty"`
+		AlipayPublicKey      string                 `json:"alipay_public_key,omitempty"`
+		WechatAppID          string                 `json:"wechat_app_id,omitempty"`
+		WechatMchID          string                 `json:"wechat_mch_id,omitempty"`
+		WechatAPIKey         string                 `json:"wechat_api_key,omitempty"`
+		PaypalClientID       string                 `json:"paypal_client_id,omitempty"`
+		PaypalSecret         string                 `json:"paypal_secret,omitempty"`
+		StripePublishableKey string                 `json:"stripe_publishable_key,omitempty"`
+		StripeSecretKey      string                 `json:"stripe_secret_key,omitempty"`
+		BankName             string                 `json:"bank_name,omitempty"`
+		AccountName          string                 `json:"account_name,omitempty"`
+		AccountNumber        string                 `json:"account_number,omitempty"`
+		WalletAddress        string                 `json:"wallet_address,omitempty"`
+		Status               int                    `json:"status"`
+		ReturnURL            string                 `json:"return_url,omitempty"`
+		NotifyURL            string                 `json:"notify_url,omitempty"`
+		SortOrder            int                    `json:"sort_order"`
+		ConfigJSON           map[string]interface{} `json:"config_json,omitempty"`
+		CreatedAt            string                 `json:"created_at"`
+		UpdatedAt            string                 `json:"updated_at"`
+	}
+
+	configsResponse := make([]PaymentConfigResponse, len(paymentConfigs))
+	for i, config := range paymentConfigs {
+		configsResponse[i] = PaymentConfigResponse{
+			ID:                   config.ID,
+			PayType:              config.PayType,
+			AppID:                getPaymentConfigStringValue(config.AppID),
+			MerchantPrivateKey:   getPaymentConfigStringValue(config.MerchantPrivateKey),
+			AlipayPublicKey:      getPaymentConfigStringValue(config.AlipayPublicKey),
+			WechatAppID:          getPaymentConfigStringValue(config.WechatAppID),
+			WechatMchID:          getPaymentConfigStringValue(config.WechatMchID),
+			WechatAPIKey:         getPaymentConfigStringValue(config.WechatAPIKey),
+			PaypalClientID:       getPaymentConfigStringValue(config.PaypalClientID),
+			PaypalSecret:         getPaymentConfigStringValue(config.PaypalSecret),
+			StripePublishableKey: getPaymentConfigStringValue(config.StripePublishableKey),
+			StripeSecretKey:      getPaymentConfigStringValue(config.StripeSecretKey),
+			BankName:             getPaymentConfigStringValue(config.BankName),
+			AccountName:          getPaymentConfigStringValue(config.AccountName),
+			AccountNumber:        getPaymentConfigStringValue(config.AccountNumber),
+			WalletAddress:        getPaymentConfigStringValue(config.WalletAddress),
+			Status:               config.Status,
+			ReturnURL:            getPaymentConfigStringValue(config.ReturnURL),
+			NotifyURL:            getPaymentConfigStringValue(config.NotifyURL),
+			SortOrder:            config.SortOrder,
+			CreatedAt:            config.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:            config.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+
+		// 解析 ConfigJSON
+		if config.ConfigJSON.Valid {
+			var jsonData map[string]interface{}
+			if err := json.Unmarshal([]byte(config.ConfigJSON.String), &jsonData); err == nil {
+				configsResponse[i].ConfigJSON = jsonData
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"items":           paymentConfigs, // 前端期望 items 字段
-			"payment_configs": paymentConfigs, // 兼容字段
+			"items":           configsResponse, // 前端期望 items 字段
+			"payment_configs": configsResponse, // 兼容字段
 			"total":           total,
 			"page":            page,
 			"size":            size,
@@ -1715,23 +1780,23 @@ func UpdatePaymentConfig(c *gin.Context) {
 
 	var req struct {
 		PayType              string                 `json:"pay_type"`
-		AppID                string                 `json:"app_id,omitempty"`
-		MerchantPrivateKey   string                 `json:"merchant_private_key,omitempty"`
-		AlipayPublicKey      string                 `json:"alipay_public_key,omitempty"`
-		WechatAppID          string                 `json:"wechat_app_id,omitempty"`
-		WechatMchID          string                 `json:"wechat_mch_id,omitempty"`
-		WechatAPIKey         string                 `json:"wechat_api_key,omitempty"`
-		PaypalClientID       string                 `json:"paypal_client_id,omitempty"`
-		PaypalSecret         string                 `json:"paypal_secret,omitempty"`
-		StripePublishableKey string                 `json:"stripe_publishable_key,omitempty"`
-		StripeSecretKey      string                 `json:"stripe_secret_key,omitempty"`
-		BankName             string                 `json:"bank_name,omitempty"`
-		AccountName          string                 `json:"account_name,omitempty"`
-		AccountNumber        string                 `json:"account_number,omitempty"`
-		WalletAddress        string                 `json:"wallet_address,omitempty"`
+		AppID                *string                `json:"app_id,omitempty"`
+		MerchantPrivateKey   *string                `json:"merchant_private_key,omitempty"`
+		AlipayPublicKey      *string                `json:"alipay_public_key,omitempty"`
+		WechatAppID          *string                `json:"wechat_app_id,omitempty"`
+		WechatMchID          *string                `json:"wechat_mch_id,omitempty"`
+		WechatAPIKey         *string                `json:"wechat_api_key,omitempty"`
+		PaypalClientID       *string                `json:"paypal_client_id,omitempty"`
+		PaypalSecret         *string                `json:"paypal_secret,omitempty"`
+		StripePublishableKey *string                `json:"stripe_publishable_key,omitempty"`
+		StripeSecretKey      *string                `json:"stripe_secret_key,omitempty"`
+		BankName             *string                `json:"bank_name,omitempty"`
+		AccountName          *string                `json:"account_name,omitempty"`
+		AccountNumber        *string                `json:"account_number,omitempty"`
+		WalletAddress        *string                `json:"wallet_address,omitempty"`
 		Status               int                    `json:"status"`
-		ReturnURL            string                 `json:"return_url,omitempty"`
-		NotifyURL            string                 `json:"notify_url,omitempty"`
+		ReturnURL            *string                `json:"return_url,omitempty"`
+		NotifyURL            *string                `json:"notify_url,omitempty"`
 		SortOrder            *int                   `json:"sort_order,omitempty"`
 		ConfigJSON           map[string]interface{} `json:"config_json,omitempty"`
 	}
@@ -1771,58 +1836,58 @@ func UpdatePaymentConfig(c *gin.Context) {
 	if req.PayType != "" {
 		paymentConfig.PayType = req.PayType
 	}
-	// 更新可选字段（如果提供了值）
-	if req.AppID != "" {
-		paymentConfig.AppID = database.NullString(req.AppID)
+	// 更新可选字段（如果提供了值，即使为空字符串也更新）
+	if req.AppID != nil {
+		paymentConfig.AppID = database.NullString(*req.AppID)
 	}
-	if req.MerchantPrivateKey != "" {
-		paymentConfig.MerchantPrivateKey = database.NullString(req.MerchantPrivateKey)
+	if req.MerchantPrivateKey != nil {
+		paymentConfig.MerchantPrivateKey = database.NullString(*req.MerchantPrivateKey)
 	}
-	if req.AlipayPublicKey != "" {
-		paymentConfig.AlipayPublicKey = database.NullString(req.AlipayPublicKey)
+	if req.AlipayPublicKey != nil {
+		paymentConfig.AlipayPublicKey = database.NullString(*req.AlipayPublicKey)
 	}
-	if req.WechatAppID != "" {
-		paymentConfig.WechatAppID = database.NullString(req.WechatAppID)
+	if req.WechatAppID != nil {
+		paymentConfig.WechatAppID = database.NullString(*req.WechatAppID)
 	}
-	if req.WechatMchID != "" {
-		paymentConfig.WechatMchID = database.NullString(req.WechatMchID)
+	if req.WechatMchID != nil {
+		paymentConfig.WechatMchID = database.NullString(*req.WechatMchID)
 	}
-	if req.WechatAPIKey != "" {
-		paymentConfig.WechatAPIKey = database.NullString(req.WechatAPIKey)
+	if req.WechatAPIKey != nil {
+		paymentConfig.WechatAPIKey = database.NullString(*req.WechatAPIKey)
 	}
-	if req.PaypalClientID != "" {
-		paymentConfig.PaypalClientID = database.NullString(req.PaypalClientID)
+	if req.PaypalClientID != nil {
+		paymentConfig.PaypalClientID = database.NullString(*req.PaypalClientID)
 	}
-	if req.PaypalSecret != "" {
-		paymentConfig.PaypalSecret = database.NullString(req.PaypalSecret)
+	if req.PaypalSecret != nil {
+		paymentConfig.PaypalSecret = database.NullString(*req.PaypalSecret)
 	}
-	if req.StripePublishableKey != "" {
-		paymentConfig.StripePublishableKey = database.NullString(req.StripePublishableKey)
+	if req.StripePublishableKey != nil {
+		paymentConfig.StripePublishableKey = database.NullString(*req.StripePublishableKey)
 	}
-	if req.StripeSecretKey != "" {
-		paymentConfig.StripeSecretKey = database.NullString(req.StripeSecretKey)
+	if req.StripeSecretKey != nil {
+		paymentConfig.StripeSecretKey = database.NullString(*req.StripeSecretKey)
 	}
-	if req.BankName != "" {
-		paymentConfig.BankName = database.NullString(req.BankName)
+	if req.BankName != nil {
+		paymentConfig.BankName = database.NullString(*req.BankName)
 	}
-	if req.AccountName != "" {
-		paymentConfig.AccountName = database.NullString(req.AccountName)
+	if req.AccountName != nil {
+		paymentConfig.AccountName = database.NullString(*req.AccountName)
 	}
-	if req.AccountNumber != "" {
-		paymentConfig.AccountNumber = database.NullString(req.AccountNumber)
+	if req.AccountNumber != nil {
+		paymentConfig.AccountNumber = database.NullString(*req.AccountNumber)
 	}
-	if req.WalletAddress != "" {
-		paymentConfig.WalletAddress = database.NullString(req.WalletAddress)
+	if req.WalletAddress != nil {
+		paymentConfig.WalletAddress = database.NullString(*req.WalletAddress)
 	}
 	// Status 字段总是更新（允许设置为0）
 	if req.Status >= 0 {
 		paymentConfig.Status = req.Status
 	}
-	if req.ReturnURL != "" {
-		paymentConfig.ReturnURL = database.NullString(req.ReturnURL)
+	if req.ReturnURL != nil {
+		paymentConfig.ReturnURL = database.NullString(*req.ReturnURL)
 	}
-	if req.NotifyURL != "" {
-		paymentConfig.NotifyURL = database.NullString(req.NotifyURL)
+	if req.NotifyURL != nil {
+		paymentConfig.NotifyURL = database.NullString(*req.NotifyURL)
 	} else if req.PayType != "" && paymentConfig.NotifyURL.String == "" {
 		// 如果更新了支付类型但没有提供回调地址，自动生成
 		notifySuffix := "alipay"
@@ -1836,8 +1901,10 @@ func UpdatePaymentConfig(c *gin.Context) {
 		paymentConfig.SortOrder = *req.SortOrder
 	}
 	if req.ConfigJSON != nil {
-		configJSONBytes, _ := json.Marshal(req.ConfigJSON)
-		paymentConfig.ConfigJSON = sql.NullString{String: string(configJSONBytes), Valid: true}
+		configJSONBytes, err := json.Marshal(req.ConfigJSON)
+		if err == nil {
+			paymentConfig.ConfigJSON = sql.NullString{String: string(configJSONBytes), Valid: true}
+		}
 	}
 
 	if err := db.Save(&paymentConfig).Error; err != nil {
@@ -1852,9 +1919,51 @@ func UpdatePaymentConfig(c *gin.Context) {
 		return
 	}
 
+	// 构建响应数据（转换 sql.NullString 为字符串）
+	responseData := gin.H{
+		"id":                     paymentConfig.ID,
+		"pay_type":               paymentConfig.PayType,
+		"app_id":                 getPaymentConfigStringValue(paymentConfig.AppID),
+		"merchant_private_key":   getPaymentConfigStringValue(paymentConfig.MerchantPrivateKey),
+		"alipay_public_key":      getPaymentConfigStringValue(paymentConfig.AlipayPublicKey),
+		"wechat_app_id":          getPaymentConfigStringValue(paymentConfig.WechatAppID),
+		"wechat_mch_id":          getPaymentConfigStringValue(paymentConfig.WechatMchID),
+		"wechat_api_key":         getPaymentConfigStringValue(paymentConfig.WechatAPIKey),
+		"paypal_client_id":       getPaymentConfigStringValue(paymentConfig.PaypalClientID),
+		"paypal_secret":          getPaymentConfigStringValue(paymentConfig.PaypalSecret),
+		"stripe_publishable_key": getPaymentConfigStringValue(paymentConfig.StripePublishableKey),
+		"stripe_secret_key":      getPaymentConfigStringValue(paymentConfig.StripeSecretKey),
+		"bank_name":              getPaymentConfigStringValue(paymentConfig.BankName),
+		"account_name":           getPaymentConfigStringValue(paymentConfig.AccountName),
+		"account_number":         getPaymentConfigStringValue(paymentConfig.AccountNumber),
+		"wallet_address":         getPaymentConfigStringValue(paymentConfig.WalletAddress),
+		"status":                 paymentConfig.Status,
+		"return_url":             getPaymentConfigStringValue(paymentConfig.ReturnURL),
+		"notify_url":             getPaymentConfigStringValue(paymentConfig.NotifyURL),
+		"sort_order":             paymentConfig.SortOrder,
+		"created_at":             paymentConfig.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updated_at":             paymentConfig.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	// 解析 ConfigJSON
+	if paymentConfig.ConfigJSON.Valid {
+		var jsonData map[string]interface{}
+		if err := json.Unmarshal([]byte(paymentConfig.ConfigJSON.String), &jsonData); err == nil {
+			responseData["config_json"] = jsonData
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "支付配置更新成功",
-		"data":    paymentConfig,
+		"data":    responseData,
 	})
+}
+
+// getPaymentConfigStringValue 辅助函数：从 sql.NullString 获取字符串值（用于支付配置）
+func getPaymentConfigStringValue(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
 }

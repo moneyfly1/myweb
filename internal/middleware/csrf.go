@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -200,17 +201,37 @@ func CSRFMiddleware() gin.HandlerFunc {
 
 // isValidOrigin 验证Origin是否有效
 func isValidOrigin(origin, host string) bool {
-	// 简化验证：检查origin是否包含host
-	// 实际应该更严格地验证协议和域名
-	return origin != "" && (origin == "https://"+host || origin == "http://"+host || origin == "https://"+host+"/" || origin == "http://"+host+"/")
+	if origin == "" {
+		return false
+	}
+	// 支持localhost开发环境
+	if origin == "http://localhost" || origin == "https://localhost" ||
+		origin == "http://localhost:5173" || origin == "https://localhost:5173" ||
+		origin == "http://127.0.0.1" || origin == "https://127.0.0.1" ||
+		origin == "http://127.0.0.1:5173" || origin == "https://127.0.0.1:5173" {
+		return true
+	}
+	// 检查origin是否匹配host
+	return origin == "https://"+host || origin == "http://"+host || 
+		origin == "https://"+host+"/" || origin == "http://"+host+"/" ||
+		strings.HasPrefix(origin, "https://"+host+":") || strings.HasPrefix(origin, "http://"+host+":")
 }
 
 // isValidReferer 验证Referer是否有效
 func isValidReferer(referer, host string) bool {
-	// 简化验证：检查referer是否包含host
-	return referer != "" && (referer == "https://"+host || referer == "http://"+host || 
+	if referer == "" {
+		return false
+	}
+	// 支持localhost开发环境
+	if strings.HasPrefix(referer, "http://localhost") || strings.HasPrefix(referer, "https://localhost") ||
+		strings.HasPrefix(referer, "http://127.0.0.1") || strings.HasPrefix(referer, "https://127.0.0.1") {
+		return true
+	}
+	// 检查referer是否匹配host
+	return referer == "https://"+host || referer == "http://"+host || 
 		referer == "https://"+host+"/" || referer == "http://"+host+"/" ||
-		len(referer) > len(host) && (referer[:len("https://"+host)] == "https://"+host || referer[:len("http://"+host)] == "http://"+host))
+		strings.HasPrefix(referer, "https://"+host+":") || strings.HasPrefix(referer, "http://"+host+":") ||
+		strings.HasPrefix(referer, "https://"+host+"/") || strings.HasPrefix(referer, "http://"+host+"/")
 }
 
 // CSRFExemptMiddleware 豁免CSRF检查的中间件（用于某些公开API）

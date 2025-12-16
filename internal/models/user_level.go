@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -27,4 +28,50 @@ type UserLevel struct {
 // TableName 指定表名
 func (UserLevel) TableName() string {
 	return "user_levels"
+}
+
+// UserLevelResponse 用户等级响应结构，用于正确序列化sql.NullString
+type UserLevelResponse struct {
+	ID             uint      `json:"id"`
+	LevelName      string    `json:"level_name"`
+	LevelOrder     int       `json:"level_order"`
+	MinConsumption float64   `json:"min_consumption"`
+	DiscountRate   float64   `json:"discount_rate"`
+	DeviceLimit    int       `json:"device_limit"`
+	Benefits       *string   `json:"benefits,omitempty"`
+	IconURL        *string   `json:"icon_url,omitempty"`
+	Color          string    `json:"color"`
+	IsActive       bool      `json:"is_active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// ToUserLevelResponse 将UserLevel转换为UserLevelResponse
+func (ul *UserLevel) ToUserLevelResponse() UserLevelResponse {
+	resp := UserLevelResponse{
+		ID:             ul.ID,
+		LevelName:      ul.LevelName,
+		LevelOrder:     ul.LevelOrder,
+		MinConsumption: ul.MinConsumption,
+		DiscountRate:   ul.DiscountRate,
+		DeviceLimit:    ul.DeviceLimit,
+		Color:          ul.Color,
+		IsActive:       ul.IsActive,
+		CreatedAt:      ul.CreatedAt,
+		UpdatedAt:      ul.UpdatedAt,
+	}
+
+	if ul.Benefits.Valid {
+		resp.Benefits = &ul.Benefits.String
+	}
+	if ul.IconURL.Valid {
+		resp.IconURL = &ul.IconURL.String
+	}
+
+	return resp
+}
+
+// MarshalJSON 自定义JSON序列化
+func (ul *UserLevel) MarshalJSON() ([]byte, error) {
+	return json.Marshal(ul.ToUserLevelResponse())
 }

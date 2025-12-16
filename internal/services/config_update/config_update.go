@@ -674,6 +674,29 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 	return logs
 }
 
+// ClearLogs 清理日志
+func (s *ConfigUpdateService) ClearLogs() error {
+	var config models.SystemConfig
+	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
+
+	if err != nil {
+		// 如果记录不存在，创建空记录
+		config = models.SystemConfig{
+			Key:         "config_update_logs",
+			Value:       "[]",
+			Type:        "json",
+			Category:    "general",
+			DisplayName: "配置更新日志",
+			Description: "配置更新任务日志",
+		}
+		return s.db.Create(&config).Error
+	} else {
+		// 清空日志
+		config.Value = "[]"
+		return s.db.Save(&config).Error
+	}
+}
+
 // saveConfigToDB 保存配置到数据库
 func (s *ConfigUpdateService) saveConfigToDB(key, configType, value string) {
 	var config models.SystemConfig
@@ -746,10 +769,22 @@ func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) {
 
 // importNodesToDatabase 将节点导入到数据库的 nodes 表
 func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
+	// 先清空所有节点
+	deletedCount := s.db.Where("1 = 1").Delete(&models.Node{}).RowsAffected
+	s.addLog(fmt.Sprintf("已清空 %d 个旧节点", deletedCount), "info")
+
 	importedCount := 0
 	seenKeys := make(map[string]bool)
+	errorCount := 0
 
 	for _, node := range proxies {
+		// 验证必要字段
+		if node.Server == "" || node.Port == 0 || node.Type == "" {
+			errorCount++
+			s.addLog(fmt.Sprintf("跳过无效节点: Server=%s, Port=%d, Type=%s", node.Server, node.Port, node.Type), "warning")
+			continue
+		}
+
 		// 生成去重键（用于内存去重）
 		key := fmt.Sprintf("%s:%s:%d", node.Type, node.Server, node.Port)
 		if node.UUID != "" {
@@ -758,10 +793,16 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 			key += ":" + node.Password
 		}
 
+		// 内存去重
 		if seenKeys[key] {
 			continue
 		}
 		seenKeys[key] = true
+
+		// 确保节点名称不为空
+		if node.Name == "" {
+			node.Name = fmt.Sprintf("%s-%s:%d", node.Type, node.Server, node.Port)
+		}
 
 		// 从节点名称提取地区信息
 		region := s.extractRegionFromName(node.Name)
@@ -772,69 +813,33 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 		// 序列化节点配置（确保包含所有字段）
 		configJSON, err := json.Marshal(node)
 		if err != nil {
+			errorCount++
+			s.addLog(fmt.Sprintf("序列化节点配置失败: %v", err), "error")
 			continue
 		}
 		configStr := string(configJSON)
 
-		// 使用去重键查找已存在的节点（而不是使用name和type，因为name可能被修改）
-		var existingNode models.Node
-		// 先通过 type、server、port 缩小查找范围，然后通过解析 Config 精确匹配
-		var candidateNodes []models.Node
-		if err := s.db.Where("type = ? AND is_active = ?", node.Type, true).Find(&candidateNodes).Error; err == nil {
-			for _, dbNode := range candidateNodes {
-				if dbNode.Config != nil && *dbNode.Config != "" {
-					var existingProxyNode ProxyNode
-					if err := json.Unmarshal([]byte(*dbNode.Config), &existingProxyNode); err == nil {
-						// 先检查 server 和 port 是否匹配
-						if existingProxyNode.Server == node.Server && existingProxyNode.Port == node.Port {
-							// 生成已存在节点的去重键
-							existingKey := fmt.Sprintf("%s:%s:%d", existingProxyNode.Type, existingProxyNode.Server, existingProxyNode.Port)
-							if existingProxyNode.UUID != "" {
-								existingKey += ":" + existingProxyNode.UUID
-							} else if existingProxyNode.Password != "" {
-								existingKey += ":" + existingProxyNode.Password
-							}
-							// 如果去重键匹配，说明是同一个节点
-							if existingKey == key {
-								existingNode = dbNode
-								break
-							}
-						}
-					}
-				}
-			}
+		// 由于已经清空了所有节点，直接创建新节点
+		// 去重逻辑已经在内存中通过 seenKeys 保证
+		newNode := models.Node{
+			Name:     node.Name,
+			Region:   region,
+			Type:     node.Type,
+			Status:   "online", // 新采集的节点默认为在线状态
+			IsActive: true,
+			Config:   &configStr,
 		}
 
-		if existingNode.ID == 0 {
-			// 节点不存在，创建新节点（默认状态为 online，因为刚采集的节点应该是可用的）
-			newNode := models.Node{
-				Name:     node.Name,
-				Region:   region,
-				Type:     node.Type,
-				Status:   "online", // 新采集的节点默认为在线状态
-				IsActive: true,
-				Config:   &configStr,
-			}
-
-			if err := s.db.Create(&newNode).Error; err != nil {
-				continue
-			}
-			importedCount++
-		} else {
-			// 节点已存在，更新配置（保持原有状态，如果之前是 offline 则更新为 online）
-			existingNode.Config = &configStr
-			existingNode.Region = region
-			existingNode.Type = node.Type
-			existingNode.Name = node.Name // 更新节点名称（可能包含去重后缀）
-			existingNode.IsActive = true
-			// 如果节点之前是离线状态，更新为在线（因为刚采集说明节点可用）
-			if existingNode.Status == "offline" {
-				existingNode.Status = "online"
-			}
-			if err := s.db.Save(&existingNode).Error; err != nil {
-				continue
-			}
+		if err := s.db.Create(&newNode).Error; err != nil {
+			errorCount++
+			s.addLog(fmt.Sprintf("创建节点失败 [%s]: %v", node.Name, err), "error")
+			continue
 		}
+		importedCount++
+	}
+
+	if errorCount > 0 {
+		s.addLog(fmt.Sprintf("导入过程中有 %d 个节点失败", errorCount), "warning")
 	}
 
 	return importedCount

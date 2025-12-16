@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -162,27 +163,40 @@ func Register(c *gin.Context) {
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusCreated)
-	
+
 	// 记录注册审计日志
 	utils.CreateAuditLogSimple(c, "register", "auth", user.ID, fmt.Sprintf("用户注册: %s (%s)", user.Username, user.Email))
 
-	// 发送欢迎邮件
+	// 发送欢迎邮件（检查客户通知开关）
 	go func() {
-		emailService := email.NewEmailService()
-		templateBuilder := email.NewEmailTemplateBuilder()
-		baseURL := func() string {
-			scheme := "http"
-			if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-				scheme = proto
-			} else if c.Request.TLS != nil {
-				scheme = "https"
-			}
-			return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
-		}()
-		loginURL := fmt.Sprintf("%s/login", baseURL)
-		content := templateBuilder.GetWelcomeTemplate(user.Username, user.Email, loginURL, false, "")
-		subject := "欢迎加入我们！"
-		_ = emailService.QueueEmail(user.Email, subject, content, "welcome")
+		if notification.ShouldSendCustomerNotification("new_user") {
+			emailService := email.NewEmailService()
+			templateBuilder := email.NewEmailTemplateBuilder()
+			baseURL := func() string {
+				scheme := "http"
+				if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+					scheme = proto
+				} else if c.Request.TLS != nil {
+					scheme = "https"
+				}
+				return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
+			}()
+			loginURL := fmt.Sprintf("%s/login", baseURL)
+			content := templateBuilder.GetWelcomeTemplate(user.Username, user.Email, loginURL, false, "")
+			subject := "欢迎加入我们！"
+			_ = emailService.QueueEmail(user.Email, subject, content, "welcome")
+		}
+	}()
+
+	// 发送管理员通知
+	go func() {
+		notificationService := notification.NewNotificationService()
+		registerTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		_ = notificationService.SendAdminNotification("user_registered", map[string]interface{}{
+			"username":      user.Username,
+			"email":         user.Email,
+			"register_time": registerTime,
+		})
 	}()
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -243,10 +257,27 @@ func Login(c *gin.Context) {
 		utils.LogError("更新最后登录时间失败", saveErr, nil)
 	}
 
+	// 创建登录历史记录
+	ipAddress := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+	loginHistory := models.LoginHistory{
+		UserID:      user.ID,
+		LoginTime:   now,
+		IPAddress:   database.NullString(ipAddress),
+		UserAgent:   database.NullString(userAgent),
+		LoginStatus: "success",
+	}
+	// 异步创建登录历史，不阻塞登录流程
+	go func() {
+		if err := db.Create(&loginHistory).Error; err != nil {
+			utils.LogError("创建登录历史失败", err, nil)
+		}
+	}()
+
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
-	
+
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Email))
 
@@ -313,10 +344,35 @@ func LoginJSON(c *gin.Context) {
 		return
 	}
 
+	// 更新最后登录时间
+	now := utils.GetBeijingTime()
+	user.LastLogin = database.NullTime(now)
+	if saveErr := db.Save(&user).Error; saveErr != nil {
+		// 记录错误但不影响登录流程
+		utils.LogError("更新最后登录时间失败", saveErr, nil)
+	}
+
+	// 创建登录历史记录
+	ipAddress := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+	loginHistory := models.LoginHistory{
+		UserID:      user.ID,
+		LoginTime:   now,
+		IPAddress:   database.NullString(ipAddress),
+		UserAgent:   database.NullString(userAgent),
+		LoginStatus: "success",
+	}
+	// 异步创建登录历史，不阻塞登录流程
+	go func() {
+		if err := db.Create(&loginHistory).Error; err != nil {
+			utils.LogError("创建登录历史失败", err, nil)
+		}
+	}()
+
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
-	
+
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
@@ -434,7 +490,7 @@ func Logout(c *gin.Context) {
 	// 将Token添加到黑名单
 	db := database.GetDB()
 	tokenHash := utils.HashToken(token)
-	
+
 	// 获取Token的过期时间
 	var expiresAt time.Time
 	if claims.ExpiresAt != nil {
