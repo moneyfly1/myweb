@@ -245,6 +245,7 @@ func SetupRouter() *gin.Engine {
 		{
 			invites.GET("", handlers.GetInviteCodes)
 			invites.POST("", handlers.CreateInviteCode)
+			invites.POST("/generate", handlers.CreateInviteCode) // 兼容旧路径
 			invites.GET("/stats", handlers.GetInviteStats)
 			invites.GET("/reward-settings", handlers.GetRewardSettings)
 			invites.GET("/my-codes", handlers.GetMyInviteCodes)

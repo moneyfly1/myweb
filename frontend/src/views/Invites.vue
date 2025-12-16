@@ -95,19 +95,19 @@
           </el-table-column>
           <el-table-column prop="used_count" label="已使用" width="100" align="center">
             <template #default="scope">
-              <span>{{ scope.row.used_count }} / {{ scope.row.max_uses || '∞' }}</span>
+              <span>{{ scope.row.used_count || 0 }} / {{ getMaxUses(scope.row.max_uses) }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="expires_at" label="过期时间" width="180" class-name="expires-column">
             <template #default="scope">
-              <span v-if="scope.row.expires_at">{{ formatDate(scope.row.expires_at) }}</span>
+              <span v-if="scope.row.expires_at && scope.row.expires_at !== 'null'">{{ formatDate(scope.row.expires_at) }}</span>
               <span v-else style="color: #909399;">永不过期</span>
             </template>
           </el-table-column>
           <el-table-column prop="is_valid" label="状态" width="100" align="center">
             <template #default="scope">
-              <el-tag :type="scope.row.is_valid ? 'success' : 'danger'">
-                {{ scope.row.is_valid ? '有效' : '无效' }}
+              <el-tag :type="getIsValid(scope.row) ? 'success' : 'danger'">
+                {{ getIsValid(scope.row) ? '有效' : '无效' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -437,15 +437,67 @@ const deleteCode = async (code) => {
 }
 
 const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  if (!dateStr || dateStr === 'null' || dateStr === null) return '-'
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return '-'
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch (e) {
+    return '-'
+  }
+}
+
+// 获取最大使用次数（处理 sql.NullInt64 格式）
+const getMaxUses = (maxUses) => {
+  if (!maxUses || maxUses === 'null' || maxUses === null) return '∞'
+  // 如果是对象格式 {Int64: 10, Valid: true}
+  if (typeof maxUses === 'object' && maxUses.Int64 !== undefined) {
+    return maxUses.Valid ? maxUses.Int64 : '∞'
+  }
+  // 如果是数字
+  if (typeof maxUses === 'number') {
+    return maxUses
+  }
+  return '∞'
+}
+
+// 判断邀请码是否有效
+const getIsValid = (row) => {
+  // 如果后端已经计算了 is_valid，直接使用
+  if (row.is_valid !== undefined) {
+    return row.is_valid
+  }
+  
+  // 否则根据 is_active、expires_at、max_uses 计算
+  if (!row.is_active) {
+    return false
+  }
+  
+  // 检查过期时间
+  if (row.expires_at && row.expires_at !== 'null' && row.expires_at !== null) {
+    try {
+      const expiresDate = new Date(row.expires_at)
+      if (!isNaN(expiresDate.getTime()) && expiresDate < new Date()) {
+        return false
+      }
+    } catch (e) {
+      // 忽略日期解析错误
+    }
+  }
+  
+  // 检查使用次数
+  const maxUses = getMaxUses(row.max_uses)
+  if (maxUses !== '∞' && (row.used_count || 0) >= maxUses) {
+    return false
+  }
+  
+  return true
 }
 
 onMounted(async () => {
