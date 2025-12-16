@@ -652,7 +652,7 @@ export const couponAPI = {
 }
 
 export const inviteAPI = {
-  generateInviteCode: (data) => api.post('/invites/generate', data),
+  generateInviteCode: (data) => api.post('/invites', data),
   getMyInviteCodes: () => api.get('/invites/my-codes'),
   getInviteStats: () => api.get('/invites/stats'),
   getInviteRewardSettings: () => api.get('/invites/reward-settings'),
