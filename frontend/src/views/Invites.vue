@@ -358,13 +358,29 @@ const loadStats = async () => {
 const generateCode = async () => {
   generating.value = true
   try {
-    const response = await inviteAPI.generateInviteCode(generateForm)
+    // 准备请求数据
+    const requestData = {
+      max_uses: generateForm.max_uses || 0,
+      reward_type: 'balance',
+      inviter_reward: inviteRewardSettings.value.inviter_reward || 0,
+      invitee_reward: inviteRewardSettings.value.invitee_reward || 0,
+      min_order_amount: 0,
+      new_user_only: true
+    }
+    
+    // 如果有有效期天数，转换为 expires_at
+    if (generateForm.expires_days && generateForm.expires_days > 0) {
+      const expiresDate = new Date()
+      expiresDate.setDate(expiresDate.getDate() + generateForm.expires_days)
+      requestData.expires_at = expiresDate.toISOString()
+    }
+    
+    const response = await inviteAPI.generateInviteCode(requestData)
     console.log('生成邀请码响应:', response)
     
     // 处理多种可能的响应格式
-    const success = response?.data?.success || 
-                   (response?.data?.data && response.data.data.code) ||
-                   response?.data?.code
+    const success = response?.data?.success !== false && 
+                   (response?.data?.data?.code || response?.data?.code)
     
     if (success) {
       ElMessage.success('邀请码生成成功')
