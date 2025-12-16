@@ -1042,7 +1042,7 @@ func buildBaseURL(c *gin.Context) string {
 			return fmt.Sprintf("%s://%s", scheme, domain)
 		}
 	}
-	
+
 	// 如果没有配置域名，使用请求的 Host
 	scheme := "http"
 	if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
