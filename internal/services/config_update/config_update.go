@@ -185,7 +185,8 @@ func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL s
 
 	// 如果数据库中没有节点，从URL获取（兼容旧逻辑）
 	var systemConfig models.SystemConfig
-	if err := s.db.Where("key = ?", "node_source_urls").First(&systemConfig).Error; err != nil {
+	// 确保从正确的 category 获取 node_source_urls
+	if err := s.db.Where("key = ? AND category = ?", "node_source_urls", "config_update").First(&systemConfig).Error; err != nil {
 		return "", fmt.Errorf("未配置节点源")
 	}
 
@@ -996,9 +997,9 @@ func (s *ConfigUpdateService) addInfoAndReminderNodes(proxies []*ProxyNode, subs
 
 // getSiteURL 获取网站域名
 func (s *ConfigUpdateService) getSiteURL() string {
-	// 优先从系统配置获取 domain_name（system 类别）
+	// 优先从系统配置获取 domain_name（general 类别）
 	var config models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "domain_name", "system").First(&config).Error; err == nil && config.Value != "" {
+	if err := s.db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
 		domain := strings.TrimSpace(config.Value)
 		// 如果配置的域名包含协议，直接使用
 		if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
@@ -1155,7 +1156,8 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 	// 如果数据库中没有节点，从URL获取
 	if len(proxies) == 0 {
 		var systemConfig models.SystemConfig
-		if err := s.db.Where("key = ?", "node_source_urls").First(&systemConfig).Error; err == nil {
+		// 确保从正确的 category 获取 node_source_urls
+		if err := s.db.Where("key = ? AND category = ?", "node_source_urls", "config_update").First(&systemConfig).Error; err == nil {
 			urls := strings.Split(systemConfig.Value, "\n")
 			var validURLs []string
 			for _, u := range urls {
