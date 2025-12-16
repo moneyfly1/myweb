@@ -106,13 +106,89 @@ fi
 # 停止旧进程
 echo ""
 echo "停止旧进程..."
+
+# 停止通过 PID 文件记录的进程
+if [ -f server.pid ]; then
+    OLD_PID=$(cat server.pid 2>/dev/null || echo "")
+    if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then
+        echo "  停止旧后端进程 (PID: $OLD_PID)..."
+        kill "$OLD_PID" 2>&1 || true
+        sleep 2
+        if ps -p "$OLD_PID" > /dev/null 2>&1; then
+            echo "  强制停止进程..."
+            kill -9 "$OLD_PID" 2>&1 || true
+            sleep 1
+        fi
+    fi
+    rm -f server.pid
+fi
+
+# 停止所有匹配的进程
 pkill -f "bin/server" 2>&1 || true
 pkill -f "vite" 2>&1 || true
 sleep 2
 
+# 检查并释放端口 8000
+echo "检查端口 8000..."
+PORT_8000_PID=""
+if command -v lsof &> /dev/null; then
+    PORT_8000_PID=$(lsof -ti:8000 2>/dev/null | head -1)
+elif command -v fuser &> /dev/null; then
+    PORT_8000_PID=$(fuser 8000/tcp 2>/dev/null | awk '{print $1}' | head -1)
+elif command -v netstat &> /dev/null; then
+    PORT_8000_PID=$(netstat -tlnp 2>/dev/null | grep ":8000 " | awk '{print $7}' | cut -d'/' -f1 | head -1)
+    [ "$PORT_8000_PID" = "-" ] && PORT_8000_PID=""
+fi
+
+if [ -n "$PORT_8000_PID" ] && [ "$PORT_8000_PID" != "$$" ]; then
+    echo "  发现端口 8000 被占用 (PID: $PORT_8000_PID)，正在释放..."
+    kill "$PORT_8000_PID" 2>&1 || true
+    sleep 2
+    if ps -p "$PORT_8000_PID" > /dev/null 2>&1; then
+        echo "  强制终止进程..."
+        kill -9 "$PORT_8000_PID" 2>&1 || true
+        sleep 1
+    fi
+fi
+
+# 检查并释放端口 5173
+echo "检查端口 5173..."
+PORT_5173_PID=""
+if command -v lsof &> /dev/null; then
+    PORT_5173_PID=$(lsof -ti:5173 2>/dev/null | head -1)
+elif command -v fuser &> /dev/null; then
+    PORT_5173_PID=$(fuser 5173/tcp 2>/dev/null | awk '{print $1}' | head -1)
+elif command -v netstat &> /dev/null; then
+    PORT_5173_PID=$(netstat -tlnp 2>/dev/null | grep ":5173 " | awk '{print $7}' | cut -d'/' -f1 | head -1)
+    [ "$PORT_5173_PID" = "-" ] && PORT_5173_PID=""
+fi
+
+if [ -n "$PORT_5173_PID" ] && [ "$PORT_5173_PID" != "$$" ]; then
+    echo "  发现端口 5173 被占用 (PID: $PORT_5173_PID)，正在释放..."
+    kill "$PORT_5173_PID" 2>&1 || true
+    sleep 2
+    if ps -p "$PORT_5173_PID" > /dev/null 2>&1; then
+        echo "  强制终止进程..."
+        kill -9 "$PORT_5173_PID" 2>&1 || true
+        sleep 1
+    fi
+fi
+
+sleep 1
+
 # 启动后端
 echo ""
 echo "启动后端服务器 (端口 8000)..."
+
+# 再次检查端口是否已释放
+if command -v lsof &> /dev/null; then
+    if lsof -ti:8000 &>/dev/null; then
+        echo "❌ 错误: 端口 8000 仍被占用，无法启动后端"
+        echo "请手动检查: lsof -i:8000"
+        exit 1
+    fi
+fi
+
 ./bin/server > server.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > server.pid
@@ -224,14 +300,45 @@ if [ "$NEED_INSTALL" = true ]; then
     echo "清理并重新安装前端依赖..."
     rm -rf node_modules package-lock.json 2>&1 || true
     npm cache clean --force 2>&1 || true
+    
+    # 检查是否使用国内镜像
+    USE_CN_MIRROR=false
+    if [ -n "$NPM_REGISTRY" ] && echo "$NPM_REGISTRY" | grep -q "taobao\|cnpm\|npmmirror"; then
+        USE_CN_MIRROR=true
+    fi
+    
     echo "  正在安装依赖（这可能需要几分钟）..."
     
-    # 尝试安装
-    if npm install --legacy-peer-deps 2>&1 | tee /tmp/npm_install.log | tail -30; then
-        echo "✅ 依赖安装完成"
-    else
+    # 尝试安装（最多重试3次）
+    INSTALL_SUCCESS=false
+    for attempt in 1 2 3; do
+        if [ $attempt -gt 1 ]; then
+            echo "  第 $attempt 次尝试安装..."
+            sleep 2
+        fi
+        
+        # 如果前一次失败，尝试使用国内镜像
+        if [ $attempt -eq 2 ] && [ "$USE_CN_MIRROR" = false ]; then
+            echo "  尝试使用淘宝镜像..."
+            npm config set registry https://registry.npmmirror.com 2>&1 || true
+        fi
+        
+        if npm install --legacy-peer-deps 2>&1 | tee /tmp/npm_install.log | tail -30; then
+            INSTALL_SUCCESS=true
+            echo "✅ 依赖安装完成"
+            break
+        else
+            echo "⚠️  安装失败，错误信息:"
+            tail -20 /tmp/npm_install.log 2>/dev/null || true
+        fi
+    done
+    
+    # 如果标准安装失败，尝试使用 --force
+    if [ "$INSTALL_SUCCESS" = false ]; then
         echo "⚠️  标准安装失败，尝试使用 --force..."
-        npm install --force 2>&1 | tail -30 || true
+        if npm install --force 2>&1 | tail -30; then
+            INSTALL_SUCCESS=true
+        fi
     fi
     
     # 验证安装
@@ -243,7 +350,13 @@ if [ "$NEED_INSTALL" = true ]; then
     # 最终验证
     if [ ! -f node_modules/.bin/vite ]; then
         echo "❌ 错误: 无法安装 vite"
-        echo "请手动运行: cd frontend && npm install --legacy-peer-deps"
+        echo ""
+        echo "可能的解决方案:"
+        echo "1. 检查网络连接"
+        echo "2. 尝试使用国内镜像:"
+        echo "   npm config set registry https://registry.npmmirror.com"
+        echo "   npm install --legacy-peer-deps"
+        echo "3. 手动运行: cd frontend && npm install --legacy-peer-deps"
         exit 1
     fi
     
