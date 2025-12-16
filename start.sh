@@ -162,6 +162,22 @@ echo ""
 echo "启动前端服务器 (端口 5173)..."
 cd frontend
 
+# 检查 Node.js 版本
+if command -v node &> /dev/null; then
+    NODE_VER=$(node -v | sed 's/v//')
+    NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
+    echo "  Node.js 版本: v$NODE_VER"
+    
+    if [ "$NODE_MAJOR" -lt 18 ]; then
+        echo "⚠️  警告: Node.js 版本过低 (v$NODE_VER)，建议使用 Node.js 18+"
+        echo "  如果遇到问题，请升级 Node.js: https://nodejs.org/"
+    fi
+else
+    echo "❌ 错误: 未找到 Node.js"
+    echo "请先安装 Node.js 18+"
+    exit 1
+fi
+
 # 检查并修复前端依赖
 echo "检查前端依赖..."
 NEED_INSTALL=false
@@ -177,18 +193,28 @@ elif [ ! -d node_modules/vite ]; then
     echo "  vite 模块不存在，需要重新安装"
     NEED_INSTALL=true
 else
-    # 检查 vite 版本是否匹配
-    INSTALLED_VITE=$(cat package.json | grep '"vite"' | head -1 | sed 's/.*"vite": *"\([^"]*\)".*/\1/')
-    if [ -z "$INSTALLED_VITE" ]; then
-        INSTALLED_VITE="^5.0.0"
+    # 检查 vite 版本是否匹配 package.json
+    PACKAGE_VITE=$(cat package.json | grep '"vite"' | head -1 | sed 's/.*"vite": *"\([^"]*\)".*/\1/' | sed 's/\^//' | sed 's/~//')
+    if [ -z "$PACKAGE_VITE" ]; then
+        PACKAGE_VITE="4.5.0"
     fi
-    echo "  检查 vite 版本: $INSTALLED_VITE"
     
-    # 如果 package.json 中 vite 是 5.x，但安装的是 4.x，需要重新安装
-    if echo "$INSTALLED_VITE" | grep -q "^5"; then
-        VITE_VERSION=$(node -e "console.log(require('./node_modules/vite/package.json').version)" 2>/dev/null || echo "")
-        if [ -n "$VITE_VERSION" ] && echo "$VITE_VERSION" | grep -q "^4"; then
-            echo "  vite 版本不匹配（已安装: $VITE_VERSION，需要: $INSTALLED_VITE），需要重新安装"
+    # 获取已安装的 vite 版本
+    INSTALLED_VITE=$(node -e "try { console.log(require('./node_modules/vite/package.json').version); } catch(e) { console.log(''); }" 2>/dev/null || echo "")
+    
+    if [ -z "$INSTALLED_VITE" ]; then
+        echo "  无法读取已安装的 vite 版本，需要重新安装"
+        NEED_INSTALL=true
+    else
+        echo "  package.json 要求: vite $PACKAGE_VITE"
+        echo "  已安装版本: vite $INSTALLED_VITE"
+        
+        # 检查主版本号是否匹配（4.x vs 5.x）
+        PACKAGE_MAJOR=$(echo "$PACKAGE_VITE" | cut -d. -f1)
+        INSTALLED_MAJOR=$(echo "$INSTALLED_VITE" | cut -d. -f1)
+        
+        if [ "$PACKAGE_MAJOR" != "$INSTALLED_MAJOR" ]; then
+            echo "  vite 主版本不匹配（已安装: $INSTALLED_MAJOR.x，需要: $PACKAGE_MAJOR.x），需要重新安装"
             NEED_INSTALL=true
         fi
     fi
@@ -211,7 +237,7 @@ if [ "$NEED_INSTALL" = true ]; then
     # 验证安装
     if [ ! -f node_modules/.bin/vite ]; then
         echo "❌ vite 可执行文件仍未找到，尝试直接安装 vite..."
-        npm install vite@latest --legacy-peer-deps --save-dev 2>&1 | tail -20 || true
+        npm install vite@4.5.0 --legacy-peer-deps --save-dev 2>&1 | tail -20 || true
     fi
     
     # 最终验证
@@ -219,6 +245,12 @@ if [ "$NEED_INSTALL" = true ]; then
         echo "❌ 错误: 无法安装 vite"
         echo "请手动运行: cd frontend && npm install --legacy-peer-deps"
         exit 1
+    fi
+    
+    # 验证 vite 版本
+    FINAL_VITE=$(node -e "try { console.log(require('./node_modules/vite/package.json').version); } catch(e) { console.log(''); }" 2>/dev/null || echo "")
+    if [ -n "$FINAL_VITE" ]; then
+        echo "✅ vite 已安装: $FINAL_VITE"
     fi
 else
     echo "✅ 前端依赖已就绪"
