@@ -347,35 +347,35 @@ func GetAdminSettings(c *gin.Context) {
 	// 默认设置
 	defaultSettings := map[string]map[string]interface{}{
 		"general": {
-			"site_name":       "CBoard Modern",
+			"site_name":        "CBoard Modern",
 			"site_description": "现代化的代理服务管理平台",
 			"site_logo":        "",
 			"default_theme":    "default",
 		},
 		"registration": {
 			"registration_enabled":        "true",
-			"email_verification_required":  "true",
+			"email_verification_required": "true",
 			"min_password_length":         "8",
 			"invite_code_required":        "false",
 		},
 		"notification": {
-			"system_notifications":            "true",
-			"email_notifications":             "true",
+			"system_notifications":              "true",
+			"email_notifications":               "true",
 			"subscription_expiry_notifications": "true",
-			"new_user_notifications":          "true",
-			"new_order_notifications":         "true",
+			"new_user_notifications":            "true",
+			"new_order_notifications":           "true",
 		},
 		"security": {
-			"login_fail_limit":          "5",
+			"login_fail_limit":           "5",
 			"login_lock_time":            "30",
 			"session_timeout":            "120",
 			"device_fingerprint_enabled": "true",
-			"ip_whitelist_enabled":      "false",
-			"ip_whitelist":              "",
+			"ip_whitelist_enabled":       "false",
+			"ip_whitelist":               "",
 		},
 		"theme": {
 			"default_theme":    "light",
-			"allow_user_theme":  "true",
+			"allow_user_theme": "true",
 			"available_themes": "[\"light\",\"dark\",\"blue\",\"green\",\"purple\",\"orange\",\"red\",\"cyan\",\"luck\",\"aurora\",\"auto\"]",
 		},
 		"admin_notification": {
@@ -386,7 +386,7 @@ func GetAdminSettings(c *gin.Context) {
 			"admin_telegram_bot_token":          "",
 			"admin_telegram_chat_id":            "",
 			"admin_bark_server_url":             "https://api.day.app",
-			"admin_bark_device_key":              "",
+			"admin_bark_device_key":             "",
 			"admin_notification_email":          "",
 			"admin_notify_order_paid":           "false",
 			"admin_notify_user_registered":      "false",
@@ -405,12 +405,12 @@ func GetAdminSettings(c *gin.Context) {
 	// 遍历所有类别
 	for category, defaults := range defaultSettings {
 		categorySettings := make(map[string]interface{})
-		
+
 		// 先设置默认值
 		for key, value := range defaults {
 			categorySettings[key] = value
 		}
-		
+
 		// 从数据库读取配置并覆盖默认值
 		var configs []models.SystemConfig
 		db.Where("category = ?", category).Find(&configs)
@@ -436,7 +436,7 @@ func GetAdminSettings(c *gin.Context) {
 				}
 			}
 		}
-		
+
 		settings[category] = categorySettings
 	}
 
@@ -472,7 +472,7 @@ func UpdateGeneralSettings(c *gin.Context) {
 		if key == "domain_name" {
 			category = "system"
 		}
-		
+
 		var config models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", key, category).First(&config).Error; err != nil {
 			// 如果不存在，创建新配置
@@ -820,7 +820,7 @@ func TestAdminEmailNotification(c *gin.Context) {
 		subject,
 		"这是一条测试消息，如果您收到此消息，说明邮件通知配置正确。",
 	)
-	
+
 	// 将邮件加入队列
 	if err := emailService.QueueEmail(adminEmail, subject, content, "admin_notification"); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -905,7 +905,7 @@ func TestAdminBarkNotification(c *gin.Context) {
 			serverURL = serverURLConfig.Value
 		}
 	}
-	
+
 	if err := db.Where("key = ? AND category = ?", "admin_bark_device_key", "admin_notification").First(&deviceKeyConfig).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -950,7 +950,7 @@ func TestAdminBarkNotification(c *gin.Context) {
 // sendTelegramMessage 发送 Telegram 消息
 func sendTelegramMessage(botToken, chatID, message string) (bool, error) {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
-	
+
 	payload := map[string]interface{}{
 		"chat_id":    chatID,
 		"text":       message,
