@@ -13,7 +13,6 @@ type Package struct {
 	Price          float64        `gorm:"type:decimal(10,2);not null" json:"price"`
 	DurationDays   int            `gorm:"not null" json:"duration_days"`
 	DeviceLimit    int            `gorm:"default:3" json:"device_limit"`
-	BandwidthLimit sql.NullInt64  `json:"bandwidth_limit,omitempty"`
 	SortOrder      int            `gorm:"default:1" json:"sort_order"`
 	IsActive       bool           `gorm:"default:true" json:"is_active"`
 	IsRecommended  bool           `gorm:"default:false" json:"is_recommended"`

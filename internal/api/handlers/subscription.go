@@ -10,6 +10,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -607,6 +608,14 @@ func ResetSubscription(c *gin.Context) {
 		content := templateBuilder.GetSubscriptionResetTemplate(user.Username, v2rayURL, clashURL, expireTime, resetTime, resetReason)
 		subject := "订阅重置通知"
 		_ = emailService.QueueEmail(user.Email, subject, content, "subscription_reset")
+
+		// 发送管理员通知
+		notificationService := notification.NewNotificationService()
+		_ = notificationService.SendAdminNotification("subscription_reset", map[string]interface{}{
+			"username":   user.Username,
+			"email":      user.Email,
+			"reset_time": resetTime,
+		})
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
@@ -841,6 +850,14 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 		content := templateBuilder.GetSubscriptionResetTemplate(user.Username, v2rayURL, clashURL, expireTime, resetTime, resetReason)
 		subject := "订阅重置通知"
 		_ = emailService.QueueEmail(user.Email, subject, content, "subscription_reset")
+
+		// 发送管理员通知
+		notificationService := notification.NewNotificationService()
+		_ = notificationService.SendAdminNotification("subscription_reset", map[string]interface{}{
+			"username":   user.Username,
+			"email":      user.Email,
+			"reset_time": resetTime,
+		})
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": subscription})
@@ -894,6 +911,17 @@ func SendSubscriptionEmailSelf(c *gin.Context) {
 		subscription.CurrentDevices,
 	)
 	subject := "服务配置信息"
+
+	// 发送管理员通知
+	go func() {
+		notificationService := notification.NewNotificationService()
+		sendTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		_ = notificationService.SendAdminNotification("subscription_sent", map[string]interface{}{
+			"username":  user.Username,
+			"email":     user.Email,
+			"send_time": sendTime,
+		})
+	}()
 
 	// 加入邮件队列
 	if err := emailService.QueueEmail(user.Email, subject, content, "subscription"); err != nil {

@@ -1,14 +1,17 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
+	"time"
 
 	"cboard-go/internal/core/auth"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -179,6 +182,17 @@ func ResetPassword(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "reset_password", "user", user.ID,
 		fmt.Sprintf("管理员重置用户密码: %s (%s)", user.Username, user.Email))
 
+	// 发送管理员通知
+	go func() {
+		notificationService := notification.NewNotificationService()
+		resetTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		_ = notificationService.SendAdminNotification("password_reset", map[string]interface{}{
+			"username":   user.Username,
+			"email":      user.Email,
+			"reset_time": resetTime,
+		})
+	}()
+
 	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -213,8 +227,50 @@ func ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// 这里应该发送验证码邮件
-	// 暂时返回成功消息
+	// 生成6位验证码（使用 crypto/rand 生成更安全的随机数）
+	b := make([]byte, 4)
+	rand.Read(b)
+	codeInt := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
+	codeInt = 100000 + (codeInt % 900000)
+	code := fmt.Sprintf("%06d", codeInt)
+
+	expiresAt := utils.GetBeijingTime().Add(10 * time.Minute)
+
+	// 保存验证码（purpose 为 reset_password）
+	verificationCode := models.VerificationCode{
+		Email:     req.Email,
+		Code:      code,
+		ExpiresAt: expiresAt,
+		Used:      0,
+		Purpose:   "reset_password",
+	}
+
+	if err := db.Create(&verificationCode).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "保存验证码失败",
+		})
+		return
+	}
+
+	// 发送密码重置验证码邮件（验证码邮件是必须的，不受客户通知开关影响）
+	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
+	content := templateBuilder.GetPasswordResetVerificationCodeTemplate(user.Username, code)
+	subject := "密码重置验证码"
+
+	// 验证码邮件立即发送，不加入队列（验证码需要实时性）
+	if err := emailService.SendEmail(user.Email, subject, content); err != nil {
+		// 如果立即发送失败，尝试加入队列作为备选方案
+		if queueErr := emailService.QueueEmail(user.Email, subject, content, "verification"); queueErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("发送验证码邮件失败: %v", err),
+			})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "验证码已发送，请查收邮箱",
@@ -259,8 +315,24 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
-	// 这里应该验证验证码
-	// 暂时跳过验证码验证，直接重置密码
+	// 验证验证码
+	var verificationCode models.VerificationCode
+	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "reset_password").Order("created_at DESC").First(&verificationCode).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "验证码错误或已使用",
+		})
+		return
+	}
+
+	// 检查验证码是否过期
+	if verificationCode.IsExpired() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "验证码已过期，请重新获取",
+		})
+		return
+	}
 
 	// 更新密码
 	hashedPassword, err := auth.HashPassword(req.NewPassword)
@@ -284,6 +356,17 @@ func ResetPasswordByCode(c *gin.Context) {
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "reset_password", "user", user.ID,
 		fmt.Sprintf("管理员重置用户密码: %s (%s)", user.Username, user.Email))
+
+	// 发送管理员通知
+	go func() {
+		notificationService := notification.NewNotificationService()
+		resetTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		_ = notificationService.SendAdminNotification("password_reset", map[string]interface{}{
+			"username":   user.Username,
+			"email":      user.Email,
+			"reset_time": resetTime,
+		})
+	}()
 
 	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{

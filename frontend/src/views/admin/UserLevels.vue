@@ -341,6 +341,27 @@ const editLevel = (level) => {
     isActiveValue = true // 默认启用
   }
   
+  // 处理 icon_url 和 benefits，确保它们是字符串
+  let iconUrl = ''
+  if (level.icon_url) {
+    if (typeof level.icon_url === 'string') {
+      iconUrl = level.icon_url
+    } else if (typeof level.icon_url === 'object' && level.icon_url !== null) {
+      // 处理可能的对象格式（向后兼容）
+      iconUrl = level.icon_url.String || level.icon_url.string || ''
+    }
+  }
+  
+  let benefits = ''
+  if (level.benefits) {
+    if (typeof level.benefits === 'string') {
+      benefits = level.benefits
+    } else if (typeof level.benefits === 'object' && level.benefits !== null) {
+      // 处理可能的对象格式（向后兼容）
+      benefits = level.benefits.String || level.benefits.string || ''
+    }
+  }
+  
   Object.assign(levelForm, {
     level_name: level.level_name,
     level_order: level.level_order,
@@ -348,8 +369,8 @@ const editLevel = (level) => {
     discount_rate: level.discount_rate,
     // device_limit 已删除
     color: level.color || '#409eff',
-    icon_url: level.icon_url || '',
-    benefits: level.benefits || '',
+    icon_url: iconUrl,
+    benefits: benefits,
     is_active: Boolean(isActiveValue)
   })
   showDialog.value = true
@@ -382,6 +403,10 @@ const saveLevel = async () => {
     // 确保 is_active 是布尔值
     const isActiveValue = Boolean(levelForm.is_active)
     
+    // 确保 icon_url 和 benefits 是字符串（空字符串用于清空字段）
+    const iconUrl = typeof levelForm.icon_url === 'string' ? levelForm.icon_url : ''
+    const benefits = typeof levelForm.benefits === 'string' ? levelForm.benefits : ''
+    
     const data = {
       level_name: levelForm.level_name,
       level_order: levelForm.level_order,
@@ -389,8 +414,8 @@ const saveLevel = async () => {
       discount_rate: levelForm.discount_rate,
       // device_limit 已删除
       color: levelForm.color,
-      icon_url: levelForm.icon_url || null,
-      benefits: levelForm.benefits || null,
+      icon_url: iconUrl,  // 传递空字符串以清空字段，传递字符串以更新字段
+      benefits: benefits, // 传递空字符串以清空字段，传递字符串以更新字段
       is_active: isActiveValue
     }
     

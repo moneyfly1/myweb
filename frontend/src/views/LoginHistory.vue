@@ -146,25 +146,47 @@ export default {
       loading.value = true
       try {
         const response = await userAPI.getLoginHistory()
-        if (response.data && response.data.success) {
-          const data = response.data.data
-          // 处理数据格式
-          if (Array.isArray(data)) {
-            loginHistory.value = data
-            total.value = data.length
-          } else if (data.logins && Array.isArray(data.logins)) {
-            loginHistory.value = data.logins
-            total.value = data.total || data.logins.length
-          } else {
-            loginHistory.value = []
-            total.value = 0
+        let data = null
+        
+        // 处理不同的响应格式
+        if (response && response.data) {
+          if (response.data.success !== false) {
+            if (Array.isArray(response.data.data)) {
+              data = response.data.data
+            } else if (response.data.data && Array.isArray(response.data.data)) {
+              data = response.data.data
+            } else {
+              data = response.data.data
+            }
           }
-          
-          } else {
-          ElMessage.error('获取登录历史失败：响应格式错误')
+        } else if (response && Array.isArray(response)) {
+          data = response
+        }
+        
+        // 处理数据格式
+        if (Array.isArray(data)) {
+          loginHistory.value = data.map(item => ({
+            login_time: item.login_time || item.loginTime || '',
+            ip_address: item.ip_address || item.ipAddress || '',
+            country: item.country || '',
+            city: item.city || '',
+            user_agent: item.user_agent || item.userAgent || '',
+            status: item.status || item.login_status || 'success',
+            login_status: item.login_status || item.status || 'success'
+          }))
+          total.value = loginHistory.value.length
+        } else if (data && data.logins && Array.isArray(data.logins)) {
+          loginHistory.value = data.logins
+          total.value = data.total || data.logins.length
+        } else {
+          loginHistory.value = []
+          total.value = 0
         }
       } catch (error) {
-        ElMessage.error(`获取登录历史失败: ${error.message || '未知错误'}`)
+        console.error('获取登录历史失败:', error)
+        ElMessage.error(`获取登录历史失败: ${error.response?.data?.message || error.message || '未知错误'}`)
+        loginHistory.value = []
+        total.value = 0
       } finally {
         loading.value = false
       }

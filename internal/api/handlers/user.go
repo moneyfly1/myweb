@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -83,6 +84,11 @@ func GetCurrentUser(c *gin.Context) {
 		"balance":             user.Balance,
 	}
 
+	// 添加昵称（如果存在）
+	if user.Nickname.Valid {
+		responseData["nickname"] = user.Nickname.String
+	}
+
 	// 添加头像（如果存在）
 	if user.Avatar.Valid {
 		responseData["avatar"] = user.Avatar.String
@@ -108,6 +114,7 @@ func UpdateCurrentUser(c *gin.Context) {
 
 	var req struct {
 		Username string `json:"username"`
+		Nickname string `json:"nickname"`
 		Avatar   string `json:"avatar"`
 		Theme    string `json:"theme"`
 		Language string `json:"language"`
@@ -135,6 +142,12 @@ func UpdateCurrentUser(c *gin.Context) {
 			return
 		}
 		user.Username = req.Username
+	}
+	if req.Nickname != "" {
+		user.Nickname = database.NullString(req.Nickname)
+	} else if req.Nickname == "" {
+		// 如果传入空字符串，清空昵称
+		user.Nickname = database.NullString("")
 	}
 	if req.Avatar != "" {
 		user.Avatar = database.NullString(req.Avatar)
@@ -740,6 +753,23 @@ func CreateUser(c *gin.Context) {
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "create_user", "user", user.ID,
 		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限: %v", user.Username, user.Email, user.IsAdmin))
+
+	// 发送管理员通知
+	go func() {
+		notificationService := notification.NewNotificationService()
+		adminUser, _ := middleware.GetCurrentUser(c)
+		createdBy := "系统"
+		if adminUser != nil {
+			createdBy = adminUser.Username
+		}
+		createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		_ = notificationService.SendAdminNotification("user_created", map[string]interface{}{
+			"username":    user.Username,
+			"email":       user.Email,
+			"created_by":  createdBy,
+			"create_time": createTime,
+		})
+	}()
 
 	utils.SetResponseStatus(c, http.StatusCreated)
 	c.JSON(http.StatusCreated, gin.H{

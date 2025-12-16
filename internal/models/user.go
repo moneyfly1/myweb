@@ -14,6 +14,7 @@ type User struct {
 	IsActive   bool           `gorm:"default:true" json:"is_active"`
 	IsVerified bool           `gorm:"default:false" json:"is_verified"`
 	IsAdmin    bool           `gorm:"default:false" json:"is_admin"`
+	Nickname   sql.NullString `gorm:"type:varchar(50)" json:"nickname,omitempty"`
 	Avatar     sql.NullString `gorm:"type:varchar(255)" json:"avatar,omitempty"`
 	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt  time.Time      `gorm:"autoUpdateTime" json:"updated_at"`

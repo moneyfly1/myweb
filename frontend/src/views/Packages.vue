@@ -96,9 +96,6 @@
             <el-descriptions-item label="套餐名称">{{ selectedPackage?.name }}</el-descriptions-item>
             <el-descriptions-item label="有效期">{{ selectedPackage?.duration_days }}天</el-descriptions-item>
             <el-descriptions-item label="设备限制">{{ selectedPackage?.device_limit }}个</el-descriptions-item>
-            <el-descriptions-item label="流量限制">
-              {{ selectedPackage?.bandwidth_limit ? selectedPackage.bandwidth_limit + 'GB' : '无限制' }}
-            </el-descriptions-item>
             <el-descriptions-item label="原价">
               <span>¥{{ selectedPackage?.price }}</span>
             </el-descriptions-item>
@@ -214,15 +211,22 @@
           </div>
 
           <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" style="width: 100%">
-            <el-radio label="balance" :disabled="userBalance <= 0" style="width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #e4e7ed; border-radius: 4px">
+            <el-radio 
+              label="balance" 
+              :disabled="userBalance < finalAmount" 
+              style="width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #e4e7ed; border-radius: 4px"
+            >
               <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
                 <span>
                   <el-icon style="margin-right: 5px"><Wallet /></el-icon>
                   余额支付
                 </span>
-                <span v-if="userBalance >= finalAmount" style="color: #67c23a; font-weight: 600">（余额充足）</span>
-                <span v-else style="color: #f56c6c; font-weight: 600">
-                  （余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）
+                <span v-if="userBalance >= finalAmount" style="color: #67c23a; font-weight: 600">（余额充足，可直接支付）</span>
+                <span v-else-if="userBalance > 0" style="color: #f56c6c; font-weight: 600">
+                  （余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}，请选择其他支付方式）
+                </span>
+                <span v-else style="color: #909399; font-weight: 600">
+                  （余额为0，请选择其他支付方式）
                 </span>
               </div>
             </el-radio>
@@ -604,7 +608,6 @@ export default {
             features: [
               `有效期 ${pkg.duration_days} 天`,
               `支持 ${pkg.device_limit} 个设备`,
-              pkg.bandwidth_limit ? `流量限制 ${pkg.bandwidth_limit}GB` : '无流量限制',
               '7×24小时技术支持',
               '高速稳定节点'
             ],
@@ -719,12 +722,14 @@ export default {
         
         // 根据余额自动选择支付方式
         const finalPrice = finalAmount.value
-        if (userBalance.value >= finalPrice) {
+        if (userBalance.value >= finalPrice && userBalance.value > 0) {
+          // 余额充足，默认选择余额支付
           paymentMethod.value = 'balance'
-        } else if (userBalance.value > 0) {
+        } else if (userBalance.value > 0 && userBalance.value < finalPrice) {
+          // 余额不足但大于0，默认选择混合支付
           paymentMethod.value = 'mixed'
         } else {
-          // 优先选择易支付，如果没有则选择支付宝
+          // 余额为0，优先选择易支付，如果没有则选择支付宝
           const hasYipay = availablePaymentMethods.value.some(m => m.key === 'yipay')
           paymentMethod.value = hasYipay ? 'yipay' : (availablePaymentMethods.value[0]?.key || 'alipay')
         }
@@ -826,8 +831,8 @@ export default {
           throw new Error('订单创建失败：未返回订单数据')
         }
         
-        // 设置订单信息
-        orderInfo.orderNo = order.order_no
+        // 设置订单信息（确保订单号正确设置）
+        orderInfo.orderNo = order.order_no || order.orderNo || order.order_id || ''
         orderInfo.packageName = selectedPackage.value.name
         orderInfo.amount = order.amount
         orderInfo.duration = selectedPackage.value.duration_days
@@ -864,10 +869,11 @@ export default {
         } else {
           // 支付URL生成失败，显示提示信息并提供重试选项
           const errorMsg = order.payment_error || order.note || '支付链接生成失败，可能是网络问题或支付宝配置问题'
+          const orderNo = order.order_no || order.orderNo || '未知'
           
           // 显示错误提示，并提供跳转到订单页面的选项
           ElMessageBox.confirm(
-            `${errorMsg}。订单已创建成功（订单号：${order.order_no}），您可以：\n\n1. 前往订单页面重新生成支付链接\n2. 稍后重试`,
+            `${errorMsg}。订单已创建成功（订单号：${orderNo}），您可以：\n\n1. 前往订单页面重新生成支付链接\n2. 稍后重试`,
             '支付链接生成失败',
             {
               confirmButtonText: '前往订单页面',
@@ -1018,72 +1024,50 @@ export default {
         payment_method: order.payment_method || 'alipay'
       }
       
-      // 支付宝支付：使用qrcode库将支付宝URL生成为二维码图片
+      // 使用qrcode库将支付URL生成为二维码图片
       const paymentMethod = order.payment_method_name || order.payment_method || 'alipay'
       
-      if (paymentMethod === 'alipay') {
-        // 支付宝返回的是URL（如 https://qr.alipay.com/xxx），需要在前端生成二维码图片
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          try {
-            // 动态导入qrcode库
-            const QRCode = await import('qrcode')
-            // 将支付宝URL生成为base64格式的二维码图片
-            const qrCodeDataURL = await QRCode.toDataURL(url, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
-            paymentQRCode.value = qrCodeDataURL
-          } catch (error) {
-            ElMessage.error('生成二维码失败，请刷新页面重试')
-            return
-          }
+      try {
+        // 动态导入qrcode库
+        const QRCode = await import('qrcode')
+        
+        // 支付宝返回的可能是：
+        // 1. 二维码URL（如 https://qr.alipay.com/xxx）- 直接使用
+        // 2. 支付页面URL（如 https://openapi.alipay.com/gateway.do?...）- 也可以生成二维码
+        // 3. 其他支付方式的URL - 同样生成二维码
+        
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+          // 将URL生成为base64格式的二维码图片
+          const qrCodeDataURL = await QRCode.toDataURL(url, {
+            width: 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            },
+            errorCorrectionLevel: 'M'
+          })
+          paymentQRCode.value = qrCodeDataURL
+        } else if (url && url.trim() !== '') {
+          // 即使不是http/https开头的URL，也尝试生成二维码（可能是其他格式）
+          const qrCodeDataURL = await QRCode.toDataURL(url, {
+            width: 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            },
+            errorCorrectionLevel: 'M'
+          })
+          paymentQRCode.value = qrCodeDataURL
         } else {
-          ElMessage.error('支付宝二维码格式错误，请联系管理员检查配置')
+          ElMessage.error('支付链接为空，请联系管理员检查配置')
           return
         }
-      } else {
-        // 非支付宝支付方式，使用qrcode库生成二维码
-        if (paymentUrl.startsWith('http://') || paymentUrl.startsWith('https://')) {
-          try {
-            const QRCode = await import('qrcode')
-            const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
-            paymentQRCode.value = qrCodeDataURL
-          } catch (error) {
-            ElMessage.error('生成二维码失败，请刷新页面重试')
-            return
-          }
-        } else {
-          // 直接是字符串，也使用qrcode库生成
-          try {
-            const QRCode = await import('qrcode')
-            const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
-            paymentQRCode.value = qrCodeDataURL
-          } catch (error) {
-            ElMessage.error('生成二维码失败，请刷新页面重试')
-            return
-          }
-        }
+      } catch (error) {
+        console.error('生成二维码失败:', error)
+        ElMessage.error('生成二维码失败: ' + (error.message || '未知错误') + '，请刷新页面重试')
+        return
       }
       
       // 显示二维码对话框

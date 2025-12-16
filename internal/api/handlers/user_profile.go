@@ -25,6 +25,29 @@ func GetAdminProfile(c *gin.Context) {
 		return
 	}
 
+	db := database.GetDB()
+
+	// 从SystemConfig中读取display_name, phone, bio
+	displayName := user.Username // 默认使用username
+	phone := ""
+	bio := ""
+
+	var configs []models.SystemConfig
+	db.Where("category = ? AND key IN (?, ?, ?)", "admin_profile", 
+		fmt.Sprintf("user_%d_display_name", user.ID),
+		fmt.Sprintf("user_%d_phone", user.ID),
+		fmt.Sprintf("user_%d_bio", user.ID)).Find(&configs)
+
+	for _, config := range configs {
+		if strings.Contains(config.Key, "display_name") {
+			displayName = config.Value
+		} else if strings.Contains(config.Key, "phone") {
+			phone = config.Value
+		} else if strings.Contains(config.Key, "bio") {
+			bio = config.Value
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
@@ -34,9 +57,9 @@ func GetAdminProfile(c *gin.Context) {
 			"is_admin":     user.IsAdmin,
 			"avatar_url":   user.Avatar.String,
 			"avatar":       user.Avatar.String,
-			"display_name": user.Username, // 如果没有display_name字段，使用username
-			"phone":        "",            // 如果User模型没有phone字段，返回空字符串
-			"bio":          "",            // 如果User模型没有bio字段，返回空字符串
+			"display_name": displayName,
+			"phone":        phone,
+			"bio":          bio,
 			"theme":        user.Theme,
 			"language":     user.Language,
 		},
@@ -91,15 +114,79 @@ func UpdateAdminProfile(c *gin.Context) {
 		user.Language = req.Language
 	}
 
-	// 注意：User模型可能没有 display_name, phone, bio 字段
-	// 如果需要这些字段，需要在User模型中添加，或者存储在SystemConfig中
-
+	// 保存用户基本信息
 	if err := db.Save(user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "更新失败: " + err.Error(),
 		})
 		return
+	}
+
+	// 将display_name, phone, bio存储在SystemConfig中
+	updateConfig := func(key, value string) error {
+		var config models.SystemConfig
+		configKey := fmt.Sprintf("user_%d_%s", user.ID, key)
+		if err := db.Where("key = ? AND category = ?", configKey, "admin_profile").First(&config).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				config = models.SystemConfig{
+					Key:      configKey,
+					Category: "admin_profile",
+					Value:    value,
+				}
+				return db.Create(&config).Error
+			}
+			return err
+		}
+		config.Value = value
+		return db.Save(&config).Error
+	}
+
+	// 更新display_name
+	if req.DisplayName != "" {
+		if err := updateConfig("display_name", req.DisplayName); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新显示名称失败: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	// 更新phone
+	if req.Phone != "" || req.Phone == "" {
+		if err := updateConfig("phone", req.Phone); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新手机号码失败: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	// 更新bio
+	if req.Bio != "" || req.Bio == "" {
+		if err := updateConfig("bio", req.Bio); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新个人简介失败: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	// 重新读取配置以返回最新值
+	displayName := user.Username
+	phone := ""
+	bio := ""
+	if req.DisplayName != "" {
+		displayName = req.DisplayName
+	}
+	if req.Phone != "" {
+		phone = req.Phone
+	}
+	if req.Bio != "" {
+		bio = req.Bio
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -109,10 +196,10 @@ func UpdateAdminProfile(c *gin.Context) {
 			"id":           user.ID,
 			"username":     user.Username,
 			"email":        user.Email,
-			"display_name": req.DisplayName,
+			"display_name": displayName,
 			"avatar_url":   user.Avatar.String,
-			"phone":        req.Phone,
-			"bio":          req.Bio,
+			"phone":        phone,
+			"bio":          bio,
 			"theme":        user.Theme,
 			"language":     user.Language,
 		},
@@ -181,12 +268,16 @@ func GetLoginHistory(c *gin.Context) {
 		historyList = append(historyList, gin.H{
 			"id":           h.ID,
 			"ip_address":   ipAddress,
+			"ipAddress":    ipAddress, // 兼容字段
 			"user_agent":   userAgent,
+			"userAgent":    userAgent, // 兼容字段
 			"login_time":   h.LoginTime.Format("2006-01-02 15:04:05"),
+			"loginTime":    h.LoginTime.Format("2006-01-02 15:04:05"), // 兼容字段
 			"login_status": status,
 			"status":       status, // 兼容字段
 			"country":      country,
 			"city":         city,
+			"location":     h.Location.String, // 原始位置信息
 		})
 	}
 

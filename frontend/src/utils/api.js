@@ -136,6 +136,13 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    
+    // 添加CSRF token（从Cookie中获取）
+    const csrfToken = getCookie('csrf_token')
+    if (csrfToken && (config.method === 'post' || config.method === 'put' || config.method === 'delete' || config.method === 'patch')) {
+      config.headers['X-CSRF-Token'] = csrfToken
+    }
+    
     return config
   },
   error => Promise.reject(error)

@@ -114,14 +114,42 @@ func GetTickets(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	var tickets []models.Ticket
-	query := db.Preload("User").Preload("Assignee")
+	query := db.Model(&models.Ticket{}).Preload("User").Preload("Assignee")
 
+	// 如果不是管理员，只查询当前用户的工单
 	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
 	}
 
-	if err := query.Order("created_at DESC").Find(&tickets).Error; err != nil {
+	// 筛选条件
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if ticketType := c.Query("type"); ticketType != "" {
+		query = query.Where("type = ?", ticketType)
+	}
+	if priority := c.Query("priority"); priority != "" {
+		query = query.Where("priority = ?", priority)
+	}
+
+	// 分页参数
+	page := 1
+	size := 20
+	if pageStr := c.Query("page"); pageStr != "" {
+		fmt.Sscanf(pageStr, "%d", &page)
+	}
+	if sizeStr := c.Query("size"); sizeStr != "" {
+		fmt.Sscanf(sizeStr, "%d", &size)
+	}
+
+	// 计算总数
+	var total int64
+	query.Count(&total)
+
+	// 查询工单列表
+	var tickets []models.Ticket
+	offset := (page - 1) * size
+	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&tickets).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "获取工单列表失败",
@@ -129,9 +157,30 @@ func GetTickets(c *gin.Context) {
 		return
 	}
 
+	// 格式化工单数据
+	ticketList := make([]gin.H, 0)
+	for _, ticket := range tickets {
+		ticketList = append(ticketList, gin.H{
+			"id":         ticket.ID,
+			"ticket_no":  ticket.TicketNo,
+			"title":      ticket.Title,
+			"content":    ticket.Content,
+			"type":       ticket.Type,
+			"status":     ticket.Status,
+			"priority":   ticket.Priority,
+			"created_at": ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at": ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    tickets,
+		"data": gin.H{
+			"tickets": ticketList,
+			"total":   total,
+			"page":    page,
+			"size":    size,
+		},
 	})
 }
 

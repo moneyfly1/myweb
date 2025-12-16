@@ -39,8 +39,8 @@ func GetNodes(c *gin.Context) {
 		query = query.Where("status = ?", status)
 	}
 
-	var nodes []models.Node
-	if err := query.Order("created_at DESC").Find(&nodes).Error; err != nil {
+	var allNodes []models.Node
+	if err := query.Order("created_at DESC").Find(&allNodes).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "获取节点列表失败: " + err.Error(),
@@ -48,9 +48,35 @@ func GetNodes(c *gin.Context) {
 		return
 	}
 
+	// 去重：基于节点配置的唯一性
+	seenKeys := make(map[string]bool)
+	var uniqueNodes []models.Node
+
+	for _, node := range allNodes {
+		// 生成去重键
+		key := fmt.Sprintf("%s:%s", node.Type, node.Name)
+		if node.Config != nil && *node.Config != "" {
+			// 尝试从配置中提取 server 和 port
+			var proxyNode config_update.ProxyNode
+			if err := json.Unmarshal([]byte(*node.Config), &proxyNode); err == nil {
+				key = fmt.Sprintf("%s:%s:%d", proxyNode.Type, proxyNode.Server, proxyNode.Port)
+				if proxyNode.UUID != "" {
+					key += ":" + proxyNode.UUID
+				} else if proxyNode.Password != "" {
+					key += ":" + proxyNode.Password
+				}
+			}
+		}
+
+		if !seenKeys[key] {
+			seenKeys[key] = true
+			uniqueNodes = append(uniqueNodes, node)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    nodes,
+		"data":    uniqueNodes,
 	})
 }
 

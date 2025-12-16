@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -51,6 +52,68 @@ type Coupon struct {
 // TableName 指定表名
 func (Coupon) TableName() string {
 	return "coupons"
+}
+
+// CouponResponse 优惠券响应结构，用于正确序列化sql.NullInt64
+type CouponResponse struct {
+	ID                 uint      `json:"id"`
+	Code               string    `json:"code"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	Type               string    `json:"type"`
+	DiscountValue      float64   `json:"discount_value"`
+	MinAmount          *float64  `json:"min_amount,omitempty"`
+	MaxDiscount        *float64  `json:"max_discount,omitempty"`
+	ValidFrom          time.Time `json:"valid_from"`
+	ValidUntil         time.Time `json:"valid_until"`
+	TotalQuantity      *int64    `json:"total_quantity,omitempty"`
+	UsedQuantity       int       `json:"used_quantity"`
+	MaxUsesPerUser     int       `json:"max_uses_per_user"`
+	Status             string    `json:"status"`
+	ApplicablePackages string    `json:"applicable_packages"`
+	CreatedBy          *int64    `json:"created_by,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// ToCouponResponse 将Coupon转换为CouponResponse
+func (c *Coupon) ToCouponResponse() CouponResponse {
+	resp := CouponResponse{
+		ID:                 c.ID,
+		Code:               c.Code,
+		Name:               c.Name,
+		Description:        c.Description,
+		Type:               c.Type,
+		DiscountValue:      c.DiscountValue,
+		ValidFrom:          c.ValidFrom,
+		ValidUntil:         c.ValidUntil,
+		UsedQuantity:       c.UsedQuantity,
+		MaxUsesPerUser:     c.MaxUsesPerUser,
+		Status:             c.Status,
+		ApplicablePackages: c.ApplicablePackages,
+		CreatedAt:          c.CreatedAt,
+		UpdatedAt:          c.UpdatedAt,
+	}
+
+	if c.MinAmount.Valid {
+		resp.MinAmount = &c.MinAmount.Float64
+	}
+	if c.MaxDiscount.Valid {
+		resp.MaxDiscount = &c.MaxDiscount.Float64
+	}
+	if c.TotalQuantity.Valid {
+		resp.TotalQuantity = &c.TotalQuantity.Int64
+	}
+	if c.CreatedBy.Valid {
+		resp.CreatedBy = &c.CreatedBy.Int64
+	}
+
+	return resp
+}
+
+// MarshalJSON 自定义JSON序列化
+func (c *Coupon) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.ToCouponResponse())
 }
 
 // CouponUsage 优惠券使用记录

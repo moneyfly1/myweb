@@ -473,6 +473,24 @@ func GetConfigUpdateLogs(c *gin.Context) {
 	})
 }
 
+// ClearConfigUpdateLogs 清理配置更新日志
+func ClearConfigUpdateLogs(c *gin.Context) {
+	service := config_update.NewConfigUpdateService()
+	err := service.ClearLogs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "清理日志失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "日志已清理",
+	})
+}
+
 // UpdateConfigUpdateConfig 更新配置更新设置
 func UpdateConfigUpdateConfig(c *gin.Context) {
 	var req map[string]interface{}

@@ -742,10 +742,13 @@ export default {
         // 调用API保存个人资料
         const response = await api.put('/users/profile', {
           username: profileForm.username,
+          nickname: profileForm.nickname || '',
           avatar: profileForm.avatar
         })
         
         if (response.data && response.data.success) {
+          // 重新加载用户信息以确保数据同步
+          await loadUserInfo()
           // 更新本地用户信息
           if (authStore && authStore.updateUser) {
             authStore.updateUser(profileForm)

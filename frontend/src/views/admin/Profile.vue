@@ -38,6 +38,7 @@
                 :show-file-list="false"
                 :on-success="handleAvatarSuccess"
                 :before-upload="beforeAvatarUpload"
+                :headers="uploadHeaders"
                 accept="image/*"
               >
                 <img v-if="basicForm.avatar_url" :src="basicForm.avatar_url" class="avatar" />
@@ -163,12 +164,24 @@
                 </template>
               </el-table-column>
               <el-table-column prop="ip_address" label="IP地址" width="140" />
-              <el-table-column prop="location" label="登录地点" />
-              <el-table-column prop="device" label="设备信息" />
+              <el-table-column label="登录地点" width="150">
+                <template #default="{ row }">
+                  <span v-if="row.country || row.city">{{ row.country || '' }}{{ row.city ? ', ' + row.city : '' }}</span>
+                  <span v-else-if="row.location">{{ row.location }}</span>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="设备信息" min-width="200">
+                <template #default="{ row }">
+                  <el-tooltip :content="row.user_agent || row.userAgent || '未知'" placement="top">
+                    <span>{{ getDeviceInfo(row.user_agent || row.userAgent) }}</span>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
               <el-table-column prop="status" label="状态" width="100">
                 <template #default="{ row }">
-                  <el-tag :type="row.status === 'success' ? 'success' : 'danger'">
-                    {{ row.status === 'success' ? '成功' : '失败' }}
+                  <el-tag :type="(row.status === 'success' || row.login_status === 'success') ? 'success' : 'danger'">
+                    {{ (row.status === 'success' || row.login_status === 'success') ? '成功' : '失败' }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -212,12 +225,21 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { adminAPI } from '@/utils/api'
 import router from '@/router'
+import { secureStorage } from '@/utils/secureStorage'
+
+// 获取Cookie的工具函数
+function getCookie(name) {
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop().split(';').shift()
+  return null
+}
 
 export default {
   name: 'AdminProfile',
@@ -233,9 +255,23 @@ export default {
     const passwordLoading = ref(false)
     const securityLoading = ref(false)
     
-    const uploadUrl = '/api/admin/upload'
+    const uploadUrl = '/api/v1/admin/upload'
     
     const authStore = useAuthStore()
+    
+    // 上传请求头
+    const uploadHeaders = computed(() => {
+      const headers = {}
+      const token = secureStorage.get('admin_token')
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      const csrfToken = getCookie('csrf_token')
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken
+      }
+      return headers
+    })
 
     const basicForm = reactive({
       username: '',
@@ -338,17 +374,35 @@ export default {
         let success = false
         let message = '保存失败'
         
-        if (response) {
+        if (response && response.data) {
+          if (response.data.success !== false) {
+            success = true
+            message = response.data.message || '基本信息保存成功'
+            // 更新表单数据
+            if (response.data.data) {
+              Object.assign(basicForm, {
+                display_name: response.data.data.display_name || basicForm.display_name,
+                avatar_url: response.data.data.avatar_url || response.data.data.avatar || basicForm.avatar_url,
+                phone: response.data.data.phone || basicForm.phone,
+                bio: response.data.data.bio || basicForm.bio
+              })
+            }
+          } else {
+            message = response.data.message || '保存失败'
+          }
+        } else if (response) {
           if (response.success !== false) {
             success = true
-            message = response.message || response.data?.message || '基本信息保存成功'
+            message = response.message || '基本信息保存成功'
           } else {
-            message = response.message || response.data?.message || '保存失败'
+            message = response.message || '保存失败'
           }
         }
         
         if (success) {
-          ElMessage.success('基本信息保存成功')
+          ElMessage.success(message)
+          // 重新加载基本信息以确保数据同步
+          await loadBasicInfo()
           if (authStore && authStore.updateUser) {
             authStore.updateUser(basicForm)
           }
@@ -375,10 +429,20 @@ export default {
         
         const response = await adminAPI.changePassword({
           current_password: passwordForm.current_password,
+          old_password: passwordForm.current_password, // 兼容字段
           new_password: passwordForm.new_password
         })
-        const success = response.success !== false && (response.data?.success !== false)
-        const message = response.message || response.data?.message || '密码修改成功'
+        
+        let success = false
+        let message = '密码修改失败'
+        
+        if (response && response.data) {
+          success = response.data.success !== false
+          message = response.data.message || (success ? '密码修改成功' : '密码修改失败')
+        } else if (response) {
+          success = response.success !== false
+          message = response.message || (success ? '密码修改成功' : '密码修改失败')
+        }
         
         if (success) {
           ElMessage.success('密码修改成功，请重新登录')
@@ -393,7 +457,7 @@ export default {
             router.push('/admin/login')
           }, 1500)
         } else {
-          ElMessage.error(message || '密码修改失败')
+          ElMessage.error(message)
         }
       } catch (error) {
         const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || '修改密码失败'
@@ -412,11 +476,22 @@ export default {
     }
     const handleAvatarSuccess = (response) => {
       if (response && response.success) {
-        basicForm.avatar_url = response.data?.url || response.url || ''
+        basicForm.avatar_url = response.data?.url || response.url || response.data?.avatar_url || ''
         ElMessage.success('头像上传成功')
-      } else if (response && response.data && response.data.url) {
-        basicForm.avatar_url = response.data.url
-        ElMessage.success('头像上传成功')
+        // 自动保存头像
+        saveBasicInfo()
+      } else if (response && response.data) {
+        if (response.data.url) {
+          basicForm.avatar_url = response.data.url
+          ElMessage.success('头像上传成功')
+          saveBasicInfo()
+        } else if (response.data.avatar_url) {
+          basicForm.avatar_url = response.data.avatar_url
+          ElMessage.success('头像上传成功')
+          saveBasicInfo()
+        } else {
+          ElMessage.error('头像上传失败：响应格式错误')
+        }
       } else {
         ElMessage.error('头像上传失败')
       }
@@ -543,25 +618,40 @@ export default {
       try {
         const response = await adminAPI.getLoginHistory()
         let data = null
+        
+        // 处理不同的响应格式
         if (response && response.data) {
-          if (response.data.success !== false && response.data.data) {
-            data = response.data.data
-          } else if (response.data) {
-            data = response.data
+          if (response.data.success !== false) {
+            if (Array.isArray(response.data.data)) {
+              data = response.data.data
+            } else if (response.data.data && Array.isArray(response.data.data)) {
+              data = response.data.data
+            } else {
+              data = response.data.data
+            }
           }
-        } else if (response) {
+        } else if (response && Array.isArray(response)) {
           data = response
         }
         
-        if (data && data.login_history) {
-          loginHistory.value = data.login_history || []
-          } else if (Array.isArray(data)) {
-          loginHistory.value = data
+        if (Array.isArray(data)) {
+          loginHistory.value = data.map(item => ({
+            login_time: item.login_time || item.loginTime || '',
+            ip_address: item.ip_address || item.ipAddress || '',
+            country: item.country || '',
+            city: item.city || '',
+            user_agent: item.user_agent || item.userAgent || '',
+            status: item.status || item.login_status || 'success',
+            login_status: item.login_status || item.status || 'success'
+          }))
+        } else if (data && data.login_history && Array.isArray(data.login_history)) {
+          loginHistory.value = data.login_history
         } else {
           loginHistory.value = []
-          }
+        }
       } catch (error) {
-        ElMessage.error('加载登录历史失败')
+        console.error('加载登录历史失败:', error)
+        ElMessage.error('加载登录历史失败: ' + (error.response?.data?.message || error.message || '未知错误'))
         loginHistory.value = []
       } finally {
         loginHistoryLoading.value = false
@@ -611,7 +701,31 @@ export default {
     const formatDate = (dateString) => {
       if (!dateString) return ''
       const date = new Date(dateString)
-      return date.toLocaleString('zh-CN')
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    }
+    
+    // 获取设备信息（简化显示）
+    const getDeviceInfo = (userAgent) => {
+      if (!userAgent) return '未知设备'
+      const ua = userAgent.toLowerCase()
+      if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
+        return '移动设备'
+      } else if (ua.includes('windows')) {
+        return 'Windows'
+      } else if (ua.includes('mac')) {
+        return 'Mac'
+      } else if (ua.includes('linux')) {
+        return 'Linux'
+      } else {
+        return '其他设备'
+      }
     }
     onMounted(() => {
       loadBasicInfo()
@@ -636,6 +750,7 @@ export default {
       basicRules,
       passwordRules,
       uploadUrl,
+      uploadHeaders,
       saveBasicInfo,
       resetBasicForm,
       changePassword,
@@ -649,7 +764,8 @@ export default {
       toggleSystemNotification,
       toggleSecurityNotification,
       updateNotificationFrequency,
-      formatDate
+      formatDate,
+      getDeviceInfo
     }
   }
 }

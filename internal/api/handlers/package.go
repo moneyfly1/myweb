@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -29,18 +30,17 @@ func GetPackages(c *gin.Context) {
 	result := make([]gin.H, 0)
 	for _, pkg := range packages {
 		result = append(result, gin.H{
-			"id":              pkg.ID,
-			"name":            pkg.Name,
-			"description":     pkg.Description.String,
-			"price":           pkg.Price,
-			"duration_days":   pkg.DurationDays,
-			"device_limit":    pkg.DeviceLimit,
-			"bandwidth_limit": pkg.BandwidthLimit.Int64,
-			"sort_order":      pkg.SortOrder,
-			"is_active":       pkg.IsActive,
-			"is_recommended":  pkg.IsRecommended,
-			"created_at":      pkg.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":      pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"id":             pkg.ID,
+			"name":           pkg.Name,
+			"description":    pkg.Description.String,
+			"price":          pkg.Price,
+			"duration_days":  pkg.DurationDays,
+			"device_limit":   pkg.DeviceLimit,
+			"sort_order":     pkg.SortOrder,
+			"is_active":      pkg.IsActive,
+			"is_recommended": pkg.IsRecommended,
+			"created_at":     pkg.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -73,15 +73,14 @@ func GetPackage(c *gin.Context) {
 // CreatePackage 创建套餐（管理员）
 func CreatePackage(c *gin.Context) {
 	var req struct {
-		Name           string  `json:"name" binding:"required"`
-		Description    string  `json:"description"`
-		Price          float64 `json:"price" binding:"required"`
-		DurationDays   int     `json:"duration_days" binding:"required"`
-		DeviceLimit    int     `json:"device_limit"`
-		BandwidthLimit int64   `json:"bandwidth_limit"`
-		SortOrder      int     `json:"sort_order"`
-		IsActive       bool    `json:"is_active"`
-		IsRecommended  bool    `json:"is_recommended"`
+		Name          string  `json:"name" binding:"required"`
+		Description   string  `json:"description"`
+		Price         float64 `json:"price" binding:"required"`
+		DurationDays  int     `json:"duration_days" binding:"required"`
+		DeviceLimit   int     `json:"device_limit"`
+		SortOrder     int     `json:"sort_order"`
+		IsActive      bool    `json:"is_active"`
+		IsRecommended bool    `json:"is_recommended"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -106,9 +105,6 @@ func CreatePackage(c *gin.Context) {
 	if req.Description != "" {
 		pkg.Description = database.NullString(req.Description)
 	}
-	if req.BandwidthLimit > 0 {
-		pkg.BandwidthLimit = database.NullInt64(req.BandwidthLimit)
-	}
 
 	if err := db.Create(&pkg).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -129,21 +125,20 @@ func UpdatePackage(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		Name           string  `json:"name"`
-		Description    string  `json:"description"`
-		Price          float64 `json:"price"`
-		DurationDays   int     `json:"duration_days"`
-		DeviceLimit    int     `json:"device_limit"`
-		BandwidthLimit int64   `json:"bandwidth_limit"`
-		SortOrder      int     `json:"sort_order"`
-		IsActive       bool    `json:"is_active"`
-		IsRecommended  bool    `json:"is_recommended"`
+		Name          *string  `json:"name"`           // 使用指针，允许检测是否提供
+		Description   *string  `json:"description"`   // 使用指针，允许检测是否提供
+		Price         *float64 `json:"price"`          // 使用指针，允许检测是否提供
+		DurationDays  *int     `json:"duration_days"` // 使用指针，允许检测是否提供
+		DeviceLimit   *int     `json:"device_limit"`   // 使用指针，允许检测是否提供
+		SortOrder     *int     `json:"sort_order"`    // 使用指针，允许检测是否提供
+		IsActive      *bool    `json:"is_active"`     // 使用指针，允许检测是否提供
+		IsRecommended *bool    `json:"is_recommended"` // 使用指针，允许检测是否提供
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": "请求参数错误: " + err.Error(),
 		})
 		return
 	}
@@ -158,38 +153,71 @@ func UpdatePackage(c *gin.Context) {
 		return
 	}
 
-	// 更新字段（允许空值更新）
-	if req.Name != "" {
-		pkg.Name = req.Name
+	// 更新字段（只有提供的字段才更新）
+	if req.Name != nil {
+		nameValue := strings.TrimSpace(*req.Name)
+		if nameValue == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "套餐名称不能为空",
+			})
+			return
+		}
+		pkg.Name = nameValue
 	}
-	if req.Description != "" || req.Description == "" {
+	if req.Description != nil {
 		// 允许清空描述
-		if req.Description == "" {
+		descValue := strings.TrimSpace(*req.Description)
+		fmt.Printf("UpdatePackage: 更新描述字段 - package_id=%s, description_value=%q, trimmed_length=%d\n", id, *req.Description, len(descValue))
+		if descValue == "" {
 			pkg.Description = sql.NullString{Valid: false}
+			fmt.Printf("UpdatePackage: 描述为空，设置为无效\n")
 		} else {
-			pkg.Description = database.NullString(req.Description)
+			pkg.Description = database.NullString(descValue)
+			fmt.Printf("UpdatePackage: 描述已更新为: %q\n", descValue)
 		}
+	} else {
+		fmt.Printf("UpdatePackage: 描述字段未提供，不更新 - package_id=%s\n", id)
 	}
-	if req.Price >= 0 {
-		pkg.Price = req.Price
-	}
-	if req.DurationDays > 0 {
-		pkg.DurationDays = req.DurationDays
-	}
-	if req.DeviceLimit > 0 {
-		pkg.DeviceLimit = req.DeviceLimit
-	}
-	if req.BandwidthLimit >= 0 {
-		if req.BandwidthLimit == 0 {
-			pkg.BandwidthLimit = sql.NullInt64{Valid: false}
-		} else {
-			pkg.BandwidthLimit = database.NullInt64(req.BandwidthLimit)
+	if req.Price != nil {
+		if *req.Price < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "价格不能为负数",
+			})
+			return
 		}
+		pkg.Price = *req.Price
 	}
-	// SortOrder、IsActive 和 IsRecommended 总是更新
-	pkg.SortOrder = req.SortOrder
-	pkg.IsActive = req.IsActive
-	pkg.IsRecommended = req.IsRecommended
+	if req.DurationDays != nil {
+		if *req.DurationDays < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "时长必须大于0",
+			})
+			return
+		}
+		pkg.DurationDays = *req.DurationDays
+	}
+	if req.DeviceLimit != nil {
+		if *req.DeviceLimit < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "设备限制不能为负数",
+			})
+			return
+		}
+		pkg.DeviceLimit = *req.DeviceLimit
+	}
+	if req.SortOrder != nil {
+		pkg.SortOrder = *req.SortOrder
+	}
+	if req.IsActive != nil {
+		pkg.IsActive = *req.IsActive
+	}
+	if req.IsRecommended != nil {
+		pkg.IsRecommended = *req.IsRecommended
+	}
 
 	if err := db.Save(&pkg).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -199,10 +227,25 @@ func UpdatePackage(c *gin.Context) {
 		return
 	}
 
+	// 格式化返回数据，确保 description 字段是字符串而不是对象
+	responseData := gin.H{
+		"id":             pkg.ID,
+		"name":           pkg.Name,
+		"description":    pkg.Description.String, // 确保返回字符串
+		"price":          pkg.Price,
+		"duration_days":  pkg.DurationDays,
+		"device_limit":   pkg.DeviceLimit,
+		"sort_order":     pkg.SortOrder,
+		"is_active":      pkg.IsActive,
+		"is_recommended": pkg.IsRecommended,
+		"created_at":     pkg.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "更新成功",
-		"data":    pkg,
+		"data":    responseData,
 	})
 }
 
@@ -280,14 +323,33 @@ func GetAdminPackages(c *gin.Context) {
 		return
 	}
 
+	// 格式化返回数据，确保 description 字段是字符串而不是对象
+	formattedPackages := make([]gin.H, 0, len(packages))
+	for _, pkg := range packages {
+		formattedPackages = append(formattedPackages, gin.H{
+			"id":             pkg.ID,
+			"name":           pkg.Name,
+			"description":    pkg.Description.String, // 确保返回字符串
+			"price":          pkg.Price,
+			"duration_days":  pkg.DurationDays,
+			"device_limit":   pkg.DeviceLimit,
+			"sort_order":     pkg.SortOrder,
+			"is_active":      pkg.IsActive,
+			"is_recommended": pkg.IsRecommended,
+			"created_at":     pkg.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"packages": packages,
-			"items":    packages, // 兼容前端可能使用的 items 字段
+			"packages": formattedPackages,
+			"items":    formattedPackages, // 兼容前端可能使用的 items 字段
 			"total":    total,
 			"page":     page,
 			"size":     size,
 		},
 	})
 }
+
