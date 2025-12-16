@@ -224,12 +224,13 @@ else
     echo "✅ 前端依赖已就绪"
 fi
 
+# 启动前端开发服务器
 npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 echo $FRONTEND_PID > ../frontend.pid
 cd ..
 
-sleep 8
+sleep 10
 
 # 检查前端
 echo ""

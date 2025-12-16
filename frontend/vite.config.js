@@ -17,6 +17,19 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: 'esnext',
+      define: {
+        global: 'globalThis',
+      },
+      plugins: [],
+    },
+    include: ['vue', 'vue-router', 'pinia', 'element-plus'],
+  },
+  define: {
+    global: 'globalThis',
+  },
   server: {
     port: 5173,
     host: '0.0.0.0',
