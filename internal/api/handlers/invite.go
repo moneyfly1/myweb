@@ -140,7 +140,7 @@ func CreateInviteCode(c *gin.Context) {
 		"data": gin.H{
 			"id":             inviteCode.ID,
 			"code":           inviteCode.Code,
-			"invite_link":   inviteLink,
+			"invite_link":    inviteLink,
 			"max_uses":       inviteCode.MaxUses,
 			"used_count":     inviteCode.UsedCount,
 			"expires_at":     inviteCode.ExpiresAt,
@@ -182,15 +182,15 @@ func GetInviteCodes(c *gin.Context) {
 		result = append(result, gin.H{
 			"id":             code.ID,
 			"code":           code.Code,
-			"invite_link":   inviteLink,
-			"max_uses":      code.MaxUses,
-			"used_count":    code.UsedCount,
-			"expires_at":    code.ExpiresAt,
-			"reward_type":   code.RewardType,
+			"invite_link":    inviteLink,
+			"max_uses":       code.MaxUses,
+			"used_count":     code.UsedCount,
+			"expires_at":     code.ExpiresAt,
+			"reward_type":    code.RewardType,
 			"inviter_reward": code.InviterReward,
 			"invitee_reward": code.InviteeReward,
-			"is_active":     code.IsActive,
-			"created_at":    code.CreatedAt,
+			"is_active":      code.IsActive,
+			"created_at":     code.CreatedAt,
 		})
 	}
 
@@ -331,11 +331,11 @@ func ValidateInviteCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"code":        inviteCode.Code,
-			"is_valid":    true,
-			"expires_at":  inviteCode.ExpiresAt,
-			"max_uses":    inviteCode.MaxUses,
-			"used_count":  inviteCode.UsedCount,
+			"code":       inviteCode.Code,
+			"is_valid":   true,
+			"expires_at": inviteCode.ExpiresAt,
+			"max_uses":   inviteCode.MaxUses,
+			"used_count": inviteCode.UsedCount,
 		},
 	})
 }
