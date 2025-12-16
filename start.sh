@@ -301,10 +301,19 @@ if [ "$NEED_INSTALL" = true ]; then
     rm -rf node_modules package-lock.json 2>&1 || true
     npm cache clean --force 2>&1 || true
     
-    # 检查是否使用国内镜像
-    USE_CN_MIRROR=false
-    if [ -n "$NPM_REGISTRY" ] && echo "$NPM_REGISTRY" | grep -q "taobao\|cnpm\|npmmirror"; then
-        USE_CN_MIRROR=true
+    # 强制设置正确的 npm 镜像（清除可能存在的错误配置）
+    echo "  配置 npm 镜像源..."
+    npm config delete registry 2>&1 || true
+    npm config set registry https://registry.npmmirror.com 2>&1 || true
+    
+    # 验证镜像配置
+    CURRENT_REGISTRY=$(npm config get registry 2>/dev/null || echo "")
+    echo "  当前 npm 镜像: $CURRENT_REGISTRY"
+    
+    # 如果镜像配置不正确，再次设置
+    if [ -z "$CURRENT_REGISTRY" ] || echo "$CURRENT_REGISTRY" | grep -qv "npmmirror\|npmjs"; then
+        echo "  重新设置镜像源..."
+        npm config set registry https://registry.npmmirror.com 2>&1 || true
     fi
     
     echo "  正在安装依赖（这可能需要几分钟）..."
@@ -315,12 +324,15 @@ if [ "$NEED_INSTALL" = true ]; then
         if [ $attempt -gt 1 ]; then
             echo "  第 $attempt 次尝试安装..."
             sleep 2
-        fi
-        
-        # 如果前一次失败，尝试使用国内镜像
-        if [ $attempt -eq 2 ] && [ "$USE_CN_MIRROR" = false ]; then
-            echo "  尝试使用淘宝镜像..."
-            npm config set registry https://registry.npmmirror.com 2>&1 || true
+            
+            # 如果失败，尝试切换到官方源
+            if [ $attempt -eq 2 ]; then
+                echo "  尝试切换到官方 npm 源..."
+                npm config set registry https://registry.npmjs.org/ 2>&1 || true
+            elif [ $attempt -eq 3 ]; then
+                echo "  再次尝试使用淘宝镜像..."
+                npm config set registry https://registry.npmmirror.com 2>&1 || true
+            fi
         fi
         
         if npm install --legacy-peer-deps 2>&1 | tee /tmp/npm_install.log | tail -30; then
@@ -330,6 +342,17 @@ if [ "$NEED_INSTALL" = true ]; then
         else
             echo "⚠️  安装失败，错误信息:"
             tail -20 /tmp/npm_install.log 2>/dev/null || true
+            
+            # 检查是否是镜像问题
+            if grep -q "404\|Not Found\|mirrors.tuna" /tmp/npm_install.log 2>/dev/null; then
+                echo "  检测到镜像问题，清理缓存并切换镜像..."
+                npm cache clean --force 2>&1 || true
+                if [ $attempt -eq 1 ]; then
+                    npm config set registry https://registry.npmjs.org/ 2>&1 || true
+                else
+                    npm config set registry https://registry.npmmirror.com 2>&1 || true
+                fi
+            fi
         fi
     done
     
@@ -344,6 +367,8 @@ if [ "$NEED_INSTALL" = true ]; then
     # 验证安装
     if [ ! -f node_modules/.bin/vite ]; then
         echo "❌ vite 可执行文件仍未找到，尝试直接安装 vite..."
+        # 确保使用正确的镜像
+        npm config set registry https://registry.npmmirror.com 2>&1 || true
         npm install vite@4.5.0 --legacy-peer-deps --save-dev 2>&1 | tail -20 || true
     fi
     
