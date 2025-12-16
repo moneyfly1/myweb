@@ -259,21 +259,32 @@ func GetRewardSettings(c *gin.Context) {
 
 	settings := make(map[string]interface{})
 	for _, cfg := range configs {
-		settings[cfg.Key] = cfg.Value
+		// 将数值类型的配置转换为数字
+		if cfg.Key == "inviter_reward" || cfg.Key == "invitee_reward" || cfg.Key == "min_order_amount" {
+			if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
+				settings[cfg.Key] = val
+			} else {
+				settings[cfg.Key] = 0.0
+			}
+		} else if cfg.Key == "new_user_only" {
+			settings[cfg.Key] = cfg.Value == "true"
+		} else {
+			settings[cfg.Key] = cfg.Value
+		}
 	}
 
-	// 如果没有配置，返回默认值
+	// 如果没有配置，返回默认值（数字类型）
 	if _, ok := settings["inviter_reward"]; !ok {
-		settings["inviter_reward"] = "0"
+		settings["inviter_reward"] = 0.0
 	}
 	if _, ok := settings["invitee_reward"]; !ok {
-		settings["invitee_reward"] = "0"
+		settings["invitee_reward"] = 0.0
 	}
 	if _, ok := settings["min_order_amount"]; !ok {
-		settings["min_order_amount"] = "0"
+		settings["min_order_amount"] = 0.0
 	}
 	if _, ok := settings["new_user_only"]; !ok {
-		settings["new_user_only"] = "false"
+		settings["new_user_only"] = false
 	}
 
 	c.JSON(http.StatusOK, gin.H{

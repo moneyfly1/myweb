@@ -239,9 +239,10 @@ const loadInviteRewardSettings = async () => {
   try {
     const response = await inviteAPI.getInviteRewardSettings()
     if (response?.data?.data) {
+      // 确保转换为数字类型
       inviteRewardSettings.value = {
-        inviter_reward: response.data.data.inviter_reward || 0,
-        invitee_reward: response.data.data.invitee_reward || 0
+        inviter_reward: parseFloat(response.data.data.inviter_reward) || 0,
+        invitee_reward: parseFloat(response.data.data.invitee_reward) || 0
       }
     }
   } catch (error) {
@@ -358,12 +359,12 @@ const loadStats = async () => {
 const generateCode = async () => {
   generating.value = true
   try {
-    // 准备请求数据
+    // 准备请求数据（确保所有数值都是数字类型）
     const requestData = {
-      max_uses: generateForm.max_uses || 0,
+      max_uses: Number(generateForm.max_uses) || 0,
       reward_type: 'balance',
-      inviter_reward: inviteRewardSettings.value.inviter_reward || 0,
-      invitee_reward: inviteRewardSettings.value.invitee_reward || 0,
+      inviter_reward: Number(inviteRewardSettings.value.inviter_reward) || 0,
+      invitee_reward: Number(inviteRewardSettings.value.invitee_reward) || 0,
       min_order_amount: 0,
       new_user_only: true
     }
