@@ -15,6 +15,15 @@
             <el-form-item label="网站描述" prop="site_description">
               <el-input v-model="generalSettings.site_description" type="textarea" />
             </el-form-item>
+            <el-form-item label="网站域名" prop="domain_name">
+              <el-input 
+                v-model="generalSettings.domain_name" 
+                placeholder="例如: dy.moneyfly.top (不需要 http:// 或 https://)"
+              />
+              <div style="font-size: 12px; color: #909399; margin-top: 5px">
+                用于生成订阅地址和邮件中的链接。如果留空，将使用请求的域名。
+              </div>
+            </el-form-item>
             <el-form-item label="网站Logo">
               <el-upload
                 class="avatar-uploader"
@@ -434,6 +443,7 @@ export default {
     const generalSettings = reactive({
       site_name: '',
       site_description: '',
+      domain_name: '',
       site_logo: '',
       default_theme: 'default'
     })
