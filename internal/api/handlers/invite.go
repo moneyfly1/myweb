@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"strconv"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -36,6 +37,7 @@ func CreateInviteCode(c *gin.Context) {
 	var req struct {
 		MaxUses        int       `json:"max_uses"`
 		ExpiresAt      time.Time `json:"expires_at"`
+		ExpiresDays    int       `json:"expires_days"` // 支持通过天数设置
 		RewardType     string    `json:"reward_type"`
 		InviterReward  float64   `json:"inviter_reward"`
 		InviteeReward  float64   `json:"invitee_reward"`
@@ -46,20 +48,59 @@ func CreateInviteCode(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": "请求参数错误: " + err.Error(),
 		})
 		return
 	}
 
 	db := database.GetDB()
 
+	// 从系统配置获取默认奖励设置（如果请求中未提供）
+	if req.InviterReward == 0 || req.InviteeReward == 0 {
+		var configs []models.SystemConfig
+		db.Where("category = ? AND `key` IN (?)", "invite", []string{
+			"inviter_reward", "invitee_reward",
+		}).Find(&configs)
+
+		for _, cfg := range configs {
+			if cfg.Key == "inviter_reward" && req.InviterReward == 0 {
+				if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
+					req.InviterReward = val
+				}
+			}
+			if cfg.Key == "invitee_reward" && req.InviteeReward == 0 {
+				if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
+					req.InviteeReward = val
+				}
+			}
+		}
+	}
+
+	// 如果提供了 expires_days，转换为 expires_at
+	if req.ExpiresDays > 0 && req.ExpiresAt.IsZero() {
+		req.ExpiresAt = utils.GetBeijingTime().AddDate(0, 0, req.ExpiresDays)
+	}
+
+	// 设置默认值
+	if req.RewardType == "" {
+		req.RewardType = "balance"
+	}
+
 	// 生成唯一邀请码
 	var code string
-	for {
+	maxAttempts := 10
+	for i := 0; i < maxAttempts; i++ {
 		code = GenerateInviteCode()
 		var existing models.InviteCode
 		if err := db.Where("code = ?", code).First(&existing).Error; err == gorm.ErrRecordNotFound {
 			break
+		}
+		if i == maxAttempts-1 {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "生成唯一邀请码失败，请重试",
+			})
+			return
 		}
 	}
 
@@ -84,14 +125,31 @@ func CreateInviteCode(c *gin.Context) {
 	if err := db.Create(&inviteCode).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "创建邀请码失败",
+			"message": "创建邀请码失败: " + err.Error(),
 		})
 		return
 	}
 
+	// 生成邀请链接
+	baseURL := buildBaseURL(c)
+	inviteLink := baseURL + "/register?invite=" + code
+
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"data":    inviteCode,
+		"message": "邀请码生成成功",
+		"data": gin.H{
+			"id":             inviteCode.ID,
+			"code":           inviteCode.Code,
+			"invite_link":   inviteLink,
+			"max_uses":       inviteCode.MaxUses,
+			"used_count":     inviteCode.UsedCount,
+			"expires_at":     inviteCode.ExpiresAt,
+			"reward_type":    inviteCode.RewardType,
+			"inviter_reward": inviteCode.InviterReward,
+			"invitee_reward": inviteCode.InviteeReward,
+			"is_active":      inviteCode.IsActive,
+			"created_at":     inviteCode.CreatedAt,
+		},
 	})
 }
 
@@ -116,9 +174,29 @@ func GetInviteCodes(c *gin.Context) {
 		return
 	}
 
+	// 生成邀请链接
+	baseURL := buildBaseURL(c)
+	var result []gin.H
+	for _, code := range inviteCodes {
+		inviteLink := baseURL + "/register?invite=" + code.Code
+		result = append(result, gin.H{
+			"id":             code.ID,
+			"code":           code.Code,
+			"invite_link":   inviteLink,
+			"max_uses":      code.MaxUses,
+			"used_count":    code.UsedCount,
+			"expires_at":    code.ExpiresAt,
+			"reward_type":   code.RewardType,
+			"inviter_reward": code.InviterReward,
+			"invitee_reward": code.InviteeReward,
+			"is_active":     code.IsActive,
+			"created_at":    code.CreatedAt,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    inviteCodes,
+		"data":    result,
 	})
 }
 
