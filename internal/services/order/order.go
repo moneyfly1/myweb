@@ -4,6 +4,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+
 	"gorm.io/gorm"
 )
 
@@ -41,7 +42,7 @@ func (s *OrderService) ProcessPaidOrder(orderID uint) error {
 	s.db.Where("user_id = ?", order.UserID).First(&subscription)
 
 	now := utils.GetBeijingTime()
-	
+
 	// 如果已有订阅，续费；否则创建新订阅
 	if subscription.ID > 0 {
 		// 续费：累加时间
@@ -56,9 +57,10 @@ func (s *OrderService) ProcessPaidOrder(orderID uint) error {
 		s.db.Save(&subscription)
 	} else {
 		// 创建新订阅
+		packageID := int64(pkg.ID)
 		subscription = models.Subscription{
 			UserID:          order.UserID,
-			PackageID:       database.NullInt64(int64(pkg.ID)),
+			PackageID:       &packageID,
 			SubscriptionURL: utils.GenerateSubscriptionURL(),
 			DeviceLimit:     pkg.DeviceLimit,
 			CurrentDevices:  0,
@@ -80,4 +82,3 @@ func (s *OrderService) ProcessPaidOrder(orderID uint) error {
 
 	return nil
 }
-

@@ -97,8 +97,9 @@
         </el-form-item>
         
         <el-form-item label="发布状态" prop="status">
-          <el-select v-model="form.status" placeholder="选择发布状态" disabled>
+          <el-select v-model="form.status" placeholder="选择发布状态">
             <el-option label="发布" value="published" />
+            <el-option label="草稿" value="draft" />
           </el-select>
         </el-form-item>
         
@@ -257,21 +258,31 @@ export default {
         await formRef.value.validate()
         submitLoading.value = true
 
+        // 准备提交数据
+        const submitData = {
+          title: form.title,
+          type: form.type,
+          content: form.content,
+          status: form.status,
+          send_email: form.send_email
+        }
+
         if (isEdit.value) {
-          await notificationAPI.updateNotification(form.id, form)
+          await notificationAPI.updateNotification(form.id, submitData)
           ElMessage.success('通知更新成功')
         } else {
-          await notificationAPI.createNotification(form)
+          await notificationAPI.createNotification(submitData)
           ElMessage.success('通知发布成功')
         }
 
         dialogVisible.value = false
+        resetForm()
         fetchNotifications()
       } catch (error) {
         if (error.response?.data?.message) {
           ElMessage.error(error.response.data.message)
         } else {
-          ElMessage.error('操作失败')
+          ElMessage.error('操作失败: ' + (error.message || '未知错误'))
         }
       } finally {
         submitLoading.value = false

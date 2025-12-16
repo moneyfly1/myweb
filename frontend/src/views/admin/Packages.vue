@@ -373,10 +373,11 @@ export default {
         }
         const response = await adminAPI.getPackages(params)
         const packageList = response.data.data?.packages || response.data.items || []
-        // 确保 is_active 是布尔值
+        // 确保 is_active 和 is_recommended 是布尔值
         packages.value = packageList.map(pkg => ({
           ...pkg,
-          is_active: pkg.is_active === true || pkg.is_active === 1 || pkg.is_active === '1'
+          is_active: pkg.is_active === true || pkg.is_active === 1 || pkg.is_active === '1',
+          is_recommended: pkg.is_recommended === true || pkg.is_recommended === 1 || pkg.is_recommended === '1'
         }))
         pagination.total = response.data.data?.total || response.data.total || 0
       } catch (error) {
@@ -424,10 +425,11 @@ export default {
     // 编辑套餐
     const editPackage = (packageData) => {
       isEdit.value = true
-      // 确保 is_active 是布尔值
+      // 确保 is_active 和 is_recommended 是布尔值
       const data = {
         ...packageData,
-        is_active: packageData.is_active === true || packageData.is_active === 1 || packageData.is_active === '1'
+        is_active: packageData.is_active === true || packageData.is_active === 1 || packageData.is_active === '1',
+        is_recommended: packageData.is_recommended === true || packageData.is_recommended === 1 || packageData.is_recommended === '1'
       }
       Object.assign(form, data)
       dialogVisible.value = true
@@ -465,7 +467,8 @@ export default {
             price: form.price,
             duration_days: form.duration_days,
             device_limit: form.device_limit,
-            is_active: form.is_active
+            is_active: form.is_active,
+            is_recommended: form.is_recommended !== undefined ? form.is_recommended : false
           }
           // 如果表单中有这些字段，也包含它们
           if (form.bandwidth_limit !== undefined) {

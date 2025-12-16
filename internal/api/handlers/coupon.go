@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -130,50 +131,89 @@ func VerifyCoupon(c *gin.Context) {
 // CreateCoupon 创建优惠券（管理员）
 func CreateCoupon(c *gin.Context) {
 	var req struct {
-		Code               string    `json:"code" binding:"required"`
-		Name               string    `json:"name" binding:"required"`
-		Description        string    `json:"description"`
-		Type               string    `json:"type" binding:"required"`
-		DiscountValue      float64   `json:"discount_value" binding:"required"`
-		MinAmount          float64   `json:"min_amount"`
-		MaxDiscount        float64   `json:"max_discount"`
-		ValidFrom          time.Time `json:"valid_from" binding:"required"`
-		ValidUntil         time.Time `json:"valid_until" binding:"required"`
-		TotalQuantity      int       `json:"total_quantity"`
-		MaxUsesPerUser     int       `json:"max_uses_per_user"`
-		ApplicablePackages string    `json:"applicable_packages"`
+		Code               string  `json:"code"`
+		Name               string  `json:"name" binding:"required"`
+		Description        string  `json:"description"`
+		Type               string  `json:"type" binding:"required"`
+		DiscountValue      float64 `json:"discount_value" binding:"required"`
+		MinAmount          float64 `json:"min_amount"`
+		MaxDiscount        float64 `json:"max_discount"`
+		ValidFrom          string  `json:"valid_from" binding:"required"`
+		ValidUntil         string  `json:"valid_until" binding:"required"`
+		TotalQuantity      int     `json:"total_quantity"`
+		MaxUsesPerUser     int     `json:"max_uses_per_user"`
+		ApplicablePackages string  `json:"applicable_packages"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": fmt.Sprintf("请求参数错误: %v", err),
 		})
 		return
 	}
 
 	db := database.GetDB()
 
-	// 检查优惠券码是否已存在
-	var existing models.Coupon
-	if err := db.Where("code = ?", req.Code).First(&existing).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "优惠券码已存在",
-		})
-		return
+	// 解析日期时间
+	validFrom, err := time.Parse("2006-01-02T15:04:05", req.ValidFrom)
+	if err != nil {
+		// 尝试其他格式
+		validFrom, err = time.Parse("2006-01-02 15:04:05", req.ValidFrom)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "生效时间格式错误",
+			})
+			return
+		}
+	}
+	validUntil, err := time.Parse("2006-01-02T15:04:05", req.ValidUntil)
+	if err != nil {
+		// 尝试其他格式
+		validUntil, err = time.Parse("2006-01-02 15:04:05", req.ValidUntil)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "失效时间格式错误",
+			})
+			return
+		}
+	}
+
+	// 如果code为空，自动生成
+	code := req.Code
+	if code == "" {
+		code = utils.GenerateCouponCode()
+		// 确保生成的code不重复
+		var existing models.Coupon
+		for db.Where("code = ?", code).First(&existing).Error == nil {
+			code = utils.GenerateCouponCode()
+		}
+	} else {
+		// 检查优惠券码是否已存在
+		var existing models.Coupon
+		if err := db.Where("code = ?", code).First(&existing).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "优惠券码已存在",
+			})
+			return
+		}
 	}
 
 	coupon := models.Coupon{
-		Code:               req.Code,
-		Name:               req.Name,
-		Type:               req.Type,
-		DiscountValue:      req.DiscountValue,
-		ValidFrom:          req.ValidFrom,
-		ValidUntil:         req.ValidUntil,
-		MaxUsesPerUser:     req.MaxUsesPerUser,
-		Status:             "active",
-		ApplicablePackages: req.ApplicablePackages,
+		Code:          code,
+		Name:          req.Name,
+		Type:          req.Type,
+		DiscountValue: req.DiscountValue,
+		ValidFrom:     validFrom,
+		ValidUntil:    validUntil,
+		Status:        "active",
+	}
+
+	if req.ApplicablePackages != "" {
+		coupon.ApplicablePackages = req.ApplicablePackages
 	}
 
 	if req.Description != "" {
@@ -188,11 +228,16 @@ func CreateCoupon(c *gin.Context) {
 	if req.TotalQuantity > 0 {
 		coupon.TotalQuantity = database.NullInt64(int64(req.TotalQuantity))
 	}
+	if req.MaxUsesPerUser > 0 {
+		coupon.MaxUsesPerUser = req.MaxUsesPerUser
+	} else {
+		coupon.MaxUsesPerUser = 1 // 默认值
+	}
 
 	if err := db.Create(&coupon).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "创建优惠券失败",
+			"message": fmt.Sprintf("创建优惠券失败: %v", err),
 		})
 		return
 	}
@@ -276,24 +321,24 @@ func UpdateCoupon(c *gin.Context) {
 	}
 
 	var req struct {
-		Name               string    `json:"name"`
-		Description        string    `json:"description"`
-		Type               string    `json:"type"`
-		DiscountValue      float64   `json:"discount_value"`
-		MinAmount          float64   `json:"min_amount"`
-		MaxDiscount        float64   `json:"max_discount"`
-		ValidFrom          time.Time `json:"valid_from"`
-		ValidUntil         time.Time `json:"valid_until"`
-		TotalQuantity      int       `json:"total_quantity"`
-		MaxUsesPerUser     int       `json:"max_uses_per_user"`
-		Status             string    `json:"status"`
-		ApplicablePackages string    `json:"applicable_packages"`
+		Name               string  `json:"name"`
+		Description        string  `json:"description"`
+		Type               string  `json:"type"`
+		DiscountValue      float64 `json:"discount_value"`
+		MinAmount          float64 `json:"min_amount"`
+		MaxDiscount        float64 `json:"max_discount"`
+		ValidFrom          string  `json:"valid_from"`
+		ValidUntil         string  `json:"valid_until"`
+		TotalQuantity      int     `json:"total_quantity"`
+		MaxUsesPerUser     int     `json:"max_uses_per_user"`
+		Status             string  `json:"status"`
+		ApplicablePackages string  `json:"applicable_packages"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": fmt.Sprintf("请求参数错误: %v", err),
 		})
 		return
 	}
@@ -317,11 +362,36 @@ func UpdateCoupon(c *gin.Context) {
 	if req.MaxDiscount > 0 {
 		coupon.MaxDiscount = database.NullFloat64(req.MaxDiscount)
 	}
-	if !req.ValidFrom.IsZero() {
-		coupon.ValidFrom = req.ValidFrom
+	// 解析日期时间
+	if req.ValidFrom != "" {
+		validFrom, err := time.Parse("2006-01-02T15:04:05", req.ValidFrom)
+		if err != nil {
+			// 尝试其他格式
+			validFrom, err = time.Parse("2006-01-02 15:04:05", req.ValidFrom)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"success": false,
+					"message": "生效时间格式错误",
+				})
+				return
+			}
+		}
+		coupon.ValidFrom = validFrom
 	}
-	if !req.ValidUntil.IsZero() {
-		coupon.ValidUntil = req.ValidUntil
+	if req.ValidUntil != "" {
+		validUntil, err := time.Parse("2006-01-02T15:04:05", req.ValidUntil)
+		if err != nil {
+			// 尝试其他格式
+			validUntil, err = time.Parse("2006-01-02 15:04:05", req.ValidUntil)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"success": false,
+					"message": "失效时间格式错误",
+				})
+				return
+			}
+		}
+		coupon.ValidUntil = validUntil
 	}
 	if req.TotalQuantity > 0 {
 		coupon.TotalQuantity = database.NullInt64(int64(req.TotalQuantity))
@@ -332,8 +402,12 @@ func UpdateCoupon(c *gin.Context) {
 	if req.Status != "" {
 		coupon.Status = req.Status
 	}
+	// ApplicablePackages 字段允许更新（包括空字符串）
 	if req.ApplicablePackages != "" {
 		coupon.ApplicablePackages = req.ApplicablePackages
+	} else if req.ApplicablePackages == "" {
+		// 允许清空
+		coupon.ApplicablePackages = ""
 	}
 
 	if err := db.Save(&coupon).Error; err != nil {

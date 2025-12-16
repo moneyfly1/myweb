@@ -649,21 +649,54 @@ export default {
     
     // 加载用户信息
     const loadUserInfo = async () => {
-      const user = authStore.user
-      if (user) {
-        profileForm.username = user.username || ''
-        profileForm.email = user.email || ''
-        profileForm.nickname = user.nickname || ''
-        profileForm.avatar = user.avatar || ''
+      try {
+        // 从API获取最新用户信息
+        const response = await api.get('/users/me')
+        if (response.data && response.data.success && response.data.data) {
+          const userData = response.data.data
+          profileForm.username = userData.username || ''
+          profileForm.email = userData.email || ''
+          profileForm.nickname = userData.nickname || ''
+          profileForm.avatar = userData.avatar || userData.avatar_url || ''
+        } else {
+          // 如果API失败，从authStore获取
+          const user = authStore.user
+          if (user) {
+            profileForm.username = user.username || ''
+            profileForm.email = user.email || ''
+            profileForm.nickname = user.nickname || ''
+            profileForm.avatar = user.avatar || ''
+          }
+        }
+      } catch (error) {
+        // 如果API失败，从authStore获取
+        const user = authStore.user
+        if (user) {
+          profileForm.username = user.username || ''
+          profileForm.email = user.email || ''
+          profileForm.nickname = user.nickname || ''
+          profileForm.avatar = user.avatar || ''
+        }
       }
       
       // 加载通知设置
       try {
         const notificationResponse = await api.get('/users/notification-settings')
-        if (notificationResponse.data && notificationResponse.data.data) {
+        if (notificationResponse.data && notificationResponse.data.success && notificationResponse.data.data) {
           const settings = notificationResponse.data.data
           notificationForm.emailNotifications = settings.email_notifications !== false  // 默认true
-          notificationForm.notificationTypes = settings.notification_types || ['subscription', 'payment', 'system', 'marketing']
+          // 解析 notification_types（可能是JSON字符串或数组）
+          if (settings.notification_types) {
+            if (typeof settings.notification_types === 'string') {
+              try {
+                notificationForm.notificationTypes = JSON.parse(settings.notification_types)
+              } catch (e) {
+                notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
+              }
+            } else if (Array.isArray(settings.notification_types)) {
+              notificationForm.notificationTypes = settings.notification_types
+            }
+          }
         }
       } catch (error) {
         // 使用默认值
@@ -674,7 +707,7 @@ export default {
       // 加载隐私设置
       try {
         const privacyResponse = await api.get('/users/privacy-settings')
-        if (privacyResponse.data && privacyResponse.data.data) {
+        if (privacyResponse.data && privacyResponse.data.success && privacyResponse.data.data) {
           const settings = privacyResponse.data.data
           privacyForm.dataSharing = settings.data_sharing !== false  // 默认true
           privacyForm.analytics = settings.analytics !== false  // 默认true
@@ -683,6 +716,20 @@ export default {
         // 使用默认值
         privacyForm.dataSharing = true
         privacyForm.analytics = true
+      }
+      
+      // 加载偏好设置（从用户信息中获取）
+      try {
+        const userResponse = await api.get('/users/me')
+        if (userResponse.data && userResponse.data.success && userResponse.data.data) {
+          const userData = userResponse.data.data
+          if (userData.theme) preferenceForm.theme = userData.theme
+          if (userData.language) preferenceForm.language = userData.language
+          if (userData.timezone) preferenceForm.timezone = userData.timezone
+        }
+      } catch (error) {
+        // 使用默认值
+        console.warn('加载偏好设置失败:', error)
       }
     }
     
@@ -693,14 +740,23 @@ export default {
         profileSaving.value = true
         
         // 调用API保存个人资料
-        await api.put('/users/profile', profileForm)
+        const response = await api.put('/users/profile', {
+          username: profileForm.username,
+          avatar: profileForm.avatar
+        })
         
-        // 更新本地用户信息
-        authStore.updateUser(profileForm)
-        
-        ElMessage.success('个人资料保存成功')
+        if (response.data && response.data.success) {
+          // 更新本地用户信息
+          if (authStore && authStore.updateUser) {
+            authStore.updateUser(profileForm)
+          }
+          ElMessage.success(response.data.message || '个人资料保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败：' + error.message)
+        const errorMsg = error.response?.data?.message || error.message || '保存失败'
+        ElMessage.error(errorMsg)
       } finally {
         profileSaving.value = false
       }
@@ -712,15 +768,28 @@ export default {
         await securityFormRef.value.validate()
         passwordChanging.value = true
         
-        // 这里调用API修改密码
-        await authStore.changePassword(securityForm.currentPassword, securityForm.newPassword)
+        // 调用API修改密码
+        const response = await api.post('/users/change-password', {
+          current_password: securityForm.currentPassword,
+          old_password: securityForm.currentPassword, // 兼容字段
+          new_password: securityForm.newPassword
+        })
         
-        ElMessage.success('密码修改成功')
-        securityForm.currentPassword = ''
-        securityForm.newPassword = ''
-        securityForm.confirmPassword = ''
+        if (response.data && response.data.success) {
+          ElMessage.success(response.data.message || '密码修改成功')
+          securityForm.currentPassword = ''
+          securityForm.newPassword = ''
+          securityForm.confirmPassword = ''
+          // 重置表单验证状态
+          if (securityFormRef.value) {
+            securityFormRef.value.resetFields()
+          }
+        } else {
+          ElMessage.error(response.data?.message || '密码修改失败')
+        }
       } catch (error) {
-        ElMessage.error('密码修改失败：' + error.message)
+        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '密码修改失败'
+        ElMessage.error(errorMsg)
       } finally {
         passwordChanging.value = false
       }
@@ -772,26 +841,34 @@ export default {
         preferenceSaving.value = true
         
         // 保存主题设置
-        const themeResult = await themeStore.setTheme(preferenceForm.theme)
-        if (!themeResult.success) {
-          ElMessage.warning(themeResult.message || '主题保存失败，仅本地生效')
-          // 如果主题已在本地应用，继续保存其他设置
-          if (!themeResult.localApplied) {
-            return
+        if (themeStore && themeStore.setTheme) {
+          const themeResult = await themeStore.setTheme(preferenceForm.theme)
+          if (!themeResult.success) {
+            ElMessage.warning(themeResult.message || '主题保存失败，仅本地生效')
+            // 如果主题已在本地应用，继续保存其他设置
+            if (!themeResult.localApplied) {
+              return
+            }
+          } else {
+            ElMessage.success('主题已保存到云端')
           }
-        } else {
-          ElMessage.success('主题已保存到云端')
         }
         
-        // 保存其他偏好设置
-        await api.put('/users/preference-settings', {
+        // 保存其他偏好设置（使用 preferences 端点）
+        const response = await api.put('/users/preferences', {
+          theme: preferenceForm.theme,
           language: preferenceForm.language,
           timezone: preferenceForm.timezone
         })
         
-        ElMessage.success('偏好设置保存成功')
+        if (response.data && response.data.success) {
+          ElMessage.success(response.data.message || '偏好设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '偏好设置保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败：' + (error.response?.data?.detail || error.message))
+        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '保存失败'
+        ElMessage.error(errorMsg)
       } finally {
         preferenceSaving.value = false
       }

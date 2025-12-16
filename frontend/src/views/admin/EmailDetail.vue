@@ -127,6 +127,31 @@
           />
         </div>
       </el-card>
+      <el-card class="detail-card" v-if="emailDetail.content">
+        <template #header>
+          <span>邮件内容</span>
+        </template>
+        
+        <div class="email-content-preview">
+          <el-tabs v-model="contentViewMode">
+            <el-tab-pane label="HTML预览" name="preview">
+              <div 
+                class="email-html-preview" 
+                v-html="emailDetail.content"
+              ></div>
+            </el-tab-pane>
+            <el-tab-pane label="HTML源码" name="source">
+              <el-input
+                v-model="emailDetail.content"
+                type="textarea"
+                :rows="20"
+                readonly
+                class="email-source-code"
+              />
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </el-card>
       <el-card class="detail-card">
         <template #header>
           <span>发送历史</span>
@@ -212,6 +237,7 @@ export default {
     const loading = ref(false)
     const retryLoading = ref(false)
     const emailDetail = ref(null)
+    const contentViewMode = ref('preview')
     
     // 获取邮件详情
     const fetchEmailDetail = async () => {
@@ -377,6 +403,7 @@ export default {
       loading,
       retryLoading,
       emailDetail,
+      contentViewMode,
       fetchEmailDetail,
       retryEmail,
       deleteEmail,
@@ -530,5 +557,44 @@ export default {
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
+}
+
+.email-content-preview {
+  margin-top: 10px;
+}
+
+.email-html-preview {
+  min-height: 400px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  overflow: auto;
+}
+
+.email-html-preview :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.email-html-preview :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.email-html-preview :deep(.btn) {
+  display: inline-block;
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 25px;
+  font-weight: 500;
+  margin: 20px 0;
+}
+
+.email-source-code {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
 }
 </style>

@@ -404,13 +404,17 @@ const STATUS_MAP = {
 
 // 统一处理 API 响应的函数
 const handleResponse = (response, defaultErrorMsg) => {
-  const data = response?.data || response
+  if (!response) {
+    return { success: false, message: defaultErrorMsg || '请求失败' }
+  }
+  
+  const data = response.data || response
   if (data?.success || (response && response.status >= 200 && response.status < 300)) {
-    return { success: true, data: data.data || data }
+    return { success: true, data: data?.data || data }
   } else {
     return { 
       success: false, 
-      message: data?.message || defaultErrorMsg
+      message: data?.message || defaultErrorMsg || '操作失败'
     }
   }
 }
@@ -609,18 +613,21 @@ export default {
     const applyFilter = () => {
       pagination.page = 1
       fetchEmailQueue()
+      fetchStatistics() // 筛选时也更新统计数据
     }
     
     const resetFilter = () => {
       Object.assign(filterForm, { status: '', email: '' })
       pagination.page = 1
       fetchEmailQueue()
+      fetchStatistics() // 重置时也更新统计数据
     }
     
     const filterByStatus = (status) => {
       filterForm.status = status
       pagination.page = 1
       fetchEmailQueue()
+      fetchStatistics() // 按状态筛选时也更新统计数据
     }
     
     const viewEmailDetail = async (row) => {
@@ -702,7 +709,10 @@ export default {
           ElMessage.error(result.message)
         }
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error(`${title}失败`)
+        if (error !== 'cancel') {
+          const errorMsg = error.response?.data?.message || error.message || `${title}失败`
+          ElMessage.error(errorMsg)
+        }
       }
     }
 

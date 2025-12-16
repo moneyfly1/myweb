@@ -7,10 +7,10 @@ import (
 // SystemConfig 系统配置模型
 type SystemConfig struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	Key         string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"key"`
+	Key         string    `gorm:"type:varchar(100);uniqueIndex:idx_key_category;not null" json:"key"`
 	Value       string    `gorm:"type:text" json:"value"`
 	Type        string    `gorm:"type:varchar(50);not null" json:"type"`
-	Category    string    `gorm:"type:varchar(50);not null" json:"category"`
+	Category    string    `gorm:"type:varchar(50);uniqueIndex:idx_key_category;not null" json:"category"`
 	DisplayName string    `gorm:"type:varchar(100);not null" json:"display_name"`
 	Description string    `gorm:"type:text" json:"description"`
 	IsPublic    bool      `gorm:"default:false" json:"is_public"`

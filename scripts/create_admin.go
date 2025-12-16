@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"cboard-go/internal/core/auth"
 	"cboard-go/internal/models"
@@ -12,7 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// 简单的初始化脚本：确保存在管理员账号 admin/admin123
+// 简单的初始化脚本：确保存在管理员账号
+// 密码从环境变量 ADMIN_PASSWORD 读取，如果未设置则使用默认值（仅用于开发环境）
 func main() {
 	db, err := gorm.Open(sqlite.Open("cboard.db"), &gorm.Config{})
 	if err != nil {
@@ -21,7 +23,19 @@ func main() {
 
 	username := "admin"
 	email := "admin@example.com"
-	password := "admin123"
+
+	// 从环境变量读取密码，如果未设置则使用默认值（仅开发环境）
+	password := os.Getenv("ADMIN_PASSWORD")
+	if password == "" {
+		// 检查是否为生产环境
+		if os.Getenv("ENV") == "production" {
+			log.Fatalf("错误: 生产环境必须设置 ADMIN_PASSWORD 环境变量")
+		}
+		// 开发环境使用默认密码，但给出警告
+		password = "admin123"
+		log.Println("警告: 未设置 ADMIN_PASSWORD 环境变量，使用默认密码 'admin123'")
+		log.Println("警告: 生产环境请务必设置强密码！")
+	}
 
 	hashed, err := auth.HashPassword(password)
 	if err != nil {
@@ -63,5 +77,9 @@ func main() {
 	fmt.Println("管理员账户准备就绪。账号信息：")
 	fmt.Printf("  用户名: %s\n", username)
 	fmt.Printf("  邮箱:   %s\n", email)
-	fmt.Printf("  密码:   %s\n", password)
+	if os.Getenv("ADMIN_PASSWORD") == "" {
+		fmt.Printf("  密码:   %s (默认密码，请尽快修改！)\n", password)
+	} else {
+		fmt.Printf("  密码:   [已从环境变量读取]\n")
+	}
 }

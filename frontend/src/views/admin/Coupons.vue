@@ -368,6 +368,31 @@ const saveCoupon = async () => {
           formData.valid_until = dayjs(formData.valid_until).tz('Asia/Shanghai').format('YYYY-MM-DDTHH:mm:ss')
         }
         
+        // 清理空值字段
+        if (!formData.code || formData.code.trim() === '') {
+          delete formData.code // 让后端自动生成
+        }
+        if (formData.min_amount === 0 || formData.min_amount === null) {
+          formData.min_amount = 0
+        }
+        if (formData.max_discount === null || formData.max_discount === undefined) {
+          delete formData.max_discount
+        }
+        if (formData.total_quantity === null || formData.total_quantity === undefined) {
+          delete formData.total_quantity
+        }
+        if (!formData.max_uses_per_user || formData.max_uses_per_user === 0) {
+          formData.max_uses_per_user = 1 // 默认值
+        }
+        // 处理 applicable_packages：如果是数组，转换为字符串；如果为空，设置为空字符串
+        if (formData.applicable_packages) {
+          if (Array.isArray(formData.applicable_packages)) {
+            formData.applicable_packages = formData.applicable_packages.join(',')
+          }
+        } else {
+          formData.applicable_packages = ''
+        }
+        
         let response
         if (editingCoupon.value) {
           response = await couponAPI.updateCoupon(editingCoupon.value.id, formData)
@@ -375,14 +400,18 @@ const saveCoupon = async () => {
           response = await couponAPI.createCoupon(formData)
         }
         
-        if (response.data.success) {
+        if (response?.data?.success) {
           ElMessage.success(editingCoupon.value ? '优惠券更新成功' : '优惠券创建成功')
           showCreateDialog.value = false
           resetForm()
-          loadCoupons()
+          await loadCoupons()
+        } else {
+          throw new Error(response?.data?.message || '操作失败')
         }
       } catch (error) {
-        ElMessage.error(editingCoupon.value ? '更新失败' : '创建失败')
+        const errorMsg = error.response?.data?.message || error.message || '操作失败'
+        ElMessage.error(editingCoupon.value ? `更新失败: ${errorMsg}` : `创建失败: ${errorMsg}`)
+        console.error('优惠券操作失败:', error)
       } finally {
         saving.value = false
       }

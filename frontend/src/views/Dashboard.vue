@@ -790,15 +790,17 @@ const loadUserInfo = async () => {
         // 处理到期时间字段（支持多种字段名）
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
         expire_time: dashboardData.expire_time || dashboardData.expiryDate || dashboardData.subscription?.expire_time || dashboardData.subscription?.expiryDate || '未设置',
-        remaining_days: dashboardData.remainingDays || dashboardData.subscription?.remainingDays || 0,
+        remaining_days: dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0,
         subscription_status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
       
       // 更新 subscriptionInfo
+      const calculatedRemainingDays = dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0
+      
       subscriptionInfo.value = {
         currentDevices: dashboardData.subscription?.currentDevices || 0,
         maxDevices: dashboardData.subscription?.maxDevices || 0,
-        remainingDays: dashboardData.remainingDays || dashboardData.subscription?.remainingDays || 0,
+        remainingDays: calculatedRemainingDays,
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
         status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }

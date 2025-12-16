@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"strings"
 
+	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
-	"cboard-go/internal/core/database"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +23,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		// 提取 Bearer token
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
@@ -33,8 +34,21 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		token := parts[1]
+
+		// 检查Token是否在黑名单中（已撤销）
+		db := database.GetDB()
+		tokenHash := utils.HashToken(token)
+		if models.IsTokenBlacklisted(db, tokenHash) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "令牌已失效，请重新登录",
+			})
+			c.Abort()
+			return
+		}
+
 		claims, err := utils.VerifyToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -44,7 +58,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		// 检查令牌类型
 		if claims.Type != "access" {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -54,10 +68,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		// 从数据库获取用户
 		var user models.User
-		db := database.GetDB()
 		if err := db.First(&user, claims.UserID).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
@@ -66,7 +79,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		// 检查用户是否激活
 		if !user.IsActive {
 			c.JSON(http.StatusForbidden, gin.H{
@@ -76,12 +89,12 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		// 将用户信息存储到上下文
 		c.Set("user", &user)
 		c.Set("user_id", user.ID)
 		c.Set("is_admin", user.IsAdmin)
-		
+
 		c.Next()
 	}
 }
@@ -98,7 +111,7 @@ func AdminMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		admin, ok := isAdmin.(bool)
 		if !ok || !admin {
 			c.JSON(http.StatusForbidden, gin.H{
@@ -108,7 +121,7 @@ func AdminMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		c.Next()
 	}
 }
@@ -119,8 +132,7 @@ func GetCurrentUser(c *gin.Context) (*models.User, bool) {
 	if !exists {
 		return nil, false
 	}
-	
+
 	u, ok := user.(*models.User)
 	return u, ok
 }
-

@@ -355,7 +355,7 @@ import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
-import { userAPI, subscriptionAPI, authAPI } from '@/utils/api'
+import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
 import dayjs from 'dayjs'
 
 export default {
@@ -456,7 +456,8 @@ export default {
     // 获取用户信息
     const fetchUserInfo = async () => {
       try {
-        const response = await userAPI.getUserInfo()
+        // 使用 /users/me 端点获取用户信息
+        const response = await api.get('/users/me')
         
         // 检查响应结构
         let data = null
@@ -464,41 +465,26 @@ export default {
           if (response.data.success && response.data.data) {
             data = response.data.data
           } else if (response.data.data) {
-            // 可能响应格式不同
             data = response.data.data
           } else if (response.data) {
-            // 直接是数据
             data = response.data
           }
-        } else if (response && response.data) {
-          data = response.data
         }
         
         if (data) {
-          // 更新用户信息 - 尝试多种可能的字段名
+          // 更新用户信息 - 使用后端返回的字段名
           userInfo.value = {
-            username: data.username || data.user_name || data.name || '',
-            email: data.email || data.user_email || '',
-            is_verified: data.is_verified !== undefined ? data.is_verified : (data.email_verified !== undefined ? data.email_verified : (data.verified !== undefined ? data.verified : false)),
-            last_login: data.last_login || data.last_login_time || data.login_time || data.lastLogin || null,
-            created_at: data.created_at || data.created_time || data.register_time || data.createdAt || null,
-            status: data.status || data.user_status || data.account_status || 'active'
+            username: data.username || '',
+            email: data.email || '',
+            is_verified: data.is_verified !== undefined ? data.is_verified : false,
+            last_login: data.last_login || null,
+            created_at: data.created_at || null,
+            status: data.is_active !== undefined ? (data.is_active ? 'active' : 'inactive') : 'active'
           }
           
           // 更新表单数据
           profileForm.username = userInfo.value.username || ''
           profileForm.email = userInfo.value.email || ''
-          
-          // 如果仍然没有数据，尝试从authStore获取
-          if (!userInfo.value.username && !userInfo.value.email) {
-            const authUser = authStore.user
-            if (authUser) {
-              userInfo.value.username = authUser.username || ''
-              userInfo.value.email = authUser.email || ''
-              profileForm.username = userInfo.value.username
-              profileForm.email = userInfo.value.email
-              }
-          }
         } else {
           // 尝试从authStore获取基本信息
           const authUser = authStore.user
@@ -507,7 +493,7 @@ export default {
             userInfo.value.email = authUser.email || ''
             profileForm.username = userInfo.value.username
             profileForm.email = userInfo.value.email
-            } else {
+          } else {
             ElMessage.error('获取用户信息失败：无法解析响应数据')
           }
         }
@@ -519,8 +505,8 @@ export default {
           userInfo.value.email = authUser.email || ''
           profileForm.username = userInfo.value.username
           profileForm.email = userInfo.value.email
-          } else {
-          ElMessage.error(`获取用户信息失败: ${error.message || '未知错误'}`)
+        } else {
+          ElMessage.error(`获取用户信息失败: ${error.response?.data?.message || error.message || '未知错误'}`)
         }
       }
     }
@@ -579,12 +565,14 @@ export default {
       
       passwordLoading.value = true
       try {
+        // 使用正确的API端点
         const response = await userAPI.changePassword({
-          old_password: passwordForm.oldPassword,
+          current_password: passwordForm.oldPassword,
+          old_password: passwordForm.oldPassword, // 兼容字段
           new_password: passwordForm.newPassword
         })
-        if (response.data && (response.data.success || response.data.message)) {
-          ElMessage.success('密码修改成功')
+        if (response.data && response.data.success) {
+          ElMessage.success(response.data.message || '密码修改成功')
           
           // 清空表单
           passwordForm.oldPassword = ''
@@ -596,11 +584,12 @@ export default {
             passwordFormRef.value.resetFields()
           }
         } else {
-          ElMessage.error('密码修改失败：响应格式错误')
+          ElMessage.error(response.data?.message || '密码修改失败：响应格式错误')
         }
         
       } catch (error) {
-        ElMessage.error(`密码修改失败: ${error.response?.data?.detail || error.message || '未知错误'}`)
+        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+        ElMessage.error(`密码修改失败: ${errorMsg}`)
       } finally {
         passwordLoading.value = false
       }

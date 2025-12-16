@@ -59,15 +59,7 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
-	// 更新订阅的设备数量
-	var subscription models.Subscription
-	if err := db.First(&subscription, device.SubscriptionID).Error; err == nil {
-		if subscription.CurrentDevices > 0 {
-			subscription.CurrentDevices--
-			db.Save(&subscription)
-		}
-	}
-
+	// 删除设备
 	if err := db.Delete(&device).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -75,6 +67,11 @@ func DeleteDevice(c *gin.Context) {
 		})
 		return
 	}
+
+	// 更新订阅的设备数量（重新计算实际设备数）
+	var deviceCount int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&deviceCount)
+	db.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", deviceCount)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

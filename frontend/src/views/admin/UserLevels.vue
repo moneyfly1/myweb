@@ -295,6 +295,10 @@ const loadLevels = async () => {
       if (response.data.data && response.data.data.levels) {
         levelList = response.data.data.levels
       } 
+      // 格式：{ success: true, data: [...] } (后端实际返回的格式)
+      else if (response.data.success && Array.isArray(response.data.data)) {
+        levelList = response.data.data
+      }
       // 直接返回数组格式
       else if (Array.isArray(response.data)) {
         levelList = response.data
@@ -393,13 +397,23 @@ const saveLevel = async () => {
     console.log('保存等级数据:', data)
     console.log('is_active 值:', isActiveValue, '类型:', typeof isActiveValue)
     
+    let response
     if (editingLevel.value) {
-      const response = await userLevelAPI.updateLevel(editingLevel.value.id, data)
+      response = await userLevelAPI.updateLevel(editingLevel.value.id, data)
       console.log('更新等级响应:', response)
-      ElMessage.success('等级更新成功')
+      if (response?.data?.success) {
+        ElMessage.success('等级更新成功')
+      } else {
+        throw new Error(response?.data?.message || '更新失败')
+      }
     } else {
-      await userLevelAPI.createLevel(data)
-      ElMessage.success('等级创建成功')
+      response = await userLevelAPI.createLevel(data)
+      console.log('创建等级响应:', response)
+      if (response?.data?.success) {
+        ElMessage.success('等级创建成功')
+      } else {
+        throw new Error(response?.data?.message || '创建失败')
+      }
     }
     
     showDialog.value = false

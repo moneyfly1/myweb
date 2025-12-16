@@ -1,19 +1,24 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"cboard-go/internal/core/auth"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
+	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=8"`
+	CurrentPassword string `json:"current_password" binding:"required"`
+	OldPassword     string `json:"old_password"` // 兼容字段
+	NewPassword     string `json:"new_password" binding:"required,min=8"`
 }
 
 // ChangePassword 修改密码
@@ -38,8 +43,14 @@ func ChangePassword(c *gin.Context) {
 
 	db := database.GetDB()
 
+	// 支持 current_password 和 old_password 两种字段名
+	oldPassword := req.CurrentPassword
+	if oldPassword == "" {
+		oldPassword = req.OldPassword
+	}
+
 	// 验证原密码
-	if !auth.VerifyPassword(req.OldPassword, user.Password) {
+	if !auth.VerifyPassword(oldPassword, user.Password) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "原密码错误",
@@ -76,6 +87,31 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "change_password", "user", user.ID,
+		fmt.Sprintf("用户修改密码: %s", user.Email))
+
+	// 发送密码修改成功邮件
+	go func() {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+		baseURL := func() string {
+			scheme := "http"
+			if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+				scheme = proto
+			} else if c.Request.TLS != nil {
+				scheme = "https"
+			}
+			return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
+		}()
+		loginURL := fmt.Sprintf("%s/login", baseURL)
+		changeTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		content := templateBuilder.GetPasswordChangedTemplate(user.Username, changeTime, loginURL)
+		subject := "密码修改成功"
+		_ = emailService.QueueEmail(user.Email, subject, content, "password_changed")
+	}()
+
+	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "密码修改成功",
@@ -84,7 +120,7 @@ func ChangePassword(c *gin.Context) {
 
 // ResetPasswordRequest 重置密码请求（管理员）
 type ResetPasswordRequest struct {
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 // ResetPassword 重置用户密码（管理员）
@@ -100,8 +136,8 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
-	// 验证密码强度（最小长度6位，与前端保持一致）
-	valid, msg := auth.ValidatePasswordStrength(req.Password, 6)
+	// 验证密码强度（最小长度8位，要求包含大小写字母、数字和特殊字符中的至少三种）
+	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
 	if !valid {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -139,6 +175,11 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "reset_password", "user", user.ID,
+		fmt.Sprintf("管理员重置用户密码: %s (%s)", user.Username, user.Email))
+
+	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "密码重置成功",
@@ -182,9 +223,9 @@ func ForgotPassword(c *gin.Context) {
 
 // ResetPasswordByCodeRequest 通过验证码重置密码请求
 type ResetPasswordByCodeRequest struct {
-	Email          string `json:"email" binding:"required,email"`
+	Email            string `json:"email" binding:"required,email"`
 	VerificationCode string `json:"verification_code" binding:"required"`
-	NewPassword    string `json:"new_password" binding:"required,min=8"`
+	NewPassword      string `json:"new_password" binding:"required,min=8"`
 }
 
 // ResetPasswordByCode 通过验证码重置密码
@@ -240,9 +281,13 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "reset_password", "user", user.ID,
+		fmt.Sprintf("管理员重置用户密码: %s (%s)", user.Username, user.Email))
+
+	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "密码重置成功",
 	})
 }
-

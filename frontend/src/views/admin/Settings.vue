@@ -522,7 +522,18 @@ export default {
           Object.assign(securitySettings, settings.security)
           }
         if (settings.theme) {
-          Object.assign(themeSettings, settings.theme)
+          // 处理 available_themes，可能是字符串或数组
+          const themeData = { ...settings.theme }
+          if (themeData.available_themes) {
+            if (typeof themeData.available_themes === 'string') {
+              try {
+                themeData.available_themes = JSON.parse(themeData.available_themes)
+              } catch (e) {
+                themeData.available_themes = ['light', 'dark', 'blue', 'green', 'purple', 'orange', 'red', 'cyan', 'luck', 'aurora', 'auto']
+              }
+            }
+          }
+          Object.assign(themeSettings, themeData)
           }
         if (settings.admin_notification) {
           Object.assign(adminNotificationSettings, settings.admin_notification)
@@ -535,52 +546,75 @@ export default {
     const saveGeneralSettings = async () => {
       try {
         await generalFormRef.value.validate()
-        await api.put('/admin/settings/general', generalSettings)
-        ElMessage.success('基本设置保存成功')
+        const response = await api.put('/admin/settings/general', generalSettings)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('基本设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存基本设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
 
     const saveRegistrationSettings = async () => {
       try {
-        await api.put('/admin/settings/registration', registrationSettings)
-        ElMessage.success('注册设置保存成功')
+        const response = await api.put('/admin/settings/registration', registrationSettings)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('注册设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存注册设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
 
     const saveNotificationSettings = async () => {
       try {
-        await api.put('/admin/settings/notification', notificationSettings)
-        ElMessage.success('通知设置保存成功')
+        const response = await api.put('/admin/settings/notification', notificationSettings)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('通知设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存通知设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
 
     const saveSecuritySettings = async () => {
       try {
-        await api.put('/admin/settings/security', securitySettings)
-        ElMessage.success('安全设置保存成功')
+        const response = await api.put('/admin/settings/security', securitySettings)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('安全设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存安全设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
 
     const saveThemeSettings = async () => {
       try {
-        await api.put('/admin/settings/theme', themeSettings)
-        
-        // 立即应用主题设置
-        if (themeSettings.default_theme) {
-          await themeStore.setTheme(themeSettings.default_theme)
+        const response = await api.put('/admin/settings/theme', themeSettings)
+        if (response.data && response.data.success !== false) {
+          // 立即应用主题设置
+          if (themeSettings.default_theme) {
+            await themeStore.setTheme(themeSettings.default_theme)
+          }
+          ElMessage.success('主题设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
         }
-        
-        ElMessage.success('主题设置保存成功')
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存主题设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
 
@@ -643,8 +677,15 @@ export default {
 
 
     const handleLogoSuccess = (response) => {
-      generalSettings.site_logo = response.url
-      ElMessage.success('Logo上传成功')
+      if (response && response.success) {
+        generalSettings.site_logo = response.data?.url || response.url || ''
+        ElMessage.success('Logo上传成功')
+      } else if (response && response.data && response.data.url) {
+        generalSettings.site_logo = response.data.url
+        ElMessage.success('Logo上传成功')
+      } else {
+        ElMessage.error('Logo上传失败')
+      }
     }
 
     const beforeLogoUpload = (file) => {

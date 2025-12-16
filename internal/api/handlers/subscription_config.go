@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -32,10 +33,51 @@ func GetSubscriptionConfig(c *gin.Context) {
 		return
 	}
 
-	// 记录设备访问
+	// 检查订阅是否有效（有效期和设备限制）
+	now := time.Now()
+	isExpired := subscription.ExpireTime.Before(now)
+	isInactive := !subscription.IsActive || subscription.Status != "active"
+
+	// 检查设备限制（在记录设备访问之前）
+	deviceManager := device.NewDeviceManager()
 	userAgent := c.GetHeader("User-Agent")
 	ipAddress := c.ClientIP()
-	deviceManager := device.NewDeviceManager()
+
+	// 检查当前设备数量
+	var currentDeviceCount int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&currentDeviceCount)
+
+	// 检查这个设备是否是新设备
+	deviceHash := deviceManager.GenerateDeviceHash(userAgent, ipAddress, "")
+	var existingDevice models.Device
+	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscription.ID).First(&existingDevice).Error != nil
+
+	// 如果是新设备，检查是否会超过限制
+	isDeviceOverLimit := false
+	if isNewDevice && int(currentDeviceCount) >= subscription.DeviceLimit {
+		isDeviceOverLimit = true
+	}
+
+	// 只有有效期内且在设备限制内的用户才能获取节点
+	if isExpired || isInactive || isDeviceOverLimit {
+		// 返回错误信息
+		var errorMsg string
+		if isExpired {
+			errorMsg = fmt.Sprintf("订阅已过期（到期时间：%s），请及时续费", subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+		} else if isInactive {
+			errorMsg = "订阅已失效，请联系客服"
+		} else if isDeviceOverLimit {
+			errorMsg = fmt.Sprintf("设备数量超过限制（当前 %d/%d），请删除多余设备后再试", currentDeviceCount, subscription.DeviceLimit)
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": errorMsg,
+		})
+		return
+	}
+
+	// 记录设备访问（在限制检查通过后）
 	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "clash")
 
 	// 生成配置（Clash）
@@ -54,8 +96,86 @@ func GetSubscriptionConfig(c *gin.Context) {
 	c.String(http.StatusOK, config)
 }
 
-// GetSSRSubscription 返回 Base64 编码的通用订阅（SSR/V2Ray 等客户端）
-// 逻辑：生成 Clash 配置 -> Base64 编码文本返回，方便客户端直接使用
+// GetV2RaySubscription 获取 V2Ray 格式订阅
+func GetV2RaySubscription(c *gin.Context) {
+	subscriptionURL := c.Param("url")
+
+	// 验证订阅URL
+	db := database.GetDB()
+	var subscription models.Subscription
+	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "订阅不存在",
+		})
+		return
+	}
+
+	// 检查订阅是否有效（有效期和设备限制）
+	now := time.Now()
+	isExpired := subscription.ExpireTime.Before(now)
+	isInactive := !subscription.IsActive || subscription.Status != "active"
+
+	// 检查设备限制（在记录设备访问之前）
+	deviceManager := device.NewDeviceManager()
+	userAgent := c.GetHeader("User-Agent")
+	ipAddress := c.ClientIP()
+
+	// 检查当前设备数量
+	var currentDeviceCount int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&currentDeviceCount)
+
+	// 检查这个设备是否是新设备
+	deviceHash := deviceManager.GenerateDeviceHash(userAgent, ipAddress, "")
+	var existingDevice models.Device
+	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscription.ID).First(&existingDevice).Error != nil
+
+	// 如果是新设备，检查是否会超过限制
+	isDeviceOverLimit := false
+	if isNewDevice && int(currentDeviceCount) >= subscription.DeviceLimit {
+		isDeviceOverLimit = true
+	}
+
+	// 只有有效期内且在设备限制内的用户才能获取节点
+	if isExpired || isInactive || isDeviceOverLimit {
+		// 返回错误信息
+		var errorMsg string
+		if isExpired {
+			errorMsg = fmt.Sprintf("订阅已过期（到期时间：%s），请及时续费", subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+		} else if isInactive {
+			errorMsg = "订阅已失效，请联系客服"
+		} else if isDeviceOverLimit {
+			errorMsg = fmt.Sprintf("设备数量超过限制（当前 %d/%d），请删除多余设备后再试", currentDeviceCount, subscription.DeviceLimit)
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": errorMsg,
+		})
+		return
+	}
+
+	// 记录设备访问（在限制检查通过后）
+	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "v2ray")
+
+	// 生成 V2Ray 格式配置
+	service := config_update.NewConfigUpdateService()
+	config, err := service.GenerateV2RayConfig(subscription.UserID, subscriptionURL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "生成配置失败: " + err.Error(),
+		})
+		return
+	}
+
+	// Base64 编码返回
+	encoded := base64.StdEncoding.EncodeToString([]byte(config))
+	c.Header("Content-Type", "text/plain; charset=utf-8")
+	c.String(http.StatusOK, encoded)
+}
+
+// GetSSRSubscription 返回 Base64 编码的 SSR 格式订阅
 func GetSSRSubscription(c *gin.Context) {
 	subscriptionURL := c.Param("url")
 
@@ -73,9 +193,9 @@ func GetSSRSubscription(c *gin.Context) {
 	deviceManager := device.NewDeviceManager()
 	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "ssr")
 
-	// 生成 Clash 配置文本
+	// 生成 SSR 格式配置
 	service := config_update.NewConfigUpdateService()
-	configText, err := service.GenerateClashConfig(subscription.UserID, subscriptionURL)
+	configText, err := service.GenerateSSRConfig(subscription.UserID, subscriptionURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "生成配置失败: " + err.Error()})
 		return
@@ -230,10 +350,22 @@ func GetConfigUpdateFiles(c *gin.Context) {
 		clashFile = "clash.yaml"
 	}
 
-	// 转换为绝对路径
+	// 转换为绝对路径并验证（防止路径遍历）
 	if !filepath.IsAbs(targetDir) {
 		wd, _ := os.Getwd()
 		targetDir = filepath.Join(wd, strings.TrimPrefix(targetDir, "./"))
+	}
+
+	// 清理路径，防止路径遍历攻击
+	targetDir = filepath.Clean(targetDir)
+
+	// 验证路径是否包含危险字符
+	if strings.Contains(targetDir, "..") || strings.Contains(targetDir, "~") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的路径配置",
+		})
+		return
 	}
 
 	files := []gin.H{}
@@ -250,8 +382,26 @@ func GetConfigUpdateFiles(c *gin.Context) {
 		})
 	}
 
-	// 检查 Clash 文件
+	// 检查 Clash 文件（验证文件名，防止路径遍历）
+	clashFile = filepath.Base(clashFile) // 只保留文件名，移除路径
+	if strings.Contains(clashFile, "..") || strings.Contains(clashFile, "/") || strings.Contains(clashFile, "\\") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的文件名",
+		})
+		return
+	}
+
 	clashPath := filepath.Join(targetDir, clashFile)
+	// 验证路径在允许的目录内
+	if !strings.HasPrefix(filepath.Clean(clashPath), filepath.Clean(targetDir)) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的文件路径",
+		})
+		return
+	}
+
 	if info, err := os.Stat(clashPath); err == nil {
 		files = append(files, gin.H{
 			"name":     clashFile,
@@ -262,9 +412,49 @@ func GetConfigUpdateFiles(c *gin.Context) {
 		})
 	}
 
+	// 构建返回数据，包含文件存在状态
+	result := gin.H{
+		"v2ray": gin.H{
+			"name":     v2rayFile,
+			"path":     v2rayPath,
+			"size":     0,
+			"modified": nil,
+			"exists":   false,
+		},
+		"clash": gin.H{
+			"name":     clashFile,
+			"path":     clashPath,
+			"size":     0,
+			"modified": nil,
+			"exists":   false,
+		},
+	}
+
+	// 检查 V2Ray 文件
+	if info, err := os.Stat(v2rayPath); err == nil {
+		result["v2ray"] = gin.H{
+			"name":     v2rayFile,
+			"path":     v2rayPath,
+			"size":     info.Size(),
+			"modified": info.ModTime().Format("2006-01-02 15:04:05"),
+			"exists":   true,
+		}
+	}
+
+	// 检查 Clash 文件
+	if info, err := os.Stat(clashPath); err == nil {
+		result["clash"] = gin.H{
+			"name":     clashFile,
+			"path":     clashPath,
+			"size":     info.Size(),
+			"modified": info.ModTime().Format("2006-01-02 15:04:05"),
+			"exists":   true,
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    files,
+		"data":    result,
 	})
 }
 

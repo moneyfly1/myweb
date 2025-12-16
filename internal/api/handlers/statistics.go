@@ -35,14 +35,28 @@ func GetStatistics(c *gin.Context) {
 	db.Model(&models.Order{}).Count(&stats.TotalOrders)
 	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&stats.PaidOrders)
 
-	// 收入统计
-	var totalRevenue sql.NullFloat64
-	db.Model(&models.Order{}).Where("status = ?", "paid").Select("COALESCE(SUM(final_amount), 0)").Scan(&totalRevenue)
-	if totalRevenue.Valid {
-		stats.TotalRevenue = totalRevenue.Float64
-	} else {
-		stats.TotalRevenue = 0
+	// 收入统计（使用final_amount，如果为NULL则使用amount）
+	var totalRevenue float64
+	var result struct {
+		Total sql.NullFloat64
 	}
+	db.Raw(`
+		SELECT COALESCE(SUM(
+			CASE 
+				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
+				ELSE amount
+			END
+		), 0) as total
+		FROM orders 
+		WHERE status = ?
+	`, "paid").Scan(&result)
+	
+	if result.Total.Valid {
+		totalRevenue = result.Total.Float64
+	} else {
+		totalRevenue = 0
+	}
+	stats.TotalRevenue = totalRevenue
 
 	// 今日统计
 	today := time.Now().Format("2006-01-02")
@@ -57,11 +71,172 @@ func GetStatistics(c *gin.Context) {
 
 	// 订阅统计
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
-	db.Model(&models.Subscription{}).Where("is_active = ? AND status = ?", true, "active").Count(&stats.ActiveSubscriptions)
+	// 统计活跃订阅数（状态为active且is_active为true，并且未过期）
+	now := time.Now()
+	db.Model(&models.Subscription{}).
+		Where("is_active = ?", true).
+		Where("(status = ? OR status = '' OR status IS NULL)", "active").
+		Where("expire_time > ?", now).
+		Count(&stats.ActiveSubscriptions)
+
+	// 生成用户统计列表
+	var inactiveUsers int64
+	db.Model(&models.User{}).Where("is_active = ?", false).Count(&inactiveUsers)
+	var verifiedUsers int64
+	db.Model(&models.User{}).Where("is_verified = ?", true).Count(&verifiedUsers)
+	var unverifiedUsers int64
+	db.Model(&models.User{}).Where("is_verified = ?", false).Count(&unverifiedUsers)
+
+	userStatsList := []gin.H{
+		{
+			"name":       "总用户数",
+			"value":      stats.TotalUsers,
+			"percentage": 100,
+		},
+		{
+			"name":       "活跃用户",
+			"value":      stats.ActiveUsers,
+			"percentage": func() float64 {
+				if stats.TotalUsers > 0 {
+					return float64(stats.ActiveUsers) / float64(stats.TotalUsers) * 100
+				}
+				return 0
+			}(),
+		},
+		{
+			"name":       "未激活用户",
+			"value":      inactiveUsers,
+			"percentage": func() float64 {
+				if stats.TotalUsers > 0 {
+					return float64(inactiveUsers) / float64(stats.TotalUsers) * 100
+				}
+				return 0
+			}(),
+		},
+		{
+			"name":       "已验证用户",
+			"value":      verifiedUsers,
+			"percentage": func() float64 {
+				if stats.TotalUsers > 0 {
+					return float64(verifiedUsers) / float64(stats.TotalUsers) * 100
+				}
+				return 0
+			}(),
+		},
+		{
+			"name":       "未验证用户",
+			"value":      unverifiedUsers,
+			"percentage": func() float64 {
+				if stats.TotalUsers > 0 {
+					return float64(unverifiedUsers) / float64(stats.TotalUsers) * 100
+				}
+				return 0
+			}(),
+		},
+	}
+
+	// 生成订阅统计列表
+	var expiredSubscriptions int64
+	db.Model(&models.Subscription{}).
+		Where("expire_time <= ?", now).
+		Count(&expiredSubscriptions)
+	var inactiveSubscriptions int64
+	db.Model(&models.Subscription{}).
+		Where("is_active = ?", false).
+		Count(&inactiveSubscriptions)
+
+	subscriptionStatsList := []gin.H{
+		{
+			"name":       "总订阅数",
+			"value":      stats.TotalSubscriptions,
+			"percentage": 100,
+		},
+		{
+			"name":       "活跃订阅",
+			"value":      stats.ActiveSubscriptions,
+			"percentage": func() float64 {
+				if stats.TotalSubscriptions > 0 {
+					return float64(stats.ActiveSubscriptions) / float64(stats.TotalSubscriptions) * 100
+				}
+				return 0
+			}(),
+		},
+		{
+			"name":       "已过期订阅",
+			"value":      expiredSubscriptions,
+			"percentage": func() float64 {
+				if stats.TotalSubscriptions > 0 {
+					return float64(expiredSubscriptions) / float64(stats.TotalSubscriptions) * 100
+				}
+				return 0
+			}(),
+		},
+		{
+			"name":       "未激活订阅",
+			"value":      inactiveSubscriptions,
+			"percentage": func() float64 {
+				if stats.TotalSubscriptions > 0 {
+					return float64(inactiveSubscriptions) / float64(stats.TotalSubscriptions) * 100
+				}
+				return 0
+			}(),
+		},
+	}
+
+	// 获取最近活动（最近10条订单）
+	var recentOrders []models.Order
+	db.Preload("User").Order("created_at DESC").Limit(10).Find(&recentOrders)
+	recentActivitiesList := make([]gin.H, 0)
+	for _, order := range recentOrders {
+		amount := order.Amount
+		if order.FinalAmount.Valid {
+			amount = order.FinalAmount.Float64
+		}
+		activityType := "primary"
+		if order.Status == "paid" {
+			activityType = "success"
+		} else if order.Status == "pending" {
+			activityType = "warning"
+		} else if order.Status == "cancelled" {
+			activityType = "danger"
+		}
+		recentActivitiesList = append(recentActivitiesList, gin.H{
+			"id":          order.ID,
+			"type":        activityType,
+			"description": fmt.Sprintf("订单 %s - 用户 %s", order.OrderNo, order.User.Username),
+			"amount":      amount,
+			"status":      order.Status,
+			"time":        order.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    stats,
+		"data": gin.H{
+			// 直接返回统计数据
+			"total_users":          stats.TotalUsers,
+			"active_users":         stats.ActiveUsers,
+			"total_orders":         stats.TotalOrders,
+			"paid_orders":          stats.PaidOrders,
+			"total_revenue":        stats.TotalRevenue,
+			"total_subscriptions":  stats.TotalSubscriptions,
+			"active_subscriptions": stats.ActiveSubscriptions,
+			"today_revenue":        stats.TodayRevenue,
+			"today_orders":         stats.TodayOrders,
+			// 兼容前端期望的格式
+			"overview": gin.H{
+				"totalUsers":          stats.TotalUsers,
+				"activeSubscriptions": stats.ActiveSubscriptions,
+				"totalOrders":         stats.TotalOrders,
+				"totalRevenue":        stats.TotalRevenue,
+			},
+			// 用户统计列表
+			"userStats": userStatsList,
+			// 订阅统计列表
+			"subscriptionStats": subscriptionStatsList,
+			// 最近活动列表
+			"recentActivities": recentActivitiesList,
+		},
 	})
 }
 
@@ -86,13 +261,18 @@ func GetRevenueChart(c *gin.Context) {
 	var rows *sql.Rows
 	var err error
 
-	// 检测数据库类型（简化处理，使用 SQLite 语法）
+	// 使用 SQLite 语法（兼容 MySQL）
 	rows, err = db.Raw(`
-		SELECT DATE(created_at) as date, COALESCE(SUM(final_amount), 0) as revenue
+		SELECT DATE(created_at) as date, COALESCE(SUM(
+			CASE 
+				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
+				ELSE amount
+			END
+		), 0) as revenue
 		FROM orders 
 		WHERE status = ? AND created_at >= datetime('now', '-' || ? || ' days')
 		GROUP BY DATE(created_at)
-		ORDER BY date DESC
+		ORDER BY date ASC
 	`, "paid", days).Rows()
 
 	if err == nil {
@@ -104,9 +284,20 @@ func GetRevenueChart(c *gin.Context) {
 		}
 	}
 
+	// 转换为前端期望的格式
+	labels := make([]string, 0)
+	data := make([]float64, 0)
+	for _, stat := range stats {
+		labels = append(labels, stat.Date)
+		data = append(data, stat.Revenue)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    stats,
+		"data": gin.H{
+			"labels": labels,
+			"data":   data,
+		},
 	})
 }
 

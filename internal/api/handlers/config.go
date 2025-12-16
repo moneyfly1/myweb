@@ -175,9 +175,13 @@ func CreateSystemConfig(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 检查是否已存在
+	// 检查是否已存在（基于 key 和 category 的组合）
 	var existing models.SystemConfig
-	if err := db.Where("key = ?", req.Key).First(&existing).Error; err == nil {
+	query := db.Where("key = ?", req.Key)
+	if req.Category != "" {
+		query = query.Where("category = ?", req.Category)
+	}
+	if err := query.First(&existing).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "配置已存在",
@@ -491,21 +495,36 @@ func UpdateRegistrationSettings(c *gin.Context) {
 	for key, value := range settings {
 		var config models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", key, "registration").First(&config).Error; err != nil {
-			// 如果是记录不存在，创建新配置（这是正常情况，不需要记录错误）
 			if err == gorm.ErrRecordNotFound {
+				// 如果不存在，创建新配置
 				config = models.SystemConfig{
 					Key:      key,
 					Category: "registration",
 					Value:    fmt.Sprintf("%v", value),
 				}
+				if err := db.Create(&config).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+					})
+					return
+				}
 			} else {
-				// 其他错误才需要处理
-				continue
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+				})
+				return
 			}
-			db.Create(&config)
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			if err := db.Save(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+				})
+				return
+			}
 		}
 	}
 
@@ -530,19 +549,36 @@ func UpdateNotificationSettings(c *gin.Context) {
 	for key, value := range settings {
 		var config models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", key, "notification").First(&config).Error; err != nil {
-			// 如果是记录不存在，创建新配置（这是正常情况，不需要记录错误）
 			if err == gorm.ErrRecordNotFound {
+				// 如果不存在，创建新配置
 				config = models.SystemConfig{
 					Key:      key,
 					Category: "notification",
 					Value:    fmt.Sprintf("%v", value),
 				}
-				db.Create(&config)
+				if err := db.Create(&config).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+					})
+					return
+				}
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+				})
+				return
 			}
-			// 其他错误跳过
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			if err := db.Save(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+				})
+				return
+			}
 		}
 	}
 
@@ -567,15 +603,36 @@ func UpdateSecuritySettings(c *gin.Context) {
 	for key, value := range settings {
 		var config models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", key, "security").First(&config).Error; err != nil {
-			config = models.SystemConfig{
-				Key:      key,
-				Category: "security",
-				Value:    fmt.Sprintf("%v", value),
+			if err == gorm.ErrRecordNotFound {
+				// 如果不存在，创建新配置
+				config = models.SystemConfig{
+					Key:      key,
+					Category: "security",
+					Value:    fmt.Sprintf("%v", value),
+				}
+				if err := db.Create(&config).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+					})
+					return
+				}
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+				})
+				return
 			}
-			db.Create(&config)
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			if err := db.Save(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+				})
+				return
+			}
 		}
 	}
 
@@ -599,16 +656,50 @@ func UpdateThemeSettings(c *gin.Context) {
 	db := database.GetDB()
 	for key, value := range settings {
 		var config models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", key, "theme").First(&config).Error; err != nil {
-			config = models.SystemConfig{
-				Key:      key,
-				Category: "theme",
-				Value:    fmt.Sprintf("%v", value),
+		// 处理数组类型（如 available_themes）
+		var valueStr string
+		if arr, ok := value.([]interface{}); ok {
+			// 将数组转换为JSON字符串
+			jsonBytes, err := json.Marshal(arr)
+			if err == nil {
+				valueStr = string(jsonBytes)
+			} else {
+				valueStr = fmt.Sprintf("%v", value)
 			}
-			db.Create(&config)
 		} else {
-			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			valueStr = fmt.Sprintf("%v", value)
+		}
+
+		if err := db.Where("key = ? AND category = ?", key, "theme").First(&config).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				config = models.SystemConfig{
+					Key:      key,
+					Category: "theme",
+					Value:    valueStr,
+				}
+				if err := db.Create(&config).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+					})
+					return
+				}
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+				})
+				return
+			}
+		} else {
+			config.Value = valueStr
+			if err := db.Save(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+				})
+				return
+			}
 		}
 	}
 
@@ -651,8 +742,8 @@ func UpdateInviteSettings(c *gin.Context) {
 	})
 }
 
-// UpdateAdminNotificationSettings 更新管理员通知设置
-func UpdateAdminNotificationSettings(c *gin.Context) {
+// UpdateAdminNotificationSystemSettings 更新管理员通知设置（系统设置）
+func UpdateAdminNotificationSystemSettings(c *gin.Context) {
 	var settings map[string]interface{}
 	if err := c.ShouldBindJSON(&settings); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -707,10 +798,14 @@ func TestAdminEmailNotification(c *gin.Context) {
 		return
 	}
 
-	// 发送测试邮件
+	// 发送测试邮件（使用邮件模板）
 	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
 	subject := "🧪 测试消息"
-	content := "这是一条测试消息，如果您收到此消息，说明邮件通知配置正确。"
+	content := templateBuilder.GetBroadcastNotificationTemplate(
+		subject,
+		"这是一条测试消息，如果您收到此消息，说明邮件通知配置正确。",
+	)
 	
 	// 将邮件加入队列
 	if err := emailService.QueueEmail(adminEmail, subject, content, "admin_notification"); err != nil {

@@ -1,11 +1,16 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"cboard-go/internal/core/auth"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -14,9 +19,11 @@ import (
 
 // RegisterRequest 注册请求
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
+	Username         string `json:"username" binding:"required"`
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required,min=8"`
+	VerificationCode string `json:"verification_code"` // 验证码（可选，根据系统配置决定是否必填）
+	InviteCode       string `json:"invite_code"`       // 邀请码（可选）
 }
 
 // LoginRequest 登录请求
@@ -35,9 +42,11 @@ type LoginJSONRequest struct {
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// 不向客户端返回详细错误信息，防止信息泄露
+		utils.LogError("Register: bind request", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误: " + err.Error(),
+			"message": "请求参数错误，请检查输入格式",
 		})
 		return
 	}
@@ -53,6 +62,55 @@ func Register(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 检查系统配置：是否需要邮箱验证
+	var emailVerificationRequired bool
+	var emailVerificationConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "email_verification_required", "registration").First(&emailVerificationConfig).Error; err == nil {
+		emailVerificationRequired = emailVerificationConfig.Value == "true"
+	} else {
+		// 默认需要邮箱验证
+		emailVerificationRequired = true
+	}
+
+	// 如果系统要求邮箱验证，则验证验证码
+	if emailVerificationRequired {
+		if req.VerificationCode == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "系统要求邮箱验证，请先获取并输入验证码",
+			})
+			return
+		}
+
+		var verificationCode models.VerificationCode
+		if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "验证码错误或已使用",
+			})
+			return
+		}
+
+		// 检查是否过期
+		if verificationCode.IsExpired() {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "验证码已过期，请重新获取",
+			})
+			return
+		}
+
+		// 标记验证码为已使用（使用ID直接更新，确保更新成功）
+		verificationCode.Used = 1
+		if err := db.Model(&verificationCode).Where("id = ?", verificationCode.ID).Update("used", 1).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("标记验证码失败: %v", err),
+			})
+			return
+		}
+	}
 
 	// 检查用户是否已存在
 	var existingUser models.User
@@ -100,6 +158,32 @@ func Register(c *gin.Context) {
 
 	// 为新用户创建默认订阅（忽略错误，不影响注册流程）
 	_ = createDefaultSubscription(db, user.ID)
+
+	// 设置用户ID到上下文，以便审计日志可以获取
+	c.Set("user_id", user.ID)
+	utils.SetResponseStatus(c, http.StatusCreated)
+	
+	// 记录注册审计日志
+	utils.CreateAuditLogSimple(c, "register", "auth", user.ID, fmt.Sprintf("用户注册: %s (%s)", user.Username, user.Email))
+
+	// 发送欢迎邮件
+	go func() {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+		baseURL := func() string {
+			scheme := "http"
+			if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+				scheme = proto
+			} else if c.Request.TLS != nil {
+				scheme = "https"
+			}
+			return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
+		}()
+		loginURL := fmt.Sprintf("%s/login", baseURL)
+		content := templateBuilder.GetWelcomeTemplate(user.Username, user.Email, loginURL, false, "")
+		subject := "欢迎加入我们！"
+		_ = emailService.QueueEmail(user.Email, subject, content, "welcome")
+	}()
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -150,6 +234,21 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+
+	// 更新最后登录时间
+	now := utils.GetBeijingTime()
+	user.LastLogin = database.NullTime(now)
+	if saveErr := db.Save(&user).Error; saveErr != nil {
+		// 记录错误但不影响登录流程
+		utils.LogError("更新最后登录时间失败", saveErr, nil)
+	}
+
+	// 设置用户ID到上下文，以便审计日志可以获取
+	c.Set("user_id", user.ID)
+	utils.SetResponseStatus(c, http.StatusOK)
+	
+	// 记录登录审计日志
+	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Email))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -213,6 +312,13 @@ func LoginJSON(c *gin.Context) {
 		})
 		return
 	}
+
+	// 设置用户ID到上下文，以便审计日志可以获取
+	c.Set("user_id", user.ID)
+	utils.SetResponseStatus(c, http.StatusOK)
+	
+	// 记录登录审计日志
+	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -282,7 +388,70 @@ func RefreshToken(c *gin.Context) {
 
 // Logout 登出
 func Logout(c *gin.Context) {
-	// TODO: 实现令牌黑名单
+	// 获取当前用户
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "未登录",
+		})
+		return
+	}
+
+	// 获取Token
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "未提供认证令牌",
+		})
+		return
+	}
+
+	// 提取 Bearer token
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "无效的认证格式",
+		})
+		return
+	}
+
+	token := parts[1]
+
+	// 验证Token并获取过期时间
+	claims, err := utils.VerifyToken(token)
+	if err != nil {
+		// Token无效或已过期，仍然返回成功（避免信息泄露）
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "登出成功",
+		})
+		return
+	}
+
+	// 将Token添加到黑名单
+	db := database.GetDB()
+	tokenHash := utils.HashToken(token)
+	
+	// 获取Token的过期时间
+	var expiresAt time.Time
+	if claims.ExpiresAt != nil {
+		expiresAt = claims.ExpiresAt.Time
+	} else {
+		// 如果没有过期时间，使用默认的过期时间（24小时）
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+
+	// 添加到黑名单
+	if err := models.AddToBlacklist(db, tokenHash, user.ID, expiresAt); err != nil {
+		// 记录错误但不影响登出流程
+		utils.LogError("Logout: failed to add token to blacklist", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "登出成功",

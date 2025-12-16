@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cboard-go/internal/core/config"
@@ -18,8 +19,39 @@ import (
 func CreateBackup(c *gin.Context) {
 	cfg := config.AppConfig
 
-	// 创建备份目录
-	backupDir := filepath.Join(cfg.UploadDir, "backups")
+	// 创建备份目录（使用绝对路径，防止路径遍历）
+	wd, err := os.Getwd()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取工作目录失败",
+		})
+		return
+	}
+
+	// 构建备份目录路径
+	backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
+	// 清理路径，防止路径遍历攻击
+	backupDir = filepath.Clean(backupDir)
+
+	// 验证路径是否在允许的目录内（防止路径遍历）
+	if !strings.HasPrefix(backupDir, wd) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的备份路径",
+		})
+		return
+	}
+
+	// 检查是否包含危险字符
+	if strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的备份路径",
+		})
+		return
+	}
+
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -28,9 +60,29 @@ func CreateBackup(c *gin.Context) {
 		return
 	}
 
-	// 生成备份文件名
+	// 生成备份文件名（使用白名单验证，只允许字母、数字、下划线和连字符）
 	backupFileName := fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405"))
+
+	// 验证文件名（防止路径遍历）
+	if strings.Contains(backupFileName, "..") || strings.Contains(backupFileName, "/") ||
+		strings.Contains(backupFileName, "\\") || strings.Contains(backupFileName, "~") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的文件名",
+		})
+		return
+	}
+
 	backupPath := filepath.Join(backupDir, backupFileName)
+	// 再次清理和验证最终路径
+	backupPath = filepath.Clean(backupPath)
+	if !strings.HasPrefix(backupPath, backupDir) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的备份路径",
+		})
+		return
+	}
 
 	// 创建 ZIP 文件
 	zipFile, err := os.Create(backupPath)
@@ -46,31 +98,48 @@ func CreateBackup(c *gin.Context) {
 	zipWriter := zip.NewWriter(zipFile)
 	defer zipWriter.Close()
 
-	// 备份数据库文件
-	dbPath := "cboard.db"
-	if _, err := os.Stat(dbPath); err == nil {
-		dbFile, err := os.Open(dbPath)
-		if err == nil {
-			defer dbFile.Close()
-
-			writer, err := zipWriter.Create("cboard.db")
+	// 备份数据库文件（使用绝对路径，防止路径遍历）
+	dbPath := filepath.Join(wd, "cboard.db")
+	dbPath = filepath.Clean(dbPath)
+	// 验证路径在允许的目录内
+	if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
+		if _, err := os.Stat(dbPath); err == nil {
+			dbFile, err := os.Open(dbPath)
 			if err == nil {
-				io.Copy(writer, dbFile)
+				defer dbFile.Close()
+
+				// 使用filepath.Base确保只使用文件名，防止路径遍历
+				writer, err := zipWriter.Create("cboard.db")
+				if err == nil {
+					io.Copy(writer, dbFile)
+				}
 			}
 		}
 	}
 
-	// 备份配置文件
+	// 备份配置文件（使用白名单，只允许特定文件）
 	configFiles := []string{".env", "config.yaml"}
 	for _, configFile := range configFiles {
-		if _, err := os.Stat(configFile); err == nil {
-			file, err := os.Open(configFile)
-			if err == nil {
-				defer file.Close()
+		// 验证文件名（防止路径遍历）
+		if strings.Contains(configFile, "..") || strings.Contains(configFile, "/") ||
+			strings.Contains(configFile, "\\") || strings.Contains(configFile, "~") {
+			continue // 跳过无效的文件名
+		}
 
-				writer, err := zipWriter.Create(configFile)
+		configPath := filepath.Join(wd, configFile)
+		configPath = filepath.Clean(configPath)
+		// 验证路径在允许的目录内
+		if strings.HasPrefix(configPath, wd) && !strings.Contains(configPath, "..") {
+			if _, err := os.Stat(configPath); err == nil {
+				file, err := os.Open(configPath)
 				if err == nil {
-					io.Copy(writer, file)
+					defer file.Close()
+
+					// 使用filepath.Base确保只使用文件名
+					writer, err := zipWriter.Create(filepath.Base(configFile))
+					if err == nil {
+						io.Copy(writer, file)
+					}
 				}
 			}
 		}
@@ -90,7 +159,29 @@ func CreateBackup(c *gin.Context) {
 // ListBackups 列出备份文件
 func ListBackups(c *gin.Context) {
 	cfg := config.AppConfig
-	backupDir := filepath.Join(cfg.UploadDir, "backups")
+
+	// 使用绝对路径，防止路径遍历
+	wd, err := os.Getwd()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取工作目录失败",
+		})
+		return
+	}
+
+	backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
+	// 清理路径，防止路径遍历攻击
+	backupDir = filepath.Clean(backupDir)
+
+	// 验证路径是否在允许的目录内
+	if !strings.HasPrefix(backupDir, wd) || strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的备份路径",
+		})
+		return
+	}
 
 	files, err := os.ReadDir(backupDir)
 	if err != nil {
@@ -103,11 +194,19 @@ func ListBackups(c *gin.Context) {
 
 	var backups []map[string]interface{}
 	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".zip" {
+		// 验证文件名（防止路径遍历）
+		fileName := file.Name()
+		if !file.IsDir() && filepath.Ext(fileName) == ".zip" {
+			// 检查文件名是否包含危险字符
+			if strings.Contains(fileName, "..") || strings.Contains(fileName, "/") ||
+				strings.Contains(fileName, "\\") || strings.Contains(fileName, "~") {
+				continue // 跳过无效的文件名
+			}
+
 			info, err := file.Info()
 			if err == nil {
 				backups = append(backups, map[string]interface{}{
-					"filename":   file.Name(),
+					"filename":   fileName, // 只返回文件名，不返回完整路径
 					"size":       info.Size(),
 					"created_at": info.ModTime().Format("2006-01-02 15:04:05"),
 				})

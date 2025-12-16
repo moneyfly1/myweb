@@ -1,11 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
+	"time"
 
 	"cboard-go/internal/api/router"
 	"cboard-go/internal/core/auth"
@@ -89,7 +92,8 @@ func main() {
 	}
 }
 
-// ensureDefaultAdmin 创建或更新默认管理员账号
+// ensureDefaultAdmin 创建默认管理员账号（仅在首次启动时创建）
+// 如果管理员已存在，则不进行任何操作，避免覆盖现有密码
 func ensureDefaultAdmin() {
 	db := database.GetDB()
 	if db == nil {
@@ -97,52 +101,101 @@ func ensureDefaultAdmin() {
 		return
 	}
 
-	const (
-		username = "admin"
-		email    = "admin@example.com"
-		password = "admin123"
-	)
+	username := "admin"
+	email := "admin@example.com"
 
+	// 检查管理员是否已存在
+	var user models.User
+	err := db.Where("username = ? OR email = ?", username, email).First(&user).Error
+	if err == nil {
+		// 管理员已存在，不进行任何操作
+		log.Printf("管理员账号已存在: %s (%s)", username, email)
+		return
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("查询管理员失败: %v", err)
+		return
+	}
+
+	// 管理员不存在，自动生成随机密码
+	password := generateRandomPassword()
 	hashed, err := auth.HashPassword(password)
 	if err != nil {
 		log.Printf("生成管理员密码哈希失败: %v", err)
 		return
 	}
 
-	var user models.User
-	err = db.Where("username = ? OR email = ?", username, email).First(&user).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			user = models.User{
-				Username:   username,
-				Email:      email,
-				Password:   hashed,
-				IsAdmin:    true,
-				IsVerified: true,
-				IsActive:   true,
-			}
-			if err := db.Create(&user).Error; err != nil {
-				log.Printf("创建默认管理员失败: %v", err)
-				return
-			}
-			log.Println("默认管理员已创建: admin / admin123")
-		} else {
-			log.Printf("查询管理员失败: %v", err)
-		}
+	// 创建管理员账号
+	user = models.User{
+		Username:   username,
+		Email:      email,
+		Password:   hashed,
+		IsAdmin:    true,
+		IsVerified: true,
+		IsActive:   true,
+	}
+
+	if err := db.Create(&user).Error; err != nil {
+		log.Printf("创建默认管理员失败: %v", err)
 		return
 	}
 
-	updates := map[string]interface{}{
-		"password":    hashed,
-		"is_admin":    true,
-		"is_verified": true,
-		"is_active":   true,
+	// 输出管理员账号信息（仅首次创建时）
+	log.Println("========================================")
+	log.Printf("管理员账号已自动创建")
+	log.Printf("用户名: %s", username)
+	log.Printf("邮箱: %s", email)
+	log.Printf("初始密码: %s", password)
+	log.Println("========================================")
+	log.Println("⚠️  请立即登录并修改密码！")
+	log.Println("⚠️  此密码仅显示一次，请妥善保存！")
+	log.Println("========================================")
+}
+
+// generateRandomPassword 生成安全的随机密码
+// 密码长度16位，包含大小写字母、数字和特殊字符
+func generateRandomPassword() string {
+	const (
+		lowercase = "abcdefghijklmnopqrstuvwxyz"
+		uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		digits    = "0123456789"
+		special   = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+		allChars  = lowercase + uppercase + digits + special
+	)
+
+	// 确保至少包含每种类型的字符
+	password := make([]byte, 16)
+
+	// 使用 crypto/rand 生成安全的随机数
+	// 确保包含至少一个每种类型的字符
+	password[0] = lowercase[randomInt(len(lowercase))]
+	password[1] = uppercase[randomInt(len(uppercase))]
+	password[2] = digits[randomInt(len(digits))]
+	password[3] = special[randomInt(len(special))]
+
+	// 填充剩余字符
+	for i := 4; i < 16; i++ {
+		password[i] = allChars[randomInt(len(allChars))]
 	}
-	if err := db.Model(&user).Updates(updates).Error; err != nil {
-		log.Printf("更新默认管理员失败: %v", err)
-		return
+
+	// 打乱顺序
+	for i := len(password) - 1; i > 0; i-- {
+		j := randomInt(i + 1)
+		password[i], password[j] = password[j], password[i]
 	}
-	log.Println("默认管理员已更新: admin / admin123")
+
+	return string(password)
+}
+
+// randomInt 生成 0 到 max-1 之间的随机整数
+func randomInt(max int) int {
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		// 如果生成失败，使用时间戳作为后备（不推荐，但比崩溃好）
+		return int(time.Now().UnixNano()) % max
+	}
+	return int(n.Int64())
 }
 
 // ensureDefaultEmailTemplates 确保默认邮件模板存在

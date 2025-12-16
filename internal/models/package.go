@@ -16,6 +16,7 @@ type Package struct {
 	BandwidthLimit sql.NullInt64  `json:"bandwidth_limit,omitempty"`
 	SortOrder      int            `gorm:"default:1" json:"sort_order"`
 	IsActive       bool           `gorm:"default:true" json:"is_active"`
+	IsRecommended  bool           `gorm:"default:false" json:"is_recommended"`
 	CreatedAt      time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 

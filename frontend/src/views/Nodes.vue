@@ -77,18 +77,26 @@
           </template>
         </el-table-column>
 
+        <el-table-column prop="region" label="地区" width="120">
+          <template #default="{ row }">
+            <el-tag :type="getRegionColor(row.region)">
+              {{ row.region || '未知' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="type" label="类型" width="120">
           <template #default="{ row }">
             <el-tag :type="getTypeColor(row.type)">
-              {{ row.type }}
+              {{ row.type || '未知' }}
             </el-tag>
           </template>
         </el-table-column>
 
         <el-table-column prop="status" label="在线状态" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'online' ? 'success' : 'danger'">
-              {{ row.status === 'online' ? '在线' : '离线' }}
+            <el-tag :type="(row.status || '').toLowerCase() === 'online' ? 'success' : 'danger'">
+              {{ (row.status || '').toLowerCase() === 'online' ? '在线' : '离线' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -212,12 +220,18 @@ export default {
 
     // 获取地区列表
     const regions = computed(() => {
-      return [...new Set(nodes.value.map(node => node.region))]
+      const regionList = nodes.value
+        .map(node => node.region)
+        .filter(region => region && region.trim() !== '')
+      return [...new Set(regionList)].sort()
     })
 
     // 获取节点类型列表
     const nodeTypes = computed(() => {
-      return [...new Set(nodes.value.map(node => node.type))]
+      const typeList = nodes.value
+        .map(node => node.type)
+        .filter(type => type && type.trim() !== '')
+      return [...new Set(typeList)].sort()
     })
 
     // 获取节点列表 - 从数据库Clash配置获取真实数据
@@ -226,12 +240,19 @@ export default {
       try {
         const response = await nodeAPI.getNodes()
         // 处理API响应数据
-        if (response.data && response.data.data && response.data.data.nodes) {
-          nodes.value = response.data.data.nodes
-        } else if (response.data && response.data.nodes) {
-          nodes.value = response.data.nodes
+        if (response.data && response.data.success && response.data.data) {
+          // 后端返回格式: {success: true, data: [...]}
+          if (Array.isArray(response.data.data)) {
+            nodes.value = response.data.data
+          } else if (response.data.data.nodes && Array.isArray(response.data.data.nodes)) {
+            nodes.value = response.data.data.nodes
+          } else {
+            nodes.value = []
+          }
         } else if (response.data && Array.isArray(response.data)) {
           nodes.value = response.data
+        } else if (response.data && response.data.nodes && Array.isArray(response.data.nodes)) {
+          nodes.value = response.data.nodes
         } else {
           nodes.value = []
         }
@@ -239,7 +260,10 @@ export default {
         // 计算统计数据
         updateNodeStats()
       } catch (error) {
-        ElMessage.error('获取节点列表失败')
+        const errorMsg = error.response?.data?.message || error.message || '获取节点列表失败'
+        ElMessage.error(`获取节点列表失败: ${errorMsg}`)
+        console.error('获取节点列表错误:', error)
+        nodes.value = []
       } finally {
         loading.value = false
       }
@@ -248,7 +272,11 @@ export default {
     // 更新节点统计
     const updateNodeStats = () => {
       nodeStats.total = nodes.value.length
-      nodeStats.online = nodes.value.filter(n => n.status === 'online').length
+      // 支持多种状态格式：'online', 'Online', 'ONLINE'
+      nodeStats.online = nodes.value.filter(n => {
+        const status = (n.status || '').toLowerCase()
+        return status === 'online'
+      }).length
       nodeStats.regions = regions.value.length
       nodeStats.types = nodeTypes.value.length
     }

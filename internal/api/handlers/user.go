@@ -10,6 +10,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -54,9 +55,43 @@ func GetCurrentUser(c *gin.Context) {
 		return
 	}
 
+	// 格式化时间字段
+	lastLoginStr := ""
+	if user.LastLogin.Valid {
+		lastLoginStr = user.LastLogin.Time.Format("2006-01-02 15:04:05")
+	}
+
+	// 构建响应数据，确保包含所有必要字段
+	responseData := gin.H{
+		"id":                  user.ID,
+		"username":            user.Username,
+		"email":               user.Email,
+		"is_active":           user.IsActive,
+		"is_verified":         user.IsVerified,
+		"is_admin":            user.IsAdmin,
+		"created_at":          user.CreatedAt.Format("2006-01-02 15:04:05"),
+		"last_login":          lastLoginStr,
+		"theme":               user.Theme,
+		"language":            user.Language,
+		"timezone":            user.Timezone,
+		"email_notifications": user.EmailNotifications,
+		"notification_types":  user.NotificationTypes,
+		"sms_notifications":   user.SMSNotifications,
+		"push_notifications":  user.PushNotifications,
+		"data_sharing":        user.DataSharing,
+		"analytics":           user.Analytics,
+		"balance":             user.Balance,
+	}
+
+	// 添加头像（如果存在）
+	if user.Avatar.Valid {
+		responseData["avatar"] = user.Avatar.String
+		responseData["avatar_url"] = user.Avatar.String
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    user,
+		"data":    responseData,
 	})
 }
 
@@ -75,6 +110,8 @@ func UpdateCurrentUser(c *gin.Context) {
 		Username string `json:"username"`
 		Avatar   string `json:"avatar"`
 		Theme    string `json:"theme"`
+		Language string `json:"language"`
+		Timezone string `json:"timezone"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -88,27 +125,56 @@ func UpdateCurrentUser(c *gin.Context) {
 	db := database.GetDB()
 
 	if req.Username != "" {
+		// 检查用户名是否已被其他用户使用
+		var existingUser models.User
+		if err := db.Where("username = ? AND id != ?", req.Username, user.ID).First(&existingUser).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "用户名已被使用",
+			})
+			return
+		}
 		user.Username = req.Username
 	}
 	if req.Avatar != "" {
-		// user.Avatar = sql.NullString{String: req.Avatar, Valid: true}
+		user.Avatar = database.NullString(req.Avatar)
 	}
 	if req.Theme != "" {
 		user.Theme = req.Theme
+	}
+	if req.Language != "" {
+		user.Language = req.Language
+	}
+	if req.Timezone != "" {
+		user.Timezone = req.Timezone
 	}
 
 	if err := db.Save(user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新失败",
+			"message": "更新失败: " + err.Error(),
 		})
 		return
+	}
+
+	// 构建响应数据
+	responseData := gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"theme":    user.Theme,
+		"language": user.Language,
+		"timezone": user.Timezone,
+	}
+	if user.Avatar.Valid {
+		responseData["avatar"] = user.Avatar.String
+		responseData["avatar_url"] = user.Avatar.String
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "更新成功",
-		"data":    user,
+		"data":    responseData,
 	})
 }
 
@@ -135,7 +201,11 @@ func GetUsers(c *gin.Context) {
 
 	// 搜索参数
 	if keyword := c.Query("keyword"); keyword != "" {
-		query = query.Where("username LIKE ? OR email LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("username LIKE ? OR email LIKE ?", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
 
 	// 状态筛选
@@ -160,13 +230,13 @@ func GetUsers(c *gin.Context) {
 	// 2. start_date 和 end_date 作为独立参数
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
-	
+
 	// 如果 date_range 是数组格式
 	dateRangeArray := c.QueryArray("date_range[]")
 	if len(dateRangeArray) == 0 {
 		dateRangeArray = c.QueryArray("date_range")
 	}
-	
+
 	if len(dateRangeArray) == 2 {
 		startDate = dateRangeArray[0]
 		endDate = dateRangeArray[1]
@@ -180,13 +250,13 @@ func GetUsers(c *gin.Context) {
 			endDate = strings.TrimSpace(parts[1])
 		}
 	}
-	
+
 	// 应用日期范围筛选
 	if startDate != "" && endDate != "" {
 		// 解析日期
 		startTime, err1 := time.Parse("2006-01-02", startDate)
 		endTime, err2 := time.Parse("2006-01-02", endDate)
-		
+
 		if err1 == nil && err2 == nil {
 			// 设置开始时间为当天的 00:00:00
 			startTime = time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location())
@@ -258,9 +328,9 @@ func GetUsers(c *gin.Context) {
 		}
 
 		userList = append(userList, gin.H{
-			"id":             user.ID,
-			"username":       user.Username,
-			"email":          user.Email,
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
 			"avatar": func() string {
 				if user.Avatar.Valid {
 					return user.Avatar.String
@@ -363,7 +433,20 @@ func GetUserDetails(c *gin.Context) {
 
 	// 格式化订阅列表
 	subscriptionList := make([]gin.H, 0)
+	var totalAppleCount int64
+	var totalClashCount int64
+
 	for _, sub := range subscriptions {
+		// 统计该订阅的订阅次数
+		var appleCount int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type IN ?", sub.ID, []string{"v2ray", "ssr"}).Count(&appleCount)
+
+		var clashCount int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type = ?", sub.ID, "clash").Count(&clashCount)
+
+		totalAppleCount += appleCount
+		totalClashCount += clashCount
+
 		subscriptionList = append(subscriptionList, gin.H{
 			"id":               sub.ID,
 			"subscription_url": sub.SubscriptionURL,
@@ -373,6 +456,8 @@ func GetUserDetails(c *gin.Context) {
 			"status":           sub.Status,
 			"expire_time":      sub.ExpireTime.Format("2006-01-02 15:04:05"),
 			"created_at":       sub.CreatedAt.Format("2006-01-02 15:04:05"),
+			"apple_count":      appleCount,
+			"clash_count":      clashCount,
 		})
 	}
 
@@ -445,6 +530,33 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
+	// 获取用户设备列表（用于生成 UA 记录）
+	var devices []models.Device
+	db.Where("user_id = ?", user.ID).Order("created_at DESC").Find(&devices)
+
+	// 生成 UA 记录（从设备记录中提取）
+	uaRecords := make([]gin.H, 0)
+	for _, device := range devices {
+		getStringValue := func(ptr *string) string {
+			if ptr != nil {
+				return *ptr
+			}
+			return ""
+		}
+
+		uaRecords = append(uaRecords, gin.H{
+			"id":          device.ID,
+			"user_agent":  getStringValue(device.UserAgent),
+			"device_type": getStringValue(device.DeviceType),
+			"device_name": getStringValue(device.DeviceName),
+			"ip_address":  getStringValue(device.IPAddress),
+			"os_name":     getStringValue(device.OSName),
+			"os_version":  getStringValue(device.OSVersion),
+			"created_at":  device.CreatedAt.Format("2006-01-02 15:04:05"),
+			"last_access": device.LastAccess.Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	// 构建响应
 	response := gin.H{
 		"id":       user.ID,
@@ -470,6 +582,25 @@ func GetUserDetails(c *gin.Context) {
 		"orders":            orderList,
 		"recharge_records":  rechargeList,
 		"recent_activities": activityList,
+		"ua_records":        uaRecords, // 添加 UA 记录
+		"subscription_resets": func() []gin.H {
+			// 获取订阅重置记录
+			var resets []models.SubscriptionReset
+			db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(50).Find(&resets)
+			resetList := make([]gin.H, 0)
+			for _, reset := range resets {
+				resetList = append(resetList, gin.H{
+					"id":                  reset.ID,
+					"subscription_id":     reset.SubscriptionID,
+					"reset_type":          reset.ResetType,
+					"reason":              reset.Reason,
+					"device_count_before": reset.DeviceCountBefore,
+					"device_count_after":  reset.DeviceCountAfter,
+					"created_at":          reset.CreatedAt.Format("2006-01-02 15:04:05"),
+				})
+			}
+			return resetList
+		}(),
 		"statistics": gin.H{
 			"total_spent":         totalSpent,
 			"total_resets":        totalResets,
@@ -477,6 +608,10 @@ func GetUserDetails(c *gin.Context) {
 			"total_subscriptions": len(subscriptions),
 			"subscription_count":  len(subscriptions),
 		},
+		// 添加订阅次数统计（兼容前端字段名）
+		"apple_count": totalAppleCount,
+		"clash_count": totalClashCount,
+		"v2ray_count": totalAppleCount, // 兼容字段
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -490,7 +625,7 @@ func CreateUser(c *gin.Context) {
 	var req struct {
 		Username    string  `json:"username" binding:"required"`
 		Email       string  `json:"email" binding:"required,email"`
-		Password    string  `json:"password" binding:"required,min=6"`
+		Password    string  `json:"password" binding:"required,min=8"`
 		IsActive    bool    `json:"is_active"`
 		IsVerified  bool    `json:"is_verified"`
 		IsAdmin     bool    `json:"is_admin"`
@@ -500,9 +635,11 @@ func CreateUser(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// 不向客户端返回详细错误信息，防止信息泄露
+		utils.LogError("CreateUser: bind request", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误: " + err.Error(),
+			"message": "请求参数错误，请检查输入格式",
 		})
 		return
 	}
@@ -515,6 +652,16 @@ func CreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "邮箱或用户名已存在",
+		})
+		return
+	}
+
+	// 验证密码强度
+	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
+	if !valid {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": msg,
 		})
 		return
 	}
@@ -590,6 +737,11 @@ func CreateUser(c *gin.Context) {
 		fmt.Printf("创建用户订阅失败: %v\n", err)
 	}
 
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "create_user", "user", user.ID,
+		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限: %v", user.Username, user.Email, user.IsAdmin))
+
+	utils.SetResponseStatus(c, http.StatusCreated)
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"message": "创建成功",
@@ -627,6 +779,16 @@ func UpdateUser(c *gin.Context) {
 			"message": "用户不存在",
 		})
 		return
+	}
+
+	// 保存更新前的数据用于审计日志
+	beforeData := map[string]interface{}{
+		"username":    user.Username,
+		"email":       user.Email,
+		"is_active":   user.IsActive,
+		"is_verified": user.IsVerified,
+		"is_admin":    user.IsAdmin,
+		"balance":     user.Balance,
 	}
 
 	// 更新字段
@@ -688,6 +850,24 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
+	// 保存更新后的数据用于审计日志
+	afterData := map[string]interface{}{
+		"username":    user.Username,
+		"email":       user.Email,
+		"is_active":   user.IsActive,
+		"is_verified": user.IsVerified,
+		"is_admin":    user.IsAdmin,
+		"balance":     user.Balance,
+	}
+
+	// 记录审计日志
+	description := fmt.Sprintf("管理员更新用户: %s (%s)", user.Username, user.Email)
+	if req.Password != "" {
+		description += " (包含密码重置)"
+	}
+	utils.CreateAuditLogWithData(c, "update_user", "user", user.ID, description, beforeData, afterData)
+
+	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "更新成功",
@@ -699,6 +879,15 @@ func UpdateUser(c *gin.Context) {
 func DeleteUser(c *gin.Context) {
 	id := c.Param("id")
 
+	// 验证ID是否有效
+	if id == "" || id == "0" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的用户ID",
+		})
+		return
+	}
+
 	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, id).Error; err != nil {
@@ -707,6 +896,16 @@ func DeleteUser(c *gin.Context) {
 			"message": "用户不存在",
 		})
 		return
+	}
+
+	// 保存用户信息用于审计日志
+	userData := map[string]interface{}{
+		"id":          user.ID,
+		"username":    user.Username,
+		"email":       user.Email,
+		"is_admin":    user.IsAdmin,
+		"is_active":   user.IsActive,
+		"is_verified": user.IsVerified,
 	}
 
 	// 检查是否是管理员
@@ -723,19 +922,211 @@ func DeleteUser(c *gin.Context) {
 		}
 	}
 
-	// 删除用户（软删除：设置为非激活状态，或硬删除）
-	// 这里使用硬删除，实际生产环境建议使用软删除
-	if err := db.Delete(&user).Error; err != nil {
+	// 开始事务，删除用户的所有相关数据
+	tx := db.Begin()
+
+	// 1. 删除用户的订阅（同时会通过外键约束删除相关设备）
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Subscription{}).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除失败",
+			"message": "删除用户订阅失败: " + err.Error(),
 		})
 		return
 	}
 
+	// 2. 删除用户的设备（通过 subscription_id 关联的设备）
+	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id = ?)", user.ID).Delete(&models.Device{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户设备失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 3. 删除用户直接关联的设备（通过 user_id）
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Device{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户设备失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 4. 删除用户的订阅重置记录
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.SubscriptionReset{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户订阅重置记录失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 5. 删除用户的订单
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Order{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户订单失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 6. 删除用户的支付交易记录
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.PaymentTransaction{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户支付记录失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 7. 删除用户的充值记录
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.RechargeRecord{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户充值记录失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 8. 删除用户的工单回复
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.TicketReply{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户工单回复失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 9. 删除用户的工单
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Ticket{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户工单失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 10. 删除用户的通知
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Notification{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户通知失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 11. 删除用户的活动记录
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.UserActivity{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户活动记录失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 12. 删除用户的登录历史
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.LoginHistory{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户登录历史失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 13. 删除用户的邀请码（设置为禁用状态，而不是删除，因为可能已被使用）
+	// 如果邀请码已被使用，只禁用；如果未使用，则删除
+	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count = 0", user.ID).Delete(&models.InviteCode{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户邀请码失败: " + err.Error(),
+		})
+		return
+	}
+	// 禁用已使用的邀请码
+	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count > 0", user.ID).Update("is_active", false).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "禁用用户邀请码失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 14. 删除用户作为邀请人的邀请关系
+	if err := tx.Where("inviter_id = ?", user.ID).Delete(&models.InviteRelation{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户邀请关系失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 15. 删除用户作为被邀请人的邀请关系
+	if err := tx.Where("invitee_id = ?", user.ID).Delete(&models.InviteRelation{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户被邀请关系失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 16. 删除用户的优惠券使用记录（如果有 CouponUsage 表）
+	// 注意：这里假设有 CouponUsage 表，如果没有可以忽略
+
+	// 17. 最后删除用户本身
+	if err := tx.Delete(&user).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除操作失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 记录审计日志
+	utils.CreateAuditLogWithData(c, "delete_user", "user", user.ID,
+		fmt.Sprintf("管理员删除用户: %s (%s)", user.Username, user.Email), userData, nil)
+
+	// 发送账户删除确认邮件（在删除前发送）
+	go func() {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+		deletionDate := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		reason := "管理员删除"
+		dataRetentionPeriod := "30天"
+		content := templateBuilder.GetAccountDeletionTemplate(user.Username, deletionDate, reason, dataRetentionPeriod)
+		subject := "账号删除确认"
+		_ = emailService.QueueEmail(user.Email, subject, content, "account_deletion")
+	}()
+
+	utils.SetResponseStatus(c, http.StatusOK)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "删除成功",
+		"message": "用户及其所有相关数据已成功删除",
 	})
 }
 
@@ -776,6 +1167,7 @@ func LoginAsUser(c *gin.Context) {
 		"success": true,
 		"message": "登录成功",
 		"data": gin.H{
+			"token":         accessToken, // 兼容前端期望的字段名
 			"access_token":  accessToken,
 			"refresh_token": refreshToken,
 			"token_type":    "bearer",
@@ -932,12 +1324,151 @@ func BatchDeleteUsers(c *gin.Context) {
 		return
 	}
 
-	// 删除用户的设备
+	// 删除用户的设备（通过 subscription_id 关联的设备）
+	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id IN ?)", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户设备失败",
+		})
+		return
+	}
+
+	// 删除用户直接关联的设备（通过 user_id）
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "删除用户设备失败",
+		})
+		return
+	}
+
+	// 删除用户的订阅重置记录
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.SubscriptionReset{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户订阅重置记录失败",
+		})
+		return
+	}
+
+	// 删除用户的订单
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Order{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户订单失败",
+		})
+		return
+	}
+
+	// 删除用户的支付交易记录
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.PaymentTransaction{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户支付记录失败",
+		})
+		return
+	}
+
+	// 删除用户的充值记录
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.RechargeRecord{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户充值记录失败",
+		})
+		return
+	}
+
+	// 删除用户的工单回复
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.TicketReply{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户工单回复失败",
+		})
+		return
+	}
+
+	// 删除用户的工单
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Ticket{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户工单失败",
+		})
+		return
+	}
+
+	// 删除用户的通知
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Notification{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户通知失败",
+		})
+		return
+	}
+
+	// 删除用户的活动记录
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.UserActivity{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户活动记录失败",
+		})
+		return
+	}
+
+	// 删除用户的登录历史
+	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.LoginHistory{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户登录历史失败",
+		})
+		return
+	}
+
+	// 删除用户的邀请码（未使用的删除，已使用的禁用）
+	if err := tx.Where("user_id IN ? AND used_count = 0", req.UserIDs).Delete(&models.InviteCode{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户邀请码失败",
+		})
+		return
+	}
+	// 禁用已使用的邀请码
+	if err := tx.Model(&models.InviteCode{}).Where("user_id IN ? AND used_count > 0", req.UserIDs).Update("is_active", false).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "禁用用户邀请码失败",
+		})
+		return
+	}
+
+	// 删除用户作为邀请人的邀请关系
+	if err := tx.Where("inviter_id IN ?", req.UserIDs).Delete(&models.InviteRelation{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户邀请关系失败",
+		})
+		return
+	}
+
+	// 删除用户作为被邀请人的邀请关系
+	if err := tx.Where("invitee_id IN ?", req.UserIDs).Delete(&models.InviteRelation{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除用户被邀请关系失败",
 		})
 		return
 	}

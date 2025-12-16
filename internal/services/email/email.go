@@ -15,13 +15,14 @@ import (
 
 // EmailService 邮件服务
 type EmailService struct {
-	host     string
-	port     int
-	username string
-	password string
-	from     string
-	fromName string
-	tls      bool
+	host       string
+	port       int
+	username   string
+	password   string
+	from       string
+	fromName   string
+	tls        bool
+	encryption string // "tls", "ssl", "none"
 }
 
 // NewEmailService 创建邮件服务（从数据库读取配置）
@@ -33,14 +34,19 @@ func NewEmailService() *EmailService {
 	// 如果数据库中没有配置，使用环境变量
 	if emailConfig["smtp_host"] == "" {
 		cfg := config.AppConfig
+		encryption := "tls"
+		if cfg.SMTPTLS {
+			encryption = "tls"
+		}
 		return &EmailService{
-			host:     cfg.SMTPHost,
-			port:     cfg.SMTPPort,
-			username: cfg.SMTPUser,
-			password: cfg.SMTPPassword,
-			from:     cfg.EmailsFromEmail,
-			fromName: cfg.EmailsFromName,
-			tls:      cfg.SMTPTLS,
+			host:       cfg.SMTPHost,
+			port:       cfg.SMTPPort,
+			username:   cfg.SMTPUser,
+			password:   cfg.SMTPPassword,
+			from:       cfg.EmailsFromEmail,
+			fromName:   cfg.EmailsFromName,
+			tls:        cfg.SMTPTLS,
+			encryption: encryption,
 		}
 	}
 
@@ -54,19 +60,37 @@ func NewEmailService() *EmailService {
 		}
 	}
 
-	useTLS := true
-	if encryption, ok := emailConfig["smtp_encryption"].(string); ok {
-		useTLS = encryption == "tls" || encryption == "ssl"
+	encryption := "tls"
+	if enc, ok := emailConfig["smtp_encryption"].(string); ok && enc != "" {
+		encryption = enc
+	}
+	useTLS := encryption == "tls" || encryption == "ssl"
+
+	// 根据加密方式设置默认端口
+	if port == 587 && encryption == "ssl" {
+		port = 465
+	} else if port == 465 && encryption == "tls" {
+		port = 587
+	}
+
+	// 获取发件人邮箱，优先使用 from_email，如果没有则使用 email_username
+	fromEmail := getStringFromConfig(emailConfig, "from_email", "")
+	if fromEmail == "" {
+		fromEmail = getStringFromConfig(emailConfig, "sender_email", "")
+	}
+	if fromEmail == "" {
+		fromEmail = getStringFromConfig(emailConfig, "email_username", "")
 	}
 
 	return &EmailService{
-		host:     getStringFromConfig(emailConfig, "smtp_host", "smtp.qq.com"),
-		port:     port,
-		username: getStringFromConfig(emailConfig, "smtp_username", getStringFromConfig(emailConfig, "email_username", "")),
-		password: getStringFromConfig(emailConfig, "smtp_password", getStringFromConfig(emailConfig, "email_password", "")),
-		from:     getStringFromConfig(emailConfig, "from_email", getStringFromConfig(emailConfig, "sender_email", "")),
-		fromName: getStringFromConfig(emailConfig, "sender_name", getStringFromConfig(emailConfig, "from_name", "CBoard")),
-		tls:      useTLS,
+		host:       getStringFromConfig(emailConfig, "smtp_host", "smtp.qq.com"),
+		port:       port,
+		username:   getStringFromConfig(emailConfig, "smtp_username", getStringFromConfig(emailConfig, "email_username", "")),
+		password:   getStringFromConfig(emailConfig, "smtp_password", getStringFromConfig(emailConfig, "email_password", "")),
+		from:       fromEmail,
+		fromName:   getStringFromConfig(emailConfig, "sender_name", getStringFromConfig(emailConfig, "from_name", "CBoard")),
+		tls:        useTLS,
+		encryption: encryption,
 	}
 }
 
@@ -106,6 +130,20 @@ func getStringFromConfig(config map[string]interface{}, key string, defaultValue
 
 // SendEmail 发送邮件
 func (s *EmailService) SendEmail(to, subject, body string) error {
+	// 验证基本配置
+	if s.host == "" {
+		return fmt.Errorf("SMTP服务器地址未配置")
+	}
+	if s.username == "" {
+		return fmt.Errorf("SMTP用户名未配置")
+	}
+	if s.password == "" {
+		return fmt.Errorf("SMTP密码未配置")
+	}
+	if s.from == "" {
+		return fmt.Errorf("发件人邮箱未配置")
+	}
+
 	// 构建邮件头
 	headers := make(map[string]string)
 	headers["From"] = fmt.Sprintf("%s <%s>", s.fromName, s.from)
@@ -126,63 +164,127 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 	// 发送邮件
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	if s.tls {
-		// TLS 连接
+	
+	if s.encryption == "ssl" {
+		// SSL 连接（端口465）：直接建立TLS连接
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         s.host,
 		}
 		conn, err := tls.Dial("tcp", addr, tlsConfig)
 		if err != nil {
-			return err
+			return fmt.Errorf("SSL连接失败: %v", err)
 		}
 		defer conn.Close()
 
 		client, err := smtp.NewClient(conn, s.host)
 		if err != nil {
-			return err
+			return fmt.Errorf("创建SMTP客户端失败: %v", err)
 		}
 		defer client.Close()
 
 		if err = client.Auth(auth); err != nil {
-			return err
+			return fmt.Errorf("SMTP认证失败: %v", err)
 		}
 
 		if err = client.Mail(s.from); err != nil {
-			return err
+			return fmt.Errorf("设置发件人失败: %v", err)
 		}
 
 		if err = client.Rcpt(to); err != nil {
-			return err
+			return fmt.Errorf("设置收件人失败: %v", err)
 		}
 
 		writer, err := client.Data()
 		if err != nil {
-			return err
+			return fmt.Errorf("创建数据写入器失败: %v", err)
 		}
 
 		_, err = writer.Write([]byte(message))
 		if err != nil {
-			return err
+			writer.Close()
+			return fmt.Errorf("写入邮件内容失败: %v", err)
 		}
 
 		err = writer.Close()
 		if err != nil {
-			return err
+			return fmt.Errorf("关闭数据写入器失败: %v", err)
+		}
+
+		return client.Quit()
+	} else if s.encryption == "tls" {
+		// TLS 连接（端口587）：先建立普通连接，然后使用STARTTLS升级
+		client, err := smtp.Dial(addr)
+		if err != nil {
+			return fmt.Errorf("连接SMTP服务器失败: %v", err)
+		}
+		defer client.Close()
+
+		// 发送EHLO命令
+		if err = client.Hello("localhost"); err != nil {
+			return fmt.Errorf("发送EHLO失败: %v", err)
+		}
+
+		// 启动TLS
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: false,
+			ServerName:         s.host,
+		}
+		if err = client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("启动TLS失败: %v", err)
+		}
+
+		// 认证
+		if err = client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP认证失败: %v", err)
+		}
+
+		// 设置发件人
+		if err = client.Mail(s.from); err != nil {
+			return fmt.Errorf("设置发件人失败: %v", err)
+		}
+
+		// 设置收件人
+		if err = client.Rcpt(to); err != nil {
+			return fmt.Errorf("设置收件人失败: %v", err)
+		}
+
+		// 发送邮件内容
+		writer, err := client.Data()
+		if err != nil {
+			return fmt.Errorf("创建数据写入器失败: %v", err)
+		}
+
+		_, err = writer.Write([]byte(message))
+		if err != nil {
+			writer.Close()
+			return fmt.Errorf("写入邮件内容失败: %v", err)
+		}
+
+		err = writer.Close()
+		if err != nil {
+			return fmt.Errorf("关闭数据写入器失败: %v", err)
 		}
 
 		return client.Quit()
 	} else {
-		// 普通连接
+		// 无加密连接（不推荐，仅用于测试）
 		return smtp.SendMail(addr, auth, s.from, []string{to}, []byte(message))
 	}
 }
 
-// SendVerificationEmail 发送验证邮件（使用模板，加入队列）
+// SendVerificationEmail 发送验证邮件（立即发送，验证码需要实时性）
 func (s *EmailService) SendVerificationEmail(to, code string) error {
+	// 验证邮件配置
+	if s.host == "" || s.username == "" || s.password == "" {
+		return fmt.Errorf("邮件配置不完整，请先配置SMTP设置")
+	}
+
 	// 尝试使用模板
 	templateService := NewEmailTemplateService()
 	template, err := templateService.GetTemplate("verification")
+	var subject, content string
+	
 	if err == nil {
 		// 使用模板
 		variables := map[string]string{
@@ -190,25 +292,28 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 			"email":    to,
 			"validity": "10",
 		}
-		subject, content, err := templateService.RenderTemplate(template, variables)
-		if err == nil {
-			return s.QueueEmail(to, subject, content, "verification")
-		}
+		subject, content, err = templateService.RenderTemplate(template, variables)
+	}
+	
+	// 如果模板失败，使用新的美观模板
+	if err != nil || subject == "" || content == "" {
+		templateBuilder := NewEmailTemplateBuilder()
+		content = templateBuilder.GetVerificationCodeTemplate("用户", code)
+		subject = "注册验证码"
 	}
 
-	// 回退到默认模板
-	subject := "邮箱验证"
-	body := fmt.Sprintf(`
-		<html>
-		<body>
-			<h2>邮箱验证</h2>
-			<p>您的验证码是：<strong>%s</strong></p>
-			<p>验证码有效期为 10 分钟，请勿泄露给他人。</p>
-		</body>
-		</html>
-	`, code)
-
-	return s.QueueEmail(to, subject, body, "verification")
+	// 验证码邮件立即发送，不加入队列（验证码需要实时性）
+	err = s.SendEmail(to, subject, content)
+	if err != nil {
+		// 如果立即发送失败，尝试加入队列作为备选方案
+		queueErr := s.QueueEmail(to, subject, content, "verification")
+		if queueErr != nil {
+			return fmt.Errorf("发送验证码邮件失败: %v，加入队列也失败: %v", err, queueErr)
+		}
+		return fmt.Errorf("发送验证码邮件失败: %v，已加入队列稍后重试", err)
+	}
+	
+	return nil
 }
 
 // SendPasswordResetEmail 发送密码重置邮件（使用模板，加入队列）
@@ -228,20 +333,12 @@ func (s *EmailService) SendPasswordResetEmail(to, resetLink string) error {
 		}
 	}
 
-	// 回退到默认模板
+	// 回退到新的美观模板
+	templateBuilder := NewEmailTemplateBuilder()
+	content := templateBuilder.GetPasswordResetTemplate("用户", resetLink)
 	subject := "密码重置"
-	body := fmt.Sprintf(`
-		<html>
-		<body>
-			<h2>密码重置</h2>
-			<p>您请求重置密码，请点击以下链接：</p>
-			<p><a href="%s">%s</a></p>
-			<p>如果这不是您的操作，请忽略此邮件。</p>
-		</body>
-		</html>
-	`, resetLink, resetLink)
 
-	return s.QueueEmail(to, subject, body, "password_reset")
+	return s.QueueEmail(to, subject, content, "password_reset")
 }
 
 // QueueEmail 将邮件加入队列

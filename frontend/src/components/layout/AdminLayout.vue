@@ -566,11 +566,18 @@ const loadStats = async () => {
     
     const response = await adminAPI.getDashboard()
     if (response.data && response.data.success && response.data.data) {
-      stats.value = response.data.data
-      } else {
+      const data = response.data.data
+      // 映射后端字段到前端字段
+      stats.value = {
+        users: Number(data.totalUsers) || 0,
+        subscriptions: Number(data.activeSubscriptions) || 0,
+        revenue: Number(data.totalRevenue) || 0
+      }
+    } else {
       stats.value = { users: 0, subscriptions: 0, revenue: 0 }
     }
   } catch (error) {
+    console.error('加载统计数据失败:', error)
     stats.value = { users: 0, subscriptions: 0, revenue: 0 }
   }
 }
