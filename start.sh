@@ -301,6 +301,16 @@ if [ "$NEED_INSTALL" = true ]; then
     rm -rf node_modules package-lock.json 2>&1 || true
     npm cache clean --force 2>&1 || true
     
+    # 修复 puppeteer 权限问题（如果存在）
+    if [ -d "/root/.config/puppeteer" ]; then
+        echo "  修复 puppeteer 配置目录权限..."
+        chmod -R 755 /root/.config/puppeteer 2>&1 || true
+    fi
+    
+    # 设置环境变量跳过可选依赖的安装（如果遇到问题）
+    export PUPPETEER_SKIP_DOWNLOAD=true
+    export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+    
     # 强制设置正确的 npm 镜像（清除可能存在的错误配置）
     echo "  配置 npm 镜像源..."
     npm config delete registry 2>&1 || true
@@ -352,6 +362,26 @@ if [ "$NEED_INSTALL" = true ]; then
                 else
                     npm config set registry https://registry.npmmirror.com 2>&1 || true
                 fi
+            fi
+            
+            # 检查是否是权限问题
+            if grep -q "EACCES\|permission denied" /tmp/npm_install.log 2>/dev/null; then
+                echo "  检测到权限问题，尝试修复..."
+                if grep -q "puppeteer" /tmp/npm_install.log 2>/dev/null; then
+                    echo "  跳过 puppeteer 安装（可选依赖）..."
+                    export PUPPETEER_SKIP_DOWNLOAD=true
+                    export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+                    # 创建 puppeteer 配置目录并设置权限
+                    mkdir -p /root/.config/puppeteer 2>&1 || true
+                    chmod -R 755 /root/.config/puppeteer 2>&1 || true
+                fi
+            fi
+            
+            # 检查是否是 Node.js 版本问题
+            if grep -q "EBADENGINE\|Unsupported engine\|requires.*node.*>=" /tmp/npm_install.log 2>/dev/null; then
+                echo "  检测到 Node.js 版本问题，尝试跳过可选依赖..."
+                export PUPPETEER_SKIP_DOWNLOAD=true
+                export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
             fi
         fi
     done
