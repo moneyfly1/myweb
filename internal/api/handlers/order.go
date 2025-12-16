@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,12 +10,98 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// processPaidOrder 处理已支付订单：开通订阅、更新累计消费、检查等级升级
+func processPaidOrder(db *gorm.DB, order *models.Order, pkg *models.Package, user *models.User) (*models.Subscription, error) {
+	now := utils.GetBeijingTime()
+
+	// 1. 更新或创建订阅
+	var subscription models.Subscription
+	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+		// 创建新订阅
+		subscriptionURL := utils.GenerateSubscriptionURL()
+		expireTime := now.AddDate(0, 0, pkg.DurationDays)
+		pkgID := int64(pkg.ID)
+		subscription = models.Subscription{
+			UserID:          user.ID,
+			PackageID:       &pkgID,
+			SubscriptionURL: subscriptionURL,
+			DeviceLimit:     pkg.DeviceLimit,
+			CurrentDevices:  0,
+			IsActive:        true,
+			Status:          "active",
+			ExpireTime:      expireTime,
+		}
+		if err := db.Create(&subscription).Error; err != nil {
+			return nil, fmt.Errorf("创建订阅失败: %v", err)
+		}
+	} else {
+		// 延长订阅
+		if subscription.ExpireTime.Before(now) {
+			subscription.ExpireTime = now.AddDate(0, 0, pkg.DurationDays)
+		} else {
+			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, pkg.DurationDays)
+		}
+		subscription.DeviceLimit = pkg.DeviceLimit
+		subscription.IsActive = true
+		subscription.Status = "active"
+		// 更新套餐ID
+		pkgID := int64(pkg.ID)
+		subscription.PackageID = &pkgID
+		if err := db.Save(&subscription).Error; err != nil {
+			return nil, fmt.Errorf("更新订阅失败: %v", err)
+		}
+	}
+
+	// 2. 更新用户累计消费
+	paidAmount := order.Amount
+	if order.FinalAmount.Valid {
+		paidAmount = order.FinalAmount.Float64
+	}
+	user.TotalConsumption += paidAmount
+	if err := db.Save(&user).Error; err != nil {
+		return nil, fmt.Errorf("更新用户累计消费失败: %v", err)
+	}
+
+	// 3. 检查并更新用户等级
+	var userLevels []models.UserLevel
+	if err := db.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
+		for _, level := range userLevels {
+			if user.TotalConsumption >= level.MinConsumption {
+				// 检查是否需要升级
+				if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(level.ID) {
+					// 需要升级
+					var currentLevel models.UserLevel
+					shouldUpgrade := true
+					if user.UserLevelID.Valid {
+						if err := db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
+							// 如果当前等级更高（level_order 更小），不降级
+							if currentLevel.LevelOrder < level.LevelOrder {
+								shouldUpgrade = false
+							}
+						}
+					}
+					if shouldUpgrade {
+						user.UserLevelID = sql.NullInt64{Int64: int64(level.ID), Valid: true}
+						if err := db.Save(&user).Error; err != nil {
+							// 等级更新失败不影响订单完成，只记录错误
+							fmt.Printf("更新用户等级失败: %v\n", err)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return &subscription, nil
+}
 
 // CreateOrderRequest 创建订单请求
 type CreateOrderRequest struct {
@@ -68,40 +155,70 @@ func CreateOrder(c *gin.Context) {
 	}
 
 	// 计算金额
-	amount := pkg.Price
-	discountAmount := 0.0
-	finalAmount := amount
+	baseAmount := pkg.Price
+	levelDiscountAmount := 0.0
+	couponDiscountAmount := 0.0
+	totalDiscountAmount := 0.0
+	finalAmount := baseAmount
 
-	// 如果前端提供了金额，使用前端金额（已应用用户等级折扣等）
-	if req.Amount > 0 {
-		finalAmount = req.Amount
-		discountAmount = amount - finalAmount
-	}
-
-	// 处理优惠券
-	if req.CouponCode != "" {
-		var coupon models.Coupon
-		if err := db.Where("code = ? AND status = ?", req.CouponCode, "active").First(&coupon).Error; err == nil {
-			now := utils.GetBeijingTime()
-			if now.After(coupon.ValidFrom) && now.Before(coupon.ValidUntil) {
-				// 应用优惠券
-				if coupon.Type == "discount" {
-					discountAmount = amount * (coupon.DiscountValue / 100)
-					if coupon.MaxDiscount.Valid && discountAmount > coupon.MaxDiscount.Float64 {
-						discountAmount = coupon.MaxDiscount.Float64
-					}
-				} else if coupon.Type == "fixed" {
-					discountAmount = coupon.DiscountValue
-					if discountAmount > amount {
-						discountAmount = amount
-					}
-				}
-				finalAmount = amount - discountAmount
+	// 1. 先应用用户等级折扣
+	var userLevel *models.UserLevel
+	if user.UserLevelID.Valid {
+		var lvl models.UserLevel
+		if err := db.First(&lvl, user.UserLevelID.Int64).Error; err == nil {
+			userLevel = &lvl
+			if userLevel.DiscountRate > 0 && userLevel.DiscountRate < 1.0 {
+				// 应用等级折扣（例如：0.9 表示 9 折，即 10% 折扣）
+				levelDiscountAmount = baseAmount * (1.0 - userLevel.DiscountRate)
+				finalAmount = baseAmount * userLevel.DiscountRate
 			}
 		}
 	}
 
+	// 2. 在等级折扣后的金额上应用优惠券
+	var couponID *int64
+	if req.CouponCode != "" {
+		var coupon models.Coupon
+		if err := db.Where("code = ? AND status = ?", req.CouponCode, "active").First(&coupon).Error; err == nil {
+			now := utils.GetBeijingTime()
+			// 检查有效期：now >= ValidFrom && now <= ValidUntil
+			if (now.After(coupon.ValidFrom) || now.Equal(coupon.ValidFrom)) && (now.Before(coupon.ValidUntil) || now.Equal(coupon.ValidUntil)) {
+				// 检查最低消费金额（使用等级折扣后的金额）
+				if !coupon.MinAmount.Valid || finalAmount >= coupon.MinAmount.Float64 {
+					// 应用优惠券（在等级折扣后的金额上）
+					if coupon.Type == "discount" {
+						couponDiscountAmount = finalAmount * (coupon.DiscountValue / 100)
+						if coupon.MaxDiscount.Valid && couponDiscountAmount > coupon.MaxDiscount.Float64 {
+							couponDiscountAmount = coupon.MaxDiscount.Float64
+						}
+					} else if coupon.Type == "fixed" {
+						couponDiscountAmount = coupon.DiscountValue
+						if couponDiscountAmount > finalAmount {
+							couponDiscountAmount = finalAmount
+						}
+					}
+					finalAmount = finalAmount - couponDiscountAmount
+					couponIDVal := int64(coupon.ID)
+					couponID = &couponIDVal
+				}
+			}
+		}
+	}
+
+	// 计算总折扣金额
+	totalDiscountAmount = levelDiscountAmount + couponDiscountAmount
+
+	// 如果前端提供了金额，验证是否匹配（允许小的浮点数误差）
+	if req.Amount > 0 {
+		if req.Amount < finalAmount-0.01 || req.Amount > finalAmount+0.01 {
+			// 前端金额与后端计算不一致，使用后端计算的金额
+			// 但记录警告（可选）
+		}
+		// 使用后端计算的金额，确保一致性
+	}
+
 	// 处理余额支付
+	balanceUsed := 0.0
 	if req.UseBalance && req.BalanceAmount > 0 {
 		// 检查用户余额
 		if user.Balance < req.BalanceAmount {
@@ -111,80 +228,14 @@ func CreateOrder(c *gin.Context) {
 			})
 			return
 		}
-		// 如果余额足够支付全部金额，直接扣除余额并完成订单
-		if req.BalanceAmount >= finalAmount {
-			user.Balance -= finalAmount
-			if err := db.Save(&user).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "扣除余额失败",
-				})
-				return
-			}
-			// 创建已支付的订单
-			orderNo := utils.GenerateOrderNo(user.ID)
-			order := models.Order{
-				OrderNo:           orderNo,
-				UserID:            user.ID,
-				PackageID:         pkg.ID,
-				Amount:            amount,
-				Status:            "paid",
-				DiscountAmount:    database.NullFloat64(discountAmount),
-				FinalAmount:       database.NullFloat64(finalAmount),
-				PaymentMethodName: database.NullString("余额支付"),
-			}
-			order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-
-			if err := db.Create(&order).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "创建订单失败",
-				})
-				return
-			}
-
-			// 更新或创建订阅
-			var subscription models.Subscription
-			if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
-				// 创建新订阅
-				subscriptionURL := utils.GenerateSubscriptionURL()
-				expireTime := utils.GetBeijingTime().AddDate(0, 0, pkg.DurationDays)
-				subscription = models.Subscription{
-					UserID:          user.ID,
-					PackageID:       database.NullInt64(int64(pkg.ID)),
-					SubscriptionURL: subscriptionURL,
-					DeviceLimit:     pkg.DeviceLimit,
-					IsActive:        true,
-					Status:          "active",
-					ExpireTime:      expireTime,
-				}
-				db.Create(&subscription)
-			} else {
-				// 延长订阅
-				if subscription.ExpireTime.Before(utils.GetBeijingTime()) {
-					subscription.ExpireTime = utils.GetBeijingTime().AddDate(0, 0, pkg.DurationDays)
-				} else {
-					subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, pkg.DurationDays)
-				}
-				subscription.DeviceLimit = pkg.DeviceLimit
-				subscription.IsActive = true
-				subscription.Status = "active"
-				db.Save(&subscription)
-			}
-
-			c.JSON(http.StatusCreated, gin.H{
-				"success": true,
-				"message": "订单已支付成功",
-				"data": gin.H{
-					"order":        order,
-					"subscription": subscription,
-				},
-			})
-			return
+		// 限制余额使用不超过最终金额
+		if req.BalanceAmount > finalAmount {
+			req.BalanceAmount = finalAmount
 		}
-		// 部分余额支付，需要继续支付剩余金额
-		finalAmount -= req.BalanceAmount
-		user.Balance -= req.BalanceAmount
+		balanceUsed = req.BalanceAmount
+		finalAmount -= balanceUsed
+		// 扣除余额
+		user.Balance -= balanceUsed
 		if err := db.Save(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
@@ -192,6 +243,84 @@ func CreateOrder(c *gin.Context) {
 			})
 			return
 		}
+	}
+
+	// 如果余额已支付全部金额，直接完成订单
+	if finalAmount <= 0.01 { // 允许小的浮点数误差
+		finalAmount = 0
+		// 创建已支付的订单
+		orderNo := utils.GenerateOrderNo(user.ID)
+		order := models.Order{
+			OrderNo:           orderNo,
+			UserID:            user.ID,
+			PackageID:         pkg.ID,
+			Amount:            baseAmount,
+			Status:            "paid",
+			DiscountAmount:    database.NullFloat64(totalDiscountAmount),
+			FinalAmount:       database.NullFloat64(balanceUsed),
+			PaymentMethodName: database.NullString("余额支付"),
+		}
+		if couponID != nil {
+			order.CouponID = database.NullInt64(*couponID)
+		}
+		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
+
+		if err := db.Create(&order).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "创建订单失败",
+			})
+			return
+		}
+
+		// 处理订单支付成功后的逻辑（开通订阅、更新累计消费等）
+		subscription, err := processPaidOrder(db, &order, &pkg, user)
+		if err != nil {
+			// 不向客户端返回详细错误信息，防止信息泄露
+			utils.LogError("CreateOrder: process paid order", err, map[string]interface{}{
+				"order_id": order.ID,
+			})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "处理订单失败，请稍后重试",
+			})
+			return
+		}
+
+		// 记录创建订单审计日志（余额支付）
+		utils.SetResponseStatus(c, http.StatusCreated)
+		utils.CreateAuditLogSimple(c, "create_order", "order", order.ID, fmt.Sprintf("创建订单(余额支付): %s, 金额: %.2f元", order.OrderNo, order.Amount))
+
+		// 发送支付成功邮件
+		go func() {
+			emailService := email.NewEmailService()
+			templateBuilder := email.NewEmailTemplateBuilder()
+			paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+			paidAmount := order.Amount
+			if order.FinalAmount.Valid {
+				paidAmount = order.FinalAmount.Float64
+			}
+			content := templateBuilder.GetPaymentSuccessTemplate(
+				user.Username,
+				order.OrderNo,
+				pkg.Name,
+				paidAmount,
+				"余额支付",
+				paymentTime,
+			)
+			subject := "支付成功通知"
+			_ = emailService.QueueEmail(user.Email, subject, content, "payment_success")
+		}()
+
+		c.JSON(http.StatusCreated, gin.H{
+			"success": true,
+			"message": "订单已支付成功",
+			"data": gin.H{
+				"order":        order,
+				"subscription": subscription,
+			},
+		})
+		return
 	}
 
 	// 生成订单号
@@ -202,13 +331,26 @@ func CreateOrder(c *gin.Context) {
 		OrderNo:        orderNo,
 		UserID:         user.ID,
 		PackageID:      pkg.ID,
-		Amount:         amount,
+		Amount:         baseAmount,
 		Status:         "pending",
-		DiscountAmount: database.NullFloat64(discountAmount),
+		DiscountAmount: database.NullFloat64(totalDiscountAmount),
 		FinalAmount:    database.NullFloat64(finalAmount),
 	}
 
-	if req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+	if couponID != nil {
+		order.CouponID = database.NullInt64(*couponID)
+	}
+
+	// 设置支付方式
+	if balanceUsed > 0 {
+		if finalAmount > 0.01 {
+			// 混合支付：余额+其他支付方式
+			order.PaymentMethodName = database.NullString(fmt.Sprintf("余额支付(%.2f元)+%s", balanceUsed, req.PaymentMethod))
+		} else {
+			// 纯余额支付
+			order.PaymentMethodName = database.NullString("余额支付")
+		}
+	} else if req.PaymentMethod != "" && req.PaymentMethod != "balance" {
 		order.PaymentMethodName = database.NullString(req.PaymentMethod)
 	}
 
@@ -220,9 +362,101 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// 记录创建订单审计日志
+	utils.SetResponseStatus(c, http.StatusCreated)
+	utils.CreateAuditLogSimple(c, "create_order", "order", order.ID, fmt.Sprintf("创建订单: %s, 金额: %.2f元", order.OrderNo, order.Amount))
+
+	// 发送订单确认邮件（仅当订单需要支付时）
+	if finalAmount > 0.01 {
+		go func() {
+			emailService := email.NewEmailService()
+			templateBuilder := email.NewEmailTemplateBuilder()
+			orderTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+			paymentMethod := "待选择"
+			if req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+				paymentMethod = req.PaymentMethod
+			}
+			content := templateBuilder.GetOrderConfirmationTemplate(
+				user.Username,
+				order.OrderNo,
+				pkg.Name,
+				finalAmount,
+				paymentMethod,
+				orderTime,
+			)
+			subject := "订单确认"
+			_ = emailService.QueueEmail(user.Email, subject, content, "order_confirmation")
+		}()
+	}
+
+	// 如果订单需要其他支付方式（非余额支付），立即生成支付URL
+	var paymentURL string
+	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+		// 获取支付配置
+		var paymentConfig models.PaymentConfig
+		// 根据支付方式查找对应的支付配置
+		payType := req.PaymentMethod
+		if payType == "alipay" || payType == "wechat" {
+			// 查找对应类型的支付配置
+			if err := db.Where("pay_type = ? AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
+				// 创建支付交易
+				transaction := models.PaymentTransaction{
+					OrderID:         order.ID,
+					UserID:          user.ID,
+					PaymentMethodID: paymentConfig.ID,
+					Amount:          int(finalAmount * 100), // 转换为分
+					Currency:        "CNY",
+					Status:          "pending",
+				}
+				if err := db.Create(&transaction).Error; err == nil {
+					// 生成支付URL
+					if paymentConfig.PayType == "alipay" {
+						alipayService, err := payment.NewAlipayService(&paymentConfig)
+						if err == nil {
+							paymentURL, err = alipayService.CreatePayment(&order, finalAmount)
+							if err != nil {
+								fmt.Printf("生成支付宝支付URL失败: %v\n", err)
+							}
+						}
+					} else if paymentConfig.PayType == "wechat" {
+						wechatService, err := payment.NewWechatService(&paymentConfig)
+						if err == nil {
+							paymentURL, err = wechatService.CreatePayment(&order, finalAmount)
+							if err != nil {
+								fmt.Printf("生成微信支付URL失败: %v\n", err)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 返回订单和支付URL
+	responseData := gin.H{
+		"order_no":        order.OrderNo,
+		"id":              order.ID,
+		"user_id":         order.UserID,
+		"package_id":      order.PackageID,
+		"amount":          order.Amount,
+		"final_amount":    finalAmount,
+		"discount_amount": totalDiscountAmount,
+		"status":          order.Status,
+		"created_at":      order.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	if paymentURL != "" {
+		responseData["payment_url"] = paymentURL
+		responseData["payment_qr_code"] = paymentURL // 兼容前端可能使用的字段名
+	}
+
+	if couponID != nil {
+		responseData["coupon_id"] = *couponID
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"data":    order,
+		"data":    responseData,
 	})
 }
 
@@ -256,6 +490,8 @@ func GetOrders(c *gin.Context) {
 	// 获取筛选参数
 	status := c.Query("status")
 	paymentMethod := c.Query("payment_method")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
 
 	isAdmin, exists := c.Get("is_admin")
 	admin := exists && isAdmin.(bool)
@@ -272,14 +508,39 @@ func GetOrders(c *gin.Context) {
 		query = query.Where("user_id = ?", user.ID)
 	}
 
-	// 状态筛选
-	if status != "" {
-		query = query.Where("status = ?", status)
+	// 状态筛选（精确匹配）
+	if status != "" && status != "all" {
+		// 支持多种状态值格式
+		statusMap := map[string]string{
+			"pending":   "pending",
+			"paid":      "paid",
+			"cancelled": "cancelled",
+			"expired":   "expired",
+			"待支付":       "pending",
+			"已支付":       "paid",
+			"已取消":       "cancelled",
+			"已过期":       "expired",
+		}
+
+		if mappedStatus, ok := statusMap[status]; ok {
+			query = query.Where("status = ?", mappedStatus)
+		} else {
+			// 如果不在映射表中，直接使用原值（兼容其他状态值）
+			query = query.Where("status = ?", status)
+		}
 	}
 
-	// 支付方式筛选
-	if paymentMethod != "" {
+	// 支付方式筛选（精确匹配）
+	if paymentMethod != "" && paymentMethod != "all" {
 		query = query.Where("payment_method_name = ?", paymentMethod)
+	}
+
+	// 日期范围筛选
+	if startDate != "" {
+		query = query.Where("DATE(created_at) >= ?", startDate)
+	}
+	if endDate != "" {
+		query = query.Where("DATE(created_at) <= ?", endDate)
 	}
 
 	// 计算总数
@@ -288,9 +549,11 @@ func GetOrders(c *gin.Context) {
 	// 分页和排序
 	offset := (page - 1) * size
 	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&orders).Error; err != nil {
+		// 不向客户端返回详细错误信息，防止信息泄露
+		utils.LogError("GetOrders: query orders", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "获取订单列表失败: " + err.Error(),
+			"message": "获取订单列表失败，请稍后重试",
 		})
 		return
 	}
@@ -298,16 +561,96 @@ func GetOrders(c *gin.Context) {
 	// 计算总页数
 	pages := (int(total) + size - 1) / size
 
+	// 格式化订单数据，处理支付方式显示
+	formattedOrders := make([]gin.H, len(orders))
+	for i, order := range orders {
+		paymentMethod := ""
+		if order.PaymentMethodName.Valid {
+			paymentMethod = order.PaymentMethodName.String
+		}
+
+		formattedOrders[i] = gin.H{
+			"id":                     order.ID,
+			"order_no":               order.OrderNo,
+			"user_id":                order.UserID,
+			"package_id":             order.PackageID,
+			"amount":                 order.Amount,
+			"status":                 order.Status,
+			"payment_method":         paymentMethod, // 精简显示
+			"payment_method_name":    paymentMethod, // 兼容字段
+			"payment_method_id":      getNullInt64Value(order.PaymentMethodID),
+			"payment_time":           getNullTimeValue(order.PaymentTime),
+			"payment_transaction_id": getNullStringValue(order.PaymentTransactionID),
+			"expire_time":            getNullTimeValue(order.ExpireTime),
+			"coupon_id":              getNullInt64Value(order.CouponID),
+			"discount_amount":        getNullFloat64Value(order.DiscountAmount),
+			"final_amount":           getNullFloat64Value(order.FinalAmount),
+			"created_at":             order.CreatedAt,
+			"updated_at":             order.UpdatedAt,
+		}
+
+		// 添加套餐信息
+		if order.Package.ID > 0 {
+			formattedOrders[i]["package"] = gin.H{
+				"id":           order.Package.ID,
+				"name":         order.Package.Name,
+				"price":        order.Package.Price,
+				"device_limit": order.Package.DeviceLimit,
+			}
+		}
+
+		// 添加优惠券信息
+		if order.Coupon.ID > 0 {
+			formattedOrders[i]["coupon"] = gin.H{
+				"id":   order.Coupon.ID,
+				"code": order.Coupon.Code,
+				"name": order.Coupon.Name,
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"orders": orders,
+			"orders": formattedOrders,
 			"total":  total,
 			"page":   page,
 			"size":   size,
 			"pages":  pages,
 		},
 	})
+}
+
+// 辅助函数：处理NullString
+func getNullStringValue(ns sql.NullString) interface{} {
+	if ns.Valid {
+		return ns.String
+	}
+	return nil
+}
+
+// 辅助函数：处理NullInt64
+func getNullInt64Value(ni sql.NullInt64) interface{} {
+	if ni.Valid {
+		return ni.Int64
+	}
+	return nil
+}
+
+// 辅助函数：处理NullFloat64
+func getNullFloat64Value(nf sql.NullFloat64) interface{} {
+	if nf.Valid {
+		return nf.Float64
+	}
+	return nil
+}
+
+// 辅助函数：处理NullTime
+func getNullTimeValue(nt sql.NullTime) interface{} {
+	if nt.Valid {
+		return nt.Time.Format("2006-01-02 15:04:05")
+	}
+	return nil
 }
 
 // GetOrder 获取单个订单
@@ -489,8 +832,12 @@ func GetAdminOrders(c *gin.Context) {
 		keyword = c.Query("search")
 	}
 	if keyword != "" {
-		query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
+				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
 
 	// 状态筛选
@@ -584,22 +931,62 @@ func UpdateAdminOrder(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": "请求参数错误，请检查输入格式",
 		})
 		return
 	}
 
 	db := database.GetDB()
 	var order models.Order
-	if err := db.First(&order, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+	if err := db.Preload("Package").Preload("User").First(&order, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "订单不存在",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取订单失败",
+			})
+		}
 		return
 	}
 
+	oldStatus := order.Status
 	order.Status = req.Status
+
+	// 如果订单状态从非paid变为paid，需要处理订阅
+	if oldStatus != "paid" && req.Status == "paid" {
+		// 设置支付时间
+		now := utils.GetBeijingTime()
+		order.PaymentTime = database.NullTime(now)
+
+		// 获取用户信息
+		var user models.User
+		if err := db.First(&user, order.UserID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取用户信息失败",
+			})
+			return
+		}
+
+		// 使用统一的处理函数
+		_, err := processPaidOrder(db, &order, &order.Package, &user)
+		if err != nil {
+			// 不向客户端返回详细错误信息，防止信息泄露
+			utils.LogError("BulkMarkOrdersPaid: process paid order", err, map[string]interface{}{
+				"order_id": order.ID,
+			})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "处理订单失败，请稍后重试",
+			})
+			return
+		}
+	}
+
 	if err := db.Save(&order).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -645,9 +1032,27 @@ func GetOrderStatistics(c *gin.Context) {
 	db.Model(&models.Order{}).Count(&totalOrders)
 	db.Model(&models.Order{}).Where("status = ?", "pending").Count(&pendingOrders)
 	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&paidOrders)
-	db.Model(&models.Order{}).Where("status = ?", "paid").Select("COALESCE(SUM(final_amount), 0)").Scan(&totalRevenue)
-	if totalRevenue == 0 {
-		db.Model(&models.Order{}).Where("status = ?", "paid").Select("COALESCE(SUM(amount), 0)").Scan(&totalRevenue)
+
+	// 统计总收入（使用final_amount，如果为NULL则使用amount）
+	// 使用原生SQL查询，兼容SQLite和MySQL
+	var result struct {
+		Total sql.NullFloat64
+	}
+	db.Raw(`
+		SELECT COALESCE(SUM(
+			CASE 
+				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
+				ELSE amount
+			END
+		), 0) as total
+		FROM orders 
+		WHERE status = ?
+	`, "paid").Scan(&result)
+
+	if result.Total.Valid {
+		totalRevenue = result.Total.Float64
+	} else {
+		totalRevenue = 0
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -756,8 +1161,12 @@ func ExportOrders(c *gin.Context) {
 		keyword = c.Query("search")
 	}
 	if keyword != "" {
-		query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
+				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
 
 	// 状态筛选
@@ -868,24 +1277,71 @@ func GetOrderStats(c *gin.Context) {
 	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").Count(&stats.PaidOrders)
 	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "cancelled").Count(&stats.CancelledOrders)
 
-	// 统计金额
+	// 统计总金额（所有订单，使用final_amount如果存在，否则使用amount）
+	// 使用绝对值，因为金额可能为负数（退款等情况）
 	var totalAmountResult struct {
-		Total float64
+		Total sql.NullFloat64
 	}
-	db.Model(&models.Order{}).Where("user_id = ?", user.ID).
-		Select("COALESCE(SUM(amount), 0) as total").Scan(&totalAmountResult)
-	stats.TotalAmount = totalAmountResult.Total
+	// 兼容SQLite和MySQL的查询
+	if err := db.Raw(`
+		SELECT COALESCE(SUM(
+			CASE 
+				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN ABS(final_amount)
+				ELSE ABS(amount)
+			END
+		), 0) as total
+		FROM orders 
+		WHERE user_id = ?
+	`, user.ID).Scan(&totalAmountResult).Error; err != nil {
+		utils.LogError("GetOrderStats: calculate total amount", err, nil)
+		stats.TotalAmount = 0
+	} else if totalAmountResult.Total.Valid {
+		stats.TotalAmount = totalAmountResult.Total.Float64
+	} else {
+		stats.TotalAmount = 0
+	}
 
+	// 统计已支付金额（只统计已支付订单，使用final_amount如果存在，否则使用amount）
+	// 使用绝对值
 	var paidAmountResult struct {
-		Total float64
+		Total sql.NullFloat64
 	}
-	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").
-		Select("COALESCE(SUM(final_amount), 0) as total").Scan(&paidAmountResult)
-	stats.PaidAmount = paidAmountResult.Total
+	if err := db.Raw(`
+		SELECT COALESCE(SUM(
+			CASE 
+				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN ABS(final_amount)
+				ELSE ABS(amount)
+			END
+		), 0) as total
+		FROM orders 
+		WHERE user_id = ? AND status = ?
+	`, user.ID, "paid").Scan(&paidAmountResult).Error; err != nil {
+		utils.LogError("GetOrderStats: calculate paid amount", err, nil)
+		stats.PaidAmount = 0
+	} else if paidAmountResult.Total.Valid {
+		stats.PaidAmount = paidAmountResult.Total.Float64
+	} else {
+		stats.PaidAmount = 0
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    stats,
+		"data": gin.H{
+			// 兼容前端期望的字段名
+			"total":       stats.TotalOrders,
+			"pending":     stats.PendingOrders,
+			"paid":        stats.PaidOrders,
+			"cancelled":   stats.CancelledOrders,
+			"totalAmount": stats.TotalAmount,
+			"paidAmount":  stats.PaidAmount,
+			// 保留原有字段名（兼容性）
+			"total_orders":     stats.TotalOrders,
+			"pending_orders":   stats.PendingOrders,
+			"paid_orders":      stats.PaidOrders,
+			"cancelled_orders": stats.CancelledOrders,
+			"total_amount":     stats.TotalAmount,
+			"paid_amount":      stats.PaidAmount,
+		},
 	})
 }
 
@@ -921,7 +1377,7 @@ func GetOrderStatusByNo(c *gin.Context) {
 	})
 }
 
-// UpgradeDevices 升级设备数
+// UpgradeDevices 升级设备数（支持支付）
 func UpgradeDevices(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -933,21 +1389,28 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	var req struct {
-		SubscriptionID uint `json:"subscription_id" binding:"required"`
-		NewDeviceLimit int  `json:"new_device_limit" binding:"required,gt=0"`
+		AdditionalDevices int     `json:"additional_devices" binding:"required,min=5"` // 至少增加5个设备
+		AdditionalDays    int     `json:"additional_days"`                             // 可选：延长天数
+		PaymentMethod     string  `json:"payment_method"`                              // 支付方式：balance, alipay, wechat, mixed
+		UseBalance        bool    `json:"use_balance"`                                 // 是否使用余额
+		BalanceAmount     float64 `json:"balance_amount"`                              // 使用的余额金额
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// 不向客户端返回详细错误信息，防止信息泄露
+		utils.LogError("UpdateAdminOrder: bind request", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": "请求参数错误，请检查输入格式",
 		})
 		return
 	}
 
 	db := database.GetDB()
+
+	// 获取用户的订阅
 	var subscription models.Subscription
-	if err := db.Where("id = ? AND user_id = ?", req.SubscriptionID, user.ID).First(&subscription).Error; err != nil {
+	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "订阅不存在",
@@ -955,29 +1418,198 @@ func UpgradeDevices(c *gin.Context) {
 		return
 	}
 
-	// 检查新设备数是否大于当前设备数
-	if req.NewDeviceLimit < subscription.DeviceLimit {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "新设备数不能小于当前设备数",
+	// 计算升级费用（假设每个设备每月10元，每天约0.33元）
+	devicePricePerMonth := 10.0
+	devicePricePerDay := devicePricePerMonth / 30.0
+	deviceCost := float64(req.AdditionalDevices) * devicePricePerMonth
+	daysCost := float64(req.AdditionalDays) * devicePricePerDay
+	totalAmount := deviceCost + daysCost
+
+	// 应用用户等级折扣
+	var userLevel models.UserLevel
+	if user.UserLevelID.Valid {
+		if err := db.First(&userLevel, user.UserLevelID.Int64).Error; err == nil {
+			if userLevel.DiscountRate > 0 && userLevel.DiscountRate < 1.0 {
+				totalAmount *= userLevel.DiscountRate
+			}
+		}
+	}
+
+	// 处理余额支付
+	balanceUsed := 0.0
+	finalAmount := totalAmount
+	if req.UseBalance {
+		if user.Balance <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "您的余额为0，无法使用余额支付",
+			})
+			return
+		}
+
+		if req.BalanceAmount > user.Balance {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "余额不足",
+			})
+			return
+		}
+
+		if req.BalanceAmount > finalAmount {
+			balanceUsed = finalAmount
+		} else {
+			balanceUsed = req.BalanceAmount
+		}
+
+		finalAmount -= balanceUsed
+	}
+
+	// 如果最终金额为0（被余额完全抵扣），直接升级
+	if finalAmount <= 0.01 {
+		// 扣除余额
+		if balanceUsed > 0 {
+			user.Balance -= balanceUsed
+			if err := db.Save(&user).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "扣除余额失败",
+				})
+				return
+			}
+		}
+
+		// 升级设备数量
+		subscription.DeviceLimit += req.AdditionalDevices
+		if req.AdditionalDays > 0 {
+			now := utils.GetBeijingTime()
+			if subscription.ExpireTime.Before(now) {
+				subscription.ExpireTime = now.AddDate(0, 0, req.AdditionalDays)
+			} else {
+				subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, req.AdditionalDays)
+			}
+		}
+		if err := db.Save(&subscription).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "升级设备数失败",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "设备数量升级成功",
+			"data": gin.H{
+				"status":             "paid",
+				"subscription":       subscription,
+				"additional_devices": req.AdditionalDevices,
+				"additional_days":    req.AdditionalDays,
+			},
 		})
 		return
 	}
 
-	// 更新设备限制
-	subscription.DeviceLimit = req.NewDeviceLimit
-	if err := db.Save(&subscription).Error; err != nil {
+	// 需要支付，创建订单
+	orderNo := utils.GenerateOrderNo(user.ID)
+	order := models.Order{
+		OrderNo:           orderNo,
+		UserID:            user.ID,
+		PackageID:         0, // 设备升级订单，PackageID 为 0
+		Amount:            totalAmount,
+		FinalAmount:       database.NullFloat64(finalAmount),
+		DiscountAmount:    database.NullFloat64(totalAmount - finalAmount),
+		Status:            "pending",
+		PaymentMethodName: database.NullString(req.PaymentMethod),
+		// 订单类型标记为设备升级
+		// 注意：这里 PackageID 为 0，表示这是设备升级订单，不是套餐订单
+	}
+
+	// 扣除已使用的余额
+	if balanceUsed > 0 {
+		user.Balance -= balanceUsed
+		if err := db.Save(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "扣除余额失败",
+			})
+			return
+		}
+	}
+
+	if err := db.Create(&order).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新设备数失败",
+			"message": "创建订单失败",
 		})
 		return
+	}
+
+	// 生成支付URL（如果需要其他支付方式）
+	var paymentURL string
+	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+		var paymentConfig models.PaymentConfig
+		payType := req.PaymentMethod
+		if payType == "alipay" || payType == "wechat" {
+			if err := db.Where("pay_type = ? AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
+				// 创建支付交易
+				transaction := models.PaymentTransaction{
+					OrderID:         order.ID,
+					UserID:          user.ID,
+					PaymentMethodID: paymentConfig.ID,
+					Amount:          int(finalAmount * 100),
+					Currency:        "CNY",
+					Status:          "pending",
+				}
+				if err := db.Create(&transaction).Error; err == nil {
+					// 生成支付URL
+					if paymentConfig.PayType == "alipay" {
+						alipayService, err := payment.NewAlipayService(&paymentConfig)
+						if err == nil {
+							paymentURL, err = alipayService.CreatePayment(&order, finalAmount)
+							if err != nil {
+								fmt.Printf("生成支付宝支付URL失败: %v\n", err)
+							}
+						}
+					} else if paymentConfig.PayType == "wechat" {
+						wechatService, err := payment.NewWechatService(&paymentConfig)
+						if err == nil {
+							paymentURL, err = wechatService.CreatePayment(&order, finalAmount)
+							if err != nil {
+								fmt.Printf("生成微信支付URL失败: %v\n", err)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 在订单 ExtraData 中记录升级信息（用于支付回调后处理）
+	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d}`, req.AdditionalDevices, req.AdditionalDays)
+	order.ExtraData = database.NullString(extraData)
+	if err := db.Save(&order).Error; err != nil {
+		fmt.Printf("保存订单ExtraData失败: %v\n", err)
+	}
+
+	// 返回订单和支付URL
+	responseData := gin.H{
+		"order_no":           order.OrderNo,
+		"id":                 order.ID,
+		"status":             order.Status,
+		"amount":             totalAmount,
+		"final_amount":       finalAmount,
+		"additional_devices": req.AdditionalDevices,
+		"additional_days":    req.AdditionalDays,
+	}
+
+	if paymentURL != "" {
+		responseData["payment_url"] = paymentURL
+		responseData["payment_qr_code"] = paymentURL
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "设备数已升级",
-		"data":    subscription,
+		"data":    responseData,
 	})
 }
 
@@ -1000,7 +1632,8 @@ func PayOrder(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": "请求参数错误: 缺少 payment_method_id 参数",
+			"error":   err.Error(),
 		})
 		return
 	}

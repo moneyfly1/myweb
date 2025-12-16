@@ -68,7 +68,7 @@ func LogUserActivity(userID uint, activityType, description string) {
 	}
 }
 
-// LogAudit 记录审计日志
+// LogAudit 记录审计日志（仅记录到文件）
 func LogAudit(userID uint, actionType, resourceType string, resourceID uint, description string) {
 	if AppLogger != nil {
 		AppLogger.Info("审计日志: user_id=%d, action=%s, resource=%s:%d, description=%s",

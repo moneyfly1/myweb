@@ -425,35 +425,41 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		// 更新现有设备
 		now := utils.GetBeijingTime()
 		existingDevice.LastAccess = now
-		existingDevice.LastSeen = database.NullTime(now)
+		existingDevice.LastSeen = &now
 		existingDevice.AccessCount++
-		existingDevice.IPAddress = database.NullString(ipAddress)
-		existingDevice.UserAgent = database.NullString(userAgent)
+		existingDevice.IPAddress = &ipAddress
+		existingDevice.UserAgent = &userAgent
+		
+		// 更新订阅类型（如果之前没有或需要更新）
+		if subscriptionType != "" {
+			subscriptionTypeStr := subscriptionType
+			existingDevice.SubscriptionType = &subscriptionTypeStr
+		}
 
 		// 更新设备信息（如果之前没有）
-		if !existingDevice.DeviceName.Valid || existingDevice.DeviceName.String == "" {
-			existingDevice.DeviceName = database.NullString(deviceInfo.DeviceName)
+		if existingDevice.DeviceName == nil || *existingDevice.DeviceName == "" {
+			existingDevice.DeviceName = &deviceInfo.DeviceName
 		}
-		if !existingDevice.DeviceType.Valid || existingDevice.DeviceType.String == "" {
-			existingDevice.DeviceType = database.NullString(deviceInfo.DeviceType)
+		if existingDevice.DeviceType == nil || *existingDevice.DeviceType == "" {
+			existingDevice.DeviceType = &deviceInfo.DeviceType
 		}
-		if !existingDevice.DeviceModel.Valid || existingDevice.DeviceModel.String == "" {
-			existingDevice.DeviceModel = database.NullString(deviceInfo.DeviceModel)
+		if existingDevice.DeviceModel == nil || *existingDevice.DeviceModel == "" {
+			existingDevice.DeviceModel = &deviceInfo.DeviceModel
 		}
-		if !existingDevice.DeviceBrand.Valid || existingDevice.DeviceBrand.String == "" {
-			existingDevice.DeviceBrand = database.NullString(deviceInfo.DeviceBrand)
+		if existingDevice.DeviceBrand == nil || *existingDevice.DeviceBrand == "" {
+			existingDevice.DeviceBrand = &deviceInfo.DeviceBrand
 		}
-		if !existingDevice.SoftwareName.Valid || existingDevice.SoftwareName.String == "" {
-			existingDevice.SoftwareName = database.NullString(deviceInfo.SoftwareName)
+		if existingDevice.SoftwareName == nil || *existingDevice.SoftwareName == "" {
+			existingDevice.SoftwareName = &deviceInfo.SoftwareName
 		}
-		if !existingDevice.SoftwareVersion.Valid || existingDevice.SoftwareVersion.String == "" {
-			existingDevice.SoftwareVersion = database.NullString(deviceInfo.SoftwareVersion)
+		if existingDevice.SoftwareVersion == nil || *existingDevice.SoftwareVersion == "" {
+			existingDevice.SoftwareVersion = &deviceInfo.SoftwareVersion
 		}
-		if !existingDevice.OSName.Valid || existingDevice.OSName.String == "" {
-			existingDevice.OSName = database.NullString(deviceInfo.OSName)
+		if existingDevice.OSName == nil || *existingDevice.OSName == "" {
+			existingDevice.OSName = &deviceInfo.OSName
 		}
-		if !existingDevice.OSVersion.Valid || existingDevice.OSVersion.String == "" {
-			existingDevice.OSVersion = database.NullString(deviceInfo.OSVersion)
+		if existingDevice.OSVersion == nil || *existingDevice.OSVersion == "" {
+			existingDevice.OSVersion = &deviceInfo.OSVersion
 		}
 
 		if err := dm.db.Save(&existingDevice).Error; err != nil {
@@ -463,27 +469,30 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 	} else if err == gorm.ErrRecordNotFound {
 		// 创建新设备
 		now := utils.GetBeijingTime()
+		userIDInt64 := int64(userID)
+		subscriptionTypeStr := subscriptionType
 		device := models.Device{
-			UserID:            database.NullInt64(int64(userID)),
+			UserID:            &userIDInt64,
 			SubscriptionID:    subscriptionID,
 			DeviceFingerprint: deviceHash,
-			DeviceHash:        database.NullString(deviceHash),
-			DeviceUA:          database.NullString(userAgent),
-			DeviceName:        database.NullString(deviceInfo.DeviceName),
-			DeviceType:        database.NullString(deviceInfo.DeviceType),
-			DeviceModel:       database.NullString(deviceInfo.DeviceModel),
-			DeviceBrand:       database.NullString(deviceInfo.DeviceBrand),
-			IPAddress:         database.NullString(ipAddress),
-			UserAgent:         database.NullString(userAgent),
-			SoftwareName:      database.NullString(deviceInfo.SoftwareName),
-			SoftwareVersion:   database.NullString(deviceInfo.SoftwareVersion),
-			OSName:            database.NullString(deviceInfo.OSName),
-			OSVersion:         database.NullString(deviceInfo.OSVersion),
+			DeviceHash:        &deviceHash,
+			DeviceUA:          &userAgent,
+			DeviceName:        &deviceInfo.DeviceName,
+			DeviceType:        &deviceInfo.DeviceType,
+			DeviceModel:       &deviceInfo.DeviceModel,
+			DeviceBrand:       &deviceInfo.DeviceBrand,
+			IPAddress:         &ipAddress,
+			UserAgent:         &userAgent,
+			SoftwareName:      &deviceInfo.SoftwareName,
+			SoftwareVersion:   &deviceInfo.SoftwareVersion,
+			OSName:            &deviceInfo.OSName,
+			OSVersion:         &deviceInfo.OSVersion,
+			SubscriptionType:  &subscriptionTypeStr,
 			IsActive:          true,
 			IsAllowed:         true,
-			FirstSeen:         database.NullTime(now),
+			FirstSeen:         &now,
 			LastAccess:        now,
-			LastSeen:          database.NullTime(now),
+			LastSeen:          &now,
 			AccessCount:       1,
 		}
 

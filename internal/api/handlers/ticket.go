@@ -9,6 +9,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -25,9 +26,9 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	var req struct {
-		Title   string `json:"title" binding:"required"`
-		Content string `json:"content" binding:"required"`
-		Type    string `json:"type"`
+		Title    string `json:"title" binding:"required"`
+		Content  string `json:"content" binding:"required"`
+		Type     string `json:"type"`
 		Priority string `json:"priority"`
 	}
 
@@ -51,11 +52,23 @@ func CreateTicket(c *gin.Context) {
 	// 生成工单号
 	ticketNo := utils.GenerateTicketNo(user.ID)
 
+	// 清理输入，防止XSS
+	title := utils.SanitizeInput(req.Title)
+	content := utils.SanitizeInput(req.Content)
+
+	// 限制长度
+	if len(title) > 200 {
+		title = title[:200]
+	}
+	if len(content) > 5000 {
+		content = content[:5000]
+	}
+
 	ticket := models.Ticket{
 		TicketNo: ticketNo,
 		UserID:   user.ID,
-		Title:    req.Title,
-		Content:  req.Content,
+		Title:    title,
+		Content:  content,
 		Type:     req.Type,
 		Status:   "pending",
 		Priority: req.Priority,
@@ -68,6 +81,10 @@ func CreateTicket(c *gin.Context) {
 		})
 		return
 	}
+
+	// 记录创建工单审计日志
+	utils.SetResponseStatus(c, http.StatusCreated)
+	utils.CreateAuditLogSimple(c, "create_ticket", "ticket", ticket.ID, fmt.Sprintf("创建工单: %s", ticket.Title))
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -86,14 +103,21 @@ func GetTickets(c *gin.Context) {
 		return
 	}
 
-	isAdmin, _ := c.Get("is_admin")
-	admin := isAdmin.(bool)
+	// 检查是否为管理员
+	isAdmin := false
+	if isAdminVal, exists := c.Get("is_admin"); exists {
+		if isAdminBool, ok := isAdminVal.(bool); ok {
+			isAdmin = isAdminBool
+		} else if isAdminStr, ok := isAdminVal.(string); ok {
+			isAdmin = isAdminStr == "true" || isAdminStr == "1"
+		}
+	}
 
 	db := database.GetDB()
 	var tickets []models.Ticket
 	query := db.Preload("User").Preload("Assignee")
 
-	if !admin {
+	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
 	}
 
@@ -123,14 +147,26 @@ func GetTicket(c *gin.Context) {
 		return
 	}
 
-	isAdmin, _ := c.Get("is_admin")
-	admin := isAdmin.(bool)
+	// 检查是否为管理员
+	isAdmin := false
+	if isAdminVal, exists := c.Get("is_admin"); exists {
+		if isAdminBool, ok := isAdminVal.(bool); ok {
+			isAdmin = isAdminBool
+		} else if isAdminStr, ok := isAdminVal.(string); ok {
+			isAdmin = isAdminStr == "true" || isAdminStr == "1"
+		}
+	}
 
 	db := database.GetDB()
 	var ticket models.Ticket
-	query := db.Preload("User").Preload("Assignee").Preload("Replies").Preload("Attachments").Where("id = ?", id)
+	query := db.Preload("User").Preload("Assignee").
+		Preload("Replies", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Attachments").
+		Where("id = ?", id)
 
-	if !admin {
+	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
 	}
 
@@ -184,8 +220,19 @@ func ReplyTicket(c *gin.Context) {
 	// 验证工单
 	var ticket models.Ticket
 	query := db.Where("id = ?", id)
-	isAdmin, _ := c.Get("is_admin")
-	if !isAdmin.(bool) {
+
+	// 检查是否为管理员
+	isAdmin := false
+	if isAdminVal, exists := c.Get("is_admin"); exists {
+		if isAdminBool, ok := isAdminVal.(bool); ok {
+			isAdmin = isAdminBool
+		} else if isAdminStr, ok := isAdminVal.(string); ok {
+			isAdmin = isAdminStr == "true" || isAdminStr == "1"
+		}
+	}
+
+	// 如果不是管理员，只能回复自己的工单
+	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
 	}
 
@@ -202,7 +249,7 @@ func ReplyTicket(c *gin.Context) {
 		TicketID: ticket.ID,
 		UserID:   user.ID,
 		Content:  req.Content,
-		IsAdmin:  fmt.Sprintf("%v", isAdmin.(bool)),
+		IsAdmin:  fmt.Sprintf("%v", isAdmin),
 	}
 
 	if err := db.Create(&reply).Error; err != nil {
@@ -255,18 +302,19 @@ func UpdateTicketStatus(c *gin.Context) {
 
 	ticket.Status = req.Status
 	if req.AssignedTo > 0 {
-		ticket.AssignedTo = database.NullInt64(int64(req.AssignedTo))
+		assignedTo := int64(req.AssignedTo)
+		ticket.AssignedTo = &assignedTo
 	}
 	if req.AdminNotes != "" {
-		ticket.AdminNotes = database.NullString(req.AdminNotes)
+		ticket.AdminNotes = &req.AdminNotes
 	}
 
 	if req.Status == "resolved" {
 		now := time.Now()
-		ticket.ResolvedAt = database.NullTime(now)
+		ticket.ResolvedAt = &now
 	} else if req.Status == "closed" {
 		now := time.Now()
-		ticket.ClosedAt = database.NullTime(now)
+		ticket.ClosedAt = &now
 	}
 
 	if err := db.Save(&ticket).Error; err != nil {
@@ -283,4 +331,3 @@ func UpdateTicketStatus(c *gin.Context) {
 		"data":    ticket,
 	})
 }
-

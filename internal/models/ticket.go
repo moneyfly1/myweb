@@ -1,9 +1,6 @@
 package models
 
-import (
-	"database/sql"
-	"time"
-)
+import "time"
 
 // TicketStatus 工单状态
 type TicketStatus string
@@ -38,22 +35,22 @@ const (
 
 // Ticket 工单模型
 type Ticket struct {
-	ID            uint           `gorm:"primaryKey" json:"id"`
-	TicketNo      string         `gorm:"type:varchar(50);uniqueIndex;not null" json:"ticket_no"`
-	UserID        uint           `gorm:"index;not null" json:"user_id"`
-	Title         string         `gorm:"type:varchar(200);not null" json:"title"`
-	Content       string         `gorm:"type:text;not null" json:"content"`
-	Type          string         `gorm:"type:varchar(20);default:other" json:"type"`
-	Status        string         `gorm:"type:varchar(20);default:pending" json:"status"`
-	Priority      string         `gorm:"type:varchar(20);default:normal" json:"priority"`
-	AssignedTo    sql.NullInt64  `gorm:"index" json:"assigned_to,omitempty"`
-	AdminNotes    sql.NullString `gorm:"type:text" json:"admin_notes,omitempty"`
-	Rating        sql.NullInt64  `json:"rating,omitempty"`
-	RatingComment sql.NullString `gorm:"type:text" json:"rating_comment,omitempty"`
-	CreatedAt     time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt     time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	ResolvedAt    sql.NullTime   `json:"resolved_at,omitempty"`
-	ClosedAt      sql.NullTime   `json:"closed_at,omitempty"`
+	ID            uint       `gorm:"primaryKey" json:"id"`
+	TicketNo      string     `gorm:"type:varchar(50);uniqueIndex;not null" json:"ticket_no"`
+	UserID        uint       `gorm:"index;not null" json:"user_id"`
+	Title         string     `gorm:"type:varchar(200);not null" json:"title"`
+	Content       string     `gorm:"type:text;not null" json:"content"`
+	Type          string     `gorm:"type:varchar(20);default:other" json:"type"`
+	Status        string     `gorm:"type:varchar(20);default:pending" json:"status"`
+	Priority      string     `gorm:"type:varchar(20);default:normal" json:"priority"`
+	AssignedTo    *int64     `gorm:"index" json:"assigned_to,omitempty"`
+	AdminNotes    *string    `gorm:"type:text" json:"admin_notes,omitempty"`
+	Rating        *int64     `json:"rating,omitempty"`
+	RatingComment *string    `gorm:"type:text" json:"rating_comment,omitempty"`
+	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+	ClosedAt      *time.Time `json:"closed_at,omitempty"`
 
 	// 关系
 	User        User               `gorm:"foreignKey:UserID" json:"-"`
@@ -88,15 +85,15 @@ func (TicketReply) TableName() string {
 
 // TicketAttachment 工单附件模型
 type TicketAttachment struct {
-	ID         uint           `gorm:"primaryKey" json:"id"`
-	TicketID   uint           `gorm:"index;not null" json:"ticket_id"`
-	ReplyID    sql.NullInt64  `gorm:"index" json:"reply_id,omitempty"`
-	FileName   string         `gorm:"type:varchar(255);not null" json:"file_name"`
-	FilePath   string         `gorm:"type:varchar(500);not null" json:"file_path"`
-	FileSize   sql.NullInt64  `json:"file_size,omitempty"`
-	FileType   sql.NullString `gorm:"type:varchar(50)" json:"file_type,omitempty"`
-	UploadedBy uint           `gorm:"index;not null" json:"uploaded_by"`
-	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	TicketID   uint      `gorm:"index;not null" json:"ticket_id"`
+	ReplyID    *int64    `gorm:"index" json:"reply_id,omitempty"`
+	FileName   string    `gorm:"type:varchar(255);not null" json:"file_name"`
+	FilePath   string    `gorm:"type:varchar(500);not null" json:"file_path"`
+	FileSize   *int64    `json:"file_size,omitempty"`
+	FileType   *string   `gorm:"type:varchar(50)" json:"file_type,omitempty"`
+	UploadedBy uint      `gorm:"index;not null" json:"uploaded_by"`
+	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// 关系
 	Ticket   Ticket      `gorm:"foreignKey:TicketID" json:"-"`

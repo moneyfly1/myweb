@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -37,22 +38,25 @@ func GetUserDashboard(c *gin.Context) {
 		}
 	}
 
-	// 获取用户订阅（取第一条）
+	// 获取用户订阅（取最新的有效订阅）
 	var subscription models.Subscription
-	db.Where("user_id = ?", user.ID).Order("created_at ASC").First(&subscription)
+	db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&subscription)
 
-	// 计算剩余天数/到期（使用北京时区）
+	// 计算剩余天数/到期时间（使用北京时区）
 	remainingDays := 0
 	expiryDate := "未设置"
 	if subscription.ID > 0 && !subscription.ExpireTime.IsZero() {
 		now := utils.GetBeijingTime()
-		// 确保使用北京时区格式化
-		beijingTime := subscription.ExpireTime
+		// 将数据库中的时间转换为北京时区
+		beijingTime := utils.ToBeijingTime(subscription.ExpireTime)
 		diff := beijingTime.Sub(now)
 		if diff > 0 {
-			remainingDays = int(diff.Hours() / 24)
-			if remainingDays < 0 {
-				remainingDays = 0
+			// 使用更精确的天数计算：将时间差转换为天数（向上取整）
+			days := diff.Hours() / 24.0
+			remainingDays = int(days)
+			// 如果有小数部分（即使只有1小时），也算作1天
+			if days > float64(remainingDays) {
+				remainingDays++
 			}
 		} else {
 			remainingDays = 0
@@ -81,7 +85,7 @@ func GetUserDashboard(c *gin.Context) {
 		// SSR/V2Ray 通用订阅地址（Base64）
 		v2rayURL = fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
 		mobileURL = v2rayURL
-		
+
 		// 生成二维码 URL（sub://格式，包含到期时间）
 		encodedURL := base64.StdEncoding.EncodeToString([]byte(v2rayURL))
 		expiryDisplay := expiryDate
@@ -166,19 +170,41 @@ func GetDashboard(c *gin.Context) {
 	var totalUsers int64
 	db.Model(&models.User{}).Count(&totalUsers)
 
-	// 统计活跃订阅数
+	// 统计活跃订阅数（状态为active且is_active为true，并且未过期）
 	var activeSubscriptions int64
-	db.Model(&models.Subscription{}).Where("status = ? AND is_active = ?", "active", true).Count(&activeSubscriptions)
+	now := utils.GetBeijingTime()
+	// 查询活跃订阅：is_active为true，状态为active（或空字符串），并且expire_time大于当前时间
+	db.Model(&models.Subscription{}).
+		Where("is_active = ?", true).
+		Where("(status = ? OR status = '' OR status IS NULL)", "active").
+		Where("expire_time > ?", now).
+		Count(&activeSubscriptions)
 
 	// 统计总订单数
 	var totalOrders int64
 	db.Model(&models.Order{}).Count(&totalOrders)
 
-	// 统计总收入
+	// 统计总收入（使用final_amount，如果为NULL则使用amount）
 	var totalRevenue float64
-	db.Model(&models.Order{}).Where("status = ?", "paid").Select("COALESCE(SUM(final_amount), 0)").Scan(&totalRevenue)
-	if totalRevenue == 0 {
-		db.Model(&models.Order{}).Where("status = ?", "paid").Select("COALESCE(SUM(amount), 0)").Scan(&totalRevenue)
+	// 使用原生SQL查询，兼容SQLite和MySQL
+	var result struct {
+		Total sql.NullFloat64
+	}
+	db.Raw(`
+		SELECT COALESCE(SUM(
+			CASE 
+				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
+				ELSE amount
+			END
+		), 0) as total
+		FROM orders 
+		WHERE status = ?
+	`, "paid").Scan(&result)
+	
+	if result.Total.Valid {
+		totalRevenue = result.Total.Float64
+	} else {
+		totalRevenue = 0
 	}
 
 	c.JSON(http.StatusOK, gin.H{

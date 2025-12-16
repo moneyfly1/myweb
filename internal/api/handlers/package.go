@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,6 +38,7 @@ func GetPackages(c *gin.Context) {
 			"bandwidth_limit": pkg.BandwidthLimit.Int64,
 			"sort_order":      pkg.SortOrder,
 			"is_active":       pkg.IsActive,
+			"is_recommended":  pkg.IsRecommended,
 			"created_at":      pkg.CreatedAt.Format("2006-01-02 15:04:05"),
 			"updated_at":      pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
@@ -78,6 +81,7 @@ func CreatePackage(c *gin.Context) {
 		BandwidthLimit int64   `json:"bandwidth_limit"`
 		SortOrder      int     `json:"sort_order"`
 		IsActive       bool    `json:"is_active"`
+		IsRecommended  bool    `json:"is_recommended"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -90,12 +94,13 @@ func CreatePackage(c *gin.Context) {
 
 	db := database.GetDB()
 	pkg := models.Package{
-		Name:         req.Name,
-		Price:        req.Price,
-		DurationDays: req.DurationDays,
-		DeviceLimit:  req.DeviceLimit,
-		SortOrder:    req.SortOrder,
-		IsActive:     req.IsActive,
+		Name:          req.Name,
+		Price:         req.Price,
+		DurationDays:  req.DurationDays,
+		DeviceLimit:   req.DeviceLimit,
+		SortOrder:     req.SortOrder,
+		IsActive:      req.IsActive,
+		IsRecommended: req.IsRecommended,
 	}
 
 	if req.Description != "" {
@@ -132,6 +137,7 @@ func UpdatePackage(c *gin.Context) {
 		BandwidthLimit int64   `json:"bandwidth_limit"`
 		SortOrder      int     `json:"sort_order"`
 		IsActive       bool    `json:"is_active"`
+		IsRecommended  bool    `json:"is_recommended"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -152,13 +158,19 @@ func UpdatePackage(c *gin.Context) {
 		return
 	}
 
+	// 更新字段（允许空值更新）
 	if req.Name != "" {
 		pkg.Name = req.Name
 	}
-	if req.Description != "" {
-		pkg.Description = database.NullString(req.Description)
+	if req.Description != "" || req.Description == "" {
+		// 允许清空描述
+		if req.Description == "" {
+			pkg.Description = sql.NullString{Valid: false}
+		} else {
+			pkg.Description = database.NullString(req.Description)
+		}
 	}
-	if req.Price > 0 {
+	if req.Price >= 0 {
 		pkg.Price = req.Price
 	}
 	if req.DurationDays > 0 {
@@ -167,11 +179,17 @@ func UpdatePackage(c *gin.Context) {
 	if req.DeviceLimit > 0 {
 		pkg.DeviceLimit = req.DeviceLimit
 	}
-	if req.BandwidthLimit > 0 {
-		pkg.BandwidthLimit = database.NullInt64(req.BandwidthLimit)
+	if req.BandwidthLimit >= 0 {
+		if req.BandwidthLimit == 0 {
+			pkg.BandwidthLimit = sql.NullInt64{Valid: false}
+		} else {
+			pkg.BandwidthLimit = database.NullInt64(req.BandwidthLimit)
+		}
 	}
+	// SortOrder、IsActive 和 IsRecommended 总是更新
 	pkg.SortOrder = req.SortOrder
 	pkg.IsActive = req.IsActive
+	pkg.IsRecommended = req.IsRecommended
 
 	if err := db.Save(&pkg).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -230,7 +248,11 @@ func GetAdminPackages(c *gin.Context) {
 
 	// 搜索参数
 	if name := c.Query("name"); name != "" {
-		query = query.Where("name LIKE ?", "%"+name+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedName := utils.SanitizeSearchKeyword(name)
+		if sanitizedName != "" {
+			query = query.Where("name LIKE ?", "%"+sanitizedName+"%")
+		}
 	}
 
 	// 状态筛选

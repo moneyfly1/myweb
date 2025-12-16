@@ -35,7 +35,11 @@
           <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
             <div class="status-item">
               <div class="status-label">设备使用</div>
-              <div class="status-value">{{ subscription.currentDevices || 0 }}/{{ subscription.maxDevices || 0 }}</div>
+              <div class="status-value">
+                <el-tooltip content="在线设备数 / 允许最大设备数" placement="top">
+                  <span>{{ subscription.onlineDevices || subscription.current_devices || 0 }}/{{ subscription.device_limit || subscription.maxDevices || 0 }}</span>
+                </el-tooltip>
+              </div>
             </div>
           </el-col>
         </el-row>
@@ -154,7 +158,7 @@
           <div class="current-subscription-info">
             <h4>当前订阅信息</h4>
             <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="当前设备数">{{ subscription.maxDevices || 0 }} 个</el-descriptions-item>
+              <el-descriptions-item label="当前设备数">{{ subscription.device_limit || subscription.maxDevices || 0 }} 个</el-descriptions-item>
               <el-descriptions-item label="剩余天数">{{ getRemainingDays(subscription) }} 天</el-descriptions-item>
             </el-descriptions>
           </div>
@@ -428,15 +432,24 @@ export default {
         
         if (subscriptionResponse && subscriptionResponse.data && subscriptionResponse.data.success) {
           const subscriptionData = subscriptionResponse.data.data
+          // 计算在线设备数（优先使用 current_devices，如果没有则从设备列表计算）
+          let onlineDevices = subscriptionData.current_devices || subscriptionData.currentDevices || 0
+          // 如果后端没有返回在线设备数，尝试从设备列表计算
+          if (onlineDevices === 0 && subscriptionData.devices && Array.isArray(subscriptionData.devices)) {
+            onlineDevices = subscriptionData.devices.filter(d => d.is_active !== false).length
+          }
+          
           subscription.value = {
-            subscription_id: subscriptionData.subscription_id,
+            subscription_id: subscriptionData.subscription_id || subscriptionData.subscription_url,
             expire_time: subscriptionData.expire_time || subscriptionData.expiryDate,
             status: subscriptionData.status,
-            currentDevices: subscriptionData.currentDevices || 0,
-            maxDevices: subscriptionData.maxDevices || 0,
-            clash_url: subscriptionData.clashUrl || '',
-            universal_url: subscriptionData.mobileUrl || '',
-            qrcode_url: subscriptionData.qrcodeUrl || ''
+            onlineDevices: onlineDevices,
+            current_devices: onlineDevices,
+            device_limit: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
+            maxDevices: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
+            clash_url: subscriptionData.clash_url || subscriptionData.clashUrl || '',
+            universal_url: subscriptionData.ssr_url || subscriptionData.v2ray_url || subscriptionData.mobileUrl || '',
+            qrcode_url: subscriptionData.qrcode_url || subscriptionData.qrcodeUrl || ''
           }
           
           if (userResponse && userResponse.data && userResponse.data.success) {
@@ -451,8 +464,10 @@ export default {
             subscription_id: userData.subscription_url,
             expire_time: userData.expire_time,
             status: userData.subscription_status,
-            currentDevices: userData.online_devices || 0,
-            maxDevices: userData.total_devices || 0,
+            onlineDevices: userData.online_devices || 0,
+            current_devices: userData.online_devices || 0,
+            device_limit: userData.device_limit || userData.total_devices || 0,
+            maxDevices: userData.device_limit || userData.total_devices || 0,
             clash_url: userData.clashUrl || '',
             universal_url: userData.mobileUrl || userData.v2rayUrl || '',
             qrcode_url: userData.qrcodeUrl || ''

@@ -4,6 +4,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+
 	"gorm.io/gorm"
 )
 
@@ -43,9 +44,10 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 	now := utils.GetBeijingTime()
 	expireTime := now.AddDate(0, 0, durationDays)
 
+	packageIDPtr := int64(packageID)
 	subscription := models.Subscription{
 		UserID:          userID,
-		PackageID:       database.NullInt64(int64(packageID)),
+		PackageID:       &packageIDPtr,
 		SubscriptionURL: subscriptionURL,
 		DeviceLimit:     3,
 		CurrentDevices:  0,
@@ -84,8 +86,7 @@ func (s *SubscriptionService) CheckExpired() error {
 	return s.db.Model(&models.Subscription{}).
 		Where("expire_time < ? AND status = ?", now, "active").
 		Updates(map[string]interface{}{
-			"status":   "expired",
+			"status":    "expired",
 			"is_active": false,
 		}).Error
 }
-

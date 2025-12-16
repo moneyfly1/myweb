@@ -164,6 +164,7 @@ func AutoMigrate() error {
 		&models.VerificationCode{},
 		&models.UserActivity{},
 		&models.AuditLog{},
+		&models.TokenBlacklist{}, // Token黑名单（用于Token撤销）
 	)
 
 	if err != nil {

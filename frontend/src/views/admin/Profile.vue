@@ -411,7 +411,10 @@ export default {
       passwordFormRef.value?.clearValidate()
     }
     const handleAvatarSuccess = (response) => {
-      if (response.success) {
+      if (response && response.success) {
+        basicForm.avatar_url = response.data?.url || response.url || ''
+        ElMessage.success('头像上传成功')
+      } else if (response && response.data && response.data.url) {
         basicForm.avatar_url = response.data.url
         ElMessage.success('头像上传成功')
       } else {

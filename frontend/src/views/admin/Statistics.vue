@@ -100,20 +100,21 @@
             
             <!-- 桌面端表格 -->
             <div class="desktop-only">
-              <el-table :data="userStats" style="width: 100%">
+              <el-table :data="userStats" style="width: 100%" v-if="userStats.length > 0">
                 <el-table-column prop="label" label="统计项" />
                 <el-table-column prop="value" label="数值" />
                 <el-table-column prop="percentage" label="占比">
                   <template #default="{ row }">
                     <el-progress
-                      :percentage="row.percentage"
+                      :percentage="Math.round(row.percentage * 10) / 10"
                       :color="row.color"
                       :show-text="false"
                     />
-                    <span style="margin-left: 10px">{{ row.percentage }}%</span>
+                    <span style="margin-left: 10px">{{ Math.round(row.percentage * 10) / 10 }}%</span>
                   </template>
                 </el-table-column>
               </el-table>
+              <el-empty v-else description="暂无数据" />
             </div>
             
             <!-- 移动端卡片列表 -->
@@ -122,6 +123,7 @@
                 v-for="stat in userStats" 
                 :key="stat.label"
                 class="mobile-stat-item"
+                v-if="userStats.length > 0"
               >
                 <div class="stat-item-header">
                   <span class="stat-item-label">{{ stat.label }}</span>
@@ -129,13 +131,14 @@
                 </div>
                 <div class="stat-item-progress">
                   <el-progress
-                    :percentage="stat.percentage"
+                    :percentage="Math.round(stat.percentage * 10) / 10"
                     :color="stat.color"
                     :show-text="false"
                   />
-                  <span class="stat-item-percentage">{{ stat.percentage }}%</span>
+                  <span class="stat-item-percentage">{{ Math.round(stat.percentage * 10) / 10 }}%</span>
                 </div>
               </div>
+              <el-empty v-else description="暂无数据" />
             </div>
           </el-card>
         </el-col>
@@ -150,20 +153,21 @@
             
             <!-- 桌面端表格 -->
             <div class="desktop-only">
-              <el-table :data="subscriptionStats" style="width: 100%">
+              <el-table :data="subscriptionStats" style="width: 100%" v-if="subscriptionStats.length > 0">
                 <el-table-column prop="label" label="统计项" />
                 <el-table-column prop="value" label="数值" />
                 <el-table-column prop="percentage" label="占比">
                   <template #default="{ row }">
                     <el-progress
-                      :percentage="row.percentage"
+                      :percentage="Math.round(row.percentage * 10) / 10"
                       :color="row.color"
                       :show-text="false"
                     />
-                    <span style="margin-left: 10px">{{ row.percentage }}%</span>
+                    <span style="margin-left: 10px">{{ Math.round(row.percentage * 10) / 10 }}%</span>
                   </template>
                 </el-table-column>
               </el-table>
+              <el-empty v-else description="暂无数据" />
             </div>
             
             <!-- 移动端卡片列表 -->
@@ -172,6 +176,7 @@
                 v-for="stat in subscriptionStats" 
                 :key="stat.label"
                 class="mobile-stat-item"
+                v-if="subscriptionStats.length > 0"
               >
                 <div class="stat-item-header">
                   <span class="stat-item-label">{{ stat.label }}</span>
@@ -179,13 +184,14 @@
                 </div>
                 <div class="stat-item-progress">
                   <el-progress
-                    :percentage="stat.percentage"
+                    :percentage="Math.round(stat.percentage * 10) / 10"
                     :color="stat.color"
                     :show-text="false"
                   />
-                  <span class="stat-item-percentage">{{ stat.percentage }}%</span>
+                  <span class="stat-item-percentage">{{ Math.round(stat.percentage * 10) / 10 }}%</span>
                 </div>
               </div>
+              <el-empty v-else description="暂无数据" />
             </div>
           </el-card>
         </el-col>
@@ -199,7 +205,7 @@
           </div>
         </template>
         
-        <el-timeline>
+        <el-timeline v-if="recentActivities.length > 0">
           <el-timeline-item
             v-for="activity in recentActivities"
             :key="activity.id"
@@ -212,6 +218,7 @@
             </div>
           </el-timeline-item>
         </el-timeline>
+        <el-empty v-else description="暂无活动记录" />
       </el-card>
     </div>
   </template>
@@ -244,57 +251,60 @@
       const fetchStatistics = async () => {
         try {
           const response = await statisticsAPI.getStatistics()
-          if (response.data && response.data.data) {
+          if (response.data && response.data.success && response.data.data) {
             const data = response.data.data
-            // 更新概览数据
+            // 更新概览数据（优先使用 overview，如果没有则使用直接字段）
             if (data.overview) {
               Object.assign(statistics, data.overview)
-              }
+            } else {
+              // 如果没有 overview，从直接字段映射
+              statistics.totalUsers = Number(data.total_users || data.totalUsers) || 0
+              statistics.activeSubscriptions = Number(data.active_subscriptions || data.activeSubscriptions) || 0
+              statistics.totalOrders = Number(data.total_orders || data.totalOrders) || 0
+              statistics.totalRevenue = Number(data.total_revenue || data.totalRevenue) || 0
+            }
             
             // 更新用户统计
-            if (data.userStats) {
+            if (data.userStats && Array.isArray(data.userStats)) {
               userStats.value = data.userStats.map(stat => ({
-                label: stat.name,
-                value: stat.value,
-                percentage: stat.percentage,
+                label: stat.name || stat.label,
+                value: Number(stat.value) || 0,
+                percentage: Number(stat.percentage) || 0,
                 color: '#409eff'
               }))
-              }
+            } else {
+              // 如果没有数据，设置为空数组
+              userStats.value = []
+            }
             
             // 更新订阅统计
-            if (data.subscriptionStats) {
+            if (data.subscriptionStats && Array.isArray(data.subscriptionStats)) {
               subscriptionStats.value = data.subscriptionStats.map(stat => ({
-                label: stat.name,
-                value: stat.value,
-                percentage: stat.percentage,
+                label: stat.name || stat.label,
+                value: Number(stat.value) || 0,
+                percentage: Number(stat.percentage) || 0,
                 color: '#67c23a'
               }))
-              }
+            } else {
+              // 如果没有数据，设置为空数组
+              subscriptionStats.value = []
+            }
             
             // 更新最近活动
-            if (data.recentActivities) {
-              // 将活动类型映射到 Element Plus 有效的类型值
-              const mapActivityType = (activityType, status) => {
-                // 如果类型已经是有效的 Element Plus 类型，直接返回
-                const validTypes = ['primary', 'success', 'warning', 'danger', 'info', '']
-                if (validTypes.includes(activityType)) {
-                  return activityType
-                }
-                // 根据订单状态映射类型
-                if (status === 'paid') return 'success'
-                if (status === 'pending') return 'warning'
-                if (status === 'cancelled' || status === 'refunded') return 'danger'
-                return 'primary'
-              }
-              
+            if (data.recentActivities && Array.isArray(data.recentActivities)) {
               recentActivities.value = data.recentActivities.map(activity => ({
                 id: activity.id,
-                type: mapActivityType(activity.type, activity.status),
-                title: activity.description,
-                description: `金额: ¥${formatMoney(activity.amount)} | 状态: ${activity.status}`,
-                time: activity.time
+                type: activity.type || 'primary',
+                title: activity.description || activity.title || '未知活动',
+                description: activity.amount !== undefined 
+                  ? `金额: ¥${formatMoney(activity.amount)} | 状态: ${activity.status || '未知'}`
+                  : (activity.description || ''),
+                time: activity.time || activity.created_at || ''
               }))
-              }
+            } else {
+              // 如果没有数据，设置为空数组
+              recentActivities.value = []
+            }
           } else {
             }
         } catch (error) {
@@ -305,15 +315,24 @@
       const initUserChart = async () => {
         try {
           const response = await statisticsAPI.getUserTrend()
+          if (!response.data || !response.data.success || !response.data.data) {
+            console.error('获取用户趋势数据失败')
+            return
+          }
+          
+          const chartData = response.data.data
+          const labels = chartData.labels || []
+          const data = chartData.data || []
+          
           const ctx = userChart.value.getContext('2d')
           
           new Chart(ctx, {
             type: 'line',
             data: {
-              labels: response.data.labels,
+              labels: labels,
               datasets: [{
                 label: '新用户注册',
-                data: response.data.data,
+                data: data,
                 borderColor: '#409eff',
                 backgroundColor: 'rgba(64, 158, 255, 0.1)',
                 tension: 0.4
@@ -342,15 +361,24 @@
       const initRevenueChart = async () => {
         try {
           const response = await statisticsAPI.getRevenueTrend()
+          if (!response.data || !response.data.success || !response.data.data) {
+            console.error('获取收入趋势数据失败')
+            return
+          }
+          
+          const chartData = response.data.data
+          const labels = chartData.labels || []
+          const data = chartData.data || []
+          
           const ctx = revenueChart.value.getContext('2d')
           
           new Chart(ctx, {
             type: 'bar',
             data: {
-              labels: response.data.labels,
+              labels: labels,
               datasets: [{
                 label: '收入',
-                data: response.data.data,
+                data: data,
                 backgroundColor: '#67c23a',
                 borderColor: '#67c23a',
                 borderWidth: 1

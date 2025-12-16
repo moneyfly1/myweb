@@ -341,14 +341,16 @@ export default {
         }
         
         const response = await adminAPI.getSystemLogs(params)
-        if (response.data.success) {
+        if (response && response.data && response.data.success) {
           logsList.value = response.data.data.logs || []
           pagination.total = response.data.data.total || 0
         } else {
-          ElMessage.error(response.data.message || '加载日志失败')
+          ElMessage.error((response?.data?.message || response?.message) || '加载日志失败')
         }
       } catch (error) {
-        ElMessage.error('加载日志失败')
+        const errorMsg = error.response?.data?.message || error.message || '加载日志失败'
+        ElMessage.error(errorMsg)
+        console.error('加载日志失败:', error)
       } finally {
         loading.value = false
       }
@@ -358,11 +360,14 @@ export default {
     const loadLogsStats = async () => {
       try {
         const response = await adminAPI.getLogsStats()
-        if (response.data.success) {
+        if (response && response.data && response.data.success) {
           logsStats.value = response.data.data || {}
+        } else {
+          console.error('获取日志统计失败:', response?.data?.message || response?.message)
         }
       } catch (error) {
-        }
+        console.error('获取日志统计失败:', error)
+      }
     }
 
     // 应用筛选
@@ -392,24 +397,42 @@ export default {
       try {
         const params = { ...filterForm }
         const response = await adminAPI.exportLogs(params)
-        if (response.data.success) {
-          // 创建下载链接
-          const blob = new Blob([response.data.data], { type: 'text/csv' })
-          const url = window.URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `system_logs_${new Date().toISOString().split('T')[0]}.csv`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          window.URL.revokeObjectURL(url)
+        
+        // 处理文件下载响应
+        if (response && response.data) {
+          // 如果响应是Blob类型（文件下载）
+          if (response.data instanceof Blob) {
+            const url = window.URL.createObjectURL(response.data)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `system_logs_${new Date().toISOString().split('T')[0]}.csv`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            window.URL.revokeObjectURL(url)
+            ElMessage.success('日志导出成功')
+            return
+          }
           
-          ElMessage.success('日志导出成功')
-        } else {
-          ElMessage.error(response.data.message || '导出失败')
         }
+        
+        // 如果响应不是Blob，尝试作为文本处理
+        ElMessage.error('导出失败：响应格式不正确')
       } catch (error) {
-        ElMessage.error('导出失败')
+        // 处理Blob错误响应（可能是JSON错误消息）
+        if (error.response && error.response.data instanceof Blob) {
+          try {
+            const text = await error.response.data.text()
+            const errorData = JSON.parse(text)
+            ElMessage.error(errorData.message || '导出失败')
+          } catch (e) {
+            ElMessage.error('导出失败')
+          }
+        } else {
+          const errorMsg = error.response?.data?.message || error.message || '导出失败'
+          ElMessage.error(errorMsg)
+        }
+        console.error('导出日志失败:', error)
       }
     }
 
@@ -427,16 +450,18 @@ export default {
         )
         
         const response = await adminAPI.clearLogs()
-        if (response.data.success) {
-          ElMessage.success('日志清理成功')
+        if (response && response.data && response.data.success) {
+          ElMessage.success(response.data.message || '日志清理成功')
           loadLogs()
           loadLogsStats()
         } else {
-          ElMessage.error(response.data.message || '清理失败')
+          ElMessage.error((response?.data?.message || response?.message) || '清理失败')
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('清理失败')
+          const errorMsg = error.response?.data?.message || error.message || '清理失败'
+          ElMessage.error(errorMsg)
+          console.error('清理日志失败:', error)
         }
       }
     }

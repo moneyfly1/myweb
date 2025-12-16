@@ -275,7 +275,8 @@ const handleSendVerificationCode = async () => {
   
   try {
     const response = await authAPI.sendVerificationCode({
-      email: registerForm.email
+      email: registerForm.email,
+      type: 'email'
     })
     
     ElMessage.success('验证码已发送，请查收邮箱')
@@ -321,8 +322,8 @@ const handleRegister = async () => {
     
     // 注册成功，跳转到登录页面
     if (response.data) {
-      // 检查用户数据是否存在
-      if (!response.data.user) {
+      // 检查用户数据是否存在（后端返回的是 id 和 email，不是 user 对象）
+      if (!response.data.id && !response.data.email) {
         ElMessage.error('注册成功但用户数据异常，请重新登录')
         // 仍然跳转到登录页面
         router.push({

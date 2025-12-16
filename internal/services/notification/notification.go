@@ -2,11 +2,10 @@ package notification
 
 import (
 	"fmt"
-	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/utils"
+	"cboard-go/internal/services/email"
 )
 
 // NotificationService 通知服务
@@ -192,7 +191,7 @@ func FormatBarkMessage(notificationType string, data map[string]interface{}) (st
 		body = fmt.Sprintf(`📋 **账户信息**
 
 **用户账号**
-\`%s\`
+`+"`%s`"+`
 
 **注册邮箱**
 %s
@@ -272,13 +271,14 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		}
 	}
 
-	// 发送邮件通知
+	// 发送邮件通知（使用邮件模板）
 	if configMap["admin_email_notification"] == "true" {
 		adminEmail := configMap["admin_notification_email"]
 		if adminEmail != "" {
 			emailService := email.NewEmailService()
+			templateBuilder := email.NewEmailTemplateBuilder()
 			subject := fmt.Sprintf("系统通知 - %s", notificationType)
-			content := fmt.Sprintf("<h2>%s</h2><pre>%s</pre>", barkTitle, barkBody)
+			content := templateBuilder.GetBroadcastNotificationTemplate(barkTitle, barkBody)
 			_ = emailService.QueueEmail(adminEmail, subject, content, "admin_notification")
 		}
 	}
@@ -305,4 +305,3 @@ func getFloat(data map[string]interface{}, key string, defaultValue float64) flo
 	}
 	return defaultValue
 }
-

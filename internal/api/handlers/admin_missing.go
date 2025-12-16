@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
@@ -20,7 +21,7 @@ import (
 // GetAdminInvites 管理员获取邀请码列表
 func GetAdminInvites(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Model(&models.InviteCode{}).Preload("User")
+	query := db.Model(&models.InviteCode{}).Preload("User").Preload("InviteRelations")
 
 	// 分页参数
 	page := 1
@@ -40,10 +41,18 @@ func GetAdminInvites(c *gin.Context) {
 
 	// 搜索和筛选
 	if userQuery := c.Query("user_query"); userQuery != "" {
-		query = query.Where("user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+userQuery+"%", "%"+userQuery+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedQuery := utils.SanitizeSearchKeyword(userQuery)
+		if sanitizedQuery != "" {
+			query = query.Where("user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+sanitizedQuery+"%", "%"+sanitizedQuery+"%")
+		}
 	}
 	if code := c.Query("code"); code != "" {
-		query = query.Where("code LIKE ?", "%"+code+"%")
+		// 清理邀请码，只允许字母数字
+		sanitizedCode := utils.SanitizeSearchKeyword(code)
+		if sanitizedCode != "" {
+			query = query.Where("code LIKE ?", "%"+sanitizedCode+"%")
+		}
 	}
 	if isActiveStr := c.Query("is_active"); isActiveStr != "" {
 		if isActiveStr == "true" || isActiveStr == "1" {
@@ -172,7 +181,11 @@ func GetAdminTickets(c *gin.Context) {
 
 	// 搜索和筛选
 	if keyword := c.Query("keyword"); keyword != "" {
-		query = query.Where("ticket_no LIKE ? OR title LIKE ? OR content LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("ticket_no LIKE ? OR title LIKE ? OR content LIKE ?", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
@@ -197,10 +210,35 @@ func GetAdminTickets(c *gin.Context) {
 		return
 	}
 
+	// 为每个工单添加回复数量
+	ticketList := make([]gin.H, 0)
+	for _, ticket := range tickets {
+		var repliesCount int64
+		db.Model(&models.TicketReply{}).Where("ticket_id = ?", ticket.ID).Count(&repliesCount)
+
+		ticketList = append(ticketList, gin.H{
+			"id":            ticket.ID,
+			"ticket_no":     ticket.TicketNo,
+			"user_id":       ticket.UserID,
+			"user":          ticket.User,
+			"title":         ticket.Title,
+			"content":       ticket.Content,
+			"type":          ticket.Type,
+			"status":        ticket.Status,
+			"priority":      ticket.Priority,
+			"assigned_to":   ticket.AssignedTo,
+			"assignee":      ticket.Assignee,
+			"admin_notes":   ticket.AdminNotes,
+			"replies_count": repliesCount,
+			"created_at":    ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":    ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"tickets": tickets,
+			"tickets": ticketList,
 			"total":   total,
 			"page":    page,
 			"size":    size,
@@ -238,11 +276,24 @@ func GetAdminTicket(c *gin.Context) {
 	db := database.GetDB()
 
 	var ticket models.Ticket
-	if err := db.Preload("User").Preload("Assignee").Preload("Replies").First(&ticket, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "工单不存在",
-		})
+	// Preload所有相关数据，包括按创建时间排序的回复
+	if err := db.Preload("User").Preload("Assignee").
+		Preload("Replies", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Attachments").
+		First(&ticket, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "工单不存在",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取工单失败",
+			})
+		}
 		return
 	}
 
@@ -302,7 +353,11 @@ func GetAdminCoupons(c *gin.Context) {
 	// 搜索参数（支持 keyword 搜索优惠券码或名称）
 	keyword := c.Query("keyword")
 	if keyword != "" {
-		query = query.Where("code LIKE ? OR name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		// 清理和验证搜索关键词，防止SQL注入
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("code LIKE ? OR name LIKE ?", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
 
 	// 状态筛选
@@ -364,6 +419,172 @@ func GetAdminUserLevels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    userLevels,
+	})
+}
+
+// CreateUserLevel 创建用户等级（管理员）
+func CreateUserLevel(c *gin.Context) {
+	var req struct {
+		LevelName      string  `json:"level_name" binding:"required"`
+		LevelOrder     int     `json:"level_order" binding:"required"`
+		MinConsumption float64 `json:"min_consumption"`
+		DiscountRate   float64 `json:"discount_rate"`
+		Color          string  `json:"color"`
+		IconURL        string  `json:"icon_url"`
+		Benefits       string  `json:"benefits"`
+		IsActive       bool    `json:"is_active"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误，请检查输入格式",
+		})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 检查等级名称是否已存在
+	var existing models.UserLevel
+	if err := db.Where("level_name = ?", req.LevelName).First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "等级名称已存在",
+		})
+		return
+	}
+
+	// 检查等级顺序是否已存在
+	if err := db.Where("level_order = ?", req.LevelOrder).First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "等级顺序已存在",
+		})
+		return
+	}
+
+	userLevel := models.UserLevel{
+		LevelName:      req.LevelName,
+		LevelOrder:     req.LevelOrder,
+		MinConsumption: req.MinConsumption,
+		DiscountRate:   req.DiscountRate,
+		Color:          req.Color,
+		IsActive:       req.IsActive,
+	}
+
+	if req.IconURL != "" {
+		userLevel.IconURL = database.NullString(req.IconURL)
+	}
+	if req.Benefits != "" {
+		userLevel.Benefits = database.NullString(req.Benefits)
+	}
+
+	if err := db.Create(&userLevel).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "创建用户等级失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    userLevel,
+	})
+}
+
+// UpdateUserLevel 更新用户等级（管理员）
+func UpdateUserLevel(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+
+	var userLevel models.UserLevel
+	if err := db.First(&userLevel, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "用户等级不存在",
+		})
+		return
+	}
+
+	var req struct {
+		LevelName      string  `json:"level_name"`
+		LevelOrder     int     `json:"level_order"`
+		MinConsumption float64 `json:"min_consumption"`
+		DiscountRate   float64 `json:"discount_rate"`
+		Color          string  `json:"color"`
+		IconURL        string  `json:"icon_url"`
+		Benefits       string  `json:"benefits"`
+		IsActive       *bool   `json:"is_active"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误，请检查输入格式",
+		})
+		return
+	}
+
+	// 更新字段
+	if req.LevelName != "" && req.LevelName != userLevel.LevelName {
+		// 检查新名称是否已存在
+		var existing models.UserLevel
+		if err := db.Where("level_name = ? AND id != ?", req.LevelName, id).First(&existing).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "等级名称已存在",
+			})
+			return
+		}
+		userLevel.LevelName = req.LevelName
+	}
+
+	if req.LevelOrder > 0 && req.LevelOrder != userLevel.LevelOrder {
+		// 检查新顺序是否已存在
+		var existing models.UserLevel
+		if err := db.Where("level_order = ? AND id != ?", req.LevelOrder, id).First(&existing).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "等级顺序已存在",
+			})
+			return
+		}
+		userLevel.LevelOrder = req.LevelOrder
+	}
+
+	if req.MinConsumption >= 0 {
+		userLevel.MinConsumption = req.MinConsumption
+	}
+	if req.DiscountRate > 0 {
+		userLevel.DiscountRate = req.DiscountRate
+	}
+	if req.Color != "" {
+		userLevel.Color = req.Color
+	}
+	if req.IconURL != "" {
+		userLevel.IconURL = database.NullString(req.IconURL)
+	}
+	if req.Benefits != "" {
+		userLevel.Benefits = database.NullString(req.Benefits)
+	}
+	if req.IsActive != nil {
+		userLevel.IsActive = *req.IsActive
+	}
+
+	if err := db.Save(&userLevel).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "更新用户等级失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "更新成功",
+		"data":    userLevel,
 	})
 }
 
@@ -462,9 +683,16 @@ func GetUserSubscription(c *gin.Context) {
 	isExpired := false
 	if !subscription.ExpireTime.IsZero() {
 		now := utils.GetBeijingTime()
-		diff := subscription.ExpireTime.Sub(now)
+		beijingTime := utils.ToBeijingTime(subscription.ExpireTime)
+		diff := beijingTime.Sub(now)
 		if diff > 0 {
-			remainingDays = int(diff.Hours() / 24)
+			// 使用更精确的天数计算：将时间差转换为天数（向上取整）
+			days := diff.Hours() / 24.0
+			remainingDays = int(days)
+			// 如果有小数部分（即使只有1小时），也算作1天
+			if days > float64(remainingDays) {
+				remainingDays++
+			}
 		} else {
 			isExpired = true
 		}
@@ -589,10 +817,16 @@ func GetAdminEmailQueue(c *gin.Context) {
 
 	// 筛选
 	if status := c.Query("status"); status != "" {
-		query = query.Where("status = ?", status)
+		status = strings.TrimSpace(status)
+		if status != "" {
+			query = query.Where("status = ?", status)
+		}
 	}
 	if email := c.Query("email"); email != "" {
-		query = query.Where("to_email LIKE ?", "%"+email+"%")
+		email = strings.TrimSpace(email)
+		if email != "" {
+			query = query.Where("to_email LIKE ?", "%"+email+"%")
+		}
 	}
 
 	var total int64
@@ -631,6 +865,11 @@ func GetEmailQueueStatistics(c *gin.Context) {
 	db := database.GetDB()
 
 	var stats struct {
+		Total   int64 `json:"total"`
+		Pending int64 `json:"pending"`
+		Sent    int64 `json:"sent"`
+		Failed  int64 `json:"failed"`
+		// 兼容旧字段名
 		TotalEmails   int64 `json:"total_emails"`
 		PendingEmails int64 `json:"pending_emails"`
 		SentEmails    int64 `json:"sent_emails"`
@@ -642,9 +881,201 @@ func GetEmailQueueStatistics(c *gin.Context) {
 	db.Model(&models.EmailQueue{}).Where("status = ?", "sent").Count(&stats.SentEmails)
 	db.Model(&models.EmailQueue{}).Where("status = ?", "failed").Count(&stats.FailedEmails)
 
+	// 同步到新字段名
+	stats.Total = stats.TotalEmails
+	stats.Pending = stats.PendingEmails
+	stats.Sent = stats.SentEmails
+	stats.Failed = stats.FailedEmails
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    stats,
+	})
+}
+
+// GetEmailQueueDetail 获取邮件详情
+func GetEmailQueueDetail(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+
+	var email models.EmailQueue
+	if err := db.First(&email, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "邮件不存在",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取邮件详情失败",
+			})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    email,
+	})
+}
+
+// DeleteEmailFromQueue 删除邮件
+func DeleteEmailFromQueue(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+
+	var email models.EmailQueue
+	if err := db.First(&email, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "邮件不存在",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取邮件失败",
+			})
+		}
+		return
+	}
+
+	if err := db.Delete(&email).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除邮件失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "邮件删除成功",
+	})
+}
+
+// RetryEmailFromQueue 重试发送邮件
+func RetryEmailFromQueue(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+
+	var email models.EmailQueue
+	if err := db.First(&email, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "邮件不存在",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取邮件失败",
+			})
+		}
+		return
+	}
+
+	// 重置邮件状态为待发送
+	email.Status = "pending"
+	email.RetryCount = 0
+	email.ErrorMessage = sql.NullString{Valid: false}
+
+	if err := db.Save(&email).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "重试邮件失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "邮件已加入重试队列",
+	})
+}
+
+// ClearEmailQueue 清空邮件队列
+func ClearEmailQueue(c *gin.Context) {
+	status := c.Query("status")
+	db := database.GetDB()
+
+	var result *gorm.DB
+	if status != "" {
+		// 清空指定状态的邮件
+		result = db.Where("status = ?", status).Delete(&models.EmailQueue{})
+	} else {
+		// 清空所有邮件
+		result = db.Where("1 = 1").Delete(&models.EmailQueue{})
+	}
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "清空邮件队列失败",
+		})
+		return
+	}
+
+	message := "邮件队列已清空"
+	if status != "" {
+		message = fmt.Sprintf("已清空 %s 状态的邮件", status)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": message,
+		"data": gin.H{
+			"deleted_count": result.RowsAffected,
+		},
+	})
+}
+
+// UpdateAdminSystemConfig 批量更新系统配置（管理员）
+func UpdateAdminSystemConfig(c *gin.Context) {
+	var req map[string]interface{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误，请检查输入格式",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range req {
+		var config models.SystemConfig
+		// 查找 system 类别的配置
+		if err := db.Where("key = ? AND category = ?", key, "system").First(&config).Error; err != nil {
+			// 如果不存在，创建新配置
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "system",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			if err := db.Create(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("保存配置 %s 失败", key),
+				})
+				return
+			}
+		} else {
+			// 更新现有配置
+			config.Value = fmt.Sprintf("%v", value)
+			if err := db.Save(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
+				})
+				return
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "系统配置保存成功",
 	})
 }
 
@@ -652,14 +1083,29 @@ func GetEmailQueueStatistics(c *gin.Context) {
 func GetAdminSystemConfig(c *gin.Context) {
 	db := database.GetDB()
 	var configs []models.SystemConfig
-	db.Order("category ASC, sort_order ASC").Find(&configs)
+	// 获取 system 类别的配置
+	db.Where("category = ?", "system").Order("sort_order ASC").Find(&configs)
 
+	// 返回扁平化的配置对象，方便前端直接使用
 	configMap := make(map[string]interface{})
 	for _, config := range configs {
-		if configMap[config.Category] == nil {
-			configMap[config.Category] = make(map[string]interface{})
+		// 处理布尔值
+		if config.Value == "true" || config.Value == "false" {
+			configMap[config.Key] = config.Value == "true"
+		} else {
+			configMap[config.Key] = config.Value
 		}
-		configMap[config.Category].(map[string]interface{})[config.Key] = config.Value
+	}
+
+	// 如果没有配置，返回默认值
+	if len(configMap) == 0 {
+		configMap = map[string]interface{}{
+			"site_name":           "",
+			"site_description":    "",
+			"logo_url":            "",
+			"maintenance_mode":    false,
+			"maintenance_message": "",
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -723,19 +1169,37 @@ func GetAdminEmailConfig(c *gin.Context) {
 
 // GetAdminClashConfigInvalid 获取无效的 Clash 配置
 func GetAdminClashConfigInvalid(c *gin.Context) {
-	// 返回空数组，表示没有无效配置
+	db := database.GetDB()
+	var config models.SystemConfig
+	if err := db.Where("category = ? AND key = ?", "clash", "config_invalid").First(&config).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    "",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    []interface{}{},
+		"data":    config.Value,
 	})
 }
 
 // GetAdminV2RayConfigInvalid 获取无效的 V2Ray 配置
 func GetAdminV2RayConfigInvalid(c *gin.Context) {
-	// 返回空数组，表示没有无效配置
+	db := database.GetDB()
+	var config models.SystemConfig
+	if err := db.Where("category = ? AND key = ?", "v2ray", "config_invalid").First(&config).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    "",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    []interface{}{},
+		"data":    config.Value,
 	})
 }
 
@@ -821,7 +1285,7 @@ func GetUserTrend(c *gin.Context) {
 		FROM users 
 		WHERE created_at >= DATE('now', '-' || ? || ' days')
 		GROUP BY DATE(created_at)
-		ORDER BY date DESC
+		ORDER BY date ASC
 	`, days).Rows()
 
 	if err == nil {
@@ -833,9 +1297,20 @@ func GetUserTrend(c *gin.Context) {
 		}
 	}
 
+	// 转换为前端期望的格式
+	labels := make([]string, 0)
+	data := make([]int64, 0)
+	for _, trend := range trends {
+		labels = append(labels, trend.Date)
+		data = append(data, trend.UserCount)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    trends,
+		"data": gin.H{
+			"labels": labels,
+			"data":   data,
+		},
 	})
 }
 
@@ -846,7 +1321,9 @@ func GetRevenueTrend(c *gin.Context) {
 
 // UpdateClashConfig 更新 Clash 配置
 func UpdateClashConfig(c *gin.Context) {
-	var req map[string]interface{}
+	var req struct {
+		Content string `json:"content"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -856,18 +1333,38 @@ func UpdateClashConfig(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	for key, value := range req {
-		var config models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", key, "clash").First(&config).Error; err != nil {
+	var config models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "config", "clash").First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 如果不存在，创建新配置
 			config = models.SystemConfig{
-				Key:      key,
+				Key:      "config",
 				Category: "clash",
-				Value:    fmt.Sprintf("%v", value),
+				Value:    req.Content,
 			}
-			db.Create(&config)
+			if err := db.Create(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "创建配置失败",
+				})
+				return
+			}
 		} else {
-			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "查询配置失败",
+			})
+			return
+		}
+	} else {
+		// 更新现有配置
+		config.Value = req.Content
+		if err := db.Save(&config).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新配置失败",
+			})
+			return
 		}
 	}
 
@@ -879,7 +1376,9 @@ func UpdateClashConfig(c *gin.Context) {
 
 // UpdateV2RayConfig 更新 V2Ray 配置
 func UpdateV2RayConfig(c *gin.Context) {
-	var req map[string]interface{}
+	var req struct {
+		Content string `json:"content"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -889,18 +1388,38 @@ func UpdateV2RayConfig(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	for key, value := range req {
-		var config models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", key, "v2ray").First(&config).Error; err != nil {
+	var config models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "config", "v2ray").First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 如果不存在，创建新配置
 			config = models.SystemConfig{
-				Key:      key,
+				Key:      "config",
 				Category: "v2ray",
-				Value:    fmt.Sprintf("%v", value),
+				Value:    req.Content,
 			}
-			db.Create(&config)
+			if err := db.Create(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "创建配置失败",
+				})
+				return
+			}
 		} else {
-			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "查询配置失败",
+			})
+			return
+		}
+	} else {
+		// 更新现有配置
+		config.Value = req.Content
+		if err := db.Save(&config).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新配置失败",
+			})
+			return
 		}
 	}
 
@@ -925,15 +1444,41 @@ func UpdateEmailConfig(c *gin.Context) {
 	for key, value := range req {
 		var config models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", key, "email").First(&config).Error; err != nil {
-			config = models.SystemConfig{
-				Key:      key,
-				Category: "email",
-				Value:    fmt.Sprintf("%v", value),
+			if err == gorm.ErrRecordNotFound {
+				// 如果不存在，创建新配置
+				config = models.SystemConfig{
+					Key:      key,
+					Category: "email",
+					Value:    fmt.Sprintf("%v", value),
+				}
+				if err := db.Create(&config).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": fmt.Sprintf("保存配置 %s 失败", key),
+					})
+					return
+				}
+			} else {
+				// 不向客户端返回详细错误信息，防止信息泄露
+				utils.LogError("UpdateSystemConfig: query config", err, map[string]interface{}{
+					"key": key,
+				})
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "更新配置失败，请稍后重试",
+				})
+				return
 			}
-			db.Create(&config)
 		} else {
+			// 更新现有配置
 			config.Value = fmt.Sprintf("%v", value)
-			db.Save(&config)
+			if err := db.Save(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
+				})
+				return
+			}
 		}
 	}
 
@@ -943,13 +1488,11 @@ func UpdateEmailConfig(c *gin.Context) {
 	})
 }
 
-// MarkClashConfigInvalid 标记 Clash 配置无效
+// MarkClashConfigInvalid 保存 Clash 失效配置
 func MarkClashConfigInvalid(c *gin.Context) {
 	var req struct {
-		ConfigID uint   `json:"config_id" binding:"required"`
-		Reason   string `json:"reason"`
+		Content string `json:"content"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -960,41 +1503,51 @@ func MarkClashConfigInvalid(c *gin.Context) {
 
 	db := database.GetDB()
 	var config models.SystemConfig
-	if err := db.First(&config, req.ConfigID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "配置不存在",
-		})
-		return
-	}
-
-	// 更新配置状态为无效
-	config.Value = "invalid"
-	if req.Reason != "" {
-		config.Description = req.Reason
-	}
-
-	if err := db.Save(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "标记配置失败",
-		})
-		return
+	if err := db.Where("key = ? AND category = ?", "config_invalid", "clash").First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 如果不存在，创建新配置
+			config = models.SystemConfig{
+				Key:      "config_invalid",
+				Category: "clash",
+				Value:    req.Content,
+			}
+			if err := db.Create(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "创建配置失败",
+				})
+				return
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "查询配置失败",
+			})
+			return
+		}
+	} else {
+		// 更新现有配置
+		config.Value = req.Content
+		if err := db.Save(&config).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新配置失败",
+			})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "配置已标记为无效",
+		"message": "Clash 失效配置已保存",
 	})
 }
 
-// MarkV2RayConfigInvalid 标记 V2Ray 配置无效
+// MarkV2RayConfigInvalid 保存 V2Ray 失效配置
 func MarkV2RayConfigInvalid(c *gin.Context) {
 	var req struct {
-		ConfigID uint   `json:"config_id" binding:"required"`
-		Reason   string `json:"reason"`
+		Content string `json:"content"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -1005,31 +1558,43 @@ func MarkV2RayConfigInvalid(c *gin.Context) {
 
 	db := database.GetDB()
 	var config models.SystemConfig
-	if err := db.First(&config, req.ConfigID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "配置不存在",
-		})
-		return
-	}
-
-	// 更新配置状态为无效
-	config.Value = "invalid"
-	if req.Reason != "" {
-		config.Description = req.Reason
-	}
-
-	if err := db.Save(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "标记配置失败",
-		})
-		return
+	if err := db.Where("key = ? AND category = ?", "config_invalid", "v2ray").First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 如果不存在，创建新配置
+			config = models.SystemConfig{
+				Key:      "config_invalid",
+				Category: "v2ray",
+				Value:    req.Content,
+			}
+			if err := db.Create(&config).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "创建配置失败",
+				})
+				return
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "查询配置失败",
+			})
+			return
+		}
+	} else {
+		// 更新现有配置
+		config.Value = req.Content
+		if err := db.Save(&config).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新配置失败",
+			})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "配置已标记为无效",
+		"message": "V2Ray 失效配置已保存",
 	})
 }
 
@@ -1061,7 +1626,7 @@ func CreatePaymentConfig(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("请求参数错误: %v", err),
+			"message": "请求参数错误，请检查输入格式",
 		})
 		return
 	}
@@ -1128,9 +1693,11 @@ func CreatePaymentConfig(c *gin.Context) {
 
 	db := database.GetDB()
 	if err := db.Create(&paymentConfig).Error; err != nil {
+		// 不向客户端返回详细错误信息，防止信息泄露
+		utils.LogError("CreatePaymentConfig: create payment config", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("创建支付配置失败: %v", err),
+			"message": "创建支付配置失败，请稍后重试",
 		})
 		return
 	}
@@ -1138,6 +1705,156 @@ func CreatePaymentConfig(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"message": "支付配置创建成功",
+		"data":    paymentConfig,
+	})
+}
+
+// UpdatePaymentConfig 更新支付配置
+func UpdatePaymentConfig(c *gin.Context) {
+	id := c.Param("id")
+
+	var req struct {
+		PayType              string                 `json:"pay_type"`
+		AppID                string                 `json:"app_id,omitempty"`
+		MerchantPrivateKey   string                 `json:"merchant_private_key,omitempty"`
+		AlipayPublicKey      string                 `json:"alipay_public_key,omitempty"`
+		WechatAppID          string                 `json:"wechat_app_id,omitempty"`
+		WechatMchID          string                 `json:"wechat_mch_id,omitempty"`
+		WechatAPIKey         string                 `json:"wechat_api_key,omitempty"`
+		PaypalClientID       string                 `json:"paypal_client_id,omitempty"`
+		PaypalSecret         string                 `json:"paypal_secret,omitempty"`
+		StripePublishableKey string                 `json:"stripe_publishable_key,omitempty"`
+		StripeSecretKey      string                 `json:"stripe_secret_key,omitempty"`
+		BankName             string                 `json:"bank_name,omitempty"`
+		AccountName          string                 `json:"account_name,omitempty"`
+		AccountNumber        string                 `json:"account_number,omitempty"`
+		WalletAddress        string                 `json:"wallet_address,omitempty"`
+		Status               int                    `json:"status"`
+		ReturnURL            string                 `json:"return_url,omitempty"`
+		NotifyURL            string                 `json:"notify_url,omitempty"`
+		SortOrder            *int                   `json:"sort_order,omitempty"`
+		ConfigJSON           map[string]interface{} `json:"config_json,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误，请检查输入格式",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var paymentConfig models.PaymentConfig
+	if err := db.First(&paymentConfig, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "支付配置不存在",
+		})
+		return
+	}
+
+	// 构建基础 URL
+	buildBaseURL := func(c *gin.Context) string {
+		scheme := "http"
+		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+		} else if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		host := c.Request.Host
+		return fmt.Sprintf("%s://%s", scheme, host)
+	}
+	baseURL := buildBaseURL(c)
+
+	// 更新字段
+	if req.PayType != "" {
+		paymentConfig.PayType = req.PayType
+	}
+	// 更新可选字段（如果提供了值）
+	if req.AppID != "" {
+		paymentConfig.AppID = database.NullString(req.AppID)
+	}
+	if req.MerchantPrivateKey != "" {
+		paymentConfig.MerchantPrivateKey = database.NullString(req.MerchantPrivateKey)
+	}
+	if req.AlipayPublicKey != "" {
+		paymentConfig.AlipayPublicKey = database.NullString(req.AlipayPublicKey)
+	}
+	if req.WechatAppID != "" {
+		paymentConfig.WechatAppID = database.NullString(req.WechatAppID)
+	}
+	if req.WechatMchID != "" {
+		paymentConfig.WechatMchID = database.NullString(req.WechatMchID)
+	}
+	if req.WechatAPIKey != "" {
+		paymentConfig.WechatAPIKey = database.NullString(req.WechatAPIKey)
+	}
+	if req.PaypalClientID != "" {
+		paymentConfig.PaypalClientID = database.NullString(req.PaypalClientID)
+	}
+	if req.PaypalSecret != "" {
+		paymentConfig.PaypalSecret = database.NullString(req.PaypalSecret)
+	}
+	if req.StripePublishableKey != "" {
+		paymentConfig.StripePublishableKey = database.NullString(req.StripePublishableKey)
+	}
+	if req.StripeSecretKey != "" {
+		paymentConfig.StripeSecretKey = database.NullString(req.StripeSecretKey)
+	}
+	if req.BankName != "" {
+		paymentConfig.BankName = database.NullString(req.BankName)
+	}
+	if req.AccountName != "" {
+		paymentConfig.AccountName = database.NullString(req.AccountName)
+	}
+	if req.AccountNumber != "" {
+		paymentConfig.AccountNumber = database.NullString(req.AccountNumber)
+	}
+	if req.WalletAddress != "" {
+		paymentConfig.WalletAddress = database.NullString(req.WalletAddress)
+	}
+	// Status 字段总是更新（允许设置为0）
+	if req.Status >= 0 {
+		paymentConfig.Status = req.Status
+	}
+	if req.ReturnURL != "" {
+		paymentConfig.ReturnURL = database.NullString(req.ReturnURL)
+	}
+	if req.NotifyURL != "" {
+		paymentConfig.NotifyURL = database.NullString(req.NotifyURL)
+	} else if req.PayType != "" && paymentConfig.NotifyURL.String == "" {
+		// 如果更新了支付类型但没有提供回调地址，自动生成
+		notifySuffix := "alipay"
+		if req.PayType == "wechat" {
+			notifySuffix = "wechat"
+		}
+		paymentConfig.NotifyURL = database.NullString(fmt.Sprintf("%s/api/v1/payment/notify/%s", baseURL, notifySuffix))
+	}
+	// SortOrder 总是更新（如果提供了值）
+	if req.SortOrder != nil {
+		paymentConfig.SortOrder = *req.SortOrder
+	}
+	if req.ConfigJSON != nil {
+		configJSONBytes, _ := json.Marshal(req.ConfigJSON)
+		paymentConfig.ConfigJSON = sql.NullString{String: string(configJSONBytes), Valid: true}
+	}
+
+	if err := db.Save(&paymentConfig).Error; err != nil {
+		// 不向客户端返回详细错误信息，防止信息泄露
+		utils.LogError("UpdatePaymentConfig: update payment config", err, map[string]interface{}{
+			"payment_config_id": id,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "更新支付配置失败，请稍后重试",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "支付配置更新成功",
 		"data":    paymentConfig,
 	})
 }

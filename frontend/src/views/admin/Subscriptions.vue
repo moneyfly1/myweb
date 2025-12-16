@@ -417,7 +417,12 @@
                 >
                   {{ scope.row.is_active ? '禁用' : '启用' }}
                 </el-button>
-                <el-button size="small" type="danger" @click="deleteUser(scope.row)">
+                <el-button 
+                  size="small" 
+                  type="danger" 
+                  @click="deleteUser(scope.row)"
+                  :disabled="!scope.row.user?.id || scope.row.user?.id === 0 || scope.row.user?.deleted"
+                >
                   删除
                 </el-button>
                 <el-button size="small" type="danger" @click="clearUserDevices(scope.row)">
@@ -446,10 +451,11 @@
                 </el-avatar>
                 <div>
                   <div style="font-weight: 600; color: #303133;">
-                    {{ subscription.user?.email || subscription.user?.username || '未知用户' }}
+                    {{ subscription.user?.email || subscription.user?.username || subscription.email || subscription.username || '未知用户' }}
                   </div>
                   <div style="font-size: 0.85rem; color: #999;">
-                    ID: #{{ subscription.user?.id || subscription.id }}
+                    ID: #{{ subscription.user?.id || subscription.user_id || subscription.id }}
+                    <el-tag v-if="subscription.user?.deleted" type="danger" size="small" style="margin-left: 8px;">用户已删除</el-tag>
                   </div>
                 </div>
               </div>
@@ -1521,6 +1527,10 @@ export default {
           const userData = userResponse.data.data
           selectedUser.value = {
             ...subscription,
+            // 保留订阅的订阅次数统计
+            apple_count: subscription.apple_count || userData?.apple_count || 0,
+            clash_count: subscription.clash_count || userData?.clash_count || 0,
+            v2ray_count: subscription.apple_count || userData?.v2ray_count || userData?.apple_count || 0,
             user: {
               ...(userData?.user_info || userData),
               subscription_resets: userData?.subscription_resets || []
@@ -1750,12 +1760,13 @@ export default {
     // 进入用户后台
     const goToUserBackend = async (subscription) => {
       try {
-        if (!subscription.user || !subscription.user.id) {
-          ElMessage.error('无法获取用户信息，请刷新页面后重试')
+        const userId = subscription.user?.id || subscription.user_id
+        if (!userId || userId === 0) {
+          ElMessage.warning('无法进入：用户信息不存在或已被删除')
           return
         }
-        
-        const userName = subscription.user.username || subscription.user.email || '未知用户'
+
+        const userName = subscription.user?.username || subscription.user?.email || subscription.username || subscription.email || '未知用户'
         await ElMessageBox.confirm(
           `确定要以用户 ${userName} 的身份登录吗？将在新标签页中打开用户后台。`,
           '确认登录',
@@ -1766,7 +1777,7 @@ export default {
           }
         )
         
-        const response = await adminAPI.loginAsUser(subscription.user.id)
+        const response = await adminAPI.loginAsUser(userId)
         
         if (!response.data) {
           ElMessage.error('登录失败：服务器未返回数据')
@@ -1839,25 +1850,42 @@ export default {
     // 重置订阅
     const resetSubscription = async (subscription) => {
       try {
-        await ElMessageBox.confirm('确定要重置该用户的订阅地址吗？', '确认重置', {
+        const userId = subscription.user?.id || subscription.user_id
+        if (!userId || userId === 0) {
+          ElMessage.warning('无法重置：用户信息不存在或已被删除')
+          return
+        }
+
+        await ElMessageBox.confirm('确定要重置该用户的订阅地址吗？重置后所有设备将无法继续使用，需要重新订阅。', '确认重置', {
           type: 'warning'
         })
         
-        await adminAPI.resetUserSubscription(subscription.user.id)
+        await adminAPI.resetUserSubscription(userId)
         ElMessage.success('订阅地址重置成功')
         loadSubscriptions()
+        
+        // 如果当前正在查看该用户的详情，重新加载设备列表
+        if (selectedUser.value && (selectedUser.value.user?.id === userId || selectedUser.value.user_id === userId)) {
+          await loadUserDevices()
+        }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('重置订阅失败')
-          }
+          const errorMsg = error.response?.data?.message || error.message || '重置订阅失败'
+          ElMessage.error(`重置订阅失败: ${errorMsg}`)
+        }
       }
     }
 
     // 发送订阅邮件（添加防重复点击机制）
     const sendingEmailMap = new Map()
     const sendSubscriptionEmail = async (subscription) => {
+      const userId = subscription.user?.id || subscription.user_id
+      if (!userId || userId === 0) {
+        ElMessage.warning('无法发送：用户信息不存在或已被删除')
+        return
+      }
+
       // 防止重复点击
-      const userId = subscription.user.id
       if (sendingEmailMap.has(userId)) {
         ElMessage.warning('邮件正在发送中，请勿重复点击')
         return
@@ -1903,6 +1931,19 @@ export default {
 
     // 删除用户
     const deleteUser = async (subscription) => {
+      // 检查用户ID是否有效
+      const userId = subscription.user?.id || subscription.user_id
+      if (!userId || userId === 0) {
+        ElMessage.warning('无法删除：用户信息不存在或已被删除')
+        return
+      }
+
+      // 检查用户是否已删除
+      if (subscription.user?.deleted) {
+        ElMessage.warning('该用户已被删除，无法再次删除')
+        return
+      }
+
       try {
         await ElMessageBox.confirm(
           '确定要删除该用户吗？这将删除用户的所有信息，包括设备记录、账号信息、邮件信息、UA记录等。此操作不可恢复！',
@@ -1914,30 +1955,45 @@ export default {
           }
         )
         
-        await adminAPI.deleteUser(subscription.user.id)
+        await adminAPI.deleteUser(userId)
         ElMessage.success('用户删除成功')
         loadSubscriptions()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('删除用户失败')
-          }
+          const errorMsg = error.response?.data?.message || error.message || '删除用户失败'
+          ElMessage.error(`删除用户失败: ${errorMsg}`)
+        }
       }
     }
 
     // 清理用户设备
     const clearUserDevices = async (subscription) => {
       try {
+        const userId = subscription.user?.id || subscription.user_id
+        if (!userId || userId === 0) {
+          ElMessage.warning('无法清理：用户信息不存在或已被删除')
+          return
+        }
+
         await ElMessageBox.confirm('确定要清理该用户的在线设备吗？这将清除所有设备记录和UA记录。', '确认清理', {
           type: 'warning'
         })
         
-        await adminAPI.clearUserDevices(subscription.user.id)
+        await adminAPI.clearUserDevices(userId)
         ElMessage.success('设备清理成功')
-        loadSubscriptions()
+        
+        // 重新加载订阅列表以更新设备计数
+        await loadSubscriptions()
+        
+        // 如果当前正在查看该用户的详情，重新加载设备列表
+        if (selectedUser.value && (selectedUser.value.user?.id === userId || selectedUser.value.user_id === userId)) {
+          await loadUserDevices()
+        }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('清理设备失败')
-          }
+          const errorMsg = error.response?.data?.message || error.message || '清理设备失败'
+          ElMessage.error(`清理设备失败: ${errorMsg}`)
+        }
       }
     }
 
@@ -1948,13 +2004,21 @@ export default {
           type: 'warning'
         })
         
-        await adminAPI.batchClearDevices()
+        // 获取所有订阅的ID
+        const subscriptionIds = subscriptions.value.map(sub => sub.id)
+        if (subscriptionIds.length === 0) {
+          ElMessage.warning('没有可清理的订阅')
+          return
+        }
+        
+        await adminAPI.batchClearDevices({ subscription_ids: subscriptionIds })
         ElMessage.success('批量清理设备成功')
         loadSubscriptions()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('批量清理设备失败')
-          }
+          const errorMsg = error.response?.data?.message || error.message || '批量清理设备失败'
+          ElMessage.error(`批量清理设备失败: ${errorMsg}`)
+        }
       }
     }
 

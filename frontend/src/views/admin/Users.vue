@@ -1145,9 +1145,15 @@ export default {
     }
 
     const deleteUser = async (user) => {
+      // 检查用户ID是否有效
+      if (!user || !user.id || user.id === 0) {
+        ElMessage.warning('无效的用户ID，无法删除')
+        return
+      }
+
       try {
         await ElMessageBox.confirm(
-          `确定要删除用户 "${user.username}" 吗？此操作不可恢复。`, 
+          `确定要删除用户 "${user.username || user.email || '未知用户'}" 吗？此操作不可恢复。`, 
           '确认删除', 
           { type: 'warning' }
         )
@@ -1156,7 +1162,8 @@ export default {
         loadUsers()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(`删除失败: ${error.response?.data?.message || error.message}`)
+          const errorMsg = error.response?.data?.message || error.message || '删除失败'
+          ElMessage.error(`删除失败: ${errorMsg}`)
         }
       }
     }

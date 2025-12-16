@@ -245,6 +245,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { subscriptionAPI } from '@/utils/api'
 import { formatDateTime as formatTimeUtil } from '@/utils/date'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+dayjs.extend(timezone)
 
 export default {
   name: 'Devices',

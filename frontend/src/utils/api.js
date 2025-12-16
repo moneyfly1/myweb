@@ -357,8 +357,8 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
-  sendVerificationCode: (data) => api.post('/auth/send-verification-code', data),
-  resendVerificationCode: (data) => api.post('/auth/resend-verification-code', data),
+  sendVerificationCode: (data) => api.post('/auth/verification/send', data),
+  resendVerificationCode: (data) => api.post('/auth/verification/send', data),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   refreshToken: () => api.post('/auth/refresh-token')
 }
@@ -452,7 +452,7 @@ export const adminAPI = {
   extendSubscription: (subscriptionId, days) => api.post(`/admin/subscriptions/${subscriptionId}/extend`, { days }),
   resetUserSubscription: (userId) => api.post(`/admin/subscriptions/user/${userId}/reset-all`),
   sendSubscriptionEmail: (userId) => api.post(`/admin/subscriptions/user/${userId}/send-email`),
-  batchClearDevices: () => api.post('/admin/subscriptions/batch-clear-devices'),
+  batchClearDevices: (data) => api.post('/admin/subscriptions/batch-clear-devices', data),
   exportSubscriptions: () => api.get('/admin/subscriptions/export', { responseType: 'blob' }),
   getAppleStats: () => api.get('/admin/subscriptions/apple-stats'),
   getOnlineStats: () => api.get('/admin/subscriptions/online-stats'),
@@ -463,7 +463,7 @@ export const adminAPI = {
   batchResetSubscriptions: (subscriptionIds) => api.post('/admin/subscriptions/batch-reset', { subscription_ids: subscriptionIds }),
   batchSendSubscriptionEmail: (subscriptionIds) => api.post('/admin/subscriptions/batch-send-email', { subscription_ids: subscriptionIds }),
   updateOrder: (orderId, data) => api.put(`/admin/orders/${orderId}`, data),
-  getPackages: () => api.get('/admin/packages'),
+  getPackages: (params) => api.get('/admin/packages', { params }),
   createPackage: (data) => api.post('/admin/packages', data),
   updatePackage: (packageId, data) => api.put(`/admin/packages/${packageId}`, data),
   deletePackage: (packageId) => api.delete(`/admin/packages/${packageId}`),
@@ -488,7 +488,7 @@ export const adminAPI = {
   testAdminBarkNotification: () => api.post('/admin/settings/admin-notification/test/bark'),
   getSystemLogs: (params) => api.get('/admin/system-logs', { params }),
   getLogsStats: () => api.get('/admin/logs-stats'),
-  exportLogs: (params) => api.get('/admin/export-logs', { params }),
+  exportLogs: (params) => api.get('/admin/export-logs', { params, responseType: 'blob' }),
   clearLogs: () => api.post('/admin/clear-logs'),
   getUserDevices: (userId) => api.get(`/admin/users/${userId}/devices`),
   getSubscriptionDevices: (subscriptionId) => api.get(`/admin/subscriptions/${subscriptionId}/devices`),
@@ -507,6 +507,7 @@ export const notificationAPI = {
   createNotification: (data) => api.post('/notifications/admin/notifications', data),
   updateNotification: (notificationId, data) => api.put(`/notifications/admin/notifications/${notificationId}`, data),
   deleteNotification: (notificationId) => api.delete(`/notifications/admin/notifications/${notificationId}`),
+  deleteAdminNotification: (notificationId) => api.delete(`/notifications/admin/notifications/${notificationId}`),
   broadcastNotification: (data) => api.post('/notifications/admin/notifications/broadcast', data)
 }
 

@@ -9,6 +9,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -137,6 +138,10 @@ func GetAdminSubscriptions(c *gin.Context) {
 		keyword = c.Query("keyword") // 兼容两种参数名
 	}
 	if keyword != "" {
+		// 清理和验证搜索关键词，防止SQL注入
+		keyword = utils.SanitizeSearchKeyword(keyword)
+	}
+	if keyword != "" {
 		query = query.Where("subscription_url LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
 			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
 	}
@@ -196,6 +201,15 @@ func GetAdminSubscriptions(c *gin.Context) {
 			currentDevices = int(onlineDevices)
 		}
 
+		// 统计订阅次数
+		// apple_count: v2ray + ssr 订阅次数（通用订阅）
+		var appleCount int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type IN ?", sub.ID, []string{"v2ray", "ssr"}).Count(&appleCount)
+
+		// clash_count: clash 订阅次数（猫咪订阅）
+		var clashCount int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type = ?", sub.ID, "clash").Count(&clashCount)
+
 		// 计算到期状态
 		now := utils.GetBeijingTime()
 		daysUntilExpire := 0
@@ -216,18 +230,50 @@ func GetAdminSubscriptions(c *gin.Context) {
 		clashURL := fmt.Sprintf("%s/api/v1/subscribe/%s", baseURL, sub.SubscriptionURL)                       // Clash YAML
 
 		// 构建用户信息对象（前端期望嵌套在 user 中）
-		userInfo := gin.H{
-			"id":       sub.User.ID,
-			"username": sub.User.Username,
-			"email":    sub.User.Email,
+		// 检查用户是否存在（如果 Preload 失败，User.ID 会是 0）
+		var userInfo gin.H
+		var username, email string
+
+		if sub.User.ID == 0 {
+			// Preload 失败，尝试从数据库重新查询用户
+			var user models.User
+			if err := db.First(&user, sub.UserID).Error; err != nil {
+				// 用户确实不存在（可能已被删除）
+				username = fmt.Sprintf("用户已删除 (ID: %d)", sub.UserID)
+				email = fmt.Sprintf("deleted_user_%d", sub.UserID)
+				userInfo = gin.H{
+					"id":       0,
+					"username": username,
+					"email":    email,
+					"deleted":  true, // 标记用户已删除
+				}
+			} else {
+				// 用户存在，使用查询到的用户信息
+				username = user.Username
+				email = user.Email
+				userInfo = gin.H{
+					"id":       user.ID,
+					"username": username,
+					"email":    email,
+				}
+			}
+		} else {
+			// 用户存在，使用 Preload 的用户信息
+			username = sub.User.Username
+			email = sub.User.Email
+			userInfo = gin.H{
+				"id":       sub.User.ID,
+				"username": username,
+				"email":    email,
+			}
 		}
 
 		subscriptionList = append(subscriptionList, gin.H{
 			"id":                sub.ID,
 			"user_id":           sub.UserID,
-			"user":              userInfo,          // 嵌套用户信息
-			"username":          sub.User.Username, // 保留顶层字段以兼容
-			"email":             sub.User.Email,    // 保留顶层字段以兼容
+			"user":              userInfo, // 嵌套用户信息
+			"username":          username, // 保留顶层字段以兼容
+			"email":             email,    // 保留顶层字段以兼容
 			"subscription_url":  sub.SubscriptionURL,
 			"v2ray_url":         v2rayURL,
 			"clash_url":         clashURL,
@@ -236,8 +282,8 @@ func GetAdminSubscriptions(c *gin.Context) {
 			"device_limit":      sub.DeviceLimit,
 			"current_devices":   currentDevices,
 			"online_devices":    onlineDevices,
-			"apple_count":       0,
-			"clash_count":       0,
+			"apple_count":       appleCount,
+			"clash_count":       clashCount,
 			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
 			"days_until_expire": daysUntilExpire,
 			"is_expired":        isExpired,
@@ -256,7 +302,97 @@ func GetAdminSubscriptions(c *gin.Context) {
 	})
 }
 
-// GetSubscriptionDevices 获取订阅设备列表
+// GetUserSubscriptionDevices 获取当前用户的订阅设备列表（不需要订阅ID）
+func GetUserSubscriptionDevices(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "未登录",
+		})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 获取用户的订阅
+	var subscription models.Subscription
+	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&subscription).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    []gin.H{},
+		})
+		return
+	}
+
+	// 获取设备列表
+	var devices []models.Device
+	if err := db.Where("subscription_id = ?", subscription.ID).Find(&devices).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取设备列表失败",
+		})
+		return
+	}
+
+	deviceList := make([]gin.H, 0)
+	for _, device := range devices {
+		// Helper function to safely get string value from pointer
+		getStringValue := func(ptr *string) string {
+			if ptr != nil {
+				return *ptr
+			}
+			return ""
+		}
+
+		deviceName := getStringValue(device.DeviceName)
+		deviceType := getStringValue(device.DeviceType)
+		ipAddress := getStringValue(device.IPAddress)
+		osName := getStringValue(device.OSName)
+		osVersion := getStringValue(device.OSVersion)
+		userAgent := getStringValue(device.UserAgent)
+		softwareName := getStringValue(device.SoftwareName)
+		softwareVersion := getStringValue(device.SoftwareVersion)
+		deviceModel := getStringValue(device.DeviceModel)
+		deviceBrand := getStringValue(device.DeviceBrand)
+
+		deviceList = append(deviceList, gin.H{
+			"id":                 device.ID,
+			"device_name":        deviceName,
+			"name":               deviceName, // 兼容字段
+			"device_fingerprint": device.DeviceFingerprint,
+			"device_type":        deviceType,
+			"type":               deviceType, // 兼容字段
+			"ip_address":         ipAddress,
+			"ip":                 ipAddress, // 兼容字段
+			"os_name":            osName,
+			"os_version":         osVersion,
+			"last_access":        device.LastAccess.Format("2006-01-02 15:04:05"),
+			"last_seen": func() string {
+				if device.LastSeen != nil {
+					return device.LastSeen.Format("2006-01-02 15:04:05")
+				}
+				return device.LastAccess.Format("2006-01-02 15:04:05")
+			}(), // 兼容字段
+			"created_at":       device.CreatedAt.Format("2006-01-02 15:04:05"),
+			"is_active":        device.IsActive,
+			"is_allowed":       device.IsAllowed,
+			"user_agent":       userAgent,
+			"software_name":    softwareName,
+			"software_version": softwareVersion,
+			"device_model":     deviceModel,
+			"device_brand":     deviceBrand,
+			"access_count":     device.AccessCount, // 使用实际的访问次数
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    deviceList,
+	})
+}
+
+// GetSubscriptionDevices 获取订阅设备列表（需要订阅ID）
 func GetSubscriptionDevices(c *gin.Context) {
 	subscriptionID := c.Param("id")
 
@@ -285,27 +421,46 @@ func GetSubscriptionDevices(c *gin.Context) {
 
 	deviceList := make([]gin.H, 0)
 	for _, device := range devices {
+		// Helper function to safely get string value from pointer
+		getStringValue := func(ptr *string) string {
+			if ptr != nil {
+				return *ptr
+			}
+			return ""
+		}
+
+		deviceName := getStringValue(device.DeviceName)
+		deviceType := getStringValue(device.DeviceType)
+		ipAddress := getStringValue(device.IPAddress)
+		osName := getStringValue(device.OSName)
+		osVersion := getStringValue(device.OSVersion)
+		userAgent := getStringValue(device.UserAgent)
+		softwareName := getStringValue(device.SoftwareName)
+		softwareVersion := getStringValue(device.SoftwareVersion)
+		deviceModel := getStringValue(device.DeviceModel)
+		deviceBrand := getStringValue(device.DeviceBrand)
+
 		deviceList = append(deviceList, gin.H{
 			"id":                 device.ID,
-			"device_name":        device.DeviceName.String,
-			"name":               device.DeviceName.String, // 兼容字段
+			"device_name":        deviceName,
+			"name":               deviceName, // 兼容字段
 			"device_fingerprint": device.DeviceFingerprint,
-			"device_type":        device.DeviceType.String,
-			"type":               device.DeviceType.String, // 兼容字段
-			"ip_address":         device.IPAddress.String,
-			"ip":                 device.IPAddress.String, // 兼容字段
-			"os_name":            device.OSName.String,
-			"os_version":         device.OSVersion.String,
+			"device_type":        deviceType,
+			"type":               deviceType, // 兼容字段
+			"ip_address":         ipAddress,
+			"ip":                 ipAddress, // 兼容字段
+			"os_name":            osName,
+			"os_version":         osVersion,
 			"last_access":        device.LastAccess.Format("2006-01-02 15:04:05"),
 			"last_seen":          device.LastAccess.Format("2006-01-02 15:04:05"), // 兼容字段
 			"is_active":          device.IsActive,
 			"is_allowed":         device.IsAllowed,
-			"user_agent":         device.UserAgent.String,
-			"software_name":      device.SoftwareName.String,
-			"software_version":   device.SoftwareVersion.String,
-			"device_model":       device.DeviceModel.String,
-			"device_brand":       device.DeviceBrand.String,
-			"access_count":       0, // 如果需要可以从活动记录中统计
+			"user_agent":         userAgent,
+			"software_name":      softwareName,
+			"software_version":   softwareVersion,
+			"device_model":       deviceModel,
+			"device_brand":       deviceBrand,
+			"access_count":       device.AccessCount, // 使用实际的访问次数
 			"created_at":         device.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
@@ -420,6 +575,13 @@ func ResetSubscription(c *gin.Context) {
 		return
 	}
 
+	// 获取用户信息
+	var user models.User
+	if err := db.First(&user, sub.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		return
+	}
+
 	sub.SubscriptionURL = utils.GenerateSubscriptionURL()
 	sub.CurrentDevices = 0
 
@@ -427,6 +589,25 @@ func ResetSubscription(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "重置订阅失败"})
 		return
 	}
+
+	// 发送订阅重置邮件
+	go func() {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+		baseURL := buildBaseURL(c)
+		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+		v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)
+		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)
+		expireTime := "未设置"
+		if !sub.ExpireTime.IsZero() {
+			expireTime = sub.ExpireTime.Format("2006-01-02 15:04:05")
+		}
+		resetTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		resetReason := "管理员重置"
+		content := templateBuilder.GetSubscriptionResetTemplate(user.Username, v2rayURL, clashURL, expireTime, resetTime, resetReason)
+		subject := "订阅重置通知"
+		_ = emailService.QueueEmail(user.Email, subject, content, "subscription_reset")
+	}()
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
 }
@@ -449,15 +630,60 @@ func ExtendSubscription(c *gin.Context) {
 		return
 	}
 
+	// 获取用户信息
+	var user models.User
+	if err := db.First(&user, sub.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		return
+	}
+
+	// 获取套餐信息
+	var packageName string
+	if sub.PackageID != nil {
+		var pkg models.Package
+		if err := db.First(&pkg, *sub.PackageID).Error; err == nil {
+			packageName = pkg.Name
+		}
+	}
+	if packageName == "" {
+		packageName = "默认套餐"
+	}
+
+	oldExpiryDate := "未设置"
+	if !sub.ExpireTime.IsZero() {
+		oldExpiryDate = sub.ExpireTime.Format("2006-01-02 15:04:05")
+	}
+
 	if sub.ExpireTime.IsZero() {
 		sub.ExpireTime = utils.GetBeijingTime()
 	}
 	sub.ExpireTime = sub.ExpireTime.AddDate(0, 0, req.Days)
 
+	newExpiryDate := sub.ExpireTime.Format("2006-01-02 15:04:05")
+
 	if err := db.Save(&sub).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "延长订阅失败"})
 		return
 	}
+
+	// 发送续费成功邮件
+	go func() {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+		renewalDate := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		// 这里假设续费金额为0（管理员延长），实际应该从请求中获取
+		amount := 0.0
+		content := templateBuilder.GetRenewalConfirmationTemplate(
+			user.Username,
+			packageName,
+			oldExpiryDate,
+			newExpiryDate,
+			renewalDate,
+			amount,
+		)
+		subject := "续费成功"
+		_ = emailService.QueueEmail(user.Email, subject, content, "renewal_confirmation")
+	}()
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已延长", "data": sub})
 }
@@ -481,10 +707,63 @@ func ResetUserSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "用户订阅已重置"})
 }
 
-// SendSubscriptionEmail 发送订阅邮件（占位实现）
+// SendSubscriptionEmail 发送订阅邮件（管理员）
 func SendSubscriptionEmail(c *gin.Context) {
 	userID := c.Param("id")
-	_ = userID
+	db := database.GetDB()
+
+	// 获取用户信息
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		return
+	}
+
+	// 获取用户的订阅
+	var subscription models.Subscription
+	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户没有订阅"})
+		return
+	}
+
+	// 生成订阅链接
+	baseURL := buildBaseURL(c)
+	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+	v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+
+	// 计算到期时间和剩余天数
+	expireTime := "未设置"
+	remainingDays := 0
+	if !subscription.ExpireTime.IsZero() {
+		expireTime = subscription.ExpireTime.Format("2006-01-02 15:04:05")
+		now := utils.GetBeijingTime()
+		diff := subscription.ExpireTime.Sub(now)
+		if diff > 0 {
+			remainingDays = int(diff.Hours() / 24)
+		}
+	}
+
+	// 使用新的邮件模板
+	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
+	content := templateBuilder.GetSubscriptionTemplate(
+		user.Username,
+		v2rayURL,
+		clashURL,
+		expireTime,
+		remainingDays,
+		subscription.DeviceLimit,
+		subscription.CurrentDevices,
+	)
+	subject := "服务配置信息"
+
+	// 加入邮件队列
+	if err := emailService.QueueEmail(user.Email, subject, content, "subscription"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败: " + err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅邮件已加入发送队列"})
 }
 
@@ -545,6 +824,25 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 		return
 	}
 
+	// 发送订阅重置邮件
+	go func() {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+		baseURL := buildBaseURL(c)
+		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+		v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+		expireTime := "未设置"
+		if !subscription.ExpireTime.IsZero() {
+			expireTime = subscription.ExpireTime.Format("2006-01-02 15:04:05")
+		}
+		resetTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		resetReason := "用户主动重置"
+		content := templateBuilder.GetSubscriptionResetTemplate(user.Username, v2rayURL, clashURL, expireTime, resetTime, resetReason)
+		subject := "订阅重置通知"
+		_ = emailService.QueueEmail(user.Email, subject, content, "subscription_reset")
+	}()
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": subscription})
 }
 
@@ -556,9 +854,53 @@ func SendSubscriptionEmailSelf(c *gin.Context) {
 		return
 	}
 
-	// 这里应该调用邮件服务发送订阅邮件
-	// 暂时返回成功消息（user 变量保留用于后续实现）
-	_ = user
+	db := database.GetDB()
+
+	// 获取用户的订阅
+	var subscription models.Subscription
+	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "您还没有订阅"})
+		return
+	}
+
+	// 生成订阅链接
+	baseURL := buildBaseURL(c)
+	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+	v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+
+	// 计算到期时间和剩余天数
+	expireTime := "未设置"
+	remainingDays := 0
+	if !subscription.ExpireTime.IsZero() {
+		expireTime = subscription.ExpireTime.Format("2006-01-02 15:04:05")
+		now := utils.GetBeijingTime()
+		diff := subscription.ExpireTime.Sub(now)
+		if diff > 0 {
+			remainingDays = int(diff.Hours() / 24)
+		}
+	}
+
+	// 使用新的邮件模板
+	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
+	content := templateBuilder.GetSubscriptionTemplate(
+		user.Username,
+		v2rayURL,
+		clashURL,
+		expireTime,
+		remainingDays,
+		subscription.DeviceLimit,
+		subscription.CurrentDevices,
+	)
+	subject := "服务配置信息"
+
+	// 加入邮件队列
+	if err := emailService.QueueEmail(user.Email, subject, content, "subscription"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败: " + err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅邮件已加入发送队列"})
 }
 
@@ -610,7 +952,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	}
 }
 
-// RemoveDevice 删除单个设备
+// RemoveDevice 删除单个设备（管理员）
 func RemoveDevice(c *gin.Context) {
 	deviceID := c.Param("id")
 	db := database.GetDB()
@@ -623,6 +965,13 @@ func RemoveDevice(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取设备失败"})
 		}
+		return
+	}
+
+	// 验证设备所属的订阅是否存在（防止IDOR）
+	var subscription models.Subscription
+	if err := db.First(&subscription, device.SubscriptionID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
 

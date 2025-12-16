@@ -454,10 +454,16 @@ export default {
     const saveClashConfig = async () => {
       clashLoading.value = true
       try {
-        await configAPI.saveClashConfig(clashConfig.value)
-        ElMessage.success('Clash配置保存成功')
+        const response = await configAPI.saveClashConfig(clashConfig.value)
+        if (response.data && response.data.success) {
+          ElMessage.success('Clash配置保存成功')
+          await loadClashConfig()
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存Clash配置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       } finally {
         clashLoading.value = false
       }
@@ -465,10 +471,16 @@ export default {
     const saveV2rayConfig = async () => {
       v2rayLoading.value = true
       try {
-        await configAPI.saveV2rayConfig(v2rayConfig.value)
-        ElMessage.success('V2Ray配置保存成功')
+        const response = await configAPI.saveV2rayConfig(v2rayConfig.value)
+        if (response.data && response.data.success) {
+          ElMessage.success('V2Ray配置保存成功')
+          await loadV2rayConfig()
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存V2Ray配置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       } finally {
         v2rayLoading.value = false
       }
@@ -506,11 +518,16 @@ export default {
           smtp_encryption: emailForm.smtp_encryption,
           from_email: emailForm.from_email
         }
-        await configAPI.saveEmailConfig(emailConfigData)
-        ElMessage.success('邮件配置保存成功')
-        await loadEmailConfig()
+        const response = await configAPI.saveEmailConfig(emailConfigData)
+        if (response.data && response.data.success) {
+          ElMessage.success('邮件配置保存成功')
+          await loadEmailConfig()
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
-        ElMessage.error('保存失败')
+        console.error('保存邮件配置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
       } finally {
         emailLoading.value = false
       }
@@ -521,9 +538,13 @@ export default {
         if (response.data && response.data.success) {
           const data = response.data.data
           clashConfig.value = typeof data === 'string' ? data : (data?.content || data || '')
+        } else {
+          clashConfig.value = ''
         }
       } catch (error) {
+        console.error('加载Clash配置失败:', error)
         ElMessage.error('加载Clash配置失败')
+        clashConfig.value = ''
       }
     }
 
@@ -533,9 +554,13 @@ export default {
         if (response.data && response.data.success) {
           const data = response.data.data
           v2rayConfig.value = typeof data === 'string' ? data : (data?.content || data || '')
+        } else {
+          v2rayConfig.value = ''
         }
       } catch (error) {
+        console.error('加载V2Ray配置失败:', error)
         ElMessage.error('加载V2Ray配置失败')
+        v2rayConfig.value = ''
       }
     }
     const saveClashConfigInvalid = async () => {
@@ -566,9 +591,13 @@ export default {
         if (response.data && response.data.success) {
           const data = response.data.data
           clashConfigInvalid.value = typeof data === 'string' ? data : (data?.content || data || '')
+        } else {
+          clashConfigInvalid.value = ''
         }
       } catch (error) {
+        console.error('加载Clash失效配置失败:', error)
         ElMessage.error('加载Clash失效配置失败')
+        clashConfigInvalid.value = ''
       }
     }
     const loadV2rayConfigInvalid = async () => {
@@ -577,9 +606,13 @@ export default {
         if (response.data && response.data.success) {
           const data = response.data.data
           v2rayConfigInvalid.value = typeof data === 'string' ? data : (data?.content || data || '')
+        } else {
+          v2rayConfigInvalid.value = ''
         }
       } catch (error) {
+        console.error('加载V2Ray失效配置失败:', error)
         ElMessage.error('加载V2Ray失效配置失败')
+        v2rayConfigInvalid.value = ''
       }
     }
     const exportConfig = async () => {
@@ -677,9 +710,15 @@ export default {
         const response = await configAPI.getSystemConfig()
         if (response.data && response.data.success) {
           const configData = response.data.data
-          Object.assign(systemForm, configData)
+          // 确保所有字段都有值
+          if (configData.site_name !== undefined) systemForm.site_name = configData.site_name || ''
+          if (configData.site_description !== undefined) systemForm.site_description = configData.site_description || ''
+          if (configData.logo_url !== undefined) systemForm.logo_url = configData.logo_url || ''
+          if (configData.maintenance_mode !== undefined) systemForm.maintenance_mode = configData.maintenance_mode === true || configData.maintenance_mode === 'true'
+          if (configData.maintenance_message !== undefined) systemForm.maintenance_message = configData.maintenance_message || ''
         }
       } catch (error) {
+        console.error('加载系统配置失败:', error)
         ElMessage.error('加载系统配置失败')
       }
     }

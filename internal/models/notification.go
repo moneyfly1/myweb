@@ -13,7 +13,9 @@ type Notification struct {
 	Content   string        `gorm:"type:text;not null" json:"content"`
 	Type      string        `gorm:"type:varchar(50);default:system" json:"type"`
 	IsRead    bool          `gorm:"default:false" json:"is_read"`
+	IsActive  bool          `gorm:"default:true" json:"is_active"`
 	CreatedAt time.Time     `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time     `gorm:"autoUpdateTime" json:"updated_at"`
 	ReadAt    sql.NullTime  `json:"read_at,omitempty"`
 
 	// 关系

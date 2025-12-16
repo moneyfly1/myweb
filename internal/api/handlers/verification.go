@@ -37,8 +37,8 @@ func SendVerificationCode(c *gin.Context) {
 	// 生成6位验证码
 	code := generateVerificationCode()
 
-	// 验证码有效期10分钟
-	expiresAt := utils.GetBeijingTime().Add(10 * time.Minute)
+	// 验证码有效期5分钟（缩短有效期提高安全性）
+	expiresAt := utils.GetBeijingTime().Add(5 * time.Minute)
 
 	if req.Type == "email" {
 		if req.Email == "" {
@@ -71,7 +71,8 @@ func SendVerificationCode(c *gin.Context) {
 		if err := emailService.SendVerificationEmail(req.Email, code); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": "发送邮件失败",
+				"message": fmt.Sprintf("发送邮件失败: %v", err),
+				"error":   err.Error(),
 			})
 			return
 		}
@@ -155,8 +156,37 @@ func VerifyCode(c *gin.Context) {
 		identifier = req.Phone
 	}
 
+	// 检查最近的验证码尝试次数（最多5次）
+	// 检查最近5分钟内失败的尝试次数
+	fiveMinutesAgo := utils.GetBeijingTime().Add(-5 * time.Minute)
+	var failedAttempts int64
+	db.Model(&models.VerificationAttempt{}).
+		Where("email = ? AND success = ? AND created_at > ?", identifier, false, fiveMinutesAgo).
+		Count(&failedAttempts)
+
+	if failedAttempts >= 5 {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"success": false,
+			"message": "验证码尝试次数过多，请5分钟后再试",
+		})
+		return
+	}
+
+	// 获取IP地址用于记录
+	ipAddress := c.ClientIP()
+
+	// 查找验证码
 	var verificationCode models.VerificationCode
 	if err := db.Where("email = ? AND code = ? AND used = ?", identifier, req.Code, 0).Order("created_at DESC").First(&verificationCode).Error; err != nil {
+		// 记录失败的尝试
+		attempt := models.VerificationAttempt{
+			Email:     identifier,
+			IPAddress: database.NullString(ipAddress),
+			Success:   false,
+			Purpose:   "register",
+		}
+		db.Create(&attempt)
+
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "验证码错误或已使用",
@@ -166,6 +196,15 @@ func VerifyCode(c *gin.Context) {
 
 	// 检查是否过期
 	if verificationCode.IsExpired() {
+		// 记录失败的尝试
+		attempt := models.VerificationAttempt{
+			Email:     identifier,
+			IPAddress: database.NullString(ipAddress),
+			Success:   false,
+			Purpose:   "register",
+		}
+		db.Create(&attempt)
+
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "验证码已过期",
@@ -173,7 +212,16 @@ func VerifyCode(c *gin.Context) {
 		return
 	}
 
-	// 标记为已使用
+	// 验证成功，记录成功的尝试
+	attempt := models.VerificationAttempt{
+		Email:     identifier,
+		IPAddress: database.NullString(ipAddress),
+		Success:   true,
+		Purpose:   "register",
+	}
+	db.Create(&attempt)
+
+	// 标记验证码为已使用
 	verificationCode.MarkAsUsed()
 	db.Save(&verificationCode)
 
@@ -183,11 +231,15 @@ func VerifyCode(c *gin.Context) {
 	})
 }
 
-// generateVerificationCode 生成6位数字验证码
+// generateVerificationCode 生成6位数字验证码（使用加密安全的随机数生成器）
 func generateVerificationCode() string {
-	b := make([]byte, 3)
+	// 使用 crypto/rand 生成更安全的随机数
+	b := make([]byte, 4)
 	rand.Read(b)
-	code := int(b[0])<<16 | int(b[1])<<8 | int(b[2])
-	return fmt.Sprintf("%06d", code%1000000)
+	// 使用更大的随机数范围，确保更好的随机性
+	code := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
+	// 确保是6位数字（100000-999999）
+	code = 100000 + (code % 900000)
+	return fmt.Sprintf("%06d", code)
 }
 
