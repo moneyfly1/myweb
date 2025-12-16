@@ -269,30 +269,28 @@ elif [ ! -d node_modules/vite ]; then
     echo "  vite 模块不存在，需要重新安装"
     NEED_INSTALL=true
 else
-    # 检查 vite 版本是否匹配 package.json
-    PACKAGE_VITE=$(cat package.json | grep '"vite"' | head -1 | sed 's/.*"vite": *"\([^"]*\)".*/\1/' | sed 's/\^//' | sed 's/~//')
-    if [ -z "$PACKAGE_VITE" ]; then
-        PACKAGE_VITE="4.5.0"
-    fi
+    # 检查关键依赖是否存在
+    # 如果关键依赖都存在，就认为依赖已就绪，不需要重新安装
+    MISSING_DEPS=false
+    CRITICAL_DEPS=("vue" "element-plus" "@vitejs/plugin-vue" "axios" "pinia")
     
-    # 获取已安装的 vite 版本
-    INSTALLED_VITE=$(node -e "try { console.log(require('./node_modules/vite/package.json').version); } catch(e) { console.log(''); }" 2>/dev/null || echo "")
+    for dep in "${CRITICAL_DEPS[@]}"; do
+        if [ ! -d "node_modules/$dep" ]; then
+            echo "  缺少关键依赖: $dep"
+            MISSING_DEPS=true
+        fi
+    done
     
-    if [ -z "$INSTALLED_VITE" ]; then
-        echo "  无法读取已安装的 vite 版本，需要重新安装"
+    if [ "$MISSING_DEPS" = true ]; then
+        echo "  检测到缺少关键依赖，需要重新安装"
         NEED_INSTALL=true
     else
-        echo "  package.json 要求: vite $PACKAGE_VITE"
-        echo "  已安装版本: vite $INSTALLED_VITE"
-        
-        # 检查主版本号是否匹配（4.x vs 5.x）
-        PACKAGE_MAJOR=$(echo "$PACKAGE_VITE" | cut -d. -f1)
-        INSTALLED_MAJOR=$(echo "$INSTALLED_VITE" | cut -d. -f1)
-        
-        if [ "$PACKAGE_MAJOR" != "$INSTALLED_MAJOR" ]; then
-            echo "  vite 主版本不匹配（已安装: $INSTALLED_MAJOR.x，需要: $PACKAGE_MAJOR.x），需要重新安装"
-            NEED_INSTALL=true
+        # 获取已安装的 vite 版本（仅用于显示）
+        INSTALLED_VITE=$(node -e "try { console.log(require('./node_modules/vite/package.json').version); } catch(e) { console.log(''); }" 2>/dev/null || echo "")
+        if [ -n "$INSTALLED_VITE" ]; then
+            echo "  vite 已安装: $INSTALLED_VITE"
         fi
+        echo "✅ 前端依赖已就绪，跳过安装"
     fi
 fi
 
