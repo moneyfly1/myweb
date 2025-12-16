@@ -440,6 +440,14 @@ func GetAdminSettings(c *gin.Context) {
 		settings[category] = categorySettings
 	}
 
+	// 单独读取 domain_name（属于 system 类别，但需要在 general 中显示）
+	var domainConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "domain_name", "system").First(&domainConfig).Error; err == nil {
+		if generalSettings, ok := settings["general"].(map[string]interface{}); ok {
+			generalSettings["domain_name"] = domainConfig.Value
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    settings,
@@ -459,12 +467,18 @@ func UpdateGeneralSettings(c *gin.Context) {
 
 	db := database.GetDB()
 	for key, value := range settings {
+		// domain_name 应该保存在 system 类别中
+		category := "general"
+		if key == "domain_name" {
+			category = "system"
+		}
+		
 		var config models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", key, "general").First(&config).Error; err != nil {
+		if err := db.Where("key = ? AND category = ?", key, category).First(&config).Error; err != nil {
 			// 如果不存在，创建新配置
 			config = models.SystemConfig{
 				Key:      key,
-				Category: "general",
+				Category: category,
 				Value:    fmt.Sprintf("%v", value),
 			}
 			db.Create(&config)
