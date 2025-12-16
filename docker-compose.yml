@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./cboard.db
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+    volumes:
+      - ./cboard.db:/root/cboard.db
+      - ./uploads:/root/uploads
+    restart: unless-stopped
+
+  # MySQL 可选（如果需要使用 MySQL）
+  # mysql:
+  #   image: mysql:8.0
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=rootpassword
+  #     - MYSQL_DATABASE=cboard_db
+  #     - MYSQL_USER=cboard_user
+  #     - MYSQL_PASSWORD=cboard_password
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #   ports:
+  #     - "3306:3306"
+
+# volumes:
+#   mysql_data:
+

@@ -1,0 +1,1323 @@
+// 统一的列表页面样式
+// 参考 某站点_2rw4c 项目的样式
+// 全面重构移动端显示
+
+:root {
+  --primary-color: #42a5f5;
+  --secondary-color: #6777ef;
+  --text-color: #1c273c;
+  --bg-color: #f7fafd;
+  --card-bg: #fff;
+  --card-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  --border-radius: 12px;
+}
+
+// 列表容器 - 与异常用户监控和配置更新保持一致，优化紧凑布局
+.list-container {
+  padding: 12px; // 进一步减少内边距，让布局更紧凑
+  // 移除 max-width 和 margin: 0 auto，让内容紧贴左侧导航栏
+  width: 100%;
+  box-sizing: border-box;
+  // 背景色与参考页面保持一致（透明或浅灰）
+  background: transparent;
+  min-height: calc(100vh - 70px);
+  
+  @media (max-width: 768px) {
+    padding: 10px;
+    min-height: calc(100vh - 60px);
+    max-width: 100% !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    background: linear-gradient(180deg, #f0f4ff 0%, #f7fafd 100%);
+  }
+}
+
+// 页面头部
+.page-header {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+  }
+  
+  h1 {
+    color: var(--primary-color);
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    
+    @media (max-width: 768px) {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+  }
+  
+  :is(p) {
+    color: #666;
+    font-size: 1rem;
+    margin: 0;
+    line-height: 1.5;
+    
+    @media (max-width: 768px) {
+      font-size: 0.9rem;
+    }
+  }
+}
+
+// 统计卡片 - 优化紧凑布局
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem; // 进一步减少间距
+  margin-bottom: 0.75rem; // 进一步减少底部间距
+  
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
+.stat-card {
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  padding: 0.75rem; // 进一步减少内边距
+  text-align: center;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 0.625rem;
+  }
+  
+  .stat-number {
+    font-size: 1.75rem; // 进一步减小字体
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 0.25rem; // 减少间距
+    line-height: 1;
+    
+    @media (max-width: 768px) {
+      font-size: 1.5rem;
+    }
+    
+    @media (max-width: 480px) {
+      font-size: 1.5rem;
+    }
+  }
+  
+  .stat-label {
+    color: #666;
+    font-size: 0.875rem; // 稍微减小字体
+    line-height: 1.4;
+    font-weight: 500;
+    
+    @media (max-width: 768px) {
+      font-size: 0.8rem;
+    }
+  }
+}
+
+// 筛选卡片 - 优化紧凑布局
+.filter-card {
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 0.75rem; // 进一步减少底部间距
+  padding: 0.75rem; // 进一步减少内边距
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    padding: 0.625rem;
+    margin-bottom: 0.625rem;
+  }
+  
+  :deep(.el-row) {
+    @media (max-width: 768px) {
+      margin: 0 !important;
+    }
+  }
+  
+  :deep(.el-col) {
+    @media (max-width: 768px) {
+      width: 100% !important;
+      margin-bottom: 12px;
+      
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+  
+  :deep(.el-button) {
+    @media (max-width: 768px) {
+      width: 100%;
+      margin: 0 !important;
+      
+      + .el-button {
+        margin-top: 8px !important;
+      }
+    }
+  }
+}
+
+// 列表卡片 - 优化紧凑布局
+.list-card {
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 0.75rem; // 进一步减少底部间距
+  overflow: hidden;
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    margin-bottom: 0.625rem;
+    border-radius: 8px;
+  }
+  
+  .card-header {
+    padding: 0.625rem 0.875rem; // 进一步减少内边距
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    flex-wrap: wrap;
+    gap: 0.5rem; // 减少间距
+    box-sizing: border-box;
+    font-size: 0.95rem; // 稍微减小字体
+    
+    @media (max-width: 768px) {
+      padding: 0.625rem;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+  }
+  
+  .card-body {
+    padding: 0.75rem; // 进一步减少内边距
+    box-sizing: border-box;
+    
+    @media (max-width: 768px) {
+      padding: 0.625rem;
+      overflow-x: auto;
+    }
+  }
+}
+
+// 表格容器 - 桌面端显示，移动端隐藏
+.table-wrapper {
+  @media (max-width: 768px) {
+    display: none !important;
+  }
+}
+
+// 表格样式优化
+:deep(.el-table) {
+  font-size: 0.95rem;
+  
+  .el-table__header {
+    th {
+      background: #f8f9fa;
+      color: var(--text-color);
+      font-weight: 600;
+      padding: 12px 0;
+      white-space: nowrap;
+      
+      @media (max-width: 768px) {
+        padding: 10px 0;
+        font-size: 0.85rem;
+      }
+    }
+  }
+  
+  .el-table__body {
+    tr {
+      transition: background-color 0.2s;
+      
+      &:hover {
+        background-color: #f8f9fa;
+      }
+    }
+    
+    td {
+      padding: 12px 0;
+      white-space: nowrap;
+      
+      @media (max-width: 768px) {
+        padding: 10px 4px;
+      }
+    }
+  }
+  
+  .el-table__empty-block {
+    padding: 40px 0;
+    
+    @media (max-width: 768px) {
+      padding: 30px 0;
+    }
+  }
+}
+
+// 移动端卡片式列表显示
+.mobile-card-list {
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: block;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .mobile-card {
+    background: #ffffff;
+    border-radius: 14px;
+    border: 1px solid #e0e7ff;
+    box-shadow: 0 4px 12px rgba(66, 165, 245, 0.1);
+    padding: 18px;
+    margin-bottom: 14px;
+    box-sizing: border-box;
+    transition: all 0.3s ease;
+    position: relative;
+    
+    // 交替背景色区分卡片
+    &:nth-child(odd) {
+      background: linear-gradient(135deg, #ffffff 0%, #f8faff 100%);
+      border-color: #dbeafe;
+      box-shadow: 0 4px 12px rgba(66, 165, 245, 0.12);
+    }
+    
+    &:nth-child(even) {
+      background: linear-gradient(135deg, #ffffff 0%, #fef3ff 100%);
+      border-color: #f3e8ff;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.12);
+    }
+    
+    // 悬停效果
+    &:active {
+      transform: scale(0.98);
+      box-shadow: 0 2px 8px rgba(66, 165, 245, 0.15);
+    }
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+    
+    .card-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      margin: 0;
+      border-bottom: 1px solid rgba(224, 231, 255, 0.5);
+      gap: 12px;
+      min-height: 52px; // 确保触摸区域足够大
+      position: relative;
+      
+      // 分隔线样式
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, rgba(224, 231, 255, 0.6) 50%, transparent 100%);
+      }
+      
+      &:last-child {
+        border-bottom: none;
+        
+        &::after {
+          display: none;
+        }
+      }
+      
+      .label {
+        font-weight: 600;
+        color: #64748b;
+        min-width: 90px;
+        flex-shrink: 0;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        padding: 6px 10px;
+        background: linear-gradient(135deg, rgba(66, 165, 245, 0.08) 0%, rgba(102, 126, 234, 0.08) 100%);
+        border-radius: 8px;
+        border: 1px solid rgba(66, 165, 245, 0.15);
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(66, 165, 245, 0.1);
+      }
+      
+      .value {
+        flex: 1;
+        text-align: right;
+        word-break: break-word;
+        font-size: 0.9rem;
+        color: #1e293b;
+        line-height: 1.5;
+        padding: 6px 14px;
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        font-weight: 500;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        
+        :deep(.el-tag) {
+          font-size: 0.8rem;
+          padding: 4px 10px;
+          line-height: 1.4;
+          border-radius: 6px;
+          font-weight: 600;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+      }
+    }
+    
+    .card-actions {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 2px solid rgba(224, 231, 255, 0.4);
+      display: flex;
+      gap: 10px;
+      flex-wrap: nowrap;
+      
+      .el-button {
+        flex: 1;
+        font-size: 0.85rem;
+        padding: 10px 6px;
+        min-height: 44px;
+        max-height: 44px;
+        border-radius: 8px;
+        font-weight: 600;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: row;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        
+        &:active {
+          transform: scale(0.96);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+        }
+        
+        :deep(.el-icon) {
+          margin-right: 4px;
+          font-size: 16px;
+          flex-shrink: 0;
+        }
+        
+        // 如果按钮文字太长，隐藏部分文字
+        &.action-btn {
+          span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        }
+      }
+    }
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #94a3b8;
+    background: linear-gradient(135deg, #ffffff 0%, #f8faff 100%);
+    border-radius: 12px;
+    border: 2px dashed #cbd5e1;
+    margin: 20px 0;
+    
+    :is(i) {
+      font-size: 4rem;
+      margin-bottom: 1.5rem;
+      display: block;
+      color: #cbd5e1;
+    }
+    
+    :is(p) {
+      font-size: 1rem;
+      margin: 0;
+      line-height: 1.6;
+      color: #64748b;
+      font-weight: 500;
+    }
+  }
+}
+
+// 分页样式
+.pagination {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    justify-content: center;
+    margin-top: 1rem;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    
+    :deep(.el-pagination) {
+      .el-pagination__sizes,
+      .el-pagination__jump {
+        display: none;
+      }
+      
+      .el-pagination__total {
+        display: none;
+      }
+      
+      .btn-prev,
+      .btn-next {
+        padding: 8px 12px;
+        min-width: 36px;
+      }
+      
+      .number {
+        min-width: 32px;
+        height: 32px;
+        line-height: 32px;
+        font-size: 0.85rem;
+      }
+    }
+  }
+}
+
+// 操作按钮组
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    width: 100%;
+    gap: 0.5rem;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+      font-size: 0.85rem;
+      padding: 10px 12px;
+      min-height: 40px;
+    }
+  }
+  
+  .button-row {
+    display: flex;
+    gap: 0.5rem;
+    
+    @media (max-width: 768px) {
+      flex-direction: column;
+      width: 100%;
+      gap: 0.5rem;
+    }
+  }
+}
+
+// 搜索表单
+.search-form {
+  @media (max-width: 768px) {
+    :deep(.el-form) {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    :deep(.el-form-item) {
+      margin-bottom: 0 !important;
+      width: 100%;
+      
+      .el-form-item__label {
+        width: 100% !important;
+        text-align: left;
+        margin-bottom: 4px;
+        padding: 0;
+      }
+      
+      .el-form-item__content {
+        width: 100%;
+        
+        .el-input,
+        .el-select,
+        .el-date-picker {
+          width: 100% !important;
+        }
+      }
+    }
+  }
+}
+
+// 桌面端专用样式
+.desktop-only {
+  @media (max-width: 768px) {
+    display: none !important;
+  }
+}
+
+// 移动端智能操作栏（统一样式）
+.mobile-action-bar {
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: block;
+    margin-bottom: 16px;
+    padding: 18px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  
+  .mobile-search-section {
+    margin-bottom: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    
+    .search-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+      
+      .mobile-search-input {
+        flex: 1;
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+        
+        :deep(.el-input__wrapper) {
+          border-radius: 10px;
+          padding-left: 14px;
+          padding-right: 60px; // 为搜索按钮留出空间
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+          border: 2px solid rgba(255, 255, 255, 0.4);
+          min-height: 48px;
+          transition: all 0.3s ease;
+          
+          &:hover {
+            background: #ffffff;
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+          }
+          
+          &.is-focus {
+            background: #ffffff;
+            border-color: #ffffff;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+          }
+        }
+        
+        :deep(.el-input__inner) {
+          color: #1e293b;
+          font-size: 0.95rem;
+          font-weight: 500;
+          
+          &::placeholder {
+            color: #94a3b8;
+            font-weight: 400;
+          }
+        }
+      }
+      
+      .search-button-inside {
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(255, 255, 255, 0.98);
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        color: #667eea;
+        border-radius: 8px;
+        font-weight: 600;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        padding: 0;
+        height: 40px;
+        width: 40px;
+        min-width: 40px;
+        max-width: 40px;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        z-index: 10;
+        
+        &:hover {
+          background: #ffffff;
+          border-color: #ffffff;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          color: #5568d3;
+        }
+        
+        &:active {
+          transform: translateY(-50%) scale(0.96);
+        }
+        
+        .el-icon {
+          font-size: 18px;
+          margin: 0;
+        }
+      }
+    }
+    
+    // 兼容旧的 append 插槽方式（已废弃，保留以防万一）
+    .mobile-search-input {
+      width: 100%;
+      
+      :deep(.el-button) {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-color: transparent;
+        color: white;
+        border-radius: 0 10px 10px 0;
+        font-weight: 600;
+        box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+        
+        &:hover {
+          background: linear-gradient(135deg, #5568d3 0%, #6a3d91 100%);
+          box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+        }
+        
+        &:active {
+          transform: scale(0.96);
+        }
+      }
+    }
+  }
+  
+  // 为 mobile-filter-bar 也应用相同的搜索框样式（Tickets.vue 和 Coupons.vue 使用）
+  .mobile-filter-bar {
+    .mobile-search-section {
+      margin-bottom: 16px;
+      width: 100%;
+      box-sizing: border-box;
+      
+      .search-input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        box-sizing: border-box;
+        
+        .mobile-search-input {
+          flex: 1;
+          width: 100%;
+          box-sizing: border-box;
+          min-width: 0;
+          
+          :deep(.el-input__wrapper) {
+            border-radius: 10px;
+            padding-left: 14px;
+            padding-right: 60px; // 为搜索按钮留出空间
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            min-height: 48px;
+            transition: all 0.3s ease;
+            
+            &:hover {
+              background: #ffffff;
+              border-color: rgba(255, 255, 255, 0.6);
+              box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+            }
+            
+            &.is-focus {
+              background: #ffffff;
+              border-color: #ffffff;
+              box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            }
+          }
+          
+          :deep(.el-input__inner) {
+            color: #1e293b;
+            font-size: 0.95rem;
+            font-weight: 500;
+            
+            &::placeholder {
+              color: #94a3b8;
+              font-weight: 400;
+            }
+          }
+        }
+        
+        .search-button-inside {
+          position: absolute;
+          right: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: rgba(255, 255, 255, 0.98);
+          border: 2px solid rgba(255, 255, 255, 0.4);
+          color: #667eea;
+          border-radius: 8px;
+          font-weight: 600;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+          padding: 0;
+          height: 40px;
+          width: 40px;
+          min-width: 40px;
+          max-width: 40px;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+          z-index: 10;
+          
+          &:hover {
+            background: #ffffff;
+            border-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            color: #5568d3;
+          }
+          
+          &:active {
+            transform: translateY(-50%) scale(0.96);
+          }
+          
+          .el-icon {
+            font-size: 18px;
+            margin: 0;
+          }
+        }
+      }
+    }
+    
+    // 统一的筛选按钮组样式 - 水平排列
+    .mobile-filter-buttons {
+      display: flex !important;
+      flex-direction: row !important;
+      gap: 10px !important;
+      align-items: stretch !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      
+      .el-dropdown {
+        flex: 1 !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+        
+        .el-button {
+          width: 100% !important;
+          background: rgba(255, 255, 255, 0.98) !important;
+          border: 2px solid rgba(255, 255, 255, 0.4) !important;
+          color: #667eea !important;
+          font-weight: 600 !important;
+          border-radius: 10px !important;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+          padding: 10px 12px !important;
+          min-height: 44px !important;
+          height: 44px !important;
+          transition: all 0.2s ease !important;
+          box-sizing: border-box !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          
+          &:hover {
+            background: #ffffff !important;
+            border-color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+          }
+          
+          &.el-button--primary {
+            background: rgba(255, 255, 255, 0.98) !important;
+            border-color: rgba(255, 255, 255, 0.6) !important;
+            color: #667eea !important;
+          }
+          
+          .el-icon {
+            margin-right: 6px;
+            font-size: 16px;
+            flex-shrink: 0;
+          }
+        }
+      }
+    }
+    
+    .el-select,
+    .mobile-status-select {
+      flex: 1 !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      width: auto !important;
+      box-sizing: border-box !important;
+      
+      :deep(.el-input) {
+        width: 100% !important;
+      }
+      
+      :deep(.el-input__wrapper) {
+        background: rgba(255, 255, 255, 0.98) !important;
+        border: 2px solid rgba(255, 255, 255, 0.4) !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+        min-height: 44px !important;
+        height: 44px !important;
+        max-height: 44px !important;
+        transition: all 0.2s ease !important;
+        padding: 0 12px !important;
+        
+        &:hover {
+          background: #ffffff !important;
+          border-color: #ffffff !important;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        }
+        
+        &.is-focus {
+          background: #ffffff !important;
+          border-color: #ffffff !important;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+        }
+      }
+      
+      :deep(.el-input__inner) {
+        color: #1e293b !important;
+        font-size: 0.95rem !important;
+        font-weight: 500 !important;
+        height: 44px !important;
+        line-height: 44px !important;
+      }
+      
+      :deep(.el-input__suffix) {
+        display: flex;
+        align-items: center;
+        height: 44px;
+      }
+    }
+    
+    .el-button,
+    .mobile-action-btn {
+      flex: 1 !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      background: rgba(255, 255, 255, 0.98) !important;
+      border: 2px solid rgba(255, 255, 255, 0.4) !important;
+      color: #667eea !important;
+      font-weight: 600 !important;
+      border-radius: 10px !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+      padding: 10px 12px !important;
+      min-height: 44px !important;
+      height: 44px !important;
+      transition: all 0.2s ease !important;
+      box-sizing: border-box !important;
+      white-space: nowrap !important;
+      
+      &:hover {
+        background: #ffffff !important;
+        border-color: #ffffff !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+      }
+      
+      &:active {
+        transform: scale(0.96) !important;
+      }
+      
+      .el-icon {
+        margin-right: 6px;
+        font-size: 16px;
+        flex-shrink: 0;
+      }
+    }
+  }
+  
+  .mobile-quick-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    
+    .quick-sort-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      
+      .el-button {
+        flex: 1;
+        min-width: 0;
+        font-size: 0.9rem;
+        padding: 12px 16px;
+        min-height: 44px;
+        background: rgba(255, 255, 255, 0.98);
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        color: #667eea;
+        font-weight: 600;
+        border-radius: 10px;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+        transition: all 0.2s ease;
+        
+        &:active {
+          transform: scale(0.96);
+          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
+        }
+        
+        &.is-active,
+        &:hover {
+          background: #ffffff;
+          border-color: #ffffff;
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.18);
+        }
+        
+        :deep(.el-icon) {
+          margin-right: 6px;
+          font-size: 16px;
+        }
+      }
+    }
+    
+    .action-buttons-group {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      
+      .el-button {
+        font-size: 0.9rem;
+        padding: 10px 18px;
+        min-height: 44px;
+        background: rgba(255, 255, 255, 0.95);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: #667eea;
+        font-weight: 600;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+        
+        &:active {
+          transform: scale(0.96);
+        }
+        
+        &:hover {
+          background: #ffffff;
+          border-color: #ffffff;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        :deep(.el-icon) {
+          margin-right: 6px;
+          font-size: 16px;
+        }
+      }
+    }
+  }
+  
+  .mobile-sort-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    
+    .sort-label {
+      color: #667eea;
+      font-weight: 600;
+    }
+    
+    .sort-value {
+      color: #1e293b;
+      flex: 1;
+      font-weight: 500;
+    }
+  }
+}
+
+// 头部操作按钮优化
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  
+  &.desktop-only {
+    @media (max-width: 768px) {
+      display: none !important;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    display: none !important;
+  }
+}
+
+// 批量操作工具栏
+.batch-actions {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: var(--border-radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+    padding: 0.75rem;
+    
+    .batch-info {
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    
+    .batch-buttons {
+      display: flex;
+      gap: 0.5rem;
+      width: 100%;
+      
+      .el-button {
+        flex: 1;
+        font-size: 0.85rem;
+        padding: 10px 12px;
+        min-height: 40px;
+      }
+    }
+  }
+}
+
+// 面包屑导航
+.breadcrumb-nav {
+  margin-bottom: 1.5rem;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    margin-bottom: 1rem;
+    padding: 10px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    
+    &::-webkit-scrollbar {
+      display: none;
+    }
+    scrollbar-width: none;
+    
+    :deep(.el-breadcrumb) {
+      font-size: 13px;
+      white-space: nowrap;
+      
+      .el-breadcrumb__item {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        
+        &:last-child {
+          max-width: none;
+        }
+      }
+    }
+  }
+}
+
+// 标签样式
+:deep(.el-tag) {
+  border-radius: 6px;
+  font-weight: 500;
+  
+  @media (max-width: 768px) {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    line-height: 1.4;
+  }
+}
+
+// 按钮样式优化
+:deep(.el-button) {
+  border-radius: 8px;
+  font-weight: 500;
+  
+  @media (max-width: 768px) {
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    height: auto;
+    line-height: 1.4;
+    min-height: 40px;
+  }
+}
+
+// 卡片样式
+:deep(.el-card) {
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  border: none;
+  box-sizing: border-box;
+  
+  .el-card__header {
+    padding: 1.25rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    box-sizing: border-box;
+    
+    @media (max-width: 768px) {
+      padding: 1rem;
+    }
+  }
+  
+  .el-card__body {
+    padding: 1.5rem;
+    box-sizing: border-box;
+    
+    @media (max-width: 768px) {
+      padding: 1rem;
+    }
+  }
+}
+
+// 输入框和选择器优化
+:deep(.el-input),
+:deep(.el-select),
+:deep(.el-date-picker) {
+  @media (max-width: 768px) {
+    width: 100% !important;
+    
+    .el-input__wrapper {
+      width: 100%;
+    }
+  }
+}
+
+// 表格容器优化（保留用于桌面端）
+.table-wrapper {
+  @media (max-width: 768px) {
+    display: none !important;
+  }
+}
+
+// 移动端筛选按钮组（统一样式）
+.mobile-filter-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+  
+  .el-button,
+  .el-date-picker {
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .el-button {
+    font-size: 0.9rem;
+    padding: 10px 14px;
+    min-height: 44px;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #667eea;
+    font-weight: 600;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    
+    &:active {
+      transform: scale(0.96);
+    }
+    
+    &:hover,
+    &.is-active {
+      background: #ffffff;
+      border-color: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    :deep(.el-icon) {
+      margin-right: 6px;
+      font-size: 16px;
+    }
+  }
+  
+  .el-date-picker {
+    :deep(.el-input__wrapper) {
+      min-height: 44px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      
+      &:hover {
+        background: #ffffff;
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+      
+      &.is-focus {
+        background: #ffffff;
+        border-color: #ffffff;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+    }
+  }
+}
+
+.mobile-action-buttons {
+  display: flex;
+  gap: 10px;
+  
+  .el-button {
+    font-size: 0.9rem;
+    padding: 12px 18px;
+    min-height: 44px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #667eea;
+    font-weight: 600;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    
+    &:active {
+      transform: scale(0.96);
+    }
+    
+    &:hover {
+      background: #ffffff;
+      border-color: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    :deep(.el-icon) {
+      margin-right: 6px;
+      font-size: 16px;
+    }
+  }
+}

@@ -1,0 +1,110 @@
+package models
+
+import (
+	"database/sql"
+	"time"
+)
+
+// TicketStatus 工单状态
+type TicketStatus string
+
+const (
+	TicketStatusPending    TicketStatus = "pending"
+	TicketStatusProcessing TicketStatus = "processing"
+	TicketStatusResolved   TicketStatus = "resolved"
+	TicketStatusClosed     TicketStatus = "closed"
+	TicketStatusCancelled  TicketStatus = "cancelled"
+)
+
+// TicketType 工单类型
+type TicketType string
+
+const (
+	TicketTypeTechnical TicketType = "technical"
+	TicketTypeBilling   TicketType = "billing"
+	TicketTypeAccount   TicketType = "account"
+	TicketTypeOther     TicketType = "other"
+)
+
+// TicketPriority 工单优先级
+type TicketPriority string
+
+const (
+	TicketPriorityLow    TicketPriority = "low"
+	TicketPriorityNormal TicketPriority = "normal"
+	TicketPriorityHigh   TicketPriority = "high"
+	TicketPriorityUrgent TicketPriority = "urgent"
+)
+
+// Ticket 工单模型
+type Ticket struct {
+	ID            uint           `gorm:"primaryKey" json:"id"`
+	TicketNo      string         `gorm:"type:varchar(50);uniqueIndex;not null" json:"ticket_no"`
+	UserID        uint           `gorm:"index;not null" json:"user_id"`
+	Title         string         `gorm:"type:varchar(200);not null" json:"title"`
+	Content       string         `gorm:"type:text;not null" json:"content"`
+	Type          string         `gorm:"type:varchar(20);default:other" json:"type"`
+	Status        string         `gorm:"type:varchar(20);default:pending" json:"status"`
+	Priority      string         `gorm:"type:varchar(20);default:normal" json:"priority"`
+	AssignedTo    sql.NullInt64  `gorm:"index" json:"assigned_to,omitempty"`
+	AdminNotes    sql.NullString `gorm:"type:text" json:"admin_notes,omitempty"`
+	Rating        sql.NullInt64  `json:"rating,omitempty"`
+	RatingComment sql.NullString `gorm:"type:text" json:"rating_comment,omitempty"`
+	CreatedAt     time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt     time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	ResolvedAt    sql.NullTime   `json:"resolved_at,omitempty"`
+	ClosedAt      sql.NullTime   `json:"closed_at,omitempty"`
+
+	// 关系
+	User        User               `gorm:"foreignKey:UserID" json:"-"`
+	Assignee    User               `gorm:"foreignKey:AssignedTo" json:"-"`
+	Replies     []TicketReply      `gorm:"foreignKey:TicketID" json:"-"`
+	Attachments []TicketAttachment `gorm:"foreignKey:TicketID" json:"-"`
+}
+
+// TableName 指定表名
+func (Ticket) TableName() string {
+	return "tickets"
+}
+
+// TicketReply 工单回复模型
+type TicketReply struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	TicketID  uint      `gorm:"index;not null" json:"ticket_id"`
+	UserID    uint      `gorm:"index;not null" json:"user_id"`
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	IsAdmin   string    `gorm:"type:varchar(10);default:false" json:"is_admin"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+
+	// 关系
+	Ticket Ticket `gorm:"foreignKey:TicketID" json:"-"`
+	User   User   `gorm:"foreignKey:UserID" json:"-"`
+}
+
+// TableName 指定表名
+func (TicketReply) TableName() string {
+	return "ticket_replies"
+}
+
+// TicketAttachment 工单附件模型
+type TicketAttachment struct {
+	ID         uint           `gorm:"primaryKey" json:"id"`
+	TicketID   uint           `gorm:"index;not null" json:"ticket_id"`
+	ReplyID    sql.NullInt64  `gorm:"index" json:"reply_id,omitempty"`
+	FileName   string         `gorm:"type:varchar(255);not null" json:"file_name"`
+	FilePath   string         `gorm:"type:varchar(500);not null" json:"file_path"`
+	FileSize   sql.NullInt64  `json:"file_size,omitempty"`
+	FileType   sql.NullString `gorm:"type:varchar(50)" json:"file_type,omitempty"`
+	UploadedBy uint           `gorm:"index;not null" json:"uploaded_by"`
+	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
+
+	// 关系
+	Ticket   Ticket      `gorm:"foreignKey:TicketID" json:"-"`
+	Reply    TicketReply `gorm:"foreignKey:ReplyID" json:"-"`
+	Uploader User        `gorm:"foreignKey:UploadedBy" json:"-"`
+}
+
+// TableName 指定表名
+func (TicketAttachment) TableName() string {
+	return "ticket_attachments"
+}

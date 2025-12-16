@@ -1,0 +1,343 @@
+<template>
+  <div class="login-history-container">
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <h1>登录历史</h1>
+      <p>查看您的账户登录记录</p>
+    </div>
+
+    <!-- 登录历史列表 -->
+    <el-card class="history-card">
+      <template #header>
+        <div class="card-header">
+          <i class="el-icon-time"></i>
+          登录记录
+        </div>
+      </template>
+
+      <!-- 加载状态 -->
+      <div v-if="loading" class="loading-container">
+        <el-skeleton :rows="5" animated />
+      </div>
+
+      <!-- 登录历史表格 -->
+      <el-table 
+        v-else-if="loginHistory.length > 0"
+        :data="loginHistory" 
+        stripe
+        style="width: 100%"
+      >
+        <el-table-column prop="login_time" label="登录时间" width="180">
+          <template #default="scope">
+            {{ formatTime(scope.row.login_time) }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="ip_address" label="IP地址" width="150">
+          <template #default="scope">
+            <el-tag type="info">{{ scope.row.ip_address || '未知' }}</el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="country" label="国家/地区" width="120">
+          <template #default="scope">
+            <el-tag type="success">{{ scope.row.country || '未知' }}</el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="city" label="城市" width="120">
+          <template #default="scope">
+            {{ scope.row.city || '未知' }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="user_agent" label="设备信息" min-width="200">
+          <template #default="scope">
+            <el-tooltip :content="scope.row.user_agent" placement="top">
+              <span class="user-agent-text">
+                {{ getDeviceInfo(scope.row.user_agent) }}
+              </span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="scope">
+            <el-tag :type="scope.row.status === 'success' ? 'success' : 'danger'">
+              {{ scope.row.status === 'success' ? '成功' : '失败' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 空状态 -->
+      <el-empty v-else description="暂无登录记录" />
+
+      <!-- 分页 -->
+      <div v-if="loginHistory.length > 0" class="pagination-container">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
+    </el-card>
+
+    <!-- 统计信息 -->
+    <el-card class="stats-card">
+      <template #header>
+        <div class="card-header">
+          <i class="el-icon-data-analysis"></i>
+          登录统计
+        </div>
+      </template>
+      
+      <el-row :gutter="20">
+        <el-col :span="6">
+          <div class="stat-item">
+            <div class="stat-value">{{ totalLogins }}</div>
+            <div class="stat-label">总登录次数</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="stat-item">
+            <div class="stat-value">{{ uniqueIPs }}</div>
+            <div class="stat-label">不同IP数量</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="stat-item">
+            <div class="stat-value">{{ uniqueCountries }}</div>
+            <div class="stat-label">不同国家</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="stat-item">
+            <div class="stat-value">{{ lastLoginDays }}</div>
+            <div class="stat-label">距上次登录(天)</div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+  </div>
+</template>
+
+<script>
+import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { userAPI } from '@/utils/api'
+import dayjs from 'dayjs'
+
+export default {
+  name: 'LoginHistory',
+  setup() {
+    const loading = ref(false)
+    const loginHistory = ref([])
+    const currentPage = ref(1)
+    const pageSize = ref(20)
+    const total = ref(0)
+
+    // 获取登录历史
+    const fetchLoginHistory = async () => {
+      loading.value = true
+      try {
+        const response = await userAPI.getLoginHistory()
+        if (response.data && response.data.success) {
+          const data = response.data.data
+          // 处理数据格式
+          if (Array.isArray(data)) {
+            loginHistory.value = data
+            total.value = data.length
+          } else if (data.logins && Array.isArray(data.logins)) {
+            loginHistory.value = data.logins
+            total.value = data.total || data.logins.length
+          } else {
+            loginHistory.value = []
+            total.value = 0
+          }
+          
+          } else {
+          ElMessage.error('获取登录历史失败：响应格式错误')
+        }
+      } catch (error) {
+        ElMessage.error(`获取登录历史失败: ${error.message || '未知错误'}`)
+      } finally {
+        loading.value = false
+      }
+    }
+
+    // 格式化时间
+    const formatTime = (time) => {
+      if (!time) return '未知'
+      return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
+    }
+
+    // 获取设备信息
+    const getDeviceInfo = (userAgent) => {
+      if (!userAgent) return '未知设备'
+      
+      // 简单的设备信息提取
+      if (userAgent.includes('Mobile')) {
+        return '移动设备'
+      } else if (userAgent.includes('Windows')) {
+        return 'Windows设备'
+      } else if (userAgent.includes('Mac')) {
+        return 'Mac设备'
+      } else if (userAgent.includes('Linux')) {
+        return 'Linux设备'
+      } else {
+        return '其他设备'
+      }
+    }
+
+    // 分页处理
+    const handleSizeChange = (val) => {
+      pageSize.value = val
+      fetchLoginHistory()
+    }
+
+    const handleCurrentChange = (val) => {
+      currentPage.value = val
+      fetchLoginHistory()
+    }
+
+    // 计算统计信息
+    const totalLogins = computed(() => {
+      return loginHistory.value.length
+    })
+
+    const uniqueIPs = computed(() => {
+      const ips = new Set(loginHistory.value.map(item => item.ip_address).filter(Boolean))
+      return ips.size
+    })
+
+    const uniqueCountries = computed(() => {
+      const countries = new Set(loginHistory.value.map(item => item.country).filter(Boolean))
+      return countries.size
+    })
+
+    const lastLoginDays = computed(() => {
+      if (loginHistory.value.length === 0) return 0
+      const lastLogin = loginHistory.value[0]?.login_time
+      if (!lastLogin) return 0
+      return dayjs().diff(dayjs(lastLogin), 'day')
+    })
+
+    onMounted(() => {
+      fetchLoginHistory()
+    })
+
+    return {
+      loading,
+      loginHistory,
+      currentPage,
+      pageSize,
+      total,
+      fetchLoginHistory,
+      formatTime,
+      getDeviceInfo,
+      handleSizeChange,
+      handleCurrentChange,
+      totalLogins,
+      uniqueIPs,
+      uniqueCountries,
+      lastLoginDays
+    }
+  }
+}
+</script>
+
+<style scoped>
+.login-history-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.page-header h1 {
+  color: #303133;
+  margin-bottom: 0.5rem;
+}
+
+.page-header :is(p) {
+  color: #909399;
+  margin: 0;
+}
+
+.history-card,
+.stats-card {
+  margin-bottom: 20px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #303133;
+}
+
+.card-header i {
+  margin-right: 8px;
+  color: #409eff;
+}
+
+.loading-container {
+  padding: 20px;
+}
+
+.user-agent-text {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pagination-container {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #409eff;
+  margin-bottom: 8px;
+}
+
+.stat-label {
+  color: #909399;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .login-history-container {
+    padding: 10px;
+  }
+  
+  .stat-item {
+    padding: 15px;
+  }
+  
+  .stat-value {
+    font-size: 1.5rem;
+  }
+}
+</style>

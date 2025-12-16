@@ -1,0 +1,988 @@
+@use "sass:map";
+
+// 全局样式变量
+:root {
+  // 主题颜色变量
+  --theme-primary: #409EFF;
+  --theme-success: #67C23A;
+  --theme-warning: #E6A23C;
+  --theme-danger: #F56C6C;
+  --theme-info: #909399;
+  --theme-background: #f5f7fa;
+  --theme-text: #303133;
+  --theme-border: #DCDFE6;
+  
+  // 布局变量
+  --header-height: 60px;
+  --sidebar-width: 200px;
+  --sidebar-collapsed-width: 64px;
+  --content-padding: 20px;
+  --border-radius: 8px;
+  --box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  
+  // 字体变量
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-size-small: 12px;
+  --font-size-base: 14px;
+  --font-size-large: 16px;
+  --font-size-xl: 18px;
+  --font-size-xxl: 24px;
+}
+
+// 深色主题 - 使用浅灰色调，提高可读性
+.theme-dark {
+  --theme-background: #f5f5f5;
+  --theme-text: #2c2c2c;
+  --theme-border: #d0d0d0;
+  
+  .el-card {
+    background-color: #f8f8f8;
+    border-color: #d0d0d0;
+    color: #2c2c2c;
+  }
+  
+  .el-table {
+    background-color: #f8f8f8;
+    color: #2c2c2c;
+    
+    th, td {
+      background-color: #f8f8f8;
+      border-color: #d0d0d0;
+      color: #2c2c2c;
+    }
+    
+    .el-table__row:hover {
+      background-color: #e8e8e8;
+    }
+  }
+  
+  // 侧边栏样式
+  .sidebar {
+    background-color: var(--sidebar-bg-color, #f0f0f0);
+    color: var(--sidebar-text-color, #2c2c2c);
+    
+    .sidebar-item {
+      color: var(--sidebar-text-color, #2c2c2c);
+      
+      &:hover {
+        background-color: var(--sidebar-hover-bg, #e8e8e8);
+      }
+      
+      &.active {
+        background-color: var(--sidebar-active-bg, #409eff);
+        color: white;
+      }
+    }
+  }
+  
+  // 滚动条样式
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    
+    &:hover {
+      background: rgba(0, 0, 0, 0.3);
+    }
+  }
+}
+
+// 浅色主题
+.theme-light {
+  --theme-background: #ffffff;
+  --theme-text: #303133;
+  --theme-border: #dcdfe6;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #dcdfe6;
+    color: #303133;
+  }
+  
+  .el-table {
+    background-color: #ffffff;
+    color: #303133;
+    
+    th, td {
+      background-color: #ffffff;
+      border-color: #dcdfe6;
+      color: #303133;
+    }
+    
+    .el-table__row:hover {
+      background-color: #f5f7fa;
+    }
+  }
+  
+  // 侧边栏样式
+  .sidebar {
+    background-color: var(--sidebar-bg-color, #f8f9fa);
+    color: var(--sidebar-text-color, #303133);
+    
+    .sidebar-item {
+      color: var(--sidebar-text-color, #303133);
+      
+      &:hover {
+        background-color: var(--sidebar-hover-bg, #e9ecef);
+      }
+      
+      &.active {
+        background-color: var(--sidebar-active-bg, #409eff);
+        color: white;
+      }
+    }
+  }
+}
+
+// 自动主题（跟随系统）
+.theme-auto {
+  // 自动主题会根据系统设置自动切换
+  // 具体样式由JavaScript动态设置
+  // 默认使用浅色主题样式
+  @extend .theme-light;
+}
+
+// 蓝色主题
+.theme-blue {
+  --theme-primary: #1890ff;
+  --theme-background: #f0f2f5;
+  --theme-text: #262626;
+  --theme-border: #d9d9d9;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #d9d9d9;
+  }
+  
+  .sidebar {
+    background-color: #e6f7ff;
+    color: #262626;
+    
+    .sidebar-item.active {
+      background-color: #1890ff;
+      color: white;
+    }
+  }
+}
+
+// 绿色主题
+.theme-green {
+  --theme-primary: #52c41a;
+  --theme-background: #f6ffed;
+  --theme-text: #262626;
+  --theme-border: #b7eb8f;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #b7eb8f;
+  }
+  
+  .sidebar {
+    background-color: #f6ffed;
+    color: #262626;
+    
+    .sidebar-item.active {
+      background-color: #52c41a;
+      color: white;
+    }
+  }
+}
+
+// 紫色主题
+.theme-purple {
+  --theme-primary: #722ed1;
+  --theme-background: #f9f0ff;
+  --theme-text: #262626;
+  --theme-border: #d3adf7;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #d3adf7;
+  }
+  
+  .sidebar {
+    background-color: #f9f0ff;
+    color: #262626;
+    
+    .sidebar-item.active {
+      background-color: #722ed1;
+      color: white;
+    }
+  }
+}
+
+// 橙色主题
+.theme-orange {
+  --theme-primary: #fa8c16;
+  --theme-background: #fff7e6;
+  --theme-text: #262626;
+  --theme-border: #ffd591;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #ffd591;
+  }
+  
+  .sidebar {
+    background-color: #fff7e6;
+    color: #262626;
+    
+    .sidebar-item.active {
+      background-color: #fa8c16;
+      color: white;
+    }
+  }
+}
+
+// 红色主题
+.theme-red {
+  --theme-primary: #f5222d;
+  --theme-background: #fff1f0;
+  --theme-text: #262626;
+  --theme-border: #ffccc7;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #ffccc7;
+  }
+  
+  .sidebar {
+    background-color: #fff1f0;
+    color: #262626;
+    
+    .sidebar-item.active {
+      background-color: #f5222d;
+      color: white;
+    }
+  }
+}
+
+// 青色主题
+.theme-cyan {
+  --theme-primary: #13c2c2;
+  --theme-background: #e6fffb;
+  --theme-text: #262626;
+  --theme-border: #87e8de;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #87e8de;
+  }
+  
+  .sidebar {
+    background-color: #e6fffb;
+    color: #262626;
+    
+    .sidebar-item.active {
+      background-color: #13c2c2;
+      color: white;
+    }
+  }
+}
+
+// Luck主题 - 金色幸运主题
+.theme-luck {
+  --theme-primary: #FFD700;
+  --theme-success: #32CD32;
+  --theme-warning: #FFA500;
+  --theme-danger: #FF6347;
+  --theme-background: #FFFEF0;
+  --theme-text: #2C2416;
+  --theme-border: #FFD700;
+  
+  .el-card {
+    background-color: #ffffff;
+    border-color: #FFD700;
+    box-shadow: 0 2px 12px rgba(255, 215, 0, 0.15);
+  }
+  
+  .el-button--primary {
+    background-color: #FFD700;
+    border-color: #FFD700;
+    color: #2C2416;
+    
+    &:hover {
+      background-color: #FFC700;
+      border-color: #FFC700;
+    }
+  }
+  
+  .sidebar {
+    background-color: #FFFEF0;
+    color: #2C2416;
+    
+    .sidebar-item {
+      color: #2C2416;
+      
+      &:hover {
+        background-color: #FFF8DC;
+      }
+      
+      &.active {
+        background-color: #FFD700;
+        color: #2C2416;
+        font-weight: 600;
+      }
+    }
+  }
+  
+  .el-table {
+    th {
+      background-color: #FFFEF0;
+      color: #2C2416;
+    }
+    
+    .el-table__row:hover {
+      background-color: #FFF8DC;
+    }
+  }
+}
+
+// Aurora主题 - 极光梦幻主题
+.theme-aurora {
+  --theme-primary: #7B68EE;
+  --theme-success: #00CED1;
+  --theme-warning: #FF69B4;
+  --theme-danger: #FF1493;
+  --theme-background: #0F0C1D;
+  --theme-text: #E6E6FA;
+  --theme-border: #4B0082;
+  
+  background: linear-gradient(135deg, #0F0C1D 0%, #1A1625 50%, #2A1F3D 100%);
+  
+  .el-card {
+    background-color: rgba(26, 22, 37, 0.8);
+    border-color: #4B0082;
+    color: #E6E6FA;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(123, 104, 238, 0.2);
+  }
+  
+  .el-button--primary {
+    background: linear-gradient(135deg, #7B68EE 0%, #9370DB 100%);
+    border: none;
+    color: #ffffff;
+    
+    &:hover {
+      background: linear-gradient(135deg, #9370DB 0%, #BA55D3 100%);
+      box-shadow: 0 4px 15px rgba(123, 104, 238, 0.4);
+    }
+  }
+  
+  .sidebar {
+    background: linear-gradient(180deg, #1A1625 0%, #0F0C1D 100%);
+    color: #E6E6FA;
+    border-right: 1px solid #4B0082;
+    
+    .sidebar-item {
+      color: #E6E6FA;
+      
+      &:hover {
+        background-color: rgba(123, 104, 238, 0.2);
+      }
+      
+      &.active {
+        background: linear-gradient(90deg, #7B68EE 0%, #9370DB 100%);
+        color: #ffffff;
+        box-shadow: 0 2px 10px rgba(123, 104, 238, 0.3);
+      }
+    }
+  }
+  
+  .el-table {
+    background-color: rgba(26, 22, 37, 0.6);
+    color: #E6E6FA;
+    
+    th {
+      background-color: rgba(42, 31, 61, 0.8);
+      color: #E6E6FA;
+      border-color: #4B0082;
+    }
+    
+    td {
+      background-color: rgba(26, 22, 37, 0.6);
+      color: #E6E6FA;
+      border-color: #4B0082;
+    }
+    
+    .el-table__row:hover {
+      background-color: rgba(123, 104, 238, 0.15);
+    }
+  }
+  
+  .el-input__inner {
+    background-color: rgba(26, 22, 37, 0.8);
+    border-color: #4B0082;
+    color: #E6E6FA;
+    
+    &:focus {
+      border-color: #7B68EE;
+      box-shadow: 0 0 0 2px rgba(123, 104, 238, 0.2);
+    }
+  }
+  
+  .el-select-dropdown {
+    background-color: rgba(26, 22, 37, 0.95);
+    border-color: #4B0082;
+    backdrop-filter: blur(10px);
+  }
+  
+  .el-menu {
+    background-color: transparent;
+    border-color: #4B0082;
+  }
+  
+  // 添加极光效果
+  &::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, 
+      transparent 0%, 
+      #7B68EE 20%, 
+      #9370DB 40%, 
+      #BA55D3 60%, 
+      #9370DB 80%, 
+      transparent 100%);
+    animation: aurora-flow 3s ease-in-out infinite;
+    z-index: 9999;
+    pointer-events: none;
+  }
+}
+
+@keyframes aurora-flow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: translateX(-100%);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateX(100%);
+  }
+}
+
+// 全局重置样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--theme-text);
+  background-color: var(--theme-background);
+  line-height: 1.6;
+}
+
+#app {
+  height: 100%;
+  min-height: 100vh;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+  
+  &:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
+// 通用工具类
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-column { display: flex; flex-direction: column; }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+.m-0 { margin: 0; }
+.m-1 { margin: 4px; }
+.m-2 { margin: 8px; }
+.m-3 { margin: 12px; }
+.m-4 { margin: 16px; }
+.m-5 { margin: 20px; }
+
+.p-0 { padding: 0; }
+.p-1 { padding: 4px; }
+.p-2 { padding: 8px; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.p-5 { padding: 20px; }
+
+// 响应式断点
+$breakpoints: (
+  xs: 480px,
+  sm: 768px,
+  md: 992px,
+  lg: 1200px,
+  xl: 1920px
+);
+
+@mixin respond-to($breakpoint) {
+  @if map.has-key($breakpoints, $breakpoint) {
+    @media (max-width: map.get($breakpoints, $breakpoint)) {
+      @content;
+    }
+  }
+}
+
+// 移动端适配
+@include respond-to(sm) {
+  :root {
+    --header-height: 50px;
+    --sidebar-width: 280px;
+    --sidebar-collapsed-width: 64px;
+    --content-padding: 12px;
+  }
+  
+  // 卡片优化
+  .el-card {
+    margin-bottom: 12px;
+    border-radius: 8px;
+    
+    .el-card__header {
+      padding: 12px 16px;
+      font-size: 15px;
+    }
+    
+    .el-card__body {
+      padding: 16px;
+    }
+  }
+  
+  // 表格优化
+  .el-table {
+    font-size: 13px;
+    
+    th, td {
+      padding: 10px 6px;
+    }
+    
+    // 移动端表格横向滚动
+    .el-table__body-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+  
+  // 按钮优化
+  .el-button {
+    padding: 10px 16px;
+    font-size: 14px;
+    
+    &.el-button--small {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    
+    &.el-button--mini {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+  }
+  
+  // 表单优化
+  .el-form-item {
+    margin-bottom: 18px;
+    
+    .el-form-item__label {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+  }
+  
+  // 输入框优化
+  .el-input {
+    .el-input__inner {
+      font-size: 14px;
+      height: 40px;
+      padding: 0 12px;
+    }
+  }
+  
+  // 分页优化
+  .el-pagination {
+    padding: 10px 0;
+    
+    .el-pagination__sizes,
+    .el-pagination__jump {
+      display: none;
+    }
+    
+    .el-pager :is(li) {
+      min-width: 32px;
+      height: 32px;
+      line-height: 32px;
+      font-size: 13px;
+    }
+  }
+  
+  // 抽屉优化
+  .el-drawer {
+    .el-drawer__header {
+      padding: 16px 20px;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--theme-border);
+      
+      .el-drawer__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+    }
+    
+    .el-drawer__body {
+      padding: 20px;
+    }
+  }
+  
+  // 对话框优化
+  .el-dialog {
+    width: 90% !important;
+    margin: 5vh auto !important;
+    
+    .el-dialog__header {
+      padding: 16px 20px;
+      
+      .el-dialog__title {
+        font-size: 18px;
+      }
+    }
+    
+    .el-dialog__body {
+      padding: 20px;
+      max-height: calc(90vh - 120px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    .el-dialog__footer {
+      padding: 12px 20px;
+    }
+  }
+  
+  // 消息提示优化
+  .el-message {
+    min-width: auto;
+    width: 90%;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  
+  // 消息框优化
+  .el-message-box {
+    width: 90% !important;
+    
+    .el-message-box__content {
+      padding: 20px;
+      font-size: 15px;
+    }
+  }
+  
+  // 标签页优化
+  .el-tabs {
+    .el-tabs__header {
+      margin-bottom: 16px;
+    }
+    
+    .el-tabs__nav {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      
+      &::-webkit-scrollbar {
+        display: none;
+      }
+      scrollbar-width: none;
+    }
+    
+    .el-tabs__item {
+      padding: 0 16px;
+      font-size: 14px;
+    }
+  }
+  
+  // 步骤条优化
+  .el-steps {
+    .el-step__title {
+      font-size: 13px;
+    }
+    
+    .el-step__description {
+      font-size: 12px;
+    }
+  }
+  
+  // 标签优化
+  .el-tag {
+    font-size: 12px;
+    padding: 0 8px;
+    height: 24px;
+    line-height: 24px;
+  }
+  
+  // 描述列表优化
+  .el-descriptions {
+    .el-descriptions__label {
+      font-size: 13px;
+      width: 30%;
+    }
+    
+    .el-descriptions__content {
+      font-size: 13px;
+    }
+  }
+  
+  // 时间线优化
+  .el-timeline {
+    .el-timeline-item {
+      .el-timeline-item__timestamp {
+        font-size: 12px;
+      }
+    }
+  }
+  
+  // 折叠面板优化
+  .el-collapse {
+    .el-collapse-item__header {
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+    
+    .el-collapse-item__content {
+      padding: 12px 16px;
+      font-size: 13px;
+    }
+  }
+  
+  // 开关优化
+  .el-switch {
+    min-width: 44px;
+    height: 24px;
+  }
+  
+  // 滑块优化
+  .el-slider {
+    margin: 12px 0;
+  }
+  
+  // 进度条优化
+  .el-progress {
+    .el-progress__text {
+      font-size: 12px;
+    }
+  }
+  
+  // 徽章优化
+  .el-badge {
+    .el-badge__content {
+      min-width: 18px;
+      height: 18px;
+      line-height: 18px;
+      font-size: 11px;
+      padding: 0 5px;
+    }
+  }
+  
+  // 加载优化
+  .el-loading-mask {
+    .el-loading-spinner {
+      .el-loading-text {
+        font-size: 13px;
+      }
+    }
+  }
+  
+  // 通用容器优化
+  .page-container,
+  .container {
+    padding: 12px;
+  }
+  
+  .page-header {
+    margin-bottom: 16px;
+    padding: 12px 0;
+    
+    :is(h1) {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    
+    :is(p) {
+      font-size: 0.875rem;
+    }
+  }
+  
+  // 网格布局优化
+  .el-row {
+    margin-left: -8px !important;
+    margin-right: -8px !important;
+    
+    .el-col {
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
+  }
+  
+  // 通用间距优化
+  .el-space {
+    --el-space-size: 8px;
+  }
+}
+
+// 卡片样式优化
+.el-card {
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  border: 1px solid var(--theme-border);
+  transition: all 0.3s ease;
+  
+  &:hover {
+    box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
+  }
+  
+  .el-card__header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--theme-border);
+    font-weight: 600;
+  }
+  
+  .el-card__body {
+    padding: 20px;
+  }
+}
+
+// 按钮样式优化
+.el-button {
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+}
+
+// 表单样式优化
+.el-form {
+  .el-form-item {
+    margin-bottom: 20px;
+  }
+  
+  .el-input, .el-select {
+    .el-input__inner {
+      border-radius: var(--border-radius);
+      border: 1px solid var(--theme-border);
+      transition: all 0.3s ease;
+      
+      &:focus {
+        border-color: var(--theme-primary);
+        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+      }
+    }
+  }
+}
+
+// 表格样式优化
+.el-table {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  
+  th {
+    background-color: #fafafa;
+    font-weight: 600;
+    color: var(--theme-text);
+  }
+  
+  td {
+    color: var(--theme-text);
+  }
+  
+  .el-table__row {
+    transition: background-color 0.3s ease;
+    
+    &:hover {
+      background-color: #f5f7fa;
+    }
+  }
+}
+
+// 分页样式优化
+.el-pagination {
+  text-align: center;
+  margin-top: 20px;
+  
+  .el-pager li {
+    border-radius: var(--border-radius);
+    transition: all 0.3s ease;
+    
+    &:hover {
+      background-color: var(--theme-primary);
+      color: white;
+    }
+  }
+}
+
+// 加载状态
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+// 空状态
+.empty-container {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
+  
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+  
+  .empty-text {
+    font-size: 14px;
+  }
+}
+
+// 动画效果
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+.slide-enter-active, .slide-leave-active {
+  transition: transform 0.3s ease;
+}
+
+.slide-enter-from {
+  transform: translateX(-100%);
+}
+
+.slide-leave-to {
+  transform: translateX(100%);
+} 

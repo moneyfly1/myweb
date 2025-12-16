@@ -1,0 +1,1042 @@
+package handlers
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"cboard-go/internal/core/database"
+	"cboard-go/internal/middleware"
+	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+)
+
+// GetSystemConfigs 获取系统配置
+func GetSystemConfigs(c *gin.Context) {
+	category := c.Query("category")
+	isPublic := c.Query("is_public") == "true"
+
+	db := database.GetDB()
+	var configs []models.SystemConfig
+	query := db
+
+	if category != "" {
+		query = query.Where("category = ?", category)
+	}
+	if isPublic {
+		query = query.Where("is_public = ?", true)
+	}
+
+	if err := query.Order("sort_order ASC").Find(&configs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取配置失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    configs,
+	})
+}
+
+// GetSystemConfig 获取单个配置
+func GetSystemConfig(c *gin.Context) {
+	key := c.Param("key")
+
+	db := database.GetDB()
+	var config models.SystemConfig
+	if err := db.Where("key = ?", key).First(&config).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "配置不存在",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    config,
+	})
+}
+
+// UpdateSystemConfig 更新系统配置（管理员）- 支持单个和批量更新
+func UpdateSystemConfig(c *gin.Context) {
+	key := c.Param("key")
+
+	// 如果 key 是 "batch"，则批量更新
+	if key == "batch" {
+		var req map[string]interface{}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "请求参数错误",
+			})
+			return
+		}
+
+		db := database.GetDB()
+		for k, v := range req {
+			var config models.SystemConfig
+			if err := db.Where("key = ?", k).First(&config).Error; err != nil {
+				// 如果不存在，创建新配置
+				config = models.SystemConfig{
+					Key:      k,
+					Value:    fmt.Sprintf("%v", v),
+					Category: "system",
+				}
+				db.Create(&config)
+			} else {
+				// 更新现有配置
+				config.Value = fmt.Sprintf("%v", v)
+				db.Save(&config)
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "批量更新成功",
+		})
+		return
+	}
+
+	// 单个更新
+	var req struct {
+		Value string `json:"value" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var config models.SystemConfig
+	if err := db.Where("key = ?", key).First(&config).Error; err != nil {
+		// 如果不存在，创建新配置
+		config = models.SystemConfig{
+			Key:      key,
+			Value:    req.Value,
+			Category: "system",
+		}
+		if err := db.Create(&config).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "创建配置失败",
+			})
+			return
+		}
+	} else {
+		// 更新现有配置
+		config.Value = req.Value
+		if err := db.Save(&config).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "更新配置失败",
+			})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "更新成功",
+		"data":    config,
+	})
+}
+
+// CreateSystemConfig 创建系统配置（管理员）
+func CreateSystemConfig(c *gin.Context) {
+	var req struct {
+		Key      string `json:"key" binding:"required"`
+		Value    string `json:"value" binding:"required"`
+		Category string `json:"category"`
+		IsPublic bool   `json:"is_public"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 检查是否已存在
+	var existing models.SystemConfig
+	if err := db.Where("key = ?", req.Key).First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "配置已存在",
+		})
+		return
+	}
+
+	config := models.SystemConfig{
+		Key:      req.Key,
+		Value:    req.Value,
+		Category: req.Category,
+		IsPublic: req.IsPublic,
+	}
+
+	if err := db.Create(&config).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "创建配置失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    config,
+	})
+}
+
+// UpdateSoftwareConfig 更新软件配置
+func UpdateSoftwareConfig(c *gin.Context) {
+	var req map[string]interface{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range req {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "software").First(&config).Error; err != nil {
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "software",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "软件配置已更新",
+	})
+}
+
+// ExportConfig 导出配置
+func ExportConfig(c *gin.Context) {
+	db := database.GetDB()
+	var configs []models.SystemConfig
+	if err := db.Find(&configs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取配置失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    configs,
+	})
+}
+
+// GetAnnouncements 获取公告列表
+func GetAnnouncements(c *gin.Context) {
+	db := database.GetDB()
+
+	var announcements []models.Announcement
+	now := time.Now()
+	if err := db.Where("is_active = ? AND (start_time IS NULL OR start_time <= ?) AND (end_time IS NULL OR end_time >= ?)", true, now, now).Order("is_pinned DESC, created_at DESC").Find(&announcements).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取公告列表失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    announcements,
+	})
+}
+
+// CreateAnnouncement 创建公告（管理员）
+func CreateAnnouncement(c *gin.Context) {
+	var req struct {
+		Title       string     `json:"title" binding:"required"`
+		Content     string     `json:"content" binding:"required"`
+		Type        string     `json:"type"`
+		IsActive    bool       `json:"is_active"`
+		IsPinned    bool       `json:"is_pinned"`
+		StartTime   *time.Time `json:"start_time"`
+		EndTime     *time.Time `json:"end_time"`
+		TargetUsers string     `json:"target_users"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	user, _ := middleware.GetCurrentUser(c)
+
+	db := database.GetDB()
+	announcement := models.Announcement{
+		Title:       req.Title,
+		Content:     req.Content,
+		Type:        req.Type,
+		IsActive:    req.IsActive,
+		IsPinned:    req.IsPinned,
+		TargetUsers: req.TargetUsers,
+		CreatedBy:   user.ID,
+	}
+
+	if req.StartTime != nil {
+		announcement.StartTime = req.StartTime
+	} else {
+		announcement.StartTime = nil
+	}
+	if req.EndTime != nil {
+		announcement.EndTime = req.EndTime
+	} else {
+		announcement.EndTime = nil
+	}
+
+	if err := db.Create(&announcement).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "创建公告失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    announcement,
+	})
+}
+
+// GetAdminSettings 获取管理员设置
+func GetAdminSettings(c *gin.Context) {
+	db := database.GetDB()
+
+	// 默认设置
+	defaultSettings := map[string]map[string]interface{}{
+		"general": {
+			"site_name":       "CBoard Modern",
+			"site_description": "现代化的代理服务管理平台",
+			"site_logo":        "",
+			"default_theme":    "default",
+		},
+		"registration": {
+			"registration_enabled":        "true",
+			"email_verification_required":  "true",
+			"min_password_length":         "8",
+			"invite_code_required":        "false",
+		},
+		"notification": {
+			"system_notifications":            "true",
+			"email_notifications":             "true",
+			"subscription_expiry_notifications": "true",
+			"new_user_notifications":          "true",
+			"new_order_notifications":         "true",
+		},
+		"security": {
+			"login_fail_limit":          "5",
+			"login_lock_time":            "30",
+			"session_timeout":            "120",
+			"device_fingerprint_enabled": "true",
+			"ip_whitelist_enabled":      "false",
+			"ip_whitelist":              "",
+		},
+		"theme": {
+			"default_theme":    "light",
+			"allow_user_theme":  "true",
+			"available_themes": "[\"light\",\"dark\",\"blue\",\"green\",\"purple\",\"orange\",\"red\",\"cyan\",\"luck\",\"aurora\",\"auto\"]",
+		},
+		"admin_notification": {
+			"admin_notification_enabled":        "false",
+			"admin_email_notification":          "false",
+			"admin_telegram_notification":       "false",
+			"admin_bark_notification":           "false",
+			"admin_telegram_bot_token":          "",
+			"admin_telegram_chat_id":            "",
+			"admin_bark_server_url":             "https://api.day.app",
+			"admin_bark_device_key":              "",
+			"admin_notification_email":          "",
+			"admin_notify_order_paid":           "false",
+			"admin_notify_user_registered":      "false",
+			"admin_notify_password_reset":       "false",
+			"admin_notify_subscription_sent":    "false",
+			"admin_notify_subscription_reset":   "false",
+			"admin_notify_subscription_expired": "false",
+			"admin_notify_user_created":         "false",
+			"admin_notify_subscription_created": "false",
+		},
+	}
+
+	// 从 SystemConfig 表中读取各种设置
+	settings := make(map[string]interface{})
+
+	// 遍历所有类别
+	for category, defaults := range defaultSettings {
+		categorySettings := make(map[string]interface{})
+		
+		// 先设置默认值
+		for key, value := range defaults {
+			categorySettings[key] = value
+		}
+		
+		// 从数据库读取配置并覆盖默认值
+		var configs []models.SystemConfig
+		db.Where("category = ?", category).Find(&configs)
+		for _, config := range configs {
+			// 尝试解析布尔值和数字
+			value := config.Value
+			if value == "true" || value == "false" {
+				categorySettings[config.Key] = value == "true"
+			} else if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+				// 尝试解析数组
+				var arr []string
+				if err := json.Unmarshal([]byte(value), &arr); err == nil {
+					categorySettings[config.Key] = arr
+				} else {
+					categorySettings[config.Key] = value
+				}
+			} else {
+				// 尝试解析数字
+				if num, err := strconv.Atoi(value); err == nil {
+					categorySettings[config.Key] = num
+				} else {
+					categorySettings[config.Key] = value
+				}
+			}
+		}
+		
+		settings[category] = categorySettings
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    settings,
+	})
+}
+
+// UpdateGeneralSettings 更新基本设置
+func UpdateGeneralSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "general").First(&config).Error; err != nil {
+			// 如果不存在，创建新配置
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "general",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "基本设置已保存",
+	})
+}
+
+// UpdateRegistrationSettings 更新注册设置
+func UpdateRegistrationSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "registration").First(&config).Error; err != nil {
+			// 如果是记录不存在，创建新配置（这是正常情况，不需要记录错误）
+			if err == gorm.ErrRecordNotFound {
+				config = models.SystemConfig{
+					Key:      key,
+					Category: "registration",
+					Value:    fmt.Sprintf("%v", value),
+				}
+			} else {
+				// 其他错误才需要处理
+				continue
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "注册设置已保存",
+	})
+}
+
+// UpdateNotificationSettings 更新通知设置
+func UpdateNotificationSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "notification").First(&config).Error; err != nil {
+			// 如果是记录不存在，创建新配置（这是正常情况，不需要记录错误）
+			if err == gorm.ErrRecordNotFound {
+				config = models.SystemConfig{
+					Key:      key,
+					Category: "notification",
+					Value:    fmt.Sprintf("%v", value),
+				}
+				db.Create(&config)
+			}
+			// 其他错误跳过
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "通知设置已保存",
+	})
+}
+
+// UpdateSecuritySettings 更新安全设置
+func UpdateSecuritySettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "security").First(&config).Error; err != nil {
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "security",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "安全设置已保存",
+	})
+}
+
+// UpdateThemeSettings 更新主题设置
+func UpdateThemeSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "theme").First(&config).Error; err != nil {
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "theme",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "主题设置已保存",
+	})
+}
+
+// UpdateInviteSettings 更新邀请设置
+func UpdateInviteSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "invite").First(&config).Error; err != nil {
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "invite",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "邀请设置已保存",
+	})
+}
+
+// UpdateAdminNotificationSettings 更新管理员通知设置
+func UpdateAdminNotificationSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	for key, value := range settings {
+		var config models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", key, "admin_notification").First(&config).Error; err != nil {
+			config = models.SystemConfig{
+				Key:      key,
+				Category: "admin_notification",
+				Value:    fmt.Sprintf("%v", value),
+			}
+			db.Create(&config)
+		} else {
+			config.Value = fmt.Sprintf("%v", value)
+			db.Save(&config)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "管理员通知设置已保存",
+	})
+}
+
+// TestAdminEmailNotification 测试管理员邮件通知
+func TestAdminEmailNotification(c *gin.Context) {
+	db := database.GetDB()
+
+	// 获取管理员通知邮箱
+	var emailConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "admin_notification_email", "admin_notification").First(&emailConfig).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "管理员通知邮箱未配置",
+		})
+		return
+	}
+
+	adminEmail := emailConfig.Value
+	if adminEmail == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "管理员通知邮箱未配置",
+		})
+		return
+	}
+
+	// 发送测试邮件
+	emailService := email.NewEmailService()
+	subject := "🧪 测试消息"
+	content := "这是一条测试消息，如果您收到此消息，说明邮件通知配置正确。"
+	
+	// 将邮件加入队列
+	if err := emailService.QueueEmail(adminEmail, subject, content, "admin_notification"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "测试消息发送失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "测试消息已加入邮件队列，请检查您的邮箱",
+	})
+}
+
+// TestAdminTelegramNotification 测试管理员 Telegram 通知
+func TestAdminTelegramNotification(c *gin.Context) {
+	db := database.GetDB()
+
+	// 获取 Telegram 配置
+	var botTokenConfig, chatIDConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "admin_telegram_bot_token", "admin_notification").First(&botTokenConfig).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Telegram Bot Token 未配置",
+		})
+		return
+	}
+	if err := db.Where("key = ? AND category = ?", "admin_telegram_chat_id", "admin_notification").First(&chatIDConfig).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Telegram Chat ID 未配置",
+		})
+		return
+	}
+
+	botToken := botTokenConfig.Value
+	chatID := chatIDConfig.Value
+
+	if botToken == "" || chatID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Telegram 配置不完整",
+		})
+		return
+	}
+
+	// 发送测试消息
+	testMessage := "🧪 这是一条测试消息，如果您收到此消息，说明 Telegram 通知配置正确。"
+	success, err := sendTelegramMessage(botToken, chatID, testMessage)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "测试消息发送失败: " + err.Error(),
+		})
+		return
+	}
+
+	if !success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "测试消息发送失败，请检查配置",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "测试消息发送成功，请检查您的 Telegram",
+	})
+}
+
+// TestAdminBarkNotification 测试管理员 Bark 通知
+func TestAdminBarkNotification(c *gin.Context) {
+	db := database.GetDB()
+
+	// 获取 Bark 配置
+	var serverURLConfig, deviceKeyConfig models.SystemConfig
+	serverURL := "https://api.day.app" // 默认值
+	if err := db.Where("key = ? AND category = ?", "admin_bark_server_url", "admin_notification").First(&serverURLConfig).Error; err == nil {
+		if serverURLConfig.Value != "" {
+			serverURL = serverURLConfig.Value
+		}
+	}
+	
+	if err := db.Where("key = ? AND category = ?", "admin_bark_device_key", "admin_notification").First(&deviceKeyConfig).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Bark Device Key 未配置",
+		})
+		return
+	}
+
+	deviceKey := deviceKeyConfig.Value
+	if deviceKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Bark Device Key 未配置",
+		})
+		return
+	}
+
+	// 发送测试消息
+	success, err := sendBarkMessage(serverURL, deviceKey, "🧪 测试消息", "这是一条测试消息，如果您收到此消息，说明 Bark 通知配置正确。")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "测试消息发送失败: " + err.Error(),
+		})
+		return
+	}
+
+	if !success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "测试消息发送失败，请检查配置",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "测试消息发送成功，请检查您的设备",
+	})
+}
+
+// sendTelegramMessage 发送 Telegram 消息
+func sendTelegramMessage(botToken, chatID, message string) (bool, error) {
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
+	
+	payload := map[string]interface{}{
+		"chat_id":    chatID,
+		"text":       message,
+		"parse_mode": "HTML",
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return false, err
+	}
+
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, err
+	}
+
+	return result["ok"] == true, nil
+}
+
+// sendBarkMessage 发送 Bark 消息
+func sendBarkMessage(serverURL, deviceKey, title, body string) (bool, error) {
+	// 移除末尾的斜杠
+	serverURL = strings.TrimSuffix(serverURL, "/")
+	apiURL := fmt.Sprintf("%s/push", serverURL)
+
+	payload := map[string]interface{}{
+		"device_key": deviceKey,
+		"title":      title,
+		"body":       body,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return false, err
+	}
+
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, err
+	}
+
+	return result["code"] == float64(200), nil
+}
+
+// UploadFile 文件上传（管理员）
+func UploadFile(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "文件上传失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 保存文件到 uploads 目录
+	uploadDir := "uploads"
+	filename := file.Filename
+	filepath := uploadDir + "/" + filename
+
+	if err := c.SaveUploadedFile(file, filepath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "保存文件失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "文件上传成功",
+		"data": gin.H{
+			"url":      "/" + filepath,
+			"filename": filename,
+		},
+	})
+}
+
+// GetPublicSettings 获取公开设置
+func GetPublicSettings(c *gin.Context) {
+	db := database.GetDB()
+	var configs []models.SystemConfig
+	db.Where("is_public = ?", true).Find(&configs)
+
+	settings := make(map[string]interface{})
+	for _, config := range configs {
+		settings[config.Key] = config.Value
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    settings,
+	})
+}
+
+// UpdateAnnouncement 更新公告（管理员）
+func UpdateAnnouncement(c *gin.Context) {
+	id := c.Param("id")
+
+	var req struct {
+		Title       string     `json:"title"`
+		Content     string     `json:"content"`
+		Type        string     `json:"type"`
+		IsActive    *bool      `json:"is_active"`
+		IsPinned    *bool      `json:"is_pinned"`
+		StartTime   *time.Time `json:"start_time"`
+		EndTime     *time.Time `json:"end_time"`
+		TargetUsers string     `json:"target_users"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var announcement models.Announcement
+	if err := db.First(&announcement, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "公告不存在",
+		})
+		return
+	}
+
+	if req.Title != "" {
+		announcement.Title = req.Title
+	}
+	if req.Content != "" {
+		announcement.Content = req.Content
+	}
+	if req.Type != "" {
+		announcement.Type = req.Type
+	}
+	if req.IsActive != nil {
+		announcement.IsActive = *req.IsActive
+	}
+	if req.IsPinned != nil {
+		announcement.IsPinned = *req.IsPinned
+	}
+	if req.TargetUsers != "" {
+		announcement.TargetUsers = req.TargetUsers
+	}
+	if req.StartTime != nil {
+		announcement.StartTime = req.StartTime
+	}
+	if req.EndTime != nil {
+		announcement.EndTime = req.EndTime
+	}
+
+	if err := db.Save(&announcement).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "更新公告失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "更新成功",
+		"data":    announcement,
+	})
+}
+
+// DeleteAnnouncement 删除公告（管理员）
+func DeleteAnnouncement(c *gin.Context) {
+	id := c.Param("id")
+
+	db := database.GetDB()
+	if err := db.Delete(&models.Announcement{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除公告失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "删除成功",
+	})
+}

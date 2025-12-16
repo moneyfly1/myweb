@@ -1,0 +1,112 @@
+/* 统一移动端按钮样式规范 */
+@media (max-width: 768px) {
+  /* 移动端按钮容器 */
+  .mobile-action-buttons,
+  .mobile-filter-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    
+    .mobile-action-btn,
+    .el-button {
+      width: 100% !important;
+      height: 44px !important;
+      margin: 0 !important;
+      font-size: 16px !important;
+      border-radius: 6px !important;
+      font-weight: 500;
+    }
+  }
+  
+  /* 水平排列的按钮组 */
+  .mobile-action-buttons.horizontal,
+  .mobile-filter-buttons.horizontal {
+    flex-direction: row;
+    gap: 8px;
+    
+    .mobile-action-btn,
+    .el-button {
+      flex: 1;
+    }
+  }
+  
+  /* 单个移动端按钮 */
+  .mobile-action-btn {
+    width: 100% !important;
+    height: 44px !important;
+    margin: 0 !important;
+    font-size: 16px !important;
+    border-radius: 6px !important;
+    font-weight: 500;
+  }
+  
+  /* 对话框底部按钮 - 统一样式 */
+  .dialog-footer-buttons {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    
+    .mobile-action-btn,
+    .el-button {
+      flex: 1 !important;
+      width: auto !important;
+      height: 44px !important;
+      margin: 0 !important;
+      font-size: 16px !important;
+      border-radius: 6px !important;
+      font-weight: 500;
+    }
+  }
+  
+  /* Element Plus 对话框底部 */
+  :deep(.el-dialog__footer) {
+    .dialog-footer-buttons {
+      display: flex !important;
+      gap: 12px !important;
+      width: 100% !important;
+      
+      .el-button {
+        flex: 1 !important;
+        height: 44px !important;
+        margin: 0 !important;
+      }
+    }
+  }
+  
+  /* 表单按钮组 */
+  .form-actions,
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    
+    .el-button {
+      width: 100% !important;
+      height: 44px !important;
+      margin: 0 !important;
+    }
+  }
+  
+  /* 修复旧的 dialog-footer 样式 */
+  .dialog-footer {
+    display: flex !important;
+    gap: 12px !important;
+    width: 100% !important;
+    text-align: left !important;
+    
+    .el-button {
+      flex: 1 !important;
+      height: 44px !important;
+      margin: 0 !important;
+    }
+  }
+}
+
