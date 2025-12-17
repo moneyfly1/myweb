@@ -46,6 +46,10 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
+        // 文件名包含 hash，确保更新后浏览器能获取新文件
+        entryFileNames: 'assets/[name].[hash].js',
+        chunkFileNames: 'assets/[name].[hash].js',
+        assetFileNames: 'assets/[name].[hash].[ext]',
         // manualChunks: (id) => {
         //   if (id.includes('node_modules')) {
         //     if (id.includes('vue') || id.includes('pinia') || id.includes('router')) {
