@@ -71,23 +71,23 @@ func GetUserDashboard(c *gin.Context) {
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&deviceCount)
 	}
 
-	// 订阅链接（与原始 Python 代码保持一致）
+	// 订阅链接（统一格式）
 	baseURL := buildBaseURL(c)
 	clashURL := ""
-	v2rayURL := ""
+	universalURL := ""
 	mobileURL := ""
 	qrcodeURL := ""
 	if subscription.ID > 0 && subscription.SubscriptionURL != "" {
 		// 使用时间戳避免缓存
 		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-		// Clash 订阅地址
+		// 猫咪订阅地址（Clash YAML格式）
 		clashURL = fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
-		// SSR/V2Ray 通用订阅地址（Base64）
-		v2rayURL = fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
-		mobileURL = v2rayURL
+		// 通用订阅地址（SSR Base64格式，适用于小火煎、v2ray等）
+		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+		mobileURL = universalURL
 
 		// 生成二维码 URL（sub://格式，包含到期时间）
-		encodedURL := base64.StdEncoding.EncodeToString([]byte(v2rayURL))
+		encodedURL := base64.StdEncoding.EncodeToString([]byte(universalURL))
 		expiryDisplay := expiryDate
 		if expiryDisplay == "未设置" {
 			expiryDisplay = subscription.SubscriptionURL
@@ -133,7 +133,8 @@ func GetUserDashboard(c *gin.Context) {
 		"total_devices":       subscription.DeviceLimit,
 		"subscription_url":    subscription.SubscriptionURL,
 		"clashUrl":            clashURL,
-		"v2rayUrl":            v2rayURL,
+		"universalUrl":        universalURL, // 通用订阅（SSR Base64格式）
+		"v2rayUrl":            universalURL, // 兼容旧字段名
 		"mobileUrl":           mobileURL,
 		"qrcodeUrl":           qrcodeURL,
 		"subscription_status": subStatus,
@@ -150,7 +151,8 @@ func GetUserDashboard(c *gin.Context) {
 			"maxDevices":       subscription.DeviceLimit,
 			"subscription_url": subscription.SubscriptionURL,
 			"clashUrl":         clashURL,
-			"v2rayUrl":         v2rayURL,
+			"universalUrl":     universalURL, // 通用订阅（SSR Base64格式）
+			"v2rayUrl":         universalURL, // 兼容旧字段名
 			"mobileUrl":        mobileURL,
 			"qrcodeUrl":        qrcodeURL,
 		},
