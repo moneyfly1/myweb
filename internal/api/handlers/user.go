@@ -602,7 +602,7 @@ func GetUserDetails(c *gin.Context) {
 			db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(50).Find(&resets)
 			resetList := make([]gin.H, 0)
 			for _, reset := range resets {
-				resetList = append(resetList, gin.H{
+				resetData := gin.H{
 					"id":                  reset.ID,
 					"subscription_id":     reset.SubscriptionID,
 					"reset_type":          reset.ResetType,
@@ -610,7 +610,18 @@ func GetUserDetails(c *gin.Context) {
 					"device_count_before": reset.DeviceCountBefore,
 					"device_count_after":  reset.DeviceCountAfter,
 					"created_at":          reset.CreatedAt.Format("2006-01-02 15:04:05"),
-				})
+				}
+				// 添加旧订阅地址和新订阅地址
+				if reset.OldSubscriptionURL != nil {
+					resetData["old_subscription_url"] = *reset.OldSubscriptionURL
+				}
+				if reset.NewSubscriptionURL != nil {
+					resetData["new_subscription_url"] = *reset.NewSubscriptionURL
+				}
+				if reset.ResetBy != nil {
+					resetData["reset_by"] = *reset.ResetBy
+				}
+				resetList = append(resetList, resetData)
 			}
 			return resetList
 		}(),
