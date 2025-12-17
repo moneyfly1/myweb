@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,8 +53,19 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	db := database.GetDB()
+
+	// 检查系统配置：最小密码长度
+	var minPasswordLength int = 8
+	var passwordLengthConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "min_password_length", "registration").First(&passwordLengthConfig).Error; err == nil {
+		if length, err := strconv.Atoi(passwordLengthConfig.Value); err == nil {
+			minPasswordLength = length
+		}
+	}
+
 	// 验证密码强度
-	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
+	valid, msg := auth.ValidatePasswordStrength(req.Password, minPasswordLength)
 	if !valid {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -62,7 +74,23 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	// 检查系统配置：注册是否启用
+	var registrationEnabled bool
+	var registrationConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "registration_enabled", "registration").First(&registrationConfig).Error; err == nil {
+		registrationEnabled = registrationConfig.Value == "true"
+	} else {
+		// 默认允许注册
+		registrationEnabled = true
+	}
+
+	if !registrationEnabled {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "注册功能已禁用，请联系管理员",
+		})
+		return
+	}
 
 	// 检查系统配置：是否需要邮箱验证
 	var emailVerificationRequired bool
@@ -236,6 +264,22 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	// 检查维护模式：维护模式下只允许管理员登录
+	var maintenanceConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "maintenance_mode", "system").First(&maintenanceConfig).Error; err == nil {
+		if maintenanceConfig.Value == "true" {
+			// 维护模式下，只有管理员可以登录
+			if !user.IsAdmin {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"success":          false,
+					"message":          "系统维护中，请稍后再试",
+					"maintenance_mode": true,
+				})
+				return
+			}
+		}
+	}
+
 	// 生成令牌
 	accessToken, err := utils.CreateAccessToken(user.ID, user.Email, user.IsAdmin)
 	if err != nil {
@@ -315,6 +359,40 @@ func LoginJSON(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 检查维护模式：维护模式下只允许管理员登录
+	var maintenanceConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "maintenance_mode", "system").First(&maintenanceConfig).Error; err == nil {
+		if maintenanceConfig.Value == "true" {
+			// 维护模式下，先验证用户身份
+			var tempUser models.User
+			if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&tempUser).Error; err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"message": "用户名或密码错误",
+				})
+				return
+			}
+			if !auth.VerifyPassword(req.Password, tempUser.Password) {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"message": "用户名或密码错误",
+				})
+				return
+			}
+			// 维护模式下，只有管理员可以登录
+			if !tempUser.IsAdmin {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"success":          false,
+					"message":          "系统维护中，请稍后再试",
+					"maintenance_mode": true,
+				})
+				return
+			}
+			// 管理员可以继续登录流程
+		}
+	}
+
 	var user models.User
 	if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{

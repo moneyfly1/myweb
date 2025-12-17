@@ -234,6 +234,19 @@ api.interceptors.response.use(
         error.response.data = JSON.parse(text)
       } catch (e) {}
     }
+    // 处理维护模式（503状态码）
+    if (error.response?.status === 503 && error.response?.data?.maintenance_mode) {
+      // 如果是维护模式，显示维护消息
+      const maintenanceMessage = error.response.data.message || '系统维护中，请稍后再试'
+      // 动态导入 ElMessage 避免阻塞
+      import('element-plus').then(({ ElMessage }) => {
+        ElMessage.error(maintenanceMessage)
+      })
+      // 如果不是管理员接口，可以重定向到首页或显示维护页面
+      // 注意：维护模式中间件已经返回了HTML页面，所以这里主要是处理API调用
+      return Promise.reject(error)
+    }
+
     if (error.response?.status === 401) {
       // 由于 baseURL 是 '/api/v1'，config.url 不包含 baseURL 前缀
       // 获取当前路径，用于判断是否在管理员后台
@@ -519,25 +532,8 @@ export const notificationAPI = {
 }
 
 export const configAPI = {
-  getConfigFiles: () => api.get('/config/admin/config-files'),
-  getConfigFileContent: (fileName) => api.get(`/config/admin/config-files/${fileName}`),
-  saveConfigFile: (fileName, content) => api.post(`/config/admin/config-files/${fileName}`, { content }),
-  backupConfigFile: (fileName) => api.post(`/config/admin/config-files/${fileName}/backup`),
-  restoreConfigFile: (fileName) => api.post(`/config/admin/config-files/${fileName}/restore`),
-  getSystemConfig: () => api.get('/admin/system-config'),
-  saveSystemConfig: (data) => api.post('/admin/system-config', data),
   getEmailConfig: () => api.get('/admin/email-config'),
-  saveEmailConfig: (data) => api.post('/admin/email-config', data),
-  getClashConfig: () => api.get('/admin/clash-config'),
-  saveClashConfig: (content) => api.post('/admin/clash-config', { content }),
-  getClashConfigInvalid: () => api.get('/admin/clash-config-invalid'),
-  saveClashConfigInvalid: (content) => api.post('/admin/clash-config-invalid', { content }),
-  getV2rayConfig: () => api.get('/admin/v2ray-config'),
-  saveV2rayConfig: (content) => api.post('/admin/v2ray-config', { content }),
-  getV2rayConfigInvalid: () => api.get('/admin/v2ray-config-invalid'),
-  saveV2rayConfigInvalid: (content) => api.post('/admin/v2ray-config-invalid', { content }),
-  exportConfig: () => api.get('/admin/export-config'),
-  importConfig: (data) => api.post('/admin/import-config', data)
+  saveEmailConfig: (data) => api.post('/admin/email-config', data)
 }
 
 export const statisticsAPI = {

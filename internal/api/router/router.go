@@ -32,6 +32,9 @@ func SetupRouter() *gin.Engine {
 		})
 	})
 
+	// 维护模式中间件（在所有路由之前，但允许静态文件和健康检查）
+	r.Use(middleware.MaintenanceMiddleware())
+
 	// API 路由组
 	api := r.Group("/api/v1")
 	// 对API路由应用CSRF保护（除了公开的GET请求）
@@ -374,11 +377,6 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/devices/stats", handlers.GetDeviceStats)
 
 			// 配置管理
-			admin.PUT("/config/:key", handlers.UpdateSystemConfig)
-			admin.PUT("/config/batch", handlers.UpdateSystemConfig)          // 批量更新
-			admin.POST("/system-config", handlers.UpdateAdminSystemConfig)   // 批量更新系统配置
-			admin.POST("/system-config/create", handlers.CreateSystemConfig) // 创建单个配置
-			admin.GET("/export-config", handlers.ExportConfig)
 			admin.POST("/announcements", handlers.CreateAnnouncement)
 			admin.PUT("/announcements/:id", handlers.UpdateAnnouncement)
 			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement)
@@ -454,17 +452,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/email-queue/clear", handlers.ClearEmailQueue)
 
 			// 配置管理
-			admin.GET("/system-config", handlers.GetAdminSystemConfig)
-			admin.GET("/clash-config", handlers.GetAdminClashConfig)
-			admin.POST("/clash-config", handlers.UpdateClashConfig)
-			admin.GET("/v2ray-config", handlers.GetAdminV2RayConfig)
-			admin.POST("/v2ray-config", handlers.UpdateV2RayConfig)
 			admin.GET("/email-config", handlers.GetAdminEmailConfig)
 			admin.POST("/email-config", handlers.UpdateEmailConfig)
-			admin.GET("/clash-config-invalid", handlers.GetAdminClashConfigInvalid)
-			admin.POST("/clash-config-invalid", handlers.MarkClashConfigInvalid)
-			admin.GET("/v2ray-config-invalid", handlers.GetAdminV2RayConfigInvalid)
-			admin.POST("/v2ray-config-invalid", handlers.MarkV2RayConfigInvalid)
 
 			// 文件上传
 			admin.POST("/upload", handlers.UploadFile)

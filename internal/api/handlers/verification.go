@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/sms"
 	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,6 +34,20 @@ func SendVerificationCode(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 检查系统配置：注册是否启用（仅对注册验证码进行检查）
+	if req.Type == "email" || req.Type == "sms" {
+		var registrationConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "registration_enabled", "registration").First(&registrationConfig).Error; err == nil {
+			if registrationConfig.Value != "true" {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"message": "注册功能已禁用，请联系管理员",
+				})
+				return
+			}
+		}
+	}
 
 	// 生成6位验证码
 	code := generateVerificationCode()
@@ -242,4 +257,3 @@ func generateVerificationCode() string {
 	code = 100000 + (code % 900000)
 	return fmt.Sprintf("%06d", code)
 }
-
