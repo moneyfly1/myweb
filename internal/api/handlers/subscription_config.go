@@ -35,6 +35,23 @@ func GetSubscriptionConfig(c *gin.Context) {
 		return
 	}
 
+	// 检查用户是否被禁用
+	var user models.User
+	if err := db.First(&user, subscription.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "用户不存在",
+		})
+		return
+	}
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "账户已被禁用，无法获取节点信息",
+		})
+		return
+	}
+
 	// 记录访问日志（用于安全审计）
 	// 注意：这里不验证用户身份，因为订阅URL本身就是密钥
 	// 但我们可以记录访问IP、User-Agent等信息，用于异常检测
@@ -113,6 +130,23 @@ func GetUniversalSubscription(c *gin.Context) {
 	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
 		// 不返回具体错误信息，防止信息泄露
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		return
+	}
+
+	// 检查用户是否被禁用
+	var user models.User
+	if err := db.First(&user, subscription.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "用户不存在",
+		})
+		return
+	}
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "账户已被禁用，无法获取节点信息",
+		})
 		return
 	}
 
