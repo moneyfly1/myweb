@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"os"
 	"strings"
 	"time"
 
@@ -26,19 +27,38 @@ func (b *EmailTemplateBuilder) GetBaseURL() string {
 }
 
 // getBaseURL 获取基础URL（内部方法）
+// 统一逻辑，与 handlers/subscription.go 中的 buildBaseURL 保持一致
 func (b *EmailTemplateBuilder) getBaseURL() string {
-	// 优先从数据库配置获取
+	// 优先从数据库配置获取域名（category = "general"）
 	db := database.GetDB()
 	if db != nil {
 		var config models.SystemConfig
-		if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
-			domain := config.Value
-			// 确保包含协议
-			if !strings.HasPrefix(domain, "http://") && !strings.HasPrefix(domain, "https://") {
-				domain = "https://" + domain
+		if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
+			domain := strings.TrimSpace(config.Value)
+			// 如果配置的域名包含协议，直接使用
+			if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+				return strings.TrimSuffix(domain, "/")
 			}
-			return domain
+			// 否则默认使用 https
+			return "https://" + domain
 		}
+		// 兼容旧配置（不限制 category）
+		if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
+			domain := strings.TrimSpace(config.Value)
+			if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+				return strings.TrimSuffix(domain, "/")
+			}
+			return "https://" + domain
+		}
+		// 查找 site_url 或 base_url（兼容旧配置）
+		if err := db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil && config.Value != "" {
+			return strings.TrimSpace(config.Value)
+		}
+	}
+
+	// 从环境变量获取
+	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
+		return baseURL
 	}
 
 	// 从配置文件获取
