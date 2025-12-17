@@ -133,10 +133,8 @@ func GetUserDashboard(c *gin.Context) {
 		"total_devices":       subscription.DeviceLimit,
 		"subscription_url":    subscription.SubscriptionURL,
 		"clashUrl":            clashURL,
-		"universalUrl":        universalURL, // 通用订阅（Base64格式）
-		"v2rayUrl":            universalURL, // 兼容旧字段名
-		"ssrUrl":              universalURL, // 兼容旧字段名
-		"mobileUrl":           mobileURL,
+		"universalUrl":         universalURL, // 通用订阅（Base64格式）
+		"mobileUrl":            mobileURL,
 		"qrcodeUrl":           qrcodeURL,
 		"subscription_status": subStatus,
 		"expire_time":         expiryDate,
@@ -152,8 +150,7 @@ func GetUserDashboard(c *gin.Context) {
 			"maxDevices":       subscription.DeviceLimit,
 			"subscription_url": subscription.SubscriptionURL,
 			"clashUrl":         clashURL,
-			"universalUrl":     universalURL, // 通用订阅（SSR Base64格式）
-			"v2rayUrl":         universalURL, // 兼容旧字段名
+			"universalUrl":     universalURL, // 通用订阅（Base64格式）
 			"mobileUrl":        mobileURL,
 			"qrcodeUrl":        qrcodeURL,
 		},
