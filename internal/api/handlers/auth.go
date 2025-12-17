@@ -145,7 +145,7 @@ func Register(c *gin.Context) {
 	if emailVerificationRequired {
 		isVerified = true // 通过验证码注册的用户，邮箱已验证
 	}
-	
+
 	user := models.User{
 		Username:   req.Username,
 		Email:      req.Email,
@@ -320,6 +320,15 @@ func LoginJSON(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"message": "用户名或密码错误",
+		})
+		return
+	}
+
+	// 检查用户是否激活
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "账户已被禁用，无法使用服务。如有疑问，请联系管理员。",
 		})
 		return
 	}

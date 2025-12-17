@@ -142,6 +142,14 @@ export const useAuthStore = defineStore('auth', () => {
   const adminLogin = async (credentials) => {
     loading.value = true
     try {
+      // 清除旧的认证信息，避免缓存问题
+      secureStorage.remove('admin_token')
+      secureStorage.remove('admin_user')
+      secureStorage.remove('admin_refresh_token')
+      secureStorage.remove('user_token')
+      secureStorage.remove('user_data')
+      secureStorage.remove('user_refresh_token')
+      
       const response = await api.post('/auth/login-json', {
         username: credentials.username,
         password: credentials.password
@@ -182,6 +190,10 @@ export const useAuthStore = defineStore('auth', () => {
       }, 500)
       return { success: true }
     } catch (error) {
+      // 登录失败时清除可能已保存的认证信息
+      secureStorage.remove('admin_token')
+      secureStorage.remove('admin_user')
+      secureStorage.remove('admin_refresh_token')
       return handleApiError(error, '登录失败')
     } finally {
       loading.value = false
@@ -217,8 +229,20 @@ export const useAuthStore = defineStore('auth', () => {
     secureStorage.remove('refresh_token')
     secureStorage.remove('user')
     
+    // 清除所有认证相关的缓存
+    secureStorage.clear()
+    
     // 重置刷新失败标志
     resetRefreshFailed()
+  }
+  
+  // 清除所有认证缓存（用于解决缓存问题）
+  const clearAuthCache = () => {
+    logout()
+    // 强制刷新页面以确保清除所有状态
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+    }
   }
 
   const refreshToken = async () => {
@@ -328,6 +352,7 @@ export const useAuthStore = defineStore('auth', () => {
     setAuth,
     setToken,
     setUser,
-    getCurrentState
+    getCurrentState,
+    clearAuthCache
   }
 }) 

@@ -322,20 +322,7 @@ const handleRegister = async () => {
     
     // 注册成功，跳转到登录页面
     if (response.data) {
-      // 检查用户数据是否存在（后端返回的是 id 和 email，不是 user 对象）
-      if (!response.data.id && !response.data.email) {
-        ElMessage.error('注册成功但用户数据异常，请重新登录')
-        // 仍然跳转到登录页面
-        router.push({
-          path: '/login',
-          query: {
-            username: registerForm.username,
-            email: registerForm.email
-          }
-        })
-        return
-      }
-      
+      // 注册成功，显示友好提示并跳转到登录页面
       ElMessage.success('注册成功！请登录')
       
       // 跳转到登录页面，并传递用户名和邮箱，让浏览器提示保存密码
