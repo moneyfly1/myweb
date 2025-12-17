@@ -1212,9 +1212,9 @@ func (s *ConfigUpdateService) infoNodeToLink(proxy *ProxyNode) string {
 	// 使用一个无效的服务器地址，这样客户端会显示节点但无法连接
 	data := map[string]interface{}{
 		"v":    "2",
-		"ps":   proxy.Name, // 节点名称包含信息
-		"add":  "127.0.0.1", // 无效地址，防止实际连接
-		"port": 0,           // 无效端口
+		"ps":   proxy.Name,                             // 节点名称包含信息
+		"add":  "127.0.0.1",                            // 无效地址，防止实际连接
+		"port": 0,                                      // 无效端口
 		"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
 		"net":  "tcp",
 		"type": "none",

@@ -647,8 +647,45 @@ func GetUserSubscription(c *gin.Context) {
 		return
 	}
 
-	// buildBaseURL 根据请求构造带协议的基础 URL
-	buildBaseURL := func(c *gin.Context) string {
+	// 生成订阅地址（使用统一的 buildBaseURL 逻辑，优先从数据库配置获取域名）
+	// buildBaseURL 优先使用数据库配置的域名，如果没有则使用请求的 Host
+	baseURL := func() string {
+		// 优先从数据库配置获取域名
+		db := database.GetDB()
+		if db != nil {
+			var config models.SystemConfig
+			if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
+				domain := strings.TrimSpace(config.Value)
+				// 如果配置的域名包含协议，直接使用
+				if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+					return strings.TrimSuffix(domain, "/")
+				}
+				// 否则使用当前请求的协议
+				scheme := "https"
+				if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+					scheme = proto
+				} else if c.Request.TLS == nil {
+					scheme = "http"
+				}
+				return fmt.Sprintf("%s://%s", scheme, domain)
+			}
+			// 兼容旧配置（不限制 category）
+			if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
+				domain := strings.TrimSpace(config.Value)
+				if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+					return strings.TrimSuffix(domain, "/")
+				}
+				scheme := "https"
+				if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+					scheme = proto
+				} else if c.Request.TLS == nil {
+					scheme = "http"
+				}
+				return fmt.Sprintf("%s://%s", scheme, domain)
+			}
+		}
+
+		// 如果没有配置域名，使用请求的 Host
 		scheme := "http"
 		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
 			scheme = proto
@@ -657,10 +694,7 @@ func GetUserSubscription(c *gin.Context) {
 		}
 		host := c.Request.Host
 		return fmt.Sprintf("%s://%s", scheme, host)
-	}
-
-	// 生成订阅地址（与原始 Python 代码保持一致）
-	baseURL := buildBaseURL(c)
+	}()
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
 	ssrURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)

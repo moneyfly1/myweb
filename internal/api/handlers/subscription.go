@@ -229,11 +229,11 @@ func GetAdminSubscriptions(c *gin.Context) {
 			}
 		}
 
-		// 构造订阅链接（通用 Base64 / Clash YAML）
+		// 构造订阅链接（统一格式，与用户端和邮件保持一致）
 		baseURL := buildBaseURL(c)
-		// 为方便辨识，通用订阅追加 format=base64 标识
-		v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?format=base64", baseURL, sub.SubscriptionURL) // 通用订阅 Base64
-		clashURL := fmt.Sprintf("%s/api/v1/subscribe/%s", baseURL, sub.SubscriptionURL)                       // Clash YAML
+		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+		v2rayURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp) // 通用订阅 Base64
+		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp) // Clash YAML
 
 		// 构建用户信息对象（前端期望嵌套在 user 中）
 		// 检查用户是否存在（如果 Preload 失败，User.ID 会是 0）
@@ -1025,19 +1025,34 @@ func RemoveDevice(c *gin.Context) {
 }
 
 // buildBaseURL 根据请求构造带协议的基础 URL
-// 优先使用数据库配置的域名，如果没有则使用请求的 Host
+// buildBaseURL 优先使用数据库配置的域名，如果没有则使用请求的 Host
+// 统一所有订阅地址生成逻辑，确保管理员后台、用户端和邮件中的订阅地址一致
 func buildBaseURL(c *gin.Context) string {
-	// 优先从数据库配置获取域名
+	// 优先从数据库配置获取域名（category = "general"）
 	db := database.GetDB()
 	if db != nil {
 		var config models.SystemConfig
-		if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
+		if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
 			domain := strings.TrimSpace(config.Value)
 			// 如果配置的域名包含协议，直接使用
 			if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
 				return strings.TrimSuffix(domain, "/")
 			}
 			// 否则使用当前请求的协议
+			scheme := "https"
+			if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+				scheme = proto
+			} else if c.Request.TLS == nil {
+				scheme = "http"
+			}
+			return fmt.Sprintf("%s://%s", scheme, domain)
+		}
+		// 兼容旧配置（不限制 category）
+		if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
+			domain := strings.TrimSpace(config.Value)
+			if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+				return strings.TrimSuffix(domain, "/")
+			}
 			scheme := "https"
 			if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
 				scheme = proto
