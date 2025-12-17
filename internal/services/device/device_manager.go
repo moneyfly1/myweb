@@ -155,11 +155,25 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		"os_version": "",
 	}
 
-	// iOS
-	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") {
+	// iOS - 改进识别逻辑，支持多种格式
+	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
 		result["os_name"] = "iOS"
-		if match := regexp.MustCompile(`OS\s+(\d+[._]\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
-			result["os_version"] = strings.Replace(match[1], "_", ".", -1)
+		// 尝试多种 iOS 版本格式
+		patterns := []string{
+			`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,           // OS 16_6_1, OS 16.6.1
+			`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,  // iPhone OS 16_6_1
+			`Version/(\d+)[._](\d+)(?:[._](\d+))?`,         // Version/16.6.1
+			`iOS\s+(\d+)[._](\d+)(?:[._](\d+))?`,          // iOS 16.6.1
+		}
+		for _, pattern := range patterns {
+			if match := regexp.MustCompile(pattern).FindStringSubmatch(userAgent); len(match) > 1 {
+				version := match[1] + "." + match[2]
+				if len(match) > 3 && match[3] != "" {
+					version += "." + match[3]
+				}
+				result["os_version"] = version
+				break
+			}
 		}
 		return result
 	}
@@ -240,14 +254,52 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 
 	uaLower := strings.ToLower(userAgent)
 
-	// Apple 设备
-	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") {
+	// Apple 设备 - 改进识别逻辑，支持 iPhone 型号标识符
+	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
 		result["device_brand"] = "Apple"
-		if match := regexp.MustCompile(`iPhone(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
-			result["device_model"] = fmt.Sprintf("iPhone %s", strings.Replace(match[1], ",", ".", -1))
-		} else if match := regexp.MustCompile(`iPad(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
-			result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
+		
+		// iPhone 型号映射表（根据 Apple 的型号标识符）
+		iphoneModelMap := map[string]string{
+			"iPhone14,2": "iPhone 13 Pro",
+			"iPhone14,3": "iPhone 13 Pro Max",
+			"iPhone14,4": "iPhone 13 mini",
+			"iPhone14,5": "iPhone 13",
+			"iPhone15,2": "iPhone 14 Pro",
+			"iPhone15,3": "iPhone 14 Pro Max",
+			"iPhone15,4": "iPhone 14",
+			"iPhone15,5": "iPhone 14 Plus",
+			"iPhone16,1": "iPhone 15 Pro",
+			"iPhone16,2": "iPhone 15 Pro Max",
+			"iPhone16,3": "iPhone 15",
+			"iPhone16,4": "iPhone 15 Plus",
 		}
+		
+		// 尝试匹配 iPhone 型号标识符（如 iPhone13,2）
+		if match := regexp.MustCompile(`iPhone(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+			modelID := "iPhone" + match[1]
+			if modelName, exists := iphoneModelMap[modelID]; exists {
+				result["device_model"] = modelName
+			} else {
+				// 如果没有映射，使用原始格式
+				result["device_model"] = fmt.Sprintf("iPhone %s", strings.Replace(match[1], ",", ".", -1))
+			}
+		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+Pro\s+Max`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["device_model"] = fmt.Sprintf("iPhone %s Pro Max", match[1])
+		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+Pro`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["device_model"] = fmt.Sprintf("iPhone %s Pro", match[1])
+		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+mini`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["device_model"] = fmt.Sprintf("iPhone %s mini", match[1])
+		} else if match := regexp.MustCompile(`iPhone\s+(\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["device_model"] = fmt.Sprintf("iPhone %s", match[1])
+		}
+		
+		// iPad 型号
+		if match := regexp.MustCompile(`iPad(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
+		} else if match := regexp.MustCompile(`iPad`).FindStringSubmatch(userAgent); len(match) > 0 {
+			result["device_model"] = "iPad"
+		}
+		
 		return result
 	}
 

@@ -96,13 +96,15 @@ func SetupRouter() *gin.Engine {
 		}
 
 		// 订阅配置（公开访问，用于 Clash 等客户端，豁免CSRF）
+		// 注意：虽然路径是公开的，但订阅URL本身就是密钥，只有知道URL的用户才能访问
 		subscribePublic := api.Group("")
 		subscribePublic.Use(middleware.CSRFExemptMiddleware())
 		{
 			subscribePublic.GET("/subscribe/:url", handlers.GetSubscriptionConfig)
-			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig) // Clash 订阅（YAML格式）
-			subscribePublic.GET("/subscriptions/v2ray/:url", handlers.GetV2RaySubscription)  // V2Ray 订阅（Base64格式）
-			subscribePublic.GET("/subscriptions/ssr/:url", handlers.GetSSRSubscription)      // SSR 订阅（Base64格式）
+			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig) // 猫咪订阅（Clash YAML格式）
+			subscribePublic.GET("/subscriptions/ssr/:url", handlers.GetSSRSubscription)      // 通用订阅（SSR Base64格式，适用于小火煎、v2ray等）
+			// 兼容旧路径，重定向到 SSR
+			subscribePublic.GET("/subscriptions/v2ray/:url", handlers.GetSSRSubscription)     // 通用订阅（兼容旧路径）
 		}
 
 		// 订单相关

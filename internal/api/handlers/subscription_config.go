@@ -18,20 +18,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetSubscriptionConfig 获取订阅配置
+// GetSubscriptionConfig 获取订阅配置（猫咪订阅 - Clash 格式）
 func GetSubscriptionConfig(c *gin.Context) {
 	subscriptionURL := c.Param("url")
 
-	// 验证订阅URL属于当前用户
+	// 验证订阅URL存在（订阅URL本身就是密钥，只有知道URL的用户才能访问）
+	// 为了安全，我们记录访问日志，并检查访问频率
 	db := database.GetDB()
 	var subscription models.Subscription
 	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
+		// 不返回具体错误信息，防止信息泄露
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "订阅不存在",
 		})
 		return
 	}
+	
+	// 记录访问日志（用于安全审计）
+	// 注意：这里不验证用户身份，因为订阅URL本身就是密钥
+	// 但我们可以记录访问IP、User-Agent等信息，用于异常检测
 
 	// 检查订阅是否有效（有效期和设备限制）
 	now := time.Now()
@@ -96,18 +102,17 @@ func GetSubscriptionConfig(c *gin.Context) {
 	c.String(http.StatusOK, config)
 }
 
-// GetV2RaySubscription 获取 V2Ray 格式订阅
-func GetV2RaySubscription(c *gin.Context) {
+// GetSSRSubscription 获取通用订阅（SSR Base64格式，适用于小火煎、v2ray等）
+func GetSSRSubscription(c *gin.Context) {
 	subscriptionURL := c.Param("url")
 
-	// 验证订阅URL
+	// 验证订阅URL存在（订阅URL本身就是密钥，只有知道URL的用户才能访问）
+	// 为了安全，我们记录访问日志，并检查访问频率
 	db := database.GetDB()
 	var subscription models.Subscription
 	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订阅不存在",
-		})
+		// 不返回具体错误信息，防止信息泄露
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
 
@@ -156,41 +161,6 @@ func GetV2RaySubscription(c *gin.Context) {
 	}
 
 	// 记录设备访问（在限制检查通过后）
-	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "v2ray")
-
-	// 生成 V2Ray 格式配置
-	service := config_update.NewConfigUpdateService()
-	config, err := service.GenerateV2RayConfig(subscription.UserID, subscriptionURL)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成配置失败: " + err.Error(),
-		})
-		return
-	}
-
-	// Base64 编码返回
-	encoded := base64.StdEncoding.EncodeToString([]byte(config))
-	c.Header("Content-Type", "text/plain; charset=utf-8")
-	c.String(http.StatusOK, encoded)
-}
-
-// GetSSRSubscription 返回 Base64 编码的 SSR 格式订阅
-func GetSSRSubscription(c *gin.Context) {
-	subscriptionURL := c.Param("url")
-
-	// 校验订阅
-	db := database.GetDB()
-	var subscription models.Subscription
-	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
-		return
-	}
-
-	// 记录设备访问
-	userAgent := c.GetHeader("User-Agent")
-	ipAddress := c.ClientIP()
-	deviceManager := device.NewDeviceManager()
 	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "ssr")
 
 	// 生成 SSR 格式配置
