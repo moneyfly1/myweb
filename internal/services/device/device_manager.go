@@ -467,7 +467,7 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string) (*models.Device, error) {
 	// 解析设备信息
 	deviceInfo := dm.ParseUserAgent(userAgent)
-	
+
 	// 检查是否为订阅软件客户端（不是浏览器）
 	// 浏览器或其他非订阅软件打开订阅地址，不算新设备
 	if deviceInfo.SoftwareName == "Unknown" {

@@ -132,7 +132,7 @@ func GetUserDashboard(c *gin.Context) {
 		"subscription_url":    subscription.SubscriptionURL,
 		"clashUrl":            clashURL,
 		"universalUrl":        universalURL, // 通用订阅（Base64格式）
-		"qrcodeUrl":            qrcodeURL,   // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
+		"qrcodeUrl":           qrcodeURL,    // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
 		"subscription_status": subStatus,
 		"expire_time":         expiryDate,
 		"expiryDate":          expiryDate,
@@ -148,7 +148,7 @@ func GetUserDashboard(c *gin.Context) {
 			"subscription_url": subscription.SubscriptionURL,
 			"clashUrl":         clashURL,
 			"universalUrl":     universalURL, // 通用订阅（Base64格式）
-			"qrcodeUrl":         qrcodeURL,   // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
+			"qrcodeUrl":        qrcodeURL,    // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
 		},
 	}
 

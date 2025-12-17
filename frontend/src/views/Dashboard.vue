@@ -148,10 +148,10 @@
           <div class="remaining-time-main">
             <h3 class="remaining-time-title">用户剩余时间</h3>
             <div class="remaining-time-value">
-              <span class="time-number">{{ subscriptionInfo.remainingDays || 0 }}</span>
+              <span class="time-number">{{ getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) }}</span>
               <span class="time-unit">天</span>
             </div>
-            <p class="expiry-date">到期时间：{{ formatDate(subscriptionInfo.expiryDate) || '未设置' }}</p>
+            <p class="expiry-date">到期时间：{{ formatDate(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) || '未设置' }}</p>
           </div>
           <el-button 
             type="primary" 
@@ -538,6 +538,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI } from '@/utils/api'
+import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import DOMPurify from 'dompurify'
 
 const router = useRouter()
