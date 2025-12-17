@@ -94,14 +94,18 @@ func CreateSubscription(c *gin.Context) {
 	subscriptionURL := utils.GenerateSubscriptionURL()
 
 	db := database.GetDB()
+
+	// 从系统设置获取默认配置
+	deviceLimit, durationMonths := getDefaultSubscriptionSettings(db)
+
 	subscription := models.Subscription{
 		UserID:          user.ID,
 		SubscriptionURL: subscriptionURL,
-		DeviceLimit:     3,
+		DeviceLimit:     deviceLimit,
 		CurrentDevices:  0,
 		IsActive:        true,
 		Status:          "active",
-		ExpireTime:      utils.GetBeijingTime().AddDate(0, 1, 0), // 默认1个月
+		ExpireTime:      utils.GetBeijingTime().AddDate(0, durationMonths, 0),
 	}
 
 	if err := db.Create(&subscription).Error; err != nil {

@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,30 @@ import (
 	"gorm.io/gorm"
 )
 
+// getDefaultSubscriptionSettings 从系统设置中获取默认订阅配置
+func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonths int) {
+	// 默认值
+	deviceLimit = 3
+	durationMonths = 1
+
+	// 从数据库读取配置
+	var deviceLimitConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
+		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit > 0 {
+			deviceLimit = limit
+		}
+	}
+
+	var durationConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err == nil {
+		if months, err := strconv.Atoi(durationConfig.Value); err == nil && months > 0 {
+			durationMonths = months
+		}
+	}
+
+	return deviceLimit, durationMonths
+}
+
 // createDefaultSubscription 为用户创建默认订阅（如果不存在）
 func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	// 检查是否已存在订阅
@@ -26,17 +51,20 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 		return nil
 	}
 
+	// 从系统设置获取默认配置
+	deviceLimit, durationMonths := getDefaultSubscriptionSettings(db)
+
 	// 生成订阅 URL
 	subscriptionURL := utils.GenerateSubscriptionURL()
 
 	sub := models.Subscription{
 		UserID:          userID,
 		SubscriptionURL: subscriptionURL,
-		DeviceLimit:     3,
+		DeviceLimit:     deviceLimit,
 		CurrentDevices:  0,
 		IsActive:        true,
 		Status:          "active",
-		ExpireTime:      utils.GetBeijingTime().AddDate(0, 1, 0), // 默认1个月
+		ExpireTime:      utils.GetBeijingTime().AddDate(0, durationMonths, 0),
 	}
 
 	if err := db.Create(&sub).Error; err != nil {
@@ -719,10 +747,11 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	// 创建订阅（使用请求中的 device_limit 和 expire_time，或使用默认值）
+	// 创建订阅（使用请求中的 device_limit 和 expire_time，或使用系统默认值）
 	deviceLimit := req.DeviceLimit
+	defaultDeviceLimit, defaultDurationMonths := getDefaultSubscriptionSettings(db)
 	if deviceLimit == 0 {
-		deviceLimit = 5 // 默认5个设备
+		deviceLimit = defaultDeviceLimit
 	}
 
 	var expireTime time.Time
@@ -733,8 +762,8 @@ func CreateUser(c *gin.Context) {
 			// 尝试其他格式
 			parsedTime, err = time.Parse("2006-01-02 15:04:05", req.ExpireTime)
 			if err != nil {
-				// 使用默认值：1年后
-				expireTime = utils.GetBeijingTime().AddDate(1, 0, 0)
+				// 使用系统默认值
+				expireTime = utils.GetBeijingTime().AddDate(0, defaultDurationMonths, 0)
 			} else {
 				expireTime = parsedTime
 			}
@@ -742,8 +771,8 @@ func CreateUser(c *gin.Context) {
 			expireTime = parsedTime
 		}
 	} else {
-		// 默认1年后到期
-		expireTime = utils.GetBeijingTime().AddDate(1, 0, 0)
+		// 使用系统默认值
+		expireTime = utils.GetBeijingTime().AddDate(0, defaultDurationMonths, 0)
 	}
 
 	subscription := models.Subscription{
@@ -1299,9 +1328,12 @@ func UnlockUserLogin(c *gin.Context) {
 		return
 	}
 
-	// 重置登录失败次数和锁定时间（如果字段存在）
-	// 注意：如果 User 模型没有这些字段，可以忽略或通过系统配置实现
-	// 这里假设通过 IsActive 来解锁
+	// 清除该用户的所有登录失败记录
+	result := db.Where("username = ? OR username = ?", user.Username, user.Email).
+		Where("success = ?", false).
+		Delete(&models.LoginAttempt{})
+
+	// 确保用户是激活状态
 	user.IsActive = true
 
 	if err := db.Save(&user).Error; err != nil {
@@ -1314,7 +1346,7 @@ func UnlockUserLogin(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "用户已解锁",
+		"message": fmt.Sprintf("用户已解锁，清除了 %d 条登录失败记录", result.RowsAffected),
 	})
 }
 
