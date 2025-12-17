@@ -143,8 +143,13 @@ func GetAdminSubscriptions(c *gin.Context) {
 		keyword = utils.SanitizeSearchKeyword(keyword)
 	}
 	if keyword != "" {
-		query = query.Where("subscription_url LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		// 搜索逻辑：
+		// 1. 当前订阅地址匹配
+		// 2. 用户名或邮箱匹配
+		// 3. 失效的订阅地址匹配（通过 subscription_resets 表的 old_subscription_url）
+		query = query.Where(
+			"subscription_url LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?) OR user_id IN (SELECT DISTINCT user_id FROM subscription_resets WHERE old_subscription_url LIKE ?)",
+			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
 	// 状态筛选
