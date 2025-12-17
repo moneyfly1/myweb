@@ -249,16 +249,16 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 }
 
 // GetSubscriptionTemplate 获取订阅信息邮件模板
-func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, v2rayURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
+func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
 	title := "服务配置信息"
 
 	urlList := ""
-	if v2rayURL != "" {
+	if universalURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">
                         <strong>🔗 通用配置地址（推荐）：</strong>
                         <p style="margin: 5px 0; color: #666; font-size: 12px;">适用于大部分客户端，包括手机和电脑</p>
                         <code class="url-code">%s</code>
-                    </div>`, v2rayURL)
+                    </div>`, universalURL)
 	}
 	if clashURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">
@@ -440,16 +440,16 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 }
 
 // GetSubscriptionResetTemplate 获取订阅重置邮件模板
-func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, v2rayURL, clashURL, expireTime, resetTime, resetReason string) string {
+func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
 	title := "订阅重置通知"
 
 	urlList := ""
-	if v2rayURL != "" {
+	if universalURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">
                         <strong>🔗 通用配置地址（推荐）：</strong>
                         <p style="margin: 5px 0; color: #666; font-size: 12px;">适用于大部分客户端，包括手机和电脑</p>
                         <code class="url-code">%s</code>
-                    </div>`, v2rayURL)
+                    </div>`, universalURL)
 	}
 	if clashURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">

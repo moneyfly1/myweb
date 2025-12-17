@@ -233,7 +233,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 		baseURL := buildBaseURL(c)
 		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 		universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
-		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
+		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
 
 		// 构建用户信息对象（前端期望嵌套在 user 中）
 		// 检查用户是否存在（如果 Preload 失败，User.ID 会是 0）
@@ -282,9 +282,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 			"email":             email,    // 保留顶层字段以兼容
 			"subscription_url":  sub.SubscriptionURL,
 			"universal_url":     universalURL, // 通用订阅（Base64格式，适用于小火煎、v2ray等）
-			"v2ray_url":         universalURL, // 兼容旧字段名
-			"ssr_url":           universalURL, // 兼容旧字段名
-			"clash_url":         clashURL,
+			"clash_url":          clashURL,    // 猫咪订阅（Clash YAML格式）
 			"status":            sub.Status,
 			"is_active":         sub.IsActive,
 			"device_limit":      sub.DeviceLimit,
@@ -605,7 +603,7 @@ func ResetSubscription(c *gin.Context) {
 		baseURL := buildBaseURL(c)
 		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 		universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp) // 通用订阅（Base64格式）
-		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
+		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
 		expireTime := "未设置"
 		if !sub.ExpireTime.IsZero() {
 			expireTime = sub.ExpireTime.Format("2006-01-02 15:04:05")
@@ -746,7 +744,7 @@ func SendSubscriptionEmail(c *gin.Context) {
 	baseURL := buildBaseURL(c)
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 通用订阅（Base64格式）
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
 
 	// 计算到期时间和剩余天数
 	expireTime := "未设置"
@@ -891,7 +889,7 @@ func SendSubscriptionEmailSelf(c *gin.Context) {
 	baseURL := buildBaseURL(c)
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 通用订阅（Base64格式）
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
 
 	// 计算到期时间和剩余天数
 	expireTime := "未设置"
