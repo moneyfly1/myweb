@@ -899,10 +899,14 @@ func (s *ConfigUpdateService) extractRegionFromName(name string) string {
 
 // addInfoAndReminderNodes 添加信息节点和提醒节点到配置前
 // 注意：信息节点使用特殊的节点名称，在 Clash 中会显示在节点列表中
-// 对于 V2Ray/SSR 格式，这些节点会被过滤掉（proxyNodeToLink 会返回空字符串）
+// 对于 V2Ray/SSR 格式，这些信息节点会被转换为特殊的 VMess 链接，在客户端中显示
 func (s *ConfigUpdateService) addInfoAndReminderNodes(proxies []*ProxyNode, subscription models.Subscription, user models.User, isExpired, isInactive, isDeviceOverLimit bool, currentDevices, deviceLimit int) []*ProxyNode {
-	// 获取网站域名
+	// 获取网站域名（自动识别）
 	siteURL := s.getSiteURL()
+	// 如果找不到域名，使用默认提示
+	if siteURL == "" {
+		siteURL = "请在系统设置中配置域名"
+	}
 
 	// 格式化到期时间
 	expireTimeStr := subscription.ExpireTime.Format("2006-01-02 15:04:05")
@@ -911,6 +915,7 @@ func (s *ConfigUpdateService) addInfoAndReminderNodes(proxies []*ProxyNode, subs
 	supportQQ := "3219904322"
 
 	// 创建信息节点列表（使用 DIRECT 类型的特殊节点，在 Clash 中会显示但不可用）
+	// 在 V2Ray/SSR 格式中，这些节点会被转换为特殊的 VMess 链接
 	infoNodes := make([]*ProxyNode, 0)
 
 	// 1. 网站域名信息节点
@@ -1009,7 +1014,16 @@ func (s *ConfigUpdateService) getSiteURL() string {
 		return "https://" + domain
 	}
 
-	// 其次查找 site_url 或 base_url（不限制 category，兼容旧配置）
+	// 其次查找 domain_name（不限制 category，兼容旧配置）
+	if err := s.db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
+		domain := strings.TrimSpace(config.Value)
+		if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+			return strings.TrimSuffix(domain, "/")
+		}
+		return "https://" + domain
+	}
+
+	// 再次查找 site_url 或 base_url（不限制 category，兼容旧配置）
 	if err := s.db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil && config.Value != "" {
 		return strings.TrimSpace(config.Value)
 	}
@@ -1019,8 +1033,9 @@ func (s *ConfigUpdateService) getSiteURL() string {
 		return baseURL
 	}
 
-	// 默认值（不应该使用，应该配置 domain_name）
-	return "https://your-domain.com"
+	// 如果都找不到，返回空字符串（由调用方处理，或使用默认值）
+	// 注意：这不应该发生，应该在系统设置中配置 domain_name
+	return ""
 }
 
 // GenerateV2RayConfig 生成 V2Ray 格式订阅配置
@@ -1031,33 +1046,13 @@ func (s *ConfigUpdateService) GenerateV2RayConfig(userID uint, subscriptionURL s
 		return "", err
 	}
 
-	// 添加信息节点
+	// 添加信息节点（信息节点会转换为 VMess 链接，在客户端中显示）
 	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
 
 	// 生成 V2Ray 格式的节点链接列表
 	var links []string
 
-	// 添加信息注释（Base64 编码，作为注释行）
-	siteURL := s.getSiteURL()
-	expireTimeStr := subscription.ExpireTime.Format("2006-01-02 15:04:05")
-	supportQQ := "3219904322"
-
-	infoText := fmt.Sprintf("网站域名: %s | 到期时间: %s | 售后QQ: %s", siteURL, expireTimeStr, supportQQ)
-	if isExpired {
-		infoText += " | ⚠️ 订阅已过期，请及时续费！"
-	}
-	if isDeviceOverLimit {
-		infoText += fmt.Sprintf(" | ⚠️ 设备超限！当前 %d/%d，请删除多余设备", currentDevices, deviceLimit)
-	}
-	if isInactive {
-		infoText += " | ⚠️ 订阅已失效，请联系客服！"
-	}
-
-	// 将信息编码为 Base64，作为注释
-	infoEncoded := base64.StdEncoding.EncodeToString([]byte(infoText))
-	links = append(links, "# "+infoEncoded)
-
-	// 添加实际节点链接
+	// 添加所有节点链接（包括信息节点，它们会被转换为特殊的 VMess 链接）
 	for _, proxy := range proxies {
 		link := s.proxyNodeToLink(proxy)
 		if link != "" {
@@ -1076,33 +1071,13 @@ func (s *ConfigUpdateService) GenerateSSRConfig(userID uint, subscriptionURL str
 		return "", err
 	}
 
-	// 添加信息节点
+	// 添加信息节点（信息节点会转换为 VMess 链接，在客户端中显示）
 	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
 
 	// SSR 格式也是节点链接列表
 	var links []string
 
-	// 添加信息注释（Base64 编码，作为注释行）
-	siteURL := s.getSiteURL()
-	expireTimeStr := subscription.ExpireTime.Format("2006-01-02 15:04:05")
-	supportQQ := "3219904322"
-
-	infoText := fmt.Sprintf("网站域名: %s | 到期时间: %s | 售后QQ: %s", siteURL, expireTimeStr, supportQQ)
-	if isExpired {
-		infoText += " | ⚠️ 订阅已过期，请及时续费！"
-	}
-	if isDeviceOverLimit {
-		infoText += fmt.Sprintf(" | ⚠️ 设备超限！当前 %d/%d，请删除多余设备", currentDevices, deviceLimit)
-	}
-	if isInactive {
-		infoText += " | ⚠️ 订阅已失效，请联系客服！"
-	}
-
-	// 将信息编码为 Base64，作为注释
-	infoEncoded := base64.StdEncoding.EncodeToString([]byte(infoText))
-	links = append(links, "# "+infoEncoded)
-
-	// 添加实际节点链接
+	// 添加所有节点链接（包括信息节点，它们会被转换为特殊的 VMess 链接）
 	for _, proxy := range proxies {
 		link := s.proxyNodeToLink(proxy)
 		if link != "" {
@@ -1209,9 +1184,10 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 
 // proxyNodeToLink 将 ProxyNode 转换为节点链接
 func (s *ConfigUpdateService) proxyNodeToLink(proxy *ProxyNode) string {
-	// 信息节点不转换为链接，返回空字符串（direct 类型且 server 为 127.0.0.1）
+	// 信息节点（direct 类型且 server 为 127.0.0.1）转换为特殊的 VMess 链接
+	// 这样在 V2Ray/SSR 格式中也能显示信息
 	if proxy.Type == "direct" && proxy.Server == "127.0.0.1" {
-		return ""
+		return s.infoNodeToLink(proxy)
 	}
 
 	switch proxy.Type {
@@ -1228,6 +1204,25 @@ func (s *ConfigUpdateService) proxyNodeToLink(proxy *ProxyNode) string {
 	default:
 		return ""
 	}
+}
+
+// infoNodeToLink 将信息节点转换为 VMess 链接（用于在 V2Ray/SSR 格式中显示信息）
+func (s *ConfigUpdateService) infoNodeToLink(proxy *ProxyNode) string {
+	// 创建一个特殊的 VMess 节点，将信息编码在节点名称中
+	// 使用一个无效的服务器地址，这样客户端会显示节点但无法连接
+	data := map[string]interface{}{
+		"v":    "2",
+		"ps":   proxy.Name, // 节点名称包含信息
+		"add":  "127.0.0.1", // 无效地址，防止实际连接
+		"port": 0,           // 无效端口
+		"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
+		"net":  "tcp",
+		"type": "none",
+	}
+
+	jsonData, _ := json.Marshal(data)
+	encoded := base64.StdEncoding.EncodeToString(jsonData)
+	return "vmess://" + encoded
 }
 
 // vmessToLink 将 VMess 节点转换为链接
