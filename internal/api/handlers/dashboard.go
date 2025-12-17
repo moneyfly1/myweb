@@ -75,16 +75,14 @@ func GetUserDashboard(c *gin.Context) {
 	baseURL := buildBaseURL(c)
 	clashURL := ""
 	universalURL := ""
-	mobileURL := ""
 	qrcodeURL := ""
 	if subscription.ID > 0 && subscription.SubscriptionURL != "" {
 		// 使用时间戳避免缓存
 		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 		// 猫咪订阅地址（Clash YAML格式）
 		clashURL = fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
-		// 通用订阅地址（SSR Base64格式，适用于小火煎、v2ray等）
+		// 通用订阅地址（Base64格式，适用于小火煎、v2ray等）
 		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
-		mobileURL = universalURL
 
 		// 生成二维码 URL（sub://格式，包含到期时间）
 		encodedURL := base64.StdEncoding.EncodeToString([]byte(universalURL))
@@ -133,9 +131,8 @@ func GetUserDashboard(c *gin.Context) {
 		"total_devices":       subscription.DeviceLimit,
 		"subscription_url":    subscription.SubscriptionURL,
 		"clashUrl":            clashURL,
-		"universalUrl":         universalURL, // 通用订阅（Base64格式）
-		"mobileUrl":            mobileURL,
-		"qrcodeUrl":           qrcodeURL,
+		"universalUrl":        universalURL, // 通用订阅（Base64格式）
+		"qrcodeUrl":            qrcodeURL,   // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
 		"subscription_status": subStatus,
 		"expire_time":         expiryDate,
 		"expiryDate":          expiryDate,
@@ -151,8 +148,7 @@ func GetUserDashboard(c *gin.Context) {
 			"subscription_url": subscription.SubscriptionURL,
 			"clashUrl":         clashURL,
 			"universalUrl":     universalURL, // 通用订阅（Base64格式）
-			"mobileUrl":        mobileURL,
-			"qrcodeUrl":        qrcodeURL,
+			"qrcodeUrl":         qrcodeURL,   // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
 		},
 	}
 
@@ -200,7 +196,7 @@ func GetDashboard(c *gin.Context) {
 		FROM orders 
 		WHERE status = ?
 	`, "paid").Scan(&result)
-	
+
 	if result.Total.Valid {
 		totalRevenue = result.Total.Float64
 	} else {

@@ -282,7 +282,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 			"email":             email,    // 保留顶层字段以兼容
 			"subscription_url":  sub.SubscriptionURL,
 			"universal_url":     universalURL, // 通用订阅（Base64格式，适用于小火煎、v2ray等）
-			"clash_url":          clashURL,    // 猫咪订阅（Clash YAML格式）
+			"clash_url":         clashURL,     // 猫咪订阅（Clash YAML格式）
 			"status":            sub.Status,
 			"is_active":         sub.IsActive,
 			"device_limit":      sub.DeviceLimit,
