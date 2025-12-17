@@ -83,7 +83,7 @@ func GetUserDashboard(c *gin.Context) {
 		// 猫咪订阅地址（Clash YAML格式）
 		clashURL = fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
 		// 通用订阅地址（SSR Base64格式，适用于小火煎、v2ray等）
-		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
 		mobileURL = universalURL
 
 		// 生成二维码 URL（sub://格式，包含到期时间）
@@ -133,8 +133,9 @@ func GetUserDashboard(c *gin.Context) {
 		"total_devices":       subscription.DeviceLimit,
 		"subscription_url":    subscription.SubscriptionURL,
 		"clashUrl":            clashURL,
-		"universalUrl":        universalURL, // 通用订阅（SSR Base64格式）
+		"universalUrl":        universalURL, // 通用订阅（Base64格式）
 		"v2rayUrl":            universalURL, // 兼容旧字段名
+		"ssrUrl":              universalURL, // 兼容旧字段名
 		"mobileUrl":           mobileURL,
 		"qrcodeUrl":           qrcodeURL,
 		"subscription_status": subStatus,

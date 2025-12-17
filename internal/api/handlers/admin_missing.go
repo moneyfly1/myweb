@@ -696,9 +696,8 @@ func GetUserSubscription(c *gin.Context) {
 		return fmt.Sprintf("%s://%s", scheme, host)
 	}()
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 猫咪订阅（Clash YAML格式）
-	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 通用订阅（SSR Base64格式，适用于小火煎、v2ray等）
-	v2rayURL := universalURL // 兼容旧字段名
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
+	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
 
 	// 计算到期时间
 	expiryDate := "未设置"
@@ -742,9 +741,9 @@ func GetUserSubscription(c *gin.Context) {
 		"id":               subscription.ID,
 		"subscription_url": subscription.SubscriptionURL,
 		"clash_url":        clashURL,
-		"universal_url":    universalURL, // 通用订阅（SSR Base64格式）
-		"ssr_url":          universalURL,  // 兼容旧字段名（SSR）
-		"v2ray_url":        v2rayURL,    // 兼容旧字段名
+		"universal_url":    universalURL, // 通用订阅（Base64格式）
+		"ssr_url":          universalURL,  // 兼容旧字段名
+		"v2ray_url":        universalURL,  // 兼容旧字段名
 		"qrcode_url":       qrcodeURL,
 		"device_limit":     subscription.DeviceLimit,
 		"current_devices":  onlineDevices,

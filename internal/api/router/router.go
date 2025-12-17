@@ -101,10 +101,11 @@ func SetupRouter() *gin.Engine {
 		subscribePublic.Use(middleware.CSRFExemptMiddleware())
 		{
 			subscribePublic.GET("/subscribe/:url", handlers.GetSubscriptionConfig)
-			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig) // 猫咪订阅（Clash YAML格式）
-			subscribePublic.GET("/subscriptions/ssr/:url", handlers.GetSSRSubscription)      // 通用订阅（SSR Base64格式，适用于小火煎、v2ray等）
-			// 兼容旧路径，重定向到 SSR
-			subscribePublic.GET("/subscriptions/v2ray/:url", handlers.GetSSRSubscription)     // 通用订阅（兼容旧路径）
+			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig)   // 猫咪订阅（Clash YAML格式）
+			subscribePublic.GET("/subscriptions/universal/:url", handlers.GetUniversalSubscription) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
+			// 兼容旧路径
+			subscribePublic.GET("/subscriptions/ssr/:url", handlers.GetUniversalSubscription)  // 通用订阅（兼容旧路径）
+			subscribePublic.GET("/subscriptions/v2ray/:url", handlers.GetUniversalSubscription) // 通用订阅（兼容旧路径）
 		}
 
 		// 订单相关

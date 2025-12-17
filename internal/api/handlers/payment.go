@@ -500,8 +500,8 @@ func PaymentNotify(c *gin.Context) {
 								// 使用 EmailTemplateBuilder 的 GetBaseURL 方法获取基础URL
 								baseURL := templateBuilder.GetBaseURL()
 								timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-								universalURL := fmt.Sprintf("%s/api/v1/subscriptions/ssr/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp) // 通用订阅（SSR Base64格式）
-								clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp) // 猫咪订阅（Clash YAML格式）
+								universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp) // 通用订阅（Base64格式）
+								clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
 
 								// 计算到期时间和剩余天数
 								expireTime := "未设置"
