@@ -140,12 +140,18 @@ func Register(c *gin.Context) {
 	}
 
 	// 创建用户
+	// 如果通过验证码注册，邮箱已验证，设置 IsVerified 为 true
+	isVerified := false
+	if emailVerificationRequired {
+		isVerified = true // 通过验证码注册的用户，邮箱已验证
+	}
+	
 	user := models.User{
 		Username:   req.Username,
 		Email:      req.Email,
 		Password:   hashedPassword,
 		IsActive:   true,
-		IsVerified: false,
+		IsVerified: isVerified,
 		IsAdmin:    false,
 	}
 
