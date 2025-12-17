@@ -741,8 +741,8 @@ func GetUserSubscription(c *gin.Context) {
 		"id":               subscription.ID,
 		"subscription_url": subscription.SubscriptionURL,
 		"clash_url":        clashURL,
-		"universal_url":     universalURL, // 通用订阅（Base64格式）
-		"qrcode_url":        qrcodeURL,
+		"universal_url":    universalURL, // 通用订阅（Base64格式）
+		"qrcode_url":       qrcodeURL,
 		"device_limit":     subscription.DeviceLimit,
 		"current_devices":  onlineDevices,
 		"status":           subscription.Status,

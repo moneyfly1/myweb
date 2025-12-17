@@ -448,14 +448,13 @@ export default {
             device_limit: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
             maxDevices: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
             clash_url: subscriptionData.clash_url || subscriptionData.clashUrl || '',
-            universal_url: subscriptionData.universal_url || subscriptionData.mobileUrl || '',
+            universal_url: subscriptionData.universal_url || '',
             qrcode_url: subscriptionData.qrcode_url || subscriptionData.qrcodeUrl || ''
           }
           
           if (userResponse && userResponse.data && userResponse.data.success) {
             const userData = userResponse.data.data
             if (userData.clashUrl) subscription.value.clash_url = userData.clashUrl
-            if (userData.mobileUrl) subscription.value.universal_url = userData.mobileUrl
             if (userData.qrcodeUrl) subscription.value.qrcode_url = userData.qrcodeUrl
           }
         } else if (userResponse && userResponse.data && userResponse.data.success) {
@@ -469,7 +468,7 @@ export default {
             device_limit: userData.device_limit || userData.total_devices || 0,
             maxDevices: userData.device_limit || userData.total_devices || 0,
             clash_url: userData.clashUrl || '',
-            universal_url: userData.universalUrl || userData.mobileUrl || '',
+            universal_url: userData.universalUrl || '',
             qrcode_url: userData.qrcodeUrl || ''
           }
         } else {
@@ -527,11 +526,28 @@ export default {
     }
 
     const copyUrl = async (url) => {
+      if (!url) {
+        ElMessage.warning('没有可复制的内容')
+        return
+      }
       try {
         await navigator.clipboard.writeText(url)
         ElMessage.success('链接已复制到剪贴板')
       } catch (error) {
-        ElMessage.error('复制失败')
+        // 降级方案：使用传统的复制方法
+        try {
+          const textArea = document.createElement('textarea')
+          textArea.value = url
+          textArea.style.position = 'fixed'
+          textArea.style.opacity = '0'
+          document.body.appendChild(textArea)
+          textArea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textArea)
+          ElMessage.success('链接已复制到剪贴板')
+        } catch (fallbackError) {
+          ElMessage.error('复制失败，请手动复制')
+        }
       }
     }
 

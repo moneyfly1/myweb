@@ -467,6 +467,43 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string) (*models.Device, error) {
 	// 解析设备信息
 	deviceInfo := dm.ParseUserAgent(userAgent)
+	
+	// 检查是否为订阅软件客户端（不是浏览器）
+	// 浏览器或其他非订阅软件打开订阅地址，不算新设备
+	if deviceInfo.SoftwareName == "Unknown" {
+		// 检查是否为浏览器 User-Agent
+		uaLower := strings.ToLower(userAgent)
+		browserKeywords := []string{
+			"mozilla", "chrome", "safari", "firefox", "edge", "opera", "msie",
+			"webkit", "gecko", "trident", "presto", "blink",
+		}
+		isBrowser := false
+		for _, keyword := range browserKeywords {
+			if strings.Contains(uaLower, keyword) {
+				// 进一步检查是否包含订阅软件标识
+				subscriptionSoftwareKeywords := []string{
+					"shadowrocket", "quantumult", "surge", "loon", "stash",
+					"v2rayn", "clash", "hiddify", "v2ray",
+				}
+				hasSubscriptionSoftware := false
+				for _, swKeyword := range subscriptionSoftwareKeywords {
+					if strings.Contains(uaLower, swKeyword) {
+						hasSubscriptionSoftware = true
+						break
+					}
+				}
+				if !hasSubscriptionSoftware {
+					isBrowser = true
+					break
+				}
+			}
+		}
+		// 如果是浏览器且不是订阅软件，不记录设备
+		if isBrowser {
+			return nil, nil
+		}
+	}
+
 	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
 
 	// 查找现有设备

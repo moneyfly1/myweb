@@ -417,7 +417,7 @@
                   <label>通用订阅地址：</label>
                   <div class="url-input-group">
                     <el-input 
-                      :value="userInfo.mobileUrl" 
+                      :value="userInfo.universalUrl" 
                       readonly 
                       size="small"
                       class="url-input"
@@ -568,7 +568,6 @@ const userInfo = ref({
   subscription_status: 'inactive',
   clashUrl: '',
   universalUrl: '',
-  mobileUrl: '',
   qrcodeUrl: ''
 })
 
@@ -745,9 +744,26 @@ const qrCodeUrl = computed(() => {
   if (userInfo.value.qrcodeUrl) {
     // 使用后台提供的二维码URL
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(userInfo.value.qrcodeUrl)}&ecc=M&margin=10`
-  } else if (userInfo.value.mobileUrl) {
+  } else if (userInfo.value.universalUrl) {
     // 降级方案：使用通用订阅地址生成二维码
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(userInfo.value.mobileUrl)}&ecc=M&margin=10`
+    const subscriptionUrl = userInfo.value.universalUrl
+    const encodedUrl = btoa(unescape(encodeURIComponent(subscriptionUrl)))
+    let expiryDisplayName = '订阅'
+    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
+      try {
+        const expireDate = new Date(userInfo.value.expiryDate)
+        if (!isNaN(expireDate.getTime())) {
+          const year = expireDate.getFullYear()
+          const month = String(expireDate.getMonth() + 1).padStart(2, '0')
+          const day = String(expireDate.getDate()).padStart(2, '0')
+          expiryDisplayName = `到期时间${year}-${month}-${day}`
+        }
+      } catch (e) {
+        expiryDisplayName = '订阅'
+      }
+    }
+    const qrData = `sub://${encodedUrl}#${encodeURIComponent(expiryDisplayName)}`
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}&ecc=M&margin=10`
   }
   return ''
 })
@@ -784,7 +800,6 @@ const loadUserInfo = async () => {
         ...dashboardData,
         // 如果顶层没有订阅地址，从 subscription 对象中获取
         clashUrl: dashboardData.clashUrl || dashboardData.subscription?.clashUrl || '',
-        mobileUrl: dashboardData.mobileUrl || dashboardData.subscription?.mobileUrl || '',
         universalUrl: dashboardData.universalUrl || dashboardData.subscription?.universalUrl || '',
         qrcodeUrl: dashboardData.qrcodeUrl || dashboardData.subscription?.qrcodeUrl || '',
         // 处理到期时间字段（支持多种字段名）
@@ -829,7 +844,6 @@ const loadUserInfo = async () => {
           // 使用订阅API的地址
           clashUrl: subscriptionData.clashUrl || '',
           universalUrl: subscriptionData.universalUrl || '',
-          mobileUrl: subscriptionData.mobileUrl || '',
           qrcodeUrl: subscriptionData.qrcodeUrl || ''
         }
         ElMessage.warning('部分信息加载失败，但订阅地址可用')
@@ -1171,13 +1185,13 @@ const copyClashSubscription = () => {
 }
 
 const copyShadowrocketSubscription = () => {
-  if (!userInfo.value.mobileUrl) {
-    ElMessage.error('Shadowrocket 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value.universalUrl) {
+    ElMessage.error('通用订阅地址不可用，请刷新页面重试')
     return
   }
   
   try {
-    copyToClipboard(userInfo.value.mobileUrl, 'Shadowrocket 订阅地址已复制到剪贴板')
+    copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
@@ -1315,12 +1329,12 @@ const importSparkleSubscription = () => {
 
 // Hiddify Next相关方法
 const copyHiddifySubscription = () => {
-  if (!userInfo.value.mobileUrl) {
-    ElMessage.error('Hiddify Next 订阅地址不可用')
+  if (!userInfo.value.universalUrl) {
+    ElMessage.error('通用订阅地址不可用')
     return
   }
   
-  copyToClipboard(userInfo.value.mobileUrl, 'Hiddify Next 订阅地址已复制到剪贴板')
+  copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
 }
 
 const copyToClipboard = async (text, message) => {
@@ -1366,13 +1380,13 @@ const importClashSubscription = () => {
 }
 
 const importShadowrocketSubscription = () => {
-  if (!userInfo.value.mobileUrl) {
-    ElMessage.error('Shadowrocket 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value.universalUrl) {
+    ElMessage.error('通用订阅地址不可用，请刷新页面重试')
     return
   }
   
   try {
-    let url = userInfo.value.mobileUrl
+    let url = userInfo.value.universalUrl
     let expiryName = ''
     
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
