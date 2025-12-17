@@ -160,10 +160,10 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		result["os_name"] = "iOS"
 		// 尝试多种 iOS 版本格式
 		patterns := []string{
-			`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,           // OS 16_6_1, OS 16.6.1
-			`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,  // iPhone OS 16_6_1
-			`Version/(\d+)[._](\d+)(?:[._](\d+))?`,         // Version/16.6.1
-			`iOS\s+(\d+)[._](\d+)(?:[._](\d+))?`,          // iOS 16.6.1
+			`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,          // OS 16_6_1, OS 16.6.1
+			`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`, // iPhone OS 16_6_1
+			`Version/(\d+)[._](\d+)(?:[._](\d+))?`,       // Version/16.6.1
+			`iOS\s+(\d+)[._](\d+)(?:[._](\d+))?`,         // iOS 16.6.1
 		}
 		for _, pattern := range patterns {
 			if match := regexp.MustCompile(pattern).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -257,7 +257,7 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 	// Apple 设备 - 改进识别逻辑，支持 iPhone 型号标识符
 	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
 		result["device_brand"] = "Apple"
-		
+
 		// iPhone 型号映射表（根据 Apple 的型号标识符）
 		iphoneModelMap := map[string]string{
 			"iPhone14,2": "iPhone 13 Pro",
@@ -273,7 +273,7 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			"iPhone16,3": "iPhone 15",
 			"iPhone16,4": "iPhone 15 Plus",
 		}
-		
+
 		// 尝试匹配 iPhone 型号标识符（如 iPhone13,2）
 		if match := regexp.MustCompile(`iPhone(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
 			modelID := "iPhone" + match[1]
@@ -292,14 +292,14 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 		} else if match := regexp.MustCompile(`iPhone\s+(\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPhone %s", match[1])
 		}
-		
+
 		// iPad 型号
 		if match := regexp.MustCompile(`iPad(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
 		} else if match := regexp.MustCompile(`iPad`).FindStringSubmatch(userAgent); len(match) > 0 {
 			result["device_model"] = "iPad"
 		}
-		
+
 		return result
 	}
 
@@ -481,7 +481,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		existingDevice.AccessCount++
 		existingDevice.IPAddress = &ipAddress
 		existingDevice.UserAgent = &userAgent
-		
+
 		// 更新订阅类型（如果之前没有或需要更新）
 		if subscriptionType != "" {
 			subscriptionTypeStr := subscriptionType

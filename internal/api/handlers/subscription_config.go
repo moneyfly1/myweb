@@ -34,7 +34,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	// 记录访问日志（用于安全审计）
 	// 注意：这里不验证用户身份，因为订阅URL本身就是密钥
 	// 但我们可以记录访问IP、User-Agent等信息，用于异常检测
@@ -102,8 +102,8 @@ func GetSubscriptionConfig(c *gin.Context) {
 	c.String(http.StatusOK, config)
 }
 
-// GetSSRSubscription 获取通用订阅（SSR Base64格式，适用于小火煎、v2ray等）
-func GetSSRSubscription(c *gin.Context) {
+// GetUniversalSubscription 获取通用订阅（Base64格式，适用于小火煎、v2ray等）
+func GetUniversalSubscription(c *gin.Context) {
 	subscriptionURL := c.Param("url")
 
 	// 验证订阅URL存在（订阅URL本身就是密钥，只有知道URL的用户才能访问）
@@ -161,9 +161,9 @@ func GetSSRSubscription(c *gin.Context) {
 	}
 
 	// 记录设备访问（在限制检查通过后）
-	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "ssr")
+	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "universal")
 
-	// 生成 SSR 格式配置
+	// 生成通用订阅配置（Base64格式）
 	service := config_update.NewConfigUpdateService()
 	configText, err := service.GenerateSSRConfig(subscription.UserID, subscriptionURL)
 	if err != nil {
