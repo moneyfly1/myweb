@@ -77,6 +77,12 @@ export default {
       loading.value = true
 
       try {
+        // 清除可能存在的旧缓存（双重保障）
+        if (typeof window !== 'undefined') {
+          const { secureStorage } = await import('@/utils/secureStorage')
+          secureStorage.clear()
+        }
+        
         // 使用管理员登录方法（强制使用管理员路径）
         const result = await authStore.adminLogin(loginForm)
 
