@@ -100,11 +100,21 @@ deep_clean() {
 }
 
 unlock_user() {
-    read -r -p "请输入要解锁的邮箱账号: " email
+    read -r -p "请输入要解锁的管理员用户名或邮箱: " identifier
     cd "$PROJECT_DIR"
-    # 假设你的程序有对应的命令行参数或脚本
-    ./server -unlock "$email" || echo "UPDATE users SET status=1, login_fails=0 WHERE email='$email';" | sqlite3 cboard.db
-    log "账户 $email 已尝试解锁。"
+    if [ -f "scripts/unlock_admin.go" ]; then
+        go run scripts/unlock_admin.go "$identifier"
+        log "管理员账户解锁操作已完成。"
+    else
+        error "未找到解锁脚本: scripts/unlock_admin.go"
+        log "尝试使用 SQLite 直接解锁..."
+        if [ -f "cboard.db" ]; then
+            sqlite3 cboard.db "UPDATE users SET is_active=1, is_verified=1 WHERE email='$identifier' OR username='$identifier';"
+            log "账户 $identifier 已尝试解锁。"
+        else
+            error "未找到数据库文件: cboard.db"
+        fi
+    fi
 }
 
 show_logs() {
