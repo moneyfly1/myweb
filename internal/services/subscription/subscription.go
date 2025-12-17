@@ -1,6 +1,8 @@
 package subscription
 
 import (
+	"strconv"
+
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
@@ -44,12 +46,15 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 	now := utils.GetBeijingTime()
 	expireTime := now.AddDate(0, 0, durationDays)
 
+	// 从系统设置获取默认设备数
+	deviceLimit := getDefaultDeviceLimit(s.db)
+
 	packageIDPtr := int64(packageID)
 	subscription := models.Subscription{
 		UserID:          userID,
 		PackageID:       &packageIDPtr,
 		SubscriptionURL: subscriptionURL,
-		DeviceLimit:     3,
+		DeviceLimit:     deviceLimit,
 		CurrentDevices:  0,
 		IsActive:        true,
 		Status:          "active",
@@ -61,6 +66,22 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 	}
 
 	return &subscription, nil
+}
+
+// getDefaultDeviceLimit 从系统设置中获取默认设备数
+func getDefaultDeviceLimit(db *gorm.DB) int {
+	// 默认值
+	deviceLimit := 3
+
+	// 从数据库读取配置
+	var deviceLimitConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
+		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit > 0 {
+			deviceLimit = limit
+		}
+	}
+
+	return deviceLimit
 }
 
 // UpdateExpireTime 更新过期时间

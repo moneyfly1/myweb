@@ -8,7 +8,14 @@
       <el-tabs v-model="activeTab" type="border-card">
         <!-- 基本设置 -->
         <el-tab-pane label="基本设置" name="general">
-          <el-form :model="generalSettings" :rules="generalRules" ref="generalFormRef" label-width="120px">
+          <el-form 
+            :model="generalSettings" 
+            :rules="generalRules" 
+            ref="generalFormRef" 
+            :label-width="isMobile ? '0' : '120px'"
+            :label-position="isMobile ? 'top' : 'right'"
+            class="settings-form"
+          >
             <el-form-item label="网站名称" prop="site_name">
               <el-input v-model="generalSettings.site_name" />
             </el-form-item>
@@ -20,7 +27,7 @@
                 v-model="generalSettings.domain_name" 
                 placeholder="例如: dy.moneyfly.top (不需要 http:// 或 https://)"
               />
-              <div style="font-size: 12px; color: #909399; margin-top: 5px">
+              <div :class="['form-tip', { 'mobile': isMobile }]">
                 用于生成订阅地址和邮件中的链接。如果留空，将使用请求的域名。
               </div>
             </el-form-item>
@@ -44,14 +51,19 @@
               </el-select>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveGeneralSettings">保存基本设置</el-button>
+              <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
 
         <!-- 注册设置 -->
         <el-tab-pane label="注册设置" name="registration">
-          <el-form :model="registrationSettings" label-width="120px">
+          <el-form 
+            :model="registrationSettings" 
+            :label-width="isMobile ? '0' : '120px'"
+            :label-position="isMobile ? 'top' : 'right'"
+            class="settings-form"
+          >
             <el-form-item label="开放注册">
               <el-switch v-model="registrationSettings.registration_enabled" />
             </el-form-item>
@@ -59,13 +71,41 @@
               <el-switch v-model="registrationSettings.email_verification_required" />
             </el-form-item>
             <el-form-item label="最小密码长度" prop="min_password_length">
-              <el-input-number v-model="registrationSettings.min_password_length" :min="6" :max="20" />
+              <el-input-number 
+                v-model="registrationSettings.min_password_length" 
+                :min="6" 
+                :max="20"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
             </el-form-item>
             <el-form-item label="邀请码注册">
               <el-switch v-model="registrationSettings.invite_code_required" />
             </el-form-item>
+            <el-divider content-position="left">新用户默认订阅设置</el-divider>
+            <el-form-item label="默认设备数" prop="default_subscription_device_limit">
+              <el-input-number 
+                v-model="registrationSettings.default_subscription_device_limit" 
+                :min="1" 
+                :max="100"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                新注册用户默认允许的设备数量
+              </div>
+            </el-form-item>
+            <el-form-item label="默认订阅时长（月）" prop="default_subscription_duration_months">
+              <el-input-number 
+                v-model="registrationSettings.default_subscription_duration_months" 
+                :min="1" 
+                :max="120"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                新注册用户默认订阅的有效期（单位：月）
+              </div>
+            </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveRegistrationSettings">保存注册设置</el-button>
+              <el-button type="primary" @click="saveRegistrationSettings" :class="{ 'full-width': isMobile }">保存注册设置</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -84,8 +124,9 @@
               />
               <el-form
                 :model="notificationSettings"
-                :label-width="isMobile ? '110px' : '150px'"
+                :label-width="isMobile ? '0' : '120px'"
                 :label-position="isMobile ? 'top' : 'right'"
+                class="settings-form"
               >
                 <el-form-item label="系统通知">
                   <el-switch v-model="notificationSettings.system_notifications" />
@@ -103,7 +144,7 @@
                   <el-switch v-model="notificationSettings.new_order_notifications" />
                 </el-form-item>
                 <el-form-item>
-                  <el-button type="primary" @click="saveNotificationSettings">保存客户通知设置</el-button>
+                  <el-button type="primary" @click="saveNotificationSettings" :class="{ 'full-width': isMobile }">保存客户通知设置</el-button>
                 </el-form-item>
               </el-form>
             </el-tab-pane>
@@ -119,8 +160,9 @@
               />
               <el-form
                 :model="adminNotificationSettings"
-                :label-width="isMobile ? '110px' : '150px'"
+                :label-width="isMobile ? '0' : '120px'"
                 :label-position="isMobile ? 'top' : 'right'"
+                class="settings-form"
               >
                 <el-form-item label="启用管理员通知">
                   <el-switch v-model="adminNotificationSettings.admin_notification_enabled" />
@@ -140,7 +182,7 @@
                 </el-form-item>
                 
                 <el-form-item v-if="adminNotificationSettings.admin_email_notification">
-                  <el-button type="primary" @click="testAdminEmail" :loading="testingAdminEmail">
+                  <el-button type="primary" @click="testAdminEmail" :loading="testingAdminEmail" :class="{ 'full-width': isMobile }">
                     测试邮件通知
                   </el-button>
                 </el-form-item>
@@ -156,7 +198,7 @@
                     type="password"
                     show-password
                   />
-                  <div style="font-size: 12px; color: #909399; margin-top: 5px">
+                  <div :class="['form-tip', { 'mobile': isMobile }]">
                     在 @BotFather 创建机器人后获取
                   </div>
                 </el-form-item>
@@ -166,13 +208,13 @@
                     v-model="adminNotificationSettings.admin_telegram_chat_id"
                     placeholder="请输入 Telegram Chat ID"
                   />
-                  <div style="font-size: 12px; color: #909399; margin-top: 5px">
+                  <div :class="['form-tip', { 'mobile': isMobile }]">
                     发送消息给 @userinfobot 获取您的 Chat ID
                   </div>
                 </el-form-item>
                 
                 <el-form-item v-if="adminNotificationSettings.admin_telegram_notification">
-                  <el-button type="primary" @click="testAdminTelegram" :loading="testingAdminTelegram">
+                  <el-button type="primary" @click="testAdminTelegram" :loading="testingAdminTelegram" :class="{ 'full-width': isMobile }">
                     测试 Telegram 通知
                   </el-button>
                 </el-form-item>
@@ -186,7 +228,7 @@
                     v-model="adminNotificationSettings.admin_bark_server_url"
                     placeholder="https://api.day.app 或您的自建服务器地址"
                   />
-                  <div style="font-size: 12px; color: #909399; margin-top: 5px">
+                  <div :class="['form-tip', { 'mobile': isMobile }]">
                     默认: https://api.day.app，或填写您的自建 Bark 服务器地址
                   </div>
                 </el-form-item>
@@ -198,13 +240,13 @@
                     type="password"
                     show-password
                   />
-                  <div style="font-size: 12px; color: #909399; margin-top: 5px">
+                  <div :class="['form-tip', { 'mobile': isMobile }]">
                     在 Bark 应用中获取您的 Device Key
                   </div>
                 </el-form-item>
                 
                 <el-form-item v-if="adminNotificationSettings.admin_bark_notification">
-                  <el-button type="primary" @click="testAdminBark" :loading="testingAdminBark">
+                  <el-button type="primary" @click="testAdminBark" :loading="testingAdminBark" :class="{ 'full-width': isMobile }">
                     测试 Bark 通知
                   </el-button>
                 </el-form-item>
@@ -244,7 +286,7 @@
                 </el-form-item>
 
                 <el-form-item>
-                  <el-button type="primary" @click="saveAdminNotificationSettings">
+                  <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">
                     保存管理员通知设置
                   </el-button>
                 </el-form-item>
@@ -255,9 +297,14 @@
 
         <!-- 主题设置 -->
         <el-tab-pane label="主题设置" name="theme">
-          <el-form :model="themeSettings" label-width="120px">
+          <el-form 
+            :model="themeSettings" 
+            :label-width="isMobile ? '0' : '120px'"
+            :label-position="isMobile ? 'top' : 'right'"
+            class="settings-form"
+          >
             <el-form-item label="默认主题" prop="default_theme">
-              <el-select v-model="themeSettings.default_theme" style="width: 100%">
+              <el-select v-model="themeSettings.default_theme" :style="{ width: isMobile ? '100%' : '300px' }">
                 <el-option label="浅色主题" value="light">
                   <span style="display: inline-block; width: 12px; height: 12px; background: #409EFF; border-radius: 2px; margin-right: 8px;"></span>
                   浅色主题
@@ -308,7 +355,7 @@
               <el-switch v-model="themeSettings.allow_user_theme" />
             </el-form-item>
             <el-form-item label="可用主题">
-              <el-checkbox-group v-model="themeSettings.available_themes" style="display: flex; flex-wrap: wrap; gap: 16px;">
+              <el-checkbox-group v-model="themeSettings.available_themes" :class="['theme-checkbox-group', { 'mobile': isMobile }]">
                 <el-checkbox label="light">
                   <span style="display: inline-flex; align-items: center; gap: 6px;">
                     <span style="display: inline-block; width: 14px; height: 14px; background: #409EFF; border-radius: 2px;"></span>
@@ -378,7 +425,7 @@
               </el-checkbox-group>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveThemeSettings">保存主题设置</el-button>
+              <el-button type="primary" @click="saveThemeSettings" :class="{ 'full-width': isMobile }">保存主题设置</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -386,19 +433,39 @@
 
         <!-- 安全设置 -->
         <el-tab-pane label="安全设置" name="security">
-          <el-form :model="securitySettings" label-width="120px">
+          <el-form 
+            :model="securitySettings" 
+            :label-width="isMobile ? '0' : '120px'"
+            :label-position="isMobile ? 'top' : 'right'"
+            class="settings-form"
+          >
             <el-form-item label="登录失败限制" prop="login_fail_limit">
-              <el-input-number v-model="securitySettings.login_fail_limit" :min="3" :max="10" />
+              <el-input-number 
+                v-model="securitySettings.login_fail_limit" 
+                :min="3" 
+                :max="10"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
             </el-form-item>
             <el-form-item label="登录失败锁定时间(分钟)" prop="login_lock_time">
-              <el-input-number v-model="securitySettings.login_lock_time" :min="5" :max="60" />
+              <el-input-number 
+                v-model="securitySettings.login_lock_time" 
+                :min="5" 
+                :max="60"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
             </el-form-item>
             <el-form-item label="会话超时时间(分钟)" prop="session_timeout">
-              <el-input-number v-model="securitySettings.session_timeout" :min="15" :max="1440" />
+              <el-input-number 
+                v-model="securitySettings.session_timeout" 
+                :min="15" 
+                :max="1440"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
             </el-form-item>
             <el-form-item label="启用设备指纹">
               <el-switch v-model="securitySettings.device_fingerprint_enabled" />
-              <el-text type="info" size="small" style="margin-left: 10px;">
+              <el-text type="info" size="small" :class="{ 'mobile-tip': isMobile }">
                 用于设备管理，识别订阅设备，不影响登录验证
               </el-text>
             </el-form-item>
@@ -409,7 +476,7 @@
               <el-input v-model="securitySettings.ip_whitelist" type="textarea" rows="3" placeholder="每行一个IP地址" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveSecuritySettings">保存安全设置</el-button>
+              <el-button type="primary" @click="saveSecuritySettings" :class="{ 'full-width': isMobile }">保存安全设置</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -459,7 +526,9 @@ export default {
       registration_enabled: true,
       email_verification_required: true,
       min_password_length: 8,
-      invite_code_required: false
+      invite_code_required: false,
+      default_subscription_device_limit: 3,
+      default_subscription_duration_months: 1
     })
 
     // 通知设置
@@ -762,6 +831,12 @@ export default {
   padding: 20px;
 }
 
+@media (max-width: 768px) {
+  .admin-settings {
+    padding: 10px;
+  }
+}
+
 .avatar-uploader {
   text-align: center;
 }
@@ -838,5 +913,170 @@ export default {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
+}
+
+/* 响应式样式 */
+.settings-form :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.settings-form :deep(.el-form-item__label) {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .settings-form :deep(.el-form-item) {
+    margin-bottom: 20px;
+  }
+  
+  .settings-form :deep(.el-form-item__label) {
+    margin-bottom: 8px;
+    padding-bottom: 0;
+  }
+  
+  .settings-form :deep(.el-input),
+  .settings-form :deep(.el-select),
+  .settings-form :deep(.el-textarea),
+  .settings-form :deep(.el-input-number) {
+    width: 100% !important;
+  }
+  
+  .full-width {
+    width: 100%;
+  }
+  
+  .theme-checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  
+  .theme-checkbox-group.mobile {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .theme-checkbox-group.mobile :deep(.el-checkbox) {
+    width: 100%;
+    margin-right: 0;
+  }
+  
+  /* 通知设置中的嵌套标签页在移动端优化 */
+  .notification-tabs {
+    margin-top: 10px;
+  }
+  
+  .notification-tabs :deep(.el-tabs__header) {
+    margin-bottom: 15px;
+  }
+  
+  .notification-tabs :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+  }
+  
+  /* 卡片在移动端的优化 */
+  .admin-settings :deep(.el-card) {
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+  }
+  
+  .admin-settings :deep(.el-card__header) {
+    padding: 15px;
+    font-size: 16px;
+  }
+  
+  .admin-settings :deep(.el-card__body) {
+    padding: 15px;
+  }
+  
+  /* 标签页在移动端的优化 */
+  .admin-settings :deep(.el-tabs) {
+    margin-top: 0;
+  }
+  
+  .admin-settings :deep(.el-tabs__header) {
+    margin-bottom: 15px;
+  }
+  
+  .admin-settings :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+  }
+  
+  .admin-settings :deep(.el-tabs__item) {
+    padding: 0 15px;
+    font-size: 14px;
+  }
+  
+  /* 分割线在移动端的优化 */
+  .admin-settings :deep(.el-divider) {
+    margin: 20px 0;
+  }
+  
+  .admin-settings :deep(.el-divider__text) {
+    font-size: 13px;
+    padding: 0 10px;
+  }
+  
+  /* 提示信息在移动端的优化 */
+  .admin-settings :deep(.el-alert) {
+    margin-bottom: 15px;
+  }
+  
+  .admin-settings :deep(.el-alert__title) {
+    font-size: 14px;
+  }
+  
+  .admin-settings :deep(.el-alert__description) {
+    font-size: 12px;
+    margin-top: 5px;
+  }
+  
+  /* 提示文字在移动端的优化 */
+  .form-tip {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+  
+  .form-tip.mobile {
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  
+  .mobile-tip {
+    display: block;
+    margin-top: 6px;
+    margin-left: 0 !important;
+    font-size: 11px;
+  }
+  
+  /* 开关组件在移动端的优化 */
+  .settings-form :deep(.el-switch) {
+    margin-right: 0;
+  }
+}
+
+/* 提示文字样式 */
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+/* 桌面端优化 */
+@media (min-width: 769px) {
+  .theme-checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  
+  .theme-checkbox-group :deep(.el-checkbox) {
+    min-width: 120px;
+  }
 }
 </style> 

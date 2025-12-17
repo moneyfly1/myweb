@@ -353,10 +353,12 @@ func GetAdminSettings(c *gin.Context) {
 			"default_theme":    "default",
 		},
 		"registration": {
-			"registration_enabled":        "true",
-			"email_verification_required": "true",
-			"min_password_length":         "8",
-			"invite_code_required":        "false",
+			"registration_enabled":                 "true",
+			"email_verification_required":          "true",
+			"min_password_length":                  "8",
+			"invite_code_required":                 "false",
+			"default_subscription_device_limit":    3,
+			"default_subscription_duration_months": 1,
 		},
 		"notification": {
 			"system_notifications":              "true",
