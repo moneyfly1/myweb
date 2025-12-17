@@ -147,8 +147,8 @@
             :class="{ active: $route.path === '/admin/config-update' }"
             @click="handleNavClick"
           >
-            <i class="el-icon-refresh"></i>
-            <span class="nav-text" v-show="!sidebarCollapsed || isMobile">配置更新</span>
+          <i class="el-icon-refresh"></i>
+            <span class="nav-text" v-show="!sidebarCollapsed || isMobile">节点更新</span>
           </router-link>
           <a 
             href="#"
@@ -458,7 +458,7 @@ const getCurrentPageTitle = () => {
     '/admin/payment-config': '支付配置',
     '/admin/statistics': '数据统计',
     '/admin/email-queue': '邮件队列',
-    '/admin/config-update': '配置更新',
+    '/admin/config-update': '节点更新',
     '/admin/tickets': '工单管理',
     '/admin/coupons': '优惠券管理'
   }
@@ -480,7 +480,7 @@ const menuSections = computed(() => {
         { path: '/admin/users', title: '用户列表', icon: 'el-icon-user' },
         { path: '/admin/abnormal-users', title: '异常用户', icon: 'el-icon-warning' },
         { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' },
-        { path: '/admin/config-update', title: '配置更新', icon: 'el-icon-refresh' }
+        { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' }
       ]
     },
     {
@@ -523,7 +523,7 @@ const handleNavMenuClick = (path) => {
 }
 
 // 处理侧边栏导航项点击
-const handleNavClick = (event) => {
+const handleNavClick = () => {
   // 移动端点击导航项后自动关闭侧边栏
   if (isMobile.value) {
     sidebarCollapsed.value = true

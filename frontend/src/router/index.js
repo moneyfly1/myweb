@@ -210,7 +210,12 @@ const routes = [
       { path: 'dashboard', name: 'AdminDashboard', component: () => import('@/views/admin/Dashboard.vue'), meta: { title: '管理仪表盘', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }] } },
       { path: 'users', name: 'AdminUsers', component: () => import('@/views/admin/Users.vue'), meta: { title: '用户管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '用户管理', path: '/admin/users' }] } },
       { path: 'abnormal-users', name: 'AdminAbnormalUsers', component: () => import('@/views/admin/AbnormalUsers.vue'), meta: { title: '异常用户', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '异常用户', path: '/admin/abnormal-users' }] } },
-      { path: 'config-update', name: 'AdminConfigUpdate', component: () => import('@/views/admin/ConfigUpdate.vue'), meta: { title: '配置更新', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '配置更新', path: '/admin/config-update' }] } },
+      {
+        path: 'config-update',
+        name: 'AdminConfigUpdate',
+        component: () => import('@/views/admin/ConfigUpdate.vue'),
+        meta: { title: '节点更新', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '节点更新', path: '/admin/config-update' }] }
+      },
       { path: 'subscriptions', name: 'AdminSubscriptions', component: () => import('@/views/admin/Subscriptions.vue'), meta: { title: '订阅管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '订阅管理', path: '/admin/subscriptions' }] } },
       { path: 'orders', name: 'AdminOrders', component: () => import('@/views/admin/Orders.vue'), meta: { title: '订单管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '订单管理', path: '/admin/orders' }] } },
       { path: 'packages', name: 'AdminPackages', component: () => import('@/views/admin/Packages.vue'), meta: { title: '套餐管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '套餐管理', path: '/admin/packages' }] } },
