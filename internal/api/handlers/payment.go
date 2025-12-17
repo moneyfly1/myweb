@@ -501,7 +501,7 @@ func PaymentNotify(c *gin.Context) {
 								baseURL := templateBuilder.GetBaseURL()
 								timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 								universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp) // 通用订阅（Base64格式）
-								clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)   // 猫咪订阅（Clash YAML格式）
+								clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
 
 								// 计算到期时间和剩余天数
 								expireTime := "未设置"

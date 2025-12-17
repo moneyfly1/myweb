@@ -253,7 +253,7 @@
               <div 
                 class="qr-code" 
                 @click="showQRCode(scope.row)"
-                v-if="scope.row.subscription_url || scope.row.universal_url || scope.row.v2ray_url"
+                v-if="scope.row.subscription_url || scope.row.universal_url"
               >
                 <img :src="generateQRCode(scope.row)" alt="QR Code" />
               </div>
@@ -271,13 +271,13 @@
           <template #default="scope">
             <div class="subscription-link">
               <el-link 
-                v-if="scope.row.universal_url || scope.row.v2ray_url" 
-                @click="copyToClipboard(scope.row.universal_url || scope.row.v2ray_url)"
+                v-if="scope.row.universal_url" 
+                @click="copyToClipboard(scope.row.universal_url)"
                 type="primary"
                 class="link-text copy-link"
-                :title="'点击复制: ' + (scope.row.universal_url || scope.row.v2ray_url)"
+                :title="'点击复制: ' + scope.row.universal_url"
               >
-                {{ scope.row.universal_url || scope.row.v2ray_url }}
+                {{ scope.row.universal_url }}
               </el-link>
               <el-text v-else type="info" size="small">未配置</el-text>
             </div>
@@ -546,7 +546,7 @@
             </span>
           </div>
           <!-- 订阅二维码区域 - 移动端显示 -->
-          <div class="subscription-qrcode-section" v-if="subscription.subscription_url || subscription.universal_url || subscription.v2ray_url">
+          <div class="subscription-qrcode-section" v-if="subscription.subscription_url || subscription.universal_url">
             <div class="qrcode-card">
               <div class="qrcode-header">
                 <el-icon style="color: #409eff; margin-right: 6px; font-size: 18px;"><Link /></el-icon>
@@ -592,20 +592,20 @@
           </div>
           
           <!-- 订阅地址区域 - 独立卡片样式 -->
-          <div class="subscription-urls-section" v-if="(subscription.universal_url || subscription.v2ray_url) || subscription.clash_url">
-            <div class="subscription-url-card" v-if="subscription.universal_url || subscription.v2ray_url">
+          <div class="subscription-urls-section" v-if="subscription.universal_url || subscription.clash_url">
+            <div class="subscription-url-card" v-if="subscription.universal_url">
               <div class="url-header">
                 <el-icon style="color: #409eff; margin-right: 6px;"><Link /></el-icon>
                 <span class="url-type">通用订阅</span>
               </div>
               <div class="url-content">
-                <div class="url-text" :title="subscription.universal_url || subscription.v2ray_url">
-                  {{ truncateUrl(subscription.universal_url || subscription.v2ray_url) }}
+                <div class="url-text" :title="subscription.universal_url">
+                  {{ truncateUrl(subscription.universal_url) }}
                 </div>
                 <el-button 
                   type="primary" 
                   size="small"
-                  @click="copyToClipboard(subscription.universal_url || subscription.v2ray_url)"
+                  @click="copyToClipboard(subscription.universal_url)"
                   class="copy-url-btn"
                 >
                   <el-icon><DocumentCopy /></el-icon>
@@ -787,9 +787,9 @@
           <div class="subscription-urls">
             <div class="url-item">
               <label>通用订阅地址:</label>
-              <el-input :value="selectedUser.universal_url || selectedUser.v2ray_url" readonly>
+              <el-input :value="selectedUser.universal_url" readonly>
                 <template #append>
-                  <el-button @click="copyToClipboard(selectedUser.universal_url || selectedUser.v2ray_url)">复制</el-button>
+                  <el-button @click="copyToClipboard(selectedUser.universal_url)">复制</el-button>
                 </template>
               </el-input>
             </div>
@@ -1385,9 +1385,9 @@ export default {
       // 如果没有后端提供的qrcodeUrl，则前端生成
       let qrData = ''
       
-      if (subscription.universal_url || subscription.v2ray_url) {
+      if (subscription.universal_url) {
         // 使用通用订阅URL，生成sub://格式（包含到期时间）
-        const universalUrl = subscription.universal_url || subscription.v2ray_url
+        const universalUrl = subscription.universal_url
         // Base64编码订阅URL
         const encodedUrl = btoa(universalUrl)
         // 格式化到期时间用于Shadowrocket显示（作为订阅名称）
@@ -1436,7 +1436,7 @@ export default {
 
     // 显示二维码
     const showQRCode = (subscription) => {
-      if (subscription.subscription_url || subscription.universal_url || subscription.v2ray_url) {
+      if (subscription.subscription_url || subscription.universal_url) {
         currentQRCode.value = generateQRCode(subscription)
         showQRDialog.value = true
       }
@@ -1463,7 +1463,7 @@ export default {
 
     // 一键导入到 Shadowrocket
     const importToShadowrocket = (subscription) => {
-      if (!subscription.subscription_url && !subscription.universal_url && !subscription.v2ray_url) {
+      if (!subscription.subscription_url && !subscription.universal_url) {
         ElMessage.warning('该订阅没有可用的订阅地址')
         return
       }
@@ -1476,10 +1476,10 @@ export default {
         if (match) {
           subscriptionUrl = atob(match[1])
         } else {
-          subscriptionUrl = (subscription.universal_url || subscription.v2ray_url) || subscription.subscription_url
+          subscriptionUrl = subscription.universal_url || subscription.subscription_url
         }
-      } else if (subscription.universal_url || subscription.v2ray_url) {
-        subscriptionUrl = subscription.universal_url || subscription.v2ray_url
+      } else if (subscription.universal_url) {
+        subscriptionUrl = subscription.universal_url
       } else if (subscription.subscription_url) {
         const baseUrl = window.location.origin
         subscriptionUrl = `${baseUrl}/api/v1/subscriptions/ssr/${subscription.subscription_url}`

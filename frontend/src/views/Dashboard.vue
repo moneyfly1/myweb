@@ -349,9 +349,9 @@
               </h4>
               <div class="subscription-buttons">
                 <div class="subscription-group">
-                  <el-button type="info" class="v2ray-btn" @click="copyV2raySubscription">
+                  <el-button type="info" class="universal-btn" @click="copyUniversalSubscription">
                     <i class="fas fa-shield-alt"></i>
-                    复制 V2Ray 订阅
+                    复制通用订阅
                   </el-button>
                 </div>
 
@@ -567,7 +567,7 @@ const userInfo = ref({
   subscription_url: '',
   subscription_status: 'inactive',
   clashUrl: '',
-  v2rayUrl: '',
+  universalUrl: '',
   mobileUrl: '',
   qrcodeUrl: ''
 })
@@ -785,7 +785,7 @@ const loadUserInfo = async () => {
         // 如果顶层没有订阅地址，从 subscription 对象中获取
         clashUrl: dashboardData.clashUrl || dashboardData.subscription?.clashUrl || '',
         mobileUrl: dashboardData.mobileUrl || dashboardData.subscription?.mobileUrl || '',
-        v2rayUrl: dashboardData.v2rayUrl || dashboardData.subscription?.v2rayUrl || '',
+        universalUrl: dashboardData.universalUrl || dashboardData.subscription?.universalUrl || '',
         qrcodeUrl: dashboardData.qrcodeUrl || dashboardData.subscription?.qrcodeUrl || '',
         // 处理到期时间字段（支持多种字段名）
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
@@ -828,7 +828,7 @@ const loadUserInfo = async () => {
           subscription_status: subscriptionData.status || 'inactive',
           // 使用订阅API的地址
           clashUrl: subscriptionData.clashUrl || '',
-          v2rayUrl: subscriptionData.v2rayUrl || '',
+          universalUrl: subscriptionData.universalUrl || '',
           mobileUrl: subscriptionData.mobileUrl || '',
           qrcodeUrl: subscriptionData.qrcodeUrl || ''
         }
@@ -1183,23 +1183,15 @@ const copyShadowrocketSubscription = () => {
   }
 }
 
-const copyV2raySubscription = () => {
-  if (!userInfo.value.v2rayUrl) {
-    ElMessage.error('V2Ray 订阅地址不可用')
-    return
-  }
-  
-  copyToClipboard(userInfo.value.v2rayUrl, 'V2Ray 订阅地址已复制到剪贴板')
-}
-
 const copyUniversalSubscription = () => {
-  if (!userInfo.value.mobileUrl) {
+  if (!userInfo.value.universalUrl) {
     ElMessage.error('通用订阅地址不可用')
     return
   }
   
-  copyToClipboard(userInfo.value.mobileUrl, '通用订阅地址已复制到剪贴板')
+  copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
 }
+
 
 // Flash相关方法
 const copyFlashSubscription = () => {

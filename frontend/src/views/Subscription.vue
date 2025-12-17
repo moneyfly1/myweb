@@ -448,7 +448,7 @@ export default {
             device_limit: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
             maxDevices: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
             clash_url: subscriptionData.clash_url || subscriptionData.clashUrl || '',
-            universal_url: subscriptionData.universal_url || subscriptionData.ssr_url || subscriptionData.v2ray_url || subscriptionData.mobileUrl || '',
+            universal_url: subscriptionData.universal_url || subscriptionData.mobileUrl || '',
             qrcode_url: subscriptionData.qrcode_url || subscriptionData.qrcodeUrl || ''
           }
           
@@ -469,7 +469,7 @@ export default {
             device_limit: userData.device_limit || userData.total_devices || 0,
             maxDevices: userData.device_limit || userData.total_devices || 0,
             clash_url: userData.clashUrl || '',
-            universal_url: userData.universalUrl || userData.mobileUrl || userData.v2rayUrl || '',
+            universal_url: userData.universalUrl || userData.mobileUrl || '',
             qrcode_url: userData.qrcodeUrl || ''
           }
         } else {
