@@ -126,19 +126,22 @@ func UpdatePackage(c *gin.Context) {
 
 	var req struct {
 		Name          *string  `json:"name"`           // 使用指针，允许检测是否提供
-		Description   *string  `json:"description"`   // 使用指针，允许检测是否提供
+		Description   *string  `json:"description"`    // 使用指针，允许检测是否提供
 		Price         *float64 `json:"price"`          // 使用指针，允许检测是否提供
-		DurationDays  *int     `json:"duration_days"` // 使用指针，允许检测是否提供
+		DurationDays  *int     `json:"duration_days"`  // 使用指针，允许检测是否提供
 		DeviceLimit   *int     `json:"device_limit"`   // 使用指针，允许检测是否提供
-		SortOrder     *int     `json:"sort_order"`    // 使用指针，允许检测是否提供
-		IsActive      *bool    `json:"is_active"`     // 使用指针，允许检测是否提供
+		SortOrder     *int     `json:"sort_order"`     // 使用指针，允许检测是否提供
+		IsActive      *bool    `json:"is_active"`      // 使用指针，允许检测是否提供
 		IsRecommended *bool    `json:"is_recommended"` // 使用指针，允许检测是否提供
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.LogError("UpdatePackage: bind JSON failed", err, map[string]interface{}{
+			"package_id": id,
+		})
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误: " + err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -352,4 +355,3 @@ func GetAdminPackages(c *gin.Context) {
 		},
 	})
 }
-

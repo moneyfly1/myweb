@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -519,25 +524,34 @@ func UpdateRegistrationSettings(c *gin.Context) {
 					Value:    fmt.Sprintf("%v", value),
 				}
 				if err := db.Create(&config).Error; err != nil {
+					utils.LogError("UpdateRegistrationSettings: create config failed", err, map[string]interface{}{
+						"key": key,
+					})
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+						"message": fmt.Sprintf("保存配置 %s 失败", key),
 					})
 					return
 				}
 			} else {
+				utils.LogError("UpdateRegistrationSettings: query config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("查询配置 %s 失败", key),
 				})
 				return
 			}
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
+				utils.LogError("UpdateRegistrationSettings: update config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
 				})
 				return
 			}
@@ -573,25 +587,34 @@ func UpdateNotificationSettings(c *gin.Context) {
 					Value:    fmt.Sprintf("%v", value),
 				}
 				if err := db.Create(&config).Error; err != nil {
+					utils.LogError("UpdateNotificationSettings: create config failed", err, map[string]interface{}{
+						"key": key,
+					})
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+						"message": fmt.Sprintf("保存配置 %s 失败", key),
 					})
 					return
 				}
 			} else {
+				utils.LogError("UpdateNotificationSettings: query config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("查询配置 %s 失败", key),
 				})
 				return
 			}
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
+				utils.LogError("UpdateNotificationSettings: update config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
 				})
 				return
 			}
@@ -627,25 +650,34 @@ func UpdateSecuritySettings(c *gin.Context) {
 					Value:    fmt.Sprintf("%v", value),
 				}
 				if err := db.Create(&config).Error; err != nil {
+					utils.LogError("UpdateSecuritySettings: create config failed", err, map[string]interface{}{
+						"key": key,
+					})
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+						"message": fmt.Sprintf("保存配置 %s 失败", key),
 					})
 					return
 				}
 			} else {
+				utils.LogError("UpdateSecuritySettings: query config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("查询配置 %s 失败", key),
 				})
 				return
 			}
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
+				utils.LogError("UpdateSecuritySettings: update config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
 				})
 				return
 			}
@@ -694,25 +726,34 @@ func UpdateThemeSettings(c *gin.Context) {
 					Value:    valueStr,
 				}
 				if err := db.Create(&config).Error; err != nil {
+					utils.LogError("UpdateThemeSettings: create config failed", err, map[string]interface{}{
+						"key": key,
+					})
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+						"message": fmt.Sprintf("保存配置 %s 失败", key),
 					})
 					return
 				}
 			} else {
+				utils.LogError("UpdateThemeSettings: query config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("查询配置 %s 失败", key),
 				})
 				return
 			}
 		} else {
 			config.Value = valueStr
 			if err := db.Save(&config).Error; err != nil {
+				utils.LogError("UpdateThemeSettings: update config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
 				})
 				return
 			}
@@ -825,9 +866,12 @@ func TestAdminEmailNotification(c *gin.Context) {
 
 	// 将邮件加入队列
 	if err := emailService.QueueEmail(adminEmail, subject, content, "admin_notification"); err != nil {
+		utils.LogError("TestAdminEmailNotification: queue email failed", err, map[string]interface{}{
+			"admin_email": adminEmail,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "测试消息发送失败: " + err.Error(),
+			"message": "测试消息发送失败",
 		})
 		return
 	}
@@ -870,13 +914,19 @@ func TestAdminTelegramNotification(c *gin.Context) {
 		return
 	}
 
-	// 发送测试消息
-	testMessage := "🧪 这是一条测试消息，如果您收到此消息，说明 Telegram 通知配置正确。"
+	// 发送测试消息（使用模板构建器）
+	templateBuilder := notification.NewMessageTemplateBuilder()
+	testData := map[string]interface{}{
+		"title":   "测试消息",
+		"message": "这是一条测试消息，如果您收到此消息，说明 Telegram 通知配置正确。",
+	}
+	testMessage := templateBuilder.BuildTelegramMessage("default", testData)
 	success, err := sendTelegramMessage(botToken, chatID, testMessage)
 	if err != nil {
+		utils.LogError("TestAdminTelegramNotification: send message failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "测试消息发送失败: " + err.Error(),
+			"message": "测试消息发送失败",
 		})
 		return
 	}
@@ -925,12 +975,19 @@ func TestAdminBarkNotification(c *gin.Context) {
 		return
 	}
 
-	// 发送测试消息
-	success, err := sendBarkMessage(serverURL, deviceKey, "🧪 测试消息", "这是一条测试消息，如果您收到此消息，说明 Bark 通知配置正确。")
+	// 发送测试消息（使用模板构建器）
+	templateBuilder := notification.NewMessageTemplateBuilder()
+	testData := map[string]interface{}{
+		"title":   "测试消息",
+		"message": "这是一条测试消息，如果您收到此消息，说明 Bark 通知配置正确。",
+	}
+	barkTitle, barkBody := templateBuilder.BuildBarkMessage("default", testData)
+	success, err := sendBarkMessage(serverURL, deviceKey, barkTitle, barkBody)
 	if err != nil {
+		utils.LogError("TestAdminBarkNotification: send message failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "测试消息发送失败: " + err.Error(),
+			"message": "测试消息发送失败",
 		})
 		return
 	}
@@ -1015,20 +1072,136 @@ func UploadFile(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "文件上传失败: " + err.Error(),
+			"message": "文件上传失败",
 		})
 		return
 	}
 
-	// 保存文件到 uploads 目录
-	uploadDir := "uploads"
-	filename := file.Filename
-	filepath := uploadDir + "/" + filename
-
-	if err := c.SaveUploadedFile(file, filepath); err != nil {
+	// 获取配置
+	cfg := config.AppConfig
+	if cfg == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "保存文件失败: " + err.Error(),
+			"message": "系统配置错误",
+		})
+		return
+	}
+
+	// 1. 验证文件大小
+	maxSize := cfg.MaxFileSize
+	if maxSize == 0 {
+		maxSize = 10 * 1024 * 1024 // 默认 10MB
+	}
+	if file.Size > maxSize {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("文件大小超过限制（最大 %d MB）", maxSize/(1024*1024)),
+		})
+		return
+	}
+
+	// 2. 验证文件类型（白名单）
+	allowedExtensions := []string{".jpg", ".jpeg", ".png", ".gif", ".pdf", ".txt", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar"}
+	originalFilename := file.Filename
+	ext := strings.ToLower(filepath.Ext(originalFilename))
+
+	allowed := false
+	for _, allowedExt := range allowedExtensions {
+		if ext == allowedExt {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "不支持的文件类型，仅支持: " + strings.Join(allowedExtensions, ", "),
+		})
+		return
+	}
+
+	// 3. 防止路径遍历攻击
+	// 清理文件名，移除危险字符
+	safeFilename := utils.SanitizeInput(strings.TrimSpace(originalFilename))
+	if safeFilename == "" {
+		safeFilename = "uploaded_file"
+	}
+	// 移除路径分隔符
+	safeFilename = strings.ReplaceAll(safeFilename, "/", "_")
+	safeFilename = strings.ReplaceAll(safeFilename, "\\", "_")
+	safeFilename = strings.ReplaceAll(safeFilename, "..", "_")
+
+	// 如果清理后没有扩展名，添加原始扩展名
+	if filepath.Ext(safeFilename) == "" && ext != "" {
+		safeFilename += ext
+	}
+
+	// 4. 生成唯一文件名（防止文件名冲突和覆盖）
+	timestamp := time.Now().Unix()
+	uniqueFilename := fmt.Sprintf("%d_%s", timestamp, safeFilename)
+
+	// 5. 确保上传目录存在
+	uploadDir := cfg.UploadDir
+	if uploadDir == "" {
+		uploadDir = "uploads"
+	}
+
+	// 使用 filepath.Join 安全地构建路径
+	safePath := filepath.Join(uploadDir, uniqueFilename)
+
+	// 6. 验证最终路径在允许的目录内（防止路径遍历）
+	absUploadDir, err := filepath.Abs(uploadDir)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "系统错误",
+		})
+		utils.LogError("UploadFile: get absolute path failed", err, nil)
+		return
+	}
+
+	absSafePath, err := filepath.Abs(safePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "系统错误",
+		})
+		utils.LogError("UploadFile: get absolute path failed", err, nil)
+		return
+	}
+
+	// 确保文件路径在允许的目录内
+	if !strings.HasPrefix(absSafePath, absUploadDir) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的文件路径",
+		})
+		utils.LogError("UploadFile: path traversal detected", nil, map[string]interface{}{
+			"original_filename": originalFilename,
+			"safe_path":         safePath,
+		})
+		return
+	}
+
+	// 7. 创建上传目录
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "系统错误",
+		})
+		utils.LogError("UploadFile: create upload directory failed", err, nil)
+		return
+	}
+
+	// 8. 保存文件
+	if err := c.SaveUploadedFile(file, safePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "保存文件失败",
+		})
+		utils.LogError("UploadFile: save file failed", err, map[string]interface{}{
+			"safe_path": safePath,
 		})
 		return
 	}
@@ -1037,8 +1210,8 @@ func UploadFile(c *gin.Context) {
 		"success": true,
 		"message": "文件上传成功",
 		"data": gin.H{
-			"url":      "/" + filepath,
-			"filename": filename,
+			"url":      "/" + safePath,
+			"filename": uniqueFilename,
 		},
 	})
 }

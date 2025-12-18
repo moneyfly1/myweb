@@ -808,7 +808,10 @@ func SendSubscriptionEmail(c *gin.Context) {
 
 	// 加入邮件队列
 	if err := emailService.QueueEmail(user.Email, subject, content, "subscription"); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败: " + err.Error()})
+		utils.LogError("SendSubscriptionEmail: queue email failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败"})
 		return
 	}
 
@@ -964,7 +967,10 @@ func SendSubscriptionEmailSelf(c *gin.Context) {
 
 	// 加入邮件队列
 	if err := emailService.QueueEmail(user.Email, subject, content, "subscription"); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败: " + err.Error()})
+		utils.LogError("SendSubscriptionEmail: queue email failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败"})
 		return
 	}
 

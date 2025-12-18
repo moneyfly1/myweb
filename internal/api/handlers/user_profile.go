@@ -9,6 +9,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,7 +34,7 @@ func GetAdminProfile(c *gin.Context) {
 	bio := ""
 
 	var configs []models.SystemConfig
-	db.Where("category = ? AND key IN (?, ?, ?)", "admin_profile", 
+	db.Where("category = ? AND key IN (?, ?, ?)", "admin_profile",
 		fmt.Sprintf("user_%d_display_name", user.ID),
 		fmt.Sprintf("user_%d_phone", user.ID),
 		fmt.Sprintf("user_%d_bio", user.ID)).Find(&configs)
@@ -116,9 +117,12 @@ func UpdateAdminProfile(c *gin.Context) {
 
 	// 保存用户基本信息
 	if err := db.Save(user).Error; err != nil {
+		utils.LogError("UpdateAdminProfile: save user failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新失败: " + err.Error(),
+			"message": "更新失败",
 		})
 		return
 	}
@@ -145,9 +149,12 @@ func UpdateAdminProfile(c *gin.Context) {
 	// 更新display_name
 	if req.DisplayName != "" {
 		if err := updateConfig("display_name", req.DisplayName); err != nil {
+			utils.LogError("UpdateAdminProfile: update display_name failed", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": "更新显示名称失败: " + err.Error(),
+				"message": "更新显示名称失败",
 			})
 			return
 		}
@@ -156,9 +163,12 @@ func UpdateAdminProfile(c *gin.Context) {
 	// 更新phone
 	if req.Phone != "" || req.Phone == "" {
 		if err := updateConfig("phone", req.Phone); err != nil {
+			utils.LogError("UpdateAdminProfile: update phone failed", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": "更新手机号码失败: " + err.Error(),
+				"message": "更新手机号码失败",
 			})
 			return
 		}
@@ -167,9 +177,12 @@ func UpdateAdminProfile(c *gin.Context) {
 	// 更新bio
 	if req.Bio != "" || req.Bio == "" {
 		if err := updateConfig("bio", req.Bio); err != nil {
+			utils.LogError("UpdateAdminProfile: update bio failed", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": "更新个人简介失败: " + err.Error(),
+				"message": "更新个人简介失败",
 			})
 			return
 		}
@@ -231,7 +244,7 @@ func GetLoginHistory(c *gin.Context) {
 		if h.UserAgent.Valid {
 			userAgent = h.UserAgent.String
 		}
-		
+
 		// 解析地理位置信息
 		country := ""
 		city := ""
@@ -259,12 +272,12 @@ func GetLoginHistory(c *gin.Context) {
 				}
 			}
 		}
-		
+
 		status := "success"
 		if h.LoginStatus != "" {
 			status = h.LoginStatus
 		}
-		
+
 		historyList = append(historyList, gin.H{
 			"id":           h.ID,
 			"ip_address":   ipAddress,
@@ -362,25 +375,34 @@ func UpdateAdminSecuritySettings(c *gin.Context) {
 					Value:    fmt.Sprintf("%v", value),
 				}
 				if err := db.Create(&config).Error; err != nil {
+					utils.LogError("UpdateUserSecuritySettings: create config failed", err, map[string]interface{}{
+						"key": key,
+					})
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+						"message": fmt.Sprintf("保存配置 %s 失败", key),
 					})
 					return
 				}
 			} else {
+				utils.LogError("UpdateUserSecuritySettings: query config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("查询配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("查询配置 %s 失败", key),
 				})
 				return
 			}
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
+				utils.LogError("UpdateUserSecuritySettings: update config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
 				})
 				return
 			}
@@ -407,14 +429,14 @@ func GetNotificationSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"email_enabled":       user.EmailNotifications,
-			"email_notifications": user.EmailNotifications,
-			"system_notification": true, // 默认值
-			"security_notification": true, // 默认值
-			"frequency":           "realtime", // 默认值
-			"sms_notifications":   user.SMSNotifications,
-			"push_notifications":  user.PushNotifications,
-			"notification_types":  user.NotificationTypes,
+			"email_enabled":         user.EmailNotifications,
+			"email_notifications":   user.EmailNotifications,
+			"system_notification":   true,       // 默认值
+			"security_notification": true,       // 默认值
+			"frequency":             "realtime", // 默认值
+			"sms_notifications":     user.SMSNotifications,
+			"push_notifications":    user.PushNotifications,
+			"notification_types":    user.NotificationTypes,
 		},
 	})
 }
@@ -467,9 +489,12 @@ func UpdateUserNotificationSettings(c *gin.Context) {
 	}
 
 	if err := db.Save(user).Error; err != nil {
+		utils.LogError("UpdateNotificationSettings: save user failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新失败: " + err.Error(),
+			"message": "更新失败",
 		})
 		return
 	}
@@ -646,9 +671,12 @@ func UpdatePrivacySettings(c *gin.Context) {
 	}
 
 	if err := db.Save(user).Error; err != nil {
+		utils.LogError("UpdatePrivacySettings: save user failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新失败: " + err.Error(),
+			"message": "更新失败",
 		})
 		return
 	}

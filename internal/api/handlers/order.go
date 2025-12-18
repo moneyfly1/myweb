@@ -1078,9 +1078,12 @@ func DeleteAdminOrder(c *gin.Context) {
 
 	// 删除订单
 	if err := db.Delete(&order).Error; err != nil {
+		utils.LogError("DeleteOrder: delete order failed", err, map[string]interface{}{
+			"order_id": order.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除订单失败: " + err.Error(),
+			"message": "删除订单失败",
 		})
 		return
 	}
@@ -1877,9 +1880,12 @@ func PayOrder(c *gin.Context) {
 	}
 
 	if payErr != nil {
+		utils.LogError("CreateOrder: create payment failed", payErr, map[string]interface{}{
+			"order_id": order.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("创建支付失败: %v", payErr),
+			"message": "创建支付失败",
 		})
 		return
 	}
