@@ -295,6 +295,37 @@
           </el-tabs>
         </el-tab-pane>
 
+        <!-- 公告管理 -->
+        <el-tab-pane label="公告管理" name="announcement">
+          <el-form 
+            :model="announcementSettings" 
+            :label-width="isMobile ? '0' : '120px'"
+            :label-position="isMobile ? 'top' : 'right'"
+            class="settings-form"
+          >
+            <el-form-item label="启用公告">
+              <el-switch v-model="announcementSettings.announcement_enabled" />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                开启后，用户登录时会看到公告弹窗
+              </div>
+            </el-form-item>
+            <el-form-item label="公告内容" prop="announcement_content">
+              <el-input 
+                v-model="announcementSettings.announcement_content" 
+                type="textarea" 
+                :rows="8"
+                placeholder="请输入公告内容，支持HTML格式"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                公告内容将在用户登录时以弹窗形式显示
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveAnnouncementSettings" :class="{ 'full-width': isMobile }">保存公告设置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
         <!-- 主题设置 -->
         <el-tab-pane label="主题设置" name="theme">
           <el-form 
@@ -578,6 +609,12 @@ export default {
       admin_notify_subscription_created: false
     })
 
+    // 公告设置
+    const announcementSettings = reactive({
+      announcement_enabled: false,
+      announcement_content: ''
+    })
+
     const testingAdminEmail = ref(false)
     const testingAdminTelegram = ref(false)
     const testingAdminBark = ref(false)
@@ -616,6 +653,9 @@ export default {
           }
         if (settings.admin_notification) {
           Object.assign(adminNotificationSettings, settings.admin_notification)
+          }
+        if (settings.announcement) {
+          Object.assign(announcementSettings, settings.announcement)
           }
       } catch (error) {
         ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message || '未知错误'))
@@ -675,6 +715,20 @@ export default {
         }
       } catch (error) {
         console.error('保存安全设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
+      }
+    }
+
+    const saveAnnouncementSettings = async () => {
+      try {
+        const response = await api.put('/admin/settings/announcement', announcementSettings)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('公告设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
+      } catch (error) {
+        console.error('保存公告设置失败:', error)
         ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
@@ -820,7 +874,9 @@ export default {
       saveSecuritySettings,
       saveThemeSettings,
       handleLogoSuccess,
-      beforeLogoUpload
+      beforeLogoUpload,
+      announcementSettings,
+      saveAnnouncementSettings
     }
   }
 }

@@ -230,6 +230,10 @@ func GetAdminSettings(c *gin.Context) {
 			"admin_notify_subscription_sent": "false", "admin_notify_subscription_reset": "false", "admin_notify_subscription_expired": "false",
 			"admin_notify_user_created": "false", "admin_notify_subscription_created": "false",
 		},
+		"announcement": {
+			"announcement_enabled": "false",
+			"announcement_content": "",
+		},
 	}
 
 	db := database.GetDB()
@@ -288,6 +292,7 @@ func UpdateSecuritySettings(c *gin.Context)     { updateSettingsCommon(c, "secur
 func UpdateThemeSettings(c *gin.Context)        { updateSettingsCommon(c, "theme") }
 func UpdateInviteSettings(c *gin.Context)       { updateSettingsCommon(c, "invite") }
 func UpdateSoftwareConfig(c *gin.Context)       { updateSettingsCommon(c, "software") }
+func UpdateAnnouncementSettings(c *gin.Context) { updateSettingsCommon(c, "announcement") }
 func UpdateAdminNotificationSystemSettings(c *gin.Context) {
 	updateSettingsCommon(c, "admin_notification")
 }
@@ -435,10 +440,27 @@ func UploadFile(c *gin.Context) {
 // GetPublicSettings 获取公开设置
 func GetPublicSettings(c *gin.Context) {
 	var configs []models.SystemConfig
-	database.GetDB().Where("is_public = ?", true).Find(&configs)
+	db := database.GetDB()
+	// 获取所有公开设置
+	db.Where("is_public = ?", true).Find(&configs)
 	settings := make(map[string]interface{})
 	for _, conf := range configs {
 		settings[conf.Key] = conf.Value
+	}
+	// 获取公告设置（如果启用）
+	var announcementEnabled models.SystemConfig
+	var announcementContent models.SystemConfig
+	if db.Where("key = ? AND category = ?", "announcement_enabled", "announcement").First(&announcementEnabled).Error == nil {
+		if announcementEnabled.Value == "true" {
+			settings["announcement_enabled"] = true
+			if db.Where("key = ? AND category = ?", "announcement_content", "announcement").First(&announcementContent).Error == nil {
+				settings["announcement_content"] = announcementContent.Value
+			}
+		} else {
+			settings["announcement_enabled"] = false
+		}
+	} else {
+		settings["announcement_enabled"] = false
 	}
 	jsonResponse(c, http.StatusOK, true, "", settings)
 }

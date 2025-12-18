@@ -382,6 +382,7 @@ func SetupRouter() *gin.Engine {
 			admin.PUT("/settings/general", handlers.UpdateGeneralSettings)
 			admin.PUT("/settings/registration", handlers.UpdateRegistrationSettings)
 			admin.PUT("/settings/notification", handlers.UpdateNotificationSettings)
+			admin.PUT("/settings/announcement", handlers.UpdateAnnouncementSettings)
 			admin.PUT("/settings/security", handlers.UpdateSecuritySettings)
 			admin.PUT("/settings/theme", handlers.UpdateThemeSettings)
 			admin.PUT("/settings/invite", handlers.UpdateInviteSettings)
