@@ -136,3 +136,56 @@ func GetCurrentUser(c *gin.Context) (*models.User, bool) {
 	u, ok := user.(*models.User)
 	return u, ok
 }
+
+// TryAuthMiddleware 尝试认证中间件
+// 如果提供了有效的token，则设置当前用户，否则不设置（不阻止请求）
+func TryAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.Next()
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.Next()
+			return
+		}
+
+		token := parts[1]
+		db := database.GetDB()
+		tokenHash := utils.HashToken(token)
+		if models.IsTokenBlacklisted(db, tokenHash) {
+			c.Next()
+			return
+		}
+
+		claims, err := utils.VerifyToken(token)
+		if err != nil {
+			c.Next()
+			return
+		}
+
+		if claims.Type != "access" {
+			c.Next()
+			return
+		}
+
+		var user models.User
+		if err := db.First(&user, claims.UserID).Error; err != nil {
+			c.Next()
+			return
+		}
+
+		if !user.IsActive {
+			c.Next()
+			return
+		}
+
+		c.Set("user", &user)
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", user.IsAdmin)
+		c.Next()
+	}
+}

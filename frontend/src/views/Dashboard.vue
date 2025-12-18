@@ -169,38 +169,6 @@
     <div class="main-content">
       <!-- 左侧内容 -->
       <div class="left-content">
-        <!-- 公告卡片 -->
-        <div class="card announcement-card">
-          <div class="card-header">
-            <h3 class="card-title">
-              <i class="fas fa-bullhorn"></i>
-              最新公告
-            </h3>
-          </div>
-          <div class="card-body">
-            <div v-if="announcements.length > 0" class="announcement-list">
-              <div 
-                v-for="announcement in announcements.slice(0, 3)" 
-                :key="announcement.id"
-                class="announcement-item"
-                @click="showAnnouncementDetail(announcement)"
-              >
-                <div class="announcement-content">
-                  <h4 class="announcement-title">{{ announcement.title }}</h4>
-                  <p class="announcement-preview">{{ announcement.content.substring(0, 100) }}...</p>
-                  <span class="announcement-time">{{ formatDate(announcement.created_at) }}</span>
-                </div>
-                <div class="announcement-arrow">
-                  <i class="fas fa-chevron-right"></i>
-                </div>
-              </div>
-            </div>
-            <div v-else class="no-announcements">
-              <i class="fas fa-inbox"></i>
-              <p>暂无公告</p>
-            </div>
-          </div>
-        </div>
 
         <!-- 使用教程卡片 -->
         <div class="card tutorial-card">
@@ -456,20 +424,6 @@
       </div>
     </div>
 
-    <!-- 公告详情对话框 -->
-    <el-dialog
-      v-model="announcementDialogVisible"
-      :title="selectedAnnouncement?.title"
-      width="60%"
-      :before-close="closeAnnouncementDialog"
-    >
-      <div v-if="selectedAnnouncement" class="announcement-detail">
-        <div class="announcement-meta">
-          <span class="announcement-time">{{ formatDate(selectedAnnouncement.created_at) }}</span>
-        </div>
-        <div class="announcement-content" v-html="sanitizeHtml(selectedAnnouncement.content)"></div>
-      </div>
-    </el-dialog>
 
     <!-- 充值对话框 -->
     <el-dialog
@@ -580,9 +534,6 @@ const subscriptionInfo = ref({
   status: 'inactive'
 })
 
-const announcements = ref([])
-const announcementDialogVisible = ref(false)
-const selectedAnnouncement = ref(null)
 
 // 充值相关
 const rechargeDialogVisible = ref(false)
@@ -885,18 +836,6 @@ const loadSubscriptionInfo = async () => {
   }
 }
 
-const loadAnnouncements = async () => {
-  try {
-    const response = await userAPI.getAnnouncements()
-    if (response.data && response.data.success) {
-      announcements.value = response.data.data
-      // 检查是否需要弹窗显示重要公告
-      checkForImportantAnnouncements()
-    } else {
-      }
-  } catch (error) {
-    }
-}
 
 // 充值相关方法
 const showRechargeDialog = () => {
@@ -1011,35 +950,6 @@ const checkRechargeStatus = (rechargeId) => {
   }, 30000)
 }
 
-// 检查重要公告并弹窗显示
-const checkForImportantAnnouncements = () => {
-  if (announcements.value.length === 0) return
-  
-  // 获取最新的公告
-  const latestAnnouncement = announcements.value[0]
-  
-  // 检查是否是需要弹窗显示的类型（活动通知、更新通知、维护通知）
-  const importantTypes = ['activity', 'update', 'maintenance']
-  if (!importantTypes.includes(latestAnnouncement.type)) return
-  
-  // 检查用户是否已经看过这个公告（使用localStorage）
-  const lastSeenAnnouncementId = localStorage.getItem('lastSeenAnnouncementId')
-  if (lastSeenAnnouncementId === latestAnnouncement.id.toString()) return
-  
-  // 延迟显示弹窗，让页面先加载完成
-  setTimeout(() => {
-    showAnnouncementPopup(latestAnnouncement)
-  }, 1000)
-}
-
-// 显示公告弹窗
-const showAnnouncementPopup = (announcement) => {
-  selectedAnnouncement.value = announcement
-  announcementDialogVisible.value = true
-  
-  // 记录用户已经看过这个公告
-  localStorage.setItem('lastSeenAnnouncementId', announcement.id.toString())
-}
 
 const loadSoftwareConfig = async () => {
   try {
@@ -1406,15 +1316,6 @@ const importShadowrocketSubscription = () => {
   }
 }
 
-const showAnnouncementDetail = (announcement) => {
-  selectedAnnouncement.value = announcement
-  announcementDialogVisible.value = true
-}
-
-const closeAnnouncementDialog = () => {
-  announcementDialogVisible.value = false
-  selectedAnnouncement.value = null
-}
 
 const refreshDevices = () => {
   loadDevices()
@@ -1514,7 +1415,6 @@ const oneclickImport = (client, url, name = '') => {
 onMounted(() => {
   loadUserInfo()
   loadSubscriptionInfo()
-  loadAnnouncements()
   loadSoftwareConfig()
 })
 
@@ -2345,64 +2245,6 @@ onUnmounted(() => {
   padding: 20px 24px 24px;
 }
 
-/* 公告卡片 */
-.announcement-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.announcement-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 12px;
-}
-
-.announcement-item:hover {
-  border-color: #3b82f6;
-  background-color: #f8fafc;
-}
-
-.announcement-title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0 0 4px 0;
-  color: #1f2937;
-}
-
-.announcement-preview {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin: 0 0 8px 0;
-  line-height: 1.4;
-}
-
-.announcement-time {
-  font-size: 0.75rem;
-  color: #9ca3af;
-}
-
-.announcement-arrow {
-  color: #9ca3af;
-}
-
-.no-announcements {
-  text-align: center;
-  padding: 40px 20px;
-  color: #9ca3af;
-}
-
-.no-announcements :is(i) {
-  font-size: 3rem;
-  margin-bottom: 16px;
-  display: block;
-}
 
 /* 教程卡片 */
 .tutorial-tabs {
@@ -2811,22 +2653,6 @@ onUnmounted(() => {
   display: block;
 }
 
-/* 公告详情对话框 */
-.announcement-detail {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.announcement-meta {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.announcement-content {
-  line-height: 1.6;
-  color: #374151;
-}
 
 /* 响应式设计 */
 @media (max-width: 768px) {
@@ -2949,36 +2775,6 @@ onUnmounted(() => {
     }
   }
   
-  .announcement-item {
-    padding: 12px;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    
-    .announcement-content {
-      flex: 1;
-      width: 100%;
-      
-      .announcement-title {
-        font-size: 0.9375rem;
-        margin-bottom: 6px;
-      }
-      
-      .announcement-preview {
-        font-size: 0.8125rem;
-        line-height: 1.4;
-        margin-bottom: 6px;
-      }
-      
-      .announcement-time {
-        font-size: 0.6875rem;
-      }
-    }
-    
-    .announcement-arrow {
-      align-self: flex-end;
-    }
-  }
   
   .tutorial-tabs {
     gap: 8px;
@@ -3130,9 +2926,6 @@ onUnmounted(() => {
     padding: 12px;
   }
   
-  .announcement-item {
-    padding: 10px;
-  }
   
   .subscription-buttons {
     grid-template-columns: 1fr 1fr;

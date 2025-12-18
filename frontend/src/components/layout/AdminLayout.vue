@@ -186,15 +186,6 @@
         <div class="nav-section">
           <div class="nav-section-title" v-show="!sidebarCollapsed || isMobile">系统管理</div>
           <router-link 
-            to="/admin/notifications"
-            class="nav-item"
-            :class="{ active: $route.path === '/admin/notifications' }"
-            @click="handleNavClick"
-          >
-            <i class="el-icon-bell"></i>
-            <span class="nav-text" v-show="!sidebarCollapsed || isMobile">通知管理</span>
-          </router-link>
-          <router-link 
             to="/admin/config"
             class="nav-item"
             :class="{ active: $route.path === '/admin/config' }"
@@ -453,7 +444,6 @@ const getCurrentPageTitle = () => {
     '/admin/orders': '订单列表',
     '/admin/packages': '套餐管理',
     '/admin/abnormal-users': '异常用户',
-    '/admin/notifications': '通知管理',
     '/admin/config': '配置管理',
     '/admin/payment-config': '支付配置',
     '/admin/statistics': '数据统计',
@@ -493,7 +483,6 @@ const menuSections = computed(() => {
     {
       title: '系统管理',
       items: [
-        { path: '/admin/notifications', title: '通知管理', icon: 'el-icon-bell' },
         { path: '/admin/config', title: '配置管理', icon: 'el-icon-setting' },
         { path: '/admin/payment-config', title: '支付配置', icon: 'el-icon-wallet' },
         { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' },
