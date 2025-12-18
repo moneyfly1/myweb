@@ -357,9 +357,14 @@ func SetupRouter() *gin.Engine {
 			admin.DELETE("/packages/:id", handlers.DeletePackage)
 
 			// 节点管理
+			admin.GET("/nodes", handlers.GetAdminNodes)
+			admin.GET("/nodes/stats", handlers.GetNodeStats)
 			admin.POST("/nodes", handlers.CreateNode)
+			admin.POST("/nodes/import-links", handlers.ImportNodeLinks)
 			admin.PUT("/nodes/:id", handlers.UpdateNode)
 			admin.DELETE("/nodes/:id", handlers.DeleteNode)
+			admin.POST("/nodes/:id/test", handlers.TestNode)
+			admin.POST("/nodes/batch-test", handlers.BatchTestNodes)
 			admin.POST("/nodes/import-from-file", handlers.ImportFromFile)
 
 			// 优惠券管理（保留兼容性路由，但主要使用 /coupons/admin）
@@ -390,6 +395,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/settings/admin-notification/test/email", handlers.TestAdminEmailNotification)
 			admin.POST("/settings/admin-notification/test/telegram", handlers.TestAdminTelegramNotification)
 			admin.POST("/settings/admin-notification/test/bark", handlers.TestAdminBarkNotification)
+			admin.PUT("/settings/node_health", handlers.UpdateNodeHealthSettings)
 
 			// 管理员个人资料
 			admin.GET("/profile", handlers.GetAdminProfile)

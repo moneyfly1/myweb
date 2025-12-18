@@ -383,9 +383,17 @@ export const nodeAPI = {
   getNodes: () => api.get('/nodes/'),
   getNode: (id) => api.get(`/nodes/${id}`),
   testNode: (id) => api.post(`/nodes/${id}/test`),
-  batchTestNodes: (ids) => api.post('/nodes/batch-test', ids),
+  batchTestNodes: (data) => api.post('/nodes/batch-test', data),
   importFromClash: (config) => api.post('/nodes/import-from-clash', { clash_config: config }),
-  getNodesStats: () => api.get('/admin/nodes/stats')
+  getNodesStats: () => api.get('/admin/nodes/stats'),
+  getAdminNodes: (params) => api.get('/admin/nodes', { params }),
+  getAdminNode: (id) => api.get(`/admin/nodes/${id}`),
+  createNode: (data) => api.post('/admin/nodes', data),
+  importNodeLinks: (links) => api.post('/admin/nodes/import-links', { links }),
+  updateNode: (id, data) => api.put(`/admin/nodes/${id}`, data),
+  deleteNode: (id) => api.delete(`/admin/nodes/${id}`),
+  testNode: (id) => api.post(`/admin/nodes/${id}/test`),
+  batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds })
 }
 
 export const adminAPI = {
@@ -455,8 +463,17 @@ export const adminAPI = {
   getSubscriptionDevices: (id) => api.get(`/admin/subscriptions/${id}/devices`),
   getDeviceDetail: (id) => api.get(`/admin/devices/devices/${id}`),
   updateDeviceStatus: (id, data) => api.put(`/admin/devices/devices/${id}`, data),
-  removeDevice: (id) => api.delete(`/admin/devices/${id}`),
-  deleteUserDevice: (userId, deviceId) => api.delete(`/admin/users/${userId}/devices/${deviceId}`)
+  removeDevice: (id) => api.delete(`/admin/devices/${id}`),
+  deleteUserDevice: (userId, deviceId) => api.delete(`/admin/users/${userId}/devices/${deviceId}`),
+  getAdminNodes: (params) => api.get('/admin/nodes', { params }),
+  getAdminNode: (id) => api.get(`/admin/nodes/${id}`),
+  createNode: (data) => api.post('/admin/nodes', data),
+  importNodeLinks: (links) => api.post('/admin/nodes/import-links', { links }),
+  updateNode: (id, data) => api.put(`/admin/nodes/${id}`, data),
+  deleteNode: (id) => api.delete(`/admin/nodes/${id}`),
+  testNode: (id) => api.post(`/admin/nodes/${id}/test`),
+  batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
+  getNodesStats: () => api.get('/admin/nodes/stats')
 }
 
 
