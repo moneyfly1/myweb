@@ -46,9 +46,10 @@ func CreateInviteCode(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.LogError("CreateInviteCode: bind JSON failed", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误: " + err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -123,9 +124,10 @@ func CreateInviteCode(c *gin.Context) {
 	}
 
 	if err := db.Create(&inviteCode).Error; err != nil {
+		utils.LogError("CreateInviteCode: create invite code failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "创建邀请码失败: " + err.Error(),
+			"message": "创建邀请码失败",
 		})
 		return
 	}

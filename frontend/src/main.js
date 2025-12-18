@@ -47,6 +47,19 @@ app.config.globalProperties.$settings = null
 // 立即挂载应用
 app.mount('#app')
 
+// 页面加载时主动获取 CSRF Token
+if (typeof window !== 'undefined') {
+  // 使用轻量级的 GET 请求获取 CSRF Token
+  import('axios').then(({ default: axios }) => {
+    axios.get('/api/v1/settings/public-settings', {
+      withCredentials: true,
+      timeout: 5000
+    }).catch(() => {
+      // 忽略错误，不影响应用启动
+    })
+  })
+}
+
 // 异步加载设置和主题（不阻塞应用启动）
 setTimeout(async () => {
   try {

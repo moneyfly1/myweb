@@ -64,259 +64,18 @@ func NewNotificationService() *NotificationService {
 	return &NotificationService{}
 }
 
-// FormatTelegramMessage 格式化 Telegram 消息
+// FormatTelegramMessage 格式化 Telegram 消息（已废弃，使用模板构建器）
+// Deprecated: 使用 MessageTemplateBuilder.BuildTelegramMessage 代替
 func FormatTelegramMessage(notificationType string, data map[string]interface{}) string {
-	switch notificationType {
-	case "order_paid":
-		orderNo := getString(data, "order_no", "N/A")
-		username := getString(data, "username", "N/A")
-		amount := getFloat(data, "amount", 0)
-		packageName := getString(data, "package_name", "未知套餐")
-		paymentMethod := getString(data, "payment_method", "未知")
-		paymentTime := getString(data, "payment_time", "N/A")
-		return fmt.Sprintf(`💰 <b>新订单支付成功</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 <b>订单号</b>: <code>%s</code>
-👤 <b>用户账号</b>: %s
-📦 <b>套餐名称</b>: %s
-💵 <b>支付金额</b>: ¥%.2f
-💳 <b>支付方式</b>: %s
-⏰ <b>支付时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 订单已自动处理，订阅已激活`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
-
-	case "user_registered":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		registerTime := getString(data, "register_time", "N/A")
-		return fmt.Sprintf(`👤 <b>新用户注册</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: %s
-📧 <b>注册邮箱</b>: %s
-⏰ <b>注册时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 新用户已自动创建默认订阅`, username, email, registerTime)
-
-	case "password_reset":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		resetTime := getString(data, "reset_time", "N/A")
-		return fmt.Sprintf(`🔐 <b>用户重置密码</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: %s
-📧 <b>用户邮箱</b>: %s
-⏰ <b>重置时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ 如非用户本人操作，请及时检查账户安全`, username, email, resetTime)
-
-	case "subscription_sent":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		sendTime := getString(data, "send_time", "N/A")
-		return fmt.Sprintf(`📧 <b>用户发送订阅</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: %s
-📧 <b>用户邮箱</b>: %s
-⏰ <b>发送时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, username, email, sendTime)
-
-	case "subscription_reset":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		resetTime := getString(data, "reset_time", "N/A")
-		return fmt.Sprintf(`🔄 <b>用户重置订阅</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: %s
-📧 <b>用户邮箱</b>: %s
-⏰ <b>重置时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 订阅地址已重置，旧地址已失效`, username, email, resetTime)
-
-	case "subscription_expired":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		expireTime := getString(data, "expire_time", "N/A")
-		return fmt.Sprintf(`⏰ <b>订阅已过期</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: %s
-📧 <b>用户邮箱</b>: %s
-⏰ <b>过期时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ 建议引导用户续费以恢复服务`, username, email, expireTime)
-
-	case "user_created":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		createdBy := getString(data, "created_by", "N/A")
-		createTime := getString(data, "create_time", "N/A")
-		return fmt.Sprintf(`📋 <b>管理员创建用户</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: <code>%s</code>
-📧 <b>注册邮箱</b>: %s
-👨‍💼 <b>创建者</b>: %s
-⏰ <b>创建时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 用户账户已成功创建`, username, email, createdBy, createTime)
-
-	case "subscription_created":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		packageName := getString(data, "package_name", "未知套餐")
-		createTime := getString(data, "create_time", "N/A")
-		return fmt.Sprintf(`📦 <b>订阅创建</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>用户账号</b>: %s
-📧 <b>用户邮箱</b>: %s
-📦 <b>套餐名称</b>: %s
-⏰ <b>创建时间</b>: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 订阅已创建并激活，用户可立即使用服务`, username, email, packageName, createTime)
-
-	default:
-		title := getString(data, "title", "系统通知")
-		message := getString(data, "message", "")
-		return fmt.Sprintf("<b>%s</b>\n\n%s", title, message)
-	}
+	templateBuilder := NewMessageTemplateBuilder()
+	return templateBuilder.BuildTelegramMessage(notificationType, data)
 }
 
-// FormatBarkMessage 格式化 Bark 消息
+// FormatBarkMessage 格式化 Bark 消息（已废弃，使用模板构建器）
+// Deprecated: 使用 MessageTemplateBuilder.BuildBarkMessage 代替
 func FormatBarkMessage(notificationType string, data map[string]interface{}) (string, string) {
-	var title, body string
-
-	switch notificationType {
-	case "order_paid":
-		orderNo := getString(data, "order_no", "N/A")
-		username := getString(data, "username", "N/A")
-		amount := getFloat(data, "amount", 0)
-		packageName := getString(data, "package_name", "未知套餐")
-		paymentMethod := getString(data, "payment_method", "未知")
-		paymentTime := getString(data, "payment_time", "N/A")
-		title = "💰 新订单支付成功"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 订单号: %s
-👤 用户账号: %s
-📦 套餐名称: %s
-💵 支付金额: ¥%.2f
-💳 支付方式: %s
-⏰ 支付时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 订单已自动处理，订阅已激活`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
-
-	case "user_registered":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		registerTime := getString(data, "register_time", "N/A")
-		title = "👤 新用户注册"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 注册邮箱: %s
-⏰ 注册时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 新用户已自动创建默认订阅`, username, email, registerTime)
-
-	case "password_reset":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		resetTime := getString(data, "reset_time", "N/A")
-		title = "🔐 用户重置密码"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 用户邮箱: %s
-⏰ 重置时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ 如非用户本人操作，请及时检查账户安全`, username, email, resetTime)
-
-	case "subscription_sent":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		sendTime := getString(data, "send_time", "N/A")
-		title = "📧 用户发送订阅"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 用户邮箱: %s
-⏰ 发送时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, username, email, sendTime)
-
-	case "subscription_reset":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		resetTime := getString(data, "reset_time", "N/A")
-		title = "🔄 用户重置订阅"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 用户邮箱: %s
-⏰ 重置时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 订阅地址已重置，旧地址已失效`, username, email, resetTime)
-
-	case "subscription_expired":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		expireTime := getString(data, "expire_time", "N/A")
-		title = "⏰ 订阅已过期"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 用户邮箱: %s
-⏰ 过期时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ 建议引导用户续费以恢复服务`, username, email, expireTime)
-
-	case "user_created":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		createdBy := getString(data, "created_by", "N/A")
-		createTime := getString(data, "create_time", "N/A")
-		title = "📋 管理员创建用户"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 注册邮箱: %s
-👨‍💼 创建者: %s
-⏰ 创建时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 用户账户已成功创建`, username, email, createdBy, createTime)
-
-	case "subscription_created":
-		username := getString(data, "username", "N/A")
-		email := getString(data, "email", "N/A")
-		packageName := getString(data, "package_name", "未知套餐")
-		createTime := getString(data, "create_time", "N/A")
-		title = "📦 订阅创建"
-		body = fmt.Sprintf(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 用户账号: %s
-📧 用户邮箱: %s
-📦 套餐名称: %s
-⏰ 创建时间: %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 订阅已创建并激活，用户可立即使用服务`, username, email, packageName, createTime)
-
-	default:
-		title = getString(data, "title", "系统通知")
-		body = getString(data, "message", "")
-	}
-
-	return title, body
+	templateBuilder := NewMessageTemplateBuilder()
+	return templateBuilder.BuildBarkMessage(notificationType, data)
 }
 
 // SendAdminNotification 发送管理员通知
@@ -356,9 +115,10 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		}
 	}
 
-	// 格式化消息
-	telegramMsg := FormatTelegramMessage(notificationType, data)
-	barkTitle, barkBody := FormatBarkMessage(notificationType, data)
+	// 使用模板构建器格式化消息
+	templateBuilder := NewMessageTemplateBuilder()
+	telegramMsg := templateBuilder.BuildTelegramMessage(notificationType, data)
+	barkTitle, barkBody := templateBuilder.BuildBarkMessage(notificationType, data)
 
 	// 发送 Telegram 通知
 	if configMap["admin_telegram_notification"] == "true" {

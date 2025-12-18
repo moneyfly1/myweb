@@ -3,7 +3,6 @@ package middleware
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -113,10 +112,17 @@ func getSessionID(c *gin.Context) string {
 		return cookie
 	}
 
-	// 如果没有Cookie，使用IP+User-Agent作为会话标识
-	ip := c.ClientIP()
-	ua := c.GetHeader("User-Agent")
-	return fmt.Sprintf("%s:%s", ip, ua)
+	// 如果没有 session_id Cookie，生成一个随机的 sessionID 并设置
+	// 使用随机字符串作为 sessionID，确保稳定性（不依赖 IP 或 User-Agent）
+	b := make([]byte, 32)
+	rand.Read(b)
+	sessionID := base64.URLEncoding.EncodeToString(b)
+
+	// 设置 session_id Cookie（30天有效期）
+	isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+	c.SetCookie("session_id", sessionID, 30*24*3600, "/", "", isSecure, false)
+
+	return sessionID
 }
 
 // CSRFMiddleware CSRF保护中间件
@@ -126,12 +132,15 @@ func CSRFMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 只对状态变更操作进行CSRF保护
 		if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
-			// GET请求生成token
+			// GET请求生成或更新token（即使已存在也更新，确保token不会过期）
 			sessionID := getSessionID(c)
 			token, err := manager.GenerateToken(sessionID)
 			if err == nil {
 				c.Header("X-CSRF-Token", token)
-				c.SetCookie("csrf_token", token, 86400, "/", "", false, true) // HttpOnly, Secure
+				// HttpOnly 设置为 false，允许前端 JavaScript 读取 CSRF Token
+				// Secure 根据请求协议动态设置（HTTPS 时设置为 true）
+				isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+				c.SetCookie("csrf_token", token, 86400, "/", "", isSecure, false) // HttpOnly=false, Secure=动态
 			}
 			c.Next()
 			return
@@ -177,19 +186,30 @@ func CSRFMiddleware() gin.HandlerFunc {
 				return
 			}
 
-			// 如果token验证失败，返回错误
+			// 如果token验证失败，尝试生成新token并返回，让前端自动重试
+			// 这可以解决token过期或会话ID变化的问题
+			newToken, err := manager.GenerateToken(sessionID)
+			if err == nil {
+				isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+				c.SetCookie("csrf_token", newToken, 86400, "/", "", isSecure, false)
+				c.Header("X-CSRF-Token", newToken)
+			}
+
+			// 如果token验证失败，返回错误（包含新token，让前端可以重试）
 			if token == "" {
 				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": "CSRF Token缺失，请刷新页面后重试",
+					"success":    false,
+					"message":    "CSRF Token缺失，请刷新页面后重试",
+					"csrf_token": newToken, // 返回新token，方便前端自动重试
 				})
 				c.Abort()
 				return
 			}
 
 			c.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "CSRF验证失败，请刷新页面后重试",
+				"success":    false,
+				"message":    "CSRF验证失败，请刷新页面后重试",
+				"csrf_token": newToken, // 返回新token，方便前端自动重试
 			})
 			c.Abort()
 			return
@@ -212,7 +232,7 @@ func isValidOrigin(origin, host string) bool {
 		return true
 	}
 	// 检查origin是否匹配host
-	return origin == "https://"+host || origin == "http://"+host || 
+	return origin == "https://"+host || origin == "http://"+host ||
 		origin == "https://"+host+"/" || origin == "http://"+host+"/" ||
 		strings.HasPrefix(origin, "https://"+host+":") || strings.HasPrefix(origin, "http://"+host+":")
 }
@@ -228,7 +248,7 @@ func isValidReferer(referer, host string) bool {
 		return true
 	}
 	// 检查referer是否匹配host
-	return referer == "https://"+host || referer == "http://"+host || 
+	return referer == "https://"+host || referer == "http://"+host ||
 		referer == "https://"+host+"/" || referer == "http://"+host+"/" ||
 		strings.HasPrefix(referer, "https://"+host+":") || strings.HasPrefix(referer, "http://"+host+":") ||
 		strings.HasPrefix(referer, "https://"+host+"/") || strings.HasPrefix(referer, "http://"+host+"/")
@@ -241,4 +261,3 @@ func CSRFExemptMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-

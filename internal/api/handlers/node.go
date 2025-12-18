@@ -13,6 +13,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/config_update"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,9 +42,10 @@ func GetNodes(c *gin.Context) {
 
 	var allNodes []models.Node
 	if err := query.Order("created_at DESC").Find(&allNodes).Error; err != nil {
+		utils.LogError("GetNodes: query nodes failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "获取节点列表失败: " + err.Error(),
+			"message": "获取节点列表失败",
 		})
 		return
 	}
@@ -404,9 +406,10 @@ func ImportFromClash(c *gin.Context) {
 	// 解析 Clash YAML 配置
 	importedCount, err := importNodesFromClashConfig(req.ClashConfig)
 	if err != nil {
+		utils.LogError("ImportNodesFromClash: import nodes failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "导入节点失败: " + err.Error(),
+			"message": "导入节点失败",
 		})
 		return
 	}
@@ -441,9 +444,12 @@ func ImportFromFile(c *gin.Context) {
 	// 读取文件内容
 	content, err := os.ReadFile(configPath)
 	if err != nil {
+		utils.LogError("ImportNodesFromFile: read file failed", err, map[string]interface{}{
+			"config_path": configPath,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "读取配置文件失败: " + err.Error(),
+			"message": "读取配置文件失败",
 		})
 		return
 	}
@@ -451,9 +457,12 @@ func ImportFromFile(c *gin.Context) {
 	// 导入节点
 	importedCount, err := importNodesFromClashConfig(string(content))
 	if err != nil {
+		utils.LogError("ImportNodesFromFile: import nodes failed", err, map[string]interface{}{
+			"config_path": configPath,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "导入节点失败: " + err.Error(),
+			"message": "导入节点失败",
 		})
 		return
 	}
@@ -832,9 +841,12 @@ func CollectNodes(c *gin.Context) {
 	// 采集节点
 	nodeData, err := service.FetchNodesFromURLs(validURLs)
 	if err != nil {
+		utils.LogError("CollectNodes: fetch nodes failed", err, map[string]interface{}{
+			"urls_count": len(validURLs),
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "采集节点失败: " + err.Error(),
+			"message": "采集节点失败",
 		})
 		return
 	}

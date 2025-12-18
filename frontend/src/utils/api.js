@@ -74,6 +74,9 @@ const handleLogout = () => {
   }
 }
 
+// CSRF Token 缓存（从响应 Header 中获取）
+let csrfTokenCache = null
+
 api.interceptors.request.use(
   config => {
     // 由于 baseURL 是 '/api/v1'，config.url 不包含 baseURL 前缀
@@ -137,8 +140,8 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`
     }
     
-    // 添加CSRF token（从Cookie中获取）
-    const csrfToken = getCookie('csrf_token')
+    // 添加CSRF token（优先从缓存获取，其次从Cookie获取）
+    let csrfToken = csrfTokenCache || getCookie('csrf_token')
     if (csrfToken && (config.method === 'post' || config.method === 'put' || config.method === 'delete' || config.method === 'patch')) {
       config.headers['X-CSRF-Token'] = csrfToken
     }
@@ -205,7 +208,14 @@ export const resetRefreshFailed = () => {
 }
 
 api.interceptors.response.use(
-  response => response,
+  response => {
+    // 从响应 Header 中获取 CSRF Token 并缓存
+    const csrfToken = response.headers['x-csrf-token'] || response.headers['X-CSRF-Token']
+    if (csrfToken) {
+      csrfTokenCache = csrfToken
+    }
+    return response
+  },
   async error => {
     // 处理网络错误和超时
     if (!error.response) {
@@ -244,6 +254,62 @@ api.interceptors.response.use(
       })
       // 如果不是管理员接口，可以重定向到首页或显示维护页面
       // 注意：维护模式中间件已经返回了HTML页面，所以这里主要是处理API调用
+      return Promise.reject(error)
+    }
+
+    // 处理 CSRF 验证失败（403状态码）
+    if (error.response?.status === 403 && error.response?.data?.message?.includes('CSRF')) {
+      // 从响应中获取新的 CSRF Token
+      const newCsrfToken = error.response?.data?.csrf_token || 
+                          error.response?.headers?.['x-csrf-token'] || 
+                          error.response?.headers?.['X-CSRF-Token']
+      
+      if (newCsrfToken) {
+        // 更新 CSRF Token 缓存
+        csrfTokenCache = newCsrfToken
+        
+        // 如果是 POST/PUT/DELETE/PATCH 请求，且未重试过，自动重试
+        const method = error.config?.method?.toLowerCase()
+        if (method && ['post', 'put', 'delete', 'patch'].includes(method) && 
+            error.config && !error.config._csrfRetry) {
+          error.config._csrfRetry = true
+          error.config.headers['X-CSRF-Token'] = newCsrfToken
+          
+          // 延迟一小段时间后重试，确保后端已处理完
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(api.request(error.config))
+            }, 100)
+          })
+        }
+      } else {
+        // 如果没有新 token，尝试通过 GET 请求获取新 token
+        if (error.config && !error.config._csrfRetry) {
+          error.config._csrfRetry = true
+          try {
+            // 发送一个轻量级的 GET 请求来获取新的 CSRF Token
+            await axios.get('/api/v1/settings/public-settings', {
+              withCredentials: true,
+              timeout: 5000
+            })
+            // 从 Cookie 中获取新 token
+            const freshToken = getCookie('csrf_token')
+            if (freshToken) {
+              csrfTokenCache = freshToken
+              error.config.headers['X-CSRF-Token'] = freshToken
+              return api.request(error.config)
+            }
+          } catch (e) {
+            // 获取 token 失败，继续执行原有错误处理
+          }
+        }
+      }
+      
+      // 如果无法自动修复，显示错误消息
+      const csrfMessage = error.response?.data?.message || 'CSRF验证失败，请刷新页面后重试'
+      import('element-plus').then(({ ElMessage }) => {
+        ElMessage.error(csrfMessage)
+      })
       return Promise.reject(error)
     }
 
@@ -379,7 +445,8 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   sendVerificationCode: (data) => api.post('/auth/verification/send', data),
   resendVerificationCode: (data) => api.post('/auth/verification/send', data),
-  forgotPassword: (data) => api.post('/auth/forgot-password', data),
+  forgotPassword: (data) => api.post('/auth/forgot-password-new', data),
+  resetPassword: (data) => api.post('/auth/reset-password-new', data),
   refreshToken: () => api.post('/auth/refresh-token')
 }
 
