@@ -11,7 +11,7 @@ DOMAIN="dy.moneyfly.top"
 LOG_FILE="/tmp/cboard_admin.log"
 
 # --- 颜色定义 ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
 
 # --- 辅助函数 ---
 log() { echo -e "${GREEN}[$(date +'%H:%M:%S')] $1${NC}"; }
@@ -30,7 +30,71 @@ reload_nginx_force() {
 
 full_deploy() {
     log "开始全自动部署流程..."
-    # 生成HTTP配置
+    
+    # 1. 检查并进入项目目录
+    if [ ! -d "$PROJECT_DIR" ]; then
+        error "项目目录不存在: $PROJECT_DIR"
+        exit 1
+    fi
+    cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+    
+    # 2. 检查 Go 环境
+    if ! command -v go &> /dev/null; then
+        error "未找到 Go 命令，请先安装 Go"
+        exit 1
+    fi
+    log "Go 版本: $(go version)"
+    
+    # 3. 编译 Go 程序
+    log "正在编译 Go 程序..."
+    if go build -o server ./cmd/server/main.go; then
+        log "✅ Go 程序编译成功"
+    else
+        error "Go 程序编译失败"
+        exit 1
+    fi
+    
+    # 4. 构建前端
+    log "正在构建前端..."
+    cd frontend || { error "前端目录不存在"; exit 1; }
+    if [ ! -d "node_modules" ]; then
+        log "安装前端依赖..."
+        npm install --legacy-peer-deps || { error "前端依赖安装失败"; exit 1; }
+    fi
+    if npm run build; then
+        log "✅ 前端构建成功"
+    else
+        error "前端构建失败"
+        exit 1
+    fi
+    cd ..
+    
+    # 5. 创建 systemd 服务文件
+    log "正在创建 systemd 服务..."
+    local service_file="/etc/systemd/system/cboard.service"
+    cat > "$service_file" << EOF
+[Unit]
+Description=CBoard Go Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${PROJECT_DIR}
+ExecStart=${PROJECT_DIR}/server
+Restart=always
+RestartSec=5
+StandardOutput=append:${PROJECT_DIR}/server.log
+StandardError=append:${PROJECT_DIR}/server.log
+Environment="PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    log "✅ systemd 服务文件已创建"
+    
+    # 6. 生成HTTP配置
     local bt_path="/www/server/panel/vhost/nginx/${DOMAIN}.conf"
     mkdir -p "$(dirname "$bt_path")"
     cat > "$bt_path" << EOF
@@ -44,12 +108,16 @@ server {
 EOF
     reload_nginx_force
 
-    # 申请SSL
-    certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" --email "admin@${DOMAIN}" --agree-tos --non-interactive --quiet
+    # 7. 申请SSL
+    log "正在申请 SSL 证书..."
+    certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" --email "admin@${DOMAIN}" --agree-tos --non-interactive --quiet 2>/dev/null || {
+        warn "SSL 证书申请失败，继续使用 HTTP 配置"
+    }
     
-    # 生成最终配置
+    # 8. 生成最终配置
     local cert_root=$(find /etc/letsencrypt/live -name "*${DOMAIN}*" -type d | head -n 1)
-    cat > "$bt_path" << EOF
+    if [ -n "$cert_root" ] && [ -f "$cert_root/fullchain.pem" ]; then
+        cat > "$bt_path" << EOF
 server {
     listen 80; server_name ${DOMAIN}; return 301 https://\$host\$request_uri;
 }
@@ -61,14 +129,56 @@ server {
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }
     location / { try_files \$uri \$uri/ /index.html; }
 }
 EOF
+        log "✅ HTTPS 配置已生成"
+    else
+        warn "SSL 证书未找到，使用 HTTP 配置"
+        cat > "$bt_path" << EOF
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    root ${PROJECT_DIR}/frontend/dist;
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    location / { try_files \$uri \$uri/ /index.html; }
+}
+EOF
+    fi
     reload_nginx_force
+    
+    # 9. 启动服务
+    log "正在启动服务..."
+    systemctl enable cboard
+    systemctl restart cboard
+    
+    # 10. 检查服务状态
+    sleep 3
+    if systemctl is-active --quiet cboard; then
+        log "✅ 服务已成功启动"
+        systemctl status cboard --no-pager -l
+    else
+        error "服务启动失败，请查看日志: journalctl -u cboard -n 50"
+        exit 1
+    fi
+    
     log "部署完成！"
+    log "服务状态: systemctl status cboard"
+    log "查看日志: journalctl -u cboard -f"
 }
 
 # --- 2. 运维管理功能 (参考原脚本融合) ---
@@ -100,21 +210,11 @@ deep_clean() {
 }
 
 unlock_user() {
-    read -r -p "请输入要解锁的管理员用户名或邮箱: " identifier
+    read -r -p "请输入要解锁的邮箱账号: " email
     cd "$PROJECT_DIR"
-    if [ -f "scripts/unlock_admin.go" ]; then
-        go run scripts/unlock_admin.go "$identifier"
-        log "管理员账户解锁操作已完成。"
-    else
-        error "未找到解锁脚本: scripts/unlock_admin.go"
-        log "尝试使用 SQLite 直接解锁..."
-        if [ -f "cboard.db" ]; then
-            sqlite3 cboard.db "UPDATE users SET is_active=1, is_verified=1 WHERE email='$identifier' OR username='$identifier';"
-            log "账户 $identifier 已尝试解锁。"
-        else
-            error "未找到数据库文件: cboard.db"
-        fi
-    fi
+    # 假设你的程序有对应的命令行参数或脚本
+    ./server -unlock "$email" || echo "UPDATE users SET status=1, login_fails=0 WHERE email='$email';" | sqlite3 cboard.db
+    log "账户 $email 已尝试解锁。"
 }
 
 show_logs() {

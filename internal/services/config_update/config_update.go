@@ -96,27 +96,26 @@ func (s *ConfigUpdateService) tryBase64Decode(text string) string {
 	return string(decoded)
 }
 
+// 预编译正则表达式以提升性能
+var nodeLinkPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(vmess://[^\s]+)`),
+	regexp.MustCompile(`(vless://[^\s]+)`),
+	regexp.MustCompile(`(trojan://[^\s]+)`),
+	regexp.MustCompile(`(ss://[^\s]+)`),
+	regexp.MustCompile(`(ssr://[^\s]+)`),
+	regexp.MustCompile(`(hysteria://[^\s]+)`),
+	regexp.MustCompile(`(hysteria2://[^\s]+)`),
+	regexp.MustCompile(`(tuic://[^\s]+)`),
+	regexp.MustCompile(`(wireguard://[^\s]+)`),
+	regexp.MustCompile(`(http://[^\s]+)`),
+	regexp.MustCompile(`(https://[^\s]+)`),
+}
+
 // extractNodeLinks 提取节点链接
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	var links []string
 
-	// 匹配各种协议链接
-	patterns := []string{
-		`(vmess://[^\s]+)`,
-		`(vless://[^\s]+)`,
-		`(trojan://[^\s]+)`,
-		`(ss://[^\s]+)`,
-		`(ssr://[^\s]+)`,
-		`(hysteria://[^\s]+)`,
-		`(hysteria2://[^\s]+)`,
-		`(tuic://[^\s]+)`,
-		`(wireguard://[^\s]+)`,
-		`(http://[^\s]+)`,
-		`(https://[^\s]+)`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+	for _, re := range nodeLinkPatterns {
 		matches := re.FindAllString(content, -1)
 		links = append(links, matches...)
 	}

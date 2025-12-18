@@ -65,7 +65,8 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	var paymentConfig models.PaymentConfig
-	if err := db.Where("pay_type = ? AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err == nil {
+	// 查找对应类型的支付配置（不区分大小写）
+	if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err == nil {
 		if paymentMethod == "alipay" {
 			alipayService, err := payment.NewAlipayService(&paymentConfig)
 			if err == nil {

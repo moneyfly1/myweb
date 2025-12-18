@@ -164,7 +164,7 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 	// 发送邮件
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	
+
 	if s.encryption == "ssl" {
 		// SSL 连接（端口465）：直接建立TLS连接
 		tlsConfig := &tls.Config{
@@ -273,6 +273,19 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 	}
 }
 
+// getTemplateContent 获取模板内容（支持回退）
+func (s *EmailService) getTemplateContent(templateName string, variables map[string]string, fallbackBuilder func() (string, string)) (string, string) {
+	templateService := NewEmailTemplateService()
+	template, err := templateService.GetTemplate(templateName)
+	if err == nil {
+		subject, content, err := templateService.RenderTemplate(template, variables)
+		if err == nil {
+			return subject, content
+		}
+	}
+	return fallbackBuilder()
+}
+
 // SendVerificationEmail 发送验证邮件（立即发送，验证码需要实时性）
 func (s *EmailService) SendVerificationEmail(to, code string) error {
 	// 验证邮件配置
@@ -280,30 +293,18 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 		return fmt.Errorf("邮件配置不完整，请先配置SMTP设置")
 	}
 
-	// 尝试使用模板
-	templateService := NewEmailTemplateService()
-	template, err := templateService.GetTemplate("verification")
-	var subject, content string
-	
-	if err == nil {
-		// 使用模板
-		variables := map[string]string{
-			"code":     code,
-			"email":    to,
-			"validity": "10",
-		}
-		subject, content, err = templateService.RenderTemplate(template, variables)
-	}
-	
-	// 如果模板失败，使用新的美观模板
-	if err != nil || subject == "" || content == "" {
+	subject, content := s.getTemplateContent("verification", map[string]string{
+		"code":     code,
+		"email":    to,
+		"validity": "10",
+	}, func() (string, string) {
 		templateBuilder := NewEmailTemplateBuilder()
-		content = templateBuilder.GetVerificationCodeTemplate("用户", code)
-		subject = "注册验证码"
-	}
+		content := templateBuilder.GetVerificationCodeTemplate("用户", code)
+		return "注册验证码", content
+	})
 
 	// 验证码邮件立即发送，不加入队列（验证码需要实时性）
-	err = s.SendEmail(to, subject, content)
+	err := s.SendEmail(to, subject, content)
 	if err != nil {
 		// 如果立即发送失败，尝试加入队列作为备选方案
 		queueErr := s.QueueEmail(to, subject, content, "verification")
@@ -312,31 +313,20 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 		}
 		return fmt.Errorf("发送验证码邮件失败: %v，已加入队列稍后重试", err)
 	}
-	
+
 	return nil
 }
 
 // SendPasswordResetEmail 发送密码重置邮件（使用模板，加入队列）
 func (s *EmailService) SendPasswordResetEmail(to, resetLink string) error {
-	// 尝试使用模板
-	templateService := NewEmailTemplateService()
-	template, err := templateService.GetTemplate("password_reset")
-	if err == nil {
-		// 使用模板
-		variables := map[string]string{
-			"reset_link": resetLink,
-			"email":      to,
-		}
-		subject, content, err := templateService.RenderTemplate(template, variables)
-		if err == nil {
-			return s.QueueEmail(to, subject, content, "password_reset")
-		}
-	}
-
-	// 回退到新的美观模板
-	templateBuilder := NewEmailTemplateBuilder()
-	content := templateBuilder.GetPasswordResetTemplate("用户", resetLink)
-	subject := "密码重置"
+	subject, content := s.getTemplateContent("password_reset", map[string]string{
+		"reset_link": resetLink,
+		"email":      to,
+	}, func() (string, string) {
+		templateBuilder := NewEmailTemplateBuilder()
+		content := templateBuilder.GetPasswordResetTemplate("用户", resetLink)
+		return "密码重置", content
+	})
 
 	return s.QueueEmail(to, subject, content, "password_reset")
 }

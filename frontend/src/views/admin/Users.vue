@@ -483,291 +483,20 @@
     </el-card>
 
     <!-- 添加/编辑用户对话框 -->
-    <el-dialog 
-      v-model="showAddUserDialog" 
-      :title="editingUser ? '编辑用户' : '添加用户'"
-      :width="isMobile ? '95%' : '600px'"
-      :close-on-click-modal="!isMobile"
-      class="user-form-dialog"
-    >
-      <el-form :model="userForm" :rules="userRules" ref="userFormRef" :label-width="isMobile ? '90px' : '100px'">
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="userForm.email" placeholder="请输入邮箱" />
-        </el-form-item>
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="userForm.username" placeholder="请输入用户名" />
-        </el-form-item>
-        <el-form-item label="密码" prop="password" v-if="!editingUser">
-          <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password />
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-select v-model="userForm.status" placeholder="选择状态" style="width: 100%">
-            <el-option label="活跃" value="active" />
-            <el-option label="待激活" value="inactive" />
-            <el-option label="禁用" value="disabled" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="最大设备数" prop="device_limit" v-if="!editingUser">
-          <el-input-number 
-            v-model="userForm.device_limit" 
-            :min="0" 
-            :max="100" 
-            placeholder="请输入最大设备数量"
-            style="width: 100%"
-          />
-          <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
-        </el-form-item>
-        <el-form-item label="到期时间" prop="expire_time" v-if="!editingUser">
-          <el-date-picker
-            v-model="userForm.expire_time"
-            type="datetime"
-            placeholder="选择到期时间"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DDTHH:mm:ss"
-            style="width: 100%"
-            :teleported="isMobile"
-            :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
-            :default-time="[new Date(2000, 1, 1, 23, 59, 59)]"
-          />
-          <div class="form-item-hint">订阅的到期时间，到期后用户将无法使用服务</div>
-        </el-form-item>
-        <el-form-item label="管理员权限" v-if="editingUser">
-          <el-switch 
-            v-model="userForm.is_admin" 
-            active-text="是管理员"
-            inactive-text="普通用户"
-          />
-        </el-form-item>
-        <el-form-item label="邮箱验证" v-if="editingUser">
-          <el-switch 
-            v-model="userForm.is_verified" 
-            active-text="已验证"
-            inactive-text="未验证"
-          />
-        </el-form-item>
-        <el-form-item label="备注" prop="note">
-          <el-input 
-            v-model="userForm.note" 
-            type="textarea" 
-            :rows="3"
-            placeholder="请输入备注信息"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showAddUserDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="saveUser" :loading="saving" class="mobile-action-btn">
-            {{ editingUser ? '更新' : '创建' }}
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <UserFormDialog
+      v-model:visible="showAddUserDialog"
+      :editingUser="editingUser"
+      :isMobile="isMobile"
+      @success="handleUserSaved"
+    />
 
     <!-- 用户详情对话框 -->
-    <el-dialog 
-      v-model="showUserDialog" 
-      title="用户详情" 
-      :width="dialogWidth"
-      class="user-detail-dialog"
-      :close-on-click-modal="false"
-    >
-      <div v-if="selectedUser" class="user-detail-content">
-        <!-- 用户基本信息 -->
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="用户ID">{{ selectedUser.user_info?.id || selectedUser.id }}</el-descriptions-item>
-          <el-descriptions-item label="邮箱">{{ selectedUser.user_info?.email || selectedUser.email }}</el-descriptions-item>
-          <el-descriptions-item label="用户名">{{ selectedUser.user_info?.username || selectedUser.username }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(selectedUser.user_info?.is_active !== false ? 'active' : 'inactive')">
-              {{ getStatusText(selectedUser.user_info?.is_active !== false ? 'active' : 'inactive') }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="账户余额">
-            <span class="balance-highlight">¥{{ ((selectedUser.user_info?.balance || selectedUser.balance || 0)).toFixed(2) }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="注册时间">{{ formatDate(selectedUser.user_info?.created_at || selectedUser.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="最后登录">{{ formatDate(selectedUser.user_info?.last_login || selectedUser.last_login) || '从未登录' }}</el-descriptions-item>
-          <el-descriptions-item label="订阅数量">{{ selectedUser.statistics?.total_subscriptions || selectedUser.subscription_count || 0 }}</el-descriptions-item>
-        </el-descriptions>
-        
-        <!-- 统计信息 -->
-        <div class="user-stats" v-if="selectedUser.statistics">
-          <h4>统计信息</h4>
-          <el-row :gutter="20">
-            <el-col :span="6">
-              <el-statistic title="总消费" :value="selectedUser.statistics.total_spent" prefix="¥" />
-            </el-col>
-            <el-col :span="6">
-              <el-statistic title="重置次数" :value="selectedUser.statistics.total_resets" />
-            </el-col>
-            <el-col :span="6">
-              <el-statistic title="近30天重置" :value="selectedUser.statistics.recent_resets_30d" />
-            </el-col>
-            <el-col :span="6">
-              <el-statistic title="订阅数量" :value="selectedUser.statistics.total_subscriptions" />
-            </el-col>
-          </el-row>
-        </div>
-        
-        <!-- 用户订阅列表 -->
-        <div class="user-subscriptions" v-if="selectedUser.subscriptions && selectedUser.subscriptions.length">
-          <h4 class="section-title">
-            <el-icon><Connection /></el-icon>
-            订阅列表
-          </h4>
-          <div class="table-responsive">
-            <el-table :data="selectedUser.subscriptions" size="small" style="width: 100%">
-              <el-table-column prop="id" label="订阅ID" width="80" />
-              <el-table-column prop="subscription_url" label="订阅地址" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="device_limit" label="设备限制" width="100" />
-              <el-table-column prop="current_devices" label="当前设备" width="100" />
-              <el-table-column prop="is_active" label="状态" width="100">
-                <template #default="scope">
-                  <el-tag :type="scope.row.is_active ? 'success' : 'danger'" size="small">
-                    {{ scope.row.is_active ? '活跃' : '未激活' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="expire_time" label="到期时间" width="180" />
-            </el-table>
-          </div>
-        </div>
-        
-        <!-- 余额变动记录（充值记录 + 消费记录） -->
-        <div class="balance-records-section" :id="balanceRecordsSectionId">
-          <h4 class="section-title">
-            <el-icon><Wallet /></el-icon>
-            余额变动记录
-          </h4>
-          
-          <!-- 使用标签页区分充值和消费 -->
-          <el-tabs v-model="activeBalanceTab" class="balance-tabs">
-            <!-- 充值记录 -->
-            <el-tab-pane label="充值记录" name="recharge">
-              <div class="records-list" v-if="selectedUser.recharge_records && selectedUser.recharge_records.length">
-                <div 
-                  v-for="record in selectedUser.recharge_records" 
-                  :key="record.id || record.order_no"
-                  class="record-item recharge-item"
-                >
-                  <div class="record-header">
-                    <div class="record-type">
-                      <el-icon class="type-icon recharge-icon"><Plus /></el-icon>
-                      <span class="type-text">充值</span>
-                    </div>
-                    <div class="record-amount positive">
-                      +¥{{ record.amount }}
-                    </div>
-                  </div>
-                  <div class="record-body">
-                    <div class="record-info-row">
-                      <span class="info-label">订单号：</span>
-                      <span class="info-value">{{ record.order_no }}</span>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">支付方式：</span>
-                      <span class="info-value">{{ record.payment_method || '未知' }}</span>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">状态：</span>
-                      <el-tag 
-                        :type="record.status === 'paid' ? 'success' : (record.status === 'pending' ? 'warning' : 'danger')" 
-                        size="small"
-                      >
-                        {{ record.status === 'paid' ? '已支付' : (record.status === 'pending' ? '待支付' : (record.status === 'cancelled' ? '已取消' : '失败')) }}
-                      </el-tag>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">IP地址：</span>
-                      <span class="info-value">{{ record.ip_address || '未知' }}</span>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">创建时间：</span>
-                      <span class="info-value">{{ record.created_at || '未知' }}</span>
-                    </div>
-                    <div class="record-info-row" v-if="record.paid_at">
-                      <span class="info-label">支付时间：</span>
-                      <span class="info-value">{{ record.paid_at }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <el-empty v-else description="暂无充值记录" :image-size="100" />
-            </el-tab-pane>
-            
-            <!-- 消费记录（订单） -->
-            <el-tab-pane label="消费记录" name="consumption">
-              <div class="records-list" v-if="selectedUser.orders && selectedUser.orders.length">
-                <div 
-                  v-for="order in selectedUser.orders" 
-                  :key="order.id || order.order_no"
-                  class="record-item consumption-item"
-                >
-                  <div class="record-header">
-                    <div class="record-type">
-                      <el-icon class="type-icon consumption-icon"><ShoppingCart /></el-icon>
-                      <span class="type-text">消费</span>
-                    </div>
-                    <div class="record-amount negative">
-                      -¥{{ order.amount }}
-                    </div>
-                  </div>
-                  <div class="record-body">
-                    <div class="record-info-row">
-                      <span class="info-label">订单号：</span>
-                      <span class="info-value">{{ order.order_no }}</span>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">套餐：</span>
-                      <span class="info-value">{{ order.package_name || '未知' }}</span>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">支付方式：</span>
-                      <span class="info-value">{{ order.payment_method || order.payment_method_name || '未知' }}</span>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">状态：</span>
-                      <el-tag 
-                        :type="order.status === 'paid' ? 'success' : (order.status === 'pending' ? 'warning' : 'danger')" 
-                        size="small"
-                      >
-                        {{ order.status === 'paid' ? '已支付' : (order.status === 'pending' ? '待支付' : '已取消') }}
-                      </el-tag>
-                    </div>
-                    <div class="record-info-row">
-                      <span class="info-label">创建时间：</span>
-                      <span class="info-value">{{ order.created_at || '未知' }}</span>
-                    </div>
-                    <div class="record-info-row" v-if="order.payment_time">
-                      <span class="info-label">支付时间：</span>
-                      <span class="info-value">{{ order.payment_time }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <el-empty v-else description="暂无消费记录" :image-size="100" />
-            </el-tab-pane>
-          </el-tabs>
-        </div>
-        
-        <!-- 最近活动 -->
-        <div class="user-activities" v-if="selectedUser.recent_activities && selectedUser.recent_activities.length">
-          <h4 class="section-title">
-            <el-icon><Clock /></el-icon>
-            最近活动
-          </h4>
-          <div class="table-responsive">
-            <el-table :data="selectedUser.recent_activities" size="small" style="width: 100%">
-              <el-table-column prop="activity_type" label="活动类型" width="120" />
-              <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="ip_address" label="IP地址" width="120" />
-              <el-table-column prop="created_at" label="时间" width="180" />
-            </el-table>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
+    <UserDetailDialog
+      v-model:visible="showUserDialog"
+      :user="selectedUser"
+      :isMobile="isMobile"
+      :initialTab="activeBalanceTab"
+    />
 
   </div>
 </template>
@@ -786,11 +515,15 @@ import { secureStorage } from '@/utils/secureStorage'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import { formatDate as formatDateUtil } from '@/utils/date'
+import UserFormDialog from '@/components/admin/users/UserFormDialog.vue'
+import UserDetailDialog from '@/components/admin/users/UserDetailDialog.vue'
 dayjs.extend(timezone)
 
 export default {
   name: 'AdminUsers',
   components: {
+    UserFormDialog,
+    UserDetailDialog,
     Plus, Edit, Delete, View, Search, Refresh, 
     Switch, Key, Close, HomeFilled, Filter,
     Wallet, ShoppingCart, Clock, Connection
@@ -811,18 +544,7 @@ export default {
     const selectedUser = ref(null)
     const userFormRef = ref()
     const activeBalanceTab = ref('recharge')
-    const balanceRecordsSectionId = 'balance-records-section'
     const isMobile = ref(window.innerWidth <= 768)
-    
-    // 响应式对话框宽度
-    const dialogWidth = computed(() => {
-      if (isMobile.value) {
-        return '95%'
-      } else if (window.innerWidth <= 1024) {
-        return '90%'
-      }
-      return '1000px'
-    })
     
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
@@ -836,48 +558,15 @@ export default {
       end_date: ''
     })
 
-    // 计算默认到期时间（一年后，使用北京时间）
-    const getDefaultExpireTime = () => {
-      const now = dayjs().tz('Asia/Shanghai')
-      const oneYearLater = now.add(1, 'year')
-      return oneYearLater.format('YYYY-MM-DDTHH:mm:ss')
+    const handleUserSaved = () => {
+      showAddUserDialog.value = false
+      editingUser.value = null
+      loadUsers()
     }
 
-    const userForm = reactive({
-      email: '',
-      username: '',
-      password: '',
-      status: 'active',
-      device_limit: 5, // 默认5个设备
-      expire_time: getDefaultExpireTime(), // 默认一年后到期
-      is_admin: false,
-      is_verified: false,
-      note: ''
-    })
-
-    const userRules = {
-      email: [
-        { required: true, message: '请输入邮箱', trigger: 'blur' },
-        { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
-      ],
-      username: [
-        { required: true, message: '请输入用户名', trigger: 'blur' },
-        { min: 2, max: 20, message: '用户名长度在2到20个字符', trigger: 'blur' }
-      ],
-      password: [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
-      ],
-      status: [
-        { required: true, message: '请选择状态', trigger: 'change' }
-      ],
-      device_limit: [
-        { required: true, message: '请输入最大设备数量', trigger: 'blur' },
-        { type: 'number', min: 0, max: 100, message: '设备数量应在0-100之间（0表示不限制）', trigger: 'blur' }
-      ],
-      expire_time: [
-        { required: true, message: '请选择到期时间', trigger: 'change' }
-      ]
+    const editUser = (user) => {
+      editingUser.value = user
+      showAddUserDialog.value = true
     }
 
     // 判断设备是否超限
@@ -1023,7 +712,6 @@ export default {
         if (response && response.data && response.data.success) {
           selectedUser.value = response.data.data
           showUserDialog.value = true
-          // 重置标签页到充值记录
           activeBalanceTab.value = 'recharge'
         } else if (response && response.success) {
           selectedUser.value = response.data
@@ -1038,111 +726,10 @@ export default {
     }
     
     const viewUserBalance = async (userId) => {
+      activeBalanceTab.value = 'recharge'
       await viewUserDetails(userId)
-      // 等待对话框打开后，滚动到余额记录部分
-      await nextTick()
-      setTimeout(() => {
-        const element = document.getElementById(balanceRecordsSectionId)
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-      }, 300)
     }
 
-    const editUser = (user) => {
-      editingUser.value = user
-      // 确保状态映射正确：后端返回的 status 可能是 "active" 或 "disabled"
-      // 前端状态选择器有 "active"、"inactive"、"disabled"
-      // 优先使用 user.status，如果不存在则根据 is_active 判断
-      let status = user.status
-      if (!status) {
-        // 如果没有 status 字段，根据 is_active 判断
-        status = user.is_active ? 'active' : 'inactive'
-      } else if (status === 'disabled') {
-        // 后端返回 "disabled" 时，前端使用 "inactive" 或 "disabled"
-        // 为了保持一致性，如果 is_active 为 false，使用 "inactive"
-        status = user.is_active ? 'active' : 'inactive'
-      }
-      Object.assign(userForm, {
-        email: user.email,
-        username: user.username,
-        status: status,
-        is_admin: Boolean(user.is_admin),  // 确保是布尔值
-        is_verified: Boolean(user.is_verified),  // 确保正确读取邮箱验证状态
-        note: user.note || ''
-      })
-      showAddUserDialog.value = true
-    }
-
-    const saveUser = async () => {
-      try {
-        await userFormRef.value.validate()
-        saving.value = true
-        
-        if (editingUser.value) {
-          // 转换数据格式以匹配后端API期望
-          // 确保 is_active 正确转换：只有 status === 'active' 时才为 true
-          const isActive = userForm.status === 'active'
-          // 确保 is_verified 是明确的布尔值
-          const isVerified = Boolean(userForm.is_verified)
-          const userData = {
-            username: userForm.username,
-            email: userForm.email,
-            is_active: isActive,
-            is_verified: isVerified,
-            is_admin: userForm.is_admin
-          }
-          await api.updateUser(editingUser.value.id, userData)
-          ElMessage.success('用户更新成功')
-        } else {
-          // 转换数据格式以匹配后端API期望
-          const userData = {
-            username: userForm.username,
-            email: userForm.email,
-            password: userForm.password,
-            is_active: userForm.status === 'active',
-            is_admin: false,
-            is_verified: false,
-            device_limit: userForm.device_limit || 5,
-            expire_time: userForm.expire_time || getDefaultExpireTime()
-          }
-          const response = await api.createUser(userData)
-          if (response.data && response.data.success === false) {
-            // 后端返回了明确的错误信息
-            ElMessage.error(response.data.message || '用户创建失败')
-            return
-          }
-          ElMessage.success('用户创建成功')
-        }
-        
-        showAddUserDialog.value = false
-        editingUser.value = null
-        resetUserForm()
-        loadUsers()
-      } catch (error) {
-        // 提取详细的错误信息
-        let errorMessage = '操作失败'
-        if (error.response) {
-          // 后端返回的错误
-          const data = error.response.data
-          if (data) {
-            if (data.message) {
-              errorMessage = data.message
-            } else if (data.detail) {
-              errorMessage = data.detail
-            } else if (typeof data === 'string') {
-              errorMessage = data
-            }
-          }
-        } else if (error.message) {
-          errorMessage = error.message
-        }
-        ElMessage.error(errorMessage)
-        console.error('保存用户失败:', error)
-      } finally {
-        saving.value = false
-      }
-    }
 
     const deleteUser = async (user) => {
       // 检查用户ID是否有效
@@ -1189,20 +776,6 @@ export default {
       }
     }
 
-    const resetUserForm = () => {
-      Object.assign(userForm, {
-        email: '',
-        username: '',
-        password: '',
-        status: 'active',
-        device_limit: 5, // 重置为默认5个设备
-        expire_time: getDefaultExpireTime(), // 重置为默认一年后到期
-        is_admin: false,
-        is_verified: false,
-        note: ''
-      })
-      userFormRef.value?.resetFields()
-    }
 
     const getStatusType = (status) => {
       const statusMap = {
@@ -1442,12 +1015,7 @@ export default {
       showUserDialog,
       editingUser,
       selectedUser,
-      userForm,
-      userFormRef,
-      userRules,
       activeBalanceTab,
-      balanceRecordsSectionId,
-      dialogWidth,
       searchUsers,
       resetSearch,
       handleStatusFilter,
@@ -1458,7 +1026,6 @@ export default {
       viewUserDetails,
       viewUserBalance,
       editUser,
-      saveUser,
       deleteUser,
       toggleUserStatus,
       getStatusType,
@@ -1472,6 +1039,7 @@ export default {
       clearSelection,
       batchDeleteUsers,
       isDeviceOverlimit,
+      handleUserSaved,
       // 导出图标组件供模板使用
       Search,
       Unlock
@@ -1484,8 +1052,6 @@ export default {
 @use '@/styles/list-common.scss';
 
 .admin-users {
-  // 使用 list-container 的样式
-  
   @media (max-width: 768px) {
     width: 100% !important;
     max-width: 100% !important;
@@ -1537,7 +1103,6 @@ export default {
     }
   }
   
-  // 优化桌面端筛选框宽度
   :deep(.el-form-item) {
     .el-select {
       min-width: 180px;
@@ -1551,8 +1116,7 @@ export default {
   }
 }
 
-// mobile-filter-buttons 样式已统一在 list-common.scss 中定义
-// 但为了确保与订单管理页面一致，这里添加相同的样式定义
+// 移动端样式适配
 @media (max-width: 768px) {
   .mobile-action-bar {
     padding: 16px !important;
@@ -1573,40 +1137,11 @@ export default {
         .mobile-search-input {
           flex: 1 !important;
           width: 100% !important;
-          box-sizing: border-box !important;
-          min-width: 0 !important;
           
           :deep(.el-input__wrapper) {
             border-radius: 10px !important;
-            padding-left: 14px !important;
-            padding-right: 60px !important; // 为搜索按钮留出空间
-            background: rgba(255, 255, 255, 0.98) !important;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12) !important;
-            border: 2px solid rgba(255, 255, 255, 0.4) !important;
+            padding-right: 60px !important;
             min-height: 48px !important;
-            
-            &:hover {
-              background: #ffffff !important;
-              border-color: rgba(255, 255, 255, 0.6) !important;
-              box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18) !important;
-            }
-            
-            &.is-focus {
-              background: #ffffff !important;
-              border-color: #ffffff !important;
-              box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
-            }
-          }
-          
-          :deep(.el-input__inner) {
-            color: #1e293b !important;
-            font-size: 0.95rem !important;
-            font-weight: 500 !important;
-            
-            &::placeholder {
-              color: #94a3b8 !important;
-              font-weight: 400 !important;
-            }
           }
         }
         
@@ -1615,137 +1150,38 @@ export default {
           right: 4px !important;
           top: 50% !important;
           transform: translateY(-50%) !important;
-          background: rgba(255, 255, 255, 0.98) !important;
-          border: 2px solid rgba(255, 255, 255, 0.4) !important;
-          color: #667eea !important;
-          border-radius: 8px !important;
-          font-weight: 600 !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-          padding: 0 !important;
           height: 40px !important;
           width: 40px !important;
           min-width: 40px !important;
-          max-width: 40px !important;
-          transition: all 0.2s ease !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          box-sizing: border-box !important;
           z-index: 10 !important;
-          
-          &:hover {
-            background: #ffffff !important;
-            border-color: #ffffff !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-            color: #5568d3 !important;
-          }
-          
-          &:active {
-            transform: translateY(-50%) scale(0.96) !important;
-          }
-          
-          .el-icon {
-            font-size: 18px !important;
-            margin: 0 !important;
-          }
         }
       }
     }
     
     .mobile-filter-buttons {
       display: flex !important;
-      flex-direction: row !important;
       gap: 10px !important;
-      align-items: stretch !important;
       width: 100% !important;
-      box-sizing: border-box !important;
-      flex-wrap: nowrap !important;
       
-      .el-dropdown {
+      .el-dropdown, .el-button {
         flex: 1 !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        box-sizing: border-box !important;
-        
-        .el-button {
-          width: 100% !important;
-          background: rgba(255, 255, 255, 0.98) !important;
-          border: 2px solid rgba(255, 255, 255, 0.4) !important;
-          color: #667eea !important;
-          font-weight: 600 !important;
-          border-radius: 10px !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-          padding: 10px 12px !important;
-          min-height: 44px !important;
-          height: 44px !important;
-          transition: all 0.2s ease !important;
-          box-sizing: border-box !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          
-          &:hover {
-            background: #ffffff !important;
-            border-color: #ffffff !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-          }
-          
-          &.el-button--primary {
-            background: rgba(255, 255, 255, 0.98) !important;
-            border-color: rgba(255, 255, 255, 0.6) !important;
-            color: #667eea !important;
-          }
-          
-          .el-icon {
-            margin-right: 6px;
-            font-size: 16px;
-            flex-shrink: 0;
-          }
-        }
+        width: 100% !important;
       }
       
       .el-button {
-        flex: 1 !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        background: rgba(255, 255, 255, 0.98) !important;
-        border: 2px solid rgba(255, 255, 255, 0.4) !important;
-        color: #667eea !important;
-        font-weight: 600 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-        padding: 10px 12px !important;
-        min-height: 44px !important;
         height: 44px !important;
-        transition: all 0.2s ease !important;
-        box-sizing: border-box !important;
-        white-space: nowrap !important;
-        
-        &:hover {
-          background: #ffffff !important;
-          border-color: #ffffff !important;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-        }
-        
-        &:active {
-          transform: scale(0.96) !important;
-        }
-        
-        .el-icon {
-          margin-right: 6px;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
+        border-radius: 10px !important;
       }
     }
   }
 }
 
-// 移动端时间选择器 - 使用两个独立的日期选择器，更紧凑
 .mobile-date-picker-section {
   margin-bottom: 14px;
   width: 100%;
-  box-sizing: border-box;
   
   .date-picker-row {
     display: flex;
@@ -1760,123 +1196,31 @@ export default {
       :deep(.el-input__wrapper) {
         min-height: 48px;
         border-radius: 10px;
-        background: rgba(255, 255, 255, 0.98);
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
-        border: 2px solid rgba(255, 255, 255, 0.4);
-        padding: 10px 14px;
         width: 100%;
-        box-sizing: border-box;
-        transition: all 0.3s ease;
-        
-        &:hover {
-          border-color: rgba(102, 126, 234, 0.6);
-          box-shadow: 0 4px 14px rgba(102, 126, 234, 0.25);
-        }
-        
-        &.is-focus {
-          border-color: #667eea;
-          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.35);
-        }
-      }
-      
-      :deep(.el-input__inner) {
-        font-size: 0.9rem;
-        color: #1e293b;
-        width: 100%;
-        font-weight: 500;
-        
-        &::placeholder {
-          color: #94a3b8;
-          font-weight: 400;
-        }
-      }
-      
-      :deep(.el-input__prefix) {
-        color: #667eea;
-        font-size: 18px;
       }
     }
     
     .date-separator {
       flex-shrink: 0;
-      font-size: 0.95rem;
-      color: rgba(255, 255, 255, 0.9);
       padding: 0 6px;
       font-weight: 600;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      color: #606266;
     }
   }
 }
 
-// 移动端日期选择器弹出层样式 - 单个日期选择器，更紧凑
-:deep(.mobile-date-picker-popper) {
-  @media (max-width: 768px) {
-    position: fixed !important;
-    top: auto !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    border-radius: 16px 16px 0 0 !important;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
-    z-index: 2000 !important;
-    
-    .el-picker__popper {
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-    
-    .el-date-picker {
-      width: 100% !important;
-      max-width: 100% !important;
-      
-      .el-picker-panel {
-        width: 100% !important;
-        max-width: 100% !important;
-        border: none !important;
-        box-shadow: none !important;
-      }
-      
-      .el-picker-panel__body {
-        width: 100% !important;
-        max-width: 100% !important;
-        padding: 16px !important;
-      }
-      
-      .el-picker-panel__content {
-        width: 100% !important;
-        max-width: 100% !important;
-      }
-    }
-  }
-}
 
 .mobile-action-buttons {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
   gap: 12px;
   width: 100%;
-  box-sizing: border-box;
   
-  .mobile-action-btn,
-  .el-button {
+  .mobile-action-btn {
     width: 100%;
     height: 44px;
-    margin: 0;
     font-size: 16px;
     border-radius: 6px;
-    font-weight: 500;
-  }
-}
-
-// mobile-action-bar 样式已统一在 list-common.scss 中定义
-// 这里不再重复定义，使用统一样式
-.mobile-action-bar {
-  .mobile-date-picker-section {
-    width: 100%;
-    box-sizing: border-box;
   }
 }
 
@@ -1889,21 +1233,42 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+}
+
+.batch-info {
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+  
+  @media (max-width: 768px) {
+    text-align: center;
+    font-size: 13px;
+  }
 }
 
 .batch-buttons {
   display: flex;
   gap: 10px;
+  
+  @media (max-width: 768px) {
+    width: 100%;
+    
+    .el-button {
+      flex: 1;
+    }
+  }
 }
 
 .user-email {
   display: flex;
   align-items: center;
   gap: 8px;
-  
-  .el-avatar {
-    flex-shrink: 0;
-  }
 }
 
 .email-info {
@@ -1913,32 +1278,10 @@ export default {
   min-width: 0;
 }
 
-.email {
-  font-weight: 500;
-  color: #303133;
-  font-size: 13px;
+.email, .username {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 2px;
-  
-  .clickable-text {
-    padding: 0;
-    font-size: 13px;
-  }
-}
-
-.username {
-  font-size: 11px;
-  color: #909399;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  
-  .clickable-text {
-    padding: 0;
-    font-size: 11px;
-  }
 }
 
 .device-info {
@@ -1955,7 +1298,22 @@ export default {
   padding: 4px 8px;
   background: #f5f7fa;
   border-radius: 6px;
-  border: 1px solid #e4e7ed;
+  transition: all 0.3s;
+  
+  &.device-overlimit-alert {
+    background: #fef0f0;
+    border: 1px solid #f56c6c;
+    animation: pulse-alert 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-alert {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(245, 108, 108, 0);
+  }
 }
 
 .device-item {
@@ -1963,73 +1321,34 @@ export default {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-width: 40px;
 }
 
 .device-icon {
   font-size: 16px;
-  margin-bottom: 2px;
-}
-
-.online-icon {
-  color: #67c23a;
-}
-
-.total-icon {
-  color: #409eff;
-}
-
-.device-count {
-  font-weight: bold;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.device-label {
-  font-size: 10px;
-  color: #909399;
-  line-height: 1;
+  
+  &.online-icon {
+    color: #67c23a;
+  }
+  
+  &.total-icon {
+    color: #409eff;
+  }
 }
 
 .device-separator {
+  color: #909399;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.device-count {
+  font-weight: 600;
   font-size: 14px;
-  color: #c0c4cc;
-  font-weight: bold;
-}
-
-/* 设备超限警报样式 */
-.device-overlimit-alert {
-  background: #fef0f0 !important;
-  border: 2px solid #f56c6c !important;
-  border-radius: 6px;
-  animation: device-overlimit-flash 1.5s infinite;
-  box-shadow: 0 0 10px rgba(245, 108, 108, 0.3);
-}
-
-.device-overlimit-count {
-  color: #f56c6c !important;
-  font-weight: bold !important;
-  font-size: 16px !important;
-  animation: device-overlimit-flash 1.5s infinite;
-}
-
-@keyframes device-overlimit-flash {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
+  
+  &.device-overlimit-count {
+    color: #f56c6c;
+    font-weight: 700;
   }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
-}
-
-.device-limit {
-  margin-top: 2px;
-  padding: 2px 6px;
-  background: #ecf5ff;
-  border-radius: 4px;
-  border: 1px solid #d9ecff;
 }
 
 .subscription-info {
@@ -2040,22 +1359,18 @@ export default {
 }
 
 .subscription-status {
-  display: flex;
-  justify-content: center;
-}
-
-.no-subscription {
-  display: flex;
-  justify-content: center;
+  margin-bottom: 4px;
 }
 
 .expire-info {
-  margin-top: 2px;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.no-subscription {
   text-align: center;
-  padding: 2px 6px;
-  background: #f0f9ff;
-  border-radius: 4px;
-  border: 1px solid #e1f5fe;
+  color: #909399;
+  font-size: 12px;
 }
 
 .expire-time-info {
@@ -2066,87 +1381,20 @@ export default {
 }
 
 .expire-date {
-  font-size: 12px;
-  color: #606266;
+  font-size: 13px;
+  color: #303133;
   font-weight: 500;
 }
 
 .expire-countdown {
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f0f9ff;
-  border: 1px solid #e1f5fe;
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .no-expire {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-}
-
-.stat-card {
   text-align: center;
-  padding: 20px;
-}
-
-.stat-number {
-  font-size: 24px;
-  font-weight: bold;
-  color: #409eff;
-  margin-bottom: 8px;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #666;
-}
-
-.table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-  
-  :deep(.el-table) {
-    min-width: 1400px;
-  }
-  
-  :deep(.el-table__body-wrapper) {
-    overflow-x: auto;
-  }
-}
-
-.device-info {
-  .device-stats {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    font-size: 12px;
-    
-    .device-item {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      
-      .device-icon {
-        font-size: 14px;
-      }
-      
-      .device-count {
-        font-weight: 600;
-        font-size: 13px;
-      }
-      
-      .device-label {
-        display: none;
-      }
-    }
-    
-    .device-separator {
-      margin: 0 2px;
-      color: #999;
-    }
-  }
+  color: #909399;
+  font-size: 12px;
 }
 
 .action-buttons {
@@ -2157,42 +1405,22 @@ export default {
   .button-row {
     display: flex;
     gap: 4px;
+    justify-content: center;
     
     .el-button {
       flex: 1;
       padding: 5px 8px;
       font-size: 12px;
-      
-      .el-icon {
-        font-size: 14px;
-      }
     }
   }
 }
 
-/* 响应式设计 */
-@media (max-width: 1600px) {
-  .table-wrapper {
-    :deep(.el-table) {
-      min-width: 1200px;
-    }
-  }
-}
-
-@media (max-width: 1400px) {
-  .table-wrapper {
-    :deep(.el-table) {
-      min-width: 1100px;
-    }
-  }
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
   
-  .device-stats {
-    flex-direction: column;
-    gap: 2px;
-    
-    .device-separator {
-      display: none;
-    }
+  :deep(.el-table) {
+    min-width: 1400px;
   }
 }
 
@@ -2230,14 +1458,11 @@ export default {
         
         .label {
           flex: 0 0 90px;
-          font-size: 14px;
           color: #666;
-          font-weight: 500;
         }
         
         .value {
           flex: 1;
-          font-size: 14px;
           color: #333;
           word-break: break-word;
         }
@@ -2271,680 +1496,24 @@ export default {
       text-align: center;
     }
   }
-  
-  .user-form-dialog {
-    :deep(.el-dialog__body) {
-      padding: 16px;
-      max-height: calc(100vh - 200px);
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    
-    :deep(.el-form-item) {
-      margin-bottom: 20px;
-    }
-    
-    :deep(.el-form-item__label) {
-      font-size: 14px;
-      padding-bottom: 8px;
-    }
-    
-    // 手机端优化
-    @media (max-width: 768px) {
-      :deep(.el-dialog__body) {
-        padding: 12px;
-        max-height: calc(100vh - 120px);
-      }
-      
-      :deep(.el-form-item) {
-        margin-bottom: 16px;
-      }
-      
-      :deep(.el-form-item__label) {
-        font-size: 13px;
-        padding-bottom: 6px;
-        width: 90px !important;
-      }
-      
-      :deep(.el-form-item__content) {
-        margin-left: 90px !important;
-      }
-      
-      :deep(.el-input),
-      :deep(.el-select),
-      :deep(.el-date-editor),
-      :deep(.el-input-number) {
-        width: 100%;
-      }
-    }
-  }
-  
-  // 表单提示文字样式
-  .form-item-hint {
-    font-size: 12px;
-    color: #909399;
-    margin-top: 4px;
-    line-height: 1.4;
-    
-    @media (max-width: 768px) {
-      font-size: 11px;
-      margin-top: 3px;
-    }
-  }
-  
-  // 手机端日期选择器优化
-  :deep(.mobile-date-picker-popper) {
-    .el-picker-panel {
-      width: 95vw;
-      max-width: 400px;
-    }
-    
-    .el-date-picker__header {
-      padding: 12px 16px;
-    }
-    
-    .el-picker-panel__content {
-      padding: 8px;
-    }
-  }
-  
-  .device-info {
-    gap: 4px;
-  }
-  
-  .device-stats {
-    padding: 2px 4px;
-  }
-  
-  .device-icon {
-    font-size: 14px;
-  }
-  
-  .device-count {
-    font-size: 12px;
-  }
-  
-  .device-label {
-    font-size: 9px;
-  }
 }
 
-/* 桌面端隐藏移动端元素 */
-@media (min-width: 769px) {
-  .mobile-card-list {
-    display: none !important;
-  }
-}
-
-/* 移动端隐藏桌面端元素 */
-.desktop-only {
-  @media (max-width: 768px) {
-    display: none !important;
-  }
-}
-
-.pagination {
-  margin-top: 20px;
-  text-align: right;
-}
-
-.user-stats {
-  margin: 20px 0;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 8px;
-}
-
-.user-stats h4 {
-  margin-bottom: 15px;
-  color: #606266;
-}
-
-.user-subscriptions,
-.user-orders,
-.user-activities {
-  margin-top: 20px;
-}
-
-.user-subscriptions h4,
-.user-orders h4,
-.user-activities h4 {
-  margin-bottom: 15px;
-  color: #606266;
-  border-bottom: 1px solid #ebeef5;
-  padding-bottom: 8px;
-}
-
-/* 余额链接样式 */
 .balance-link {
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
-}
-
-.balance-link:hover {
-  color: #66b1ff !important;
-  text-decoration: underline;
-}
-
-/* 余额高亮 */
-.balance-highlight {
-  font-size: 16px;
-  font-weight: 700;
   color: #409eff;
-}
-
-/* 用户详情对话框样式 */
-.user-detail-dialog {
-  :deep(.el-dialog__body) {
-    max-height: 80vh;
-    overflow-y: auto;
-    padding: 20px;
-  }
-  
-  @media (max-width: 768px) {
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 5vh auto !important;
-    }
-    
-    :deep(.el-dialog__body) {
-      padding: 15px;
-    }
-  }
-}
-
-/* 章节标题样式 */
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 20px 0 15px 0;
-  color: #303133;
-  font-size: 16px;
-  font-weight: 600;
-  border-bottom: 2px solid #409eff;
-  padding-bottom: 8px;
-  
-  .el-icon {
-    font-size: 18px;
-    color: #409eff;
-  }
-}
-
-/* 余额变动记录区域 */
-.balance-records-section {
-  margin-top: 20px;
-}
-
-.balance-tabs {
-  margin-top: 15px;
-  
-  :deep(.el-tabs__header) {
-    margin-bottom: 15px;
-  }
-  
-  :deep(.el-tabs__item) {
-    font-size: 14px;
-    padding: 0 20px;
-  }
-}
-
-/* 记录列表样式 */
-.records-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.record-item {
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 16px;
-  transition: all 0.3s;
   
   &:hover {
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-    border-color: #409eff;
+    text-decoration: underline;
   }
-  
-  &.recharge-item {
-    border-left: 4px solid #67c23a;
-  }
-  
-  &.consumption-item {
-    border-left: 4px solid #f56c6c;
-  }
-}
-
-.record-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.record-type {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  .type-icon {
-    font-size: 18px;
-    
-    &.recharge-icon {
-      color: #67c23a;
-    }
-    
-    &.consumption-icon {
-      color: #f56c6c;
-    }
-  }
-  
-  .type-text {
-    font-size: 14px;
-    font-weight: 600;
-    color: #303133;
-  }
-}
-
-.record-amount {
-  font-size: 18px;
-  font-weight: 700;
-  
-  &.positive {
-    color: #67c23a;
-  }
-  
-  &.negative {
-    color: #f56c6c;
-  }
-}
-
-.record-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-  
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
-}
-
-.record-info-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 13px;
-  
-  .info-label {
-    color: #909399;
-    font-weight: 500;
-    white-space: nowrap;
-    min-width: 80px;
-  }
-  
-  .info-value {
-    color: #303133;
-    word-break: break-all;
-    flex: 1;
-  }
-}
-
-/* 表格响应式容器 */
-.table-responsive {
-  width: 100%;
-  overflow-x: auto;
-  
-  @media (max-width: 768px) {
-    .el-table {
-      font-size: 12px;
-    }
-  }
-}
-
-/* 统计信息响应式 */
-.user-stats {
-  margin-top: 20px;
-  
-  @media (max-width: 768px) {
-    :deep(.el-col) {
-      margin-bottom: 15px;
-    }
-  }
-}
-
-:deep(.el-table .el-table__row:hover) {
-  background-color: #f5f7fa;
-}
-
-:deep(.el-button + .el-button) {
-  margin-left: 8px;
-}
-
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.button-row {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-}
-
-.action-buttons .el-button {
-  margin: 0;
-  padding: 6px 12px;
-  font-size: 12px;
-  min-width: 60px;
-  flex: 1;
-}
-
-.statistics-content {
-  padding: 20px 0;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 20px;
-}
-
-.stat-number {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #409eff;
-  margin-bottom: 10px;
-}
-
-.stat-label {
-  color: #606266;
-  font-size: 14px;
-}
-
-.subscription-management {
-  padding: 20px 0;
-}
-
-.subscription-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.subscription-header h4 {
-  margin: 0;
-  color: #303133;
-}
-
-.chart-container {
-  margin-top: 30px;
-}
-
-.chart-container h4 {
-  margin-bottom: 15px;
-  color: #606266;
-}
-
-/* 设备管理样式 */
-.device-management {
-  padding: 0;
-}
-
-.device-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.device-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.device-name i {
-  font-size: 16px;
-  color: #409eff;
-}
-
-.ip-address {
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  color: #606266;
-}
-
-.user-agent {
-  font-size: 12px;
-  color: #909399;
-  cursor: help;
-}
-
-/* 设备管理页面样式 - 复制自普通用户设备管理页面 */
-.devices-container {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.page-header {
-  margin-bottom: 2rem;
-  text-align: center;
-}
-
-.page-header h3 {
-  color: #1677ff;
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.page-header :is(p) {
-  color: #666;
-  font-size: 1rem;
-}
-
-.stats-card {
-  margin-bottom: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-
-.stats-content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 2rem;
-  padding: 1rem 0;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  font-size: 2.5rem;
-  font-weight: bold;
-  color: #1677ff;
-  margin-bottom: 0.5rem;
-}
-
-.stat-label {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.devices-card,
-.chart-card {
-  margin-bottom: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-weight: 600;
-}
-
-.device-name {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.device-name i {
-  font-size: 1.2rem;
-  color: #1677ff;
-}
-
-.ip-address {
-  font-family: 'Courier New', monospace;
-  color: #666;
-}
-
-.user-agent {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.chart-container {
-  padding: 1rem 0;
-}
-
-.chart-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 1rem;
-  gap: 1rem;
-}
-
-.chart-label {
-  width: 100px;
-  font-weight: 500;
-  color: #333;
-}
-
-.chart-bar {
-  flex: 1;
-  height: 20px;
-  background: #f0f0f0;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.chart-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #1677ff, #4096ff);
-  border-radius: 10px;
-  transition: width 0.3s ease;
-}
-
-.chart-count {
-  width: 60px;
-  text-align: right;
-  font-weight: 600;
-  color: #1677ff;
-}
-
-@media (max-width: 768px) {
-  .devices-container {
-    padding: 10px;
-  }
-  
-  .stats-content {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-  }
-  
-  .stat-number {
-    font-size: 2rem;
-  }
-  
-  .chart-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .chart-label {
-    width: auto;
-  }
-  
-  .chart-bar {
-    width: 100%;
-  }
-  
-  .chart-count {
-    width: auto;
-  }
-}
-
-.device-header h4 {
-  margin: 0;
-  color: #303133;
-  font-size: 16px;
-}
-
-.device-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.no-devices {
-  text-align: center;
-  padding: 40px 0;
 }
 
 .clickable-text {
-  color: #409eff !important;
-  text-decoration: none;
-  padding: 0 !important;
-  font-size: inherit !important;
+  color: #409eff;
+  cursor: pointer;
+  
+  &:hover {
+    text-decoration: underline;
+  }
 }
-
-.clickable-text:hover {
-  color: #66b1ff !important;
-  text-decoration: underline;
-}
-
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-</style> 
+</style>

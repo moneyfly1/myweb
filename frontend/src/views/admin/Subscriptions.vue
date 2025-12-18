@@ -1120,7 +1120,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
@@ -1160,11 +1160,47 @@ export default {
     const showColumnSettings = ref(false)
     const selectedUser = ref(null)
     const currentQRCode = ref('')
-    const visibleColumns = ref([
+    
+    // 列设置的 localStorage key
+    const COLUMN_SETTINGS_KEY = 'admin_subscriptions_visible_columns'
+    
+    // 默认列设置
+    const defaultVisibleColumns = [
       'qq', 'expire_time', 'qr_code', 'universal_url', 'clash_url', 
       'created_at', 'apple_count', 'clash_count', 'online_devices', 
       'device_limit', 'actions'
-    ])
+    ]
+    
+    // 从 localStorage 读取列设置
+    const loadColumnSettings = () => {
+      try {
+        const saved = localStorage.getItem(COLUMN_SETTINGS_KEY)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          // 验证保存的列是否有效（防止列名变更导致的问题）
+          const validColumns = parsed.filter(col => defaultVisibleColumns.includes(col))
+          // 至少保留一列，如果没有有效列则使用默认值
+          if (validColumns.length > 0) {
+            return validColumns
+          }
+        }
+      } catch (error) {
+        console.warn('读取列设置失败:', error)
+      }
+      return defaultVisibleColumns
+    }
+    
+    // 保存列设置到 localStorage
+    const saveColumnSettings = (columns) => {
+      try {
+        localStorage.setItem(COLUMN_SETTINGS_KEY, JSON.stringify(columns))
+      } catch (error) {
+        console.warn('保存列设置失败:', error)
+      }
+    }
+    
+    // 初始化列设置（从 localStorage 读取或使用默认值）
+    const visibleColumns = ref(loadColumnSettings())
     
     // 设备管理相关
     const userDevices = ref([])
@@ -2225,25 +2261,30 @@ export default {
 
     // 列设置相关方法
     const selectAllColumns = () => {
-      visibleColumns.value = [
-        'qq', 'expire_time', 'qr_code', 'universal_url', 'clash_url', 
-        'created_at', 'apple_count', 'clash_count', 'online_devices', 
-        'device_limit', 'actions'
-      ]
+      visibleColumns.value = [...defaultVisibleColumns]
+      // 注意：watch 会自动保存，这里不需要手动保存
     }
 
     const clearAllColumns = () => {
       // 至少保留一列，建议保留QQ号码和操作列
       visibleColumns.value = ['qq', 'actions']
+      // 注意：watch 会自动保存，这里不需要手动保存
     }
 
     const resetToDefault = () => {
-      visibleColumns.value = [
-        'qq', 'expire_time', 'qr_code', 'universal_url', 'clash_url', 
-        'created_at', 'apple_count', 'clash_count', 'online_devices', 
-        'device_limit', 'actions'
-      ]
+      visibleColumns.value = [...defaultVisibleColumns]
+      // 注意：watch 会自动保存，这里不需要手动保存
     }
+    
+    // 监听列设置变化，自动保存到 localStorage
+    watch(visibleColumns, (newColumns) => {
+      // 确保至少保留一列
+      if (newColumns.length === 0) {
+        visibleColumns.value = ['qq', 'actions']
+        return
+      }
+      saveColumnSettings(newColumns)
+    }, { deep: true })
 
     // 响应式移动端检测
     const isMobile = computed(() => {
