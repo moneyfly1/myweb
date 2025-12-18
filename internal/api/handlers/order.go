@@ -11,116 +11,13 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
-	"cboard-go/internal/services/notification"
+	orderServicePkg "cboard-go/internal/services/order"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-// processPaidOrder 处理已支付订单：开通订阅、更新累计消费、检查等级升级
-func processPaidOrder(db *gorm.DB, order *models.Order, pkg *models.Package, user *models.User) (*models.Subscription, error) {
-	now := utils.GetBeijingTime()
-
-	// 1. 更新或创建订阅
-	var subscription models.Subscription
-	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
-		// 创建新订阅
-		subscriptionURL := utils.GenerateSubscriptionURL()
-		expireTime := now.AddDate(0, 0, pkg.DurationDays)
-		pkgID := int64(pkg.ID)
-		subscription = models.Subscription{
-			UserID:          user.ID,
-			PackageID:       &pkgID,
-			SubscriptionURL: subscriptionURL,
-			DeviceLimit:     pkg.DeviceLimit,
-			CurrentDevices:  0,
-			IsActive:        true,
-			Status:          "active",
-			ExpireTime:      expireTime,
-		}
-		if err := db.Create(&subscription).Error; err != nil {
-			return nil, fmt.Errorf("创建订阅失败: %v", err)
-		}
-		fmt.Printf("processPaidOrder: ✅ 创建新订阅成功 - user_id=%d, package_id=%d, device_limit=%d, duration_days=%d, expire_time=%s\n",
-			user.ID, pkg.ID, pkg.DeviceLimit, pkg.DurationDays, expireTime.Format("2006-01-02 15:04:05"))
-
-		// 发送管理员通知（订阅创建）
-		go func() {
-			notificationService := notification.NewNotificationService()
-			createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
-			_ = notificationService.SendAdminNotification("subscription_created", map[string]interface{}{
-				"username":     user.Username,
-				"email":        user.Email,
-				"package_name": pkg.Name,
-				"create_time":  createTime,
-			})
-		}()
-	} else {
-		// 延长订阅
-		oldExpireTime := subscription.ExpireTime
-		if subscription.ExpireTime.Before(now) {
-			subscription.ExpireTime = now.AddDate(0, 0, pkg.DurationDays)
-		} else {
-			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, pkg.DurationDays)
-		}
-		oldDeviceLimit := subscription.DeviceLimit
-		subscription.DeviceLimit = pkg.DeviceLimit
-		subscription.IsActive = true
-		subscription.Status = "active"
-		// 更新套餐ID
-		pkgID := int64(pkg.ID)
-		subscription.PackageID = &pkgID
-		if err := db.Save(&subscription).Error; err != nil {
-			return nil, fmt.Errorf("更新订阅失败: %v", err)
-		}
-		fmt.Printf("processPaidOrder: ✅ 更新订阅成功 - user_id=%d, package_id=%d, device_limit: %d->%d, expire_time: %s->%s\n",
-			user.ID, pkg.ID, oldDeviceLimit, pkg.DeviceLimit, oldExpireTime.Format("2006-01-02 15:04:05"), subscription.ExpireTime.Format("2006-01-02 15:04:05"))
-	}
-
-	// 2. 更新用户累计消费
-	paidAmount := order.Amount
-	if order.FinalAmount.Valid {
-		paidAmount = order.FinalAmount.Float64
-	}
-	user.TotalConsumption += paidAmount
-	if err := db.Save(&user).Error; err != nil {
-		return nil, fmt.Errorf("更新用户累计消费失败: %v", err)
-	}
-
-	// 3. 检查并更新用户等级
-	var userLevels []models.UserLevel
-	if err := db.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
-		for _, level := range userLevels {
-			if user.TotalConsumption >= level.MinConsumption {
-				// 检查是否需要升级
-				if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(level.ID) {
-					// 需要升级
-					var currentLevel models.UserLevel
-					shouldUpgrade := true
-					if user.UserLevelID.Valid {
-						if err := db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
-							// 如果当前等级更高（level_order 更小），不降级
-							if currentLevel.LevelOrder < level.LevelOrder {
-								shouldUpgrade = false
-							}
-						}
-					}
-					if shouldUpgrade {
-						user.UserLevelID = sql.NullInt64{Int64: int64(level.ID), Valid: true}
-						if err := db.Save(&user).Error; err != nil {
-							// 等级更新失败不影响订单完成，只记录错误
-							fmt.Printf("更新用户等级失败: %v\n", err)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return &subscription, nil
-}
 
 // CreateOrderRequest 创建订单请求
 type CreateOrderRequest struct {
@@ -293,7 +190,8 @@ func CreateOrder(c *gin.Context) {
 		}
 
 		// 处理订单支付成功后的逻辑（开通订阅、更新累计消费等）
-		subscription, err := processPaidOrder(db, &order, &pkg, user)
+		svc := orderServicePkg.NewOrderService()
+		subscription, err := svc.ProcessPaidOrder(&order)
 		if err != nil {
 			// 不向客户端返回详细错误信息，防止信息泄露
 			utils.LogError("CreateOrder: process paid order", err, map[string]interface{}{
@@ -404,13 +302,31 @@ func CreateOrder(c *gin.Context) {
 		fmt.Printf("CreateOrder: 开始处理支付方式 %s, 订单金额: %.2f, 订单号: %s\n", payType, finalAmount, order.OrderNo)
 
 		if payType == "alipay" || payType == "wechat" || payType == "paypal" || payType == "applepay" {
-			// 查找对应类型的支付配置
-			if err := db.Where("pay_type = ? AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				paymentError = fmt.Sprintf("未找到启用的%s支付配置，请管理员检查支付配置", payType)
-				fmt.Printf("CreateOrder: ❌ 支付配置未找到 - pay_type=%s, error=%v\n", payType, err)
-				utils.LogError("CreateOrder: payment config not found", err, map[string]interface{}{
-					"pay_type": payType,
-					"user_id":  user.ID,
+			// 查找对应类型的支付配置（不区分大小写）
+			// 使用 LOWER() 函数确保大小写不敏感匹配
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+				// 如果查询失败，尝试查询所有该类型的配置（包括禁用的），以便提供更详细的错误信息
+				var allConfigs []models.PaymentConfig
+				db.Where("LOWER(pay_type) = LOWER(?)", payType).Find(&allConfigs)
+
+				if len(allConfigs) > 0 {
+					// 找到了配置，但可能状态不是启用状态
+					var statusInfo []string
+					for _, cfg := range allConfigs {
+						statusInfo = append(statusInfo, fmt.Sprintf("ID:%d,status:%d", cfg.ID, cfg.Status))
+					}
+					paymentError = fmt.Sprintf("未找到启用的%s支付配置。找到%d个配置，但状态都不是启用(1)。配置状态: %s。请管理员检查支付配置的状态设置。", payType, len(allConfigs), strings.Join(statusInfo, "; "))
+					fmt.Printf("CreateOrder: ❌ 支付配置状态不正确 - pay_type=%s, found_configs=%d, statuses=%v\n", payType, len(allConfigs), statusInfo)
+				} else {
+					// 完全没有找到该类型的配置
+					paymentError = fmt.Sprintf("未找到%s支付配置，请管理员先创建支付配置", payType)
+					fmt.Printf("CreateOrder: ❌ 支付配置不存在 - pay_type=%s\n", payType)
+				}
+
+				utils.LogError("CreateOrder: payment config not found or not enabled", err, map[string]interface{}{
+					"pay_type":      payType,
+					"user_id":       user.ID,
+					"found_configs": len(allConfigs),
 				})
 			} else {
 				fmt.Printf("CreateOrder: ✅ 找到支付配置 - pay_type=%s, config_id=%d, app_id=%s, has_notify_url=%v\n",
@@ -1108,7 +1024,8 @@ func UpdateAdminOrder(c *gin.Context) {
 		}
 
 		// 使用统一的处理函数
-		_, err := processPaidOrder(db, &order, &order.Package, &user)
+		svc := orderServicePkg.NewOrderService()
+		_, err := svc.ProcessPaidOrder(&order)
 		if err != nil {
 			// 不向客户端返回详细错误信息，防止信息泄露
 			utils.LogError("BulkMarkOrdersPaid: process paid order", err, map[string]interface{}{
@@ -1579,7 +1496,8 @@ func GetOrderStatusByNo(c *gin.Context) {
 																	var processedUser models.User
 																	if db.First(&pkg, processedOrder.PackageID).Error == nil &&
 																		db.First(&processedUser, processedOrder.UserID).Error == nil {
-																		processPaidOrder(db, &processedOrder, &pkg, &processedUser)
+																		svc := orderServicePkg.NewOrderService()
+																		svc.ProcessPaidOrder(&processedOrder)
 																	}
 																} else {
 																	// 设备升级订单，处理逻辑在 PaymentNotify 中
@@ -1787,7 +1705,8 @@ func UpgradeDevices(c *gin.Context) {
 		var paymentConfig models.PaymentConfig
 		payType := req.PaymentMethod
 		if payType == "alipay" || payType == "wechat" {
-			if err := db.Where("pay_type = ? AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
+			// 查找对应类型的支付配置（不区分大小写）
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 				// 创建支付交易
 				transaction := models.PaymentTransaction{
 					OrderID:         order.ID,

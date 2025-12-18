@@ -1918,6 +1918,7 @@ export default {
       color: #666;
       display: -webkit-box;
       -webkit-line-clamp: 2; /* 限制描述行数 */
+      line-clamp: 2; /* 标准属性，用于兼容性 */
       -webkit-box-orient: vertical;
       overflow: hidden;
     }

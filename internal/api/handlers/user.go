@@ -787,7 +787,9 @@ func CreateUser(c *gin.Context) {
 
 	if err := db.Create(&subscription).Error; err != nil {
 		// 订阅创建失败不影响用户创建，但记录错误
-		fmt.Printf("创建用户订阅失败: %v\n", err)
+		if utils.AppLogger != nil {
+			utils.AppLogger.Error("创建用户订阅失败: %v", err)
+		}
 	}
 
 	// 记录审计日志

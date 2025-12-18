@@ -132,7 +132,7 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 		query = query.Where("expire_time >= ? AND expire_time <= ?", beforeTime, afterTime)
 	}
 
-	if err := query.Find(&subscriptions).Error; err != nil {
+	if err := query.Preload("User").Preload("Package").Find(&subscriptions).Error; err != nil {
 		log.Printf("查询到期订阅失败: %v", err)
 		return
 	}
@@ -148,18 +148,15 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 	templateBuilder := email.NewEmailTemplateBuilder()
 
 	for _, sub := range subscriptions {
-		var user models.User
-		if err := s.db.First(&user, sub.UserID).Error; err != nil {
+		// 检查用户是否存在（通过Preload加载）
+		if sub.UserID == 0 || sub.User.ID == 0 {
 			continue
 		}
 
 		// 获取套餐信息
 		var packageName string
-		if sub.PackageID != nil {
-			var pkg models.Package
-			if err := s.db.First(&pkg, *sub.PackageID).Error; err == nil {
-				packageName = pkg.Name
-			}
+		if sub.PackageID != nil && sub.Package.ID != 0 {
+			packageName = sub.Package.Name
 		}
 		if packageName == "" {
 			packageName = "默认套餐"
@@ -171,7 +168,7 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 		}
 
 		content := templateBuilder.GetExpirationReminderTemplate(
-			user.Username,
+			sub.User.Username,
 			packageName,
 			expireDate,
 			remainingDays,
@@ -184,8 +181,8 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 			subject = fmt.Sprintf("订阅即将到期（剩余%d天）", remainingDays)
 		}
 
-		if err := emailService.QueueEmail(user.Email, subject, content, "expiration_reminder"); err != nil {
-			log.Printf("发送到期提醒邮件失败: 用户 %s, 错误: %v", user.Email, err)
+		if err := emailService.QueueEmail(sub.User.Email, subject, content, "expiration_reminder"); err != nil {
+			log.Printf("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
 		}
 	}
 }

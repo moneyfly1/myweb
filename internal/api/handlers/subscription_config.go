@@ -372,19 +372,8 @@ func GetConfigUpdateFiles(c *gin.Context) {
 		return
 	}
 
-	files := []gin.H{}
-
 	// 检查 V2Ray 文件
 	v2rayPath := filepath.Join(targetDir, v2rayFile)
-	if info, err := os.Stat(v2rayPath); err == nil {
-		files = append(files, gin.H{
-			"name":     v2rayFile,
-			"path":     v2rayPath,
-			"size":     info.Size(),
-			"modified": info.ModTime().Format("2006-01-02 15:04:05"),
-			"type":     "v2ray",
-		})
-	}
 
 	// 检查 Clash 文件（验证文件名，防止路径遍历）
 	clashFile = filepath.Base(clashFile) // 只保留文件名，移除路径
@@ -404,16 +393,6 @@ func GetConfigUpdateFiles(c *gin.Context) {
 			"message": "无效的文件路径",
 		})
 		return
-	}
-
-	if info, err := os.Stat(clashPath); err == nil {
-		files = append(files, gin.H{
-			"name":     clashFile,
-			"path":     clashPath,
-			"size":     info.Size(),
-			"modified": info.ModTime().Format("2006-01-02 15:04:05"),
-			"type":     "clash",
-		})
 	}
 
 	// 构建返回数据，包含文件存在状态

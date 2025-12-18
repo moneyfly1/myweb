@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,11 +10,11 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
+	orderServicePkg "cboard-go/internal/services/order"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 // GetPaymentMethods 获取支付方式列表
@@ -237,7 +236,8 @@ func PaymentNotify(c *gin.Context) {
 
 	// 获取支付配置
 	var paymentConfig models.PaymentConfig
-	if err := db.Where("pay_type = ? AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+	// 查找对应类型的支付配置（不区分大小写）
+	if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
 		utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
 			"payment_type": paymentType,
 		})
@@ -426,263 +426,141 @@ func PaymentNotify(c *gin.Context) {
 	}
 
 	// 事务提交成功后，订单状态已更新为 paid
-	// 现在可以安全地处理后续逻辑（订阅、邮件等）
-	// 处理不同类型的订单（在事务外处理，避免长时间占用事务）
+	// 立即同步处理订单业务逻辑（开通订阅），确保用户能立刻使用
+
+	// 处理套餐订单
+	if order.PackageID > 0 {
+		orderService := orderServicePkg.NewOrderService()
+		_, err := orderService.ProcessPaidOrder(&order)
+		if err != nil {
+			utils.LogError("PaymentNotify: process paid order failed", err, map[string]interface{}{
+				"order_id": order.ID,
+			})
+			// 这里不返回错误，因为支付已成功，后续可通过补偿机制修复
+		}
+	} else {
+		// 设备升级订单：从 ExtraData 中解析升级信息
+		var additionalDevices int
+		var additionalDays int
+
+		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			// 解析 JSON
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if extraData["type"] == "device_upgrade" {
+					if devices, ok := extraData["additional_devices"].(float64); ok {
+						additionalDevices = int(devices)
+					}
+					if days, ok := extraData["additional_days"].(float64); ok {
+						additionalDays = int(days)
+					}
+				}
+			}
+		}
+
+		// 如果有升级信息，处理订阅升级
+		if additionalDevices > 0 || additionalDays > 0 {
+			var subscription models.Subscription
+			if err := db.Where("user_id = ?", order.UserID).First(&subscription).Error; err == nil {
+				// 升级设备数量
+				if additionalDevices > 0 {
+					subscription.DeviceLimit += additionalDevices
+				}
+				// 延长订阅时间
+				if additionalDays > 0 {
+					now := utils.GetBeijingTime()
+					if subscription.ExpireTime.Before(now) {
+						subscription.ExpireTime = now.AddDate(0, 0, additionalDays)
+					} else {
+						subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, additionalDays)
+					}
+				}
+				if err := db.Save(&subscription).Error; err != nil {
+					utils.LogError("PaymentNotify: upgrade devices failed", err, map[string]interface{}{
+						"order_id": order.ID,
+					})
+				}
+			}
+		}
+	}
+
+	// 异步处理通知（邮件、Telegram等）
 	go func() {
-		// 获取最新的订单信息
+		// 重新加载订单和用户信息（确保获取最新关联数据）
 		var latestOrder models.Order
-		if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&latestOrder).Error; err != nil {
-			utils.LogError("PaymentNotify: failed to reload order", err, map[string]interface{}{
-				"order_no": orderNo,
-			})
+		if err := db.Preload("Package").Where("id = ?", order.ID).First(&latestOrder).Error; err != nil {
 			return
 		}
-
-		// 关键验证：只有在订单状态确实为 "paid" 时才处理
-		// 这确保只有在支付回调验证成功、订单状态已更新为已支付后，才发送邮件和处理订阅
-		if latestOrder.Status != "paid" {
-			utils.LogError("PaymentNotify: order status is not paid, skipping processing", nil, map[string]interface{}{
-				"order_no":     orderNo,
-				"order_status": latestOrder.Status,
-			})
-			return
-		}
-
-		// 获取用户信息
 		var latestUser models.User
 		if err := db.First(&latestUser, latestOrder.UserID).Error; err != nil {
-			utils.LogError("PaymentNotify: failed to get user", err, map[string]interface{}{
-				"user_id": latestOrder.UserID,
-			})
 			return
 		}
 
-		// 处理套餐订单
-		if latestOrder.PackageID > 0 {
-			var pkg models.Package
-			if err := db.First(&pkg, latestOrder.PackageID).Error; err == nil {
-				subscription, err := processPaidOrderInPayment(db, &latestOrder, &pkg, &latestUser)
-				if err != nil {
-					utils.LogError("PaymentNotify: process subscription failed", err, map[string]interface{}{
-						"order_id": latestOrder.ID,
-					})
-				} else if subscription != nil {
-					// 再次验证订单状态为 paid（双重检查，确保安全）
-					var verifyOrder models.Order
-					if err := db.Where("order_no = ? AND status = ?", orderNo, "paid").First(&verifyOrder).Error; err != nil {
-						utils.LogError("PaymentNotify: order status verification failed, not sending email", err, map[string]interface{}{
-							"order_no": orderNo,
-						})
-						return
-					}
+		// 准备支付信息
+		paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		paidAmount := latestOrder.Amount
+		if latestOrder.FinalAmount.Valid {
+			paidAmount = latestOrder.FinalAmount.Float64
+		}
+		paymentMethod := "在线支付"
+		if latestOrder.PaymentMethodName.Valid {
+			paymentMethod = latestOrder.PaymentMethodName.String
+		}
+		packageName := "未知套餐"
+		if latestOrder.Package.ID > 0 {
+			packageName = latestOrder.Package.Name
+		} else if latestOrder.ExtraData.Valid {
+			packageName = "设备/时长升级"
+		}
 
-					// 准备支付信息（用于管理员通知和客户邮件）
-					paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
-					paidAmount := latestOrder.Amount
-					if latestOrder.FinalAmount.Valid {
-						paidAmount = latestOrder.FinalAmount.Float64
-					}
-					paymentMethod := "在线支付"
-					if latestOrder.PaymentMethodName.Valid {
-						paymentMethod = latestOrder.PaymentMethodName.String
-					}
+		// 发送订阅信息邮件（仅套餐订单）
+		if latestOrder.PackageID > 0 && notification.ShouldSendCustomerNotification("new_order") {
+			emailService := email.NewEmailService()
+			templateBuilder := email.NewEmailTemplateBuilder()
 
-					// 发送订阅信息邮件（付款成功后直接发送订阅信息，不再发送支付成功通知）
-					// 检查客户通知开关
-					if notification.ShouldSendCustomerNotification("new_order") {
-						go func() {
-							emailService := email.NewEmailService()
-							templateBuilder := email.NewEmailTemplateBuilder()
+			var subscriptionInfo models.Subscription
+			if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
+				baseURL := templateBuilder.GetBaseURL()
+				timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+				universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)
+				clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)
 
-							// 获取订阅信息
-							var subscriptionInfo models.Subscription
-							if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
-								// 使用 EmailTemplateBuilder 的 GetBaseURL 方法获取基础URL
-								baseURL := templateBuilder.GetBaseURL()
-								timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-								universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp) // 通用订阅（Base64格式）
-								clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
-
-								// 计算到期时间和剩余天数
-								expireTime := "未设置"
-								remainingDays := 0
-								if !subscriptionInfo.ExpireTime.IsZero() {
-									expireTime = subscriptionInfo.ExpireTime.Format("2006-01-02 15:04:05")
-									now := utils.GetBeijingTime()
-									diff := subscriptionInfo.ExpireTime.Sub(now)
-									if diff > 0 {
-										remainingDays = int(diff.Hours() / 24)
-									}
-								}
-
-								content := templateBuilder.GetSubscriptionTemplate(
-									latestUser.Username,
-									universalURL,
-									clashURL,
-									expireTime,
-									remainingDays,
-									subscriptionInfo.DeviceLimit,
-									subscriptionInfo.CurrentDevices,
-								)
-								subject := "服务配置信息"
-								_ = emailService.QueueEmail(latestUser.Email, subject, content, "subscription")
-							}
-						}()
-					}
-
-					// 发送管理员通知
-					go func() {
-						notificationService := notification.NewNotificationService()
-						_ = notificationService.SendAdminNotification("order_paid", map[string]interface{}{
-							"order_no":       latestOrder.OrderNo,
-							"username":       latestUser.Username,
-							"amount":         paidAmount,
-							"package_name":   pkg.Name,
-							"payment_method": paymentMethod,
-							"payment_time":   paymentTime,
-						})
-					}()
-				}
-			}
-		} else {
-			// 设备升级订单：从 ExtraData 中解析升级信息
-			var additionalDevices int
-			var additionalDays int
-
-			if latestOrder.ExtraData.Valid && latestOrder.ExtraData.String != "" {
-				// 解析 JSON
-				var extraData map[string]interface{}
-				if err := json.Unmarshal([]byte(latestOrder.ExtraData.String), &extraData); err == nil {
-					if extraData["type"] == "device_upgrade" {
-						if devices, ok := extraData["additional_devices"].(float64); ok {
-							additionalDevices = int(devices)
-						}
-						if days, ok := extraData["additional_days"].(float64); ok {
-							additionalDays = int(days)
-						}
+				expireTime := "未设置"
+				remainingDays := 0
+				if !subscriptionInfo.ExpireTime.IsZero() {
+					expireTime = subscriptionInfo.ExpireTime.Format("2006-01-02 15:04:05")
+					diff := subscriptionInfo.ExpireTime.Sub(utils.GetBeijingTime())
+					if diff > 0 {
+						remainingDays = int(diff.Hours() / 24)
 					}
 				}
-			}
 
-			// 如果有升级信息，处理订阅升级
-			if additionalDevices > 0 || additionalDays > 0 {
-				var subscription models.Subscription
-				if err := db.Where("user_id = ?", latestUser.ID).First(&subscription).Error; err == nil {
-					// 升级设备数量
-					if additionalDevices > 0 {
-						subscription.DeviceLimit += additionalDevices
-					}
-					// 延长订阅时间
-					if additionalDays > 0 {
-						now := utils.GetBeijingTime()
-						if subscription.ExpireTime.Before(now) {
-							subscription.ExpireTime = now.AddDate(0, 0, additionalDays)
-						} else {
-							subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, additionalDays)
-						}
-					}
-					if err := db.Save(&subscription).Error; err != nil {
-						utils.LogError("PaymentNotify: upgrade devices failed", err, map[string]interface{}{
-							"order_id": latestOrder.ID,
-						})
-					}
-				}
+				content := templateBuilder.GetSubscriptionTemplate(
+					latestUser.Username,
+					universalURL,
+					clashURL,
+					expireTime,
+					remainingDays,
+					subscriptionInfo.DeviceLimit,
+					subscriptionInfo.CurrentDevices,
+				)
+				_ = emailService.QueueEmail(latestUser.Email, "服务配置信息", content, "subscription")
 			}
 		}
+
+		// 发送管理员通知
+		notificationService := notification.NewNotificationService()
+		_ = notificationService.SendAdminNotification("order_paid", map[string]interface{}{
+			"order_no":       latestOrder.OrderNo,
+			"username":       latestUser.Username,
+			"amount":         paidAmount,
+			"package_name":   packageName,
+			"payment_method": paymentMethod,
+			"payment_time":   paymentTime,
+		})
 	}()
 
 	c.String(http.StatusOK, "success")
-}
-
-// processPaidOrderInPayment 处理已支付订单（在 payment.go 中，避免循环导入）
-func processPaidOrderInPayment(db *gorm.DB, order *models.Order, pkg *models.Package, user *models.User) (*models.Subscription, error) {
-	now := utils.GetBeijingTime()
-
-	// 1. 更新或创建订阅
-	var subscription models.Subscription
-	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
-		// 创建新订阅
-		subscriptionURL := utils.GenerateSubscriptionURL()
-		expireTime := now.AddDate(0, 0, pkg.DurationDays)
-		pkgID := int64(pkg.ID)
-		subscription = models.Subscription{
-			UserID:          user.ID,
-			PackageID:       &pkgID,
-			SubscriptionURL: subscriptionURL,
-			DeviceLimit:     pkg.DeviceLimit,
-			CurrentDevices:  0,
-			IsActive:        true,
-			Status:          "active",
-			ExpireTime:      expireTime,
-		}
-		if err := db.Create(&subscription).Error; err != nil {
-			return nil, fmt.Errorf("创建订阅失败: %v", err)
-		}
-		fmt.Printf("processPaidOrderInPayment: ✅ 创建新订阅成功 - user_id=%d, package_id=%d, device_limit=%d, duration_days=%d, expire_time=%s\n",
-			user.ID, pkg.ID, pkg.DeviceLimit, pkg.DurationDays, expireTime.Format("2006-01-02 15:04:05"))
-	} else {
-		// 延长订阅
-		oldExpireTime := subscription.ExpireTime
-		if subscription.ExpireTime.Before(now) {
-			subscription.ExpireTime = now.AddDate(0, 0, pkg.DurationDays)
-		} else {
-			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, pkg.DurationDays)
-		}
-		oldDeviceLimit := subscription.DeviceLimit
-		subscription.DeviceLimit = pkg.DeviceLimit
-		subscription.IsActive = true
-		subscription.Status = "active"
-		// 更新套餐ID
-		pkgID := int64(pkg.ID)
-		subscription.PackageID = &pkgID
-		if err := db.Save(&subscription).Error; err != nil {
-			return nil, fmt.Errorf("更新订阅失败: %v", err)
-		}
-		fmt.Printf("processPaidOrderInPayment: ✅ 更新订阅成功 - user_id=%d, package_id=%d, device_limit: %d->%d, expire_time: %s->%s\n",
-			user.ID, pkg.ID, oldDeviceLimit, pkg.DeviceLimit, oldExpireTime.Format("2006-01-02 15:04:05"), subscription.ExpireTime.Format("2006-01-02 15:04:05"))
-	}
-
-	// 2. 更新用户累计消费
-	paidAmount := order.Amount
-	if order.FinalAmount.Valid {
-		paidAmount = order.FinalAmount.Float64
-	}
-	user.TotalConsumption += paidAmount
-	if err := db.Save(&user).Error; err != nil {
-		return nil, fmt.Errorf("更新用户累计消费失败: %v", err)
-	}
-
-	// 3. 检查并更新用户等级
-	var userLevels []models.UserLevel
-	if err := db.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
-		for _, level := range userLevels {
-			if user.TotalConsumption >= level.MinConsumption {
-				// 检查是否需要升级
-				if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(level.ID) {
-					// 需要升级
-					var currentLevel models.UserLevel
-					shouldUpgrade := true
-					if user.UserLevelID.Valid {
-						if err := db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
-							// 如果当前等级更高（level_order 更小），不降级
-							if currentLevel.LevelOrder < level.LevelOrder {
-								shouldUpgrade = false
-							}
-						}
-					}
-					if shouldUpgrade {
-						user.UserLevelID = sql.NullInt64{Int64: int64(level.ID), Valid: true}
-						if err := db.Save(&user).Error; err != nil {
-							// 等级更新失败不影响订单完成，只记录错误
-							fmt.Printf("更新用户等级失败: %v\n", err)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return &subscription, nil
 }
 
 // GetPaymentStatus 查询支付状态

@@ -1729,16 +1729,6 @@ func CreatePaymentConfig(c *gin.Context) {
 	}
 
 	// 构建基础 URL
-	buildBaseURL := func(c *gin.Context) string {
-		scheme := "http"
-		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else if c.Request.TLS != nil {
-			scheme = "https"
-		}
-		host := c.Request.Host
-		return fmt.Sprintf("%s://%s", scheme, host)
-	}
 	baseURL := buildBaseURL(c)
 
 	// 如果没有提供回调地址，自动生成
@@ -1852,16 +1842,6 @@ func UpdatePaymentConfig(c *gin.Context) {
 	}
 
 	// 构建基础 URL
-	buildBaseURL := func(c *gin.Context) string {
-		scheme := "http"
-		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else if c.Request.TLS != nil {
-			scheme = "https"
-		}
-		host := c.Request.Host
-		return fmt.Sprintf("%s://%s", scheme, host)
-	}
 	baseURL := buildBaseURL(c)
 
 	// 更新字段

@@ -202,103 +202,133 @@ func GetAdminSubscriptions(c *gin.Context) {
 
 	// 转换为前端需要的格式
 	subscriptionList := make([]gin.H, 0)
-	for _, sub := range subscriptions {
-		// 计算在线设备数，并同步 current_devices 返回值（不落库）
-		var onlineDevices int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&onlineDevices)
-		currentDevices := sub.CurrentDevices
-		if currentDevices < int(onlineDevices) {
-			currentDevices = int(onlineDevices)
+	if len(subscriptions) > 0 {
+		var subIDs []uint
+		for _, sub := range subscriptions {
+			subIDs = append(subIDs, sub.ID)
 		}
 
-		// 统计订阅次数
-		// apple_count: v2ray + ssr 订阅次数（通用订阅）
-		var appleCount int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type IN ?", sub.ID, []string{"v2ray", "ssr"}).Count(&appleCount)
+		// 批量查询在线设备数
+		type OnlineStat struct {
+			SubscriptionID uint
+			Count          int64
+		}
+		var onlineStats []OnlineStat
+		db.Model(&models.Device{}).
+			Select("subscription_id, count(*) as count").
+			Where("subscription_id IN ? AND is_active = ?", subIDs, true).
+			Group("subscription_id").
+			Scan(&onlineStats)
 
-		// clash_count: clash 订阅次数（猫咪订阅）
-		var clashCount int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type = ?", sub.ID, "clash").Count(&clashCount)
+		onlineMap := make(map[uint]int64)
+		for _, stat := range onlineStats {
+			onlineMap[stat.SubscriptionID] = stat.Count
+		}
 
-		// 计算到期状态
-		now := utils.GetBeijingTime()
-		daysUntilExpire := 0
-		isExpired := false
-		if !sub.ExpireTime.IsZero() {
-			diff := sub.ExpireTime.Sub(now)
-			if diff > 0 {
-				daysUntilExpire = int(diff.Hours() / 24)
-			} else {
-				isExpired = true
+		// 批量查询订阅类型统计
+		type TypeStat struct {
+			SubscriptionID uint
+			Type           *string
+			Count          int64
+		}
+		var typeStats []TypeStat
+		db.Model(&models.Device{}).
+			Select("subscription_id, subscription_type as type, count(*) as count").
+			Where("subscription_id IN ?", subIDs).
+			Group("subscription_id, subscription_type").
+			Scan(&typeStats)
+
+		appleMap := make(map[uint]int64)
+		clashMap := make(map[uint]int64)
+		for _, stat := range typeStats {
+			if stat.Type != nil {
+				t := *stat.Type
+				if t == "v2ray" || t == "ssr" {
+					appleMap[stat.SubscriptionID] += stat.Count
+				} else if t == "clash" {
+					clashMap[stat.SubscriptionID] += stat.Count
+				}
 			}
 		}
 
-		// 构造订阅链接（统一格式，与用户端和邮件保持一致）
-		baseURL := buildBaseURL(c)
-		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-		universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
-		clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
+		for _, sub := range subscriptions {
+			// 计算在线设备数
+			// 这里不再从 sub.CurrentDevices 取值，因为我们有了实时统计
+			// 但为了兼容旧逻辑，我们保留较大的值
+			onlineDevices := onlineMap[sub.ID]
+			currentDevices := sub.CurrentDevices
+			if currentDevices < int(onlineDevices) {
+				currentDevices = int(onlineDevices)
+			}
 
-		// 构建用户信息对象（前端期望嵌套在 user 中）
-		// 检查用户是否存在（如果 Preload 失败，User.ID 会是 0）
-		var userInfo gin.H
-		var username, email string
+			// 统计订阅次数
+			appleCount := appleMap[sub.ID]
+			clashCount := clashMap[sub.ID]
 
-		if sub.User.ID == 0 {
-			// Preload 失败，尝试从数据库重新查询用户
-			var user models.User
-			if err := db.First(&user, sub.UserID).Error; err != nil {
-				// 用户确实不存在（可能已被删除）
+			// 计算到期状态
+			now := utils.GetBeijingTime()
+			daysUntilExpire := 0
+			isExpired := false
+			if !sub.ExpireTime.IsZero() {
+				diff := sub.ExpireTime.Sub(now)
+				if diff > 0 {
+					daysUntilExpire = int(diff.Hours() / 24)
+				} else {
+					isExpired = true
+				}
+			}
+
+			// 构造订阅链接（统一格式，与用户端和邮件保持一致）
+			baseURL := buildBaseURL(c)
+			timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
+			universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
+			clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, sub.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
+
+			// 构建用户信息对象
+			var userInfo gin.H
+			var username, email string
+
+			if sub.User.ID == 0 {
 				username = fmt.Sprintf("用户已删除 (ID: %d)", sub.UserID)
 				email = fmt.Sprintf("deleted_user_%d", sub.UserID)
 				userInfo = gin.H{
 					"id":       0,
 					"username": username,
 					"email":    email,
-					"deleted":  true, // 标记用户已删除
+					"deleted":  true,
 				}
 			} else {
-				// 用户存在，使用查询到的用户信息
-				username = user.Username
-				email = user.Email
+				username = sub.User.Username
+				email = sub.User.Email
 				userInfo = gin.H{
-					"id":       user.ID,
+					"id":       sub.User.ID,
 					"username": username,
 					"email":    email,
 				}
 			}
-		} else {
-			// 用户存在，使用 Preload 的用户信息
-			username = sub.User.Username
-			email = sub.User.Email
-			userInfo = gin.H{
-				"id":       sub.User.ID,
-				"username": username,
-				"email":    email,
-			}
-		}
 
-		subscriptionList = append(subscriptionList, gin.H{
-			"id":                sub.ID,
-			"user_id":           sub.UserID,
-			"user":              userInfo, // 嵌套用户信息
-			"username":          username, // 保留顶层字段以兼容
-			"email":             email,    // 保留顶层字段以兼容
-			"subscription_url":  sub.SubscriptionURL,
-			"universal_url":     universalURL, // 通用订阅（Base64格式，适用于小火煎、v2ray等）
-			"clash_url":         clashURL,     // 猫咪订阅（Clash YAML格式）
-			"status":            sub.Status,
-			"is_active":         sub.IsActive,
-			"device_limit":      sub.DeviceLimit,
-			"current_devices":   currentDevices,
-			"online_devices":    onlineDevices,
-			"apple_count":       appleCount,
-			"clash_count":       clashCount,
-			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
-			"days_until_expire": daysUntilExpire,
-			"is_expired":        isExpired,
-			"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
+			subscriptionList = append(subscriptionList, gin.H{
+				"id":                sub.ID,
+				"user_id":           sub.UserID,
+				"user":              userInfo,
+				"username":          username,
+				"email":             email,
+				"subscription_url":  sub.SubscriptionURL,
+				"universal_url":     universalURL,
+				"clash_url":         clashURL,
+				"status":            sub.Status,
+				"is_active":         sub.IsActive,
+				"device_limit":      sub.DeviceLimit,
+				"current_devices":   currentDevices,
+				"online_devices":    onlineDevices,
+				"apple_count":       appleCount,
+				"clash_count":       clashCount,
+				"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+				"days_until_expire": daysUntilExpire,
+				"is_expired":        isExpired,
+				"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
