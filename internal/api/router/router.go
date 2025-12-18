@@ -302,12 +302,6 @@ func SetupRouter() *gin.Engine {
 			settings.GET("/public-settings", handlers.GetPublicSettings)
 		}
 
-		// 公告
-		announcements := api.Group("/announcements")
-		{
-			announcements.GET("", handlers.GetAnnouncements)
-		}
-
 		// 统计
 		statistics := api.Group("/statistics")
 		statistics.Use(middleware.AuthMiddleware())
@@ -377,9 +371,6 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/devices/stats", handlers.GetDeviceStats)
 
 			// 配置管理
-			admin.POST("/announcements", handlers.CreateAnnouncement)
-			admin.PUT("/announcements/:id", handlers.UpdateAnnouncement)
-			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement)
 
 			// 统计（管理员专用）
 			admin.GET("/statistics", handlers.GetStatistics)

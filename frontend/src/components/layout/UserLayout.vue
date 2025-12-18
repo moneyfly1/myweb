@@ -268,38 +268,6 @@
       </div>
     </main>
 
-    <!-- 通知抽屉 -->
-    <el-drawer
-      v-model="showNotifications"
-      title="通知中心"
-      direction="rtl"
-      :size="isMobile ? '100%' : '400px'"
-    >
-      <div class="notifications-container">
-        <div v-if="notifications.length === 0" class="empty-notifications">
-          <i class="el-icon-bell"></i>
-          <p>暂无通知</p>
-        </div>
-        <div v-else class="notification-list">
-          <div 
-            v-for="notification in notifications" 
-            :key="notification.id"
-            class="notification-item"
-            :class="{ unread: !notification.is_read }"
-            @click="markAsRead(notification.id)"
-          >
-            <div class="notification-icon">
-              <i :class="getNotificationIcon(notification.type)"></i>
-            </div>
-            <div class="notification-content">
-              <div class="notification-title">{{ notification.title }}</div>
-              <div class="notification-text">{{ notification.content }}</div>
-              <div class="notification-time">{{ formatTime(notification.created_at) }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-drawer>
 
   </div>
 </template>
@@ -309,7 +277,6 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { notificationAPI } from '@/utils/api'
 import { ElMessage } from 'element-plus'
 import { secureStorage } from '@/utils/secureStorage'
 
@@ -332,9 +299,6 @@ const getInitialSidebarState = () => {
 }
 const sidebarCollapsed = ref(getInitialSidebarState())
 const mobileNavExpanded = ref(false)
-const showNotifications = ref(false)
-const notifications = ref([])
-const unreadCount = ref(0)
 const isMobile = ref(false)
 
 // 计算属性
@@ -574,35 +538,6 @@ const handleUserCommand = (command) => {
   }
 }
 
-const getNotificationIcon = (type) => {
-  const icons = {
-    system: 'el-icon-info',
-    order: 'el-icon-shopping-cart-2',
-    subscription: 'el-icon-connection'
-  }
-  return icons[type] || 'el-icon-bell'
-}
-
-const formatTime = (time) => {
-  return new Date(time).toLocaleString()
-}
-
-const markAsRead = async (notificationId) => {
-  try {
-    await notificationAPI.markAsRead(notificationId)
-    await loadNotifications()
-  } catch (error) {
-    }
-}
-
-const loadNotifications = async () => {
-  try {
-    const response = await notificationAPI.getUserNotifications({ limit: 10 })
-    notifications.value = response.data.notifications
-    unreadCount.value = response.data.total
-  } catch (error) {
-    }
-}
 
 const checkMobile = () => {
   const wasMobile = isMobile.value
@@ -639,7 +574,6 @@ watch(() => route.path, () => {
 // 生命周期
 onMounted(() => {
   checkMobile()
-  loadNotifications()
   window.addEventListener('resize', checkMobile)
   
   // 监听来自父窗口的消息
@@ -1800,132 +1734,4 @@ const handleMessage = (event) => {
   }
 }
 
-.notifications-container {
-  @include respond-to(sm) {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  
-  .empty-notifications {
-    text-align: center;
-    padding: 40px 20px;
-    color: #909399;
-    
-    @include respond-to(sm) {
-      padding: 60px 20px;
-    }
-    
-    :is(i) {
-      font-size: 48px;
-      margin-bottom: 16px;
-      
-      @include respond-to(sm) {
-        font-size: 64px;
-        margin-bottom: 20px;
-      }
-    }
-    
-    :is(p) {
-      font-size: 14px;
-      
-      @include respond-to(sm) {
-        font-size: 15px;
-      }
-    }
-  }
-  
-  .notification-list {
-    .notification-item {
-      display: flex;
-      padding: 16px;
-      border-bottom: 1px solid var(--theme-border);
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-      -webkit-tap-highlight-color: transparent;
-      
-      @include respond-to(sm) {
-        padding: 14px 16px;
-      }
-      
-      &:active {
-        background-color: #f0f2f5;
-      }
-      
-      &:hover {
-        background-color: #f5f7fa;
-      }
-      
-      &.unread {
-        background-color: #f0f9ff;
-        
-        &::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 3px;
-          height: 20px;
-          background-color: var(--theme-primary);
-          border-radius: 0 2px 2px 0;
-        }
-      }
-      
-      .notification-icon {
-        margin-right: 12px;
-        flex-shrink: 0;
-        
-        @include respond-to(sm) {
-          margin-right: 14px;
-        }
-        
-        :is(i) {
-          font-size: 20px;
-          color: var(--theme-primary);
-          
-          @include respond-to(sm) {
-            font-size: 22px;
-          }
-        }
-      }
-      
-      .notification-content {
-        flex: 1;
-        min-width: 0;
-        
-        .notification-title {
-          font-weight: 500;
-          margin-bottom: 4px;
-          font-size: 14px;
-          
-          @include respond-to(sm) {
-            font-size: 15px;
-            margin-bottom: 6px;
-          }
-        }
-        
-        .notification-text {
-          color: #666;
-          font-size: 14px;
-          margin-bottom: 4px;
-          line-height: 1.5;
-          word-break: break-word;
-          
-          @include respond-to(sm) {
-            font-size: 13px;
-            margin-bottom: 6px;
-          }
-        }
-        
-        .notification-time {
-          color: #999;
-          font-size: 12px;
-          
-          @include respond-to(sm) {
-            font-size: 11px;
-          }
-        }
-      }
-    }
-  }
-}
 </style> 

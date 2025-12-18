@@ -147,13 +147,11 @@ func CSRFMiddleware() gin.HandlerFunc {
 		}
 
 		// POST/PUT/DELETE/PATCH请求验证token
+		// 确保使用相同的sessionID（如果不存在则生成，但会导致验证失败）
 		sessionID := getSessionID(c)
 
-		// 从Header或Form获取token
+		// 从Header获取token（优先）
 		token := c.GetHeader("X-CSRF-Token")
-		if token == "" {
-			token = c.PostForm("csrf_token")
-		}
 		if token == "" {
 			// 尝试从Cookie获取
 			if cookie, err := c.Cookie("csrf_token"); err == nil {
@@ -161,55 +159,27 @@ func CSRFMiddleware() gin.HandlerFunc {
 			}
 		}
 
+		// 验证token
 		if token == "" || !manager.ValidateToken(sessionID, token) {
-			// 检查Origin和Referer头（额外的保护）
+			// 检查Origin和Referer
 			origin := c.GetHeader("Origin")
 			referer := c.GetHeader("Referer")
 			host := c.Request.Host
-
-			// 如果Origin或Referer存在，验证它们是否匹配当前域名
-			if origin != "" && !isValidOrigin(origin, host) {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": "CSRF验证失败：无效的请求来源",
-				})
+			if (origin != "" && !isValidOrigin(origin, host)) || (referer != "" && !isValidReferer(referer, host)) {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "CSRF验证失败：无效的请求来源"})
 				c.Abort()
 				return
 			}
 
-			if referer != "" && !isValidReferer(referer, host) {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": "CSRF验证失败：无效的请求来源",
-				})
-				c.Abort()
-				return
-			}
-
-			// 如果token验证失败，尝试生成新token并返回，让前端自动重试
-			// 这可以解决token过期或会话ID变化的问题
-			newToken, err := manager.GenerateToken(sessionID)
-			if err == nil {
-				isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
-				c.SetCookie("csrf_token", newToken, 86400, "/", "", isSecure, false)
-				c.Header("X-CSRF-Token", newToken)
-			}
-
-			// 如果token验证失败，返回错误（包含新token，让前端可以重试）
-			if token == "" {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success":    false,
-					"message":    "CSRF Token缺失，请刷新页面后重试",
-					"csrf_token": newToken, // 返回新token，方便前端自动重试
-				})
-				c.Abort()
-				return
-			}
-
+			// 生成新token（基于当前sessionID）并返回，让前端自动重试
+			newToken, _ := manager.GenerateToken(sessionID)
+			isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+			c.SetCookie("csrf_token", newToken, 86400, "/", "", isSecure, false)
+			c.Header("X-CSRF-Token", newToken)
 			c.JSON(http.StatusForbidden, gin.H{
 				"success":    false,
 				"message":    "CSRF验证失败，请刷新页面后重试",
-				"csrf_token": newToken, // 返回新token，方便前端自动重试
+				"csrf_token": newToken,
 			})
 			c.Abort()
 			return
