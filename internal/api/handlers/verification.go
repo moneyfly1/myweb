@@ -84,10 +84,12 @@ func SendVerificationCode(c *gin.Context) {
 		// 发送邮件
 		emailService := email.NewEmailService()
 		if err := emailService.SendVerificationEmail(req.Email, code); err != nil {
+			utils.LogError("SendVerificationCode: send email failed", err, map[string]interface{}{
+				"email": req.Email,
+			})
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": fmt.Sprintf("发送邮件失败: %v", err),
-				"error":   err.Error(),
+				"message": "发送邮件失败",
 			})
 			return
 		}

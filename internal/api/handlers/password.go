@@ -263,9 +263,15 @@ func ForgotPassword(c *gin.Context) {
 	if err := emailService.SendEmail(user.Email, subject, content); err != nil {
 		// 如果立即发送失败，尝试加入队列作为备选方案
 		if queueErr := emailService.QueueEmail(user.Email, subject, content, "verification"); queueErr != nil {
+			utils.LogError("RequestPasswordReset: send email failed", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
+			utils.LogError("RequestPasswordReset: queue email also failed", queueErr, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": fmt.Sprintf("发送验证码邮件失败: %v", err),
+				"message": "发送验证码邮件失败",
 			})
 			return
 		}
@@ -334,6 +340,19 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
+	// 标记验证码为已使用（防止重复使用）
+	verificationCode.Used = 1
+	if err := db.Model(&verificationCode).Where("id = ?", verificationCode.ID).Update("used", 1).Error; err != nil {
+		utils.LogError("ResetPasswordByCode: mark verification code as used failed", err, map[string]interface{}{
+			"code_id": verificationCode.ID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "标记验证码失败",
+		})
+		return
+	}
+
 	// 更新密码
 	hashedPassword, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
@@ -353,9 +372,13 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
-	// 记录审计日志
+	// 设置用户ID到上下文，以便审计日志可以获取
+	c.Set("user_id", user.ID)
+	utils.SetResponseStatus(c, http.StatusOK)
+
+	// 记录审计日志（用户自己重置密码）
 	utils.CreateAuditLogSimple(c, "reset_password", "user", user.ID,
-		fmt.Sprintf("管理员重置用户密码: %s (%s)", user.Username, user.Email))
+		fmt.Sprintf("用户通过验证码重置密码: %s (%s)", user.Username, user.Email))
 
 	// 发送管理员通知
 	go func() {

@@ -14,6 +14,7 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/device"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -107,9 +108,12 @@ func GetSubscriptionConfig(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	config, err := service.GenerateClashConfig(subscription.UserID, subscriptionURL)
 	if err != nil {
+		utils.LogError("GetClashConfig: generate config failed", err, map[string]interface{}{
+			"subscription_url": subscriptionURL,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "生成配置失败: " + err.Error(),
+			"message": "生成配置失败",
 		})
 		return
 	}
@@ -201,7 +205,10 @@ func GetUniversalSubscription(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	configText, err := service.GenerateSSRConfig(subscription.UserID, subscriptionURL)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "生成配置失败: " + err.Error()})
+		utils.LogError("GetUniversalConfig: generate config failed", err, map[string]interface{}{
+			"subscription_url": subscriptionURL,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "生成配置失败"})
 		return
 	}
 
@@ -227,9 +234,12 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 
 	service := config_update.NewConfigUpdateService()
 	if err := service.UpdateSubscriptionConfig(req.SubscriptionURL); err != nil {
+		utils.LogError("UpdateSubscriptionConfigByUser: update config failed", err, map[string]interface{}{
+			"subscription_url": req.SubscriptionURL,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新配置失败: " + err.Error(),
+			"message": "更新配置失败",
 		})
 		return
 	}
@@ -461,9 +471,10 @@ func ClearConfigUpdateLogs(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	err := service.ClearLogs()
 	if err != nil {
+		utils.LogError("ClearConfigUpdateLogs: clear logs failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "清理日志失败: " + err.Error(),
+			"message": "清理日志失败",
 		})
 		return
 	}
@@ -478,9 +489,10 @@ func ClearConfigUpdateLogs(c *gin.Context) {
 func UpdateConfigUpdateConfig(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.LogError("UpdateConfigUpdateConfig: bind JSON failed", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误: " + err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -543,17 +555,23 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 
 		if isNew {
 			if err := db.Create(&config).Error; err != nil {
+				utils.LogError("UpdateConfigUpdateConfig: create config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("保存配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("保存配置 %s 失败", key),
 				})
 				return
 			}
 		} else {
 			if err := db.Save(&config).Error; err != nil {
+				utils.LogError("UpdateConfigUpdateConfig: update config failed", err, map[string]interface{}{
+					"key": key,
+				})
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败: %v", key, err),
+					"message": fmt.Sprintf("更新配置 %s 失败", key),
 				})
 				return
 			}

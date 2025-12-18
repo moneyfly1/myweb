@@ -417,9 +417,12 @@ func UpdateAdminNotification(c *gin.Context) {
 	}
 
 	if err := db.Save(&notification).Error; err != nil {
+		utils.LogError("UpdateNotification: save notification failed", err, map[string]interface{}{
+			"notification_id": notification.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("更新通知失败: %v", err),
+			"message": "更新通知失败",
 		})
 		return
 	}

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -146,9 +145,10 @@ func CreateCoupon(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.LogError("CreateCoupon: bind JSON failed", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("请求参数错误: %v", err),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -235,9 +235,10 @@ func CreateCoupon(c *gin.Context) {
 	}
 
 	if err := db.Create(&coupon).Error; err != nil {
+		utils.LogError("CreateCoupon: create coupon failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("创建优惠券失败: %v", err),
+			"message": "创建优惠券失败",
 		})
 		return
 	}
@@ -336,9 +337,10 @@ func UpdateCoupon(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.LogError("CreateCoupon: bind JSON failed", err, nil)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": fmt.Sprintf("请求参数错误: %v", err),
+			"message": "请求参数错误",
 		})
 		return
 	}

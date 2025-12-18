@@ -102,6 +102,56 @@ func Register(c *gin.Context) {
 		emailVerificationRequired = true
 	}
 
+	// 检查系统配置：是否需要邀请码
+	var inviteCodeRequired bool
+	var inviteCodeConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "invite_code_required", "registration").First(&inviteCodeConfig).Error; err == nil {
+		inviteCodeRequired = inviteCodeConfig.Value == "true"
+	} else {
+		// 默认不需要邀请码
+		inviteCodeRequired = false
+	}
+
+	// 如果系统要求邀请码，则验证邀请码
+	if inviteCodeRequired {
+		if req.InviteCode == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "系统要求邀请码，请输入有效的邀请码",
+			})
+			return
+		}
+
+		// 验证邀请码是否存在且有效
+		var inviteCode models.InviteCode
+		if err := db.Where("code = ? AND is_active = ?", req.InviteCode, true).First(&inviteCode).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "邀请码无效或已停用",
+			})
+			return
+		}
+
+		// 检查邀请码是否过期
+		now := utils.GetBeijingTime()
+		if inviteCode.ExpiresAt.Valid && inviteCode.ExpiresAt.Time.Before(now) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "邀请码已过期",
+			})
+			return
+		}
+
+		// 检查邀请码使用次数
+		if inviteCode.MaxUses.Valid && inviteCode.UsedCount >= int(inviteCode.MaxUses.Int64) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "邀请码使用次数已达上限",
+			})
+			return
+		}
+	}
+
 	// 如果系统要求邮箱验证，则验证验证码
 	if emailVerificationRequired {
 		if req.VerificationCode == "" {
@@ -133,9 +183,12 @@ func Register(c *gin.Context) {
 		// 标记验证码为已使用（使用ID直接更新，确保更新成功）
 		verificationCode.Used = 1
 		if err := db.Model(&verificationCode).Where("id = ?", verificationCode.ID).Update("used", 1).Error; err != nil {
+			utils.LogError("Register: mark verification code as used failed", err, map[string]interface{}{
+				"code_id": verificationCode.ID,
+			})
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": fmt.Sprintf("标记验证码失败: %v", err),
+				"message": "标记验证码失败",
 			})
 			return
 		}
@@ -193,6 +246,11 @@ func Register(c *gin.Context) {
 
 	// 为新用户创建默认订阅（忽略错误，不影响注册流程）
 	_ = createDefaultSubscription(db, user.ID)
+
+	// 处理邀请码（如果提供了）
+	if req.InviteCode != "" {
+		processInviteCode(db, req.InviteCode, user.ID)
+	}
 
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
@@ -605,4 +663,91 @@ func Logout(c *gin.Context) {
 		"success": true,
 		"message": "登出成功",
 	})
+}
+
+// processInviteCode 处理邀请码（注册时使用）
+func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
+	if inviteCodeStr == "" {
+		return
+	}
+
+	// 查找邀请码
+	var inviteCode models.InviteCode
+	if err := db.Where("code = ? AND is_active = ?", inviteCodeStr, true).First(&inviteCode).Error; err != nil {
+		// 邀请码不存在或已停用，忽略错误（不影响注册流程）
+		return
+	}
+
+	// 检查邀请码是否有效
+	now := utils.GetBeijingTime()
+	if inviteCode.ExpiresAt.Valid && inviteCode.ExpiresAt.Time.Before(now) {
+		// 邀请码已过期，忽略
+		return
+	}
+
+	if inviteCode.MaxUses.Valid && inviteCode.UsedCount >= int(inviteCode.MaxUses.Int64) {
+		// 邀请码使用次数已达上限，忽略
+		return
+	}
+
+	// 检查是否已经存在邀请关系（防止重复使用）
+	var existingRelation models.InviteRelation
+	if err := db.Where("invitee_id = ?", newUserID).First(&existingRelation).Error; err == nil {
+		// 该用户已经使用过邀请码，忽略
+		return
+	}
+
+	// 创建邀请关系
+	inviteRelation := models.InviteRelation{
+		InviteCodeID:        inviteCode.ID,
+		InviterID:           inviteCode.UserID,
+		InviteeID:           newUserID,
+		InviterRewardGiven:  false,
+		InviteeRewardGiven:  false,
+		InviterRewardAmount: inviteCode.InviterReward,
+		InviteeRewardAmount: inviteCode.InviteeReward,
+	}
+
+	if err := db.Create(&inviteRelation).Error; err != nil {
+		// 创建邀请关系失败，记录错误但不影响注册流程
+		utils.LogError("processInviteCode: create invite relation failed", err, map[string]interface{}{
+			"invite_code_id": inviteCode.ID,
+			"new_user_id":    newUserID,
+		})
+		return
+	}
+
+	// 更新邀请码使用次数
+	inviteCode.UsedCount++
+	if err := db.Save(&inviteCode).Error; err != nil {
+		utils.LogError("processInviteCode: update invite code used count failed", err, map[string]interface{}{
+			"invite_code_id": inviteCode.ID,
+		})
+	}
+
+	// 如果邀请者奖励大于0，立即发放（注册奖励）
+	if inviteCode.InviterReward > 0 {
+		var inviter models.User
+		if err := db.First(&inviter, inviteCode.UserID).Error; err == nil {
+			inviter.Balance += inviteCode.InviterReward
+			inviter.TotalInviteReward += inviteCode.InviterReward
+			inviter.TotalInviteCount++
+			if err := db.Save(&inviter).Error; err == nil {
+				inviteRelation.InviterRewardGiven = true
+				db.Save(&inviteRelation)
+			}
+		}
+	}
+
+	// 如果被邀请者奖励大于0，立即发放（注册奖励）
+	if inviteCode.InviteeReward > 0 {
+		var invitee models.User
+		if err := db.First(&invitee, newUserID).Error; err == nil {
+			invitee.Balance += inviteCode.InviteeReward
+			if err := db.Save(&invitee).Error; err == nil {
+				inviteRelation.InviteeRewardGiven = true
+				db.Save(&inviteRelation)
+			}
+		}
+	}
 }

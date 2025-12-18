@@ -191,9 +191,12 @@ func UpdateCurrentUser(c *gin.Context) {
 	}
 
 	if err := db.Save(user).Error; err != nil {
+		utils.LogError("UpdateUser: save user failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新失败: " + err.Error(),
+			"message": "更新失败",
 		})
 		return
 	}
@@ -1000,9 +1003,12 @@ func DeleteUser(c *gin.Context) {
 	// 1. 删除用户的订阅（同时会通过外键约束删除相关设备）
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Subscription{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete subscriptions failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户订阅失败: " + err.Error(),
+			"message": "删除用户订阅失败",
 		})
 		return
 	}
@@ -1010,9 +1016,12 @@ func DeleteUser(c *gin.Context) {
 	// 2. 删除用户的设备（通过 subscription_id 关联的设备）
 	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id = ?)", user.ID).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete devices by subscription failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户设备失败: " + err.Error(),
+			"message": "删除用户设备失败",
 		})
 		return
 	}
@@ -1020,9 +1029,12 @@ func DeleteUser(c *gin.Context) {
 	// 3. 删除用户直接关联的设备（通过 user_id）
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete devices by user_id failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户设备失败: " + err.Error(),
+			"message": "删除用户设备失败",
 		})
 		return
 	}
@@ -1030,9 +1042,12 @@ func DeleteUser(c *gin.Context) {
 	// 4. 删除用户的订阅重置记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.SubscriptionReset{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete subscription resets failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户订阅重置记录失败: " + err.Error(),
+			"message": "删除用户订阅重置记录失败",
 		})
 		return
 	}
@@ -1040,9 +1055,12 @@ func DeleteUser(c *gin.Context) {
 	// 5. 删除用户的订单
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Order{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete orders failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户订单失败: " + err.Error(),
+			"message": "删除用户订单失败",
 		})
 		return
 	}
@@ -1050,9 +1068,12 @@ func DeleteUser(c *gin.Context) {
 	// 6. 删除用户的支付交易记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.PaymentTransaction{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete payment transactions failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户支付记录失败: " + err.Error(),
+			"message": "删除用户支付记录失败",
 		})
 		return
 	}
@@ -1060,9 +1081,12 @@ func DeleteUser(c *gin.Context) {
 	// 7. 删除用户的充值记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.RechargeRecord{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete recharge records failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户充值记录失败: " + err.Error(),
+			"message": "删除用户充值记录失败",
 		})
 		return
 	}
@@ -1070,9 +1094,12 @@ func DeleteUser(c *gin.Context) {
 	// 8. 删除用户的工单回复
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.TicketReply{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete ticket replies failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户工单回复失败: " + err.Error(),
+			"message": "删除用户工单回复失败",
 		})
 		return
 	}
@@ -1080,9 +1107,12 @@ func DeleteUser(c *gin.Context) {
 	// 9. 删除用户的工单
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Ticket{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete tickets failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户工单失败: " + err.Error(),
+			"message": "删除用户工单失败",
 		})
 		return
 	}
@@ -1090,9 +1120,12 @@ func DeleteUser(c *gin.Context) {
 	// 10. 删除用户的通知
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Notification{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete notifications failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户通知失败: " + err.Error(),
+			"message": "删除用户通知失败",
 		})
 		return
 	}
@@ -1100,9 +1133,12 @@ func DeleteUser(c *gin.Context) {
 	// 11. 删除用户的活动记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.UserActivity{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete user activities failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户活动记录失败: " + err.Error(),
+			"message": "删除用户活动记录失败",
 		})
 		return
 	}
@@ -1110,9 +1146,12 @@ func DeleteUser(c *gin.Context) {
 	// 12. 删除用户的登录历史
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.LoginHistory{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete login history failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户登录历史失败: " + err.Error(),
+			"message": "删除用户登录历史失败",
 		})
 		return
 	}
@@ -1121,18 +1160,24 @@ func DeleteUser(c *gin.Context) {
 	// 如果邀请码已被使用，只禁用；如果未使用，则删除
 	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count = 0", user.ID).Delete(&models.InviteCode{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete invite codes failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户邀请码失败: " + err.Error(),
+			"message": "删除用户邀请码失败",
 		})
 		return
 	}
 	// 禁用已使用的邀请码
 	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count > 0", user.ID).Update("is_active", false).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: disable invite codes failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "禁用用户邀请码失败: " + err.Error(),
+			"message": "禁用用户邀请码失败",
 		})
 		return
 	}
@@ -1140,9 +1185,12 @@ func DeleteUser(c *gin.Context) {
 	// 14. 删除用户作为邀请人的邀请关系
 	if err := tx.Where("inviter_id = ?", user.ID).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete invite relations as inviter failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户邀请关系失败: " + err.Error(),
+			"message": "删除用户邀请关系失败",
 		})
 		return
 	}
@@ -1150,9 +1198,12 @@ func DeleteUser(c *gin.Context) {
 	// 15. 删除用户作为被邀请人的邀请关系
 	if err := tx.Where("invitee_id = ?", user.ID).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete invite relations as invitee failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户被邀请关系失败: " + err.Error(),
+			"message": "删除用户被邀请关系失败",
 		})
 		return
 	}
@@ -1163,18 +1214,24 @@ func DeleteUser(c *gin.Context) {
 	// 17. 最后删除用户本身
 	if err := tx.Delete(&user).Error; err != nil {
 		tx.Rollback()
+		utils.LogError("DeleteUser: delete user failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除用户失败: " + err.Error(),
+			"message": "删除用户失败",
 		})
 		return
 	}
 
 	// 提交事务
 	if err := tx.Commit().Error; err != nil {
+		utils.LogError("DeleteUser: commit transaction failed", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "删除操作失败: " + err.Error(),
+			"message": "删除操作失败",
 		})
 		return
 	}
