@@ -489,9 +489,9 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import DOMPurify from 'dompurify'
 
@@ -1411,11 +1411,51 @@ const oneclickImport = (client, url, name = '') => {
   }
 }
 
+// 检查并显示公告
+const checkAndShowAnnouncement = async () => {
+  try {
+    const response = await settingsAPI.getPublicSettings()
+    const settings = response.data?.data || response.data || {}
+    
+    // 处理布尔值（可能是字符串 "true"/"false" 或布尔值）
+    const isEnabled = settings.announcement_enabled === true || 
+                      settings.announcement_enabled === 'true' || 
+                      String(settings.announcement_enabled).toLowerCase() === 'true'
+    
+    // 每次登录都显示公告（如果启用），除非用户手动关闭
+    // 不记录到 localStorage，这样每次登录都会显示
+    if (isEnabled && settings.announcement_content && String(settings.announcement_content).trim()) {
+      const content = String(settings.announcement_content).trim()
+      const sanitizedContent = sanitizeHtml(content)
+      const displayContent = sanitizedContent || content || '暂无公告内容'
+      
+      // 使用 ElNotification 在右下角显示公告
+      // 每次登录都会显示，用户需要手动点击关闭按钮才会关闭
+      ElNotification({
+        title: '系统公告',
+        message: displayContent,
+        type: 'info',
+        position: 'bottom-right',
+        duration: 0, // 不自动关闭，需要用户手动关闭
+        dangerouslyUseHTMLString: true,
+        showClose: true // 显示关闭按钮
+      })
+    }
+  } catch (error) {
+    // 静默失败，不影响页面加载
+    console.warn('获取公告失败:', error)
+  }
+}
+
 // 生命周期
 onMounted(() => {
   loadUserInfo()
   loadSubscriptionInfo()
   loadSoftwareConfig()
+  // 延迟一下再检查公告，确保页面已经渲染完成
+  setTimeout(() => {
+    checkAndShowAnnouncement()
+  }, 500)
 })
 
 onUnmounted(() => {
