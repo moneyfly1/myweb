@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,8 +13,6 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/services/email"
-	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -210,10 +207,6 @@ func GetAdminSettings(c *gin.Context) {
 			"registration_enabled": "true", "email_verification_required": "true", "min_password_length": 8,
 			"invite_code_required": "false", "default_subscription_device_limit": 3, "default_subscription_duration_months": 1,
 		},
-		"notification": {
-			"system_notifications": "true", "email_notifications": "true", "subscription_expiry_notifications": "true",
-			"new_user_notifications": "true", "new_order_notifications": "true",
-		},
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
 			"device_fingerprint_enabled": "true", "ip_whitelist_enabled": "false", "ip_whitelist": "",
@@ -221,14 +214,6 @@ func GetAdminSettings(c *gin.Context) {
 		"theme": {
 			"default_theme": "light", "allow_user_theme": "true",
 			"available_themes": []string{"light", "dark", "blue", "green", "purple", "orange", "red", "cyan", "luck", "aurora", "auto"},
-		},
-		"admin_notification": {
-			"admin_notification_enabled": "false", "admin_email_notification": "false", "admin_telegram_notification": "false",
-			"admin_bark_notification": "false", "admin_telegram_bot_token": "", "admin_telegram_chat_id": "",
-			"admin_bark_server_url": "https://api.day.app", "admin_bark_device_key": "", "admin_notification_email": "",
-			"admin_notify_order_paid": "false", "admin_notify_user_registered": "false", "admin_notify_password_reset": "false",
-			"admin_notify_subscription_sent": "false", "admin_notify_subscription_reset": "false", "admin_notify_subscription_expired": "false",
-			"admin_notify_user_created": "false", "admin_notify_subscription_created": "false",
 		},
 		"announcement": {
 			"announcement_enabled": "false",
@@ -287,97 +272,11 @@ func GetAdminSettings(c *gin.Context) {
 // 统一的 Update Handlers
 func UpdateGeneralSettings(c *gin.Context)      { updateSettingsCommon(c, "general") }
 func UpdateRegistrationSettings(c *gin.Context) { updateSettingsCommon(c, "registration") }
-func UpdateNotificationSettings(c *gin.Context) { updateSettingsCommon(c, "notification") }
 func UpdateSecuritySettings(c *gin.Context)     { updateSettingsCommon(c, "security") }
 func UpdateThemeSettings(c *gin.Context)        { updateSettingsCommon(c, "theme") }
 func UpdateInviteSettings(c *gin.Context)       { updateSettingsCommon(c, "invite") }
 func UpdateSoftwareConfig(c *gin.Context)       { updateSettingsCommon(c, "software") }
 func UpdateAnnouncementSettings(c *gin.Context) { updateSettingsCommon(c, "announcement") }
-func UpdateAdminNotificationSystemSettings(c *gin.Context) {
-	updateSettingsCommon(c, "admin_notification")
-}
-
-// --- Notification Tests ---
-
-func TestAdminEmailNotification(c *gin.Context) {
-	var conf models.SystemConfig
-	if err := database.GetDB().Where("key = ? AND category = ?", "admin_notification_email", "admin_notification").First(&conf).Error; err != nil || conf.Value == "" {
-		jsonResponse(c, http.StatusBadRequest, false, "管理员通知邮箱未配置", nil)
-		return
-	}
-
-	subject := "🧪 测试消息"
-	content := email.NewEmailTemplateBuilder().GetBroadcastNotificationTemplate(subject, "这是一条测试消息，说明邮件通知配置正确。")
-	if err := email.NewEmailService().QueueEmail(conf.Value, subject, content, "admin_notification"); err != nil {
-		utils.LogError("TestAdminEmail", err, nil)
-		jsonResponse(c, http.StatusInternalServerError, false, "测试消息发送失败", nil)
-		return
-	}
-	jsonResponse(c, http.StatusOK, true, "测试消息已加入邮件队列", nil)
-}
-
-func TestAdminTelegramNotification(c *gin.Context) {
-	db := database.GetDB()
-	var token, chatID models.SystemConfig
-	if db.Where("key = ?", "admin_telegram_bot_token").First(&token).Error != nil ||
-		db.Where("key = ?", "admin_telegram_chat_id").First(&chatID).Error != nil ||
-		token.Value == "" || chatID.Value == "" {
-		jsonResponse(c, http.StatusBadRequest, false, "Telegram 配置不完整", nil)
-		return
-	}
-
-	msg := notification.NewMessageTemplateBuilder().BuildTelegramMessage("default", map[string]interface{}{"title": "测试消息", "message": "配置正确。"})
-	if ok, _ := sendTelegramMessage(token.Value, chatID.Value, msg); !ok {
-		jsonResponse(c, http.StatusInternalServerError, false, "测试消息发送失败", nil)
-		return
-	}
-	jsonResponse(c, http.StatusOK, true, "测试消息发送成功", nil)
-}
-
-func TestAdminBarkNotification(c *gin.Context) {
-	db := database.GetDB()
-	serverURL := "https://api.day.app"
-	var urlConf, keyConf models.SystemConfig
-	if db.Where("key = ?", "admin_bark_server_url").First(&urlConf).Error == nil && urlConf.Value != "" {
-		serverURL = urlConf.Value
-	}
-	if db.Where("key = ?", "admin_bark_device_key").First(&keyConf).Error != nil || keyConf.Value == "" {
-		jsonResponse(c, http.StatusBadRequest, false, "Bark Device Key 未配置", nil)
-		return
-	}
-
-	title, body := notification.NewMessageTemplateBuilder().BuildBarkMessage("default", map[string]interface{}{"title": "测试消息", "message": "配置正确。"})
-	if ok, _ := sendBarkMessage(serverURL, keyConf.Value, title, body); !ok {
-		jsonResponse(c, http.StatusInternalServerError, false, "测试消息发送失败", nil)
-		return
-	}
-	jsonResponse(c, http.StatusOK, true, "测试消息发送成功", nil)
-}
-
-func sendTelegramMessage(token, chatID, msg string) (bool, error) {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer([]byte(fmt.Sprintf(`{"chat_id":"%s","text":%q,"parse_mode":"HTML"}`, chatID, msg))))
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	var res map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&res)
-	return res["ok"] == true, nil
-}
-
-func sendBarkMessage(server, key, title, body string) (bool, error) {
-	url := fmt.Sprintf("%s/push", strings.TrimSuffix(server, "/"))
-	data, _ := json.Marshal(map[string]string{"device_key": key, "title": title, "body": body})
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	var res map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&res)
-	return res["code"] == float64(200), nil
-}
 
 // UploadFile 文件上传
 func UploadFile(c *gin.Context) {
