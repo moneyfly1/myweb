@@ -42,9 +42,18 @@ func ParseNodeLink(link string) (*ProxyNode, error) {
 		return parseHysteria(link)
 	} else if strings.HasPrefix(link, "hysteria2://") {
 		return parseHysteria2(link)
+	} else if strings.HasPrefix(link, "tuic://") {
+		return parseTUIC(link)
+	} else if strings.HasPrefix(link, "naive+https://") || strings.HasPrefix(link, "naive://") {
+		return parseNaive(link)
+	} else if strings.HasPrefix(link, "anytls://") {
+		return parseAnytls(link)
 	}
 
-	return nil, fmt.Errorf("不支持的协议: %s", link[:10])
+	if len(link) > 10 {
+		return nil, fmt.Errorf("不支持的协议: %s", link[:10])
+	}
+	return nil, fmt.Errorf("不支持的协议")
 }
 
 // parseVMess 解析 VMess 链接
@@ -65,9 +74,42 @@ func parseVMess(link string) (*ProxyNode, error) {
 
 	// 提取基本信息
 	server, _ := data["add"].(string)
-	port, _ := data["port"].(float64)
+
+	// 处理端口（可能是数字或字符串）
+	var port int
+	if portFloat, ok := data["port"].(float64); ok {
+		port = int(portFloat)
+	} else if portStr, ok := data["port"].(string); ok {
+		if parsedPort, err := strconv.Atoi(portStr); err == nil {
+			port = parsedPort
+		}
+	}
+
+	// 验证端口
+	if port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("无效的端口: %v", data["port"])
+	}
+
 	uuid, _ := data["id"].(string)
-	alterID, _ := data["aid"].(float64)
+	if uuid == "" {
+		return nil, fmt.Errorf("缺少 UUID (id)")
+	}
+
+	// 验证服务器地址
+	if server == "" {
+		return nil, fmt.Errorf("缺少服务器地址 (add)")
+	}
+
+	// 处理 alterID（可能是数字或字符串）
+	var alterID float64
+	if aidFloat, ok := data["aid"].(float64); ok {
+		alterID = aidFloat
+	} else if aidStr, ok := data["aid"].(string); ok {
+		if parsedAid, err := strconv.ParseFloat(aidStr, 64); err == nil {
+			alterID = parsedAid
+		}
+	}
+
 	network, _ := data["net"].(string)
 	if network == "" {
 		network = "tcp"
@@ -115,6 +157,14 @@ func parseVMess(link string) (*ProxyNode, error) {
 		node.Options["h2-opts"] = map[string]interface{}{
 			"path": getString(data, "path", "/"),
 			"host": []string{getString(data, "host", server)},
+		}
+	} else if network == "httpupgrade" {
+		// HTTP Upgrade 配置
+		node.Options["http-opts"] = map[string]interface{}{
+			"path": getString(data, "path", "/"),
+			"headers": map[string]string{
+				"Host": getString(data, "host", server),
+			},
 		}
 	}
 
@@ -167,14 +217,19 @@ func parseVLESS(link string) (*ProxyNode, error) {
 
 		// Reality 配置
 		if security == "reality" || query.Get("pbk") != "" {
+			realityOpts := make(map[string]interface{})
 			if pbk := query.Get("pbk"); pbk != "" {
-				node.Options["reality-opts"] = map[string]interface{}{
-					"public-key": pbk,
-					"short-id":   query.Get("sid"),
-				}
+				realityOpts["public-key"] = pbk
+			}
+			if sid := query.Get("sid"); sid != "" {
+				realityOpts["short-id"] = sid
+			}
+			if len(realityOpts) > 0 {
+				node.Options["reality-opts"] = realityOpts
 			}
 		}
 
+		// Flow 配置（用于 XTLS）
 		if flow := query.Get("flow"); flow != "" {
 			node.Options["flow"] = flow
 		}
@@ -182,15 +237,30 @@ func parseVLESS(link string) (*ProxyNode, error) {
 
 	// 网络配置
 	if network == "ws" {
-		node.Options["ws-opts"] = map[string]interface{}{
-			"path": query.Get("path"),
-			"headers": map[string]string{
-				"Host": query.Get("host"),
-			},
+		wsOpts := make(map[string]interface{})
+		if path := query.Get("path"); path != "" {
+			wsOpts["path"] = path
+		}
+		headers := make(map[string]string)
+		if host := query.Get("host"); host != "" {
+			headers["Host"] = host
+		}
+		if len(headers) > 0 {
+			wsOpts["headers"] = headers
+		}
+		if len(wsOpts) > 0 {
+			node.Options["ws-opts"] = wsOpts
 		}
 	} else if network == "grpc" {
-		node.Options["grpc-opts"] = map[string]interface{}{
-			"grpc-service-name": query.Get("serviceName"),
+		grpcOpts := make(map[string]interface{})
+		if serviceName := query.Get("serviceName"); serviceName != "" {
+			grpcOpts["grpc-service-name"] = serviceName
+		} else if path := query.Get("path"); path != "" {
+			// 如果没有 serviceName，使用 path 作为 serviceName
+			grpcOpts["grpc-service-name"] = path
+		}
+		if len(grpcOpts) > 0 {
+			node.Options["grpc-opts"] = grpcOpts
 		}
 	}
 
@@ -329,8 +399,63 @@ func parseSSR(link string) (*ProxyNode, error) {
 		return nil, fmt.Errorf("密码解码失败: %v", err)
 	}
 
+	// 解析参数部分
+	var nodeName string
+	protocolParam := ""
+	obfsParam := ""
+
+	if len(parts) > 1 {
+		// 解析 URL 参数
+		paramsPart := parts[1]
+		// 移除可能的 #name 部分
+		if hashIdx := strings.Index(paramsPart, "#"); hashIdx != -1 {
+			nameB64 := paramsPart[hashIdx+1:]
+			paramsPart = paramsPart[:hashIdx]
+			if decodedName, err := safeBase64Decode(nameB64); err == nil {
+				nodeName = decodedName
+			}
+		}
+
+		// 解析 URL 参数
+		params, err := url.ParseQuery(paramsPart)
+		if err == nil {
+			// 解析 remarks（节点名称）
+			if remarks := params.Get("remarks"); remarks != "" {
+				if decodedRemarks, err := safeBase64Decode(remarks); err == nil {
+					nodeName = decodedRemarks
+				} else {
+					// 如果解码失败，尝试直接使用
+					nodeName = remarks
+				}
+			}
+
+			// 解析 protoparam
+			if protoparam := params.Get("protoparam"); protoparam != "" {
+				if decoded, err := safeBase64Decode(protoparam); err == nil {
+					protocolParam = decoded
+				} else {
+					protocolParam = protoparam
+				}
+			}
+
+			// 解析 obfsparam
+			if obfsparam := params.Get("obfsparam"); obfsparam != "" {
+				if decoded, err := safeBase64Decode(obfsparam); err == nil {
+					obfsParam = decoded
+				} else {
+					obfsParam = obfsparam
+				}
+			}
+		}
+	}
+
+	// 如果没有节点名称，使用默认格式
+	if nodeName == "" {
+		nodeName = fmt.Sprintf("SSR-%s:%d", server, port)
+	}
+
 	node := &ProxyNode{
-		Name:     fmt.Sprintf("SSR-%s:%d", server, port),
+		Name:     nodeName,
 		Type:     "ssr",
 		Server:   server,
 		Port:     port,
@@ -339,8 +464,8 @@ func parseSSR(link string) (*ProxyNode, error) {
 		Options: map[string]interface{}{
 			"protocol":       protocol,
 			"obfs":           obfs,
-			"protocol-param": "",
-			"obfs-param":     "",
+			"protocol-param": protocolParam,
+			"obfs-param":     obfsParam,
 		},
 	}
 
@@ -458,6 +583,10 @@ func getFragment(parsed *url.URL, defaultValue string) string {
 	if parsed.Fragment != "" {
 		decoded, err := url.QueryUnescape(parsed.Fragment)
 		if err == nil {
+			// 如果 fragment 包含有意义的信息，使用它；否则使用默认值
+			if decoded != "" && decoded != parsed.Fragment {
+				return decoded
+			}
 			return decoded
 		}
 		return parsed.Fragment
@@ -474,7 +603,9 @@ func getPort(parsed *url.URL) int {
 			return 443
 		case "ss", "ssr":
 			return 8388
-		case "hysteria", "hysteria2":
+		case "hysteria", "hysteria2", "tuic", "anytls":
+			return 443
+		case "https", "naive":
 			return 443
 		default:
 			return 443
@@ -482,4 +613,150 @@ func getPort(parsed *url.URL) int {
 	}
 	port, _ := strconv.Atoi(portStr)
 	return port
+}
+
+// parseTUIC 解析 TUIC 链接
+func parseTUIC(link string) (*ProxyNode, error) {
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+
+	// TUIC 格式: tuic://uuid:password@host:port?params#name
+	userInfo := parsed.User
+	if userInfo == nil {
+		return nil, fmt.Errorf("缺少认证信息")
+	}
+
+	uuid := userInfo.Username()
+	password, _ := userInfo.Password()
+	if uuid == "" {
+		return nil, fmt.Errorf("缺少 UUID")
+	}
+
+	query := parsed.Query()
+
+	node := &ProxyNode{
+		Name:     getFragment(parsed, fmt.Sprintf("TUIC-%s:%s", parsed.Hostname(), parsed.Port())),
+		Type:     "tuic",
+		Server:   parsed.Hostname(),
+		Port:     getPort(parsed),
+		UUID:     uuid,
+		Password: password,
+		UDP:      true,
+		TLS:      true,
+		Options:  make(map[string]interface{}),
+	}
+
+	// TLS 配置
+	if sni := query.Get("sni"); sni != "" {
+		node.Options["servername"] = sni
+	} else {
+		node.Options["servername"] = parsed.Hostname()
+	}
+
+	// 其他配置
+	if alpn := query.Get("alpn"); alpn != "" {
+		node.Options["alpn"] = []string{alpn}
+	}
+	if cc := query.Get("congestion_control"); cc != "" {
+		node.Options["congestion_control"] = cc
+	}
+	if udpRelayMode := query.Get("udp_relay_mode"); udpRelayMode != "" {
+		node.Options["udp_relay_mode"] = udpRelayMode
+	}
+	node.Options["skip-cert-verify"] = query.Get("allow_insecure") == "1" || query.Get("allow_insecure") == "true"
+
+	return node, nil
+}
+
+// parseNaive 解析 Naive 链接
+func parseNaive(link string) (*ProxyNode, error) {
+	// 处理 naive+https:// 和 naive:// 格式
+	link = strings.Replace(link, "naive+https://", "https://", 1)
+	link = strings.Replace(link, "naive://", "https://", 1)
+
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+
+	userInfo := parsed.User
+	if userInfo == nil {
+		return nil, fmt.Errorf("缺少认证信息")
+	}
+
+	username := userInfo.Username()
+	password, _ := userInfo.Password()
+	if username == "" || password == "" {
+		return nil, fmt.Errorf("缺少用户名或密码")
+	}
+
+	query := parsed.Query()
+
+	node := &ProxyNode{
+		Name:     getFragment(parsed, fmt.Sprintf("Naive-%s:%s", parsed.Hostname(), parsed.Port())),
+		Type:     "naive",
+		Server:   parsed.Hostname(),
+		Port:     getPort(parsed),
+		UUID:     username, // 使用 username 作为标识
+		Password: password,
+		TLS:      true,
+		Options:  make(map[string]interface{}),
+	}
+
+	// TLS 配置
+	if sni := query.Get("sni"); sni != "" {
+		node.Options["servername"] = sni
+	} else {
+		node.Options["servername"] = parsed.Hostname()
+	}
+
+	// Padding 配置
+	if padding := query.Get("padding"); padding != "" {
+		node.Options["padding"] = padding == "true" || padding == "1"
+	}
+
+	node.Options["skip-cert-verify"] = query.Get("insecure") == "1" || query.Get("insecure") == "true"
+
+	return node, nil
+}
+
+// parseAnytls 解析 Anytls 链接
+func parseAnytls(link string) (*ProxyNode, error) {
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+
+	uuid := parsed.User.Username()
+	if uuid == "" {
+		return nil, fmt.Errorf("缺少 UUID")
+	}
+
+	query := parsed.Query()
+
+	node := &ProxyNode{
+		Name:    getFragment(parsed, fmt.Sprintf("Anytls-%s:%s", parsed.Hostname(), parsed.Port())),
+		Type:    "anytls",
+		Server:  parsed.Hostname(),
+		Port:    getPort(parsed),
+		UUID:    uuid,
+		UDP:     true,
+		TLS:     true,
+		Options: make(map[string]interface{}),
+	}
+
+	// TLS 配置
+	if peer := query.Get("peer"); peer != "" {
+		node.Options["servername"] = peer
+	} else if sni := query.Get("sni"); sni != "" {
+		node.Options["servername"] = sni
+	} else {
+		node.Options["servername"] = parsed.Hostname()
+	}
+
+	node.Options["skip-cert-verify"] = query.Get("insecure") == "1" || query.Get("insecure") == "true" || query.Get("insecure") == "0"
+
+	return node, nil
 }

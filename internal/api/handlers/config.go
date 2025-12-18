@@ -13,6 +13,8 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -209,7 +211,7 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
-			"device_fingerprint_enabled": "true", "ip_whitelist_enabled": "false", "ip_whitelist": "",
+			"ip_whitelist_enabled": "false", "ip_whitelist": "",
 		},
 		"theme": {
 			"default_theme": "light", "allow_user_theme": "true",
@@ -218,6 +220,12 @@ func GetAdminSettings(c *gin.Context) {
 		"announcement": {
 			"announcement_enabled": "false",
 			"announcement_content": "",
+		},
+		"node_health": {
+			"node_health_check_interval": "300",
+			"node_max_latency":           "3000",
+			"node_test_timeout":          "5",
+			"test_url":                   "https://ping.pe",
 		},
 	}
 
@@ -277,6 +285,13 @@ func UpdateThemeSettings(c *gin.Context)        { updateSettingsCommon(c, "theme
 func UpdateInviteSettings(c *gin.Context)       { updateSettingsCommon(c, "invite") }
 func UpdateSoftwareConfig(c *gin.Context)       { updateSettingsCommon(c, "software") }
 func UpdateAnnouncementSettings(c *gin.Context) { updateSettingsCommon(c, "announcement") }
+func UpdateNotificationSettings(c *gin.Context) { updateSettingsCommon(c, "notification") }
+func UpdateAdminNotificationSystemSettings(c *gin.Context) {
+	updateSettingsCommon(c, "admin_notification")
+}
+func UpdateNodeHealthSettings(c *gin.Context) {
+	updateSettingsCommon(c, "node_health")
+}
 
 // UploadFile 文件上传
 func UploadFile(c *gin.Context) {
@@ -362,4 +377,105 @@ func GetPublicSettings(c *gin.Context) {
 		settings["announcement_enabled"] = false
 	}
 	jsonResponse(c, http.StatusOK, true, "", settings)
+}
+
+// TestAdminEmailNotification 测试管理员邮件通知
+func TestAdminEmailNotification(c *gin.Context) {
+	db := database.GetDB()
+	var configs []models.SystemConfig
+	db.Where("category = ?", "admin_notification").Find(&configs)
+
+	configMap := make(map[string]string)
+	for _, config := range configs {
+		configMap[config.Key] = config.Value
+	}
+
+	adminEmail := configMap["admin_notification_email"]
+	if adminEmail == "" {
+		jsonResponse(c, http.StatusBadRequest, false, "管理员邮箱未配置", nil)
+		return
+	}
+
+	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
+	subject := "测试邮件通知"
+	content := templateBuilder.GetAdminNotificationTemplate("test", "测试通知", "这是一条测试消息，用于验证邮件通知功能是否正常工作。", map[string]interface{}{})
+
+	if err := emailService.QueueEmail(adminEmail, subject, content, "admin_notification"); err != nil {
+		utils.LogError("TestAdminEmailNotification", err, nil)
+		jsonResponse(c, http.StatusInternalServerError, false, "发送测试邮件失败", nil)
+		return
+	}
+
+	jsonResponse(c, http.StatusOK, true, "测试邮件已加入队列，请检查您的邮箱", nil)
+}
+
+// TestAdminTelegramNotification 测试管理员 Telegram 通知
+func TestAdminTelegramNotification(c *gin.Context) {
+	db := database.GetDB()
+	var configs []models.SystemConfig
+	db.Where("category = ?", "admin_notification").Find(&configs)
+
+	configMap := make(map[string]string)
+	for _, config := range configs {
+		configMap[config.Key] = config.Value
+	}
+
+	botToken := configMap["admin_telegram_bot_token"]
+	chatID := configMap["admin_telegram_chat_id"]
+
+	if botToken == "" || chatID == "" {
+		jsonResponse(c, http.StatusBadRequest, false, "Telegram Bot Token 或 Chat ID 未配置", nil)
+		return
+	}
+
+	notificationService := notification.NewNotificationService()
+	testData := map[string]interface{}{
+		"type":    "test",
+		"message": "这是一条测试消息，用于验证 Telegram 通知功能是否正常工作。",
+	}
+
+	// 发送测试通知
+	go func() {
+		_ = notificationService.SendAdminNotification("test", testData)
+	}()
+
+	jsonResponse(c, http.StatusOK, true, "测试消息已发送，请检查您的 Telegram", nil)
+}
+
+// TestAdminBarkNotification 测试管理员 Bark 通知
+func TestAdminBarkNotification(c *gin.Context) {
+	db := database.GetDB()
+	var configs []models.SystemConfig
+	db.Where("category = ?", "admin_notification").Find(&configs)
+
+	configMap := make(map[string]string)
+	for _, config := range configs {
+		configMap[config.Key] = config.Value
+	}
+
+	serverURL := configMap["admin_bark_server_url"]
+	deviceKey := configMap["admin_bark_device_key"]
+
+	if deviceKey == "" {
+		jsonResponse(c, http.StatusBadRequest, false, "Bark Device Key 未配置", nil)
+		return
+	}
+
+	if serverURL == "" {
+		serverURL = "https://api.day.app"
+	}
+
+	notificationService := notification.NewNotificationService()
+	testData := map[string]interface{}{
+		"type":    "test",
+		"message": "这是一条测试消息，用于验证 Bark 通知功能是否正常工作。",
+	}
+
+	// 发送测试通知
+	go func() {
+		_ = notificationService.SendAdminNotification("test", testData)
+	}()
+
+	jsonResponse(c, http.StatusOK, true, "测试消息已发送，请检查您的设备", nil)
 }

@@ -158,8 +158,9 @@ func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL s
 	isDeviceOverLimit := int(deviceCount) > subscription.DeviceLimit
 
 	// 优先从数据库的 nodes 表获取节点
+	// 只获取在线且激活的节点，过滤掉超时和禁用的节点
 	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ?", true).Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
+	if err := s.db.Where("is_active = ? AND status = ?", true, "online").Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
 		// 从数据库获取节点
 		var proxies []*ProxyNode
 		for _, dbNode := range dbNodes {
@@ -769,9 +770,9 @@ func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) {
 
 // importNodesToDatabase 将节点导入到数据库的 nodes 表
 func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
-	// 先清空所有节点
-	deletedCount := s.db.Where("1 = 1").Delete(&models.Node{}).RowsAffected
-	s.addLog(fmt.Sprintf("已清空 %d 个旧节点", deletedCount), "info")
+	// 不清空所有节点，只更新或创建新节点
+	// 手动添加的节点（is_manual=true）不会被删除
+	s.addLog("开始导入节点到数据库", "info")
 
 	importedCount := 0
 	seenKeys := make(map[string]bool)
@@ -819,23 +820,51 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 		}
 		configStr := string(configJSON)
 
-		// 由于已经清空了所有节点，直接创建新节点
-		// 去重逻辑已经在内存中通过 seenKeys 保证
-		newNode := models.Node{
-			Name:     node.Name,
-			Region:   region,
-			Type:     node.Type,
-			Status:   "online", // 新采集的节点默认为在线状态
-			IsActive: true,
-			Config:   &configStr,
+		// 检查是否已存在相同节点（通过 server:port:uuid/password 匹配）
+		var existingNode models.Node
+		query := s.db.Where("type = ? AND config LIKE ?", node.Type, "%"+node.Server+"%")
+		if node.UUID != "" {
+			query = query.Where("config LIKE ?", "%"+node.UUID+"%")
+		} else if node.Password != "" {
+			query = query.Where("config LIKE ?", "%"+node.Password+"%")
 		}
 
-		if err := s.db.Create(&newNode).Error; err != nil {
-			errorCount++
-			s.addLog(fmt.Sprintf("创建节点失败 [%s]: %v", node.Name, err), "error")
-			continue
+		if err := query.First(&existingNode).Error; err == nil {
+			// 如果节点已存在且是手动添加的，跳过更新
+			if existingNode.IsManual {
+				continue
+			}
+			// 更新现有节点（非手动添加的）
+			existingNode.Name = node.Name
+			existingNode.Region = region
+			existingNode.Status = "online"
+			existingNode.IsActive = true
+			existingNode.Config = &configStr
+			if err := s.db.Save(&existingNode).Error; err != nil {
+				errorCount++
+				s.addLog(fmt.Sprintf("更新节点失败 [%s]: %v", node.Name, err), "error")
+				continue
+			}
+			importedCount++
+		} else {
+			// 创建新节点（标记为非手动添加）
+			newNode := models.Node{
+				Name:     node.Name,
+				Region:   region,
+				Type:     node.Type,
+				Status:   "online", // 新采集的节点默认为在线状态
+				IsActive: true,
+				IsManual: false, // 采集的节点标记为非手动
+				Config:   &configStr,
+			}
+
+			if err := s.db.Create(&newNode).Error; err != nil {
+				errorCount++
+				s.addLog(fmt.Sprintf("创建节点失败 [%s]: %v", node.Name, err), "error")
+				continue
+			}
+			importedCount++
 		}
-		importedCount++
 	}
 
 	if errorCount > 0 {
@@ -1112,16 +1141,24 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 	isDeviceOverLimit := int(deviceCount) > subscription.DeviceLimit
 
 	// 获取节点
+	// 只获取在线且激活的节点，过滤掉超时和禁用的节点
+	// 验证规则：
+	// 1. is_active = true（节点必须启用）
+	// 2. status = 'online'（节点必须在线，排除 offline 和 timeout 状态）
 	var proxies []*ProxyNode
 	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ?", true).Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
+	if err := s.db.Where("is_active = ? AND status = ?", true, "online").Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
 		// 从数据库获取节点
 		for _, dbNode := range dbNodes {
+			// 双重验证：确保节点配置存在且有效
 			if dbNode.Config != nil && *dbNode.Config != "" {
 				var proxyNode ProxyNode
 				if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-					proxyNode.Name = dbNode.Name
-					proxies = append(proxies, &proxyNode)
+					// 验证节点配置的基本字段
+					if proxyNode.Server != "" && proxyNode.Port > 0 && proxyNode.Type != "" {
+						proxyNode.Name = dbNode.Name
+						proxies = append(proxies, &proxyNode)
+					}
 				}
 			}
 		}
