@@ -3,11 +3,13 @@ package scheduler
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
@@ -43,6 +45,7 @@ func (s *Scheduler) Start() {
 	go s.processEmailQueue()
 	go s.checkExpiringSubscriptions()
 	go s.cleanupExpiredData()
+	go s.checkNodeHealth()
 }
 
 // Stop 停止定时任务
@@ -369,5 +372,62 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 
 		log.Printf("用户 %s (%s) 将被删除: 30天未登录且无有效套餐，警告后7天内未登录", user.Username, user.Email)
 		// 注意：实际删除操作应该在管理员确认后执行，这里只记录日志和发送确认邮件
+	}
+}
+
+// checkNodeHealth 检查节点健康状态（每30分钟执行一次）
+func (s *Scheduler) checkNodeHealth() {
+	// 默认30分钟检查一次，可以通过配置调整
+	interval := 30 * time.Minute
+
+	// 从配置中获取检查间隔
+	var config models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "node_health_check_interval", "general").First(&config).Error; err == nil {
+		if minutes, err := strconv.Atoi(config.Value); err == nil {
+			interval = time.Duration(minutes) * time.Minute
+		}
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// 立即执行一次
+	s.checkNodeHealthNow()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.checkNodeHealthNow()
+		}
+	}
+}
+
+// checkNodeHealthNow 立即执行节点健康检查
+func (s *Scheduler) checkNodeHealthNow() {
+	log.Println("开始执行节点健康检查...")
+
+	healthService := node_health.NewNodeHealthService()
+
+	// 从配置中获取最大允许延迟
+	var config models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "node_max_latency", "general").First(&config).Error; err == nil {
+		if maxLatency, err := strconv.Atoi(config.Value); err == nil {
+			healthService.SetMaxLatency(maxLatency)
+		}
+	}
+
+	// 从配置中获取测试超时时间
+	if err := s.db.Where("key = ? AND category = ?", "node_test_timeout", "general").First(&config).Error; err == nil {
+		if timeout, err := strconv.Atoi(config.Value); err == nil {
+			healthService.SetTestTimeout(time.Duration(timeout) * time.Second)
+		}
+	}
+
+	if err := healthService.CheckAllNodes(); err != nil {
+		log.Printf("节点健康检查失败: %v", err)
+	} else {
+		log.Println("节点健康检查完成")
 	}
 }

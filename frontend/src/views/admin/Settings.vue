@@ -462,6 +462,78 @@
         </el-tab-pane>
 
 
+        <!-- 节点健康检查设置 -->
+        <el-tab-pane label="节点健康检查" name="node-health">
+          <el-alert
+            title="节点健康检查设置"
+            description="配置节点自动健康检查的参数。当前测速方式：TCP连接测试（测试节点服务器的TCP端口连接延迟）。"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 20px"
+          />
+          <el-form
+            :model="nodeHealthSettings"
+            :label-width="isMobile ? '0' : '120px'"
+            :label-position="isMobile ? 'top' : 'right'"
+            class="settings-form"
+          >
+            <el-form-item label="检查间隔(分钟)">
+              <el-input-number
+                v-model="nodeHealthSettings.check_interval"
+                :min="5"
+                :max="1440"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                节点健康检查的间隔时间，建议30-60分钟
+              </div>
+            </el-form-item>
+            <el-form-item label="最大允许延迟(毫秒)">
+              <el-input-number
+                v-model="nodeHealthSettings.max_latency"
+                :min="100"
+                :max="10000"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                超过此延迟的节点将被标记为超时并自动禁用，建议3000ms
+              </div>
+            </el-form-item>
+            <el-form-item label="测试超时时间(秒)">
+              <el-input-number
+                v-model="nodeHealthSettings.test_timeout"
+                :min="1"
+                :max="30"
+                :style="{ width: isMobile ? '100%' : '200px' }"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                单个节点测试的超时时间，建议5秒
+              </div>
+            </el-form-item>
+            <el-form-item label="测速网站URL">
+              <el-input
+                v-model="nodeHealthSettings.test_url"
+                placeholder="例如: https://ping.pe"
+                :style="{ width: isMobile ? '100%' : '400px' }"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                用于测试节点延迟的网页地址，系统会访问该网页并解析延迟数据
+                <br />
+                推荐使用: https://ping.pe (支持从全球多个节点测试，包括中国节点)
+                <br />
+                格式: 输入IP:端口，系统会自动访问 https://ping.pe/{IP}:{端口} 并解析延迟数据
+                <br />
+                留空则使用TCP直接连接测试
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveNodeHealthSettings" :class="{ 'full-width': isMobile }">
+                保存节点健康检查设置
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
         <!-- 安全设置 -->
         <el-tab-pane label="安全设置" name="security">
           <el-form 
@@ -493,12 +565,6 @@
                 :max="1440"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
-            </el-form-item>
-            <el-form-item label="启用设备指纹">
-              <el-switch v-model="securitySettings.device_fingerprint_enabled" />
-              <el-text type="info" size="small" :class="{ 'mobile-tip': isMobile }">
-                用于设备管理，识别订阅设备，不影响登录验证
-              </el-text>
             </el-form-item>
             <el-form-item label="启用IP白名单">
               <el-switch v-model="securitySettings.ip_whitelist_enabled" />
@@ -576,7 +642,6 @@ export default {
       login_fail_limit: 5,
       login_lock_time: 30,
       session_timeout: 120,
-      device_fingerprint_enabled: true,
       ip_whitelist_enabled: false,
       ip_whitelist: ''
     })
@@ -613,6 +678,14 @@ export default {
     const announcementSettings = reactive({
       announcement_enabled: false,
       announcement_content: ''
+    })
+
+    // 节点健康检查设置
+    const nodeHealthSettings = reactive({
+      check_interval: 30,      // 检查间隔（分钟）
+      max_latency: 3000,        // 最大允许延迟（毫秒）
+      test_timeout: 5,          // 测试超时时间（秒）
+      test_url: 'https://ping.pe' // 测速网站URL
     })
 
     const testingAdminEmail = ref(false)
@@ -657,6 +730,23 @@ export default {
         if (settings.announcement) {
           Object.assign(announcementSettings, settings.announcement)
           }
+        // 加载节点健康检查设置
+        if (settings.general) {
+          if (settings.general.node_health_check_interval) {
+            nodeHealthSettings.check_interval = parseInt(settings.general.node_health_check_interval) || 30
+          }
+          if (settings.general.node_max_latency) {
+            nodeHealthSettings.max_latency = parseInt(settings.general.node_max_latency) || 3000
+          }
+          if (settings.general.node_test_timeout) {
+            nodeHealthSettings.test_timeout = parseInt(settings.general.node_test_timeout) || 5
+          }
+          if (settings.node_health && settings.node_health.test_url) {
+            nodeHealthSettings.test_url = settings.node_health.test_url || 'https://ping.pe'
+          } else if (settings.general.test_url) {
+            nodeHealthSettings.test_url = settings.general.test_url || 'https://ping.pe'
+          }
+        }
       } catch (error) {
         ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message || '未知错误'))
       }
@@ -715,6 +805,27 @@ export default {
         }
       } catch (error) {
         console.error('保存安全设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
+      }
+    }
+
+    const saveNodeHealthSettings = async () => {
+      try {
+        // 保存到node_health分类
+        const nodeHealthSettingsData = {
+          node_health_check_interval: nodeHealthSettings.check_interval.toString(),
+          node_max_latency: nodeHealthSettings.max_latency.toString(),
+          node_test_timeout: nodeHealthSettings.test_timeout.toString(),
+          test_url: nodeHealthSettings.test_url || 'https://ping.pe'
+        }
+        const response = await api.put('/admin/settings/node_health', nodeHealthSettingsData)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('节点健康检查设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
+      } catch (error) {
+        console.error('保存节点健康检查设置失败:', error)
         ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
@@ -876,7 +987,9 @@ export default {
       handleLogoSuccess,
       beforeLogoUpload,
       announcementSettings,
-      saveAnnouncementSettings
+      saveAnnouncementSettings,
+      nodeHealthSettings,
+      saveNodeHealthSettings
     }
   }
 }

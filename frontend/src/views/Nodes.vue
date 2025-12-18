@@ -93,26 +93,51 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="status" label="在线状态" width="120">
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
-            <el-tag :type="(row.status || '').toLowerCase() === 'online' ? 'success' : 'danger'">
-              {{ (row.status || '').toLowerCase() === 'online' ? '在线' : '离线' }}
+            <el-tag :type="getStatusType(row.status)" size="small">
+              {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column prop="load" label="负载" width="120">
+        <el-table-column label="延迟" width="120">
           <template #default="{ row }">
-            <div class="load-indicator">
-              <div class="load-bar">
-                <div 
-                  class="load-fill" 
-                  :style="{ width: row.load + '%' }"
-                  :class="getLoadClass(row.load)"
-                ></div>
-              </div>
-              <span class="load-text">{{ row.load }}%</span>
+            <div class="latency-cell">
+              <span v-if="row.latency > 0" :class="getLatencyClass(row.latency)">
+                {{ row.latency }}ms
+              </span>
+              <span v-else style="color: #909399">未测试</span>
             </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="最后测试" width="150">
+          <template #default="{ row }">
+            <span v-if="row.last_test" class="last-test-time">
+              {{ formatLastTestTime(row.last_test) }}
+            </span>
+            <span v-else style="color: #909399">从未测试</span>
+          </template>
+        </el-table-column>
+
+
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button 
+              size="small" 
+              type="primary" 
+              @click="testNode(row)" 
+              :loading="row.testing"
+            >
+              测试
+            </el-button>
+            <el-button 
+              size="small" 
+              @click="viewNodeDetail(row)"
+            >
+              详情
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -156,20 +181,26 @@
           </span>
         </div>
         <div class="detail-item">
-          <span class="label">负载：</span>
-          <span class="value">{{ selectedNode.load }}%</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">速度：</span>
-          <span class="value">{{ formatSpeed(selectedNode.speed) }}</span>
-        </div>
-        <div class="detail-item">
           <span class="label">在线时间：</span>
           <span class="value">{{ formatUptime(selectedNode.uptime) }}</span>
         </div>
         <div class="detail-item">
           <span class="label">延迟：</span>
-          <span class="value">{{ selectedNode.latency }}ms</span>
+          <span class="value">
+            <span v-if="selectedNode.latency > 0" :class="getLatencyClass(selectedNode.latency)">
+              {{ selectedNode.latency }}ms
+            </span>
+            <span v-else style="color: #909399">未测试</span>
+          </span>
+        </div>
+        <div class="detail-item">
+          <span class="label">最后测试：</span>
+          <span class="value">
+            <span v-if="selectedNode.last_test">
+              {{ formatLastTestTime(selectedNode.last_test) }}
+            </span>
+            <span v-else style="color: #909399">从未测试</span>
+          </span>
         </div>
         <div class="detail-item">
           <span class="label">描述：</span>
@@ -243,16 +274,28 @@ export default {
         if (response.data && response.data.success && response.data.data) {
           // 后端返回格式: {success: true, data: [...]}
           if (Array.isArray(response.data.data)) {
-            nodes.value = response.data.data
+            nodes.value = response.data.data.map(node => ({
+              ...node,
+              testing: false
+            }))
           } else if (response.data.data.nodes && Array.isArray(response.data.data.nodes)) {
-            nodes.value = response.data.data.nodes
+            nodes.value = response.data.data.nodes.map(node => ({
+              ...node,
+              testing: false
+            }))
           } else {
             nodes.value = []
           }
         } else if (response.data && Array.isArray(response.data)) {
-          nodes.value = response.data
+          nodes.value = response.data.map(node => ({
+            ...node,
+            testing: false
+          }))
         } else if (response.data && response.data.nodes && Array.isArray(response.data.nodes)) {
-          nodes.value = response.data.nodes
+          nodes.value = response.data.nodes.map(node => ({
+            ...node,
+            testing: false
+          }))
         } else {
           nodes.value = []
         }
@@ -353,19 +396,6 @@ export default {
       return colors[type] || 'info'
     }
 
-    // 获取负载颜色
-    const getLoadClass = (load) => {
-      if (load < 30) return 'load-low'
-      if (load < 70) return 'load-medium'
-      return 'load-high'
-    }
-
-    // 格式化速度
-    const formatSpeed = (speed) => {
-      if (speed < 1024) return speed + ' B/s'
-      if (speed < 1024 * 1024) return (speed / 1024).toFixed(1) + ' KB/s'
-      return (speed / (1024 * 1024)).toFixed(1) + ' MB/s'
-    }
 
     // 格式化在线时间
     const formatUptime = (uptime) => {
@@ -380,7 +410,7 @@ export default {
 
     // 格式化最后测速时间
     const formatLastTestTime = (lastTestTime) => {
-      if (!lastTestTime) return '从未测速'
+      if (!lastTestTime) return '从未测试'
       
       const now = new Date()
       const testTime = new Date(lastTestTime)
@@ -394,8 +424,70 @@ export default {
       if (diffHours < 24) return `${diffHours}小时前`
       
       const diffDays = Math.floor(diffHours / 24)
-      return `${diffDays}天前`
+      if (diffDays < 7) return `${diffDays}天前`
+      
+      return testTime.toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     }
+
+    // 获取状态类型
+    const getStatusType = (status) => {
+      const statusMap = {
+        online: 'success',
+        offline: 'danger',
+        timeout: 'warning'
+      }
+      return statusMap[status?.toLowerCase()] || 'info'
+    }
+
+    // 获取状态文本
+    const getStatusText = (status) => {
+      const statusMap = {
+        online: '在线',
+        offline: '离线',
+        timeout: '超时'
+      }
+      return statusMap[status?.toLowerCase()] || status || '未知'
+    }
+
+    // 获取延迟颜色类
+    const getLatencyClass = (latency) => {
+      if (latency < 100) return 'latency-excellent'
+      if (latency < 200) return 'latency-good'
+      if (latency < 300) return 'latency-medium'
+      return 'latency-poor'
+    }
+
+    // 测试单个节点
+    const testNode = async (node) => {
+      node.testing = true
+      try {
+        const response = await nodeAPI.testNode(node.id)
+        if (response.data && response.data.success) {
+          const result = response.data.data
+          ElMessage.success(`测试完成: ${getStatusText(result.status)}, 延迟: ${result.latency > 0 ? result.latency + 'ms' : '超时'}`)
+          // 更新节点信息
+          node.status = result.status
+          node.latency = result.latency
+          node.last_test = result.tested_at
+          // 更新统计
+          updateNodeStats()
+        } else {
+          ElMessage.error(response.data?.message || '测试失败')
+        }
+      } catch (error) {
+        ElMessage.error('测试失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        node.testing = false
+      }
+    }
+
+
 
     onMounted(() => {
       fetchNodes()
@@ -415,11 +507,13 @@ export default {
       fetchNodes,
       refreshNodes,
       viewNodeDetail,
+      testNode,
       getNodeIcon,
       getRegionColor,
       getTypeColor,
-      getLoadClass,
-      formatSpeed,
+      getStatusType,
+      getStatusText,
+      getLatencyClass,
       formatUptime,
       formatLastTestTime
     }
@@ -548,42 +642,29 @@ export default {
   color: #1677ff;
 }
 
-.load-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.latency-cell {
+  font-weight: 500;
 }
 
-.load-bar {
-  width: 60px;
-  height: 8px;
-  background: #f0f0f0;
-  border-radius: 4px;
-  overflow: hidden;
+.latency-excellent {
+  color: #52c41a;
 }
 
-.load-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
+.latency-good {
+  color: #1890ff;
 }
 
-.load-low {
-  background: #52c41a;
+.latency-medium {
+  color: #faad14;
 }
 
-.load-medium {
-  background: #faad14;
+.latency-poor {
+  color: #ff4d4f;
 }
 
-.load-high {
-  background: #ff4d4f;
-}
-
-.load-text {
-  font-size: 0.9rem;
+.last-test-time {
   color: #666;
-  min-width: 40px;
+  font-size: 0.875rem;
 }
 
 .speed-text {
