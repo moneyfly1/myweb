@@ -365,8 +365,10 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	}
 
 	// 写入额外选项（需要特殊处理 map 和 slice）
+	// 确保 Options 中的字段与基本字段使用相同的缩进（indentStr + "  "）
+	optionsIndentStr := indentStr + "  "
 	for key, value := range node.Options {
-		s.writeYAMLValue(&builder, indentStr, key, value, 2)
+		s.writeYAMLValue(&builder, optionsIndentStr, key, value, 2)
 	}
 
 	return builder.String()
@@ -375,7 +377,7 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 // writeYAMLValue 递归写入 YAML 值（支持 map、slice、基本类型）
 func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr, key string, value interface{}, indentLevel int) {
 	escapedKey := s.escapeYAMLString(key)
-	
+
 	switch v := value.(type) {
 	case map[string]interface{}:
 		// Map 类型
@@ -399,28 +401,31 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 	case map[string]string:
 		// Map[string]string 类型（如 ws-opts 中的 headers）
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		// 子项的缩进：在 indentStr 基础上增加 2 个空格
+		subIndentStr := indentStr + "  "
 		for k, val := range v {
-			subIndent := strings.Repeat(" ", indentLevel*2)
 			escapedK := s.escapeYAMLString(k)
 			escapedVal := s.escapeYAMLString(val)
-			builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr+subIndent, escapedK, escapedVal))
+			builder.WriteString(fmt.Sprintf("%s%s: %s\n", subIndentStr, escapedK, escapedVal))
 		}
 	case []interface{}:
 		// Slice 类型
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		// 数组项的缩进：在 indentStr 基础上增加 2 个空格
+		subIndentStr := indentStr + "  "
 		for _, item := range v {
-			subIndent := strings.Repeat(" ", indentLevel*2)
-			builder.WriteString(fmt.Sprintf("%s- ", indentStr+subIndent))
+			builder.WriteString(fmt.Sprintf("%s- ", subIndentStr))
 			s.writeYAMLValueInline(builder, item)
 			builder.WriteString("\n")
 		}
 	case []string:
 		// String slice 类型
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		// 数组项的缩进：在 indentStr 基础上增加 2 个空格
+		subIndentStr := indentStr + "  "
 		for _, item := range v {
-			subIndent := strings.Repeat(" ", indentLevel*2)
 			escapedItem := s.escapeYAMLString(item)
-			builder.WriteString(fmt.Sprintf("%s- %s\n", indentStr+subIndent, escapedItem))
+			builder.WriteString(fmt.Sprintf("%s- %s\n", subIndentStr, escapedItem))
 		}
 	case bool:
 		// 布尔类型
