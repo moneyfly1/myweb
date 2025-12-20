@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"cboard-go/internal/core/auth"
@@ -476,11 +477,98 @@ func GetUserDetails(c *gin.Context) {
 	var totalSpent float64
 	db.Model(&models.Order{}).Where("user_id = ? AND status = 'paid'", u.ID).Select("COALESCE(SUM(final_amount), SUM(amount), 0)").Scan(&totalSpent)
 
+	// 获取订阅重置记录
+	var resets []models.SubscriptionReset
+	db.Where("user_id = ?", u.ID).Order("created_at DESC").Find(&resets)
+	formattedResets := make([]gin.H, 0, len(resets))
+	getStringPtr := func(ptr *string) string {
+		if ptr != nil {
+			return *ptr
+		}
+		return ""
+	}
+	for _, reset := range resets {
+		formattedResets = append(formattedResets, gin.H{
+			"id":                 reset.ID,
+			"subscription_id":    reset.SubscriptionID,
+			"reset_type":         reset.ResetType,
+			"reason":             reset.Reason,
+			"old_subscription_url": getStringPtr(reset.OldSubscriptionURL),
+			"new_subscription_url": getStringPtr(reset.NewSubscriptionURL),
+			"device_count_before": reset.DeviceCountBefore,
+			"device_count_after":  reset.DeviceCountAfter,
+			"reset_by":           getStringPtr(reset.ResetBy),
+			"created_at":         reset.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// 获取 UA 记录（从设备记录中提取唯一的 UserAgent）
+	var subIDs []uint
+	for _, sub := range subs {
+		subIDs = append(subIDs, sub.ID)
+	}
+	uaRecords := make([]gin.H, 0)
+	getString := func(ptr *string) string {
+		if ptr != nil {
+			return *ptr
+		}
+		return ""
+	}
+	formatIP := func(ip string) string {
+		if ip == "" {
+			return "-"
+		}
+		if ip == "::1" {
+			return "127.0.0.1"
+		}
+		if strings.HasPrefix(ip, "::ffff:") {
+			return strings.TrimPrefix(ip, "::ffff:")
+		}
+		return ip
+	}
+	if len(subIDs) > 0 {
+		var devices []models.Device
+		db.Where("subscription_id IN ?", subIDs).
+			Where("user_agent IS NOT NULL AND user_agent != ''").
+			Order("last_access DESC").
+			Find(&devices)
+		
+		// 使用 map 去重，保留每个 UserAgent 的最新记录
+		uaMap := make(map[string]*models.Device)
+		for i := range devices {
+			if devices[i].UserAgent != nil && *devices[i].UserAgent != "" {
+				ua := *devices[i].UserAgent
+				if existing, exists := uaMap[ua]; !exists {
+					uaMap[ua] = &devices[i]
+				} else {
+					// 保留最后访问时间更晚的记录
+					if devices[i].LastAccess.After(existing.LastAccess) {
+						uaMap[ua] = &devices[i]
+					}
+				}
+			}
+		}
+		
+		for _, d := range uaMap {
+			uaRecords = append(uaRecords, gin.H{
+				"user_agent":  *d.UserAgent,
+				"device_type": getString(d.DeviceType),
+				"device_name": getString(d.DeviceName),
+				"ip_address":  formatIP(getString(d.IPAddress)),
+				"created_at":  d.CreatedAt.Format("2006-01-02 15:04:05"),
+				"last_access": d.LastAccess.Format("2006-01-02 15:04:05"),
+				"access_count": d.AccessCount,
+			})
+		}
+	}
+
 	c.JSON(200, gin.H{"success": true, "data": gin.H{
-		"user_info":     userInfo,
-		"subscriptions": formattedSubs,
-		"orders":        orders,
-		"statistics":    gin.H{"total_spent": totalSpent, "subscription_count": len(subs)},
+		"user_info":         userInfo,
+		"subscriptions":     formattedSubs,
+		"orders":            orders,
+		"statistics":        gin.H{"total_spent": totalSpent, "subscription_count": len(subs)},
+		"subscription_resets": formattedResets,
+		"ua_records":        uaRecords,
 	}})
 }
 

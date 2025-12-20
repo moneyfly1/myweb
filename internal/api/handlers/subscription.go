@@ -25,6 +25,14 @@ func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
 	return universal, clash
 }
 
+func getCurrentAdminUsername(c *gin.Context) *string {
+	user, ok := middleware.GetCurrentUser(c)
+	if ok && user != nil {
+		return &user.Username
+	}
+	return nil
+}
+
 func formatDeviceList(devices []models.Device) []gin.H {
 	deviceList := make([]gin.H, 0)
 	getString := func(ptr *string) string {
@@ -33,11 +41,26 @@ func formatDeviceList(devices []models.Device) []gin.H {
 		}
 		return ""
 	}
+	formatIP := func(ip string) string {
+		if ip == "" {
+			return "-"
+		}
+		// 将 IPv6 本地地址转换为 IPv4 本地地址
+		if ip == "::1" {
+			return "127.0.0.1"
+		}
+		// 将 IPv6 映射的 IPv4 地址转换
+		if strings.HasPrefix(ip, "::ffff:") {
+			return strings.TrimPrefix(ip, "::ffff:")
+		}
+		return ip
+	}
 	for _, d := range devices {
 		lastSeen := d.LastAccess.Format("2006-01-02 15:04:05")
 		if d.LastSeen != nil {
 			lastSeen = d.LastSeen.Format("2006-01-02 15:04:05")
 		}
+		ipAddress := formatIP(getString(d.IPAddress))
 		deviceList = append(deviceList, gin.H{
 			"id":                 d.ID,
 			"device_name":        getString(d.DeviceName),
@@ -45,8 +68,8 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"device_fingerprint": d.DeviceFingerprint,
 			"device_type":        getString(d.DeviceType),
 			"type":               getString(d.DeviceType),
-			"ip_address":         getString(d.IPAddress),
-			"ip":                 getString(d.IPAddress),
+			"ip_address":         ipAddress,
+			"ip":                 ipAddress,
 			"os_name":            getString(d.OSName),
 			"os_version":         getString(d.OSVersion),
 			"last_access":        d.LastAccess.Format("2006-01-02 15:04:05"),
@@ -338,9 +361,35 @@ func ResetSubscription(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
-	sub.SubscriptionURL = utils.GenerateSubscriptionURL()
+	
+	// 记录旧订阅地址
+	oldURL := sub.SubscriptionURL
+	var deviceCountBefore int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
+	
+	// 生成新订阅地址
+	newURL := utils.GenerateSubscriptionURL()
+	sub.SubscriptionURL = newURL
 	sub.CurrentDevices = 0
 	db.Save(&sub)
+	
+	// 记录订阅重置
+	reset := models.SubscriptionReset{
+		UserID:             sub.UserID,
+		SubscriptionID:     sub.ID,
+		ResetType:          "admin_reset",
+		Reason:             "管理员重置订阅地址",
+		OldSubscriptionURL: &oldURL,
+		NewSubscriptionURL: &newURL,
+		DeviceCountBefore:  int(deviceCountBefore),
+		DeviceCountAfter:   0,
+		ResetBy:            getCurrentAdminUsername(c),
+	}
+	db.Create(&reset)
+	
+	// 清理设备记录
+	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
+	
 	go sendResetEmail(c, sub, sub.User, "管理员重置")
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
 }
@@ -387,9 +436,39 @@ func ExtendSubscription(c *gin.Context) {
 func ResetUserSubscription(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
-	db.Model(&models.Subscription{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
-		"subscription_url": gorm.Expr("?", utils.GenerateSubscriptionURL()), "current_devices": 0,
-	})
+	var subs []models.Subscription
+	db.Where("user_id = ?", userID).Find(&subs)
+	
+	for _, sub := range subs {
+		// 记录旧订阅地址
+		oldURL := sub.SubscriptionURL
+		var deviceCountBefore int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
+		
+		// 生成新订阅地址
+		newURL := utils.GenerateSubscriptionURL()
+		sub.SubscriptionURL = newURL
+		sub.CurrentDevices = 0
+		db.Save(&sub)
+		
+		// 记录订阅重置
+		reset := models.SubscriptionReset{
+			UserID:             sub.UserID,
+			SubscriptionID:     sub.ID,
+			ResetType:          "admin_reset",
+			Reason:             "管理员重置用户订阅地址",
+			OldSubscriptionURL: &oldURL,
+			NewSubscriptionURL: &newURL,
+			DeviceCountBefore:  int(deviceCountBefore),
+			DeviceCountAfter:   0,
+			ResetBy:            getCurrentAdminUsername(c),
+		}
+		db.Create(&reset)
+		
+		// 清理设备记录
+		db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
+	}
+	
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "用户订阅已重置"})
 }
 
@@ -437,10 +516,37 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
-	sub.SubscriptionURL = utils.GenerateSubscriptionURL()
+	
+	// 记录旧订阅地址
+	oldURL := sub.SubscriptionURL
+	var deviceCountBefore int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
+	
+	// 生成新订阅地址
+	newURL := utils.GenerateSubscriptionURL()
+	sub.SubscriptionURL = newURL
 	sub.CurrentDevices = 0
 	db.Save(&sub)
-	go sendResetEmail(c, sub, *user, "用户主动重置")
+	
+	// 记录订阅重置
+	reason := "用户主动重置订阅地址"
+	reset := models.SubscriptionReset{
+		UserID:             sub.UserID,
+		SubscriptionID:     sub.ID,
+		ResetType:          "user_reset",
+		Reason:             reason,
+		OldSubscriptionURL: &oldURL,
+		NewSubscriptionURL: &newURL,
+		DeviceCountBefore:  int(deviceCountBefore),
+		DeviceCountAfter:   0,
+		ResetBy:            &user.Username,
+	}
+	db.Create(&reset)
+	
+	// 清理设备记录
+	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
+	
+	go sendResetEmail(c, sub, *user, reason)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
 }
 
