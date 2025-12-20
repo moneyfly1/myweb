@@ -371,6 +371,8 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	var proxies []*ProxyNode
 	seenKeys := make(map[string]bool)
 	nameCounter := make(map[string]int)
+	parseErrorCount := 0
+	var parseErrors []string
 
 	for _, nodeInfo := range nodes {
 		link, ok := nodeInfo["url"].(string)
@@ -380,6 +382,16 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		node, err := ParseNodeLink(link)
 		if err != nil {
+			parseErrorCount++
+			// 记录前10个解析失败的节点，避免日志过长
+			if parseErrorCount <= 10 {
+				// 截取链接前100个字符，避免日志过长
+				linkPreview := link
+				if len(linkPreview) > 100 {
+					linkPreview = linkPreview[:100] + "..."
+				}
+				parseErrors = append(parseErrors, fmt.Sprintf("链接: %s, 错误: %v", linkPreview, err))
+			}
 			continue
 		}
 
@@ -421,7 +433,19 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		proxies = append(proxies, node)
 	}
 
-	s.addLog(fmt.Sprintf("解析后有效节点数: %d", len(proxies)), "info")
+	// 记录解析统计信息
+	if parseErrorCount > 0 {
+		s.addLog(fmt.Sprintf("解析失败节点数: %d (共 %d 个节点链接)", parseErrorCount, len(nodes)), "warning")
+		if len(parseErrors) > 0 {
+			for _, errMsg := range parseErrors {
+				s.addLog(errMsg, "warning")
+			}
+			if parseErrorCount > 10 {
+				s.addLog(fmt.Sprintf("... 还有 %d 个节点解析失败", parseErrorCount-10), "warning")
+			}
+		}
+	}
+	s.addLog(fmt.Sprintf("解析后有效节点数: %d (成功: %d, 失败: %d)", len(proxies), len(proxies), parseErrorCount), "info")
 
 	// 生成 V2Ray 配置（Base64）
 	v2rayFileName := config["v2ray_file"].(string)
@@ -449,7 +473,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	s.addLog(fmt.Sprintf("准备导入 %d 个节点到数据库", len(proxies)), "info")
 	importedCount := s.importNodesToDatabase(proxies)
 	s.addLog(fmt.Sprintf("成功导入节点到数据库: %d 个", importedCount), "success")
-	
+
 	// 验证数据库中的节点数量
 	var totalNodes int64
 	s.db.Model(&models.Node{}).Where("is_manual = ?", false).Count(&totalNodes)
@@ -744,7 +768,7 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 		// 查询所有相同类型的节点，然后通过解析 JSON 配置精确匹配
 		var existingNodes []models.Node
 		s.db.Where("type = ? AND is_manual = ?", node.Type, false).Find(&existingNodes)
-		
+
 		var existingNode *models.Node
 		for i := range existingNodes {
 			if existingNodes[i].Config == nil {
@@ -754,7 +778,7 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 			if err := json.Unmarshal([]byte(*existingNodes[i].Config), &existingProxy); err != nil {
 				continue
 			}
-			
+
 			// 精确匹配：server、port、uuid/password 必须完全相同
 			if existingProxy.Server == node.Server && existingProxy.Port == node.Port {
 				// 对于有 UUID 的节点（vmess, vless），必须 UUID 相同
@@ -803,7 +827,7 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 				Region:   region,
 				Type:     node.Type,
 				Status:   "online", // 新采集的节点默认为在线状态
-				IsActive:  true,
+				IsActive: true,
 				IsManual: false, // 采集的节点标记为非手动
 				Config:   &configStr,
 			}
@@ -821,8 +845,8 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 	if errorCount > 0 {
 		s.addLog(fmt.Sprintf("导入过程中有 %d 个节点失败", errorCount), "warning")
 	}
-	
-	s.addLog(fmt.Sprintf("导入完成：新建 %d 个，更新 %d 个，跳过 %d 个（手动节点），失败 %d 个，总计 %d 个", 
+
+	s.addLog(fmt.Sprintf("导入完成：新建 %d 个，更新 %d 个，跳过 %d 个（手动节点），失败 %d 个，总计 %d 个",
 		createdCount, updatedCount, skippedCount, errorCount, importedCount), "info")
 
 	return importedCount
