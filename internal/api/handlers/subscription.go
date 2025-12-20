@@ -467,12 +467,108 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	}
 	now := utils.GetBeijingTime()
 	if sub.ExpireTime.After(now) {
-		days := int(sub.ExpireTime.Sub(now).Hours() / 24)
-		added := float64(days) * 1.0
-		user.Balance += added
-		db.Save(user)
-		db.Delete(&sub)
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "已转换为余额", "data": gin.H{"balance_added": added, "new_balance": user.Balance}})
+		// 计算剩余天数（向上取整）
+		diff := sub.ExpireTime.Sub(now)
+		days := int(diff.Hours() / 24)
+		if diff.Hours() > float64(days*24) {
+			days++ // 如果有小数部分，向上取整
+		}
+
+		// 计算折算金额
+		// 公式：折算金额 = 剩余天数 × (原套餐价格 ÷ 原套餐天数)
+		var originalPackagePrice float64 = 0
+		var originalPackageDays int = 0
+
+		// 方法1：从订阅的 PackageID 获取原套餐信息
+		if sub.PackageID != nil {
+			var pkg models.Package
+			if err := db.First(&pkg, *sub.PackageID).Error; err == nil {
+				originalPackagePrice = pkg.Price
+				originalPackageDays = pkg.DurationDays
+			}
+		}
+
+		// 方法2：如果订阅没有 PackageID（管理员直接开通），尝试从订单记录中查找
+		if originalPackageDays <= 0 {
+			// 计算订阅的总时长（从创建时间到到期时间）
+			totalDuration := int(sub.ExpireTime.Sub(sub.CreatedAt).Hours() / 24)
+			if totalDuration <= 0 {
+				totalDuration = 30 // 默认30天
+			}
+
+			// 查找用户最近一次购买该订阅相关的订单（已支付）
+			var recentOrder models.Order
+			if err := db.Where("user_id = ? AND status = ?", user.ID, "paid").
+				Order("created_at DESC").
+				First(&recentOrder).Error; err == nil {
+				// 找到了订单，使用订单的套餐信息
+				var pkg models.Package
+				if err := db.First(&pkg, recentOrder.PackageID).Error; err == nil {
+					originalPackagePrice = recentOrder.Amount // 使用订单原价（未折扣）
+					originalPackageDays = pkg.DurationDays
+				}
+			}
+
+			// 方法3：如果还是找不到，根据订阅总时长查找系统中相同时长的套餐
+			if originalPackageDays <= 0 {
+				var similarPackage models.Package
+				// 查找时长最接近的套餐（允许±5天的误差）
+				// 使用原生SQL计算差值并排序
+				if err := db.Where("duration_days BETWEEN ? AND ? AND is_active = ?",
+					totalDuration-5, totalDuration+5, true).
+					Order(fmt.Sprintf("ABS(duration_days - %d) ASC", totalDuration)).
+					First(&similarPackage).Error; err == nil {
+					originalPackagePrice = similarPackage.Price
+					originalPackageDays = similarPackage.DurationDays
+				}
+			}
+
+			// 方法4：如果仍然找不到，根据订阅总时长估算价格（使用默认每天1元）
+			if originalPackageDays <= 0 {
+				originalPackageDays = totalDuration
+				if originalPackageDays <= 0 {
+					originalPackageDays = 30 // 默认30天
+				}
+				originalPackagePrice = float64(originalPackageDays) * 1.0 // 默认每天1元
+			}
+		}
+
+		// 计算每天单价
+		dailyPrice := originalPackagePrice / float64(originalPackageDays)
+
+		// 计算折算金额
+		convertedAmount := float64(days) * dailyPrice
+
+		// 保留两位小数
+		convertedAmount = float64(int(convertedAmount*100+0.5)) / 100
+
+		user.Balance += convertedAmount
+		if err := db.Save(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新余额失败"})
+			return
+		}
+
+		// 删除订阅
+		if err := db.Delete(&sub).Error; err != nil {
+			utils.LogError("ConvertSubscriptionToBalance: failed to delete subscription", err, map[string]interface{}{
+				"user_id":         user.ID,
+				"subscription_id": sub.ID,
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "已转换为余额",
+			"data": gin.H{
+				"converted_amount":       convertedAmount,
+				"balance_added":          convertedAmount,
+				"new_balance":            user.Balance,
+				"remaining_days":         days,
+				"daily_price":            dailyPrice,
+				"original_package_price": originalPackagePrice,
+				"original_package_days":  originalPackageDays,
+			},
+		})
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订阅已过期"})
 	}

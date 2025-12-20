@@ -861,15 +861,27 @@ export default {
           const remainingValue = error.remainingValue || 0
           const errorMessage = error.message || '您当前有高级套餐，无法购买低等级套餐'
           
-          // 显示折算提示对话框
+          // 显示折算提示对话框（包含详细公式说明）
+          const conversionMessage = `${errorMessage}\n\n` +
+            `📊 折算详情：\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `剩余天数：${remainingDays} 天\n` +
+            `可折算金额：¥${remainingValue.toFixed(2)}\n\n` +
+            `📐 折算公式：\n` +
+            `折算金额 = 剩余天数 × (原套餐价格 ÷ 原套餐天数)\n\n` +
+            `⚠️ 重要提示：\n` +
+            `折算后，您的设备和时间都将清零，然后可以购买新套餐。\n` +
+            `折算操作不可撤销，请谨慎操作。`
+          
           ElMessageBox.confirm(
-            `${errorMessage}\n\n剩余天数：${remainingDays}天\n可折算金额：¥${remainingValue.toFixed(2)}\n\n折算后，您的设备和时间都将清零，然后可以购买新套餐。`,
+            conversionMessage,
             '需要折算套餐',
             {
               confirmButtonText: '立即折算',
               cancelButtonText: '取消',
               type: 'warning',
-              distinguishCancelAndClose: true
+              distinguishCancelAndClose: true,
+              dangerouslyUseHTMLString: false
             }
           ).then(async () => {
             // 用户确认折算
@@ -880,9 +892,25 @@ export default {
               
               if (response.data && response.data.success) {
                 const data = response.data.data || {}
-                ElMessage.success(
-                  `套餐折算成功！已返还 ¥${data.converted_amount?.toFixed(2) || remainingValue.toFixed(2)} 到您的余额`
-                )
+                const convertedAmount = data.converted_amount || data.balance_added || remainingValue
+                const dailyPrice = data.daily_price || 0
+                const originalPackagePrice = data.original_package_price || 0
+                const originalPackageDays = data.original_package_days || 0
+                
+                // 显示详细的折算成功信息
+                let successMessage = `套餐折算成功！\n\n`
+                successMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+                successMessage += `已返还金额：¥${convertedAmount.toFixed(2)}\n`
+                if (originalPackagePrice > 0 && originalPackageDays > 0) {
+                  successMessage += `原套餐价格：¥${originalPackagePrice.toFixed(2)}\n`
+                  successMessage += `原套餐天数：${originalPackageDays} 天\n`
+                  successMessage += `每天单价：¥${dailyPrice.toFixed(2)}\n`
+                  successMessage += `剩余天数：${data.remaining_days || remainingDays} 天\n`
+                  successMessage += `折算金额：¥${convertedAmount.toFixed(2)}\n`
+                }
+                successMessage += `当前余额：¥${data.new_balance?.toFixed(2) || '0.00'}\n`
+                
+                ElMessage.success(successMessage)
                 
                 await loadUserBalance()
                 
