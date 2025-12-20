@@ -3,12 +3,11 @@ package config_update
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -21,18 +20,73 @@ import (
 	"gorm.io/gorm"
 )
 
+// SubscriptionStatus 订阅状态枚举
+type SubscriptionStatus int
+
+const (
+	StatusNormal           SubscriptionStatus = iota
+	StatusExpired                             // 过期
+	StatusInactive                            // 失效（被禁用）
+	StatusUserDisabled                        // 用户被禁用
+	StatusDeviceOverLimit                     // 设备超限
+	StatusOldAddress                          // 旧订阅地址
+	StatusNotFound                            // 订阅不存在
+	StatusAccountAbnormal                     // 账户异常
+)
+
+// SubscriptionContext 订阅上下文，包含生成配置所需的所有信息
+type SubscriptionContext struct {
+	User           models.User
+	Subscription   models.Subscription
+	Proxies        []*ProxyNode
+	Status         SubscriptionStatus
+	ResetRecord    *models.SubscriptionReset // 如果是旧订阅地址，这里会有记录
+	CurrentDevices int
+	DeviceLimit    int
+}
+
 // ConfigUpdateService 配置更新服务
 type ConfigUpdateService struct {
 	db           *gorm.DB
 	isRunning    bool
 	runningMutex sync.Mutex
+	// 缓存站点URL，避免频繁查询
+	siteURL string
+	// 缓存客服QQ
+	supportQQ string
 }
 
 // NewConfigUpdateService 创建配置更新服务
 func NewConfigUpdateService() *ConfigUpdateService {
-	return &ConfigUpdateService{
+	service := &ConfigUpdateService{
 		db: database.GetDB(),
 	}
+	// 初始化缓存配置
+	service.refreshSystemConfig()
+	return service
+}
+
+// refreshSystemConfig 刷新系统配置缓存
+func (s *ConfigUpdateService) refreshSystemConfig() {
+	// 获取网站域名
+	var config models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
+		s.siteURL = strings.TrimSpace(config.Value)
+		// 确保没有协议前缀
+		s.siteURL = strings.TrimPrefix(s.siteURL, "http://")
+		s.siteURL = strings.TrimPrefix(s.siteURL, "https://")
+		s.siteURL = strings.TrimRight(s.siteURL, "/")
+	} else {
+		// 尝试其他配置项
+		if err := s.db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil && config.Value != "" {
+			s.siteURL = strings.TrimSpace(config.Value)
+		} else {
+			s.siteURL = "请在系统设置中配置域名"
+		}
+	}
+
+	// 获取客服QQ
+	s.supportQQ = "3219904322"
 }
 
 // FetchNodesFromURLs 从URL列表获取节点
@@ -195,25 +249,372 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 }
 
 // GenerateClashConfig 生成 Clash 配置
-func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL string) (string, error) {
-	// 获取节点
-	proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit, err := s.getNodesForSubscription(userID, subscriptionURL)
+func (s *ConfigUpdateService) GenerateClashConfig(token string, clientIP string, userAgent string) (string, error) {
+	// 1. 获取订阅上下文（统一入口）
+	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
+
+	// 2. 如果状态不正常，返回错误节点配置
+	if ctx.Status != StatusNormal {
+		errorNodes := s.generateErrorNodes(ctx.Status, ctx)
+		return s.generateClashYAML(errorNodes), nil
+	}
+
+	// 3. 正常状态：添加信息节点到真实节点前
+	finalNodes := s.addInfoNodes(ctx.Proxies, ctx)
+
+	// 4. 生成 YAML
+	return s.generateClashYAML(finalNodes), nil
+}
+
+// GenerateUniversalConfig 生成通用订阅配置 (V2Ray/SSR/Base64)
+// format: "base64" (普通通用订阅), "ssr" (SSR订阅)
+func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP string, userAgent string, format string) (string, error) {
+	// 1. 获取订阅上下文
+	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
+
+	var nodesToExport []*ProxyNode
+
+	// 2. 根据状态决定使用真实节点还是错误节点
+	if ctx.Status != StatusNormal {
+		nodesToExport = s.generateErrorNodes(ctx.Status, ctx)
+	} else {
+		nodesToExport = s.addInfoNodes(ctx.Proxies, ctx)
+	}
+
+	// 3. 生成链接列表
+	var links []string
+	for _, node := range nodesToExport {
+		var link string
+		switch format {
+		case "ssr":
+			if node.Type == "ssr" {
+				link = s.nodeToSSRLink(node)
+			} else {
+				// 非 SSR 节点在 SSR 订阅中尽量转换，或者忽略
+				// 为了兼容性，我们尝试转换为通用链接
+				link = s.nodeToLink(node)
+			}
+		default:
+			link = s.nodeToLink(node)
+		}
+
+		if link != "" {
+			links = append(links, link)
+		}
+	}
+
+	// 4. Base64 编码
+	return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))), nil
+}
+
+// getSubscriptionContext 获取订阅上下文，统一处理所有查询和逻辑
+func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP string, userAgent string) *SubscriptionContext {
+	ctx := &SubscriptionContext{
+		Status: StatusNotFound,
+	}
+
+	// 1. 查找订阅
+	var sub models.Subscription
+	if err := s.db.Where("subscription_url = ?", token).First(&sub).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 检查是否是旧订阅地址
+			var reset models.SubscriptionReset
+			if err := s.db.Where("old_subscription_url = ?", token).First(&reset).Error; err == nil {
+				ctx.Status = StatusOldAddress
+				ctx.ResetRecord = &reset
+				return ctx
+			}
+		}
+		return ctx // StatusNotFound
+	}
+	ctx.Subscription = sub
+
+	// 2. 查找用户
+	var user models.User
+	if err := s.db.First(&user, sub.UserID).Error; err != nil {
+		return ctx // StatusNotFound (User missing)
+	}
+	ctx.User = user
+
+	// 3. 检查用户状态
+	if !user.IsActive {
+		ctx.Status = StatusUserDisabled
+		return ctx
+	}
+
+	// 4. 检查订阅状态
+	if !sub.IsActive || sub.Status != "active" {
+		ctx.Status = StatusInactive
+		return ctx
+	}
+
+	// 5. 检查过期时间
+	now := time.Now()
+	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now) {
+		ctx.Status = StatusExpired
+		return ctx
+	}
+
+	// 6. 检查设备限制
+	var currentDevices int64
+	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&currentDevices)
+	ctx.CurrentDevices = int(currentDevices)
+	ctx.DeviceLimit = sub.DeviceLimit
+
+	// 检查是否为新设备且超限
+	// 只有当设备限制 > 0 时才检查
+	if sub.DeviceLimit > 0 && int(currentDevices) >= sub.DeviceLimit {
+		// 检查当前设备是否已在列表中
+		var device models.Device
+		isKnownDevice := false
+		// 尝试根据IP和UA查找设备（这只是一个近似检查）
+		// 实际生产环境应该有设备指纹
+		if err := s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&device).Error; err == nil {
+			isKnownDevice = true
+		}
+
+		if !isKnownDevice {
+			ctx.Status = StatusDeviceOverLimit
+			return ctx
+		}
+	} else if sub.DeviceLimit == 0 {
+		// 设备限制为 0，禁止任何设备连接
+		ctx.Status = StatusDeviceOverLimit
+		return ctx
+	}
+
+	// 7. 获取真实节点
+	proxies, err := s.fetchProxiesForUser(user, sub)
 	if err != nil {
-		return "", err
+		// 获取节点失败，暂且认为无节点
+		ctx.Proxies = []*ProxyNode{}
+	} else {
+		ctx.Proxies = proxies
 	}
 
-	// 如果订阅过期或失效，不返回节点信息
-	// 设备超限的情况由 validateSubscription 处理（只阻止新设备，已存在的设备仍可使用）
-	// 这些情况应该在 subscription_config.go 中处理，但这里作为双重保险
-	if isExpired || isInactive {
-		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v", isExpired, isInactive)
+	ctx.Status = StatusNormal
+	return ctx
+}
+
+// fetchProxiesForUser 获取用户的可用节点
+func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.Subscription) ([]*ProxyNode, error) {
+	// 查询用户可用的节点
+	var nodes []models.Node
+
+	query := s.db.Model(&models.Node{}).Where("is_active = ?", true)
+
+	// 获取用户等级
+	// userLevel := user.UserLevelID
+
+	// 过滤掉超时节点
+	query = query.Where("status != ?", "timeout")
+
+	if err := query.Find(&nodes).Error; err != nil {
+		return nil, err
 	}
 
-	// 添加信息节点和提醒节点
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
+	var proxies []*ProxyNode
 
-	// 生成 Clash YAML 配置
-	return s.generateClashYAML(proxies), nil
+	// 处理节点去重和转换
+	processedNodes := make(map[string]bool)
+
+	for _, node := range nodes {
+		// 权限检查
+		// if node.Level > int(userLevel.Int64) {
+		// 	continue
+		// }
+
+		// 转换节点
+		proxyNodes, err := s.parseNodeToProxies(&node)
+		if err != nil {
+			continue
+		}
+
+		for _, proxy := range proxyNodes {
+			// 简单的去重 key
+			key := fmt.Sprintf("%s|%s|%d", proxy.Type, proxy.Server, proxy.Port)
+			if processedNodes[key] {
+				continue
+			}
+			processedNodes[key] = true
+			proxies = append(proxies, proxy)
+		}
+	}
+
+	// 获取专属节点
+	var customNodes []models.CustomNode
+	if err := s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
+		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", user.ID, true).
+		Find(&customNodes).Error; err == nil {
+		for _, cn := range customNodes {
+			// 检查过期时间
+			now := time.Now()
+			isExpired := false
+			if cn.FollowUserExpire {
+				if user.SpecialNodeExpiresAt.Valid {
+					isExpired = user.SpecialNodeExpiresAt.Time.Before(now)
+				} else {
+					isExpired = sub.ExpireTime.Before(now)
+				}
+			} else if cn.ExpireTime != nil {
+				isExpired = cn.ExpireTime.Before(now)
+			}
+
+			if isExpired || cn.Status == "timeout" {
+				continue
+			}
+
+			// 构造临时 Node 对象进行解析
+			displayName := cn.DisplayName
+			if displayName == "" {
+				displayName = "专线-" + cn.Name
+			}
+
+			// 直接解析配置
+			if cn.Config != "" {
+				var proxyNode ProxyNode
+				if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err == nil {
+					proxyNode.Name = displayName
+					proxies = append(proxies, &proxyNode)
+				}
+			}
+		}
+	}
+
+	return proxies, nil
+}
+
+// parseNodeToProxies 解析数据库节点模型为代理节点对象
+func (s *ConfigUpdateService) parseNodeToProxies(node *models.Node) ([]*ProxyNode, error) {
+	// 如果配置中包含详细信息，优先使用
+	if node.Config != nil && *node.Config != "" {
+		var configProxy ProxyNode
+		if err := json.Unmarshal([]byte(*node.Config), &configProxy); err == nil {
+			// 保留数据库中的名称
+			configProxy.Name = node.Name
+			return []*ProxyNode{&configProxy}, nil
+		}
+	}
+
+	// 尝试解析 Link (如果存在且不在 Config 中)
+	// 注意：models.Node 目前没有 Link 字段，所以这里主要依赖 Config
+	// 如果需要支持 Link，需要在 models.Node 中添加 Link 字段或从其他地方获取
+	
+	return nil, fmt.Errorf("节点配置为空")
+}
+
+// generateErrorNodes 根据状态生成 4 个错误提示节点
+func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx *SubscriptionContext) []*ProxyNode {
+	var reason, solution string
+
+	switch status {
+	case StatusExpired:
+		reason = "订阅已过期"
+		solution = fmt.Sprintf("请前往官网续费 (过期时间: %s)", ctx.Subscription.ExpireTime.Format("2006-01-02"))
+	case StatusInactive:
+		reason = "订阅已失效"
+		solution = "请联系管理员检查订阅状态"
+	case StatusUserDisabled:
+		reason = "账户已被禁用"
+		solution = "您的账户已被管理员禁用，请联系客服"
+	case StatusDeviceOverLimit:
+		reason = "设备数量超限"
+		solution = fmt.Sprintf("当前设备 %d/%d，请在官网删除不使用的设备", ctx.CurrentDevices, ctx.DeviceLimit)
+	case StatusOldAddress:
+		reason = "订阅地址已变更"
+		solution = "请登录官网获取最新的订阅地址"
+	case StatusNotFound:
+		reason = "订阅不存在"
+		solution = "请检查订阅链接是否正确，或重新复制"
+	default:
+		reason = "账户异常"
+		solution = "检测到账户异常，请联系管理员"
+	}
+
+	// 确保 siteURL 不为空
+	if s.siteURL == "" {
+		s.refreshSystemConfig()
+	}
+
+	// 创建4个提示节点
+	// 使用 ss 类型，配置无效信息，确保在所有客户端都能显示且无法连接
+	return []*ProxyNode{
+		{
+			Name:     fmt.Sprintf("📢 官网: %s", s.siteURL),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "error",
+		},
+		{
+			Name:     fmt.Sprintf("❌ 原因: %s", reason),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "error",
+		},
+		{
+			Name:     fmt.Sprintf("💡 解决: %s", solution),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "error",
+		},
+		{
+			Name:     fmt.Sprintf("💬 客服QQ: %s", s.supportQQ),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "error",
+		},
+	}
+}
+
+// addInfoNodes 添加信息节点（流量、到期时间等）到真实节点列表前
+func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *SubscriptionContext) []*ProxyNode {
+	// 刷新配置确保是最新的
+	if s.siteURL == "" {
+		s.refreshSystemConfig()
+	}
+
+	expireTimeStr := "无限期"
+	if !ctx.Subscription.ExpireTime.IsZero() {
+		expireTimeStr = ctx.Subscription.ExpireTime.Format("2006-01-02")
+	}
+
+	infoNodes := []*ProxyNode{
+		{
+			Name:     fmt.Sprintf("📢 官网: %s", s.siteURL),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "info",
+		},
+		{
+			Name:     fmt.Sprintf("⏰ 到期: %s", expireTimeStr),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "info",
+		},
+		{
+			Name:     fmt.Sprintf("📱 设备: %d/%d", ctx.CurrentDevices, ctx.DeviceLimit),
+			Type:     "ss",
+			Server:   "127.0.0.1",
+			Port:     1234,
+			Cipher:   "aes-128-gcm",
+			Password: "info",
+		},
+	}
+
+	// 将信息节点插入到最前面
+	return append(infoNodes, proxies...)
 }
 
 // generateClashYAML 生成 Clash YAML 配置
@@ -221,8 +622,6 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	var builder strings.Builder
 
 	// 过滤掉 Clash 不支持的节点类型
-	// Clash 标准版不支持：naive, anytls
-	// Clash Verge/Meta 支持更多协议，包括 ssr
 	supportedTypes := map[string]bool{
 		"vmess":     true,
 		"vless":     true,
@@ -240,7 +639,6 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		if supportedTypes[proxy.Type] {
 			filteredProxies = append(filteredProxies, proxy)
 		}
-		// 不支持的节点类型（naive, anytls, ssr）会被忽略
 	}
 
 	// 写入基础配置
@@ -251,13 +649,13 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	builder.WriteString("log-level: info\n")
 	builder.WriteString("external-controller: 127.0.0.1:9090\n\n")
 
-	// 写入代理节点（只包含支持的节点）
+	// 写入代理节点
 	builder.WriteString("proxies:\n")
 	for _, proxy := range filteredProxies {
 		builder.WriteString(s.nodeToYAML(proxy, 2))
 	}
 
-	// 生成代理名称列表（转义后的名称，只包含支持的节点）
+	// 生成代理名称列表
 	var proxyNames []string
 	for _, proxy := range filteredProxies {
 		escapedName := s.escapeYAMLString(proxy.Name)
@@ -270,9 +668,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	builder.WriteString("    type: select\n")
 	builder.WriteString("    proxies:\n")
 	builder.WriteString("      - \"♻️ 自动选择\"\n")
-	builder.WriteString("      - DIRECT\n")
 	for _, name := range proxyNames {
-		// 使用转义后的名称
 		builder.WriteString(fmt.Sprintf("      - %s\n", name))
 	}
 
@@ -286,36 +682,23 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		builder.WriteString(fmt.Sprintf("      - %s\n", name))
 	}
 
-	builder.WriteString("  - name: \"📢 失败切换\"\n")
-	builder.WriteString("    type: fallback\n")
-	builder.WriteString("    url: http://www.gstatic.com/generate_204\n")
-	builder.WriteString("    interval: 300\n")
-	builder.WriteString("    proxies:\n")
-	for _, name := range proxyNames {
-		builder.WriteString(fmt.Sprintf("      - %s\n", name))
-	}
-
 	// 写入规则
 	builder.WriteString("\nrules:\n")
 	builder.WriteString("  - DOMAIN-SUFFIX,local,DIRECT\n")
 	builder.WriteString("  - IP-CIDR,127.0.0.0/8,DIRECT\n")
 	builder.WriteString("  - IP-CIDR,172.16.0.0/12,DIRECT\n")
 	builder.WriteString("  - IP-CIDR,192.168.0.0/16,DIRECT\n")
-	builder.WriteString("  - IP-CIDR,10.0.0.0/8,DIRECT\n")
 	builder.WriteString("  - GEOIP,CN,DIRECT\n")
 	builder.WriteString("  - MATCH,🚀 节点选择\n")
 
 	return builder.String()
 }
 
-// escapeYAMLString 转义 YAML 字符串，确保特殊字符不会导致解析错误
+// escapeYAMLString 转义 YAML 字符串
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
-	// 如果字符串为空，直接返回
 	if str == "" {
 		return "\"\""
 	}
-
-	// 检查是否需要引号包裹（包含特殊字符）
 	needsQuotes := false
 	specialChars := []string{":", "\"", "'", "\n", "\r", "\t", "#", "@", "&", "*", "?", "|", ">", "!", "%", "`", "[", "]", "{", "}", ","}
 	for _, char := range specialChars {
@@ -324,26 +707,15 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 			break
 		}
 	}
-
-	// 如果字符串以空格开头或结尾，也需要引号
 	if strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") {
 		needsQuotes = true
 	}
-
 	if needsQuotes {
-		// 转义反斜杠（必须先转义）
 		escaped := strings.ReplaceAll(str, "\\", "\\\\")
-		// 转义双引号
 		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
-		// 转义换行符
 		escaped = strings.ReplaceAll(escaped, "\n", "\\n")
-		// 转义回车符
-		escaped = strings.ReplaceAll(escaped, "\r", "\\r")
-		// 转义制表符
-		escaped = strings.ReplaceAll(escaped, "\t", "\\t")
 		return fmt.Sprintf("\"%s\"", escaped)
 	}
-
 	return str
 }
 
@@ -352,170 +724,100 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	indentStr := strings.Repeat(" ", indent)
 	var builder strings.Builder
 
-	// 转义节点名称，确保 YAML 解析不会出错
 	escapedName := s.escapeYAMLString(node.Name)
-
-	// 信息节点（direct 类型）特殊处理
-	if node.Type == "direct" && node.Server == "127.0.0.1" {
-		// 对于信息节点，创建一个不可用的节点，但名称会显示信息
-		builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, escapedName))
-		builder.WriteString(fmt.Sprintf("%s  type: direct\n", indentStr))
-		return builder.String()
-	}
 
 	builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, escapedName))
 	builder.WriteString(fmt.Sprintf("%s  type: %s\n", indentStr, node.Type))
 	builder.WriteString(fmt.Sprintf("%s  server: %s\n", indentStr, node.Server))
 	builder.WriteString(fmt.Sprintf("%s  port: %d\n", indentStr, node.Port))
 
-	// 根据节点类型处理必需字段
+	// 根据类型处理字段
 	switch node.Type {
+	case "ss":
+		if node.Cipher != "" {
+			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
+		}
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
 	case "vmess":
-		// VMess 节点必须包含 uuid 和 alterId
 		if node.UUID != "" {
 			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
 		}
-		// alterId 在 Options 中处理，确保总是存在
 		if alterId, ok := node.Options["alterId"]; !ok {
-			node.Options["alterId"] = 0
+			builder.WriteString(fmt.Sprintf("%s  alterId: 0\n", indentStr))
 		} else {
-			if _, ok := alterId.(int); !ok {
-				if alterIdFloat, ok := alterId.(float64); ok {
-					node.Options["alterId"] = int(alterIdFloat)
-				} else {
-					node.Options["alterId"] = 0
-				}
-			}
+			builder.WriteString(fmt.Sprintf("%s  alterId: %v\n", indentStr, alterId))
 		}
-		// VMess 默认 cipher 为 auto
 		if node.Cipher == "" {
 			node.Cipher = "auto"
 		}
 		builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
 	case "vless":
-		// VLESS 节点必须包含 uuid
 		if node.UUID != "" {
 			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
 		}
-		// VLESS 需要 encryption 字段（默认为 none）
-		if encryption, ok := node.Options["encryption"]; !ok || encryption == "" {
-			node.Options["encryption"] = "none"
-		}
 	case "trojan":
-		// Trojan 节点必须包含 password
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	case "ss":
-		// Shadowsocks 节点必须包含 cipher 和 password
-		if node.Cipher != "" {
-			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
-		}
 		if node.Password != "" {
 			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
 		}
 	case "ssr":
-		// SSR 节点在 Clash 中需要特殊处理，但 Clash Meta 支持
 		if node.Cipher != "" {
 			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
 		}
 		if node.Password != "" {
 			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
 		}
-	case "hysteria", "hysteria2":
-		// Hysteria 节点需要 password
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	case "tuic":
-		// TUIC 节点需要 uuid 和 password
-		if node.UUID != "" {
-			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
-		}
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	case "naive":
-		// Naive 节点需要 username 和 password（使用 UUID 字段存储 username）
-		if node.UUID != "" {
-			builder.WriteString(fmt.Sprintf("%s  username: %s\n", indentStr, node.UUID))
-		}
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	case "anytls":
-		// Anytls 节点需要 password（使用 UUID 字段存储）
-		if node.UUID != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.UUID))
-		}
-	default:
-		// 其他节点类型
-		if node.UUID != "" {
-			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
-		}
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-		if node.Cipher != "" {
-			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
-		}
 	}
 
-	// 网络类型（除了 tcp 和默认值）
-	if node.Network != "" && node.Network != "tcp" {
-		builder.WriteString(fmt.Sprintf("%s  network: %s\n", indentStr, node.Network))
-	}
-
-	// TLS 配置
+	// 额外选项
 	if node.TLS {
 		builder.WriteString(fmt.Sprintf("%s  tls: true\n", indentStr))
 	}
-
-	// UDP 配置
+	if node.Network != "" && node.Network != "tcp" {
+		builder.WriteString(fmt.Sprintf("%s  network: %s\n", indentStr, node.Network))
+	}
 	if node.UDP {
 		builder.WriteString(fmt.Sprintf("%s  udp: true\n", indentStr))
 	}
 
-	// 写入额外选项（需要特殊处理 map 和 slice）
-	// 确保 Options 中的字段与基本字段使用相同的缩进（indentStr + "  "）
+	// 写入 Options
 	optionsIndentStr := indentStr + "  "
 	for key, value := range node.Options {
+		// 跳过已处理字段
+		if key == "alterId" && node.Type == "vmess" {
+			continue
+		}
 		s.writeYAMLValue(&builder, optionsIndentStr, key, value, 2)
 	}
 
 	return builder.String()
 }
 
-// writeYAMLValue 递归写入 YAML 值（支持 map、slice、基本类型）
+// writeYAMLValue 递归写入 YAML 值
 func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr, key string, value interface{}, indentLevel int) {
 	escapedKey := s.escapeYAMLString(key)
-	
+
 	switch v := value.(type) {
 	case map[string]interface{}:
-		// Map 类型
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		// 子项的缩进：在 indentStr 基础上增加 2 个空格
 		subIndentStr := indentStr + "  "
 		for k, val := range v {
 			// 特殊处理 http-opts：path 和 headers[Host] 必须是数组
 			if key == "http-opts" {
 				if k == "path" {
-					// path 必须是数组
 					escapedK := s.escapeYAMLString(k)
 					builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
 					subSubIndentStr := subIndentStr + "  "
 					if pathStr, ok := val.(string); ok {
-						// 如果是字符串，转换为数组
 						escapedPath := s.escapeYAMLString(pathStr)
 						builder.WriteString(fmt.Sprintf("%s- %s\n", subSubIndentStr, escapedPath))
 					} else if pathSlice, ok := val.([]string); ok {
-						// 如果已经是数组，直接输出
 						for _, p := range pathSlice {
 							escapedPath := s.escapeYAMLString(p)
 							builder.WriteString(fmt.Sprintf("%s- %s\n", subSubIndentStr, escapedPath))
 						}
 					} else if pathSlice, ok := val.([]interface{}); ok {
-						// 如果是 []interface{}，转换为字符串数组
 						for _, p := range pathSlice {
 							escapedPath := s.escapeYAMLString(fmt.Sprintf("%v", p))
 							builder.WriteString(fmt.Sprintf("%s- %s\n", subSubIndentStr, escapedPath))
@@ -523,7 +825,6 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 					}
 					continue
 				} else if k == "headers" {
-					// headers 中的 Host 必须是数组
 					escapedK := s.escapeYAMLString(k)
 					builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
 					subSubIndentStr := subIndentStr + "  "
@@ -533,42 +834,28 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 							builder.WriteString(fmt.Sprintf("%s%s:\n", subSubIndentStr, escapedHK))
 							subSubSubIndentStr := subSubIndentStr + "  "
 							if hostStr, ok := hv.(string); ok {
-								// 如果是字符串，转换为数组
 								escapedHost := s.escapeYAMLString(hostStr)
 								builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
 							} else if hostSlice, ok := hv.([]string); ok {
-								// 如果已经是数组，直接输出
 								for _, h := range hostSlice {
 									escapedHost := s.escapeYAMLString(h)
 									builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
 								}
 							} else if hostSlice, ok := hv.([]interface{}); ok {
-								// 如果是 []interface{}，转换为字符串数组
 								for _, h := range hostSlice {
 									escapedHost := s.escapeYAMLString(fmt.Sprintf("%v", h))
 									builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
 								}
 							}
 						}
-					} else if headersMap, ok := val.(map[string]string); ok {
-						// 如果是 map[string]string，转换为数组格式
-						for hk, hv := range headersMap {
-							escapedHK := s.escapeYAMLString(hk)
-							builder.WriteString(fmt.Sprintf("%s%s:\n", subSubIndentStr, escapedHK))
-							subSubSubIndentStr := subSubIndentStr + "  "
-							escapedHost := s.escapeYAMLString(hv)
-							builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
-						}
 					}
 					continue
 				}
 			}
-			
-			// 检查 val 是否是 map[string]string（如 ws-opts 中的 headers）
+
 			if strMap, ok := val.(map[string]string); ok {
 				escapedK := s.escapeYAMLString(k)
 				builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
-				// headers 的子项再增加 2 个空格
 				subSubIndentStr := subIndentStr + "  "
 				for k2, v2 := range strMap {
 					escapedK2 := s.escapeYAMLString(k2)
@@ -579,20 +866,8 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 				s.writeYAMLValue(builder, subIndentStr, k, val, indentLevel+1)
 			}
 		}
-	case map[string]string:
-		// Map[string]string 类型（如 ws-opts 中的 headers）
-		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		// 子项的缩进：在 indentStr 基础上增加 2 个空格
-		subIndentStr := indentStr + "  "
-		for k, val := range v {
-			escapedK := s.escapeYAMLString(k)
-			escapedVal := s.escapeYAMLString(val)
-			builder.WriteString(fmt.Sprintf("%s%s: %s\n", subIndentStr, escapedK, escapedVal))
-		}
 	case []interface{}:
-		// Slice 类型
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		// 数组项的缩进：在 indentStr 基础上增加 2 个空格
 		subIndentStr := indentStr + "  "
 		for _, item := range v {
 			builder.WriteString(fmt.Sprintf("%s- ", subIndentStr))
@@ -600,85 +875,162 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 			builder.WriteString("\n")
 		}
 	case []string:
-		// String slice 类型
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		// 数组项的缩进：在 indentStr 基础上增加 2 个空格
 		subIndentStr := indentStr + "  "
 		for _, item := range v {
 			escapedItem := s.escapeYAMLString(item)
 			builder.WriteString(fmt.Sprintf("%s- %s\n", subIndentStr, escapedItem))
 		}
-	case bool:
-		// 布尔类型
-		builder.WriteString(fmt.Sprintf("%s%s: %v\n", indentStr, escapedKey, v))
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		// 整数类型
-		builder.WriteString(fmt.Sprintf("%s%s: %v\n", indentStr, escapedKey, v))
-	case float32, float64:
-		// 浮点数类型
-		builder.WriteString(fmt.Sprintf("%s%s: %v\n", indentStr, escapedKey, v))
-	case string:
-		// 字符串类型
-		escapedVal := s.escapeYAMLString(v)
-		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, escapedVal))
-	case nil:
-		// nil 值
-		builder.WriteString(fmt.Sprintf("%s%s: null\n", indentStr, escapedKey))
 	default:
-		// 其他类型，尝试转换为字符串
 		escapedVal := s.escapeYAMLString(fmt.Sprintf("%v", v))
 		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, escapedVal))
 	}
 }
 
-// writeYAMLValueInline 内联写入 YAML 值（用于数组项）
+// writeYAMLValueInline 内联写入 YAML 值
 func (s *ConfigUpdateService) writeYAMLValueInline(builder *strings.Builder, value interface{}) {
 	switch v := value.(type) {
-	case map[string]interface{}:
-		// Map 类型，需要多行格式
-		builder.WriteString("\n")
-		indentStr := "      " // 数组项内的缩进
-		for k, val := range v {
-			escapedKey := s.escapeYAMLString(k)
-			builder.WriteString(fmt.Sprintf("%s%s: ", indentStr, escapedKey))
-			s.writeYAMLValueInline(builder, val)
-			builder.WriteString("\n")
-		}
 	case string:
-		escapedVal := s.escapeYAMLString(v)
-		builder.WriteString(escapedVal)
-	case bool:
+		builder.WriteString(s.escapeYAMLString(v))
+	case int, int64, float64, bool:
 		builder.WriteString(fmt.Sprintf("%v", v))
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-		builder.WriteString(fmt.Sprintf("%v", v))
-	case nil:
-		builder.WriteString("null")
 	default:
-		escapedVal := s.escapeYAMLString(fmt.Sprintf("%v", v))
-		builder.WriteString(escapedVal)
+		builder.WriteString(s.escapeYAMLString(fmt.Sprintf("%v", v)))
 	}
 }
 
-// UpdateSubscriptionConfig 更新订阅配置
+// nodeToLink 将节点转换为通用链接
+func (s *ConfigUpdateService) nodeToLink(node *ProxyNode) string {
+	switch node.Type {
+	case "vmess":
+		return s.vmessToLink(node)
+	case "vless":
+		return s.vlessToLink(node)
+	case "trojan":
+		return s.trojanToLink(node)
+	case "ss":
+		return s.shadowsocksToLink(node)
+	case "ssr":
+		return s.nodeToSSRLink(node)
+	default:
+		return ""
+	}
+}
+
+// nodeToSSRLink 将节点转换为 SSR 链接
+func (s *ConfigUpdateService) nodeToSSRLink(node *ProxyNode) string {
+	if node.Type != "ssr" && node.Type != "ss" {
+		return ""
+	}
+	
+	server := node.Server
+	port := node.Port
+	protocol := getString(node.Options, "protocol", "origin")
+	method := node.Cipher
+	obfs := getString(node.Options, "obfs", "plain")
+	password := base64.RawURLEncoding.EncodeToString([]byte(node.Password))
+	
+	obfsparam := base64.RawURLEncoding.EncodeToString([]byte(getString(node.Options, "obfs-param", "")))
+	protoparam := base64.RawURLEncoding.EncodeToString([]byte(getString(node.Options, "protocol-param", "")))
+	remarks := base64.RawURLEncoding.EncodeToString([]byte(node.Name))
+	group := base64.RawURLEncoding.EncodeToString([]byte("GoWeb"))
+	
+	ssrStr := fmt.Sprintf("%s:%d:%s:%s:%s:%s/?obfsparam=%s&protoparam=%s&remarks=%s&group=%s",
+		server, port, protocol, method, obfs, password,
+		obfsparam, protoparam, remarks, group)
+		
+	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(ssrStr))
+}
+
+
+// UpdateSubscriptionConfig 更新订阅配置 (保留用于兼容性，但逻辑简化)
 func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) error {
-	// 获取订阅信息
-	var subscription models.Subscription
-	if err := s.db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		return fmt.Errorf("订阅不存在: %v", err)
+	// 简单的验证存在性
+	var count int64
+	s.db.Model(&models.Subscription{}).Where("subscription_url = ?", subscriptionURL).Count(&count)
+	if count == 0 {
+		return fmt.Errorf("订阅不存在")
 	}
-
-	// 生成新配置
-	config, err := s.GenerateClashConfig(subscription.UserID, subscriptionURL)
-	if err != nil {
-		return fmt.Errorf("生成配置失败: %v", err)
-	}
-
-	// 配置是实时生成的，这里主要是验证配置生成是否成功
-	if utils.AppLogger != nil {
-		utils.AppLogger.Info("订阅配置已更新: %s, 配置长度: %d 字符", subscriptionURL, len(config))
-	}
-
 	return nil
+}
+
+// vmessToLink 将 VMess 节点转换为链接
+func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
+	data := map[string]interface{}{
+		"v":    "2",
+		"ps":   proxy.Name,
+		"add":  proxy.Server,
+		"port": proxy.Port,
+		"id":   proxy.UUID,
+		"net":  proxy.Network,
+		"type": "none",
+	}
+
+	if proxy.TLS {
+		data["tls"] = "tls"
+	}
+
+	if proxy.Options != nil {
+		if wsOpts, ok := proxy.Options["ws-opts"].(map[string]interface{}); ok {
+			if path, ok := wsOpts["path"].(string); ok {
+				data["path"] = path
+			}
+			if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
+				if host, ok := headers["Host"].(string); ok {
+					data["host"] = host
+				}
+			}
+		}
+	}
+
+	jsonData, _ := json.Marshal(data)
+	encoded := base64.StdEncoding.EncodeToString(jsonData)
+	return "vmess://" + encoded
+}
+
+// vlessToLink 将 VLESS 节点转换为链接
+func (s *ConfigUpdateService) vlessToLink(proxy *ProxyNode) string {
+	u := &url.URL{
+		Scheme:   "vless",
+		User:     url.User(proxy.UUID),
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+
+	q := url.Values{}
+	if proxy.Network != "" {
+		q.Set("type", proxy.Network)
+	}
+	if proxy.TLS {
+		q.Set("security", "tls")
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// trojanToLink 将 Trojan 节点转换为链接
+func (s *ConfigUpdateService) trojanToLink(proxy *ProxyNode) string {
+	u := &url.URL{
+		Scheme:   "trojan",
+		User:     url.User(proxy.Password),
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+	return u.String()
+}
+
+// shadowsocksToLink 将 Shadowsocks 节点转换为链接
+func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
+	auth := fmt.Sprintf("%s:%s", proxy.Cipher, proxy.Password)
+	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
+	u := &url.URL{
+		Scheme:   "ss",
+		User:     url.User(encoded),
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+	return u.String()
 }
 
 // RunUpdateTask 执行配置更新任务
@@ -686,7 +1038,6 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	s.runningMutex.Lock()
 	if s.isRunning {
 		s.runningMutex.Unlock()
-		s.addLog("任务已在运行中", "warning")
 		return fmt.Errorf("任务已在运行中")
 	}
 	s.isRunning = true
@@ -698,61 +1049,31 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		s.runningMutex.Unlock()
 	}()
 
-	s.addLog("开始执行配置更新任务", "info")
-
 	// 获取配置
 	config, err := s.getConfig()
 	if err != nil {
-		s.addLog(fmt.Sprintf("获取配置失败: %v", err), "error")
 		return err
 	}
 
 	urls := config["urls"].([]string)
 	if len(urls) == 0 {
-		s.addLog("未配置节点源URL", "error")
 		return fmt.Errorf("未配置节点源URL")
 	}
 
 	// 1. 获取节点
-	s.addLog(fmt.Sprintf("开始下载节点，共 %d 个源", len(urls)), "info")
 	nodes, err := s.FetchNodesFromURLs(urls)
 	if err != nil {
-		s.addLog(fmt.Sprintf("获取节点失败: %v", err), "error")
 		return err
 	}
 
 	if len(nodes) == 0 {
-		s.addLog("未获取到有效节点", "error")
 		return fmt.Errorf("未获取到有效节点")
 	}
 
-	s.addLog(fmt.Sprintf("成功获取 %d 个节点", len(nodes)), "success")
-
-	// 2. 生成配置
-	targetDir := config["target_dir"].(string)
-	if !filepath.IsAbs(targetDir) {
-		// 相对路径，转换为绝对路径
-		wd, _ := os.Getwd()
-		targetDir = filepath.Join(wd, strings.TrimPrefix(targetDir, "./"))
-	}
-
-	// 确保目录存在
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		s.addLog(fmt.Sprintf("创建目录失败: %v", err), "error")
-		return err
-	}
-
-	filterKeywords := []string{}
-	if keywords, ok := config["filter_keywords"].([]string); ok {
-		filterKeywords = keywords
-	}
-
-	// 解析节点为代理节点
+	// 2. 解析节点并导入数据库
 	var proxies []*ProxyNode
 	seenKeys := make(map[string]bool)
 	nameCounter := make(map[string]int)
-	parseErrorCount := 0
-	var parseErrors []string
 
 	for _, nodeInfo := range nodes {
 		link, ok := nodeInfo["url"].(string)
@@ -762,41 +1083,11 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		node, err := ParseNodeLink(link)
 		if err != nil {
-			parseErrorCount++
-			// 记录前10个解析失败的节点，避免日志过长
-			if parseErrorCount <= 10 {
-				// 截取链接前100个字符，避免日志过长
-				linkPreview := link
-				if len(linkPreview) > 100 {
-					linkPreview = linkPreview[:100] + "..."
-				}
-				parseErrors = append(parseErrors, fmt.Sprintf("链接: %s, 错误: %v", linkPreview, err))
-			}
 			continue
-		}
-
-		// 过滤关键词
-		if len(filterKeywords) > 0 {
-			shouldSkip := false
-			for _, keyword := range filterKeywords {
-				if strings.Contains(node.Name, keyword) {
-					shouldSkip = true
-					break
-				}
-			}
-			if shouldSkip {
-				continue
-			}
 		}
 
 		// 生成去重键
 		key := fmt.Sprintf("%s:%s:%d", node.Type, node.Server, node.Port)
-		if node.UUID != "" {
-			key += ":" + node.UUID
-		} else if node.Password != "" {
-			key += ":" + node.Password
-		}
-
 		if seenKeys[key] {
 			continue
 		}
@@ -813,70 +1104,9 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		proxies = append(proxies, node)
 	}
 
-	// 记录解析统计信息
-	if parseErrorCount > 0 {
-		s.addLog(fmt.Sprintf("解析失败节点数: %d (共 %d 个节点链接)", parseErrorCount, len(nodes)), "warning")
-		if len(parseErrors) > 0 {
-			for _, errMsg := range parseErrors {
-				s.addLog(errMsg, "warning")
-			}
-			if parseErrorCount > 10 {
-				s.addLog(fmt.Sprintf("... 还有 %d 个节点解析失败", parseErrorCount-10), "warning")
-			}
-		}
-	}
-	s.addLog(fmt.Sprintf("解析后有效节点数: %d (成功: %d, 失败: %d)", len(proxies), len(proxies), parseErrorCount), "info")
-
-	// 生成 V2Ray 配置（Base64）
-	v2rayFileName := config["v2ray_file"].(string)
-	v2rayFilePath := filepath.Join(targetDir, v2rayFileName)
-	v2rayContent := s.generateV2RayConfig(nodes)
-	if err := os.WriteFile(v2rayFilePath, []byte(v2rayContent), 0644); err != nil {
-		s.addLog(fmt.Sprintf("保存V2Ray配置失败: %v", err), "error")
-	} else {
-		s.addLog(fmt.Sprintf("V2Ray配置已保存: %s", v2rayFilePath), "success")
-		s.saveConfigToDB("v2ray_config", "v2ray", v2rayContent)
-	}
-
-	// 生成 Clash 配置
-	clashFileName := config["clash_file"].(string)
-	clashFilePath := filepath.Join(targetDir, clashFileName)
-	clashContent := s.generateClashYAML(proxies)
-	if err := os.WriteFile(clashFilePath, []byte(clashContent), 0644); err != nil {
-		s.addLog(fmt.Sprintf("保存Clash配置失败: %v", err), "error")
-	} else {
-		s.addLog(fmt.Sprintf("Clash配置已保存: %s", clashFilePath), "success")
-		s.saveConfigToDB("clash_config", "clash", clashContent)
-	}
-
-	// 导入节点到数据库的 nodes 表
-	s.addLog(fmt.Sprintf("准备导入 %d 个节点到数据库", len(proxies)), "info")
-	importedCount := s.importNodesToDatabase(proxies)
-	s.addLog(fmt.Sprintf("成功导入节点到数据库: %d 个", importedCount), "success")
-
-	// 验证数据库中的节点数量
-	var totalNodes int64
-	s.db.Model(&models.Node{}).Where("is_manual = ?", false).Count(&totalNodes)
-	s.addLog(fmt.Sprintf("数据库中非手动节点总数: %d", totalNodes), "info")
-
-	// 更新最后更新时间
+	s.importNodesToDatabase(proxies)
 	s.updateLastUpdateTime()
-
-	s.addLog(fmt.Sprintf("✅ 配置更新任务完成！下载节点数: %d, 最终节点数: %d, 数据库节点数: %d", len(nodes), len(proxies), importedCount), "success")
-
 	return nil
-}
-
-// generateV2RayConfig 生成 V2Ray 配置（Base64编码）
-func (s *ConfigUpdateService) generateV2RayConfig(nodes []map[string]interface{}) string {
-	var links []string
-	for _, nodeInfo := range nodes {
-		if link, ok := nodeInfo["url"].(string); ok {
-			links = append(links, link)
-		}
-	}
-	content := strings.Join(links, "\n")
-	return base64.StdEncoding.EncodeToString([]byte(content))
 }
 
 // getConfig 获取配置
@@ -909,135 +1139,40 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 				}
 			}
 			result["urls"] = filtered
-		case "filter_keywords":
-			keywords := strings.Split(value, "\n")
-			filtered := []string{}
-			for _, keyword := range keywords {
-				keyword = strings.TrimSpace(keyword)
-				if keyword != "" {
-					filtered = append(filtered, keyword)
-				}
-			}
-			result["filter_keywords"] = filtered
-		case "enable_schedule":
-			result[key] = value == "true" || value == "1"
-		case "schedule_interval":
-			var interval int
-			fmt.Sscanf(value, "%d", &interval)
-			if interval == 0 {
-				interval = 3600
-			}
-			result[key] = interval
 		default:
 			result[key] = value
 		}
 	}
-
 	return result, nil
 }
 
-// addLog 添加日志
-func (s *ConfigUpdateService) addLog(message string, level string) {
-	logEntry := map[string]interface{}{
-		"timestamp": utils.GetBeijingTime().Format("2006-01-02T15:04:05"),
-		"level":     level,
-		"message":   message,
-	}
+// importNodesToDatabase 将节点导入到数据库的 nodes 表
+func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
+	importedCount := 0
+	
+	for _, node := range proxies {
+		configJSON, _ := json.Marshal(node)
+		configStr := string(configJSON)
 
-	var config models.SystemConfig
-	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
-
-	var logs []map[string]interface{}
-	if err == nil && config.Value != "" {
-		json.Unmarshal([]byte(config.Value), &logs)
-	}
-
-	logs = append(logs, logEntry)
-	// 只保留最近100条
-	if len(logs) > 100 {
-		logs = logs[len(logs)-100:]
-	}
-
-	logsJSON, _ := json.Marshal(logs)
-
-	if err != nil {
-		// 创建新记录
-		config = models.SystemConfig{
-			Key:         "config_update_logs",
-			Value:       string(logsJSON),
-			Type:        "json",
-			Category:    "general",
-			DisplayName: "配置更新日志",
-			Description: "配置更新任务日志",
+		// 检查是否已存在
+		var count int64
+		s.db.Model(&models.Node{}).Where("type = ? AND name = ?", node.Type, node.Name).Count(&count)
+		
+		if count == 0 {
+			newNode := models.Node{
+				Name:     node.Name,
+				Type:     node.Type,
+				Status:   "online",
+				IsActive: true,
+				IsManual: false,
+				Config:   &configStr,
+				// Link:     s.nodeToLink(node), // 模型中没有 Link 字段
+			}
+			s.db.Create(&newNode)
+			importedCount++
 		}
-		s.db.Create(&config)
-	} else {
-		// 更新现有记录
-		config.Value = string(logsJSON)
-		s.db.Save(&config)
 	}
-}
-
-// GetLogs 获取日志
-func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
-	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
-		return []map[string]interface{}{}
-	}
-
-	var logs []map[string]interface{}
-	if err := json.Unmarshal([]byte(config.Value), &logs); err != nil {
-		return []map[string]interface{}{}
-	}
-
-	if len(logs) > limit {
-		return logs[len(logs)-limit:]
-	}
-	return logs
-}
-
-// ClearLogs 清理日志
-func (s *ConfigUpdateService) ClearLogs() error {
-	var config models.SystemConfig
-	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
-
-	if err != nil {
-		// 如果记录不存在，创建空记录
-		config = models.SystemConfig{
-			Key:         "config_update_logs",
-			Value:       "[]",
-			Type:        "json",
-			Category:    "general",
-			DisplayName: "配置更新日志",
-			Description: "配置更新任务日志",
-		}
-		return s.db.Create(&config).Error
-	} else {
-		// 清空日志
-		config.Value = "[]"
-		return s.db.Save(&config).Error
-	}
-}
-
-// saveConfigToDB 保存配置到数据库
-func (s *ConfigUpdateService) saveConfigToDB(key, configType, value string) {
-	var config models.SystemConfig
-	err := s.db.Where("key = ? AND type = ?", key, configType).First(&config).Error
-
-	if err != nil {
-		config = models.SystemConfig{
-			Key:         key,
-			Value:       value,
-			Type:        configType,
-			Category:    "proxy",
-			DisplayName: fmt.Sprintf("%s配置", configType),
-			Description: "自动生成的配置",
-		}
-		s.db.Create(&config)
-	} else {
-		config.Value = value
-		s.db.Save(&config)
-	}
+	return importedCount
 }
 
 // updateLastUpdateTime 更新最后更新时间
@@ -1089,851 +1224,41 @@ func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) {
 	return s.getConfig()
 }
 
-// importNodesToDatabase 将节点导入到数据库的 nodes 表
-func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
-	// 不清空所有节点，只更新或创建新节点
-	// 手动添加的节点（is_manual=true）不会被删除
-	s.addLog(fmt.Sprintf("开始导入节点到数据库，共 %d 个节点", len(proxies)), "info")
-
-	importedCount := 0
-	updatedCount := 0
-	createdCount := 0
-	skippedCount := 0
-	seenKeys := make(map[string]bool)
-	errorCount := 0
-
-	for _, node := range proxies {
-		// 验证必要字段
-		if node.Server == "" || node.Port == 0 || node.Type == "" {
-			errorCount++
-			s.addLog(fmt.Sprintf("跳过无效节点: Server=%s, Port=%d, Type=%s", node.Server, node.Port, node.Type), "warning")
-			continue
-		}
-
-		// 生成去重键（用于内存去重）
-		key := fmt.Sprintf("%s:%s:%d", node.Type, node.Server, node.Port)
-		if node.UUID != "" {
-			key += ":" + node.UUID
-		} else if node.Password != "" {
-			key += ":" + node.Password
-		}
-
-		// 内存去重
-		if seenKeys[key] {
-			continue
-		}
-		seenKeys[key] = true
-
-		// 确保节点名称不为空
-		if node.Name == "" {
-			node.Name = fmt.Sprintf("%s-%s:%d", node.Type, node.Server, node.Port)
-		}
-
-		// 从节点名称提取地区信息
-		region := s.extractRegionFromName(node.Name)
-		if region == "" {
-			region = "未知"
-		}
-
-		// 序列化节点配置（确保包含所有字段）
-		configJSON, err := json.Marshal(node)
-		if err != nil {
-			errorCount++
-			s.addLog(fmt.Sprintf("序列化节点配置失败: %v", err), "error")
-			continue
-		}
-		configStr := string(configJSON)
-
-		// 使用更精确的方式检查是否已存在相同节点
-		// 查询所有相同类型的节点，然后通过解析 JSON 配置精确匹配
-		var existingNodes []models.Node
-		s.db.Where("type = ? AND is_manual = ?", node.Type, false).Find(&existingNodes)
-
-		var existingNode *models.Node
-		for i := range existingNodes {
-			if existingNodes[i].Config == nil {
-				continue
-			}
-			var existingProxy ProxyNode
-			if err := json.Unmarshal([]byte(*existingNodes[i].Config), &existingProxy); err != nil {
-				continue
-			}
-
-			// 精确匹配：server、port、uuid/password 必须完全相同
-			if existingProxy.Server == node.Server && existingProxy.Port == node.Port {
-				// 对于有 UUID 的节点（vmess, vless），必须 UUID 相同
-				if node.UUID != "" {
-					if existingProxy.UUID == node.UUID {
-						existingNode = &existingNodes[i]
-						break
-					}
-				} else if node.Password != "" {
-					// 对于有 Password 的节点（trojan, ss），必须 Password 相同
-					if existingProxy.Password == node.Password {
-						existingNode = &existingNodes[i]
-						break
-					}
-				} else {
-					// 对于没有 UUID 和 Password 的节点，server 和 port 相同即认为是同一个节点
-					existingNode = &existingNodes[i]
-					break
-				}
-			}
-		}
-
-		if existingNode != nil {
-			// 如果节点已存在且是手动添加的，跳过更新
-			if existingNode.IsManual {
-				skippedCount++
-				continue
-			}
-			// 更新现有节点（非手动添加的）
-			existingNode.Name = node.Name
-			existingNode.Region = region
-			existingNode.Status = "online"
-			existingNode.IsActive = true
-			existingNode.Config = &configStr
-			if err := s.db.Save(existingNode).Error; err != nil {
-				errorCount++
-				s.addLog(fmt.Sprintf("更新节点失败 [%s]: %v", node.Name, err), "error")
-				continue
-			}
-			updatedCount++
-			importedCount++
-		} else {
-			// 创建新节点（标记为非手动添加）
-			newNode := models.Node{
-				Name:     node.Name,
-				Region:   region,
-				Type:     node.Type,
-				Status:   "online", // 新采集的节点默认为在线状态
-				IsActive: true,
-				IsManual: false, // 采集的节点标记为非手动
-				Config:   &configStr,
-			}
-
-			if err := s.db.Create(&newNode).Error; err != nil {
-				errorCount++
-				s.addLog(fmt.Sprintf("创建节点失败 [%s]: %v", node.Name, err), "error")
-				continue
-			}
-			createdCount++
-			importedCount++
-		}
-	}
-
-	if errorCount > 0 {
-		s.addLog(fmt.Sprintf("导入过程中有 %d 个节点失败", errorCount), "warning")
-	}
-
-	s.addLog(fmt.Sprintf("导入完成：新建 %d 个，更新 %d 个，跳过 %d 个（手动节点），失败 %d 个，总计 %d 个",
-		createdCount, updatedCount, skippedCount, errorCount, importedCount), "info")
-
-	return importedCount
-}
-
-// extractRegionFromName 从节点名称提取地区信息
-func (s *ConfigUpdateService) extractRegionFromName(name string) string {
-	// 常见的地区关键词
-	regions := map[string]string{
-		"香港": "香港", "HK": "香港", "Hong Kong": "香港",
-		"台湾": "台湾", "TW": "台湾", "Taiwan": "台湾",
-		"日本": "日本", "JP": "日本", "Japan": "日本",
-		"韩国": "韩国", "KR": "韩国", "Korea": "韩国",
-		"新加坡": "新加坡", "SG": "新加坡", "Singapore": "新加坡",
-		"美国": "美国", "US": "美国", "USA": "美国", "United States": "美国",
-		"英国": "英国", "UK": "英国", "United Kingdom": "英国",
-		"德国": "德国", "DE": "德国", "Germany": "德国",
-		"法国": "法国", "FR": "法国", "France": "法国",
-		"俄罗斯": "俄罗斯", "RU": "俄罗斯", "Russia": "俄罗斯",
-		"印度": "印度", "IN": "印度", "India": "印度",
-		"澳大利亚": "澳大利亚", "AU": "澳大利亚", "Australia": "澳大利亚",
-		"加拿大": "加拿大", "CA": "加拿大", "Canada": "加拿大",
-		"荷兰": "荷兰", "NL": "荷兰", "Netherlands": "荷兰",
-		"瑞士": "瑞士", "CH": "瑞士", "Switzerland": "瑞士",
-		"瑞典": "瑞典", "SE": "瑞典", "Sweden": "瑞典",
-		"挪威": "挪威", "NO": "挪威", "Norway": "挪威",
-		"芬兰": "芬兰", "FI": "芬兰", "Finland": "芬兰",
-		"丹麦": "丹麦", "DK": "丹麦", "Denmark": "丹麦",
-		"波兰": "波兰", "PL": "波兰", "Poland": "波兰",
-		"意大利": "意大利", "IT": "意大利", "Italy": "意大利",
-		"西班牙": "西班牙", "ES": "西班牙", "Spain": "西班牙",
-		"巴西": "巴西", "BR": "巴西", "Brazil": "巴西",
-		"墨西哥": "墨西哥", "MX": "墨西哥", "Mexico": "墨西哥",
-		"阿根廷": "阿根廷", "AR": "阿根廷", "Argentina": "阿根廷",
-		"智利": "智利", "CL": "智利", "Chile": "智利",
-		"土耳其": "土耳其", "TR": "土耳其", "Turkey": "土耳其",
-		"以色列": "以色列", "IL": "以色列", "Israel": "以色列",
-		"阿联酋": "阿联酋", "AE": "阿联酋", "UAE": "阿联酋",
-		"沙特": "沙特", "SA": "沙特", "Saudi Arabia": "沙特",
-		"泰国": "泰国", "TH": "泰国", "Thailand": "泰国",
-		"马来西亚": "马来西亚", "MY": "马来西亚", "Malaysia": "马来西亚",
-		"印尼": "印尼", "ID": "印尼", "Indonesia": "印尼",
-		"菲律宾": "菲律宾", "PH": "菲律宾", "Philippines": "菲律宾",
-		"越南": "越南", "VN": "越南", "Vietnam": "越南",
-	}
-
-	nameUpper := strings.ToUpper(name)
-	for keyword, region := range regions {
-		if strings.Contains(nameUpper, strings.ToUpper(keyword)) {
-			return region
-		}
-	}
-
-	return ""
-}
-
-// addInfoAndReminderNodes 添加信息节点和提醒节点到配置前
-// 信息节点使用特殊的节点名称，在 Clash 中会显示在节点列表中
-// 对于 V2Ray/SSR 格式，这些信息节点会被转换为特殊的 VMess 链接，在客户端中显示
-func (s *ConfigUpdateService) addInfoAndReminderNodes(proxies []*ProxyNode, subscription models.Subscription, user models.User, isExpired, isInactive, isDeviceOverLimit bool, currentDevices, deviceLimit int) []*ProxyNode {
-	// 获取网站域名（自动识别）
-	siteURL := s.getSiteURL()
-	// 如果找不到域名，使用默认提示
-	if siteURL == "" {
-		siteURL = "请在系统设置中配置域名"
-	}
-
-	// 格式化到期时间
-	expireTimeStr := subscription.ExpireTime.Format("2006-01-02 15:04:05")
-
-	// 售后QQ
-	supportQQ := "3219904322"
-
-	// 创建信息节点列表（使用 DIRECT 类型的特殊节点，在 Clash 中会显示但不可用）
-	// 在 V2Ray/SSR 格式中，这些节点会被转换为特殊的 VMess 链接
-	infoNodes := make([]*ProxyNode, 0)
-
-	// 1. 网站域名信息节点
-	infoNode1 := &ProxyNode{
-		Name:   fmt.Sprintf("📢 网站域名: %s", siteURL),
-		Type:   "direct",
-		Server: "127.0.0.1",
-		Port:   0,
-		Options: map[string]interface{}{
-			"info": fmt.Sprintf("网站域名: %s", siteURL),
-		},
-	}
-	infoNodes = append(infoNodes, infoNode1)
-
-	// 2. 到期时间信息节点
-	infoNode2 := &ProxyNode{
-		Name:   fmt.Sprintf("⏰ 到期时间: %s", expireTimeStr),
-		Type:   "direct",
-		Server: "127.0.0.1",
-		Port:   0,
-		Options: map[string]interface{}{
-			"info": fmt.Sprintf("到期时间: %s", expireTimeStr),
-		},
-	}
-	infoNodes = append(infoNodes, infoNode2)
-
-	// 3. 售后QQ信息节点
-	infoNode3 := &ProxyNode{
-		Name:   fmt.Sprintf("💬 售后QQ: %s", supportQQ),
-		Type:   "direct",
-		Server: "127.0.0.1",
-		Port:   0,
-		Options: map[string]interface{}{
-			"info": fmt.Sprintf("售后QQ: %s", supportQQ),
-		},
-	}
-	infoNodes = append(infoNodes, infoNode3)
-
-	// 4. 到期提醒节点（如果已过期）
-	if isExpired {
-		reminderNode := &ProxyNode{
-			Name:   "⚠️ 订阅已过期，请及时续费！",
-			Type:   "direct",
-			Server: "127.0.0.1",
-			Port:   0,
-			Options: map[string]interface{}{
-				"info": "订阅已过期，请及时续费！",
-			},
-		}
-		infoNodes = append(infoNodes, reminderNode)
-	}
-
-	// 5. 设备超限提醒节点（如果设备超限）
-	if isDeviceOverLimit {
-		reminderNode := &ProxyNode{
-			Name:   fmt.Sprintf("⚠️ 设备超限！当前 %d/%d，请删除多余设备", currentDevices, deviceLimit),
-			Type:   "direct",
-			Server: "127.0.0.1",
-			Port:   0,
-			Options: map[string]interface{}{
-				"info": fmt.Sprintf("设备超限！当前 %d/%d，请删除多余设备", currentDevices, deviceLimit),
-			},
-		}
-		infoNodes = append(infoNodes, reminderNode)
-	}
-
-	// 6. 订阅失效提醒节点（如果订阅未激活）
-	if isInactive {
-		reminderNode := &ProxyNode{
-			Name:   "⚠️ 订阅已失效，请联系客服！",
-			Type:   "direct",
-			Server: "127.0.0.1",
-			Port:   0,
-			Options: map[string]interface{}{
-				"info": "订阅已失效，请联系客服！",
-			},
-		}
-		infoNodes = append(infoNodes, reminderNode)
-	}
-
-	// 将信息节点插入到最前面
-	return append(infoNodes, proxies...)
-}
-
-// getSiteURL 获取网站域名
-func (s *ConfigUpdateService) getSiteURL() string {
-	// 优先从系统配置获取 domain_name（general 类别）
+// GetLogs 获取日志
+func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 	var config models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
-		domain := strings.TrimSpace(config.Value)
-		// 如果配置的域名包含协议，直接使用
-		if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
-			return strings.TrimSuffix(domain, "/")
-		}
-		// 否则默认使用 https
-		return "https://" + domain
+	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
+		return []map[string]interface{}{}
 	}
 
-	// 其次查找 domain_name（不限制 category，兼容旧配置）
-	if err := s.db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
-		domain := strings.TrimSpace(config.Value)
-		if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
-			return strings.TrimSuffix(domain, "/")
-		}
-		return "https://" + domain
+	var logs []map[string]interface{}
+	if err := json.Unmarshal([]byte(config.Value), &logs); err != nil {
+		return []map[string]interface{}{}
 	}
 
-	// 再次查找 site_url 或 base_url（不限制 category，兼容旧配置）
-	if err := s.db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil && config.Value != "" {
-		return strings.TrimSpace(config.Value)
+	if len(logs) > limit {
+		return logs[len(logs)-limit:]
 	}
-
-	// 从环境变量获取
-	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
-		return baseURL
-	}
-
-	// 如果都找不到，返回空字符串（由调用方处理，或使用默认值）
-	// 这不应该发生，应该在系统设置中配置 domain_name
-	return ""
+	return logs
 }
 
-// GenerateV2RayConfig 生成 V2Ray 格式订阅配置
-func (s *ConfigUpdateService) GenerateV2RayConfig(userID uint, subscriptionURL string) (string, error) {
-	// 获取节点（复用 Clash 的逻辑）
-	proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit, err := s.getNodesForSubscription(userID, subscriptionURL)
+// ClearLogs 清理日志
+func (s *ConfigUpdateService) ClearLogs() error {
+	var config models.SystemConfig
+	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
+
 	if err != nil {
-		return "", err
-	}
-
-	// 添加信息节点（信息节点会转换为 VMess 链接，在客户端中显示）
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
-
-	// 生成 V2Ray 格式的节点链接列表
-	var links []string
-
-	// 添加所有节点链接（包括信息节点，它们会被转换为特殊的 VMess 链接）
-	for _, proxy := range proxies {
-		link := s.ProxyNodeToLink(proxy)
-		if link != "" {
-			links = append(links, link)
+		config = models.SystemConfig{
+			Key:         "config_update_logs",
+			Value:       "[]",
+			Type:        "json",
+			Category:    "general",
+			DisplayName: "配置更新日志",
+			Description: "配置更新任务日志",
 		}
+		return s.db.Create(&config).Error
+	} else {
+		config.Value = "[]"
+		return s.db.Save(&config).Error
 	}
-
-	return strings.Join(links, "\n"), nil
-}
-
-// GenerateSSRConfig 生成 SSR 格式订阅配置
-func (s *ConfigUpdateService) GenerateSSRConfig(userID uint, subscriptionURL string) (string, error) {
-	// 获取节点（复用 Clash 的逻辑）
-	proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit, err := s.getNodesForSubscription(userID, subscriptionURL)
-	if err != nil {
-		return "", err
-	}
-
-	// 如果订阅过期或失效，不返回节点信息
-	// 设备超限的情况由 validateSubscription 处理（只阻止新设备，已存在的设备仍可使用）
-	// 这些情况应该在 subscription_config.go 中处理，但这里作为双重保险
-	if isExpired || isInactive {
-		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v", isExpired, isInactive)
-	}
-
-	// 添加信息节点（信息节点会转换为 VMess 链接，在客户端中显示）
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
-
-	// SSR 格式也是节点链接列表
-	var links []string
-
-	// 添加所有节点链接（包括信息节点，它们会被转换为特殊的 VMess 链接）
-	for _, proxy := range proxies {
-		link := s.ProxyNodeToLink(proxy)
-		if link != "" {
-			links = append(links, link)
-		}
-	}
-
-	return strings.Join(links, "\n"), nil
-}
-
-// getNodesForSubscription 获取订阅节点（公共逻辑）
-func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionURL string) ([]*ProxyNode, models.Subscription, models.User, bool, bool, bool, int, int, error) {
-	// 获取用户订阅
-	var subscription models.Subscription
-	if err := s.db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		return nil, subscription, models.User{}, false, false, false, 0, 0, fmt.Errorf("订阅不存在")
-	}
-
-	// 获取用户信息
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return nil, subscription, user, false, false, false, 0, 0, fmt.Errorf("用户不存在")
-	}
-
-	// 检查订阅状态
-	now := time.Now()
-	isExpired := subscription.ExpireTime.Before(now)
-	isInactive := !subscription.IsActive || subscription.Status != "active"
-
-	// 检查设备数量
-	var deviceCount int64
-	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&deviceCount)
-	// 注意：isDeviceOverLimit 只用于标记状态，不用于阻止返回节点
-	// 设备限制的检查应该在 subscription_config.go 中的 validateSubscription 函数中完成
-	// 如果 validateSubscription 允许，说明当前设备在允许范围内，应该返回节点
-	isDeviceOverLimit := subscription.DeviceLimit > 0 && int(deviceCount) > subscription.DeviceLimit
-
-	// 获取节点
-	// 只获取激活的节点
-	// 正常显示所有节点信息，但订阅时排除超时节点
-	var proxies []*ProxyNode
-	var dbNodes []models.Node
-
-	// 根据用户设置决定是否包含普通节点
-	if user.SpecialNodeSubscriptionType != "special_only" {
-		// 检查普通订阅是否到期
-		if !isExpired {
-			// 获取激活的节点，过滤掉 status 为 timeout 的节点
-			if err := s.db.Where("is_active = ? AND status != ?", true, "timeout").Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
-				// 从数据库获取节点
-				for _, dbNode := range dbNodes {
-					// 双重验证：确保节点配置存在且有效
-					if dbNode.Config != nil && *dbNode.Config != "" {
-						var proxyNode ProxyNode
-						if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-							// 验证节点配置的基本字段
-							if proxyNode.Server != "" && proxyNode.Port > 0 && proxyNode.Type != "" {
-								proxyNode.Name = dbNode.Name
-								proxies = append(proxies, &proxyNode)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// 获取用户的专线节点
-	var customNodes []models.CustomNode
-	if err := s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
-		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", userID, true).
-		Find(&customNodes).Error; err == nil && len(customNodes) > 0 {
-
-		// 检查每个专线节点的到期时间
-		for _, customNode := range customNodes {
-			isSpecialExpired := false
-			if customNode.FollowUserExpire {
-				// 如果跟随用户到期时间，优先使用 SpecialNodeExpiresAt
-				if user.SpecialNodeExpiresAt.Valid {
-					isSpecialExpired = user.SpecialNodeExpiresAt.Time.Before(now)
-				} else {
-					isSpecialExpired = subscription.ExpireTime.Before(now)
-				}
-			} else if customNode.ExpireTime != nil {
-				isSpecialExpired = customNode.ExpireTime.Before(now)
-			}
-
-			// 如果专线已到期或节点状态为 timeout，则不显示在订阅中
-			if isSpecialExpired || customNode.Status == "timeout" {
-				continue
-			}
-
-			// 解析节点配置
-			if customNode.Config != "" {
-				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(customNode.Config), &proxyNode); err == nil {
-					if proxyNode.Server != "" && proxyNode.Port > 0 && proxyNode.Type != "" {
-						displayName := customNode.DisplayName
-						if displayName == "" {
-							displayName = "专线定制-" + customNode.Name
-						}
-						proxyNode.Name = displayName
-						proxies = append(proxies, &proxyNode)
-					}
-				}
-			}
-		}
-	}
-
-	// 如果没有任何节点，返回错误
-	// 注意：这个检查不应该阻止返回节点，因为设备限制的检查已经在 subscription_config.go 中的 validateSubscription 函数中完成
-	// 如果 validateSubscription 允许，说明当前设备在允许范围内，应该返回节点
-	// 但是，如果数据库中没有激活的节点，这里会返回错误，这是合理的
-	if len(proxies) == 0 {
-		return nil, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit, fmt.Errorf("没有可用的节点")
-	}
-
-	return proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit, nil
-}
-
-// ProxyNodeToLink 将 ProxyNode 转换为节点链接（公开方法）
-func (s *ConfigUpdateService) ProxyNodeToLink(proxy *ProxyNode) string {
-	// 信息节点（direct 类型且 server 为 127.0.0.1）转换为特殊的 VMess 链接
-	// 这样在 V2Ray/SSR 格式中也能显示信息
-	if proxy.Type == "direct" && proxy.Server == "127.0.0.1" {
-		return s.infoNodeToLink(proxy)
-	}
-
-	switch proxy.Type {
-	case "vmess":
-		return s.vmessToLink(proxy)
-	case "vless":
-		return s.vlessToLink(proxy)
-	case "trojan":
-		return s.trojanToLink(proxy)
-	case "ss":
-		return s.shadowsocksToLink(proxy)
-	case "ssr":
-		return s.ssrToLink(proxy)
-	default:
-		return ""
-	}
-}
-
-// infoNodeToLink 将信息节点转换为 VMess 链接（用于在 V2Ray/SSR 格式中显示信息）
-func (s *ConfigUpdateService) infoNodeToLink(proxy *ProxyNode) string {
-	// 创建一个特殊的 VMess 节点，将信息编码在节点名称中
-	// 使用一个无效的服务器地址，这样客户端会显示节点但无法连接
-	data := map[string]interface{}{
-		"v":    "2",
-		"ps":   proxy.Name,                             // 节点名称包含信息
-		"add":  "127.0.0.1",                            // 无效地址，防止实际连接
-		"port": 0,                                      // 无效端口
-		"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
-		"net":  "tcp",
-		"type": "none",
-	}
-
-	jsonData, _ := json.Marshal(data)
-	encoded := base64.StdEncoding.EncodeToString(jsonData)
-	return "vmess://" + encoded
-}
-
-// vmessToLink 将 VMess 节点转换为链接
-func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
-	data := map[string]interface{}{
-		"v":    "2",
-		"ps":   proxy.Name,
-		"add":  proxy.Server,
-		"port": proxy.Port,
-		"id":   proxy.UUID,
-		"net":  proxy.Network,
-		"type": "none",
-	}
-
-	if proxy.TLS {
-		data["tls"] = "tls"
-	}
-
-	if proxy.Options != nil {
-		if wsOpts, ok := proxy.Options["ws-opts"].(map[string]interface{}); ok {
-			if path, ok := wsOpts["path"].(string); ok {
-				data["path"] = path
-			}
-			if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
-				if host, ok := headers["Host"].(string); ok {
-					data["host"] = host
-				}
-			}
-		}
-		if grpcOpts, ok := proxy.Options["grpc-opts"].(map[string]interface{}); ok {
-			if serviceName, ok := grpcOpts["grpc-service-name"].(string); ok {
-				data["path"] = serviceName
-			}
-		}
-	}
-
-	jsonData, _ := json.Marshal(data)
-	encoded := base64.StdEncoding.EncodeToString(jsonData)
-	return "vmess://" + encoded
-}
-
-// vlessToLink 将 VLESS 节点转换为链接
-func (s *ConfigUpdateService) vlessToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "vless",
-		User:     url.User(proxy.UUID),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Network != "" {
-		q.Set("type", proxy.Network)
-	}
-	if proxy.TLS {
-		q.Set("security", "tls")
-	}
-
-	if proxy.Options != nil {
-		if wsOpts, ok := proxy.Options["ws-opts"].(map[string]interface{}); ok {
-			if path, ok := wsOpts["path"].(string); ok {
-				q.Set("path", path)
-			}
-			if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
-				if host, ok := headers["Host"].(string); ok {
-					q.Set("host", host)
-				}
-			}
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-// trojanToLink 将 Trojan 节点转换为链接
-func (s *ConfigUpdateService) trojanToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "trojan",
-		User:     url.User(proxy.Password),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Network != "" {
-		q.Set("type", proxy.Network)
-	}
-
-	if proxy.Options != nil {
-		if wsOpts, ok := proxy.Options["ws-opts"].(map[string]interface{}); ok {
-			if path, ok := wsOpts["path"].(string); ok {
-				q.Set("path", path)
-			}
-			if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
-				if host, ok := headers["Host"].(string); ok {
-					q.Set("host", host)
-				}
-			}
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-// shadowsocksToLink 将 Shadowsocks 节点转换为链接
-func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
-	auth := fmt.Sprintf("%s:%s", proxy.Cipher, proxy.Password)
-	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
-	u := &url.URL{
-		Scheme:   "ss",
-		User:     url.User(encoded),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-	return u.String()
-}
-
-// ssrToLink 将 SSR 节点转换为链接
-func (s *ConfigUpdateService) ssrToLink(proxy *ProxyNode) string {
-	// SSR 链接格式较复杂，这里简化处理
-	// 实际应该根据 SSR 协议规范生成
-	return ""
-}
-
-// GenerateClashConfigWithReminder 生成带提醒的 Clash 配置（用于设备超限等情况）
-func (s *ConfigUpdateService) GenerateClashConfigWithReminder(userID uint, subscriptionURL string, isDeviceOverLimit, isExpired bool, currentDevices, deviceLimit int) (string, error) {
-	// 获取用户订阅
-	var subscription models.Subscription
-	if err := s.db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		return "", fmt.Errorf("订阅不存在")
-	}
-
-	// 获取用户信息
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return "", fmt.Errorf("用户不存在")
-	}
-
-	// 获取节点（即使超限也要生成配置，只是添加提醒）
-	var proxies []*ProxyNode
-	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ?", true).Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
-		for _, dbNode := range dbNodes {
-			if dbNode.Config != nil && *dbNode.Config != "" {
-				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-					proxyNode.Name = dbNode.Name
-					proxies = append(proxies, &proxyNode)
-				}
-			}
-		}
-	}
-
-	if len(proxies) == 0 {
-		return "", fmt.Errorf("没有可用的节点")
-	}
-
-	// 添加信息和提醒节点
-	isInactive := !subscription.IsActive || subscription.Status != "active"
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
-
-	return s.generateClashYAML(proxies), nil
-}
-
-// GenerateV2RayConfigWithReminder 生成带提醒的 V2Ray 配置
-func (s *ConfigUpdateService) GenerateV2RayConfigWithReminder(userID uint, subscriptionURL string, isDeviceOverLimit, isExpired bool, currentDevices, deviceLimit int) (string, error) {
-	// 获取用户订阅
-	var subscription models.Subscription
-	if err := s.db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		return "", fmt.Errorf("订阅不存在")
-	}
-
-	// 获取用户信息
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return "", fmt.Errorf("用户不存在")
-	}
-
-	// 获取节点
-	var proxies []*ProxyNode
-	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ?", true).Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
-		for _, dbNode := range dbNodes {
-			if dbNode.Config != nil && *dbNode.Config != "" {
-				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-					proxyNode.Name = dbNode.Name
-					proxies = append(proxies, &proxyNode)
-				}
-			}
-		}
-	}
-
-	if len(proxies) == 0 {
-		return "", fmt.Errorf("没有可用的节点")
-	}
-
-	// 添加信息和提醒节点
-	isInactive := !subscription.IsActive || subscription.Status != "active"
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
-
-	// 生成 V2Ray 格式的节点链接列表
-	var links []string
-
-	// 添加信息注释
-	siteURL := s.getSiteURL()
-	expireTimeStr := subscription.ExpireTime.Format("2006-01-02 15:04:05")
-	supportQQ := "3219904322"
-
-	infoText := fmt.Sprintf("网站域名: %s | 到期时间: %s | 售后QQ: %s", siteURL, expireTimeStr, supportQQ)
-	if isExpired {
-		infoText += " | ⚠️ 订阅已过期，请及时续费！"
-	}
-	if isDeviceOverLimit {
-		infoText += fmt.Sprintf(" | ⚠️ 设备超限！当前 %d/%d，请删除多余设备", currentDevices, deviceLimit)
-	}
-	if isInactive {
-		infoText += " | ⚠️ 订阅已失效，请联系客服！"
-	}
-
-	infoEncoded := base64.StdEncoding.EncodeToString([]byte(infoText))
-	links = append(links, "# "+infoEncoded)
-
-	// 添加实际节点链接
-	for _, proxy := range proxies {
-		link := s.ProxyNodeToLink(proxy)
-		if link != "" {
-			links = append(links, link)
-		}
-	}
-
-	return strings.Join(links, "\n"), nil
-}
-
-// GenerateSSRConfigWithReminder 生成带提醒的 SSR 配置
-func (s *ConfigUpdateService) GenerateSSRConfigWithReminder(userID uint, subscriptionURL string, isDeviceOverLimit, isExpired bool, currentDevices, deviceLimit int) (string, error) {
-	// 获取用户订阅
-	var subscription models.Subscription
-	if err := s.db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		return "", fmt.Errorf("订阅不存在")
-	}
-
-	// 获取用户信息
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return "", fmt.Errorf("用户不存在")
-	}
-
-	// 获取节点
-	var proxies []*ProxyNode
-	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ?", true).Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
-		for _, dbNode := range dbNodes {
-			if dbNode.Config != nil && *dbNode.Config != "" {
-				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-					proxyNode.Name = dbNode.Name
-					proxies = append(proxies, &proxyNode)
-				}
-			}
-		}
-	}
-
-	if len(proxies) == 0 {
-		return "", fmt.Errorf("没有可用的节点")
-	}
-
-	// 添加信息和提醒节点
-	isInactive := !subscription.IsActive || subscription.Status != "active"
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
-
-	// SSR 格式也是节点链接列表
-	var links []string
-
-	// 添加信息注释
-	siteURL := s.getSiteURL()
-	expireTimeStr := subscription.ExpireTime.Format("2006-01-02 15:04:05")
-	supportQQ := "3219904322"
-
-	infoText := fmt.Sprintf("网站域名: %s | 到期时间: %s | 售后QQ: %s", siteURL, expireTimeStr, supportQQ)
-	if isExpired {
-		infoText += " | ⚠️ 订阅已过期，请及时续费！"
-	}
-	if isDeviceOverLimit {
-		infoText += fmt.Sprintf(" | ⚠️ 设备超限！当前 %d/%d，请删除多余设备", currentDevices, deviceLimit)
-	}
-	if isInactive {
-		infoText += " | ⚠️ 订阅已失效，请联系客服！"
-	}
-
-	infoEncoded := base64.StdEncoding.EncodeToString([]byte(infoText))
-	links = append(links, "# "+infoEncoded)
-
-	// 添加实际节点链接
-	for _, proxy := range proxies {
-		link := s.ProxyNodeToLink(proxy)
-		if link != "" {
-			links = append(links, link)
-		}
-	}
-
-	return strings.Join(links, "\n"), nil
 }
