@@ -361,18 +361,18 @@ func ResetSubscription(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
-	
+
 	// 记录旧订阅地址
 	oldURL := sub.SubscriptionURL
 	var deviceCountBefore int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
-	
+
 	// 生成新订阅地址
 	newURL := utils.GenerateSubscriptionURL()
 	sub.SubscriptionURL = newURL
 	sub.CurrentDevices = 0
 	db.Save(&sub)
-	
+
 	// 记录订阅重置
 	reset := models.SubscriptionReset{
 		UserID:             sub.UserID,
@@ -386,10 +386,10 @@ func ResetSubscription(c *gin.Context) {
 		ResetBy:            getCurrentAdminUsername(c),
 	}
 	db.Create(&reset)
-	
+
 	// 清理设备记录
 	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
-	
+
 	go sendResetEmail(c, sub, sub.User, "管理员重置")
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
 }
@@ -438,19 +438,19 @@ func ResetUserSubscription(c *gin.Context) {
 	db := database.GetDB()
 	var subs []models.Subscription
 	db.Where("user_id = ?", userID).Find(&subs)
-	
+
 	for _, sub := range subs {
 		// 记录旧订阅地址
 		oldURL := sub.SubscriptionURL
 		var deviceCountBefore int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
-		
+
 		// 生成新订阅地址
 		newURL := utils.GenerateSubscriptionURL()
 		sub.SubscriptionURL = newURL
 		sub.CurrentDevices = 0
 		db.Save(&sub)
-		
+
 		// 记录订阅重置
 		reset := models.SubscriptionReset{
 			UserID:             sub.UserID,
@@ -464,11 +464,11 @@ func ResetUserSubscription(c *gin.Context) {
 			ResetBy:            getCurrentAdminUsername(c),
 		}
 		db.Create(&reset)
-		
+
 		// 清理设备记录
 		db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "用户订阅已重置"})
 }
 
@@ -516,18 +516,18 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
-	
+
 	// 记录旧订阅地址
 	oldURL := sub.SubscriptionURL
 	var deviceCountBefore int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
-	
+
 	// 生成新订阅地址
 	newURL := utils.GenerateSubscriptionURL()
 	sub.SubscriptionURL = newURL
 	sub.CurrentDevices = 0
 	db.Save(&sub)
-	
+
 	// 记录订阅重置
 	reason := "用户主动重置订阅地址"
 	reset := models.SubscriptionReset{
@@ -542,10 +542,10 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 		ResetBy:            &user.Username,
 	}
 	db.Create(&reset)
-	
+
 	// 清理设备记录
 	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
-	
+
 	go sendResetEmail(c, sub, *user, reason)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
 }
