@@ -38,17 +38,13 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
 
-	// 如果设备限制大于0，检查当前设备数是否已超限
-	if subscription.DeviceLimit > 0 && int(count) > subscription.DeviceLimit {
-		return fmt.Sprintf("设备超限(当前%d/限制%d)，请登录官网管理设备", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
-	}
-
 	// 生成设备哈希，检查是否为新设备
 	hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
 	var d models.Device
 	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&d).Error != nil
 
-	// 如果是新设备且已达到设备限制
+	// 只有新设备且已达到设备限制时，才阻止订阅
+	// 已存在的设备即使总数超限，仍然允许使用
 	if isNewDevice && subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
 		return fmt.Sprintf("设备超限(当前%d/限制%d)，请登录官网管理设备", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
 	}
