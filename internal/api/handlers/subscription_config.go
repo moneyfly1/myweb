@@ -333,26 +333,9 @@ func GetUniversalSubscription(c *gin.Context) {
 	var sub models.Subscription
 
 	if err := db.Where("subscription_url = ?", uurl).First(&sub).Error; err != nil {
-		// 检查旧地址逻辑...
-		// 为了简化，这里直接调用 checkOldSubscriptionURL 并使用 helper 返回
-		// 但既然 Service 已经处理了 OldURL 状态，我们其实可以直接调用 Service
-		// 不过 Service 需要 token，如果 token 查不到 sub，Service 会处理
-		// 但是这里我们先查了 DB。
-		// 既然 Service 的 getSubscriptionContext 已经处理了 OldURL 和 NotFound
-		// 我们其实可以把这部分逻辑也委托给 Service。
-		// 但为了保险，保留这里的 CheckOldSubscriptionURL 逻辑作为快速失败?
-		// 不，为了统一，我们应该让 Service 处理。
-		// 只是 Service 的 GenerateUniversalConfig 需要 clientIP/UA。
-
-		// 暂时保留原有的 handler 结构，只替换核心生成部分
-		reset, currentSub, user, isOldURL := checkOldSubscriptionURL(db, uurl)
-		if isOldURL {
-			// ... 构建消息 ...
-			// 这里代码太长，直接让 Service 处理吧。
-			// 但是 GenerateUniversalConfig 返回的是 Base64 string。
-			// 如果是 OldURL，Service 会返回包含错误信息的 Base64。
-			// 所以我们可以直接调用 Service。
-		}
+		// Service 会处理旧地址检查和错误消息生成，这里不需要重复
+		// 由于我们需要 sub 来进行设备逻辑判断，但这里 sub 不存在
+		// 我们直接调用 Service，Service 内部会再次尝试查找 oldURL
 	}
 
 	// 为了确保逻辑统一，我们重新组织一下 GetUniversalSubscription
