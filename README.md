@@ -58,6 +58,28 @@
 
 ---
 
+## 🚀 Installation
+
+### Quick Start - Clone from GitHub
+
+The easiest way to get started is to clone the project directly from GitHub:
+
+```bash
+# Clone the repository
+git clone https://github.com/moneyfly1/myweb.git cboard
+cd cboard
+
+# Make installation script executable
+chmod +x install.sh
+
+# Run installation script (requires root)
+sudo ./install.sh
+```
+
+**GitHub Repository**: https://github.com/moneyfly1/myweb
+
+---
+
 ## 🚀 Installation via BT Panel
 
 ### Prerequisites
@@ -69,33 +91,62 @@
 
 ### Installation Steps
 
-#### 1. Upload Project Files
+#### 1. Clone Project from GitHub
 
-Upload project files to your server via BT Panel File Manager or SSH:
+**Recommended Method**: Clone directly from GitHub repository:
 
 ```bash
-# Method 1: Clone via Git
+# Connect to your server via SSH
+ssh root@your-server-ip
+
+# Navigate to web root directory
 cd /www/wwwroot
-git clone https://github.com/your-username/your-repo.git cboard
+
+# Clone the repository
+git clone https://github.com/moneyfly1/myweb.git cboard
+
+# Enter project directory
 cd cboard
 
-# Method 2: Upload via SCP (run on local machine)
+# Verify files are cloned correctly
+ls -la
+```
+
+**Alternative Method 1**: Upload via BT Panel File Manager
+1. Login to BT Panel
+2. Go to **File** → Navigate to `/www/wwwroot`
+3. Click **Upload** → Select project files → Upload
+4. Extract if needed
+
+**Alternative Method 2**: Upload via SCP (from local machine)
+```bash
+# Run on your local machine
 scp -r /path/to/goweb/* root@your-server:/www/wwwroot/cboard/
 ```
 
 #### 2. Run Installation Script
 
-Connect to your server via SSH and execute:
+After cloning the project, run the installation script:
 
 ```bash
+# Make sure you're in the project directory
 cd /www/wwwroot/cboard
 
-# Add execute permission
+# Add execute permission to installation script
 chmod +x install.sh
 
-# Run installation script (requires root)
+# Run installation script (requires root privileges)
 sudo ./install.sh
 ```
+
+**Note**: The installation script will automatically:
+- Install Go language environment (if not installed)
+- Compile the backend service
+- Build the frontend
+- Configure Nginx reverse proxy
+- Apply for SSL certificate (Let's Encrypt)
+- Create systemd service
+- Start the service
 
 #### 3. Configure Installation Parameters
 

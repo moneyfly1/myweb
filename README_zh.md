@@ -58,6 +58,28 @@
 
 ---
 
+## 🚀 安装指南
+
+### 快速开始 - 从 GitHub 克隆
+
+最简单的方式是直接从 GitHub 克隆项目：
+
+```bash
+# 克隆仓库
+git clone https://github.com/moneyfly1/myweb.git cboard
+cd cboard
+
+# 添加安装脚本执行权限
+chmod +x install.sh
+
+# 运行安装脚本（需要 root 权限）
+sudo ./install.sh
+```
+
+**GitHub 仓库地址**: https://github.com/moneyfly1/myweb
+
+---
+
 ## 🚀 宝塔面板一键安装
 
 ### 前置条件
@@ -69,33 +91,62 @@
 
 ### 安装步骤
 
-#### 1. 上传项目文件
+#### 1. 从 GitHub 克隆项目
 
-通过宝塔面板文件管理器或 SSH 将项目文件上传到服务器：
+**推荐方式**：直接从 GitHub 仓库克隆：
 
 ```bash
-# 方式一：通过 Git 克隆
+# 通过 SSH 连接到服务器
+ssh root@your-server-ip
+
+# 进入网站根目录
 cd /www/wwwroot
-git clone https://github.com/your-username/your-repo.git cboard
+
+# 克隆仓库
+git clone https://github.com/moneyfly1/myweb.git cboard
+
+# 进入项目目录
 cd cboard
 
-# 方式二：通过 SCP 上传（在本地执行）
+# 验证文件是否正确克隆
+ls -la
+```
+
+**备选方式 1**：通过宝塔面板文件管理器上传
+1. 登录宝塔面板
+2. 进入 **文件** → 导航到 `/www/wwwroot`
+3. 点击 **上传** → 选择项目文件 → 上传
+4. 如有压缩包，需要解压
+
+**备选方式 2**：通过 SCP 上传（在本地机器执行）
+```bash
+# 在本地机器执行
 scp -r /path/to/goweb/* root@your-server:/www/wwwroot/cboard/
 ```
 
 #### 2. 运行安装脚本
 
-通过 SSH 连接到服务器，执行：
+克隆项目后，运行安装脚本：
 
 ```bash
+# 确保在项目目录中
 cd /www/wwwroot/cboard
 
-# 添加执行权限
+# 添加安装脚本执行权限
 chmod +x install.sh
 
 # 运行安装脚本（需要 root 权限）
 sudo ./install.sh
 ```
+
+**注意**：安装脚本会自动完成以下操作：
+- 安装 Go 语言环境（如果未安装）
+- 编译后端服务
+- 构建前端
+- 配置 Nginx 反向代理
+- 申请 SSL 证书（Let's Encrypt）
+- 创建 systemd 服务
+- 启动服务
 
 #### 3. 配置安装参数
 
