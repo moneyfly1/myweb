@@ -388,6 +388,26 @@ func GetPublicSettings(c *gin.Context) {
 	for _, conf := range configs {
 		settings[conf.Key] = conf.Value
 	}
+
+	// 添加注册相关配置（这些配置需要在前端注册页面使用）
+	var registrationConfigs []models.SystemConfig
+	db.Where("category = ?", "registration").Find(&registrationConfigs)
+	for _, conf := range registrationConfigs {
+		// 将字符串 "true"/"false" 转换为布尔值
+		if conf.Key == "email_verification_required" || conf.Key == "registration_enabled" || conf.Key == "invite_code_required" {
+			settings[conf.Key] = conf.Value == "true"
+		} else if conf.Key == "min_password_length" || conf.Key == "default_subscription_device_limit" || conf.Key == "default_subscription_duration_months" {
+			// 数值类型配置
+			if val, err := strconv.Atoi(conf.Value); err == nil {
+				settings[conf.Key] = val
+			} else {
+				settings[conf.Key] = conf.Value
+			}
+		} else {
+			settings[conf.Key] = conf.Value
+		}
+	}
+
 	var announcementEnabled models.SystemConfig
 	var announcementContent models.SystemConfig
 	err := db.Where("key = ? AND category = ?", "announcement_enabled", "announcement").First(&announcementEnabled).Error
