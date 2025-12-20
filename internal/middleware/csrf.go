@@ -201,6 +201,12 @@ func isValidOrigin(origin, host string) bool {
 		origin == "http://127.0.0.1:5173" || origin == "https://127.0.0.1:5173" {
 		return true
 	}
+	// 支持局域网IP访问（开发环境）
+	if strings.HasPrefix(origin, "http://192.168.") || strings.HasPrefix(origin, "https://192.168.") ||
+		strings.HasPrefix(origin, "http://10.") || strings.HasPrefix(origin, "https://10.") ||
+		strings.HasPrefix(origin, "http://172.") || strings.HasPrefix(origin, "https://172.") {
+		return true
+	}
 	// 检查origin是否匹配host
 	return origin == "https://"+host || origin == "http://"+host ||
 		origin == "https://"+host+"/" || origin == "http://"+host+"/" ||
@@ -215,6 +221,12 @@ func isValidReferer(referer, host string) bool {
 	// 支持localhost开发环境
 	if strings.HasPrefix(referer, "http://localhost") || strings.HasPrefix(referer, "https://localhost") ||
 		strings.HasPrefix(referer, "http://127.0.0.1") || strings.HasPrefix(referer, "https://127.0.0.1") {
+		return true
+	}
+	// 支持局域网IP访问（开发环境）
+	if strings.HasPrefix(referer, "http://192.168.") || strings.HasPrefix(referer, "https://192.168.") ||
+		strings.HasPrefix(referer, "http://10.") || strings.HasPrefix(referer, "https://10.") ||
+		strings.HasPrefix(referer, "http://172.") || strings.HasPrefix(referer, "https://172.") {
 		return true
 	}
 	// 检查referer是否匹配host
