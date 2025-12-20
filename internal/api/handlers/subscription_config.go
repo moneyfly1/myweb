@@ -72,10 +72,18 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 	return &reset, &sub, &user, true
 }
 
-// generateErrorConfig 生成错误配置（Clash格式），不包含任何可用节点
+// generateErrorConfig 生成错误配置（Clash格式），返回错误节点信息而不是空配置
 func generateErrorConfig(title, message string) string {
-	// 清理消息，移除换行符，确保在注释中正确显示
+	// 清理消息，移除换行符，确保在节点名称中正确显示
 	cleanMessage := strings.ReplaceAll(message, "\n", " | ")
+	
+	// 创建错误节点名称，包含错误信息
+	errorNodeName := fmt.Sprintf("⚠️ %s: %s", title, cleanMessage)
+	
+	// 如果节点名称太长，截断
+	if len(errorNodeName) > 100 {
+		errorNodeName = errorNodeName[:97] + "..."
+	}
 
 	return fmt.Sprintf(`# ============================================
 # ⚠️ 订阅错误：%s
@@ -92,33 +100,54 @@ allow-lan: false
 mode: Rule
 log-level: error
 
-# 不包含任何可用节点
-proxies: []
+# 错误节点（无效节点，仅用于显示错误信息）
+proxies:
+  - name: "%s"
+    type: socks5
+    server: 127.0.0.1
+    port: 0
+    # 此节点无效，仅用于显示错误信息
 
 proxy-groups:
   - name: "❌ 订阅错误"
     type: select
     proxies:
-      - DIRECT
+      - "%s"
 
 rules:
   - MATCH,REJECT
-`, title, cleanMessage)
+`, title, cleanMessage, errorNodeName, errorNodeName)
 }
 
-// generateErrorConfigBase64 生成通用订阅的 Base64 错误提示
+// generateErrorConfigBase64 生成通用订阅的 Base64 错误提示，返回错误节点信息
 func generateErrorConfigBase64(title, message string) string {
-	// 生成清晰的错误信息
-	content := fmt.Sprintf(`# ============================================
-# ⚠️ 订阅错误：%s
-# ============================================
-# %s
-# ============================================
-# 此订阅无法使用，请检查您的账户状态
-# 请登录官网查看订单详情或联系客服
-# ============================================
-`, title, strings.ReplaceAll(message, "\n", " | "))
-	return base64.StdEncoding.EncodeToString([]byte(content))
+	// 清理消息
+	cleanMessage := strings.ReplaceAll(message, "\n", " | ")
+	
+	// 创建错误节点名称
+	errorNodeName := fmt.Sprintf("⚠️ %s: %s", title, cleanMessage)
+	if len(errorNodeName) > 100 {
+		errorNodeName = errorNodeName[:97] + "..."
+	}
+	
+	// 生成包含错误信息的无效 VMess 节点链接
+	// 使用无效的服务器地址和端口，确保无法连接
+	errorData := map[string]interface{}{
+		"v":    "2",
+		"ps":   errorNodeName,                    // 节点名称包含错误信息
+		"add":  "127.0.0.1",                     // 无效地址
+		"port": 0,                               // 无效端口
+		"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
+		"net":  "tcp",
+		"type": "none",
+	}
+	
+	jsonData, _ := json.Marshal(errorData)
+	encoded := base64.StdEncoding.EncodeToString(jsonData)
+	errorNodeLink := "vmess://" + encoded
+	
+	// 返回错误节点链接
+	return base64.StdEncoding.EncodeToString([]byte(errorNodeLink))
 }
 
 // GetSubscriptionConfig 处理 Clash 订阅请求
@@ -178,7 +207,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 	now := utils.GetBeijingTime()
 	isExpired := sub.ExpireTime.Before(now)
 	isInactive := !sub.IsActive || sub.Status != "active"
-	
+
 	// 先检查订阅是否过期或失效（即使有专线节点，普通订阅过期也应该返回错误）
 	if isExpired || isInactive {
 		var title, message string
@@ -193,7 +222,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 		c.String(200, generateErrorConfig(title, message))
 		return
 	}
-	
+
 	// 再检查设备数量限制（只阻止新设备）
 	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
 	if !ok {
@@ -269,7 +298,7 @@ func GetUniversalSubscription(c *gin.Context) {
 	now := utils.GetBeijingTime()
 	isExpired := sub.ExpireTime.Before(now)
 	isInactive := !sub.IsActive || sub.Status != "active"
-	
+
 	if isExpired || isInactive {
 		var title, message string
 		if isExpired {
@@ -282,7 +311,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		c.String(200, generateErrorConfigBase64(title, message))
 		return
 	}
-	
+
 	// 再检查设备数量限制（只阻止新设备）
 	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
 	if !ok {
