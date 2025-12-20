@@ -293,7 +293,7 @@ func GetAdminNodes(c *gin.Context) {
 		query = query.Where("status = ?", s)
 	}
 	
-	// 激活状态筛选
+	// 激活状态筛选（默认不筛选，显示所有节点）
 	if a := c.Query("is_active"); a != "" {
 		query = query.Where("is_active = ?", a == "true")
 	}
@@ -316,9 +316,32 @@ func GetAdminNodes(c *gin.Context) {
 		}
 	}
 	
-	// 计算总数
-	var total int64
-	query.Count(&total)
+	// 先查询所有符合条件的节点（不分页，用于去重）
+	var allNodes []models.Node
+	if err := query.Order("created_at DESC").Find(&allNodes).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取节点列表失败"})
+		return
+	}
+	
+	// 去重处理（与用户端逻辑保持一致）
+	seenKeys := make(map[string]bool)
+	uniqueNodes := make([]models.Node, 0)
+	for _, node := range allNodes {
+		if node.IsManual {
+			// 手动添加的节点直接添加，不去重
+			uniqueNodes = append(uniqueNodes, node)
+		} else {
+			// 非手动节点使用 generateNodeKey 去重
+			key := generateNodeKey(node.Type, node.Name, node.Config)
+			if !seenKeys[key] {
+				seenKeys[key] = true
+				uniqueNodes = append(uniqueNodes, node)
+			}
+		}
+	}
+	
+	// 计算去重后的总数
+	total := int64(len(uniqueNodes))
 	
 	// 分页参数
 	page := 1
@@ -339,15 +362,19 @@ func GetAdminNodes(c *gin.Context) {
 		size = 100 // 限制最大每页数量
 	}
 	
-	// 分页查询
-	var nodes []models.Node
+	// 分页处理
 	offset := (page - 1) * size
-	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&nodes).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取节点列表失败"})
-		return
+	end := offset + size
+	if end > len(uniqueNodes) {
+		end = len(uniqueNodes)
+	}
+	if offset >= len(uniqueNodes) {
+		uniqueNodes = []models.Node{}
+	} else {
+		uniqueNodes = uniqueNodes[offset:end]
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": nodes, "total": total, "page": page, "size": size})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": uniqueNodes, "total": total, "page": page, "size": size})
 }
 
 func GetNode(c *gin.Context) {
