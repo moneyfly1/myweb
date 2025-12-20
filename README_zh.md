@@ -148,7 +148,48 @@ sudo ./install.sh
 - 创建 systemd 服务
 - 启动服务
 
-#### 3. 配置安装参数
+#### 3. 手动安装（备选方式）
+
+如果您不想使用安装脚本，可以手动安装：
+
+```bash
+# 1. 安装 Go（如果未安装）
+# Ubuntu/Debian:
+sudo apt-get update
+sudo apt-get install -y golang-go
+
+# CentOS:
+sudo yum install -y golang
+
+# 2. 安装 Node.js（用于前端构建）
+# Ubuntu/Debian:
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# CentOS:
+curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+sudo yum install -y nodejs
+
+# 3. 编译后端
+cd /www/wwwroot/cboard
+go mod download
+go build -o bin/server ./cmd/server/main.go
+
+# 4. 构建前端
+cd frontend
+npm install
+npm run build
+
+# 5. 配置环境变量
+cd ..
+cp .env.example .env  # 如果存在 .env.example
+# 编辑 .env 文件，配置您的设置
+
+# 6. 启动服务
+./bin/server
+```
+
+#### 4. 配置安装参数
 
 安装脚本会提示您输入以下信息：
 

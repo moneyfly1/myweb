@@ -148,7 +148,48 @@ sudo ./install.sh
 - Create systemd service
 - Start the service
 
-#### 3. Configure Installation Parameters
+#### 3. Manual Installation (Alternative)
+
+If you prefer to install manually without using the installation script:
+
+```bash
+# 1. Install Go (if not installed)
+# For Ubuntu/Debian:
+sudo apt-get update
+sudo apt-get install -y golang-go
+
+# For CentOS:
+sudo yum install -y golang
+
+# 2. Install Node.js (for frontend build)
+# For Ubuntu/Debian:
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# For CentOS:
+curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+sudo yum install -y nodejs
+
+# 3. Build backend
+cd /www/wwwroot/cboard
+go mod download
+go build -o bin/server ./cmd/server/main.go
+
+# 4. Build frontend
+cd frontend
+npm install
+npm run build
+
+# 5. Configure environment
+cd ..
+cp .env.example .env  # If .env.example exists
+# Edit .env file with your configuration
+
+# 6. Start service
+./bin/server
+```
+
+#### 4. Configure Installation Parameters
 
 The installation script will prompt you for:
 
