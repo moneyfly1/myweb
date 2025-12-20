@@ -275,60 +275,52 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 3. 验证有效性（过期/超额）
-	now := utils.GetBeijingTime()
-	isExpired := sub.ExpireTime.Before(now)
-	isInactive := !sub.IsActive || sub.Status != "active"
+	// 注意：具体的设备限制逻辑交由 Service 处理，但在调用前我们需要处理设备记录逻辑
+	// 以确保"新设备超限被阻，旧设备超限可用"的逻辑生效
 
-	// 先检查订阅是否过期或失效（即使有专线节点，普通订阅过期也应该返回错误）
-	if isExpired || isInactive {
-		var title, message string
-		if isExpired {
-			title = "订阅已过期"
-			message = fmt.Sprintf("您的订阅已于 %s 过期，无法使用服务。请及时续费以继续使用。", sub.ExpireTime.Format("2006-01-02 15:04:05"))
-		} else {
-			title = "订阅已失效"
-			message = "您的订阅已被禁用或失效，无法使用服务。请联系客服获取帮助。"
-		}
-		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig(title, message, baseURL))
-		return
-	}
-
-	// 再检查设备数量限制（设备总数超限时，无论是否为新设备，都返回错误）
-	// 注意：先记录设备访问，这样 validateSubscription 才能正确识别当前设备
-	// 这对于 Clash 客户端一键导入特别重要，因为第一次请求时设备可能还没有被记录
 	deviceManager := device.NewDeviceManager()
 	deviceIP := utils.GetRealClientIP(c)
 	deviceUA := c.GetHeader("User-Agent")
-
-	// 先尝试记录设备访问（如果设备不存在，这里会创建；如果存在，会更新）
-	deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "clash")
-
-	// 然后验证订阅（此时设备已经被记录，可以正确检查设备是否在允许范围内）
-	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, deviceIP, deviceUA)
-	if !ok {
-		title := "设备数量超限"
-		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", currentDevices, deviceLimit)
-		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig(title, message, baseURL))
-		return
+	
+	// 检查当前设备是否存在
+	hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
+	var currentDevice models.Device
+	deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
+	
+	// 获取当前设备数
+	var count int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
+	
+	// 逻辑：
+	// 1. 如果设备已存在 -> 允许 (更新访问时间)
+	// 2. 如果设备不存在 (新设备)
+	//    a. 如果未超限 -> 允许 (创建设备)
+	//    b. 如果已超限 -> 拒绝 (不创建设备，Service 会检测到 device 不在列表中且超限，从而返回错误节点)
+	
+	shouldRecord := true
+	if !deviceExists {
+		if sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit {
+			shouldRecord = false
+		} else if sub.DeviceLimit == 0 {
+			shouldRecord = false
+		}
+	}
+	
+	if shouldRecord {
+		deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "clash")
 	}
 
-	// 4. 正常返回
+	// 4. 生成配置
 	db.Model(&sub).Update("clash_count", gorm.Expr("clash_count + ?", 1))
 
-	cfg, err := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
+	cfg, err := config_update.NewConfigUpdateService().GenerateClashConfig(uurl, deviceIP, deviceUA)
 	if err != nil {
-		// 如果错误是"没有可用的节点"，返回更详细的错误信息
-		if strings.Contains(err.Error(), "没有可用的节点") {
-			c.Header("Content-Type", "application/x-yaml")
-			c.String(200, generateErrorConfig("节点不可用", "当前没有可用的节点，请联系管理员", baseURL))
-			return
-		}
+		// 这里的 err 通常是系统错误，而非业务逻辑阻断（业务阻断会返回错误节点的 YAML）
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig("生成失败", fmt.Sprintf("服务器在构建配置时发生错误: %s", err.Error()), baseURL))
+		c.String(200, generateErrorConfig("生成失败", fmt.Sprintf("配置生成错误: %v", err), baseURL))
 		return
 	}
+	
 	c.Header("Content-Type", "application/x-yaml")
 	c.String(200, cfg)
 }
@@ -341,90 +333,69 @@ func GetUniversalSubscription(c *gin.Context) {
 	var sub models.Subscription
 
 	if err := db.Where("subscription_url = ?", uurl).First(&sub).Error; err != nil {
+		// 检查旧地址逻辑...
+		// 为了简化，这里直接调用 checkOldSubscriptionURL 并使用 helper 返回
+		// 但既然 Service 已经处理了 OldURL 状态，我们其实可以直接调用 Service
+		// 不过 Service 需要 token，如果 token 查不到 sub，Service 会处理
+		// 但是这里我们先查了 DB。
+		// 既然 Service 的 getSubscriptionContext 已经处理了 OldURL 和 NotFound
+		// 我们其实可以把这部分逻辑也委托给 Service。
+		// 但为了保险，保留这里的 CheckOldSubscriptionURL 逻辑作为快速失败?
+		// 不，为了统一，我们应该让 Service 处理。
+		// 只是 Service 的 GenerateUniversalConfig 需要 clientIP/UA。
+		
+		// 暂时保留原有的 handler 结构，只替换核心生成部分
 		reset, currentSub, user, isOldURL := checkOldSubscriptionURL(db, uurl)
 		if isOldURL {
-			now := utils.GetBeijingTime()
-			var msg string
-			if currentSub != nil && user != nil {
-				isExpired := currentSub.ExpireTime.Before(now)
-				isInactive := !currentSub.IsActive || currentSub.Status != "active"
-				msg = fmt.Sprintf("订阅地址已于 %s 重置，原链接已失效。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-				if isExpired {
-					msg += fmt.Sprintf(" 当前订阅已过期(到期时间:%s)，请续费。", currentSub.ExpireTime.Format("2006-01-02"))
-				} else if isInactive {
-					msg += " 当前订阅已失效，请联系客服。"
-				} else {
-					remainingDays := int(currentSub.ExpireTime.Sub(now).Hours() / 24)
-					if remainingDays > 0 {
-						msg += fmt.Sprintf(" 当前订阅有效(剩余%d天)，请登录获取新链接。", remainingDays)
-					}
-				}
-			} else {
-				msg = fmt.Sprintf("订阅地址已于 %s 重置，原链接已失效。请登录账户获取新订阅地址。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-			}
-			c.String(200, generateErrorConfigBase64("订阅地址已更换", msg, baseURL))
-			return
+			// ... 构建消息 ...
+			// 这里代码太长，直接让 Service 处理吧。
+			// 但是 GenerateUniversalConfig 返回的是 Base64 string。
+			// 如果是 OldURL，Service 会返回包含错误信息的 Base64。
+			// 所以我们可以直接调用 Service。
 		}
-		c.String(200, generateErrorConfigBase64("订阅不存在", "未在数据库中找到该订阅地址，请检查订阅链接是否正确", baseURL))
-		return
 	}
-
-	var u models.User
-	if err := db.First(&u, sub.UserID).Error; err != nil || !u.IsActive {
-		var msg string
-		if err != nil {
-			msg = "关联的用户账户不存在或已被删除，无法使用订阅服务。"
-		} else {
-			msg = "您的账户已被禁用，无法使用订阅服务。请联系客服获取帮助。"
-		}
-		c.String(200, generateErrorConfigBase64("账户异常", msg, baseURL))
-		return
-	}
-
-	// 先检查订阅是否过期或失效（即使有专线节点，普通订阅过期也应该返回错误）
-	now := utils.GetBeijingTime()
-	isExpired := sub.ExpireTime.Before(now)
-	isInactive := !sub.IsActive || sub.Status != "active"
-
-	if isExpired || isInactive {
-		var title, message string
-		if isExpired {
-			title = "订阅已过期"
-			message = fmt.Sprintf("您的订阅已于 %s 过期，无法使用服务。请及时续费以继续使用。", sub.ExpireTime.Format("2006-01-02 15:04:05"))
-		} else {
-			title = "订阅已失效"
-			message = "您的订阅已被禁用或失效，无法使用服务。请联系客服获取帮助。"
-		}
-		c.String(200, generateErrorConfigBase64(title, message, baseURL))
-		return
-	}
-
-	// 再检查设备数量限制（设备总数超限时，无论是否为新设备，都返回错误）
-	// 注意：先记录设备访问，这样 validateSubscription 才能正确识别当前设备
-	deviceManager := device.NewDeviceManager()
+	
+	// 为了确保逻辑统一，我们重新组织一下 GetUniversalSubscription
+	// 实际上，我们只需要获取 IP/UA，然后调用 Service 即可
+	
 	deviceIP := utils.GetRealClientIP(c)
 	deviceUA := c.GetHeader("User-Agent")
-
-	// 先尝试记录设备访问（如果设备不存在，这里会创建；如果存在，会更新）
-	deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "universal")
-
-	// 然后验证订阅（此时设备已经被记录，可以正确检查设备是否在允许范围内）
-	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, deviceIP, deviceUA)
-	if !ok {
-		title := "设备数量超限"
-		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", currentDevices, deviceLimit)
-		c.String(200, generateErrorConfigBase64(title, message, baseURL))
-		return
+	deviceManager := device.NewDeviceManager()
+	
+	// 预先获取 sub 以便进行设备逻辑判断（如果 sub 存在）
+	if db.Where("subscription_url = ?", uurl).First(&sub).Error == nil {
+		// 同样的设备记录逻辑
+		hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
+		var currentDevice models.Device
+		deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
+		
+		var count int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
+		
+		shouldRecord := true
+		if !deviceExists {
+			if sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit {
+				shouldRecord = false
+			} else if sub.DeviceLimit == 0 {
+				shouldRecord = false
+			}
+		}
+		
+		if shouldRecord {
+			deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "universal")
+			db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
+		}
 	}
 
-	db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
-
-	cfg, err := config_update.NewConfigUpdateService().GenerateSSRConfig(sub.UserID, uurl)
+	// 调用 Service 生成配置
+	// format 默认为 base64 (vmess/vless/etc)
+	// 如果是 ssr 客户端，可能需要不同的处理，但这里统一用 base64
+	cfg, err := config_update.NewConfigUpdateService().GenerateUniversalConfig(uurl, deviceIP, deviceUA, "base64")
 	if err != nil {
 		c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
 		return
 	}
-	c.String(200, base64.StdEncoding.EncodeToString([]byte(cfg)))
+	c.String(200, cfg)
 }
 
 // UpdateSubscriptionConfig 更新订阅配置（由用户/管理员手动触发）
