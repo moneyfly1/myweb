@@ -274,6 +274,7 @@ export default {
   
   /* 统一所有输入框样式为备注输入框（textarea）的样式 - 简单矩形，无嵌套 */
   /* 参考 el-textarea__inner 的样式：只有一个边框，无嵌套结构 */
+  /* 注意：必须覆盖 global.scss 中 .el-form .el-input .el-input__inner 的全局样式 */
   
   /* 基础输入框 - 外层包装器，样式与 textarea 一致 */
   :deep(.el-input__wrapper) {
@@ -307,16 +308,24 @@ export default {
   }
   
   /* 内层输入框 - 完全透明，无边框，无背景，就像不存在一样 */
-  /* 必须覆盖 global.scss 中的全局样式 */
+  /* 使用更高优先级的选择器覆盖 global.scss 中的 .el-form .el-input .el-input__inner */
+  /* 必须匹配全局样式的选择器结构才能覆盖 */
+  :deep(.el-form .el-input .el-input__inner),
+  :deep(.el-form .el-select .el-input__inner),
+  :deep(.el-form .el-input__inner),
   :deep(.el-input .el-input__inner),
   :deep(.el-input__inner),
   :deep(.el-input__inner input),
   :deep(.el-input__inner textarea),
   :deep(.el-select .el-input__inner),
-  :deep(.el-date-editor .el-input__inner) {
+  :deep(.el-date-editor .el-input__inner),
+  /* 针对 user-form-dialog 内的所有输入框，使用更具体的选择器 */
+  :deep(.user-form-dialog .el-form .el-input .el-input__inner),
+  :deep(.user-form-dialog .el-form .el-select .el-input__inner) {
     border-radius: 0 !important;
     border: none !important;
     border-width: 0 !important;
+    border-style: none !important;
     outline: none !important;
     box-shadow: none !important;
     background-color: transparent !important;
@@ -326,6 +335,11 @@ export default {
     /* 确保高度填满外层 */
     height: 100% !important;
     line-height: inherit !important;
+    /* 强制移除所有可能的边框样式 */
+    border-top: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-left: none !important;
   }
   
   /* 确保所有嵌套的 input 元素都没有边框，完全透明 */
