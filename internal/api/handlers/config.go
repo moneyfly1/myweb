@@ -254,6 +254,32 @@ func GetAdminSettings(c *gin.Context) {
 			"test_url":                   "https://ping.pe",
 		},
 		"custom_node": {},
+		"notification": {
+			"system_notifications":              "true",
+			"email_notifications":               "true",
+			"subscription_expiry_notifications": "true",
+			"new_user_notifications":            "true",
+			"new_order_notifications":           "true",
+		},
+		"admin_notification": {
+			"admin_notification_enabled":        "false",
+			"admin_email_notification":          "false",
+			"admin_telegram_notification":       "false",
+			"admin_bark_notification":           "false",
+			"admin_telegram_bot_token":          "",
+			"admin_telegram_chat_id":            "",
+			"admin_bark_server_url":             "https://api.day.app",
+			"admin_bark_device_key":             "",
+			"admin_notification_email":          "",
+			"admin_notify_order_paid":           "false",
+			"admin_notify_user_registered":      "false",
+			"admin_notify_password_reset":       "false",
+			"admin_notify_subscription_sent":    "false",
+			"admin_notify_subscription_reset":   "false",
+			"admin_notify_subscription_expired": "false",
+			"admin_notify_user_created":         "false",
+			"admin_notify_subscription_created": "false",
+		},
 	}
 
 	db := database.GetDB()

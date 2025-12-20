@@ -164,6 +164,22 @@
           <span>已选择 {{ selectedUsers.length }} 个用户</span>
         </div>
         <div class="batch-buttons">
+          <el-button type="success" @click="batchEnableUsers" :loading="batchOperating">
+            <el-icon><Check /></el-icon>
+            批量启用
+          </el-button>
+          <el-button type="warning" @click="batchDisableUsers" :loading="batchOperating">
+            <el-icon><Close /></el-icon>
+            批量禁用
+          </el-button>
+          <el-button type="primary" @click="batchSendSubEmail" :loading="batchOperating">
+            <el-icon><Message /></el-icon>
+            发送订阅邮件
+          </el-button>
+          <el-button type="info" @click="batchSendExpireReminder" :loading="batchOperating">
+            <el-icon><Bell /></el-icon>
+            发送到期提醒
+          </el-button>
           <el-button type="danger" @click="batchDeleteUsers" :loading="batchDeleting">
             <el-icon><Delete /></el-icon>
             批量删除
@@ -508,7 +524,7 @@ import {
   Plus, Edit, Delete, View, Search, Refresh, 
   Switch, Key, Close, HomeFilled, Filter,
   Wallet, ShoppingCart, Clock, Connection,
-  Unlock
+  Unlock, Check, Message, Bell
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/secureStorage'
@@ -533,6 +549,7 @@ export default {
     const loading = ref(false)
     const saving = ref(false)
     const batchDeleting = ref(false)
+    const batchOperating = ref(false)
     const users = ref([])
     const selectedUsers = ref([])
     const currentPage = ref(1)
@@ -986,6 +1003,127 @@ export default {
       }
     }
 
+    const batchEnableUsers = async () => {
+      if (selectedUsers.value.length === 0) {
+        ElMessage.warning('请先选择要启用的用户')
+        return
+      }
+
+      try {
+        batchOperating.value = true
+        const userIds = selectedUsers.value.map(user => user.id)
+        const response = await adminAPI.batchEnableUsers(userIds)
+        
+        if (response.data?.success !== false) {
+          ElMessage.success(response.data?.message || `成功启用 ${selectedUsers.value.length} 个用户`)
+          clearSelection()
+          loadUsers()
+        } else {
+          ElMessage.error(response.data?.message || '批量启用失败')
+        }
+      } catch (error) {
+        ElMessage.error(`批量启用失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchDisableUsers = async () => {
+      if (selectedUsers.value.length === 0) {
+        ElMessage.warning('请先选择要禁用的用户')
+        return
+      }
+
+      // 检查是否包含管理员用户
+      const adminUsers = selectedUsers.value.filter(user => user.is_admin)
+      if (adminUsers.length > 0) {
+        ElMessage.error('不能禁用管理员用户')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确定要禁用选中的 ${selectedUsers.value.length} 个用户吗？`,
+          '确认批量禁用',
+          {
+            type: 'warning',
+            confirmButtonText: '确定禁用',
+            cancelButtonText: '取消'
+          }
+        )
+
+        batchOperating.value = true
+        const userIds = selectedUsers.value.map(user => user.id)
+        const response = await adminAPI.batchDisableUsers(userIds)
+        
+        if (response.data?.success !== false) {
+          ElMessage.success(response.data?.message || `成功禁用 ${selectedUsers.value.length} 个用户`)
+          clearSelection()
+          loadUsers()
+        } else {
+          ElMessage.error(response.data?.message || '批量禁用失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error(`批量禁用失败: ${error.response?.data?.message || error.message}`)
+        }
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchSendSubEmail = async () => {
+      if (selectedUsers.value.length === 0) {
+        ElMessage.warning('请先选择要发送邮件的用户')
+        return
+      }
+
+      try {
+        batchOperating.value = true
+        const userIds = selectedUsers.value.map(user => user.id)
+        const response = await adminAPI.batchSendSubEmail(userIds)
+        
+        if (response.data?.success !== false) {
+          const data = response.data?.data || {}
+          const successCount = data.success_count || selectedUsers.value.length
+          const failCount = data.fail_count || 0
+          ElMessage.success(response.data?.message || `成功发送 ${successCount} 封邮件${failCount > 0 ? `，失败 ${failCount} 封` : ''}`)
+        } else {
+          ElMessage.error(response.data?.message || '批量发送邮件失败')
+        }
+      } catch (error) {
+        ElMessage.error(`批量发送邮件失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchSendExpireReminder = async () => {
+      if (selectedUsers.value.length === 0) {
+        ElMessage.warning('请先选择要发送提醒的用户')
+        return
+      }
+
+      try {
+        batchOperating.value = true
+        const userIds = selectedUsers.value.map(user => user.id)
+        const response = await adminAPI.batchSendExpireReminder(userIds)
+        
+        if (response.data?.success !== false) {
+          const data = response.data?.data || {}
+          const successCount = data.success_count || selectedUsers.value.length
+          const failCount = data.fail_count || 0
+          ElMessage.success(response.data?.message || `成功发送 ${successCount} 封提醒邮件${failCount > 0 ? `，失败 ${failCount} 封` : ''}`)
+        } else {
+          ElMessage.error(response.data?.message || '批量发送提醒失败')
+        }
+      } catch (error) {
+        ElMessage.error(`批量发送提醒失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
     onMounted(() => {
       loadUsers()
       window.addEventListener('resize', handleResize)
@@ -1004,6 +1142,7 @@ export default {
       loading,
       saving,
       batchDeleting,
+      batchOperating,
       users,
       selectedUsers,
       currentPage,
@@ -1037,11 +1176,18 @@ export default {
       handleSelectionChange,
       clearSelection,
       batchDeleteUsers,
+      batchEnableUsers,
+      batchDisableUsers,
+      batchSendSubEmail,
+      batchSendExpireReminder,
       isDeviceOverlimit,
       handleUserSaved,
       // 导出图标组件供模板使用
       Search,
-      Unlock
+      Unlock,
+      Check,
+      Message,
+      Bell
     }
   }
 }

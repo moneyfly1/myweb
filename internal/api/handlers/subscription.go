@@ -737,3 +737,297 @@ func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) er
 	content := email.NewEmailTemplateBuilder().GetSubscriptionTemplate(user.Username, univ, clash, exp, days, sub.DeviceLimit, sub.CurrentDevices)
 	return email.NewEmailService().QueueEmail(user.Email, "服务配置信息", content, "subscription")
 }
+
+// BatchDeleteSubscriptions 批量删除订阅
+func BatchDeleteSubscriptions(c *gin.Context) {
+	var req struct {
+		SubscriptionIDs []uint `json:"subscription_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.SubscriptionIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要删除的订阅",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	tx := db.Begin()
+
+	// 删除订阅相关的设备
+	if err := tx.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除订阅设备失败",
+		})
+		return
+	}
+
+	// 删除订阅重置记录
+	if err := tx.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.SubscriptionReset{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除订阅重置记录失败",
+		})
+		return
+	}
+
+	// 删除订阅
+	if err := tx.Where("id IN ?", req.SubscriptionIDs).Delete(&models.Subscription{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除订阅失败",
+		})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "删除操作失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)),
+	})
+}
+
+// BatchEnableSubscriptions 批量启用订阅
+func BatchEnableSubscriptions(c *gin.Context) {
+	var req struct {
+		SubscriptionIDs []uint `json:"subscription_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.SubscriptionIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要启用的订阅",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	result := db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Updates(map[string]interface{}{
+		"is_active": true,
+		"status":    "active",
+	})
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "启用订阅失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功启用 %d 个订阅", result.RowsAffected),
+	})
+}
+
+// BatchDisableSubscriptions 批量禁用订阅
+func BatchDisableSubscriptions(c *gin.Context) {
+	var req struct {
+		SubscriptionIDs []uint `json:"subscription_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.SubscriptionIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要禁用的订阅",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	result := db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Updates(map[string]interface{}{
+		"is_active": false,
+		"status":    "inactive",
+	})
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "禁用订阅失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功禁用 %d 个订阅", result.RowsAffected),
+	})
+}
+
+// BatchResetSubscriptions 批量重置订阅
+func BatchResetSubscriptions(c *gin.Context) {
+	var req struct {
+		SubscriptionIDs []uint `json:"subscription_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.SubscriptionIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要重置的订阅",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var subscriptions []models.Subscription
+	if err := db.Where("id IN ?", req.SubscriptionIDs).Preload("User").Find(&subscriptions).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取订阅信息失败",
+		})
+		return
+	}
+
+	successCount := 0
+	failCount := 0
+	adminUsername := getCurrentAdminUsername(c)
+
+	for _, sub := range subscriptions {
+		// 记录旧订阅地址
+		oldURL := sub.SubscriptionURL
+		var deviceCountBefore int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
+
+		// 生成新订阅地址
+		newURL := utils.GenerateSubscriptionURL()
+		sub.SubscriptionURL = newURL
+		sub.CurrentDevices = 0
+
+		if err := db.Save(&sub).Error; err != nil {
+			failCount++
+			continue
+		}
+
+		// 记录订阅重置
+		reset := models.SubscriptionReset{
+			UserID:             sub.UserID,
+			SubscriptionID:     sub.ID,
+			ResetType:          "admin_batch_reset",
+			Reason:             "管理员批量重置订阅地址",
+			OldSubscriptionURL: &oldURL,
+			NewSubscriptionURL: &newURL,
+			DeviceCountBefore:  int(deviceCountBefore),
+			DeviceCountAfter:   0,
+			ResetBy:            adminUsername,
+		}
+		if err := db.Create(&reset).Error; err != nil {
+			failCount++
+			continue
+		}
+
+		// 清理设备记录
+		db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
+
+		// 发送重置邮件
+		go sendResetEmail(c, sub, sub.User, "管理员批量重置")
+
+		successCount++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功重置 %d 个订阅，失败 %d 个", successCount, failCount),
+		"data": gin.H{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		},
+	})
+}
+
+// BatchSendAdminSubEmail 批量发送订阅邮件（管理员）
+func BatchSendAdminSubEmail(c *gin.Context) {
+	var req struct {
+		SubscriptionIDs []uint `json:"subscription_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.SubscriptionIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要发送邮件的订阅",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var subscriptions []models.Subscription
+	if err := db.Where("id IN ?", req.SubscriptionIDs).Preload("User").Find(&subscriptions).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取订阅信息失败",
+		})
+		return
+	}
+
+	successCount := 0
+	failCount := 0
+
+	for _, sub := range subscriptions {
+		if err := queueSubEmail(c, sub, sub.User); err != nil {
+			failCount++
+			continue
+		}
+		successCount++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount),
+		"data": gin.H{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		},
+	})
+}
