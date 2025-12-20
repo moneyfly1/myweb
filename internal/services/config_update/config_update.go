@@ -40,19 +40,25 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 	var allNodes []map[string]interface{}
 
 	for i, url := range urls {
-		fmt.Printf("正在下载节点源 [%d/%d]: %s\n", i+1, len(urls), url)
+		if utils.AppLogger != nil {
+			utils.AppLogger.Info("正在下载节点源 [%d/%d]: %s", i+1, len(urls), url)
+		}
 
 		// 下载内容
 		resp, err := http.Get(url)
 		if err != nil {
-			fmt.Printf("下载失败: %v\n", err)
+			if utils.AppLogger != nil {
+				utils.AppLogger.Error("下载失败: %v", err)
+			}
 			continue
 		}
 		defer resp.Body.Close()
 
 		content, err := io.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Printf("读取内容失败: %v\n", err)
+			if utils.AppLogger != nil {
+				utils.AppLogger.Error("读取内容失败: %v", err)
+			}
 			continue
 		}
 
@@ -61,7 +67,9 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 
 		// 提取节点链接
 		nodeLinks := s.extractNodeLinks(decoded)
-		fmt.Printf("从 %s 提取到 %d 个节点链接\n", url, len(nodeLinks))
+		if utils.AppLogger != nil {
+			utils.AppLogger.Info("从 %s 提取到 %d 个节点链接", url, len(nodeLinks))
+		}
 
 		for _, link := range nodeLinks {
 			allNodes = append(allNodes, map[string]interface{}{
@@ -285,9 +293,10 @@ func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) e
 		return fmt.Errorf("生成配置失败: %v", err)
 	}
 
-	// 这里可以选择保存到文件系统或更新数据库记录
-	// 目前配置是实时生成的，所以这里主要是验证配置生成是否成功
-	fmt.Printf("订阅配置已更新: %s, 配置长度: %d 字符\n", subscriptionURL, len(config))
+	// 配置是实时生成的，这里主要是验证配置生成是否成功
+	if utils.AppLogger != nil {
+		utils.AppLogger.Info("订阅配置已更新: %s, 配置长度: %d 字符", subscriptionURL, len(config))
+	}
 
 	return nil
 }
@@ -828,7 +837,7 @@ func (s *ConfigUpdateService) extractRegionFromName(name string) string {
 }
 
 // addInfoAndReminderNodes 添加信息节点和提醒节点到配置前
-// 注意：信息节点使用特殊的节点名称，在 Clash 中会显示在节点列表中
+// 信息节点使用特殊的节点名称，在 Clash 中会显示在节点列表中
 // 对于 V2Ray/SSR 格式，这些信息节点会被转换为特殊的 VMess 链接，在客户端中显示
 func (s *ConfigUpdateService) addInfoAndReminderNodes(proxies []*ProxyNode, subscription models.Subscription, user models.User, isExpired, isInactive, isDeviceOverLimit bool, currentDevices, deviceLimit int) []*ProxyNode {
 	// 获取网站域名（自动识别）
@@ -964,7 +973,7 @@ func (s *ConfigUpdateService) getSiteURL() string {
 	}
 
 	// 如果都找不到，返回空字符串（由调用方处理，或使用默认值）
-	// 注意：这不应该发生，应该在系统设置中配置 domain_name
+	// 这不应该发生，应该在系统设置中配置 domain_name
 	return ""
 }
 

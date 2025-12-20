@@ -2,6 +2,8 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -47,4 +49,32 @@ type LoginHistory struct {
 // TableName 指定表名
 func (LoginHistory) TableName() string {
 	return "login_history"
+}
+
+// GetLocationInfo 解析位置信息
+func (h *LoginHistory) GetLocationInfo() (country, city string) {
+	if !h.Location.Valid || h.Location.String == "" {
+		return "", ""
+	}
+	locationStr := h.Location.String
+	if strings.Contains(locationStr, ",") {
+		parts := strings.Split(locationStr, ",")
+		if len(parts) >= 1 {
+			country = strings.TrimSpace(parts[0])
+		}
+		if len(parts) >= 2 {
+			city = strings.TrimSpace(parts[1])
+		}
+	} else {
+		var locationData map[string]interface{}
+		if err := json.Unmarshal([]byte(locationStr), &locationData); err == nil {
+			if c, ok := locationData["country"].(string); ok {
+				country = c
+			}
+			if c, ok := locationData["city"].(string); ok {
+				city = c
+			}
+		}
+	}
+	return
 }

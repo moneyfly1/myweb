@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -452,21 +453,44 @@ func DeleteInviteCode(c *gin.Context) {
 
 	db := database.GetDB()
 	var inviteCode models.InviteCode
-	if err := db.Where("id = ? AND created_by = ?", id, user.ID).First(&inviteCode).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
+	// 修复：使用 UserID 而不是 created_by
+	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&inviteCode).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "邀请码不存在或无权限",
+			})
+		} else {
+			utils.LogError("DeleteInviteCode: query invite code failed", err, nil)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "查询邀请码失败",
+			})
+		}
+		return
+	}
+
+	// 检查邀请码是否已被使用
+	if inviteCode.UsedCount > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "邀请码不存在或无权限",
+			"message": "邀请码已被使用，无法删除",
 		})
 		return
 	}
 
+	// 删除邀请码
 	if err := db.Delete(&inviteCode).Error; err != nil {
+		utils.LogError("DeleteInviteCode: delete invite code failed", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "删除邀请码失败",
 		})
 		return
 	}
+
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "delete_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("删除邀请码: %s", inviteCode.Code))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

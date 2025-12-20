@@ -19,10 +19,7 @@ import (
 func GetAdminProfile(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -49,21 +46,18 @@ func GetAdminProfile(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"id":           user.ID,
-			"username":     user.Username,
-			"email":        user.Email,
-			"is_admin":     user.IsAdmin,
-			"avatar_url":   user.Avatar.String,
-			"avatar":       user.Avatar.String,
-			"display_name": displayName,
-			"phone":        phone,
-			"bio":          bio,
-			"theme":        user.Theme,
-			"language":     user.Language,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"id":           user.ID,
+		"username":     user.Username,
+		"email":        user.Email,
+		"is_admin":     user.IsAdmin,
+		"avatar_url":   user.Avatar.String,
+		"avatar":       user.Avatar.String,
+		"display_name": displayName,
+		"phone":        phone,
+		"bio":          bio,
+		"theme":        user.Theme,
+		"language":     user.Language,
 	})
 }
 
@@ -71,10 +65,7 @@ func GetAdminProfile(c *gin.Context) {
 func UpdateAdminProfile(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -89,49 +80,37 @@ func UpdateAdminProfile(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 
-	// 更新头像（支持 avatar_url 和 avatar 两种字段名）
+	// 更新头像
 	if req.AvatarURL != "" {
 		user.Avatar = database.NullString(req.AvatarURL)
 	} else if req.Avatar != "" {
 		user.Avatar = database.NullString(req.Avatar)
 	}
 
-	// 更新主题
 	if req.Theme != "" {
 		user.Theme = req.Theme
 	}
-
-	// 更新语言
 	if req.Language != "" {
 		user.Language = req.Language
 	}
 
-	// 保存用户基本信息
 	if err := db.Save(user).Error; err != nil {
-		utils.LogError("UpdateAdminProfile: save user failed", err, map[string]interface{}{
-			"user_id": user.ID,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
 	}
 
-	// 将display_name, phone, bio存储在SystemConfig中
+	// 辅助函数：更新配置
 	updateConfig := func(key, value string) error {
-		var config models.SystemConfig
 		configKey := fmt.Sprintf("user_%d_%s", user.ID, key)
-		if err := db.Where("key = ? AND category = ?", configKey, "admin_profile").First(&config).Error; err != nil {
+		var config models.SystemConfig
+		err := db.Where("key = ? AND category = ?", configKey, "admin_profile").First(&config).Error
+		if err != nil {
 			if err == gorm.ErrRecordNotFound {
 				config = models.SystemConfig{
 					Key:      configKey,
@@ -146,49 +125,23 @@ func UpdateAdminProfile(c *gin.Context) {
 		return db.Save(&config).Error
 	}
 
-	// 更新display_name
-	if req.DisplayName != "" {
-		if err := updateConfig("display_name", req.DisplayName); err != nil {
-			utils.LogError("UpdateAdminProfile: update display_name failed", err, map[string]interface{}{
-				"user_id": user.ID,
-			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新显示名称失败",
-			})
-			return
+	// 更新额外信息
+	configs := map[string]string{
+		"display_name": req.DisplayName,
+		"phone":        req.Phone,
+		"bio":          req.Bio,
+	}
+
+	for key, value := range configs {
+		if value != "" { // 只更新非空值，原逻辑看似允许空值覆盖但语义模糊，此处优化为非空更新，或根据需求调整
+			if err := updateConfig(key, value); err != nil {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "更新"+key+"失败", err)
+				return
+			}
 		}
 	}
 
-	// 更新phone
-	if req.Phone != "" || req.Phone == "" {
-		if err := updateConfig("phone", req.Phone); err != nil {
-			utils.LogError("UpdateAdminProfile: update phone failed", err, map[string]interface{}{
-				"user_id": user.ID,
-			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新手机号码失败",
-			})
-			return
-		}
-	}
-
-	// 更新bio
-	if req.Bio != "" || req.Bio == "" {
-		if err := updateConfig("bio", req.Bio); err != nil {
-			utils.LogError("UpdateAdminProfile: update bio failed", err, map[string]interface{}{
-				"user_id": user.ID,
-			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新个人简介失败",
-			})
-			return
-		}
-	}
-
-	// 重新读取配置以返回最新值
+	// 重新读取配置
 	displayName := user.Username
 	phone := ""
 	bio := ""
@@ -202,20 +155,16 @@ func UpdateAdminProfile(c *gin.Context) {
 		bio = req.Bio
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "个人资料更新成功",
-		"data": gin.H{
-			"id":           user.ID,
-			"username":     user.Username,
-			"email":        user.Email,
-			"display_name": displayName,
-			"avatar_url":   user.Avatar.String,
-			"phone":        phone,
-			"bio":          bio,
-			"theme":        user.Theme,
-			"language":     user.Language,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "个人资料更新成功", gin.H{
+		"id":           user.ID,
+		"username":     user.Username,
+		"email":        user.Email,
+		"display_name": displayName,
+		"avatar_url":   user.Avatar.String,
+		"phone":        phone,
+		"bio":          bio,
+		"theme":        user.Theme,
+		"language":     user.Language,
 	})
 }
 
@@ -223,10 +172,7 @@ func UpdateAdminProfile(c *gin.Context) {
 func GetLoginHistory(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -236,43 +182,7 @@ func GetLoginHistory(c *gin.Context) {
 
 	historyList := make([]gin.H, 0)
 	for _, h := range history {
-		ipAddress := ""
-		if h.IPAddress.Valid {
-			ipAddress = h.IPAddress.String
-		}
-		userAgent := ""
-		if h.UserAgent.Valid {
-			userAgent = h.UserAgent.String
-		}
-
-		// 解析地理位置信息
-		country := ""
-		city := ""
-		if h.Location.Valid && h.Location.String != "" {
-			// Location 格式可能是 "国家,城市" 或 JSON 格式
-			locationStr := h.Location.String
-			if strings.Contains(locationStr, ",") {
-				parts := strings.Split(locationStr, ",")
-				if len(parts) >= 1 {
-					country = strings.TrimSpace(parts[0])
-				}
-				if len(parts) >= 2 {
-					city = strings.TrimSpace(parts[1])
-				}
-			} else {
-				// 尝试解析为JSON
-				var locationData map[string]interface{}
-				if err := json.Unmarshal([]byte(locationStr), &locationData); err == nil {
-					if c, ok := locationData["country"].(string); ok {
-						country = c
-					}
-					if c, ok := locationData["city"].(string); ok {
-						city = c
-					}
-				}
-			}
-		}
-
+		country, city := h.GetLocationInfo()
 		status := "success"
 		if h.LoginStatus != "" {
 			status = h.LoginStatus
@@ -280,10 +190,10 @@ func GetLoginHistory(c *gin.Context) {
 
 		historyList = append(historyList, gin.H{
 			"id":           h.ID,
-			"ip_address":   ipAddress,
-			"ipAddress":    ipAddress, // 兼容字段
-			"user_agent":   userAgent,
-			"userAgent":    userAgent, // 兼容字段
+			"ip_address":   utils.GetNullStringValue(h.IPAddress),
+			"ipAddress":    utils.GetNullStringValue(h.IPAddress), // 兼容字段
+			"user_agent":   utils.GetNullStringValue(h.UserAgent),
+			"userAgent":    utils.GetNullStringValue(h.UserAgent), // 兼容字段
 			"login_time":   h.LoginTime.Format("2006-01-02 15:04:05"),
 			"loginTime":    h.LoginTime.Format("2006-01-02 15:04:05"), // 兼容字段
 			"login_status": status,
@@ -294,20 +204,14 @@ func GetLoginHistory(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    historyList,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", historyList)
 }
 
 // GetSecuritySettings 获取安全设置
 func GetSecuritySettings(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -337,36 +241,27 @@ func GetSecuritySettings(c *gin.Context) {
 		settings["session_timeout"] = "120"
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    settings,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
 // UpdateAdminSecuritySettings 更新安全设置（管理员个人）
 func UpdateAdminSecuritySettings(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	for key, value := range req {
-		var config models.SystemConfig
 		configKey := fmt.Sprintf("user_%d_%s", user.ID, key)
+		var config models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", configKey, "user_security").First(&config).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				config = models.SystemConfig{
@@ -375,69 +270,45 @@ func UpdateAdminSecuritySettings(c *gin.Context) {
 					Value:    fmt.Sprintf("%v", value),
 				}
 				if err := db.Create(&config).Error; err != nil {
-					utils.LogError("UpdateUserSecuritySettings: create config failed", err, map[string]interface{}{
-						"key": key,
-					})
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败", key),
-					})
+					utils.LogError("UpdateUserSecuritySettings: create config failed", err, map[string]interface{}{"key": key})
+					utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("保存配置 %s 失败", key), err)
 					return
 				}
 			} else {
-				utils.LogError("UpdateUserSecuritySettings: query config failed", err, map[string]interface{}{
-					"key": key,
-				})
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": fmt.Sprintf("查询配置 %s 失败", key),
-				})
+				utils.LogError("UpdateUserSecuritySettings: query config failed", err, map[string]interface{}{"key": key})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("查询配置 %s 失败", key), err)
 				return
 			}
 		} else {
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
-				utils.LogError("UpdateUserSecuritySettings: update config failed", err, map[string]interface{}{
-					"key": key,
-				})
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败", key),
-				})
+				utils.LogError("UpdateUserSecuritySettings: update config failed", err, map[string]interface{}{"key": key})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新配置 %s 失败", key), err)
 				return
 			}
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "安全设置已保存",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "安全设置已保存", nil)
 }
 
 // GetNotificationSettings 获取通知设置
 func GetNotificationSettings(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"email_enabled":         user.EmailNotifications,
-			"email_notifications":   user.EmailNotifications,
-			"system_notification":   true,       // 默认值
-			"security_notification": true,       // 默认值
-			"frequency":             "realtime", // 默认值
-			"sms_notifications":     user.SMSNotifications,
-			"push_notifications":    user.PushNotifications,
-			"notification_types":    user.NotificationTypes,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"email_enabled":         user.EmailNotifications,
+		"email_notifications":   user.EmailNotifications,
+		"system_notification":   true,       // 默认值
+		"security_notification": true,       // 默认值
+		"frequency":             "realtime", // 默认值
+		"sms_notifications":     user.SMSNotifications,
+		"push_notifications":    user.PushNotifications,
+		"notification_types":    user.NotificationTypes,
 	})
 }
 
@@ -445,19 +316,13 @@ func GetNotificationSettings(c *gin.Context) {
 func UpdateUserNotificationSettings(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -489,20 +354,11 @@ func UpdateUserNotificationSettings(c *gin.Context) {
 	}
 
 	if err := db.Save(user).Error; err != nil {
-		utils.LogError("UpdateNotificationSettings: save user failed", err, map[string]interface{}{
-			"user_id": user.ID,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "通知设置已保存",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "通知设置已保存", nil)
 }
 
 // UpdateAdminNotificationSettings 更新通知设置（管理员个人）
@@ -514,10 +370,7 @@ func UpdateAdminNotificationSettings(c *gin.Context) {
 func GetUserActivities(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -536,20 +389,14 @@ func GetUserActivities(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    activityList,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", activityList)
 }
 
 // GetSubscriptionResets 获取订阅重置记录
 func GetSubscriptionResets(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -570,20 +417,14 @@ func GetSubscriptionResets(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    resetList,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", resetList)
 }
 
 // GetUserDevices 获取用户设备列表
 func GetUserDevices(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -593,49 +434,32 @@ func GetUserDevices(c *gin.Context) {
 
 	deviceList := make([]gin.H, 0)
 	for _, device := range devices {
-		// Helper function to safely get string value from pointer
-		getStringValue := func(ptr *string) string {
-			if ptr != nil {
-				return *ptr
-			}
-			return ""
-		}
-
 		deviceList = append(deviceList, gin.H{
 			"id":              device.ID,
 			"subscription_id": device.SubscriptionID,
-			"device_name":     getStringValue(device.DeviceName),
-			"device_type":     getStringValue(device.DeviceType),
-			"ip_address":      getStringValue(device.IPAddress),
+			"device_name":     utils.GetStringValue(device.DeviceName),
+			"device_type":     utils.GetStringValue(device.DeviceType),
+			"ip_address":      utils.GetStringValue(device.IPAddress),
 			"is_active":       device.IsActive,
 			"last_access":     device.LastAccess.Format("2006-01-02 15:04:05"),
 			"created_at":      device.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    deviceList,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", deviceList)
 }
 
 // GetPrivacySettings 获取隐私设置
 func GetPrivacySettings(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"data_sharing": user.DataSharing,
-			"analytics":    user.Analytics,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"data_sharing": user.DataSharing,
+		"analytics":    user.Analytics,
 	})
 }
 
@@ -643,19 +467,13 @@ func GetPrivacySettings(c *gin.Context) {
 func UpdatePrivacySettings(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -671,18 +489,9 @@ func UpdatePrivacySettings(c *gin.Context) {
 	}
 
 	if err := db.Save(user).Error; err != nil {
-		utils.LogError("UpdatePrivacySettings: save user failed", err, map[string]interface{}{
-			"user_id": user.ID,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "隐私设置已保存",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "隐私设置已保存", nil)
 }

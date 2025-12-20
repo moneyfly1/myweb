@@ -647,54 +647,8 @@ func GetUserSubscription(c *gin.Context) {
 		return
 	}
 
-	// 生成订阅地址（使用统一的 buildBaseURL 逻辑，优先从数据库配置获取域名）
-	// buildBaseURL 优先使用数据库配置的域名，如果没有则使用请求的 Host
-	baseURL := func() string {
-		// 优先从数据库配置获取域名
-		db := database.GetDB()
-		if db != nil {
-			var config models.SystemConfig
-			if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
-				domain := strings.TrimSpace(config.Value)
-				// 如果配置的域名包含协议，直接使用
-				if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
-					return strings.TrimSuffix(domain, "/")
-				}
-				// 否则使用当前请求的协议
-				scheme := "https"
-				if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-					scheme = proto
-				} else if c.Request.TLS == nil {
-					scheme = "http"
-				}
-				return fmt.Sprintf("%s://%s", scheme, domain)
-			}
-			// 兼容旧配置（不限制 category）
-			if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
-				domain := strings.TrimSpace(config.Value)
-				if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
-					return strings.TrimSuffix(domain, "/")
-				}
-				scheme := "https"
-				if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-					scheme = proto
-				} else if c.Request.TLS == nil {
-					scheme = "http"
-				}
-				return fmt.Sprintf("%s://%s", scheme, domain)
-			}
-		}
-
-		// 如果没有配置域名，使用请求的 Host
-		scheme := "http"
-		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else if c.Request.TLS != nil {
-			scheme = "https"
-		}
-		host := c.Request.Host
-		return fmt.Sprintf("%s://%s", scheme, host)
-	}()
+	// 生成订阅地址（使用统一的 GetBuildBaseURL 逻辑，优先从数据库配置获取域名）
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
 	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
@@ -899,11 +853,10 @@ func GetEmailQueueStatistics(c *gin.Context) {
 	db := database.GetDB()
 
 	var stats struct {
-		Total   int64 `json:"total"`
-		Pending int64 `json:"pending"`
-		Sent    int64 `json:"sent"`
-		Failed  int64 `json:"failed"`
-		// 兼容旧字段名
+		Total         int64 `json:"total"`
+		Pending       int64 `json:"pending"`
+		Sent          int64 `json:"sent"`
+		Failed        int64 `json:"failed"`
 		TotalEmails   int64 `json:"total_emails"`
 		PendingEmails int64 `json:"pending_emails"`
 		SentEmails    int64 `json:"sent_emails"`

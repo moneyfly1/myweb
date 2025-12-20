@@ -518,6 +518,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		existingDevice.AccessCount++
 		existingDevice.IPAddress = &ipAddress
 		existingDevice.UserAgent = &userAgent
+		existingDevice.IsActive = true // 确保设备标记为活跃
 
 		// 更新订阅类型（如果之前没有或需要更新）
 		if subscriptionType != "" {
@@ -525,29 +526,29 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			existingDevice.SubscriptionType = &subscriptionTypeStr
 		}
 
-		// 更新设备信息（如果之前没有）
-		if existingDevice.DeviceName == nil || *existingDevice.DeviceName == "" {
+		// 更新设备信息（如果之前没有或需要更新）
+		if deviceInfo.DeviceName != "Unknown Device" && (existingDevice.DeviceName == nil || *existingDevice.DeviceName == "" || *existingDevice.DeviceName == "Unknown Device") {
 			existingDevice.DeviceName = &deviceInfo.DeviceName
 		}
-		if existingDevice.DeviceType == nil || *existingDevice.DeviceType == "" {
+		if deviceInfo.DeviceType != "unknown" && (existingDevice.DeviceType == nil || *existingDevice.DeviceType == "" || *existingDevice.DeviceType == "unknown") {
 			existingDevice.DeviceType = &deviceInfo.DeviceType
 		}
-		if existingDevice.DeviceModel == nil || *existingDevice.DeviceModel == "" {
+		if deviceInfo.DeviceModel != "" && (existingDevice.DeviceModel == nil || *existingDevice.DeviceModel == "") {
 			existingDevice.DeviceModel = &deviceInfo.DeviceModel
 		}
-		if existingDevice.DeviceBrand == nil || *existingDevice.DeviceBrand == "" {
+		if deviceInfo.DeviceBrand != "" && (existingDevice.DeviceBrand == nil || *existingDevice.DeviceBrand == "") {
 			existingDevice.DeviceBrand = &deviceInfo.DeviceBrand
 		}
-		if existingDevice.SoftwareName == nil || *existingDevice.SoftwareName == "" {
+		if deviceInfo.SoftwareName != "Unknown" && (existingDevice.SoftwareName == nil || *existingDevice.SoftwareName == "" || *existingDevice.SoftwareName == "Unknown") {
 			existingDevice.SoftwareName = &deviceInfo.SoftwareName
 		}
-		if existingDevice.SoftwareVersion == nil || *existingDevice.SoftwareVersion == "" {
+		if deviceInfo.SoftwareVersion != "" && (existingDevice.SoftwareVersion == nil || *existingDevice.SoftwareVersion == "") {
 			existingDevice.SoftwareVersion = &deviceInfo.SoftwareVersion
 		}
-		if existingDevice.OSName == nil || *existingDevice.OSName == "" {
+		if deviceInfo.OSName != "Unknown" && (existingDevice.OSName == nil || *existingDevice.OSName == "" || *existingDevice.OSName == "Unknown") {
 			existingDevice.OSName = &deviceInfo.OSName
 		}
-		if existingDevice.OSVersion == nil || *existingDevice.OSVersion == "" {
+		if deviceInfo.OSVersion != "" && (existingDevice.OSVersion == nil || *existingDevice.OSVersion == "") {
 			existingDevice.OSVersion = &deviceInfo.OSVersion
 		}
 

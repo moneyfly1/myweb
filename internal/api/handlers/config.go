@@ -22,8 +22,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// --- Helper Functions ---
-
 // jsonResponse 统一响应格式
 func jsonResponse(c *gin.Context, code int, success bool, msg string, data interface{}) {
 	c.JSON(code, gin.H{"success": success, "message": msg, "data": data})
@@ -149,7 +147,6 @@ func UpdateSystemConfig(c *gin.Context) {
 			return
 		}
 		// 复用通用逻辑，但 category 设为 system (或者根据业务需求调整)
-		// 这里保留原逻辑：先查后改
 		for k, v := range req {
 			val := fmt.Sprintf("%v", v)
 			db.Clauses(clause.OnConflict{

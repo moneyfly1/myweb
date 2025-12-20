@@ -20,23 +20,37 @@ import (
 
 func validateSubscription(subscription *models.Subscription, user *models.User, db *gorm.DB, clientIP, userAgent string) (string, int, int, bool) {
 	now := utils.GetBeijingTime()
+
+	// 检查订阅是否过期
 	isExpired := subscription.ExpireTime.Before(now)
 	isInactive := !subscription.IsActive || subscription.Status != "active"
 	isSpecialValid := user.SpecialNodeExpiresAt.Valid && user.SpecialNodeExpiresAt.Time.After(now)
+
 	if isExpired && !isSpecialValid {
 		return fmt.Sprintf("订阅已过期（到期时间：%s），请及时续费", subscription.ExpireTime.Format("2006-01-02 15:04:05")), 0, subscription.DeviceLimit, false
 	}
 	if isInactive {
 		return "订阅已失效，请联系客服", 0, subscription.DeviceLimit, false
 	}
+
+	// 检查设备数量限制
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
+
+	// 生成设备哈希，检查是否为新设备
 	hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
 	var d models.Device
-	isNew := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&d).Error != nil
-	if isNew && int(count) >= subscription.DeviceLimit {
+	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&d).Error != nil
+
+	// 如果是新设备且已达到设备限制
+	if isNewDevice && int(count) >= subscription.DeviceLimit {
+		// 如果设备限制为0，表示不限制设备数量
+		if subscription.DeviceLimit == 0 {
+			return "", int(count), subscription.DeviceLimit, true
+		}
 		return fmt.Sprintf("设备数量超过限制（当前 %d/%d），请删除多余设备后再试", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
 	}
+
 	return "", int(count), subscription.DeviceLimit, true
 }
 

@@ -2,9 +2,6 @@ import axios from 'axios'
 import { secureStorage } from '@/utils/secureStorage'
 import { onPageVisible, isVisible } from '@/utils/pageVisibility'
 
-// =========================================================================================
-// 全局状态与配置
-// =========================================================================================
 
 let _router = null
 let _useAuthStore = null
@@ -42,9 +39,6 @@ const ADMIN_PATHS = [
   '/coupons/admin'
 ]
 
-// =========================================================================================
-// 初始化与工具函数
-// =========================================================================================
 
 export const initApi = (router, useAuthStore) => {
   _router = router
@@ -81,7 +75,9 @@ async function testConnection() {
     })
   } catch (error) {
     if (error.code !== 'ECONNABORTED') {
-      console.warn('连接测试失败，可能需要刷新页面:', error.message)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('连接测试失败，可能需要刷新页面:', error.message)
+      }
     }
   }
 }
@@ -193,10 +189,14 @@ api.interceptors.response.use(
     if (!error.response) {
       if ((error.code === 'ECONNABORTED' || error.message?.includes('timeout')) && error.config && !error.config._retry) {
         error.config._retry = true
-        console.warn('请求超时，正在重试...', error.config.url)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('请求超时，正在重试...', error.config.url)
+        }
         return api.request(error.config)
       } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
-        console.warn('网络连接错误，请检查网络连接')
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('网络连接错误，请检查网络连接')
+        }
         if (isVisible() && !reconnectTimer) {
           reconnectTimer = setTimeout(() => { testConnection(); reconnectTimer = null }, 2000)
         }
@@ -227,7 +227,9 @@ api.interceptors.response.use(
         if (['post', 'put', 'delete', 'patch'].includes(error.config?.method?.toLowerCase())) {
           error.config._csrfRetry = true
           error.config.headers['X-CSRF-Token'] = newCsrfToken
-          console.log('[API] CSRF验证失败，使用新token自动重试')
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[API] CSRF验证失败，使用新token自动重试')
+          }
           return api.request(error.config)
         }
       }

@@ -1097,7 +1097,6 @@ export default {
     
     // 图片加载失败
     const onImageError = async (event) => {
-      // 如果二维码是base64格式还加载失败，说明有问题，重新尝试生成二维码
       if (paymentQRCode.value && paymentQRCode.value.startsWith('data:')) {
         ElMessage.warning('二维码显示异常，正在重新生成...')
         
@@ -1187,7 +1186,6 @@ export default {
           const rechargeData = response.data.data
           
           if (rechargeData.status === 'paid') {
-            // 支付成功
             if (paymentStatusCheckInterval) {
               clearInterval(paymentStatusCheckInterval)
               paymentStatusCheckInterval = null
@@ -1195,12 +1193,11 @@ export default {
             
             paymentQRVisible.value = false
             ElMessage.success('支付成功！')
-            await loadRecharges() // 刷新充值记录列表
+            await loadRecharges()
             if (activeTab.value === 'all') {
               mergeRecords()
             }
           } else if (rechargeData.status === 'cancelled') {
-            // 充值已取消
             if (paymentStatusCheckInterval) {
               clearInterval(paymentStatusCheckInterval)
               paymentStatusCheckInterval = null
@@ -1214,67 +1211,77 @@ export default {
             }
           }
         } else {
-          // 检查订单状态
           if (!selectedOrder.value.order_no) {
-            console.log('检查支付状态：订单号不存在', selectedOrder.value)
+            if (process.env.NODE_ENV === 'development') {
+              console.log('检查支付状态：订单号不存在', selectedOrder.value)
+            }
             return
           }
-          
+
           const response = await api.get(`/orders/${selectedOrder.value.order_no}/status`)
-          
-          // 添加调试日志
-          console.log('订单状态检查响应:', {
-            order_no: selectedOrder.value.order_no,
-            response: response.data,
-            status: response.data?.data?.status
-          })
-          
-          // 验证响应格式
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log('订单状态检查响应:', {
+              order_no: selectedOrder.value.order_no,
+              response: response.data,
+              status: response.data?.data?.status
+            })
+          }
+
           if (!response || !response.data) {
-            console.warn('订单状态检查：响应格式错误', response)
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('订单状态检查：响应格式错误', response)
+            }
             return
           }
-          
-          // 检查响应是否成功
+
           if (response.data.success === false) {
-            console.warn('订单状态检查：API返回失败', response.data.message)
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('订单状态检查：API返回失败', response.data.message)
+            }
             return
           }
-          
+
           const orderData = response.data.data
           if (!orderData) {
-            console.warn('订单状态检查：订单数据不存在', response.data)
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('订单状态检查：订单数据不存在', response.data)
+            }
             return
           }
-          
-          console.log('当前订单状态:', orderData.status, '订单号:', orderData.order_no)
-          
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log('当前订单状态:', orderData.status, '订单号:', orderData.order_no)
+          }
+
           if (orderData.status === 'paid') {
-            // 支付成功
-            console.log('✅ 订单支付成功，开始处理...')
+            if (process.env.NODE_ENV === 'development') {
+              console.log('✅ 订单支付成功，开始处理...')
+            }
             if (paymentStatusCheckInterval) {
               clearInterval(paymentStatusCheckInterval)
               paymentStatusCheckInterval = null
             }
-            
+
             paymentQRVisible.value = false
             ElMessage.success('支付成功！')
-            loadOrders() // 刷新订单列表
+            loadOrders()
             if (activeTab.value === 'all') {
               await loadRecharges()
               mergeRecords()
             }
           } else if (orderData.status === 'cancelled') {
-            // 订单已取消
-            console.log('订单已取消')
+            if (process.env.NODE_ENV === 'development') {
+              console.log('订单已取消')
+            }
             if (paymentStatusCheckInterval) {
               clearInterval(paymentStatusCheckInterval)
               paymentStatusCheckInterval = null
             }
-            
+
             paymentQRVisible.value = false
             ElMessage.info('订单已取消')
-            loadOrders() // 刷新订单列表
+            loadOrders()
             if (activeTab.value === 'all') {
               await loadRecharges()
               mergeRecords()
@@ -1290,7 +1297,6 @@ export default {
       }
     }
     
-    // 关闭支付二维码对话框
     const closePaymentQR = () => {
       // 清除支付状态检查定时器
       if (paymentStatusCheckInterval) {
@@ -1386,7 +1392,6 @@ export default {
         await rechargeAPI.cancelRecharge(rechargeId)
         ElMessage.success('充值订单已取消')
         
-        // 刷新数据
         await loadRecharges()
         if (activeTab.value === 'all') {
           mergeRecords()

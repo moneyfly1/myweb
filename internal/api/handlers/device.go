@@ -1,36 +1,236 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
+// GetDevices 获取用户设备列表
 func GetDevices(c *gin.Context) {
-	u, _ := middleware.GetCurrentUser(c)
-	db := database.GetDB()
-	var devices []models.Device
-	db.Where("user_id = ?", u.ID).Preload("Subscription").Find(&devices)
-	c.JSON(200, gin.H{"success": true, "data": devices})
-}
-
-func DeleteDevice(c *gin.Context) {
-	u, _ := middleware.GetCurrentUser(c)
-	db := database.GetDB()
-	var device models.Device
-	if err := db.Where("id = ? AND user_id = ?", c.Param("id"), u.ID).First(&device).Error; err != nil {
-		c.JSON(404, gin.H{"success": false, "message": "设备不存在"})
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
-	db.Delete(&device)
+
+	db := database.GetDB()
+	var devices []models.Device
+	
+	// 获取用户的订阅ID列表
+	var subscriptionIDs []uint
+	db.Model(&models.Subscription{}).Where("user_id = ?", user.ID).Pluck("id", &subscriptionIDs)
+	
+	if len(subscriptionIDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": []gin.H{}})
+		return
+	}
+	
+	// 查询设备，按最后访问时间排序
+	if err := db.Where("subscription_id IN ?", subscriptionIDs).
+		Order("last_access DESC").
+		Find(&devices).Error; err != nil {
+		utils.LogError("GetDevices: query devices failed", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取设备列表失败"})
+		return
+	}
+
+	// 格式化设备信息
+	deviceList := make([]gin.H, 0, len(devices))
+	for _, d := range devices {
+		getString := func(ptr *string) string {
+			if ptr != nil {
+				return *ptr
+			}
+			return ""
+		}
+
+		lastSeen := d.LastAccess.Format("2006-01-02 15:04:05")
+		if d.LastSeen != nil {
+			lastSeen = d.LastSeen.Format("2006-01-02 15:04:05")
+		}
+
+		firstSeen := ""
+		if d.FirstSeen != nil {
+			firstSeen = d.FirstSeen.Format("2006-01-02 15:04:05")
+		}
+
+		deviceList = append(deviceList, gin.H{
+			"id":                 d.ID,
+			"subscription_id":    d.SubscriptionID,
+			"device_name":        getString(d.DeviceName),
+			"device_type":        getString(d.DeviceType),
+			"device_model":       getString(d.DeviceModel),
+			"device_brand":       getString(d.DeviceBrand),
+			"device_fingerprint":  d.DeviceFingerprint,
+			"ip_address":         getString(d.IPAddress),
+			"user_agent":         getString(d.UserAgent),
+			"software_name":      getString(d.SoftwareName),
+			"software_version":   getString(d.SoftwareVersion),
+			"os_name":            getString(d.OSName),
+			"os_version":         getString(d.OSVersion),
+			"subscription_type":  getString(d.SubscriptionType),
+			"is_active":          d.IsActive,
+			"is_allowed":         d.IsAllowed,
+			"first_seen":         firstSeen,
+			"last_access":        d.LastAccess.Format("2006-01-02 15:04:05"),
+			"last_seen":          lastSeen,
+			"access_count":       d.AccessCount,
+			"created_at":         d.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": deviceList})
+}
+
+// DeleteDevice 用户删除自己的设备
+func DeleteDevice(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
+		return
+	}
+
+	db := database.GetDB()
+	deviceID := c.Param("id")
+	
+	var device models.Device
+	// 验证设备是否属于当前用户
+	if err := db.Where("id = ?", deviceID).
+		Joins("JOIN subscriptions ON devices.subscription_id = subscriptions.id").
+		Where("subscriptions.user_id = ?", user.ID).
+		First(&device).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "设备不存在或无权限"})
+		} else {
+			utils.LogError("DeleteDevice: query device failed", err, nil)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询设备失败"})
+		}
+		return
+	}
+
+	// 删除设备
+	if err := db.Delete(&device).Error; err != nil {
+		utils.LogError("DeleteDevice: delete device failed", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除设备失败"})
+		return
+	}
+
+	// 更新订阅的设备计数
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&count)
 	db.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count)
-	c.JSON(200, gin.H{"success": true, "message": "删除成功"})
+
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已删除"})
+}
+
+// RemoveDevice 管理员删除设备
+func RemoveDevice(c *gin.Context) {
+	db := database.GetDB()
+	deviceID := c.Param("id")
+
+	var device models.Device
+	if err := db.First(&device, deviceID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "设备不存在"})
+		} else {
+			utils.LogError("RemoveDevice: query device failed", err, nil)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询设备失败"})
+		}
+		return
+	}
+
+	// 保存设备信息用于审计日志
+	deviceInfo := getDeviceDisplayName(&device)
+	subscriptionID := device.SubscriptionID
+
+	// 删除设备
+	if err := db.Delete(&device).Error; err != nil {
+		utils.LogError("RemoveDevice: delete device failed", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除设备失败"})
+		return
+	}
+
+	// 更新订阅的设备计数
+	var count int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&count)
+	db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", count)
+
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "admin_delete_device", "device", device.ID, fmt.Sprintf("管理员删除设备: %s", deviceInfo))
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已删除"})
+}
+
+// BatchDeleteDevices 批量删除设备（管理员）
+func BatchDeleteDevices(c *gin.Context) {
+	var req struct {
+		DeviceIDs []uint `json:"device_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求参数错误"})
+		return
+	}
+
+	if len(req.DeviceIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "设备ID列表不能为空"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 查询要删除的设备
+	var devices []models.Device
+	if err := db.Where("id IN ?", req.DeviceIDs).Find(&devices).Error; err != nil {
+		utils.LogError("BatchDeleteDevices: query devices failed", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询设备失败"})
+		return
+	}
+
+	if len(devices) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "未找到要删除的设备"})
+		return
+	}
+
+	// 收集需要更新计数的订阅ID
+	subscriptionIDMap := make(map[uint]bool)
+	for _, d := range devices {
+		subscriptionIDMap[d.SubscriptionID] = true
+	}
+
+	// 批量删除设备
+	if err := db.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
+		utils.LogError("BatchDeleteDevices: delete devices failed", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "批量删除设备失败"})
+		return
+	}
+
+	// 更新相关订阅的设备计数
+	for subID := range subscriptionIDMap {
+		var count int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subID, true).Count(&count)
+		db.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count)
+	}
+
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "batch_delete_devices", "device", 0, fmt.Sprintf("管理员批量删除设备: %d 个", len(devices)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功删除 %d 个设备", len(devices)),
+		"data":    gin.H{"deleted_count": len(devices)},
+	})
 }
 
 // GetDeviceStats 获取设备统计（管理员）
@@ -40,15 +240,54 @@ func GetDeviceStats(c *gin.Context) {
 	var stats struct {
 		TotalDevices       int64 `json:"total_devices"`
 		ActiveDevices      int64 `json:"active_devices"`
+		InactiveDevices    int64 `json:"inactive_devices"`
 		TotalSubscriptions int64 `json:"total_subscriptions"`
+		DevicesByType      map[string]int64 `json:"devices_by_type"`
 	}
 
 	db.Model(&models.Device{}).Count(&stats.TotalDevices)
 	db.Model(&models.Device{}).Where("is_active = ?", true).Count(&stats.ActiveDevices)
+	db.Model(&models.Device{}).Where("is_active = ?", false).Count(&stats.InactiveDevices)
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
+
+	// 按设备类型统计
+	stats.DevicesByType = make(map[string]int64)
+	var typeStats []struct {
+		DeviceType string
+		Count      int64
+	}
+	db.Model(&models.Device{}).
+		Select("COALESCE(device_type, 'unknown') as device_type, count(*) as count").
+		Group("device_type").
+		Scan(&typeStats)
+	
+	for _, ts := range typeStats {
+		stats.DevicesByType[ts.DeviceType] = ts.Count
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    stats,
 	})
+}
+
+// getDeviceDisplayName 获取设备显示名称
+func getDeviceDisplayName(device *models.Device) string {
+	if device.DeviceName != nil && *device.DeviceName != "" {
+		return *device.DeviceName
+	}
+	if device.DeviceModel != nil && *device.DeviceModel != "" {
+		return *device.DeviceModel
+	}
+	if device.SoftwareName != nil && *device.SoftwareName != "" {
+		return *device.SoftwareName
+	}
+	if device.UserAgent != nil && *device.UserAgent != "" {
+		ua := *device.UserAgent
+		if len(ua) > 50 {
+			return ua[:50] + "..."
+		}
+		return ua
+	}
+	return fmt.Sprintf("设备 #%d", device.ID)
 }

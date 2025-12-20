@@ -15,6 +15,7 @@ import (
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetPaymentMethods(c *gin.Context) {
@@ -72,9 +73,7 @@ func PaymentNotify(c *gin.Context) {
 	paymentType := c.Param("type") // alipay, wechat, etc.
 	db := database.GetDB()
 
-	// 获取回调参数
 	params := make(map[string]string)
-	// 优先从 form 获取（POST回调）
 	if err := c.Request.ParseForm(); err == nil {
 		for k, v := range c.Request.PostForm {
 			if len(v) > 0 {
@@ -82,7 +81,6 @@ func PaymentNotify(c *gin.Context) {
 			}
 		}
 	}
-	// 如果form中没有，从query获取
 	if len(params) == 0 {
 		for k, v := range c.Request.URL.Query() {
 			if len(v) > 0 {
@@ -91,9 +89,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 获取支付配置
 	var paymentConfig models.PaymentConfig
-	// 查找对应类型的支付配置（不区分大小写）
 	if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
 		utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
 			"payment_type": paymentType,
@@ -137,7 +133,6 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
-	// 获取订单号和外部交易号（用于幂等性检查）
 	orderNo := params["out_trade_no"]
 	externalTransactionID := params["trade_no"] // 支付宝/微信的交易号
 
@@ -176,28 +171,92 @@ func PaymentNotify(c *gin.Context) {
 		"params":                  params,
 	})
 
-	// 获取订单（验证订单存在）
 	var order models.Order
+	var recharge models.RechargeRecord
+	isRecharge := false
+
+	// 先尝试查找订单
 	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&order).Error; err != nil {
-		utils.LogError("PaymentNotify: order not found", err, map[string]interface{}{
-			"order_no": orderNo,
-		})
-		c.String(http.StatusBadRequest, "订单不存在")
-		return
+		// 如果不是订单，尝试查找充值记录
+		if err2 := db.Where("order_no = ?", orderNo).First(&recharge).Error; err2 == nil {
+			isRecharge = true
+		} else {
+			utils.LogError("PaymentNotify: order or recharge not found", err, map[string]interface{}{
+				"order_no": orderNo,
+			})
+			c.String(http.StatusBadRequest, "订单或充值记录不存在")
+			return
+		}
 	}
 
-	// 幂等性检查：如果外部交易号已存在且已处理，直接返回成功
-	if externalTransactionID != "" {
-		var existingTransaction models.PaymentTransaction
-		if err := db.Where("external_transaction_id = ? AND status = ?", externalTransactionID, "success").First(&existingTransaction).Error; err == nil {
-			// 交易已处理，直接返回成功（幂等性）
-			utils.LogError("PaymentNotify: transaction already processed", nil, map[string]interface{}{
-				"order_no":                orderNo,
-				"external_transaction_id": externalTransactionID,
-			})
+	if isRecharge {
+		if externalTransactionID != "" {
+			var existingTransaction models.PaymentTransaction
+			if err := db.Where("external_transaction_id = ? AND status = ?", externalTransactionID, "success").First(&existingTransaction).Error; err == nil {
+				c.String(http.StatusOK, "success")
+				return
+			}
+		}
+		// 验证充值金额
+		if paymentType == "alipay" {
+			if amountStr, ok := params["total_amount"]; ok {
+				var callbackAmount float64
+				fmt.Sscanf(amountStr, "%f", &callbackAmount)
+				if callbackAmount < recharge.Amount-0.01 || callbackAmount > recharge.Amount+0.01 {
+					utils.LogError("PaymentNotify: recharge amount mismatch", nil, map[string]interface{}{
+						"order_no":        orderNo,
+						"expected_amount": recharge.Amount,
+						"callback_amount": callbackAmount,
+					})
+					c.String(http.StatusBadRequest, "充值金额不匹配")
+					return
+				}
+			}
+		}
+
+		if recharge.Status == "paid" {
 			c.String(http.StatusOK, "success")
 			return
 		}
+
+		// 使用事务处理充值
+		err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+			recharge.Status = "paid"
+			recharge.PaidAt = database.NullTime(utils.GetBeijingTime())
+			if externalTransactionID != "" {
+				recharge.PaymentTransactionID = database.NullString(externalTransactionID)
+			}
+			if err := tx.Save(&recharge).Error; err != nil {
+				utils.LogError("PaymentNotify: failed to update recharge", err, map[string]interface{}{
+					"order_no": orderNo,
+				})
+				return err
+			}
+
+			var user models.User
+			if err := tx.First(&user, recharge.UserID).Error; err == nil {
+				user.Balance += recharge.Amount
+				if err := tx.Save(&user).Error; err != nil {
+					utils.LogError("PaymentNotify: failed to update user balance", err, map[string]interface{}{
+						"order_no": orderNo,
+						"user_id":  user.ID,
+					})
+					return err
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			utils.LogError("PaymentNotify: failed to process recharge transaction", err, map[string]interface{}{
+				"order_no": orderNo,
+			})
+			c.String(http.StatusInternalServerError, "处理失败")
+			return
+		}
+
+		c.String(http.StatusOK, "success")
+		return
 	}
 
 	// 验证订单金额（防止金额篡改）
@@ -206,24 +265,50 @@ func PaymentNotify(c *gin.Context) {
 		if amountStr, ok := params["total_amount"]; ok {
 			var callbackAmount float64
 			fmt.Sscanf(amountStr, "%f", &callbackAmount)
-			// 验证金额是否匹配（允许0.01的误差）
+			// 混合支付时，回调金额可能只是第三方支付部分，需要加上余额部分
 			expectedAmount := order.Amount
 			if order.FinalAmount.Valid {
 				expectedAmount = order.FinalAmount.Float64
 			}
-			if callbackAmount < expectedAmount-0.01 || callbackAmount > expectedAmount+0.01 {
-				utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
-					"order_no":        orderNo,
-					"expected_amount": expectedAmount,
-					"callback_amount": callbackAmount,
-				})
-				c.String(http.StatusBadRequest, "订单金额不匹配")
-				return
+
+			var balanceUsedInOrder float64 = 0
+			if order.ExtraData.Valid && order.ExtraData.String != "" {
+				var extraData map[string]interface{}
+				if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+					if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+						balanceUsedInOrder = balanceUsedVal
+					}
+				}
+			}
+
+			expectedCallbackAmount := expectedAmount - balanceUsedInOrder
+			if balanceUsedInOrder > 0 {
+				if callbackAmount < expectedCallbackAmount-0.01 || callbackAmount > expectedCallbackAmount+0.01 {
+					utils.LogError("PaymentNotify: amount mismatch (mixed payment)", nil, map[string]interface{}{
+						"order_no":              orderNo,
+						"expected_callback":     expectedCallbackAmount,
+						"callback_amount":       callbackAmount,
+						"balance_used":          balanceUsedInOrder,
+						"total_expected_amount": expectedAmount,
+					})
+					c.String(http.StatusBadRequest, "订单金额不匹配")
+					return
+				}
+			} else {
+				if callbackAmount < expectedAmount-0.01 || callbackAmount > expectedAmount+0.01 {
+					utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
+						"order_no":        orderNo,
+						"expected_amount": expectedAmount,
+						"callback_amount": callbackAmount,
+					})
+					c.String(http.StatusBadRequest, "订单金额不匹配")
+					return
+				}
 			}
 		}
 	}
 
-	// 如果订单已经是已支付状态，直接返回成功（避免重复处理，幂等性）
+	// 幂等性检查：如果订单已支付，直接返回成功
 	if order.Status == "paid" {
 		utils.LogError("PaymentNotify: order already paid", nil, map[string]interface{}{
 			"order_no": orderNo,
@@ -232,118 +317,91 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
-	// 使用事务确保数据一致性
-	tx := db.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// 更新订单状态
-	order.Status = "paid"
-	order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-	if err := tx.Save(&order).Error; err != nil {
-		tx.Rollback()
-		utils.LogError("PaymentNotify: failed to update order", err, map[string]interface{}{
-			"order_no": orderNo,
-		})
-		c.String(http.StatusInternalServerError, "更新订单失败")
-		return
-	}
-
-	// 更新支付交易状态
-	var transaction models.PaymentTransaction
-	if err := tx.Where("order_id = ?", order.ID).First(&transaction).Error; err == nil {
-		transaction.Status = "success"
-		if externalTransactionID != "" {
-			transaction.ExternalTransactionID = database.NullString(externalTransactionID)
-		}
-		// 保存回调数据（用于审计）
-		if callbackData, err := json.Marshal(params); err == nil {
-			transaction.CallbackData = database.NullString(string(callbackData))
-		}
-		if err := tx.Save(&transaction).Error; err != nil {
-			tx.Rollback()
-			utils.LogError("PaymentNotify: failed to update transaction", err, map[string]interface{}{
+	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+		order.Status = "paid"
+		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
+		if err := tx.Save(&order).Error; err != nil {
+			utils.LogError("PaymentNotify: failed to update order", err, map[string]interface{}{
 				"order_no": orderNo,
 			})
-			c.String(http.StatusInternalServerError, "更新交易失败")
-			return
+			return err
 		}
-	}
 
-	// 提交事务（只有在事务成功提交后，订单状态才会真正更新为 paid）
-	if err := tx.Commit().Error; err != nil {
-		utils.LogError("PaymentNotify: failed to commit transaction", err, map[string]interface{}{
+		var transaction models.PaymentTransaction
+		if err := tx.Where("order_id = ?", order.ID).First(&transaction).Error; err == nil {
+			transaction.Status = "success"
+			if externalTransactionID != "" {
+				transaction.ExternalTransactionID = database.NullString(externalTransactionID)
+			}
+			if callbackData, err := json.Marshal(params); err == nil {
+				transaction.CallbackData = database.NullString(string(callbackData))
+			}
+			if err := tx.Save(&transaction).Error; err != nil {
+				utils.LogError("PaymentNotify: failed to update transaction", err, map[string]interface{}{
+					"order_no": orderNo,
+				})
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		utils.LogError("PaymentNotify: failed to process payment transaction", err, map[string]interface{}{
 			"order_no": orderNo,
 		})
 		c.String(http.StatusInternalServerError, "处理失败")
 		return
 	}
 
-	// 事务提交成功后，订单状态已更新为 paid
-	// 立即同步处理订单业务逻辑（开通订阅），确保用户能立刻使用
-
-	// 处理套餐订单
-	if order.PackageID > 0 {
-		orderService := orderServicePkg.NewOrderService()
-		_, err := orderService.ProcessPaidOrder(&order)
-		if err != nil {
-			utils.LogError("PaymentNotify: process paid order failed", err, map[string]interface{}{
-				"order_id": order.ID,
-			})
-			// 这里不返回错误，因为支付已成功，后续可通过补偿机制修复
-		}
-	} else {
-		// 设备升级订单：从 ExtraData 中解析升级信息
-		var additionalDevices int
-		var additionalDays int
-
-		if order.ExtraData.Valid && order.ExtraData.String != "" {
-			// 解析 JSON
-			var extraData map[string]interface{}
-			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-				if extraData["type"] == "device_upgrade" {
-					if devices, ok := extraData["additional_devices"].(float64); ok {
-						additionalDevices = int(devices)
-					}
-					if days, ok := extraData["additional_days"].(float64); ok {
-						additionalDays = int(days)
-					}
-				}
-			}
-		}
-
-		// 如果有升级信息，处理订阅升级
-		if additionalDevices > 0 || additionalDays > 0 {
-			var subscription models.Subscription
-			if err := db.Where("user_id = ?", order.UserID).First(&subscription).Error; err == nil {
-				// 升级设备数量
-				if additionalDevices > 0 {
-					subscription.DeviceLimit += additionalDevices
-				}
-				// 延长订阅时间
-				if additionalDays > 0 {
-					now := utils.GetBeijingTime()
-					if subscription.ExpireTime.Before(now) {
-						subscription.ExpireTime = now.AddDate(0, 0, additionalDays)
-					} else {
-						subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, additionalDays)
-					}
-				}
-				if err := db.Save(&subscription).Error; err != nil {
-					utils.LogError("PaymentNotify: upgrade devices failed", err, map[string]interface{}{
-						"order_id": order.ID,
-					})
-				}
+	var balanceUsed float64 = 0
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+				balanceUsed = balanceUsedVal
 			}
 		}
 	}
 
-	// 异步处理通知（邮件、Telegram等）
+	if balanceUsed > 0 {
+		var user models.User
+		if err := db.First(&user, order.UserID).Error; err == nil {
+			if user.Balance >= balanceUsed {
+				user.Balance -= balanceUsed
+				if err := db.Save(&user).Error; err != nil {
+					utils.LogError("PaymentNotify: failed to deduct balance", err, map[string]interface{}{
+						"order_id":     order.ID,
+						"balance_used": balanceUsed,
+					})
+				} else {
+					utils.LogError("PaymentNotify: balance deducted", nil, map[string]interface{}{
+						"order_id":     order.ID,
+						"balance_used": balanceUsed,
+						"user_id":      user.ID,
+					})
+				}
+			} else {
+				utils.LogError("PaymentNotify: insufficient balance", nil, map[string]interface{}{
+					"order_id":     order.ID,
+					"balance_used": balanceUsed,
+					"user_balance": user.Balance,
+				})
+			}
+		}
+	}
+
+	// ProcessPaidOrder 统一处理所有订单类型
+	orderService := orderServicePkg.NewOrderService()
+	_, processErr := orderService.ProcessPaidOrder(&order)
+	if processErr != nil {
+		utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
+			"order_id": order.ID,
+		})
+		// 支付已成功，后续可通过补偿机制修复
+	}
+
 	go func() {
-		// 重新加载订单和用户信息（确保获取最新关联数据）
 		var latestOrder models.Order
 		if err := db.Preload("Package").Where("id = ?", order.ID).First(&latestOrder).Error; err != nil {
 			return
@@ -353,7 +411,6 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 
-		// 准备支付信息
 		paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 		paidAmount := latestOrder.Amount
 		if latestOrder.FinalAmount.Valid {
@@ -370,7 +427,6 @@ func PaymentNotify(c *gin.Context) {
 			packageName = "设备/时长升级"
 		}
 
-		// 发送订阅信息邮件（仅套餐订单）
 		if latestOrder.PackageID > 0 && notification.ShouldSendCustomerNotification("new_order") {
 			emailService := email.NewEmailService()
 			templateBuilder := email.NewEmailTemplateBuilder()
@@ -405,7 +461,6 @@ func PaymentNotify(c *gin.Context) {
 			}
 		}
 
-		// 发送管理员通知
 		notificationService := notification.NewNotificationService()
 		_ = notificationService.SendAdminNotification("order_paid", map[string]interface{}{
 			"order_no":       latestOrder.OrderNo,

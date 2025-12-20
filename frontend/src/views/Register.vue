@@ -205,7 +205,6 @@ watch([() => registerForm.emailPrefix, () => registerForm.emailDomain], ([prefix
   }
 })
 
-// 计算属性
 const settings = computed(() => settingsStore)
 
 // 表单验证规则
@@ -253,14 +252,11 @@ const registerRules = computed(() => ({
   ] : []
 }))
 
-// 计算是否可以发送验证码
 const canSendCode = computed(() => {
   return registerForm.emailPrefix && registerForm.emailDomain
 })
 
-// 发送验证码
 const handleSendVerificationCode = async () => {
-  // 验证邮箱是否完整
   if (!registerForm.emailPrefix || !registerForm.emailDomain) {
     ElMessage.warning('请先填写完整的邮箱地址')
     return
@@ -320,12 +316,9 @@ const handleRegister = async () => {
       invite_code: registerForm.inviteCode || null
     })
     
-    // 注册成功，跳转到登录页面
     if (response.data) {
-      // 注册成功，显示友好提示并跳转到登录页面
       ElMessage.success('注册成功！请登录')
       
-      // 跳转到登录页面，并传递用户名和邮箱，让浏览器提示保存密码
       router.push({
         path: '/login',
         query: {
@@ -354,20 +347,16 @@ const checkRegistrationEnabled = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
     const settings = response.data?.data || response.data || {}
-    // 从系统设置中获取注册开关状态
     registrationEnabled.value = settings.allowRegistration !== false
     inviteCodeRequired.value = settings.inviteCodeRequired === true
     emailVerificationRequired.value = settings.emailVerificationRequired !== false
     minPasswordLength.value = settings.minPasswordLength || 8
-    // 更新表单验证规则（触发重新计算）
     registerFormRef.value?.clearValidate()
     
-    // 如果注册被禁用，显示提示
     if (!registrationEnabled.value) {
       ElMessage.warning('注册功能已禁用，请联系管理员')
     }
   } catch (error) {
-    // 如果检查失败，默认允许注册（向后兼容）
     registrationEnabled.value = true
     inviteCodeRequired.value = false
     emailVerificationRequired.value = true
@@ -375,7 +364,6 @@ const checkRegistrationEnabled = async () => {
   }
 }
 
-// 验证邀请码
 const validateInviteCode = async (code) => {
   if (!code || code.trim() === '') {
     inviteCodeInfo.value = null
@@ -393,7 +381,6 @@ const validateInviteCode = async (code) => {
   }
 }
 
-// 监听邀请码变化（防抖）
 let validateTimeout = null
 watch(() => registerForm.inviteCode, (newCode) => {
   if (validateTimeout) {
@@ -401,7 +388,6 @@ watch(() => registerForm.inviteCode, (newCode) => {
   }
   
   if (newCode && newCode.trim()) {
-    // 延迟验证，避免频繁请求
     validateTimeout = setTimeout(() => {
       validateInviteCode(newCode)
     }, 500)
@@ -410,19 +396,15 @@ watch(() => registerForm.inviteCode, (newCode) => {
   }
 })
 
-// 组件挂载时检查注册状态和URL参数中的邀请码
 onMounted(async () => {
   await checkRegistrationEnabled()
-  
-  // 从URL参数中获取邀请码
+
   if (route.query.invite) {
     registerForm.inviteCode = route.query.invite
-    // 验证邀请码
     await validateInviteCode(route.query.invite)
   }
 })
 
-// 组件卸载时清理定时器
 onUnmounted(() => {
   if (countdownTimer) {
     clearInterval(countdownTimer)
