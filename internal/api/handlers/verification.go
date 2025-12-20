@@ -148,7 +148,7 @@ func VerifyCode(c *gin.Context) {
 	}
 
 	// 获取IP地址用于记录
-	ipAddress := c.ClientIP()
+	ipAddress := utils.GetRealClientIP(c)
 
 	// 查找验证码
 	var verificationCode models.VerificationCode
