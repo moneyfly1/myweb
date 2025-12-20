@@ -489,7 +489,7 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 // writeYAMLValue 递归写入 YAML 值（支持 map、slice、基本类型）
 func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr, key string, value interface{}, indentLevel int) {
 	escapedKey := s.escapeYAMLString(key)
-
+	
 	switch v := value.(type) {
 	case map[string]interface{}:
 		// Map 类型
@@ -497,7 +497,74 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 		// 子项的缩进：在 indentStr 基础上增加 2 个空格
 		subIndentStr := indentStr + "  "
 		for k, val := range v {
-			// 检查 val 是否是 map[string]string（如 headers）
+			// 特殊处理 http-opts：path 和 headers[Host] 必须是数组
+			if key == "http-opts" {
+				if k == "path" {
+					// path 必须是数组
+					escapedK := s.escapeYAMLString(k)
+					builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
+					subSubIndentStr := subIndentStr + "  "
+					if pathStr, ok := val.(string); ok {
+						// 如果是字符串，转换为数组
+						escapedPath := s.escapeYAMLString(pathStr)
+						builder.WriteString(fmt.Sprintf("%s- %s\n", subSubIndentStr, escapedPath))
+					} else if pathSlice, ok := val.([]string); ok {
+						// 如果已经是数组，直接输出
+						for _, p := range pathSlice {
+							escapedPath := s.escapeYAMLString(p)
+							builder.WriteString(fmt.Sprintf("%s- %s\n", subSubIndentStr, escapedPath))
+						}
+					} else if pathSlice, ok := val.([]interface{}); ok {
+						// 如果是 []interface{}，转换为字符串数组
+						for _, p := range pathSlice {
+							escapedPath := s.escapeYAMLString(fmt.Sprintf("%v", p))
+							builder.WriteString(fmt.Sprintf("%s- %s\n", subSubIndentStr, escapedPath))
+						}
+					}
+					continue
+				} else if k == "headers" {
+					// headers 中的 Host 必须是数组
+					escapedK := s.escapeYAMLString(k)
+					builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
+					subSubIndentStr := subIndentStr + "  "
+					if headersMap, ok := val.(map[string]interface{}); ok {
+						for hk, hv := range headersMap {
+							escapedHK := s.escapeYAMLString(hk)
+							builder.WriteString(fmt.Sprintf("%s%s:\n", subSubIndentStr, escapedHK))
+							subSubSubIndentStr := subSubIndentStr + "  "
+							if hostStr, ok := hv.(string); ok {
+								// 如果是字符串，转换为数组
+								escapedHost := s.escapeYAMLString(hostStr)
+								builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
+							} else if hostSlice, ok := hv.([]string); ok {
+								// 如果已经是数组，直接输出
+								for _, h := range hostSlice {
+									escapedHost := s.escapeYAMLString(h)
+									builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
+								}
+							} else if hostSlice, ok := hv.([]interface{}); ok {
+								// 如果是 []interface{}，转换为字符串数组
+								for _, h := range hostSlice {
+									escapedHost := s.escapeYAMLString(fmt.Sprintf("%v", h))
+									builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
+								}
+							}
+						}
+					} else if headersMap, ok := val.(map[string]string); ok {
+						// 如果是 map[string]string，转换为数组格式
+						for hk, hv := range headersMap {
+							escapedHK := s.escapeYAMLString(hk)
+							builder.WriteString(fmt.Sprintf("%s%s:\n", subSubIndentStr, escapedHK))
+							subSubSubIndentStr := subSubIndentStr + "  "
+							escapedHost := s.escapeYAMLString(hv)
+							builder.WriteString(fmt.Sprintf("%s- %s\n", subSubSubIndentStr, escapedHost))
+						}
+					}
+					continue
+				}
+			}
+			
+			// 检查 val 是否是 map[string]string（如 ws-opts 中的 headers）
 			if strMap, ok := val.(map[string]string); ok {
 				escapedK := s.escapeYAMLString(k)
 				builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
