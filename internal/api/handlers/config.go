@@ -388,18 +388,22 @@ func GetPublicSettings(c *gin.Context) {
 	for _, conf := range configs {
 		settings[conf.Key] = conf.Value
 	}
-	// 获取公告设置（如果启用）
 	var announcementEnabled models.SystemConfig
 	var announcementContent models.SystemConfig
-	if db.Where("key = ? AND category = ?", "announcement_enabled", "announcement").First(&announcementEnabled).Error == nil {
+	err := db.Where("key = ? AND category = ?", "announcement_enabled", "announcement").First(&announcementEnabled).Error
+	if err == nil {
 		if announcementEnabled.Value == "true" {
 			settings["announcement_enabled"] = true
-			if db.Where("key = ? AND category = ?", "announcement_content", "announcement").First(&announcementContent).Error == nil {
+			err2 := db.Where("key = ? AND category = ?", "announcement_content", "announcement").First(&announcementContent).Error
+			if err2 == nil {
 				settings["announcement_content"] = announcementContent.Value
 			}
 		} else {
 			settings["announcement_enabled"] = false
 		}
+	} else if err != gorm.ErrRecordNotFound {
+		utils.LogError("GetPublicSettings: query announcement_enabled failed", err, nil)
+		settings["announcement_enabled"] = false
 	} else {
 		settings["announcement_enabled"] = false
 	}

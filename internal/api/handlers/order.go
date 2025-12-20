@@ -321,10 +321,7 @@ func CancelOrder(c *gin.Context) {
 	db := database.GetDB()
 	var order models.Order
 	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&order).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", nil)
 		return
 	}
 
@@ -579,10 +576,7 @@ func UpdateAdminOrder(c *gin.Context) {
 		Status string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
@@ -590,15 +584,9 @@ func UpdateAdminOrder(c *gin.Context) {
 	var order models.Order
 	if err := db.Preload("Package").Preload("User").First(&order, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "订单不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", nil)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取订单失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单失败", err)
 		}
 		return
 	}
@@ -615,10 +603,7 @@ func UpdateAdminOrder(c *gin.Context) {
 		// 获取用户信息
 		var user models.User
 		if err := db.First(&user, order.UserID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取用户信息失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户信息失败", err)
 			return
 		}
 
@@ -636,10 +621,7 @@ func UpdateAdminOrder(c *gin.Context) {
 	}
 
 	if err := db.Save(&order).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单失败", err)
 		return
 	}
 
@@ -655,16 +637,10 @@ func DeleteAdminOrder(c *gin.Context) {
 	var order models.Order
 	if err := db.First(&order, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "订单不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", nil)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "查询订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询订单失败", err)
 		return
 	}
 
@@ -673,10 +649,7 @@ func DeleteAdminOrder(c *gin.Context) {
 		utils.LogError("DeleteOrder: delete order failed", err, map[string]interface{}{
 			"order_id": order.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订单失败", err)
 		return
 	}
 
@@ -782,19 +755,13 @@ func BatchDeleteOrders(c *gin.Context) {
 		OrderIDs []uint `json:"order_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	if err := db.Delete(&models.Order{}, req.OrderIDs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "批量删除失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败", err)
 		return
 	}
 
@@ -828,10 +795,7 @@ func ExportOrders(c *gin.Context) {
 
 	var orders []models.Order
 	if err := query.Order("created_at DESC").Find(&orders).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取订单列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
 		return
 	}
 
@@ -1141,10 +1105,7 @@ func UpgradeDevices(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// 不向客户端返回详细错误信息，防止信息泄露
 		utils.LogError("UpdateAdminOrder: bind request", err, nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
@@ -1246,10 +1207,7 @@ func UpgradeDevices(c *gin.Context) {
 		if balanceUsed > 0 {
 			user.Balance -= balanceUsed
 			if err := db.Save(&user).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "扣除余额失败",
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, "扣除余额失败", err)
 				return
 			}
 		}
@@ -1374,10 +1332,7 @@ func UpgradeDevices(c *gin.Context) {
 		responseData["payment_qr_code"] = paymentURL
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    responseData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
 // PayOrder 支付订单
@@ -1397,47 +1352,31 @@ func PayOrder(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误: 缺少 payment_method_id 参数",
-			"error":   err.Error(),
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误: 缺少 payment_method_id 参数", err)
 		return
 	}
 
 	db := database.GetDB()
 	var order models.Order
 	if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&order).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", nil)
 		return
 	}
 
 	if order.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单状态不允许支付",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "订单状态不允许支付", nil)
 		return
 	}
 
 	// 获取支付配置
 	var paymentConfig models.PaymentConfig
 	if err := db.First(&paymentConfig, req.PaymentMethodID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "支付方式不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "支付方式不存在", nil)
 		return
 	}
 
 	if paymentConfig.Status != 1 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "支付方式已停用",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "支付方式已停用", nil)
 		return
 	}
 
@@ -1458,10 +1397,7 @@ func PayOrder(c *gin.Context) {
 	}
 
 	if err := db.Create(&transaction).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建支付交易失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付交易失败", err)
 		return
 	}
 
@@ -1491,21 +1427,14 @@ func PayOrder(c *gin.Context) {
 		utils.LogError("CreateOrder: create payment failed", payErr, map[string]interface{}{
 			"order_id": order.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建支付失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付失败", payErr)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "支付订单已创建",
-		"data": gin.H{
-			"payment_url":    paymentURL,
-			"order_no":       order.OrderNo,
-			"amount":         amount,
-			"transaction_id": transaction.ID,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "支付订单已创建", gin.H{
+		"payment_url":    paymentURL,
+		"order_no":       order.OrderNo,
+		"amount":         amount,
+		"transaction_id": transaction.ID,
 	})
 }

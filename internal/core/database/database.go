@@ -62,12 +62,30 @@ func InitDatabase() error {
 		}
 		dialector = sqlite.Open(dbPath)
 	}
-	gormConfig := &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	}
+	customLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             time.Second,
+			LogLevel:                  logger.Silent,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		},
+	)
 
 	if cfg.Debug {
-		gormConfig.Logger = logger.Default.LogMode(logger.Info)
+		customLogger = logger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold:             time.Second,
+				LogLevel:                  logger.Info,
+				IgnoreRecordNotFoundError: true,
+				Colorful:                  false,
+			},
+		)
+	}
+
+	gormConfig := &gorm.Config{
+		Logger: customLogger,
 	}
 	DB, err = gorm.Open(dialector, gormConfig)
 	if err != nil {
