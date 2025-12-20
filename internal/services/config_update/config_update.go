@@ -221,13 +221,14 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	var builder strings.Builder
 
 	// 过滤掉 Clash 不支持的节点类型
-	// Clash 标准版不支持：naive, anytls, ssr
-	// Clash Meta 支持更多协议，但为了兼容性，我们过滤掉标准版不支持的
+	// Clash 标准版不支持：naive, anytls
+	// Clash Verge/Meta 支持更多协议，包括 ssr
 	supportedTypes := map[string]bool{
 		"vmess":     true,
 		"vless":     true,
 		"trojan":    true,
 		"ss":        true,
+		"ssr":       true, // Clash Verge/Meta 支持 SSR
 		"hysteria":  true,
 		"hysteria2": true,
 		"tuic":      true,
