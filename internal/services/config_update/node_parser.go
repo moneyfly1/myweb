@@ -136,10 +136,12 @@ func parseVMess(link string) (*ProxyNode, error) {
 		}
 	}
 
-	// AlterID
-	if alterID > 0 {
-		node.Options["alterId"] = int(alterID)
+	// AlterID - Clash 要求 VMess 节点必须有 alterId 字段，即使值为 0
+	// 如果没有提供 alterID，默认设置为 0
+	if alterID <= 0 {
+		alterID = 0
 	}
+	node.Options["alterId"] = int(alterID)
 
 	// 网络配置
 	if network == "ws" {

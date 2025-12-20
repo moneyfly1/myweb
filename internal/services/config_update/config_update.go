@@ -345,9 +345,32 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	builder.WriteString(fmt.Sprintf("%s  server: %s\n", indentStr, node.Server))
 	builder.WriteString(fmt.Sprintf("%s  port: %d\n", indentStr, node.Port))
 
-	if node.UUID != "" {
-		builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
+	// VMess 节点必须包含 uuid 和 alterId
+	if node.Type == "vmess" {
+		if node.UUID != "" {
+			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
+		}
+		// alterId 在 Options 中处理，确保总是存在
+		if alterId, ok := node.Options["alterId"]; !ok {
+			// 如果没有 alterId，默认设置为 0
+			node.Options["alterId"] = 0
+		} else {
+			// 确保 alterId 是整数类型
+			if _, ok := alterId.(int); !ok {
+				if alterIdFloat, ok := alterId.(float64); ok {
+					node.Options["alterId"] = int(alterIdFloat)
+				} else {
+					node.Options["alterId"] = 0
+				}
+			}
+		}
+	} else {
+		// 其他节点类型
+		if node.UUID != "" {
+			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
+		}
 	}
+	
 	if node.Password != "" {
 		builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
 	}
