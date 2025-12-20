@@ -47,6 +47,7 @@ static/uploads/
 dist/
 build/
 bin/
+server
 
 # OS
 .DS_Store
