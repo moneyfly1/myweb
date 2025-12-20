@@ -234,24 +234,26 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		builder.WriteString(s.nodeToYAML(proxy, 2))
 	}
 
-	// 生成代理名称列表
+	// 生成代理名称列表（转义后的名称）
 	var proxyNames []string
 	for _, proxy := range proxies {
-		proxyNames = append(proxyNames, proxy.Name)
+		escapedName := s.escapeYAMLString(proxy.Name)
+		proxyNames = append(proxyNames, escapedName)
 	}
 
 	// 写入代理组
 	builder.WriteString("\nproxy-groups:\n")
-	builder.WriteString("  - name: 🚀 节点选择\n")
+	builder.WriteString("  - name: \"🚀 节点选择\"\n")
 	builder.WriteString("    type: select\n")
 	builder.WriteString("    proxies:\n")
-	builder.WriteString("      - ♻️ 自动选择\n")
+	builder.WriteString("      - \"♻️ 自动选择\"\n")
 	builder.WriteString("      - DIRECT\n")
 	for _, name := range proxyNames {
+		// 使用转义后的名称
 		builder.WriteString(fmt.Sprintf("      - %s\n", name))
 	}
 
-	builder.WriteString("  - name: ♻️ 自动选择\n")
+	builder.WriteString("  - name: \"♻️ 自动选择\"\n")
 	builder.WriteString("    type: url-test\n")
 	builder.WriteString("    url: http://www.gstatic.com/generate_204\n")
 	builder.WriteString("    interval: 300\n")
@@ -261,7 +263,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		builder.WriteString(fmt.Sprintf("      - %s\n", name))
 	}
 
-	builder.WriteString("  - name: 📢 失败切换\n")
+	builder.WriteString("  - name: \"📢 失败切换\"\n")
 	builder.WriteString("    type: fallback\n")
 	builder.WriteString("    url: http://www.gstatic.com/generate_204\n")
 	builder.WriteString("    interval: 300\n")
@@ -283,20 +285,62 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	return builder.String()
 }
 
+// escapeYAMLString 转义 YAML 字符串，确保特殊字符不会导致解析错误
+func (s *ConfigUpdateService) escapeYAMLString(str string) string {
+	// 如果字符串为空，直接返回
+	if str == "" {
+		return "\"\""
+	}
+	
+	// 检查是否需要引号包裹（包含特殊字符）
+	needsQuotes := false
+	specialChars := []string{":", "\"", "'", "\n", "\r", "\t", "#", "@", "&", "*", "?", "|", ">", "!", "%", "`", "[", "]", "{", "}", ","}
+	for _, char := range specialChars {
+		if strings.Contains(str, char) {
+			needsQuotes = true
+			break
+		}
+	}
+	
+	// 如果字符串以空格开头或结尾，也需要引号
+	if strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") {
+		needsQuotes = true
+	}
+	
+	if needsQuotes {
+		// 转义反斜杠（必须先转义）
+		escaped := strings.ReplaceAll(str, "\\", "\\\\")
+		// 转义双引号
+		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
+		// 转义换行符
+		escaped = strings.ReplaceAll(escaped, "\n", "\\n")
+		// 转义回车符
+		escaped = strings.ReplaceAll(escaped, "\r", "\\r")
+		// 转义制表符
+		escaped = strings.ReplaceAll(escaped, "\t", "\\t")
+		return fmt.Sprintf("\"%s\"", escaped)
+	}
+	
+	return str
+}
+
 // nodeToYAML 将节点转换为 YAML 格式
 func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	indentStr := strings.Repeat(" ", indent)
 	var builder strings.Builder
 
+	// 转义节点名称，确保 YAML 解析不会出错
+	escapedName := s.escapeYAMLString(node.Name)
+
 	// 信息节点（direct 类型）特殊处理
 	if node.Type == "direct" && node.Server == "127.0.0.1" {
 		// 对于信息节点，创建一个不可用的节点，但名称会显示信息
-		builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, node.Name))
+		builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, escapedName))
 		builder.WriteString(fmt.Sprintf("%s  type: direct\n", indentStr))
 		return builder.String()
 	}
 
-	builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, node.Name))
+	builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, escapedName))
 	builder.WriteString(fmt.Sprintf("%s  type: %s\n", indentStr, node.Type))
 	builder.WriteString(fmt.Sprintf("%s  server: %s\n", indentStr, node.Server))
 	builder.WriteString(fmt.Sprintf("%s  port: %d\n", indentStr, node.Port))

@@ -498,16 +498,16 @@ func GetUserDetails(c *gin.Context) {
 	}
 	for _, reset := range resets {
 		formattedResets = append(formattedResets, gin.H{
-			"id":                 reset.ID,
-			"subscription_id":    reset.SubscriptionID,
-			"reset_type":         reset.ResetType,
-			"reason":             reset.Reason,
+			"id":                   reset.ID,
+			"subscription_id":      reset.SubscriptionID,
+			"reset_type":           reset.ResetType,
+			"reason":               reset.Reason,
 			"old_subscription_url": getStringPtr(reset.OldSubscriptionURL),
 			"new_subscription_url": getStringPtr(reset.NewSubscriptionURL),
-			"device_count_before": reset.DeviceCountBefore,
-			"device_count_after":  reset.DeviceCountAfter,
-			"reset_by":           getStringPtr(reset.ResetBy),
-			"created_at":         reset.CreatedAt.Format("2006-01-02 15:04:05"),
+			"device_count_before":  reset.DeviceCountBefore,
+			"device_count_after":   reset.DeviceCountAfter,
+			"reset_by":             getStringPtr(reset.ResetBy),
+			"created_at":           reset.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -541,7 +541,7 @@ func GetUserDetails(c *gin.Context) {
 			Where("user_agent IS NOT NULL AND user_agent != ''").
 			Order("last_access DESC").
 			Find(&devices)
-		
+
 		// 使用 map 去重，保留每个 UserAgent 的最新记录
 		uaMap := make(map[string]*models.Device)
 		for i := range devices {
@@ -557,33 +557,33 @@ func GetUserDetails(c *gin.Context) {
 				}
 			}
 		}
-		
+
 		for _, d := range uaMap {
 			uaRecords = append(uaRecords, gin.H{
-				"user_agent":  *d.UserAgent,
-				"device_type": getString(d.DeviceType),
-				"device_name": getString(d.DeviceName),
-				"ip_address":  formatIP(getString(d.IPAddress)),
-				"created_at":  d.CreatedAt.Format("2006-01-02 15:04:05"),
-				"last_access": d.LastAccess.Format("2006-01-02 15:04:05"),
+				"user_agent":   *d.UserAgent,
+				"device_type":  getString(d.DeviceType),
+				"device_name":  getString(d.DeviceName),
+				"ip_address":   formatIP(getString(d.IPAddress)),
+				"created_at":   d.CreatedAt.Format("2006-01-02 15:04:05"),
+				"last_access":  d.LastAccess.Format("2006-01-02 15:04:05"),
 				"access_count": d.AccessCount,
 			})
 		}
 	}
 
 	c.JSON(200, gin.H{"success": true, "data": gin.H{
-		"user_info":         userInfo,
-		"subscriptions":     formattedSubs,
-		"orders":            orders,
+		"user_info":     userInfo,
+		"subscriptions": formattedSubs,
+		"orders":        orders,
 		"statistics": gin.H{
 			"total_subscriptions": len(subs),
 			"total_orders":        totalOrders,
-			"total_resets":         totalResets,
+			"total_resets":        totalResets,
 			"total_spent":         totalSpent,
 		},
 		"subscription_resets": formattedResets,
-		"ua_records":        uaRecords,
-		"recent_activities": []gin.H{}, // 预留字段，后续可以添加最近活动记录
+		"ua_records":          uaRecords,
+		"recent_activities":   []gin.H{}, // 预留字段，后续可以添加最近活动记录
 	}})
 }
 
