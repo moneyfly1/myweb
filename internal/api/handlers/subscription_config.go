@@ -175,25 +175,30 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 3. 验证有效性（过期/超额）
-	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
-	if !ok {
-		now := utils.GetBeijingTime()
+	now := utils.GetBeijingTime()
+	isExpired := sub.ExpireTime.Before(now)
+	isInactive := !sub.IsActive || sub.Status != "active"
+	
+	// 先检查订阅是否过期或失效（即使有专线节点，普通订阅过期也应该返回错误）
+	if isExpired || isInactive {
 		var title, message string
-
-		isExpired := sub.ExpireTime.Before(now)
-		isInactive := !sub.IsActive || sub.Status != "active"
-
 		if isExpired {
 			title = "订阅已过期"
 			message = fmt.Sprintf("您的订阅已于 %s 过期，无法使用服务。请及时续费以继续使用。", sub.ExpireTime.Format("2006-01-02 15:04:05"))
-		} else if isInactive {
+		} else {
 			title = "订阅已失效"
 			message = "您的订阅已被禁用或失效，无法使用服务。请联系客服获取帮助。"
-		} else {
-			title = "设备数量超限"
-			message = fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
 		}
-
+		c.Header("Content-Type", "application/x-yaml")
+		c.String(200, generateErrorConfig(title, message))
+		return
+	}
+	
+	// 再检查设备数量限制（只阻止新设备）
+	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
+	if !ok {
+		title := "设备数量超限"
+		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
 		c.Header("Content-Type", "application/x-yaml")
 		c.String(200, generateErrorConfig(title, message))
 		return
@@ -260,25 +265,29 @@ func GetUniversalSubscription(c *gin.Context) {
 		return
 	}
 
-	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
-	if !ok {
-		now := utils.GetBeijingTime()
+	// 先检查订阅是否过期或失效（即使有专线节点，普通订阅过期也应该返回错误）
+	now := utils.GetBeijingTime()
+	isExpired := sub.ExpireTime.Before(now)
+	isInactive := !sub.IsActive || sub.Status != "active"
+	
+	if isExpired || isInactive {
 		var title, message string
-
-		isExpired := sub.ExpireTime.Before(now)
-		isInactive := !sub.IsActive || sub.Status != "active"
-
 		if isExpired {
 			title = "订阅已过期"
 			message = fmt.Sprintf("您的订阅已于 %s 过期，无法使用服务。请及时续费以继续使用。", sub.ExpireTime.Format("2006-01-02 15:04:05"))
-		} else if isInactive {
+		} else {
 			title = "订阅已失效"
 			message = "您的订阅已被禁用或失效，无法使用服务。请联系客服获取帮助。"
-		} else {
-			title = "设备数量超限"
-			message = fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
 		}
-
+		c.String(200, generateErrorConfigBase64(title, message))
+		return
+	}
+	
+	// 再检查设备数量限制（只阻止新设备）
+	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
+	if !ok {
+		title := "设备数量超限"
+		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
 		c.String(200, generateErrorConfigBase64(title, message))
 		return
 	}
