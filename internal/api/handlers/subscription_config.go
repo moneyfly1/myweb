@@ -130,11 +130,12 @@ func generateErrorConfig(title, message string, baseURL string) string {
 		"📞 联系管理员获取帮助",                     // 第4个：联系管理员
 	}
 
-	// 生成节点列表
+	// 生成节点列表（使用 SS 节点而不是 socks5）
 	proxyList := ""
 	proxyNames := ""
 	for i, nodeName := range errorNodes {
-		proxyList += fmt.Sprintf("  - name: \"%s\"\n    type: socks5\n    server: 127.0.0.1\n    port: %d\n    # 错误节点，仅用于显示信息\n", nodeName, i)
+		// 使用无效的 SS 节点配置，确保无法连接
+		proxyList += fmt.Sprintf("  - name: \"%s\"\n    type: ss\n    server: 127.0.0.1\n    port: %d\n    cipher: aes-256-gcm\n    password: \"invalid\"\n    # 错误节点，仅用于显示信息\n", nodeName, i)
 		proxyNames += fmt.Sprintf("      - \"%s\"\n", nodeName)
 	}
 
@@ -299,10 +300,10 @@ func GetSubscriptionConfig(c *gin.Context) {
 	deviceManager := device.NewDeviceManager()
 	deviceIP := utils.GetRealClientIP(c)
 	deviceUA := c.GetHeader("User-Agent")
-	
+
 	// 先尝试记录设备访问（如果设备不存在，这里会创建；如果存在，会更新）
 	deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "clash")
-	
+
 	// 然后验证订阅（此时设备已经被记录，可以正确检查设备是否在允许范围内）
 	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, deviceIP, deviceUA)
 	if !ok {
@@ -403,10 +404,10 @@ func GetUniversalSubscription(c *gin.Context) {
 	deviceManager := device.NewDeviceManager()
 	deviceIP := utils.GetRealClientIP(c)
 	deviceUA := c.GetHeader("User-Agent")
-	
+
 	// 先尝试记录设备访问（如果设备不存在，这里会创建；如果存在，会更新）
 	deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "universal")
-	
+
 	// 然后验证订阅（此时设备已经被记录，可以正确检查设备是否在允许范围内）
 	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, deviceIP, deviceUA)
 	if !ok {
