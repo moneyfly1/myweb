@@ -241,6 +241,57 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 		return
 	}
 
+	db := database.GetDB()
+	
+	// 先检查是否是旧订阅地址
+	var sub models.Subscription
+	if err := db.Where("subscription_url = ?", req.SubscriptionURL).First(&sub).Error; err != nil {
+		// 检查是否是旧订阅地址
+		reset, currentSub, user, isOldURL := checkOldSubscriptionURL(db, req.SubscriptionURL)
+		if isOldURL {
+			// 生成友好的错误信息
+			var errorMessage string
+			now := utils.GetBeijingTime()
+
+			if currentSub != nil && user != nil {
+				// 检查订阅状态
+				isExpired := currentSub.ExpireTime.Before(now)
+				isInactive := !currentSub.IsActive || currentSub.Status != "active"
+
+				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
+				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
+				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+
+				if isExpired {
+					errorMessage += fmt.Sprintf("\n⚠️ 订阅已过期（到期时间：%s）\n请及时续费以继续使用服务。", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
+				} else if isInactive {
+					errorMessage += "\n⚠️ 订阅已失效，请联系客服。"
+				} else {
+					remainingDays := int(currentSub.ExpireTime.Sub(now).Hours() / 24)
+					if remainingDays > 0 {
+						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天\n请登录账户获取新订阅地址。", remainingDays)
+					}
+				}
+			} else {
+				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请登录您的账户获取新的订阅地址，或联系客服获取帮助。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+			}
+
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "订阅地址已失效",
+				"error":   errorMessage,
+			})
+			return
+		}
+
+		// 如果不是旧订阅地址，返回订阅不存在
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "订阅不存在",
+		})
+		return
+	}
+
 	service := config_update.NewConfigUpdateService()
 	if err := service.UpdateSubscriptionConfig(req.SubscriptionURL); err != nil {
 		utils.LogError("UpdateSubscriptionConfigByUser: update config failed", err, map[string]interface{}{
