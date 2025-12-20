@@ -199,18 +199,13 @@ func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL s
 	// 获取节点
 	proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit, err := s.getNodesForSubscription(userID, subscriptionURL)
 	if err != nil {
-		// 如果是“没有可用节点”错误，我们仍然尝试生成基础配置（带提醒）
-		if err.Error() == "没有可用的节点" {
-			// 获取订阅信息以便生成提醒节点
-			var sub models.Subscription
-			s.db.Where("subscription_url = ?", subscriptionURL).First(&sub)
-			var u models.User
-			s.db.First(&u, userID)
-
-			proxies = s.addInfoAndReminderNodes([]*ProxyNode{}, sub, u, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
-			return s.generateClashYAML(proxies), nil
-		}
 		return "", err
+	}
+
+	// 如果订阅过期、失效或设备超限，不返回节点信息
+	// 这些情况应该在 subscription_config.go 中处理，但这里作为双重保险
+	if isExpired || isInactive || isDeviceOverLimit {
+		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v, 设备超限=%v", isExpired, isInactive, isDeviceOverLimit)
 	}
 
 	// 添加信息节点和提醒节点
@@ -1128,6 +1123,12 @@ func (s *ConfigUpdateService) GenerateSSRConfig(userID uint, subscriptionURL str
 	proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit, err := s.getNodesForSubscription(userID, subscriptionURL)
 	if err != nil {
 		return "", err
+	}
+
+	// 如果订阅过期、失效或设备超限，不返回节点信息
+	// 这些情况应该在 subscription_config.go 中处理，但这里作为双重保险
+	if isExpired || isInactive || isDeviceOverLimit {
+		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v, 设备超限=%v", isExpired, isInactive, isDeviceOverLimit)
 	}
 
 	// 添加信息节点（信息节点会转换为 VMess 链接，在客户端中显示）

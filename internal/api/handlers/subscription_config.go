@@ -38,7 +38,12 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
 
-	// 生成设备哈希
+	// 如果设备限制大于0，检查当前设备数是否已超限
+	if subscription.DeviceLimit > 0 && int(count) > subscription.DeviceLimit {
+		return fmt.Sprintf("设备超限(当前%d/限制%d)，请登录官网管理设备", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
+	}
+
+	// 生成设备哈希，检查是否为新设备
 	hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
 	var d models.Device
 	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&d).Error != nil
@@ -75,7 +80,7 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 func generateErrorConfig(title, message string) string {
 	// 清理消息，移除换行符，确保在注释中正确显示
 	cleanMessage := strings.ReplaceAll(message, "\n", " | ")
-	
+
 	return fmt.Sprintf(`# ============================================
 # ⚠️ 订阅错误：%s
 # ============================================
@@ -178,10 +183,10 @@ func GetSubscriptionConfig(c *gin.Context) {
 	if !ok {
 		now := utils.GetBeijingTime()
 		var title, message string
-		
+
 		isExpired := sub.ExpireTime.Before(now)
 		isInactive := !sub.IsActive || sub.Status != "active"
-		
+
 		if isExpired {
 			title = "订阅已过期"
 			message = fmt.Sprintf("您的订阅已于 %s 过期，无法使用服务。请及时续费以继续使用。", sub.ExpireTime.Format("2006-01-02 15:04:05"))
@@ -192,7 +197,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 			title = "设备数量超限"
 			message = fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
 		}
-		
+
 		c.Header("Content-Type", "application/x-yaml")
 		c.String(200, generateErrorConfig(title, message))
 		return
@@ -263,10 +268,10 @@ func GetUniversalSubscription(c *gin.Context) {
 	if !ok {
 		now := utils.GetBeijingTime()
 		var title, message string
-		
+
 		isExpired := sub.ExpireTime.Before(now)
 		isInactive := !sub.IsActive || sub.Status != "active"
-		
+
 		if isExpired {
 			title = "订阅已过期"
 			message = fmt.Sprintf("您的订阅已于 %s 过期，无法使用服务。请及时续费以继续使用。", sub.ExpireTime.Format("2006-01-02 15:04:05"))
@@ -277,7 +282,7 @@ func GetUniversalSubscription(c *gin.Context) {
 			title = "设备数量超限"
 			message = fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
 		}
-		
+
 		c.String(200, generateErrorConfigBase64(title, message))
 		return
 	}
