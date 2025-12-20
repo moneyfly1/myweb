@@ -138,10 +138,10 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 				errorTitle = "订阅地址已更换"
 				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
-				
+
 				// 重置时间
 				errorMessage += fmt.Sprintf("📅 重置时间：%s\n\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-				
+
 				// 订阅状态
 				if isExpired {
 					errorMessage += "⚠️ 订阅状态：已过期\n"
@@ -158,7 +158,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 					}
 					errorMessage += fmt.Sprintf("📆 到期时间：%s\n\n", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
 				}
-				
+
 				// 引导信息
 				errorMessage += "🔗 请登录您的账户获取新的订阅地址\n"
 				errorMessage += "📞 或联系客服获取帮助"
@@ -181,13 +181,53 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 	var u models.User
 	if err := db.First(&u, sub.UserID).Error; err != nil || !u.IsActive {
-		c.JSON(403, gin.H{"success": false, "message": "账户已禁用"})
+		// 账户已禁用，返回错误配置
+		errorTitle := "账户已禁用"
+		errorMessage := "您的账户已被禁用，无法使用订阅服务。\n\n"
+		errorMessage += "📞 请联系客服获取帮助"
+		errorConfig := generateErrorConfig(errorTitle, errorMessage)
+		c.Header("Content-Type", "application/x-yaml")
+		c.String(200, errorConfig)
 		return
 	}
-	if msg, _, _, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent")); !ok {
-		c.JSON(403, gin.H{"success": false, "message": msg})
+	
+	// 验证订阅状态
+	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
+	if !ok {
+		// 订阅过期或设备数量超限，返回错误配置
+		now := utils.GetBeijingTime()
+		var errorTitle, errorMessage string
+		
+		isExpired := sub.ExpireTime.Before(now)
+		isInactive := !sub.IsActive || sub.Status != "active"
+		
+		if isExpired {
+			errorTitle = "订阅已过期"
+			errorMessage = "您的订阅已过期，无法使用服务。\n\n"
+			errorMessage += fmt.Sprintf("📆 到期时间：%s\n", sub.ExpireTime.Format("2006-01-02 15:04:05"))
+			errorMessage += "💡 请及时续费以继续使用服务。\n\n"
+			errorMessage += "🔗 请登录您的账户进行续费\n"
+			errorMessage += "📞 或联系客服获取帮助"
+		} else if isInactive {
+			errorTitle = "订阅已失效"
+			errorMessage = "您的订阅已失效，无法使用服务。\n\n"
+			errorMessage += "📞 请联系客服获取帮助"
+		} else {
+			// 设备数量超限
+			errorTitle = "设备数量超限"
+			errorMessage = "设备数量超过限制，无法使用服务。\n\n"
+			errorMessage += fmt.Sprintf("📱 当前设备数：%d/%d\n", currentDevices, deviceLimit)
+			errorMessage += "💡 请删除多余设备后再试。\n\n"
+			errorMessage += "🔗 请登录您的账户管理设备\n"
+			errorMessage += "📞 或联系客服获取帮助"
+		}
+		
+		errorConfig := generateErrorConfig(errorTitle, errorMessage)
+		c.Header("Content-Type", "application/x-yaml")
+		c.String(200, errorConfig)
 		return
 	}
+	
 	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "clash")
 	// 增加猫咪订阅次数
 	db.Model(&sub).Update("clash_count", gorm.Expr("clash_count + ?", 1))
@@ -215,10 +255,10 @@ func GetUniversalSubscription(c *gin.Context) {
 
 				errorTitle = "订阅地址已更换"
 				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
-				
+
 				// 重置时间
 				errorMessage += fmt.Sprintf("📅 重置时间：%s\n\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-				
+
 				// 订阅状态
 				if isExpired {
 					errorMessage += "⚠️ 订阅状态：已过期\n"
@@ -235,7 +275,7 @@ func GetUniversalSubscription(c *gin.Context) {
 					}
 					errorMessage += fmt.Sprintf("📆 到期时间：%s\n\n", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
 				}
-				
+
 				// 引导信息
 				errorMessage += "🔗 请登录您的账户获取新的订阅地址\n"
 				errorMessage += "📞 或联系客服获取帮助"
@@ -258,13 +298,53 @@ func GetUniversalSubscription(c *gin.Context) {
 	}
 	var u models.User
 	if err := db.First(&u, sub.UserID).Error; err != nil || !u.IsActive {
-		c.JSON(403, gin.H{"success": false, "message": "账户已禁用"})
+		// 账户已禁用，返回错误配置
+		errorTitle := "账户已禁用"
+		errorMessage := "您的账户已被禁用，无法使用订阅服务。\n\n"
+		errorMessage += "📞 请联系客服获取帮助"
+		errorConfig := generateErrorConfigBase64(errorTitle, errorMessage)
+		c.Header("Content-Type", "text/plain; charset=utf-8")
+		c.String(200, errorConfig)
 		return
 	}
-	if msg, _, _, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent")); !ok {
-		c.JSON(403, gin.H{"success": false, "message": msg})
+	
+	// 验证订阅状态
+	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
+	if !ok {
+		// 订阅过期或设备数量超限，返回错误配置
+		now := utils.GetBeijingTime()
+		var errorTitle, errorMessage string
+		
+		isExpired := sub.ExpireTime.Before(now)
+		isInactive := !sub.IsActive || sub.Status != "active"
+		
+		if isExpired {
+			errorTitle = "订阅已过期"
+			errorMessage = "您的订阅已过期，无法使用服务。\n\n"
+			errorMessage += fmt.Sprintf("📆 到期时间：%s\n", sub.ExpireTime.Format("2006-01-02 15:04:05"))
+			errorMessage += "💡 请及时续费以继续使用服务。\n\n"
+			errorMessage += "🔗 请登录您的账户进行续费\n"
+			errorMessage += "📞 或联系客服获取帮助"
+		} else if isInactive {
+			errorTitle = "订阅已失效"
+			errorMessage = "您的订阅已失效，无法使用服务。\n\n"
+			errorMessage += "📞 请联系客服获取帮助"
+		} else {
+			// 设备数量超限
+			errorTitle = "设备数量超限"
+			errorMessage = "设备数量超过限制，无法使用服务。\n\n"
+			errorMessage += fmt.Sprintf("📱 当前设备数：%d/%d\n", currentDevices, deviceLimit)
+			errorMessage += "💡 请删除多余设备后再试。\n\n"
+			errorMessage += "🔗 请登录您的账户管理设备\n"
+			errorMessage += "📞 或联系客服获取帮助"
+		}
+		
+		errorConfig := generateErrorConfigBase64(errorTitle, errorMessage)
+		c.Header("Content-Type", "text/plain; charset=utf-8")
+		c.String(200, errorConfig)
 		return
 	}
+	
 	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "universal")
 	// 增加通用订阅次数
 	db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
