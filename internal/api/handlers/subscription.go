@@ -223,11 +223,21 @@ func GetAdminSubscriptions(c *gin.Context) {
 				}
 			}
 
+			// 使用数据库中的订阅次数字段，如果没有则使用统计值作为后备
+			universalCount := sub.UniversalCount
+			clashCount := sub.ClashCount
+			if universalCount == 0 && appleMap[sub.ID] > 0 {
+				universalCount = int(appleMap[sub.ID])
+			}
+			if clashCount == 0 && clashMap[sub.ID] > 0 {
+				clashCount = int(clashMap[sub.ID])
+			}
+
 			list = append(list, gin.H{
 				"id": sub.ID, "user_id": sub.UserID, "user": userInfo, "username": userInfo["username"], "email": userInfo["email"],
 				"subscription_url": sub.SubscriptionURL, "universal_url": universal, "clash_url": clash,
 				"status": sub.Status, "is_active": sub.IsActive, "device_limit": sub.DeviceLimit,
-				"current_devices": curr, "online_devices": online, "apple_count": appleMap[sub.ID], "clash_count": clashMap[sub.ID],
+				"current_devices": curr, "online_devices": online, "apple_count": universalCount, "clash_count": clashCount,
 				"expire_time": sub.ExpireTime.Format("2006-01-02 15:04:05"), "days_until_expire": daysUntil, "is_expired": isExpired,
 				"created_at": sub.CreatedAt.Format("2006-01-02 15:04:05"),
 			})
