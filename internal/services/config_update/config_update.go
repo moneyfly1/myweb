@@ -220,6 +220,28 @@ func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL s
 func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	var builder strings.Builder
 
+	// 过滤掉 Clash 不支持的节点类型
+	// Clash 标准版不支持：naive, anytls, ssr
+	// Clash Meta 支持更多协议，但为了兼容性，我们过滤掉标准版不支持的
+	supportedTypes := map[string]bool{
+		"vmess":     true,
+		"vless":     true,
+		"trojan":    true,
+		"ss":        true,
+		"hysteria":  true,
+		"hysteria2": true,
+		"tuic":      true,
+		"direct":    true, // 信息节点
+	}
+
+	filteredProxies := make([]*ProxyNode, 0)
+	for _, proxy := range proxies {
+		if supportedTypes[proxy.Type] {
+			filteredProxies = append(filteredProxies, proxy)
+		}
+		// 不支持的节点类型（naive, anytls, ssr）会被忽略
+	}
+
 	// 写入基础配置
 	builder.WriteString("port: 7890\n")
 	builder.WriteString("socks-port: 7891\n")
@@ -228,15 +250,15 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	builder.WriteString("log-level: info\n")
 	builder.WriteString("external-controller: 127.0.0.1:9090\n\n")
 
-	// 写入代理节点
+	// 写入代理节点（只包含支持的节点）
 	builder.WriteString("proxies:\n")
-	for _, proxy := range proxies {
+	for _, proxy := range filteredProxies {
 		builder.WriteString(s.nodeToYAML(proxy, 2))
 	}
 
-	// 生成代理名称列表（转义后的名称）
+	// 生成代理名称列表（转义后的名称，只包含支持的节点）
 	var proxyNames []string
-	for _, proxy := range proxies {
+	for _, proxy := range filteredProxies {
 		escapedName := s.escapeYAMLString(proxy.Name)
 		proxyNames = append(proxyNames, escapedName)
 	}
@@ -442,12 +464,12 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	if node.Network != "" && node.Network != "tcp" {
 		builder.WriteString(fmt.Sprintf("%s  network: %s\n", indentStr, node.Network))
 	}
-	
+
 	// TLS 配置
 	if node.TLS {
 		builder.WriteString(fmt.Sprintf("%s  tls: true\n", indentStr))
 	}
-	
+
 	// UDP 配置
 	if node.UDP {
 		builder.WriteString(fmt.Sprintf("%s  udp: true\n", indentStr))
