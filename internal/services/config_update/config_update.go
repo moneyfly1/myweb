@@ -93,25 +93,19 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 	var allNodes []map[string]interface{}
 
 	for i, url := range urls {
-		if utils.AppLogger != nil {
-			utils.AppLogger.Info("正在下载节点源 [%d/%d]: %s", i+1, len(urls), url)
-		}
+		s.log("INFO", fmt.Sprintf("正在下载节点源 [%d/%d]: %s", i+1, len(urls), url))
 
 		// 下载内容
 		resp, err := http.Get(url)
 		if err != nil {
-			if utils.AppLogger != nil {
-				utils.AppLogger.Error("下载失败: %v", err)
-			}
+			s.log("ERROR", fmt.Sprintf("下载失败: %v", err))
 			continue
 		}
 		defer resp.Body.Close()
 
 		content, err := io.ReadAll(resp.Body)
 		if err != nil {
-			if utils.AppLogger != nil {
-				utils.AppLogger.Error("读取内容失败: %v", err)
-			}
+			s.log("ERROR", fmt.Sprintf("读取内容失败: %v", err))
 			continue
 		}
 
@@ -120,9 +114,7 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 
 		// 提取节点链接
 		nodeLinks := s.extractNodeLinks(decoded)
-		if utils.AppLogger != nil {
-			utils.AppLogger.Info("从 %s 提取到 %d 个节点链接", url, len(nodeLinks))
-		}
+		s.log("INFO", fmt.Sprintf("从 %s 提取到 %d 个节点链接", url, len(nodeLinks)))
 
 		for _, link := range nodeLinks {
 			allNodes = append(allNodes, map[string]interface{}{
@@ -195,8 +187,8 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 			continue
 		}
 
-		uniqueLinks[link] = true
-		result = append(result, link)
+			uniqueLinks[link] = true
+			result = append(result, link)
 	}
 
 	return result
@@ -387,7 +379,7 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 	if err != nil {
 		// 获取节点失败，暂且认为无节点
 		ctx.Proxies = []*ProxyNode{}
-	} else {
+		} else {
 		ctx.Proxies = proxies
 	}
 
@@ -452,7 +444,7 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 			if cn.FollowUserExpire {
 				if user.SpecialNodeExpiresAt.Valid {
 					isExpired = user.SpecialNodeExpiresAt.Time.Before(now)
-				} else {
+	} else {
 					isExpired = sub.ExpireTime.Before(now)
 				}
 			} else if cn.ExpireTime != nil {
@@ -848,7 +840,7 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 							}
 						}
 					}
-					continue
+				continue
 				}
 			}
 
@@ -1031,6 +1023,55 @@ func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
 	return u.String()
 }
 
+// log 记录日志
+func (s *ConfigUpdateService) log(level, message string) {
+	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+	logEntry := map[string]interface{}{
+		"time":    now,
+		"level":   level,
+		"message": message,
+	}
+
+	var config models.SystemConfig
+	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
+		// 如果不存在，创建
+		initialLogs := []map[string]interface{}{logEntry}
+		logsJSON, _ := json.Marshal(initialLogs)
+		config = models.SystemConfig{
+			Key:         "config_update_logs",
+			Value:       string(logsJSON),
+			Type:        "json",
+			Category:    "config_update",
+			DisplayName: "配置更新日志",
+			Description: "配置更新任务日志",
+		}
+		s.db.Create(&config)
+	} else {
+		// 如果存在，追加
+		var logs []map[string]interface{}
+		json.Unmarshal([]byte(config.Value), &logs)
+		logs = append(logs, logEntry)
+
+		// 限制日志数量，保留最近 100 条
+		if len(logs) > 100 {
+			logs = logs[len(logs)-100:]
+		}
+
+		logsJSON, _ := json.Marshal(logs)
+		config.Value = string(logsJSON)
+		s.db.Save(&config)
+	}
+
+	// 同时打印到系统日志
+	if utils.AppLogger != nil {
+		if level == "ERROR" {
+			utils.AppLogger.Error(message)
+		} else {
+			utils.AppLogger.Info(message)
+		}
+	}
+}
+
 // RunUpdateTask 执行配置更新任务
 func (s *ConfigUpdateService) RunUpdateTask() error {
 	s.runningMutex.Lock()
@@ -1047,26 +1088,38 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		s.runningMutex.Unlock()
 	}()
 
+	s.log("INFO", "开始执行配置更新任务")
+
 	// 获取配置
 	config, err := s.getConfig()
 	if err != nil {
+		s.log("ERROR", fmt.Sprintf("获取配置失败: %v", err))
 		return err
 	}
 
 	urls := config["urls"].([]string)
 	if len(urls) == 0 {
-		return fmt.Errorf("未配置节点源URL")
+		msg := "未配置节点源URL"
+		s.log("ERROR", msg)
+		return fmt.Errorf(msg)
 	}
+
+	s.log("INFO", fmt.Sprintf("获取到 %d 个节点源URL", len(urls)))
 
 	// 1. 获取节点
 	nodes, err := s.FetchNodesFromURLs(urls)
 	if err != nil {
+		s.log("ERROR", fmt.Sprintf("获取节点失败: %v", err))
 		return err
 	}
 
 	if len(nodes) == 0 {
-		return fmt.Errorf("未获取到有效节点")
+		msg := "未获取到有效节点"
+		s.log("WARN", msg)
+		return fmt.Errorf(msg)
 	}
+
+	s.log("INFO", fmt.Sprintf("共获取到 %d 个有效节点链接，准备入库", len(nodes)))
 
 	// 2. 解析节点并导入数据库
 	var proxies []*ProxyNode
@@ -1081,6 +1134,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		node, err := ParseNodeLink(link)
 		if err != nil {
+			// s.log("WARN", fmt.Sprintf("解析节点失败: %v", err)) // 可选：记录详细解析错误
 			continue
 		}
 
@@ -1102,8 +1156,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		proxies = append(proxies, node)
 	}
 
-	s.importNodesToDatabase(proxies)
+	importedCount := s.importNodesToDatabase(proxies)
 	s.updateLastUpdateTime()
+	
+	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，成功入库/更新 %d 个", len(proxies), importedCount))
 	return nil
 }
 
