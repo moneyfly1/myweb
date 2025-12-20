@@ -286,16 +286,68 @@ func GetNodeStats(c *gin.Context) {
 
 func GetAdminNodes(c *gin.Context) {
 	db := database.GetDB()
-	var nodes []models.Node
 	query := db.Model(&models.Node{})
+	
+	// 状态筛选
 	if s := c.Query("status"); s != "" {
 		query = query.Where("status = ?", s)
 	}
+	
+	// 激活状态筛选
 	if a := c.Query("is_active"); a != "" {
 		query = query.Where("is_active = ?", a == "true")
 	}
-	query.Order("created_at DESC").Find(&nodes)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": nodes})
+	
+	// 地区筛选
+	if r := c.Query("region"); r != "" {
+		query = query.Where("region = ?", r)
+	}
+	
+	// 类型筛选
+	if t := c.Query("type"); t != "" {
+		query = query.Where("type = ?", t)
+	}
+	
+	// 搜索关键词
+	if search := c.Query("search"); search != "" {
+		search = utils.SanitizeSearchKeyword(search)
+		if search != "" {
+			query = query.Where("name LIKE ?", "%"+search+"%")
+		}
+	}
+	
+	// 计算总数
+	var total int64
+	query.Count(&total)
+	
+	// 分页参数
+	page := 1
+	size := 20
+	if pageStr := c.Query("page"); pageStr != "" {
+		fmt.Sscanf(pageStr, "%d", &page)
+	}
+	if sizeStr := c.Query("size"); sizeStr != "" {
+		fmt.Sscanf(sizeStr, "%d", &size)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
+	if size > 100 {
+		size = 100 // 限制最大每页数量
+	}
+	
+	// 分页查询
+	var nodes []models.Node
+	offset := (page - 1) * size
+	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&nodes).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取节点列表失败"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": nodes, "total": total, "page": page, "size": size})
 }
 
 func GetNode(c *gin.Context) {
