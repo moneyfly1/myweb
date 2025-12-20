@@ -38,15 +38,10 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
 
-	// 生成设备哈希，检查是否为新设备
-	hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
-	var d models.Device
-	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&d).Error != nil
-
-	// 只有新设备且已达到设备限制时，才阻止订阅
-	// 已存在的设备即使总数超限，仍然允许使用
-	if isNewDevice && subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
-		return fmt.Sprintf("设备超限(当前%d/限制%d)，请登录官网管理设备", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
+	// 如果设备总数超过限制，无论是否为新设备，都返回错误
+	// 这样可以防止所有设备（包括已存在的设备）在超限时继续使用
+	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
+		return fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
 	}
 
 	return "", int(count), subscription.DeviceLimit, true
@@ -73,35 +68,39 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 }
 
 // generateErrorConfig 生成错误配置（Clash格式），返回4个错误节点信息
-func generateErrorConfig(title, message string) string {
+// 节点格式：1.官网 2.错误原因 3.解决办法 4.联系管理员
+func generateErrorConfig(title, message string, baseURL string) string {
 	// 清理消息，移除换行符
 	cleanMessage := strings.ReplaceAll(message, "\n", " ")
 	
-	// 将错误信息拆分为多个节点，每个节点名称不超过30个字符
+	// 如果baseURL为空，使用默认提示
+	if baseURL == "" {
+		baseURL = "请登录官网"
+	} else {
+		// 截断URL，确保不超过30个字符
+		if len(baseURL) > 30 {
+			baseURL = baseURL[:27] + "..."
+		}
+	}
+	
+	// 拆分错误原因，确保不超过30个字符
+	errorReason := cleanMessage
+	if len(errorReason) > 30 {
+		errorReason = errorReason[:27] + "..."
+	}
+	
+	// 生成4个节点
 	errorNodes := []string{
-		fmt.Sprintf("⚠️ %s", title),
-	}
-	
-	// 拆分消息为多个部分
-	messageParts := splitMessage(cleanMessage, 3, 25) // 最多3个部分，每个部分最多25个字符
-	errorNodes = append(errorNodes, messageParts...)
-	
-	// 确保有4个节点
-	for len(errorNodes) < 4 {
-		errorNodes = append(errorNodes, "请登录官网查看详情或联系客服")
-	}
-	if len(errorNodes) > 4 {
-		errorNodes = errorNodes[:4]
+		fmt.Sprintf("🌐 %s", baseURL),           // 第1个：官网
+		fmt.Sprintf("⚠️ %s", errorReason),       // 第2个：错误原因
+		"💡 请登录官网查看详情",                      // 第3个：解决办法
+		"📞 联系管理员获取帮助",                      // 第4个：联系管理员
 	}
 
 	// 生成节点列表
 	proxyList := ""
 	proxyNames := ""
 	for i, nodeName := range errorNodes {
-		// 截断节点名称，确保不超过30个字符
-		if len(nodeName) > 30 {
-			nodeName = nodeName[:27] + "..."
-		}
 		proxyList += fmt.Sprintf("  - name: \"%s\"\n    type: socks5\n    server: 127.0.0.1\n    port: %d\n    # 错误节点，仅用于显示信息\n", nodeName, i)
 		proxyNames += fmt.Sprintf("      - \"%s\"\n", nodeName)
 	}
@@ -134,78 +133,39 @@ rules:
 `, title, cleanMessage, proxyList, proxyNames)
 }
 
-// splitMessage 将消息拆分为多个部分，每个部分不超过指定长度
-func splitMessage(message string, maxParts int, maxLength int) []string {
-	if len(message) <= maxLength {
-		return []string{message}
-	}
-	
-	parts := []string{}
-	words := strings.Fields(message)
-	currentPart := ""
-	
-	for _, word := range words {
-		// 如果当前部分加上新单词不超过长度限制
-		if len(currentPart)+len(word)+1 <= maxLength {
-			if currentPart == "" {
-				currentPart = word
-			} else {
-				currentPart += " " + word
-			}
-		} else {
-			// 保存当前部分，开始新部分
-			if currentPart != "" {
-				parts = append(parts, currentPart)
-				if len(parts) >= maxParts {
-					break
-				}
-			}
-			// 如果单个单词就超过长度，截断
-			if len(word) > maxLength {
-				word = word[:maxLength-3] + "..."
-			}
-			currentPart = word
-		}
-	}
-	
-	// 添加最后一部分
-	if currentPart != "" && len(parts) < maxParts {
-		parts = append(parts, currentPart)
-	}
-	
-	return parts
-}
-
 // generateErrorConfigBase64 生成通用订阅的 Base64 错误提示，返回4个错误节点信息
-func generateErrorConfigBase64(title, message string) string {
+// 节点格式：1.官网 2.错误原因 3.解决办法 4.联系管理员
+func generateErrorConfigBase64(title, message string, baseURL string) string {
 	// 清理消息
 	cleanMessage := strings.ReplaceAll(message, "\n", " ")
 	
-	// 将错误信息拆分为多个节点
+	// 如果baseURL为空，使用默认提示
+	if baseURL == "" {
+		baseURL = "请登录官网"
+	} else {
+		// 截断URL，确保不超过30个字符
+		if len(baseURL) > 30 {
+			baseURL = baseURL[:27] + "..."
+		}
+	}
+	
+	// 拆分错误原因，确保不超过30个字符
+	errorReason := cleanMessage
+	if len(errorReason) > 30 {
+		errorReason = errorReason[:27] + "..."
+	}
+	
+	// 生成4个节点
 	errorNodes := []string{
-		fmt.Sprintf("⚠️ %s", title),
-	}
-	
-	// 拆分消息为多个部分
-	messageParts := splitMessage(cleanMessage, 3, 25)
-	errorNodes = append(errorNodes, messageParts...)
-	
-	// 确保有4个节点
-	for len(errorNodes) < 4 {
-		errorNodes = append(errorNodes, "请登录官网查看详情")
-	}
-	if len(errorNodes) > 4 {
-		errorNodes = errorNodes[:4]
+		fmt.Sprintf("🌐 %s", baseURL),           // 第1个：官网
+		fmt.Sprintf("⚠️ %s", errorReason),       // 第2个：错误原因
+		"💡 请登录官网查看详情",                      // 第3个：解决办法
+		"📞 联系管理员获取帮助",                      // 第4个：联系管理员
 	}
 	
 	// 生成多个无效 VMess 节点链接
 	var nodeLinks []string
 	for i, nodeName := range errorNodes {
-		// 截断节点名称，确保不超过30个字符
-		if len(nodeName) > 30 {
-			nodeName = nodeName[:27] + "..."
-		}
-		
 		errorData := map[string]interface{}{
 			"v":    "2",
 			"ps":   nodeName,                    // 节点名称包含错误信息
@@ -230,6 +190,7 @@ func generateErrorConfigBase64(title, message string) string {
 func GetSubscriptionConfig(c *gin.Context) {
 	uurl := c.Param("url")
 	db := database.GetDB()
+	baseURL := utils.GetBuildBaseURL(c.Request, db)
 	var sub models.Subscription
 
 	// 1. 查找订阅
@@ -257,11 +218,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 				msg = fmt.Sprintf("订阅地址已于 %s 重置，原链接已失效。请登录账户获取新订阅地址。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
 			}
 			c.Header("Content-Type", "application/x-yaml")
-			c.String(200, generateErrorConfig("订阅地址已更换", msg))
+			c.String(200, generateErrorConfig("订阅地址已更换", msg, baseURL))
 			return
 		}
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig("订阅不存在", "未在数据库中找到该订阅地址，请检查订阅链接是否正确"))
+		c.String(200, generateErrorConfig("订阅不存在", "未在数据库中找到该订阅地址，请检查订阅链接是否正确", baseURL))
 		return
 	}
 
@@ -275,7 +236,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 			msg = "您的账户已被禁用，无法使用订阅服务。请联系客服获取帮助。"
 		}
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig("账户异常", msg))
+		c.String(200, generateErrorConfig("账户异常", msg, baseURL))
 		return
 	}
 
@@ -295,17 +256,17 @@ func GetSubscriptionConfig(c *gin.Context) {
 			message = "您的订阅已被禁用或失效，无法使用服务。请联系客服获取帮助。"
 		}
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig(title, message))
+		c.String(200, generateErrorConfig(title, message, baseURL))
 		return
 	}
 
-	// 再检查设备数量限制（只阻止新设备）
+	// 再检查设备数量限制（设备总数超限时，无论是否为新设备，都返回错误）
 	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
 	if !ok {
 		title := "设备数量超限"
-		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
+		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", currentDevices, deviceLimit)
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig(title, message))
+		c.String(200, generateErrorConfig(title, message, baseURL))
 		return
 	}
 
@@ -316,7 +277,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 	cfg, err := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
 	if err != nil {
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig("生成失败", "服务器在构建配置时发生错误"))
+		c.String(200, generateErrorConfig("生成失败", "服务器在构建配置时发生错误", baseURL))
 		return
 	}
 	c.Header("Content-Type", "application/x-yaml")
@@ -327,6 +288,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 func GetUniversalSubscription(c *gin.Context) {
 	uurl := c.Param("url")
 	db := database.GetDB()
+	baseURL := utils.GetBuildBaseURL(c.Request, db)
 	var sub models.Subscription
 
 	if err := db.Where("subscription_url = ?", uurl).First(&sub).Error; err != nil {
@@ -351,10 +313,10 @@ func GetUniversalSubscription(c *gin.Context) {
 			} else {
 				msg = fmt.Sprintf("订阅地址已于 %s 重置，原链接已失效。请登录账户获取新订阅地址。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
 			}
-			c.String(200, generateErrorConfigBase64("订阅地址已更换", msg))
+			c.String(200, generateErrorConfigBase64("订阅地址已更换", msg, baseURL))
 			return
 		}
-		c.String(200, generateErrorConfigBase64("订阅不存在", "未在数据库中找到该订阅地址，请检查订阅链接是否正确"))
+		c.String(200, generateErrorConfigBase64("订阅不存在", "未在数据库中找到该订阅地址，请检查订阅链接是否正确", baseURL))
 		return
 	}
 
@@ -366,7 +328,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		} else {
 			msg = "您的账户已被禁用，无法使用订阅服务。请联系客服获取帮助。"
 		}
-		c.String(200, generateErrorConfigBase64("账户异常", msg))
+		c.String(200, generateErrorConfigBase64("账户异常", msg, baseURL))
 		return
 	}
 
@@ -384,16 +346,16 @@ func GetUniversalSubscription(c *gin.Context) {
 			title = "订阅已失效"
 			message = "您的订阅已被禁用或失效，无法使用服务。请联系客服获取帮助。"
 		}
-		c.String(200, generateErrorConfigBase64(title, message))
+		c.String(200, generateErrorConfigBase64(title, message, baseURL))
 		return
 	}
 
-	// 再检查设备数量限制（只阻止新设备）
+	// 再检查设备数量限制（设备总数超限时，无论是否为新设备，都返回错误）
 	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
 	if !ok {
 		title := "设备数量超限"
-		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备。请登录官网删除多余设备后再试。", currentDevices, deviceLimit)
-		c.String(200, generateErrorConfigBase64(title, message))
+		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", currentDevices, deviceLimit)
+		c.String(200, generateErrorConfigBase64(title, message, baseURL))
 		return
 	}
 
@@ -402,7 +364,7 @@ func GetUniversalSubscription(c *gin.Context) {
 
 	cfg, err := config_update.NewConfigUpdateService().GenerateSSRConfig(sub.UserID, uurl)
 	if err != nil {
-		c.String(200, generateErrorConfigBase64("错误", "生成配置失败"))
+		c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
 		return
 	}
 	c.String(200, base64.StdEncoding.EncodeToString([]byte(cfg)))
