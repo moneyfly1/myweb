@@ -187,8 +187,8 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 			continue
 		}
 
-			uniqueLinks[link] = true
-			result = append(result, link)
+		uniqueLinks[link] = true
+		result = append(result, link)
 	}
 
 	return result
@@ -379,7 +379,7 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 	if err != nil {
 		// 获取节点失败，暂且认为无节点
 		ctx.Proxies = []*ProxyNode{}
-		} else {
+	} else {
 		ctx.Proxies = proxies
 	}
 
@@ -444,7 +444,7 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 			if cn.FollowUserExpire {
 				if user.SpecialNodeExpiresAt.Valid {
 					isExpired = user.SpecialNodeExpiresAt.Time.Before(now)
-	} else {
+				} else {
 					isExpired = sub.ExpireTime.Before(now)
 				}
 			} else if cn.ExpireTime != nil {
@@ -642,7 +642,21 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 
 	// 写入代理节点
 	builder.WriteString("proxies:\n")
+
+	// 确保节点名称唯一
+	usedNames := make(map[string]bool)
 	for _, proxy := range filteredProxies {
+		originalName := proxy.Name
+		newName := originalName
+		counter := 1
+		for usedNames[newName] {
+			// 如果名字重复，添加序号后缀
+			newName = fmt.Sprintf("%s_%d", originalName, counter)
+			counter++
+		}
+		proxy.Name = newName
+		usedNames[newName] = true
+
 		builder.WriteString(s.nodeToYAML(proxy, 2))
 	}
 
@@ -840,7 +854,7 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 							}
 						}
 					}
-				continue
+					continue
 				}
 			}
 
@@ -1124,7 +1138,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	// 2. 解析节点并导入数据库
 	var proxies []*ProxyNode
 	seenKeys := make(map[string]bool)
-	nameCounter := make(map[string]int)
+	usedNames := make(map[string]bool)
 
 	for _, nodeInfo := range nodes {
 		link, ok := nodeInfo["url"].(string)
@@ -1146,19 +1160,22 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		seenKeys[key] = true
 
 		// 处理名称重复
-		if count, exists := nameCounter[node.Name]; exists {
-			nameCounter[node.Name] = count + 1
-			node.Name = fmt.Sprintf("%s-%d", node.Name, count+1)
-		} else {
-			nameCounter[node.Name] = 0
+		originalName := node.Name
+		newName := originalName
+		counter := 1
+		for usedNames[newName] {
+			newName = fmt.Sprintf("%s-%d", originalName, counter)
+			counter++
 		}
+		node.Name = newName
+		usedNames[newName] = true
 
 		proxies = append(proxies, node)
 	}
 
 	importedCount := s.importNodesToDatabase(proxies)
 	s.updateLastUpdateTime()
-	
+
 	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，成功入库/更新 %d 个", len(proxies), importedCount))
 	return nil
 }
@@ -1209,10 +1226,20 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 		configStr := string(configJSON)
 
 		// 检查是否已存在
-		var count int64
-		s.db.Model(&models.Node{}).Where("type = ? AND name = ?", node.Type, node.Name).Count(&count)
+		var existingNode models.Node
+		err := s.db.Where("type = ? AND name = ?", node.Type, node.Name).First(&existingNode).Error
 
-		if count == 0 {
+		if err == nil {
+			// 更新现有节点
+			existingNode.Config = &configStr
+			existingNode.Status = "online"
+			existingNode.IsActive = true
+
+			if err := s.db.Save(&existingNode).Error; err == nil {
+				importedCount++
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 创建新节点
 			newNode := models.Node{
 				Name:     node.Name,
 				Type:     node.Type,
@@ -1220,10 +1247,11 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 				IsActive: true,
 				IsManual: false,
 				Config:   &configStr,
-				// Link:     s.nodeToLink(node), // 模型中没有 Link 字段
+				Region:   "Unknown", // 默认区域
 			}
-			s.db.Create(&newNode)
-			importedCount++
+			if err := s.db.Create(&newNode).Error; err == nil {
+				importedCount++
+			}
 		}
 	}
 	return importedCount
