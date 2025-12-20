@@ -267,14 +267,16 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 		return nil, fmt.Errorf("用户不存在: %v", err)
 	}
 
-	// 计算支付金额
+	// 计算支付金额（用于其他业务逻辑，如邀请奖励）
 	paidAmount := order.Amount
 	if order.FinalAmount.Valid {
 		paidAmount = order.FinalAmount.Float64
 	}
 
 	// 1. 更新用户累计消费（所有订单类型都需要）
-	user.TotalConsumption += paidAmount
+	// 注意：累计消费应该使用原价（Amount），而不是折扣后的价格（FinalAmount）
+	// 这样等级升级才能正确反映用户的真实消费水平
+	user.TotalConsumption += order.Amount
 	if err := s.db.Save(&user).Error; err != nil {
 		return nil, fmt.Errorf("更新用户累计消费失败: %v", err)
 	}
@@ -414,31 +416,42 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 func (s *OrderService) updateUserLevel(user *models.User) {
 	var userLevels []models.UserLevel
 	if err := s.db.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
-		for _, level := range userLevels {
+		// 找到所有满足条件的等级，选择 level_order 最小的（最高等级）
+		var targetLevel *models.UserLevel
+		for i := range userLevels {
+			level := &userLevels[i]
 			if user.TotalConsumption >= level.MinConsumption {
-				// 检查是否需要升级
-				if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(level.ID) {
-					// 需要升级
-					var currentLevel models.UserLevel
-					shouldUpgrade := true
-					if user.UserLevelID.Valid {
-						if err := s.db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
-							// 如果当前等级更高（level_order 更小），不降级
-							if currentLevel.LevelOrder < level.LevelOrder {
-								shouldUpgrade = false
-							}
+				// 如果还没有目标等级，或者当前等级的 level_order 更小（等级更高）
+				if targetLevel == nil || level.LevelOrder < targetLevel.LevelOrder {
+					targetLevel = level
+				}
+			}
+		}
+
+		// 如果找到了满足条件的等级
+		if targetLevel != nil {
+			// 检查是否需要升级
+			if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(targetLevel.ID) {
+				// 需要升级
+				var currentLevel models.UserLevel
+				shouldUpgrade := true
+				if user.UserLevelID.Valid {
+					if err := s.db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
+						// 如果当前等级更高（level_order 更小），不降级
+						if currentLevel.LevelOrder < targetLevel.LevelOrder {
+							shouldUpgrade = false
 						}
 					}
-					if shouldUpgrade {
-						user.UserLevelID = sql.NullInt64{Int64: int64(level.ID), Valid: true}
-						if err := s.db.Save(user).Error; err != nil {
-							if utils.AppLogger != nil {
-								utils.AppLogger.Error("更新用户等级失败: %v", err)
-							}
-						} else if utils.AppLogger != nil {
-							utils.AppLogger.Info("ProcessPaidOrder: ✅ 用户等级升级 - user_id=%d, level_id=%d, level_name=%s",
-								user.ID, level.ID, level.LevelName)
+				}
+				if shouldUpgrade {
+					user.UserLevelID = sql.NullInt64{Int64: int64(targetLevel.ID), Valid: true}
+					if err := s.db.Save(user).Error; err != nil {
+						if utils.AppLogger != nil {
+							utils.AppLogger.Error("更新用户等级失败: %v", err)
 						}
+					} else if utils.AppLogger != nil {
+						utils.AppLogger.Info("ProcessPaidOrder: ✅ 用户等级升级 - user_id=%d, level_id=%d, level_name=%s",
+							user.ID, targetLevel.ID, targetLevel.LevelName)
 					}
 				}
 			}

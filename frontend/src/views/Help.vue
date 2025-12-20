@@ -451,10 +451,28 @@ export default {
             <p><strong>折算规则：</strong></p>
             <ul style="margin: 10px 0 0 20px;">
               <li>系统会根据您当前套餐的剩余天数和价值计算折算金额</li>
-              <li>折算金额 = 剩余天数 × (套餐价格 ÷ 套餐天数)</li>
+              <li><strong>折算公式：折算金额 = 剩余天数 × (原套餐价格 ÷ 原套餐天数)</strong></li>
               <li>折算后的金额会返还到您的账户余额</li>
               <li>折算后，当前套餐的设备和时间都会清零</li>
             </ul>
+            
+            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
+              <strong>📐 折算公式详解：</strong>
+              <ul style="margin: 10px 0 0 20px;">
+                <li><strong>剩余天数</strong>：当前套餐到期时间减去当前时间的剩余天数（向上取整）</li>
+                <li><strong>原套餐价格</strong>：您购买当前套餐时支付的原价</li>
+                <li><strong>原套餐天数</strong>：当前套餐的有效期天数</li>
+                <li><strong>每天单价</strong>：原套餐价格 ÷ 原套餐天数</li>
+                <li><strong>折算金额</strong>：剩余天数 × 每天单价（保留两位小数）</li>
+              </ul>
+              <p style="margin-top: 10px;"><strong>示例：</strong></p>
+              <p style="margin-left: 20px;">
+                假设您购买了一个 30 天、价格 ¥100 的套餐，使用了 10 天后想要折算：<br>
+                剩余天数 = 20 天<br>
+                每天单价 = ¥100 ÷ 30 = ¥3.33<br>
+                折算金额 = 20 × ¥3.33 = ¥66.60
+              </p>
+            </p>
             
             <p><strong>折算步骤：</strong></p>
             <ol>
