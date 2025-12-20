@@ -119,7 +119,7 @@ func Login(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	ipAddress := c.ClientIP()
+	ipAddress := utils.GetRealClientIP(c)
 	user, err := auth.AuthenticateUser(db, req.Email, req.Password)
 	if err != nil {
 		// 登录失败，增加计数
@@ -185,7 +185,7 @@ func LoginJSON(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	ipAddress := c.ClientIP()
+	ipAddress := utils.GetRealClientIP(c)
 
 	// 检查维护模式：维护模式下只允许管理员登录
 	var maintenanceConfig models.SystemConfig

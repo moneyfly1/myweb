@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -172,8 +174,11 @@ var (
 // RateLimitMiddleware 通用速率限制中间件
 func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 获取客户端IP
-		key := c.ClientIP()
+		// 获取客户端真实IP
+		key := utils.GetRealClientIP(c)
+		if key == "" {
+			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+		}
 
 		// 如果用户已登录，也使用用户ID作为key的一部分
 		if userID, exists := c.Get("user_id"); exists {
@@ -214,8 +219,11 @@ func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 // 计数增加和重置由登录handler根据登录结果决定
 func LoginRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 获取客户端IP
-		key := c.ClientIP()
+		// 获取客户端真实IP
+		key := utils.GetRealClientIP(c)
+		if key == "" {
+			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+		}
 
 		// 只检查，不增加计数
 		allowed, resetAt, locked := loginRateLimiter.Check(key)
@@ -263,8 +271,11 @@ func ResetLoginAttempt(ip string) {
 // RegisterRateLimitMiddleware 注册速率限制中间件
 func RegisterRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 获取客户端IP
-		key := c.ClientIP()
+		// 获取客户端真实IP
+		key := utils.GetRealClientIP(c)
+		if key == "" {
+			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+		}
 
 		allowed, resetAt, locked := registerRateLimiter.Allow(key)
 
@@ -298,8 +309,11 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 // VerifyCodeRateLimitMiddleware 验证码速率限制中间件
 func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 获取客户端IP
-		key := c.ClientIP()
+		// 获取客户端真实IP
+		key := utils.GetRealClientIP(c)
+		if key == "" {
+			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+		}
 
 		// 注意：邮箱/手机号的限制在handler中实现，这里只做IP级别的限制
 		// 更细粒度的限制（同一邮箱/手机号）在SendVerificationCode handler中处理

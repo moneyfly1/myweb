@@ -67,11 +67,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 		c.JSON(403, gin.H{"success": false, "message": "账户已禁用"})
 		return
 	}
-	if msg, _, _, ok := validateSubscription(&sub, &u, db, c.ClientIP(), c.GetHeader("User-Agent")); !ok {
+	if msg, _, _, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent")); !ok {
 		c.JSON(403, gin.H{"success": false, "message": msg})
 		return
 	}
-	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), c.ClientIP(), "clash")
+	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "clash")
 	cfg, _ := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
 	c.Header("Content-Type", "application/x-yaml")
 	c.String(200, cfg)
@@ -90,11 +90,11 @@ func GetUniversalSubscription(c *gin.Context) {
 		c.JSON(403, gin.H{"success": false, "message": "账户已禁用"})
 		return
 	}
-	if msg, _, _, ok := validateSubscription(&sub, &u, db, c.ClientIP(), c.GetHeader("User-Agent")); !ok {
+	if msg, _, _, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent")); !ok {
 		c.JSON(403, gin.H{"success": false, "message": msg})
 		return
 	}
-	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), c.ClientIP(), "universal")
+	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "universal")
 	cfg, _ := config_update.NewConfigUpdateService().GenerateSSRConfig(sub.UserID, uurl)
 	c.Header("Content-Type", "text/plain; charset=utf-8")
 	c.String(200, base64.StdEncoding.EncodeToString([]byte(cfg)))

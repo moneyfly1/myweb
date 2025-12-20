@@ -32,14 +32,8 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		}
 	}
 
-	// 获取IP地址
-	ipAddress := c.ClientIP()
-	if ipAddress == "" {
-		ipAddress = c.GetHeader("X-Forwarded-For")
-		if ipAddress == "" {
-			ipAddress = c.GetHeader("X-Real-IP")
-		}
-	}
+	// 获取IP地址（使用统一的真实IP获取函数）
+	ipAddress := GetRealClientIP(c)
 
 	// 获取User-Agent
 	userAgent := c.GetHeader("User-Agent")

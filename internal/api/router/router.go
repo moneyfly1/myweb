@@ -11,6 +11,12 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
+	// 配置信任的代理，以便正确获取客户端真实IP
+	// 设置为 nil 表示信任所有代理（在生产环境中，建议明确指定代理IP）
+	// 如果部署在 Nginx/负载均衡器后面，需要配置具体的代理IP
+	r.SetTrustedProxies(nil) // 信任所有代理（开发环境）
+	// 生产环境建议使用：r.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8"})
+
 	// 中间件
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.SecurityHeadersMiddleware()) // 添加安全响应头
