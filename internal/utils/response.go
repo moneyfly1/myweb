@@ -20,11 +20,16 @@ func SuccessResponse(c *gin.Context, code int, message string, data interface{})
 	})
 }
 
-// ErrorResponse 错误响应
-func ErrorResponse(c *gin.Context, code int, message string) {
+// ErrorResponse 错误响应（带错误日志记录）
+func ErrorResponse(c *gin.Context, code int, message string, err error) {
+	if err != nil {
+		LogError(message, err, map[string]interface{}{
+			"path":   c.Request.URL.Path,
+			"method": c.Request.Method,
+		})
+	}
 	c.JSON(code, ResponseBase{
 		Success: false,
 		Message: message,
 	})
 }
-

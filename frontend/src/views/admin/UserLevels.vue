@@ -287,7 +287,9 @@ const loadLevels = async () => {
   try {
     // 传递状态筛选参数
     const response = await userLevelAPI.getAllLevels(undefined, statusFilter.value)
-    console.log('等级列表API响应:', response)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('等级列表API响应:', response)
+    }
     // 处理多种可能的响应格式
     let levelList = []
     if (response?.data) {
@@ -314,7 +316,9 @@ const loadLevels = async () => {
       is_active: level.is_active === true || level.is_active === 1 || level.is_active === '1'
     }))
   } catch (error) {
-    console.error('加载等级列表失败:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('加载等级列表失败:', error)
+    }
     const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
     ElMessage.error('加载等级列表失败: ' + errorMsg)
     levels.value = []
@@ -347,7 +351,6 @@ const editLevel = (level) => {
     if (typeof level.icon_url === 'string') {
       iconUrl = level.icon_url
     } else if (typeof level.icon_url === 'object' && level.icon_url !== null) {
-      // 处理可能的对象格式（向后兼容）
       iconUrl = level.icon_url.String || level.icon_url.string || ''
     }
   }
@@ -419,13 +422,14 @@ const saveLevel = async () => {
       is_active: isActiveValue
     }
     
-    console.log('保存等级数据:', data)
-    console.log('is_active 值:', isActiveValue, '类型:', typeof isActiveValue)
-    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('保存等级数据:', data)
+      console.log('is_active 值:', isActiveValue, '类型:', typeof isActiveValue)
+    }
+
     let response
     if (editingLevel.value) {
       response = await userLevelAPI.updateLevel(editingLevel.value.id, data)
-      console.log('更新等级响应:', response)
       if (response?.data?.success) {
         ElMessage.success('等级更新成功')
       } else {
@@ -433,7 +437,6 @@ const saveLevel = async () => {
       }
     } else {
       response = await userLevelAPI.createLevel(data)
-      console.log('创建等级响应:', response)
       if (response?.data?.success) {
         ElMessage.success('等级创建成功')
       } else {
@@ -445,8 +448,10 @@ const saveLevel = async () => {
     await loadLevels()
   } catch (error) {
     if (error !== false) { // 表单验证失败会返回false
-      console.error('保存等级失败:', error)
-      console.error('错误详情:', error.response?.data)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('保存等级失败:', error)
+        console.error('错误详情:', error.response?.data)
+      }
       ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
     }
   } finally {
@@ -467,7 +472,9 @@ const deleteLevel = async (level) => {
     await loadLevels()
   } catch (error) {
     if (error !== 'cancel') {
-      console.error('删除等级失败:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('删除等级失败:', error)
+      }
       ElMessage.error('删除失败: ' + (error.response?.data?.message || error.message))
     }
   }

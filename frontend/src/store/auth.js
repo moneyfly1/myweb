@@ -224,7 +224,6 @@ export const useAuthStore = defineStore('auth', () => {
     secureStorage.remove('user_data')
     secureStorage.remove('user_refresh_token')
     
-    // 清除可能存在的通用存储（兼容旧版本）
     secureStorage.remove('token')
     secureStorage.remove('refresh_token')
     secureStorage.remove('user')

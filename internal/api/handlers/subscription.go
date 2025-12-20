@@ -17,10 +17,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- 辅助私有函数 ---
-
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
-	baseURL := buildBaseURL(c)
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 	universal := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subURL, timestamp)
 	clash := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subURL, timestamp)
@@ -66,8 +64,6 @@ func formatDeviceList(devices []models.Device) []gin.H {
 	}
 	return deviceList
 }
-
-// --- 处理函数 ---
 
 func GetSubscriptions(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
@@ -482,21 +478,8 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	}
 }
 
-func RemoveDevice(c *gin.Context) {
-	id := c.Param("id")
-	db := database.GetDB()
-	var d models.Device
-	if err := db.First(&d, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "设备不存在"})
-		return
-	}
-	subID := d.SubscriptionID
-	db.Delete(&d)
-	var count int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subID, true).Count(&count)
-	db.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已删除"})
-}
+// RemoveDevice 已移动到 device.go，这里保留以保持兼容性
+// 实际实现在 device.go 的 RemoveDevice 函数中
 
 func ExportSubscriptions(c *gin.Context) {
 	var subs []models.Subscription
@@ -517,8 +500,6 @@ func ExportSubscriptions(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=subscriptions_%s.csv", time.Now().Format("20060102")))
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csv.String()))
 }
-
-// --- 内部邮件工具 ---
 
 func sendResetEmail(c *gin.Context, sub models.Subscription, user models.User, reason string) {
 	univ, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
@@ -543,29 +524,4 @@ func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) er
 	}
 	content := email.NewEmailTemplateBuilder().GetSubscriptionTemplate(user.Username, univ, clash, exp, days, sub.DeviceLimit, sub.CurrentDevices)
 	return email.NewEmailService().QueueEmail(user.Email, "服务配置信息", content, "subscription")
-}
-
-func buildBaseURL(c *gin.Context) string {
-	db := database.GetDB()
-	var config models.SystemConfig
-	if db != nil && db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error == nil && config.Value != "" {
-		domain := strings.TrimSuffix(strings.TrimSpace(config.Value), "/")
-		if strings.HasPrefix(domain, "http") {
-			return domain
-		}
-		scheme := "https"
-		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else if c.Request.TLS == nil {
-			scheme = "http"
-		}
-		return fmt.Sprintf("%s://%s", scheme, domain)
-	}
-	scheme := "http"
-	if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-		scheme = proto
-	} else if c.Request.TLS != nil {
-		scheme = "https"
-	}
-	return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 }

@@ -44,7 +44,6 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 
 // createDefaultSubscription 为用户创建默认订阅（如果不存在）
 func createDefaultSubscription(db *gorm.DB, userID uint) error {
-	// 检查是否已存在订阅
 	var existing models.Subscription
 	if err := db.Where("user_id = ?", userID).First(&existing).Error; err == nil {
 		return nil
@@ -224,8 +223,9 @@ func UpdateCurrentUser(c *gin.Context) {
 func GetUsers(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.User{})
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	pagination := utils.ParsePagination(c)
+	page := pagination.Page
+	size := pagination.Size
 	if kw := c.Query("keyword"); kw != "" {
 		sk := "%" + utils.SanitizeSearchKeyword(kw) + "%"
 		query = query.Where("username LIKE ? OR email LIKE ?", sk, sk)
@@ -243,18 +243,71 @@ func GetUsers(c *gin.Context) {
 	var total int64
 	query.Count(&total)
 	var users []models.User
-	query.Offset((page - 1) * size).Limit(size).Order("created_at DESC").Find(&users)
+	query.Offset(pagination.GetOffset()).Limit(pagination.Size).Order("created_at DESC").Find(&users)
+
+	// 批量查询优化：避免 N+1 查询问题
+	userIDs := make([]uint, len(users))
+	for i, u := range users {
+		userIDs[i] = u.ID
+	}
+
+	// 批量查询所有用户的订阅（每个用户只取最新的一个）
+	var subscriptions []models.Subscription
+	if len(userIDs) > 0 {
+		// 使用子查询获取每个用户最新的订阅
+		db.Raw(`
+			SELECT s1.* FROM subscriptions s1
+			INNER JOIN (
+				SELECT user_id, MAX(created_at) as max_created_at
+				FROM subscriptions
+				WHERE user_id IN ?
+				GROUP BY user_id
+			) s2 ON s1.user_id = s2.user_id AND s1.created_at = s2.max_created_at
+			WHERE s1.user_id IN ?
+		`, userIDs, userIDs).Scan(&subscriptions)
+	}
+
+	// 构建订阅映射
+	subMap := make(map[uint]*models.Subscription)
+	for i := range subscriptions {
+		subMap[subscriptions[i].UserID] = &subscriptions[i]
+	}
+
+	// 批量查询设备数量
+	subIDs := make([]uint, 0)
+	for _, sub := range subscriptions {
+		if sub.ID > 0 {
+			subIDs = append(subIDs, sub.ID)
+		}
+	}
+
+	var deviceCounts []struct {
+		SubscriptionID uint
+		Count          int64
+	}
+	if len(subIDs) > 0 {
+		db.Model(&models.Device{}).
+			Select("subscription_id, COUNT(*) as count").
+			Where("subscription_id IN ? AND is_active = ?", subIDs, true).
+			Group("subscription_id").
+			Scan(&deviceCounts)
+	}
+
+	deviceCountMap := make(map[uint]int64)
+	for _, dc := range deviceCounts {
+		deviceCountMap[dc.SubscriptionID] = dc.Count
+	}
+
 	list := make([]gin.H, 0, len(users))
 	now := utils.GetBeijingTime()
 	for _, u := range users {
-		var sub models.Subscription
-		db.Where("user_id = ?", u.ID).Order("created_at DESC").First(&sub)
+		sub := subMap[u.ID]
 
 		var online int64
 		var deviceLimit int
 		var currentDevices int
-		if sub.ID > 0 {
-			db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&online)
+		if sub != nil && sub.ID > 0 {
+			online = deviceCountMap[sub.ID]
 			deviceLimit = sub.DeviceLimit
 			currentDevices = sub.CurrentDevices
 			// 如果当前设备数小于在线设备数，更新为在线设备数
@@ -263,10 +316,8 @@ func GetUsers(c *gin.Context) {
 			}
 		}
 
-		// 计算订阅信息
 		var subscriptionInfo gin.H
-		if sub.ID > 0 {
-			// 计算剩余天数
+		if sub != nil && sub.ID > 0 {
 			daysUntilExpire := 0
 			isExpired := false
 			if !sub.ExpireTime.IsZero() {
@@ -292,7 +343,6 @@ func GetUsers(c *gin.Context) {
 			subscriptionInfo = nil
 		}
 
-		// 获取最后登录时间
 		lastLogin := ""
 		if u.LastLogin.Valid {
 			lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
@@ -375,11 +425,9 @@ func GetUserDetails(c *gin.Context) {
 	// 格式化订阅信息
 	formattedSubs := make([]gin.H, 0, len(subs))
 	for _, sub := range subs {
-		// 计算在线设备数
 		var online int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&online)
 
-		// 计算剩余天数
 		daysUntilExpire := 0
 		isExpired := false
 		now := utils.GetBeijingTime()
@@ -454,7 +502,6 @@ func CreateUser(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 检查用户是否已存在
 	var existingUser models.User
 	if err := db.Where("email = ? OR username = ?", req.Email, req.Username).First(&existingUser).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -484,7 +531,6 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	// 创建用户
 	user := models.User{
 		Username:   req.Username,
 		Email:      req.Email,
@@ -503,7 +549,6 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	// 创建订阅（使用请求中的 device_limit 和 expire_time，或使用系统默认值）
 	deviceLimit := req.DeviceLimit
 	defaultDeviceLimit, defaultDurationMonths := getDefaultSubscriptionSettings(db)
 	if deviceLimit == 0 {
@@ -609,7 +654,6 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 保存更新前的数据用于审计日志
 	beforeData := map[string]interface{}{
 		"username":    user.Username,
 		"email":       user.Email,
@@ -619,7 +663,6 @@ func UpdateUser(c *gin.Context) {
 		"balance":     user.Balance,
 	}
 
-	// 更新字段
 	if req.Username != "" {
 		// 检查用户名是否已被其他用户使用
 		var existing models.User
@@ -634,7 +677,6 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if req.Email != "" {
-		// 检查邮箱是否已被其他用户使用
 		var existing models.User
 		if err := db.Where("email = ? AND id != ?", req.Email, id).First(&existing).Error; err == nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -678,7 +720,6 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 保存更新后的数据用于审计日志
 	afterData := map[string]interface{}{
 		"username":    user.Username,
 		"email":       user.Email,
@@ -726,7 +767,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 保存用户信息用于审计日志
 	userData := map[string]interface{}{
 		"id":          user.ID,
 		"username":    user.Username,
@@ -736,9 +776,7 @@ func DeleteUser(c *gin.Context) {
 		"is_verified": user.IsVerified,
 	}
 
-	// 检查是否是管理员
 	if user.IsAdmin {
-		// 检查是否还有其他管理员
 		var adminCount int64
 		db.Model(&models.User{}).Where("is_admin = ? AND id != ?", true, id).Count(&adminCount)
 		if adminCount == 0 {
@@ -750,10 +788,7 @@ func DeleteUser(c *gin.Context) {
 		}
 	}
 
-	// 开始事务，删除用户的所有相关数据
 	tx := db.Begin()
-
-	// 1. 删除用户的订阅（同时会通过外键约束删除相关设备）
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Subscription{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete subscriptions failed", err, map[string]interface{}{
@@ -766,7 +801,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 2. 删除用户的设备（通过 subscription_id 关联的设备）
 	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id = ?)", user.ID).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete devices by subscription failed", err, map[string]interface{}{
@@ -779,7 +813,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 3. 删除用户直接关联的设备（通过 user_id）
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete devices by user_id failed", err, map[string]interface{}{
@@ -792,7 +825,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 4. 删除用户的订阅重置记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.SubscriptionReset{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete subscription resets failed", err, map[string]interface{}{
@@ -805,7 +837,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 5. 删除用户的订单
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Order{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete orders failed", err, map[string]interface{}{
@@ -818,7 +849,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 6. 删除用户的支付交易记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.PaymentTransaction{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete payment transactions failed", err, map[string]interface{}{
@@ -831,7 +861,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 7. 删除用户的充值记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.RechargeRecord{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete recharge records failed", err, map[string]interface{}{
@@ -844,7 +873,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 8. 删除用户的工单回复
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.TicketReply{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete ticket replies failed", err, map[string]interface{}{
@@ -857,7 +885,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 9. 删除用户的工单
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Ticket{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete tickets failed", err, map[string]interface{}{
@@ -870,7 +897,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 10. 删除用户的通知
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Notification{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete notifications failed", err, map[string]interface{}{
@@ -883,7 +909,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 11. 删除用户的活动记录
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.UserActivity{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete user activities failed", err, map[string]interface{}{
@@ -896,7 +921,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 12. 删除用户的登录历史
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.LoginHistory{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete login history failed", err, map[string]interface{}{
@@ -909,8 +933,7 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 13. 删除用户的邀请码（设置为禁用状态，而不是删除，因为可能已被使用）
-	// 如果邀请码已被使用，只禁用；如果未使用，则删除
+	// 删除未使用的邀请码，禁用已使用的邀请码
 	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count = 0", user.ID).Delete(&models.InviteCode{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete invite codes failed", err, map[string]interface{}{
@@ -962,7 +985,6 @@ func DeleteUser(c *gin.Context) {
 	}
 
 	// 16. 删除用户的优惠券使用记录（如果有 CouponUsage 表）
-	// 注意：这里假设有 CouponUsage 表，如果没有可以忽略
 
 	// 17. 最后删除用户本身
 	if err := tx.Delete(&user).Error; err != nil {

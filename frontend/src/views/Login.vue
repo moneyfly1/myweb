@@ -111,7 +111,6 @@ export default {
     onMounted(() => {
       if (route.query.username) {
         loginForm.username = route.query.username
-        // 如果是从注册页面跳转过来的，显示提示
         if (route.query.registered === 'true') {
           ElMessage.success('注册成功！请输入密码登录')
         }

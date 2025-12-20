@@ -1177,9 +1177,7 @@ export default {
         const saved = localStorage.getItem(COLUMN_SETTINGS_KEY)
         if (saved) {
           const parsed = JSON.parse(saved)
-          // 验证保存的列是否有效（防止列名变更导致的问题）
           const validColumns = parsed.filter(col => defaultVisibleColumns.includes(col))
-          // 至少保留一列，如果没有有效列则使用默认值
           if (validColumns.length > 0) {
             return validColumns
           }
@@ -1190,7 +1188,6 @@ export default {
       return defaultVisibleColumns
     }
     
-    // 保存列设置到 localStorage
     const saveColumnSettings = (columns) => {
       try {
         localStorage.setItem(COLUMN_SETTINGS_KEY, JSON.stringify(columns))
@@ -1199,15 +1196,12 @@ export default {
       }
     }
     
-    // 初始化列设置（从 localStorage 读取或使用默认值）
     const visibleColumns = ref(loadColumnSettings())
-    
-    // 设备管理相关
+
     const userDevices = ref([])
     const loadingDevices = ref(false)
     const deletingDevice = ref(null)
 
-    // 计算当前排序文本
     const currentSortText = computed(() => {
       const sortMap = {
         'add_time_desc': '添加时间 (降序)',
@@ -1230,7 +1224,6 @@ export default {
     const loadSubscriptions = async () => {
       loading.value = true
       try {
-        // 同步 searchForm.keyword 到 searchQuery（向后兼容）
         if (searchForm.keyword && !searchQuery.value) {
           searchQuery.value = searchForm.keyword
         }
@@ -1283,7 +1276,6 @@ export default {
       loadSubscriptions()
     }
     
-    // 处理状态筛选
     const handleStatusFilter = (status) => {
       searchForm.status = status
       currentPage.value = 1
@@ -1300,19 +1292,16 @@ export default {
       return statusMap[searchForm.status] || '状态筛选'
     }
 
-    // 处理排序命令
     const handleSortCommand = (command) => {
       currentSort.value = command
       loadSubscriptions()
     }
 
-    // 清除排序
     const clearSort = () => {
       currentSort.value = 'add_time_desc'
       loadSubscriptions()
     }
 
-    // 处理移动端操作命令
     const handleActionCommand = (command) => {
       switch (command) {
         case 'export':
@@ -1350,12 +1339,10 @@ export default {
       if (!subscription || !subscription.id) return
       
       try {
-        // 如果没有当前到期时间，使用今天作为基准（北京时间）
         let baseDate = subscription.expire_time 
           ? dayjs(subscription.expire_time).tz('Asia/Shanghai')
           : dayjs().tz('Asia/Shanghai')
         
-        // 如果日期无效，使用今天（北京时间）
         if (!baseDate.isValid()) {
           baseDate = dayjs().tz('Asia/Shanghai')
         }
@@ -1408,7 +1395,6 @@ export default {
     const generateQRCode = (subscription) => {
       if (!subscription) return ''
       
-      // 优先使用后端返回的qrcodeUrl（如果存在）
       if (subscription.qrcodeUrl) {
         // 后端已经生成了完整的sub://链接，直接使用
         const qrData = subscription.qrcodeUrl
@@ -1418,7 +1404,6 @@ export default {
         return `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}&data=${encodeURIComponent(qrData)}&ecc=M&margin=10`
       }
       
-      // 如果没有后端提供的qrcodeUrl，则前端生成
       let qrData = ''
       
       if (subscription.universal_url) {
@@ -1454,7 +1439,6 @@ export default {
           const day = String(expireDate.getDate()).padStart(2, '0')
           expiryDisplayName = `到期时间${year}-${month}-${day}`
         } else {
-          // 如果没有到期时间，使用订阅密钥作为备用
           expiryDisplayName = subscription.subscription_url
         }
         
@@ -1541,13 +1525,11 @@ export default {
         // 尝试打开 Shadowrocket
         window.location.href = subLink
         
-        // 如果无法打开，则复制链接到剪贴板
         setTimeout(() => {
           copyToClipboard(subscriptionUrl)
           ElMessage.success('已复制订阅链接到剪贴板，请在 Shadowrocket 中手动添加')
         }, 500)
       } catch (error) {
-        // 如果失败，复制链接
         copyToClipboard(subscriptionUrl)
         ElMessage.success('已复制订阅链接到剪贴板，请在 Shadowrocket 中手动添加')
       }
@@ -1641,7 +1623,6 @@ export default {
         } else {
           userDevices.value = []
           ElMessage.warning('获取设备列表失败: 响应格式不正确')
-          // 如果获取失败，也更新在线设备数量为0
           if (selectedUser.value) {
             selectedUser.value.online_devices = 0
             selectedUser.value.current_devices = 0
@@ -1653,7 +1634,6 @@ export default {
         }
         userDevices.value = []
         ElMessage.error('加载设备列表失败: ' + (error.response?.data?.message || error.message || '未知错误'))
-        // 如果出错，也更新在线设备数量为0
         if (selectedUser.value) {
           selectedUser.value.online_devices = 0
           selectedUser.value.current_devices = 0
@@ -1850,7 +1830,6 @@ export default {
           timestamp: Date.now()
         }
         
-        // 如果有管理员信息，也保存到 sessionData 中
         if (adminToken && adminUser) {
           sessionData.adminToken = adminToken
           sessionData.adminUser = typeof adminUser === 'string' ? adminUser : JSON.stringify(adminUser)
@@ -1900,7 +1879,6 @@ export default {
         ElMessage.success('订阅地址重置成功')
         loadSubscriptions()
         
-        // 如果当前正在查看该用户的详情，重新加载设备列表
         if (selectedUser.value && (selectedUser.value.user?.id === userId || selectedUser.value.user_id === userId)) {
           await loadUserDevices()
         }
@@ -1944,7 +1922,6 @@ export default {
         ElMessage.error(errorMessage)
         console.error('发送订阅邮件失败:', error)
       } finally {
-        // 3秒后移除标记，允许再次发送
         setTimeout(() => {
           sendingEmailMap.delete(userId)
         }, 3000)
@@ -2021,7 +1998,6 @@ export default {
         // 重新加载订阅列表以更新设备计数
         await loadSubscriptions()
         
-        // 如果当前正在查看该用户的详情，重新加载设备列表
         if (selectedUser.value && (selectedUser.value.user?.id === userId || selectedUser.value.user_id === userId)) {
           await loadUserDevices()
         }
@@ -2079,7 +2055,6 @@ export default {
           let filename = `subscriptions_export_${beijingDate.format('YYYYMMDD')}.csv`
           
           if (contentDisposition) {
-            // 优先解析 RFC 5987 格式: filename*=UTF-8''filename
             let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
             if (filenameMatch && filenameMatch.length > 1) {
               filename = decodeURIComponent(filenameMatch[1])
@@ -2175,20 +2150,16 @@ export default {
     // 截断URL用于显示
     const truncateUrl = (url) => {
       if (!url) return ''
-      // 移动端显示完整URL，桌面端可以截断
       const isMobile = window.innerWidth <= 768
       if (isMobile) {
-        // 移动端显示完整URL，不截断
         return url
       }
-      // 桌面端：如果URL长度超过60个字符，显示前40个和后15个字符
       if (url.length > 60) {
         return url.substring(0, 40) + '...' + url.substring(url.length - 15)
       }
       return url
     }
 
-    // 获取订阅状态类型
     const getSubscriptionStatusType = (status) => {
       const statusMap = {
         'active': 'success',
@@ -2199,7 +2170,6 @@ export default {
       return statusMap[status] || 'info'
     }
 
-    // 获取订阅状态文本
     const getSubscriptionStatusText = (status) => {
       const statusMap = {
         'active': '活跃',
@@ -2210,29 +2180,24 @@ export default {
       return statusMap[status] || '未知'
     }
 
-    // 格式化日期 - 使用统一的北京时间格式化函数
     const formatDate = (date) => {
       return formatDateUtil(date)
     }
 
-    // 处理选择变化
     const handleSelectionChange = (selection) => {
       selectedSubscriptions.value = selection
     }
 
-    // 处理页面大小变化
     const handleSizeChange = (val) => {
       pageSize.value = val
       loadSubscriptions()
     }
 
-    // 处理当前页变化
     const handleCurrentChange = (val) => {
       currentPage.value = val
       loadSubscriptions()
     }
 
-    // 排序相关方法
     const sortByApple = () => {
       currentSort.value = 'apple_count_desc'
       loadSubscriptions()
@@ -2262,18 +2227,15 @@ export default {
     // 列设置相关方法
     const selectAllColumns = () => {
       visibleColumns.value = [...defaultVisibleColumns]
-      // 注意：watch 会自动保存，这里不需要手动保存
     }
 
     const clearAllColumns = () => {
       // 至少保留一列，建议保留QQ号码和操作列
       visibleColumns.value = ['qq', 'actions']
-      // 注意：watch 会自动保存，这里不需要手动保存
     }
 
     const resetToDefault = () => {
       visibleColumns.value = [...defaultVisibleColumns]
-      // 注意：watch 会自动保存，这里不需要手动保存
     }
     
     // 监听列设置变化，自动保存到 localStorage
@@ -2303,7 +2265,6 @@ export default {
       window.addEventListener('resize', handleResize)
     })
 
-    // 组件卸载时移除监听
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
     })
@@ -2392,7 +2353,6 @@ export default {
 
 .admin-subscriptions {
   // 使用 list-container 的样式，确保宽度和其他列表一致
-  // 宽度由 list-common.scss 统一管理，这里不需要额外设置
   // 继承父级样式
   @extend .list-container;
 }
@@ -2423,7 +2383,6 @@ export default {
 
 // 移动端智能操作栏
 // mobile-action-bar 和 mobile-search-section 样式已统一在 list-common.scss 中定义
-// 这里不再重复定义，使用统一样式
 .mobile-action-bar {
   .mobile-quick-actions {
     display: flex;

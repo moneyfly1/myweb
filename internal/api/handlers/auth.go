@@ -427,29 +427,64 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 		})
 	}
 
-	// 如果邀请者奖励大于0，立即发放（注册奖励）
-	if inviteCode.InviterReward > 0 {
-		var inviter models.User
-		if err := db.First(&inviter, inviteCode.UserID).Error; err == nil {
-			inviter.Balance += inviteCode.InviterReward
-			inviter.TotalInviteReward += inviteCode.InviterReward
-			inviter.TotalInviteCount++
-			if err := db.Save(&inviter).Error; err == nil {
-				inviteRelation.InviterRewardGiven = true
-				db.Save(&inviteRelation)
-			}
-		}
+	// 更新用户的邀请码使用记录
+	var newUser models.User
+	if err := db.First(&newUser, newUserID).Error; err == nil {
+		newUser.InviteCodeUsed = database.NullString(inviteCodeStr)
+		db.Save(&newUser)
 	}
 
-	// 如果被邀请者奖励大于0，立即发放（注册奖励）
-	if inviteCode.InviteeReward > 0 {
-		var invitee models.User
-		if err := db.First(&invitee, newUserID).Error; err == nil {
-			invitee.Balance += inviteCode.InviteeReward
-			if err := db.Save(&invitee).Error; err == nil {
-				inviteRelation.InviteeRewardGiven = true
-				db.Save(&inviteRelation)
+	// 根据 MinOrderAmount 决定是否立即发放奖励
+	// 如果 MinOrderAmount = 0，注册时立即发放奖励
+	if inviteCode.MinOrderAmount == 0 {
+		// 立即发放邀请者奖励（如果大于0）
+		if inviteCode.InviterReward > 0 {
+			var inviter models.User
+			if err := db.First(&inviter, inviteCode.UserID).Error; err == nil {
+				inviter.Balance += inviteCode.InviterReward
+				inviter.TotalInviteReward += inviteCode.InviterReward
+				inviter.TotalInviteCount++
+				if err := db.Save(&inviter).Error; err == nil {
+					inviteRelation.InviterRewardGiven = true
+					db.Save(&inviteRelation)
+					if utils.AppLogger != nil {
+						utils.AppLogger.Info("processInviteCode: ✅ 发放邀请者注册奖励 - inviter_id=%d, amount=%.2f, invitee_id=%d",
+							inviter.ID, inviteCode.InviterReward, newUserID)
+					}
+				} else {
+					utils.LogError("processInviteCode: failed to give inviter reward", err, map[string]interface{}{
+						"inviter_id": inviter.ID,
+						"amount":     inviteCode.InviterReward,
+					})
+				}
 			}
+		}
+
+		// 立即发放被邀请者奖励（如果大于0）
+		if inviteCode.InviteeReward > 0 {
+			var invitee models.User
+			if err := db.First(&invitee, newUserID).Error; err == nil {
+				invitee.Balance += inviteCode.InviteeReward
+				if err := db.Save(&invitee).Error; err == nil {
+					inviteRelation.InviteeRewardGiven = true
+					db.Save(&inviteRelation)
+					if utils.AppLogger != nil {
+						utils.AppLogger.Info("processInviteCode: ✅ 发放被邀请者注册奖励 - invitee_id=%d, amount=%.2f",
+							invitee.ID, inviteCode.InviteeReward)
+					}
+				} else {
+					utils.LogError("processInviteCode: failed to give invitee reward", err, map[string]interface{}{
+						"invitee_id": invitee.ID,
+						"amount":     inviteCode.InviteeReward,
+					})
+				}
+			}
+		}
+	} else {
+		// MinOrderAmount > 0，需要等待订单支付成功后发放奖励
+		if utils.AppLogger != nil {
+			utils.AppLogger.Info("processInviteCode: ⏳ 等待订单支付后发放奖励 - invitee_id=%d, min_order_amount=%.2f",
+				newUserID, inviteCode.MinOrderAmount)
 		}
 	}
 }

@@ -455,7 +455,6 @@ export default {
     // 确保 isMobile 在初始化时就有值
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     
-    // 检测是否为移动端
     const isMobile = computed(() => {
       return windowWidth.value <= 768
     })
@@ -473,7 +472,6 @@ export default {
     }
     
     const handleCouponFocus = () => {
-      // 确保输入框可以聚焦
     }
     
     // 验证优惠券
@@ -490,14 +488,13 @@ export default {
       
       validatingCoupon.value = true
       try {
-        // 计算等级折扣后的价格（用于优惠券验证）
         const originalPrice = parseFloat(selectedPackage.value.price) || 0
         const levelDiscountedPrice = originalPrice * levelDiscountRate.value
-        
+
         const response = await couponAPI.validateCoupon({
           code: couponCode.value.trim(),
           package_id: selectedPackage.value.id,
-          amount: levelDiscountedPrice  // 使用等级折扣后的价格进行优惠券验证
+          amount: levelDiscountedPrice
         })
         
         if (response.data && response.data.success) {
@@ -526,7 +523,6 @@ export default {
       }
     }
     
-    // 清除优惠券
     const clearCoupon = () => {
       couponCode.value = ''
       couponInfo.value = null
@@ -540,9 +536,7 @@ export default {
       paymentUrl: ''
     })
     
-    // 计算等级折扣金额
-    const calculateLevelDiscount = (price) => {
-      if (!price || levelDiscountRate.value >= 1.0) return 0
+    const calculateLevelDiscount = (price) => {if (!price || levelDiscountRate.value >= 1.0) return 0
       return price * (1 - levelDiscountRate.value)
     }
     
@@ -577,25 +571,15 @@ export default {
           // axios 响应结构：response.data 是后端返回的 JSON
           const responseData = response.data
           
-          // 优先检查标准格式：{ success: true, data: { packages: [...] } }
           if (responseData.data && responseData.data.packages && Array.isArray(responseData.data.packages)) {
             packagesList = responseData.data.packages
-          } 
-          // 如果 data 直接是数组（不常见但兼容）
-          else if (Array.isArray(responseData.data)) {
+          } else if (Array.isArray(responseData.data)) {
             packagesList = responseData.data
-          } 
-          // 如果 packages 在顶层（不常见但兼容）
-          else if (responseData.packages && Array.isArray(responseData.packages)) {
+          } else if (responseData.packages && Array.isArray(responseData.packages)) {
             packagesList = responseData.packages
-          } 
-          // 如果响应直接是数组（不常见但兼容）
-          else if (Array.isArray(responseData)) {
+          } else if (Array.isArray(responseData)) {
             packagesList = responseData
-          } 
-          // 如果 data 是对象但没有 packages 字段，尝试将其作为单个套餐
-          else if (responseData.data && typeof responseData.data === 'object' && !Array.isArray(responseData.data)) {
-            // 检查是否是单个套餐对象
+          } else if (responseData.data && typeof responseData.data === 'object' && !Array.isArray(responseData.data)) {
             if (responseData.data.id || responseData.data.name) {
               packagesList = [responseData.data]
             }
@@ -649,7 +633,6 @@ export default {
             userLevel.value = response.data.data.user_level
             levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
           } else {
-            // 如果没有等级，尝试单独获取
             try {
               const levelResponse = await userLevelAPI.getMyLevel()
               if (levelResponse?.data?.data?.current_level) {
@@ -657,7 +640,9 @@ export default {
                 levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
               }
             } catch (e) {
-              console.warn('获取用户等级失败:', e)
+              if (process.env.NODE_ENV === 'development') {
+                console.warn('获取用户等级失败:', e)
+              }
             }
           }
         }
@@ -686,7 +671,6 @@ export default {
           availablePaymentMethods.value = methods
         }
       } catch (error) {
-        // 如果获取失败，使用默认的支付方式
         availablePaymentMethods.value = [
           { key: 'alipay', name: '支付宝' },
           { key: 'yipay', name: '易支付' }
@@ -696,7 +680,6 @@ export default {
     
     // 支付方式变更处理
     const handlePaymentMethodChange = (value) => {
-      // 支付方式变更处理
     }
     
     // 选择套餐
@@ -753,21 +736,17 @@ export default {
           currency: 'CNY'
         }
         
-        // 如果优惠券已验证，添加到订单数据中
         if (couponInfo.value && couponInfo.value.valid && couponCode.value) {
           orderData.coupon_code = couponCode.value.trim()
         }
         
         // 处理余额支付
         if (paymentMethod.value === 'balance') {
-          // 纯余额支付
           orderData.use_balance = true
           orderData.balance_amount = finalAmount.value
         } else if (paymentMethod.value === 'mixed') {
-          // 余额+支付宝合并支付
           orderData.use_balance = true
           orderData.balance_amount = userBalance.value
-          // 实际需要支付宝支付的金额
           orderData.amount = finalAmount.value - userBalance.value
         }
         
@@ -784,24 +763,15 @@ export default {
             
             // axios会将响应头转换为小写，所以需要检查小写格式
             const headers = error.response.headers || {}
-            // 调试：打印响应头
-            console.log('订单创建错误响应头:', headers)
-            console.log('错误详情:', errorMsg)
-            
-            // 检查是否需要折算（axios会将响应头转换为小写）
             const requiresConversion = headers['x-requires-conversion'] === 'true'
             const remainingDays = headers['x-remaining-days'] || '0'
             const remainingValue = headers['x-remaining-value'] || '0'
-            
-            console.log('需要折算:', requiresConversion, '剩余天数:', remainingDays, '剩余价值:', remainingValue)
-            
-            // 如果是需要折算的错误，抛出特殊错误对象
+
             if (requiresConversion) {
               const conversionError = new Error(errorMsg)
               conversionError.requiresConversion = true
               conversionError.remainingDays = remainingDays ? parseInt(remainingDays) : 0
               conversionError.remainingValue = remainingValue ? parseFloat(remainingValue) : 0
-              console.log('抛出折算错误:', conversionError)
               throw conversionError
             }
             
@@ -815,12 +785,10 @@ export default {
         // 处理响应数据结构：ResponseBase { data: {...}, message: "...", success: true/false }
         let order = null
         if (response.data) {
-          // 如果响应有 success 字段，检查它
           if (response.data.success !== false) {
             // success 为 true 或 undefined，尝试获取 data
             order = response.data.data || response.data
           } else {
-            // success 为 false，表示失败
             throw new Error(response.data.message || '创建订单失败')
           }
         } else {
@@ -837,13 +805,10 @@ export default {
         orderInfo.amount = order.amount
         orderInfo.duration = selectedPackage.value.duration_days
         
-        // 检查订单状态
         if (order.status === 'paid') {
-          // 余额支付成功，直接显示成功提示
           purchaseDialogVisible.value = false
           ElMessage.success('购买成功！订单已支付')
           
-          // 更新用户余额
           if (order.remaining_balance !== undefined) {
             userBalance.value = order.remaining_balance
           }
@@ -851,10 +816,8 @@ export default {
           // 显示成功对话框
           successDialogVisible.value = true
           
-          // 刷新套餐列表（可选）
           await loadPackages()
         } else if (order.payment_url || order.payment_qr_code) {
-          // 支付URL生成成功，直接显示支付二维码（类似Orders.vue的处理方式）
           purchaseDialogVisible.value = false
           
           // 设置订单信息用于显示
@@ -888,7 +851,6 @@ export default {
             // 用户点击"稍后重试"或关闭对话框
           })
           
-          // 关闭购买确认对话框
           purchaseDialogVisible.value = false
         }
         
@@ -922,10 +884,8 @@ export default {
                   `套餐折算成功！已返还 ¥${data.converted_amount?.toFixed(2) || remainingValue.toFixed(2)} 到您的余额`
                 )
                 
-                // 刷新用户余额
                 await loadUserBalance()
                 
-                // 关闭购买对话框
                 purchaseDialogVisible.value = false
                 
                 // 提示用户可以重新购买
@@ -1065,7 +1025,9 @@ export default {
           return
         }
       } catch (error) {
-        console.error('生成二维码失败:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('生成二维码失败:', error)
+        }
         ElMessage.error('生成二维码失败: ' + (error.message || '未知错误') + '，请刷新页面重试')
         return
       }
@@ -1126,93 +1088,100 @@ export default {
     // 检查支付状态
     const checkPaymentStatus = async () => {
       if (!currentOrder.value || !currentOrder.value.order_no) {
-        console.log('检查支付状态：订单信息不存在', currentOrder.value)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('检查支付状态：订单信息不存在', currentOrder.value)
+        }
         return
       }
       
       try {
         isCheckingPayment.value = true
         
-        // 检查订单状态（设置较短的超时时间，避免阻塞）
         const response = await api.get(`/orders/${currentOrder.value.order_no}/status`, {
-          timeout: 10000  // 10秒超时
+          timeout: 10000
         })
         
-        // 添加调试日志
-        console.log('支付状态检查响应:', {
-          order_no: currentOrder.value.order_no,
-          response: response.data,
-          status: response.data?.data?.status
-        })
-        
-        // 验证响应格式
+        if (process.env.NODE_ENV === 'development') {
+          console.log('支付状态检查响应:', {
+            order_no: currentOrder.value.order_no,
+            response: response.data,
+            status: response.data?.data?.status
+          })
+        }
+
         if (!response || !response.data) {
-          console.warn('支付状态检查：响应格式错误', response)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('支付状态检查：响应格式错误', response)
+          }
           return
         }
-        
-        // 检查响应是否成功
+
         if (response.data.success === false) {
-          console.warn('支付状态检查：API返回失败', response.data.message)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('支付状态检查：API返回失败', response.data.message)
+          }
           return
         }
         
         const orderData = response.data.data
         if (!orderData) {
-          console.warn('支付状态检查：订单数据不存在', response.data)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('支付状态检查：订单数据不存在', response.data)
+          }
           return
         }
-        
-        console.log('当前订单状态:', orderData.status, '订单号:', orderData.order_no)
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('当前订单状态:', orderData.status, '订单号:', orderData.order_no)
+        }
         
         if (orderData.status === 'paid') {
-          // 支付成功
-          console.log('✅ 支付成功，开始处理...')
-          
+          if (process.env.NODE_ENV === 'development') {
+            console.log('✅ 支付成功，开始处理...')
+          }
+
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
           }
-          
+
           paymentQRVisible.value = false
           successDialogVisible.value = true
-          
           ElMessage.success('支付成功！您的订阅已激活')
-          
-          // 立即刷新用户信息（包括订阅信息）
-          try {
-            console.log('刷新用户信息...')
-            const userResponse = await userAPI.getUserInfo()
-            if (userResponse?.data?.success) {
-              console.log('✅ 用户信息已刷新')
-              // 更新用户余额
-              userBalance.value = parseFloat(userResponse.data.data.balance || 0)
+
+          const refreshUserInfo = async () => {
+            try {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('刷新用户信息...')
+              }
+              const userResponse = await userAPI.getUserInfo()
+              if (userResponse?.data?.success) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('✅ 用户信息已刷新')
+                }
+                userBalance.value = parseFloat(userResponse.data.data.balance || 0)
+              }
+            } catch (refreshError) {
+              if (process.env.NODE_ENV === 'development') {
+                console.error('刷新用户信息失败:', refreshError)
+              }
             }
-          } catch (refreshError) {
-            console.error('刷新用户信息失败:', refreshError)
           }
-          
-          // 3秒后自动关闭成功对话框并刷新页面数据
+
+          await refreshUserInfo()
+
           setTimeout(() => {
             successDialogVisible.value = false
-            // 刷新套餐列表
             loadPackages()
-            // 再次刷新用户信息，确保订阅信息已更新
-            userAPI.getUserInfo().then(response => {
-              if (response?.data?.success) {
-                userBalance.value = parseFloat(response.data.data.balance || 0)
-              }
-            }).catch(err => {
-              console.error('刷新用户信息失败:', err)
-            })
-            // 如果当前在订阅页面，可以触发页面刷新
+            refreshUserInfo()
             if (router.currentRoute.value.path === '/subscription') {
-              router.go(0)  // 刷新当前页面
+              router.go(0)
             }
           }, 3000)
         } else if (orderData.status === 'cancelled') {
-          // 订单已取消
-          console.log('订单已取消')
+          if (process.env.NODE_ENV === 'development') {
+            console.log('订单已取消')
+          }
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
@@ -1221,40 +1190,39 @@ export default {
           paymentQRVisible.value = false
           ElMessage.info('订单已取消')
         } else {
-          // 如果状态是pending或其他，继续等待
-          console.log('订单状态:', orderData.status, '继续等待...')
+          if (process.env.NODE_ENV === 'development') {
+            console.log('订单状态:', orderData.status, '继续等待...')
+          }
         }
-        
+
       } catch (error) {
-        console.error('检查支付状态出错:', {
-          error: error,
-          message: error.message,
-          response: error.response?.data,
-          order_no: currentOrder.value?.order_no
-        })
-        
-        // 如果是超时错误，不中断轮询
+        if (process.env.NODE_ENV === 'development') {
+          console.error('检查支付状态出错:', {
+            error: error,
+            message: error.message,
+            response: error.response?.data,
+            order_no: currentOrder.value?.order_no
+          })
+        }
+
         if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-          // 超时，继续轮询
-          console.log('支付状态检查超时，继续轮询...')
+          if (process.env.NODE_ENV === 'development') {
+            console.log('支付状态检查超时，继续轮询...')
+          }
         } else {
-          // 其他错误，静默处理，继续轮询
-          console.warn('支付状态检查出错，继续轮询:', error.message)
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('支付状态检查出错，继续轮询:', error.message)
+          }
         }
       } finally {
         isCheckingPayment.value = false
       }
     }
     
-    // 图片加载成功
     const onImageLoad = () => {
-      // 图片加载成功
     }
     
-    // 图片加载失败
     const onImageError = async (event) => {
-      // 如果二维码是base64格式还加载失败，说明有问题
-      // 重新尝试生成二维码
       if (paymentQRCode.value && paymentQRCode.value.startsWith('data:')) {
         ElMessage.warning('二维码显示异常，正在重新生成...')
         
@@ -1291,19 +1259,12 @@ export default {
       router.push('/subscription')
     }
 
-    // 支付成功回调（已弃用，保留用于兼容）
     const onPaymentSuccess = () => {
-      // 已弃用
     }
-    
-    // 支付取消回调（已弃用，保留用于兼容）
     const onPaymentCancel = () => {
-      // 已弃用
     }
-    
-    // 支付错误回调（已弃用，保留用于兼容）
+
     const onPaymentError = (error) => {
-      // 已弃用
     }
     
     // 生命周期

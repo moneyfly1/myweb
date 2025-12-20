@@ -98,15 +98,7 @@ func ChangePassword(c *gin.Context) {
 	go func() {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
-		baseURL := func() string {
-			scheme := "http"
-			if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
-				scheme = proto
-			} else if c.Request.TLS != nil {
-				scheme = "https"
-			}
-			return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
-		}()
+		baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 		loginURL := fmt.Sprintf("%s/login", baseURL)
 		changeTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 		content := templateBuilder.GetPasswordChangedTemplate(user.Username, changeTime, loginURL)

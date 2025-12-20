@@ -727,7 +727,6 @@ const isDeviceOverlimit = computed(() => {
   return deviceLimit > 0 && onlineDevices > deviceLimit
 })
 
-// 计算设备是否接近限制（达到80%以上）
 const isDeviceWarning = computed(() => {
   const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
@@ -743,25 +742,19 @@ const formatDate = (dateString) => {
 
 const loadUserInfo = async () => {
   try {
-    // 获取用户仪表盘信息（现在包含订阅地址）
     const dashboardResponse = await userAPI.getUserInfo()
     if (dashboardResponse.data && dashboardResponse.data.success) {
       const dashboardData = dashboardResponse.data.data
-      // 合并数据，确保订阅地址在顶层
       userInfo.value = {
         ...dashboardData,
-        // 如果顶层没有订阅地址，从 subscription 对象中获取
         clashUrl: dashboardData.clashUrl || dashboardData.subscription?.clashUrl || '',
         universalUrl: dashboardData.universalUrl || dashboardData.subscription?.universalUrl || '',
         qrcodeUrl: dashboardData.qrcodeUrl || dashboardData.subscription?.qrcodeUrl || '',
-        // 处理到期时间字段（支持多种字段名）
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
         expire_time: dashboardData.expire_time || dashboardData.expiryDate || dashboardData.subscription?.expire_time || dashboardData.subscription?.expiryDate || '未设置',
         remaining_days: dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0,
         subscription_status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
-      
-      // 更新 subscriptionInfo
       const calculatedRemainingDays = dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0
       
       subscriptionInfo.value = {

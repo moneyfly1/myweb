@@ -619,7 +619,6 @@ export default {
 
         const response = await adminAPI.deletePackage(id)
         
-        // 检查响应是否成功
         if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '套餐删除成功')
           // 立即从列表中移除，避免等待刷新
@@ -631,7 +630,6 @@ export default {
               pagination.page--
             }
           }
-          // 刷新列表以确保数据同步
           await fetchPackages()
         } else {
           const errorMsg = response.data?.message || '删除失败'

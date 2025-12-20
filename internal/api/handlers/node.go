@@ -48,8 +48,6 @@ var (
 	}()
 )
 
-// --- Helpers ---
-
 func generateNodeKey(nodeType string, name string, config *string) string {
 	if config == nil || *config == "" {
 		return fmt.Sprintf("%s:%s", nodeType, name)
@@ -140,8 +138,6 @@ func processAndImportLinks(db *gorm.DB, links []string) int {
 	}
 	return importedCount
 }
-
-// --- Handlers ---
 
 func GetNodes(c *gin.Context) {
 	db := database.GetDB()

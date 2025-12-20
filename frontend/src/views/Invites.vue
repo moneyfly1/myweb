@@ -239,7 +239,6 @@ const loadInviteRewardSettings = async () => {
   try {
     const response = await inviteAPI.getInviteRewardSettings()
     if (response?.data?.data) {
-      // 确保转换为数字类型
       inviteRewardSettings.value = {
         inviter_reward: parseFloat(response.data.data.inviter_reward) || 0,
         invitee_reward: parseFloat(response.data.data.invitee_reward) || 0
@@ -283,12 +282,10 @@ const loadInviteCodes = async () => {
           inviteCodes.value = []
         }
       } 
-      // 直接包含 invite_codes（兼容格式）
       else if (responseData.invite_codes && Array.isArray(responseData.invite_codes)) {
         inviteCodes.value = responseData.invite_codes
         console.log('✅ 成功加载邀请码（直接格式）:', inviteCodes.value.length, '个')
       }
-      // 如果 data 是数组（兼容格式）
       else if (Array.isArray(responseData.data)) {
         inviteCodes.value = responseData.data
         console.log('✅ 成功加载邀请码（data数组格式）:', inviteCodes.value.length, '个')
@@ -453,33 +450,26 @@ const formatDate = (dateStr) => {
   }
 }
 
-// 获取最大使用次数（处理 sql.NullInt64 格式）
 const getMaxUses = (maxUses) => {
   if (!maxUses || maxUses === 'null' || maxUses === null) return '∞'
-  // 如果是对象格式 {Int64: 10, Valid: true}
   if (typeof maxUses === 'object' && maxUses.Int64 !== undefined) {
     return maxUses.Valid ? maxUses.Int64 : '∞'
   }
-  // 如果是数字
   if (typeof maxUses === 'number') {
     return maxUses
   }
   return '∞'
 }
 
-// 判断邀请码是否有效
 const getIsValid = (row) => {
-  // 如果后端已经计算了 is_valid，直接使用
   if (row.is_valid !== undefined) {
     return row.is_valid
   }
-  
-  // 否则根据 is_active、expires_at、max_uses 计算
+
   if (!row.is_active) {
     return false
   }
-  
-  // 检查过期时间
+
   if (row.expires_at && row.expires_at !== 'null' && row.expires_at !== null) {
     try {
       const expiresDate = new Date(row.expires_at)
@@ -487,16 +477,13 @@ const getIsValid = (row) => {
         return false
       }
     } catch (e) {
-      // 忽略日期解析错误
     }
   }
-  
-  // 检查使用次数
   const maxUses = getMaxUses(row.max_uses)
   if (maxUses !== '∞' && (row.used_count || 0) >= maxUses) {
     return false
   }
-  
+
   return true
 }
 

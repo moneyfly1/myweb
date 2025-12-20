@@ -436,6 +436,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/subscriptions/user/:id/send-email", handlers.SendSubscriptionEmail)
 			admin.DELETE("/subscriptions/user/:id/delete-all", handlers.ClearUserDevices)
 			admin.DELETE("/devices/:id", handlers.RemoveDevice)
+			admin.POST("/devices/batch-delete", handlers.BatchDeleteDevices)
 			admin.GET("/subscriptions/export", handlers.ExportSubscriptions)
 			admin.POST("/subscriptions/batch-clear-devices", handlers.BatchClearDevices)
 

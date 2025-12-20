@@ -133,14 +133,9 @@ func GetTickets(c *gin.Context) {
 	}
 
 	// 分页参数
-	page := 1
-	size := 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
-	}
+	pagination := utils.ParsePagination(c)
+	page := pagination.Page
+	size := pagination.Size
 
 	// 计算总数
 	var total int64

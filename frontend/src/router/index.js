@@ -74,7 +74,11 @@ const saveAdminAuth = (adminToken, adminUser) => {
       secureStorage.set('admin_token', adminToken, false, 86400000)
       secureStorage.set('admin_user', adminData, false, 86400000)
     }
-  } catch (e) { console.warn('解析管理员信息失败:', e) }
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('解析管理员信息失败:', e)
+    }
+  }
 }
 
 router.beforeEach(async (to, from, next) => {
@@ -102,7 +106,6 @@ router.beforeEach(async (to, from, next) => {
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
       }
     }
-    // 2. 处理 URL Token 登录逻辑 (兼容旧版)
     if (token && user) {
       const userData = JSON.parse(decodeURIComponent(user))
       if (userData._adminToken) saveAdminAuth(userData._adminToken, userData._adminUser)
@@ -138,7 +141,9 @@ router.beforeEach(async (to, from, next) => {
     if (to.path === '/') return next(authStore.isAuthenticated ? (authStore.isAdmin ? '/admin/dashboard' : '/dashboard') : '/login')
     next()
   } catch (error) {
-    console.error('Router Guard Error:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Router Guard Error:', error)
+    }
     next()
   }
 })

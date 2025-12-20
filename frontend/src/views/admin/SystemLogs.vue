@@ -501,7 +501,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       }
     }
 
-    // 分页处理
     const handleSizeChange = (size) => {
       pagination.size = size
       pagination.page = 1
@@ -513,14 +512,12 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       loadLogs()
     }
 
-    // 格式化日期
     const formatDate = (dateString) => {
       if (!dateString) return ''
       const date = new Date(dateString)
       return date.toLocaleString('zh-CN')
     }
 
-    // 获取日志级别标签类型
     const getLogLevelTagType = (level) => {
       const typeMap = {
         'critical': 'danger',
@@ -532,7 +529,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       return typeMap[level] || ''
     }
 
-    // 获取日志级别文本
     const getLogLevelText = (level) => {
       const textMap = {
         'critical': '严重',
@@ -544,13 +540,11 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       return textMap[level] || level
     }
 
-    // 截断文本
     const truncateText = (text, length) => {
       if (!text) return ''
       return text.length > length ? text.substring(0, length) + '...' : text
     }
 
-    // 生命周期
     onMounted(() => {
       loadLogs()
       loadLogsStats()

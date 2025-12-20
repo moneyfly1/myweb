@@ -601,7 +601,6 @@ export default {
         
         const response = await api.getUsers(params)
         
-        // 检查响应是否成功
         if (response.data && response.data.success && response.data.data) {
           const responseData = response.data.data
           let userList = responseData.users || []
