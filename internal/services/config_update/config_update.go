@@ -202,10 +202,11 @@ func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL s
 		return "", err
 	}
 
-	// 如果订阅过期、失效或设备超限，不返回节点信息
+	// 如果订阅过期或失效，不返回节点信息
+	// 设备超限的情况由 validateSubscription 处理（只阻止新设备，已存在的设备仍可使用）
 	// 这些情况应该在 subscription_config.go 中处理，但这里作为双重保险
-	if isExpired || isInactive || isDeviceOverLimit {
-		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v, 设备超限=%v", isExpired, isInactive, isDeviceOverLimit)
+	if isExpired || isInactive {
+		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v", isExpired, isInactive)
 	}
 
 	// 添加信息节点和提醒节点
@@ -1125,10 +1126,11 @@ func (s *ConfigUpdateService) GenerateSSRConfig(userID uint, subscriptionURL str
 		return "", err
 	}
 
-	// 如果订阅过期、失效或设备超限，不返回节点信息
+	// 如果订阅过期或失效，不返回节点信息
+	// 设备超限的情况由 validateSubscription 处理（只阻止新设备，已存在的设备仍可使用）
 	// 这些情况应该在 subscription_config.go 中处理，但这里作为双重保险
-	if isExpired || isInactive || isDeviceOverLimit {
-		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v, 设备超限=%v", isExpired, isInactive, isDeviceOverLimit)
+	if isExpired || isInactive {
+		return "", fmt.Errorf("订阅状态异常：过期=%v, 失效=%v", isExpired, isInactive)
 	}
 
 	// 添加信息节点（信息节点会转换为 VMess 链接，在客户端中显示）
