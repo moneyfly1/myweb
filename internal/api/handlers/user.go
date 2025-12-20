@@ -474,8 +474,17 @@ func GetUserDetails(c *gin.Context) {
 	var orders []models.Order
 	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&orders)
 
+	// 统计总订单数
+	var totalOrders int64
+	db.Model(&models.Order{}).Where("user_id = ?", u.ID).Count(&totalOrders)
+
+	// 统计总消费（已支付订单）
 	var totalSpent float64
 	db.Model(&models.Order{}).Where("user_id = ? AND status = 'paid'", u.ID).Select("COALESCE(SUM(final_amount), SUM(amount), 0)").Scan(&totalSpent)
+
+	// 统计总重置次数
+	var totalResets int64
+	db.Model(&models.SubscriptionReset{}).Where("user_id = ?", u.ID).Count(&totalResets)
 
 	// 获取订阅重置记录
 	var resets []models.SubscriptionReset
@@ -566,9 +575,15 @@ func GetUserDetails(c *gin.Context) {
 		"user_info":         userInfo,
 		"subscriptions":     formattedSubs,
 		"orders":            orders,
-		"statistics":        gin.H{"total_spent": totalSpent, "subscription_count": len(subs)},
+		"statistics": gin.H{
+			"total_subscriptions": len(subs),
+			"total_orders":        totalOrders,
+			"total_resets":         totalResets,
+			"total_spent":         totalSpent,
+		},
 		"subscription_resets": formattedResets,
 		"ua_records":        uaRecords,
+		"recent_activities": []gin.H{}, // 预留字段，后续可以添加最近活动记录
 	}})
 }
 

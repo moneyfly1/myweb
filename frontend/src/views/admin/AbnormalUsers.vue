@@ -97,8 +97,8 @@
             </template>
           </el-table-column>
           <el-table-column prop="abnormal_count" label="异常次数" width="120" />
-          <el-table-column prop="subscription_count" label="订阅次数" width="120" v-if="filters.subscriptionCount" />
-          <el-table-column prop="reset_count" label="重置次数" width="120" v-if="filters.resetCount" />
+          <el-table-column prop="subscription_count" label="订阅次数" width="120" />
+          <el-table-column prop="reset_count" label="重置次数" width="120" />
           <el-table-column prop="description" label="异常描述" />
           <el-table-column prop="last_activity" label="最后活动时间" width="180" />
           <el-table-column label="操作" width="200" fixed="right">
@@ -139,11 +139,11 @@
               <span class="label">异常次数</span>
               <span class="value highlight">{{ user.abnormal_count }}</span>
             </div>
-            <div class="card-row" v-if="filters.subscriptionCount && user.subscription_count">
+            <div class="card-row" v-if="user.subscription_count !== undefined && user.subscription_count !== null">
               <span class="label">订阅次数</span>
               <span class="value highlight">{{ user.subscription_count }}</span>
             </div>
-            <div class="card-row" v-if="filters.resetCount && user.reset_count">
+            <div class="card-row" v-if="user.reset_count !== undefined && user.reset_count !== null">
               <span class="label">重置次数</span>
               <span class="value highlight">{{ user.reset_count }}</span>
             </div>
@@ -273,9 +273,13 @@ import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 
 const abnormalTypeMap = {
+  disabled: { tag: 'danger', text: '账户禁用' },
   frequent_reset: { tag: 'warning', text: '频繁重置' },
   frequent_subscription: { tag: 'danger', text: '频繁订阅' },
-  multiple_abnormal: { tag: 'error', text: '多重异常' }
+  inactive: { tag: 'info', text: '长期未登录' },
+  multiple_abnormal: { tag: 'error', text: '多重异常' },
+  unverified: { tag: 'warning', text: '未验证邮箱' },
+  unknown: { tag: 'info', text: '未知异常' }
 }
 
 export default {
@@ -291,8 +295,8 @@ export default {
     const isMobile = ref(window.innerWidth <= 768)
     const filters = reactive({
       dateRange: null,
-      subscriptionCount: 200,  // 默认订阅次数大于200次
-      resetCount: 5  // 默认重置次数大于5次
+      subscriptionCount: null,  // 订阅次数筛选（可选）
+      resetCount: null  // 重置次数筛选（可选）
     })
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
@@ -302,14 +306,13 @@ export default {
       try {
         const params = {}
         if (filters.dateRange && filters.dateRange.length === 2) {
-          params.start_date = filters.dateRange[0]
-          params.end_date = filters.dateRange[1]
+          params['date_range[]'] = filters.dateRange
         }
-        if (filters.subscriptionCount) {
-          params.subscription_count = filters.subscriptionCount
+        if (filters.subscriptionCount !== null && filters.subscriptionCount !== undefined) {
+          params.subscription_count = filters.subscriptionCount.toString()
         }
-        if (filters.resetCount) {
-          params.reset_count = filters.resetCount
+        if (filters.resetCount !== null && filters.resetCount !== undefined) {
+          params.reset_count = filters.resetCount.toString()
         }
         const response = await adminAPI.getAbnormalUsers(params)
         if (response.data && response.data.success) {
@@ -338,8 +341,8 @@ export default {
     }
     const resetFilters = () => {
       filters.dateRange = null
-      filters.subscriptionCount = 200  // 恢复默认值：订阅次数大于200次
-      filters.resetCount = 5  // 恢复默认值：重置次数大于5次
+      filters.subscriptionCount = null
+      filters.resetCount = null
       abnormalUsers.value = []
     }
     const viewUserDetails = async (userId) => {

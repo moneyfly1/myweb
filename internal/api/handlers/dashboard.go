@@ -281,7 +281,7 @@ func GetRecentOrders(c *gin.Context) {
 	})
 }
 
-// GetAbnormalUsers 获取异常用户（未验证、长期未登录、频繁重置等）
+// GetAbnormalUsers 获取异常用户（账户禁用、频繁重置、频繁订阅、长期未登录等）
 func GetAbnormalUsers(c *gin.Context) {
 	db := database.GetDB()
 	// 前端筛选参数
@@ -290,12 +290,31 @@ func GetAbnormalUsers(c *gin.Context) {
 		// 有些客户端会用 date_range 传递
 		dateRange = c.QueryArray("date_range")
 	}
+	// 也支持 start_date 和 end_date 参数
+	if len(dateRange) == 0 {
+		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
+		if startDate != "" && endDate != "" {
+			dateRange = []string{startDate, endDate}
+		}
+	}
 	subscriptionCountFilter := c.DefaultQuery("subscription_count", "")
 	resetCountFilter := c.DefaultQuery("reset_count", "")
 
-	// 基础筛选：未验证或长期未登录
+	// 基础筛选：异常用户包括：
+	// 1. 账户被禁用
+	// 2. 频繁重置订阅（>=5次）
+	// 3. 频繁创建订阅（>=10次）
+	// 4. 长期未登录（注册超过1个月且从未登录）
+	// 5. 订阅过期但仍在频繁使用
+	now := utils.GetBeijingTime()
+	oneMonthAgo := now.AddDate(0, -1, 0)
+	
+	// 构建查询：查找异常用户
+	// 使用 OR 条件组合所有异常情况
 	query := db.Model(&models.User{}).
-		Where("is_verified = ? OR (last_login IS NULL AND created_at < ?)", false, utils.GetBeijingTime().AddDate(0, -1, 0))
+		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR id IN (SELECT user_id FROM subscription_resets GROUP BY user_id HAVING COUNT(*) >= ?) OR id IN (SELECT user_id FROM subscriptions GROUP BY user_id HAVING COUNT(*) >= ?)", 
+			false, oneMonthAgo, 5, 10)
 
 	// 时间范围（注册时间）
 	if len(dateRange) == 2 {
@@ -342,32 +361,41 @@ func GetAbnormalUsers(c *gin.Context) {
 
 		// 统计用户异常行为
 		var resetCount int64
-		db.Model(&models.UserActivity{}).Where("user_id = ? AND activity_type = ?", user.ID, "subscription_reset").Count(&resetCount)
+		db.Model(&models.SubscriptionReset{}).Where("user_id = ?", user.ID).Count(&resetCount)
 
 		var subscriptionCount int64
 		db.Model(&models.Subscription{}).Where("user_id = ?", user.ID).Count(&subscriptionCount)
 
-		// 判断异常类型和次数
-		abnormalType := "multiple_abnormal"
+		// 判断异常类型和次数（按优先级）
+		abnormalType := "unknown"
 		abnormalCount := 0
 		description := ""
 
-		if resetCount >= 5 {
+		// 优先级1：账户被禁用
+		if !user.IsActive {
+			abnormalType = "disabled"
+			abnormalCount = 1
+			description = "账户已被禁用"
+		} else if resetCount >= 5 {
+			// 优先级2：频繁重置订阅
 			abnormalType = "frequent_reset"
 			abnormalCount = int(resetCount)
 			description = fmt.Sprintf("频繁重置订阅 %d 次", resetCount)
 		} else if subscriptionCount >= 10 {
+			// 优先级3：频繁创建订阅
 			abnormalType = "frequent_subscription"
 			abnormalCount = int(subscriptionCount)
 			description = fmt.Sprintf("频繁创建订阅 %d 次", subscriptionCount)
-		} else if !user.IsVerified {
-			abnormalType = "unverified"
-			abnormalCount = 1
-			description = "未验证邮箱"
-		} else {
+		} else if !user.LastLogin.Valid && user.CreatedAt.Before(oneMonthAgo) {
+			// 优先级4：长期未登录
 			abnormalType = "inactive"
 			abnormalCount = 1
-			description = "长期未登录"
+			description = "长期未登录（注册超过1个月且从未登录）"
+		} else {
+			// 其他情况：多重异常
+			abnormalType = "multiple_abnormal"
+			abnormalCount = 1
+			description = "存在多种异常行为"
 		}
 
 		// 获取最后活动时间
