@@ -293,9 +293,13 @@ func GetAdminNodes(c *gin.Context) {
 		query = query.Where("status = ?", s)
 	}
 	
-	// 激活状态筛选（默认不筛选，显示所有节点）
+	// 激活状态筛选（默认只显示激活的节点，与用户端保持一致）
+	// 如果前端明确传递 is_active=false，则显示未激活的节点
 	if a := c.Query("is_active"); a != "" {
 		query = query.Where("is_active = ?", a == "true")
+	} else {
+		// 默认只显示激活的节点
+		query = query.Where("is_active = ?", true)
 	}
 	
 	// 地区筛选
