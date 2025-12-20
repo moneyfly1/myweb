@@ -60,17 +60,17 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 	if err := db.Where("old_subscription_url = ?", oldURL).Order("created_at DESC").First(&reset).Error; err != nil {
 		return nil, nil, nil, false
 	}
-	
+
 	var sub models.Subscription
 	if err := db.First(&sub, reset.SubscriptionID).Error; err != nil {
 		return &reset, nil, nil, true
 	}
-	
+
 	var user models.User
 	if err := db.First(&user, sub.UserID).Error; err != nil {
 		return &reset, &sub, nil, true
 	}
-	
+
 	return &reset, &sub, &user, true
 }
 
@@ -112,22 +112,15 @@ func GetSubscriptionConfig(c *gin.Context) {
 			// 生成友好的错误信息
 			var errorTitle, errorMessage string
 			now := utils.GetBeijingTime()
-			
+
 			if currentSub != nil && user != nil {
 				// 检查订阅状态
 				isExpired := currentSub.ExpireTime.Before(now)
 				isInactive := !currentSub.IsActive || currentSub.Status != "active"
 				
 				errorTitle = "订阅地址已更换"
-				errorMessage = "您的订阅地址已更换，请使用新的订阅地址更新配置。\n\n"
-				
-				if reset.NewSubscriptionURL != nil {
-					baseURL := utils.GetBuildBaseURL(c.Request, db)
-					timestamp := fmt.Sprintf("%d", now.Unix())
-					newClashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, *reset.NewSubscriptionURL, timestamp)
-					errorMessage += "新订阅地址：\n" + newClashURL + "\n\n"
-				}
-				
+				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
+				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
 				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
 				
 				if isExpired {
@@ -137,20 +130,20 @@ func GetSubscriptionConfig(c *gin.Context) {
 				} else {
 					remainingDays := int(currentSub.ExpireTime.Sub(now).Hours() / 24)
 					if remainingDays > 0 {
-						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天", remainingDays)
+						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天\n请登录账户获取新订阅地址。", remainingDays)
 					}
 				}
 			} else {
 				errorTitle = "订阅地址已失效"
-				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请联系客服获取新的订阅地址。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请登录您的账户获取新的订阅地址，或联系客服获取帮助。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
 			}
-			
+
 			errorConfig := generateErrorConfig(errorTitle, errorMessage)
 			c.Header("Content-Type", "application/x-yaml")
 			c.String(200, errorConfig)
 			return
 		}
-		
+
 		c.JSON(404, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
@@ -182,22 +175,15 @@ func GetUniversalSubscription(c *gin.Context) {
 			// 生成友好的错误信息
 			var errorTitle, errorMessage string
 			now := utils.GetBeijingTime()
-			
+
 			if currentSub != nil && user != nil {
 				// 检查订阅状态
 				isExpired := currentSub.ExpireTime.Before(now)
 				isInactive := !currentSub.IsActive || currentSub.Status != "active"
 				
 				errorTitle = "订阅地址已更换"
-				errorMessage = "您的订阅地址已更换，请使用新的订阅地址更新配置。\n\n"
-				
-				if reset.NewSubscriptionURL != nil {
-					baseURL := utils.GetBuildBaseURL(c.Request, db)
-					timestamp := fmt.Sprintf("%d", now.Unix())
-					newUniversalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, *reset.NewSubscriptionURL, timestamp)
-					errorMessage += "新订阅地址：\n" + newUniversalURL + "\n\n"
-				}
-				
+				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
+				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
 				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
 				
 				if isExpired {
@@ -207,20 +193,20 @@ func GetUniversalSubscription(c *gin.Context) {
 				} else {
 					remainingDays := int(currentSub.ExpireTime.Sub(now).Hours() / 24)
 					if remainingDays > 0 {
-						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天", remainingDays)
+						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天\n请登录账户获取新订阅地址。", remainingDays)
 					}
 				}
 			} else {
 				errorTitle = "订阅地址已失效"
-				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请联系客服获取新的订阅地址。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请登录您的账户获取新的订阅地址，或联系客服获取帮助。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
 			}
-			
+
 			errorConfig := generateErrorConfigBase64(errorTitle, errorMessage)
 			c.Header("Content-Type", "text/plain; charset=utf-8")
 			c.String(200, errorConfig)
 			return
 		}
-		
+
 		c.JSON(404, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
