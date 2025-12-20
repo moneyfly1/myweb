@@ -103,7 +103,7 @@ func DeleteDevice(c *gin.Context) {
 	
 	var device models.Device
 	// 验证设备是否属于当前用户
-	if err := db.Where("id = ?", deviceID).
+	if err := db.Where("devices.id = ?", deviceID).
 		Joins("JOIN subscriptions ON devices.subscription_id = subscriptions.id").
 		Where("subscriptions.user_id = ?", user.ID).
 		First(&device).Error; err != nil {

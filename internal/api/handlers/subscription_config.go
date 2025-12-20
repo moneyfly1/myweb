@@ -38,10 +38,43 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
 
-	// 如果设备总数超过限制，无论是否为新设备，都返回错误
-	// 这样可以防止所有设备（包括已存在的设备）在超限时继续使用
-	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
-		return fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
+	// 如果设备限制为0，不允许任何设备使用
+	if subscription.DeviceLimit == 0 {
+		return "设备数量限制为0，无法使用服务", int(count), subscription.DeviceLimit, false
+	}
+
+	// 如果设备总数超过限制，检查当前设备是否在允许的范围内
+	if subscription.DeviceLimit > 0 && int(count) > subscription.DeviceLimit {
+		// 生成设备哈希，检查当前设备
+		hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
+		var currentDevice models.Device
+		isCurrentDeviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&currentDevice).Error == nil
+
+		// 如果当前设备不存在，说明是新设备，直接拒绝
+		if !isCurrentDeviceExists {
+			return fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
+		}
+
+		// 如果当前设备存在，检查它是否在允许的范围内（按最后访问时间排序，取前 deviceLimit 个）
+		var allowedDevices []models.Device
+		db.Where("subscription_id = ? AND is_active = ?", subscription.ID, true).
+			Order("last_access DESC").
+			Limit(subscription.DeviceLimit).
+			Find(&allowedDevices)
+
+		// 检查当前设备是否在允许的设备列表中
+		isAllowed := false
+		for _, allowedDevice := range allowedDevices {
+			if allowedDevice.ID == currentDevice.ID {
+				isAllowed = true
+				break
+			}
+		}
+
+		// 如果当前设备不在允许的范围内，拒绝
+		if !isAllowed {
+			return fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，此设备不在允许范围内", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
+		}
 	}
 
 	return "", int(count), subscription.DeviceLimit, true
@@ -72,7 +105,7 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 func generateErrorConfig(title, message string, baseURL string) string {
 	// 清理消息，移除换行符
 	cleanMessage := strings.ReplaceAll(message, "\n", " ")
-	
+
 	// 如果baseURL为空，使用默认提示
 	if baseURL == "" {
 		baseURL = "请登录官网"
@@ -82,19 +115,19 @@ func generateErrorConfig(title, message string, baseURL string) string {
 			baseURL = baseURL[:27] + "..."
 		}
 	}
-	
+
 	// 拆分错误原因，确保不超过30个字符
 	errorReason := cleanMessage
 	if len(errorReason) > 30 {
 		errorReason = errorReason[:27] + "..."
 	}
-	
+
 	// 生成4个节点
 	errorNodes := []string{
-		fmt.Sprintf("🌐 %s", baseURL),           // 第1个：官网
-		fmt.Sprintf("⚠️ %s", errorReason),       // 第2个：错误原因
-		"💡 请登录官网查看详情",                      // 第3个：解决办法
-		"📞 联系管理员获取帮助",                      // 第4个：联系管理员
+		fmt.Sprintf("🌐 %s", baseURL),      // 第1个：官网
+		fmt.Sprintf("⚠️ %s", errorReason), // 第2个：错误原因
+		"💡 请登录官网查看详情",                     // 第3个：解决办法
+		"📞 联系管理员获取帮助",                     // 第4个：联系管理员
 	}
 
 	// 生成节点列表
@@ -138,7 +171,7 @@ rules:
 func generateErrorConfigBase64(title, message string, baseURL string) string {
 	// 清理消息
 	cleanMessage := strings.ReplaceAll(message, "\n", " ")
-	
+
 	// 如果baseURL为空，使用默认提示
 	if baseURL == "" {
 		baseURL = "请登录官网"
@@ -148,39 +181,39 @@ func generateErrorConfigBase64(title, message string, baseURL string) string {
 			baseURL = baseURL[:27] + "..."
 		}
 	}
-	
+
 	// 拆分错误原因，确保不超过30个字符
 	errorReason := cleanMessage
 	if len(errorReason) > 30 {
 		errorReason = errorReason[:27] + "..."
 	}
-	
+
 	// 生成4个节点
 	errorNodes := []string{
-		fmt.Sprintf("🌐 %s", baseURL),           // 第1个：官网
-		fmt.Sprintf("⚠️ %s", errorReason),       // 第2个：错误原因
-		"💡 请登录官网查看详情",                      // 第3个：解决办法
-		"📞 联系管理员获取帮助",                      // 第4个：联系管理员
+		fmt.Sprintf("🌐 %s", baseURL),      // 第1个：官网
+		fmt.Sprintf("⚠️ %s", errorReason), // 第2个：错误原因
+		"💡 请登录官网查看详情",                     // 第3个：解决办法
+		"📞 联系管理员获取帮助",                     // 第4个：联系管理员
 	}
-	
+
 	// 生成多个无效 VMess 节点链接
 	var nodeLinks []string
 	for i, nodeName := range errorNodes {
 		errorData := map[string]interface{}{
 			"v":    "2",
-			"ps":   nodeName,                    // 节点名称包含错误信息
-			"add":  "127.0.0.1",                // 无效地址
-			"port": i,                          // 使用不同的无效端口
+			"ps":   nodeName,                               // 节点名称包含错误信息
+			"add":  "127.0.0.1",                            // 无效地址
+			"port": i,                                      // 使用不同的无效端口
 			"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
 			"net":  "tcp",
 			"type": "none",
 		}
-		
+
 		jsonData, _ := json.Marshal(errorData)
 		encoded := base64.StdEncoding.EncodeToString(jsonData)
 		nodeLinks = append(nodeLinks, "vmess://"+encoded)
 	}
-	
+
 	// 返回多个错误节点链接，用换行符分隔
 	content := strings.Join(nodeLinks, "\n")
 	return base64.StdEncoding.EncodeToString([]byte(content))
