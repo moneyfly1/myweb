@@ -189,11 +189,6 @@
                 {{ userDetails.user_info.is_active ? '活跃' : '禁用' }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="验证状态">
-              <el-tag :type="userDetails.user_info.is_verified ? 'success' : 'warning'">
-                {{ userDetails.user_info.is_verified ? '已验证' : '未验证' }}
-              </el-tag>
-            </el-descriptions-item>
             <el-descriptions-item label="管理员">
               <el-tag :type="userDetails.user_info.is_admin ? 'danger' : 'info'">
                 {{ userDetails.user_info.is_admin ? '是' : '否' }}

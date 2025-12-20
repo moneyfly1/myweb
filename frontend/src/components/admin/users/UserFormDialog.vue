@@ -56,13 +56,6 @@
           inactive-text="普通用户"
         />
       </el-form-item>
-      <el-form-item label="邮箱验证" v-if="editingUser">
-        <el-switch 
-          v-model="userForm.is_verified" 
-          active-text="已验证"
-          inactive-text="未验证"
-        />
-      </el-form-item>
       <el-form-item label="备注" prop="note">
         <el-input 
           v-model="userForm.note" 

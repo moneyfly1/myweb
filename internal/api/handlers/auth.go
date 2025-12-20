@@ -43,13 +43,72 @@ func Register(c *gin.Context) {
 		c.JSON(400, gin.H{"success": false, "message": "请求格式错误"})
 		return
 	}
-	db := database.GetDB(); var count int64; db.Model(&models.User{}).Where("email = ? OR username = ?", req.Email, req.Username).Count(&count)
-	if count > 0 { c.JSON(400, gin.H{"success": false, "message": "用户名或邮箱已存在"}); return }
+	
+	db := database.GetDB()
+	
+	// 检查用户名或邮箱是否已存在
+	var count int64
+	db.Model(&models.User{}).Where("email = ? OR username = ?", req.Email, req.Username).Count(&count)
+	if count > 0 {
+		c.JSON(400, gin.H{"success": false, "message": "用户名或邮箱已存在"})
+		return
+	}
+	
+	// 检查邮箱验证开关
+	var emailVerificationConfig models.SystemConfig
+	emailVerificationRequired := true // 默认需要验证
+	if err := db.Where("key = ? AND category = ?", "email_verification_required", "registration").First(&emailVerificationConfig).Error; err == nil {
+		emailVerificationRequired = emailVerificationConfig.Value == "true"
+	}
+	
+	// 如果邮箱验证开关打开，需要验证验证码
+	if emailVerificationRequired {
+		if req.VerificationCode == "" {
+			c.JSON(400, gin.H{"success": false, "message": "请输入邮箱验证码"})
+			return
+		}
+		
+		// 验证验证码
+		var verificationCode models.VerificationCode
+		if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
+			c.JSON(400, gin.H{"success": false, "message": "验证码错误或已使用"})
+			return
+		}
+		
+		// 检查验证码是否过期
+		if verificationCode.IsExpired() {
+			c.JSON(400, gin.H{"success": false, "message": "验证码已过期，请重新获取"})
+			return
+		}
+		
+		// 标记验证码为已使用
+		verificationCode.MarkAsUsed()
+		db.Save(&verificationCode)
+	}
+	
+	// 创建用户
 	hashed, _ := auth.HashPassword(req.Password)
-	user := models.User{Username: req.Username, Email: req.Email, Password: hashed, IsActive: true}
-	if err := db.Create(&user).Error; err != nil { c.JSON(500, gin.H{"success": false, "message": "创建用户失败"}); return }
+	user := models.User{
+		Username:   req.Username,
+		Email:      req.Email,
+		Password:   hashed,
+		IsActive:   true,
+		IsVerified: true, // 注册成功即视为已验证（无论是否通过验证码）
+	}
+	
+	if err := db.Create(&user).Error; err != nil {
+		c.JSON(500, gin.H{"success": false, "message": "创建用户失败"})
+		return
+	}
+	
+	// 创建默认订阅
 	_ = createDefaultSubscription(db, user.ID)
-	if req.InviteCode != "" { processInviteCode(db, req.InviteCode, user.ID) }
+	
+	// 处理邀请码
+	if req.InviteCode != "" {
+		processInviteCode(db, req.InviteCode, user.ID)
+	}
+	
 	c.JSON(201, gin.H{"success": true, "message": "注册成功", "data": gin.H{"id": user.ID, "email": user.Email}})
 }
 

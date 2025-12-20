@@ -100,12 +100,6 @@
             <el-tag :type="getAccountStatusType(userInfo)">
               {{ getAccountStatusText(userInfo) }}
             </el-tag>
-            <el-tag 
-              :type="userInfo.is_verified ? 'success' : 'warning'"
-              style="margin-left: 10px;"
-            >
-              {{ userInfo.is_verified ? '已验证' : '未验证' }}
-            </el-tag>
           </el-form-item>
         </el-form>
       </el-card>
