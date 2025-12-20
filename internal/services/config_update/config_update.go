@@ -24,14 +24,13 @@ import (
 type SubscriptionStatus int
 
 const (
-	StatusNormal           SubscriptionStatus = iota
-	StatusExpired                             // 过期
-	StatusInactive                            // 失效（被禁用）
-	StatusUserDisabled                        // 用户被禁用
-	StatusDeviceOverLimit                     // 设备超限
-	StatusOldAddress                          // 旧订阅地址
-	StatusNotFound                            // 订阅不存在
-	StatusAccountAbnormal                     // 账户异常
+	StatusNormal          SubscriptionStatus = iota
+	StatusExpired                            // 过期
+	StatusInactive                           // 失效（被禁用）
+	StatusAccountAbnormal                    // 账户异常（被禁用）
+	StatusDeviceOverLimit                    // 设备超限
+	StatusOldAddress                         // 旧订阅地址
+	StatusNotFound                           // 订阅不存在
 )
 
 // SubscriptionContext 订阅上下文，包含生成配置所需的所有信息
@@ -338,7 +337,7 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 
 	// 3. 检查用户状态
 	if !user.IsActive {
-		ctx.Status = StatusUserDisabled
+		ctx.Status = StatusAccountAbnormal
 		return ctx
 	}
 
@@ -499,7 +498,7 @@ func (s *ConfigUpdateService) parseNodeToProxies(node *models.Node) ([]*ProxyNod
 	// 尝试解析 Link (如果存在且不在 Config 中)
 	// 注意：models.Node 目前没有 Link 字段，所以这里主要依赖 Config
 	// 如果需要支持 Link，需要在 models.Node 中添加 Link 字段或从其他地方获取
-	
+
 	return nil, fmt.Errorf("节点配置为空")
 }
 
@@ -514,9 +513,9 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 	case StatusInactive:
 		reason = "订阅已失效"
 		solution = "请联系管理员检查订阅状态"
-	case StatusUserDisabled:
-		reason = "账户已被禁用"
-		solution = "您的账户已被管理员禁用，请联系客服"
+	case StatusAccountAbnormal:
+		reason = "账户异常"
+		solution = "您的账户状态异常或已被禁用，请联系客服"
 	case StatusDeviceOverLimit:
 		reason = "设备数量超限"
 		solution = fmt.Sprintf("当前设备 %d/%d，请在官网删除不使用的设备", ctx.CurrentDevices, ctx.DeviceLimit)
@@ -922,26 +921,25 @@ func (s *ConfigUpdateService) nodeToSSRLink(node *ProxyNode) string {
 	if node.Type != "ssr" && node.Type != "ss" {
 		return ""
 	}
-	
+
 	server := node.Server
 	port := node.Port
 	protocol := getString(node.Options, "protocol", "origin")
 	method := node.Cipher
 	obfs := getString(node.Options, "obfs", "plain")
 	password := base64.RawURLEncoding.EncodeToString([]byte(node.Password))
-	
+
 	obfsparam := base64.RawURLEncoding.EncodeToString([]byte(getString(node.Options, "obfs-param", "")))
 	protoparam := base64.RawURLEncoding.EncodeToString([]byte(getString(node.Options, "protocol-param", "")))
 	remarks := base64.RawURLEncoding.EncodeToString([]byte(node.Name))
 	group := base64.RawURLEncoding.EncodeToString([]byte("GoWeb"))
-	
+
 	ssrStr := fmt.Sprintf("%s:%d:%s:%s:%s:%s/?obfsparam=%s&protoparam=%s&remarks=%s&group=%s",
 		server, port, protocol, method, obfs, password,
 		obfsparam, protoparam, remarks, group)
-		
+
 	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(ssrStr))
 }
-
 
 // UpdateSubscriptionConfig 更新订阅配置 (保留用于兼容性，但逻辑简化)
 func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) error {
@@ -1149,7 +1147,7 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 // importNodesToDatabase 将节点导入到数据库的 nodes 表
 func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 	importedCount := 0
-	
+
 	for _, node := range proxies {
 		configJSON, _ := json.Marshal(node)
 		configStr := string(configJSON)
@@ -1157,7 +1155,7 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 		// 检查是否已存在
 		var count int64
 		s.db.Model(&models.Node{}).Where("type = ? AND name = ?", node.Type, node.Name).Count(&count)
-		
+
 		if count == 0 {
 			newNode := models.Node{
 				Name:     node.Name,

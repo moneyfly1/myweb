@@ -281,22 +281,22 @@ func GetSubscriptionConfig(c *gin.Context) {
 	deviceManager := device.NewDeviceManager()
 	deviceIP := utils.GetRealClientIP(c)
 	deviceUA := c.GetHeader("User-Agent")
-	
+
 	// 检查当前设备是否存在
 	hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
 	var currentDevice models.Device
 	deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
-	
+
 	// 获取当前设备数
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
-	
+
 	// 逻辑：
 	// 1. 如果设备已存在 -> 允许 (更新访问时间)
 	// 2. 如果设备不存在 (新设备)
 	//    a. 如果未超限 -> 允许 (创建设备)
 	//    b. 如果已超限 -> 拒绝 (不创建设备，Service 会检测到 device 不在列表中且超限，从而返回错误节点)
-	
+
 	shouldRecord := true
 	if !deviceExists {
 		if sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit {
@@ -305,7 +305,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 			shouldRecord = false
 		}
 	}
-	
+
 	if shouldRecord {
 		deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "clash")
 	}
@@ -320,7 +320,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 		c.String(200, generateErrorConfig("生成失败", fmt.Sprintf("配置生成错误: %v", err), baseURL))
 		return
 	}
-	
+
 	c.Header("Content-Type", "application/x-yaml")
 	c.String(200, cfg)
 }
@@ -343,7 +343,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		// 但为了保险，保留这里的 CheckOldSubscriptionURL 逻辑作为快速失败?
 		// 不，为了统一，我们应该让 Service 处理。
 		// 只是 Service 的 GenerateUniversalConfig 需要 clientIP/UA。
-		
+
 		// 暂时保留原有的 handler 结构，只替换核心生成部分
 		reset, currentSub, user, isOldURL := checkOldSubscriptionURL(db, uurl)
 		if isOldURL {
@@ -354,24 +354,24 @@ func GetUniversalSubscription(c *gin.Context) {
 			// 所以我们可以直接调用 Service。
 		}
 	}
-	
+
 	// 为了确保逻辑统一，我们重新组织一下 GetUniversalSubscription
 	// 实际上，我们只需要获取 IP/UA，然后调用 Service 即可
-	
+
 	deviceIP := utils.GetRealClientIP(c)
 	deviceUA := c.GetHeader("User-Agent")
 	deviceManager := device.NewDeviceManager()
-	
+
 	// 预先获取 sub 以便进行设备逻辑判断（如果 sub 存在）
 	if db.Where("subscription_url = ?", uurl).First(&sub).Error == nil {
 		// 同样的设备记录逻辑
 		hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
 		var currentDevice models.Device
 		deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
-		
+
 		var count int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
-		
+
 		shouldRecord := true
 		if !deviceExists {
 			if sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit {
@@ -380,7 +380,7 @@ func GetUniversalSubscription(c *gin.Context) {
 				shouldRecord = false
 			}
 		}
-		
+
 		if shouldRecord {
 			deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "universal")
 			db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
