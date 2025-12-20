@@ -128,17 +128,70 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		links = append(links, matches...)
 	}
 
-	// 去重
+	// 去重并验证链接完整性
 	uniqueLinks := make(map[string]bool)
 	var result []string
 	for _, link := range links {
-		if !uniqueLinks[link] {
-			uniqueLinks[link] = true
-			result = append(result, link)
+		// 跳过重复的链接
+		if uniqueLinks[link] {
+			continue
 		}
+		
+		// 验证链接完整性
+		if !s.isValidNodeLink(link) {
+			continue
+		}
+		
+		uniqueLinks[link] = true
+		result = append(result, link)
 	}
 
 	return result
+}
+
+// isValidNodeLink 验证节点链接是否完整有效
+func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return false
+	}
+	
+	// 检查基本格式：必须有协议前缀和至少一个 @ 或 : 符号
+	if strings.HasPrefix(link, "ss://") {
+		// SS 链接必须包含 @ 符号（认证信息@服务器:端口）
+		if !strings.Contains(link, "@") {
+			return false
+		}
+		// 检查是否有服务器地址和端口
+		parts := strings.Split(link, "@")
+		if len(parts) < 2 {
+			return false
+		}
+		serverPart := parts[1]
+		if !strings.Contains(serverPart, ":") {
+			return false
+		}
+	} else if strings.HasPrefix(link, "vmess://") || strings.HasPrefix(link, "vless://") {
+		// VMess/VLESS 链接必须包含 Base64 编码的内容
+		encoded := strings.TrimPrefix(link, "vmess://")
+		encoded = strings.TrimPrefix(encoded, "vless://")
+		if len(encoded) < 10 {
+			return false
+		}
+	} else if strings.HasPrefix(link, "trojan://") {
+		// Trojan 链接必须包含 @ 符号
+		if !strings.Contains(link, "@") {
+			return false
+		}
+	} else if strings.HasPrefix(link, "ssr://") {
+		// SSR 链接必须包含 Base64 编码的内容
+		encoded := strings.TrimPrefix(link, "ssr://")
+		if len(encoded) < 10 {
+			return false
+		}
+	}
+	
+	return true
 }
 
 // GenerateClashConfig 生成 Clash 配置
