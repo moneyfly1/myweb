@@ -294,7 +294,17 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 再检查设备数量限制（设备总数超限时，无论是否为新设备，都返回错误）
-	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
+	// 注意：先记录设备访问，这样 validateSubscription 才能正确识别当前设备
+	// 这对于 Clash 客户端一键导入特别重要，因为第一次请求时设备可能还没有被记录
+	deviceManager := device.NewDeviceManager()
+	deviceIP := utils.GetRealClientIP(c)
+	deviceUA := c.GetHeader("User-Agent")
+	
+	// 先尝试记录设备访问（如果设备不存在，这里会创建；如果存在，会更新）
+	deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "clash")
+	
+	// 然后验证订阅（此时设备已经被记录，可以正确检查设备是否在允许范围内）
+	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, deviceIP, deviceUA)
 	if !ok {
 		title := "设备数量超限"
 		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", currentDevices, deviceLimit)
@@ -304,8 +314,6 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 4. 正常返回
-	// 先记录设备访问，这样即使节点获取失败，设备信息也会被记录
-	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "clash")
 	db.Model(&sub).Update("clash_count", gorm.Expr("clash_count + ?", 1))
 
 	cfg, err := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
@@ -391,7 +399,16 @@ func GetUniversalSubscription(c *gin.Context) {
 	}
 
 	// 再检查设备数量限制（设备总数超限时，无论是否为新设备，都返回错误）
-	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, utils.GetRealClientIP(c), c.GetHeader("User-Agent"))
+	// 注意：先记录设备访问，这样 validateSubscription 才能正确识别当前设备
+	deviceManager := device.NewDeviceManager()
+	deviceIP := utils.GetRealClientIP(c)
+	deviceUA := c.GetHeader("User-Agent")
+	
+	// 先尝试记录设备访问（如果设备不存在，这里会创建；如果存在，会更新）
+	deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "universal")
+	
+	// 然后验证订阅（此时设备已经被记录，可以正确检查设备是否在允许范围内）
+	_, currentDevices, deviceLimit, ok := validateSubscription(&sub, &u, db, deviceIP, deviceUA)
 	if !ok {
 		title := "设备数量超限"
 		message := fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法使用服务", currentDevices, deviceLimit)
@@ -399,7 +416,6 @@ func GetUniversalSubscription(c *gin.Context) {
 		return
 	}
 
-	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "universal")
 	db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
 
 	cfg, err := config_update.NewConfigUpdateService().GenerateSSRConfig(sub.UserID, uurl)
