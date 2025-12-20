@@ -1515,3 +1515,242 @@ func BatchDeleteUsers(c *gin.Context) {
 		"message": fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)),
 	})
 }
+
+// BatchEnableUsers 批量启用用户
+func BatchEnableUsers(c *gin.Context) {
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要启用的用户",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", true)
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "启用用户失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected),
+	})
+}
+
+// BatchDisableUsers 批量禁用用户
+func BatchDisableUsers(c *gin.Context) {
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要禁用的用户",
+		})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 检查是否包含管理员用户
+	var adminUsers []models.User
+	if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "不能禁用管理员用户",
+		})
+		return
+	}
+
+	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", false)
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "禁用用户失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected),
+	})
+}
+
+// BatchSendSubEmail 批量发送订阅邮件
+func BatchSendSubEmail(c *gin.Context) {
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要发送邮件的用户",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var users []models.User
+	if err := db.Where("id IN ?", req.UserIDs).Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取用户信息失败",
+		})
+		return
+	}
+
+	successCount := 0
+	failCount := 0
+
+	for _, user := range users {
+		var sub models.Subscription
+		if err := db.Where("user_id = ?", user.ID).First(&sub).Error; err != nil {
+			failCount++
+			continue
+		}
+
+		if err := queueSubEmail(c, sub, user); err != nil {
+			failCount++
+			continue
+		}
+		successCount++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount),
+		"data": gin.H{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		},
+	})
+}
+
+// BatchSendExpireReminder 批量发送到期提醒
+func BatchSendExpireReminder(c *gin.Context) {
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "请选择要发送提醒的用户",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	var users []models.User
+	if err := db.Where("id IN ?", req.UserIDs).Preload("Subscriptions").Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "获取用户信息失败",
+		})
+		return
+	}
+
+	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
+	successCount := 0
+	failCount := 0
+	now := utils.GetBeijingTime()
+
+	for _, user := range users {
+		if len(user.Subscriptions) == 0 {
+			failCount++
+			continue
+		}
+
+		sub := user.Subscriptions[0]
+		if sub.ExpireTime.IsZero() {
+			failCount++
+			continue
+		}
+
+		daysUntilExpire := int(sub.ExpireTime.Sub(now).Hours() / 24)
+		if daysUntilExpire < 0 {
+			daysUntilExpire = 0
+		}
+
+		subject := "订阅即将到期提醒"
+		pkgName := "默认套餐"
+		if sub.PackageID != nil {
+			var pkg models.Package
+			if err := db.First(&pkg, *sub.PackageID).Error; err == nil {
+				pkgName = pkg.Name
+			}
+		}
+		isExpired := daysUntilExpire <= 0
+		content := templateBuilder.GetExpirationReminderTemplate(
+			user.Username,
+			pkgName,
+			sub.ExpireTime.Format("2006-01-02"),
+			daysUntilExpire,
+			sub.DeviceLimit,
+			sub.CurrentDevices,
+			isExpired,
+		)
+
+		if err := emailService.QueueEmail(user.Email, subject, content, "expiry_reminder"); err != nil {
+			failCount++
+			continue
+		}
+		successCount++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功发送 %d 封提醒邮件，失败 %d 封", successCount, failCount),
+		"data": gin.H{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		},
+	})
+}

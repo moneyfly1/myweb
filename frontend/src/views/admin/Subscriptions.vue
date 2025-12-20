@@ -179,6 +179,39 @@
         </el-form-item>
       </el-form>
 
+      <!-- 批量操作工具栏 -->
+      <div class="batch-actions" v-if="selectedSubscriptions.length > 0">
+        <div class="batch-info">
+          <span>已选择 {{ selectedSubscriptions.length }} 个订阅</span>
+        </div>
+        <div class="batch-buttons">
+          <el-button type="success" @click="batchEnableSubscriptions" :loading="batchOperating">
+            <el-icon><Check /></el-icon>
+            批量启用
+          </el-button>
+          <el-button type="warning" @click="batchDisableSubscriptions" :loading="batchOperating">
+            <el-icon><Close /></el-icon>
+            批量禁用
+          </el-button>
+          <el-button type="primary" @click="batchResetSubscriptions" :loading="batchOperating">
+            <el-icon><Refresh /></el-icon>
+            批量重置
+          </el-button>
+          <el-button type="info" @click="batchSendAdminSubEmail" :loading="batchOperating">
+            <el-icon><Message /></el-icon>
+            发送订阅邮件
+          </el-button>
+          <el-button type="danger" @click="batchDeleteSubscriptions" :loading="batchOperating">
+            <el-icon><Delete /></el-icon>
+            批量删除
+          </el-button>
+          <el-button @click="clearSelection">
+            <el-icon><Close /></el-icon>
+            取消选择
+          </el-button>
+        </div>
+      </div>
+
       <!-- 桌面端表格 -->
       <div class="table-wrapper">
         <el-table 
@@ -1119,7 +1152,8 @@ import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
-  Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch
+  Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
+  Check, Close
 } from '@element-plus/icons-vue'
 import '@/styles/list-common.scss'
 import { adminAPI } from '@/utils/api'
@@ -1133,12 +1167,14 @@ export default {
   name: 'AdminSubscriptions',
   components: {
     Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
-    Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch
+    Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
+    Check, Close
   },
   setup() {
     const loading = ref(false)
     const subscriptions = ref([])
     const selectedSubscriptions = ref([])
+    const batchOperating = ref(false)
     const currentPage = ref(1)
     const pageSize = ref(20)
     const total = ref(0)
@@ -2183,6 +2219,175 @@ export default {
       selectedSubscriptions.value = selection
     }
 
+    const clearSelection = () => {
+      selectedSubscriptions.value = []
+    }
+
+    const batchDeleteSubscriptions = async () => {
+      if (selectedSubscriptions.value.length === 0) {
+        ElMessage.warning('请先选择要删除的订阅')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除选中的 ${selectedSubscriptions.value.length} 个订阅吗？此操作不可恢复。`,
+          '确认批量删除',
+          {
+            type: 'warning',
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消'
+          }
+        )
+
+        batchOperating.value = true
+        const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
+        const response = await adminAPI.batchDeleteSubscriptions(subscriptionIds)
+        
+        if (response.data?.success !== false) {
+          ElMessage.success(response.data?.message || `成功删除 ${selectedSubscriptions.value.length} 个订阅`)
+          clearSelection()
+          loadSubscriptions()
+        } else {
+          ElMessage.error(response.data?.message || '批量删除失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error(`批量删除失败: ${error.response?.data?.message || error.message}`)
+        }
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchEnableSubscriptions = async () => {
+      if (selectedSubscriptions.value.length === 0) {
+        ElMessage.warning('请先选择要启用的订阅')
+        return
+      }
+
+      try {
+        batchOperating.value = true
+        const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
+        const response = await adminAPI.batchEnableSubscriptions(subscriptionIds)
+        
+        if (response.data?.success !== false) {
+          ElMessage.success(response.data?.message || `成功启用 ${selectedSubscriptions.value.length} 个订阅`)
+          clearSelection()
+          loadSubscriptions()
+        } else {
+          ElMessage.error(response.data?.message || '批量启用失败')
+        }
+      } catch (error) {
+        ElMessage.error(`批量启用失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchDisableSubscriptions = async () => {
+      if (selectedSubscriptions.value.length === 0) {
+        ElMessage.warning('请先选择要禁用的订阅')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确定要禁用选中的 ${selectedSubscriptions.value.length} 个订阅吗？`,
+          '确认批量禁用',
+          {
+            type: 'warning',
+            confirmButtonText: '确定禁用',
+            cancelButtonText: '取消'
+          }
+        )
+
+        batchOperating.value = true
+        const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
+        const response = await adminAPI.batchDisableSubscriptions(subscriptionIds)
+        
+        if (response.data?.success !== false) {
+          ElMessage.success(response.data?.message || `成功禁用 ${selectedSubscriptions.value.length} 个订阅`)
+          clearSelection()
+          loadSubscriptions()
+        } else {
+          ElMessage.error(response.data?.message || '批量禁用失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error(`批量禁用失败: ${error.response?.data?.message || error.message}`)
+        }
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchResetSubscriptions = async () => {
+      if (selectedSubscriptions.value.length === 0) {
+        ElMessage.warning('请先选择要重置的订阅')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确定要重置选中的 ${selectedSubscriptions.value.length} 个订阅吗？这将生成新的订阅地址并清理所有设备。`,
+          '确认批量重置',
+          {
+            type: 'warning',
+            confirmButtonText: '确定重置',
+            cancelButtonText: '取消'
+          }
+        )
+
+        batchOperating.value = true
+        const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
+        const response = await adminAPI.batchResetSubscriptions(subscriptionIds)
+        
+        if (response.data?.success !== false) {
+          const data = response.data?.data || {}
+          const successCount = data.success_count || selectedSubscriptions.value.length
+          const failCount = data.fail_count || 0
+          ElMessage.success(response.data?.message || `成功重置 ${successCount} 个订阅${failCount > 0 ? `，失败 ${failCount} 个` : ''}`)
+          clearSelection()
+          loadSubscriptions()
+        } else {
+          ElMessage.error(response.data?.message || '批量重置失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error(`批量重置失败: ${error.response?.data?.message || error.message}`)
+        }
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
+    const batchSendAdminSubEmail = async () => {
+      if (selectedSubscriptions.value.length === 0) {
+        ElMessage.warning('请先选择要发送邮件的订阅')
+        return
+      }
+
+      try {
+        batchOperating.value = true
+        const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
+        const response = await adminAPI.batchSendAdminSubEmail(subscriptionIds)
+        
+        if (response.data?.success !== false) {
+          const data = response.data?.data || {}
+          const successCount = data.success_count || selectedSubscriptions.value.length
+          const failCount = data.fail_count || 0
+          ElMessage.success(response.data?.message || `成功发送 ${successCount} 封邮件${failCount > 0 ? `，失败 ${failCount} 封` : ''}`)
+        } else {
+          ElMessage.error(response.data?.message || '批量发送邮件失败')
+        }
+      } catch (error) {
+        ElMessage.error(`批量发送邮件失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        batchOperating.value = false
+      }
+    }
+
     const handleSizeChange = (val) => {
       pageSize.value = val
       loadSubscriptions()
@@ -2269,6 +2474,7 @@ export default {
       loading,
       subscriptions,
       selectedSubscriptions,
+      batchOperating,
       currentPage,
       pageSize,
       total,
@@ -2325,6 +2531,12 @@ export default {
       getSubscriptionStatusText,
       formatDate,
       handleSelectionChange,
+      clearSelection,
+      batchDeleteSubscriptions,
+      batchEnableSubscriptions,
+      batchDisableSubscriptions,
+      batchResetSubscriptions,
+      batchSendAdminSubEmail,
       handleSizeChange,
       handleCurrentChange,
       selectAllColumns,
@@ -2345,6 +2557,50 @@ export default {
 
 <style scoped lang="scss">
 @use '@/styles/list-common.scss';
+
+.batch-actions {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+}
+
+.batch-info {
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+  
+  @media (max-width: 768px) {
+    text-align: center;
+    font-size: 13px;
+  }
+}
+
+.batch-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  
+  @media (max-width: 768px) {
+    justify-content: center;
+    flex-wrap: wrap;
+    
+    .el-button {
+      flex: 1;
+      min-width: 120px;
+    }
+  }
+}
 
 .admin-subscriptions {
   // 使用 list-container 的样式，确保宽度和其他列表一致
