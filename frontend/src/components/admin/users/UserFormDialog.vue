@@ -272,33 +272,79 @@ export default {
     margin-bottom: 20px;
   }
   
-  /* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
+  /* 移除所有输入框的圆角和阴影效果，设置为简单长方形 - 参考系统设置页面的样式 */
+  
+  /* 基础输入框 - 外层包装器 */
   :deep(.el-input__wrapper) {
     border-radius: 0 !important;
     box-shadow: none !important;
     border: 1px solid #dcdfe6 !important;
     background-color: #ffffff !important;
+    padding: 0 !important;
   }
   
+  /* Select 下拉框的外层包装器 */
   :deep(.el-select .el-input__wrapper) {
     border-radius: 0 !important;
     box-shadow: none !important;
     border: 1px solid #dcdfe6 !important;
     background-color: #ffffff !important;
+    padding: 0 !important;
   }
   
+  /* 日期选择器的外层包装器 */
   :deep(.el-date-editor .el-input__wrapper) {
     border-radius: 0 !important;
     box-shadow: none !important;
     border: 1px solid #dcdfe6 !important;
     background-color: #ffffff !important;
+    padding: 0 !important;
   }
   
+  /* 内层输入框 - 移除所有边框和圆角，只保留内边距 */
   :deep(.el-input__inner) {
     border-radius: 0 !important;
     border: none !important;
     box-shadow: none !important;
     background-color: transparent !important;
+    padding: 0 11px !important;
+  }
+  
+  /* 移除数字输入框的上下箭头 */
+  :deep(.el-input__inner::-webkit-inner-spin-button),
+  :deep(.el-input__inner::-webkit-outer-spin-button) {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  
+  :deep(.el-input__inner[type="number"]) {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  
+  /* 移除前缀和后缀的背景和边框 */
+  :deep(.el-input__prefix),
+  :deep(.el-input__suffix) {
+    background-color: transparent !important;
+    border: none !important;
+  }
+  
+  /* 文本域 */
+  :deep(.el-textarea__inner) {
+    border-radius: 0 !important;
+    border: 1px solid #dcdfe6 !important;
+    box-shadow: none !important;
+  }
+  
+  /* 悬停和聚焦状态 */
+  :deep(.el-input__wrapper:hover) {
+    border-color: #c0c4cc !important;
+    box-shadow: none !important;
+  }
+  
+  :deep(.el-input__wrapper.is-focus) {
+    border-color: #1677ff !important;
+    box-shadow: none !important;
   }
   
   :deep(.el-input__wrapper:hover) {
