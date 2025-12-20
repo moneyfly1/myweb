@@ -57,7 +57,7 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// Allow 检查是否允许请求
+// Allow 检查是否允许请求（会增加计数）
 func (rl *RateLimiter) Allow(key string) (allowed bool, resetAt time.Time, locked bool) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -106,6 +106,59 @@ func (rl *RateLimiter) Allow(key string) (allowed bool, resetAt time.Time, locke
 	// 增加计数
 	visitor.Count++
 	return true, visitor.ResetAt, false
+}
+
+// Check 检查是否允许请求（不增加计数）
+func (rl *RateLimiter) Check(key string) (allowed bool, resetAt time.Time, locked bool) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	visitor, exists := rl.visitors[key]
+
+	if !exists {
+		return true, now.Add(rl.window), false
+	}
+
+	// 检查是否被锁定
+	if visitor.Locked {
+		// 检查锁定是否已过期（15分钟）
+		if now.After(visitor.LockedAt.Add(15 * time.Minute)) {
+			// 解锁并重置
+			visitor.Locked = false
+			visitor.Count = 0
+			visitor.ResetAt = now.Add(rl.window)
+			return true, visitor.ResetAt, false
+		}
+		return false, visitor.LockedAt.Add(15 * time.Minute), true
+	}
+
+	// 检查时间窗口是否已过期
+	if now.After(visitor.ResetAt) {
+		return true, now.Add(rl.window), false
+	}
+
+	// 检查是否超过限制
+	if visitor.Count >= rl.rate {
+		return false, visitor.ResetAt, false
+	}
+
+	return true, visitor.ResetAt, false
+}
+
+// Reset 重置指定key的计数
+func (rl *RateLimiter) Reset(key string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	visitor, exists := rl.visitors[key]
+
+	if exists {
+		visitor.Locked = false
+		visitor.Count = 0
+		visitor.ResetAt = now.Add(rl.window)
+	}
 }
 
 // 全局速率限制器实例
@@ -157,12 +210,15 @@ func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 }
 
 // LoginRateLimitMiddleware 登录速率限制中间件
+// 注意：此中间件只检查是否允许，不增加计数
+// 计数增加和重置由登录handler根据登录结果决定
 func LoginRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 获取客户端IP
 		key := c.ClientIP()
 
-		allowed, resetAt, locked := loginRateLimiter.Allow(key)
+		// 只检查，不增加计数
+		allowed, resetAt, locked := loginRateLimiter.Check(key)
 
 		if !allowed {
 			if locked {
@@ -187,8 +243,21 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 		c.Header("X-RateLimit-Limit", "5")
 		c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 
+		// 将key存储到上下文中，以便handler可以访问
+		c.Set("rate_limit_key", key)
+
 		c.Next()
 	}
+}
+
+// IncrementLoginAttempt 增加登录尝试计数（登录失败时调用）
+func IncrementLoginAttempt(ip string) {
+	loginRateLimiter.Allow(ip)
+}
+
+// ResetLoginAttempt 重置登录尝试计数（登录成功时调用）
+func ResetLoginAttempt(ip string) {
+	loginRateLimiter.Reset(ip)
 }
 
 // RegisterRateLimitMiddleware 注册速率限制中间件

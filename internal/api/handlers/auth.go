@@ -60,12 +60,17 @@ func Login(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
+	ipAddress := c.ClientIP()
 	user, err := auth.AuthenticateUser(db, req.Email, req.Password)
 	if err != nil {
+		// 登录失败，增加计数
+		middleware.IncrementLoginAttempt(ipAddress)
 		c.JSON(401, gin.H{"success": false, "message": "邮箱或密码错误"})
 		return
 	}
 	if !user.IsActive {
+		// 账号被禁用，增加计数
+		middleware.IncrementLoginAttempt(ipAddress)
 		c.JSON(403, gin.H{"success": false, "message": "账号已禁用"})
 		return
 	}
@@ -80,8 +85,10 @@ func Login(c *gin.Context) {
 		utils.LogError("Login: 更新最后登录时间失败", saveErr, nil)
 	}
 	
+	// 登录成功，重置限流计数
+	middleware.ResetLoginAttempt(ipAddress)
+	
 	// 创建登录历史记录（包含User-Agent和IP地址）
-	ipAddress := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
 	loginHistory := models.LoginHistory{
 		UserID:      user.ID,
@@ -119,6 +126,7 @@ func LoginJSON(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+	ipAddress := c.ClientIP()
 
 	// 检查维护模式：维护模式下只允许管理员登录
 	var maintenanceConfig models.SystemConfig
@@ -127,6 +135,8 @@ func LoginJSON(c *gin.Context) {
 			// 维护模式下，先验证用户身份
 			var tempUser models.User
 			if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&tempUser).Error; err != nil {
+				// 登录失败，增加计数
+				middleware.IncrementLoginAttempt(ipAddress)
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"success": false,
 					"message": "用户名或密码错误",
@@ -134,6 +144,8 @@ func LoginJSON(c *gin.Context) {
 				return
 			}
 			if !auth.VerifyPassword(req.Password, tempUser.Password) {
+				// 登录失败，增加计数
+				middleware.IncrementLoginAttempt(ipAddress)
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"success": false,
 					"message": "用户名或密码错误",
@@ -142,6 +154,8 @@ func LoginJSON(c *gin.Context) {
 			}
 			// 维护模式下，只有管理员可以登录
 			if !tempUser.IsAdmin {
+				// 非管理员在维护模式下无法登录，增加计数
+				middleware.IncrementLoginAttempt(ipAddress)
 				c.JSON(http.StatusServiceUnavailable, gin.H{
 					"success":          false,
 					"message":          "系统维护中，请稍后再试",
@@ -155,6 +169,8 @@ func LoginJSON(c *gin.Context) {
 
 	var user models.User
 	if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&user).Error; err != nil {
+		// 登录失败，增加计数
+		middleware.IncrementLoginAttempt(ipAddress)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"message": "用户名或密码错误",
@@ -164,6 +180,8 @@ func LoginJSON(c *gin.Context) {
 
 	// 检查用户是否激活
 	if !user.IsActive {
+		// 账号被禁用，增加计数
+		middleware.IncrementLoginAttempt(ipAddress)
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": "账户已被禁用，无法使用服务。如有疑问，请联系管理员。",
@@ -172,6 +190,8 @@ func LoginJSON(c *gin.Context) {
 	}
 
 	if !auth.VerifyPassword(req.Password, user.Password) {
+		// 登录失败，增加计数
+		middleware.IncrementLoginAttempt(ipAddress)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"message": "用户名或密码错误",
@@ -205,8 +225,10 @@ func LoginJSON(c *gin.Context) {
 		utils.LogError("更新最后登录时间失败", saveErr, nil)
 	}
 
+	// 登录成功，重置限流计数
+	middleware.ResetLoginAttempt(ipAddress)
+	
 	// 创建登录历史记录
-	ipAddress := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
 	loginHistory := models.LoginHistory{
 		UserID:      user.ID,
@@ -221,14 +243,14 @@ func LoginJSON(c *gin.Context) {
 			utils.LogError("创建登录历史失败", err, nil)
 		}
 	}()
-
+	
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
-
+	
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
-
+	
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{

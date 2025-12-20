@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -45,8 +46,16 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 // createDefaultSubscription 为用户创建默认订阅（如果不存在）
 func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	var existing models.Subscription
-	if err := db.Where("user_id = ?", userID).First(&existing).Error; err == nil {
+	err := db.Where("user_id = ?", userID).First(&existing).Error
+	if err == nil {
+		// 订阅已存在，直接返回
 		return nil
+	}
+	// 如果是记录未找到错误，这是正常的，继续创建订阅
+	// 使用 errors.Is 来检查，避免在日志中记录这个预期的错误
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// 其他错误才需要返回
+		return err
 	}
 
 	// 从系统设置获取默认配置
