@@ -72,17 +72,38 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 	return &reset, &sub, &user, true
 }
 
-// generateErrorConfig 生成错误配置（Clash格式），返回错误节点信息而不是空配置
+// generateErrorConfig 生成错误配置（Clash格式），返回4个错误节点信息
 func generateErrorConfig(title, message string) string {
-	// 清理消息，移除换行符，确保在节点名称中正确显示
-	cleanMessage := strings.ReplaceAll(message, "\n", " | ")
+	// 清理消息，移除换行符
+	cleanMessage := strings.ReplaceAll(message, "\n", " ")
 	
-	// 创建错误节点名称，包含错误信息
-	errorNodeName := fmt.Sprintf("⚠️ %s: %s", title, cleanMessage)
+	// 将错误信息拆分为多个节点，每个节点名称不超过30个字符
+	errorNodes := []string{
+		fmt.Sprintf("⚠️ %s", title),
+	}
 	
-	// 如果节点名称太长，截断
-	if len(errorNodeName) > 100 {
-		errorNodeName = errorNodeName[:97] + "..."
+	// 拆分消息为多个部分
+	messageParts := splitMessage(cleanMessage, 3, 25) // 最多3个部分，每个部分最多25个字符
+	errorNodes = append(errorNodes, messageParts...)
+	
+	// 确保有4个节点
+	for len(errorNodes) < 4 {
+		errorNodes = append(errorNodes, "请登录官网查看详情或联系客服")
+	}
+	if len(errorNodes) > 4 {
+		errorNodes = errorNodes[:4]
+	}
+
+	// 生成节点列表
+	proxyList := ""
+	proxyNames := ""
+	for i, nodeName := range errorNodes {
+		// 截断节点名称，确保不超过30个字符
+		if len(nodeName) > 30 {
+			nodeName = nodeName[:27] + "..."
+		}
+		proxyList += fmt.Sprintf("  - name: \"%s\"\n    type: socks5\n    server: 127.0.0.1\n    port: %d\n    # 错误节点，仅用于显示信息\n", nodeName, i)
+		proxyNames += fmt.Sprintf("      - \"%s\"\n", nodeName)
 	}
 
 	return fmt.Sprintf(`# ============================================
@@ -102,52 +123,107 @@ log-level: error
 
 # 错误节点（无效节点，仅用于显示错误信息）
 proxies:
-  - name: "%s"
-    type: socks5
-    server: 127.0.0.1
-    port: 0
-    # 此节点无效，仅用于显示错误信息
-
+%s
 proxy-groups:
-  - name: "❌ 订阅错误"
+  - name: "❌ 订阅错误提示"
     type: select
     proxies:
-      - "%s"
-
+%s
 rules:
   - MATCH,REJECT
-`, title, cleanMessage, errorNodeName, errorNodeName)
+`, title, cleanMessage, proxyList, proxyNames)
 }
 
-// generateErrorConfigBase64 生成通用订阅的 Base64 错误提示，返回错误节点信息
+// splitMessage 将消息拆分为多个部分，每个部分不超过指定长度
+func splitMessage(message string, maxParts int, maxLength int) []string {
+	if len(message) <= maxLength {
+		return []string{message}
+	}
+	
+	parts := []string{}
+	words := strings.Fields(message)
+	currentPart := ""
+	
+	for _, word := range words {
+		// 如果当前部分加上新单词不超过长度限制
+		if len(currentPart)+len(word)+1 <= maxLength {
+			if currentPart == "" {
+				currentPart = word
+			} else {
+				currentPart += " " + word
+			}
+		} else {
+			// 保存当前部分，开始新部分
+			if currentPart != "" {
+				parts = append(parts, currentPart)
+				if len(parts) >= maxParts {
+					break
+				}
+			}
+			// 如果单个单词就超过长度，截断
+			if len(word) > maxLength {
+				word = word[:maxLength-3] + "..."
+			}
+			currentPart = word
+		}
+	}
+	
+	// 添加最后一部分
+	if currentPart != "" && len(parts) < maxParts {
+		parts = append(parts, currentPart)
+	}
+	
+	return parts
+}
+
+// generateErrorConfigBase64 生成通用订阅的 Base64 错误提示，返回4个错误节点信息
 func generateErrorConfigBase64(title, message string) string {
 	// 清理消息
-	cleanMessage := strings.ReplaceAll(message, "\n", " | ")
+	cleanMessage := strings.ReplaceAll(message, "\n", " ")
 	
-	// 创建错误节点名称
-	errorNodeName := fmt.Sprintf("⚠️ %s: %s", title, cleanMessage)
-	if len(errorNodeName) > 100 {
-		errorNodeName = errorNodeName[:97] + "..."
+	// 将错误信息拆分为多个节点
+	errorNodes := []string{
+		fmt.Sprintf("⚠️ %s", title),
 	}
 	
-	// 生成包含错误信息的无效 VMess 节点链接
-	// 使用无效的服务器地址和端口，确保无法连接
-	errorData := map[string]interface{}{
-		"v":    "2",
-		"ps":   errorNodeName,                    // 节点名称包含错误信息
-		"add":  "127.0.0.1",                     // 无效地址
-		"port": 0,                               // 无效端口
-		"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
-		"net":  "tcp",
-		"type": "none",
+	// 拆分消息为多个部分
+	messageParts := splitMessage(cleanMessage, 3, 25)
+	errorNodes = append(errorNodes, messageParts...)
+	
+	// 确保有4个节点
+	for len(errorNodes) < 4 {
+		errorNodes = append(errorNodes, "请登录官网查看详情")
+	}
+	if len(errorNodes) > 4 {
+		errorNodes = errorNodes[:4]
 	}
 	
-	jsonData, _ := json.Marshal(errorData)
-	encoded := base64.StdEncoding.EncodeToString(jsonData)
-	errorNodeLink := "vmess://" + encoded
+	// 生成多个无效 VMess 节点链接
+	var nodeLinks []string
+	for i, nodeName := range errorNodes {
+		// 截断节点名称，确保不超过30个字符
+		if len(nodeName) > 30 {
+			nodeName = nodeName[:27] + "..."
+		}
+		
+		errorData := map[string]interface{}{
+			"v":    "2",
+			"ps":   nodeName,                    // 节点名称包含错误信息
+			"add":  "127.0.0.1",                // 无效地址
+			"port": i,                          // 使用不同的无效端口
+			"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
+			"net":  "tcp",
+			"type": "none",
+		}
+		
+		jsonData, _ := json.Marshal(errorData)
+		encoded := base64.StdEncoding.EncodeToString(jsonData)
+		nodeLinks = append(nodeLinks, "vmess://"+encoded)
+	}
 	
-	// 返回错误节点链接
-	return base64.StdEncoding.EncodeToString([]byte(errorNodeLink))
+	// 返回多个错误节点链接，用换行符分隔
+	content := strings.Join(nodeLinks, "\n")
+	return base64.StdEncoding.EncodeToString([]byte(content))
 }
 
 // GetSubscriptionConfig 处理 Clash 订阅请求
