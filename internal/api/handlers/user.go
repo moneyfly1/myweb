@@ -449,10 +449,9 @@ func GetUserDetails(c *gin.Context) {
 			}
 		}
 
-		// 统计订阅类型
-		var appleCount, clashCount int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type IN ?", sub.ID, []string{"v2ray", "ssr"}).Count(&appleCount)
-		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type = ?", sub.ID, "clash").Count(&clashCount)
+		// 使用数据库中的订阅次数字段
+		universalCount := sub.UniversalCount
+		clashCount := sub.ClashCount
 
 		formattedSubs = append(formattedSubs, gin.H{
 			"id":                sub.ID,
@@ -466,7 +465,7 @@ func GetUserDetails(c *gin.Context) {
 			"days_until_expire": daysUntilExpire,
 			"is_expired":        isExpired,
 			"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
-			"apple_count":       appleCount,
+			"apple_count":       universalCount,
 			"clash_count":       clashCount,
 		})
 	}

@@ -72,6 +72,8 @@ func GetSubscriptionConfig(c *gin.Context) {
 		return
 	}
 	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "clash")
+	// 增加猫咪订阅次数
+	db.Model(&sub).Update("clash_count", gorm.Expr("clash_count + ?", 1))
 	cfg, _ := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
 	c.Header("Content-Type", "application/x-yaml")
 	c.String(200, cfg)
@@ -95,6 +97,8 @@ func GetUniversalSubscription(c *gin.Context) {
 		return
 	}
 	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "universal")
+	// 增加通用订阅次数
+	db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
 	cfg, _ := config_update.NewConfigUpdateService().GenerateSSRConfig(sub.UserID, uurl)
 	c.Header("Content-Type", "text/plain; charset=utf-8")
 	c.String(200, base64.StdEncoding.EncodeToString([]byte(cfg)))
