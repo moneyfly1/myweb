@@ -845,7 +845,7 @@ export default {
 /* 确保输入框内部没有嵌套元素和装饰性边框 */
 :deep(.el-form-item__content .el-input .el-input__wrapper) {
   box-shadow: 0 0 0 1px #dcdfe6 inset !important;
-  border-radius: 4px;
+  border-radius: 0 !important;
   padding: 1px 11px;
   background: #fff;
 }
@@ -870,11 +870,34 @@ export default {
 /* 移除输入框内部的所有装饰性元素 */
 :deep(.el-input__wrapper) {
   background: #fff;
+  border-radius: 0 !important;
+  box-shadow: 0 0 0 1px #dcdfe6 inset !important;
 }
 
 :deep(.el-input__wrapper::before),
 :deep(.el-input__wrapper::after) {
   display: none !important;
+}
+
+:deep(.el-input__inner) {
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+:deep(.el-input__inner::-webkit-inner-spin-button),
+:deep(.el-input__inner::-webkit-outer-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+:deep(.el-input__inner[type="number"]) {
+  -moz-appearance: textfield;
+}
+
+:deep(.el-select .el-input__wrapper) {
+  border-radius: 0 !important;
 }
 
 @media (max-width: 768px) {

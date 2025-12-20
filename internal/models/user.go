@@ -48,6 +48,10 @@ type User struct {
 	TotalConsumption float64       `gorm:"type:decimal(10,2);default:0;not null" json:"total_consumption"`
 	LevelExpiresAt   sql.NullTime  `json:"level_expires_at,omitempty"`
 
+	// 专线节点相关配置
+	SpecialNodeSubscriptionType string       `gorm:"type:varchar(20);default:both" json:"special_node_subscription_type"` // both, special_only
+	SpecialNodeExpiresAt       sql.NullTime `json:"special_node_expires_at,omitempty"`
+
 	// 关系
 	Subscriptions            []Subscription       `gorm:"foreignKey:UserID" json:"-"`
 	Orders                   []Order              `gorm:"foreignKey:UserID" json:"-"`

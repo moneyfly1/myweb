@@ -161,25 +161,54 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
-	// 单个更新
-	var req struct {
-		Value string `json:"value" binding:"required"`
-	}
+	// 单个更新 - 支持完整的配置对象（包括 category）
+	var req models.SystemConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
-		jsonResponse(c, http.StatusBadRequest, false, "请求参数错误", nil)
-		return
+		// 如果绑定失败，尝试只绑定 value（向后兼容）
+		var simpleReq struct {
+			Value string `json:"value"`
+		}
+		if err2 := c.ShouldBindJSON(&simpleReq); err2 != nil {
+			jsonResponse(c, http.StatusBadRequest, false, "请求参数错误", nil)
+			return
+		}
+		req.Value = simpleReq.Value
 	}
 
+	// 确定 category
+	category := req.Category
+	if category == "" {
+		category = "system" // 默认 category
+	}
+
+	// 查找配置（根据 key 和 category）
 	var config models.SystemConfig
-	err := db.Where("key = ?", key).First(&config).Error
+	err := db.Where("key = ? AND category = ?", key, category).First(&config).Error
 	if err != nil {
-		config = models.SystemConfig{Key: key, Value: req.Value, Category: "system"}
+		// 配置不存在，创建新配置
+		config = models.SystemConfig{
+			Key:         key,
+			Value:       req.Value,
+			Category:    category,
+			Type:        req.Type,
+			DisplayName: req.DisplayName,
+		}
+		if config.Type == "" {
+			config.Type = "string"
+		}
 		if err := db.Create(&config).Error; err != nil {
 			jsonResponse(c, http.StatusInternalServerError, false, "创建配置失败", nil)
 			return
 		}
 	} else {
+		// 配置存在，更新
 		config.Value = req.Value
+		if req.Type != "" {
+			config.Type = req.Type
+		}
+		if req.DisplayName != "" {
+			config.DisplayName = req.DisplayName
+		}
 		if err := db.Save(&config).Error; err != nil {
 			jsonResponse(c, http.StatusInternalServerError, false, "更新配置失败", nil)
 			return
@@ -227,6 +256,7 @@ func GetAdminSettings(c *gin.Context) {
 			"node_test_timeout":          "5",
 			"test_url":                   "https://ping.pe",
 		},
+		"custom_node": {},
 	}
 
 	db := database.GetDB()

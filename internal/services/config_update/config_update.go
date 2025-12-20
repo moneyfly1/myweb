@@ -135,123 +135,25 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 
 // GenerateClashConfig 生成 Clash 配置
 func (s *ConfigUpdateService) GenerateClashConfig(userID uint, subscriptionURL string) (string, error) {
-	// 获取用户订阅
-	var subscription models.Subscription
-	if err := s.db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		return "", fmt.Errorf("订阅不存在")
-	}
+	// 获取节点
+	proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit, err := s.getNodesForSubscription(userID, subscriptionURL)
+	if err != nil {
+		// 如果是“没有可用节点”错误，我们仍然尝试生成基础配置（带提醒）
+		if err.Error() == "没有可用的节点" {
+			// 获取订阅信息以便生成提醒节点
+			var sub models.Subscription
+			s.db.Where("subscription_url = ?", subscriptionURL).First(&sub)
+			var u models.User
+			s.db.First(&u, userID)
 
-	// 获取用户信息
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return "", fmt.Errorf("用户不存在")
-	}
-
-	// 检查订阅状态（不再直接返回错误，而是生成提醒节点）
-	now := time.Now()
-	isExpired := subscription.ExpireTime.Before(now)
-	isInactive := !subscription.IsActive || subscription.Status != "active"
-
-	// 检查设备数量
-	var deviceCount int64
-	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&deviceCount)
-	isDeviceOverLimit := int(deviceCount) > subscription.DeviceLimit
-
-	// 优先从数据库的 nodes 表获取节点
-	// 只获取在线且激活的节点，过滤掉超时和禁用的节点
-	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ? AND status = ?", true, "online").Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
-		// 从数据库获取节点
-		var proxies []*ProxyNode
-		for _, dbNode := range dbNodes {
-			// 从 Config 字段解析节点信息
-			if dbNode.Config != nil && *dbNode.Config != "" {
-				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-					// 使用数据库中的节点名称
-					proxyNode.Name = dbNode.Name
-					proxies = append(proxies, &proxyNode)
-				}
-			}
-		}
-
-		if len(proxies) > 0 {
-			// 添加信息节点和提醒节点
-			proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit)
-			// 生成 Clash YAML 配置
+			proxies = s.addInfoAndReminderNodes([]*ProxyNode{}, sub, u, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
 			return s.generateClashYAML(proxies), nil
 		}
-	}
-
-	// 如果数据库中没有节点，从URL获取（兼容旧逻辑）
-	var systemConfig models.SystemConfig
-	// 确保从正确的 category 获取 node_source_urls
-	if err := s.db.Where("key = ? AND category = ?", "node_source_urls", "config_update").First(&systemConfig).Error; err != nil {
-		return "", fmt.Errorf("未配置节点源")
-	}
-
-	// 解析节点源URL列表
-	urls := strings.Split(systemConfig.Value, "\n")
-	var validURLs []string
-	for _, u := range urls {
-		u = strings.TrimSpace(u)
-		if u != "" {
-			validURLs = append(validURLs, u)
-		}
-	}
-
-	// 获取节点链接
-	nodeData, err := s.FetchNodesFromURLs(validURLs)
-	if err != nil {
 		return "", err
 	}
 
-	// 解析节点链接为代理节点
-	var proxies []*ProxyNode
-	seenKeys := make(map[string]bool)
-	nameCounter := make(map[string]int)
-
-	for _, nodeInfo := range nodeData {
-		link, ok := nodeInfo["url"].(string)
-		if !ok {
-			continue
-		}
-
-		node, err := ParseNodeLink(link)
-		if err != nil {
-			continue
-		}
-
-		// 生成去重键
-		key := fmt.Sprintf("%s:%s:%d", node.Type, node.Server, node.Port)
-		if node.UUID != "" {
-			key += ":" + node.UUID
-		} else if node.Password != "" {
-			key += ":" + node.Password
-		}
-
-		if seenKeys[key] {
-			continue
-		}
-		seenKeys[key] = true
-
-		// 处理名称重复
-		if count, exists := nameCounter[node.Name]; exists {
-			nameCounter[node.Name] = count + 1
-			node.Name = fmt.Sprintf("%s-%d", node.Name, count+1)
-		} else {
-			nameCounter[node.Name] = 0
-		}
-
-		proxies = append(proxies, node)
-	}
-
-	if len(proxies) == 0 {
-		return "", fmt.Errorf("没有可用的节点")
-	}
-
 	// 添加信息节点和提醒节点
-	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit)
+	proxies = s.addInfoAndReminderNodes(proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, currentDevices, deviceLimit)
 
 	// 生成 Clash YAML 配置
 	return s.generateClashYAML(proxies), nil
@@ -1082,7 +984,7 @@ func (s *ConfigUpdateService) GenerateV2RayConfig(userID uint, subscriptionURL s
 
 	// 添加所有节点链接（包括信息节点，它们会被转换为特殊的 VMess 链接）
 	for _, proxy := range proxies {
-		link := s.proxyNodeToLink(proxy)
+		link := s.ProxyNodeToLink(proxy)
 		if link != "" {
 			links = append(links, link)
 		}
@@ -1107,7 +1009,7 @@ func (s *ConfigUpdateService) GenerateSSRConfig(userID uint, subscriptionURL str
 
 	// 添加所有节点链接（包括信息节点，它们会被转换为特殊的 VMess 链接）
 	for _, proxy := range proxies {
-		link := s.proxyNodeToLink(proxy)
+		link := s.ProxyNodeToLink(proxy)
 		if link != "" {
 			links = append(links, link)
 		}
@@ -1141,22 +1043,70 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 	isDeviceOverLimit := int(deviceCount) > subscription.DeviceLimit
 
 	// 获取节点
-	// 只获取在线且激活的节点，过滤掉超时和禁用的节点
-	// 验证规则：
-	// 1. is_active = true（节点必须启用）
-	// 2. status = 'online'（节点必须在线，排除 offline 和 timeout 状态）
+	// 只获取激活的节点
+	// 正常显示所有节点信息，但订阅时排除超时节点
 	var proxies []*ProxyNode
 	var dbNodes []models.Node
-	if err := s.db.Where("is_active = ? AND status = ?", true, "online").Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
-		// 从数据库获取节点
-		for _, dbNode := range dbNodes {
-			// 双重验证：确保节点配置存在且有效
-			if dbNode.Config != nil && *dbNode.Config != "" {
+
+	// 根据用户设置决定是否包含普通节点
+	if user.SpecialNodeSubscriptionType != "special_only" {
+		// 检查普通订阅是否到期
+		if !isExpired {
+			// 获取激活的节点，过滤掉 status 为 timeout 的节点
+			if err := s.db.Where("is_active = ? AND status != ?", true, "timeout").Find(&dbNodes).Error; err == nil && len(dbNodes) > 0 {
+				// 从数据库获取节点
+				for _, dbNode := range dbNodes {
+					// 双重验证：确保节点配置存在且有效
+					if dbNode.Config != nil && *dbNode.Config != "" {
+						var proxyNode ProxyNode
+						if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
+							// 验证节点配置的基本字段
+							if proxyNode.Server != "" && proxyNode.Port > 0 && proxyNode.Type != "" {
+								proxyNode.Name = dbNode.Name
+								proxies = append(proxies, &proxyNode)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 获取用户的专线节点
+	var customNodes []models.CustomNode
+	if err := s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
+		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", userID, true).
+		Find(&customNodes).Error; err == nil && len(customNodes) > 0 {
+
+		// 检查每个专线节点的到期时间
+		for _, customNode := range customNodes {
+			isSpecialExpired := false
+			if customNode.FollowUserExpire {
+				// 如果跟随用户到期时间，优先使用 SpecialNodeExpiresAt
+				if user.SpecialNodeExpiresAt.Valid {
+					isSpecialExpired = user.SpecialNodeExpiresAt.Time.Before(now)
+				} else {
+					isSpecialExpired = subscription.ExpireTime.Before(now)
+				}
+			} else if customNode.ExpireTime != nil {
+				isSpecialExpired = customNode.ExpireTime.Before(now)
+			}
+
+			// 如果专线已到期或节点状态为 timeout，则不显示在订阅中
+			if isSpecialExpired || customNode.Status == "timeout" {
+				continue
+			}
+
+			// 解析节点配置
+			if customNode.Config != "" {
 				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(*dbNode.Config), &proxyNode); err == nil {
-					// 验证节点配置的基本字段
+				if err := json.Unmarshal([]byte(customNode.Config), &proxyNode); err == nil {
 					if proxyNode.Server != "" && proxyNode.Port > 0 && proxyNode.Type != "" {
-						proxyNode.Name = dbNode.Name
+						displayName := customNode.DisplayName
+						if displayName == "" {
+							displayName = "专线定制-" + customNode.Name
+						}
+						proxyNode.Name = displayName
 						proxies = append(proxies, &proxyNode)
 					}
 				}
@@ -1164,53 +1114,7 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 		}
 	}
 
-	// 如果数据库中没有节点，从URL获取
-	if len(proxies) == 0 {
-		var systemConfig models.SystemConfig
-		// 确保从正确的 category 获取 node_source_urls
-		if err := s.db.Where("key = ? AND category = ?", "node_source_urls", "config_update").First(&systemConfig).Error; err == nil {
-			urls := strings.Split(systemConfig.Value, "\n")
-			var validURLs []string
-			for _, u := range urls {
-				u = strings.TrimSpace(u)
-				if u != "" {
-					validURLs = append(validURLs, u)
-				}
-			}
-
-			if len(validURLs) > 0 {
-				nodeData, err := s.FetchNodesFromURLs(validURLs)
-				if err == nil {
-					seenKeys := make(map[string]bool)
-					for _, nodeInfo := range nodeData {
-						link, ok := nodeInfo["url"].(string)
-						if !ok {
-							continue
-						}
-
-						node, err := ParseNodeLink(link)
-						if err != nil {
-							continue
-						}
-
-						key := fmt.Sprintf("%s:%s:%d", node.Type, node.Server, node.Port)
-						if node.UUID != "" {
-							key += ":" + node.UUID
-						} else if node.Password != "" {
-							key += ":" + node.Password
-						}
-
-						if seenKeys[key] {
-							continue
-						}
-						seenKeys[key] = true
-						proxies = append(proxies, node)
-					}
-				}
-			}
-		}
-	}
-
+	// 如果没有任何节点，返回错误
 	if len(proxies) == 0 {
 		return nil, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit, fmt.Errorf("没有可用的节点")
 	}
@@ -1218,8 +1122,8 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 	return proxies, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit, nil
 }
 
-// proxyNodeToLink 将 ProxyNode 转换为节点链接
-func (s *ConfigUpdateService) proxyNodeToLink(proxy *ProxyNode) string {
+// ProxyNodeToLink 将 ProxyNode 转换为节点链接（公开方法）
+func (s *ConfigUpdateService) ProxyNodeToLink(proxy *ProxyNode) string {
 	// 信息节点（direct 类型且 server 为 127.0.0.1）转换为特殊的 VMess 链接
 	// 这样在 V2Ray/SSR 格式中也能显示信息
 	if proxy.Type == "direct" && proxy.Server == "127.0.0.1" {
@@ -1486,7 +1390,7 @@ func (s *ConfigUpdateService) GenerateV2RayConfigWithReminder(userID uint, subsc
 
 	// 添加实际节点链接
 	for _, proxy := range proxies {
-		link := s.proxyNodeToLink(proxy)
+		link := s.ProxyNodeToLink(proxy)
 		if link != "" {
 			links = append(links, link)
 		}
@@ -1556,7 +1460,7 @@ func (s *ConfigUpdateService) GenerateSSRConfigWithReminder(userID uint, subscri
 
 	// 添加实际节点链接
 	for _, proxy := range proxies {
-		link := s.proxyNodeToLink(proxy)
+		link := s.ProxyNodeToLink(proxy)
 		if link != "" {
 			links = append(links, link)
 		}

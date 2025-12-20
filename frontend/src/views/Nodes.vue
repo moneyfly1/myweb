@@ -270,33 +270,43 @@ export default {
       loading.value = true
       try {
         const response = await nodeAPI.getNodes()
+        console.log('节点列表API响应:', response)
+        
         // 处理API响应数据
-        if (response.data && response.data.success && response.data.data) {
-          // 后端返回格式: {success: true, data: [...]}
-          if (Array.isArray(response.data.data)) {
-            nodes.value = response.data.data.map(node => ({
+        if (response && response.data) {
+          if (response.data.success && response.data.data) {
+            // 后端返回格式: {success: true, data: [...]}
+            if (Array.isArray(response.data.data)) {
+              nodes.value = response.data.data.map(node => ({
+                ...node,
+                testing: false
+              }))
+              console.log('加载的节点数量:', nodes.value.length)
+            } else if (response.data.data.nodes && Array.isArray(response.data.data.nodes)) {
+              nodes.value = response.data.data.nodes.map(node => ({
+                ...node,
+                testing: false
+              }))
+            } else {
+              console.warn('响应数据格式不正确:', response.data.data)
+              nodes.value = []
+            }
+          } else if (Array.isArray(response.data)) {
+            nodes.value = response.data.map(node => ({
               ...node,
               testing: false
             }))
-          } else if (response.data.data.nodes && Array.isArray(response.data.data.nodes)) {
-            nodes.value = response.data.data.nodes.map(node => ({
+          } else if (response.data.nodes && Array.isArray(response.data.nodes)) {
+            nodes.value = response.data.nodes.map(node => ({
               ...node,
               testing: false
             }))
           } else {
+            console.warn('未识别的响应格式:', response.data)
             nodes.value = []
           }
-        } else if (response.data && Array.isArray(response.data)) {
-          nodes.value = response.data.map(node => ({
-            ...node,
-            testing: false
-          }))
-        } else if (response.data && response.data.nodes && Array.isArray(response.data.nodes)) {
-          nodes.value = response.data.nodes.map(node => ({
-            ...node,
-            testing: false
-          }))
         } else {
+          console.error('响应格式错误:', response)
           nodes.value = []
         }
         
@@ -306,6 +316,7 @@ export default {
         const errorMsg = error.response?.data?.message || error.message || '获取节点列表失败'
         ElMessage.error(`获取节点列表失败: ${errorMsg}`)
         console.error('获取节点列表错误:', error)
+        console.error('错误详情:', error.response)
         nodes.value = []
       } finally {
         loading.value = false

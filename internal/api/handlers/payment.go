@@ -17,197 +17,54 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetPaymentMethods 获取支付方式列表
 func GetPaymentMethods(c *gin.Context) {
 	db := database.GetDB()
-
-	var methods []models.PaymentConfig
-	if err := db.Where("status = ?", 1).Order("sort_order ASC").Find(&methods).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取支付方式失败",
-		})
-		return
-	}
-
-	// 只返回必要信息，不返回敏感配置
-	result := make([]map[string]interface{}, 0)
-	for _, method := range methods {
-		// 支付方式名称映射
-		nameMap := map[string]string{
-			"alipay":   "支付宝",
-			"wechat":   "微信支付",
-			"yipay":    "易支付",
-			"paypal":   "PayPal",
-			"applepay": "Apple Pay",
-			"stripe":   "Stripe",
-			"bank":     "银行转账",
-		}
-
-		name := nameMap[method.PayType]
+	var cfg []models.PaymentConfig
+	db.Where("status = ?", 1).Order("sort_order ASC").Find(&cfg)
+	res := make([]gin.H, 0, len(cfg))
+	mMap := map[string]string{"alipay": "支付宝", "wechat": "微信支付", "yipay": "易支付", "paypal": "PayPal", "applepay": "Apple Pay", "stripe": "Stripe", "bank": "银行转账"}
+	for _, m := range cfg {
+		name := mMap[m.PayType]
 		if name == "" {
-			name = method.PayType
+			name = m.PayType
 		}
-
-		result = append(result, map[string]interface{}{
-			"id":       method.ID,
-			"key":      method.PayType, // 前端使用的key
-			"pay_type": method.PayType,
-			"name":     name, // 显示名称
-			"status":   method.Status,
-		})
+		res = append(res, gin.H{"id": m.ID, "key": m.PayType, "name": name, "status": m.Status})
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
-	})
+	c.JSON(200, gin.H{"success": true, "data": res})
 }
 
-// CreatePayment 创建支付
 func CreatePayment(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
-		return
-	}
-
+	u, _ := middleware.GetCurrentUser(c)
 	var req struct {
-		OrderID         uint `json:"order_id" binding:"required"`
-		PaymentMethodID uint `json:"payment_method_id" binding:"required"`
+		OrderID         uint `json:"order_id"`
+		PaymentMethodID uint `json:"payment_method_id"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		c.JSON(400, gin.H{"success": false, "message": "参数错误"})
 		return
 	}
-
 	db := database.GetDB()
-
-	// 验证订单
 	var order models.Order
-	if err := db.Where("id = ? AND user_id = ?", req.OrderID, user.ID).First(&order).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+	if err := db.Where("id = ? AND user_id = ?", req.OrderID, u.ID).First(&order).Error; err != nil {
+		c.JSON(404, gin.H{"success": false, "message": "订单不存在"})
 		return
 	}
-
 	if order.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单状态不允许支付",
-		})
+		c.JSON(400, gin.H{"success": false, "message": "订单不可支付"})
 		return
 	}
-
-	// 获取支付配置
-	var paymentConfig models.PaymentConfig
-	if err := db.First(&paymentConfig, req.PaymentMethodID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "支付方式不存在",
-		})
+	var cfg models.PaymentConfig
+	if err := db.First(&cfg, req.PaymentMethodID).Error; err != nil || cfg.Status != 1 {
+		c.JSON(404, gin.H{"success": false, "message": "支付方式无效"})
 		return
 	}
-
-	if paymentConfig.Status != 1 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "支付方式已停用",
-		})
-		return
+	amt := int(order.Amount * 100)
+	if order.FinalAmount.Valid {
+		amt = int(order.FinalAmount.Float64 * 100)
 	}
-
-	// 计算支付金额（分）
-	amount := int(order.FinalAmount.Float64 * 100)
-	if !order.FinalAmount.Valid {
-		amount = int(order.Amount * 100)
-	}
-
-	// 创建支付交易
-	transaction := models.PaymentTransaction{
-		OrderID:         order.ID,
-		UserID:          user.ID,
-		PaymentMethodID: uint(req.PaymentMethodID),
-		Amount:          amount,
-		Currency:        "CNY",
-		Status:          "pending",
-	}
-
-	if err := db.Create(&transaction).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建支付交易失败",
-		})
-		return
-	}
-
-	// 根据支付方式调用相应的支付接口
-	var paymentURL string
-	var paymentErr error
-
-	paymentMethod := paymentConfig.PayType
-	switch paymentMethod {
-	case "alipay":
-		alipayService, err := payment.NewAlipayService(&paymentConfig)
-		if err == nil {
-			paymentURL, paymentErr = alipayService.CreatePayment(&order, float64(amount)/100)
-		} else {
-			paymentErr = err
-		}
-	case "wechat":
-		wechatService, err := payment.NewWechatService(&paymentConfig)
-		if err == nil {
-			paymentURL, paymentErr = wechatService.CreatePayment(&order, float64(amount)/100)
-		} else {
-			paymentErr = err
-		}
-	case "paypal":
-		paypalService, err := payment.NewPayPalService(&paymentConfig)
-		if err == nil {
-			paymentURL, paymentErr = paypalService.CreatePayment(&order, float64(amount)/100)
-		} else {
-			paymentErr = err
-		}
-	case "applepay":
-		applePayService, err := payment.NewApplePayService(&paymentConfig)
-		if err == nil {
-			paymentURL, paymentErr = applePayService.CreatePayment(&order, float64(amount)/100)
-		} else {
-			paymentErr = err
-		}
-	}
-
-	if paymentErr != nil {
-		// 不向客户端返回详细错误信息，防止信息泄露
-		utils.LogError("CreatePayment: generate payment URL", paymentErr, map[string]interface{}{
-			"order_id":       order.ID,
-			"payment_method": paymentMethod,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成支付链接失败，请稍后重试",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"transaction_id": transaction.ID,
-			"amount":         float64(amount) / 100,
-			"payment_url":    paymentURL,
-			"qr_code":        "", // 二维码可以通过前端生成
-		},
-	})
+	tx := models.PaymentTransaction{OrderID: order.ID, UserID: u.ID, PaymentMethodID: cfg.ID, Amount: amt, Status: "pending"}
+	db.Create(&tx)
+	c.JSON(200, gin.H{"success": true, "data": gin.H{"transaction_id": tx.ID, "amount": float64(amt) / 100}})
 }
 
 // PaymentNotify 支付回调

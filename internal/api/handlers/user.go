@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"cboard-go/internal/core/auth"
@@ -222,148 +221,70 @@ func UpdateCurrentUser(c *gin.Context) {
 	})
 }
 
-// GetUsers 获取用户列表（管理员）
 func GetUsers(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.User{})
-
-	// 分页参数
-	page := 1
-	size := 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	if kw := c.Query("keyword"); kw != "" {
+		sk := "%" + utils.SanitizeSearchKeyword(kw) + "%"
+		query = query.Where("username LIKE ? OR email LIKE ?", sk, sk)
 	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-
-	// 搜索参数
-	if keyword := c.Query("keyword"); keyword != "" {
-		// 清理和验证搜索关键词，防止SQL注入
-		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
-		if sanitizedKeyword != "" {
-			query = query.Where("username LIKE ? OR email LIKE ?", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
-		}
-	}
-
-	// 状态筛选
-	if status := c.Query("status"); status != "" {
-		switch status {
+	if st := c.Query("status"); st != "" {
+		switch st {
 		case "active":
 			query = query.Where("is_active = ?", true)
 		case "inactive":
 			query = query.Where("is_active = ?", false)
-		case "verified":
-			query = query.Where("is_verified = ?", true)
-		case "unverified":
-			query = query.Where("is_verified = ?", false)
 		case "admin":
 			query = query.Where("is_admin = ?", true)
 		}
 	}
-
-	// 日期范围筛选
-	// 支持两种格式：
-	// 1. date_range 作为数组参数：date_range[]=2024-01-01&date_range[]=2024-12-31
-	// 2. start_date 和 end_date 作为独立参数
-	startDate := c.Query("start_date")
-	endDate := c.Query("end_date")
-
-	// 如果 date_range 是数组格式
-	dateRangeArray := c.QueryArray("date_range[]")
-	if len(dateRangeArray) == 0 {
-		dateRangeArray = c.QueryArray("date_range")
-	}
-
-	if len(dateRangeArray) == 2 {
-		startDate = dateRangeArray[0]
-		endDate = dateRangeArray[1]
-	} else if dateRangeStr := c.Query("date_range"); dateRangeStr != "" {
-		// 尝试解析 JSON 数组格式的字符串
-		// 前端可能传递类似 "[\"2024-01-01\",\"2024-12-31\"]" 的格式
-		// 这里简化处理，假设是逗号分隔的格式
-		parts := strings.Split(dateRangeStr, ",")
-		if len(parts) == 2 {
-			startDate = strings.TrimSpace(parts[0])
-			endDate = strings.TrimSpace(parts[1])
-		}
-	}
-
-	// 应用日期范围筛选
-	if startDate != "" && endDate != "" {
-		// 解析日期
-		startTime, err1 := time.Parse("2006-01-02", startDate)
-		endTime, err2 := time.Parse("2006-01-02", endDate)
-
-		if err1 == nil && err2 == nil {
-			// 设置开始时间为当天的 00:00:00
-			startTime = time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location())
-			// 设置结束时间为当天的 23:59:59
-			endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 999999999, endTime.Location())
-			query = query.Where("created_at >= ? AND created_at <= ?", startTime, endTime)
-		}
-	}
-
-	// 计算总数
 	var total int64
 	query.Count(&total)
-
-	// 获取用户列表
 	var users []models.User
-	offset := (page - 1) * size
-	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取用户列表失败",
-		})
-		return
-	}
+	query.Offset((page - 1) * size).Limit(size).Order("created_at DESC").Find(&users)
+	list := make([]gin.H, 0, len(users))
+	now := utils.GetBeijingTime()
+	for _, u := range users {
+		var sub models.Subscription
+		db.Where("user_id = ?", u.ID).Order("created_at DESC").First(&sub)
 
-	// 转换为前端需要的格式
-	userList := make([]gin.H, 0)
-	for _, user := range users {
-		// 获取用户订阅
-		var subscription models.Subscription
-		_ = db.Where("user_id = ?", user.ID).First(&subscription) // 忽略错误，如果没有订阅就使用默认值
-
-		// 计算在线设备数
-		var onlineDevices int64
-		if subscription.ID > 0 {
-			db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&onlineDevices)
+		var online int64
+		var deviceLimit int
+		var currentDevices int
+		if sub.ID > 0 {
+			db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&online)
+			deviceLimit = sub.DeviceLimit
+			currentDevices = sub.CurrentDevices
+			// 如果当前设备数小于在线设备数，更新为在线设备数
+			if currentDevices < int(online) {
+				currentDevices = int(online)
+			}
 		}
 
-		// 计算状态
-		status := "inactive"
-		if user.IsActive {
-			status = "active"
-		}
-
-		// 计算订阅到期信息
+		// 计算订阅信息
 		var subscriptionInfo gin.H
-		if subscription.ID > 0 {
-			now := utils.GetBeijingTime()
+		if sub.ID > 0 {
+			// 计算剩余天数
 			daysUntilExpire := 0
 			isExpired := false
-			if !subscription.ExpireTime.IsZero() {
-				diff := subscription.ExpireTime.Sub(now)
+			if !sub.ExpireTime.IsZero() {
+				diff := sub.ExpireTime.Sub(now)
 				if diff > 0 {
 					daysUntilExpire = int(diff.Hours() / 24)
 				} else {
 					isExpired = true
 				}
 			}
+
 			subscriptionInfo = gin.H{
-				"id":                subscription.ID,
-				"device_limit":      subscription.DeviceLimit,
-				"status":            subscription.Status,
-				"is_active":         subscription.IsActive,
-				"expire_time":       subscription.ExpireTime.Format("2006-01-02 15:04:05"),
+				"id":                sub.ID,
+				"status":            sub.Status,
+				"is_active":         sub.IsActive,
+				"device_limit":      deviceLimit,
+				"current_devices":   currentDevices,
+				"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
 				"days_until_expire": daysUntilExpire,
 				"is_expired":        isExpired,
 			}
@@ -371,308 +292,140 @@ func GetUsers(c *gin.Context) {
 			subscriptionInfo = nil
 		}
 
-		userList = append(userList, gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"avatar": func() string {
-				if user.Avatar.Valid {
-					return user.Avatar.String
+		// 获取最后登录时间
+		lastLogin := ""
+		if u.LastLogin.Valid {
+			lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
+		}
+
+		list = append(list, gin.H{
+			"id":        u.ID,
+			"username":  u.Username,
+			"email":     u.Email,
+			"balance":   u.Balance,
+			"is_active": u.IsActive,
+			"is_admin":  u.IsAdmin,
+			"status": func() string {
+				if !u.IsActive {
+					return "inactive"
 				}
-				return ""
+				return "active"
 			}(),
-			"is_active":      user.IsActive,
-			"is_verified":    user.IsVerified,
-			"is_admin":       user.IsAdmin,
-			"balance":        user.Balance,
-			"status":         status,
-			"online_devices": onlineDevices,
+			"online_devices": online,
+			"created_at":     u.CreatedAt.Format("2006-01-02 15:04:05"),
+			"last_login":     lastLogin,
 			"subscription":   subscriptionInfo,
-			"created_at":     user.CreatedAt.Format("2006-01-02 15:04:05"),
-			"last_login": func() string {
-				if user.LastLogin.Valid {
-					return user.LastLogin.Time.Format("2006-01-02 15:04:05")
-				}
-				return ""
-			}(),
 		})
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"users": userList,
-			"total": total,
-			"page":  page,
-			"size":  size,
-		},
-	})
+	c.JSON(200, gin.H{"success": true, "data": gin.H{"users": list, "total": total, "page": page, "size": size}})
 }
 
-// GetUser 获取单个用户（管理员）
+// GetUser 获取用户信息（管理员，简化版）
 func GetUser(c *gin.Context) {
-	id := c.Param("id")
-
 	db := database.GetDB()
-	var user models.User
-	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+	var u models.User
+	if err := db.First(&u, c.Param("id")).Error; err != nil {
+		c.JSON(404, gin.H{"success": false, "message": "不存在"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    user,
-	})
+	c.JSON(200, gin.H{"success": true, "data": u})
 }
 
-// GetUserDetails 获取用户详细信息（包含订阅、订单、充值记录、活动记录）
 func GetUserDetails(c *gin.Context) {
-	id := c.Param("id")
-
 	db := database.GetDB()
-	var user models.User
-	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+	var u models.User
+	if err := db.First(&u, c.Param("id")).Error; err != nil {
+		c.JSON(404, gin.H{"success": false, "message": "不存在"})
 		return
 	}
 
-	// 获取用户订阅
-	var subscriptions []models.Subscription
-	db.Where("user_id = ?", user.ID).Find(&subscriptions)
-
-	// 获取用户订单
-	var orders []models.Order
-	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(50).Find(&orders)
-
-	// 获取充值记录
-	var rechargeRecords []models.RechargeRecord
-	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(50).Find(&rechargeRecords)
-
-	// 获取最近活动
-	var activities []models.UserActivity
-	db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(50).Find(&activities)
-
-	// 统计信息
-	var totalSpent float64
-	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").
-		Select("COALESCE(SUM(final_amount), 0)").Scan(&totalSpent)
-	if totalSpent == 0 {
-		db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").
-			Select("COALESCE(SUM(amount), 0)").Scan(&totalSpent)
+	// 格式化用户信息，确保时间字段正确格式化
+	lastLogin := ""
+	if u.LastLogin.Valid {
+		lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
 	}
 
-	var totalResets int64
-	db.Model(&models.UserActivity{}).Where("user_id = ? AND activity_type = ?", user.ID, "subscription_reset").Count(&totalResets)
+	userInfo := gin.H{
+		"id":          u.ID,
+		"username":    u.Username,
+		"email":       u.Email,
+		"balance":     u.Balance,
+		"is_active":   u.IsActive,
+		"is_verified": u.IsVerified,
+		"is_admin":    u.IsAdmin,
+		"created_at":  u.CreatedAt.Format("2006-01-02 15:04:05"),
+		"last_login":  lastLogin,
+		"theme":       u.Theme,
+		"language":    u.Language,
+		"timezone":    u.Timezone,
+	}
 
-	var recentResets30d int64
-	thirtyDaysAgo := utils.GetBeijingTime().AddDate(0, 0, -30)
-	db.Model(&models.UserActivity{}).Where("user_id = ? AND activity_type = ? AND created_at >= ?", user.ID, "subscription_reset", thirtyDaysAgo).Count(&recentResets30d)
+	// 添加可选字段
+	if u.Nickname.Valid {
+		userInfo["nickname"] = u.Nickname.String
+	}
+	if u.Avatar.Valid {
+		userInfo["avatar"] = u.Avatar.String
+		userInfo["avatar_url"] = u.Avatar.String
+	}
 
-	// 格式化订阅列表
-	subscriptionList := make([]gin.H, 0)
-	var totalAppleCount int64
-	var totalClashCount int64
+	var subs []models.Subscription
+	db.Where("user_id = ?", u.ID).Find(&subs)
 
-	for _, sub := range subscriptions {
-		// 统计该订阅的订阅次数
-		var appleCount int64
+	// 格式化订阅信息
+	formattedSubs := make([]gin.H, 0, len(subs))
+	for _, sub := range subs {
+		// 计算在线设备数
+		var online int64
+		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&online)
+
+		// 计算剩余天数
+		daysUntilExpire := 0
+		isExpired := false
+		now := utils.GetBeijingTime()
+		if !sub.ExpireTime.IsZero() {
+			diff := sub.ExpireTime.Sub(now)
+			if diff > 0 {
+				daysUntilExpire = int(diff.Hours() / 24)
+			} else {
+				isExpired = true
+			}
+		}
+
+		// 统计订阅类型
+		var appleCount, clashCount int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type IN ?", sub.ID, []string{"v2ray", "ssr"}).Count(&appleCount)
-
-		var clashCount int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND subscription_type = ?", sub.ID, "clash").Count(&clashCount)
 
-		totalAppleCount += appleCount
-		totalClashCount += clashCount
-
-		subscriptionList = append(subscriptionList, gin.H{
-			"id":               sub.ID,
-			"subscription_url": sub.SubscriptionURL,
-			"device_limit":     sub.DeviceLimit,
-			"current_devices":  sub.CurrentDevices,
-			"is_active":        sub.IsActive,
-			"status":           sub.Status,
-			"expire_time":      sub.ExpireTime.Format("2006-01-02 15:04:05"),
-			"created_at":       sub.CreatedAt.Format("2006-01-02 15:04:05"),
-			"apple_count":      appleCount,
-			"clash_count":      clashCount,
+		formattedSubs = append(formattedSubs, gin.H{
+			"id":                sub.ID,
+			"subscription_url":  sub.SubscriptionURL,
+			"status":            sub.Status,
+			"is_active":         sub.IsActive,
+			"device_limit":      sub.DeviceLimit,
+			"current_devices":   sub.CurrentDevices,
+			"online_devices":    online,
+			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+			"days_until_expire": daysUntilExpire,
+			"is_expired":        isExpired,
+			"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
+			"apple_count":       appleCount,
+			"clash_count":       clashCount,
 		})
 	}
 
-	// 格式化订单列表
-	orderList := make([]gin.H, 0)
-	for _, order := range orders {
-		amount := order.Amount
-		if order.FinalAmount.Valid {
-			amount = order.FinalAmount.Float64
-		}
-		paymentMethod := ""
-		if order.PaymentMethodName.Valid {
-			paymentMethod = order.PaymentMethodName.String
-		}
-		orderList = append(orderList, gin.H{
-			"id":                  order.ID,
-			"order_no":            order.OrderNo,
-			"amount":              amount,
-			"status":              order.Status,
-			"payment_method":      paymentMethod,
-			"payment_method_name": paymentMethod, // 兼容前端
-			"payment_time": func() string {
-				if order.PaymentTime.Valid {
-					return order.PaymentTime.Time.Format("2006-01-02 15:04:05")
-				}
-				return ""
-			}(),
-			"package_name": func() string {
-				if order.PackageID > 0 {
-					var pkg models.Package
-					if db.First(&pkg, order.PackageID).Error == nil {
-						return pkg.Name
-					}
-				}
-				return "未知"
-			}(),
-			"created_at": order.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
-	}
+	var orders []models.Order
+	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&orders)
 
-	// 格式化充值记录
-	rechargeList := make([]gin.H, 0)
-	for _, record := range rechargeRecords {
-		rechargeList = append(rechargeList, gin.H{
-			"id":             record.ID,
-			"order_no":       record.OrderNo,
-			"amount":         record.Amount,
-			"status":         record.Status,
-			"payment_method": record.PaymentMethod.String,
-			"ip_address":     record.IPAddress.String,
-			"paid_at": func() string {
-				if record.PaidAt.Valid {
-					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
-				}
-				return ""
-			}(),
-			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
-	}
+	var totalSpent float64
+	db.Model(&models.Order{}).Where("user_id = ? AND status = 'paid'", u.ID).Select("COALESCE(SUM(final_amount), SUM(amount), 0)").Scan(&totalSpent)
 
-	// 格式化活动记录
-	activityList := make([]gin.H, 0)
-	for _, activity := range activities {
-		activityList = append(activityList, gin.H{
-			"id":            activity.ID,
-			"activity_type": activity.ActivityType,
-			"description":   activity.Description.String,
-			"ip_address":    activity.IPAddress.String,
-			"created_at":    activity.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
-	}
-
-	// 获取用户设备列表（用于生成 UA 记录）
-	var devices []models.Device
-	db.Where("user_id = ?", user.ID).Order("created_at DESC").Find(&devices)
-
-	// 生成 UA 记录（从设备记录中提取）
-	uaRecords := make([]gin.H, 0)
-	for _, device := range devices {
-		getStringValue := func(ptr *string) string {
-			if ptr != nil {
-				return *ptr
-			}
-			return ""
-		}
-
-		uaRecords = append(uaRecords, gin.H{
-			"id":          device.ID,
-			"user_agent":  getStringValue(device.UserAgent),
-			"device_type": getStringValue(device.DeviceType),
-			"device_name": getStringValue(device.DeviceName),
-			"ip_address":  getStringValue(device.IPAddress),
-			"os_name":     getStringValue(device.OSName),
-			"os_version":  getStringValue(device.OSVersion),
-			"created_at":  device.CreatedAt.Format("2006-01-02 15:04:05"),
-			"last_access": device.LastAccess.Format("2006-01-02 15:04:05"),
-		})
-	}
-
-	// 构建响应
-	response := gin.H{
-		"id":       user.ID,
-		"username": user.Username,
-		"email":    user.Email,
-		"user_info": gin.H{
-			"id":          user.ID,
-			"username":    user.Username,
-			"email":       user.Email,
-			"is_active":   user.IsActive,
-			"is_verified": user.IsVerified,
-			"is_admin":    user.IsAdmin,
-			"balance":     user.Balance,
-			"created_at":  user.CreatedAt.Format("2006-01-02 15:04:05"),
-			"last_login": func() string {
-				if user.LastLogin.Valid {
-					return user.LastLogin.Time.Format("2006-01-02 15:04:05")
-				}
-				return ""
-			}(),
-		},
-		"subscriptions":     subscriptionList,
-		"orders":            orderList,
-		"recharge_records":  rechargeList,
-		"recent_activities": activityList,
-		"ua_records":        uaRecords, // 添加 UA 记录
-		"subscription_resets": func() []gin.H {
-			// 获取订阅重置记录
-			var resets []models.SubscriptionReset
-			db.Where("user_id = ?", user.ID).Order("created_at DESC").Limit(50).Find(&resets)
-			resetList := make([]gin.H, 0)
-			for _, reset := range resets {
-				resetData := gin.H{
-					"id":                  reset.ID,
-					"subscription_id":     reset.SubscriptionID,
-					"reset_type":          reset.ResetType,
-					"reason":              reset.Reason,
-					"device_count_before": reset.DeviceCountBefore,
-					"device_count_after":  reset.DeviceCountAfter,
-					"created_at":          reset.CreatedAt.Format("2006-01-02 15:04:05"),
-				}
-				// 添加旧订阅地址和新订阅地址
-				if reset.OldSubscriptionURL != nil {
-					resetData["old_subscription_url"] = *reset.OldSubscriptionURL
-				}
-				if reset.NewSubscriptionURL != nil {
-					resetData["new_subscription_url"] = *reset.NewSubscriptionURL
-				}
-				if reset.ResetBy != nil {
-					resetData["reset_by"] = *reset.ResetBy
-				}
-				resetList = append(resetList, resetData)
-			}
-			return resetList
-		}(),
-		"statistics": gin.H{
-			"total_spent":         totalSpent,
-			"total_resets":        totalResets,
-			"recent_resets_30d":   recentResets30d,
-			"total_subscriptions": len(subscriptions),
-			"subscription_count":  len(subscriptions),
-		},
-		// 添加订阅次数统计（兼容前端字段名）
-		"apple_count": totalAppleCount,
-		"clash_count": totalClashCount,
-		"v2ray_count": totalAppleCount, // 兼容字段
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    response,
-	})
+	c.JSON(200, gin.H{"success": true, "data": gin.H{
+		"user_info":     userInfo,
+		"subscriptions": formattedSubs,
+		"orders":        orders,
+		"statistics":    gin.H{"total_spent": totalSpent, "subscription_count": len(subs)},
+	}})
 }
 
 // CreateUser 创建用户（管理员）

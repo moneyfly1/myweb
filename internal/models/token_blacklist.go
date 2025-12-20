@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -38,7 +39,11 @@ func AddToBlacklist(db *gorm.DB, tokenHash string, userID uint, expiresAt time.T
 // IsTokenBlacklisted 检查Token是否在黑名单中
 func IsTokenBlacklisted(db *gorm.DB, tokenHash string) bool {
 	var blacklist TokenBlacklist
-	if err := db.Where("token_hash = ? AND expires_at > ?", tokenHash, time.Now()).First(&blacklist).Error; err != nil {
+	err := db.Where("token_hash = ? AND expires_at > ?", tokenHash, time.Now()).First(&blacklist).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false
+		}
 		return false
 	}
 	return true

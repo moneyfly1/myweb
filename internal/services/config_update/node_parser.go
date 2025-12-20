@@ -208,11 +208,16 @@ func parseVLESS(link string) (*ProxyNode, error) {
 	// TLS 配置
 	if security == "tls" || security == "xtls" || security == "reality" {
 		node.TLS = true
-		node.Options["skip-cert-verify"] = query.Get("allowInsecure") == "1"
+		node.Options["skip-cert-verify"] = query.Get("allowInsecure") == "1" || query.Get("allowInsecure") == "true"
 		if sni := query.Get("sni"); sni != "" {
 			node.Options["servername"] = sni
 		} else {
 			node.Options["servername"] = parsed.Hostname()
+		}
+
+		// Fingerprint 配置
+		if fp := query.Get("fp"); fp != "" {
+			node.Options["client-fingerprint"] = fp
 		}
 
 		// Reality 配置
@@ -224,6 +229,9 @@ func parseVLESS(link string) (*ProxyNode, error) {
 			if sid := query.Get("sid"); sid != "" {
 				realityOpts["short-id"] = sid
 			}
+			if pqv := query.Get("pqv"); pqv != "" {
+				realityOpts["pqv"] = pqv
+			}
 			if len(realityOpts) > 0 {
 				node.Options["reality-opts"] = realityOpts
 			}
@@ -232,6 +240,11 @@ func parseVLESS(link string) (*ProxyNode, error) {
 		// Flow 配置（用于 XTLS）
 		if flow := query.Get("flow"); flow != "" {
 			node.Options["flow"] = flow
+		}
+
+		// Encryption 配置
+		if encryption := query.Get("encryption"); encryption != "" {
+			node.Options["encryption"] = encryption
 		}
 	}
 
@@ -261,6 +274,11 @@ func parseVLESS(link string) (*ProxyNode, error) {
 		}
 		if len(grpcOpts) > 0 {
 			node.Options["grpc-opts"] = grpcOpts
+		}
+	} else if network == "tcp" {
+		// TCP 配置
+		if headerType := query.Get("headerType"); headerType != "" {
+			node.Options["header-type"] = headerType
 		}
 	}
 
@@ -298,24 +316,49 @@ func parseTrojan(link string) (*ProxyNode, error) {
 	}
 
 	// TLS 配置
-	node.Options["skip-cert-verify"] = query.Get("allowInsecure") == "1"
+	node.Options["skip-cert-verify"] = query.Get("allowInsecure") == "1" || query.Get("allowInsecure") == "true"
 	if sni := query.Get("sni"); sni != "" {
 		node.Options["servername"] = sni
+	} else if peer := query.Get("peer"); peer != "" {
+		node.Options["servername"] = peer
 	} else {
 		node.Options["servername"] = parsed.Hostname()
 	}
 
+	// Fingerprint 配置
+	if fp := query.Get("fp"); fp != "" {
+		node.Options["client-fingerprint"] = fp
+	}
+
+	// ALPN 配置
+	if alpn := query.Get("alpn"); alpn != "" {
+		alpnList := strings.Split(alpn, ",")
+		node.Options["alpn"] = alpnList
+	}
+
 	// 网络配置
 	if network == "ws" {
-		node.Options["ws-opts"] = map[string]interface{}{
-			"path": query.Get("path"),
-			"headers": map[string]string{
-				"Host": query.Get("host"),
-			},
+		wsOpts := make(map[string]interface{})
+		if path := query.Get("path"); path != "" {
+			wsOpts["path"] = path
+		}
+		headers := make(map[string]string)
+		if host := query.Get("host"); host != "" {
+			headers["Host"] = host
+		}
+		if len(headers) > 0 {
+			wsOpts["headers"] = headers
+		}
+		if len(wsOpts) > 0 {
+			node.Options["ws-opts"] = wsOpts
 		}
 	} else if network == "grpc" {
-		node.Options["grpc-opts"] = map[string]interface{}{
-			"grpc-service-name": query.Get("serviceName"),
+		grpcOpts := make(map[string]interface{})
+		if serviceName := query.Get("serviceName"); serviceName != "" {
+			grpcOpts["grpc-service-name"] = serviceName
+		}
+		if len(grpcOpts) > 0 {
+			node.Options["grpc-opts"] = grpcOpts
 		}
 	}
 
@@ -521,6 +564,7 @@ func parseHysteria2(link string) (*ProxyNode, error) {
 		Server:   parsed.Hostname(),
 		Port:     getPort(parsed),
 		Password: password,
+		TLS:      true,
 		Options:  make(map[string]interface{}),
 	}
 
@@ -531,7 +575,22 @@ func parseHysteria2(link string) (*ProxyNode, error) {
 		node.Options["down"] = down + " mbps"
 	}
 
-	node.Options["skip-cert-verify"] = query.Get("insecure") == "1"
+	node.Options["skip-cert-verify"] = query.Get("insecure") == "1" || query.Get("insecure") == "true"
+
+	// TLS 配置
+	if sni := query.Get("sni"); sni != "" {
+		node.Options["servername"] = sni
+	} else if peer := query.Get("peer"); peer != "" {
+		node.Options["servername"] = peer
+	} else {
+		node.Options["servername"] = parsed.Hostname()
+	}
+
+	// ALPN 配置
+	if alpn := query.Get("alpn"); alpn != "" {
+		alpnList := strings.Split(alpn, ",")
+		node.Options["alpn"] = alpnList
+	}
 
 	return node, nil
 }
