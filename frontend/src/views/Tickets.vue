@@ -28,7 +28,19 @@
     <!-- 工单列表 -->
     <el-table :data="tickets" v-loading="loading" style="width: 100%">
       <el-table-column prop="ticket_no" label="工单编号" width="180" />
-      <el-table-column prop="title" label="标题" />
+      <el-table-column prop="title" label="标题">
+        <template #default="{ row }">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>{{ row.title }}</span>
+            <el-badge 
+              v-if="row.has_unread && row.unread_replies > 0" 
+              :value="row.unread_replies" 
+              :max="99"
+              type="danger"
+            />
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="type" label="类型" width="100">
         <template #default="{ row }">
           <el-tag :type="getTypeTagType(row.type)">{{ getTypeText(row.type) }}</el-tag>
@@ -47,7 +59,16 @@
       <el-table-column prop="created_at" label="创建时间" width="180" />
       <el-table-column label="操作" width="150">
         <template #default="{ row }">
-          <el-button size="small" @click="viewTicket(row.id)">查看</el-button>
+          <el-button size="small" @click="viewTicket(row.id)">
+            查看
+            <el-badge 
+              v-if="row.has_unread && row.unread_replies > 0" 
+              :value="row.unread_replies" 
+              :max="99"
+              type="danger"
+              style="margin-left: 4px;"
+            />
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -60,7 +81,15 @@
         class="mobile-ticket-card"
       >
         <div class="ticket-card-header">
-          <h4>{{ ticket.title }}</h4>
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+            <h4>{{ ticket.title }}</h4>
+            <el-badge 
+              v-if="ticket.has_unread && ticket.unread_replies > 0" 
+              :value="ticket.unread_replies" 
+              :max="99"
+              type="danger"
+            />
+          </div>
           <el-tag :type="getStatusTagType(ticket.status)" size="small">
             {{ getStatusText(ticket.status) }}
           </el-tag>
@@ -173,12 +202,33 @@
         <div class="ticket-replies">
           <h4>回复记录 ({{ currentTicket.replies?.length || 0 }})</h4>
           <div v-if="currentTicket.replies && currentTicket.replies.length > 0">
-            <div v-for="reply in currentTicket.replies" :key="reply.id" class="reply-item" :class="{ 'admin-reply': reply.is_admin === 'true' }">
+            <div 
+              v-for="reply in currentTicket.replies" 
+              :key="reply.id" 
+              class="reply-item" 
+              :class="{ 
+                'admin-reply': reply.is_admin === 'true' || reply.is_admin_reply,
+                'user-reply': reply.is_admin !== 'true' && !reply.is_admin_reply
+              }"
+            >
               <div class="reply-header">
-                <span>{{ reply.is_admin === 'true' ? '管理员' : '我' }}</span>
-                <span>{{ reply.created_at }}</span>
+                <div class="reply-author-info">
+                  <el-icon v-if="reply.is_admin === 'true' || reply.is_admin_reply" class="admin-icon">
+                    <UserFilled />
+                  </el-icon>
+                  <el-tag 
+                    :type="reply.is_admin === 'true' || reply.is_admin_reply ? 'success' : 'info'" 
+                    size="small"
+                    effect="dark"
+                  >
+                    {{ reply.is_admin === 'true' || reply.is_admin_reply ? '管理员回复' : '我的回复' }}
+                  </el-tag>
+                </div>
+                <span class="reply-time">{{ reply.created_at }}</span>
               </div>
-              <div class="reply-content">{{ reply.content }}</div>
+              <div class="reply-content" :class="{ 'admin-content': reply.is_admin === 'true' || reply.is_admin_reply }">
+                {{ reply.content }}
+              </div>
             </div>
           </div>
           <div v-else class="empty-replies">
@@ -202,7 +252,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 
 const loading = ref(false)
@@ -303,6 +353,14 @@ const viewTicket = async (ticketId) => {
       currentTicket.value = ticketData
       console.log('[用户前端] 当前工单:', currentTicket.value, '工单ID:', currentTicket.value.id)
       showDetailDialog.value = true
+      
+      // 用户查看工单后，刷新工单列表和未读数量
+      // 延迟一下，确保后端已记录已读状态
+      setTimeout(async () => {
+        await loadTickets()
+        // 触发父组件刷新未读数量（通过 window 事件）
+        window.dispatchEvent(new CustomEvent('ticket-viewed'))
+      }, 500)
     } else {
       ElMessage.error(response.data?.message || '加载工单详情失败')
     }
@@ -332,6 +390,8 @@ const addReply = async () => {
       replyContent.value = ''
       // 重新加载工单详情以显示新回复
       await viewTicket(currentTicket.value.id)
+      // 刷新工单列表以更新未读状态
+      await loadTickets()
     } else {
       console.error('[用户前端] 回复失败，响应数据:', response.data)
       ElMessage.error(response.data?.message || '回复失败')
@@ -457,25 +517,71 @@ onMounted(() => {
 .reply-item {
   margin-bottom: 15px;
   padding: 15px;
-  background: #f9f9f9;
-  border-radius: 4px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  
+  &.user-reply {
+    background: #f5f5f5;
+    border-left: 3px solid #909399;
+  }
   
   &.admin-reply {
-    background: #e8f4fd;
-    border-left: 3px solid #409eff;
+    background: linear-gradient(135deg, #e8f4fd 0%, #d4edff 100%);
+    border-left: 4px solid #409eff;
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
+    animation: highlightAdminReply 0.5s ease;
+  }
+}
+
+@keyframes highlightAdminReply {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 4px 16px rgba(64, 158, 255, 0.3);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
   }
 }
 
 .reply-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
+  align-items: center;
+  margin-bottom: 12px;
   font-size: 12px;
-  color: #666;
+  
+  .reply-author-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    
+    .admin-icon {
+      color: #409eff;
+      font-size: 16px;
+    }
+  }
+  
+  .reply-time {
+    color: #666;
+    font-size: 12px;
+  }
 }
 
 .reply-content {
   color: #333;
+  line-height: 1.6;
+  font-size: 14px;
+  
+  &.admin-content {
+    color: #1a1a1a;
+    font-weight: 500;
+    font-size: 15px;
+  }
 }
 
 .ticket-reply-form {

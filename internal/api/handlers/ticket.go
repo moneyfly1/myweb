@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,6 +14,63 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// GetUnreadTicketRepliesCount 获取未读工单回复总数（用户和管理员通用）
+func GetUnreadTicketRepliesCount(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "未登录",
+		})
+		return
+	}
+
+	// 检查是否为管理员
+	isAdmin := false
+	if isAdminVal, exists := c.Get("is_admin"); exists {
+		if isAdminBool, ok := isAdminVal.(bool); ok {
+			isAdmin = isAdminBool
+		} else if isAdminStr, ok := isAdminVal.(string); ok {
+			isAdmin = isAdminStr == "true" || isAdminStr == "1"
+		}
+	}
+
+	db := database.GetDB()
+	var totalUnread int64 = 0
+	
+	if !isAdmin {
+		// 用户端：统计未读的管理员回复
+		db.Model(&models.TicketReply{}).
+			Joins("JOIN tickets ON ticket_replies.ticket_id = tickets.id").
+			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_replies.is_read = ? OR ticket_replies.read_by != ? OR ticket_replies.read_by IS NULL)", 
+				user.ID, "true", false, user.ID).
+			Count(&totalUnread)
+	} else {
+		// 管理员端：统计未读的用户回复 + 新工单
+		// 1. 统计未读的用户回复
+		var unreadReplies int64
+		db.Model(&models.TicketReply{}).
+			Where("is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
+				"true", false, user.ID).
+			Count(&unreadReplies)
+		
+		// 2. 统计管理员未查看的新工单
+		var newTickets int64
+		db.Model(&models.Ticket{}).
+			Where("id NOT IN (SELECT ticket_id FROM ticket_reads WHERE user_id = ?)", user.ID).
+			Count(&newTickets)
+		
+		totalUnread = unreadReplies + newTickets
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"count": totalUnread,
+		},
+	})
+}
 
 // CreateTicket 创建工单
 func CreateTicket(c *gin.Context) {
@@ -152,19 +210,55 @@ func GetTickets(c *gin.Context) {
 		return
 	}
 
-	// 格式化工单数据
+	// 格式化工单数据，包含未读回复数量
 	ticketList := make([]gin.H, 0)
 	for _, ticket := range tickets {
+		var unreadRepliesCount int64 = 0
+		var hasUnread bool = false
+		
+		if !isAdmin {
+			// 用户端：统计未读的管理员回复（is_read = false 或 read_by != user_id）
+			db.Model(&models.TicketReply{}).
+				Where("ticket_id = ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
+					ticket.ID, "true", false, user.ID).
+				Count(&unreadRepliesCount)
+			hasUnread = unreadRepliesCount > 0
+		} else {
+			// 管理员端：统计未读的用户回复（is_read = false 或 read_by != admin_id）
+			db.Model(&models.TicketReply{}).
+				Where("ticket_id = ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
+					ticket.ID, "true", false, user.ID).
+				Count(&unreadRepliesCount)
+			// 还要检查是否有新工单（工单创建后管理员未查看）
+			var ticketRead models.TicketRead
+			err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, user.ID).First(&ticketRead).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 管理员未查看过该工单，也算未读
+				hasUnread = true
+			} else {
+				hasUnread = unreadRepliesCount > 0
+			}
+		}
+
+		// 查询总回复数量
+		var totalRepliesCount int64
+		db.Model(&models.TicketReply{}).
+			Where("ticket_id = ?", ticket.ID).
+			Count(&totalRepliesCount)
+
 		ticketList = append(ticketList, gin.H{
-			"id":         ticket.ID,
-			"ticket_no":  ticket.TicketNo,
-			"title":      ticket.Title,
-			"content":    ticket.Content,
-			"type":       ticket.Type,
-			"status":     ticket.Status,
-			"priority":   ticket.Priority,
-			"created_at": ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at": ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"id":                 ticket.ID,
+			"ticket_no":          ticket.TicketNo,
+			"title":              ticket.Title,
+			"content":            ticket.Content,
+			"type":               ticket.Type,
+			"status":             ticket.Status,
+			"priority":           ticket.Priority,
+			"created_at":         ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":         ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"replies_count":      totalRepliesCount,
+			"unread_replies":     unreadRepliesCount, // 未读回复数量
+			"has_unread":         hasUnread, // 是否有未读回复或新工单
 		})
 	}
 
@@ -229,9 +323,153 @@ func GetTicket(c *gin.Context) {
 		return
 	}
 
+	// 构建响应数据，确保包含 replies
+	responseData := gin.H{
+		"id":         ticket.ID,
+		"ticket_no":  ticket.TicketNo,
+		"user_id":    ticket.UserID,
+		"title":      ticket.Title,
+		"content":    ticket.Content,
+		"type":       ticket.Type,
+		"status":     ticket.Status,
+		"priority":   ticket.Priority,
+		"created_at": ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updated_at": ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	// 添加可选字段
+	if ticket.AssignedTo != nil {
+		responseData["assigned_to"] = *ticket.AssignedTo
+	}
+	if ticket.AdminNotes != nil {
+		responseData["admin_notes"] = *ticket.AdminNotes
+	}
+	if ticket.Rating != nil {
+		responseData["rating"] = *ticket.Rating
+	}
+	if ticket.RatingComment != nil {
+		responseData["rating_comment"] = *ticket.RatingComment
+	}
+	if ticket.ResolvedAt != nil {
+		responseData["resolved_at"] = ticket.ResolvedAt.Format("2006-01-02 15:04:05")
+	}
+	if ticket.ClosedAt != nil {
+		responseData["closed_at"] = ticket.ClosedAt.Format("2006-01-02 15:04:05")
+	}
+
+	// 格式化回复数据，突出显示管理员回复，并标记未读状态
+	replies := make([]gin.H, 0)
+	for _, reply := range ticket.Replies {
+		replyData := gin.H{
+			"id":         reply.ID,
+			"ticket_id":  reply.TicketID,
+			"user_id":    reply.UserID,
+			"content":    reply.Content,
+			"is_admin":   reply.IsAdmin,
+			"created_at": reply.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		// 标记是否为管理员回复，用于前端样式区分
+		if reply.IsAdmin == "true" {
+			replyData["is_admin_reply"] = true
+		}
+		
+		// 判断是否为未读（对于用户：管理员回复未读；对于管理员：用户回复未读）
+		isUnread := false
+		if !isAdmin && reply.IsAdmin == "true" {
+			// 用户查看：管理员回复未读
+			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
+		} else if isAdmin && reply.IsAdmin != "true" {
+			// 管理员查看：用户回复未读
+			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
+		}
+		replyData["is_unread"] = isUnread
+		
+		replies = append(replies, replyData)
+	}
+	responseData["replies"] = replies
+
+	// 格式化附件数据
+	attachments := make([]gin.H, 0)
+	for _, attachment := range ticket.Attachments {
+		att := gin.H{
+			"id":          attachment.ID,
+			"ticket_id":   attachment.TicketID,
+			"file_name":   attachment.FileName,
+			"file_path":   attachment.FilePath,
+			"uploaded_by": attachment.UploadedBy,
+			"created_at":  attachment.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if attachment.ReplyID != nil {
+			att["reply_id"] = *attachment.ReplyID
+		}
+		if attachment.FileSize != nil {
+			att["file_size"] = *attachment.FileSize
+		}
+		if attachment.FileType != nil {
+			att["file_type"] = *attachment.FileType
+		}
+		attachments = append(attachments, att)
+	}
+	responseData["attachments"] = attachments
+
+	// 添加用户信息（如果已预加载）
+	if ticket.User.ID > 0 {
+		responseData["user"] = gin.H{
+			"id":       ticket.User.ID,
+			"username": ticket.User.Username,
+			"email":    ticket.User.Email,
+		}
+	}
+
+	// 添加分配人信息（如果已预加载）
+	if ticket.Assignee.ID > 0 {
+		responseData["assignee"] = gin.H{
+			"id":       ticket.Assignee.ID,
+			"username": ticket.Assignee.Username,
+			"email":    ticket.Assignee.Email,
+		}
+	}
+
+	// 标记回复为已读：用户查看时标记管理员回复为已读，管理员查看时标记用户回复为已读
+	nowTime := utils.GetBeijingTime()
+	userID := user.ID
+	for i := range ticket.Replies {
+		reply := &ticket.Replies[i]
+		shouldMarkAsRead := false
+		if !isAdmin && reply.IsAdmin == "true" {
+			// 用户查看：标记管理员回复为已读
+			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
+		} else if isAdmin && reply.IsAdmin != "true" {
+			// 管理员查看：标记用户回复为已读
+			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
+		}
+		
+		if shouldMarkAsRead {
+			reply.IsRead = true
+			reply.ReadBy = &userID
+			reply.ReadAt = &nowTime
+			db.Save(reply)
+		}
+	}
+	
+	// 记录工单查看时间（用于统计）
+	var ticketRead models.TicketRead
+	err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, user.ID).First(&ticketRead).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		ticketRead = models.TicketRead{
+			TicketID: ticket.ID,
+			UserID:   user.ID,
+			ReadAt:   nowTime,
+		}
+		db.Create(&ticketRead)
+	} else if err == nil {
+		ticketRead.ReadAt = nowTime
+		db.Save(&ticketRead)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    ticket,
+		"data":    responseData,
 	})
 }
 
@@ -288,12 +526,13 @@ func ReplyTicket(c *gin.Context) {
 		return
 	}
 
-	// 创建回复
+	// 创建回复（默认未读）
 	reply := models.TicketReply{
 		TicketID: ticket.ID,
 		UserID:   user.ID,
 		Content:  req.Content,
 		IsAdmin:  fmt.Sprintf("%v", isAdmin),
+		IsRead:   false, // 新回复默认未读
 	}
 
 	if err := db.Create(&reply).Error; err != nil {

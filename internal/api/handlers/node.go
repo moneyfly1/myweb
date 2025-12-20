@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
@@ -212,16 +213,24 @@ func GetNodes(c *gin.Context) {
 						if name == "" {
 							name = "专线定制-" + cn.Name
 						}
-						uniqueNodes = append(uniqueNodes, models.Node{
-							ID:       cn.ID + 1000000,
-							Name:     name,
-							Type:     cn.Protocol,
-							Region:   cn.Domain,
-							Status:   cn.Status, // 使用 CustomNode 自身的 status
-							IsActive: true,
-							IsManual: true,
-							Config:   &cfgStr,
-						})
+					// 设置最后测试时间
+					var lastTest *time.Time
+					if cn.LastTest != nil {
+						lastTest = cn.LastTest
+					}
+					
+					uniqueNodes = append(uniqueNodes, models.Node{
+						ID:       cn.ID + 1000000,
+						Name:     name,
+						Type:     cn.Protocol,
+						Region:   cn.Domain,
+						Status:   cn.Status, // 使用 CustomNode 自身的 status
+						Latency:  cn.Latency, // 使用 CustomNode 的延迟
+						LastTest: lastTest,    // 使用 CustomNode 的最后测试时间
+						IsActive: true,
+						IsManual: true,
+						Config:   &cfgStr,
+					})
 					}
 				}
 			}
@@ -377,13 +386,75 @@ func DeleteNode(c *gin.Context) {
 }
 
 func TestNode(c *gin.Context) {
-	var node models.Node
-	db := database.GetDB()
-	if db.First(&node, c.Param("id")).Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "不存在"})
+	nodeIDStr := c.Param("id")
+	nodeID, err := strconv.ParseUint(nodeIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的节点ID"})
 		return
 	}
+
+	db := database.GetDB()
 	svc := node_health.NewNodeHealthService()
+
+	// 判断是否为专线节点（ID > 1000000）
+	if nodeID > 1000000 {
+		// 专线节点：从 custom_nodes 表查询
+		customNodeID := uint(nodeID - 1000000)
+		var customNode models.CustomNode
+		if db.First(&customNode, customNodeID).Error != nil {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "专线节点不存在"})
+			return
+		}
+
+		// 构建临时 Node 对象用于测试
+		var nc models.NodeConfig
+		if err := json.Unmarshal([]byte(customNode.Config), &nc); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "解析节点配置失败"})
+			return
+		}
+
+		cfgJSON, _ := json.Marshal(config_update.ProxyNode{
+			Type:     nc.Type,
+			Server:   nc.Server,
+			Port:     nc.Port,
+			UUID:     nc.UUID,
+			Password: nc.Password,
+			Network:  nc.Network,
+			Cipher:   nc.Encryption,
+			TLS:      nc.Security == "tls",
+		})
+		cfgStr := string(cfgJSON)
+
+		tempNode := models.Node{
+			ID:     uint(nodeID),
+			Config: &cfgStr,
+		}
+
+		// 测试节点
+		res, err := svc.TestNode(&tempNode)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+
+		// 更新专线节点的状态和延迟
+		now := utils.GetBeijingTime()
+		customNode.Status = res.Status
+		customNode.Latency = res.Latency
+		customNode.LastTest = &now
+		db.Save(&customNode)
+
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": res})
+		return
+	}
+
+	// 普通节点：从 nodes 表查询
+	var node models.Node
+	if db.First(&node, nodeID).Error != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "节点不存在"})
+		return
+	}
+	
 	res, err := svc.TestNode(&node)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})

@@ -451,7 +451,8 @@ export default {
       const statusMap = {
         online: 'success',
         offline: 'danger',
-        timeout: 'warning'
+        timeout: 'warning',
+        inactive: 'info'
       }
       return statusMap[status?.toLowerCase()] || 'info'
     }
@@ -461,7 +462,8 @@ export default {
       const statusMap = {
         online: '在线',
         offline: '离线',
-        timeout: '超时'
+        timeout: '超时',
+        inactive: '未激活'
       }
       return statusMap[status?.toLowerCase()] || status || '未知'
     }

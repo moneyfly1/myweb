@@ -70,6 +70,13 @@
             class="nav-item" :class="{ active: isRouteActive(item.path) }" @click="handleNavClick">
             <i :class="item.icon"></i>
             <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
+            <el-badge 
+              v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)" 
+              :value="item.badge" 
+              :max="99"
+              type="danger"
+              class="nav-badge"
+            />
           </router-link>
         </div>
       </nav>
@@ -123,7 +130,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { adminAPI } from '@/utils/api'
+import { adminAPI, ticketAPI } from '@/utils/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -150,50 +157,73 @@ const adminMenuOptions = [
   { label: '退出登录', icon: 'el-icon-switch-button', command: 'logout', divided: true }
 ]
 
-const menuSections = [
-  { title: '概览', items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }] },
-  { 
-    title: '用户管理', 
-    items: [
-      { path: '/admin/users', title: '用户列表', icon: 'el-icon-user' },
-      { path: '/admin/abnormal-users', title: '异常用户', icon: 'el-icon-warning' },
-      { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' }
-    ] 
-  },
-  {
-    title: '节点管理',
-    items: [
-      { path: '/admin/nodes', title: '节点管理', icon: 'el-icon-server' },
-      { path: '/admin/custom-nodes', title: '专线节点管理', icon: 'el-icon-connection' },
-      { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' }
-    ]
-  },
-  { 
-    title: '订单管理', 
-    items: [
-      { path: '/admin/orders', title: '订单列表', icon: 'el-icon-shopping-cart-2' },
-      { path: '/admin/packages', title: '套餐管理', icon: 'el-icon-goods' }
-    ] 
-  },
-  {
-    title: '系统管理',
-    items: [
-      { path: '/admin/config', title: '配置管理', icon: 'el-icon-setting' },
-      { path: '/admin/payment-config', title: '支付配置', icon: 'el-icon-wallet' },
-      { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' },
-      { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' }
-    ]
-  },
-  {
-    title: '其他管理',
-    items: [
-      { path: '/admin/invites', title: '邀请管理', icon: 'el-icon-user-solid' },
-      { path: '/admin/tickets', title: '工单管理', icon: 'el-icon-s-order' },
-      { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' },
-      { path: '/admin/user-levels', title: '用户等级管理', icon: 'el-icon-medal' }
-    ]
+const unreadTicketCount = ref(0)
+let unreadCheckInterval = null
+
+// 获取未读工单数量
+const loadUnreadTicketCount = async () => {
+  try {
+    const response = await ticketAPI.getUnreadCount()
+    if (response.data && response.data.success) {
+      unreadTicketCount.value = response.data.data?.count || 0
+    }
+  } catch (error) {
+    console.warn('获取未读工单数量失败:', error)
   }
-]
+}
+
+const menuSections = computed(() => {
+  const baseSections = [
+    { title: '概览', items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }] },
+    { 
+      title: '用户管理', 
+      items: [
+        { path: '/admin/users', title: '用户列表', icon: 'el-icon-user' },
+        { path: '/admin/abnormal-users', title: '异常用户', icon: 'el-icon-warning' },
+        { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' }
+      ] 
+    },
+    {
+      title: '节点管理',
+      items: [
+        { path: '/admin/nodes', title: '节点管理', icon: 'el-icon-server' },
+        { path: '/admin/custom-nodes', title: '专线节点管理', icon: 'el-icon-connection' },
+        { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' }
+      ]
+    },
+    { 
+      title: '订单管理', 
+      items: [
+        { path: '/admin/orders', title: '订单列表', icon: 'el-icon-shopping-cart-2' },
+        { path: '/admin/packages', title: '套餐管理', icon: 'el-icon-goods' }
+      ] 
+    },
+    {
+      title: '系统管理',
+      items: [
+        { path: '/admin/config', title: '配置管理', icon: 'el-icon-setting' },
+        { path: '/admin/payment-config', title: '支付配置', icon: 'el-icon-wallet' },
+        { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' },
+        { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' }
+      ]
+    },
+    {
+      title: '其他管理',
+      items: [
+        { path: '/admin/invites', title: '邀请管理', icon: 'el-icon-user-solid' },
+        { 
+          path: '/admin/tickets', 
+          title: '工单管理', 
+          icon: 'el-icon-s-order',
+          badge: unreadTicketCount.value > 0 ? unreadTicketCount.value : null
+        },
+        { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' },
+        { path: '/admin/user-levels', title: '用户等级管理', icon: 'el-icon-medal' }
+      ]
+    }
+  ]
+  return baseSections
+})
 
 // --- 计算属性 ---
 const currentTheme = computed(() => themeStore.currentTheme)
@@ -283,9 +313,30 @@ onMounted(() => {
   checkMobile()
   loadStats()
   window.addEventListener('resize', checkMobile)
+  // 加载未读工单数量
+  loadUnreadTicketCount()
+  // 每30秒刷新一次未读数量
+  unreadCheckInterval = setInterval(() => {
+    loadUnreadTicketCount()
+  }, 30000)
+  // 监听工单查看事件
+  window.addEventListener('ticket-viewed', loadUnreadTicketCount)
+  // 监听路由变化，当进入工单页面时刷新未读数量
+  watch(() => route.path, (newPath) => {
+    if (newPath === '/admin/tickets') {
+      loadUnreadTicketCount()
+    }
+  })
 })
 
-onUnmounted(() => window.removeEventListener('resize', checkMobile))
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('ticket-viewed', loadUnreadTicketCount)
+  if (unreadCheckInterval) {
+    clearInterval(unreadCheckInterval)
+    unreadCheckInterval = null
+  }
+})
 
 const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentTheme.value)?.label || '主题'
 const getCurrentThemeColor = () => themes.value.find(t => t.value === currentTheme.value)?.color || '#409EFF'
@@ -364,9 +415,23 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     margin-bottom: 24px;
     .nav-section-title { padding: 12px 20px 8px; font-size: 12px; font-weight: 600; color: #909399; }
     .nav-item {
-      display: flex; align-items: center; padding: 12px 20px; color: var(--theme-text); text-decoration: none;
+      display: flex; 
+      align-items: center; 
+      padding: 12px 20px; 
+      color: var(--theme-text); 
+      text-decoration: none;
       transition: 0.3s;
+      position: relative;
+      
       i { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
+      
+      .nav-badge {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      
       &:hover { background: var(--sidebar-hover-bg, #f5f7fa); color: var(--theme-primary); }
       &.active { background: var(--theme-primary); color: white; }
       @include respond-to(sm) { 

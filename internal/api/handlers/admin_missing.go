@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -210,28 +211,53 @@ func GetAdminTickets(c *gin.Context) {
 		return
 	}
 
-	// 为每个工单添加回复数量
+	// 获取当前管理员用户ID（用于计算未读）
+	adminUser, _ := middleware.GetCurrentUser(c)
+	adminUserID := uint(0)
+	if adminUser != nil {
+		adminUserID = adminUser.ID
+	}
+
+	// 为每个工单添加回复数量和未读提醒
 	ticketList := make([]gin.H, 0)
 	for _, ticket := range tickets {
 		var repliesCount int64
 		db.Model(&models.TicketReply{}).Where("ticket_id = ?", ticket.ID).Count(&repliesCount)
 
+		// 计算未读回复数量（用户回复）
+		var unreadRepliesCount int64 = 0
+		if adminUserID > 0 {
+			db.Model(&models.TicketReply{}).
+				Where("ticket_id = ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
+					ticket.ID, "true", false, adminUserID).
+				Count(&unreadRepliesCount)
+		}
+
+		// 检查是否有新工单（管理员未查看过）
+		var ticketRead models.TicketRead
+		err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, adminUserID).First(&ticketRead).Error
+		hasNewTicket := errors.Is(err, gorm.ErrRecordNotFound)
+		hasUnread := unreadRepliesCount > 0 || hasNewTicket
+
 		ticketList = append(ticketList, gin.H{
-			"id":            ticket.ID,
-			"ticket_no":     ticket.TicketNo,
-			"user_id":       ticket.UserID,
-			"user":          ticket.User,
-			"title":         ticket.Title,
-			"content":       ticket.Content,
-			"type":          ticket.Type,
-			"status":        ticket.Status,
-			"priority":      ticket.Priority,
-			"assigned_to":   ticket.AssignedTo,
-			"assignee":      ticket.Assignee,
-			"admin_notes":   ticket.AdminNotes,
-			"replies_count": repliesCount,
-			"created_at":    ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":    ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"id":                 ticket.ID,
+			"ticket_no":          ticket.TicketNo,
+			"user_id":            ticket.UserID,
+			"user":               ticket.User,
+			"title":              ticket.Title,
+			"content":            ticket.Content,
+			"type":               ticket.Type,
+			"status":             ticket.Status,
+			"priority":            ticket.Priority,
+			"assigned_to":        ticket.AssignedTo,
+			"assignee":           ticket.Assignee,
+			"admin_notes":        ticket.AdminNotes,
+			"replies_count":      repliesCount,
+			"unread_replies":     unreadRepliesCount,
+			"has_unread":         hasUnread,
+			"has_new_ticket":     hasNewTicket,
+			"created_at":         ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":         ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -301,6 +327,86 @@ func GetAdminTicket(c *gin.Context) {
 	var repliesCount int64
 	db.Model(&models.TicketReply{}).Where("ticket_id = ?", ticket.ID).Count(&repliesCount)
 
+	// 获取当前管理员用户ID
+	adminUser, _ := middleware.GetCurrentUser(c)
+	adminUserID := uint(0)
+	if adminUser != nil {
+		adminUserID = adminUser.ID
+	}
+
+	// 格式化回复数据，标记未读状态
+	replies := make([]gin.H, 0)
+	now := utils.GetBeijingTime()
+	for _, reply := range ticket.Replies {
+		replyData := gin.H{
+			"id":         reply.ID,
+			"ticket_id":  reply.TicketID,
+			"user_id":    reply.UserID,
+			"content":    reply.Content,
+			"is_admin":   reply.IsAdmin,
+			"created_at": reply.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		
+		// 标记是否为未读（管理员查看：用户回复未读）
+		if reply.IsAdmin != "true" {
+			isUnread := !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != adminUserID)
+			replyData["is_unread"] = isUnread
+			replyData["is_user_reply"] = true
+			
+			// 标记为已读
+			if isUnread && adminUserID > 0 {
+				reply.IsRead = true
+				reply.ReadBy = &adminUserID
+				reply.ReadAt = &now
+				db.Save(&reply)
+			}
+		} else {
+			replyData["is_admin_reply"] = true
+		}
+		
+		replies = append(replies, replyData)
+	}
+	
+	// 记录管理员查看该工单的时间
+	if adminUserID > 0 {
+		var ticketRead models.TicketRead
+		err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, adminUserID).First(&ticketRead).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ticketRead = models.TicketRead{
+				TicketID: ticket.ID,
+				UserID:   adminUserID,
+				ReadAt:   now,
+			}
+			db.Create(&ticketRead)
+		} else if err == nil {
+			ticketRead.ReadAt = now
+			db.Save(&ticketRead)
+		}
+	}
+
+	// 格式化附件数据
+	attachments := make([]gin.H, 0)
+	for _, attachment := range ticket.Attachments {
+		att := gin.H{
+			"id":          attachment.ID,
+			"ticket_id":   attachment.TicketID,
+			"file_name":   attachment.FileName,
+			"file_path":   attachment.FilePath,
+			"uploaded_by": attachment.UploadedBy,
+			"created_at":  attachment.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if attachment.ReplyID != nil {
+			att["reply_id"] = *attachment.ReplyID
+		}
+		if attachment.FileSize != nil {
+			att["file_size"] = *attachment.FileSize
+		}
+		if attachment.FileType != nil {
+			att["file_type"] = *attachment.FileType
+		}
+		attachments = append(attachments, att)
+	}
+
 	// 构建返回数据，包含回复数量
 	ticketData := gin.H{
 		"id":            ticket.ID,
@@ -315,10 +421,25 @@ func GetAdminTicket(c *gin.Context) {
 		"assigned_to":   ticket.AssignedTo,
 		"assignee":      ticket.Assignee,
 		"admin_notes":   ticket.AdminNotes,
-		"replies":       ticket.Replies,
+		"replies":       replies,
 		"replies_count": repliesCount,
+		"attachments":   attachments,
 		"created_at":    ticket.CreatedAt.Format("2006-01-02 15:04:05"),
 		"updated_at":    ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	// 添加可选字段
+	if ticket.Rating != nil {
+		ticketData["rating"] = *ticket.Rating
+	}
+	if ticket.RatingComment != nil {
+		ticketData["rating_comment"] = *ticket.RatingComment
+	}
+	if ticket.ResolvedAt != nil {
+		ticketData["resolved_at"] = ticket.ResolvedAt.Format("2006-01-02 15:04:05")
+	}
+	if ticket.ClosedAt != nil {
+		ticketData["closed_at"] = ticket.ClosedAt.Format("2006-01-02 15:04:05")
 	}
 
 	c.JSON(http.StatusOK, gin.H{

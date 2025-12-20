@@ -203,6 +203,7 @@ func AutoMigrate() error {
 		&models.Ticket{},
 		&models.TicketReply{},
 		&models.TicketAttachment{},
+		&models.TicketRead{},
 		&models.Coupon{},
 		&models.CouponUsage{},
 		&models.RechargeRecord{},
