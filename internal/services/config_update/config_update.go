@@ -291,7 +291,7 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	if str == "" {
 		return "\"\""
 	}
-	
+
 	// 检查是否需要引号包裹（包含特殊字符）
 	needsQuotes := false
 	specialChars := []string{":", "\"", "'", "\n", "\r", "\t", "#", "@", "&", "*", "?", "|", ">", "!", "%", "`", "[", "]", "{", "}", ","}
@@ -301,12 +301,12 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 			break
 		}
 	}
-	
+
 	// 如果字符串以空格开头或结尾，也需要引号
 	if strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") {
 		needsQuotes = true
 	}
-	
+
 	if needsQuotes {
 		// 转义反斜杠（必须先转义）
 		escaped := strings.ReplaceAll(str, "\\", "\\\\")
@@ -320,7 +320,7 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 		escaped = strings.ReplaceAll(escaped, "\t", "\\t")
 		return fmt.Sprintf("\"%s\"", escaped)
 	}
-	
+
 	return str
 }
 
@@ -364,12 +364,113 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 		builder.WriteString(fmt.Sprintf("%s  udp: true\n", indentStr))
 	}
 
-	// 写入额外选项
+	// 写入额外选项（需要特殊处理 map 和 slice）
 	for key, value := range node.Options {
-		builder.WriteString(fmt.Sprintf("%s  %s: %v\n", indentStr, key, value))
+		s.writeYAMLValue(&builder, indentStr, key, value, 2)
 	}
 
 	return builder.String()
+}
+
+// writeYAMLValue 递归写入 YAML 值（支持 map、slice、基本类型）
+func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr, key string, value interface{}, indentLevel int) {
+	escapedKey := s.escapeYAMLString(key)
+	
+	switch v := value.(type) {
+	case map[string]interface{}:
+		// Map 类型
+		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		for k, val := range v {
+			subIndent := strings.Repeat(" ", indentLevel*2)
+			// 检查 val 是否是 map[string]string（如 headers）
+			if strMap, ok := val.(map[string]string); ok {
+				escapedK := s.escapeYAMLString(k)
+				builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr+subIndent, escapedK))
+				for k2, v2 := range strMap {
+					subSubIndent := strings.Repeat(" ", (indentLevel+1)*2)
+					escapedK2 := s.escapeYAMLString(k2)
+					escapedV2 := s.escapeYAMLString(v2)
+					builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr+subIndent+subSubIndent, escapedK2, escapedV2))
+				}
+			} else {
+				s.writeYAMLValue(builder, indentStr+subIndent, k, val, indentLevel+1)
+			}
+		}
+	case map[string]string:
+		// Map[string]string 类型（如 ws-opts 中的 headers）
+		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		for k, val := range v {
+			subIndent := strings.Repeat(" ", indentLevel*2)
+			escapedK := s.escapeYAMLString(k)
+			escapedVal := s.escapeYAMLString(val)
+			builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr+subIndent, escapedK, escapedVal))
+		}
+	case []interface{}:
+		// Slice 类型
+		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		for _, item := range v {
+			subIndent := strings.Repeat(" ", indentLevel*2)
+			builder.WriteString(fmt.Sprintf("%s- ", indentStr+subIndent))
+			s.writeYAMLValueInline(builder, item)
+			builder.WriteString("\n")
+		}
+	case []string:
+		// String slice 类型
+		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		for _, item := range v {
+			subIndent := strings.Repeat(" ", indentLevel*2)
+			escapedItem := s.escapeYAMLString(item)
+			builder.WriteString(fmt.Sprintf("%s- %s\n", indentStr+subIndent, escapedItem))
+		}
+	case bool:
+		// 布尔类型
+		builder.WriteString(fmt.Sprintf("%s%s: %v\n", indentStr, escapedKey, v))
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		// 整数类型
+		builder.WriteString(fmt.Sprintf("%s%s: %v\n", indentStr, escapedKey, v))
+	case float32, float64:
+		// 浮点数类型
+		builder.WriteString(fmt.Sprintf("%s%s: %v\n", indentStr, escapedKey, v))
+	case string:
+		// 字符串类型
+		escapedVal := s.escapeYAMLString(v)
+		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, escapedVal))
+	case nil:
+		// nil 值
+		builder.WriteString(fmt.Sprintf("%s%s: null\n", indentStr, escapedKey))
+	default:
+		// 其他类型，尝试转换为字符串
+		escapedVal := s.escapeYAMLString(fmt.Sprintf("%v", v))
+		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, escapedVal))
+	}
+}
+
+// writeYAMLValueInline 内联写入 YAML 值（用于数组项）
+func (s *ConfigUpdateService) writeYAMLValueInline(builder *strings.Builder, value interface{}) {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		// Map 类型，需要多行格式
+		builder.WriteString("\n")
+		indentStr := "      " // 数组项内的缩进
+		for k, val := range v {
+			escapedKey := s.escapeYAMLString(k)
+			builder.WriteString(fmt.Sprintf("%s%s: ", indentStr, escapedKey))
+			s.writeYAMLValueInline(builder, val)
+			builder.WriteString("\n")
+		}
+	case string:
+		escapedVal := s.escapeYAMLString(v)
+		builder.WriteString(escapedVal)
+	case bool:
+		builder.WriteString(fmt.Sprintf("%v", v))
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		builder.WriteString(fmt.Sprintf("%v", v))
+	case nil:
+		builder.WriteString("null")
+	default:
+		escapedVal := s.escapeYAMLString(fmt.Sprintf("%v", v))
+		builder.WriteString(escapedVal)
+	}
 }
 
 // UpdateSubscriptionConfig 更新订阅配置
