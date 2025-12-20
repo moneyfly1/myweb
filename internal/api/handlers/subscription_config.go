@@ -304,13 +304,20 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 4. 正常返回
+	// 先记录设备访问，这样即使节点获取失败，设备信息也会被记录
 	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), utils.GetRealClientIP(c), "clash")
 	db.Model(&sub).Update("clash_count", gorm.Expr("clash_count + ?", 1))
 
 	cfg, err := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
 	if err != nil {
+		// 如果错误是"没有可用的节点"，返回更详细的错误信息
+		if strings.Contains(err.Error(), "没有可用的节点") {
+			c.Header("Content-Type", "application/x-yaml")
+			c.String(200, generateErrorConfig("节点不可用", "当前没有可用的节点，请联系管理员", baseURL))
+			return
+		}
 		c.Header("Content-Type", "application/x-yaml")
-		c.String(200, generateErrorConfig("生成失败", "服务器在构建配置时发生错误", baseURL))
+		c.String(200, generateErrorConfig("生成失败", fmt.Sprintf("服务器在构建配置时发生错误: %s", err.Error()), baseURL))
 		return
 	}
 	c.Header("Content-Type", "application/x-yaml")

@@ -23,16 +23,16 @@ func GetDevices(c *gin.Context) {
 
 	db := database.GetDB()
 	var devices []models.Device
-	
+
 	// 获取用户的订阅ID列表
 	var subscriptionIDs []uint
 	db.Model(&models.Subscription{}).Where("user_id = ?", user.ID).Pluck("id", &subscriptionIDs)
-	
+
 	if len(subscriptionIDs) == 0 {
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": []gin.H{}})
 		return
 	}
-	
+
 	// 查询设备，按最后访问时间排序
 	if err := db.Where("subscription_id IN ?", subscriptionIDs).
 		Order("last_access DESC").
@@ -69,7 +69,7 @@ func GetDevices(c *gin.Context) {
 			"device_type":        getString(d.DeviceType),
 			"device_model":       getString(d.DeviceModel),
 			"device_brand":       getString(d.DeviceBrand),
-			"device_fingerprint":  d.DeviceFingerprint,
+			"device_fingerprint": d.DeviceFingerprint,
 			"ip_address":         getString(d.IPAddress),
 			"user_agent":         getString(d.UserAgent),
 			"software_name":      getString(d.SoftwareName),
@@ -100,7 +100,7 @@ func DeleteDevice(c *gin.Context) {
 
 	db := database.GetDB()
 	deviceID := c.Param("id")
-	
+
 	var device models.Device
 	// 验证设备是否属于当前用户
 	if err := db.Where("devices.id = ?", deviceID).
@@ -238,10 +238,10 @@ func GetDeviceStats(c *gin.Context) {
 	db := database.GetDB()
 
 	var stats struct {
-		TotalDevices       int64 `json:"total_devices"`
-		ActiveDevices      int64 `json:"active_devices"`
-		InactiveDevices    int64 `json:"inactive_devices"`
-		TotalSubscriptions int64 `json:"total_subscriptions"`
+		TotalDevices       int64            `json:"total_devices"`
+		ActiveDevices      int64            `json:"active_devices"`
+		InactiveDevices    int64            `json:"inactive_devices"`
+		TotalSubscriptions int64            `json:"total_subscriptions"`
 		DevicesByType      map[string]int64 `json:"devices_by_type"`
 	}
 
@@ -260,7 +260,7 @@ func GetDeviceStats(c *gin.Context) {
 		Select("COALESCE(device_type, 'unknown') as device_type, count(*) as count").
 		Group("device_type").
 		Scan(&typeStats)
-	
+
 	for _, ts := range typeStats {
 		stats.DevicesByType[ts.DeviceType] = ts.Count
 	}

@@ -1172,7 +1172,10 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 	// 检查设备数量
 	var deviceCount int64
 	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&deviceCount)
-	isDeviceOverLimit := int(deviceCount) > subscription.DeviceLimit
+	// 注意：isDeviceOverLimit 只用于标记状态，不用于阻止返回节点
+	// 设备限制的检查应该在 subscription_config.go 中的 validateSubscription 函数中完成
+	// 如果 validateSubscription 允许，说明当前设备在允许范围内，应该返回节点
+	isDeviceOverLimit := subscription.DeviceLimit > 0 && int(deviceCount) > subscription.DeviceLimit
 
 	// 获取节点
 	// 只获取激活的节点
@@ -1247,6 +1250,9 @@ func (s *ConfigUpdateService) getNodesForSubscription(userID uint, subscriptionU
 	}
 
 	// 如果没有任何节点，返回错误
+	// 注意：这个检查不应该阻止返回节点，因为设备限制的检查已经在 subscription_config.go 中的 validateSubscription 函数中完成
+	// 如果 validateSubscription 允许，说明当前设备在允许范围内，应该返回节点
+	// 但是，如果数据库中没有激活的节点，这里会返回错误，这是合理的
 	if len(proxies) == 0 {
 		return nil, subscription, user, isExpired, isInactive, isDeviceOverLimit, int(deviceCount), subscription.DeviceLimit, fmt.Errorf("没有可用的节点")
 	}
