@@ -58,7 +58,15 @@
             <nav class="nav-list">
               <div v-for="item in menuItems" :key="item.path" @click="handleNavMenuClick(item)" 
                    class="nav-item" :class="{ active: $route.path === item.path, 'admin-back': item.isAdminBack }">
-                <i :class="item.icon"></i><span>{{ item.title }}</span>
+                <i :class="item.icon"></i>
+                <span>{{ item.title }}</span>
+                <el-badge 
+                  v-if="item.badge && item.badge > 0" 
+                  :value="item.badge" 
+                  :max="99"
+                  type="danger"
+                  class="nav-badge"
+                />
               </div>
             </nav>
           </div>
@@ -73,6 +81,13 @@
           <div class="nav-item" :class="{ active: $route.path === item.path, 'admin-back': item.isAdminBack }" @click="handleNavMenuClick(item)">
             <i :class="item.icon"></i>
             <span class="nav-text" v-show="!sidebarCollapsed">{{ item.title }}</span>
+            <el-badge 
+              v-if="item.badge && item.badge > 0 && !sidebarCollapsed" 
+              :value="item.badge" 
+              :max="99"
+              type="danger"
+              class="nav-badge"
+            />
           </div>
         </template>
       </nav>
@@ -105,6 +120,7 @@ import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { ElMessage } from 'element-plus'
 import { secureStorage } from '@/utils/secureStorage'
+import { ticketAPI } from '@/utils/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -115,6 +131,8 @@ const themeStore = useThemeStore()
 const isMobile = ref(false)
 const sidebarCollapsed = ref(localStorage.getItem('userSidebarCollapsed') === 'true')
 const mobileNavExpanded = ref(false)
+const unreadTicketReplies = ref(0)
+let unreadCheckInterval = null
 
 // --- 计算属性 ---
 const user = computed(() => authStore.user)
@@ -134,7 +152,12 @@ const menuItems = computed(() => {
     { path: '/packages', title: '套餐购买', icon: 'el-icon-shopping-cart-2' },
     { path: '/orders', title: '订单记录', icon: 'el-icon-document' },
     { path: '/nodes', title: '节点列表', icon: 'el-icon-location' },
-    { path: '/tickets', title: '工单中心', icon: 'el-icon-s-ticket' },
+    { 
+      path: '/tickets', 
+      title: '工单中心', 
+      icon: 'el-icon-s-ticket',
+      badge: unreadTicketReplies.value > 0 ? unreadTicketReplies.value : null
+    },
     { path: '/invites', title: '我的邀请', icon: 'el-icon-user' },
     { path: '/help', title: '帮助中心', icon: 'el-icon-question' }
   ]
@@ -164,6 +187,19 @@ const handleUserCommand = (command) => {
     logout: () => { authStore.logout(); router.push('/login') }
   }
   actions[command]?.()
+}
+
+// 获取未读工单回复数量
+const loadUnreadTicketReplies = async () => {
+  try {
+    const response = await ticketAPI.getUnreadCount()
+    if (response.data && response.data.success) {
+      unreadTicketReplies.value = response.data.data?.count || 0
+    }
+  } catch (error) {
+    // 静默失败，不影响页面
+    console.warn('获取未读工单回复数量失败:', error)
+  }
 }
 
 const returnToAdmin = () => {
@@ -197,12 +233,35 @@ const getCurrentPageTitle = () => {
 }
 
 // --- 生命周期 ---
-watch(() => route.path, () => mobileNavExpanded.value = false)
+watch(() => route.path, (newPath) => {
+  mobileNavExpanded.value = false
+  // 当进入工单页面时刷新未读数量
+  if (newPath === '/tickets') {
+    loadUnreadTicketReplies()
+  }
+})
+
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  // 加载未读工单回复数量
+  loadUnreadTicketReplies()
+  // 每30秒刷新一次未读数量
+  unreadCheckInterval = setInterval(() => {
+    loadUnreadTicketReplies()
+  }, 30000)
+  // 监听工单查看事件，立即刷新未读数量
+  window.addEventListener('ticket-viewed', loadUnreadTicketReplies)
 })
-onUnmounted(() => window.removeEventListener('resize', checkMobile))
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('ticket-viewed', loadUnreadTicketReplies)
+  if (unreadCheckInterval) {
+    clearInterval(unreadCheckInterval)
+    unreadCheckInterval = null
+  }
+})
 </script>
 
 <style scoped lang="scss">
@@ -237,6 +296,14 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 }
 
 .nav-item {
+  position: relative;
+  
+  .nav-badge {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
   padding: 12px 20px; display: flex; align-items: center; gap: 12px;
   cursor: pointer; transition: 0.2s;
   &:hover { background: #f5f7fa; color: #409EFF; }

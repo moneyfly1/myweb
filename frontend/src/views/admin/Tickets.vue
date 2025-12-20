@@ -150,7 +150,19 @@
     <!-- 桌面端工单列表 -->
     <el-table :data="tickets" v-loading="loading" class="desktop-only" style="width: 100%; margin-top: 20px">
       <el-table-column prop="ticket_no" label="工单编号" width="180" />
-      <el-table-column prop="title" label="标题" min-width="200" />
+      <el-table-column prop="title" label="标题" min-width="200">
+        <template #default="{ row }">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>{{ row.title }}</span>
+            <el-badge 
+              v-if="row.has_unread && (row.unread_replies > 0 || row.has_new_ticket)" 
+              :value="row.unread_replies > 0 ? row.unread_replies : (row.has_new_ticket ? '新' : '')" 
+              :max="99"
+              type="danger"
+            />
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="type" label="类型" width="100">
         <template #default="{ row }">
           <el-tag :type="getTypeTagType(row.type)">{{ getTypeText(row.type) }}</el-tag>
@@ -171,7 +183,16 @@
       <el-table-column prop="created_at" label="创建时间" width="180" />
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="viewTicket(row.id)">查看</el-button>
+          <el-button size="small" @click="viewTicket(row.id)">
+            查看
+            <el-badge 
+              v-if="row.has_unread && (row.unread_replies > 0 || row.has_new_ticket)" 
+              :value="row.unread_replies > 0 ? row.unread_replies : (row.has_new_ticket ? '新' : '')" 
+              :max="99"
+              type="danger"
+              style="margin-left: 4px;"
+            />
+          </el-button>
           <el-button size="small" type="primary" @click="assignTicket(row)" v-if="!row.assigned_to">分配</el-button>
         </template>
       </el-table-column>
@@ -190,9 +211,17 @@
           <div class="ticket-badges">
             <el-tag :type="getStatusTagType(ticket.status)" size="small">{{ getStatusText(ticket.status) }}</el-tag>
             <el-tag :type="getTypeTagType(ticket.type)" size="small">{{ getTypeText(ticket.type) }}</el-tag>
+            <el-badge 
+              v-if="ticket.has_unread && (ticket.unread_replies > 0 || ticket.has_new_ticket)" 
+              :value="ticket.unread_replies > 0 ? ticket.unread_replies : (ticket.has_new_ticket ? '新' : '')" 
+              :max="99"
+              type="danger"
+            />
           </div>
         </div>
-        <div class="ticket-card-title">{{ ticket.title }}</div>
+        <div class="ticket-card-title">
+          {{ ticket.title }}
+        </div>
         <div class="ticket-card-info">
           <span class="info-item">
             <el-icon><User /></el-icon>
@@ -303,18 +332,38 @@
             </div>
           </template>
           <div class="replies-list">
-            <div v-for="reply in currentTicket.replies" :key="reply.id" class="reply-item" :class="{ 'admin-reply': reply.is_admin === 'true', 'mobile-reply': isMobile }">
+            <div 
+              v-for="reply in currentTicket.replies" 
+              :key="reply.id" 
+              class="reply-item" 
+              :class="{ 
+                'admin-reply': reply.is_admin === 'true', 
+                'user-reply': reply.is_admin !== 'true',
+                'unread-reply': reply.is_unread,
+                'mobile-reply': isMobile 
+              }"
+            >
               <div class="reply-header">
                 <div class="reply-author">
-                  <el-tag :type="reply.is_admin === 'true' ? 'success' : 'info'" size="small">
+                  <el-tag 
+                    :type="reply.is_admin === 'true' ? 'success' : 'info'" 
+                    size="small"
+                    effect="dark"
+                  >
                     {{ reply.is_admin === 'true' ? '管理员' : '用户' }}
                   </el-tag>
+                  <el-badge 
+                    v-if="reply.is_unread" 
+                    value="新" 
+                    type="danger"
+                    style="margin-left: 8px;"
+                  />
                   <span class="reply-user-id" :class="{ 'mobile-hidden': isMobile }">用户ID: {{ reply.user_id }}</span>
                   <span class="reply-user-id mobile-only" v-if="isMobile">{{ reply.user_id }}</span>
                 </div>
                 <span class="reply-time">{{ formatTime(reply.created_at) }}</span>
               </div>
-              <div class="reply-content">{{ reply.content }}</div>
+              <div class="reply-content" :class="{ 'unread-content': reply.is_unread }">{{ reply.content }}</div>
             </div>
             <div v-if="!currentTicket.replies || currentTicket.replies.length === 0" class="empty-replies">
               <el-empty description="暂无回复" :image-size="80" />
@@ -510,6 +559,12 @@ const viewTicket = async (ticketId) => {
       // 修复：后端返回的数据结构是 { ticket: {...} }，需要取 ticket 字段
       currentTicket.value = response.data.data?.ticket || response.data.data
       showDetailDialog.value = true
+      // 查看工单后刷新列表，清除未读提醒
+      setTimeout(async () => {
+        await loadTickets()
+        // 触发未读数量刷新
+        window.dispatchEvent(new CustomEvent('ticket-viewed'))
+      }, 500)
     }
   } catch (error) {
     ElMessage.error('加载工单详情失败: ' + (error.response?.data?.message || error.message))
@@ -791,6 +846,40 @@ onUnmounted(() => {
   }
   
   .replies-list {
+    .reply-item {
+      &.unread-reply {
+        background: linear-gradient(135deg, #fff7e6 0%, #ffecc7 100%);
+        border-left: 4px solid #faad14;
+        box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
+        animation: highlightUnreadReply 0.5s ease;
+      }
+      
+      &.user-reply.unread-reply {
+        background: linear-gradient(135deg, #fff7e6 0%, #ffecc7 100%);
+        border-left: 4px solid #faad14;
+      }
+      
+      .unread-content {
+        font-weight: 500;
+        color: #1a1a1a;
+      }
+    }
+    
+    @keyframes highlightUnreadReply {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
+      }
+      50% {
+        transform: scale(1.02);
+        box-shadow: 0 4px 16px rgba(250, 173, 20, 0.4);
+      }
+      100% {
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
+      }
+    }
+    
     .reply-item {
       padding: 15px;
       margin-bottom: 15px;
@@ -1139,4 +1228,5 @@ onUnmounted(() => {
   }
 }
 </style>
+
 

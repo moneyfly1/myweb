@@ -71,6 +71,9 @@ type TicketReply struct {
 	UserID    uint      `gorm:"index;not null" json:"user_id"`
 	Content   string    `gorm:"type:text;not null" json:"content"`
 	IsAdmin   string    `gorm:"type:varchar(10);default:false" json:"is_admin"`
+	IsRead    bool      `gorm:"default:false" json:"is_read"` // 是否已读（对应用户或管理员）
+	ReadBy    *uint     `gorm:"index" json:"read_by,omitempty"` // 被谁已读（用户ID或管理员ID）
+	ReadAt    *time.Time `json:"read_at,omitempty"` // 已读时间
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// 关系
@@ -104,4 +107,23 @@ type TicketAttachment struct {
 // TableName 指定表名
 func (TicketAttachment) TableName() string {
 	return "ticket_attachments"
+}
+
+// TicketRead 工单已读记录模型（记录用户查看工单的时间）
+type TicketRead struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	TicketID  uint      `gorm:"index;not null" json:"ticket_id"`
+	UserID    uint      `gorm:"index;not null" json:"user_id"`
+	ReadAt    time.Time `gorm:"autoCreateTime;autoUpdateTime" json:"read_at"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+
+	// 关系
+	Ticket Ticket `gorm:"foreignKey:TicketID" json:"-"`
+	User   User   `gorm:"foreignKey:UserID" json:"-"`
+}
+
+// TableName 指定表名
+func (TicketRead) TableName() string {
+	return "ticket_reads"
 }

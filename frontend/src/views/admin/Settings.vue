@@ -534,24 +534,6 @@
           </el-form>
         </el-tab-pane>
 
-        <!-- 专线节点设置 -->
-        <el-tab-pane label="专线节点设置" name="custom-node">
-          <el-alert
-            title="专线节点管理"
-            type="info"
-            :closable="false"
-            style="margin-bottom: 20px"
-          >
-            <template #default>
-              <div style="line-height: 1.8;">
-                <div style="margin-bottom: 8px;">专线节点可以通过添加节点链接的方式创建，与普通节点功能相同。</div>
-                <div style="margin-bottom: 8px;">唯一不同的是，专线节点可以分配给指定用户使用，而普通节点对所有用户可见。</div>
-                <div>您可以在"专线节点管理"页面添加节点链接，并选择哪些用户可以使用这些节点。</div>
-              </div>
-            </template>
-          </el-alert>
-        </el-tab-pane>
-
         <!-- 安全设置 -->
         <el-tab-pane label="安全设置" name="security">
           <el-form 

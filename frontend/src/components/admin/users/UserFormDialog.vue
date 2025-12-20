@@ -25,8 +25,9 @@
         </el-select>
       </el-form-item>
       <el-form-item label="最大设备数" prop="device_limit" v-if="!editingUser">
-        <el-input-number 
-          v-model="userForm.device_limit" 
+        <el-input 
+          v-model.number="userForm.device_limit" 
+          type="number"
           :min="0" 
           :max="100" 
           placeholder="请输入最大设备数量"
@@ -276,6 +277,45 @@ export default {
   
   :deep(.el-form-item) {
     margin-bottom: 20px;
+  }
+  
+  /* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
+  :deep(.el-input__wrapper) {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    border: 1px solid #dcdfe6 !important;
+    background-color: #ffffff !important;
+  }
+  
+  :deep(.el-select .el-input__wrapper) {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    border: 1px solid #dcdfe6 !important;
+    background-color: #ffffff !important;
+  }
+  
+  :deep(.el-date-editor .el-input__wrapper) {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    border: 1px solid #dcdfe6 !important;
+    background-color: #ffffff !important;
+  }
+  
+  :deep(.el-input__inner) {
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+  }
+  
+  :deep(.el-input__wrapper:hover) {
+    border-color: #c0c4cc !important;
+    box-shadow: none !important;
+  }
+  
+  :deep(.el-input__wrapper.is-focus) {
+    border-color: #409eff !important;
+    box-shadow: none !important;
   }
   
   // 手机端优化

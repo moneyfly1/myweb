@@ -581,15 +581,16 @@ export const configUpdateAPI = {
 }
 
 export const ticketAPI = {
-  createTicket: (data) => api.post('/tickets/', data),
-  getUserTickets: (params) => api.get('/tickets/', { params }),
-  getTicket: (id) => api.get(`/tickets/${id}`),
-  getAdminTicket: (id) => api.get(`/tickets/admin/${id}`),
-  addReply: (id, data) => api.post(`/tickets/${id}/replies`, data),
-  addRating: (id, data) => api.post(`/tickets/${id}/rating`, data),
-  getAllTickets: (params) => api.get('/tickets/admin/all', { params }),
-  updateTicket: (id, data) => api.put(`/tickets/admin/${id}`, data),
-  getTicketStatistics: () => api.get('/tickets/admin/statistics')
+  createTicket: (data) => api.post('/tickets/', data),
+  getUserTickets: (params) => api.get('/tickets/', { params }),
+  getTicket: (id) => api.get(`/tickets/${id}`),
+  getAdminTicket: (id) => api.get(`/tickets/admin/${id}`),
+  addReply: (id, data) => api.post(`/tickets/${id}/replies`, data),
+  addRating: (id, data) => api.post(`/tickets/${id}/rating`, data),
+  getAllTickets: (params) => api.get('/tickets/admin/all', { params }),
+  updateTicket: (id, data) => api.put(`/tickets/admin/${id}`, data),
+  getTicketStatistics: () => api.get('/tickets/admin/statistics'),
+  getUnreadCount: () => api.get('/tickets/unread-count') // 获取未读回复数量
 }
 
 export const couponAPI = {

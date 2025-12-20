@@ -218,6 +218,7 @@ func SetupRouter() *gin.Engine {
 		tickets.Use(middleware.AuthMiddleware())
 		{
 			tickets.GET("", handlers.GetTickets)
+			tickets.GET("/unread-count", handlers.GetUnreadTicketRepliesCount) // 获取未读回复数量
 			tickets.GET("/:id", handlers.GetTicket)
 			tickets.POST("", handlers.CreateTicket)
 			tickets.POST("/:id/reply", handlers.ReplyTicket)
