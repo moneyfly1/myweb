@@ -1,259 +1,536 @@
-# CBoard Go 版本 - 订阅管理系统
+# CBoard - Modern Subscription Management System
 
-## 📖 系统简介
-
-**CBoard** 是一个现代化的订阅管理系统，用于管理 VPN/代理服务的订阅、用户、订单、支付等业务。本版本使用 Go 语言重写，相比 Python 版本可以节省 **70-90% 的内存占用**。
-
-### 🎯 核心特性
-
-- 🚀 **高性能**: 内存占用仅 35-95 MB（Python 版本 300-850 MB）
-- ⚡ **快速启动**: 毫秒级启动时间
-- 🔒 **安全可靠**: JWT 认证、密码加密、SQL 注入防护
-- 📦 **功能完整**: 包含所有核心业务功能
-- 🎨 **现代化前端**: Vue 3 + Element Plus，响应式设计
-- 🐳 **易于部署**: 支持宝塔面板一键安装，单一可执行文件
+[中文](README_zh.md) | English
 
 ---
 
-## 🚀 宝塔面板一键安装
+## 📖 Overview
 
-### 前置条件
+**CBoard** is a modern, high-performance subscription management system designed for VPN/proxy service providers. Built with Go language, it offers **70-90% memory reduction** compared to Python-based solutions while maintaining full feature parity.
 
-- ✅ 已安装宝塔面板（建议版本 7.0+）
-- ✅ 服务器系统：Ubuntu 18.04+ / Debian 10+ / CentOS 7+
-- ✅ 服务器配置：至少 1 核心 CPU + 512 MB 内存 + 10 GB 磁盘
-- ✅ 已绑定域名（用于 SSL 证书）
+### 🎯 Key Features
 
-### 安装步骤
+- 🚀 **High Performance**: Memory usage only 35-95 MB (vs 300-850 MB in Python version)
+- ⚡ **Fast Startup**: Millisecond-level startup time
+- 🔒 **Secure**: JWT authentication, password encryption, SQL injection protection
+- 📦 **Feature Complete**: All core business functions included
+- 🎨 **Modern Frontend**: Vue 3 + Element Plus, responsive design
+- 🐳 **Easy Deployment**: One-click installation via BT Panel, single executable file
+- 💳 **Multi-Payment**: Supports Alipay, WeChat Pay, PayPal, Apple Pay
+- 👥 **User Management**: Complete user system with levels, invites, and rewards
+- 📊 **Analytics**: Comprehensive statistics and monitoring
+- 🎫 **Ticket System**: Built-in customer support system
 
-#### 1. 上传项目文件
+---
 
-通过宝塔面板文件管理器或 SSH 将项目文件上传到服务器：
+## 🏗️ Technology Stack
+
+### Backend
+- **Web Framework**: [Gin](https://github.com/gin-gonic/gin) - High-performance HTTP web framework
+- **ORM**: [GORM](https://gorm.io/) - The fantastic ORM library for Go
+- **Database**: SQLite (default) / MySQL 5.7+ / PostgreSQL 12+
+- **Authentication**: JWT (JSON Web Tokens)
+- **Configuration**: Viper
+- **Language**: Go 1.21+
+
+### Frontend
+- **Framework**: Vue 3 (Composition API)
+- **UI Library**: Element Plus
+- **Build Tool**: Vite
+- **State Management**: Pinia
+- **Router**: Vue Router 4
+
+---
+
+## 📋 System Requirements
+
+### Minimum Requirements
+- **CPU**: 1 core (2+ cores recommended)
+- **Memory**: 512 MB (1 GB+ recommended)
+- **Disk**: 10 GB (20 GB+ recommended)
+- **OS**: Ubuntu 18.04+ / Debian 10+ / CentOS 7+
+
+### Software Requirements
+- **Go**: 1.21+ (auto-installed by install script)
+- **Node.js**: 16+ (for frontend build)
+- **Nginx**: (included with BT Panel)
+- **Database**: SQLite (default, no installation needed) or MySQL/PostgreSQL
+
+---
+
+## 🚀 Installation via BT Panel
+
+### Prerequisites
+
+- ✅ BT Panel installed (version 7.0+ recommended)
+- ✅ Server OS: Ubuntu 18.04+ / Debian 10+ / CentOS 7+
+- ✅ Server specs: At least 1 core CPU + 512 MB RAM + 10 GB disk
+- ✅ Domain name bound (for SSL certificate)
+
+### Installation Steps
+
+#### 1. Upload Project Files
+
+Upload project files to your server via BT Panel File Manager or SSH:
 
 ```bash
-# 方式一：通过 Git 克隆
+# Method 1: Clone via Git
 cd /www/wwwroot
-git clone <repository-url> cboard
+git clone https://github.com/your-username/your-repo.git cboard
 cd cboard
 
-# 方式二：通过 SCP 上传（在本地执行）
+# Method 2: Upload via SCP (run on local machine)
 scp -r /path/to/goweb/* root@your-server:/www/wwwroot/cboard/
 ```
 
-#### 2. 运行安装脚本
+#### 2. Run Installation Script
 
-通过 SSH 连接到服务器，执行：
+Connect to your server via SSH and execute:
 
 ```bash
 cd /www/wwwroot/cboard
 
-# 添加执行权限
+# Add execute permission
 chmod +x install.sh
 
-# 运行安装脚本（需要 root 权限）
+# Run installation script (requires root)
 sudo ./install.sh
 ```
 
-#### 3. 配置安装参数
+#### 3. Configure Installation Parameters
 
-安装脚本会提示您输入以下信息：
+The installation script will prompt you for:
 
-- **项目目录**：默认 `/www/wwwroot/某站点`，可按需修改
-- **域名**：输入您的域名（如：`example.com`）
-- **管理员邮箱**：用于创建管理员账户
-- **管理员密码**：设置管理员密码
+- **Project Directory**: Default `/www/wwwroot/某站点`, modify as needed
+- **Domain Name**: Enter your domain (e.g., `example.com`)
+- **Admin Email**: For creating admin account
+- **Admin Password**: Set admin password
 
-#### 4. 选择安装选项
+#### 4. Select Installation Option
 
-安装脚本提供以下功能：
+The installation script provides the following options:
 
 ```
 ==========================================
-       CBoard Go 终极管理面板
+       CBoard Go Management Panel
 ==========================================
-  1. 一键全自动部署 (SSL + 反代)
-  2. 创建/重置管理员账号
-  3. 强制重启服务 (杀进程后重启)
-  4. 深度清理系统缓存
-  5. 解锁管理员账户
+  1. One-Click Full Auto Deployment (SSL + Reverse Proxy)
+  2. Create/Reset Admin Account
+  3. Force Restart Service (Kill process then restart)
+  4. Deep Clean System Cache
+  5. Unlock Admin Account
 ------------------------------------------
-  6. 查看服务运行状态
-  7. 查看实时服务日志
-  8. 标准重启服务 (Systemd)
-  9. 停止服务
-  0. 退出脚本
+  6. View Service Status
+  7. View Real-time Service Logs
+  8. Standard Restart Service (Systemd)
+  9. Stop Service
+  0. Exit Script
 ==========================================
 ```
 
-**首次安装请选择 `1`**，脚本会自动完成：
-- ✅ 安装 Go 语言环境（如未安装）
-- ✅ 编译后端服务
-- ✅ 配置 Nginx 反向代理
-- ✅ 申请 SSL 证书（Let's Encrypt）
-- ✅ 创建 systemd 服务
-- ✅ 启动服务
+**For first-time installation, select `1`**. The script will automatically:
+- ✅ Install Go language environment (if not installed)
+- ✅ Compile backend service
+- ✅ Configure Nginx reverse proxy
+- ✅ Apply for SSL certificate (Let's Encrypt)
+- ✅ Create systemd service
+- ✅ Start service
 
-#### 5. 验证安装
+#### 5. Verify Installation
 
-安装完成后，访问您的域名：
+After installation, access your domain:
 
-- **前端界面**: `https://yourdomain.com`
-- **健康检查**: `https://yourdomain.com/health`
-- **API 文档**: `https://yourdomain.com/api/v1/...`
-
----
-
-## 🛠️ 管理脚本使用说明
-
-### 常用操作
-
-#### 创建/重置管理员账号
-
-```bash
-sudo ./install.sh
-# 选择 2
-```
-
-#### 重启服务
-
-```bash
-sudo ./install.sh
-# 选择 8（标准重启）或 3（强制重启）
-```
-
-#### 查看服务状态
-
-```bash
-sudo ./install.sh
-# 选择 6
-```
-
-#### 查看实时日志
-
-```bash
-sudo ./install.sh
-# 选择 7
-```
-
-#### 停止服务
-
-```bash
-sudo ./install.sh
-# 选择 9
-```
-
-### 手动管理命令
-
-如果不想使用管理脚本，也可以直接使用 systemd 命令：
-
-```bash
-# 启动服务
-systemctl start cboard
-
-# 停止服务
-systemctl stop cboard
-
-# 重启服务
-systemctl restart cboard
-
-# 查看状态
-systemctl status cboard
-
-# 查看日志
-journalctl -u cboard -f
-
-# 设置开机自启
-systemctl enable cboard
-```
+- **Frontend Interface**: `https://yourdomain.com`
+- **Health Check**: `https://yourdomain.com/health`
+- **API Endpoints**: `https://yourdomain.com/api/v1/...`
 
 ---
 
-## 📋 系统要求
+## 👤 Administrator Setup
 
-### 最低配置要求
+### Initial Admin Account
 
-- **CPU**: 1 核心（推荐 2 核心+）
-- **内存**: 512 MB（推荐 1 GB+）
-- **磁盘**: 10 GB（推荐 20 GB+）
-- **操作系统**: Ubuntu 18.04+ / Debian 10+ / CentOS 7+
+The admin account is created during installation. If you need to create or reset it:
 
-### 软件要求
+#### Method 1: Using Installation Script
 
-- **Go 语言**: 1.21+（安装脚本会自动安装）
-- **数据库**: SQLite（默认，无需安装）或 MySQL 5.7+ / PostgreSQL 12+
-- **Web 服务器**: Nginx（宝塔面板自带）
+```bash
+cd /www/wwwroot/cboard
+sudo ./install.sh
+# Select option 2: Create/Reset Admin Account
+```
+
+#### Method 2: Using Admin Script
+
+```bash
+cd /www/wwwroot/cboard
+go run scripts/create_admin.go
+```
+
+You will be prompted to enter:
+- Admin username (default: `admin`)
+- Admin email
+- Admin password
+
+#### Method 3: Check Existing Admin
+
+```bash
+cd /www/wwwroot/cboard
+go run scripts/check_admin.go
+```
+
+### Admin Login
+
+1. Access admin panel: `https://yourdomain.com/admin/login`
+2. Enter admin credentials:
+   - Username: `admin` (or your configured username)
+   - Password: (the password you set)
+
+### Admin Permissions
+
+Administrators have full access to:
+- User management (create, edit, delete, view)
+- Subscription management
+- Order management
+- Package management
+- Payment configuration
+- System configuration
+- Statistics and monitoring
+- Ticket management
+- Device management
+- Invite code management
 
 ---
 
-## ⚙️ 配置说明
+## 📊 Feature List
 
-### 环境变量配置
+### ✅ Core Features
 
-项目配置文件位于 `.env`，主要配置项：
+#### User Management
+- [x] User registration and login
+- [x] JWT authentication
+- [x] Password reset via email
+- [x] Email verification
+- [x] User profile management
+- [x] Login history tracking
+- [x] User activity logging
+- [x] User level system with discounts
+- [x] Account security (2FA ready)
+
+#### Subscription Management
+- [x] Subscription creation and renewal
+- [x] Device limit management
+- [x] Expiration time control
+- [x] Subscription reset
+- [x] Multiple subscription types
+- [x] Subscription URL generation (Clash/V2Ray format)
+- [x] Device management (add, remove, view)
+- [x] Online device tracking
+- [x] Device fingerprinting and UA detection
+
+#### Order Management
+- [x] Order creation and processing
+- [x] Package orders
+- [x] Device upgrade orders
+- [x] Order cancellation
+- [x] Order status tracking
+- [x] Order history
+- [x] Order export (CSV/Excel)
+- [x] Bulk operations
+
+#### Payment Integration
+- [x] Alipay integration
+- [x] WeChat Pay integration
+- [x] PayPal integration
+- [x] Apple Pay integration
+- [x] Balance payment
+- [x] Mixed payment (balance + third-party)
+- [x] Payment callback handling
+- [x] Payment transaction tracking
+- [x] Recharge management
+
+#### Package Management
+- [x] Package CRUD operations
+- [x] Package pricing
+- [x] Package activation/deactivation
+- [x] Package features configuration
+- [x] Package display order
+
+#### Coupon System
+- [x] Coupon creation and management
+- [x] Discount coupons (percentage)
+- [x] Fixed amount coupons
+- [x] Coupon code validation
+- [x] Coupon usage tracking
+- [x] Coupon expiration management
+
+#### Invite System
+- [x] Invite code generation
+- [x] Invite relationship tracking
+- [x] Inviter rewards
+- [x] Invitee rewards
+- [x] Minimum order amount requirement
+- [x] New user only rewards
+- [x] Reward distribution automation
+
+#### Node Management
+- [x] Node CRUD operations
+- [x] Node health monitoring
+- [x] Node status tracking
+- [x] Custom node support
+- [x] Node grouping
+- [x] Node subscription integration
+
+#### Custom Node System
+- [x] Server management (SSH connection)
+- [x] Automatic node deployment (via XrayR API)
+- [x] Cloudflare DNS and certificate automation
+- [x] Traffic control
+- [x] Expiration time management
+- [x] User-specific node allocation
+
+#### Device Management
+- [x] Device recognition and fingerprinting
+- [x] Device limit enforcement
+- [x] Device deletion
+- [x] Device information tracking (UA, IP, etc.)
+- [x] Active device monitoring
+- [x] Batch device operations
+
+#### Notification System
+- [x] Email notifications
+- [x] In-app notifications
+- [x] Notification templates
+- [x] Notification preferences
+- [x] Notification history
+
+#### Ticket System
+- [x] Ticket creation
+- [x] Ticket replies
+- [x] Ticket status management
+- [x] Ticket attachments
+- [x] Ticket assignment
+- [x] Ticket priority levels
+
+#### Statistics & Monitoring
+- [x] Dashboard statistics
+- [x] User statistics
+- [x] Order statistics
+- [x] Revenue statistics
+- [x] Subscription statistics
+- [x] System logs
+- [x] Audit logs
+- [x] Real-time monitoring
+
+#### System Configuration
+- [x] System settings management
+- [x] Payment configuration
+- [x] Email configuration
+- [x] SMS configuration
+- [x] Security settings
+- [x] Feature toggles
+- [x] Announcement management
+
+#### Backup & Restore
+- [x] Database backup
+- [x] Configuration backup
+- [x] Automated backup scheduling
+- [x] Backup file management
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+Main configuration file: `.env`
 
 ```env
-# 服务器配置
-HOST=127.0.0.1          # 只监听本地，通过 Nginx 反向代理
-PORT=8000               # 后端服务端口
+# Server Configuration
+HOST=127.0.0.1          # Listen on localhost only, via Nginx reverse proxy
+PORT=8000               # Backend service port
 
-# 数据库配置（SQLite）
+# Database Configuration (SQLite)
 DATABASE_URL=sqlite:///./cboard.db
 
-# JWT 配置（生产环境必须修改！）
+# JWT Configuration (MUST CHANGE IN PRODUCTION!)
 SECRET_KEY=your-secret-key-here-change-in-production-min-32-chars
 
-# CORS 配置（替换为您的域名）
+# CORS Configuration (replace with your domain)
 BACKEND_CORS_ORIGINS=https://yourdomain.com,http://yourdomain.com
 
-# 邮件配置（可选）
+# Email Configuration (Optional)
 SMTP_HOST=smtp.qq.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@qq.com
 SMTP_PASSWORD=your-smtp-password
 SMTP_FROM_EMAIL=your-email@qq.com
+
+# Debug Mode
+DEBUG=false
 ```
 
-### Nginx 配置
+### Nginx Configuration
 
-安装脚本会自动配置 Nginx，如需手动调整：
+The installation script automatically configures Nginx. To manually adjust:
 
-1. 登录宝塔面板
-2. **网站** → 找到您的网站 → **设置** → **配置文件**
-3. 修改配置后点击 **保存** → **重载配置**
+1. Login to BT Panel
+2. **Website** → Find your website → **Settings** → **Configuration File**
+3. Modify configuration → **Save** → **Reload Configuration**
 
 ---
 
-## 🔧 常见问题
+## 🛠️ Management Script Usage
 
-### 1. 服务无法启动
+### Common Operations
 
-**检查日志**：
+#### Create/Reset Admin Account
 ```bash
-# 查看服务日志
+sudo ./install.sh
+# Select option 2
+```
+
+#### Restart Service
+```bash
+sudo ./install.sh
+# Select option 8 (standard restart) or 3 (force restart)
+```
+
+#### View Service Status
+```bash
+sudo ./install.sh
+# Select option 6
+```
+
+#### View Real-time Logs
+```bash
+sudo ./install.sh
+# Select option 7
+```
+
+#### Stop Service
+```bash
+sudo ./install.sh
+# Select option 9
+```
+
+### Manual Management Commands
+
+If you prefer not to use the management script, you can use systemd commands directly:
+
+```bash
+# Start service
+systemctl start cboard
+
+# Stop service
+systemctl stop cboard
+
+# Restart service
+systemctl restart cboard
+
+# View status
+systemctl status cboard
+
+# View logs
 journalctl -u cboard -f
 
-# 查看应用日志
+# Enable auto-start on boot
+systemctl enable cboard
+```
+
+---
+
+## 🔒 Security Recommendations
+
+1. **Strong Passwords in Production**
+   - `SECRET_KEY` must be at least 32 characters random string
+   - Use strong passwords for admin accounts
+
+2. **Use HTTPS**
+   - Installation script automatically configures SSL certificate
+   - Ensure HTTPS enforcement is enabled
+
+3. **Configure CORS**
+   - Production environment must explicitly specify allowed domains
+   - Do not use wildcard `*`
+
+4. **Database Security**
+   - Regular database backups
+   - Ensure correct file permissions when using SQLite
+
+5. **System Security**
+   - Regularly update system and dependencies
+   - Configure firewall rules
+   - Use strong password policies
+
+---
+
+## 📝 Database Backup
+
+### Automatic Backup (Recommended)
+
+Configure scheduled task in BT Panel:
+
+1. **Scheduled Tasks** → **Add Scheduled Task**
+2. **Task Type**: Shell Script
+3. **Task Name**: CBoard Database Backup
+4. **Execution Cycle**: Daily at 00:02
+5. **Script Content**:
+```bash
+#!/bin/bash
+cd /www/wwwroot/cboard
+BACKUP_DIR="/www/backup/cboard"
+mkdir -p $BACKUP_DIR
+cp cboard.db $BACKUP_DIR/cboard_$(date +%Y%m%d_%H%M%S).db
+# Keep backups from last 7 days
+find $BACKUP_DIR -name "cboard_*.db" -mtime +7 -delete
+```
+
+### Manual Backup
+
+```bash
+cd /www/wwwroot/cboard
+cp cboard.db cboard.db.backup.$(date +%Y%m%d_%H%M%S)
+```
+
+### Backup via API
+
+The system also provides backup API endpoint (admin only):
+- `POST /api/v1/admin/backup/create` - Create backup
+
+---
+
+## 🔧 Troubleshooting
+
+### 1. Service Cannot Start
+
+**Check logs**:
+```bash
+# View service logs
+journalctl -u cboard -f
+
+# View application logs
 tail -f /www/wwwroot/cboard/uploads/logs/app.log
 ```
 
-**常见原因**：
-- 端口被占用：检查 8000 端口是否被其他程序占用
-- 权限问题：确保项目目录权限正确
-- 配置文件错误：检查 `.env` 文件配置
+**Common causes**:
+- Port occupied: Check if port 8000 is used by another program
+- Permission issues: Ensure project directory permissions are correct
+- Configuration errors: Check `.env` file configuration
 
 ### 2. 502 Bad Gateway
 
-- 检查后端服务是否运行：`systemctl status cboard`
-- 检查端口是否正确：`netstat -tlnp | grep 8000`
-- 检查 Nginx 配置中的 `proxy_pass` 地址
+- Check if backend service is running: `systemctl status cboard`
+- Check if port is correct: `netstat -tlnp | grep 8000`
+- Check `proxy_pass` address in Nginx configuration
 
-### 3. SSL 证书申请失败
+### 3. SSL Certificate Application Failed
 
-- 确保域名已正确解析到服务器 IP
-- 确保 80 端口已开放
-- 检查防火墙设置
+- Ensure domain is correctly resolved to server IP
+- Ensure port 80 is open
+- Check firewall settings
 
-### 4. 数据库权限错误
+### 4. Database Permission Error
 
 ```bash
 cd /www/wwwroot/cboard
@@ -261,169 +538,145 @@ chmod 666 cboard.db
 chown www:www cboard.db
 ```
 
-### 5. 前端无法访问后端 API
+### 5. Frontend Cannot Access Backend API
 
-- 检查 `.env` 中的 `BACKEND_CORS_ORIGINS` 是否包含您的域名
-- 检查 Nginx 配置中的 `/api/` 代理是否正确
+- Check if `BACKEND_CORS_ORIGINS` in `.env` includes your domain
+- Check if `/api/` proxy in Nginx configuration is correct
 
----
+### 6. Admin Login Issues
 
-## 📊 功能列表
-
-### ✅ 已完成功能
-
-- [x] 用户认证（注册、登录、JWT）
-- [x] 用户管理（CRUD、权限）
-- [x] 订阅管理
-- [x] 订单管理
-- [x] 套餐管理
-- [x] 支付集成（支付宝、微信等）
-- [x] 节点管理
-- [x] 优惠券系统
-- [x] 通知系统
-- [x] 工单系统
-- [x] 设备管理
-- [x] 邀请码系统
-- [x] 充值管理
-- [x] 配置管理
-- [x] 统计功能
-- [x] 邮件服务
-- [x] 短信服务
-- [x] 前端界面（Vue 3 + Element Plus）
+- Reset admin password using installation script (option 2)
+- Check admin account status: `go run scripts/check_admin.go`
+- Unlock admin account: `go run scripts/unlock_admin.go`
 
 ---
 
-## 🔒 安全建议
+## 📖 API Documentation
 
-1. **生产环境必须设置强密码**
-   - `SECRET_KEY` 至少 32 位随机字符串
-   - 管理员密码使用强密码
+After starting the server, main API endpoints:
 
-2. **使用 HTTPS**
-   - 安装脚本会自动配置 SSL 证书
-   - 确保强制 HTTPS 已开启
+### Authentication
+- `POST /api/v1/auth/register` - User registration
+- `POST /api/v1/auth/login` - User login
+- `POST /api/v1/auth/refresh` - Refresh token
+- `POST /api/v1/auth/logout` - User logout
 
-3. **配置 CORS**
-   - 生产环境必须明确指定允许的域名
-   - 不要使用通配符 `*`
+### User
+- `GET /api/v1/users/me` - Get current user
+- `PUT /api/v1/users/me` - Update user profile
+- `GET /api/v1/users/login-history` - Get login history
 
-4. **数据库安全**
-   - 定期备份数据库
-   - 使用 SQLite 时确保文件权限正确
+### Subscription
+- `GET /api/v1/subscriptions` - Get subscription list
+- `GET /api/v1/subscriptions/:id` - Get subscription details
+- `GET /subscribe/:url` - Get subscription configuration (Clash/V2Ray)
 
-5. **系统安全**
-   - 定期更新系统和依赖
-   - 配置防火墙规则
-   - 使用强密码策略
+### Orders
+- `GET /api/v1/orders` - Get order list
+- `POST /api/v1/orders` - Create order
+- `GET /api/v1/orders/:id` - Get order details
+- `POST /api/v1/orders/:id/cancel` - Cancel order
 
----
+### Packages
+- `GET /api/v1/packages` - Get package list
+- `GET /api/v1/packages/:id` - Get package details
 
-## 📝 数据库备份
+### Payment
+- `POST /api/v1/payment/notify/:method` - Payment callback
+- `GET /api/v1/payment/status/:orderNo` - Get payment status
 
-### 自动备份（推荐）
+### Admin APIs
+All admin APIs require admin authentication and are prefixed with `/api/v1/admin/`
 
-在宝塔面板中配置定时任务：
-
-1. **计划任务** → **添加计划任务**
-2. **任务类型**：Shell 脚本
-3. **任务名称**：CBoard 数据库备份
-4. **执行周期**：每天 0 点 2 分
-5. **脚本内容**：
-```bash
-#!/bin/bash
-cd /www/wwwroot/cboard
-BACKUP_DIR="/www/backup/cboard"
-mkdir -p $BACKUP_DIR
-cp cboard.db $BACKUP_DIR/cboard_$(date +%Y%m%d_%H%M%S).db
-# 保留最近 7 天的备份
-find $BACKUP_DIR -name "cboard_*.db" -mtime +7 -delete
-```
-
-### 手动备份
-
-```bash
-cd /www/wwwroot/cboard
-cp cboard.db cboard.db.backup.$(date +%Y%m%d_%H%M%S)
-```
+For complete API list, see: `internal/api/router/router.go`
 
 ---
 
-## 🏗️ 项目结构
+## 🏗️ Project Structure
 
 ```
 goweb/
-├── cmd/server/main.go          # 主入口
+├── cmd/server/main.go          # Main entry point
 ├── internal/
-│   ├── api/                    # API 层
-│   ├── core/                   # 核心模块
-│   ├── models/                 # 数据模型
-│   ├── services/               # 业务服务
-│   ├── middleware/             # 中间件
-│   └── utils/                  # 工具函数
-├── frontend/                   # Vue 3 前端
-│   ├── src/                    # 前端源代码
-│   └── dist/                   # 构建后的文件
-├── bin/                        # 编译后的可执行文件
-├── scripts/                    # 工具脚本
-├── .env                        # 环境变量配置
-├── install.sh                  # 宝塔面板安装脚本
-├── cboard.db                   # SQLite 数据库
-└── README.md                   # 本文件
+│   ├── api/                    # API layer
+│   │   ├── handlers/           # Request handlers
+│   │   └── router/             # Route definitions
+│   ├── core/                   # Core modules
+│   │   ├── auth/               # Authentication
+│   │   ├── config/             # Configuration
+│   │   └── database/           # Database
+│   ├── models/                 # Data models
+│   ├── services/               # Business services
+│   ├── middleware/             # Middleware
+│   └── utils/                  # Utility functions
+├── frontend/                   # Vue 3 frontend
+│   ├── src/                    # Frontend source code
+│   │   ├── views/              # Page components
+│   │   ├── components/         # Reusable components
+│   │   ├── router/             # Frontend routes
+│   │   └── store/              # State management
+│   └── dist/                   # Built files
+├── scripts/                    # Utility scripts
+│   ├── create_admin.go         # Create admin account
+│   ├── check_admin.go          # Check admin account
+│   └── unlock_admin.go        # Unlock admin account
+├── .env                        # Environment variables
+├── install.sh                  # BT Panel installation script
+├── cboard.db                   # SQLite database
+├── README.md                   # This file (English)
+└── README_zh.md                # Chinese version
 ```
 
 ---
 
-## 📖 API 文档
+## ⚠️ Important Notes
 
-启动服务器后，主要 API 端点：
+1. **First-Time Setup**
+   - After installation, immediately change the default admin password
+   - Update `SECRET_KEY` in `.env` file
+   - Configure email settings for password reset and notifications
 
-- `GET /health` - 健康检查
-- `POST /api/v1/auth/register` - 注册
-- `POST /api/v1/auth/login` - 登录
-- `POST /api/v1/auth/refresh` - 刷新令牌
-- `GET /api/v1/users/me` - 获取当前用户
-- `GET /api/v1/subscriptions` - 获取订阅列表
-- `GET /subscribe/:url` - 获取订阅配置（Clash）
+2. **Database**
+   - SQLite is used by default (no installation needed)
+   - For production with high traffic, consider MySQL or PostgreSQL
+   - Regular backups are essential
 
-完整 API 列表请查看代码中的路由定义：`internal/api/router/router.go`
+3. **Security**
+   - Never commit `.env` file to version control
+   - Use strong passwords for all accounts
+   - Enable HTTPS in production
+   - Regularly update dependencies
 
----
+4. **Performance**
+   - For high-traffic scenarios, consider using MySQL/PostgreSQL
+   - Enable Nginx caching for static files
+   - Monitor server resources regularly
 
-## 🔧 技术栈
-
-### 后端
-- **Web 框架**: Gin
-- **ORM**: GORM
-- **数据库**: SQLite/MySQL/PostgreSQL
-- **认证**: JWT
-- **配置**: Viper
-
-### 前端
-- **框架**: Vue 3
-- **UI 库**: Element Plus
-- **构建工具**: Vite
-- **状态管理**: Pinia
-- **路由**: Vue Router
+5. **Updates**
+   - Always backup database before updating
+   - Test updates in staging environment first
+   - Review changelog before updating
 
 ---
 
-## 📞 技术支持
+## 📞 Support
 
-如遇到问题，请：
+If you encounter issues:
 
-1. 查看日志文件：`/www/wwwroot/cboard/uploads/logs/app.log`
-2. 查看服务日志：`journalctl -u cboard -f`
-3. 检查系统资源：`htop` 或 `free -h`
-4. 检查网络连接：`curl http://127.0.0.1:8000/health`
-
----
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。
+1. Check log files: `/www/wwwroot/cboard/uploads/logs/app.log`
+2. Check service logs: `journalctl -u cboard -f`
+3. Check system resources: `htop` or `free -h`
+4. Check network connection: `curl http://127.0.0.1:8000/health`
+5. Review this README and troubleshooting section
 
 ---
 
-**最后更新**: 2024-12-15  
-**版本**: v1.0.0  
-**状态**: ✅ 生产就绪
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+**Last Updated**: 2024-12-20  
+**Version**: v1.0.0  
+**Status**: ✅ Production Ready
