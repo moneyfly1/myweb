@@ -161,13 +161,16 @@ func parseVMess(link string) (*ProxyNode, error) {
 			"host": []string{getString(data, "host", server)},
 		}
 	} else if network == "httpupgrade" {
-		// HTTP Upgrade 配置
-		node.Options["http-opts"] = map[string]interface{}{
+		// HTTP Upgrade 配置 - Clash Meta 需要转换为 ws 类型，并添加 v2ray-http-upgrade 标记
+		node.Network = "ws" // 转换为 ws 类型
+		wsOpts := map[string]interface{}{
 			"path": getString(data, "path", "/"),
 			"headers": map[string]string{
 				"Host": getString(data, "host", server),
 			},
+			"v2ray-http-upgrade": true, // Clash Meta 需要的标记
 		}
+		node.Options["ws-opts"] = wsOpts
 	}
 
 	return node, nil
