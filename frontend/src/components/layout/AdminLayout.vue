@@ -157,10 +157,16 @@ const menuSections = [
     items: [
       { path: '/admin/users', title: '用户列表', icon: 'el-icon-user' },
       { path: '/admin/abnormal-users', title: '异常用户', icon: 'el-icon-warning' },
-      { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' },
-      { path: '/admin/nodes', title: '节点管理', icon: 'el-icon-server' },
       { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' }
     ] 
+  },
+  {
+    title: '节点管理',
+    items: [
+      { path: '/admin/nodes', title: '节点管理', icon: 'el-icon-server' },
+      { path: '/admin/custom-nodes', title: '专线节点管理', icon: 'el-icon-connection' },
+      { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' }
+    ]
   },
   { 
     title: '订单管理', 

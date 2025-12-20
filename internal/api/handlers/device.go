@@ -10,73 +10,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetDevices 获取设备列表
 func GetDevices(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
-		return
-	}
-
+	u, _ := middleware.GetCurrentUser(c)
 	db := database.GetDB()
 	var devices []models.Device
-	if err := db.Where("user_id = ?", user.ID).Preload("Subscription").Find(&devices).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取设备列表失败",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    devices,
-	})
+	db.Where("user_id = ?", u.ID).Preload("Subscription").Find(&devices)
+	c.JSON(200, gin.H{"success": true, "data": devices})
 }
 
-// DeleteDevice 删除设备
 func DeleteDevice(c *gin.Context) {
-	id := c.Param("id")
-	user, ok := middleware.GetCurrentUser(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
-		return
-	}
-
+	u, _ := middleware.GetCurrentUser(c)
 	db := database.GetDB()
 	var device models.Device
-	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&device).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "设备不存在",
-		})
+	if err := db.Where("id = ? AND user_id = ?", c.Param("id"), u.ID).First(&device).Error; err != nil {
+		c.JSON(404, gin.H{"success": false, "message": "设备不存在"})
 		return
 	}
-
-	// 删除设备
-	if err := db.Delete(&device).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除设备失败",
-		})
-		return
-	}
-
-	// 更新订阅的设备数量（重新计算实际设备数）
-	var deviceCount int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&deviceCount)
-	db.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", deviceCount)
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "删除成功",
-	})
+	db.Delete(&device)
+	var count int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&count)
+	db.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count)
+	c.JSON(200, gin.H{"success": true, "message": "删除成功"})
 }
 
 // GetDeviceStats 获取设备统计（管理员）

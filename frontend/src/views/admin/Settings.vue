@@ -71,10 +71,10 @@
               <el-switch v-model="registrationSettings.email_verification_required" />
             </el-form-item>
             <el-form-item label="最小密码长度" prop="min_password_length">
-              <el-input-number 
-                v-model="registrationSettings.min_password_length" 
-                :min="6" 
-                :max="20"
+              <el-input 
+                v-model.number="registrationSettings.min_password_length" 
+                type="number"
+                placeholder="请输入最小密码长度"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
             </el-form-item>
@@ -83,10 +83,10 @@
             </el-form-item>
             <el-divider content-position="left">新用户默认订阅设置</el-divider>
             <el-form-item label="默认设备数" prop="default_subscription_device_limit">
-              <el-input-number 
-                v-model="registrationSettings.default_subscription_device_limit" 
-                :min="1" 
-                :max="100"
+              <el-input 
+                v-model.number="registrationSettings.default_subscription_device_limit" 
+                type="number"
+                placeholder="请输入默认设备数"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
               <div :class="['form-tip', { 'mobile': isMobile }]">
@@ -94,10 +94,10 @@
               </div>
             </el-form-item>
             <el-form-item label="默认订阅时长（月）" prop="default_subscription_duration_months">
-              <el-input-number 
-                v-model="registrationSettings.default_subscription_duration_months" 
-                :min="1" 
-                :max="120"
+              <el-input 
+                v-model.number="registrationSettings.default_subscription_duration_months" 
+                type="number"
+                placeholder="请输入默认订阅时长（月）"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
               <div :class="['form-tip', { 'mobile': isMobile }]">
@@ -478,10 +478,10 @@
             class="settings-form"
           >
             <el-form-item label="检查间隔(分钟)">
-              <el-input-number
-                v-model="nodeHealthSettings.check_interval"
-                :min="5"
-                :max="1440"
+              <el-input
+                v-model.number="nodeHealthSettings.check_interval"
+                type="number"
+                placeholder="请输入检查间隔（分钟）"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
               <div :class="['form-tip', { 'mobile': isMobile }]">
@@ -489,10 +489,10 @@
               </div>
             </el-form-item>
             <el-form-item label="最大允许延迟(毫秒)">
-              <el-input-number
-                v-model="nodeHealthSettings.max_latency"
-                :min="100"
-                :max="10000"
+              <el-input
+                v-model.number="nodeHealthSettings.max_latency"
+                type="number"
+                placeholder="请输入最大允许延迟（毫秒）"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
               <div :class="['form-tip', { 'mobile': isMobile }]">
@@ -500,10 +500,10 @@
               </div>
             </el-form-item>
             <el-form-item label="测试超时时间(秒)">
-              <el-input-number
-                v-model="nodeHealthSettings.test_timeout"
-                :min="1"
-                :max="30"
+              <el-input
+                v-model.number="nodeHealthSettings.test_timeout"
+                type="number"
+                placeholder="请输入测试超时时间（秒）"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
               <div :class="['form-tip', { 'mobile': isMobile }]">
@@ -534,6 +534,24 @@
           </el-form>
         </el-tab-pane>
 
+        <!-- 专线节点设置 -->
+        <el-tab-pane label="专线节点设置" name="custom-node">
+          <el-alert
+            title="专线节点管理"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 20px"
+          >
+            <template #default>
+              <div style="line-height: 1.8;">
+                <div style="margin-bottom: 8px;">专线节点可以通过添加节点链接的方式创建，与普通节点功能相同。</div>
+                <div style="margin-bottom: 8px;">唯一不同的是，专线节点可以分配给指定用户使用，而普通节点对所有用户可见。</div>
+                <div>您可以在"专线节点管理"页面添加节点链接，并选择哪些用户可以使用这些节点。</div>
+              </div>
+            </template>
+          </el-alert>
+        </el-tab-pane>
+
         <!-- 安全设置 -->
         <el-tab-pane label="安全设置" name="security">
           <el-form 
@@ -543,26 +561,26 @@
             class="settings-form"
           >
             <el-form-item label="登录失败限制" prop="login_fail_limit">
-              <el-input-number 
-                v-model="securitySettings.login_fail_limit" 
-                :min="3" 
-                :max="10"
+              <el-input 
+                v-model.number="securitySettings.login_fail_limit" 
+                type="number"
+                placeholder="请输入登录失败限制"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
             </el-form-item>
             <el-form-item label="登录失败锁定时间(分钟)" prop="login_lock_time">
-              <el-input-number 
-                v-model="securitySettings.login_lock_time" 
-                :min="5" 
-                :max="60"
+              <el-input 
+                v-model.number="securitySettings.login_lock_time" 
+                type="number"
+                placeholder="请输入登录失败锁定时间（分钟）"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
             </el-form-item>
             <el-form-item label="会话超时时间(分钟)" prop="session_timeout">
-              <el-input-number 
-                v-model="securitySettings.session_timeout" 
-                :min="15" 
-                :max="1440"
+              <el-input 
+                v-model.number="securitySettings.session_timeout" 
+                type="number"
+                placeholder="请输入会话超时时间（分钟）"
                 :style="{ width: isMobile ? '100%' : '200px' }"
               />
             </el-form-item>
@@ -688,6 +706,7 @@ export default {
       test_url: 'https://ping.pe' // 测速网站URL
     })
 
+
     const testingAdminEmail = ref(false)
     const testingAdminTelegram = ref(false)
     const testingAdminBark = ref(false)
@@ -805,6 +824,64 @@ export default {
         }
       } catch (error) {
         console.error('保存安全设置失败:', error)
+        ElMessage.error(error.response?.data?.message || '保存失败')
+      }
+    }
+
+    const saveCustomNodeSettings = async () => {
+      try {
+        // 保存到系统配置 - 使用批量更新方式，更可靠
+        const configs = [
+          { key: 'cloudflare_api_token', value: customNodeSettings.cloudflare_api_token || '', category: 'custom_node', type: 'string', display_name: 'Cloudflare API Token' },
+          { key: 'cloudflare_api_key', value: customNodeSettings.cloudflare_api_key || '', category: 'custom_node', type: 'string', display_name: 'Cloudflare API Key' },
+          { key: 'cloudflare_email', value: customNodeSettings.cloudflare_email || '', category: 'custom_node', type: 'string', display_name: 'Cloudflare邮箱' }
+        ]
+        
+        let successCount = 0
+        let failCount = 0
+        
+        for (const config of configs) {
+          try {
+            // 先尝试更新
+            const updateResponse = await api.put(`/admin/configs/${config.key}`, config)
+            if (updateResponse.data && updateResponse.data.success) {
+              successCount++
+            } else {
+              // 如果更新失败，尝试创建
+              const createResponse = await api.post('/admin/configs', config)
+              if (createResponse.data && createResponse.data.success) {
+                successCount++
+              } else {
+                failCount++
+                console.error(`保存配置 ${config.key} 失败:`, createResponse.data)
+              }
+            }
+          } catch (e) {
+            // 如果更新失败（404等），尝试创建
+            try {
+              const createResponse = await api.post('/admin/configs', config)
+              if (createResponse.data && createResponse.data.success) {
+                successCount++
+              } else {
+                failCount++
+                console.error(`创建配置 ${config.key} 失败:`, createResponse.data)
+              }
+            } catch (createError) {
+              failCount++
+              console.error(`保存配置 ${config.key} 失败:`, createError)
+            }
+          }
+        }
+        
+        if (failCount === 0) {
+          ElMessage.success('专线节点设置保存成功')
+        } else if (successCount > 0) {
+          ElMessage.warning(`部分配置保存成功 (${successCount}/${configs.length})`)
+        } else {
+          ElMessage.error('专线节点设置保存失败')
+        }
+      } catch (error) {
+        console.error('保存专线节点设置失败:', error)
         ElMessage.error(error.response?.data?.message || '保存失败')
       }
     }
@@ -989,7 +1066,7 @@ export default {
       announcementSettings,
       saveAnnouncementSettings,
       nodeHealthSettings,
-      saveNodeHealthSettings
+      saveNodeHealthSettings,
     }
   }
 }
@@ -1062,6 +1139,16 @@ export default {
   padding: 0 11px !important;
 }
 
+:deep(.el-input__inner::-webkit-inner-spin-button),
+:deep(.el-input__inner::-webkit-outer-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+:deep(.el-input__inner[type="number"]) {
+  -moz-appearance: textfield;
+}
+
 :deep(.el-input__prefix),
 :deep(.el-input__suffix) {
   background-color: transparent !important;
@@ -1106,8 +1193,7 @@ export default {
   
   .settings-form :deep(.el-input),
   .settings-form :deep(.el-select),
-  .settings-form :deep(.el-textarea),
-  .settings-form :deep(.el-input-number) {
+  .settings-form :deep(.el-textarea) {
     width: 100% !important;
   }
   

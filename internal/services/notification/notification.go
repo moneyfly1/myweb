@@ -64,20 +64,6 @@ func NewNotificationService() *NotificationService {
 	return &NotificationService{}
 }
 
-// FormatTelegramMessage 格式化 Telegram 消息（已废弃，使用模板构建器）
-// Deprecated: 使用 MessageTemplateBuilder.BuildTelegramMessage 代替
-func FormatTelegramMessage(notificationType string, data map[string]interface{}) string {
-	templateBuilder := NewMessageTemplateBuilder()
-	return templateBuilder.BuildTelegramMessage(notificationType, data)
-}
-
-// FormatBarkMessage 格式化 Bark 消息（已废弃，使用模板构建器）
-// Deprecated: 使用 MessageTemplateBuilder.BuildBarkMessage 代替
-func FormatBarkMessage(notificationType string, data map[string]interface{}) (string, string) {
-	templateBuilder := NewMessageTemplateBuilder()
-	return templateBuilder.BuildBarkMessage(notificationType, data)
-}
-
 // SendAdminNotification 发送管理员通知
 func (s *NotificationService) SendAdminNotification(notificationType string, data map[string]interface{}) error {
 	db := database.GetDB()

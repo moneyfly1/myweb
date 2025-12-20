@@ -149,11 +149,11 @@ func SetupRouter() *gin.Engine {
 		// 支付回调（不需要认证）
 		api.POST("/payment/notify/:type", handlers.PaymentNotify)
 
-		// 节点相关
+		// 节点相关（公开访问，但支持可选认证以获取专线节点）
 		nodes := api.Group("/nodes")
 		{
-			nodes.GET("", handlers.GetNodes)
-			nodes.GET("/stats", handlers.GetNodeStats)
+			nodes.GET("", middleware.TryAuthMiddleware(), handlers.GetNodes)
+			nodes.GET("/stats", middleware.TryAuthMiddleware(), handlers.GetNodeStats)
 			nodes.GET("/:id", handlers.GetNode)
 		}
 		// 节点操作（需要认证）
@@ -367,6 +367,25 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/nodes/batch-test", handlers.BatchTestNodes)
 			admin.POST("/nodes/import-from-file", handlers.ImportFromFile)
 
+			// 服务器管理（专线节点）
+
+			// 专线节点管理
+			admin.GET("/custom-nodes", handlers.GetCustomNodes)
+			admin.GET("/custom-nodes/:id/users", handlers.GetCustomNodeUsers)
+			admin.POST("/custom-nodes", handlers.CreateCustomNode)
+			admin.POST("/custom-nodes/import-links", handlers.ImportCustomNodeLinks)
+			admin.POST("/custom-nodes/batch-delete", handlers.BatchDeleteCustomNodes)
+			admin.POST("/custom-nodes/batch-assign", handlers.BatchAssignCustomNodes)
+			admin.POST("/custom-nodes/:id/test", handlers.TestCustomNode)
+			admin.GET("/custom-nodes/:id/link", handlers.GetCustomNodeLink)
+			admin.PUT("/custom-nodes/:id", handlers.UpdateCustomNode)
+			admin.DELETE("/custom-nodes/:id", handlers.DeleteCustomNode)
+
+			// 用户专线节点分配
+			admin.GET("/users/:id/custom-nodes", handlers.GetUserCustomNodes)
+			admin.POST("/users/:id/custom-nodes", handlers.AssignCustomNodeToUser)
+			admin.DELETE("/users/:id/custom-nodes/:node_id", handlers.UnassignCustomNodeFromUser)
+
 			// 优惠券管理（保留兼容性路由，但主要使用 /coupons/admin）
 
 			// 工单管理
@@ -452,6 +471,9 @@ func SetupRouter() *gin.Engine {
 			// 配置管理
 			admin.GET("/email-config", handlers.GetAdminEmailConfig)
 			admin.POST("/email-config", handlers.UpdateEmailConfig)
+			admin.GET("/configs", handlers.GetSystemConfigs)
+			admin.POST("/configs", handlers.CreateSystemConfig)
+			admin.PUT("/configs/:key", handlers.UpdateSystemConfig)
 
 			// 文件上传
 			admin.POST("/upload", handlers.UploadFile)

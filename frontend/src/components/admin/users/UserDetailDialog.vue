@@ -186,6 +186,49 @@
         </el-tabs>
       </div>
       
+      <!-- 专线节点分配 -->
+      <div class="custom-nodes-section">
+        <h4 class="section-title">
+          <el-icon><Connection /></el-icon>
+          专线节点分配
+        </h4>
+        <div class="custom-nodes-actions">
+          <el-button type="primary" @click="showAssignDialog = true">
+            <el-icon><Plus /></el-icon>
+            分配专线节点
+          </el-button>
+        </div>
+        <div class="table-responsive" v-if="customNodes && customNodes.length">
+          <el-table :data="customNodes" size="small" style="width: 100%">
+            <el-table-column prop="id" label="节点ID" width="80" />
+            <el-table-column prop="name" label="节点名称" min-width="150" />
+            <el-table-column prop="protocol" label="协议" width="100" />
+            <el-table-column prop="domain" label="域名" min-width="150" />
+            <el-table-column prop="port" label="端口" width="80" />
+            <el-table-column label="状态" width="100">
+              <template #default="scope">
+                <el-tag :type="scope.row.is_active ? 'success' : 'danger'" size="small">
+                  {{ scope.row.is_active ? '活跃' : '禁用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100">
+              <template #default="scope">
+                <el-button
+                  type="danger"
+                  size="small"
+                  link
+                  @click="unassignNode(scope.row.id)"
+                >
+                  取消分配
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <el-empty v-else description="该用户暂无分配的专线节点" :image-size="100" />
+      </div>
+      
       <!-- 最近活动 -->
       <div class="user-activities" v-if="user.recent_activities && user.recent_activities.length">
         <h4 class="section-title">
@@ -202,13 +245,44 @@
         </div>
       </div>
     </div>
+
+    <!-- 分配专线节点对话框 -->
+    <el-dialog
+      v-model="showAssignDialog"
+      title="分配专线节点"
+      width="600px"
+    >
+      <el-form label-width="120px">
+        <el-form-item label="选择节点">
+          <el-select
+            v-model="selectedNodeId"
+            placeholder="请选择要分配的专线节点"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="node in availableNodes"
+              :key="node.id"
+              :label="`${node.name} (${node.protocol})`"
+              :value="node.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAssignDialog = false">取消</el-button>
+        <el-button type="primary" @click="assignNode" :loading="assigning">确定</el-button>
+      </template>
+    </el-dialog>
   </el-dialog>
 </template>
 
 <script>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { Wallet, ShoppingCart, Clock, Connection, Plus } from '@element-plus/icons-vue'
 import { formatDate as formatDateUtil } from '@/utils/date'
+import { ElMessage } from 'element-plus'
+import { adminAPI } from '@/utils/api'
 
 export default {
   name: 'UserDetailDialog',
@@ -227,10 +301,107 @@ export default {
   emits: ['update:visible'],
   setup(props) {
     const activeBalanceTab = ref('recharge')
+    const customNodes = ref([])
+    const availableNodes = ref([])
+    const showAssignDialog = ref(false)
+    const selectedNodeId = ref(null)
+    const assigning = ref(false)
 
     watch(() => props.initialTab, (newVal) => {
       if (newVal) activeBalanceTab.value = newVal
     }, { immediate: true })
+
+    watch(() => props.user, async (newUser) => {
+      if (newUser && newUser.user_info?.id) {
+        await loadUserCustomNodes(newUser.user_info.id)
+      } else if (newUser && newUser.id) {
+        await loadUserCustomNodes(newUser.id)
+      }
+    }, { immediate: true })
+
+    watch(() => props.visible, async (visible) => {
+      if (visible) {
+        await loadAvailableNodes()
+      }
+    })
+
+    const loadUserCustomNodes = async (userId) => {
+      try {
+        const response = await adminAPI.getUserCustomNodes(userId)
+        if (response.data && response.data.success) {
+          customNodes.value = response.data.data || []
+        }
+      } catch (error) {
+        console.error('加载用户专线节点失败:', error)
+        customNodes.value = []
+      }
+    }
+
+    const loadAvailableNodes = async () => {
+      try {
+        const response = await adminAPI.getCustomNodes({ is_active: 'true' })
+        if (response.data && response.data.success) {
+          const allNodes = response.data.data || []
+          const assignedIds = customNodes.value.map(n => n.id)
+          availableNodes.value = allNodes.filter(n => !assignedIds.includes(n.id))
+        }
+      } catch (error) {
+        console.error('加载可用节点失败:', error)
+        availableNodes.value = []
+      }
+    }
+
+    const assignNode = async () => {
+      if (!selectedNodeId.value) {
+        ElMessage.warning('请选择要分配的节点')
+        return
+      }
+
+      const userId = props.user?.user_info?.id || props.user?.id
+      if (!userId) {
+        ElMessage.error('用户ID不存在')
+        return
+      }
+
+      assigning.value = true
+      try {
+        const response = await adminAPI.assignCustomNodeToUser(userId, selectedNodeId.value)
+        if (response.data && response.data.success) {
+          ElMessage.success('分配成功')
+          showAssignDialog.value = false
+          selectedNodeId.value = null
+          await loadUserCustomNodes(userId)
+          await loadAvailableNodes()
+        } else {
+          ElMessage.error(response.data?.message || '分配失败')
+        }
+      } catch (error) {
+        ElMessage.error('分配失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        assigning.value = false
+      }
+    }
+
+    const unassignNode = async (nodeId) => {
+      const userId = props.user?.user_info?.id || props.user?.id
+      if (!userId) {
+        ElMessage.error('用户ID不存在')
+        return
+      }
+
+      try {
+        const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
+        if (response.data && response.data.success) {
+          ElMessage.success('取消分配成功')
+          await loadUserCustomNodes(userId)
+          await loadAvailableNodes()
+        } else {
+          ElMessage.error(response.data?.message || '取消分配失败')
+        }
+      } catch (error) {
+        ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
+      }
+    }
 
     const formatDate = (date) => formatDateUtil(date) || ''
 
@@ -254,6 +425,13 @@ export default {
 
     return {
       activeBalanceTab,
+      customNodes,
+      availableNodes,
+      showAssignDialog,
+      selectedNodeId,
+      assigning,
+      assignNode,
+      unassignNode,
       formatDate,
       getStatusType,
       getStatusText
@@ -459,6 +637,14 @@ export default {
       font-size: 12px;
     }
   }
+}
+
+.custom-nodes-section {
+  margin-top: 20px;
+}
+
+.custom-nodes-actions {
+  margin-bottom: 15px;
 }
 </style>
 

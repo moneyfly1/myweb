@@ -133,7 +133,7 @@ func CreateInviteCode(c *gin.Context) {
 	}
 
 	// 生成邀请链接
-	baseURL := buildBaseURL(c)
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	inviteLink := baseURL + "/register?invite=" + code
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -177,7 +177,7 @@ func GetInviteCodes(c *gin.Context) {
 	}
 
 	// 生成邀请链接
-	baseURL := buildBaseURL(c)
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	now := utils.GetBeijingTime()
 	var result []gin.H
 	for _, code := range inviteCodes {

@@ -6,6 +6,7 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/google/uuid v1.4.0
 	github.com/smartwalle/alipay/v3 v3.2.28
 	github.com/spf13/viper v1.18.2
 	golang.org/x/crypto v0.46.0

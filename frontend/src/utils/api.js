@@ -146,11 +146,13 @@ api.interceptors.request.use(
     )
 
     // 3. 获取并注入 Token
-    const token = isAdminAPI ? secureStorage.get('admin_token') : secureStorage.get('user_token')
+    let token = isAdminAPI ? secureStorage.get('admin_token') : secureStorage.get('user_token')
     
-    if (!token && process.env.NODE_ENV === 'development') {
-      console.warn(`[API] 缺少 ${isAdminAPI ? 'admin' : 'user'} token for ${config.url}`)
+    // 如果是用户端 API 但没有用户 token，尝试使用管理员 token（允许管理员查看用户端内容）
+    if (!token && !isAdminAPI) {
+      token = secureStorage.get('admin_token')
     }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -427,6 +429,7 @@ export const adminAPI = {
   extendSubscription: (id, days) => api.post(`/admin/subscriptions/${id}/extend`, { days }),
   resetUserSubscription: (id) => api.post(`/admin/subscriptions/user/${id}/reset-all`),
   sendSubEmail: (id) => api.post(`/admin/subscriptions/user/${id}/send-email`),
+  sendSubscriptionEmail: (id) => api.post(`/admin/subscriptions/user/${id}/send-email`),
   batchClearDevices: (data) => api.post('/admin/subscriptions/batch-clear-devices', data),
   exportSubscriptions: () => api.get('/admin/subscriptions/export', { responseType: 'blob' }),
   getAppleStats: () => api.get('/admin/subscriptions/apple-stats'),
@@ -473,7 +476,22 @@ export const adminAPI = {
   deleteNode: (id) => api.delete(`/admin/nodes/${id}`),
   testNode: (id) => api.post(`/admin/nodes/${id}/test`),
   batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
-  getNodesStats: () => api.get('/admin/nodes/stats')
+  getNodesStats: () => api.get('/admin/nodes/stats'),
+  // 专线节点管理
+  getCustomNodes: (params) => api.get('/admin/custom-nodes', { params }),
+  createCustomNode: (data) => api.post('/admin/custom-nodes', data),
+  importCustomNodeLinks: (links) => api.post('/admin/custom-nodes/import-links', { links }),
+  updateCustomNode: (id, data) => api.put(`/admin/custom-nodes/${id}`, data),
+  deleteCustomNode: (id) => api.delete(`/admin/custom-nodes/${id}`),
+  batchDeleteCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-delete', { node_ids: nodeIds }),
+  batchAssignCustomNodes: (nodeIds, userIds, extraData = {}) => api.post('/admin/custom-nodes/batch-assign', { node_ids: nodeIds, user_ids: userIds, ...extraData }),
+  getCustomNodeUsers: (id) => api.get(`/admin/custom-nodes/${id}/users`),
+  testCustomNode: (id) => api.post(`/admin/custom-nodes/${id}/test`),
+  getCustomNodeLink: (id) => api.get(`/admin/custom-nodes/${id}/link`),
+  // 用户专线节点分配
+  getUserCustomNodes: (userId) => api.get(`/admin/users/${userId}/custom-nodes`),
+  assignCustomNodeToUser: (userId, customNodeId, extraData = {}) => api.post(`/admin/users/${userId}/custom-nodes`, { custom_node_id: customNodeId, ...extraData }),
+  unassignCustomNodeFromUser: (userId, nodeId) => api.delete(`/admin/users/${userId}/custom-nodes/${nodeId}`)
 }
 
 

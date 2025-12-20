@@ -72,7 +72,7 @@ func GetUserDashboard(c *gin.Context) {
 	}
 
 	// 订阅链接（统一格式）
-	baseURL := buildBaseURL(c)
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	clashURL := ""
 	universalURL := ""
 	qrcodeURL := ""

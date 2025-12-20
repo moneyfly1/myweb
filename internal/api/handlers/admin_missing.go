@@ -1729,7 +1729,7 @@ func CreatePaymentConfig(c *gin.Context) {
 	}
 
 	// 构建基础 URL
-	baseURL := buildBaseURL(c)
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 
 	// 如果没有提供回调地址，自动生成
 	if req.NotifyURL == "" {
@@ -1842,7 +1842,7 @@ func UpdatePaymentConfig(c *gin.Context) {
 	}
 
 	// 构建基础 URL
-	baseURL := buildBaseURL(c)
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 
 	// 更新字段
 	if req.PayType != "" {

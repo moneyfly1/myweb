@@ -640,13 +640,35 @@ func GetOrders(c *gin.Context) {
 			"updated_at":             order.UpdatedAt,
 		}
 
-		// 添加套餐信息
-		if order.Package.ID > 0 {
+		// 添加套餐信息（处理设备升级订单 PackageID=0）
+		if order.PackageID == 0 {
+			// 设备升级订单
+			formattedOrders[i]["package"] = gin.H{
+				"id":   0,
+				"name": "设备升级",
+			}
+			formattedOrders[i]["package_name"] = "设备升级"
+		} else if order.Package.ID > 0 {
 			formattedOrders[i]["package"] = gin.H{
 				"id":           order.Package.ID,
 				"name":         order.Package.Name,
 				"price":        order.Package.Price,
 				"device_limit": order.Package.DeviceLimit,
+			}
+			formattedOrders[i]["package_name"] = order.Package.Name
+		} else {
+			// Preload 失败，尝试单独查询
+			var pkg models.Package
+			if err := db.First(&pkg, order.PackageID).Error; err == nil {
+				formattedOrders[i]["package"] = gin.H{
+					"id":           pkg.ID,
+					"name":         pkg.Name,
+					"price":        pkg.Price,
+					"device_limit": pkg.DeviceLimit,
+				}
+				formattedOrders[i]["package_name"] = pkg.Name
+			} else {
+				formattedOrders[i]["package_name"] = "未知套餐"
 			}
 		}
 
@@ -844,7 +866,8 @@ func CancelOrderByNo(c *gin.Context) {
 func GetAdminOrders(c *gin.Context) {
 	db := database.GetDB()
 	var orders []models.Order
-	query := db.Preload("User").Preload("Package").Preload("Coupon")
+	// 不 Preload，避免 PackageID=0 的问题，在循环中单独查询
+	query := db.Model(&models.Order{})
 
 	// 分页参数（支持 page/size 和 skip/limit）
 	page := 1
@@ -937,22 +960,66 @@ func GetAdminOrders(c *gin.Context) {
 			paymentTime = order.PaymentTime.Time.Format("2006-01-02 15:04:05")
 		}
 
+		// 处理用户信息 - 如果 Preload 失败，单独查询
+		var username, email string
+		var userID uint
+		if order.User.ID > 0 {
+			userID = order.User.ID
+			username = order.User.Username
+			email = order.User.Email
+		} else {
+			// Preload 失败，单独查询用户
+			var user models.User
+			if err := db.First(&user, order.UserID).Error; err == nil {
+				userID = user.ID
+				username = user.Username
+				email = user.Email
+			} else {
+				userID = order.UserID
+				username = "已删除"
+				email = "deleted"
+			}
+		}
+
 		// 构建用户对象（前端期望嵌套的 user 对象）
 		userInfo := gin.H{
-			"id":       order.User.ID,
-			"username": order.User.Username,
-			"email":    order.User.Email,
+			"id":       userID,
+			"username": username,
+			"email":    email,
+		}
+
+		// 处理 Package 信息（设备升级订单 PackageID 为 0）
+		var packageName string
+		if order.PackageID == 0 {
+			packageName = "设备升级"
+			// 如果有 ExtraData，尝试解析显示升级详情
+			if order.ExtraData.Valid && order.ExtraData.String != "" {
+				packageName = "设备升级订单"
+			}
+		} else {
+			// 检查 Package 是否已加载
+			if order.Package.ID > 0 && order.Package.ID == order.PackageID {
+				packageName = order.Package.Name
+			} else {
+				// Preload 失败，单独查询 Package
+				var pkg models.Package
+				if err := db.First(&pkg, order.PackageID).Error; err == nil {
+					packageName = pkg.Name
+				} else {
+					packageName = "未知套餐"
+				}
+			}
 		}
 
 		orderList = append(orderList, gin.H{
 			"id":             order.ID,
 			"order_no":       order.OrderNo,
 			"user_id":        order.UserID,
-			"user":           userInfo,            // 嵌套用户信息
-			"username":       order.User.Username, // 保留顶层字段以兼容
-			"email":          order.User.Email,    // 保留顶层字段以兼容
+			"user":           userInfo, // 嵌套用户信息
+			"username":       username, // 保留顶层字段以兼容
+			"email":          email,    // 保留顶层字段以兼容
 			"package_id":     order.PackageID,
-			"package_name":   order.Package.Name,
+			"package_name":   packageName,
 			"amount":         amount,
 			"payment_method": paymentMethod,
 			"payment_time":   paymentTime,
@@ -1227,7 +1294,8 @@ func BatchDeleteOrders(c *gin.Context) {
 // ExportOrders 导出订单（CSV格式）
 func ExportOrders(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Preload("User").Preload("Package").Preload("Coupon").Model(&models.Order{})
+	// 不 Preload，避免 PackageID=0 的问题，在循环中单独查询
+	query := db.Model(&models.Order{})
 
 	// 搜索参数（支持 keyword 和 search）
 	keyword := c.Query("keyword")
@@ -1278,16 +1346,38 @@ func ExportOrders(c *gin.Context) {
 			paymentTime = order.PaymentTime.Time.Format("2006-01-02 15:04:05")
 		}
 
+		// 处理用户信息
 		username := ""
 		email := ""
 		if order.User.ID > 0 {
 			username = order.User.Username
 			email = order.User.Email
+		} else {
+			// Preload 失败，单独查询
+			var user models.User
+			if err := db.First(&user, order.UserID).Error; err == nil {
+				username = user.Username
+				email = user.Email
+			} else {
+				username = "已删除"
+				email = "deleted"
+			}
 		}
 
+		// 处理套餐信息（设备升级订单 PackageID=0）
 		packageName := ""
-		if order.Package.ID > 0 {
+		if order.PackageID == 0 {
+			packageName = "设备升级"
+		} else if order.Package.ID > 0 && order.Package.ID == order.PackageID {
 			packageName = order.Package.Name
+		} else {
+			// Preload 失败，单独查询
+			var pkg models.Package
+			if err := db.First(&pkg, order.PackageID).Error; err == nil {
+				packageName = pkg.Name
+			} else {
+				packageName = "未知套餐"
+			}
 		}
 
 		statusText := order.Status

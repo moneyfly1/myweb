@@ -1,6 +1,11 @@
 package handlers
 
 import (
+	"cboard-go/internal/core/database"
+	"cboard-go/internal/models"
+	"cboard-go/internal/services/config_update"
+	"cboard-go/internal/services/device"
+	"cboard-go/internal/utils"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -8,214 +13,77 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"cboard-go/internal/core/database"
-	"cboard-go/internal/models"
-	"cboard-go/internal/services/config_update"
-	"cboard-go/internal/services/device"
-	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-// GetSubscriptionConfig 获取订阅配置（猫咪订阅 - Clash 格式）
-func GetSubscriptionConfig(c *gin.Context) {
-	subscriptionURL := c.Param("url")
-
-	// 验证订阅URL存在（订阅URL本身就是密钥，只有知道URL的用户才能访问）
-	// 为了安全，我们记录访问日志，并检查访问频率
-	db := database.GetDB()
-	var subscription models.Subscription
-	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		// 不返回具体错误信息，防止信息泄露
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订阅不存在",
-		})
-		return
-	}
-
-	// 检查用户是否被禁用
-	var user models.User
-	if err := db.First(&user, subscription.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
-		return
-	}
-	if !user.IsActive {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "账户已被禁用，无法获取节点信息",
-		})
-		return
-	}
-
-	// 记录访问日志（用于安全审计）
-	// 注意：这里不验证用户身份，因为订阅URL本身就是密钥
-	// 但我们可以记录访问IP、User-Agent等信息，用于异常检测
-
-	// 检查订阅是否有效（有效期和设备限制）
-	now := time.Now()
+func validateSubscription(subscription *models.Subscription, user *models.User, db *gorm.DB, clientIP, userAgent string) (string, int, int, bool) {
+	now := utils.GetBeijingTime()
 	isExpired := subscription.ExpireTime.Before(now)
 	isInactive := !subscription.IsActive || subscription.Status != "active"
-
-	// 检查设备限制（在记录设备访问之前）
-	deviceManager := device.NewDeviceManager()
-	userAgent := c.GetHeader("User-Agent")
-	ipAddress := c.ClientIP()
-
-	// 检查当前设备数量
-	var currentDeviceCount int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&currentDeviceCount)
-
-	// 检查这个设备是否是新设备
-	deviceHash := deviceManager.GenerateDeviceHash(userAgent, ipAddress, "")
-	var existingDevice models.Device
-	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscription.ID).First(&existingDevice).Error != nil
-
-	// 如果是新设备，检查是否会超过限制
-	isDeviceOverLimit := false
-	if isNewDevice && int(currentDeviceCount) >= subscription.DeviceLimit {
-		isDeviceOverLimit = true
+	isSpecialValid := user.SpecialNodeExpiresAt.Valid && user.SpecialNodeExpiresAt.Time.After(now)
+	if isExpired && !isSpecialValid {
+		return fmt.Sprintf("订阅已过期（到期时间：%s），请及时续费", subscription.ExpireTime.Format("2006-01-02 15:04:05")), 0, subscription.DeviceLimit, false
 	}
-
-	// 只有有效期内且在设备限制内的用户才能获取节点
-	if isExpired || isInactive || isDeviceOverLimit {
-		// 返回错误信息
-		var errorMsg string
-		if isExpired {
-			errorMsg = fmt.Sprintf("订阅已过期（到期时间：%s），请及时续费", subscription.ExpireTime.Format("2006-01-02 15:04:05"))
-		} else if isInactive {
-			errorMsg = "订阅已失效，请联系客服"
-		} else if isDeviceOverLimit {
-			errorMsg = fmt.Sprintf("设备数量超过限制（当前 %d/%d），请删除多余设备后再试", currentDeviceCount, subscription.DeviceLimit)
-		}
-
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": errorMsg,
-		})
-		return
+	if isInactive {
+		return "订阅已失效，请联系客服", 0, subscription.DeviceLimit, false
 	}
-
-	// 记录设备访问（在限制检查通过后）
-	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "clash")
-
-	// 生成配置（Clash）
-	service := config_update.NewConfigUpdateService()
-	config, err := service.GenerateClashConfig(subscription.UserID, subscriptionURL)
-	if err != nil {
-		utils.LogError("GetClashConfig: generate config failed", err, map[string]interface{}{
-			"subscription_url": subscriptionURL,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成配置失败",
-		})
-		return
+	var count int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
+	hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
+	var d models.Device
+	isNew := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&d).Error != nil
+	if isNew && int(count) >= subscription.DeviceLimit {
+		return fmt.Sprintf("设备数量超过限制（当前 %d/%d），请删除多余设备后再试", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
 	}
-
-	// 返回配置（Clash 格式）
-	c.Header("Content-Type", "application/x-yaml")
-	c.String(http.StatusOK, config)
+	return "", int(count), subscription.DeviceLimit, true
 }
 
-// GetUniversalSubscription 获取通用订阅（Base64格式，适用于小火煎、v2ray等）
-func GetUniversalSubscription(c *gin.Context) {
-	subscriptionURL := c.Param("url")
-
-	// 验证订阅URL存在（订阅URL本身就是密钥，只有知道URL的用户才能访问）
-	// 为了安全，我们记录访问日志，并检查访问频率
+func GetSubscriptionConfig(c *gin.Context) {
+	uurl := c.Param("url")
 	db := database.GetDB()
-	var subscription models.Subscription
-	if err := db.Where("subscription_url = ?", subscriptionURL).First(&subscription).Error; err != nil {
-		// 不返回具体错误信息，防止信息泄露
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+	var sub models.Subscription
+	if err := db.Where("subscription_url = ?", uurl).First(&sub).Error; err != nil {
+		c.JSON(404, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
-
-	// 检查用户是否被禁用
-	var user models.User
-	if err := db.First(&user, subscription.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+	var u models.User
+	if err := db.First(&u, sub.UserID).Error; err != nil || !u.IsActive {
+		c.JSON(403, gin.H{"success": false, "message": "账户已禁用"})
 		return
 	}
-	if !user.IsActive {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "账户已被禁用，无法获取节点信息",
-		})
+	if msg, _, _, ok := validateSubscription(&sub, &u, db, c.ClientIP(), c.GetHeader("User-Agent")); !ok {
+		c.JSON(403, gin.H{"success": false, "message": msg})
 		return
 	}
+	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), c.ClientIP(), "clash")
+	cfg, _ := config_update.NewConfigUpdateService().GenerateClashConfig(sub.UserID, uurl)
+	c.Header("Content-Type", "application/x-yaml")
+	c.String(200, cfg)
+}
 
-	// 检查订阅是否有效（有效期和设备限制）
-	now := time.Now()
-	isExpired := subscription.ExpireTime.Before(now)
-	isInactive := !subscription.IsActive || subscription.Status != "active"
-
-	// 检查设备限制（在记录设备访问之前）
-	deviceManager := device.NewDeviceManager()
-	userAgent := c.GetHeader("User-Agent")
-	ipAddress := c.ClientIP()
-
-	// 检查当前设备数量
-	var currentDeviceCount int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&currentDeviceCount)
-
-	// 检查这个设备是否是新设备
-	deviceHash := deviceManager.GenerateDeviceHash(userAgent, ipAddress, "")
-	var existingDevice models.Device
-	isNewDevice := db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscription.ID).First(&existingDevice).Error != nil
-
-	// 如果是新设备，检查是否会超过限制
-	isDeviceOverLimit := false
-	if isNewDevice && int(currentDeviceCount) >= subscription.DeviceLimit {
-		isDeviceOverLimit = true
-	}
-
-	// 只有有效期内且在设备限制内的用户才能获取节点
-	if isExpired || isInactive || isDeviceOverLimit {
-		// 返回错误信息
-		var errorMsg string
-		if isExpired {
-			errorMsg = fmt.Sprintf("订阅已过期（到期时间：%s），请及时续费", subscription.ExpireTime.Format("2006-01-02 15:04:05"))
-		} else if isInactive {
-			errorMsg = "订阅已失效，请联系客服"
-		} else if isDeviceOverLimit {
-			errorMsg = fmt.Sprintf("设备数量超过限制（当前 %d/%d），请删除多余设备后再试", currentDeviceCount, subscription.DeviceLimit)
-		}
-
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": errorMsg,
-		})
+func GetUniversalSubscription(c *gin.Context) {
+	uurl := c.Param("url")
+	db := database.GetDB()
+	var sub models.Subscription
+	if err := db.Where("subscription_url = ?", uurl).First(&sub).Error; err != nil {
+		c.JSON(404, gin.H{"success": false, "message": "订阅不存在"})
 		return
 	}
-
-	// 记录设备访问（在限制检查通过后）
-	_, _ = deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, ipAddress, "universal")
-
-	// 生成通用订阅配置（Base64格式）
-	service := config_update.NewConfigUpdateService()
-	configText, err := service.GenerateSSRConfig(subscription.UserID, subscriptionURL)
-	if err != nil {
-		utils.LogError("GetUniversalConfig: generate config failed", err, map[string]interface{}{
-			"subscription_url": subscriptionURL,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "生成配置失败"})
+	var u models.User
+	if err := db.First(&u, sub.UserID).Error; err != nil || !u.IsActive {
+		c.JSON(403, gin.H{"success": false, "message": "账户已禁用"})
 		return
 	}
-
-	// Base64 编码返回
-	encoded := base64.StdEncoding.EncodeToString([]byte(configText))
+	if msg, _, _, ok := validateSubscription(&sub, &u, db, c.ClientIP(), c.GetHeader("User-Agent")); !ok {
+		c.JSON(403, gin.H{"success": false, "message": msg})
+		return
+	}
+	device.NewDeviceManager().RecordDeviceAccess(sub.ID, sub.UserID, c.GetHeader("User-Agent"), c.ClientIP(), "universal")
+	cfg, _ := config_update.NewConfigUpdateService().GenerateSSRConfig(sub.UserID, uurl)
 	c.Header("Content-Type", "text/plain; charset=utf-8")
-	c.String(http.StatusOK, encoded)
+	c.String(200, base64.StdEncoding.EncodeToString([]byte(cfg)))
 }
 
 // UpdateSubscriptionConfig 更新订阅配置（管理员）
