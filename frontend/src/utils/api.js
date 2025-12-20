@@ -493,7 +493,15 @@ export const adminAPI = {
   // 用户专线节点分配
   getUserCustomNodes: (userId) => api.get(`/admin/users/${userId}/custom-nodes`),
   assignCustomNodeToUser: (userId, customNodeId, extraData = {}) => api.post(`/admin/users/${userId}/custom-nodes`, { custom_node_id: customNodeId, ...extraData }),
-  unassignCustomNodeFromUser: (userId, nodeId) => api.delete(`/admin/users/${userId}/custom-nodes/${nodeId}`)
+  unassignCustomNodeFromUser: (userId, nodeId) => api.delete(`/admin/users/${userId}/custom-nodes/${nodeId}`),
+  // 管理员通知设置
+  updateAdminNotificationSettings: (data) => api.put('/admin/settings/admin-notification', data),
+  testAdminEmailNotification: () => api.post('/admin/settings/admin-notification/test/email'),
+  testAdminTelegramNotification: () => api.post('/admin/settings/admin-notification/test/telegram'),
+  testAdminBarkNotification: () => api.post('/admin/settings/admin-notification/test/bark'),
+  // 通知设置（管理员个人）
+  getNotificationSettings: () => api.get('/admin/notification-settings'),
+  updateNotificationSettings: (data) => api.put('/admin/notification-settings', data)
 }
 
 

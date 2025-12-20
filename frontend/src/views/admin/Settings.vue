@@ -726,8 +726,17 @@ export default {
           Object.assign(themeSettings, themeData)
           }
         if (settings.admin_notification) {
-          Object.assign(adminNotificationSettings, settings.admin_notification)
+          // 将字符串 "true"/"false" 转换为布尔值
+          const adminNotifData = { ...settings.admin_notification }
+          for (const key in adminNotifData) {
+            if (adminNotifData[key] === 'true' || adminNotifData[key] === true) {
+              adminNotifData[key] = true
+            } else if (adminNotifData[key] === 'false' || adminNotifData[key] === false) {
+              adminNotifData[key] = false
+            }
           }
+          Object.assign(adminNotificationSettings, adminNotifData)
+        }
         if (settings.announcement) {
           Object.assign(announcementSettings, settings.announcement)
           }
@@ -923,9 +932,23 @@ export default {
 
     const saveAdminNotificationSettings = async () => {
       try {
-        await adminAPI.updateAdminNotificationSettings(adminNotificationSettings)
-        ElMessage.success('管理员通知设置保存成功')
+        // 将布尔值转换为字符串，因为后端存储为字符串
+        const settingsToSave = {}
+        for (const [key, value] of Object.entries(adminNotificationSettings)) {
+          if (typeof value === 'boolean') {
+            settingsToSave[key] = value ? 'true' : 'false'
+          } else {
+            settingsToSave[key] = value || ''
+          }
+        }
+        const response = await adminAPI.updateAdminNotificationSettings(settingsToSave)
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('管理员通知设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '保存失败')
+        }
       } catch (error) {
+        console.error('保存管理员通知设置失败:', error)
         ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
       }
     }

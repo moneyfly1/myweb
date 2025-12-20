@@ -346,6 +346,10 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/:id/reset-password", handlers.ResetPassword)
 			admin.POST("/users/:id/login-as", handlers.LoginAsUser)
 			admin.POST("/users/batch-delete", handlers.BatchDeleteUsers)
+			admin.POST("/users/batch-enable", handlers.BatchEnableUsers)
+			admin.POST("/users/batch-disable", handlers.BatchDisableUsers)
+			admin.POST("/users/batch-send-subscription-email", handlers.BatchSendSubEmail)
+			admin.POST("/users/batch-expire-reminder", handlers.BatchSendExpireReminder)
 
 			// 订单管理
 			admin.GET("/orders", handlers.GetAdminOrders)
@@ -446,6 +450,11 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/devices/batch-delete", handlers.BatchDeleteDevices)
 			admin.GET("/subscriptions/export", handlers.ExportSubscriptions)
 			admin.POST("/subscriptions/batch-clear-devices", handlers.BatchClearDevices)
+			admin.POST("/subscriptions/batch-delete", handlers.BatchDeleteSubscriptions)
+			admin.POST("/subscriptions/batch-enable", handlers.BatchEnableSubscriptions)
+			admin.POST("/subscriptions/batch-disable", handlers.BatchDisableSubscriptions)
+			admin.POST("/subscriptions/batch-reset", handlers.BatchResetSubscriptions)
+			admin.POST("/subscriptions/batch-send-email", handlers.BatchSendAdminSubEmail)
 
 			// 配置更新相关
 			admin.GET("/config-update/status", handlers.GetConfigUpdateStatus)
