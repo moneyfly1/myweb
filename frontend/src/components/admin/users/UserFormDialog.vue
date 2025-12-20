@@ -272,9 +272,10 @@ export default {
     margin-bottom: 20px;
   }
   
-  /* 移除所有输入框的圆角和阴影效果，设置为简单长方形 - 参考系统设置页面的样式 */
+  /* 移除所有输入框的圆角和阴影效果，设置为简单长方形 - 完全移除嵌套边框 */
+  /* 注意：需要覆盖全局样式 global.scss 中给 el-input__inner 添加的边框 */
   
-  /* 基础输入框 - 外层包装器 */
+  /* 基础输入框 - 外层包装器（唯一有边框的元素） */
   :deep(.el-input__wrapper) {
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -301,13 +302,38 @@ export default {
     padding: 0 !important;
   }
   
-  /* 内层输入框 - 移除所有边框和圆角，只保留内边距 */
-  :deep(.el-input__inner) {
+  /* 内层输入框 - 完全移除边框、圆角、背景，只保留内边距 */
+  /* 必须覆盖 global.scss 中的全局样式 */
+  :deep(.el-input .el-input__inner),
+  :deep(.el-input__inner),
+  :deep(.el-input__inner input),
+  :deep(.el-input__inner textarea),
+  :deep(.el-select .el-input__inner),
+  :deep(.el-date-editor .el-input__inner) {
     border-radius: 0 !important;
     border: none !important;
+    border-width: 0 !important;
+    outline: none !important;
     box-shadow: none !important;
     background-color: transparent !important;
+    background: transparent !important;
     padding: 0 11px !important;
+  }
+  
+  /* 确保所有嵌套的 input 元素都没有边框 */
+  :deep(.el-input__wrapper input),
+  :deep(.el-input__wrapper textarea),
+  :deep(.el-input input),
+  :deep(.el-input textarea),
+  :deep(.el-select input),
+  :deep(.el-date-editor input) {
+    border: none !important;
+    border-width: 0 !important;
+    outline: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
   }
   
   /* 移除数字输入框的上下箭头 */
@@ -326,14 +352,23 @@ export default {
   :deep(.el-input__prefix),
   :deep(.el-input__suffix) {
     background-color: transparent !important;
+    background: transparent !important;
     border: none !important;
   }
   
-  /* 文本域 */
+  /* 移除前缀和后缀内部元素的边框 */
+  :deep(.el-input__prefix *),
+  :deep(.el-input__suffix *) {
+    border: none !important;
+    background: transparent !important;
+  }
+  
+  /* 文本域 - 只有外层有边框 */
   :deep(.el-textarea__inner) {
     border-radius: 0 !important;
     border: 1px solid #dcdfe6 !important;
     box-shadow: none !important;
+    outline: none !important;
   }
   
   /* 悬停和聚焦状态 */
@@ -347,13 +382,12 @@ export default {
     box-shadow: none !important;
   }
   
-  :deep(.el-input__wrapper:hover) {
-    border-color: #c0c4cc !important;
-    box-shadow: none !important;
-  }
-  
-  :deep(.el-input__wrapper.is-focus) {
-    border-color: #409eff !important;
+  /* 确保聚焦时内层元素没有边框 */
+  :deep(.el-input__wrapper.is-focus .el-input__inner),
+  :deep(.el-input__wrapper.is-focus input),
+  :deep(.el-input__wrapper.is-focus textarea) {
+    border: none !important;
+    outline: none !important;
     box-shadow: none !important;
   }
   
