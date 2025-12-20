@@ -9,7 +9,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
-	"cboard-go/internal/services/sms"
+
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +19,7 @@ import (
 type SendVerificationCodeRequest struct {
 	Email string `json:"email"`
 	Phone string `json:"phone"`
-	Type  string `json:"type" binding:"required"` // email, sms
+	Type  string `json:"type" binding:"required"` // email
 }
 
 // SendVerificationCode 发送验证码
@@ -36,7 +36,7 @@ func SendVerificationCode(c *gin.Context) {
 	db := database.GetDB()
 
 	// 检查系统配置：注册是否启用（仅对注册验证码进行检查）
-	if req.Type == "email" || req.Type == "sms" {
+	if req.Type == "email" {
 		var registrationConfig models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", "registration_enabled", "registration").First(&registrationConfig).Error; err == nil {
 			if registrationConfig.Value != "true" {
@@ -99,52 +99,13 @@ func SendVerificationCode(c *gin.Context) {
 			"message": "验证码已发送到邮箱",
 		})
 
-	} else if req.Type == "sms" {
-		if req.Phone == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "手机号不能为空",
-			})
-			return
-		}
-
-		// 保存验证码（使用邮箱字段存储手机号）
-		verificationCode := models.VerificationCode{
-			Email:     req.Phone,
-			Code:      code,
-			ExpiresAt: expiresAt,
-			Used:      0,
-			Purpose:   "register",
-		}
-
-		if err := db.Create(&verificationCode).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "保存验证码失败",
-			})
-			return
-		}
-
-		// 发送短信
-		smsService := sms.NewAliyunSMSService()
-		if err := smsService.SendVerificationCode(req.Phone, code); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "发送短信失败",
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "验证码已发送到手机",
-		})
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "不支持的验证码类型",
 		})
 	}
+
 }
 
 // VerifyCodeRequest 验证验证码请求
@@ -169,9 +130,6 @@ func VerifyCode(c *gin.Context) {
 	db := database.GetDB()
 
 	identifier := req.Email
-	if req.Type == "sms" {
-		identifier = req.Phone
-	}
 
 	// 检查最近的验证码尝试次数（最多5次）
 	// 检查最近5分钟内失败的尝试次数
