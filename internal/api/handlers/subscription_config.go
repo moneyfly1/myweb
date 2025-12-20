@@ -119,7 +119,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 				isInactive := !currentSub.IsActive || currentSub.Status != "active"
 				
 				errorTitle = "订阅地址已更换"
-				errorMessage = fmt.Sprintf("您的订阅地址已更换，请使用新的订阅地址更新配置。\n\n")
+				errorMessage = "您的订阅地址已更换，请使用新的订阅地址更新配置。\n\n"
 				
 				if reset.NewSubscriptionURL != nil {
 					baseURL := utils.GetBuildBaseURL(c.Request, db)
@@ -189,7 +189,7 @@ func GetUniversalSubscription(c *gin.Context) {
 				isInactive := !currentSub.IsActive || currentSub.Status != "active"
 				
 				errorTitle = "订阅地址已更换"
-				errorMessage = fmt.Sprintf("您的订阅地址已更换，请使用新的订阅地址更新配置。\n\n")
+				errorMessage = "您的订阅地址已更换，请使用新的订阅地址更新配置。\n\n"
 				
 				if reset.NewSubscriptionURL != nil {
 					baseURL := utils.GetBuildBaseURL(c.Request, db)
