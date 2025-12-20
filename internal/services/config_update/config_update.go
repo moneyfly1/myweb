@@ -421,9 +421,9 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
 		}
 	case "anytls":
-		// Anytls 节点需要 password
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		// Anytls 节点需要 password（使用 UUID 字段存储）
+		if node.UUID != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.UUID))
 		}
 	default:
 		// 其他节点类型
