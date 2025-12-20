@@ -76,26 +76,44 @@ func checkOldSubscriptionURL(db *gorm.DB, oldURL string) (*models.SubscriptionRe
 
 // generateErrorConfig 生成错误配置（Clash格式）
 func generateErrorConfig(title, message string) string {
-	return fmt.Sprintf(`proxies: []
+	// 生成一个明确的错误配置，不包含任何可用节点
+	// 使用注释形式显示错误信息，确保客户端能看到
+	return fmt.Sprintf(`# ============================================
+# ⚠️ 订阅地址错误
+# ============================================
+# %s
+# ============================================
+# %s
+# ============================================
+# 此订阅地址已失效，无法获取节点信息
+# 请登录您的账户获取新的订阅地址
+# ============================================
+
+port: 7890
+socks-port: 7891
+allow-lan: false
+mode: Rule
+log-level: error
+
+proxies: []
 proxy-groups: []
 rules:
-  - DOMAIN-SUFFIX,example.com,REJECT
   - MATCH,REJECT
-
-# ============================================
-# %s
-# ============================================
-# %s
-# ============================================
 `, title, message)
 }
 
 // generateErrorConfigBase64 生成错误配置（Base64格式，用于通用订阅）
 func generateErrorConfigBase64(title, message string) string {
+	// 生成明确的错误信息，包含所有必要信息
 	config := fmt.Sprintf(`# ============================================
+# ⚠️ 订阅地址错误
+# ============================================
 # %s
 # ============================================
 # %s
+# ============================================
+# 此订阅地址已失效，无法获取节点信息
+# 请登录您的账户获取新的订阅地址
 # ============================================
 `, title, message)
 	return base64.StdEncoding.EncodeToString([]byte(config))
@@ -120,22 +138,36 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 				errorTitle = "订阅地址已更换"
 				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
-				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
-				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-
+				
+				// 重置时间
+				errorMessage += fmt.Sprintf("📅 重置时间：%s\n\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				
+				// 订阅状态
 				if isExpired {
-					errorMessage += fmt.Sprintf("\n⚠️ 订阅已过期（到期时间：%s）\n请及时续费以继续使用服务。", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
+					errorMessage += "⚠️ 订阅状态：已过期\n"
+					errorMessage += fmt.Sprintf("📆 到期时间：%s\n", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
+					errorMessage += "💡 请及时续费以继续使用服务。\n\n"
 				} else if isInactive {
-					errorMessage += "\n⚠️ 订阅已失效，请联系客服。"
+					errorMessage += "⚠️ 订阅状态：已失效\n"
+					errorMessage += "💡 请联系客服获取帮助。\n\n"
 				} else {
 					remainingDays := int(currentSub.ExpireTime.Sub(now).Hours() / 24)
+					errorMessage += "✅ 订阅状态：有效\n"
 					if remainingDays > 0 {
-						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天\n请登录账户获取新订阅地址。", remainingDays)
+						errorMessage += fmt.Sprintf("⏰ 剩余天数：%d 天\n", remainingDays)
 					}
+					errorMessage += fmt.Sprintf("📆 到期时间：%s\n\n", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
 				}
+				
+				// 引导信息
+				errorMessage += "🔗 请登录您的账户获取新的订阅地址\n"
+				errorMessage += "📞 或联系客服获取帮助"
 			} else {
 				errorTitle = "订阅地址已失效"
-				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请登录您的账户获取新的订阅地址，或联系客服获取帮助。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				errorMessage = "您使用的订阅地址已失效。\n\n"
+				errorMessage += fmt.Sprintf("📅 重置时间：%s\n\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				errorMessage += "🔗 请登录您的账户获取新的订阅地址\n"
+				errorMessage += "📞 或联系客服获取帮助"
 			}
 
 			errorConfig := generateErrorConfig(errorTitle, errorMessage)
@@ -183,22 +215,36 @@ func GetUniversalSubscription(c *gin.Context) {
 
 				errorTitle = "订阅地址已更换"
 				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
-				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
-				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-
+				
+				// 重置时间
+				errorMessage += fmt.Sprintf("📅 重置时间：%s\n\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				
+				// 订阅状态
 				if isExpired {
-					errorMessage += fmt.Sprintf("\n⚠️ 订阅已过期（到期时间：%s）\n请及时续费以继续使用服务。", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
+					errorMessage += "⚠️ 订阅状态：已过期\n"
+					errorMessage += fmt.Sprintf("📆 到期时间：%s\n", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
+					errorMessage += "💡 请及时续费以继续使用服务。\n\n"
 				} else if isInactive {
-					errorMessage += "\n⚠️ 订阅已失效，请联系客服。"
+					errorMessage += "⚠️ 订阅状态：已失效\n"
+					errorMessage += "💡 请联系客服获取帮助。\n\n"
 				} else {
 					remainingDays := int(currentSub.ExpireTime.Sub(now).Hours() / 24)
+					errorMessage += "✅ 订阅状态：有效\n"
 					if remainingDays > 0 {
-						errorMessage += fmt.Sprintf("\n✅ 订阅有效，剩余 %d 天\n请登录账户获取新订阅地址。", remainingDays)
+						errorMessage += fmt.Sprintf("⏰ 剩余天数：%d 天\n", remainingDays)
 					}
+					errorMessage += fmt.Sprintf("📆 到期时间：%s\n\n", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
 				}
+				
+				// 引导信息
+				errorMessage += "🔗 请登录您的账户获取新的订阅地址\n"
+				errorMessage += "📞 或联系客服获取帮助"
 			} else {
 				errorTitle = "订阅地址已失效"
-				errorMessage = fmt.Sprintf("您使用的订阅地址已失效。\n\n重置时间：%s\n\n请登录您的账户获取新的订阅地址，或联系客服获取帮助。", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				errorMessage = "您使用的订阅地址已失效。\n\n"
+				errorMessage += fmt.Sprintf("📅 重置时间：%s\n\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
+				errorMessage += "🔗 请登录您的账户获取新的订阅地址\n"
+				errorMessage += "📞 或联系客服获取帮助"
 			}
 
 			errorConfig := generateErrorConfigBase64(errorTitle, errorMessage)
@@ -242,7 +288,7 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	
+
 	// 先检查是否是旧订阅地址
 	var sub models.Subscription
 	if err := db.Where("subscription_url = ?", req.SubscriptionURL).First(&sub).Error; err != nil {
