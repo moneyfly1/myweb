@@ -308,13 +308,20 @@ const handleRegister = async () => {
     
     loading.value = true
     
-    const response = await authAPI.register({
+    // 构建注册请求数据
+    const registerData = {
       email: registerForm.email,
       username: registerForm.username,
       password: registerForm.password,
-      verification_code: registerForm.verificationCode,
       invite_code: registerForm.inviteCode || null
-    })
+    }
+    
+    // 只有在需要邮箱验证时才传递验证码
+    if (emailVerificationRequired.value && registerForm.verificationCode) {
+      registerData.verification_code = registerForm.verificationCode
+    }
+    
+    const response = await authAPI.register(registerData)
     
     if (response.data) {
       ElMessage.success('注册成功！请登录')
@@ -349,7 +356,18 @@ const checkRegistrationEnabled = async () => {
     const settings = response.data?.data || response.data || {}
     registrationEnabled.value = settings.allowRegistration !== false
     inviteCodeRequired.value = settings.inviteCodeRequired === true
-    emailVerificationRequired.value = settings.emailVerificationRequired !== false
+    
+    // 检查邮箱验证开关：后端返回的是布尔值
+    const emailVerificationValue = settings.email_verification_required !== undefined 
+                                   ? settings.email_verification_required
+                                   : (settings.emailVerificationRequired !== undefined 
+                                      ? settings.emailVerificationRequired 
+                                      : (settings.require_email_verification !== undefined 
+                                         ? settings.require_email_verification 
+                                         : true))
+    // 如果值是布尔值 true 或字符串 "true"，则开启验证
+    emailVerificationRequired.value = emailVerificationValue === true || emailVerificationValue === "true"
+    
     minPasswordLength.value = settings.minPasswordLength || 8
     registerFormRef.value?.clearValidate()
     
