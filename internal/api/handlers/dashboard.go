@@ -309,11 +309,11 @@ func GetAbnormalUsers(c *gin.Context) {
 	// 5. 订阅过期但仍在频繁使用
 	now := utils.GetBeijingTime()
 	oneMonthAgo := now.AddDate(0, -1, 0)
-	
+
 	// 构建查询：查找异常用户
 	// 使用 OR 条件组合所有异常情况
 	query := db.Model(&models.User{}).
-		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR id IN (SELECT user_id FROM subscription_resets GROUP BY user_id HAVING COUNT(*) >= ?) OR id IN (SELECT user_id FROM subscriptions GROUP BY user_id HAVING COUNT(*) >= ?)", 
+		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR id IN (SELECT user_id FROM subscription_resets GROUP BY user_id HAVING COUNT(*) >= ?) OR id IN (SELECT user_id FROM subscriptions GROUP BY user_id HAVING COUNT(*) >= ?)",
 			false, oneMonthAgo, 5, 10)
 
 	// 时间范围（注册时间）
