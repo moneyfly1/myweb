@@ -446,8 +446,14 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	}
 
 	// 导入节点到数据库的 nodes 表
+	s.addLog(fmt.Sprintf("准备导入 %d 个节点到数据库", len(proxies)), "info")
 	importedCount := s.importNodesToDatabase(proxies)
-	s.addLog(fmt.Sprintf("导入节点到数据库: %d 个", importedCount), "info")
+	s.addLog(fmt.Sprintf("成功导入节点到数据库: %d 个", importedCount), "success")
+	
+	// 验证数据库中的节点数量
+	var totalNodes int64
+	s.db.Model(&models.Node{}).Where("is_manual = ?", false).Count(&totalNodes)
+	s.addLog(fmt.Sprintf("数据库中非手动节点总数: %d", totalNodes), "info")
 
 	// 更新最后更新时间
 	s.updateLastUpdateTime()
@@ -683,9 +689,12 @@ func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) {
 func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 	// 不清空所有节点，只更新或创建新节点
 	// 手动添加的节点（is_manual=true）不会被删除
-	s.addLog("开始导入节点到数据库", "info")
+	s.addLog(fmt.Sprintf("开始导入节点到数据库，共 %d 个节点", len(proxies)), "info")
 
 	importedCount := 0
+	updatedCount := 0
+	createdCount := 0
+	skippedCount := 0
 	seenKeys := make(map[string]bool)
 	errorCount := 0
 
@@ -731,18 +740,47 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 		}
 		configStr := string(configJSON)
 
-		// 检查是否已存在相同节点（通过 server:port:uuid/password 匹配）
-		var existingNode models.Node
-		query := s.db.Where("type = ? AND config LIKE ?", node.Type, "%"+node.Server+"%")
-		if node.UUID != "" {
-			query = query.Where("config LIKE ?", "%"+node.UUID+"%")
-		} else if node.Password != "" {
-			query = query.Where("config LIKE ?", "%"+node.Password+"%")
+		// 使用更精确的方式检查是否已存在相同节点
+		// 查询所有相同类型的节点，然后通过解析 JSON 配置精确匹配
+		var existingNodes []models.Node
+		s.db.Where("type = ? AND is_manual = ?", node.Type, false).Find(&existingNodes)
+		
+		var existingNode *models.Node
+		for i := range existingNodes {
+			if existingNodes[i].Config == nil {
+				continue
+			}
+			var existingProxy ProxyNode
+			if err := json.Unmarshal([]byte(*existingNodes[i].Config), &existingProxy); err != nil {
+				continue
+			}
+			
+			// 精确匹配：server、port、uuid/password 必须完全相同
+			if existingProxy.Server == node.Server && existingProxy.Port == node.Port {
+				// 对于有 UUID 的节点（vmess, vless），必须 UUID 相同
+				if node.UUID != "" {
+					if existingProxy.UUID == node.UUID {
+						existingNode = &existingNodes[i]
+						break
+					}
+				} else if node.Password != "" {
+					// 对于有 Password 的节点（trojan, ss），必须 Password 相同
+					if existingProxy.Password == node.Password {
+						existingNode = &existingNodes[i]
+						break
+					}
+				} else {
+					// 对于没有 UUID 和 Password 的节点，server 和 port 相同即认为是同一个节点
+					existingNode = &existingNodes[i]
+					break
+				}
+			}
 		}
 
-		if err := query.First(&existingNode).Error; err == nil {
+		if existingNode != nil {
 			// 如果节点已存在且是手动添加的，跳过更新
 			if existingNode.IsManual {
+				skippedCount++
 				continue
 			}
 			// 更新现有节点（非手动添加的）
@@ -751,11 +789,12 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 			existingNode.Status = "online"
 			existingNode.IsActive = true
 			existingNode.Config = &configStr
-			if err := s.db.Save(&existingNode).Error; err != nil {
+			if err := s.db.Save(existingNode).Error; err != nil {
 				errorCount++
 				s.addLog(fmt.Sprintf("更新节点失败 [%s]: %v", node.Name, err), "error")
 				continue
 			}
+			updatedCount++
 			importedCount++
 		} else {
 			// 创建新节点（标记为非手动添加）
@@ -764,7 +803,7 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 				Region:   region,
 				Type:     node.Type,
 				Status:   "online", // 新采集的节点默认为在线状态
-				IsActive: true,
+				IsActive:  true,
 				IsManual: false, // 采集的节点标记为非手动
 				Config:   &configStr,
 			}
@@ -774,6 +813,7 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 				s.addLog(fmt.Sprintf("创建节点失败 [%s]: %v", node.Name, err), "error")
 				continue
 			}
+			createdCount++
 			importedCount++
 		}
 	}
@@ -781,6 +821,9 @@ func (s *ConfigUpdateService) importNodesToDatabase(proxies []*ProxyNode) int {
 	if errorCount > 0 {
 		s.addLog(fmt.Sprintf("导入过程中有 %d 个节点失败", errorCount), "warning")
 	}
+	
+	s.addLog(fmt.Sprintf("导入完成：新建 %d 个，更新 %d 个，跳过 %d 个（手动节点），失败 %d 个，总计 %d 个", 
+		createdCount, updatedCount, skippedCount, errorCount, importedCount), "info")
 
 	return importedCount
 }
