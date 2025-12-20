@@ -382,20 +382,22 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 	case map[string]interface{}:
 		// Map 类型
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		// 子项的缩进：在 indentStr 基础上增加 2 个空格
+		subIndentStr := indentStr + "  "
 		for k, val := range v {
-			subIndent := strings.Repeat(" ", indentLevel*2)
 			// 检查 val 是否是 map[string]string（如 headers）
 			if strMap, ok := val.(map[string]string); ok {
 				escapedK := s.escapeYAMLString(k)
-				builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr+subIndent, escapedK))
+				builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
+				// headers 的子项再增加 2 个空格
+				subSubIndentStr := subIndentStr + "  "
 				for k2, v2 := range strMap {
-					subSubIndent := strings.Repeat(" ", (indentLevel+1)*2)
 					escapedK2 := s.escapeYAMLString(k2)
 					escapedV2 := s.escapeYAMLString(v2)
-					builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr+subIndent+subSubIndent, escapedK2, escapedV2))
+					builder.WriteString(fmt.Sprintf("%s%s: %s\n", subSubIndentStr, escapedK2, escapedV2))
 				}
 			} else {
-				s.writeYAMLValue(builder, indentStr+subIndent, k, val, indentLevel+1)
+				s.writeYAMLValue(builder, subIndentStr, k, val, indentLevel+1)
 			}
 		}
 	case map[string]string:
