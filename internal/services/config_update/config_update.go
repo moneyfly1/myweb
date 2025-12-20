@@ -345,17 +345,17 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	builder.WriteString(fmt.Sprintf("%s  server: %s\n", indentStr, node.Server))
 	builder.WriteString(fmt.Sprintf("%s  port: %d\n", indentStr, node.Port))
 
-	// VMess 节点必须包含 uuid 和 alterId
-	if node.Type == "vmess" {
+	// 根据节点类型处理必需字段
+	switch node.Type {
+	case "vmess":
+		// VMess 节点必须包含 uuid 和 alterId
 		if node.UUID != "" {
 			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
 		}
 		// alterId 在 Options 中处理，确保总是存在
 		if alterId, ok := node.Options["alterId"]; !ok {
-			// 如果没有 alterId，默认设置为 0
 			node.Options["alterId"] = 0
 		} else {
-			// 确保 alterId 是整数类型
 			if _, ok := alterId.(int); !ok {
 				if alterIdFloat, ok := alterId.(float64); ok {
 					node.Options["alterId"] = int(alterIdFloat)
@@ -364,25 +364,91 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 				}
 			}
 		}
-	} else {
+		// VMess 默认 cipher 为 auto
+		if node.Cipher == "" {
+			node.Cipher = "auto"
+		}
+		builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
+	case "vless":
+		// VLESS 节点必须包含 uuid
+		if node.UUID != "" {
+			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
+		}
+		// VLESS 需要 encryption 字段（默认为 none）
+		if encryption, ok := node.Options["encryption"]; !ok || encryption == "" {
+			node.Options["encryption"] = "none"
+		}
+	case "trojan":
+		// Trojan 节点必须包含 password
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	case "ss":
+		// Shadowsocks 节点必须包含 cipher 和 password
+		if node.Cipher != "" {
+			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
+		}
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	case "ssr":
+		// SSR 节点在 Clash 中需要特殊处理，但 Clash Meta 支持
+		if node.Cipher != "" {
+			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
+		}
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	case "hysteria", "hysteria2":
+		// Hysteria 节点需要 password
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	case "tuic":
+		// TUIC 节点需要 uuid 和 password
+		if node.UUID != "" {
+			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
+		}
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	case "naive":
+		// Naive 节点需要 username 和 password（使用 UUID 字段存储 username）
+		if node.UUID != "" {
+			builder.WriteString(fmt.Sprintf("%s  username: %s\n", indentStr, node.UUID))
+		}
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	case "anytls":
+		// Anytls 节点需要 password
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+	default:
 		// 其他节点类型
 		if node.UUID != "" {
 			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
 		}
+		if node.Password != "" {
+			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
+		}
+		if node.Cipher != "" {
+			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
+		}
 	}
-	
-	if node.Password != "" {
-		builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-	}
-	if node.Cipher != "" {
-		builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
-	}
+
+	// 网络类型（除了 tcp 和默认值）
 	if node.Network != "" && node.Network != "tcp" {
 		builder.WriteString(fmt.Sprintf("%s  network: %s\n", indentStr, node.Network))
 	}
+	
+	// TLS 配置
 	if node.TLS {
 		builder.WriteString(fmt.Sprintf("%s  tls: true\n", indentStr))
 	}
+	
+	// UDP 配置
 	if node.UDP {
 		builder.WriteString(fmt.Sprintf("%s  udp: true\n", indentStr))
 	}
