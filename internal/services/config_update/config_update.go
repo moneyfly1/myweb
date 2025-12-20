@@ -136,12 +136,12 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		if uniqueLinks[link] {
 			continue
 		}
-		
+
 		// 验证链接完整性
 		if !s.isValidNodeLink(link) {
 			continue
 		}
-		
+
 		uniqueLinks[link] = true
 		result = append(result, link)
 	}
@@ -155,7 +155,7 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 	if link == "" {
 		return false
 	}
-	
+
 	// 检查基本格式：必须有协议前缀和至少一个 @ 或 : 符号
 	if strings.HasPrefix(link, "ss://") {
 		// SS 链接必须包含 @ 符号（认证信息@服务器:端口）
@@ -190,7 +190,7 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 			return false
 		}
 	}
-	
+
 	return true
 }
 

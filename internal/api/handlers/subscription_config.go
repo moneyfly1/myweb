@@ -117,12 +117,12 @@ func GetSubscriptionConfig(c *gin.Context) {
 				// 检查订阅状态
 				isExpired := currentSub.ExpireTime.Before(now)
 				isInactive := !currentSub.IsActive || currentSub.Status != "active"
-				
+
 				errorTitle = "订阅地址已更换"
 				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
 				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
 				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-				
+
 				if isExpired {
 					errorMessage += fmt.Sprintf("\n⚠️ 订阅已过期（到期时间：%s）\n请及时续费以继续使用服务。", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
 				} else if isInactive {
@@ -180,12 +180,12 @@ func GetUniversalSubscription(c *gin.Context) {
 				// 检查订阅状态
 				isExpired := currentSub.ExpireTime.Before(now)
 				isInactive := !currentSub.IsActive || currentSub.Status != "active"
-				
+
 				errorTitle = "订阅地址已更换"
 				errorMessage = "您使用的订阅地址已失效，订阅地址已更换。\n\n"
 				errorMessage += "请登录您的账户获取新的订阅地址，或联系客服获取帮助。\n\n"
 				errorMessage += fmt.Sprintf("重置时间：%s\n", reset.CreatedAt.Format("2006-01-02 15:04:05"))
-				
+
 				if isExpired {
 					errorMessage += fmt.Sprintf("\n⚠️ 订阅已过期（到期时间：%s）\n请及时续费以继续使用服务。", currentSub.ExpireTime.Format("2006-01-02 15:04:05"))
 				} else if isInactive {
