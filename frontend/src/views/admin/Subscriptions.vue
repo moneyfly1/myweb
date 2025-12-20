@@ -735,11 +735,6 @@
                 {{ selectedUser.user?.is_active ? '已激活' : '未激活' }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="邮箱验证">
-              <el-tag :type="selectedUser.user?.is_verified ? 'success' : 'warning'">
-                {{ selectedUser.user?.is_verified ? '已验证' : '未验证' }}
-              </el-tag>
-            </el-descriptions-item>
             <el-descriptions-item label="管理员权限">
               <el-tag :type="selectedUser.user?.is_admin ? 'danger' : 'info'">
                 {{ selectedUser.user?.is_admin ? '是' : '否' }}
