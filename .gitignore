@@ -34,6 +34,9 @@ go.work
 *.sqlite
 *.sqlite3
 
+# GeoIP Database (自动下载，不提交到仓库)
+GeoLite2-City.mmdb
+
 # Logs
 *.log
 logs/
