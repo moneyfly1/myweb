@@ -752,7 +752,7 @@ export default {
         
         // 创建订单可能需要较长时间（支付链接生成），优化超时设置
         // 减少超时时间，快速反馈给用户
-        const response = await api.post('/orders/create', orderData, {
+        const response = await api.post('/orders/', orderData, {
           timeout: 25000  // 25秒超时，与后端20秒读取超时+5秒缓冲匹配
         }).catch(error => {
           if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {

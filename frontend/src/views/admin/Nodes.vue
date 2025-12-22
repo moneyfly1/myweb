@@ -13,6 +13,10 @@
               <el-icon><Connection /></el-icon>
               批量测试
             </el-button>
+            <el-button type="danger" @click="batchDelete" :loading="deleting">
+              <el-icon><Delete /></el-icon>
+              批量删除
+            </el-button>
             <el-button @click="loadNodes" :loading="loading">
               <el-icon><Refresh /></el-icon>
               刷新
@@ -327,7 +331,7 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Search, Connection } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, Connection, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 
 export default {
@@ -336,11 +340,13 @@ export default {
     Plus,
     Refresh,
     Search,
-    Connection
+    Connection,
+    Delete
   },
   setup() {
     const loading = ref(false)
     const testing = ref(false)
+    const deleting = ref(false)
     const saving = ref(false)
     const parsing = ref(false)
     const nodes = ref([])
@@ -456,6 +462,48 @@ export default {
         ElMessage.error('批量测试失败: ' + (error.response?.data?.message || error.message))
       } finally {
         testing.value = false
+      }
+    }
+
+    const batchDelete = async () => {
+      if (selectedNodes.value.length === 0) {
+        ElMessage.warning('请先选择要删除的节点')
+        return
+      }
+      
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除选中的 ${selectedNodes.value.length} 个节点吗？此操作不可恢复！`,
+          '确认批量删除',
+          {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning',
+            dangerouslyUseHTMLString: false
+          }
+        )
+        
+        deleting.value = true
+        try {
+          const nodeIds = selectedNodes.value.map(n => n.id)
+          const response = await adminAPI.batchDeleteNodes(nodeIds)
+          if (response.data.success) {
+            ElMessage.success(response.data.message || `成功删除 ${response.data.data?.deleted_count || selectedNodes.value.length} 个节点`)
+            selectedNodes.value = [] // 清空选择
+            await loadNodes()
+          } else {
+            ElMessage.error(response.data.message || '批量删除失败')
+          }
+        } catch (error) {
+          ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
+        } finally {
+          deleting.value = false
+        }
+      } catch (error) {
+        // 用户取消操作
+        if (error !== 'cancel') {
+          ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
+        }
       }
     }
 
@@ -775,6 +823,7 @@ export default {
     return {
       loading,
       testing,
+      deleting,
       saving,
       nodes,
       selectedNodes,
@@ -789,6 +838,7 @@ export default {
       loadNodes,
       testNode,
       batchTest,
+      batchDelete,
       toggleNodeStatus,
       editNode,
       saveNode,

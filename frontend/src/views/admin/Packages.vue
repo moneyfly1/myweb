@@ -387,7 +387,7 @@ export default {
           ...searchForm
         }
         const response = await adminAPI.getPackages(params)
-        const packageList = response.data.data?.packages || response.data.items || []
+        const packageList = response.data.data?.packages || []
         // 确保 is_active 和 is_recommended 是布尔值
         packages.value = packageList.map(pkg => ({
           ...pkg,

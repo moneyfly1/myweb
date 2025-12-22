@@ -703,7 +703,6 @@ const loadInviteRelations = async () => {
           relationTotal.value = 0
         }
       } 
-      // 直接包含 relations（兼容格式）
       else if (responseData.relations && Array.isArray(responseData.relations)) {
         inviteRelations.value = responseData.relations
         relationTotal.value = responseData.total || inviteRelations.value.length

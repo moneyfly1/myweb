@@ -740,7 +740,7 @@ export default {
         profileSaving.value = true
         
         // 调用API保存个人资料
-        const response = await api.put('/users/profile', {
+        const response = await api.put('/users/me', {
           username: profileForm.username,
           nickname: profileForm.nickname || '',
           avatar: profileForm.avatar
@@ -774,7 +774,6 @@ export default {
         // 调用API修改密码
         const response = await api.post('/users/change-password', {
           current_password: securityForm.currentPassword,
-          old_password: securityForm.currentPassword, // 兼容字段
           new_password: securityForm.newPassword
         })
         

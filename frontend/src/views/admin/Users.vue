@@ -830,8 +830,8 @@ export default {
         
         const response = await api.post(`/admin/users/${user.id}/login-as`)
         
-        // 后端返回格式: {success: true, message: "...", data: {token: "...", user: {...}}}
-        if (!response.data || !response.data.data || !response.data.data.token || !response.data.data.user) {
+        // 后端返回格式: {success: true, message: "...", data: {access_token: "...", user: {...}}}
+        if (!response.data || !response.data.data || !response.data.data.access_token || !response.data.data.user) {
           ElMessage.error('登录失败：服务器返回数据不完整')
           return
         }
@@ -843,7 +843,7 @@ export default {
         const adminUser = secureStorage.get('admin_user')
         
         // 通过URL参数传递token和用户信息，在新标签页中打开用户后台
-        const userToken = response.data.data.token
+        const userToken = response.data.data.access_token
         const userData = response.data.data.user
         
         // 构建用户数据，如果存在管理员信息，也包含在用户数据中

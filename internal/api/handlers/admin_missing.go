@@ -1428,11 +1428,10 @@ func GetPaymentConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"items":           configsResponse, // 前端期望 items 字段
-			"payment_configs": configsResponse, // 兼容字段
-			"total":           total,
-			"page":            page,
-			"size":            size,
+			"items": configsResponse,
+			"total": total,
+			"page":  page,
+			"size":  size,
 		},
 	})
 }

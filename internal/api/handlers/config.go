@@ -158,18 +158,10 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
-	// 单个更新 - 支持完整的配置对象（包括 category）
 	var req models.SystemConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// 如果绑定失败，尝试只绑定 value（向后兼容）
-		var simpleReq struct {
-			Value string `json:"value"`
-		}
-		if err2 := c.ShouldBindJSON(&simpleReq); err2 != nil {
-			jsonResponse(c, http.StatusBadRequest, false, "请求参数错误", nil)
-			return
-		}
-		req.Value = simpleReq.Value
+		jsonResponse(c, http.StatusBadRequest, false, "请求参数错误", nil)
+		return
 	}
 
 	// 确定 category
@@ -230,6 +222,7 @@ func GetAdminSettings(c *gin.Context) {
 	settings := map[string]map[string]interface{}{
 		"general": {
 			"site_name": "CBoard Modern", "site_description": "现代化的代理服务管理平台", "site_logo": "", "default_theme": "default",
+			"support_qq": "", "support_email": "",
 		},
 		"registration": {
 			"registration_enabled": "true", "email_verification_required": "true", "min_password_length": 8,
@@ -453,6 +446,22 @@ func GetPublicSettings(c *gin.Context) {
 	} else {
 		settings["announcement_enabled"] = false
 	}
+
+	// 添加售后QQ和售后邮箱（只从 category = "general" 获取）
+	var supportQQConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "support_qq", "general").First(&supportQQConfig).Error; err == nil && supportQQConfig.Value != "" {
+		settings["support_qq"] = strings.TrimSpace(supportQQConfig.Value)
+	} else {
+		settings["support_qq"] = "" // 不设置默认值
+	}
+
+	var supportEmailConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "support_email", "general").First(&supportEmailConfig).Error; err == nil && supportEmailConfig.Value != "" {
+		settings["support_email"] = strings.TrimSpace(supportEmailConfig.Value)
+	} else {
+		settings["support_email"] = "" // 不设置默认值
+	}
+
 	jsonResponse(c, http.StatusOK, true, "", settings)
 }
 

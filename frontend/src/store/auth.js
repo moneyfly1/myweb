@@ -287,7 +287,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       await api.post('/users/change-password', {
-        old_password: oldPassword,
+        current_password: oldPassword,
         new_password: newPassword
       })
       return { success: true, message: '密码修改成功' }

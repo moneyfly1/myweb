@@ -150,19 +150,19 @@
         </template>
 
         <div class="contact-info">
-          <div class="contact-item">
+          <div class="contact-item" v-if="contactEmail">
             <i class="el-icon-message"></i>
             <div class="contact-details">
-              <h4>邮箱验证</h4>
+              <h4>售后邮箱</h4>
               <p>{{ contactEmail }}</p>
             </div>
           </div>
           
-          <div class="contact-item">
+          <div class="contact-item" v-if="contactQQ">
             <i class="el-icon-chat-dot-round"></i>
             <div class="contact-details">
-              <h4>QQ群</h4>
-              <p>请通过邮箱联系我们</p>
+              <h4>售后QQ</h4>
+              <p>{{ contactQQ }}</p>
             </div>
           </div>
           
@@ -180,7 +180,7 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import DOMPurify from 'dompurify'
 
@@ -202,11 +202,52 @@ export default {
     const currentGuideClient = ref(null)
     const currentGuideContent = ref('')
     
-    // 动态获取联系邮箱
-    const contactEmail = computed(() => {
-      // 从环境变量或配置中获取联系邮箱
-      // 在Vite中使用 import.meta.env 而不是 process.env
-      return import.meta.env.VITE_CONTACT_EMAIL || 'support@yourdomain.com'
+    // 动态获取联系信息
+    const contactEmail = ref('')
+    const contactQQ = ref('')
+    
+    // 从API获取联系信息
+    const loadContactInfo = async () => {
+      try {
+        const api = (await import('@/utils/api')).default
+        const response = await api.get('/settings/public-settings')
+        if (response && response.data) {
+          // 处理不同的响应格式
+          let settings = null
+          if (response.data.success !== false) {
+            // 如果响应有 data 字段，使用 data；否则直接使用 response.data
+            settings = response.data.data || response.data
+          } else {
+            settings = response.data
+          }
+          
+          if (settings) {
+            // 处理售后邮箱
+            if (settings.support_email !== undefined && settings.support_email !== null) {
+              const email = String(settings.support_email).trim()
+              if (email !== '') {
+                contactEmail.value = email
+              }
+            }
+            
+            // 处理售后QQ
+            if (settings.support_qq !== undefined && settings.support_qq !== null) {
+              const qq = String(settings.support_qq).trim()
+              if (qq !== '') {
+                contactQQ.value = qq
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('获取联系信息失败:', error)
+        // 不设置默认值，如果获取失败则为空
+      }
+    }
+    
+    // 组件挂载时加载联系信息
+    onMounted(() => {
+      loadContactInfo()
     })
 
     const sections = [
@@ -1433,6 +1474,7 @@ export default {
       faqs: sanitizedFaqs,
       clients,
       contactEmail,
+      contactQQ,
       showGuideDialog,
       currentGuideClient,
       currentGuideContent,
@@ -1936,7 +1978,7 @@ export default {
       color: #666;
       display: -webkit-box;
       -webkit-line-clamp: 2; /* 限制描述行数 */
-      line-clamp: 2; /* 标准属性，用于兼容性 */
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }

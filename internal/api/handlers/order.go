@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -144,7 +143,6 @@ func GetOrders(c *gin.Context) {
 		if mappedStatus, ok := statusMap[status]; ok {
 			query = query.Where("status = ?", mappedStatus)
 		} else {
-			// 如果不在映射表中，直接使用原值（兼容其他状态值）
 			query = query.Where("status = ?", status)
 		}
 	}
@@ -195,8 +193,7 @@ func GetOrders(c *gin.Context) {
 			"package_id":             order.PackageID,
 			"amount":                 order.Amount,
 			"status":                 order.Status,
-			"payment_method":         paymentMethod, // 精简显示
-			"payment_method_name":    paymentMethod, // 兼容字段
+			"payment_method":         paymentMethod,
 			"payment_method_id":      utils.GetNullInt64Value(order.PaymentMethodID),
 			"payment_time":           utils.GetNullTimeValue(order.PaymentTime),
 			"payment_transaction_id": utils.GetNullStringValue(order.PaymentTransactionID),
@@ -306,7 +303,7 @@ func GetOrder(c *gin.Context) {
 	})
 }
 
-// CancelOrder 取消订单（通过 ID，保留用于兼容）
+// CancelOrder 取消订单
 func CancelOrder(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
@@ -547,9 +544,7 @@ func GetAdminOrders(c *gin.Context) {
 			"id":             order.ID,
 			"order_no":       order.OrderNo,
 			"user_id":        order.UserID,
-			"user":           userInfo, // 嵌套用户信息
-			"username":       username, // 保留顶层字段以兼容
-			"email":          email,    // 保留顶层字段以兼容
+			"user":           userInfo,
 			"package_id":     order.PackageID,
 			"package_name":   packageName,
 			"amount":         amount,
@@ -562,7 +557,6 @@ func GetAdminOrders(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"orders": orderList,
-		"items":  orderList, // 兼容前端可能使用的 items 字段
 		"total":  total,
 		"page":   page,
 		"size":   size,
@@ -669,27 +663,8 @@ func GetOrderStatistics(c *gin.Context) {
 	db.Model(&models.Order{}).Where("status = ?", "pending").Count(&pendingOrders)
 	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&paidOrders)
 
-	// 统计总收入（使用final_amount，如果为NULL则使用amount）
-	// 使用原生SQL查询，兼容SQLite和MySQL
-	var result struct {
-		Total sql.NullFloat64
-	}
-	db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-				ELSE amount
-			END
-		), 0) as total
-		FROM orders 
-		WHERE status = ?
-	`, "paid").Scan(&result)
-
-	if result.Total.Valid {
-		totalRevenue = result.Total.Float64
-	} else {
-		totalRevenue = 0
-	}
+	// 统计总收入（使用公共函数）
+	totalRevenue = utils.CalculateTotalRevenue(db, "paid")
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"total_orders":   totalOrders,
@@ -915,60 +890,13 @@ func GetOrderStats(c *gin.Context) {
 	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").Count(&stats.PaidOrders)
 	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "cancelled").Count(&stats.CancelledOrders)
 
-	// 统计总金额（所有订单，使用final_amount如果存在，否则使用amount）
-	// 使用绝对值，因为金额可能为负数（退款等情况）
-	var totalAmountResult struct {
-		Total sql.NullFloat64
-	}
-	if err := db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN ABS(final_amount)
-				ELSE ABS(amount)
-			END
-		), 0) as total
-		FROM orders 
-		WHERE user_id = ?
-	`, user.ID).Scan(&totalAmountResult).Error; err != nil {
-		utils.LogError("GetOrderStats: calculate total amount", err, nil)
-		stats.TotalAmount = 0
-	} else if totalAmountResult.Total.Valid {
-		stats.TotalAmount = totalAmountResult.Total.Float64
-	} else {
-		stats.TotalAmount = 0
-	}
+	// 统计总金额（所有订单，使用公共函数，使用绝对值）
+	stats.TotalAmount = utils.CalculateUserOrderAmount(db, user.ID, "", true)
 
-	// 统计已支付金额（只统计已支付订单，使用final_amount如果存在，否则使用amount）
-	// 使用绝对值
-	var paidAmountResult struct {
-		Total sql.NullFloat64
-	}
-	if err := db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN ABS(final_amount)
-				ELSE ABS(amount)
-			END
-		), 0) as total
-		FROM orders 
-		WHERE user_id = ? AND status = ?
-	`, user.ID, "paid").Scan(&paidAmountResult).Error; err != nil {
-		utils.LogError("GetOrderStats: calculate paid amount", err, nil)
-		stats.PaidAmount = 0
-	} else if paidAmountResult.Total.Valid {
-		stats.PaidAmount = paidAmountResult.Total.Float64
-	} else {
-		stats.PaidAmount = 0
-	}
+	// 统计已支付金额（只统计已支付订单，使用公共函数，使用绝对值）
+	stats.PaidAmount = utils.CalculateUserOrderAmount(db, user.ID, "paid", true)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"total":       stats.TotalOrders,
-		"pending":     stats.PendingOrders,
-		"paid":        stats.PaidOrders,
-		"cancelled":   stats.CancelledOrders,
-		"totalAmount": stats.TotalAmount,
-		"paidAmount":  stats.PaidAmount,
-		// 保留原有字段名（兼容性）
 		"total_orders":     stats.TotalOrders,
 		"pending_orders":   stats.PendingOrders,
 		"paid_orders":      stats.PaidOrders,

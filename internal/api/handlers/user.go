@@ -1182,7 +1182,6 @@ func LoginAsUser(c *gin.Context) {
 		"success": true,
 		"message": "登录成功",
 		"data": gin.H{
-			"token":         accessToken, // 兼容前端期望的字段名
 			"access_token":  accessToken,
 			"refresh_token": refreshToken,
 			"token_type":    "bearer",
@@ -1201,8 +1200,8 @@ func UpdateUserStatus(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		Status     string `json:"status"`    // "active", "inactive", "disabled"
-		IsActive   *bool  `json:"is_active"` // 兼容旧格式
+		Status     string `json:"status"`
+		IsActive   *bool  `json:"is_active"`
 		IsVerified *bool  `json:"is_verified"`
 		IsAdmin    *bool  `json:"is_admin"`
 	}

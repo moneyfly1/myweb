@@ -43,8 +43,8 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 		return "设备数量限制为0，无法使用服务", int(count), subscription.DeviceLimit, false
 	}
 
-	// 如果设备总数超过限制，检查当前设备是否在允许的范围内
-	if subscription.DeviceLimit > 0 && int(count) > subscription.DeviceLimit {
+	// 如果设备总数达到或超过限制，检查当前设备是否在允许的范围内
+	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
 		// 生成设备哈希，检查当前设备
 		hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
 		var currentDevice models.Device
@@ -287,6 +287,34 @@ func GetSubscriptionConfig(c *gin.Context) {
 	var currentDevice models.Device
 	deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
 
+	// 如果当前设备不存在，尝试查找是否有相同User-Agent的设备
+	// 这解决了用户开启代理后IP变化导致被识别为新设备的问题
+	// 也解决了同一设备在不同网络环境下（如家庭WiFi和公司WiFi）被识别为不同设备的问题
+	if !deviceExists {
+		var sameUADevice models.Device
+		// 查找该订阅下 UA 相同且最近活跃的设备（例如最近24小时内）
+		// 我们取最近活跃的那一个
+		if err := db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", sub.ID, deviceUA, true).
+			Order("last_access DESC").
+			First(&sameUADevice).Error; err == nil {
+
+			// 找到了同UA的设备，我们将当前请求视为该设备的"漫游"
+			// 更新该设备的IP和Hash为当前的
+			sameUADevice.IPAddress = &deviceIP
+			sameUADevice.DeviceHash = &hash
+			sameUADevice.LastAccess = utils.GetBeijingTime()
+
+			// 保存更新
+			if err := db.Save(&sameUADevice).Error; err == nil {
+				// 成功"继承"了旧设备，标记为已存在
+				deviceExists = true
+				currentDevice = sameUADevice
+				// 记录日志（可选）
+				// utils.LogInfo(fmt.Sprintf("设备漫游: SubID=%d, OldIP=%s, NewIP=%s", sub.ID, sameUADevice.IPAddress, deviceIP))
+			}
+		}
+	}
+
 	// 获取当前设备数
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
@@ -351,6 +379,24 @@ func GetUniversalSubscription(c *gin.Context) {
 		hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
 		var currentDevice models.Device
 		deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
+
+		// 同UA设备漫游逻辑
+		if !deviceExists {
+			var sameUADevice models.Device
+			if err := db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", sub.ID, deviceUA, true).
+				Order("last_access DESC").
+				First(&sameUADevice).Error; err == nil {
+
+				sameUADevice.IPAddress = &deviceIP
+				sameUADevice.DeviceHash = &hash
+				sameUADevice.LastAccess = utils.GetBeijingTime()
+
+				if err := db.Save(&sameUADevice).Error; err == nil {
+					deviceExists = true
+					currentDevice = sameUADevice
+				}
+			}
+		}
 
 		var count int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
@@ -434,7 +480,6 @@ func GetConfigUpdateConfig(c *gin.Context) {
 	configMap := make(map[string]interface{})
 	defaultConfig := map[string]interface{}{
 		"urls":              []string{},
-		"node_source_urls":  []string{},
 		"target_dir":        "./uploads/config",
 		"v2ray_file":        "xr",
 		"clash_file":        "clash.yaml",
@@ -443,10 +488,15 @@ func GetConfigUpdateConfig(c *gin.Context) {
 		"schedule_interval": 3600,
 	}
 
+	var urlsConfig *models.SystemConfig
+
 	for _, config := range configs {
 		key := config.Key
 		value := config.Value
-		if key == "urls" || key == "node_source_urls" || key == "filter_keywords" {
+
+		if key == "urls" {
+			urlsConfig = &config
+		} else if key == "filter_keywords" {
 			urls := strings.Split(value, "\n")
 			filtered := make([]string, 0)
 			for _, url := range urls {
@@ -465,6 +515,19 @@ func GetConfigUpdateConfig(c *gin.Context) {
 		} else {
 			configMap[key] = value
 		}
+	}
+
+	// 处理 URLs
+	if urlsConfig != nil && strings.TrimSpace(urlsConfig.Value) != "" {
+		urls := strings.Split(urlsConfig.Value, "\n")
+		filtered := make([]string, 0)
+		for _, url := range urls {
+			url = strings.TrimSpace(url)
+			if url != "" {
+				filtered = append(filtered, url)
+			}
+		}
+		configMap["urls"] = filtered
 	}
 
 	for key, defaultValue := range defaultConfig {
@@ -545,6 +608,28 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 处理 urls 配置
+	if urlsValue, ok := req["urls"]; ok {
+		var valueStr string
+		switch v := urlsValue.(type) {
+		case string:
+			valueStr = v
+		case []interface{}:
+			urls := []string{}
+			for _, item := range v {
+				if s, ok := item.(string); ok && s != "" {
+					urls = append(urls, s)
+				}
+			}
+			valueStr = strings.Join(urls, "\n")
+		default:
+			j, _ := json.Marshal(v)
+			valueStr = string(j)
+		}
+		req["urls"] = valueStr
+	}
+
 	for key, value := range req {
 		var config models.SystemConfig
 		err := db.Where("key = ? AND category = ?", key, "config_update").First(&config).Error

@@ -13,7 +13,7 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		// X-Frame-Options: 防止点击劫持
 		c.Header("X-Frame-Options", "DENY")
 		
-		// X-XSS-Protection: 启用XSS过滤器（虽然已过时，但为了兼容性保留）
+		// X-XSS-Protection: 启用XSS过滤器
 		c.Header("X-XSS-Protection", "1; mode=block")
 		
 		// Referrer-Policy: 控制referrer信息

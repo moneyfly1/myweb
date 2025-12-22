@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -180,28 +179,8 @@ func GetDashboard(c *gin.Context) {
 	var totalOrders int64
 	db.Model(&models.Order{}).Count(&totalOrders)
 
-	// 统计总收入（使用final_amount，如果为NULL则使用amount）
-	var totalRevenue float64
-	// 使用原生SQL查询，兼容SQLite和MySQL
-	var result struct {
-		Total sql.NullFloat64
-	}
-	db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-				ELSE amount
-			END
-		), 0) as total
-		FROM orders 
-		WHERE status = ?
-	`, "paid").Scan(&result)
-
-	if result.Total.Valid {
-		totalRevenue = result.Total.Float64
-	} else {
-		totalRevenue = 0
-	}
+	// 统计总收入（使用公共函数）
+	totalRevenue := utils.CalculateTotalRevenue(db, "paid")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -212,11 +191,6 @@ func GetDashboard(c *gin.Context) {
 			"totalRevenue":        totalRevenue,
 		},
 	})
-}
-
-// GetAdminStats 获取管理员统计（别名，兼容前端 /admin/stats）
-func GetAdminStats(c *gin.Context) {
-	GetDashboard(c)
 }
 
 // GetRecentUsers 获取最近注册的用户

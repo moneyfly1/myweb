@@ -330,14 +330,14 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   sendVerificationCode: (data) => api.post('/auth/verification/send', data),
   resendVerificationCode: (data) => api.post('/auth/verification/send', data),
-  forgotPassword: (data) => api.post('/auth/forgot-password-new', data),
-  resetPassword: (data) => api.post('/auth/reset-password-new', data),
+  forgotPassword: (data) => api.post('/auth/forgot-password', data),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
   refreshToken: () => api.post('/auth/refresh-token')
 }
 
 export const userAPI = {
-  getProfile: () => api.get('/users/profile'),
-  updateProfile: (data) => api.put('/users/profile', data),
+  getProfile: () => api.get('/users/me'),
+  updateProfile: (data) => api.put('/users/me', data),
   changePassword: (data) => api.post('/users/change-password', data),
   getLoginHistory: () => api.get('/users/login-history'),
   getUserActivities: () => api.get('/users/activities'),
@@ -349,7 +349,7 @@ export const userAPI = {
 }
 
 export const rechargeAPI = {
-  createRecharge: (amount, method = 'alipay') => api.post('/recharge/create', { amount, payment_method: method }),
+  createRecharge: (amount, method = 'alipay') => api.post('/recharge/', { amount, payment_method: method }),
   getRecharges: (params) => api.get('/recharge/', { params }),
   getRechargeDetail: (id) => api.get(`/recharge/${id}`),
   cancelRecharge: (id) => api.post(`/recharge/${id}/cancel`)
@@ -376,7 +376,7 @@ export const packageAPI = {
 
 export const orderAPI = {
   upgradeDevices: (data) => api.post('/orders/upgrade-devices', data),
-  createOrder: (data) => api.post('/orders/create', data),
+  createOrder: (data) => api.post('/orders/', data),
   getUserOrders: (params) => api.get('/orders/', { params }),
   getOrderStatus: (orderNo) => api.get(`/orders/${orderNo}/status`),
   cancelOrder: (orderNo) => api.post(`/orders/${orderNo}/cancel`),
@@ -397,7 +397,8 @@ export const nodeAPI = {
   updateNode: (id, data) => api.put(`/admin/nodes/${id}`, data),
   deleteNode: (id) => api.delete(`/admin/nodes/${id}`),
   testNode: (id) => api.post(`/admin/nodes/${id}/test`),
-  batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds })
+  batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
+  batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds })
 }
 
 export const adminAPI = {
@@ -478,6 +479,7 @@ export const adminAPI = {
   deleteNode: (id) => api.delete(`/admin/nodes/${id}`),
   testNode: (id) => api.post(`/admin/nodes/${id}/test`),
   batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
+  batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds }),
   getNodesStats: () => api.get('/admin/nodes/stats'),
   // 专线节点管理
   getCustomNodes: (params) => api.get('/admin/custom-nodes', { params }),
@@ -523,8 +525,8 @@ export const statisticsAPI = {
 
 export const paymentAPI = {
   getPaymentMethods: () => api.get('/payment-methods/active'),
-  createPayment: (data) => api.post('/payment/create', data),
-  getPaymentStatus: (id) => api.get(`/payment/transactions/${id}`),
+  createPayment: (data) => api.post('/payment/', data),
+  getPaymentStatus: (id) => api.get(`/payment/status/${id}`),
   getPaymentConfigs: (params) => api.get('/payment-config/', { params }),
   createPaymentConfig: (data) => api.post('/payment-config/', data),
   updatePaymentConfig: (id, data) => api.put(`/payment-config/${id}`, data),

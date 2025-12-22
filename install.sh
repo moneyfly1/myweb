@@ -184,13 +184,55 @@ EOF
 # --- 2. 运维管理功能 (参考原脚本融合) ---
 
 manage_admin() {
-    cd "$PROJECT_DIR"
-    read -r -p "请输入新的管理员邮箱: " admin_email
-    read -r -p "请输入新的管理员密码: " admin_pass
+    cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+    log "创建/重置管理员账户..."
+    
+    # 输入用户名
+    read -r -p "请输入管理员用户名 (留空使用默认: admin): " admin_username
+    if [[ -z "$admin_username" ]]; then
+        admin_username="admin"
+        log "使用默认用户名: admin"
+    fi
+    
+    # 输入邮箱
+    read -r -p "请输入管理员邮箱 (留空使用默认: admin@example.com): " admin_email
+    if [[ -z "$admin_email" ]]; then
+        admin_email="admin@example.com"
+        log "使用默认邮箱: admin@example.com"
+    fi
+    
+    # 验证邮箱格式
+    if [[ ! "$admin_email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        error "邮箱格式不正确，请重新输入"
+        return 1
+    fi
+    
+    # 输入密码
+    read -r -p "请输入管理员密码 (留空使用默认密码 admin123): " admin_pass
+    if [[ -z "$admin_pass" ]]; then
+        warn "使用默认密码 admin123（仅开发环境）"
+        admin_pass="admin123"
+    fi
+    
+    # 验证密码长度
+    if [[ ${#admin_pass} -lt 6 ]]; then
+        error "密码长度至少6位，请重新输入"
+        return 1
+    fi
+    
+    # 设置环境变量并执行脚本
+    export ADMIN_USERNAME="$admin_username"
     export ADMIN_EMAIL="$admin_email"
     export ADMIN_PASSWORD="$admin_pass"
-    go run scripts/create_admin.go
-    log "管理员账户已创建/重置。"
+    
+    if go run scripts/create_admin.go; then
+        log "✅ 管理员账户已创建/重置"
+        log "用户名: $admin_username"
+        log "邮箱: $admin_email"
+    else
+        error "管理员账户创建/重置失败"
+        return 1
+    fi
 }
 
 force_kill() {
@@ -210,11 +252,18 @@ deep_clean() {
 }
 
 unlock_user() {
-    read -r -p "请输入要解锁的邮箱账号: " email
-    cd "$PROJECT_DIR"
-    # 假设你的程序有对应的命令行参数或脚本
-    ./server -unlock "$email" || echo "UPDATE users SET status=1, login_fails=0 WHERE email='$email';" | sqlite3 cboard.db
-    log "账户 $email 已尝试解锁。"
+    cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+    log "解锁用户账户（支持管理员和普通用户）..."
+    read -r -p "请输入要解锁的用户名或邮箱: " identifier
+    if [[ -z "$identifier" ]]; then
+        error "用户名或邮箱不能为空"
+        return 1
+    fi
+    if go run scripts/unlock_user.go "$identifier"; then
+        log "✅ 账户 $identifier 已解锁"
+    else
+        error "解锁失败，请检查用户名或邮箱是否正确"
+    fi
 }
 
 show_logs() {
@@ -233,7 +282,7 @@ show_menu() {
     echo -e "  ${GREEN}2.${NC} 创建/重置管理员账号"
     echo -e "  ${GREEN}3.${NC} 强制重启服务 (杀进程后重启)"
     echo -e "  ${GREEN}4.${NC} 深度清理系统缓存"
-    echo -e "  ${GREEN}5.${NC} 解锁管理员账户"
+    echo -e "  ${GREEN}5.${NC} 解锁用户账户（支持管理员和普通用户）"
     echo -e "------------------------------------------"
     echo -e "  ${CYAN}6.${NC} 查看服务运行状态"
     echo -e "  ${CYAN}7.${NC} 查看实时服务日志"

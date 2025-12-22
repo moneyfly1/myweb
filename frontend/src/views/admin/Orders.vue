@@ -480,7 +480,7 @@ export default {
         
         const response = await api.get('/admin/orders', { params })
         
-        const ordersList = response.data.data?.orders || response.data.items || []
+        const ordersList = response.data.data?.orders || []
         
         // 确保响应式更新
         orders.value = ordersList

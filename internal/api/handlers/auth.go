@@ -31,9 +31,9 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-// LoginJSONRequest 兼容用户名或邮箱的登录（前端 /auth/login-json）
+// LoginJSONRequest 登录请求
 type LoginJSONRequest struct {
-	Username string `json:"username" binding:"required"` // 可填写用户名或邮箱
+	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -173,7 +173,7 @@ func Login(c *gin.Context) {
 	c.JSON(200, gin.H{"success": true, "data": gin.H{"access_token": atk, "refresh_token": rtk, "user": user}})
 }
 
-// LoginJSON 兼容用户名或邮箱的登录，供前端 /auth/login-json 使用
+// LoginJSON 登录
 func LoginJSON(c *gin.Context) {
 	var req LoginJSONRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -690,8 +690,6 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	}
 }
 
-// RemoveDevice 已移动到 device.go，这里保留以保持兼容性
-// 实际实现在 device.go 的 RemoveDevice 函数中
 
 func ExportSubscriptions(c *gin.Context) {
 	var subs []models.Subscription

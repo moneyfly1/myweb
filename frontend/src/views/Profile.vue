@@ -325,10 +325,10 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="status" label="状态" width="80">
+        <el-table-column prop="login_status" label="状态" width="80">
           <template #default="scope">
-            <el-tag :type="scope.row.status === 'success' ? 'success' : 'danger'" size="small">
-              {{ scope.row.status === 'success' ? '成功' : '失败' }}
+            <el-tag :type="scope.row.login_status === 'success' ? 'success' : 'danger'" size="small">
+              {{ scope.row.login_status === 'success' ? '成功' : '失败' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -562,7 +562,6 @@ export default {
         // 使用正确的API端点
         const response = await userAPI.changePassword({
           current_password: passwordForm.oldPassword,
-          old_password: passwordForm.oldPassword, // 兼容字段
           new_password: passwordForm.newPassword
         })
         if (response.data && response.data.success) {
@@ -597,9 +596,23 @@ export default {
         if (response.data && response.data.success) {
           const data = response.data.data
           if (Array.isArray(data)) {
-            loginHistory.value = data
+            loginHistory.value = data.map(item => ({
+              login_time: item.login_time || '',
+              ip_address: item.ip_address || '',
+              country: item.country || '',
+              city: item.city || '',
+              user_agent: item.user_agent || '',
+              login_status: item.login_status || 'success'
+            }))
           } else if (data.logins && Array.isArray(data.logins)) {
-            loginHistory.value = data.logins
+            loginHistory.value = data.logins.map(item => ({
+              login_time: item.login_time || '',
+              ip_address: item.ip_address || '',
+              country: item.country || '',
+              city: item.city || '',
+              user_agent: item.user_agent || '',
+              login_status: item.login_status || 'success'
+            }))
           } else {
             loginHistory.value = []
           }

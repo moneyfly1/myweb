@@ -149,12 +149,14 @@ func GetNodes(c *gin.Context) {
 		}
 	}
 	var allNodes []models.Node
-	if err := query.Order("created_at DESC").Find(&allNodes).Error; err != nil {
+	if err := query.Order("order_index ASC, created_at ASC").Find(&allNodes).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取失败"})
 		return
 	}
 	seenKeys := make(map[string]bool)
 	uniqueNodes := make([]models.Node, 0)
+	var customNodesList []models.Node // 专线节点列表
+
 	for _, node := range allNodes {
 		if node.IsManual {
 			uniqueNodes = append(uniqueNodes, node)
@@ -166,6 +168,7 @@ func GetNodes(c *gin.Context) {
 			}
 		}
 	}
+
 	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
 		var sub models.Subscription
 		isOrdExpired := true
@@ -213,30 +216,34 @@ func GetNodes(c *gin.Context) {
 						if name == "" {
 							name = "专线定制-" + cn.Name
 						}
-					// 设置最后测试时间
-					var lastTest *time.Time
-					if cn.LastTest != nil {
-						lastTest = cn.LastTest
-					}
-					
-					uniqueNodes = append(uniqueNodes, models.Node{
-						ID:       cn.ID + 1000000,
-						Name:     name,
-						Type:     cn.Protocol,
-						Region:   cn.Domain,
-						Status:   cn.Status, // 使用 CustomNode 自身的 status
-						Latency:  cn.Latency, // 使用 CustomNode 的延迟
-						LastTest: lastTest,    // 使用 CustomNode 的最后测试时间
-						IsActive: true,
-						IsManual: true,
-						Config:   &cfgStr,
-					})
+						// 设置最后测试时间
+						var lastTest *time.Time
+						if cn.LastTest != nil {
+							lastTest = cn.LastTest
+						}
+
+						customNodesList = append(customNodesList, models.Node{
+							ID:         cn.ID + 1000000,
+							Name:       name,
+							Type:       cn.Protocol,
+							Region:     cn.Domain,
+							Status:     cn.Status,  // 使用 CustomNode 自身的 status
+							Latency:    cn.Latency, // 使用 CustomNode 的延迟
+							LastTest:   lastTest,   // 使用 CustomNode 的最后测试时间
+							IsActive:   true,
+							IsManual:   true,
+							Config:     &cfgStr,
+							OrderIndex: -1, // 专线节点使用 -1，确保显示在最前面
+						})
 					}
 				}
 			}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": uniqueNodes})
+
+	// 先返回专线节点，然后返回普通节点（按 OrderIndex 排序）
+	finalNodes := append(customNodesList, uniqueNodes...)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": finalNodes})
 }
 
 func GetNodeStats(c *gin.Context) {
@@ -287,12 +294,12 @@ func GetNodeStats(c *gin.Context) {
 func GetAdminNodes(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Node{})
-	
+
 	// 状态筛选
 	if s := c.Query("status"); s != "" {
 		query = query.Where("status = ?", s)
 	}
-	
+
 	// 激活状态筛选（默认只显示激活的节点，与用户端保持一致）
 	// 如果前端明确传递 is_active=false，则显示未激活的节点
 	if a := c.Query("is_active"); a != "" {
@@ -301,17 +308,17 @@ func GetAdminNodes(c *gin.Context) {
 		// 默认只显示激活的节点
 		query = query.Where("is_active = ?", true)
 	}
-	
+
 	// 地区筛选
 	if r := c.Query("region"); r != "" {
 		query = query.Where("region = ?", r)
 	}
-	
+
 	// 类型筛选
 	if t := c.Query("type"); t != "" {
 		query = query.Where("type = ?", t)
 	}
-	
+
 	// 搜索关键词
 	if search := c.Query("search"); search != "" {
 		search = utils.SanitizeSearchKeyword(search)
@@ -319,14 +326,14 @@ func GetAdminNodes(c *gin.Context) {
 			query = query.Where("name LIKE ?", "%"+search+"%")
 		}
 	}
-	
+
 	// 先查询所有符合条件的节点（不分页，用于去重）
 	var allNodes []models.Node
-	if err := query.Order("created_at DESC").Find(&allNodes).Error; err != nil {
+	if err := query.Order("order_index ASC, created_at ASC").Find(&allNodes).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取节点列表失败"})
 		return
 	}
-	
+
 	// 去重处理（与用户端逻辑保持一致）
 	seenKeys := make(map[string]bool)
 	uniqueNodes := make([]models.Node, 0)
@@ -343,10 +350,10 @@ func GetAdminNodes(c *gin.Context) {
 			}
 		}
 	}
-	
+
 	// 计算去重后的总数
 	total := int64(len(uniqueNodes))
-	
+
 	// 分页参数
 	page := 1
 	size := 20
@@ -365,7 +372,7 @@ func GetAdminNodes(c *gin.Context) {
 	if size > 100 {
 		size = 100 // 限制最大每页数量
 	}
-	
+
 	// 分页处理
 	offset := (page - 1) * size
 	end := offset + size
@@ -377,7 +384,7 @@ func GetAdminNodes(c *gin.Context) {
 	} else {
 		uniqueNodes = uniqueNodes[offset:end]
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": uniqueNodes, "total": total, "page": page, "size": size})
 }
 
@@ -537,7 +544,7 @@ func TestNode(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "节点不存在"})
 		return
 	}
-	
+
 	res, err := svc.TestNode(&node)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
@@ -578,6 +585,73 @@ func BatchTestNodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": results})
 }
 
+func BatchDeleteNodes(c *gin.Context) {
+	var req struct {
+		NodeIDs []uint `json:"node_ids"`
+	}
+	body, _ := c.GetRawData()
+	if err := json.Unmarshal(body, &req); err != nil || len(req.NodeIDs) == 0 {
+		var flex map[string]interface{}
+		if err2 := json.Unmarshal(body, &flex); err2 == nil {
+			if idsRaw, ok := flex["node_ids"]; ok {
+				if ids, ok := idsRaw.([]interface{}); ok {
+					for _, id := range ids {
+						if val, err := strconv.Atoi(fmt.Sprint(id)); err == nil {
+							req.NodeIDs = append(req.NodeIDs, uint(val))
+						}
+					}
+				}
+			}
+		}
+	}
+	if len(req.NodeIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "未选择节点"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 分离普通节点和专线节点（ID > 1000000）
+	var normalNodeIDs []uint
+	var customNodeIDs []uint
+
+	for _, nodeID := range req.NodeIDs {
+		if nodeID > 1000000 {
+			customNodeIDs = append(customNodeIDs, nodeID-1000000)
+		} else {
+			normalNodeIDs = append(normalNodeIDs, nodeID)
+		}
+	}
+
+	deletedCount := 0
+
+	// 删除普通节点
+	if len(normalNodeIDs) > 0 {
+		result := db.Where("id IN ?", normalNodeIDs).Delete(&models.Node{})
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除节点失败: " + result.Error.Error()})
+			return
+		}
+		deletedCount += int(result.RowsAffected)
+	}
+
+	// 删除专线节点
+	if len(customNodeIDs) > 0 {
+		result := db.Where("id IN ?", customNodeIDs).Delete(&models.CustomNode{})
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除专线节点失败: " + result.Error.Error()})
+			return
+		}
+		deletedCount += int(result.RowsAffected)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("成功删除 %d 个节点", deletedCount),
+		"data":    gin.H{"deleted_count": deletedCount},
+	})
+}
+
 func ImportFromClash(c *gin.Context) {
 	var req struct {
 		ClashConfig string `json:"clash_config" binding:"required"`
@@ -605,7 +679,7 @@ func ImportFromFile(c *gin.Context) {
 func importNodesFromClashConfig(configStr string) (int, error) {
 	db := database.GetDB()
 	var sysConfig models.SystemConfig
-	if db.Where("key = ? AND category = ?", "node_source_urls", "config_update").First(&sysConfig).Error == nil {
+	if db.Where("key = ? AND category = ?", "urls", "config_update").First(&sysConfig).Error == nil {
 		svc := config_update.NewConfigUpdateService()
 		if nodeData, err := svc.FetchNodesFromURLs(strings.Split(sysConfig.Value, "\n")); err == nil {
 			links := make([]string, 0)
@@ -624,7 +698,7 @@ func importNodesFromClashConfig(configStr string) (int, error) {
 func CollectNodes(c *gin.Context) {
 	var config models.SystemConfig
 	db := database.GetDB()
-	if db.Where("key = ? AND category = ?", "node_source_urls", "config_update").First(&config).Error != nil {
+	if db.Where("key = ? AND category = ?", "urls", "config_update").First(&config).Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "未配置源"})
 		return
 	}
