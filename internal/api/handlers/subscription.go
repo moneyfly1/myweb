@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,7 +129,21 @@ func CreateSubscription(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	deviceLimit, durationMonths := getDefaultSubscriptionSettings(db)
+	// 从系统设置中获取默认订阅配置
+	deviceLimit := 3
+	durationMonths := 1
+	var deviceLimitConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
+		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit > 0 {
+			deviceLimit = limit
+		}
+	}
+	var durationConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err == nil {
+		if months, err := strconv.Atoi(durationConfig.Value); err == nil && months > 0 {
+			durationMonths = months
+		}
+	}
 	sub := models.Subscription{
 		UserID:          user.ID,
 		SubscriptionURL: utils.GenerateSubscriptionURL(),
@@ -690,7 +705,6 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	}
 }
 
-
 func ExportSubscriptions(c *gin.Context) {
 	var subs []models.Subscription
 	if err := database.GetDB().Preload("User").Find(&subs).Error; err != nil {
@@ -1027,5 +1041,99 @@ func BatchSendAdminSubEmail(c *gin.Context) {
 			"success_count": successCount,
 			"fail_count":    failCount,
 		},
+	})
+}
+
+// GetExpiringSubscriptions 获取即将到期的订阅
+func GetExpiringSubscriptions(c *gin.Context) {
+	db := database.GetDB()
+
+	// 获取参数
+	daysStr := c.DefaultQuery("days", "7")
+	days, _ := strconv.Atoi(daysStr)
+	if days <= 0 {
+		days = 7
+	}
+
+	filter := c.Query("filter")
+
+	now := utils.GetBeijingTime()
+	endDate := now.AddDate(0, 0, days)
+
+	// 查询即将到期的订阅
+	var subscriptions []models.Subscription
+	query := db.Where("expire_time IS NOT NULL AND expire_time > ? AND expire_time <= ?", now, endDate).
+		Where("is_active = ?", true).
+		Preload("User").
+		Order("expire_time ASC")
+
+	// 根据筛选条件过滤
+	if filter != "" && filter != "all" {
+		switch filter {
+		case "today":
+			todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			todayEnd := todayStart.AddDate(0, 0, 1)
+			query = query.Where("expire_time >= ? AND expire_time < ?", todayStart, todayEnd)
+		case "1-3":
+			day3End := now.AddDate(0, 0, 3)
+			query = query.Where("expire_time > ? AND expire_time <= ?", now, day3End)
+		case "4-7":
+			day3End := now.AddDate(0, 0, 3)
+			day7End := now.AddDate(0, 0, 7)
+			query = query.Where("expire_time > ? AND expire_time <= ?", day3End, day7End)
+		}
+	}
+
+	if err := query.Find(&subscriptions).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "查询失败",
+		})
+		return
+	}
+
+	// 格式化数据
+	result := make([]gin.H, 0, len(subscriptions))
+	for _, sub := range subscriptions {
+		daysUntilExpire := 0
+		if !sub.ExpireTime.IsZero() {
+			diff := sub.ExpireTime.Sub(now)
+			if diff > 0 {
+				daysUntilExpire = int(diff.Hours() / 24)
+			}
+		}
+
+		userInfo := gin.H{
+			"id":       0,
+			"username": "用户已删除",
+			"email":    "",
+			"qq":       "",
+		}
+		// 检查 User 是否已加载（通过检查 ID 是否为 0）
+		if sub.User.ID > 0 {
+			// 注意：User 模型中可能没有 QQ 字段，这里先设为空字符串
+			// 如果需要，可以在 User 模型中添加 QQ 字段
+			userInfo = gin.H{
+				"id":       sub.User.ID,
+				"username": sub.User.Username,
+				"email":    sub.User.Email,
+				"qq":       "", // TODO: 如果 User 模型有 QQ 字段，请在这里添加
+			}
+		}
+
+		result = append(result, gin.H{
+			"id":                sub.ID,
+			"user_id":           sub.UserID,
+			"username":          userInfo["username"],
+			"email":             userInfo["email"],
+			"qq":                userInfo["qq"],
+			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+			"days_until_expire": daysUntilExpire,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
 	})
 }

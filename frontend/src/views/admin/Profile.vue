@@ -163,12 +163,18 @@
                   {{ formatDate(row.login_time) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="140" />
-              <el-table-column label="登录地点" width="150">
+              <el-table-column prop="ip_address" label="IP地址/地区" width="200">
                 <template #default="{ row }">
-                  <span v-if="row.country || row.city">{{ row.country || '' }}{{ row.city ? ', ' + row.city : '' }}</span>
-                  <span v-else-if="row.location">{{ row.location }}</span>
-                  <span v-else>-</span>
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <el-tag type="info" size="small">{{ row.ip_address || '未知' }}</el-tag>
+                    <el-tag 
+                      v-if="getLocationText(row.location, row.ip_address)" 
+                      type="success" 
+                      size="small"
+                    >
+                      {{ getLocationText(row.location, row.ip_address) }}
+                    </el-tag>
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column label="设备信息" min-width="200">
@@ -230,6 +236,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { adminAPI } from '@/utils/api'
+import { formatLocation } from '@/utils/location'
 import router from '@/router'
 import { secureStorage } from '@/utils/secureStorage'
 
@@ -616,6 +623,7 @@ export default {
       loginHistoryLoading.value = true
       try {
         const response = await adminAPI.getLoginHistory()
+        console.log('[管理员个人资料] 登录历史响应:', response)
         let data = null
         
         // 处理不同的响应格式
@@ -633,22 +641,28 @@ export default {
           data = response
         }
         
+        console.log('[管理员个人资料] 解析后的数据:', data)
+        
         if (Array.isArray(data)) {
           loginHistory.value = data.map(item => ({
             login_time: item.login_time || '',
             ip_address: item.ip_address || '',
+            location: item.location || '',
             country: item.country || '',
             city: item.city || '',
             user_agent: item.user_agent || '',
-            login_status: item.login_status || 'success'
+            login_status: item.login_status || item.status || 'success'
           }))
+          console.log('[管理员个人资料] 处理后的登录历史:', loginHistory.value)
         } else if (data && data.login_history && Array.isArray(data.login_history)) {
           loginHistory.value = data.login_history
         } else {
+          console.log('[管理员个人资料] 数据格式不正确，设置为空数组')
           loginHistory.value = []
         }
       } catch (error) {
-        console.error('加载登录历史失败:', error)
+        console.error('[管理员个人资料] 加载登录历史失败:', error)
+        console.error('[管理员个人资料] 错误详情:', error.response?.data)
         ElMessage.error('加载登录历史失败: ' + (error.response?.data?.message || error.message || '未知错误'))
         loginHistory.value = []
       } finally {
@@ -708,6 +722,24 @@ export default {
         second: '2-digit'
       })
     }
+
+    // 获取位置文本
+    const getLocationText = (location, ipAddress) => {
+      if (location) {
+        return formatLocation(location)
+      }
+      // 如果没有location，检查是否为本地IP或内网IP
+      if (ipAddress) {
+        if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress === 'localhost') {
+          return '本地'
+        }
+        // 检查是否为内网IP（简单判断）
+        if (ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.')) {
+          return '内网'
+        }
+      }
+      return ''
+    }
     
     // 获取设备信息（简化显示）
     const getDeviceInfo = (userAgent) => {
@@ -763,6 +795,7 @@ export default {
       toggleSecurityNotification,
       updateNotificationFrequency,
       formatDate,
+      getLocationText,
       getDeviceInfo
     }
   }

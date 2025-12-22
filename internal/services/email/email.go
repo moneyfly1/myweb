@@ -305,7 +305,7 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 
 	// 验证码邮件立即发送（验证码需要实时性）
 	err := s.SendEmail(to, subject, content)
-	
+
 	// 无论发送成功与否，都记录到队列中（用于追踪和管理）
 	queueErr := s.QueueEmail(to, subject, content, "verification")
 	if queueErr != nil {
@@ -317,7 +317,7 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 		// 发送失败且队列也失败
 		return fmt.Errorf("发送验证码邮件失败: %v，加入队列也失败: %v", err, queueErr)
 	}
-	
+
 	// 如果发送成功，更新队列状态为已发送
 	if err == nil {
 		db := database.GetDB()
@@ -328,7 +328,7 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 			db.Save(&emailQueue)
 		}
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("发送验证码邮件失败: %v，已加入队列稍后重试", err)
 	}

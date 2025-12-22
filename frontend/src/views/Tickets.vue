@@ -422,7 +422,8 @@ const getStatusTagType = (status) => {
     closed: 'info',
     cancelled: 'danger'
   }
-  return map[status] || ''
+  // 确保返回有效的类型值，如果找不到则返回 'info' 作为默认值
+  return map[status] || 'info'
 }
 
 const getTypeText = (type) => {
@@ -436,7 +437,14 @@ const getTypeText = (type) => {
 }
 
 const getTypeTagType = (type) => {
-  return 'info'
+  // 根据类型返回不同的标签类型
+  const map = {
+    technical: 'primary',
+    billing: 'warning',
+    account: 'danger',
+    other: 'info'
+  }
+  return map[type] || 'info'
 }
 
 const getPriorityText = (priority) => {
@@ -452,11 +460,12 @@ const getPriorityText = (priority) => {
 const getPriorityTagType = (priority) => {
   const map = {
     low: 'info',
-    normal: '',
+    normal: 'primary',  // 普通优先级使用 primary，不能是空字符串
     high: 'warning',
     urgent: 'danger'
   }
-  return map[priority] || ''
+  // 确保返回有效的类型值，如果找不到则返回 'info' 作为默认值
+  return map[priority] || 'info'
 }
 
 const handleFilterChange = () => {

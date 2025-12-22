@@ -72,6 +72,32 @@
             <el-form-item>
               <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
             </el-form-item>
+            <el-divider content-position="left">GeoIP 数据库管理</el-divider>
+            <el-form-item label="数据库状态">
+              <div v-if="geoipStatus">
+                <el-tag :type="geoipStatus.enabled ? 'success' : 'warning'" style="margin-right: 10px;">
+                  {{ geoipStatus.enabled ? '已启用' : '未启用' }}
+                </el-tag>
+                <span v-if="geoipStatus.db_exists" style="color: #909399; font-size: 12px;">
+                  文件大小: {{ formatFileSize(geoipStatus.db_size) }} | 
+                  更新时间: {{ geoipStatus.db_modified || '未知' }}
+                </span>
+                <span v-else style="color: #f56c6c; font-size: 12px;">数据库文件不存在</span>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button 
+                type="primary" 
+                @click="updateGeoIPDatabase" 
+                :loading="geoipUpdating"
+                :class="{ 'full-width': isMobile }"
+              >
+                {{ geoipUpdating ? '更新中...' : '更新 GeoIP 数据库' }}
+              </el-button>
+              <div :class="['form-tip', { 'mobile': isMobile }]" style="margin-top: 10px;">
+                更新 GeoIP 数据库以获取最新的地理位置信息。文件大小约 60-80MB，可能需要几分钟。
+              </div>
+            </el-form-item>
           </el-form>
         </el-tab-pane>
 
@@ -589,7 +615,7 @@
               <el-switch v-model="securitySettings.ip_whitelist_enabled" />
             </el-form-item>
             <el-form-item label="IP白名单" v-if="securitySettings.ip_whitelist_enabled">
-              <el-input v-model="securitySettings.ip_whitelist" type="textarea" rows="3" placeholder="每行一个IP地址" />
+              <el-input v-model="securitySettings.ip_whitelist" type="textarea" :rows="3" placeholder="每行一个IP地址" />
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveSecuritySettings" :class="{ 'full-width': isMobile }">保存安全设置</el-button>
@@ -713,6 +739,43 @@ export default {
     const testingAdminEmail = ref(false)
     const testingAdminTelegram = ref(false)
     const testingAdminBark = ref(false)
+    const geoipStatus = ref(null)
+    const geoipUpdating = ref(false)
+
+    const loadGeoIPStatus = async () => {
+      try {
+        const response = await api.get('/admin/settings/geoip/status')
+        geoipStatus.value = response.data?.data || response.data || {}
+      } catch (error) {
+        console.error('加载 GeoIP 状态失败:', error)
+      }
+    }
+
+    const updateGeoIPDatabase = async () => {
+      try {
+        geoipUpdating.value = true
+        const response = await api.post('/admin/settings/geoip/update')
+        if (response.data && response.data.success !== false) {
+          ElMessage.success('GeoIP 数据库更新成功')
+          await loadGeoIPStatus()
+        } else {
+          ElMessage.error(response.data?.message || '更新失败')
+        }
+      } catch (error) {
+        console.error('更新 GeoIP 数据库失败:', error)
+        ElMessage.error(error.response?.data?.message || '更新失败')
+      } finally {
+        geoipUpdating.value = false
+      }
+    }
+
+    const formatFileSize = (bytes) => {
+      if (!bytes || bytes === 0) return '0 B'
+      const k = 1024
+      const sizes = ['B', 'KB', 'MB', 'GB']
+      const i = Math.floor(Math.log(bytes) / Math.log(k))
+      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+    }
 
     const loadSettings = async () => {
       try {
@@ -1058,6 +1121,7 @@ export default {
 
     onMounted(() => {
       loadSettings()
+      loadGeoIPStatus()
       window.addEventListener('resize', handleResize)
     })
 
@@ -1095,6 +1159,10 @@ export default {
       saveAnnouncementSettings,
       nodeHealthSettings,
       saveNodeHealthSettings,
+      geoipStatus,
+      geoipUpdating,
+      updateGeoIPDatabase,
+      formatFileSize,
     }
   }
 }

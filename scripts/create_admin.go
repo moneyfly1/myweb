@@ -133,7 +133,7 @@ func main() {
 	} else {
 		fmt.Printf("  密码:   [已从环境变量读取]\n")
 	}
-	
+
 	// 验证密码哈希
 	fmt.Println("\n🔍 验证信息：")
 	fmt.Printf("  密码哈希长度: %d 字符\n", len(hashed))
@@ -145,14 +145,14 @@ func main() {
 			fmt.Printf("  ⚠️  警告: 密码哈希格式异常\n")
 		}
 	}
-	
+
 	// 测试密码验证
 	if auth.VerifyPassword(password, hashed) {
 		fmt.Printf("  ✅ 密码验证测试通过\n")
 	} else {
 		fmt.Printf("  ❌ 密码验证测试失败！请检查密码哈希\n")
 	}
-	
+
 	fmt.Println("\n💡 登录提示：")
 	fmt.Println("  1. 访问管理员登录页面: /admin/login")
 	fmt.Println("  2. 可以使用用户名或邮箱登录")

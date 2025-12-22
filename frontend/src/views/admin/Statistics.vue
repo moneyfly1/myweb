@@ -59,8 +59,11 @@
         </el-col>
       </el-row>
   
-      <!-- 图表区域 -->
-      <el-row :gutter="20" class="charts-section">
+      <!-- 标签页：用户统计、地区分析 -->
+      <el-tabs v-model="activeTab" type="border-card" style="margin-top: 20px;">
+        <el-tab-pane label="用户统计" name="users">
+          <!-- 图表区域 -->
+          <el-row :gutter="20" class="charts-section">
         <el-col :xs="24" :sm="24" :md="12">
           <el-card>
             <template #header>
@@ -220,21 +223,144 @@
         </el-timeline>
         <el-empty v-else description="暂无活动记录" />
       </el-card>
+        </el-tab-pane>
+
+        <!-- 地区分析 -->
+        <el-tab-pane label="地区分析" name="regions">
+          <el-card style="margin-bottom: 20px;">
+            <template #header>
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">用户地区分布</h3>
+                <el-button type="primary" size="small" @click="loadRegionStats" :loading="loadingRegions">
+                  <el-icon style="margin-right: 4px;"><Refresh /></el-icon>
+                  刷新数据
+                </el-button>
+              </div>
+            </template>
+            
+            <div v-if="loadingRegions" style="text-align: center; padding: 40px;">
+              <el-icon class="is-loading" style="font-size: 32px; color: #409eff;"><Loading /></el-icon>
+              <p style="margin-top: 10px; color: #909399;">正在加载地区数据...</p>
+            </div>
+            
+            <div v-else>
+              <el-row :gutter="20">
+                <el-col :xs="24" :sm="24" :md="12">
+                  <div class="region-chart-wrapper">
+                    <div v-if="regionStats.length === 0" style="text-align: center; padding: 60px; color: #909399;">
+                      <el-icon style="font-size: 48px; margin-bottom: 10px;"><DataAnalysis /></el-icon>
+                      <p>暂无地区分布数据</p>
+                      <p style="font-size: 12px; margin-top: 5px;">请确保已启用 GeoIP 数据库并记录用户登录位置</p>
+                    </div>
+                    <div v-else class="region-chart-container">
+                      <canvas ref="regionChart"></canvas>
+                    </div>
+                  </div>
+                </el-col>
+                <el-col :xs="24" :sm="24" :md="12">
+                  <div class="region-stats-table">
+                    <h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133;">地区统计列表</h4>
+                    <el-table 
+                      :data="regionStats" 
+                      stripe 
+                      style="width: 100%"
+                      :empty-text="'暂无地区数据'"
+                      max-height="400"
+                    >
+                      <el-table-column prop="region" label="地区" min-width="120">
+                        <template #default="{ row }">
+                          <el-tag type="info" size="small">{{ row.region || '未知' }}</el-tag>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="userCount" label="用户数" width="100" align="right">
+                        <template #default="{ row }">
+                          <el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="percentage" label="占比" width="100" align="right">
+                        <template #default="{ row }">
+                          <span style="color: #606266; font-weight: 500;">{{ row.percentage || '0.0' }}%</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="loginCount" label="登录次数" width="110" align="right">
+                        <template #default="{ row }">
+                          <span style="color: #909399;">{{ row.loginCount || 0 }}</span>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </div>
+                </el-col>
+              </el-row>
+            </div>
+          </el-card>
+
+          <el-card>
+            <template #header>
+              <div class="card-header">
+                <h3 style="margin: 0;">地区详细统计</h3>
+              </div>
+            </template>
+            <el-table 
+              :data="regionDetails" 
+              stripe
+              :empty-text="'暂无详细统计数据'"
+              v-loading="loadingRegions"
+            >
+              <el-table-column prop="country" label="国家" width="140" fixed="left">
+                <template #default="{ row }">
+                  <el-tag type="success" size="small" v-if="row.country">{{ row.country }}</el-tag>
+                  <span v-else style="color: #c0c4cc;">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="city" label="城市" width="140">
+                <template #default="{ row }">
+                  <span v-if="row.city">{{ row.city }}</span>
+                  <span v-else style="color: #c0c4cc;">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="userCount" label="用户数" width="110" align="right">
+                <template #default="{ row }">
+                  <el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="loginCount" label="登录次数" width="120" align="right">
+                <template #default="{ row }">
+                  <span style="color: #606266;">{{ row.loginCount || 0 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="lastLogin" label="最后登录" width="180">
+                <template #default="{ row }">
+                  <span style="color: #909399; font-size: 13px;">{{ row.lastLogin || '-' }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+        </el-tab-pane>
+      </el-tabs>
     </div>
   </template>
   
   <script>
-  import { ref, reactive, onMounted } from 'vue'
+  import { ref, reactive, onMounted, nextTick, watch } from 'vue'
   import { Chart, registerables } from 'chart.js'
+  import { Refresh, Loading, DataAnalysis } from '@element-plus/icons-vue'
   import { statisticsAPI } from '@/utils/api'
   
   Chart.register(...registerables)
   
   export default {
     name: 'AdminStatistics',
+    components: {
+      Refresh,
+      Loading,
+      DataAnalysis
+    },
     setup() {
       const userChart = ref(null)
       const revenueChart = ref(null)
+      const regionChart = ref(null)
+      const activeTab = ref('users')
+      const loadingRegions = ref(false)
       
       const statistics = reactive({
         totalUsers: 0,
@@ -246,6 +372,8 @@
       const userStats = ref([])
       const subscriptionStats = ref([])
       const recentActivities = ref([])
+      const regionStats = ref([])
+      const regionDetails = ref([])
   
       // 获取统计数据
       const fetchStatistics = async () => {
@@ -410,19 +538,141 @@
         return num.toFixed(2)
       }
 
+      // 加载地区统计
+      const loadRegionStats = async () => {
+        try {
+          loadingRegions.value = true
+          const response = await statisticsAPI.getRegionStats()
+          if (response.data && response.data.success && response.data.data) {
+            const data = response.data.data
+            regionStats.value = data.regions || []
+            regionDetails.value = data.details || []
+            
+            // 等待 DOM 更新后绘制图表
+            await nextTick()
+            if (regionChart.value && regionStats.value.length > 0) {
+              // 延迟一下确保 canvas 已渲染
+              setTimeout(() => {
+                initRegionChart()
+              }, 100)
+            }
+          } else {
+            regionStats.value = []
+            regionDetails.value = []
+          }
+        } catch (error) {
+          console.error('加载地区统计失败:', error)
+          regionStats.value = []
+          regionDetails.value = []
+        } finally {
+          loadingRegions.value = false
+        }
+      }
+
+      // 初始化地区分布图表
+      let regionChartInstance = null
+      const initRegionChart = () => {
+        if (!regionChart.value || regionStats.value.length === 0) return
+        
+        try {
+          // 如果已有图表实例，先销毁
+          if (regionChartInstance) {
+            regionChartInstance.destroy()
+            regionChartInstance = null
+          }
+          
+          const ctx = regionChart.value.getContext('2d')
+          if (ctx) {
+            regionChartInstance = new Chart(ctx, {
+              type: 'doughnut',
+              data: {
+                labels: regionStats.value.map(r => r.region || '未知'),
+                datasets: [{
+                  data: regionStats.value.map(r => r.userCount || 0),
+                  backgroundColor: [
+                    '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399',
+                    '#9C27B0', '#FF9800', '#00BCD4', '#4CAF50', '#FF5722',
+                    '#795548', '#607D8B', '#E91E63', '#009688', '#FFC107'
+                  ]
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
+                plugins: {
+                  legend: {
+                    position: 'right',
+                    labels: {
+                      padding: 15,
+                      usePointStyle: true,
+                      font: {
+                        size: 12
+                      }
+                    }
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        const label = context.label || ''
+                        const value = context.parsed || 0
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0)
+                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
+                        return `${label}: ${value} 人 (${percentage}%)`
+                      }
+                    }
+                  },
+                  title: {
+                    display: true,
+                    text: '用户地区分布',
+                    font: {
+                      size: 16,
+                      weight: 'bold'
+                    },
+                    padding: {
+                      top: 10,
+                      bottom: 20
+                    }
+                  }
+                }
+              }
+            })
+          }
+        } catch (error) {
+          console.error('初始化地区图表失败:', error)
+        }
+      }
+
+      // 监听标签页切换，加载地区数据
+      watch(activeTab, (newTab) => {
+        if (newTab === 'regions' && regionStats.value.length === 0 && !loadingRegions.value) {
+          loadRegionStats()
+        }
+      })
+
       onMounted(() => {
         fetchStatistics()
         initUserChart()
         initRevenueChart()
+        // 如果默认是地区分析标签页，则加载数据
+        if (activeTab.value === 'regions') {
+          loadRegionStats()
+        }
       })
 
       return {
         userChart,
         revenueChart,
+        regionChart,
+        activeTab,
+        loadingRegions,
         statistics,
         userStats,
         subscriptionStats,
         recentActivities,
+        regionStats,
+        regionDetails,
+        loadRegionStats,
         formatMoney
       }
     }
@@ -502,6 +752,32 @@
   .chart-container {
     height: 300px;
     position: relative;
+  }
+  
+  .region-chart-wrapper {
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .region-chart-container {
+    width: 100%;
+    height: 350px;
+    position: relative;
+    padding: 20px;
+  }
+  
+  .region-stats-table {
+    padding: 10px 0;
+  }
+  
+  .region-stats-table h4 {
+    font-weight: 600;
+    color: #303133;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ebeef5;
+    margin-bottom: 15px;
   }
   
   .card-header h3 {

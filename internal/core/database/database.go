@@ -211,6 +211,7 @@ func AutoMigrate() error {
 		&models.VerificationAttempt{},
 		&models.VerificationCode{},
 		&models.UserActivity{},
+		&models.LoginHistory{},
 		&models.AuditLog{},
 		&models.TokenBlacklist{},
 	)

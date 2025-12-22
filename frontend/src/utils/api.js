@@ -424,8 +424,9 @@ export const adminAPI = {
   sendUserSubEmail: (id) => api.post(`/admin/users/${id}/send-subscription-email`),
   batchSendSubEmail: (ids) => api.post('/admin/users/batch-send-subscription-email', { user_ids: ids }),
   getExpiringUsers: (params) => api.get('/admin/users/expiring', { params }),
-  batchSendExpireReminder: (ids) => api.post('/admin/users/batch-expire-reminder', { user_ids: ids }),
-  getSubscriptions: (params) => api.get('/admin/subscriptions', { params }),
+  batchSendExpireReminder: (ids) => api.post('/admin/users/batch-expire-reminder', { user_ids: ids }),
+  getExpiringSubscriptions: (params) => api.get('/admin/subscriptions/expiring', { params }),
+  getSubscriptions: (params) => api.get('/admin/subscriptions', { params }),
   createSubscription: (data) => api.post('/admin/subscriptions', data),
   updateSubscription: (id, data) => api.put(`/admin/subscriptions/${id}`, data),
   resetSubscription: (id) => api.post(`/admin/subscriptions/${id}/reset`),
@@ -513,14 +514,15 @@ export const configAPI = {
 }
 
 export const statisticsAPI = {
-  getStatistics: () => api.get('/admin/statistics'),
-  getUserTrend: () => api.get('/admin/statistics/user-trend'),
-  getRevenueTrend: () => api.get('/admin/statistics/revenue-trend'),
-  getUserStatistics: (params) => api.get('/admin/statistics/users', { params }),
-  getSubscriptionStatistics: () => api.get('/admin/statistics/subscriptions'),
-  getOrderStatistics: (params) => api.get('/admin/statistics/orders', { params }),
-  getStatisticsOverview: () => api.get('/admin/statistics/overview'),
-  exportStatistics: (type, format) => api.get('/admin/statistics/export', { params: { type, format } })
+  getStatistics: () => api.get('/admin/statistics'),
+  getUserTrend: () => api.get('/admin/statistics/user-trend'),
+  getRevenueTrend: () => api.get('/admin/statistics/revenue-trend'),
+  getUserStatistics: (params) => api.get('/admin/statistics/users', { params }),
+  getSubscriptionStatistics: () => api.get('/admin/statistics/subscriptions'),
+  getOrderStatistics: (params) => api.get('/admin/statistics/orders', { params }),
+  getStatisticsOverview: () => api.get('/admin/statistics/overview'),
+  exportStatistics: (type, format) => api.get('/admin/statistics/export', { params: { type, format } }),
+  getRegionStats: () => api.get('/admin/statistics/regions')
 }
 
 export const paymentAPI = {

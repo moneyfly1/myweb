@@ -243,6 +243,15 @@ build_backend() {
         exit 1
     fi
     
+    # 下载和整理 Go 依赖
+    log "正在下载 Go 依赖..."
+    if ! go mod download; then
+        warn "依赖下载失败，尝试继续..."
+    fi
+    if ! go mod tidy; then
+        warn "依赖整理失败，尝试继续..."
+    fi
+    
     if go build -o server ./cmd/server/main.go; then
         log "✅ Go 程序编译成功"
     else

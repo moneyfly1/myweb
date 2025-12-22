@@ -45,7 +45,16 @@ full_deploy() {
     fi
     log "Go 版本: $(go version)"
     
-    # 3. 编译 Go 程序
+    # 3. 下载和整理 Go 依赖
+    log "正在下载 Go 依赖..."
+    if ! go mod download; then
+        warn "依赖下载失败，尝试继续..."
+    fi
+    if ! go mod tidy; then
+        warn "依赖整理失败，尝试继续..."
+    fi
+    
+    # 4. 编译 Go 程序
     log "正在编译 Go 程序..."
     if go build -o server ./cmd/server/main.go; then
         log "✅ Go 程序编译成功"
@@ -54,7 +63,7 @@ full_deploy() {
         exit 1
     fi
     
-    # 4. 构建前端
+    # 5. 构建前端
     log "正在构建前端..."
     cd frontend || { error "前端目录不存在"; exit 1; }
     if [ ! -d "node_modules" ]; then
@@ -69,7 +78,7 @@ full_deploy() {
     fi
     cd ..
     
-    # 5. 创建 systemd 服务文件
+    # 6. 创建 systemd 服务文件
     log "正在创建 systemd 服务..."
     local service_file="/etc/systemd/system/cboard.service"
     cat > "$service_file" << EOF
@@ -94,7 +103,7 @@ EOF
     systemctl daemon-reload
     log "✅ systemd 服务文件已创建"
     
-    # 6. 生成HTTP配置
+    # 7. 生成HTTP配置
     local bt_path="/www/server/panel/vhost/nginx/${DOMAIN}.conf"
     mkdir -p "$(dirname "$bt_path")"
     cat > "$bt_path" << EOF
@@ -108,7 +117,7 @@ server {
 EOF
     reload_nginx_force
 
-    # 7. 申请SSL
+    # 8. 申请SSL
     log "正在申请 SSL 证书..."
     certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" --email "admin@${DOMAIN}" --agree-tos --non-interactive --quiet 2>/dev/null || {
         warn "SSL 证书申请失败，继续使用 HTTP 配置"

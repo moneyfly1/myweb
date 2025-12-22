@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/scheduler"
 	"cboard-go/internal/utils"
 
@@ -73,6 +76,33 @@ func main() {
 		log.Printf("初始化日志失败: %v", err)
 	}
 
+	// 初始化 GeoIP（如果数据库文件存在）
+	geoipPath := os.Getenv("GEOIP_DB_PATH")
+	if geoipPath == "" {
+		geoipPath = "./GeoLite2-City.mmdb"
+	}
+
+	// 如果文件不存在，尝试自动下载
+	if _, err := os.Stat(geoipPath); os.IsNotExist(err) {
+		log.Println("GeoIP 数据库文件不存在，尝试自动下载...")
+		if err := downloadGeoIPDatabase(geoipPath); err != nil {
+			log.Printf("自动下载 GeoIP 数据库失败: %v", err)
+			log.Println("提示: 如需启用地理位置解析，请手动下载 GeoLite2-City.mmdb 文件")
+			log.Println("下载地址: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
+		} else {
+			log.Println("GeoIP 数据库自动下载成功")
+		}
+	}
+
+	if err := geoip.InitGeoIP(geoipPath); err != nil {
+		log.Printf("GeoIP 初始化失败（地理位置解析功能已禁用）: %v", err)
+		log.Println("提示: 如需启用地理位置解析，请下载 GeoLite2-City.mmdb 文件")
+		log.Println("下载地址: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
+	} else {
+		log.Println("GeoIP 数据库已加载，地理位置解析功能已启用")
+	}
+	defer geoip.Close()
+
 	// 启动定时任务（如果未禁用）
 	if !cfg.DisableScheduleTasks {
 		sched := scheduler.NewScheduler()
@@ -90,6 +120,37 @@ func main() {
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
+}
+
+// downloadGeoIPDatabase 下载 GeoIP 数据库
+func downloadGeoIPDatabase(filePath string) error {
+	url := "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
+
+	// 创建文件
+	out, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("创建文件失败: %w", err)
+	}
+	defer out.Close()
+
+	// 下载文件
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("下载失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
+	}
+
+	// 复制内容
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("保存文件失败: %w", err)
+	}
+
+	return nil
 }
 
 // ensureDefaultAdmin 创建默认管理员账号（仅在首次启动时创建）

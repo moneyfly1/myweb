@@ -15,6 +15,7 @@ type AuditLog struct {
 	ActionDescription sql.NullString `gorm:"type:text" json:"action_description,omitempty"`
 	IPAddress         sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
 	UserAgent         sql.NullString `gorm:"type:text" json:"user_agent,omitempty"`
+	Location          sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"`
 	RequestMethod     sql.NullString `gorm:"type:varchar(10)" json:"request_method,omitempty"`
 	RequestPath       sql.NullString `gorm:"type:varchar(255)" json:"request_path,omitempty"`
 	RequestParams     sql.NullString `gorm:"type:json" json:"request_params,omitempty"`

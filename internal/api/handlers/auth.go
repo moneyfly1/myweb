@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -43,9 +45,9 @@ func Register(c *gin.Context) {
 		c.JSON(400, gin.H{"success": false, "message": "请求格式错误"})
 		return
 	}
-	
+
 	db := database.GetDB()
-	
+
 	// 检查用户名或邮箱是否已存在
 	var count int64
 	db.Model(&models.User{}).Where("email = ? OR username = ?", req.Email, req.Username).Count(&count)
@@ -53,39 +55,39 @@ func Register(c *gin.Context) {
 		c.JSON(400, gin.H{"success": false, "message": "用户名或邮箱已存在"})
 		return
 	}
-	
+
 	// 检查邮箱验证开关
 	var emailVerificationConfig models.SystemConfig
 	emailVerificationRequired := true // 默认需要验证
 	if err := db.Where("key = ? AND category = ?", "email_verification_required", "registration").First(&emailVerificationConfig).Error; err == nil {
 		emailVerificationRequired = emailVerificationConfig.Value == "true"
 	}
-	
+
 	// 如果邮箱验证开关打开，需要验证验证码
 	if emailVerificationRequired {
 		if req.VerificationCode == "" {
 			c.JSON(400, gin.H{"success": false, "message": "请输入邮箱验证码"})
 			return
 		}
-		
+
 		// 验证验证码
 		var verificationCode models.VerificationCode
 		if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
 			c.JSON(400, gin.H{"success": false, "message": "验证码错误或已使用"})
 			return
 		}
-		
+
 		// 检查验证码是否过期
 		if verificationCode.IsExpired() {
 			c.JSON(400, gin.H{"success": false, "message": "验证码已过期，请重新获取"})
 			return
 		}
-		
+
 		// 标记验证码为已使用
 		verificationCode.MarkAsUsed()
 		db.Save(&verificationCode)
 	}
-	
+
 	// 创建用户
 	hashed, _ := auth.HashPassword(req.Password)
 	user := models.User{
@@ -95,20 +97,20 @@ func Register(c *gin.Context) {
 		IsActive:   true,
 		IsVerified: true, // 注册成功即视为已验证（无论是否通过验证码）
 	}
-	
+
 	if err := db.Create(&user).Error; err != nil {
 		c.JSON(500, gin.H{"success": false, "message": "创建用户失败"})
 		return
 	}
-	
+
 	// 创建默认订阅
 	_ = createDefaultSubscription(db, user.ID)
-	
+
 	// 处理邀请码
 	if req.InviteCode != "" {
 		processInviteCode(db, req.InviteCode, user.ID)
 	}
-	
+
 	c.JSON(201, gin.H{"success": true, "message": "注册成功", "data": gin.H{"id": user.ID, "email": user.Email}})
 }
 
@@ -133,43 +135,53 @@ func Login(c *gin.Context) {
 		c.JSON(403, gin.H{"success": false, "message": "账号已禁用"})
 		return
 	}
-	
+
 	atk, _ := utils.CreateAccessToken(user.ID, user.Email, user.IsAdmin)
 	rtk, _ := utils.CreateRefreshToken(user.ID, user.Email)
-	
+
 	// 更新最后登录时间
 	now := utils.GetBeijingTime()
 	user.LastLogin = database.NullTime(now)
 	if saveErr := db.Save(&user).Error; saveErr != nil {
 		utils.LogError("Login: 更新最后登录时间失败", saveErr, nil)
 	}
-	
+
 	// 登录成功，重置限流计数
 	middleware.ResetLoginAttempt(ipAddress)
-	
+
 	// 创建登录历史记录（包含User-Agent和IP地址）
 	userAgent := c.GetHeader("User-Agent")
+
+	// 解析地理位置（如果 GeoIP 已启用）
+	var location sql.NullString
+	if geoip.IsEnabled() {
+		location = geoip.GetLocationString(ipAddress)
+	}
+
 	loginHistory := models.LoginHistory{
 		UserID:      user.ID,
 		LoginTime:   now,
 		IPAddress:   database.NullString(ipAddress),
 		UserAgent:   database.NullString(userAgent),
+		Location:    location,
 		LoginStatus: "success",
 	}
-	// 异步创建登录历史，不阻塞登录流程
-	go func() {
-		if err := db.Create(&loginHistory).Error; err != nil {
-			utils.LogError("Login: 创建登录历史失败", err, nil)
-		}
-	}()
-	
+	// 创建登录历史（同步创建，确保记录被保存）
+	if err := db.Create(&loginHistory).Error; err != nil {
+		utils.LogError("Login: 创建登录历史失败", err, map[string]interface{}{
+			"user_id": user.ID,
+			"ip":      ipAddress,
+		})
+		// 即使创建失败也不影响登录流程
+	}
+
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
-	
+
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
-	
+
 	c.JSON(200, gin.H{"success": true, "data": gin.H{"access_token": atk, "refresh_token": rtk, "user": user}})
 }
 
@@ -286,30 +298,40 @@ func LoginJSON(c *gin.Context) {
 
 	// 登录成功，重置限流计数
 	middleware.ResetLoginAttempt(ipAddress)
-	
+
 	// 创建登录历史记录
 	userAgent := c.GetHeader("User-Agent")
+
+	// 解析地理位置（如果 GeoIP 已启用）
+	var location sql.NullString
+	if geoip.IsEnabled() {
+		location = geoip.GetLocationString(ipAddress)
+	}
+
 	loginHistory := models.LoginHistory{
 		UserID:      user.ID,
 		LoginTime:   now,
 		IPAddress:   database.NullString(ipAddress),
 		UserAgent:   database.NullString(userAgent),
+		Location:    location,
 		LoginStatus: "success",
 	}
-	// 异步创建登录历史，不阻塞登录流程
-	go func() {
-		if err := db.Create(&loginHistory).Error; err != nil {
-			utils.LogError("创建登录历史失败", err, nil)
-		}
-	}()
-	
+	// 创建登录历史（同步创建，确保记录被保存）
+	if err := db.Create(&loginHistory).Error; err != nil {
+		utils.LogError("LoginJSON: 创建登录历史失败", err, map[string]interface{}{
+			"user_id": user.ID,
+			"ip":      ipAddress,
+		})
+		// 即使创建失败也不影响登录流程
+	}
+
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
-	
+
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{

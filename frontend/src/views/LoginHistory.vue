@@ -33,21 +33,18 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="ip_address" label="IP地址" width="150">
+        <el-table-column prop="ip_address" label="IP地址/地区" width="200">
           <template #default="scope">
-            <el-tag type="info">{{ scope.row.ip_address || '未知' }}</el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="country" label="国家/地区" width="120">
-          <template #default="scope">
-            <el-tag type="success">{{ scope.row.country || '未知' }}</el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="city" label="城市" width="120">
-          <template #default="scope">
-            {{ scope.row.city || '未知' }}
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <el-tag type="info" size="small">{{ scope.row.ip_address || '未知' }}</el-tag>
+              <el-tag 
+                v-if="getLocationText(scope.row.location, scope.row.ip_address)" 
+                type="success" 
+                size="small"
+              >
+                {{ getLocationText(scope.row.location, scope.row.ip_address) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
         
@@ -131,6 +128,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { userAPI } from '@/utils/api'
 import dayjs from 'dayjs'
+import { formatLocation } from '@/utils/location'
 
 export default {
   name: 'LoginHistory',
@@ -168,10 +166,12 @@ export default {
           loginHistory.value = data.map(item => ({
             login_time: item.login_time || '',
             ip_address: item.ip_address || '',
+            location: item.location || '',
             country: item.country || '',
             city: item.city || '',
             user_agent: item.user_agent || '',
-            login_status: item.login_status || 'success'
+            login_status: item.login_status || item.status || 'success',
+            status: item.login_status || item.status || 'success' // 兼容字段
           }))
           total.value = loginHistory.value.length
         } else if (data && data.logins && Array.isArray(data.logins)) {
@@ -248,6 +248,24 @@ export default {
       return dayjs().diff(dayjs(lastLogin), 'day')
     })
 
+    // 获取位置文本
+    const getLocationText = (location, ipAddress) => {
+      if (location) {
+        return formatLocation(location)
+      }
+      // 如果没有location，检查是否为本地IP或内网IP
+      if (ipAddress) {
+        if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress === 'localhost') {
+          return '本地'
+        }
+        // 检查是否为内网IP（简单判断）
+        if (ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.')) {
+          return '内网'
+        }
+      }
+      return ''
+    }
+
     onMounted(() => {
       fetchLoginHistory()
     })
@@ -261,6 +279,7 @@ export default {
       fetchLoginHistory,
       formatTime,
       getDeviceInfo,
+      getLocationText,
       handleSizeChange,
       handleCurrentChange,
       totalLogins,
