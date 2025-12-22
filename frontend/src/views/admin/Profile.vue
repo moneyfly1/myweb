@@ -173,15 +173,15 @@
               </el-table-column>
               <el-table-column label="设备信息" min-width="200">
                 <template #default="{ row }">
-                  <el-tooltip :content="row.user_agent || row.userAgent || '未知'" placement="top">
-                    <span>{{ getDeviceInfo(row.user_agent || row.userAgent) }}</span>
+                  <el-tooltip :content="row.user_agent || '未知'" placement="top">
+                    <span>{{ getDeviceInfo(row.user_agent) }}</span>
                   </el-tooltip>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="状态" width="100">
+              <el-table-column prop="login_status" label="状态" width="100">
                 <template #default="{ row }">
-                  <el-tag :type="(row.status === 'success' || row.login_status === 'success') ? 'success' : 'danger'">
-                    {{ (row.status === 'success' || row.login_status === 'success') ? '成功' : '失败' }}
+                  <el-tag :type="row.login_status === 'success' ? 'success' : 'danger'">
+                    {{ row.login_status === 'success' ? '成功' : '失败' }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -429,7 +429,6 @@ export default {
         
         const response = await adminAPI.changePassword({
           current_password: passwordForm.current_password,
-          old_password: passwordForm.current_password, // 兼容字段
           new_password: passwordForm.new_password
         })
         
@@ -636,13 +635,12 @@ export default {
         
         if (Array.isArray(data)) {
           loginHistory.value = data.map(item => ({
-            login_time: item.login_time || item.loginTime || '',
-            ip_address: item.ip_address || item.ipAddress || '',
+            login_time: item.login_time || '',
+            ip_address: item.ip_address || '',
             country: item.country || '',
             city: item.city || '',
-            user_agent: item.user_agent || item.userAgent || '',
-            status: item.status || item.login_status || 'success',
-            login_status: item.login_status || item.status || 'success'
+            user_agent: item.user_agent || '',
+            login_status: item.login_status || 'success'
           }))
         } else if (data && data.login_history && Array.isArray(data.login_history)) {
           loginHistory.value = data.login_history

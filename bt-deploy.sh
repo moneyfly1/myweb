@@ -442,12 +442,53 @@ full_deploy() {
 create_admin() {
     step "创建/重置管理员账户..."
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
-    read -r -p "请输入管理员邮箱: " admin_email
-    read -r -p "请输入管理员密码: " admin_pass
+    
+    # 输入用户名
+    read -r -p "请输入管理员用户名 (留空使用默认: admin): " admin_username
+    if [[ -z "$admin_username" ]]; then
+        admin_username="admin"
+        log "使用默认用户名: admin"
+    fi
+    
+    # 输入邮箱
+    read -r -p "请输入管理员邮箱 (留空使用默认: admin@example.com): " admin_email
+    if [[ -z "$admin_email" ]]; then
+        admin_email="admin@example.com"
+        log "使用默认邮箱: admin@example.com"
+    fi
+    
+    # 验证邮箱格式
+    if [[ ! "$admin_email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        error "邮箱格式不正确，请重新输入"
+        return 1
+    fi
+    
+    # 输入密码
+    read -r -p "请输入管理员密码 (留空使用默认密码 admin123): " admin_pass
+    if [[ -z "$admin_pass" ]]; then
+        warn "使用默认密码 admin123（仅开发环境）"
+        admin_pass="admin123"
+    fi
+    
+    # 验证密码长度
+    if [[ ${#admin_pass} -lt 6 ]]; then
+        error "密码长度至少6位，请重新输入"
+        return 1
+    fi
+    
+    # 设置环境变量并执行脚本
+    export ADMIN_USERNAME="$admin_username"
     export ADMIN_EMAIL="$admin_email"
     export ADMIN_PASSWORD="$admin_pass"
-    go run scripts/create_admin.go
-    log "✅ 管理员账户已创建/重置"
+    
+    if go run scripts/create_admin.go; then
+        log "✅ 管理员账户已创建/重置"
+        log "用户名: $admin_username"
+        log "邮箱: $admin_email"
+    else
+        error "管理员账户创建/重置失败"
+        return 1
+    fi
 }
 
 force_restart() {
@@ -474,29 +515,17 @@ force_restart() {
 unlock_user() {
     step "解锁用户账户..."
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
-    read -r -p "请输入要解锁的邮箱账号: " email
-    [[ -z "$email" ]] && { error "邮箱不能为空"; return 1; }
+    read -r -p "请输入要解锁的用户名或邮箱: " identifier
+    [[ -z "$identifier" ]] && { error "用户名或邮箱不能为空"; return 1; }
     
-    # 尝试使用服务器命令解锁
-    if [[ -f "${PROJECT_DIR}/server" ]]; then
-        "${PROJECT_DIR}/server" -unlock "$email" 2>/dev/null && {
-            log "✅ 账户 $email 已解锁"
-            return 0
-        }
+    # 使用统一的解锁脚本（支持管理员和普通用户）
+    if go run scripts/unlock_user.go "$identifier" 2>/dev/null; then
+        log "✅ 账户 $identifier 已解锁"
+        return 0
+    else
+        error "解锁失败，请检查用户名或邮箱是否正确"
+        return 1
     fi
-    
-    # 如果服务器命令失败，尝试直接操作数据库
-    if [[ -f "${PROJECT_DIR}/cboard.db" ]]; then
-        if command -v sqlite3 &>/dev/null; then
-            sqlite3 "${PROJECT_DIR}/cboard.db" "UPDATE users SET is_active=1, login_fails=0 WHERE email='$email';" 2>/dev/null && {
-                log "✅ 账户 $email 已解锁（通过数据库）"
-                return 0
-            }
-        fi
-    fi
-    
-    warn "无法解锁账户，请检查数据库文件或手动操作"
-    return 1
 }
 
 deep_clean() {

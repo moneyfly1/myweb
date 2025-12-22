@@ -286,7 +286,7 @@ func (s *EmailService) getTemplateContent(templateName string, variables map[str
 	return fallbackBuilder()
 }
 
-// SendVerificationEmail 发送验证邮件（立即发送，验证码需要实时性）
+// SendVerificationEmail 发送验证邮件（立即发送，验证码需要实时性，同时记录到队列）
 func (s *EmailService) SendVerificationEmail(to, code string) error {
 	// 验证邮件配置
 	if s.host == "" || s.username == "" || s.password == "" {
@@ -303,14 +303,33 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 		return "注册验证码", content
 	})
 
-	// 验证码邮件立即发送，不加入队列（验证码需要实时性）
+	// 验证码邮件立即发送（验证码需要实时性）
 	err := s.SendEmail(to, subject, content)
-	if err != nil {
-		// 如果立即发送失败，尝试加入队列作为备选方案
-		queueErr := s.QueueEmail(to, subject, content, "verification")
-		if queueErr != nil {
-			return fmt.Errorf("发送验证码邮件失败: %v，加入队列也失败: %v", err, queueErr)
+	
+	// 无论发送成功与否，都记录到队列中（用于追踪和管理）
+	queueErr := s.QueueEmail(to, subject, content, "verification")
+	if queueErr != nil {
+		// 记录队列失败，但不影响发送流程
+		if err == nil {
+			// 发送成功但队列失败，记录警告但不返回错误
+			return nil
 		}
+		// 发送失败且队列也失败
+		return fmt.Errorf("发送验证码邮件失败: %v，加入队列也失败: %v", err, queueErr)
+	}
+	
+	// 如果发送成功，更新队列状态为已发送
+	if err == nil {
+		db := database.GetDB()
+		var emailQueue models.EmailQueue
+		if err := db.Where("to_email = ? AND subject = ? AND email_type = ? AND status = ?", to, subject, "verification", "pending").Order("created_at DESC").First(&emailQueue).Error; err == nil {
+			emailQueue.Status = "sent"
+			emailQueue.SentAt = database.NullTime(time.Now())
+			db.Save(&emailQueue)
+		}
+	}
+	
+	if err != nil {
 		return fmt.Errorf("发送验证码邮件失败: %v，已加入队列稍后重试", err)
 	}
 

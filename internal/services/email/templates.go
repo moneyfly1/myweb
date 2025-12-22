@@ -10,7 +10,7 @@ import (
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
-	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 )
 
 // EmailTemplateBuilder 邮件模板构建器
@@ -27,32 +27,13 @@ func (b *EmailTemplateBuilder) GetBaseURL() string {
 }
 
 // getBaseURL 获取基础URL（内部方法）
-// 统一逻辑，与 handlers/subscription.go 中的 buildBaseURL 保持一致
 func (b *EmailTemplateBuilder) getBaseURL() string {
-	// 优先从数据库配置获取域名（category = "general"）
+	// 从数据库配置获取域名（使用公共函数）
 	db := database.GetDB()
 	if db != nil {
-		var config models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&config).Error; err == nil && config.Value != "" {
-			domain := strings.TrimSpace(config.Value)
-			// 如果配置的域名包含协议，直接使用
-			if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
-				return strings.TrimSuffix(domain, "/")
-			}
-			// 否则默认使用 https
-			return "https://" + domain
-		}
-		// 兼容旧配置（不限制 category）
-		if err := db.Where("key = ?", "domain_name").First(&config).Error; err == nil && config.Value != "" {
-			domain := strings.TrimSpace(config.Value)
-			if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
-				return strings.TrimSuffix(domain, "/")
-			}
-			return "https://" + domain
-		}
-		// 查找 site_url 或 base_url（兼容旧配置）
-		if err := db.Where("key = ?", "site_url").Or("key = ?", "base_url").First(&config).Error; err == nil && config.Value != "" {
-			return strings.TrimSpace(config.Value)
+		domain := utils.GetDomainFromDB(db)
+		if domain != "" {
+			return utils.FormatDomainURL(domain)
 		}
 	}
 

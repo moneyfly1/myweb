@@ -41,11 +41,34 @@ func GetBuildBaseURL(c *http.Request, db *gorm.DB) string {
 	var cfg models.SystemConfig
 	var domain string
 	if db != nil {
+		// 只从 category = "general" 获取域名配置
 		if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&cfg).Error; err == nil {
-			domain = cfg.Value
-		} else if err := db.Where("key = ?", "domain_name").First(&cfg).Error; err == nil {
 			domain = cfg.Value
 		}
 	}
 	return BuildBaseURL(c, domain)
+}
+
+// GetDomainFromDB 从数据库获取域名配置（只从 category = "general" 获取）
+func GetDomainFromDB(db *gorm.DB) string {
+	if db == nil {
+		return ""
+	}
+	var cfg models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&cfg).Error; err == nil {
+		return strings.TrimSpace(cfg.Value)
+	}
+	return ""
+}
+
+// FormatDomainURL 格式化域名URL（如果包含协议则直接使用，否则默认使用 https）
+func FormatDomainURL(domain string) string {
+	if domain == "" {
+		return ""
+	}
+	domain = strings.TrimSpace(domain)
+	if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+		return strings.TrimSuffix(domain, "/")
+	}
+	return "https://" + strings.TrimRight(domain, "/")
 }

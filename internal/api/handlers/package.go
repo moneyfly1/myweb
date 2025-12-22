@@ -348,7 +348,6 @@ func GetAdminPackages(c *gin.Context) {
 		"success": true,
 		"data": gin.H{
 			"packages": formattedPackages,
-			"items":    formattedPackages, // 兼容前端可能使用的 items 字段
 			"total":    total,
 			"page":     page,
 			"size":     size,

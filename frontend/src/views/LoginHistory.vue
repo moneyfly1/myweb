@@ -166,13 +166,12 @@ export default {
         // 处理数据格式
         if (Array.isArray(data)) {
           loginHistory.value = data.map(item => ({
-            login_time: item.login_time || item.loginTime || '',
-            ip_address: item.ip_address || item.ipAddress || '',
+            login_time: item.login_time || '',
+            ip_address: item.ip_address || '',
             country: item.country || '',
             city: item.city || '',
-            user_agent: item.user_agent || item.userAgent || '',
-            status: item.status || item.login_status || 'success',
-            login_status: item.login_status || item.status || 'success'
+            user_agent: item.user_agent || '',
+            login_status: item.login_status || 'success'
           }))
           total.value = loginHistory.value.length
         } else if (data && data.logins && Array.isArray(data.logins)) {

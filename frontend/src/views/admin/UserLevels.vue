@@ -360,7 +360,6 @@ const editLevel = (level) => {
     if (typeof level.benefits === 'string') {
       benefits = level.benefits
     } else if (typeof level.benefits === 'object' && level.benefits !== null) {
-      // 处理可能的对象格式（向后兼容）
       benefits = level.benefits.String || level.benefits.string || ''
     }
   }

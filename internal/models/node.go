@@ -19,7 +19,8 @@ type Node struct {
 	Config        *string    `gorm:"type:text" json:"config,omitempty"`
 	IsRecommended bool       `gorm:"default:false" json:"is_recommended"`
 	IsActive      bool       `gorm:"default:true" json:"is_active"`
-	IsManual      bool       `gorm:"default:false" json:"is_manual"` // 是否为手动添加的节点
+	IsManual      bool       `gorm:"default:false" json:"is_manual"`     // 是否为手动添加的节点
+	OrderIndex    int        `gorm:"default:0;index" json:"order_index"` // 节点顺序索引，用于排序
 	LastTest      *time.Time `json:"last_test,omitempty"`
 	LastUpdate    time.Time  `gorm:"autoCreateTime;autoUpdateTime" json:"last_update"`
 	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"created_at"`

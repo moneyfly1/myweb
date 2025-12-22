@@ -50,6 +50,25 @@
                 <el-option label="跟随系统" value="auto" />
               </el-select>
             </el-form-item>
+            <el-divider content-position="left">客服联系方式</el-divider>
+            <el-form-item label="售后QQ" prop="support_qq">
+              <el-input 
+                v-model="generalSettings.support_qq" 
+                placeholder="请输入售后QQ号码"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                用于帮助中心页面显示，留空则不显示。
+              </div>
+            </el-form-item>
+            <el-form-item label="售后邮箱" prop="support_email">
+              <el-input 
+                v-model="generalSettings.support_email" 
+                placeholder="例如: support@example.com"
+              />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                用于帮助中心页面显示，留空则不显示。
+              </div>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
             </el-form-item>
@@ -609,7 +628,9 @@ export default {
       site_description: '',
       domain_name: '',
       site_logo: '',
-      default_theme: 'default'
+      default_theme: 'default',
+      support_qq: '',
+      support_email: ''
     })
 
     const generalRules = {
@@ -768,6 +789,8 @@ export default {
         const response = await api.put('/admin/settings/general', generalSettings)
         if (response.data && response.data.success !== false) {
           ElMessage.success('基本设置保存成功')
+          // 保存成功后重新加载设置，确保显示最新值
+          loadSettings()
         } else {
           ElMessage.error(response.data?.message || '保存失败')
         }

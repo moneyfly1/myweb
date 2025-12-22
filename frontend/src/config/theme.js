@@ -130,7 +130,6 @@ export const themeConfig = {
     border: '#4B0082'
   },
   
-  // 默认主题（兼容旧版本）
   default: {
     name: 'default',
     primary: '#409EFF',

@@ -3,6 +3,7 @@ package handlers
 import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -35,39 +36,13 @@ func GetStatistics(c *gin.Context) {
 	db.Model(&models.Order{}).Count(&stats.TotalOrders)
 	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&stats.PaidOrders)
 
-	// 收入统计（使用final_amount，如果为NULL则使用amount）
-	var totalRevenue float64
-	var result struct {
-		Total sql.NullFloat64
-	}
-	db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-				ELSE amount
-			END
-		), 0) as total
-		FROM orders 
-		WHERE status = ?
-	`, "paid").Scan(&result)
-	
-	if result.Total.Valid {
-		totalRevenue = result.Total.Float64
-	} else {
-		totalRevenue = 0
-	}
-	stats.TotalRevenue = totalRevenue
+	// 收入统计（使用公共函数）
+	stats.TotalRevenue = utils.CalculateTotalRevenue(db, "paid")
 
 	// 今日统计
 	today := time.Now().Format("2006-01-02")
 	db.Model(&models.Order{}).Where("status = ? AND DATE(created_at) = ?", "paid", today).Count(&stats.TodayOrders)
-	var todayRevenue sql.NullFloat64
-	db.Model(&models.Order{}).Where("status = ? AND DATE(created_at) = ?", "paid", today).Select("COALESCE(SUM(final_amount), 0)").Scan(&todayRevenue)
-	if todayRevenue.Valid {
-		stats.TodayRevenue = todayRevenue.Float64
-	} else {
-		stats.TodayRevenue = 0
-	}
+	stats.TodayRevenue = utils.CalculateTodayRevenue(db, "paid")
 
 	// 订阅统计
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
@@ -94,8 +69,8 @@ func GetStatistics(c *gin.Context) {
 			"percentage": 100,
 		},
 		{
-			"name":       "活跃用户",
-			"value":      stats.ActiveUsers,
+			"name":  "活跃用户",
+			"value": stats.ActiveUsers,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
 					return float64(stats.ActiveUsers) / float64(stats.TotalUsers) * 100
@@ -104,8 +79,8 @@ func GetStatistics(c *gin.Context) {
 			}(),
 		},
 		{
-			"name":       "未激活用户",
-			"value":      inactiveUsers,
+			"name":  "未激活用户",
+			"value": inactiveUsers,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
 					return float64(inactiveUsers) / float64(stats.TotalUsers) * 100
@@ -114,8 +89,8 @@ func GetStatistics(c *gin.Context) {
 			}(),
 		},
 		{
-			"name":       "已验证用户",
-			"value":      verifiedUsers,
+			"name":  "已验证用户",
+			"value": verifiedUsers,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
 					return float64(verifiedUsers) / float64(stats.TotalUsers) * 100
@@ -124,8 +99,8 @@ func GetStatistics(c *gin.Context) {
 			}(),
 		},
 		{
-			"name":       "未验证用户",
-			"value":      unverifiedUsers,
+			"name":  "未验证用户",
+			"value": unverifiedUsers,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
 					return float64(unverifiedUsers) / float64(stats.TotalUsers) * 100
@@ -152,8 +127,8 @@ func GetStatistics(c *gin.Context) {
 			"percentage": 100,
 		},
 		{
-			"name":       "活跃订阅",
-			"value":      stats.ActiveSubscriptions,
+			"name":  "活跃订阅",
+			"value": stats.ActiveSubscriptions,
 			"percentage": func() float64 {
 				if stats.TotalSubscriptions > 0 {
 					return float64(stats.ActiveSubscriptions) / float64(stats.TotalSubscriptions) * 100
@@ -162,8 +137,8 @@ func GetStatistics(c *gin.Context) {
 			}(),
 		},
 		{
-			"name":       "已过期订阅",
-			"value":      expiredSubscriptions,
+			"name":  "已过期订阅",
+			"value": expiredSubscriptions,
 			"percentage": func() float64 {
 				if stats.TotalSubscriptions > 0 {
 					return float64(expiredSubscriptions) / float64(stats.TotalSubscriptions) * 100
@@ -172,8 +147,8 @@ func GetStatistics(c *gin.Context) {
 			}(),
 		},
 		{
-			"name":       "未激活订阅",
-			"value":      inactiveSubscriptions,
+			"name":  "未激活订阅",
+			"value": inactiveSubscriptions,
 			"percentage": func() float64 {
 				if stats.TotalSubscriptions > 0 {
 					return float64(inactiveSubscriptions) / float64(stats.TotalSubscriptions) * 100
@@ -223,7 +198,6 @@ func GetStatistics(c *gin.Context) {
 			"active_subscriptions": stats.ActiveSubscriptions,
 			"today_revenue":        stats.TodayRevenue,
 			"today_orders":         stats.TodayOrders,
-			// 兼容前端期望的格式
 			"overview": gin.H{
 				"totalUsers":          stats.TotalUsers,
 				"activeSubscriptions": stats.ActiveSubscriptions,
@@ -256,12 +230,9 @@ func GetRevenueChart(c *gin.Context) {
 		fmt.Sscanf(daysParam, "%d", &days)
 	}
 
-	// 使用原生 SQL 查询（兼容 SQLite 和 MySQL）
 	db := database.GetDB()
 	var rows *sql.Rows
 	var err error
-
-	// 使用 SQLite 语法（兼容 MySQL）
 	rows, err = db.Raw(`
 		SELECT DATE(created_at) as date, COALESCE(SUM(
 			CASE 

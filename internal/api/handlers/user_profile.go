@@ -214,13 +214,9 @@ func GetLoginHistory(c *gin.Context) {
 		historyList = append(historyList, gin.H{
 			"id":           h.ID,
 			"ip_address":   ipAddr,
-			"ipAddress":    ipAddr, // 兼容字段
 			"user_agent":   userAgent,
-			"userAgent":    userAgent, // 兼容字段
 			"login_time":   loginTime,
-			"loginTime":    loginTime, // 兼容字段
 			"login_status": status,
-			"status":       status, // 兼容字段
 			"country":      country,
 			"city":         city,
 			"location":     h.Location.String,

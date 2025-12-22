@@ -1292,7 +1292,6 @@ export default {
 
     // 搜索订阅
     const searchSubscriptions = () => {
-      // 同步 searchForm.keyword 到 searchQuery（向后兼容）
       searchQuery.value = searchForm.keyword
       currentPage.value = 1
       loadSubscriptions()
@@ -1370,12 +1369,25 @@ export default {
       if (!subscription || !subscription.id) return
       
       try {
-        let baseDate = subscription.expire_time 
-          ? dayjs(subscription.expire_time).tz('Asia/Shanghai')
-          : dayjs().tz('Asia/Shanghai')
+        const now = dayjs().tz('Asia/Shanghai')
+        let baseDate
+        
+        if (subscription.expire_time) {
+          const currentExpire = dayjs(subscription.expire_time).tz('Asia/Shanghai')
+          if (currentExpire.isAfter(now)) {
+            // 如果还未到期，在原到期时间基础上增加
+            baseDate = currentExpire
+          } else {
+            // 如果已到期，从当前时间开始增加
+            baseDate = now
+          }
+        } else {
+          // 如果没有到期时间，从当前时间开始增加
+          baseDate = now
+        }
         
         if (!baseDate.isValid()) {
-          baseDate = dayjs().tz('Asia/Shanghai')
+          baseDate = now
         }
         
         const newDate = baseDate.add(days, 'day')
@@ -1841,7 +1853,7 @@ export default {
           return
         }
 
-        if (!response.data.data.token || !response.data.data.user) {
+        if (!response.data.data.access_token || !response.data.data.user) {
           ElMessage.error('登录失败：服务器返回数据不完整')
           return
         }
@@ -1850,7 +1862,7 @@ export default {
         const adminToken = secureStorage.get('admin_token')
         const adminUser = secureStorage.get('admin_user')
         
-        const userToken = response.data.data.token
+        const userToken = response.data.data.access_token
         const userData = response.data.data.user
 
         // 在 sessionKey 中也包含管理员信息，以便在新标签页中恢复

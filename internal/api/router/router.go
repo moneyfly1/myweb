@@ -52,16 +52,14 @@ func SetupRouter() *gin.Engine {
 			// 登录和注册使用速率限制
 			auth.POST("/register", middleware.RegisterRateLimitMiddleware(), handlers.Register)
 			auth.POST("/login", middleware.LoginRateLimitMiddleware(), handlers.Login)
-			auth.POST("/login-json", middleware.LoginRateLimitMiddleware(), handlers.LoginJSON) // 兼容前端管理员/用户登录
+			auth.POST("/login-json", middleware.LoginRateLimitMiddleware(), handlers.LoginJSON)
 			auth.POST("/refresh", handlers.RefreshToken)
 			auth.POST("/logout", middleware.AuthMiddleware(), handlers.Logout)
 			// 验证码发送使用速率限制
 			auth.POST("/verification/send", middleware.VerifyCodeRateLimitMiddleware(), handlers.SendVerificationCode)
 			auth.POST("/verification/verify", handlers.VerifyCode)
-			auth.POST("/forgot-password", middleware.VerifyCodeRateLimitMiddleware(), handlers.ForgotPassword)     // 忘记密码
-			auth.POST("/forgot-password-new", middleware.VerifyCodeRateLimitMiddleware(), handlers.ForgotPassword) // 别名，兼容前端
-			auth.POST("/reset-password", handlers.ResetPasswordByCode)                                             // 重置密码
-			auth.POST("/reset-password-new", handlers.ResetPasswordByCode)                                         // 别名，兼容前端
+			auth.POST("/forgot-password", middleware.VerifyCodeRateLimitMiddleware(), handlers.ForgotPassword)
+			auth.POST("/reset-password", handlers.ResetPasswordByCode)
 		}
 
 		// 用户相关（需要认证）
@@ -69,13 +67,10 @@ func SetupRouter() *gin.Engine {
 		users.Use(middleware.AuthMiddleware())
 		{
 			users.GET("/me", handlers.GetCurrentUser)
-			users.GET("/profile", handlers.GetCurrentUser) // 别名，兼容前端
 			users.PUT("/me", handlers.UpdateCurrentUser)
-			users.PUT("/profile", handlers.UpdateCurrentUser) // 别名，兼容前端
 			users.GET("/dashboard-info", handlers.GetUserDashboard)
 			users.POST("/change-password", handlers.ChangePassword)
 			users.PUT("/preferences", handlers.UpdatePreferences)
-			users.PUT("/preference-settings", handlers.UpdatePreferences) // 别名，兼容前端
 			users.GET("/notification-settings", handlers.GetNotificationSettings)
 			users.PUT("/notification-settings", handlers.UpdateUserNotificationSettings)
 			users.GET("/privacy-settings", handlers.GetPrivacySettings)
@@ -112,9 +107,6 @@ func SetupRouter() *gin.Engine {
 			subscribePublic.GET("/subscribe/:url", handlers.GetSubscriptionConfig)
 			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig)        // 猫咪订阅（Clash YAML格式）
 			subscribePublic.GET("/subscriptions/universal/:url", handlers.GetUniversalSubscription) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
-			// 兼容旧路径
-			subscribePublic.GET("/subscriptions/ssr/:url", handlers.GetUniversalSubscription)   // 通用订阅（兼容旧路径）
-			subscribePublic.GET("/subscriptions/v2ray/:url", handlers.GetUniversalSubscription) // 通用订阅（兼容旧路径）
 		}
 
 		// 订单相关
@@ -123,7 +115,7 @@ func SetupRouter() *gin.Engine {
 		{
 			orders.GET("", handlers.GetOrders)
 			orders.POST("", handlers.CreateOrder)
-			orders.POST("/create", handlers.CreateOrder)             // 别名，兼容前端
+			orders.POST("/", handlers.CreateOrder)
 			orders.POST("/upgrade-devices", handlers.UpgradeDevices) // 升级设备数
 			orders.GET("/stats", handlers.GetOrderStats)
 			// 使用订单号的路由（放在前面，使用具体路径避免冲突）
@@ -202,9 +194,7 @@ func SetupRouter() *gin.Engine {
 			notifications.GET("", handlers.GetNotifications)
 			notifications.GET("/unread-count", handlers.GetUnreadCount)
 			notifications.PUT("/:id/read", handlers.MarkAsRead)
-			notifications.POST("/:id/read", handlers.MarkAsRead) // 兼容前端可能使用 POST
 			notifications.PUT("/read-all", handlers.MarkAllAsRead)
-			notifications.POST("/mark-all-read", handlers.MarkAllAsRead) // 兼容前端
 			notifications.DELETE("/:id", handlers.DeleteNotification)
 			notifications.GET("/user-notifications", handlers.GetUserNotifications)
 		}
@@ -228,7 +218,7 @@ func SetupRouter() *gin.Engine {
 			tickets.GET("/:id", handlers.GetTicket)
 			tickets.POST("", handlers.CreateTicket)
 			tickets.POST("/:id/reply", handlers.ReplyTicket)
-			tickets.POST("/:id/replies", handlers.ReplyTicket) // 兼容前端调用
+			tickets.POST("/:id/replies", handlers.ReplyTicket)
 		}
 		// 管理员工单
 		ticketsAdmin := api.Group("/tickets/admin")
@@ -258,7 +248,7 @@ func SetupRouter() *gin.Engine {
 		{
 			invites.GET("", handlers.GetInviteCodes)
 			invites.POST("", handlers.CreateInviteCode)
-			invites.POST("/generate", handlers.CreateInviteCode) // 兼容旧路径
+			invites.POST("/", handlers.CreateInviteCode)
 			invites.GET("/stats", handlers.GetInviteStats)
 			invites.GET("/reward-settings", handlers.GetRewardSettings)
 			invites.GET("/my-codes", handlers.GetMyInviteCodes)
@@ -273,7 +263,7 @@ func SetupRouter() *gin.Engine {
 			recharge.GET("", handlers.GetRechargeRecords)
 			recharge.GET("/:id", handlers.GetRechargeRecord)
 			recharge.POST("", handlers.CreateRecharge)
-			recharge.POST("/create", handlers.CreateRecharge) // 别名，兼容前端
+			recharge.POST("/", handlers.CreateRecharge)
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
 		}
 
@@ -328,7 +318,7 @@ func SetupRouter() *gin.Engine {
 		{
 			// Dashboard 相关
 			admin.GET("/dashboard", handlers.GetDashboard)
-			admin.GET("/stats", handlers.GetAdminStats)
+			admin.GET("/stats", handlers.GetDashboard)
 			admin.GET("/users/recent", handlers.GetRecentUsers)
 			admin.GET("/orders/recent", handlers.GetRecentOrders)
 			admin.GET("/users/abnormal", handlers.GetAbnormalUsers)
@@ -376,6 +366,7 @@ func SetupRouter() *gin.Engine {
 			admin.DELETE("/nodes/:id", handlers.DeleteNode)
 			admin.POST("/nodes/:id/test", handlers.TestNode)
 			admin.POST("/nodes/batch-test", handlers.BatchTestNodes)
+			admin.POST("/nodes/batch-delete", handlers.BatchDeleteNodes)
 			admin.POST("/nodes/import-from-file", handlers.ImportFromFile)
 
 			// 服务器管理（专线节点）
@@ -397,7 +388,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/:id/custom-nodes", handlers.AssignCustomNodeToUser)
 			admin.DELETE("/users/:id/custom-nodes/:node_id", handlers.UnassignCustomNodeFromUser)
 
-			// 优惠券管理（保留兼容性路由，但主要使用 /coupons/admin）
+			// 优惠券管理
 
 			// 工单管理
 			admin.PUT("/tickets/:id/status", handlers.UpdateTicketStatus)
@@ -509,7 +500,7 @@ func SetupRouter() *gin.Engine {
 			// 日志管理
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)
-			// 系统日志（兼容前端API）
+			// 系统日志
 			admin.GET("/system-logs", handlers.GetSystemLogs)
 			admin.GET("/logs-stats", handlers.GetLogsStats)
 			admin.GET("/export-logs", handlers.ExportLogs)

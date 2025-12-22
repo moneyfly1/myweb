@@ -20,7 +20,6 @@ import (
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
-	OldPassword     string `json:"old_password"` // 兼容字段
 	NewPassword     string `json:"new_password" binding:"required,min=8"`
 }
 
@@ -46,14 +45,8 @@ func ChangePassword(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 支持 current_password 和 old_password 两种字段名
-	oldPassword := req.CurrentPassword
-	if oldPassword == "" {
-		oldPassword = req.OldPassword
-	}
-
 	// 验证原密码
-	if !auth.VerifyPassword(oldPassword, user.Password) {
+	if !auth.VerifyPassword(req.CurrentPassword, user.Password) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "原密码错误",

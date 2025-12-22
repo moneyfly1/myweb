@@ -638,7 +638,7 @@ export default {
         const response = await rechargeAPI.getRecharges(params)
         if (response.data && response.data.success) {
           const data = response.data.data
-          const rechargeList = Array.isArray(data) ? data : (data.items || data.recharges || [])
+          const rechargeList = Array.isArray(data) ? data : []
           // 确保充值记录有正确的字段
           recharges.value = rechargeList.map(recharge => ({
             ...recharge,
@@ -794,7 +794,7 @@ export default {
         }
         
         const response = await api.get('/orders/', { params })
-        const orderList = response.data.data?.orders || response.data.items || []
+        const orderList = response.data.data?.orders || []
         // 确保订单有正确的字段
         orders.value = orderList.map(order => ({
           ...order,

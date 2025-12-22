@@ -207,7 +207,7 @@ export default {
           subject: `订阅套餐 - ${props.orderInfo.packageName}`,
           body: `购买${props.orderInfo.duration}天订阅套餐`
         }
-        const response = await api.post('/payment/create', paymentData)
+        const response = await api.post('/payment/', paymentData)
         if (response.data && response.data.payment_url) {
           wechatQRCode.value = response.data.payment_url
           wechatQRVisible.value = true

@@ -264,11 +264,18 @@ go run scripts/create_admin.go
 - 管理员邮箱
 - 管理员密码
 
-#### 方法三：检查现有管理员
+#### 方法三：修改管理员密码
 
 ```bash
 cd /www/wwwroot/cboard
-go run scripts/check_admin.go
+go run scripts/update_admin_password.go <新密码>
+```
+
+#### 方法四：解锁用户账户
+
+```bash
+cd /www/wwwroot/cboard
+go run scripts/unlock_user.go <用户名或邮箱>
 ```
 
 ### 管理员登录
@@ -638,8 +645,8 @@ chown www:www cboard.db
 ### 6. 管理员登录问题
 
 - 使用安装脚本重置管理员密码（选项 2）
-- 检查管理员账号状态：`go run scripts/check_admin.go`
-- 解锁管理员账号：`go run scripts/unlock_admin.go`
+- 检查管理员账号状态：`go run scripts/unlock_user.go <用户名或邮箱>`
+- 解锁用户账号（支持管理员和普通用户）：`go run scripts/unlock_user.go <用户名或邮箱>`
 
 ---
 
@@ -710,8 +717,7 @@ goweb/
 │   └── dist/                   # 构建后的文件
 ├── scripts/                    # 工具脚本
 │   ├── create_admin.go         # 创建管理员账号
-│   ├── check_admin.go          # 检查管理员账号
-│   └── unlock_admin.go         # 解锁管理员账号
+│   └── unlock_user.go          # 解锁用户账号（支持管理员和普通用户）
 ├── .env                        # 环境变量
 ├── install.sh                  # 宝塔面板安装脚本
 ├── cboard.db                   # SQLite 数据库

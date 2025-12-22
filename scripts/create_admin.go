@@ -40,10 +40,19 @@ func main() {
 
 	db := database.GetDB()
 
-	username := "admin"
-	email := "admin@example.com"
+	// 从环境变量读取用户名、邮箱和密码
+	username := os.Getenv("ADMIN_USERNAME")
+	if username == "" {
+		username = "admin"
+		log.Println("提示: 未设置 ADMIN_USERNAME 环境变量，使用默认用户名 'admin'")
+	}
 
-	// 从环境变量读取密码，如果未设置则使用默认值（仅开发环境）
+	email := os.Getenv("ADMIN_EMAIL")
+	if email == "" {
+		email = "admin@example.com"
+		log.Println("提示: 未设置 ADMIN_EMAIL 环境变量，使用默认邮箱 'admin@example.com'")
+	}
+
 	password := os.Getenv("ADMIN_PASSWORD")
 	if password == "" {
 		// 检查是否为生产环境
@@ -65,23 +74,45 @@ func main() {
 	result := db.Where("username = ? OR email = ?", username, email).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			user = models.User{
-				Username:   username,
-				Email:      email,
-				Password:   hashed,
-				IsAdmin:    true,
-				IsVerified: true,
-				IsActive:   true,
+			// 检查是否已有其他管理员账户
+			var existingAdmin models.User
+			if err := db.Where("is_admin = ?", true).First(&existingAdmin).Error; err == nil {
+				// 如果已有管理员，更新该管理员的信息
+				updates := map[string]interface{}{
+					"username":    username,
+					"email":       email,
+					"password":    hashed,
+					"is_admin":    true,
+					"is_verified": true,
+					"is_active":   true,
+				}
+				if err := db.Model(&existingAdmin).Updates(updates).Error; err != nil {
+					log.Fatalf("更新管理员失败: %v", err)
+				}
+				fmt.Printf("管理员已更新: 用户名=%s 邮箱=%s\n", username, email)
+			} else {
+				// 没有管理员，创建新管理员
+				user = models.User{
+					Username:   username,
+					Email:      email,
+					Password:   hashed,
+					IsAdmin:    true,
+					IsVerified: true,
+					IsActive:   true,
+				}
+				if err := db.Create(&user).Error; err != nil {
+					log.Fatalf("创建管理员失败: %v", err)
+				}
+				fmt.Printf("管理员已创建: 用户名=%s 邮箱=%s\n", username, email)
 			}
-			if err := db.Create(&user).Error; err != nil {
-				log.Fatalf("创建管理员失败: %v", err)
-			}
-			fmt.Printf("管理员已创建: 用户名=%s 邮箱=%s\n", username, email)
 		} else {
 			log.Fatalf("查询用户失败: %v", result.Error)
 		}
 	} else {
+		// 找到现有用户，更新信息
 		updates := map[string]interface{}{
+			"username":    username,
+			"email":       email,
 			"password":    hashed,
 			"is_admin":    true,
 			"is_verified": true,
@@ -125,8 +156,7 @@ func main() {
 	fmt.Println("\n💡 登录提示：")
 	fmt.Println("  1. 访问管理员登录页面: /admin/login")
 	fmt.Println("  2. 可以使用用户名或邮箱登录")
-	fmt.Println("  3. 如果无法登录，运行诊断脚本:")
-	fmt.Println("     go run scripts/check_admin.go")
-	fmt.Println("  4. 测试密码验证:")
-	fmt.Printf("     go run scripts/check_admin.go %s\n", password)
+	fmt.Println("  3. 如果无法登录，可以:")
+	fmt.Println("     - 修改密码: go run scripts/update_admin_password.go <新密码>")
+	fmt.Println("     - 解锁账户: go run scripts/unlock_user.go admin")
 }

@@ -161,7 +161,7 @@ const handleSendVerificationCode = async () => {
   sendingCode.value = true
   
   try {
-    const response = await api.post('/auth/forgot-password-new', {
+    const response = await api.post('/auth/forgot-password', {
       email: forgotForm.email
     })
     
@@ -197,7 +197,7 @@ const handleResetPassword = async () => {
     
     loading.value = true
     
-    const response = await api.post('/auth/reset-password-new', {
+    const response = await api.post('/auth/reset-password', {
       email: forgotForm.email,
       verification_code: forgotForm.verificationCode,
       new_password: forgotForm.newPassword

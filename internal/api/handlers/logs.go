@@ -278,7 +278,7 @@ func GetLoginAttempts(c *gin.Context) {
 	})
 }
 
-// GetSystemLogs 获取系统日志（兼容前端API）
+// GetSystemLogs 获取系统日志
 func GetSystemLogs(c *gin.Context) {
 	pagination := parseLogsPaginationParams(c, 1, 20)
 	db := database.GetDB()

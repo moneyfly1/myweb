@@ -80,7 +80,24 @@ func parseIP(ip string) string {
 		return ""
 	}
 
-	// 排除私有IP和本地IP（如果这些是代理IP，可能需要保留）
-	// 但通常我们想要的是客户端真实IP，所以保留所有IP
+	// 处理IPv6 localhost，转换为IPv4格式
+	if ip == "::1" {
+		return "127.0.0.1"
+	}
+
+	// 处理IPv6映射的IPv4地址（如 ::ffff:127.0.0.1 或 ::ffff:192.168.1.1）
+	if strings.HasPrefix(ip, "::ffff:") {
+		ipv4 := strings.TrimPrefix(ip, "::ffff:")
+		if parsedIPv4 := net.ParseIP(ipv4); parsedIPv4 != nil && parsedIPv4.To4() != nil {
+			return ipv4
+		}
+	}
+
+	// 如果是IPv4地址，直接返回
+	if parsedIP.To4() != nil {
+		return ip
+	}
+
+	// 对于其他IPv6地址，返回原值
 	return ip
 }

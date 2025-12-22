@@ -264,11 +264,18 @@ You will be prompted to enter:
 - Admin email
 - Admin password
 
-#### Method 3: Check Existing Admin
+#### Method 3: Update Admin Password
 
 ```bash
 cd /www/wwwroot/cboard
-go run scripts/check_admin.go
+go run scripts/update_admin_password.go <新密码>
+```
+
+#### Method 4: Unlock User Account
+
+```bash
+cd /www/wwwroot/cboard
+go run scripts/unlock_user.go <用户名或邮箱>
 ```
 
 ### Admin Login
