@@ -89,118 +89,98 @@ sudo ./install.sh
 - ✅ Server specs: At least 1 core CPU + 512 MB RAM + 10 GB disk
 - ✅ Domain name bound (for SSL certificate)
 
-### Installation Steps
+### Detailed Installation Steps
 
-#### 1. Clone Project from GitHub
+#### Step 1: Create Website in BT Panel
 
-**Recommended Method**: Clone directly from GitHub repository:
+1. **Login to BT Panel**
+   - Access `http://your-server-ip:8888` (or your BT Panel address)
+   - Login with your BT Panel credentials
+
+2. **Create Website**
+   - Click **Website** → **Add Site** in the left menu
+   - Fill in the following information:
+     - **Domain**: Enter your domain (e.g., `example.com`)
+     - **Remark**: Optional project name (e.g., CBoard)
+     - **Root Directory**: Auto-generated, typically `/www/wwwroot/example.com`
+     - **FTP**: Don't create (optional)
+     - **Database**: Don't create (optional, system uses SQLite)
+     - **PHP Version**: Pure Static (or any version, doesn't matter)
+   - Click **Submit** to complete website creation
+
+3. **Record Website Directory Path**
+   - After creation, record the website root directory path (e.g., `/www/wwwroot/example.com`)
+   - This directory will be used for code deployment in the next steps
+
+#### Step 2: Download Code to Website Directory
+
+**Method 1: Clone via SSH (Recommended)**
 
 ```bash
-# Connect to your server via SSH
+# 1. Connect to your server via SSH
 ssh root@your-server-ip
 
-# Navigate to web root directory
-cd /www/wwwroot
+# 2. Navigate to the website directory you just created (replace with your actual path)
+cd /www/wwwroot/example.com
 
-# Clone the repository
-git clone https://github.com/moneyfly1/myweb.git cboard
+# 3. Remove default index.html (if exists)
+rm -f index.html
 
-# Enter project directory
-cd cboard
+# 4. Clone project code from GitHub
+git clone https://github.com/moneyfly1/myweb.git .
 
-# Verify files are cloned correctly
+# 5. Verify files are downloaded correctly
 ls -la
+# You should see files and directories like install.sh, go.mod, frontend, etc.
 ```
 
-**Alternative Method 1**: Upload via BT Panel File Manager
+**Method 2: Via BT Panel File Manager**
+
 1. Login to BT Panel
-2. Go to **File** → Navigate to `/www/wwwroot`
-3. Click **Upload** → Select project files → Upload
-4. Extract if needed
+2. Go to **File** → Navigate to `/www/wwwroot/example.com`
+3. Delete the default `index.html` file (if exists)
+4. Click **Terminal** button to open terminal
+5. Execute in terminal:
+   ```bash
+   git clone https://github.com/moneyfly1/myweb.git .
+   ```
+6. Verify files are downloaded correctly
 
-**Alternative Method 2**: Upload via SCP (from local machine)
+**Method 3: Upload via SCP (from local machine)**
+
 ```bash
-# Run on your local machine
-scp -r /path/to/goweb/* root@your-server:/www/wwwroot/cboard/
+# Execute on your local machine (replace with your actual path)
+scp -r /path/to/goweb/* root@your-server:/www/wwwroot/example.com/
 ```
 
-#### 2. Run Installation Script
+#### Step 3: Run Installation Script
 
-After cloning the project, run the installation script:
+After downloading the code, run the installation script:
 
 ```bash
-# Make sure you're in the project directory
-cd /www/wwwroot/cboard
+# 1. Make sure you're in the website directory (replace with your actual path)
+cd /www/wwwroot/example.com
 
-# Add execute permission to installation script
+# 2. Add execute permission to installation script
 chmod +x install.sh
 
-# Run installation script (requires root privileges)
+# 3. Run installation script (requires root privileges)
 sudo ./install.sh
 ```
 
-**Note**: The installation script will automatically:
-- Install Go language environment (if not installed)
-- Compile the backend service
-- Build the frontend
-- Configure Nginx reverse proxy
-- Apply for SSL certificate (Let's Encrypt)
-- Create systemd service
-- Start the service
-
-#### 3. Manual Installation (Alternative)
-
-If you prefer to install manually without using the installation script:
-
-```bash
-# 1. Install Go (if not installed)
-# For Ubuntu/Debian:
-sudo apt-get update
-sudo apt-get install -y golang-go
-
-# For CentOS:
-sudo yum install -y golang
-
-# 2. Install Node.js (for frontend build)
-# For Ubuntu/Debian:
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# For CentOS:
-curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
-sudo yum install -y nodejs
-
-# 3. Build backend
-cd /www/wwwroot/cboard
-go mod download
-go build -o bin/server ./cmd/server/main.go
-
-# 4. Build frontend
-cd frontend
-npm install
-npm run build
-
-# 5. Configure environment
-cd ..
-cp .env.example .env  # If .env.example exists
-# Edit .env file with your configuration
-
-# 6. Start service
-./bin/server
-```
-
-#### 4. Configure Installation Parameters
+#### Step 4: Configure Installation Parameters
 
 The installation script will prompt you for:
 
-- **Project Directory**: Default `/www/wwwroot/dy.moneyfly.top`, modify as needed
+- **Project Directory**: Default detects current directory, press Enter to confirm
 - **Domain Name**: Enter your domain (e.g., `example.com`)
-- **Admin Email**: For creating admin account
-- **Admin Password**: Set admin password
+- **Admin Username**: Enter admin username (default: `admin`)
+- **Admin Email**: Enter admin email (e.g., `admin@example.com`)
+- **Admin Password**: Set admin password (recommend using strong password)
 
-#### 4. Select Installation Option
+#### Step 5: Select Installation Option
 
-The installation script provides the following options:
+The installation script will display the following menu:
 
 ```
 ==========================================
@@ -210,7 +190,7 @@ The installation script provides the following options:
   2. Create/Reset Admin Account
   3. Force Restart Service (Kill process then restart)
   4. Deep Clean System Cache
-  5. Unlock Admin Account
+  5. Unlock User Account
 ------------------------------------------
   6. View Service Status
   7. View Real-time Service Logs
@@ -222,82 +202,201 @@ The installation script provides the following options:
 
 **For first-time installation, select `1`**. The script will automatically:
 - ✅ Install Go language environment (if not installed)
+- ✅ Install Node.js environment (if not installed)
 - ✅ Compile backend service
+- ✅ Build frontend
 - ✅ Configure Nginx reverse proxy
 - ✅ Apply for SSL certificate (Let's Encrypt)
 - ✅ Create systemd service
 - ✅ Start service
 
-#### 5. Verify Installation
+#### Step 6: Verify Installation
 
 After installation, access your domain:
 
 - **Frontend Interface**: `https://yourdomain.com`
+- **Admin Login**: `https://yourdomain.com/admin/login`
 - **Health Check**: `https://yourdomain.com/health`
 - **API Endpoints**: `https://yourdomain.com/api/v1/...`
 
+### Post-Installation Configuration
+
+#### Configure Nginx (if needed)
+
+The installation script automatically configures Nginx, but you can manually check:
+
+1. Login to BT Panel
+2. Go to **Website** → Find your website → Click **Settings**
+3. Go to **Configuration File** tab
+4. Verify reverse proxy configuration is correct (script has auto-configured)
+
+#### Configure Firewall
+
+Ensure the following ports are open:
+- **80**: HTTP
+- **443**: HTTPS
+- **Backend Port**: Default 8080 (internal access only, no need to open externally)
+
+In BT Panel:
+1. Go to **Security** → **Firewall**
+2. Ensure ports 80 and 443 are open
+
 ---
 
-## 👤 Administrator Setup
+## 👤 Administrator Account Management
 
-### Initial Admin Account
+### Create Administrator Account
 
-The admin account is created during installation. If you need to create or reset it:
+Administrator account can be created during installation or separately afterwards.
 
-#### Method 1: Using Installation Script
+#### Method 1: Using Installation Script (Recommended)
 
 ```bash
-cd /www/wwwroot/cboard
+# Navigate to project directory (replace with your actual path)
+cd /www/wwwroot/example.com
+
+# Run installation script
 sudo ./install.sh
+
 # Select option 2: Create/Reset Admin Account
+# Then follow prompts to enter:
+# - Admin username (default: admin)
+# - Admin email
+# - Admin password
 ```
 
-#### Method 2: Using Admin Script
+#### Method 2: Using Go Script (via Environment Variables)
 
 ```bash
-cd /www/wwwroot/cboard
+# Navigate to project directory
+cd /www/wwwroot/example.com
+
+# Set environment variables and run script
+export ADMIN_USERNAME="admin"
+export ADMIN_EMAIL="admin@example.com"
+export ADMIN_PASSWORD="YourStrongPassword123!"
+
+# Run creation script
 go run scripts/create_admin.go
 ```
 
-You will be prompted to enter:
-- Admin username (default: `admin`)
-- Admin email
-- Admin password
+**Notes**:
+- If environment variables are not set, script will use default values (username: `admin`, email: `admin@example.com`, password: `admin123`)
+- If admin account already exists, script will update the account information
+- Production environment should set strong password via environment variables
 
-#### Method 3: Update Admin Password
-
-```bash
-cd /www/wwwroot/cboard
-go run scripts/update_admin_password.go <新密码>
-```
-
-#### Method 4: Unlock User Account
+#### Method 3: Using Go Script (Interactive)
 
 ```bash
-cd /www/wwwroot/cboard
-go run scripts/unlock_user.go <用户名或邮箱>
+# Navigate to project directory
+cd /www/wwwroot/example.com
+
+# Run script directly (will use defaults or prompt for input)
+go run scripts/create_admin.go
 ```
 
-### Admin Login
+### Update Administrator Password
 
-1. Access admin panel: `https://yourdomain.com/admin/login`
-2. Enter admin credentials:
-   - Username: `admin` (or your configured username)
-   - Password: (the password you set)
+If you forget the admin password, you can reset it using:
 
-### Admin Permissions
+```bash
+# Navigate to project directory
+cd /www/wwwroot/example.com
+
+# Run password update script (replace with your actual password)
+go run scripts/update_admin_password.go YourNewPassword123!
+
+# Example
+go run scripts/update_admin_password.go Sikeming001@
+```
+
+**Notes**:
+- Password must be at least 6 characters
+- Script automatically finds admin account (username or email is `admin` or `admin@example.com`)
+- If admin account is not found, please create account first
+
+### Unlock User Account
+
+If account is locked due to multiple failed login attempts, unlock using:
+
+```bash
+# Navigate to project directory
+cd /www/wwwroot/example.com
+
+# Unlock admin account (using username)
+go run scripts/unlock_user.go admin
+
+# Or unlock using email
+go run scripts/unlock_user.go admin@example.com
+
+# Unlock regular user account
+go run scripts/unlock_user.go user@example.com
+```
+
+**Notes**:
+- Script supports unlocking using username or email
+- Can unlock both admin and regular user accounts
+- Unlock operation will:
+  - Clear all failed login records
+  - Set account to active status (`IsActive=true`)
+  - Set account to verified status (`IsVerified=true`)
+
+**Important Notes**:
+- If still unable to login, IP address may be locked by rate limiter
+- Rate limiter is based on IP address, lock duration is 15 minutes
+- Solutions:
+  - Wait 15 minutes and retry
+  - Change IP address (use VPN or mobile network)
+  - Restart server to clear rate limiter records in memory
+
+### Administrator Login
+
+1. **Access Admin Login Page**
+   - URL: `https://yourdomain.com/admin/login`
+   - Or: `https://yourdomain.com/#/admin/login`
+
+2. **Enter Login Credentials**
+   - **Username**: Your created admin username (default: `admin`)
+   - **Password**: Your set admin password
+   - Supports login with username or email
+
+3. **After Login**
+   - Enter admin backend
+   - Access all management functions
+
+### Administrator Permissions
 
 Administrators have full access to:
-- User management (create, edit, delete, view)
-- Subscription management
-- Order management
-- Package management
-- Payment configuration
-- System configuration
-- Statistics and monitoring
-- Ticket management
-- Device management
-- Invite code management
+
+- **User Management**: Create, edit, delete, view users, bulk operations
+- **Subscription Management**: Create, edit, delete subscriptions, bulk operations, expiration reminders
+- **Order Management**: View, process orders, order export
+- **Package Management**: Create, edit, delete packages, pricing management
+- **Node Management**: Add, edit, delete nodes, bulk import, node testing
+- **Payment Configuration**: Configure Alipay, WeChat Pay, PayPal, etc.
+- **System Configuration**: System settings, notification settings, email configuration
+- **Statistics and Monitoring**: Data statistics, region analysis, user analysis
+- **Ticket Management**: Handle user tickets, reply to tickets
+- **Device Management**: View user devices, manage device limits
+- **Invite Code Management**: Generate, manage invite codes
+- **Log Management**: View system logs, login history, operation logs
+
+### Frequently Asked Questions
+
+**Q: What if I forget the admin password?**
+A: Use `go run scripts/update_admin_password.go <new-password>` to reset password.
+
+**Q: What if admin account is locked?**
+A: Use `go run scripts/unlock_user.go admin` to unlock account.
+
+**Q: How to create multiple admin accounts?**
+A: Currently system only supports one admin account. If multiple admins are needed, create regular users and assign permissions (requires code modification).
+
+**Q: What if admin account was not created during installation?**
+A: Run `go run scripts/create_admin.go` to create admin account.
+
+**Q: How to verify admin account was created successfully?**
+A: Try logging into admin backend, or check `users` table in database for records with `is_admin` field set to `true`.
 
 ---
 

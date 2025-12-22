@@ -89,118 +89,98 @@ sudo ./install.sh
 - ✅ 服务器配置：至少 1 核心 CPU + 512 MB 内存 + 10 GB 磁盘
 - ✅ 已绑定域名（用于 SSL 证书）
 
-### 安装步骤
+### 详细安装步骤
 
-#### 1. 从 GitHub 克隆项目
+#### 步骤 1：在宝塔面板创建网站
 
-**推荐方式**：直接从 GitHub 仓库克隆：
+1. **登录宝塔面板**
+   - 访问 `http://your-server-ip:8888`（或您的宝塔面板地址）
+   - 使用您的宝塔账号登录
+
+2. **创建网站**
+   - 点击左侧菜单 **网站** → **添加站点**
+   - 填写以下信息：
+     - **域名**：输入您的域名（如：`example.com`）
+     - **备注**：可填写项目名称（如：CBoard）
+     - **根目录**：系统会自动生成，通常为 `/www/wwwroot/example.com`
+     - **FTP**：不创建（可选）
+     - **数据库**：不创建（可选，系统使用 SQLite）
+     - **PHP 版本**：纯静态（或任意版本，不影响）
+   - 点击 **提交** 完成网站创建
+
+3. **记录网站目录路径**
+   - 创建完成后，记录下网站根目录路径（如：`/www/wwwroot/example.com`）
+   - 后续步骤将在此目录中部署代码
+
+#### 步骤 2：下载代码到网站目录
+
+**方式一：通过 SSH 克隆（推荐）**
 
 ```bash
-# 通过 SSH 连接到服务器
+# 1. 通过 SSH 连接到服务器
 ssh root@your-server-ip
 
-# 进入网站根目录
-cd /www/wwwroot
+# 2. 进入刚创建的网站目录（替换为您的实际路径）
+cd /www/wwwroot/example.com
 
-# 克隆仓库
-git clone https://github.com/moneyfly1/myweb.git cboard
+# 3. 删除默认的 index.html（如果存在）
+rm -f index.html
 
-# 进入项目目录
-cd cboard
+# 4. 从 GitHub 克隆项目代码
+git clone https://github.com/moneyfly1/myweb.git .
 
-# 验证文件是否正确克隆
+# 5. 验证文件是否正确下载
 ls -la
+# 应该能看到 install.sh、go.mod、frontend 等文件和目录
 ```
 
-**备选方式 1**：通过宝塔面板文件管理器上传
+**方式二：通过宝塔面板文件管理器**
+
 1. 登录宝塔面板
-2. 进入 **文件** → 导航到 `/www/wwwroot`
-3. 点击 **上传** → 选择项目文件 → 上传
-4. 如有压缩包，需要解压
+2. 进入 **文件** → 导航到 `/www/wwwroot/example.com`
+3. 删除默认的 `index.html` 文件（如果存在）
+4. 点击 **终端** 按钮，打开终端
+5. 在终端中执行：
+   ```bash
+   git clone https://github.com/moneyfly1/myweb.git .
+   ```
+6. 验证文件是否正确下载
 
-**备选方式 2**：通过 SCP 上传（在本地机器执行）
+**方式三：通过 SCP 上传（从本地机器）**
+
 ```bash
-# 在本地机器执行
-scp -r /path/to/goweb/* root@your-server:/www/wwwroot/cboard/
+# 在本地机器执行（替换为您的实际路径）
+scp -r /path/to/goweb/* root@your-server:/www/wwwroot/example.com/
 ```
 
-#### 2. 运行安装脚本
+#### 步骤 3：运行安装脚本
 
-克隆项目后，运行安装脚本：
+代码下载完成后，运行安装脚本：
 
 ```bash
-# 确保在项目目录中
-cd /www/wwwroot/cboard
+# 1. 确保在网站目录中（替换为您的实际路径）
+cd /www/wwwroot/example.com
 
-# 添加安装脚本执行权限
+# 2. 添加安装脚本执行权限
 chmod +x install.sh
 
-# 运行安装脚本（需要 root 权限）
+# 3. 运行安装脚本（需要 root 权限）
 sudo ./install.sh
 ```
 
-**注意**：安装脚本会自动完成以下操作：
-- 安装 Go 语言环境（如果未安装）
-- 编译后端服务
-- 构建前端
-- 配置 Nginx 反向代理
-- 申请 SSL 证书（Let's Encrypt）
-- 创建 systemd 服务
-- 启动服务
-
-#### 3. 手动安装（备选方式）
-
-如果您不想使用安装脚本，可以手动安装：
-
-```bash
-# 1. 安装 Go（如果未安装）
-# Ubuntu/Debian:
-sudo apt-get update
-sudo apt-get install -y golang-go
-
-# CentOS:
-sudo yum install -y golang
-
-# 2. 安装 Node.js（用于前端构建）
-# Ubuntu/Debian:
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# CentOS:
-curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
-sudo yum install -y nodejs
-
-# 3. 编译后端
-cd /www/wwwroot/cboard
-go mod download
-go build -o bin/server ./cmd/server/main.go
-
-# 4. 构建前端
-cd frontend
-npm install
-npm run build
-
-# 5. 配置环境变量
-cd ..
-cp .env.example .env  # 如果存在 .env.example
-# 编辑 .env 文件，配置您的设置
-
-# 6. 启动服务
-./bin/server
-```
-
-#### 4. 配置安装参数
+#### 步骤 4：配置安装参数
 
 安装脚本会提示您输入以下信息：
 
-- **项目目录**：默认 `/www/wwwroot/dy.moneyfly.top`，可按需修改
+- **项目目录**：默认会检测当前目录，直接按回车确认即可
 - **域名**：输入您的域名（如：`example.com`）
-- **管理员邮箱**：用于创建管理员账户
-- **管理员密码**：设置管理员密码
+- **管理员用户名**：输入管理员用户名（默认：`admin`）
+- **管理员邮箱**：输入管理员邮箱（如：`admin@example.com`）
+- **管理员密码**：设置管理员密码（建议使用强密码）
 
-#### 4. 选择安装选项
+#### 步骤 5：选择安装选项
 
-安装脚本提供以下功能：
+安装脚本会显示以下菜单：
 
 ```
 ==========================================
@@ -210,7 +190,7 @@ cp .env.example .env  # 如果存在 .env.example
   2. 创建/重置管理员账号
   3. 强制重启服务 (杀进程后重启)
   4. 深度清理系统缓存
-  5. 解锁管理员账户
+  5. 解锁用户账户
 ------------------------------------------
   6. 查看服务运行状态
   7. 查看实时服务日志
@@ -222,82 +202,201 @@ cp .env.example .env  # 如果存在 .env.example
 
 **首次安装请选择 `1`**，脚本会自动完成：
 - ✅ 安装 Go 语言环境（如未安装）
+- ✅ 安装 Node.js 环境（如未安装）
 - ✅ 编译后端服务
+- ✅ 构建前端
 - ✅ 配置 Nginx 反向代理
 - ✅ 申请 SSL 证书（Let's Encrypt）
 - ✅ 创建 systemd 服务
 - ✅ 启动服务
 
-#### 5. 验证安装
+#### 步骤 6：验证安装
 
 安装完成后，访问您的域名：
 
 - **前端界面**: `https://yourdomain.com`
+- **管理员登录**: `https://yourdomain.com/admin/login`
 - **健康检查**: `https://yourdomain.com/health`
 - **API 接口**: `https://yourdomain.com/api/v1/...`
 
+### 安装后配置
+
+#### 配置 Nginx（如果需要）
+
+安装脚本会自动配置 Nginx，但您也可以手动检查：
+
+1. 登录宝塔面板
+2. 进入 **网站** → 找到您的网站 → 点击 **设置**
+3. 进入 **配置文件** 标签
+4. 确认反向代理配置是否正确（脚本已自动配置）
+
+#### 配置防火墙
+
+确保以下端口已开放：
+- **80**：HTTP
+- **443**：HTTPS
+- **后端端口**：默认 8080（仅内网访问，不需要对外开放）
+
+在宝塔面板中：
+1. 进入 **安全** → **防火墙**
+2. 确保 80 和 443 端口已开放
+
 ---
 
-## 👤 管理员设置
+## 👤 管理员账户管理
 
-### 初始管理员账号
+### 创建管理员账户
 
-管理员账号在安装过程中创建。如果需要创建或重置：
+管理员账户可以在安装过程中创建，也可以后续单独创建。
 
-#### 方法一：使用安装脚本
+#### 方法一：使用安装脚本（推荐）
 
 ```bash
-cd /www/wwwroot/cboard
+# 进入项目目录（替换为您的实际路径）
+cd /www/wwwroot/example.com
+
+# 运行安装脚本
 sudo ./install.sh
+
 # 选择选项 2: 创建/重置管理员账号
+# 然后按照提示输入：
+# - 管理员用户名（默认：admin）
+# - 管理员邮箱
+# - 管理员密码
 ```
 
-#### 方法二：使用管理员脚本
+#### 方法二：使用 Go 脚本（通过环境变量）
 
 ```bash
-cd /www/wwwroot/cboard
+# 进入项目目录
+cd /www/wwwroot/example.com
+
+# 设置环境变量并运行脚本
+export ADMIN_USERNAME="admin"
+export ADMIN_EMAIL="admin@example.com"
+export ADMIN_PASSWORD="YourStrongPassword123!"
+
+# 运行创建脚本
 go run scripts/create_admin.go
 ```
 
-系统会提示您输入：
-- 管理员用户名（默认：`admin`）
-- 管理员邮箱
-- 管理员密码
+**说明**：
+- 如果未设置环境变量，脚本会使用默认值（用户名：`admin`，邮箱：`admin@example.com`，密码：`admin123`）
+- 如果管理员账户已存在，脚本会更新该账户的信息
+- 生产环境建议通过环境变量设置强密码
 
-#### 方法三：修改管理员密码
-
-```bash
-cd /www/wwwroot/cboard
-go run scripts/update_admin_password.go <新密码>
-```
-
-#### 方法四：解锁用户账户
+#### 方法三：使用 Go 脚本（交互式）
 
 ```bash
-cd /www/wwwroot/cboard
-go run scripts/unlock_user.go <用户名或邮箱>
+# 进入项目目录
+cd /www/wwwroot/example.com
+
+# 直接运行脚本（会使用默认值或提示输入）
+go run scripts/create_admin.go
 ```
+
+### 修改管理员密码
+
+如果忘记管理员密码，可以通过以下方式重置：
+
+```bash
+# 进入项目目录
+cd /www/wwwroot/example.com
+
+# 运行密码修改脚本（替换为您的实际密码）
+go run scripts/update_admin_password.go YourNewPassword123!
+
+# 示例
+go run scripts/update_admin_password.go Sikeming001@
+```
+
+**说明**：
+- 密码长度至少 6 位
+- 脚本会自动查找管理员账户（用户名或邮箱为 `admin` 或 `admin@example.com`）
+- 如果找不到管理员账户，请先创建账户
+
+### 解锁用户账户
+
+如果账户因多次登录失败被锁定，可以通过以下方式解锁：
+
+```bash
+# 进入项目目录
+cd /www/wwwroot/example.com
+
+# 解锁管理员账户（使用用户名）
+go run scripts/unlock_user.go admin
+
+# 或使用邮箱解锁
+go run scripts/unlock_user.go admin@example.com
+
+# 解锁普通用户账户
+go run scripts/unlock_user.go user@example.com
+```
+
+**说明**：
+- 脚本支持使用用户名或邮箱解锁
+- 可以解锁管理员账户和普通用户账户
+- 解锁操作会：
+  - 清除所有登录失败记录
+  - 设置账户为激活状态（`IsActive=true`）
+  - 设置账户为已验证状态（`IsVerified=true`）
+
+**注意事项**：
+- 如果仍然无法登录，可能是 IP 地址被速率限制器锁定
+- 速率限制器基于 IP 地址，锁定时间为 15 分钟
+- 解决方案：
+  - 等待 15 分钟后重试
+  - 更换 IP 地址（使用 VPN 或移动网络）
+  - 重启服务器以清除内存中的速率限制记录
 
 ### 管理员登录
 
-1. 访问管理员面板：`https://yourdomain.com/admin/login`
-2. 输入管理员凭据：
-   - 用户名：`admin`（或您配置的用户名）
-   - 密码：（您设置的密码）
+1. **访问管理员登录页面**
+   - 地址：`https://yourdomain.com/admin/login`
+   - 或：`https://yourdomain.com/#/admin/login`
+
+2. **输入登录凭据**
+   - **用户名**：您创建的管理员用户名（默认：`admin`）
+   - **密码**：您设置的管理员密码
+   - 支持使用用户名或邮箱登录
+
+3. **登录后功能**
+   - 进入管理员后台
+   - 可以访问所有管理功能
 
 ### 管理员权限
 
 管理员拥有以下完整权限：
-- 用户管理（创建、编辑、删除、查看）
-- 订阅管理
-- 订单管理
-- 套餐管理
-- 支付配置
-- 系统配置
-- 统计和监控
-- 工单管理
-- 设备管理
-- 邀请码管理
+
+- **用户管理**：创建、编辑、删除、查看用户，批量操作
+- **订阅管理**：创建、编辑、删除订阅，批量操作，到期提醒
+- **订单管理**：查看、处理订单，订单导出
+- **套餐管理**：创建、编辑、删除套餐，定价管理
+- **节点管理**：添加、编辑、删除节点，批量导入，节点测试
+- **支付配置**：配置支付宝、微信支付、PayPal 等
+- **系统配置**：系统设置、通知设置、邮件配置
+- **统计和监控**：数据统计、地区分析、用户分析
+- **工单管理**：处理用户工单，回复工单
+- **设备管理**：查看用户设备，管理设备限制
+- **邀请码管理**：生成、管理邀请码
+- **日志管理**：查看系统日志、登录历史、操作日志
+
+### 常见问题
+
+**Q: 忘记管理员密码怎么办？**
+A: 使用 `go run scripts/update_admin_password.go <新密码>` 重置密码。
+
+**Q: 管理员账户被锁定了怎么办？**
+A: 使用 `go run scripts/unlock_user.go admin` 解锁账户。
+
+**Q: 如何创建多个管理员账户？**
+A: 目前系统只支持一个管理员账户。如果需要多个管理员，可以创建普通用户并赋予相应权限（需要修改代码）。
+
+**Q: 安装时没有创建管理员账户怎么办？**
+A: 运行 `go run scripts/create_admin.go` 创建管理员账户。
+
+**Q: 如何验证管理员账户是否创建成功？**
+A: 尝试登录管理员后台，或检查数据库中的 `users` 表，查看 `is_admin` 字段为 `true` 的记录。
 
 ---
 
