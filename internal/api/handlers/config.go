@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -564,4 +566,106 @@ func TestAdminBarkNotification(c *gin.Context) {
 	}()
 
 	jsonResponse(c, http.StatusOK, true, "测试消息已发送，请检查您的设备", nil)
+}
+
+// UpdateGeoIPDatabase 更新 GeoIP 数据库
+func UpdateGeoIPDatabase(c *gin.Context) {
+	// 检查是否为管理员
+	userID, exists := c.Get("user_id")
+	if !exists {
+		jsonResponse(c, http.StatusUnauthorized, false, "未授权", nil)
+		return
+	}
+
+	db := database.GetDB()
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil || !user.IsAdmin {
+		jsonResponse(c, http.StatusForbidden, false, "需要管理员权限", nil)
+		return
+	}
+
+	// 执行下载脚本
+	geoipPath := os.Getenv("GEOIP_DB_PATH")
+	if geoipPath == "" {
+		geoipPath = "./GeoLite2-City.mmdb"
+	}
+
+	// 使用 Go 下载 GeoIP 数据库
+	geoipURL := "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
+
+	// 创建临时文件
+	tmpFile := geoipPath + ".tmp"
+
+	// 下载文件
+	resp, err := http.Get(geoipURL)
+	if err != nil {
+		utils.LogError("UpdateGeoIPDatabase: 下载失败", err, nil)
+		jsonResponse(c, http.StatusInternalServerError, false, "下载 GeoIP 数据库失败: "+err.Error(), nil)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		jsonResponse(c, http.StatusInternalServerError, false, fmt.Sprintf("下载失败，状态码: %d", resp.StatusCode), nil)
+		return
+	}
+
+	// 保存到临时文件
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		utils.LogError("UpdateGeoIPDatabase: 创建临时文件失败", err, nil)
+		jsonResponse(c, http.StatusInternalServerError, false, "创建临时文件失败: "+err.Error(), nil)
+		return
+	}
+	defer out.Close()
+
+	// 复制响应体到文件
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		os.Remove(tmpFile)
+		utils.LogError("UpdateGeoIPDatabase: 保存文件失败", err, nil)
+		jsonResponse(c, http.StatusInternalServerError, false, "保存文件失败: "+err.Error(), nil)
+		return
+	}
+	out.Close()
+
+	// 替换原文件
+	if err := os.Rename(tmpFile, geoipPath); err != nil {
+		os.Remove(tmpFile)
+		utils.LogError("UpdateGeoIPDatabase: 替换文件失败", err, nil)
+		jsonResponse(c, http.StatusInternalServerError, false, "替换文件失败: "+err.Error(), nil)
+		return
+	}
+
+	// 重新加载 GeoIP 数据库
+	if err := geoip.InitGeoIP(geoipPath); err != nil {
+		jsonResponse(c, http.StatusOK, true, "文件下载成功，但重新加载失败: "+err.Error(), nil)
+		return
+	}
+
+	jsonResponse(c, http.StatusOK, true, "GeoIP 数据库更新成功", nil)
+}
+
+// GetGeoIPStatus 获取 GeoIP 状态
+func GetGeoIPStatus(c *gin.Context) {
+	geoipPath := os.Getenv("GEOIP_DB_PATH")
+	if geoipPath == "" {
+		geoipPath = "./GeoLite2-City.mmdb"
+	}
+
+	status := map[string]interface{}{
+		"enabled":     geoip.IsEnabled(),
+		"db_path":     geoipPath,
+		"db_exists":   false,
+		"db_size":     int64(0),
+		"db_modified": "",
+	}
+
+	if info, err := os.Stat(geoipPath); err == nil {
+		status["db_exists"] = true
+		status["db_size"] = info.Size()
+		status["db_modified"] = info.ModTime().Format("2006-01-02 15:04:05")
+	}
+
+	jsonResponse(c, http.StatusOK, true, "", status)
 }

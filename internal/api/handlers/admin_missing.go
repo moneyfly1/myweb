@@ -228,7 +228,7 @@ func GetAdminTickets(c *gin.Context) {
 		var unreadRepliesCount int64 = 0
 		if adminUserID > 0 {
 			db.Model(&models.TicketReply{}).
-				Where("ticket_id = ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
+				Where("ticket_id = ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
 					ticket.ID, "true", false, adminUserID).
 				Count(&unreadRepliesCount)
 		}
@@ -240,24 +240,24 @@ func GetAdminTickets(c *gin.Context) {
 		hasUnread := unreadRepliesCount > 0 || hasNewTicket
 
 		ticketList = append(ticketList, gin.H{
-			"id":                 ticket.ID,
-			"ticket_no":          ticket.TicketNo,
-			"user_id":            ticket.UserID,
-			"user":               ticket.User,
-			"title":              ticket.Title,
-			"content":            ticket.Content,
-			"type":               ticket.Type,
-			"status":             ticket.Status,
-			"priority":            ticket.Priority,
-			"assigned_to":        ticket.AssignedTo,
-			"assignee":           ticket.Assignee,
-			"admin_notes":        ticket.AdminNotes,
-			"replies_count":      repliesCount,
-			"unread_replies":     unreadRepliesCount,
-			"has_unread":         hasUnread,
-			"has_new_ticket":     hasNewTicket,
-			"created_at":         ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":         ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"id":             ticket.ID,
+			"ticket_no":      ticket.TicketNo,
+			"user_id":        ticket.UserID,
+			"user":           ticket.User,
+			"title":          ticket.Title,
+			"content":        ticket.Content,
+			"type":           ticket.Type,
+			"status":         ticket.Status,
+			"priority":       ticket.Priority,
+			"assigned_to":    ticket.AssignedTo,
+			"assignee":       ticket.Assignee,
+			"admin_notes":    ticket.AdminNotes,
+			"replies_count":  repliesCount,
+			"unread_replies": unreadRepliesCount,
+			"has_unread":     hasUnread,
+			"has_new_ticket": hasNewTicket,
+			"created_at":     ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":     ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -346,13 +346,13 @@ func GetAdminTicket(c *gin.Context) {
 			"is_admin":   reply.IsAdmin,
 			"created_at": reply.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
-		
+
 		// 标记是否为未读（管理员查看：用户回复未读）
 		if reply.IsAdmin != "true" {
 			isUnread := !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != adminUserID)
 			replyData["is_unread"] = isUnread
 			replyData["is_user_reply"] = true
-			
+
 			// 标记为已读
 			if isUnread && adminUserID > 0 {
 				reply.IsRead = true
@@ -363,10 +363,10 @@ func GetAdminTicket(c *gin.Context) {
 		} else {
 			replyData["is_admin_reply"] = true
 		}
-		
+
 		replies = append(replies, replyData)
 	}
-	
+
 	// 记录管理员查看该工单的时间
 	if adminUserID > 0 {
 		var ticketRead models.TicketRead

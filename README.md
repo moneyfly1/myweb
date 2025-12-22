@@ -758,6 +758,51 @@ goweb/
 
 ---
 
+## 📚 Documentation
+
+The system provides comprehensive documentation for all features:
+
+### 📋 List Function Documentation
+
+- **[List Functions Index](./docs/list_functions_index.md)** - Index and quick reference for all list functions
+
+#### Admin List Functions
+
+- **[User List Management](./docs/user_list_management.md)** - User information management, search, filtering, batch operations
+- **[Subscription List Management](./docs/subscription_list_management.md)** - Subscription management, device limit principles
+- **[Node List Management](./docs/node_management.md)** - Node collection, import, management, region identification
+- **[Order List Management](./docs/order_management.md)** - Order processing, payment management, order statistics
+- **[Ticket List Management](./docs/ticket_management.md)** - Ticket processing, replies, status management
+- **[Abnormal Users Management](./docs/abnormal_users_management.md)** - Abnormal user identification and handling
+- **[Statistics Analysis](./docs/statistics_analysis.md)** - Data statistics, region analysis, trend analysis
+
+#### User List Functions
+
+- **[Device Management](./docs/device_management.md)** - Device viewing, deletion, device limit principles
+- **[Login History Management](./docs/login_history_management.md)** - Login records, region information, security monitoring
+
+### 🔧 Technical Documentation
+
+- **[Custom Node Implementation](./docs/custom_node_implementation.md)** - Complete implementation guide for custom node system
+- **[GeoIP Integration Guide](./docs/GeoIP集成说明.md)** - GeoIP database integration and usage
+
+### 📖 Core Function Principles
+
+#### Device Limit Principles
+
+Device limit is a core feature of subscription management. For detailed principles, see:
+
+- **[Subscription List Management - Device Limit Principles](./docs/subscription_list_management.md#设备数量限制原理)**
+- **[Device Management - Device Limit Principles](./docs/device_management.md#设备数量限制原理)**
+
+**Key Concepts:**
+- Device Identification: Generate device hash based on User-Agent and IP address
+- Device Roaming: Automatic identification of the same device in different network environments
+- Limit Mechanism: Different handling strategies for devices under limit/at limit/over limit
+- Priority Strategy: "Most Recently Used First" strategy, automatically eliminates unused devices
+
+---
+
 ## 📞 Support
 
 If you encounter issues:
@@ -767,6 +812,7 @@ If you encounter issues:
 3. Check system resources: `htop` or `free -h`
 4. Check network connection: `curl http://127.0.0.1:8000/health`
 5. Review this README and troubleshooting section
+6. Refer to [Documentation](#-documentation) for detailed feature descriptions
 
 ---
 
@@ -776,6 +822,6 @@ This project is licensed under the MIT License.
 
 ---
 
-**Last Updated**: 2024-12-20  
+**Last Updated**: 2024-12-22  
 **Version**: v1.0.0  
 **Status**: ✅ Production Ready

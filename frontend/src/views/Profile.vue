@@ -297,21 +297,18 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="ip_address" label="IP地址" width="120">
+        <el-table-column prop="ip_address" label="IP地址/地区" width="180">
           <template #default="scope">
-            <el-tag type="info" size="small">{{ scope.row.ip_address || '未知' }}</el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="country" label="国家/地区" width="100">
-          <template #default="scope">
-            <el-tag type="success" size="small">{{ scope.row.country || '未知' }}</el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="city" label="城市" width="100">
-          <template #default="scope">
-            {{ scope.row.city || '未知' }}
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <el-tag type="info" size="small">{{ scope.row.ip_address || '未知' }}</el-tag>
+              <el-tag 
+                v-if="getLocationText(scope.row.location, scope.row.ip_address)" 
+                type="success" 
+                size="small"
+              >
+                {{ getLocationText(scope.row.location, scope.row.ip_address) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
         
@@ -350,6 +347,7 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
+import { formatLocation } from '@/utils/location'
 import dayjs from 'dayjs'
 
 export default {
@@ -599,6 +597,7 @@ export default {
             loginHistory.value = data.map(item => ({
               login_time: item.login_time || '',
               ip_address: item.ip_address || '',
+              location: item.location || '',
               country: item.country || '',
               city: item.city || '',
               user_agent: item.user_agent || '',
@@ -608,6 +607,7 @@ export default {
             loginHistory.value = data.logins.map(item => ({
               login_time: item.login_time || '',
               ip_address: item.ip_address || '',
+              location: item.location || '',
               country: item.country || '',
               city: item.city || '',
               user_agent: item.user_agent || '',
@@ -648,6 +648,17 @@ export default {
       fetchLoginHistory()
     }
 
+
+    // 获取位置文本
+    const getLocationText = (location, ipAddress) => {
+      if (location) {
+        return formatLocation(location)
+      }
+      if (ipAddress && ipAddress !== '未知' && ipAddress !== '127.0.0.1' && ipAddress !== '::1') {
+        return '解析中...'
+      }
+      return ''
+    }
 
     // 格式化时间
     const formatTime = (time) => {
@@ -732,6 +743,7 @@ export default {
       fetchLoginHistory,
       getDeviceInfo,
       formatTime,
+      getLocationText,
       getAccountStatusType,
       getAccountStatusText
     }

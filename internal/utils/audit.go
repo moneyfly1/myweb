@@ -7,6 +7,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,6 +38,12 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 
 	// 获取User-Agent
 	userAgent := c.GetHeader("User-Agent")
+
+	// 解析地理位置（如果 GeoIP 已启用）
+	var location sql.NullString
+	if ipAddress != "" {
+		location = geoip.GetLocationString(ipAddress)
+	}
 
 	// 序列化前后数据
 	var beforeDataJSON, afterDataJSON sql.NullString
@@ -71,6 +78,7 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		ActionDescription: sql.NullString{String: description, Valid: description != ""},
 		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
 		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
+		Location:          location,
 		RequestMethod:     sql.NullString{String: c.Request.Method, Valid: true},
 		RequestPath:       sql.NullString{String: c.Request.URL.Path, Valid: true},
 		ResponseStatus:    responseStatus,

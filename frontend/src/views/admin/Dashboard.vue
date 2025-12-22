@@ -180,13 +180,101 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 七天内即将到期客户 -->
+    <el-row :gutter="20" style="margin-top: 20px;">
+      <el-col :span="24">
+        <el-card class="dashboard-card">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">七天内即将到期客户</span>
+              <div class="header-actions">
+                <el-select 
+                  v-model="expiringFilter" 
+                  placeholder="筛选到期时间" 
+                  style="width: 150px; margin-right: 10px;"
+                  @change="loadExpiringSubscriptions"
+                >
+                  <el-option label="全部" value="all" />
+                  <el-option label="今天到期" value="today" />
+                  <el-option label="1-3天" value="1-3" />
+                  <el-option label="4-7天" value="4-7" />
+                </el-select>
+                <el-button 
+                  type="primary" 
+                  :disabled="!selectedExpiring || selectedExpiring.length === 0 || sendingExpireReminder"
+                  @click="batchSendExpireReminder"
+                >
+                  {{ sendingExpireReminder ? '发送中...' : `批量发送到期提醒 (${selectedExpiring ? selectedExpiring.length : 0})` }}
+                </el-button>
+              </div>
+            </div>
+          </template>
+          <div class="table-container">
+            <el-table 
+              :data="expiringSubscriptions" 
+              style="width: 100%"
+              @selection-change="handleExpiringSelectionChange"
+            >
+              <el-table-column type="selection" width="55" />
+              <el-table-column prop="username" label="用户名" width="120" />
+              <el-table-column prop="email" label="邮箱" width="200" />
+              <el-table-column prop="qq" label="QQ" width="120">
+                <template #default="scope">
+                  <span v-if="scope.row.qq">{{ scope.row.qq }}</span>
+                  <span v-else style="color: #999;">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="expire_time" label="到期时间" width="180">
+                <template #default="scope">
+                  <el-tag :type="getExpireTagType(scope.row.days_until_expire)" size="small">
+                    {{ scope.row.expire_time }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="days_until_expire" label="剩余天数" width="100" align="center">
+                <template #default="scope">
+                  <span :style="{ color: getExpireColor(scope.row.days_until_expire) }">
+                    {{ scope.row.days_until_expire }} 天
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
+                <template #default="scope">
+                  <el-button 
+                    v-if="scope.row.qq && scope.row.qq !== ''" 
+                    type="primary" 
+                    size="small" 
+                    @click="openQQChat(scope.row)"
+                  >
+                    联系QQ
+                  </el-button>
+                  <el-button 
+                    type="success" 
+                    size="small" 
+                    @click="sendExpireReminder([scope.row.user_id || scope.row.id])"
+                  >
+                    发送提醒
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" style="text-align: center; padding: 40px; color: #999;">
+              暂无即将到期的客户
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script>
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
+import { adminAPI } from '@/utils/api'
 import { ArrowRight, ShoppingCart, Warning } from '@element-plus/icons-vue'
 
 export default {
@@ -208,32 +296,78 @@ export default {
     const recentUsers = ref([])
     const recentOrders = ref([])
     const abnormalUsers = ref([])
+    const expiringSubscriptions = ref([])
+    const selectedExpiring = ref([])
+    const expiringFilter = ref('all')
+    const sendingExpireReminder = ref(false)
 
     const loadStats = async () => {
       try {
-        const response = await api.get('/admin/stats')
-        console.log('Stats API Response:', response)
+        console.log('开始加载仪表盘数据...')
+        const response = await adminAPI.getDashboard()
+        console.log('Dashboard API Response:', response)
+        console.log('Response data:', response?.data)
+        console.log('Response data.data:', response?.data?.data)
+        
         if (response && response.data) {
-          if (response.data.success && response.data.data) {
-            const data = response.data.data
-            console.log('Stats Data:', data)
+          // 检查响应格式
+          let data = null
+          if (response.data.success === true && response.data.data) {
+            // 标准格式：{ success: true, data: {...} }
+            data = response.data.data
+          } else if (response.data.totalUsers !== undefined) {
+            // 直接数据格式：{ totalUsers: ..., ... }
+            data = response.data
+          } else if (response.data.data && typeof response.data.data === 'object') {
+            // 嵌套数据格式
+            data = response.data.data
+          }
+          
+          if (data) {
+            console.log('解析后的数据:', data)
             stats.value = {
               totalUsers: Number(data.totalUsers) || 0,
               activeSubscriptions: Number(data.activeSubscriptions) || 0,
               totalOrders: Number(data.totalOrders) || 0,
               totalRevenue: Number(data.totalRevenue) || 0
             }
-            console.log('Updated Stats:', stats.value)
+            console.log('更新后的统计数据:', stats.value)
           } else {
-            console.error('获取统计数据失败 - 响应格式错误:', response.data)
+            console.error('无法解析数据，响应格式:', response.data)
+            ElMessage.warning('数据格式异常，请查看控制台')
+            // 即使数据格式异常，也设置默认值避免空白
+            stats.value = {
+              totalUsers: 0,
+              activeSubscriptions: 0,
+              totalOrders: 0,
+              totalRevenue: 0
+            }
           }
         } else {
           console.error('获取统计数据失败 - 无响应数据:', response)
+          ElMessage.error('获取统计数据失败: 无响应数据')
+          stats.value = {
+            totalUsers: 0,
+            activeSubscriptions: 0,
+            totalOrders: 0,
+            totalRevenue: 0
+          }
         }
       } catch (error) {
         console.error('获取统计数据异常:', error)
-        if (error.response) {
-          console.error('错误响应:', error.response.data)
+        console.error('错误详情:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          statusText: error.response?.statusText
+        })
+        ElMessage.error('获取统计数据失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+        // 设置默认值避免空白
+        stats.value = {
+          totalUsers: 0,
+          activeSubscriptions: 0,
+          totalOrders: 0,
+          totalRevenue: 0
         }
       }
     }
@@ -241,12 +375,18 @@ export default {
     const loadRecentUsers = async () => {
       try {
         const response = await api.get('/admin/users/recent')
-        if (response.data && response.data.success && response.data.data) {
-          recentUsers.value = response.data.data
+        console.log('Recent Users Response:', response)
+        if (response && response.data) {
+          if (response.data.success !== false) {
+            recentUsers.value = response.data.data || []
+          } else {
+            recentUsers.value = []
+          }
         } else {
           recentUsers.value = []
         }
       } catch (error) {
+        console.error('加载最近用户失败:', error)
         recentUsers.value = []
       }
     }
@@ -254,12 +394,18 @@ export default {
     const loadRecentOrders = async () => {
       try {
         const response = await api.get('/admin/orders/recent')
-        if (response.data && response.data.success && response.data.data) {
-          recentOrders.value = response.data.data
+        console.log('Recent Orders Response:', response)
+        if (response && response.data) {
+          if (response.data.success !== false) {
+            recentOrders.value = response.data.data || []
+          } else {
+            recentOrders.value = []
+          }
         } else {
           recentOrders.value = []
         }
       } catch (error) {
+        console.error('加载最近订单失败:', error)
         recentOrders.value = []
       }
     }
@@ -267,13 +413,20 @@ export default {
     const loadAbnormalUsers = async () => {
       try {
         const response = await api.get('/admin/users/abnormal')
-        if (response.data && response.data.success && response.data.data) {
-          // 只显示前5个异常用户
-          abnormalUsers.value = response.data.data.slice(0, 5)
+        console.log('Abnormal Users Response:', response)
+        if (response && response.data) {
+          if (response.data.success !== false) {
+            const data = response.data.data || []
+            // 只显示前5个异常用户
+            abnormalUsers.value = Array.isArray(data) ? data.slice(0, 5) : []
+          } else {
+            abnormalUsers.value = []
+          }
         } else {
           abnormalUsers.value = []
         }
       } catch (error) {
+        console.error('加载异常用户失败:', error)
         abnormalUsers.value = []
       }
     }
@@ -327,11 +480,102 @@ export default {
       return num.toFixed(2)
     }
 
-    onMounted(() => {
-      loadStats()
-      loadRecentUsers()
-      loadRecentOrders()
-      loadAbnormalUsers()
+    // 加载即将到期的订阅
+    const loadExpiringSubscriptions = async () => {
+      try {
+        const params = { days: 7 }
+        if (expiringFilter.value !== 'all') {
+          params.filter = expiringFilter.value
+        }
+        const response = await adminAPI.getExpiringSubscriptions(params)
+        console.log('Expiring Subscriptions Response:', response)
+        if (response && response.data) {
+          if (response.data.success !== false) {
+            expiringSubscriptions.value = response.data.data || []
+          } else {
+            expiringSubscriptions.value = []
+          }
+        } else {
+          expiringSubscriptions.value = []
+        }
+      } catch (error) {
+        console.error('加载即将到期订阅失败:', error)
+        expiringSubscriptions.value = []
+      }
+    }
+
+    // 处理选择变化
+    const handleExpiringSelectionChange = (selection) => {
+      selectedExpiring.value = selection.map(item => item.user_id || item.id)
+    }
+
+    // 获取到期标签类型
+    const getExpireTagType = (days) => {
+      if (days <= 0) return 'danger'
+      if (days <= 1) return 'warning'
+      if (days <= 3) return 'warning'
+      return 'info'
+    }
+
+    // 获取到期颜色
+    const getExpireColor = (days) => {
+      if (days <= 0) return '#f56c6c'
+      if (days <= 1) return '#e6a23c'
+      if (days <= 3) return '#e6a23c'
+      return '#409eff'
+    }
+
+    // 打开QQ聊天
+    const openQQChat = (row) => {
+      if (!row.qq) {
+        ElMessage.warning('该用户未设置QQ号码')
+        return
+      }
+      const message = `您好，您的订阅服务将在 ${row.days_until_expire} 天后到期（${row.expire_time}），请及时续费以继续使用服务。如有疑问，请联系客服。`
+      const qqUrl = `tencent://message/?uin=${row.qq}&Menu=yes&Message=${encodeURIComponent(message)}`
+      window.open(qqUrl, '_blank')
+    }
+
+    // 发送到期提醒
+    const sendExpireReminder = async (ids) => {
+      try {
+        sendingExpireReminder.value = true
+        const response = await adminAPI.batchSendExpireReminder(ids)
+        if (response.data && response.data.success) {
+          ElMessage.success(`成功发送 ${ids.length} 条到期提醒`)
+          selectedExpiring.value = []
+        } else {
+          ElMessage.error(response.data?.message || '发送失败')
+        }
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '发送失败')
+      } finally {
+        sendingExpireReminder.value = false
+      }
+    }
+
+    // 批量发送到期提醒
+    const batchSendExpireReminder = () => {
+      if (selectedExpiring.value.length === 0) {
+        ElMessage.warning('请先选择要发送提醒的客户')
+        return
+      }
+      sendExpireReminder(selectedExpiring.value)
+    }
+
+    onMounted(async () => {
+      try {
+        // 使用 Promise.all 并行加载，但捕获所有错误
+        await Promise.allSettled([
+          loadStats(),
+          loadRecentUsers(),
+          loadRecentOrders(),
+          loadAbnormalUsers(),
+          loadExpiringSubscriptions()
+        ])
+      } catch (error) {
+        console.error('加载仪表盘数据时发生错误:', error)
+      }
     })
 
     return {
@@ -344,7 +588,18 @@ export default {
       getAbnormalTypeTag,
       getAbnormalTypeText,
       goToAbnormalUsers,
-      formatMoney
+      formatMoney,
+      expiringSubscriptions,
+      selectedExpiring,
+      expiringFilter,
+      sendingExpireReminder,
+      loadExpiringSubscriptions,
+      handleExpiringSelectionChange,
+      getExpireTagType,
+      getExpireColor,
+      openQQChat,
+      sendExpireReminder,
+      batchSendExpireReminder
     }
   }
 }

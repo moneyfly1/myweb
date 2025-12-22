@@ -134,7 +134,13 @@
             </el-form-item>
             
             <el-form-item label="SMTP端口">
-              <el-input-number v-model="emailForm.smtp_port" :min="1" :max="65535" />
+              <el-input-number 
+                v-model="emailForm.smtp_port" 
+                :min="1" 
+                :max="65535"
+                :precision="0"
+                :step="1"
+              />
             </el-form-item>
             
             <el-form-item label="邮箱账号">
@@ -244,7 +250,8 @@ export default {
       try {
         const emailConfigData = {
           smtp_host: emailForm.smtp_host,
-          smtp_port: emailForm.smtp_port,
+          // 确保 smtp_port 是数字类型
+          smtp_port: typeof emailForm.smtp_port === 'number' ? emailForm.smtp_port : Number(emailForm.smtp_port) || 587,
           email_username: emailForm.email_username,
           email_password: emailForm.email_password,
           sender_name: emailForm.sender_name,
@@ -271,7 +278,9 @@ export default {
         if (response.data && response.data.success) {
           const configData = response.data.data
           emailForm.smtp_host = configData.smtp_host || ''
-          emailForm.smtp_port = configData.smtp_port || 587
+          // 确保 smtp_port 是数字类型，ElInputNumber 需要 Number 或 Null
+          const port = configData.smtp_port
+          emailForm.smtp_port = port ? Number(port) : 587
           emailForm.email_username = configData.email_username || configData.smtp_username || ''
           emailForm.email_password = configData.email_password || configData.smtp_password || ''
           emailForm.sender_name = configData.sender_name || ''

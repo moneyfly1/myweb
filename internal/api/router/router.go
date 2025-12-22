@@ -309,6 +309,7 @@ func SetupRouter() *gin.Engine {
 			statistics.GET("/users", handlers.GetUserStatistics)
 			statistics.GET("/user-trend", handlers.GetUserTrend)
 			statistics.GET("/revenue-trend", handlers.GetRevenueTrend)
+			statistics.GET("/regions", handlers.GetRegionStats)
 		}
 
 		// 管理员路由
@@ -417,6 +418,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/settings/admin-notification/test/telegram", handlers.TestAdminTelegramNotification)
 			admin.POST("/settings/admin-notification/test/bark", handlers.TestAdminBarkNotification)
 			admin.PUT("/settings/node_health", handlers.UpdateNodeHealthSettings)
+			admin.GET("/settings/geoip/status", handlers.GetGeoIPStatus)
+			admin.POST("/settings/geoip/update", handlers.UpdateGeoIPDatabase)
 
 			// 管理员个人资料
 			admin.GET("/profile", handlers.GetAdminProfile)
@@ -446,6 +449,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/subscriptions/batch-disable", handlers.BatchDisableSubscriptions)
 			admin.POST("/subscriptions/batch-reset", handlers.BatchResetSubscriptions)
 			admin.POST("/subscriptions/batch-send-email", handlers.BatchSendAdminSubEmail)
+			admin.GET("/subscriptions/expiring", handlers.GetExpiringSubscriptions)
 
 			// 配置更新相关
 			admin.GET("/config-update/status", handlers.GetConfigUpdateStatus)

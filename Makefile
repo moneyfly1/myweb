@@ -22,6 +22,15 @@ deps:
 	go mod download
 	go mod tidy
 
+# 下载 GeoIP 数据库
+geoip:
+	@echo "正在下载 GeoIP 数据库..."
+	@go run scripts/download_geoip.go .
+
+# 构建（包含下载 GeoIP）
+build: geoip
+	go build -o bin/cboard-go cmd/server/main.go
+
 # 修复依赖（生成 go.sum）
 fix-deps:
 	@echo "正在下载依赖..."

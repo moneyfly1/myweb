@@ -12,7 +12,7 @@
               style="width: 150px;"
               @change="loadLevels"
             >
-              <el-option label="全部" :value="null" />
+              <el-option label="全部" value="all" />
               <el-option label="启用" :value="true" />
               <el-option label="禁用" :value="false" />
             </el-select>
@@ -26,7 +26,7 @@
         <div class="mobile-filter-buttons">
           <el-button
             size="small"
-            :type="statusFilter !== null ? 'primary' : 'default'"
+            :type="statusFilter !== 'all' && statusFilter !== undefined && statusFilter !== null && statusFilter !== '' ? 'primary' : 'default'"
             plain
             @click="showStatusFilterDrawer = true"
           >
@@ -67,7 +67,7 @@
                 style="width: 100%;"
                 @change="applyStatusFilter"
               >
-                <el-option label="全部" :value="null" />
+                <el-option label="全部" value="all" />
                 <el-option label="启用" :value="true" />
                 <el-option label="禁用" :value="false" />
               </el-select>
@@ -266,7 +266,7 @@ const levels = ref([])
 const showDialog = ref(false)
 const editingLevel = ref(null)
 const levelFormRef = ref(null)
-const statusFilter = ref(null)
+const statusFilter = ref('all')
 const isMobile = ref(window.innerWidth <= 768)
 const showStatusFilterDrawer = ref(false)
 
@@ -285,8 +285,9 @@ const levelForm = reactive({
 const loadLevels = async () => {
   loading.value = true
   try {
-    // 传递状态筛选参数
-    const response = await userLevelAPI.getAllLevels(undefined, statusFilter.value)
+    // 传递状态筛选参数（如果是 'all'，传递 undefined）
+    const filterValue = (statusFilter.value === 'all' || statusFilter.value === undefined || statusFilter.value === null || statusFilter.value === '') ? undefined : statusFilter.value
+    const response = await userLevelAPI.getAllLevels(undefined, filterValue)
     if (process.env.NODE_ENV === 'development') {
       console.log('等级列表API响应:', response)
     }
@@ -486,7 +487,7 @@ const getStatusFilterText = () => {
 }
 
 const resetStatusFilter = () => {
-  statusFilter.value = null
+  statusFilter.value = 'all'
   showStatusFilterDrawer.value = false
   loadLevels()
 }
