@@ -29,7 +29,6 @@ go.work
 .env.local
 
 # Database
-*.db
 *.db-shm
 *.db-wal
 *.sqlite
@@ -68,7 +67,6 @@ frontend/.env.local
 
 # Other projects
 cboard 网站/
-*.db
 create_admin
 unlock_user
 update_admin_password
