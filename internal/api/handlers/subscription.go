@@ -18,6 +18,8 @@ import (
 	"gorm.io/gorm"
 )
 
+// 注意：getCurrentUserOrError 和 getDefaultSubscriptionSettings 已在 user_profile.go 和 user.go 中定义
+
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
@@ -89,75 +91,62 @@ func formatDeviceList(devices []models.Device) []gin.H {
 	return deviceList
 }
 
+// GetSubscriptions 获取当前用户的订阅列表
 func GetSubscriptions(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	var subscriptions []models.Subscription
 	if err := database.GetDB().Where("user_id = ?", user.ID).Find(&subscriptions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取订阅列表失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅列表失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": subscriptions})
+	utils.SuccessResponse(c, http.StatusOK, "", subscriptions)
 }
 
+// GetSubscription 获取指定ID的订阅详情
 func GetSubscription(c *gin.Context) {
 	id := c.Param("id")
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	var sub models.Subscription
 	if err := database.GetDB().Where("id = ? AND user_id = ?", id, user.ID).First(&sub).Error; err != nil {
-		msg := "获取订阅失败"
 		if err == gorm.ErrRecordNotFound {
-			msg = "订阅不存在"
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": msg})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": sub})
+	utils.SuccessResponse(c, http.StatusOK, "", sub)
 }
 
+// CreateSubscription 创建新订阅
 func CreateSubscription(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	db := database.GetDB()
 	// 从系统设置中获取默认订阅配置
-	deviceLimit := 3
-	durationMonths := 1
-	var deviceLimitConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
-		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit > 0 {
-			deviceLimit = limit
-		}
-	}
-	var durationConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err == nil {
-		if months, err := strconv.Atoi(durationConfig.Value); err == nil && months > 0 {
-			durationMonths = months
-		}
-	}
+	deviceLimit, durationMonths := getDefaultSubscriptionSettings(db)
 	sub := models.Subscription{
 		UserID:          user.ID,
 		SubscriptionURL: utils.GenerateSubscriptionURL(),
 		DeviceLimit:     deviceLimit,
 		CurrentDevices:  0,
 		IsActive:        true,
-		Status:          "active",
+		Status:          utils.SubscriptionStatusActive,
 		ExpireTime:      utils.GetBeijingTime().AddDate(0, durationMonths, 0),
 	}
 	if err := db.Create(&sub).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "创建订阅失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建订阅失败", err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": sub})
+	utils.SuccessResponse(c, http.StatusCreated, "", sub)
 }
 
 func GetAdminSubscriptions(c *gin.Context) {
@@ -203,7 +192,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 
 	var subscriptions []models.Subscription
 	if err := query.Offset((page - 1) * size).Limit(size).Find(&subscriptions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取订阅列表失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅列表失败", err)
 		return
 	}
 
@@ -304,55 +293,64 @@ func GetAdminSubscriptions(c *gin.Context) {
 			})
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"subscriptions": list, "total": total, "page": page, "size": size}})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"subscriptions": list, "total": total, "page": page, "size": size})
 }
 
+// GetUserSubscriptionDevices 获取当前用户的订阅设备列表
 func GetUserSubscriptionDevices(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&sub).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": []gin.H{}})
+		utils.SuccessResponse(c, http.StatusOK, "", []gin.H{})
 		return
 	}
 	var devices []models.Device
 	db.Where("subscription_id = ?", sub.ID).Find(&devices)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": formatDeviceList(devices)})
+	utils.SuccessResponse(c, http.StatusOK, "", formatDeviceList(devices))
 }
 
+// GetSubscriptionDevices 获取指定订阅的设备列表（管理员）
 func GetSubscriptionDevices(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.First(&sub, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 	var devices []models.Device
 	db.Where("subscription_id = ?", sub.ID).Find(&devices)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"devices": formatDeviceList(devices), "device_limit": sub.DeviceLimit, "current_devices": sub.CurrentDevices,
-	}})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"devices":        formatDeviceList(devices),
+		"device_limit":   sub.DeviceLimit,
+		"current_devices": sub.CurrentDevices,
+	})
 }
 
+// BatchClearDevices 批量清除订阅设备
 func BatchClearDevices(c *gin.Context) {
 	var req struct {
 		SubscriptionIDs []uint `json:"subscription_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
 	db := database.GetDB()
 	db.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{})
 	db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已清除"})
+	utils.SuccessResponse(c, http.StatusOK, "设备已清除", nil)
 }
 
+// UpdateSubscription 更新订阅信息
 func UpdateSubscription(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
@@ -362,13 +360,17 @@ func UpdateSubscription(c *gin.Context) {
 		Status      string  `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.First(&sub, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 	if req.DeviceLimit != nil {
@@ -387,16 +389,24 @@ func UpdateSubscription(c *gin.Context) {
 			sub.ExpireTime = t
 		}
 	}
-	db.Save(&sub)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "更新成功"})
+	if err := db.Save(&sub).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", nil)
 }
 
+// ResetSubscription 重置订阅地址
 func ResetSubscription(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.First(&sub, id).Preload("User").Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 
@@ -429,22 +439,27 @@ func ResetSubscription(c *gin.Context) {
 	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
 
 	go sendResetEmail(c, sub, sub.User, "管理员重置")
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
+	utils.SuccessResponse(c, http.StatusOK, "订阅已重置", sub)
 }
 
+// ExtendSubscription 延长订阅有效期
 func ExtendSubscription(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
 		Days int `json:"days" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "days 必填"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "days 必填", err)
 		return
 	}
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.First(&sub, id).Preload("User").Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 	oldExp := "未设置"
@@ -468,7 +483,7 @@ func ExtendSubscription(c *gin.Context) {
 		email.NewEmailService().QueueEmail(sub.User.Email, "续费成功",
 			email.NewEmailTemplateBuilder().GetRenewalConfirmationTemplate(sub.User.Username, pkgName, oldExp, sub.ExpireTime.Format("2006-01-02 15:04:05"), utils.GetBeijingTime().Format("2006-01-02 15:04:05"), 0), "renewal_confirmation")
 	}()
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已延长", "data": sub})
+	utils.SuccessResponse(c, http.StatusOK, "订阅已延长", sub)
 }
 
 func ResetUserSubscription(c *gin.Context) {
@@ -507,29 +522,39 @@ func ResetUserSubscription(c *gin.Context) {
 		db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "用户订阅已重置"})
+	utils.SuccessResponse(c, http.StatusOK, "用户订阅已重置", nil)
 }
 
+// SendSubscriptionEmail 发送订阅邮件给用户
 func SendSubscriptionEmail(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
 	var user models.User
 	var sub models.Subscription
 	if err := db.First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户失败", err)
+		}
 		return
 	}
 	if err := db.Where("user_id = ?", user.ID).First(&sub).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户没有订阅"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "用户没有订阅", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 	if err := queueSubEmail(c, sub, user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "发送邮件失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅邮件已加入队列"})
+	utils.SuccessResponse(c, http.StatusOK, "订阅邮件已加入队列", nil)
 }
 
+// ClearUserDevices 清除用户的所有设备
 func ClearUserDevices(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
@@ -539,19 +564,23 @@ func ClearUserDevices(c *gin.Context) {
 		db.Where("subscription_id IN ?", subIDs).Delete(&models.Device{})
 		db.Model(&models.Subscription{}).Where("id IN ?", subIDs).Update("current_devices", 0)
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已清理"})
+	utils.SuccessResponse(c, http.StatusOK, "设备已清理", nil)
 }
 
+// ResetUserSubscriptionSelf 用户重置自己的订阅
 func ResetUserSubscriptionSelf(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.Where("user_id = ?", user.ID).First(&sub).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 
@@ -585,38 +614,46 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
 
 	go sendResetEmail(c, sub, *user, reason)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅已重置", "data": sub})
+	utils.SuccessResponse(c, http.StatusOK, "订阅已重置", sub)
 }
 
+// SendSubscriptionEmailSelf 用户发送自己的订阅邮件
 func SendSubscriptionEmailSelf(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	var sub models.Subscription
 	if err := database.GetDB().Where("user_id = ?", user.ID).First(&sub).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "您还没有订阅"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "您还没有订阅", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 	go notification.NewNotificationService().SendAdminNotification("subscription_sent", map[string]interface{}{"username": user.Username, "email": user.Email, "send_time": utils.GetBeijingTime().Format("2006-01-02 15:04:05")})
 	if err := queueSubEmail(c, sub, *user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "发送邮件失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "发送邮件失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订阅邮件已加入队列"})
+	utils.SuccessResponse(c, http.StatusOK, "订阅邮件已加入队列", nil)
 }
 
+// ConvertSubscriptionToBalance 将订阅转换为余额
 func ConvertSubscriptionToBalance(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.Where("user_id = ?", user.ID).First(&sub).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 	now := utils.GetBeijingTime()
@@ -698,7 +735,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 
 		user.Balance += convertedAmount
 		if err := db.Save(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新余额失败"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新余额失败", err)
 			return
 		}
 
@@ -710,28 +747,25 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 			})
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "已转换为余额",
-			"data": gin.H{
-				"converted_amount":       convertedAmount,
-				"balance_added":          convertedAmount,
-				"new_balance":            user.Balance,
-				"remaining_days":         days,
-				"daily_price":            dailyPrice,
-				"original_package_price": originalPackagePrice,
-				"original_package_days":  originalPackageDays,
-			},
+		utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{
+			"converted_amount":       convertedAmount,
+			"balance_added":          convertedAmount,
+			"new_balance":            user.Balance,
+			"remaining_days":         days,
+			"daily_price":            dailyPrice,
+			"original_package_price": originalPackagePrice,
+			"original_package_days":  originalPackageDays,
 		})
 	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订阅已过期"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "订阅已过期", nil)
 	}
 }
 
+// ExportSubscriptions 导出订阅列表为 CSV
 func ExportSubscriptions(c *gin.Context) {
 	var subs []models.Subscription
 	if err := database.GetDB().Preload("User").Find(&subs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取列表失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取列表失败", err)
 		return
 	}
 	var csv strings.Builder
