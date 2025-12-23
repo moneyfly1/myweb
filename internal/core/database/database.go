@@ -154,7 +154,7 @@ func AutoMigrate() error {
 				if hasDisplayName == 0 {
 					err := DB.Exec("ALTER TABLE custom_nodes ADD COLUMN display_name VARCHAR(100) DEFAULT ''").Error
 					if err != nil {
-						log.Printf("添加 display_name 列失败（可能已存在）: %v", err)
+						log.Printf("警告: 添加 display_name 列失败（可能已存在）: %v", err)
 					}
 				}
 				if hasProtocol > 0 {

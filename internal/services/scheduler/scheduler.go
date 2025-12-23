@@ -63,7 +63,7 @@ func (s *Scheduler) Stop() {
 func (s *Scheduler) processEmailQueue() {
 	// 启动时立即执行一次
 	if err := s.emailService.ProcessEmailQueue(); err != nil {
-		log.Printf("处理邮件队列失败: %v", err)
+		utils.LogErrorMsg("处理邮件队列失败: %v", err)
 	}
 
 	ticker := time.NewTicker(1 * time.Minute)
@@ -75,7 +75,7 @@ func (s *Scheduler) processEmailQueue() {
 			return
 		case <-ticker.C:
 			if err := s.emailService.ProcessEmailQueue(); err != nil {
-				log.Printf("处理邮件队列失败: %v", err)
+				utils.LogErrorMsg("处理邮件队列失败: %v", err)
 			}
 		}
 	}
@@ -136,11 +136,11 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 	}
 
 	if err := query.Preload("User").Preload("Package").Find(&subscriptions).Error; err != nil {
-		log.Printf("查询到期订阅失败: %v", err)
+		utils.LogErrorMsg("查询到期订阅失败: %v", err)
 		return
 	}
 
-	log.Printf("发现 %d 个%s的订阅", len(subscriptions), func() string {
+	utils.LogInfo("发现 %d 个%s的订阅", len(subscriptions), func() string {
 		if isExpired {
 			return "已过期"
 		}
@@ -185,7 +185,7 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 		}
 
 		if err := emailService.QueueEmail(sub.User.Email, subject, content, "expiration_reminder"); err != nil {
-			log.Printf("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
+			utils.LogErrorMsg("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
 		}
 	}
 }
@@ -246,11 +246,11 @@ func (s *Scheduler) checkUsersForDeletionWarning(now time.Time) {
 		Where("id NOT IN (SELECT DISTINCT user_id FROM subscriptions WHERE is_active = ? AND status = ? AND expire_time > ?)", true, "active", now).
 		Where("id NOT IN (SELECT DISTINCT user_id FROM email_queue WHERE email_type = ? AND created_at > ?)", "account_deletion_warning", sevenDaysAgo).
 		Find(&users).Error; err != nil {
-		log.Printf("查询需要警告的用户失败: %v", err)
+		utils.LogErrorMsg("查询需要警告的用户失败: %v", err)
 		return
 	}
 
-	log.Printf("发现 %d 个需要发送账户删除警告的用户", len(users))
+	utils.LogInfo("发现 %d 个需要发送账户删除警告的用户", len(users))
 
 	emailService := email.NewEmailService()
 	templateBuilder := email.NewEmailTemplateBuilder()
@@ -298,9 +298,9 @@ func (s *Scheduler) checkUsersForDeletionWarning(now time.Time) {
 		subject := "账号删除提醒"
 
 		if err := emailService.QueueEmail(currentUser.Email, subject, content, "account_deletion_warning"); err != nil {
-			log.Printf("发送账户删除警告邮件失败: 用户 %s, 错误: %v", currentUser.Email, err)
+			utils.LogErrorMsg("发送账户删除警告邮件失败: 用户 %s, 错误: %v", currentUser.Email, err)
 		} else {
-			log.Printf("已发送账户删除警告邮件给用户: %s (%s)", currentUser.Username, currentUser.Email)
+			utils.LogInfo("已发送账户删除警告邮件给用户: %s (%s)", currentUser.Username, currentUser.Email)
 		}
 	}
 }
@@ -318,11 +318,11 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 	if err := s.db.Where("email_type = ? AND created_at < ? AND created_at > ?",
 		"account_deletion_warning", sevenDaysAgo, now.Add(-14*24*time.Hour)). // 7-14天前发送的警告
 		Find(&warningEmails).Error; err != nil {
-		log.Printf("查询警告邮件失败: %v", err)
+		utils.LogErrorMsg("查询警告邮件失败: %v", err)
 		return
 	}
 
-	log.Printf("找到 %d 封7天前发送的账户删除警告邮件", len(warningEmails))
+	utils.LogInfo("找到 %d 封7天前发送的账户删除警告邮件", len(warningEmails))
 
 	emailService := email.NewEmailService()
 	templateBuilder := email.NewEmailTemplateBuilder()
@@ -342,7 +342,7 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 				user.ID, true, "active", now).
 			Count(&activeSubscriptionCount)
 		if activeSubscriptionCount > 0 {
-			log.Printf("用户 %s (%s) 已有有效订阅，跳过删除", user.Username, user.Email)
+			utils.LogInfo("用户 %s (%s) 已有有效订阅，跳过删除", user.Username, user.Email)
 			continue
 		}
 
@@ -358,7 +358,7 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 		}
 
 		if !shouldDelete {
-			log.Printf("用户 %s (%s) 在警告后已登录，跳过删除", user.Username, user.Email)
+			utils.LogInfo("用户 %s (%s) 在警告后已登录，跳过删除", user.Username, user.Email)
 			continue
 		}
 
@@ -370,7 +370,7 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 		subject := "账号删除确认"
 		_ = emailService.QueueEmail(user.Email, subject, content, "account_deletion")
 
-		log.Printf("用户 %s (%s) 将被删除: 30天未登录且无有效套餐，警告后7天内未登录", user.Username, user.Email)
+		utils.LogInfo("用户 %s (%s) 将被删除: 30天未登录且无有效套餐，警告后7天内未登录", user.Username, user.Email)
 		// 注意：实际删除操作应该在管理员确认后执行，这里只记录日志和发送确认邮件
 	}
 }
@@ -426,8 +426,8 @@ func (s *Scheduler) checkNodeHealthNow() {
 	}
 
 	if err := healthService.CheckAllNodes(); err != nil {
-		log.Printf("节点健康检查失败: %v", err)
+		utils.LogErrorMsg("节点健康检查失败: %v", err)
 	} else {
-		log.Println("节点健康检查完成")
+		utils.LogInfo("节点健康检查完成")
 	}
 }
