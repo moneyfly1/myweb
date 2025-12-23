@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"cboard-go/internal/models"
-	"cboard-go/internal/utils"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 

@@ -34,12 +34,12 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 
 	db := database.GetDB()
 	var totalUnread int64 = 0
-	
+
 	if !isAdmin {
 		// 用户端：统计未读的管理员回复
 		db.Model(&models.TicketReply{}).
 			Joins("JOIN tickets ON ticket_replies.ticket_id = tickets.id").
-			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_replies.is_read = ? OR ticket_replies.read_by != ? OR ticket_replies.read_by IS NULL)", 
+			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_replies.is_read = ? OR ticket_replies.read_by != ? OR ticket_replies.read_by IS NULL)",
 				user.ID, "true", false, user.ID).
 			Count(&totalUnread)
 	} else {
@@ -47,16 +47,16 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 		// 1. 统计未读的用户回复
 		var unreadReplies int64
 		db.Model(&models.TicketReply{}).
-			Where("is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
+			Where("is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
 				"true", false, user.ID).
 			Count(&unreadReplies)
-		
+
 		// 2. 统计管理员未查看的新工单
 		var newTickets int64
 		db.Model(&models.Ticket{}).
 			Where("id NOT IN (SELECT ticket_id FROM ticket_reads WHERE user_id = ?)", user.ID).
 			Count(&newTickets)
-		
+
 		totalUnread = unreadReplies + newTickets
 	}
 
@@ -199,7 +199,7 @@ func GetTickets(c *gin.Context) {
 	}
 	var totalRepliesStats []ReplyStat
 	var unreadRepliesStats []ReplyStat
-	
+
 	if len(ticketIDs) > 0 {
 		// 批量查询总回复数量
 		db.Model(&models.TicketReply{}).
@@ -253,7 +253,7 @@ func GetTickets(c *gin.Context) {
 	for _, ticket := range tickets {
 		unreadRepliesCount := unreadRepliesMap[ticket.ID]
 		totalRepliesCount := totalRepliesMap[ticket.ID]
-		
+
 		var hasUnread bool
 		if !isAdmin {
 			hasUnread = unreadRepliesCount > 0
@@ -263,18 +263,18 @@ func GetTickets(c *gin.Context) {
 		}
 
 		ticketList = append(ticketList, gin.H{
-			"id":                 ticket.ID,
-			"ticket_no":          ticket.TicketNo,
-			"title":              ticket.Title,
-			"content":            ticket.Content,
-			"type":               ticket.Type,
-			"status":             ticket.Status,
-			"priority":           ticket.Priority,
-			"created_at":         ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":         ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
-			"replies_count":      totalRepliesCount,
-			"unread_replies":     unreadRepliesCount, // 未读回复数量
-			"has_unread":         hasUnread, // 是否有未读回复或新工单
+			"id":             ticket.ID,
+			"ticket_no":      ticket.TicketNo,
+			"title":          ticket.Title,
+			"content":        ticket.Content,
+			"type":           ticket.Type,
+			"status":         ticket.Status,
+			"priority":       ticket.Priority,
+			"created_at":     ticket.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":     ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"replies_count":  totalRepliesCount,
+			"unread_replies": unreadRepliesCount, // 未读回复数量
+			"has_unread":     hasUnread,          // 是否有未读回复或新工单
 		})
 	}
 
@@ -388,7 +388,7 @@ func GetTicket(c *gin.Context) {
 		if reply.IsAdmin == "true" {
 			replyData["is_admin_reply"] = true
 		}
-		
+
 		// 判断是否为未读（对于用户：管理员回复未读；对于管理员：用户回复未读）
 		isUnread := false
 		if !isAdmin && reply.IsAdmin == "true" {
@@ -399,7 +399,7 @@ func GetTicket(c *gin.Context) {
 			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
 		}
 		replyData["is_unread"] = isUnread
-		
+
 		replies = append(replies, replyData)
 	}
 	responseData["replies"] = replies
@@ -459,7 +459,7 @@ func GetTicket(c *gin.Context) {
 			// 管理员查看：标记用户回复为已读
 			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
 		}
-		
+
 		if shouldMarkAsRead {
 			reply.IsRead = true
 			reply.ReadBy = &userID
@@ -467,7 +467,7 @@ func GetTicket(c *gin.Context) {
 			db.Save(reply)
 		}
 	}
-	
+
 	// 记录工单查看时间（用于统计）
 	var ticketRead models.TicketRead
 	err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, user.ID).First(&ticketRead).Error
