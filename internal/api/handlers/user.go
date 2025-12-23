@@ -22,9 +22,9 @@ import (
 
 // getDefaultSubscriptionSettings 从系统设置中获取默认订阅配置
 func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonths int) {
-	// 默认值
-	deviceLimit = 3
-	durationMonths = 1
+	// 使用常量作为默认值
+	deviceLimit = utils.DefaultDeviceLimit
+	durationMonths = utils.DefaultDurationMonths
 
 	// 从数据库读取配置
 	var deviceLimitConfig models.SystemConfig
