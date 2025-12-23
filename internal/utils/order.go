@@ -8,11 +8,12 @@ import (
 
 // GenerateCouponCode 生成优惠券码
 func GenerateCouponCode() string {
-	rand.Seed(time.Now().UnixNano())
+	// 使用 rand.New 替代已弃用的 rand.Seed (Go 1.20+)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	code := make([]byte, 8)
 	for i := range code {
-		code[i] = charset[rand.Intn(len(charset))]
+		code[i] = charset[r.Intn(len(charset))]
 	}
 	return string(code)
 }
