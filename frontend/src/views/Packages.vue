@@ -302,9 +302,10 @@
     <el-dialog
       v-model="paymentQRVisible"
       title="扫码支付"
-      width="500px"
+      :width="isMobile ? '90%' : '500px'"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
+      class="payment-qr-dialog"
     >
       <div class="payment-qr-container">
         <div class="order-info">
@@ -354,10 +355,11 @@
         
         <div class="payment-actions" :class="{ 'mobile-layout': isMobile }">
           <el-button 
-            v-if="isMobile && currentOrder?.payment_method_name === 'alipay' && paymentUrl"
+            v-if="isMobile && paymentUrl && (currentOrder?.payment_method_name === 'alipay' || currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))"
             type="success"
             size="large"
             @click="openAlipayApp"
+            style="width: 100%; margin-bottom: 10px;"
           >
             <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
             跳转到支付宝支付
@@ -368,6 +370,7 @@
             :loading="isCheckingPayment"
             type="primary"
             size="large"
+            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
           >
             检查支付状态
           </el-button>
@@ -375,6 +378,7 @@
           <el-button 
             @click="paymentQRVisible = false"
             size="large"
+            :style="isMobile ? 'width: 100%;' : ''"
           >
             关闭
           </el-button>
@@ -1024,29 +1028,25 @@ export default {
         // 2. 支付页面URL（如 https://openapi.alipay.com/gateway.do?...）- 也可以生成二维码
         // 3. 其他支付方式的URL - 同样生成二维码
         
+        // 根据设备类型调整二维码参数
+        const isMobileDevice = window.innerWidth <= 768
+        const qrOptions = {
+          width: isMobileDevice ? 200 : 256, // 手机端使用较小的尺寸
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          },
+          errorCorrectionLevel: 'M' // 使用中等纠错级别，避免二维码过于复杂
+        }
+        
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
           // 将URL生成为base64格式的二维码图片
-          const qrCodeDataURL = await QRCode.toDataURL(url, {
-            width: 256,
-            margin: 2,
-            color: {
-              dark: '#000000',
-              light: '#FFFFFF'
-            },
-            errorCorrectionLevel: 'M'
-          })
+          const qrCodeDataURL = await QRCode.toDataURL(url, qrOptions)
           paymentQRCode.value = qrCodeDataURL
         } else if (url && url.trim() !== '') {
           // 即使不是http/https开头的URL，也尝试生成二维码（可能是其他格式）
-          const qrCodeDataURL = await QRCode.toDataURL(url, {
-            width: 256,
-            margin: 2,
-            color: {
-              dark: '#000000',
-              light: '#FFFFFF'
-            },
-            errorCorrectionLevel: 'M'
-          })
+          const qrCodeDataURL = await QRCode.toDataURL(url, qrOptions)
           paymentQRCode.value = qrCodeDataURL
         } else {
           ElMessage.error('支付链接为空，请联系管理员检查配置')

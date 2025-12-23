@@ -468,6 +468,19 @@
           <img :src="rechargeQRCode" alt="支付二维码" class="qr-code-img" />
         </div>
         <p class="qr-tip">支付完成后，余额将自动到账</p>
+        
+        <!-- 手机端跳转按钮 -->
+        <div v-if="isMobile && rechargePaymentUrl" class="recharge-payment-actions" style="margin-top: 15px;">
+          <el-button 
+            type="success"
+            size="large"
+            @click="openAlipayAppForRecharge"
+            style="width: 100%;"
+          >
+            <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
+            跳转到支付宝支付
+          </el-button>
+        </div>
       </div>
       
       <template #footer>
@@ -490,6 +503,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
@@ -549,6 +563,8 @@ const rechargeRules = {
 const rechargeFormRef = ref()
 const rechargeLoading = ref(false)
 const rechargeQRCode = ref('')
+const rechargePaymentUrl = ref('') // 保存支付URL，用于跳转支付宝App
+const isMobile = ref(window.innerWidth <= 768)
 const quickAmounts = [20, 50, 100, 200, 500, 1000]
 const softwareConfig = ref({
   // Windows软件
@@ -835,6 +851,39 @@ const showRechargeDialog = () => {
   rechargeDialogVisible.value = true
   rechargeForm.value.amount = 20
   rechargeQRCode.value = ''
+  rechargePaymentUrl.value = ''
+}
+
+// 跳转到支付宝App进行充值支付
+const openAlipayAppForRecharge = () => {
+  if (!rechargePaymentUrl.value) {
+    ElMessage.error('支付链接不存在')
+    return
+  }
+  
+  // 生成支付宝App跳转链接
+  const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(rechargePaymentUrl.value)}`
+  
+  try {
+    // 添加页面可见性监听，当用户从支付宝返回时立即检查支付状态
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
+        // 用户返回页面，立即检查支付状态
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // 尝试打开支付宝App
+    window.location.href = alipayAppUrl
+    
+    // 如果3秒后还在当前页面，说明可能没有安装支付宝App，提示用户
+    setTimeout(() => {
+      ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
+    }, 3000)
+  } catch (error) {
+    ElMessage.error('跳转失败，请使用支付宝扫描二维码完成支付')
+  }
 }
 
 const selectQuickAmount = (amount) => {
@@ -871,18 +920,24 @@ const createRecharge = async () => {
         return
       }
       
+      // 保存支付URL，用于跳转支付宝App
+      rechargePaymentUrl.value = paymentUrl
+      
       // 使用qrcode库将支付URL生成为二维码图片（与订单支付相同的方式）
       try {
         const QRCode = await import('qrcode')
-        // 将支付URL生成为base64格式的二维码图片
-        const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, {
-          width: 256,
+        // 根据设备类型调整二维码参数
+        const qrOptions = {
+          width: isMobile.value ? 200 : 256, // 手机端使用较小的尺寸
           margin: 2,
           color: {
             dark: '#000000',
             light: '#FFFFFF'
-          }
-        })
+          },
+          errorCorrectionLevel: 'M' // 使用中等纠错级别，避免二维码过于复杂
+        }
+        // 将支付URL生成为base64格式的二维码图片
+        const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, qrOptions)
         rechargeQRCode.value = qrCodeDataURL
         ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
         
@@ -920,12 +975,14 @@ const checkRechargeStatus = (rechargeId) => {
           rechargeStatusInterval = null
           ElMessage.success('充值成功！余额已到账')
           rechargeQRCode.value = ''
+          rechargePaymentUrl.value = ''
           rechargeDialogVisible.value = false
           // 刷新用户信息
           await loadUserInfo()
         } else if (recharge.status === 'cancelled' || recharge.status === 'failed') {
           clearInterval(rechargeStatusInterval)
           rechargeStatusInterval = null
+          rechargePaymentUrl.value = ''
           ElMessage.warning('充值订单已取消或失败')
           rechargeQRCode.value = ''
         }
@@ -1441,7 +1498,19 @@ const checkAndShowAnnouncement = async () => {
 }
 
 // 生命周期
+// 监听窗口大小变化
+const handleResize = () => {
+  if (typeof window !== 'undefined') {
+    isMobile.value = window.innerWidth <= 768
+  }
+}
+
 onMounted(() => {
+  // 初始化窗口大小
+  if (typeof window !== 'undefined') {
+    isMobile.value = window.innerWidth <= 768
+    window.addEventListener('resize', handleResize)
+  }
   loadUserInfo()
   loadSubscriptionInfo()
   loadSoftwareConfig()
@@ -1455,6 +1524,10 @@ onUnmounted(() => {
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
+  }
+  // 移除窗口大小监听
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', handleResize)
   }
 })
 </script>

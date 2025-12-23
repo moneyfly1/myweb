@@ -398,7 +398,37 @@ export default {
 
         const response = await adminAPI.getAdminNodes(params)
         if (response.data && response.data.success) {
-          const nodeList = response.data.data || []
+          // 处理多种响应格式
+          let nodeList = []
+          
+          // 检查响应数据结构
+          if (Array.isArray(response.data.data)) {
+            // 直接是数组
+            nodeList = response.data.data
+          } else if (response.data.data && Array.isArray(response.data.data.data)) {
+            // 嵌套结构: {success: true, data: {data: [...], total: 100}}
+            nodeList = response.data.data.data
+            pagination.total = response.data.data.total || nodeList.length
+            pagination.page = response.data.data.page || pagination.page
+            pagination.size = response.data.data.size || pagination.size
+          } else if (response.data.data && response.data.data.nodes && Array.isArray(response.data.data.nodes)) {
+            // 另一种嵌套结构: {success: true, data: {nodes: [...], total: 100}}
+            nodeList = response.data.data.nodes
+            pagination.total = response.data.data.total || nodeList.length
+          } else {
+            // 如果都不是，尝试获取 total
+            if (response.data.data && typeof response.data.data === 'object') {
+              pagination.total = response.data.data.total || 0
+            }
+            nodeList = []
+          }
+          
+          // 确保 nodeList 是数组
+          if (!Array.isArray(nodeList)) {
+            console.warn('节点列表不是数组格式:', nodeList)
+            nodeList = []
+          }
+          
           nodes.value = nodeList.map(node => ({
             ...node,
             testing: false
@@ -408,16 +438,19 @@ export default {
           const regionSet = new Set()
           const typeSet = new Set()
           nodeList.forEach(node => {
-            if (node.region) regionSet.add(node.region)
-            if (node.type) typeSet.add(node.type)
+            if (node && node.region) regionSet.add(node.region)
+            if (node && node.type) typeSet.add(node.type)
           })
           regions.value = Array.from(regionSet).sort()
           types.value = Array.from(typeSet).sort()
           
           // 如果没有分页信息，使用数据长度
-          pagination.total = response.data.total || nodeList.length
+          if (!pagination.total) {
+            pagination.total = nodeList.length
+          }
         } else {
           ElMessage.error(response.data?.message || '获取节点列表失败')
+          nodes.value = []
         }
       } catch (error) {
         ElMessage.error('加载节点列表失败: ' + (error.response?.data?.message || error.message))
