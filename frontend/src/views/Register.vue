@@ -95,6 +95,9 @@
               size="large"
               class="verification-code-input"
               maxlength="6"
+              type="text"
+              clearable
+              autocomplete="off"
             />
             <el-button
               type="primary"
@@ -578,6 +581,75 @@ onUnmounted(() => {
     background-color: #ffffff !important;
     background: #ffffff !important;
   }
+  
+  /* 确保验证码输入框文字颜色可见 */
+  :deep(.verification-code-input .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+  }
+  
+  /* 确保验证码输入框在所有状态下文字都可见 */
+  :deep(.verification-code-input .el-input__wrapper.is-focus .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper:hover .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+  }
+  
+  /* 确保输入框可以正常输入 */
+  :deep(.verification-code-input .el-input__inner) {
+    caret-color: #1677ff !important;
+  }
+  
+  /* 手机端特殊处理：确保验证码输入框文字可见且可输入 */
+  @media (max-width: 768px) {
+    :deep(.verification-code-input .el-input__inner) {
+      color: #303133 !important;
+      -webkit-text-fill-color: #303133 !important;
+      font-size: 16px !important; /* 防止iOS自动缩放 */
+      opacity: 1 !important;
+      caret-color: #1677ff !important;
+    }
+    
+    :deep(.verification-code-input .el-input__wrapper .el-input__inner) {
+      color: #303133 !important;
+      -webkit-text-fill-color: #303133 !important;
+      font-size: 16px !important;
+      opacity: 1 !important;
+    }
+    
+    :deep(.verification-code-input .el-input__wrapper.is-focus .el-input__inner) {
+      color: #303133 !important;
+      -webkit-text-fill-color: #303133 !important;
+      font-size: 16px !important;
+      opacity: 1 !important;
+    }
+    
+    /* 确保输入框在手机端可以正常聚焦和输入 */
+    :deep(.verification-code-input) {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+      pointer-events: auto !important;
+    }
+    
+    :deep(.verification-code-input .el-input__wrapper) {
+      pointer-events: auto !important;
+    }
+    
+    :deep(.verification-code-input .el-input__inner) {
+      pointer-events: auto !important;
+      -webkit-user-select: text !important;
+      user-select: text !important;
+    }
+  }
 }
 
 .email-input-group {
@@ -654,6 +726,99 @@ onUnmounted(() => {
   
   .register-header h1 {
     font-size: 20px;
+  }
+  
+  /* 手机端验证码输入框优化 */
+  .verification-code-group {
+    gap: 6px;
+    
+    .verification-code-input {
+      flex: 2; /* 增加输入框占比，让它更长 */
+      min-width: 0; /* 允许缩小 */
+    }
+    
+    .send-code-button {
+      min-width: 80px; /* 减小最小宽度 */
+      max-width: 100px; /* 减小最大宽度 */
+      font-size: 13px; /* 稍微减小字体 */
+      padding: 0 10px; /* 减小内边距 */
+      white-space: nowrap;
+      flex-shrink: 0; /* 防止按钮被压缩 */
+    }
+  }
+  
+  /* 手机端验证码输入框文字颜色和输入修复 */
+  :deep(.verification-code-input) {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper) {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+    background-color: #ffffff !important;
+  }
+  
+  :deep(.verification-code-input .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important; /* 防止iOS自动缩放 */
+    opacity: 1 !important;
+    caret-color: #1677ff !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: transparent !important;
+    background: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper.is-focus .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper:hover .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+  }
+  
+  /* 确保输入框在所有状态下都可以正常输入 */
+  :deep(.verification-code-input input) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+    caret-color: #1677ff !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
   }
 }
 </style> 
