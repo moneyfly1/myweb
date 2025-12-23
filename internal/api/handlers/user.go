@@ -29,14 +29,16 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 	// 从数据库读取配置
 	var deviceLimitConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
-		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit > 0 {
+		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
+			// 允许0值，0表示不限制或使用系统默认行为
 			deviceLimit = limit
 		}
 	}
 
 	var durationConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err == nil {
-		if months, err := strconv.Atoi(durationConfig.Value); err == nil && months > 0 {
+		if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
+			// 允许0值，0表示立即过期或使用系统默认行为
 			durationMonths = months
 		}
 	}
@@ -350,7 +352,7 @@ func GetUsers(c *gin.Context) {
 			"subscription":   subscriptionInfo,
 		})
 	}
-	c.JSON(200, gin.H{"success": true, "data": gin.H{"users": list, "total": total, "page": page, "size": size}})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": list, "total": total, "page": page, "size": size})
 }
 
 // GetUser 获取用户信息（管理员，简化版）
@@ -358,17 +360,17 @@ func GetUser(c *gin.Context) {
 	db := database.GetDB()
 	var u models.User
 	if err := db.First(&u, c.Param("id")).Error; err != nil {
-		c.JSON(404, gin.H{"success": false, "message": "不存在"})
+		utils.ErrorResponse(c, http.StatusNotFound, "不存在", err)
 		return
 	}
-	c.JSON(200, gin.H{"success": true, "data": u})
+	utils.SuccessResponse(c, http.StatusOK, "", u)
 }
 
 func GetUserDetails(c *gin.Context) {
 	db := database.GetDB()
 	var u models.User
 	if err := db.First(&u, c.Param("id")).Error; err != nil {
-		c.JSON(404, gin.H{"success": false, "message": "不存在"})
+		utils.ErrorResponse(c, http.StatusNotFound, "不存在", err)
 		return
 	}
 
@@ -544,7 +546,7 @@ func GetUserDetails(c *gin.Context) {
 		}
 	}
 
-	c.JSON(200, gin.H{"success": true, "data": gin.H{
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"user_info":     userInfo,
 		"subscriptions": formattedSubs,
 		"orders":        orders,
@@ -557,7 +559,7 @@ func GetUserDetails(c *gin.Context) {
 		"subscription_resets": formattedResets,
 		"ua_records":          uaRecords,
 		"recent_activities":   []gin.H{}, // 预留字段，后续可以添加最近活动记录
-	}})
+	})
 }
 
 // CreateUser 创建用户（管理员）
@@ -614,10 +616,7 @@ func CreateUser(c *gin.Context) {
 	}
 
 	if err := db.Create(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建用户失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建用户失败", err)
 		return
 	}
 
@@ -705,20 +704,14 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
 	}
 
@@ -735,10 +728,7 @@ func UpdateUser(c *gin.Context) {
 		// 检查用户名是否已被其他用户使用
 		var existing models.User
 		if err := db.Where("username = ? AND id != ?", req.Username, id).First(&existing).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "用户名已被使用",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用", nil)
 			return
 		}
 		user.Username = req.Username
@@ -747,10 +737,7 @@ func UpdateUser(c *gin.Context) {
 	if req.Email != "" {
 		var existing models.User
 		if err := db.Where("email = ? AND id != ?", req.Email, id).First(&existing).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "邮箱已被使用",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "邮箱已被使用", nil)
 			return
 		}
 		user.Email = req.Email
@@ -771,20 +758,14 @@ func UpdateUser(c *gin.Context) {
 	if req.Password != "" {
 		hashedPassword, err := auth.HashPassword(req.Password)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "密码加密失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "密码加密失败", err)
 			return
 		}
 		user.Password = hashedPassword
 	}
 
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
 	}
 
@@ -805,11 +786,7 @@ func UpdateUser(c *gin.Context) {
 	utils.CreateAuditLogWithData(c, "update_user", "user", user.ID, description, beforeData, afterData)
 
 	utils.SetResponseStatus(c, http.StatusOK)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    user,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", user)
 }
 
 // DeleteUser 删除用户（管理员）
@@ -818,20 +795,14 @@ func DeleteUser(c *gin.Context) {
 
 	// 验证ID是否有效
 	if id == "" || id == "0" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的用户ID",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的用户ID", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
 	}
 
@@ -848,10 +819,7 @@ func DeleteUser(c *gin.Context) {
 		var adminCount int64
 		db.Model(&models.User{}).Where("is_admin = ? AND id != ?", true, id).Count(&adminCount)
 		if adminCount == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "不能删除最后一个管理员",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "不能删除最后一个管理员", nil)
 			return
 		}
 	}
@@ -862,10 +830,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete subscriptions failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户订阅失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅失败", err)
 		return
 	}
 
@@ -874,10 +839,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete devices by subscription failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户设备失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 
@@ -886,10 +848,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete devices by user_id failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户设备失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 
@@ -898,10 +857,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete subscription resets failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户订阅重置记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅重置记录失败", err)
 		return
 	}
 
@@ -910,10 +866,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete orders failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订单失败", err)
 		return
 	}
 
@@ -922,10 +875,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete payment transactions failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户支付记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户支付记录失败", err)
 		return
 	}
 
@@ -934,10 +884,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete recharge records failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户充值记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户充值记录失败", err)
 		return
 	}
 
@@ -946,10 +893,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete ticket replies failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户工单回复失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户工单回复失败", err)
 		return
 	}
 
@@ -958,10 +902,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete tickets failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户工单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户工单失败", err)
 		return
 	}
 
@@ -970,10 +911,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete notifications failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户通知失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户通知失败", err)
 		return
 	}
 
@@ -982,10 +920,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete user activities failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户活动记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户活动记录失败", err)
 		return
 	}
 
@@ -994,10 +929,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete login history failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户登录历史失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户登录历史失败", err)
 		return
 	}
 
@@ -1007,10 +939,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete invite codes failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请码失败", err)
 		return
 	}
 	// 禁用已使用的邀请码
@@ -1019,10 +948,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: disable invite codes failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "禁用用户邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户邀请码失败", err)
 		return
 	}
 
@@ -1032,10 +958,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete invite relations as inviter failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户邀请关系失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请关系失败", err)
 		return
 	}
 
@@ -1045,10 +968,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete invite relations as invitee failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户被邀请关系失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户被邀请关系失败", err)
 		return
 	}
 
@@ -1060,10 +980,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete user failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户失败", err)
 		return
 	}
 
@@ -1072,10 +989,7 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: commit transaction failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除操作失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
 	}
 
@@ -1096,10 +1010,7 @@ func DeleteUser(c *gin.Context) {
 	}()
 
 	utils.SetResponseStatus(c, http.StatusOK)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "用户及其所有相关数据已成功删除",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "用户及其所有相关数据已成功删除", nil)
 }
 
 // LoginAsUser 管理员以用户身份登录
@@ -1109,45 +1020,32 @@ func LoginAsUser(c *gin.Context) {
 
 	var targetUser models.User
 	if err := db.First(&targetUser, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
 	}
 
 	// 生成令牌
 	accessToken, err := utils.CreateAccessToken(targetUser.ID, targetUser.Email, targetUser.IsAdmin)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成令牌失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成令牌失败", err)
 		return
 	}
 
 	refreshToken, err := utils.CreateRefreshToken(targetUser.ID, targetUser.Email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成刷新令牌失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "登录成功",
-		"data": gin.H{
-			"access_token":  accessToken,
-			"refresh_token": refreshToken,
-			"token_type":    "bearer",
-			"user": gin.H{
-				"id":       targetUser.ID,
-				"username": targetUser.Username,
-				"email":    targetUser.Email,
-				"is_admin": targetUser.IsAdmin,
-			},
+	utils.SuccessResponse(c, http.StatusOK, "登录成功", gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"token_type":    "bearer",
+		"user": gin.H{
+			"id":       targetUser.ID,
+			"username": targetUser.Username,
+			"email":    targetUser.Email,
+			"is_admin": targetUser.IsAdmin,
 		},
 	})
 }
@@ -1164,20 +1062,14 @@ func UpdateUserStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
 	}
 
@@ -1201,18 +1093,11 @@ func UpdateUserStatus(c *gin.Context) {
 	}
 
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新用户状态失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户状态失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "用户状态已更新",
-		"data":    user,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "用户状态已更新", user)
 }
 
 // UnlockUserLogin 解锁用户登录
@@ -1222,10 +1107,7 @@ func UnlockUserLogin(c *gin.Context) {
 	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
 	}
 
@@ -1238,17 +1120,11 @@ func UnlockUserLogin(c *gin.Context) {
 	user.IsActive = true
 
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "解锁用户失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "解锁用户失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("用户已解锁，清除了 %d 条登录失败记录", result.RowsAffected),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("用户已解锁，清除了 %d 条登录失败记录", result.RowsAffected), nil)
 }
 
 // BatchDeleteUsers 批量删除用户
@@ -1258,18 +1134,12 @@ func BatchDeleteUsers(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要删除的用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要删除的用户", nil)
 		return
 	}
 
@@ -1278,10 +1148,7 @@ func BatchDeleteUsers(c *gin.Context) {
 	// 检查是否包含管理员用户
 	var adminUsers []models.User
 	if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "不能删除管理员用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "不能删除管理员用户", nil)
 		return
 	}
 
@@ -1291,185 +1158,128 @@ func BatchDeleteUsers(c *gin.Context) {
 	// 删除用户的订阅
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Subscription{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户订阅失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅失败", err)
 		return
 	}
 
 	// 删除用户的设备（通过 subscription_id 关联的设备）
 	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id IN ?)", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户设备失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 
 	// 删除用户直接关联的设备（通过 user_id）
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户设备失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 
 	// 删除用户的订阅重置记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.SubscriptionReset{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户订阅重置记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅重置记录失败", err)
 		return
 	}
 
 	// 删除用户的订单
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Order{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订单失败", err)
 		return
 	}
 
 	// 删除用户的支付交易记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.PaymentTransaction{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户支付记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户支付记录失败", err)
 		return
 	}
 
 	// 删除用户的充值记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.RechargeRecord{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户充值记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户充值记录失败", err)
 		return
 	}
 
 	// 删除用户的工单回复
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.TicketReply{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户工单回复失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户工单回复失败", err)
 		return
 	}
 
 	// 删除用户的工单
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Ticket{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户工单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户工单失败", err)
 		return
 	}
 
 	// 删除用户的通知
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Notification{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户通知失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户通知失败", err)
 		return
 	}
 
 	// 删除用户的活动记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.UserActivity{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户活动记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户活动记录失败", err)
 		return
 	}
 
 	// 删除用户的登录历史
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.LoginHistory{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户登录历史失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户登录历史失败", err)
 		return
 	}
 
 	// 删除用户的邀请码（未使用的删除，已使用的禁用）
 	if err := tx.Where("user_id IN ? AND used_count = 0", req.UserIDs).Delete(&models.InviteCode{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请码失败", err)
 		return
 	}
 	// 禁用已使用的邀请码
 	if err := tx.Model(&models.InviteCode{}).Where("user_id IN ? AND used_count > 0", req.UserIDs).Update("is_active", false).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "禁用用户邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户邀请码失败", err)
 		return
 	}
 
 	// 删除用户作为邀请人的邀请关系
 	if err := tx.Where("inviter_id IN ?", req.UserIDs).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户邀请关系失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请关系失败", err)
 		return
 	}
 
 	// 删除用户作为被邀请人的邀请关系
 	if err := tx.Where("invitee_id IN ?", req.UserIDs).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户被邀请关系失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户被邀请关系失败", err)
 		return
 	}
 
 	// 删除用户
 	if err := tx.Where("id IN ?", req.UserIDs).Delete(&models.User{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除用户失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户失败", err)
 		return
 	}
 
 	// 提交事务
 	if err := tx.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除操作失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)), nil)
 }
 
 // BatchEnableUsers 批量启用用户
@@ -1479,18 +1289,12 @@ func BatchEnableUsers(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要启用的用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要启用的用户", nil)
 		return
 	}
 
@@ -1498,17 +1302,11 @@ func BatchEnableUsers(c *gin.Context) {
 	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", true)
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "启用用户失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "启用用户失败", result.Error)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected), nil)
 }
 
 // BatchDisableUsers 批量禁用用户
@@ -1518,18 +1316,12 @@ func BatchDisableUsers(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要禁用的用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要禁用的用户", nil)
 		return
 	}
 
@@ -1538,27 +1330,18 @@ func BatchDisableUsers(c *gin.Context) {
 	// 检查是否包含管理员用户
 	var adminUsers []models.User
 	if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "不能禁用管理员用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用管理员用户", nil)
 		return
 	}
 
 	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", false)
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "禁用用户失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户失败", result.Error)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected), nil)
 }
 
 // BatchSendSubEmail 批量发送订阅邮件
@@ -1568,28 +1351,19 @@ func BatchSendSubEmail(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要发送邮件的用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要发送邮件的用户", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var users []models.User
 	if err := db.Where("id IN ?", req.UserIDs).Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取用户信息失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户信息失败", err)
 		return
 	}
 
@@ -1610,13 +1384,9 @@ func BatchSendSubEmail(c *gin.Context) {
 		successCount++
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount),
-		"data": gin.H{
-			"success_count": successCount,
-			"fail_count":    failCount,
-		},
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
+		"success_count": successCount,
+		"fail_count":    failCount,
 	})
 }
 
@@ -1627,28 +1397,19 @@ func BatchSendExpireReminder(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要发送提醒的用户",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要发送提醒的用户", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var users []models.User
 	if err := db.Where("id IN ?", req.UserIDs).Preload("Subscriptions").Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取用户信息失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户信息失败", err)
 		return
 	}
 
@@ -1701,12 +1462,8 @@ func BatchSendExpireReminder(c *gin.Context) {
 		successCount++
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功发送 %d 封提醒邮件，失败 %d 封", successCount, failCount),
-		"data": gin.H{
-			"success_count": successCount,
-			"fail_count":    failCount,
-		},
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封提醒邮件，失败 %d 封", successCount, failCount), gin.H{
+		"success_count": successCount,
+		"fail_count":    failCount,
 	})
 }
