@@ -385,7 +385,14 @@ func GetAdminNodes(c *gin.Context) {
 		uniqueNodes = uniqueNodes[offset:end]
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"data": uniqueNodes, "total": total, "page": page, "size": size})
+	// 返回格式与其他管理员API保持一致
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    uniqueNodes,
+		"total":   total,
+		"page":    page,
+		"size":    size,
+	})
 }
 
 // GetNode 获取指定ID的节点详情
