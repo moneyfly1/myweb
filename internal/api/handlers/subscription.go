@@ -200,7 +200,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 	query.Count(&total)
 	// 使用 Preload 预加载 User 和 Package，避免 N+1 查询
 	query = query.Preload("User").Preload("Package")
-	
+
 	var subscriptions []models.Subscription
 	if err := query.Offset((page - 1) * size).Limit(size).Find(&subscriptions).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取订阅列表失败"})
