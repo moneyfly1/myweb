@@ -550,20 +550,18 @@ func UpdateTicketStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	var ticket models.Ticket
 	if err := db.First(&ticket, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "工单不存在",
-		})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "工单不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单失败", err)
+		}
 		return
 	}
 
@@ -585,16 +583,9 @@ func UpdateTicketStatus(c *gin.Context) {
 	}
 
 	if err := db.Save(&ticket).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新工单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新工单失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    ticket,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", ticket)
 }
