@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"cboard-go/internal/models"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -94,4 +95,3 @@ func buildOrderListData(db *gorm.DB, orders []models.Order) []gin.H {
 	}
 	return orderList
 }
-
