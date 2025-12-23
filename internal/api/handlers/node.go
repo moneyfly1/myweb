@@ -243,7 +243,7 @@ func GetNodes(c *gin.Context) {
 
 	// 先返回专线节点，然后返回普通节点（按 OrderIndex 排序）
 	finalNodes := append(customNodesList, uniqueNodes...)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": finalNodes})
+	utils.SuccessResponse(c, http.StatusOK, "", finalNodes)
 }
 
 func GetNodeStats(c *gin.Context) {
@@ -288,7 +288,7 @@ func GetNodeStats(c *gin.Context) {
 		}
 	}
 	stats.RegionCount, stats.TypeCount = len(stats.Regions), len(stats.Types)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": stats})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 func GetAdminNodes(c *gin.Context) {
@@ -497,16 +497,21 @@ func UpdateNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
 }
 
+// DeleteNode 删除节点
 func DeleteNode(c *gin.Context) {
-	database.GetDB().Delete(&models.Node{}, c.Param("id"))
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "删除成功"})
+	if err := database.GetDB().Delete(&models.Node{}, c.Param("id")).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", err)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
+// TestNode 测试节点连接
 func TestNode(c *gin.Context) {
 	nodeIDStr := c.Param("id")
 	nodeID, err := strconv.ParseUint(nodeIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的节点ID"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的节点ID", err)
 		return
 	}
 
@@ -682,22 +687,23 @@ func BatchDeleteNodes(c *gin.Context) {
 		deletedCount += int(result.RowsAffected)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功删除 %d 个节点", deletedCount),
-		"data":    gin.H{"deleted_count": deletedCount},
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
 }
 
+// ImportFromClash 从 Clash 配置导入节点
 func ImportFromClash(c *gin.Context) {
 	var req struct {
 		ClashConfig string `json:"clash_config" binding:"required"`
 	}
-	c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
 	count, _ := importNodesFromClashConfig(req.ClashConfig)
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("导入 %d 个", count)})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
 }
 
+// ImportFromFile 从文件导入节点
 func ImportFromFile(c *gin.Context) {
 	path := "./uploads/config/clash.yaml"
 	if !filepath.IsAbs(path) {
@@ -706,11 +712,11 @@ func ImportFromFile(c *gin.Context) {
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "文件不存在"})
+		utils.ErrorResponse(c, http.StatusNotFound, "文件不存在", err)
 		return
 	}
 	count, _ := importNodesFromClashConfig(string(content))
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("导入 %d 个", count)})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
 }
 
 func importNodesFromClashConfig(configStr string) (int, error) {
@@ -732,18 +738,23 @@ func importNodesFromClashConfig(configStr string) (int, error) {
 	return processAndImportLinks(db, linkPattern.FindAllString(configStr, -1)), nil
 }
 
+// CollectNodes 采集节点
 func CollectNodes(c *gin.Context) {
 	var config models.SystemConfig
 	db := database.GetDB()
-	if db.Where("key = ? AND category = ?", "urls", "config_update").First(&config).Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "未配置源"})
+	if err := db.Where("key = ? AND category = ?", "urls", "config_update").First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未配置源", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取配置失败", err)
+		}
 		return
 	}
 	svc := config_update.NewConfigUpdateService()
 	data, err := svc.FetchNodesFromURLs(strings.Split(config.Value, "\n"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "采集失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "采集失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"count": len(data), "nodes": data}})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"count": len(data), "nodes": data})
 }

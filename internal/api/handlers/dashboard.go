@@ -7,7 +7,6 @@ import (
 	"net/url"
 
 	"cboard-go/internal/core/database"
-	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
@@ -17,12 +16,8 @@ import (
 
 // GetUserDashboard 获取用户仪表盘信息
 func GetUserDashboard(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
@@ -418,14 +413,18 @@ func MarkUserNormal(c *gin.Context) {
 	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "用户不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户失败", err)
+		}
 		return
 	}
 	user.IsActive = true
 	user.IsVerified = true
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新用户失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "已标记为正常"})
+	utils.SuccessResponse(c, http.StatusOK, "已标记为正常", nil)
 }

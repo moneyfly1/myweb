@@ -434,25 +434,28 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.Where("subscription_url = ?", req.SubscriptionURL).First(&sub).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订阅不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
 		return
 	}
 
 	service := config_update.NewConfigUpdateService()
 	if err := service.UpdateSubscriptionConfig(req.SubscriptionURL); err != nil {
-		utils.LogError("UpdateSubscriptionConfig: failed", err, map[string]interface{}{"url": req.SubscriptionURL})
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "更新配置失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "配置更新成功"})
+	utils.SuccessResponse(c, http.StatusOK, "配置更新成功", nil)
 }
 
 // --- 后台管理函数（完整保留，无省略） ---
@@ -593,17 +596,17 @@ func GetConfigUpdateLogs(c *gin.Context) {
 func ClearConfigUpdateLogs(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	if err := service.ClearLogs(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "清理失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "清理失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "日志已清理"})
+	utils.SuccessResponse(c, http.StatusOK, "日志已清理", nil)
 }
 
 // UpdateConfigUpdateConfig 修改配置设置
 func UpdateConfigUpdateConfig(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
 
@@ -670,21 +673,19 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 				Type:     "config_update",
 			}
 			if err := db.Create(&config).Error; err != nil {
-				utils.LogError("UpdateConfigUpdateConfig: create failed", err, map[string]interface{}{"key": key})
-				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("保存配置 %s 失败", key)})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("保存配置 %s 失败", key), err)
 				return
 			}
 		} else {
 			config.Value = valueStr
 			if err := db.Save(&config).Error; err != nil {
-				utils.LogError("UpdateConfigUpdateConfig: update failed", err, map[string]interface{}{"key": key})
-				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("更新配置 %s 失败", key)})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新配置 %s 失败", key), err)
 				return
 			}
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "配置保存成功"})
+	utils.SuccessResponse(c, http.StatusOK, "配置保存成功", nil)
 }
 
 // StartConfigUpdate 开启任务
