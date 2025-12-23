@@ -539,7 +539,7 @@ func GetConfigUpdateConfig(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": configMap})
+	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
 // GetConfigUpdateFiles 获取生成的文件列表
@@ -547,7 +547,7 @@ func GetConfigUpdateFiles(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	config, err := service.GetConfig()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": []gin.H{}})
+		utils.SuccessResponse(c, http.StatusOK, "", []gin.H{})
 		return
 	}
 
@@ -579,7 +579,7 @@ func GetConfigUpdateFiles(c *gin.Context) {
 		result["clash"] = gin.H{"name": clashFile, "path": clashPath, "size": info.Size(), "modified": info.ModTime().Format("2006-01-02 15:04:05"), "exists": true}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
 // GetConfigUpdateLogs 获取更新日志
@@ -589,7 +589,7 @@ func GetConfigUpdateLogs(c *gin.Context) {
 		fmt.Sscanf(limitStr, "%d", &limit)
 	}
 	service := config_update.NewConfigUpdateService()
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": service.GetLogs(limit)})
+	utils.SuccessResponse(c, http.StatusOK, "", service.GetLogs(limit))
 }
 
 // ClearConfigUpdateLogs 清理日志
@@ -696,12 +696,12 @@ func StartConfigUpdate(c *gin.Context) {
 			return
 		}
 	}()
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "配置更新任务已启动"})
+	utils.SuccessResponse(c, http.StatusOK, "配置更新任务已启动", nil)
 }
 
 // StopConfigUpdate 停止任务
 func StopConfigUpdate(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "配置更新任务停止指令已发送"})
+	utils.SuccessResponse(c, http.StatusOK, "配置更新任务停止指令已发送", nil)
 }
 
 // TestConfigUpdate 测试更新任务
@@ -710,5 +710,5 @@ func TestConfigUpdate(c *gin.Context) {
 	go func() {
 		service.RunUpdateTask()
 	}()
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "测试任务已启动"})
+	utils.SuccessResponse(c, http.StatusOK, "测试任务已启动", nil)
 }
