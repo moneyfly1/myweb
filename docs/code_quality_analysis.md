@@ -131,74 +131,49 @@ utils.LogErrorMsg("错误信息: %v", err)
 
 ---
 
-### 2. 代码重复 ⚠️ 中优先级
+### 2. 代码重复 ✅ 已修复
 
 **发现的重复模式**:
 
-#### 2.1 用户认证检查重复
+#### 2.1 用户认证检查重复 ✅ 已修复
 
 **位置**: 多个 handler 函数
 
-**重复代码**:
+**修复状态**: ✅ **已完成**
+- ✅ 提取了 `getCurrentUserOrError` 辅助函数
+- ✅ 在多个 handler 中使用统一的辅助函数
+- ✅ 减少了重复代码
+
+**修复示例**:
 ```go
-// 在多个 handler 中重复出现
-user, ok := middleware.GetCurrentUser(c)
+// 修复后：使用统一的辅助函数
+user, ok := getCurrentUserOrError(c)
 if !ok {
-    c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
     return
 }
 ```
 
-**建议**: 提取为辅助函数
-```go
-// 建议：提取为辅助函数
-func getCurrentUserOrError(c *gin.Context) (*models.User, bool) {
-    user, ok := middleware.GetCurrentUser(c)
-    if !ok {
-        utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
-        return nil, false
-    }
-    return user, true
-}
-```
-
-#### 2.2 管理员权限检查重复
+#### 2.2 管理员权限检查重复 ✅ 已优化
 
 **位置**: 多个管理员 API handler
 
-**重复代码**:
-```go
-// 在多个 handler 中重复出现
-isAdmin, exists := c.Get("is_admin")
-if !exists || !isAdmin.(bool) {
-    c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "权限不足"})
-    return
-}
-```
+**修复状态**: ✅ **已完成**
+- ✅ 使用 `AdminMiddleware` 中间件统一处理
+- ✅ 所有管理员 API 都使用中间件保护
 
-**建议**: 使用中间件（已实现，但部分 handler 可能未使用）
-
-#### 2.3 数据库查询模式重复
+#### 2.3 数据库查询模式重复 ✅ 已优化
 
 **位置**: 多个 handler 函数
 
-**重复代码**:
-```go
-// 重复的查询模式
-var items []models.Item
-if err := db.Where("user_id = ?", user.ID).Find(&items).Error; err != nil {
-    c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询失败"})
-    return
-}
-```
+**修复状态**: ✅ **已完成**
+- ✅ 使用 `getDefaultSubscriptionSettings` 统一订阅配置获取
+- ✅ 使用 `Preload` 优化关联查询，减少重复代码
 
-**建议**: 提取为通用查询函数
-
-**优先级**: 🟡 **中优先级**
+**优先级**: ✅ **已完成**
 
 ---
 
-### 3. 错误处理不一致 ⚠️ 中优先级
+### 3. 错误处理不一致 ✅ 已修复
 
 **问题**:
 - 部分代码使用 `utils.ErrorResponse`
@@ -206,25 +181,21 @@ if err := db.Where("user_id = ?", user.ID).Find(&items).Error; err != nil {
 - 部分代码使用 `utils.LogError`
 - 部分代码使用 `log.Printf`
 
-**示例**:
-```go
-// 不一致的错误处理方式
-// 方式1: 使用 utils.ErrorResponse
-utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+**修复状态**: ✅ **已完成**
+- ✅ 统一了所有 handler 文件中的错误处理
+- ✅ 所有错误响应统一使用 `utils.ErrorResponse`
+- ✅ 所有成功响应统一使用 `utils.SuccessResponse`
+- ✅ 区分 `RecordNotFound` 和其他错误类型
+- ✅ 移除了未使用的导入
 
-// 方式2: 直接使用 c.JSON
-c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+**修复的文件**:
+- `internal/api/handlers/subscription.go`
+- `internal/api/handlers/node.go`
+- `internal/api/handlers/device.go`
+- `internal/api/handlers/dashboard.go`
+- `internal/api/handlers/subscription_config.go`
 
-// 方式3: 使用 log.Printf
-log.Printf("错误: %v", err)
-```
-
-**建议**:
-1. **统一使用 `utils.ErrorResponse`**: 所有 API 错误响应都使用统一函数
-2. **统一使用 `utils.LogError`**: 所有错误日志都使用统一函数
-3. **建立错误处理规范**: 制定错误处理最佳实践文档
-
-**优先级**: 🟡 **中优先级**
+**优先级**: ✅ **已完成**
 
 ---
 
@@ -247,46 +218,61 @@ log.Printf("错误: %v", err)
 
 ---
 
-### 5. 硬编码值 ⚠️ 低优先级
+### 5. 硬编码值 ✅ 已修复
 
 **问题**:
 - 部分配置值硬编码在代码中
 - 魔法数字和字符串
 
-**示例**:
+**修复状态**: ✅ **已完成**
+- ✅ 创建了 `internal/utils/constants.go` 文件
+- ✅ 提取了默认值常量：`DefaultDeviceLimit`、`DefaultDurationMonths`
+- ✅ 提取了状态常量：订阅状态、订单状态、验证码用途
+- ✅ 在代码中使用常量替代硬编码值
+
+**修复示例**:
 ```go
-// 硬编码的默认值
+// 修复前
 deviceLimit = 3
 durationMonths = 1
+status = "active"
 
-// 硬编码的字符串
-if status == "active" {
-    // ...
-}
+// 修复后
+deviceLimit = utils.DefaultDeviceLimit
+durationMonths = utils.DefaultDurationMonths
+status = utils.SubscriptionStatusActive
 ```
 
-**建议**:
-1. **使用常量**: 将魔法值提取为常量
-2. **配置化**: 将配置值移到配置文件或数据库
-3. **使用枚举**: 对于状态值，使用枚举类型
-
-**优先级**: 🟢 **低优先级**
+**优先级**: ✅ **已完成**
 
 ---
 
-### 6. 注释不足 ⚠️ 低优先级
+### 6. 注释不足 ✅ 已改进
 
 **问题**:
 - 部分复杂函数缺少注释
 - 业务逻辑缺少说明
 - 公共函数缺少文档注释
 
-**建议**:
-1. **添加函数注释**: 为所有公共函数添加 Go 文档注释
-2. **解释复杂逻辑**: 为复杂业务逻辑添加注释
-3. **记录设计决策**: 记录重要的设计决策和原因
+**修复状态**: ✅ **已改进**
+- ✅ 为主要 handler 函数添加了 Go 文档注释
+- ✅ 说明了函数用途和功能
+- ✅ 为关键业务逻辑添加了注释
 
-**优先级**: 🟢 **低优先级**
+**修复示例**:
+```go
+// GetSubscriptions 获取当前用户的订阅列表
+func GetSubscriptions(c *gin.Context) {
+    // ...
+}
+
+// CreateNode 创建新节点
+func CreateNode(c *gin.Context) {
+    // ...
+}
+```
+
+**优先级**: ✅ **已改进**
 
 ---
 
@@ -321,15 +307,15 @@ if !ok {
 |------|------|------|
 | 代码结构 | ✅ 9/10 | 分层清晰，模块化良好 |
 | 命名规范 | ✅ 9/10 | 命名清晰，符合 Go 规范 |
-| 代码重复 | ⚠️ 7/10 | 存在一些重复代码 |
+| 代码重复 | ✅ 9/10 | 已提取公共函数，重复代码减少 |
 | 函数长度 | ⚠️ 7/10 | 部分函数过长 |
-| 注释完整性 | ⚠️ 6/10 | 注释不足 |
+| 注释完整性 | ✅ 8/10 | 已为主要函数添加注释 |
 
 ### 可靠性指标
 
 | 指标 | 评分 | 说明 |
 |------|------|------|
-| 错误处理 | ✅ 8/10 | 有统一错误处理，但不够一致 |
+| 错误处理 | ✅ 9/10 | 已统一错误处理，使用统一函数 |
 | 测试覆盖率 | ⚠️ 3/10 | 测试覆盖率很低 |
 | 边界条件处理 | ⚠️ 6/10 | 部分边界条件未处理 |
 | 异常处理 | ✅ 8/10 | 有 panic recover 机制 |
@@ -351,7 +337,7 @@ if !ok {
 | 敏感信息处理 | ✅ 9/10 | 敏感信息过滤良好 |
 | SQL 注入防护 | ✅ 10/10 | 使用参数化查询 |
 
-**总体评分**: ✅ **8.0/10** - 代码质量良好，但需要改进测试覆盖率和代码重复问题
+**总体评分**: ✅ **8.5/10** - 代码质量良好，已修复大部分问题，主要需要改进测试覆盖率
 
 ---
 
@@ -364,34 +350,33 @@ if !ok {
    - 重点: 核心业务逻辑、错误处理路径、边界条件
    - 时间: 2-4 周
 
-2. **统一错误处理** 🟡
-   - 统一使用 `utils.ErrorResponse`
-   - 统一使用 `utils.LogError`
-   - 建立错误处理规范文档
+2. **统一错误处理** ✅ **已完成**
+   - ✅ 统一使用 `utils.ErrorResponse`
+   - ✅ 统一使用 `utils.SuccessResponse`
+   - ✅ 所有 handler 文件已修复
 
 ### 中优先级（近期处理）
 
-3. **减少代码重复** 🟡
-   - 提取公共函数
-   - 使用辅助函数减少重复代码
-   - 重构重复的查询模式
+3. **减少代码重复** ✅ **已完成**
+   - ✅ 提取了公共函数 `getCurrentUserOrError`
+   - ✅ 提取了公共函数 `getDefaultSubscriptionSettings`
+   - ✅ 使用辅助函数减少重复代码
 
 4. **优化函数长度** 🟡
    - 拆分超过 50 行的函数
    - 提取复杂逻辑到服务层
    - 使用辅助函数
 
-5. **改进注释** 🟢
-   - 为公共函数添加文档注释
-   - 为复杂逻辑添加注释
-   - 记录设计决策
+5. **改进注释** ✅ **已改进**
+   - ✅ 为主要 handler 函数添加了文档注释
+   - ✅ 为关键业务逻辑添加了注释
 
 ### 低优先级（长期改进）
 
-6. **配置化硬编码值** 🟢
-   - 将配置值移到配置文件
-   - 使用常量替代魔法值
-   - 使用枚举类型
+6. **配置化硬编码值** ✅ **已完成**
+   - ✅ 创建了 `constants.go` 文件
+   - ✅ 提取了所有硬编码值为常量
+   - ✅ 在代码中使用常量替代魔法值
 
 7. **类型安全改进** 🟢
    - 使用泛型改善类型安全
@@ -499,10 +484,12 @@ if !ok {
 - ✅ 性能优化到位
 
 **需要改进**:
-- ⚠️ 测试覆盖率低（< 5%）
-- ⚠️ 存在代码重复
-- ⚠️ 错误处理不够一致
-- ⚠️ 部分函数过长
+- ⚠️ 测试覆盖率低（< 5%）- 高优先级
+- ⚠️ 部分函数过长 - 中优先级
+- ✅ 代码重复 - 已修复
+- ✅ 错误处理不一致 - 已修复
+- ✅ 硬编码值 - 已修复
+- ✅ 注释不足 - 已改进
 
 ### 下一步行动
 
