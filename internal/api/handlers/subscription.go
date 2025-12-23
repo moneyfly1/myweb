@@ -1111,13 +1111,12 @@ func GetExpiringSubscriptions(c *gin.Context) {
 		}
 		// 检查 User 是否已加载（通过检查 ID 是否为 0）
 		if sub.User.ID > 0 {
-			// 注意：User 模型中可能没有 QQ 字段，这里先设为空字符串
-			// 如果需要，可以在 User 模型中添加 QQ 字段
+			// 注意：User 模型中目前没有 QQ 字段，如需使用请先在模型中添加
 			userInfo = gin.H{
 				"id":       sub.User.ID,
 				"username": sub.User.Username,
 				"email":    sub.User.Email,
-				"qq":       "", // TODO: 如果 User 模型有 QQ 字段，请在这里添加
+				"qq":       "", // User 模型中暂无 QQ 字段
 			}
 		}
 
