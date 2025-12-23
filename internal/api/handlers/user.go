@@ -131,20 +131,13 @@ func GetCurrentUser(c *gin.Context) {
 		responseData["avatar_url"] = user.Avatar.String
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    responseData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
 // UpdateCurrentUser 更新当前用户
 func UpdateCurrentUser(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
@@ -158,10 +151,7 @@ func UpdateCurrentUser(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -171,10 +161,7 @@ func UpdateCurrentUser(c *gin.Context) {
 		// 检查用户名是否已被其他用户使用
 		var existingUser models.User
 		if err := db.Where("username = ? AND id != ?", req.Username, user.ID).First(&existingUser).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "用户名已被使用",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用", nil)
 			return
 		}
 		user.Username = req.Username
@@ -199,13 +186,7 @@ func UpdateCurrentUser(c *gin.Context) {
 	}
 
 	if err := db.Save(user).Error; err != nil {
-		utils.LogError("UpdateUser: save user failed", err, map[string]interface{}{
-			"user_id": user.ID,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
 	}
 

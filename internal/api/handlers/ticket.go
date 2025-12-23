@@ -275,26 +275,19 @@ func GetTickets(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"tickets": ticketList,
-			"total":   total,
-			"page":    page,
-			"size":    size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"tickets": ticketList,
+		"total":   total,
+		"page":    page,
+		"size":    size,
 	})
 }
 
 // GetTicket 获取单个工单
 func GetTicket(c *gin.Context) {
 	id := c.Param("id")
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
@@ -480,21 +473,14 @@ func GetTicket(c *gin.Context) {
 		db.Save(&ticketRead)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    responseData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
 // ReplyTicket 回复工单
 func ReplyTicket(c *gin.Context) {
 	id := c.Param("id")
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
@@ -503,10 +489,7 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -532,10 +515,11 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	if err := query.First(&ticket).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "工单不存在",
-		})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "工单不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单失败", err)
+		}
 		return
 	}
 
@@ -549,10 +533,7 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	if err := db.Create(&reply).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "回复工单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "回复工单失败", err)
 		return
 	}
 
@@ -562,10 +543,7 @@ func ReplyTicket(c *gin.Context) {
 		db.Save(&ticket)
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data":    reply,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "", reply)
 }
 
 // UpdateTicketStatus 更新工单状态（管理员）
