@@ -1,9 +1,10 @@
 package handlers
 
 import (
-	"fmt"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -85,15 +86,14 @@ func buildAbnormalUserData(db *gorm.DB, users []models.User) []gin.H {
 			"status":             status,
 			"last_login":         lastLogin,
 			"created_at":         user.CreatedAt.Format("2006-01-02 15:04:05"),
-			"abnormal_type":     abnormalType,
-			"abnormal_count":    abnormalCount,
+			"abnormal_type":      abnormalType,
+			"abnormal_count":     abnormalCount,
 			"reset_count":        resetCount,
 			"subscription_count": subscriptionCount,
-			"description":       description,
+			"description":        description,
 			"last_activity":      lastActivity,
 		})
 	}
 
 	return userList
 }
-

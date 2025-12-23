@@ -1,9 +1,10 @@
 package handlers
 
 import (
-	"fmt"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -79,7 +80,7 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 		}
 
 		universal, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
-		
+
 		// 使用预加载的 User 或从 userMap 获取，避免 N+1 查询
 		var userInfo gin.H
 		if sub.User.ID > 0 {
@@ -115,28 +116,27 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 		}
 
 		list = append(list, gin.H{
-			"id":                 sub.ID,
-			"user_id":            sub.UserID,
-			"user":               userInfo,
-			"username":           userInfo["username"],
-			"email":              userInfo["email"],
-			"subscription_url":   sub.SubscriptionURL,
-			"universal_url":      universal,
-			"clash_url":          clash,
-			"status":             sub.Status,
-			"is_active":          sub.IsActive,
-			"device_limit":       sub.DeviceLimit,
-			"current_devices":    curr,
-			"online_devices":     online,
-			"apple_count":        universalCount,
-			"clash_count":        clashCount,
-			"expire_time":        sub.ExpireTime.Format("2006-01-02 15:04:05"),
-			"days_until_expire":  daysUntil,
-			"is_expired":         isExpired,
-			"created_at":         sub.CreatedAt.Format("2006-01-02 15:04:05"),
+			"id":                sub.ID,
+			"user_id":           sub.UserID,
+			"user":              userInfo,
+			"username":          userInfo["username"],
+			"email":             userInfo["email"],
+			"subscription_url":  sub.SubscriptionURL,
+			"universal_url":     universal,
+			"clash_url":         clash,
+			"status":            sub.Status,
+			"is_active":         sub.IsActive,
+			"device_limit":      sub.DeviceLimit,
+			"current_devices":   curr,
+			"online_devices":    online,
+			"apple_count":       universalCount,
+			"clash_count":       clashCount,
+			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+			"days_until_expire": daysUntil,
+			"is_expired":        isExpired,
+			"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
 	return list
 }
-
