@@ -171,16 +171,16 @@ func UpdatePackage(c *gin.Context) {
 	if req.Description != nil {
 		// 允许清空描述
 		descValue := strings.TrimSpace(*req.Description)
-		fmt.Printf("UpdatePackage: 更新描述字段 - package_id=%s, description_value=%q, trimmed_length=%d\n", id, *req.Description, len(descValue))
+		utils.LogInfo("UpdatePackage: 更新描述字段 - package_id=%s, description_value=%q, trimmed_length=%d", id, *req.Description, len(descValue))
 		if descValue == "" {
 			pkg.Description = sql.NullString{Valid: false}
-			fmt.Printf("UpdatePackage: 描述为空，设置为无效\n")
+			utils.LogInfo("UpdatePackage: 描述为空，设置为无效")
 		} else {
 			pkg.Description = database.NullString(descValue)
-			fmt.Printf("UpdatePackage: 描述已更新为: %q\n", descValue)
+			utils.LogInfo("UpdatePackage: 描述已更新为: %q", descValue)
 		}
 	} else {
-		fmt.Printf("UpdatePackage: 描述字段未提供，不更新 - package_id=%s\n", id)
+		utils.LogInfo("UpdatePackage: 描述字段未提供，不更新 - package_id=%s", id)
 	}
 	if req.Price != nil {
 		if *req.Price < 0 {
