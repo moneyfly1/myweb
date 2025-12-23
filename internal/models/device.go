@@ -23,7 +23,7 @@ type Device struct {
 	DeviceModel       *string    `gorm:"type:varchar(100)" json:"device_model,omitempty"`
 	DeviceBrand       *string    `gorm:"type:varchar(50)" json:"device_brand,omitempty"`
 	SubscriptionType  *string    `gorm:"type:varchar(20);index" json:"subscription_type,omitempty"` // 订阅类型: clash, v2ray, ssr
-	IsActive          bool       `gorm:"default:true" json:"is_active"`
+	IsActive          bool       `gorm:"default:true;index" json:"is_active"`
 	IsAllowed         bool       `gorm:"default:true" json:"is_allowed"`
 	FirstSeen         *time.Time `json:"first_seen,omitempty"`
 	LastAccess        time.Time  `gorm:"autoCreateTime" json:"last_access"`

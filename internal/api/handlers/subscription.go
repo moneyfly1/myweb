@@ -198,6 +198,9 @@ func GetAdminSubscriptions(c *gin.Context) {
 
 	var total int64
 	query.Count(&total)
+	// 使用 Preload 预加载 User 和 Package，避免 N+1 查询
+	query = query.Preload("User").Preload("Package")
+	
 	var subscriptions []models.Subscription
 	if err := query.Offset((page - 1) * size).Limit(size).Find(&subscriptions).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取订阅列表失败"})
@@ -207,8 +210,24 @@ func GetAdminSubscriptions(c *gin.Context) {
 	list := make([]gin.H, 0)
 	if len(subscriptions) > 0 {
 		subIDs := make([]uint, len(subscriptions))
+		userIDs := make([]uint, 0, len(subscriptions))
+		userIDSet := make(map[uint]bool)
 		for i, s := range subscriptions {
 			subIDs[i] = s.ID
+			if !userIDSet[s.UserID] {
+				userIDs = append(userIDs, s.UserID)
+				userIDSet[s.UserID] = true
+			}
+		}
+
+		// 批量查询所有用户，避免 N+1 查询
+		var users []models.User
+		userMap := make(map[uint]*models.User)
+		if len(userIDs) > 0 {
+			db.Where("id IN ?", userIDs).Find(&users)
+			for i := range users {
+				userMap[users[i].ID] = &users[i]
+			}
 		}
 
 		type Stat struct {
@@ -246,10 +265,14 @@ func GetAdminSubscriptions(c *gin.Context) {
 			}
 
 			universal, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
-			var user models.User
-			userInfo := gin.H{"id": 0, "username": fmt.Sprintf("用户已删除 (ID: %d)", sub.UserID), "email": fmt.Sprintf("deleted_user_%d", sub.UserID), "deleted": true}
-			if db.First(&user, sub.UserID).Error == nil {
+			// 使用预加载的 User 或从 userMap 获取，避免 N+1 查询
+			var userInfo gin.H
+			if sub.User.ID > 0 {
+				userInfo = gin.H{"id": sub.User.ID, "username": sub.User.Username, "email": sub.User.Email}
+			} else if user, ok := userMap[sub.UserID]; ok {
 				userInfo = gin.H{"id": user.ID, "username": user.Username, "email": user.Email}
+			} else {
+				userInfo = gin.H{"id": 0, "username": fmt.Sprintf("用户已删除 (ID: %d)", sub.UserID), "email": fmt.Sprintf("deleted_user_%d", sub.UserID), "deleted": true}
 			}
 
 			daysUntil, isExpired, now := 0, false, utils.GetBeijingTime()

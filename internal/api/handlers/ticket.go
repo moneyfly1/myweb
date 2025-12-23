@@ -210,41 +210,81 @@ func GetTickets(c *gin.Context) {
 		return
 	}
 
+	// 批量查询优化：避免 N+1 查询问题
+	ticketIDs := make([]uint, len(tickets))
+	for i, t := range tickets {
+		ticketIDs[i] = t.ID
+	}
+
+	// 批量查询所有工单的回复统计
+	type ReplyStat struct {
+		TicketID uint
+		Count    int64
+	}
+	var totalRepliesStats []ReplyStat
+	var unreadRepliesStats []ReplyStat
+	
+	if len(ticketIDs) > 0 {
+		// 批量查询总回复数量
+		db.Model(&models.TicketReply{}).
+			Select("ticket_id, COUNT(*) as count").
+			Where("ticket_id IN ?", ticketIDs).
+			Group("ticket_id").
+			Scan(&totalRepliesStats)
+
+		// 批量查询未读回复数量
+		if !isAdmin {
+			// 用户端：统计未读的管理员回复
+			db.Model(&models.TicketReply{}).
+				Select("ticket_id, COUNT(*) as count").
+				Where("ticket_id IN ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
+					ticketIDs, "true", false, user.ID).
+				Group("ticket_id").
+				Scan(&unreadRepliesStats)
+		} else {
+			// 管理员端：统计未读的用户回复
+			db.Model(&models.TicketReply{}).
+				Select("ticket_id, COUNT(*) as count").
+				Where("ticket_id IN ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
+					ticketIDs, "true", false, user.ID).
+				Group("ticket_id").
+				Scan(&unreadRepliesStats)
+		}
+	}
+
+	// 批量查询管理员查看记录（仅管理员端需要）
+	var ticketReads []models.TicketRead
+	ticketReadMap := make(map[uint]bool)
+	if isAdmin && len(ticketIDs) > 0 {
+		db.Where("ticket_id IN ? AND user_id = ?", ticketIDs, user.ID).Find(&ticketReads)
+		for _, tr := range ticketReads {
+			ticketReadMap[tr.TicketID] = true
+		}
+	}
+
+	// 构建统计映射
+	totalRepliesMap := make(map[uint]int64)
+	unreadRepliesMap := make(map[uint]int64)
+	for _, stat := range totalRepliesStats {
+		totalRepliesMap[stat.TicketID] = stat.Count
+	}
+	for _, stat := range unreadRepliesStats {
+		unreadRepliesMap[stat.TicketID] = stat.Count
+	}
+
 	// 格式化工单数据，包含未读回复数量
 	ticketList := make([]gin.H, 0)
 	for _, ticket := range tickets {
-		var unreadRepliesCount int64 = 0
-		var hasUnread bool = false
+		unreadRepliesCount := unreadRepliesMap[ticket.ID]
+		totalRepliesCount := totalRepliesMap[ticket.ID]
 		
+		var hasUnread bool
 		if !isAdmin {
-			// 用户端：统计未读的管理员回复（is_read = false 或 read_by != user_id）
-			db.Model(&models.TicketReply{}).
-				Where("ticket_id = ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
-					ticket.ID, "true", false, user.ID).
-				Count(&unreadRepliesCount)
 			hasUnread = unreadRepliesCount > 0
 		} else {
-			// 管理员端：统计未读的用户回复（is_read = false 或 read_by != admin_id）
-			db.Model(&models.TicketReply{}).
-				Where("ticket_id = ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", 
-					ticket.ID, "true", false, user.ID).
-				Count(&unreadRepliesCount)
-			// 还要检查是否有新工单（工单创建后管理员未查看）
-			var ticketRead models.TicketRead
-			err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, user.ID).First(&ticketRead).Error
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				// 管理员未查看过该工单，也算未读
-				hasUnread = true
-			} else {
-				hasUnread = unreadRepliesCount > 0
-			}
+			// 管理员端：检查是否有新工单（未查看过）或未读回复
+			hasUnread = !ticketReadMap[ticket.ID] || unreadRepliesCount > 0
 		}
-
-		// 查询总回复数量
-		var totalRepliesCount int64
-		db.Model(&models.TicketReply{}).
-			Where("ticket_id = ?", ticket.ID).
-			Count(&totalRepliesCount)
 
 		ticketList = append(ticketList, gin.H{
 			"id":                 ticket.ID,
