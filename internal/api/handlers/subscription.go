@@ -329,8 +329,8 @@ func GetSubscriptionDevices(c *gin.Context) {
 	var devices []models.Device
 	db.Where("subscription_id = ?", sub.ID).Find(&devices)
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"devices":        formatDeviceList(devices),
-		"device_limit":   sub.DeviceLimit,
+		"devices":         formatDeviceList(devices),
+		"device_limit":    sub.DeviceLimit,
 		"current_devices": sub.CurrentDevices,
 	})
 }

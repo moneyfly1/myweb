@@ -150,7 +150,7 @@ func GetNodes(c *gin.Context) {
 	}
 	var allNodes []models.Node
 	if err := query.Order("order_index ASC, created_at ASC").Find(&allNodes).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取失败", err)
 		return
 	}
 	seenKeys := make(map[string]bool)
@@ -330,7 +330,7 @@ func GetAdminNodes(c *gin.Context) {
 	// 先查询所有符合条件的节点（不分页，用于去重）
 	var allNodes []models.Node
 	if err := query.Order("order_index ASC, created_at ASC").Find(&allNodes).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取节点列表失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点列表失败", err)
 		return
 	}
 
@@ -385,18 +385,24 @@ func GetAdminNodes(c *gin.Context) {
 		uniqueNodes = uniqueNodes[offset:end]
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": uniqueNodes, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"data": uniqueNodes, "total": total, "page": page, "size": size})
 }
 
+// GetNode 获取指定ID的节点详情
 func GetNode(c *gin.Context) {
 	var node models.Node
 	if err := database.GetDB().First(&node, c.Param("id")).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "节点不存在"})
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点失败", err)
+		}
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": node})
+	utils.SuccessResponse(c, http.StatusOK, "", node)
 }
 
+// CreateNode 创建新节点
 func CreateNode(c *gin.Context) {
 	var req struct {
 		NodeLink string      `json:"node_link"`
@@ -404,41 +410,48 @@ func CreateNode(c *gin.Context) {
 		Preview  bool        `json:"preview"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
 	db := database.GetDB()
 	if req.NodeLink != "" {
 		parsed, err := config_update.ParseNodeLink(req.NodeLink)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "解析失败"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "解析失败", err)
 			return
 		}
 		newNode := buildNodeModel(parsed, true)
 		if req.Preview {
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": newNode})
+			utils.SuccessResponse(c, http.StatusOK, "", newNode)
 			return
 		}
 		key := generateNodeKey(newNode.Type, newNode.Name, newNode.Config)
 		if existing := findExistingNode(db, key, newNode.Type); existing != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "节点已存在"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "节点已存在", nil)
 			return
 		}
-		db.Create(&newNode)
-		c.JSON(http.StatusCreated, gin.H{"success": true, "data": newNode})
+		if err := db.Create(&newNode).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败", err)
+			return
+		}
+		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
 		return
 	}
 	req.Node.Status, req.Node.IsManual = "offline", true
-	db.Create(&req.Node)
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": req.Node})
+	if err := db.Create(&req.Node).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败", err)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusCreated, "", req.Node)
 }
 
+// ImportNodeLinks 批量导入节点链接
 func ImportNodeLinks(c *gin.Context) {
 	var req struct {
 		Links []string `json:"links" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
 	db := database.GetDB()
@@ -455,19 +468,33 @@ func ImportNodeLinks(c *gin.Context) {
 			skp++
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("成功 %d, 跳过 %d", imp, skp)})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d", imp, skp), gin.H{
+		"imported": imp,
+		"skipped":  skp,
+	})
 }
 
+// UpdateNode 更新节点信息
 func UpdateNode(c *gin.Context) {
 	db := database.GetDB()
 	var node models.Node
-	if db.First(&node, c.Param("id")).Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "不存在"})
+	if err := db.First(&node, c.Param("id")).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点失败", err)
+		}
 		return
 	}
-	c.ShouldBindJSON(&node)
-	db.Save(&node)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": node})
+	if err := c.ShouldBindJSON(&node); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+	if err := db.Save(&node).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新节点失败", err)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
 }
 
 func DeleteNode(c *gin.Context) {
@@ -491,15 +518,19 @@ func TestNode(c *gin.Context) {
 		// 专线节点：从 custom_nodes 表查询
 		customNodeID := uint(nodeID - 1000000)
 		var customNode models.CustomNode
-		if db.First(&customNode, customNodeID).Error != nil {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "专线节点不存在"})
+		if err := db.First(&customNode, customNodeID).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				utils.ErrorResponse(c, http.StatusNotFound, "专线节点不存在", err)
+			} else {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "获取专线节点失败", err)
+			}
 			return
 		}
 
 		// 构建临时 Node 对象用于测试
 		var nc models.NodeConfig
 		if err := json.Unmarshal([]byte(customNode.Config), &nc); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "解析节点配置失败"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "解析节点配置失败", err)
 			return
 		}
 
@@ -523,7 +554,7 @@ func TestNode(c *gin.Context) {
 		// 测试节点
 		res, err := svc.TestNode(&tempNode)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "测试节点失败", err)
 			return
 		}
 
@@ -532,26 +563,32 @@ func TestNode(c *gin.Context) {
 		customNode.Status = res.Status
 		customNode.Latency = res.Latency
 		customNode.LastTest = &now
-		db.Save(&customNode)
+		if err := db.Save(&customNode).Error; err != nil {
+			utils.LogError("TestNode: save custom node failed", err, nil)
+		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": res})
+		utils.SuccessResponse(c, http.StatusOK, "", res)
 		return
 	}
 
 	// 普通节点：从 nodes 表查询
 	var node models.Node
-	if db.First(&node, nodeID).Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "节点不存在"})
+	if err := db.First(&node, nodeID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点失败", err)
+		}
 		return
 	}
 
 	res, err := svc.TestNode(&node)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "测试节点失败", err)
 		return
 	}
 	svc.UpdateNodeStatus(res)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": res})
+	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
 func BatchTestNodes(c *gin.Context) {
@@ -574,7 +611,7 @@ func BatchTestNodes(c *gin.Context) {
 		}
 	}
 	if len(req.NodeIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "未选择节点"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "未选择节点", nil)
 		return
 	}
 	svc := node_health.NewNodeHealthService()
@@ -582,7 +619,7 @@ func BatchTestNodes(c *gin.Context) {
 	for _, res := range results {
 		svc.UpdateNodeStatus(res)
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": results})
+	utils.SuccessResponse(c, http.StatusOK, "", results)
 }
 
 func BatchDeleteNodes(c *gin.Context) {
@@ -605,7 +642,7 @@ func BatchDeleteNodes(c *gin.Context) {
 		}
 	}
 	if len(req.NodeIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "未选择节点"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "未选择节点", nil)
 		return
 	}
 
@@ -629,7 +666,7 @@ func BatchDeleteNodes(c *gin.Context) {
 	if len(normalNodeIDs) > 0 {
 		result := db.Where("id IN ?", normalNodeIDs).Delete(&models.Node{})
 		if result.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除节点失败: " + result.Error.Error()})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", result.Error)
 			return
 		}
 		deletedCount += int(result.RowsAffected)
@@ -639,7 +676,7 @@ func BatchDeleteNodes(c *gin.Context) {
 	if len(customNodeIDs) > 0 {
 		result := db.Where("id IN ?", customNodeIDs).Delete(&models.CustomNode{})
 		if result.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除专线节点失败: " + result.Error.Error()})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "删除专线节点失败", result.Error)
 			return
 		}
 		deletedCount += int(result.RowsAffected)
