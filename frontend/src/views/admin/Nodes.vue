@@ -60,18 +60,20 @@
       </div>
 
       <!-- 节点列表 -->
-      <el-table
-        :data="nodes"
-        v-loading="loading"
-        stripe
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="55" />
-        <el-table-column prop="id" label="ID" width="80" />
+      <div class="table-container">
+        <el-table
+          :data="nodes"
+          v-loading="loading"
+          stripe
+          :style="{ width: isMobile ? '100%' : '100%' }"
+          @selection-change="handleSelectionChange"
+          class="nodes-table"
+        >
+        <el-table-column type="selection" width="55" :class-name="isMobile ? 'mobile-hide' : ''" />
+        <el-table-column prop="id" label="ID" width="80" :class-name="isMobile ? 'mobile-hide' : ''" />
         <el-table-column prop="name" label="节点名称" min-width="150" />
-        <el-table-column prop="region" label="地区" width="100" />
-        <el-table-column prop="type" label="类型" width="100" />
+        <el-table-column prop="region" label="地区" width="100" :class-name="isMobile ? 'mobile-hide' : ''" />
+        <el-table-column prop="type" label="类型" width="100" :class-name="isMobile ? 'mobile-hide' : ''" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
@@ -79,7 +81,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="激活状态" width="100">
+        <el-table-column label="激活状态" width="100" :class-name="isMobile ? 'mobile-hide' : ''">
           <template #default="{ row }">
             <el-switch
               v-model="row.is_active"
@@ -87,32 +89,35 @@
             />
           </template>
         </el-table-column>
-        <el-table-column prop="latency" label="延迟" width="100">
+        <el-table-column prop="latency" label="延迟" width="100" :class-name="isMobile ? 'mobile-hide' : ''">
           <template #default="{ row }">
             <span v-if="row.latency > 0">{{ row.latency }}ms</span>
             <span v-else style="color: #909399">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="last_test" label="最后测试" width="180">
+        <el-table-column prop="last_test" label="最后测试" width="180" :class-name="isMobile ? 'mobile-hide' : ''">
           <template #default="{ row }">
             <span v-if="row.last_test">{{ formatTime(row.last_test) }}</span>
             <span v-else style="color: #909399">未测试</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 120 : 200" :fixed="isMobile ? false : 'right'" class-name="action-column">
           <template #default="{ row }">
-            <el-button size="small" @click="testNode(row)" :loading="row.testing">
-              测试
-            </el-button>
-            <el-button size="small" type="primary" @click="editNode(row)">
-              编辑
-            </el-button>
-            <el-button size="small" type="danger" @click="deleteNode(row)">
-              删除
-            </el-button>
+            <div class="action-buttons">
+              <el-button size="small" @click="testNode(row)" :loading="row.testing">
+                测试
+              </el-button>
+              <el-button size="small" type="primary" @click="editNode(row)">
+                编辑
+              </el-button>
+              <el-button size="small" type="danger" @click="deleteNode(row)">
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
-      </el-table>
+        </el-table>
+      </div>
 
       <!-- 分页 -->
       <div class="pagination-container">
@@ -132,7 +137,9 @@
     <el-dialog
       v-model="showAddDialog"
       :title="editingNode ? '编辑节点' : '添加节点'"
-      width="700px"
+      :width="isMobile ? '95%' : '700px'"
+      :close-on-click-modal="false"
+      class="node-edit-dialog"
     >
       <el-tabs v-model="addNodeTab" v-if="!editingNode">
         <el-tab-pane label="节点链接导入" name="link">
@@ -249,7 +256,7 @@
       </el-tabs>
       
       <!-- 编辑模式直接显示表单 -->
-      <el-form v-if="editingNode" :model="nodeForm" label-width="100px">
+      <el-form v-if="editingNode" :model="nodeForm" :label-width="isMobile ? '80px' : '100px'" class="node-edit-form">
         <el-form-item label="节点名称" required>
           <el-input 
             v-model="nodeForm.name" 
@@ -277,17 +284,45 @@
           <el-input
             v-model="nodeForm.config"
             type="textarea"
-            :rows="6"
+            :rows="isMobile ? 8 : 6"
             placeholder='请输入节点配置JSON'
+            class="config-textarea"
           />
         </el-form-item>
-        <el-form-item label="描述">
-          <el-input
-            v-model="nodeForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入节点描述"
-          />
+        <el-form-item label="节点链接">
+          <div class="node-link-container">
+            <div class="link-input-wrapper">
+              <el-input
+                :model-value="nodeLink"
+                readonly
+                type="textarea"
+                :rows="isMobile ? 4 : 3"
+                placeholder="节点链接将根据配置自动生成"
+                class="node-link-input"
+              />
+              <el-button 
+                @click="copyNodeLink" 
+                :disabled="!nodeLink"
+                type="primary"
+                class="copy-link-btn"
+                title="复制链接"
+              >
+                <el-icon style="margin-right: 5px;"><DocumentCopy /></el-icon>
+                复制链接
+              </el-button>
+            </div>
+            <div v-if="!nodeLink" class="link-tip">
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+              >
+                <template #default>
+                  <span>请先填写节点配置（JSON格式），系统将自动生成节点链接</span>
+                </template>
+              </el-alert>
+            </div>
+          </div>
         </el-form-item>
         <el-form-item label="推荐节点">
           <el-switch v-model="nodeForm.is_recommended" />
@@ -298,40 +333,48 @@
       </el-form>
       
       <template #footer>
-        <el-button @click="cancelAddNode">取消</el-button>
-        <el-button 
-          v-if="!editingNode && addNodeTab === 'link' && parsedNode"
-          type="primary" 
-          @click="saveNodeFromLink" 
-          :loading="saving"
-        >
-          保存节点
-        </el-button>
-        <el-button 
-          v-else-if="!editingNode && addNodeTab === 'link'"
-          type="success" 
-          @click="batchImportLinks" 
-          :loading="saving"
-        >
-          批量导入
-        </el-button>
-        <el-button 
-          v-else
-          type="primary" 
-          @click="saveNode" 
-          :loading="saving"
-        >
-          保存
-        </el-button>
+        <div class="dialog-footer-buttons">
+          <el-button @click="cancelAddNode" size="large" class="footer-btn">取消</el-button>
+          <el-button 
+            v-if="!editingNode && addNodeTab === 'link' && parsedNode"
+            type="primary" 
+            @click="saveNodeFromLink" 
+            :loading="saving"
+            size="large"
+            class="footer-btn"
+          >
+            保存节点
+          </el-button>
+          <el-button 
+            v-else-if="!editingNode && addNodeTab === 'link'"
+            type="success" 
+            @click="batchImportLinks" 
+            :loading="saving"
+            size="large"
+            class="footer-btn"
+          >
+            批量导入
+          </el-button>
+          <el-button 
+            v-else
+            type="primary" 
+            @click="saveNode" 
+            :loading="saving"
+            size="large"
+            class="footer-btn"
+          >
+            保存
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Search, Connection, Delete } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, Connection, Delete, DocumentCopy } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 
 export default {
@@ -341,7 +384,8 @@ export default {
     Refresh,
     Search,
     Connection,
-    Delete
+    Delete,
+    DocumentCopy
   },
   setup() {
     const loading = ref(false)
@@ -359,6 +403,14 @@ export default {
     const addNodeTab = ref('link')
     const nodeLinkInput = ref('')
     const parsedNode = ref(null)
+    const isMobile = ref(window.innerWidth <= 768)
+
+    // 监听窗口大小变化
+    const handleResize = () => {
+      if (typeof window !== 'undefined') {
+        isMobile.value = window.innerWidth <= 768
+      }
+    }
 
     const filters = reactive({
       status: '',
@@ -382,6 +434,174 @@ export default {
       is_recommended: false,
       is_active: true
     })
+
+    // 生成节点链接
+    const nodeLink = computed(() => {
+      // 只在编辑模式下生成链接
+      if (!editingNode.value || !nodeForm.config || !nodeForm.type) {
+        return ''
+      }
+
+      try {
+        // 解析配置JSON
+        let config
+        if (typeof nodeForm.config === 'string') {
+          if (!nodeForm.config.trim()) return ''
+          config = JSON.parse(nodeForm.config)
+        } else {
+          config = nodeForm.config
+        }
+
+        if (!config || typeof config !== 'object') {
+          return ''
+        }
+
+        const type = (nodeForm.type || '').toLowerCase()
+        const name = encodeURIComponent(nodeForm.name || '')
+        
+        if (type === 'vmess') {
+          // VMess格式: vmess://base64(json)
+          const vmessConfig = {
+            v: '2',
+            ps: nodeForm.name || '',
+            add: config.server || config.Server || '',
+            port: config.port || config.Port || 443,
+            id: config.uuid || config.UUID || config.id || '',
+            aid: config.aid || config.AID || 0,
+            scy: config.cipher || config.Cipher || config.scy || 'auto',
+            net: config.network || config.Network || config.net || 'tcp',
+            type: config.type || config.Type || 'none',
+            host: config.host || config.Host || '',
+            path: config.path || config.Path || '',
+            tls: (config.tls || config.TLS || config.security === 'tls') ? 'tls' : 'none',
+            sni: config.sni || config.SNI || '',
+            alpn: config.alpn || config.ALPN || ''
+          }
+          
+          // 检查必要字段
+          if (!vmessConfig.add || !vmessConfig.port || !vmessConfig.id) {
+            return ''
+          }
+          
+          const jsonStr = JSON.stringify(vmessConfig)
+          return `vmess://${btoa(unescape(encodeURIComponent(jsonStr)))}`
+        } else if (type === 'vless') {
+          // VLESS格式: vless://uuid@server:port?params#name
+          const uuid = config.uuid || config.UUID || config.id || ''
+          const server = config.server || config.Server || ''
+          const port = config.port || config.Port || 443
+          
+          if (!uuid || !server || !port) {
+            return ''
+          }
+          
+          const params = new URLSearchParams()
+          
+          if (config.type || config.Type) params.set('type', config.type || config.Type)
+          if (config.network || config.Network) params.set('network', config.network || config.Network)
+          if (config.security || config.Security) params.set('security', config.security || config.Security)
+          if (config.path || config.Path) params.set('path', config.path || config.Path)
+          if (config.host || config.Host) params.set('host', config.host || config.Host)
+          if (config.sni || config.SNI) params.set('sni', config.sni || config.SNI)
+          if (config.alpn || config.ALPN) params.set('alpn', config.alpn || config.ALPN)
+          if (config.flow || config.Flow) params.set('flow', config.flow || config.Flow)
+          
+          const query = params.toString()
+          return `vless://${uuid}@${server}:${port}${query ? '?' + query : ''}#${name}`
+        } else if (type === 'trojan') {
+          // Trojan格式: trojan://password@server:port?params#name
+          const password = config.password || config.Password || config.uuid || config.UUID || ''
+          const server = config.server || config.Server || ''
+          const port = config.port || config.Port || 443
+          
+          if (!password || !server || !port) {
+            return ''
+          }
+          
+          const params = new URLSearchParams()
+          
+          if (config.sni || config.SNI) params.set('sni', config.sni || config.SNI)
+          if (config.alpn || config.ALPN) params.set('alpn', config.alpn || config.ALPN)
+          if (config.type || config.Type) params.set('type', config.type || config.Type)
+          if (config.network || config.Network) params.set('network', config.network || config.Network)
+          if (config.path || config.Path) params.set('path', config.path || config.Path)
+          if (config.host || config.Host) params.set('host', config.host || config.Host)
+          
+          const query = params.toString()
+          return `trojan://${encodeURIComponent(password)}@${server}:${port}${query ? '?' + query : ''}#${name}`
+        } else if (type === 'ss') {
+          // Shadowsocks格式: ss://base64(method:password@server:port)#name
+          const method = config.cipher || config.Cipher || config.method || config.Method || 'aes-256-gcm'
+          const password = config.password || config.Password || ''
+          const server = config.server || config.Server || ''
+          const port = config.port || config.Port || 443
+          
+          if (!password || !server || !port) {
+            return ''
+          }
+          
+          const encoded = btoa(`${method}:${password}@${server}:${port}`)
+          return `ss://${encoded}#${name}`
+        } else if (type === 'ssr') {
+          // SSR格式比较复杂，这里简化处理
+          const server = config.server || config.Server || ''
+          const port = config.port || config.Port || 443
+          const password = config.password || config.Password || ''
+          const method = config.cipher || config.Cipher || config.method || config.Method || 'aes-256-cfb'
+          const protocol = config.protocol || config.Protocol || 'origin'
+          const obfs = config.obfs || config.Obfs || 'plain'
+          
+          if (!server || !port || !password) {
+            return ''
+          }
+          
+          // SSR格式: ssr://base64(server:port:protocol:method:obfs:base64(password)/?params)
+          const passwordBase64 = btoa(password)
+          const params = new URLSearchParams()
+          if (config.obfs_param || config.ObfsParam) params.set('obfsparam', btoa(config.obfs_param || config.ObfsParam))
+          if (config.protocol_param || config.ProtocolParam) params.set('protoparam', btoa(config.protocol_param || config.ProtocolParam))
+          if (config.remarks || config.Remarks) params.set('remarks', btoa(config.remarks || config.Remarks))
+          
+          const query = params.toString()
+          const ssrStr = `${server}:${port}:${protocol}:${method}:${obfs}:${passwordBase64}${query ? '/?' + query : ''}`
+          return `ssr://${btoa(ssrStr)}`
+        } else {
+          // 其他类型，返回空
+          return ''
+        }
+      } catch (error) {
+        console.error('生成节点链接失败:', error)
+        return ''
+      }
+    })
+
+    // 复制节点链接
+    const copyNodeLink = async () => {
+      if (!nodeLink.value) {
+        ElMessage.warning('节点链接为空，无法复制')
+        return
+      }
+
+      try {
+        await navigator.clipboard.writeText(nodeLink.value)
+        ElMessage.success('节点链接已复制到剪贴板')
+      } catch (error) {
+        // 降级方案：使用传统方法
+        const textarea = document.createElement('textarea')
+        textarea.value = nodeLink.value
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        try {
+          document.execCommand('copy')
+          ElMessage.success('节点链接已复制到剪贴板')
+        } catch (err) {
+          ElMessage.error('复制失败，请手动复制')
+        }
+        document.body.removeChild(textarea)
+      }
+    }
 
     const loadNodes = async () => {
       loading.value = true
@@ -559,13 +779,20 @@ export default {
 
     const editNode = (node) => {
       editingNode.value = node
-      nodeForm.name = node.name
-      nodeForm.region = node.region
-      nodeForm.type = node.type
-      nodeForm.config = node.config || ''
+      nodeForm.name = node.name || ''
+      nodeForm.region = node.region || ''
+      nodeForm.type = node.type || ''
+      // 确保config是字符串格式
+      if (typeof node.config === 'string') {
+        nodeForm.config = node.config
+      } else if (node.config) {
+        nodeForm.config = JSON.stringify(node.config, null, 2)
+      } else {
+        nodeForm.config = ''
+      }
       nodeForm.description = node.description || ''
       nodeForm.is_recommended = node.is_recommended || false
-      nodeForm.is_active = node.is_active
+      nodeForm.is_active = node.is_active !== undefined ? node.is_active : true
       showAddDialog.value = true
     }
 
@@ -851,6 +1078,17 @@ export default {
 
     onMounted(() => {
       loadNodes()
+      // 初始化窗口大小
+      if (typeof window !== 'undefined') {
+        window.addEventListener('resize', handleResize)
+      }
+    })
+
+    onUnmounted(() => {
+      // 清理窗口大小监听
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', handleResize)
+      }
     })
 
     return {
@@ -875,6 +1113,8 @@ export default {
       toggleNodeStatus,
       editNode,
       saveNode,
+      nodeLink,
+      copyNodeLink,
       deleteNode,
       handleSelectionChange,
       getStatusType,
@@ -890,7 +1130,8 @@ export default {
       batchImportLinks,
       cancelAddNode,
       extractServerFromConfig,
-      extractPortFromConfig
+      extractPortFromConfig,
+      isMobile
     }
   }
 }
@@ -899,6 +1140,433 @@ export default {
 <style scoped>
 .admin-nodes {
   padding: 20px;
+}
+
+/* 节点链接容器样式 */
+.node-link-container {
+  width: 100%;
+}
+
+.link-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.node-link-input {
+  width: 100%;
+}
+
+.node-link-input :deep(.el-textarea__inner) {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  word-break: break-all;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.copy-link-btn {
+  align-self: flex-start;
+  min-width: 120px;
+}
+
+.link-tip {
+  margin-top: 10px;
+}
+
+.link-tip :deep(.el-alert) {
+  padding: 12px 16px;
+}
+
+.link-tip :deep(.el-alert__content) {
+  font-size: 13px;
+}
+
+/* 手机端优化 */
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  
+  .admin-nodes {
+    padding: 10px;
+  }
+  
+  .filter-bar {
+    flex-direction: column;
+    gap: 8px;
+    
+    .el-select,
+    .el-input {
+      width: 100% !important;
+    }
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    
+    .el-button {
+      flex: 1;
+      min-width: 0;
+      min-height: 44px;
+      font-size: 16px;
+    }
+  }
+  
+  /* 表格容器 */
+  .table-container {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* 表格优化 */
+  .nodes-table {
+    min-width: 600px; /* 手机端最小宽度，允许横向滚动 */
+  }
+  
+  :deep(.nodes-table) {
+    font-size: 12px;
+    
+    .el-table__cell {
+      padding: 6px 3px;
+    }
+    
+    /* 移除固定列，避免遮挡 */
+    .el-table__fixed,
+    .el-table__fixed-right {
+      display: none !important;
+    }
+    
+    /* 手机端隐藏不重要的列 */
+    .mobile-hide {
+      display: none !important;
+    }
+    
+    /* 操作列宽度优化 */
+    .action-column {
+      width: 100px !important;
+      min-width: 100px !important;
+      
+      .el-table__cell {
+        padding: 4px 2px;
+      }
+    }
+  }
+  
+  /* 操作按钮优化 - 手机端垂直排列 */
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+    width: 100%;
+    
+    .el-button {
+      width: 100%;
+      min-height: 32px;
+      font-size: 12px;
+      padding: 6px 8px;
+      margin: 0;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  }
+  
+  /* 对话框优化 */
+  .node-edit-dialog {
+    :deep(.el-dialog) {
+      width: 95% !important;
+      margin: 2vh auto !important;
+      max-height: 96vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    :deep(.el-dialog__header) {
+      padding: 15px 15px 10px;
+      flex-shrink: 0;
+      
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+    }
+    
+    :deep(.el-dialog__body) {
+      padding: 15px !important;
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    :deep(.el-dialog__footer) {
+      padding: 10px 15px 15px;
+      flex-shrink: 0;
+      border-top: 1px solid #ebeef5;
+      
+      .el-button {
+        min-height: 44px;
+        font-size: 16px;
+        padding: 10px 20px;
+      }
+    }
+  }
+  
+  /* 编辑表单优化 */
+  .node-edit-form {
+    :deep(.el-form-item) {
+      margin-bottom: 20px;
+    }
+    
+    :deep(.el-form-item__label) {
+      font-size: 14px;
+      font-weight: 500;
+      padding-bottom: 8px;
+      line-height: 1.5;
+    }
+    
+    :deep(.el-form-item__content) {
+      .el-input,
+      .el-select,
+      .el-textarea {
+        width: 100%;
+      }
+    }
+  }
+  
+  /* 节点链接区域优化 */
+  .link-input-wrapper {
+    gap: 8px;
+  }
+  
+  .copy-link-btn {
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  
+  .node-link-input :deep(.el-textarea__inner) {
+    font-size: 12px;
+    padding: 8px;
+  }
+  
+  .link-tip {
+    margin-top: 8px;
+  }
+  
+  .link-tip :deep(.el-alert) {
+    padding: 10px 12px;
+  }
+  
+  .link-tip :deep(.el-alert__content) {
+    font-size: 12px;
+  }
+  
+  /* 表单优化 */
+  .node-edit-form {
+    :deep(.el-form-item) {
+      margin-bottom: 20px;
+    }
+    
+    :deep(.el-form-item__label) {
+      font-size: 14px;
+      font-weight: 500;
+      padding-bottom: 8px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    
+    :deep(.el-form-item__content) {
+      .el-input,
+      .el-select,
+      .el-textarea {
+        width: 100%;
+      }
+    }
+  }
+  
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-textarea) {
+    font-size: 16px; /* 防止iOS自动缩放 */
+  }
+  
+  :deep(.el-input__inner),
+  :deep(.el-textarea__inner) {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 4px;
+  }
+  
+  :deep(.el-select .el-input__inner) {
+    height: 44px;
+    line-height: 44px;
+  }
+  
+  /* 配置文本域优化 */
+  .config-textarea :deep(.el-textarea__inner) {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  
+  /* 对话框底部按钮优化 */
+  .dialog-footer-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    
+    .footer-btn {
+      flex: 1;
+      min-width: 100px;
+      min-height: 44px;
+      font-size: 16px;
+    }
+  }
+  
+  /* 手机端对话框额外优化 */
+  @media (max-width: 768px) {
+    .node-edit-dialog {
+      :deep(.el-dialog) {
+        width: 95% !important;
+        margin: 1vh auto !important;
+        max-height: 98vh;
+        border-radius: 8px;
+      }
+      
+      :deep(.el-dialog__header) {
+        padding: 12px 12px 8px;
+        
+        .el-dialog__title {
+          font-size: 16px;
+        }
+        
+        .el-dialog__headerbtn {
+          top: 8px;
+          right: 8px;
+          width: 32px;
+          height: 32px;
+          
+          .el-dialog__close {
+            font-size: 18px;
+          }
+        }
+      }
+      
+      :deep(.el-dialog__body) {
+        padding: 12px !important;
+        font-size: 14px;
+      }
+      
+      :deep(.el-dialog__footer) {
+        padding: 8px 12px 12px;
+        
+        .el-button {
+          min-height: 44px;
+          font-size: 16px;
+          padding: 12px 16px;
+        }
+      }
+    }
+    
+    .node-edit-form {
+      :deep(.el-form-item) {
+        margin-bottom: 18px;
+      }
+      
+      :deep(.el-form-item__label) {
+        font-size: 14px;
+        padding-bottom: 6px;
+        width: 80px !important;
+        text-align: left;
+      }
+      
+      :deep(.el-form-item__content) {
+        margin-left: 80px !important;
+      }
+    }
+    
+    .dialog-footer-buttons {
+      flex-direction: column;
+      gap: 8px;
+      
+      .footer-btn {
+        width: 100%;
+        min-height: 48px;
+        font-size: 16px;
+        font-weight: 500;
+      }
+    }
+    
+    /* 节点链接区域手机端优化 */
+    .node-link-container {
+      .link-input-wrapper {
+        gap: 10px;
+      }
+      
+      .copy-link-btn {
+        width: 100%;
+        min-height: 48px;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      
+      .node-link-input :deep(.el-textarea__inner) {
+        font-size: 13px;
+        padding: 10px;
+        line-height: 1.5;
+      }
+    }
+    
+    /* 配置文本域手机端优化 */
+    .config-textarea :deep(.el-textarea__inner) {
+      font-size: 13px;
+      padding: 10px;
+      line-height: 1.6;
+    }
+  }
+  
+  /* 分页优化 */
+  .pagination-container {
+    margin-top: 15px;
+    
+    :deep(.el-pagination) {
+      .el-pagination__sizes,
+      .el-pagination__jump {
+        display: none;
+      }
+      
+      .el-pagination__total {
+        display: none;
+      }
+      
+      .btn-prev,
+      .btn-next {
+        padding: 8px 12px;
+        min-width: 40px;
+        min-height: 40px;
+      }
+      
+      .number {
+        min-width: 36px;
+        height: 36px;
+        line-height: 36px;
+        font-size: 14px;
+      }
+    }
+  }
 }
 
 .filter-bar {
@@ -984,22 +1652,5 @@ export default {
   border-radius: 0 !important;
 }
 
-@media (max-width: 768px) {
-  .desktop-only {
-    display: none;
-  }
-  
-  .admin-nodes {
-    padding: 10px;
-  }
-  
-  .filter-bar {
-    flex-direction: column;
-  }
-  
-  .filter-bar > * {
-    width: 100% !important;
-  }
-}
 </style>
 
