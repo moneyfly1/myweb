@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"cboard-go/internal/core/database"
-	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
@@ -316,15 +315,9 @@ func GetTicket(c *gin.Context) {
 
 	if err := query.First(&ticket).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "工单不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "工单不存在", err)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取工单失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单失败", err)
 		}
 		return
 	}

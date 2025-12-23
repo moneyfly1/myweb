@@ -465,10 +465,9 @@ func GetConfigUpdateStatus(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	status := service.GetStatus()
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-			"is_running":  status["is_running"],
-			"last_update": status["last_update"],
-			"next_update": status["next_update"],
-		},
+		"is_running":  status["is_running"],
+		"last_update": status["last_update"],
+		"next_update": status["next_update"],
 	})
 }
 
