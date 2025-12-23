@@ -86,12 +86,12 @@ func GetLocation(ipAddress string) (*LocationInfo, error) {
 		return nil, fmt.Errorf("GeoIP 未启用")
 	}
 
-	// 处理IPv6映射的IPv4地址
+	// 处理IPv6映射的IPv4地址（注意：ip.go 的 ParseIP 已经处理过，这里作为二次检查）
 	if len(ipAddress) > 7 && ipAddress[:7] == "::ffff:" {
 		ipAddress = ipAddress[7:]
 	}
 
-	// 跳过本地地址
+	// 跳过本地地址（注意：ip.go 的 ParseIP 已经将 ::1 转换为 127.0.0.1，这里作为二次检查）
 	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
 		return nil, fmt.Errorf("本地地址，跳过解析")
 	}
@@ -143,7 +143,7 @@ func GetLocation(ipAddress string) (*LocationInfo, error) {
 
 // GetLocationString 获取格式化的位置字符串
 func GetLocationString(ipAddress string) sql.NullString {
-	// 处理本地IP和内网IP
+	// 处理本地IP和内网IP（注意：ip.go 的 ParseIP 已经将 ::1 转换为 127.0.0.1，这里作为二次检查）
 	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
 		return sql.NullString{String: "本地", Valid: true}
 	}
