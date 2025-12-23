@@ -460,6 +460,9 @@ func GetAdminOrders(c *gin.Context) {
 	}
 	countQuery.Count(&total)
 
+	// 使用 Preload 预加载 User 和 Package，避免 N+1 查询
+	query = query.Preload("User").Preload("Package")
+
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&orders).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

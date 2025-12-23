@@ -14,9 +14,9 @@ type Subscription struct {
 	CurrentDevices  int       `gorm:"default:0" json:"current_devices"`
 	UniversalCount  int       `gorm:"default:0" json:"universal_count"` // 通用订阅次数
 	ClashCount      int       `gorm:"default:0" json:"clash_count"`      // 猫咪订阅次数
-	IsActive        bool      `gorm:"default:true" json:"is_active"`
-	Status          string    `gorm:"type:varchar(20);default:active" json:"status"`
-	ExpireTime      time.Time `gorm:"not null" json:"expire_time"`
+	IsActive        bool      `gorm:"default:true;index" json:"is_active"`
+	Status          string    `gorm:"type:varchar(20);default:active;index" json:"status"`
+	ExpireTime      time.Time `gorm:"not null;index" json:"expire_time"`
 	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
