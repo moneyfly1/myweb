@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"cboard-go/internal/core/database"
-	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
@@ -15,9 +14,8 @@ import (
 
 // GetDevices 获取用户设备列表
 func GetDevices(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 
@@ -29,7 +27,7 @@ func GetDevices(c *gin.Context) {
 	db.Model(&models.Subscription{}).Where("user_id = ?", user.ID).Pluck("id", &subscriptionIDs)
 
 	if len(subscriptionIDs) == 0 {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": []gin.H{}})
+		utils.SuccessResponse(c, http.StatusOK, "", []gin.H{})
 		return
 	}
 
@@ -37,8 +35,7 @@ func GetDevices(c *gin.Context) {
 	if err := db.Where("subscription_id IN ?", subscriptionIDs).
 		Order("last_access DESC").
 		Find(&devices).Error; err != nil {
-		utils.LogError("GetDevices: query devices failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取设备列表失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取设备列表失败", err)
 		return
 	}
 
@@ -87,14 +84,13 @@ func GetDevices(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": deviceList})
+	utils.SuccessResponse(c, http.StatusOK, "", deviceList)
 }
 
 // DeleteDevice 用户删除自己的设备
 func DeleteDevice(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
 
@@ -108,18 +104,16 @@ func DeleteDevice(c *gin.Context) {
 		Where("subscriptions.user_id = ?", user.ID).
 		First(&device).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "设备不存在或无权限"})
+			utils.ErrorResponse(c, http.StatusNotFound, "设备不存在或无权限", err)
 		} else {
-			utils.LogError("DeleteDevice: query device failed", err, nil)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询设备失败"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询设备失败", err)
 		}
 		return
 	}
 
 	// 删除设备
 	if err := db.Delete(&device).Error; err != nil {
-		utils.LogError("DeleteDevice: delete device failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除设备失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
 		return
 	}
 
@@ -131,7 +125,7 @@ func DeleteDevice(c *gin.Context) {
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已删除"})
+	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
 }
 
 // RemoveDevice 管理员删除设备
@@ -142,10 +136,9 @@ func RemoveDevice(c *gin.Context) {
 	var device models.Device
 	if err := db.First(&device, deviceID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "设备不存在"})
+			utils.ErrorResponse(c, http.StatusNotFound, "设备不存在", err)
 		} else {
-			utils.LogError("RemoveDevice: query device failed", err, nil)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询设备失败"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询设备失败", err)
 		}
 		return
 	}
@@ -156,8 +149,7 @@ func RemoveDevice(c *gin.Context) {
 
 	// 删除设备
 	if err := db.Delete(&device).Error; err != nil {
-		utils.LogError("RemoveDevice: delete device failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除设备失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
 		return
 	}
 
@@ -169,7 +161,7 @@ func RemoveDevice(c *gin.Context) {
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "admin_delete_device", "device", device.ID, fmt.Sprintf("管理员删除设备: %s", deviceInfo))
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "设备已删除"})
+	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
 }
 
 // BatchDeleteDevices 批量删除设备（管理员）
@@ -179,12 +171,12 @@ func BatchDeleteDevices(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.DeviceIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "设备ID列表不能为空"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "设备ID列表不能为空", nil)
 		return
 	}
 
@@ -193,13 +185,12 @@ func BatchDeleteDevices(c *gin.Context) {
 	// 查询要删除的设备
 	var devices []models.Device
 	if err := db.Where("id IN ?", req.DeviceIDs).Find(&devices).Error; err != nil {
-		utils.LogError("BatchDeleteDevices: query devices failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询设备失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询设备失败", err)
 		return
 	}
 
 	if len(devices) == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "未找到要删除的设备"})
+		utils.ErrorResponse(c, http.StatusNotFound, "未找到要删除的设备", nil)
 		return
 	}
 
@@ -211,8 +202,7 @@ func BatchDeleteDevices(c *gin.Context) {
 
 	// 批量删除设备
 	if err := db.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
-		utils.LogError("BatchDeleteDevices: delete devices failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "批量删除设备失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除设备失败", err)
 		return
 	}
 
@@ -226,11 +216,7 @@ func BatchDeleteDevices(c *gin.Context) {
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "batch_delete_devices", "device", 0, fmt.Sprintf("管理员批量删除设备: %d 个", len(devices)))
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功删除 %d 个设备", len(devices)),
-		"data":    gin.H{"deleted_count": len(devices)},
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个设备", len(devices)), gin.H{"deleted_count": len(devices)})
 }
 
 // GetDeviceStats 获取设备统计（管理员）
