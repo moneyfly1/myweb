@@ -223,11 +223,7 @@ func UpdateCurrentUser(c *gin.Context) {
 		responseData["avatar_url"] = user.Avatar.String
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    responseData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", responseData)
 }
 
 func GetUsers(c *gin.Context) {

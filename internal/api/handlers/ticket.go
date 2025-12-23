@@ -179,10 +179,7 @@ func GetTickets(c *gin.Context) {
 	var tickets []models.Ticket
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&tickets).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取工单列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单列表失败", err)
 		return
 	}
 
