@@ -581,10 +581,7 @@ func CreateUser(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// 不向客户端返回详细错误信息，防止信息泄露
 		utils.LogError("CreateUser: bind request", err, nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
