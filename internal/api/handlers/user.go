@@ -585,30 +585,21 @@ func CreateUser(c *gin.Context) {
 
 	var existingUser models.User
 	if err := db.Where("email = ? OR username = ?", req.Email, req.Username).First(&existingUser).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "邮箱或用户名已存在",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "邮箱或用户名已存在", nil)
 		return
 	}
 
 	// 验证密码强度
 	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
 	if !valid {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": msg,
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
 	// 哈希密码
 	hashedPassword, err := auth.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "密码加密失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "密码加密失败", err)
 		return
 	}
 
@@ -696,11 +687,7 @@ func CreateUser(c *gin.Context) {
 	}()
 
 	utils.SetResponseStatus(c, http.StatusCreated)
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"message": "创建成功",
-		"data":    user,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "创建成功", user)
 }
 
 // UpdateUser 更新用户（管理员）
