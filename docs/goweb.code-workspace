@@ -2,9 +2,6 @@
 	"folders": [
 		{
 			"path": ".."
-		},
-		{
-			"path": "../../v2ray-agent-master"
 		}
 	],
 	"settings": {}

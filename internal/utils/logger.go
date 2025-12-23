@@ -75,3 +75,30 @@ func LogAudit(userID uint, actionType, resourceType string, resourceID uint, des
 			userID, actionType, resourceType, resourceID, description)
 	}
 }
+
+// LogInfo 记录信息日志（如果 AppLogger 未初始化，则使用标准 log）
+func LogInfo(format string, v ...interface{}) {
+	if AppLogger != nil {
+		AppLogger.Info(format, v...)
+	} else {
+		log.Printf("[INFO] "+format, v...)
+	}
+}
+
+// LogWarn 记录警告日志（如果 AppLogger 未初始化，则使用标准 log）
+func LogWarn(format string, v ...interface{}) {
+	if AppLogger != nil {
+		AppLogger.Warn(format, v...)
+	} else {
+		log.Printf("[WARN] "+format, v...)
+	}
+}
+
+// LogErrorMsg 记录错误日志消息（如果 AppLogger 未初始化，则使用标准 log）
+func LogErrorMsg(format string, v ...interface{}) {
+	if AppLogger != nil {
+		AppLogger.Error(format, v...)
+	} else {
+		log.Printf("[ERROR] "+format, v...)
+	}
+}

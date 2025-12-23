@@ -1243,6 +1243,7 @@ export default {
 
 :deep(.el-input__inner[type="number"]) {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 :deep(.el-input__prefix),
