@@ -17,12 +17,8 @@ import (
 
 // GetUnreadTicketRepliesCount 获取未读工单回复总数（用户和管理员通用）
 func GetUnreadTicketRepliesCount(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
@@ -64,22 +60,15 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 		totalUnread = unreadReplies + newTickets
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"count": totalUnread,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"count": totalUnread,
 	})
 }
 
 // CreateTicket 创建工单
 func CreateTicket(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
@@ -91,10 +80,7 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -133,10 +119,7 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	if err := db.Create(&ticket).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建工单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建工单失败", err)
 		return
 	}
 
@@ -144,20 +127,13 @@ func CreateTicket(c *gin.Context) {
 	utils.SetResponseStatus(c, http.StatusCreated)
 	utils.CreateAuditLogSimple(c, "create_ticket", "ticket", ticket.ID, fmt.Sprintf("创建工单: %s", ticket.Title))
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data":    ticket,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "", ticket)
 }
 
 // GetTickets 获取工单列表
 func GetTickets(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 

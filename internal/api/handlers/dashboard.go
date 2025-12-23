@@ -314,7 +314,15 @@ func GetAbnormalUsers(c *gin.Context) {
 	var users []models.User
 	query.Order("created_at DESC").Limit(200).Find(&users)
 
-	// 转换为前端需要的格式
+	// 使用辅助函数构建异常用户数据
+	userList := buildAbnormalUserData(db, users)
+	utils.SuccessResponse(c, http.StatusOK, "", userList)
+}
+
+// buildAbnormalUserData 的旧代码已移动到 dashboard_helpers.go
+func buildAbnormalUserData_old(db *gorm.DB, users []models.User) []gin.H {
+	now := utils.GetBeijingTime()
+	oneMonthAgo := now.AddDate(0, -1, 0)
 	userList := make([]gin.H, 0)
 	for _, user := range users {
 		lastLogin := "从未登录"
