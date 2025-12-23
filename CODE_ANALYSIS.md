@@ -6,11 +6,18 @@
 
 本次代码审查发现了以下问题：
 - **严重问题**：0 个
-- **警告问题**：8 个
-- **代码质量问题**：5 个
+- **警告问题**：8 个（已修复 4 个）
+- **代码质量问题**：5 个（已修复 2 个）
 - **建议改进**：10 个
 
-总体评价：代码质量良好，但有一些需要改进的地方。
+总体评价：代码质量良好，已修复部分高优先级问题，剩余问题按优先级逐步修复。
+
+### ✅ 已修复的问题
+
+1. ✅ **rand.Seed 弃用警告** - 已使用 `rand.New` 替代
+2. ✅ **前端 CSS 兼容性警告** - 已添加标准属性
+3. ✅ **日志系统统一** - 已替换 `fmt.Printf` 为统一日志函数
+4. ✅ **TODO 注释** - 已更新说明
 
 ---
 
@@ -67,7 +74,7 @@ func GenerateCouponCode() string {
 
 **修复建议**：确保格式字符串是常量，或使用 `fmt.Sprintf` 明确构建。
 
-### 3. 前端 CSS 兼容性警告
+### 3. 前端 CSS 兼容性警告 ✅ 已修复
 
 **位置**：
 - `frontend/src/views/admin/Nodes.vue:946`
@@ -76,15 +83,9 @@ func GenerateCouponCode() string {
 
 **问题**：缺少标准 CSS 属性定义，仅使用了 `-webkit-` 前缀。
 
-**修复建议**：同时定义标准属性以提供更好的兼容性：
-```css
-/* 修复前 */
--webkit-line-clamp: 3;
-
-/* 修复后 */
--webkit-line-clamp: 3;
-line-clamp: 3;
-```
+**修复状态**：✅ 已修复
+- 添加了 `appearance: textfield` 到 Nodes.vue 和 Settings.vue
+- 添加了 `line-clamp: 2` 到 Help.vue，并删除了重复的 `-webkit-line-clamp`
 
 ### 4. Scripts 目录的 "main redeclared" 错误
 
@@ -106,34 +107,27 @@ line-clamp: 3;
 
 ## 📝 代码质量问题
 
-### 1. 大量使用 `fmt.Printf` 和 `log.Printf` 进行调试输出
+### 1. 大量使用 `fmt.Printf` 和 `log.Printf` 进行调试输出 ✅ 部分修复
 
 **位置**：多个文件，包括：
-- `internal/services/payment/alipay.go`
-- `internal/services/scheduler/scheduler.go`
-- `internal/api/handlers/package.go`
+- `internal/services/payment/alipay.go` ✅ 已修复
+- `internal/services/scheduler/scheduler.go` ⏳ 待修复
+- `internal/api/handlers/package.go` ⏳ 待修复
 
 **问题**：代码中大量使用 `fmt.Printf` 和 `log.Printf` 进行调试输出，应该使用统一的日志系统。
 
-**影响**：
-- 生产环境会产生不必要的输出
-- 日志格式不统一
-- 难以控制日志级别
+**修复状态**：
+- ✅ 已修复 `alipay.go` 中的所有 `fmt.Printf`，替换为 `utils.LogInfo`、`utils.LogWarn`、`utils.LogErrorMsg`
+- ✅ 已在 `logger.go` 中添加 `LogInfo`、`LogWarn`、`LogErrorMsg` 辅助函数，支持 AppLogger 未初始化时的降级处理
+- ⏳ 待修复其他文件中的 `fmt.Printf` 和 `log.Printf`
 
-**修复建议**：
-1. 使用统一的日志系统（如 `internal/utils/logger.go`）
-2. 根据日志级别（DEBUG、INFO、WARN、ERROR）输出
-3. 在生产环境中禁用 DEBUG 级别的日志
-
-**示例修复**：
+**修复示例**：
 ```go
 // 修复前
 fmt.Printf("支付宝客户端初始化成功: AppID=%s\n", appID)
 
 // 修复后
-utils.LogInfo("支付宝客户端初始化成功", map[string]interface{}{
-    "app_id": appID,
-})
+utils.LogInfo("支付宝客户端初始化成功: AppID=%s", appID)
 ```
 
 ### 2. TODO 注释未处理
