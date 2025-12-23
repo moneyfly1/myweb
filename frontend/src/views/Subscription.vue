@@ -756,12 +756,14 @@ export default {
       const url = order.payment_url || order.payment_qr_code
       paymentUrl.value = url
       try {
-        paymentQRCode.value = await QRCode.toDataURL(url, {
-          width: 256,
+        // 根据设备类型调整二维码参数
+        const qrOptions = {
+          width: isMobile.value ? 200 : 256, // 手机端使用较小的尺寸
           margin: 2,
           color: { dark: '#000000', light: '#FFFFFF' },
-          errorCorrectionLevel: 'M'
-        })
+          errorCorrectionLevel: 'M' // 使用中等纠错级别，避免二维码过于复杂
+        }
+        paymentQRCode.value = await QRCode.toDataURL(url, qrOptions)
         paymentQRVisible.value = true
         startPaymentStatusCheck()
       } catch (error) {

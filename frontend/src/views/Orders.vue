@@ -513,7 +513,7 @@
         
         <div class="payment-actions">
           <el-button 
-            v-if="isMobile && selectedOrder?.payment_method === 'alipay' && paymentUrl"
+            v-if="isMobile && paymentUrl && (selectedOrder?.payment_method === 'alipay' || selectedOrder?.payment_method_name === 'alipay' || paymentUrl.includes('alipay'))"
             type="success"
             size="large"
             @click="openAlipayApp"
@@ -526,13 +526,15 @@
             @click="checkPaymentStatus" 
             :loading="isCheckingPayment"
             type="primary"
-            :style="isMobile && selectedOrder?.payment_method === 'alipay' && paymentUrl ? 'width: 100%; margin-bottom: 10px;' : ''"
+            size="large"
+            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
           >
             检查支付状态
           </el-button>
           <el-button 
             @click="closePaymentQR"
-            :style="isMobile && selectedOrder?.payment_method === 'alipay' && paymentUrl ? 'width: 100%;' : ''"
+            size="large"
+            :style="isMobile ? 'width: 100%;' : ''"
           >
             关闭
           </el-button>
@@ -547,7 +549,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Refresh, Wallet, ShoppingCart } from '@element-plus/icons-vue'
-import { useApi, rechargeAPI } from '@/utils/api'
+import { useApi, rechargeAPI, paymentAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
 
 export default {
@@ -714,6 +716,7 @@ export default {
         amount: order.amount,
         status: order.status,
         payment_method: order.payment_method || order.payment_method_name,
+        payment_method_id: order.payment_method_id, // 保留支付方式ID
         created_at: order.created_at,
         paid_at: order.paid_at || order.payment_time
       }
@@ -803,6 +806,7 @@ export default {
           package_name: order.package_name,
           status: order.status,
           payment_method: order.payment_method || order.payment_method_name,
+          payment_method_id: order.payment_method_id, // 保留支付方式ID
           created_at: order.created_at,
           paid_at: order.paid_at || order.payment_time
         }))
@@ -903,8 +907,52 @@ export default {
           return
         }
         
-        // 调用立即支付API
-        const response = await api.post(`/orders/${orderNo}/pay`)
+        // 获取支付方式ID
+        let paymentMethodId = order.payment_method_id
+        
+        // 如果订单中没有 payment_method_id，尝试根据 payment_method 查找
+        if (!paymentMethodId && order.payment_method) {
+          try {
+            const paymentMethodsResponse = await paymentAPI.getPaymentMethods()
+            const paymentMethods = paymentMethodsResponse.data?.data || paymentMethodsResponse.data || []
+            
+            // 根据支付方式名称或类型查找对应的ID
+            const paymentMethodMap = {
+              'alipay': 'alipay',
+              '支付宝': 'alipay',
+              'wechat': 'wechat',
+              '微信支付': 'wechat',
+              'weixin': 'wechat'
+            }
+            
+            const methodKey = paymentMethodMap[order.payment_method] || order.payment_method
+            const matchedMethod = paymentMethods.find(m => 
+              m.key === methodKey || 
+              m.name === order.payment_method ||
+              m.pay_type === methodKey
+            )
+            
+            if (matchedMethod) {
+              paymentMethodId = matchedMethod.id
+            } else if (paymentMethods.length > 0) {
+              // 如果没有找到匹配的，使用第一个可用的支付方式
+              paymentMethodId = paymentMethods[0].id
+            }
+          } catch (error) {
+            console.warn('获取支付方式列表失败:', error)
+          }
+        }
+        
+        // 如果仍然没有 payment_method_id，提示错误
+        if (!paymentMethodId) {
+          ElMessage.error('无法确定支付方式，请刷新页面后重试')
+          return
+        }
+        
+        // 调用立即支付API，传递 payment_method_id
+        const response = await api.post(`/orders/${orderNo}/pay`, {
+          payment_method_id: paymentMethodId
+        })
         
         // 检查响应结构
         if (response.data && response.data.success !== false) {
@@ -915,7 +963,8 @@ export default {
             // 显示支付二维码
             await showPaymentQR({
               ...order,
-              order_no: orderNo
+              order_no: orderNo,
+              payment_method_id: paymentMethodId
             }, paymentUrl)
           } else {
             // 检查是否有错误信息
@@ -1103,8 +1152,49 @@ export default {
         // 从订单信息中重新获取支付URL并生成二维码
         if (selectedOrder.value) {
           try {
-            // 重新调用支付API获取支付URL
-            const response = await api.post(`/orders/${selectedOrder.value.order_no}/pay`)
+            // 获取支付方式ID
+            let paymentMethodId = selectedOrder.value.payment_method_id
+            
+            // 如果没有 payment_method_id，尝试获取
+            if (!paymentMethodId) {
+              try {
+                const paymentMethodsResponse = await paymentAPI.getPaymentMethods()
+                const paymentMethods = paymentMethodsResponse.data?.data || paymentMethodsResponse.data || []
+                
+                const paymentMethodMap = {
+                  'alipay': 'alipay',
+                  '支付宝': 'alipay',
+                  'wechat': 'wechat',
+                  '微信支付': 'wechat',
+                  'weixin': 'wechat'
+                }
+                
+                const methodKey = paymentMethodMap[selectedOrder.value.payment_method] || selectedOrder.value.payment_method
+                const matchedMethod = paymentMethods.find(m => 
+                  m.key === methodKey || 
+                  m.name === selectedOrder.value.payment_method ||
+                  m.pay_type === methodKey
+                )
+                
+                if (matchedMethod) {
+                  paymentMethodId = matchedMethod.id
+                } else if (paymentMethods.length > 0) {
+                  paymentMethodId = paymentMethods[0].id
+                }
+              } catch (error) {
+                console.warn('获取支付方式列表失败:', error)
+              }
+            }
+            
+            if (!paymentMethodId) {
+              ElMessage.error('无法确定支付方式，请刷新页面后重试')
+              return
+            }
+            
+            // 重新调用支付API获取支付URL，传递 payment_method_id
+            const response = await api.post(`/orders/${selectedOrder.value.order_no}/pay`, {
+              payment_method_id: paymentMethodId
+            })
             const paymentUrl = response.data.data?.payment_url || response.data.data?.payment_qr_code
             
             if (paymentUrl) {
@@ -1122,7 +1212,7 @@ export default {
               event.target.src = qrCodeDataURL
               }
           } catch (error) {
-            ElMessage.error('二维码生成失败，请刷新页面重试')
+            ElMessage.error('二维码生成失败，请刷新页面后重试')
           }
         }
       }
@@ -1714,31 +1804,23 @@ export default {
       pointer-events: auto !important;
       cursor: pointer !important;
       flex: 1;
-      min-height: 32px;
-      padding: 8px 15px;
-      line-height: 1;
+      min-height: 44px; /* 增加最小高度，方便手机端点击 */
+      padding: 10px 15px;
+      line-height: 1.5;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      touch-action: manipulation; /* 优化移动端触摸 */
+      -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1); /* 添加点击反馈 */
       
       // 确保按钮内部所有元素都可以点击
       :deep(*) {
-        pointer-events: none;
+        pointer-events: auto; /* 改为auto，允许点击 */
       }
       
-      // 确保按钮本身可以点击
-      &::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: -1;
-        pointer-events: auto;
-      }
+      // 移除伪元素，避免干扰点击
       
-      &:hover {
+      &:hover, &:active {
         z-index: 12;
       }
     }

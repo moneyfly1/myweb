@@ -56,11 +56,14 @@
         </div>
       </template>
 
-      <el-table 
-        :data="filteredNodes" 
-        v-loading="loading"
-        style="width: 100%"
-      >
+      <!-- 桌面端表格 -->
+      <div class="table-wrapper">
+        <el-table 
+          :data="filteredNodes" 
+          v-loading="loading"
+          style="width: 100%"
+          class="desktop-table"
+        >
         <el-table-column prop="name" label="节点名称" min-width="150">
           <template #default="{ row }">
             <div class="node-name">
@@ -101,46 +104,9 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="延迟" width="120">
-          <template #default="{ row }">
-            <div class="latency-cell">
-              <span v-if="row.latency > 0" :class="getLatencyClass(row.latency)">
-                {{ row.latency }}ms
-              </span>
-              <span v-else style="color: #909399">未测试</span>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="最后测试" width="150">
-          <template #default="{ row }">
-            <span v-if="row.last_test" class="last-test-time">
-              {{ formatLastTestTime(row.last_test) }}
-            </span>
-            <span v-else style="color: #909399">从未测试</span>
-          </template>
-        </el-table-column>
-
-
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <el-button 
-              size="small" 
-              type="primary" 
-              @click="testNode(row)" 
-              :loading="row.testing"
-            >
-              测试
-            </el-button>
-            <el-button 
-              size="small" 
-              @click="viewNodeDetail(row)"
-            >
-              详情
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+        <!-- 移除延迟、最后测试和操作列，用户端不需要这些功能 -->
+        </el-table>
+      </div>
 
       <!-- 空状态 -->
       <el-empty 
@@ -153,66 +119,59 @@
       </el-empty>
     </el-card>
 
-    <!-- 节点详情对话框 -->
-    <el-dialog
-      v-model="detailDialogVisible"
-      title="节点详情"
-      width="600px"
-    >
-      <div class="node-detail" v-if="selectedNode">
-        <div class="detail-item">
-          <span class="label">节点名称：</span>
-          <span class="value">{{ selectedNode.name }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">地区：</span>
-          <span class="value">{{ selectedNode.region }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">类型：</span>
-          <span class="value">{{ selectedNode.type }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">状态：</span>
+    <!-- 移动端卡片式列表 -->
+    <div class="mobile-card-list" v-if="filteredNodes.length > 0">
+      <div 
+        v-for="node in filteredNodes" 
+        :key="node.id"
+        class="mobile-node-card"
+      >
+        <div class="card-row">
+          <span class="label">节点名称</span>
           <span class="value">
-            <el-tag :type="selectedNode.status === 'online' ? 'success' : 'danger'">
-              {{ selectedNode.status === 'online' ? '在线' : '离线' }}
+            <i :class="getNodeIcon(node.type)"></i>
+            {{ node.name }}
+            <el-tag 
+              v-if="node.is_recommended" 
+              type="success" 
+              size="small"
+              style="margin-left: 8px;"
+            >
+              推荐
             </el-tag>
           </span>
         </div>
-        <div class="detail-item">
-          <span class="label">在线时间：</span>
-          <span class="value">{{ formatUptime(selectedNode.uptime) }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">延迟：</span>
+        <div class="card-row">
+          <span class="label">地区</span>
           <span class="value">
-            <span v-if="selectedNode.latency > 0" :class="getLatencyClass(selectedNode.latency)">
-              {{ selectedNode.latency }}ms
-            </span>
-            <span v-else style="color: #909399">未测试</span>
+            <el-tag :type="getRegionColor(node.region)" size="small">
+              {{ node.region || '未知' }}
+            </el-tag>
           </span>
         </div>
-        <div class="detail-item">
-          <span class="label">最后测试：</span>
+        <div class="card-row">
+          <span class="label">类型</span>
           <span class="value">
-            <span v-if="selectedNode.last_test">
-              {{ formatLastTestTime(selectedNode.last_test) }}
-            </span>
-            <span v-else style="color: #909399">从未测试</span>
+            <el-tag :type="getTypeColor(node.type)" size="small">
+              {{ node.type || '未知' }}
+            </el-tag>
           </span>
         </div>
-        <div class="detail-item">
-          <span class="label">描述：</span>
-          <span class="value">{{ selectedNode.description || '暂无描述' }}</span>
+        <div class="card-row">
+          <span class="label">状态</span>
+          <span class="value">
+            <el-tag :type="getStatusType(node.status)" size="small">
+              {{ getStatusText(node.status) }}
+            </el-tag>
+          </span>
         </div>
       </div>
-    </el-dialog>
+    </div>
   </div>
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { nodeAPI } from '@/utils/api'
 import '@/styles/list-common.scss'
@@ -224,8 +183,7 @@ export default {
     const nodes = ref([])
     const filterRegion = ref('')
     const filterType = ref('')
-    const detailDialogVisible = ref(false)
-    const selectedNode = ref(null)
+    const isMobile = ref(window.innerWidth <= 768)
 
     const nodeStats = reactive({
       total: 0,
@@ -357,11 +315,7 @@ export default {
       }
     }
 
-    // 查看节点详情
-    const viewNodeDetail = (node) => {
-      selectedNode.value = node
-      detailDialogVisible.value = true
-    }
+    // 移除查看节点详情功能（用户端不需要）
 
     // 获取节点图标
     const getNodeIcon = (type) => {
@@ -408,44 +362,6 @@ export default {
     }
 
 
-    // 格式化在线时间
-    const formatUptime = (uptime) => {
-      const days = Math.floor(uptime / 86400)
-      const hours = Math.floor((uptime % 86400) / 3600)
-      const minutes = Math.floor((uptime % 3600) / 60)
-      
-      if (days > 0) return `${days}天${hours}小时`
-      if (hours > 0) return `${hours}小时${minutes}分钟`
-      return `${minutes}分钟`
-    }
-
-    // 格式化最后测速时间
-    const formatLastTestTime = (lastTestTime) => {
-      if (!lastTestTime) return '从未测试'
-      
-      const now = new Date()
-      const testTime = new Date(lastTestTime)
-      const diffMs = now - testTime
-      const diffMinutes = Math.floor(diffMs / 60000)
-      
-      if (diffMinutes < 1) return '刚刚'
-      if (diffMinutes < 60) return `${diffMinutes}分钟前`
-      
-      const diffHours = Math.floor(diffMinutes / 60)
-      if (diffHours < 24) return `${diffHours}小时前`
-      
-      const diffDays = Math.floor(diffHours / 24)
-      if (diffDays < 7) return `${diffDays}天前`
-      
-      return testTime.toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    }
-
     // 获取状态类型
     const getStatusType = (status) => {
       const statusMap = {
@@ -468,42 +384,30 @@ export default {
       return statusMap[status?.toLowerCase()] || status || '未知'
     }
 
-    // 获取延迟颜色类
-    const getLatencyClass = (latency) => {
-      if (latency < 100) return 'latency-excellent'
-      if (latency < 200) return 'latency-good'
-      if (latency < 300) return 'latency-medium'
-      return 'latency-poor'
-    }
+    // 移除测试节点功能（用户端不需要）
 
-    // 测试单个节点
-    const testNode = async (node) => {
-      node.testing = true
-      try {
-        const response = await nodeAPI.testNode(node.id)
-        if (response.data && response.data.success) {
-          const result = response.data.data
-          ElMessage.success(`测试完成: ${getStatusText(result.status)}, 延迟: ${result.latency > 0 ? result.latency + 'ms' : '超时'}`)
-          // 更新节点信息
-          node.status = result.status
-          node.latency = result.latency
-          node.last_test = result.tested_at
-          // 更新统计
-          updateNodeStats()
-        } else {
-          ElMessage.error(response.data?.message || '测试失败')
-        }
-      } catch (error) {
-        ElMessage.error('测试失败: ' + (error.response?.data?.message || error.message))
-      } finally {
-        node.testing = false
+
+
+    // 监听窗口大小变化
+    const handleResize = () => {
+      if (typeof window !== 'undefined') {
+        isMobile.value = window.innerWidth <= 768
       }
     }
 
-
-
     onMounted(() => {
       fetchNodes()
+      // 初始化窗口大小
+      if (typeof window !== 'undefined') {
+        window.addEventListener('resize', handleResize)
+      }
+    })
+
+    onUnmounted(() => {
+      // 清理窗口大小监听
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', handleResize)
+      }
     })
 
     return {
@@ -511,24 +415,18 @@ export default {
       nodes,
       filterRegion,
       filterType,
-      detailDialogVisible,
-      selectedNode,
       nodeStats,
       filteredNodes,
       regions,
       nodeTypes,
       fetchNodes,
       refreshNodes,
-      viewNodeDetail,
-      testNode,
       getNodeIcon,
       getRegionColor,
       getTypeColor,
       getStatusType,
       getStatusText,
-      getLatencyClass,
-      formatUptime,
-      formatLastTestTime
+      isMobile
     }
   }
 }
@@ -712,24 +610,96 @@ export default {
   color: #333;
 }
 
+/* 桌面端表格显示 */
+.table-wrapper {
+  display: block;
+  
+  @media (max-width: 768px) {
+    display: none;
+  }
+}
+
+/* 移动端卡片列表显示 */
+.mobile-card-list {
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: block;
+  }
+}
+
+.mobile-node-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid #409eff;
+  
+  .card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+    
+    &:last-child {
+      border-bottom: none;
+    }
+    
+    .label {
+      color: #909399;
+      font-size: 14px;
+      font-weight: 500;
+      min-width: 80px;
+    }
+    
+    .value {
+      flex: 1;
+      text-align: right;
+      color: #303133;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      
+      i {
+        font-size: 16px;
+        color: #409eff;
+      }
+    }
+  }
+}
+
 @media (max-width: 768px) {
   .nodes-container {
     padding: 10px;
   }
   
-  .stats-content {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px;
+    margin-bottom: 12px;
   }
   
-  .stat-number {
-    font-size: 2rem;
+  .stat-card {
+    padding: 12px;
+    
+    .stat-number {
+      font-size: 1.5rem;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+    }
   }
   
   .card-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 1rem;
+    gap: 12px;
   }
   
   .header-actions {
@@ -749,52 +719,16 @@ export default {
     }
   }
   
-  /* 表格在手机端优化 */
-  :deep(.el-table) {
-    font-size: 0.875rem;
+  .list-card {
+    margin-bottom: 12px;
     
-    .el-table__cell {
-      padding: 8px 4px;
+    :deep(.el-card__header) {
+      padding: 12px;
     }
-  }
-  
-  /* 对话框优化 */
-  :deep(.el-dialog) {
-    width: 90% !important;
-    margin: 5vh auto !important;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-  
-  :deep(.el-dialog__body) {
-    padding: 15px !important;
-    max-height: calc(90vh - 120px);
-    overflow-y: auto;
-  }
-  
-  .node-detail {
-    .detail-item {
-      flex-direction: column;
-      gap: 0.5rem;
-      
-      .label {
-        width: auto;
-        font-size: 0.875rem;
-      }
-      
-      .value {
-        font-size: 0.875rem;
-      }
+    
+    :deep(.el-card__body) {
+      padding: 12px;
     }
-  }
-  
-  .detail-item {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .detail-item .label {
-    width: auto;
   }
 }
 </style> 
