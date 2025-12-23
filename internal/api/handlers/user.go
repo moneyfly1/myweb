@@ -83,12 +83,8 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 
 // GetCurrentUser 获取当前用户
 func GetCurrentUser(c *gin.Context) {
-	user, ok := middleware.GetCurrentUser(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
 		return
 	}
 
