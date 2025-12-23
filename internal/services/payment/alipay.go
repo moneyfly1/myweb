@@ -74,10 +74,10 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 			if !isProduction {
 				if useOldGateway, ok := configData["use_old_sandbox_gateway"].(bool); ok && useOldGateway {
 					opts = append(opts, alipay.WithPastSandboxGateway())
-					fmt.Printf("使用支付宝沙箱老网关地址\n")
+					utils.LogInfo("使用支付宝沙箱老网关地址")
 				} else {
 					opts = append(opts, alipay.WithNewSandboxGateway())
-					fmt.Printf("使用支付宝沙箱新网关地址（默认）\n")
+					utils.LogInfo("使用支付宝沙箱新网关地址（默认）")
 				}
 			}
 		}
@@ -92,7 +92,7 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 		return nil, fmt.Errorf("初始化支付宝客户端失败: %v。请检查：1) AppID是否正确 2) 应用私钥是否为完整的PEM格式（PKCS1或PKCS8）3) 私钥是否与AppID匹配 4) 私钥长度是否为2048位（推荐）", err)
 	}
 
-	fmt.Printf("支付宝客户端初始化成功: AppID=%s, 环境=%s\n", appID, map[bool]string{true: "生产环境", false: "沙箱环境"}[isProduction])
+	utils.LogInfo("支付宝客户端初始化成功: AppID=%s, 环境=%s", appID, map[bool]string{true: "生产环境", false: "沙箱环境"}[isProduction])
 
 	// 6. 加载支付宝公钥（普通公钥模式）
 	// 注意：此处使用的是支付宝公钥，不是应用公钥
@@ -105,15 +105,15 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 			if err := client.LoadAliPayPublicKey(publicKey); err != nil {
 				// 公钥加载失败不影响创建支付，但会影响回调验证
 				// 这里只记录警告，不返回错误
-				fmt.Printf("警告：加载支付宝公钥失败（不影响创建支付，但会影响回调验证）: %v。请检查支付宝公钥格式是否正确\n", err)
+				utils.LogWarn("加载支付宝公钥失败（不影响创建支付，但会影响回调验证）: %v。请检查支付宝公钥格式是否正确", err)
 			} else {
-				fmt.Printf("支付宝公钥加载成功\n")
+				utils.LogInfo("支付宝公钥加载成功")
 			}
 		} else {
-			fmt.Printf("警告：支付宝公钥格式无法识别，回调验证可能失败\n")
+			utils.LogWarn("支付宝公钥格式无法识别，回调验证可能失败")
 		}
 	} else {
-		fmt.Printf("提示：未配置支付宝公钥，回调验证可能失败。建议配置支付宝公钥以确保回调安全\n")
+		utils.LogWarn("未配置支付宝公钥，回调验证可能失败。建议配置支付宝公钥以确保回调安全")
 	}
 
 	service := &AlipayService{
@@ -124,15 +124,15 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 	// 设置回调地址
 	if paymentConfig.NotifyURL.Valid && paymentConfig.NotifyURL.String != "" {
 		service.notifyURL = strings.TrimSpace(paymentConfig.NotifyURL.String)
-		fmt.Printf("支付宝回调地址已配置: %s\n", service.notifyURL)
+		utils.LogInfo("支付宝回调地址已配置: %s", service.notifyURL)
 	} else {
 		// 如果未配置回调地址，返回错误
-		fmt.Printf("错误：支付宝回调地址未配置\n")
+		utils.LogErrorMsg("支付宝回调地址未配置")
 		service.notifyURL = ""
 	}
 	if paymentConfig.ReturnURL.Valid && paymentConfig.ReturnURL.String != "" {
 		service.returnURL = strings.TrimSpace(paymentConfig.ReturnURL.String)
-		fmt.Printf("支付宝返回地址已配置: %s\n", service.returnURL)
+		utils.LogInfo("支付宝返回地址已配置: %s", service.returnURL)
 	}
 
 	return service, nil
@@ -173,7 +173,7 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 	// FAST_INSTANT_TRADE_PAY 是电脑网站支付的产品码，会导致权限不足错误
 	param.ProductCode = "" // 明确设置为空，避免使用默认值
 
-	fmt.Printf("支付宝TradePreCreate请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s\n",
+	utils.LogInfo("支付宝TradePreCreate请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s",
 		param.OutTradeNo, param.TotalAmount, param.Subject, param.NotifyURL)
 
 	// 3. 调用预创建接口
@@ -181,13 +181,13 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 	rsp, err := s.client.TradePreCreate(ctx, param)
 	if err != nil {
 		// 网络错误或请求错误，记录详细错误并尝试使用页面支付作为备选
-		fmt.Printf("支付宝TradePreCreate请求失败: %v (订单号: %s, 金额: %.2f)\n", err, order.OrderNo, amount)
+		utils.LogErrorMsg("支付宝TradePreCreate请求失败: %v (订单号: %s, 金额: %.2f)", err, order.OrderNo, amount)
 		pageURL, pageErr := s.createPagePayURL(order, amount)
 		if pageErr != nil {
 			// 如果页面支付也失败，返回详细错误信息
 			return "", fmt.Errorf("支付宝预创建失败: %v, 页面支付也失败: %v", err, pageErr)
 		}
-		fmt.Printf("使用页面支付作为备选方案 (订单号: %s)\n", order.OrderNo)
+		utils.LogInfo("使用页面支付作为备选方案 (订单号: %s)", order.OrderNo)
 		return pageURL, nil
 	}
 
@@ -198,7 +198,7 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 		if rsp.SubMsg != "" {
 			errorMsg += fmt.Sprintf(", SubMsg=%s", rsp.SubMsg)
 		}
-		fmt.Printf("支付宝TradePreCreate业务失败: %s (订单号: %s, 金额: %.2f)\n", errorMsg, order.OrderNo, amount)
+		utils.LogErrorMsg("支付宝TradePreCreate业务失败: %s (订单号: %s, 金额: %.2f)", errorMsg, order.OrderNo, amount)
 
 		// 常见错误码提示和处理
 		if rsp.Code == "40004" {
@@ -220,7 +220,7 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 				// 如果页面支付也失败，返回详细错误信息
 				return "", fmt.Errorf("%s, 页面支付也失败: %v", errorMsg, pageErr)
 			}
-			fmt.Printf("使用页面支付作为备选方案 (订单号: %s)\n", order.OrderNo)
+			utils.LogInfo("使用页面支付作为备选方案 (订单号: %s)", order.OrderNo)
 			return pageURL, nil
 		}
 
@@ -231,13 +231,13 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 	// 5. 返回二维码URL
 	// 注意：响应中的字段名是 qr_code（小写+下划线），SDK 会自动映射到 QRCode
 	if rsp.QRCode != "" {
-		fmt.Printf("支付宝TradePreCreate成功，二维码URL: %s (订单号: %s, 金额: %.2f, 环境: %s)\n",
+		utils.LogInfo("支付宝TradePreCreate成功，二维码URL: %s (订单号: %s, 金额: %.2f, 环境: %s)",
 			rsp.QRCode, order.OrderNo, amount, map[bool]string{true: "生产", false: "沙箱"}[s.isProduction])
 		return rsp.QRCode, nil
 	}
 
 	// 6. 如果二维码为空，使用页面支付作为备选
-	fmt.Printf("支付宝返回的二维码为空，使用页面支付作为备选 (订单号: %s)\n", order.OrderNo)
+	utils.LogWarn("支付宝返回的二维码为空，使用页面支付作为备选 (订单号: %s)", order.OrderNo)
 	pageURL, pageErr := s.createPagePayURL(order, amount)
 	if pageErr != nil {
 		return "", fmt.Errorf("支付宝返回的二维码为空，且页面支付失败: %v", pageErr)
@@ -268,7 +268,7 @@ func (s *AlipayService) createPagePayURL(order *models.Order, amount float64) (s
 	param.TotalAmount = fmt.Sprintf("%.2f", amount)
 	param.ProductCode = "FAST_INSTANT_TRADE_PAY"
 
-	fmt.Printf("支付宝TradePagePay请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s\n",
+	utils.LogInfo("支付宝TradePagePay请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s",
 		param.OutTradeNo, param.TotalAmount, param.Subject, param.NotifyURL)
 
 	payURL, err := s.client.TradePagePay(param)
@@ -284,7 +284,7 @@ func (s *AlipayService) createPagePayURL(order *models.Order, amount float64) (s
 		return "", fmt.Errorf("支付页面URL为空")
 	}
 
-	fmt.Printf("支付宝TradePagePay成功，支付页面URL已生成 (订单号: %s, 金额: %.2f)\n", order.OrderNo, amount)
+	utils.LogInfo("支付宝TradePagePay成功，支付页面URL已生成 (订单号: %s, 金额: %.2f)", order.OrderNo, amount)
 	return payURL.String(), nil
 }
 

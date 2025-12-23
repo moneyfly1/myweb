@@ -944,6 +944,7 @@ export default {
 
 :deep(.el-input__inner[type="number"]) {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 :deep(.el-select .el-input__wrapper) {
