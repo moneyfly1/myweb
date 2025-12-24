@@ -1812,12 +1812,12 @@ export default {
     margin-bottom: 1rem;
     padding: 0 4px;
     
-    h1 {
+    :is(h1) {
       font-size: 1.5rem;
       margin-bottom: 0.5rem;
     }
     
-    p {
+    :is(p) {
       font-size: 0.875rem;
       line-height: 1.5;
     }
@@ -1851,7 +1851,7 @@ export default {
     font-size: 0.9375rem;
     font-weight: 600;
     
-    i {
+    :is(i) {
       font-size: 1.1rem;
     }
   }
@@ -1896,7 +1896,7 @@ export default {
       line-height: 1.6;
     }
     
-    p {
+    :is(p) {
       margin: 0.75rem 0;
       line-height: 1.7;
     }
@@ -1971,7 +1971,7 @@ export default {
       font-weight: 600;
     }
     
-    p {
+    :is(p) {
       font-size: 0.8125rem;
       line-height: 1.4;
       margin-bottom: 6px;
@@ -2037,7 +2037,7 @@ export default {
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     
-    i {
+    :is(i) {
       font-size: 2rem;
       width: auto;
       margin-bottom: 12px;
@@ -2053,7 +2053,7 @@ export default {
       font-weight: 600;
     }
     
-    p {
+    :is(p) {
       font-size: 0.875rem;
       line-height: 1.5;
       color: #666;
@@ -2153,7 +2153,7 @@ export default {
       }
     }
     
-    p {
+    :is(p) {
       margin: 10px 0;
     }
     
@@ -2182,7 +2182,7 @@ export default {
         }
       }
       
-      p {
+      :is(p) {
         margin: 8px 0;
         line-height: 1.7;
       }

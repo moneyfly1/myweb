@@ -325,7 +325,7 @@
   }
   
   .el-table {
-    th {
+    :is(th) {
       background-color: #FFFEF0;
       color: #2C2416;
     }
@@ -391,13 +391,13 @@
     background-color: rgba(26, 22, 37, 0.6);
     color: #E6E6FA;
     
-    th {
+    :is(th) {
       background-color: rgba(42, 31, 61, 0.8);
       color: #E6E6FA;
       border-color: #4B0082;
     }
     
-    td {
+    :is(td) {
       background-color: rgba(26, 22, 37, 0.6);
       color: #E6E6FA;
       border-color: #4B0082;
@@ -1185,13 +1185,13 @@ $breakpoints: (
   border-radius: var(--border-radius);
   overflow: hidden;
   
-  th {
+  :is(th) {
     background-color: #fafafa;
     font-weight: 600;
     color: var(--theme-text);
   }
   
-  td {
+  :is(td) {
     color: var(--theme-text);
   }
   

@@ -424,11 +424,11 @@ export default {
   .page-header {
     margin-bottom: 16px;
     
-    h1 {
+    :is(h1) {
       font-size: 20px;
     }
     
-    p {
+    :is(p) {
       font-size: 13px;
     }
   }

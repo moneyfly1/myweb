@@ -9,6 +9,7 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
 )
@@ -384,11 +385,17 @@ func (s *EmailService) ProcessEmailQueue() error {
 		email := &emails[i]
 		err := s.SendEmail(email.ToEmail, email.Subject, email.Content)
 		if err != nil {
+			// 记录详细错误日志
+			utils.LogErrorMsg("发送队列邮件失败: ID=%d, To=%s, Type=%s, Retry=%d/%d, Error=%v",
+				email.ID, email.ToEmail, email.EmailType, email.RetryCount+1, email.MaxRetries, err)
+
 			// 更新重试次数
 			email.RetryCount++
 			if email.RetryCount >= email.MaxRetries {
 				email.Status = "failed"
 				email.ErrorMessage = database.NullString(err.Error())
+				utils.LogErrorMsg("邮件发送最终失败: ID=%d, To=%s, Type=%s, Error=%v",
+					email.ID, email.ToEmail, email.EmailType, err)
 			} else {
 				// 仍然保持 pending 状态，等待下次重试
 				email.Status = "pending"
@@ -401,6 +408,7 @@ func (s *EmailService) ProcessEmailQueue() error {
 			email.Status = "sent"
 			now := time.Now()
 			email.SentAt = database.NullTime(now)
+			utils.LogInfo("邮件发送成功: ID=%d, To=%s, Type=%s", email.ID, email.ToEmail, email.EmailType)
 			if err := db.Save(email).Error; err != nil {
 				return err
 			}

@@ -665,7 +665,7 @@ export default {
       gap: 8px;
       flex-wrap: wrap;
       
-      i {
+      :is(i) {
         font-size: 16px;
         color: #409eff;
       }

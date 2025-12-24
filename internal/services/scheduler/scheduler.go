@@ -62,7 +62,8 @@ func (s *Scheduler) Stop() {
 // processEmailQueue 处理邮件队列（每1分钟执行一次，提高处理频率）
 func (s *Scheduler) processEmailQueue() {
 	// 启动时立即执行一次
-	if err := s.emailService.ProcessEmailQueue(); err != nil {
+	emailService := email.NewEmailService() // 每次重新创建，确保使用最新配置
+	if err := emailService.ProcessEmailQueue(); err != nil {
 		utils.LogErrorMsg("处理邮件队列失败: %v", err)
 	}
 
@@ -74,7 +75,9 @@ func (s *Scheduler) processEmailQueue() {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
-			if err := s.emailService.ProcessEmailQueue(); err != nil {
+			// 每次处理时重新创建 EmailService，确保使用最新的邮件配置
+			emailService := email.NewEmailService()
+			if err := emailService.ProcessEmailQueue(); err != nil {
 				utils.LogErrorMsg("处理邮件队列失败: %v", err)
 			}
 		}

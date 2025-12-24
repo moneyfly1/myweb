@@ -129,6 +129,14 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "v2rayN"
 	}
 
+	// Mihomo / Mihomo Party (优先识别，避免被识别为 Clash)
+	if strings.Contains(uaLower, "mihomo.party") || strings.Contains(uaLower, "mihomo/") {
+		return "Mihomo Party"
+	}
+	if strings.Contains(uaLower, "mihomo") {
+		return "Mihomo"
+	}
+
 	// 其他常见软件
 	softwares := map[string]string{
 		"quantumult": "Quantumult",
@@ -218,8 +226,9 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
 	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng"}
-	windowsSoftware := []string{"clash for windows", "clash-verge", "v2rayn", "qv2ray"}
-	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu"}
+	windowsSoftware := []string{"clash for windows", "clash-verge", "v2rayn", "qv2ray", "mihomo", "mihomo party"}
+	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu", "mihomo", "mihomo party"}
+	linuxSoftware := []string{"mihomo", "mihomo party"}
 
 	swLower := strings.ToLower(softwareName)
 	for _, sw := range iosSoftware {
@@ -240,6 +249,11 @@ func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]str
 	for _, sw := range macosSoftware {
 		if strings.Contains(swLower, sw) {
 			return map[string]string{"os_name": "macOS", "os_version": ""}
+		}
+	}
+	for _, sw := range linuxSoftware {
+		if strings.Contains(swLower, sw) {
+			return map[string]string{"os_name": "Linux", "os_version": ""}
 		}
 	}
 	return nil
@@ -384,6 +398,10 @@ func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo)
 		}
 		return "mobile"
 	}
+	// Mihomo / Mihomo Party 是桌面端软件（Windows/macOS/Linux）
+	if strings.Contains(swName, "mihomo") {
+		return "desktop"
+	}
 	if strings.Contains(swName, "clash for windows") || strings.Contains(swName, "v2rayn") {
 		return "desktop"
 	}
@@ -483,7 +501,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 				// 进一步检查是否包含订阅软件标识
 				subscriptionSoftwareKeywords := []string{
 					"shadowrocket", "quantumult", "surge", "loon", "stash",
-					"v2rayn", "clash", "hiddify", "v2ray",
+					"v2rayn", "clash", "hiddify", "v2ray", "mihomo",
 				}
 				hasSubscriptionSoftware := false
 				for _, swKeyword := range subscriptionSoftwareKeywords {

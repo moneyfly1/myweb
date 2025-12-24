@@ -903,11 +903,11 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
     gap: 10px;
     align-items: flex-start;
     
-    h2 {
+    :is(h2) {
       font-size: 18px;
     }
     
-    p {
+    :is(p) {
       font-size: 13px;
     }
   }

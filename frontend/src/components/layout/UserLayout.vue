@@ -360,7 +360,7 @@ onUnmounted(() => {
       top: 0;
       z-index: 10;
       
-      i {
+      :is(i) {
         font-size: 20px;
         cursor: pointer;
         padding: 8px;
@@ -398,7 +398,7 @@ onUnmounted(() => {
       gap: 12px;
       transition: 0.2s;
       
-      i {
+      :is(i) {
         font-size: 18px;
         width: 20px;
         text-align: center;

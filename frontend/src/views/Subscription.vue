@@ -867,13 +867,13 @@ export default {
   align-items: center;
   gap: 15px;
   
-  h2 {
+  :is(h2) {
     margin: 0;
     color: #333;
     font-size: 1.5rem;
   }
   
-  p {
+  :is(p) {
     margin: 0;
     color: #666;
     font-size: 0.9rem;
@@ -949,7 +949,7 @@ export default {
   
   .qr-item {
     text-align: center;
-    p {
+    :is(p) {
       margin-top: 10px;
       color: #666;
       font-size: 0.9rem;
@@ -1106,7 +1106,7 @@ export default {
     background: #f0f9ff;
     border-radius: 4px;
     
-    p {
+    :is(p) {
       margin: 8px 0;
       color: #606266;
       &:first-child { color: #67c23a; font-weight: 500; }
