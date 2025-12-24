@@ -412,14 +412,51 @@ onUnmounted(() => {
 }
 
 // 响应式设计
-@media (max-width: 480px) {
-  .forgot-card {
-    padding: 24px;
-    margin: 10px;
+@media (max-width: 768px) {
+  .forgot-container {
+    padding: 10px;
+    min-height: 100vh;
+    padding-top: 20px;
   }
   
-  .forgot-header h1 {
-    font-size: 20px;
+  .forgot-card {
+    padding: 24px 16px;
+    margin: 0;
+    max-width: 100%;
+    border-radius: 8px;
+  }
+  
+  .forgot-header {
+    margin-bottom: 24px;
+    
+    h1 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+    
+    p {
+      font-size: 13px;
+    }
+  }
+  
+  /* 输入框手机端优化 */
+  :deep(.el-input__inner) {
+    height: 48px !important; /* 手机端增大高度，防止iOS自动缩放 */
+    font-size: 16px !important; /* 16px防止iOS自动缩放 */
+    padding: 0 14px;
+  }
+  
+  :deep(.el-input--large .el-input__inner) {
+    height: 48px !important;
+    font-size: 16px !important;
+  }
+  
+  /* 按钮手机端优化 */
+  .forgot-button {
+    width: 100%;
+    min-height: 48px;
+    font-size: 16px;
+    font-weight: 500;
   }
   
   .verification-code-group {
@@ -433,8 +470,23 @@ onUnmounted(() => {
       flex: 1;
       min-width: 90px;
       max-width: 120px;
-      font-size: 13px;
+      min-height: 48px;
+      font-size: 14px;
       padding: 0 10px;
+      white-space: nowrap;
+    }
+  }
+  
+  .forgot-footer {
+    margin-top: 20px;
+    
+    a {
+      font-size: 14px;
+      padding: 8px 0;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
   }
 }

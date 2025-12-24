@@ -7,6 +7,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -73,13 +74,7 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 
 					// 如果是API请求，返回JSON
 					if strings.HasPrefix(path, "/api/") {
-						c.JSON(http.StatusServiceUnavailable, gin.H{
-							"success":          false,
-							"message":          maintenanceMessage,
-							"maintenance_mode": true,
-							"site_name":        siteName,
-							"logo_url":         logoURL,
-						})
+						utils.ErrorResponse(c, http.StatusServiceUnavailable, maintenanceMessage, nil)
 						c.Abort()
 						return
 					}

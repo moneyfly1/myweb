@@ -19,10 +19,7 @@ func GetPackages(c *gin.Context) {
 
 	var packages []models.Package
 	if err := db.Where("is_active = ?", true).Order("sort_order ASC").Find(&packages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取套餐列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取套餐列表失败", err)
 		return
 	}
 
@@ -44,10 +41,7 @@ func GetPackages(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
 // GetPackage 获取单个套餐
@@ -57,17 +51,11 @@ func GetPackage(c *gin.Context) {
 	db := database.GetDB()
 	var pkg models.Package
 	if err := db.First(&pkg, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "套餐不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "套餐不存在", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    pkg,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", pkg)
 }
 
 // CreatePackage 创建套餐（管理员）
@@ -84,10 +72,7 @@ func CreatePackage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -107,17 +92,11 @@ func CreatePackage(c *gin.Context) {
 	}
 
 	if err := db.Create(&pkg).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建套餐失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建套餐失败", err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data":    pkg,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "", pkg)
 }
 
 // UpdatePackage 更新套餐（管理员）
@@ -139,20 +118,14 @@ func UpdatePackage(c *gin.Context) {
 		utils.LogError("UpdatePackage: bind JSON failed", err, map[string]interface{}{
 			"package_id": id,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	var pkg models.Package
 	if err := db.First(&pkg, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "套餐不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "套餐不存在", err)
 		return
 	}
 
@@ -160,10 +133,7 @@ func UpdatePackage(c *gin.Context) {
 	if req.Name != nil {
 		nameValue := strings.TrimSpace(*req.Name)
 		if nameValue == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "套餐名称不能为空",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "套餐名称不能为空", nil)
 			return
 		}
 		pkg.Name = nameValue
@@ -184,30 +154,21 @@ func UpdatePackage(c *gin.Context) {
 	}
 	if req.Price != nil {
 		if *req.Price < 0 {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "价格不能为负数",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "价格不能为负数", nil)
 			return
 		}
 		pkg.Price = *req.Price
 	}
 	if req.DurationDays != nil {
 		if *req.DurationDays < 1 {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "时长必须大于0",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "时长必须大于0", nil)
 			return
 		}
 		pkg.DurationDays = *req.DurationDays
 	}
 	if req.DeviceLimit != nil {
 		if *req.DeviceLimit < 0 {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "设备限制不能为负数",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "设备限制不能为负数", nil)
 			return
 		}
 		pkg.DeviceLimit = *req.DeviceLimit
@@ -223,10 +184,7 @@ func UpdatePackage(c *gin.Context) {
 	}
 
 	if err := db.Save(&pkg).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新套餐失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新套餐失败", err)
 		return
 	}
 
@@ -245,11 +203,7 @@ func UpdatePackage(c *gin.Context) {
 		"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    responseData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", responseData)
 }
 
 // DeletePackage 删除套餐（管理员）
@@ -258,17 +212,11 @@ func DeletePackage(c *gin.Context) {
 
 	db := database.GetDB()
 	if err := db.Delete(&models.Package{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除套餐失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除套餐失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "删除成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
 // GetAdminPackages 管理员获取套餐列表（包含所有套餐，包括未激活的）
@@ -319,10 +267,7 @@ func GetAdminPackages(c *gin.Context) {
 	var packages []models.Package
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("sort_order ASC, created_at DESC").Find(&packages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取套餐列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取套餐列表失败", err)
 		return
 	}
 
@@ -344,13 +289,10 @@ func GetAdminPackages(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"packages": formattedPackages,
-			"total":    total,
-			"page":     page,
-			"size":     size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"packages": formattedPackages,
+		"total":    total,
+		"page":     page,
+		"size":     size,
 	})
 }

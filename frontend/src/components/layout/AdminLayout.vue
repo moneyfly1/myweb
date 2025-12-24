@@ -405,10 +405,23 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   &.collapsed { width: var(--sidebar-collapsed-width); }
 
   @include respond-to(sm) {
-    top: 50px; width: 280px; max-width: 85vw; height: calc(100vh - 50px);
+    top: 50px; 
+    width: 280px; 
+    max-width: 85vw; 
+    height: calc(100vh - 50px);
     transform: translateX(-100%);
+    z-index: 1002; /* 确保菜单在遮罩层之上 */
+    background: #ffffff; /* 确保背景是纯白色，不透明 */
+    backdrop-filter: none; /* 移除模糊效果 */
+    -webkit-backdrop-filter: none;
     &.collapsed { transform: translateX(-100%); }
-    &:not(.collapsed) { transform: translateX(0); box-shadow: 2px 0 16px rgba(0,0,0,0.15); }
+    &:not(.collapsed) { 
+      transform: translateX(0); 
+      box-shadow: 2px 0 16px rgba(0,0,0,0.15);
+      /* 确保菜单清晰可见 */
+      opacity: 1;
+      visibility: visible;
+    }
   }
 
   .nav-section {
@@ -422,6 +435,9 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       text-decoration: none;
       transition: 0.3s;
       position: relative;
+      /* 确保菜单项可以点击 */
+      pointer-events: auto;
+      z-index: 1;
       
       i { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
       
@@ -436,8 +452,61 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       &.active { background: var(--theme-primary); color: white; }
       @include respond-to(sm) { 
         padding: 14px 20px; 
+        min-height: 48px; /* 确保点击区域足够大 */
+        cursor: pointer;
+        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
         &.active { background: #ecf5ff; color: var(--theme-primary); border-left: 4px solid var(--theme-primary); }
       }
+    }
+  }
+  
+  /* 手机端菜单头部 */
+  .mobile-menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--theme-border);
+    background: var(--sidebar-bg-color, white);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    
+    .menu-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--theme-text);
+    }
+    
+    .menu-close-btn {
+      background: none;
+      border: none;
+      padding: 8px;
+      cursor: pointer;
+      color: var(--theme-text);
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      min-height: 40px;
+      -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+      
+      &:hover {
+        background: var(--sidebar-hover-bg, #f5f7fa);
+        border-radius: 4px;
+      }
+    }
+  }
+  
+  /* 手机端导航区域 */
+  .sidebar-nav {
+    @include respond-to(sm) {
+      /* 确保导航区域可以滚动和点击 */
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      height: calc(100% - 60px);
+      padding-bottom: 20px;
     }
   }
 }
@@ -470,7 +539,13 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
 }
 
 .mobile-overlay {
-  position: fixed; inset: 50px 0 0 0; background: rgba(0,0,0,0.5); z-index: 1001; backdrop-filter: blur(2px);
+  position: fixed; 
+  inset: 50px 0 0 0; 
+  background: rgba(0,0,0,0.5); 
+  z-index: 1001; 
+  backdrop-filter: blur(2px);
+  /* 确保遮罩层不会阻止菜单点击 */
+  pointer-events: auto;
 }
 
 .slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s ease; }

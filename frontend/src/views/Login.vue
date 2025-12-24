@@ -344,13 +344,88 @@ export default {
   font-size: 14px;
 }
 
-@media (max-width: 480px) {
-  .login-box {
-    padding: 30px 20px;
+/* 手机端优化 */
+@media (max-width: 768px) {
+  .login-container {
+    padding: 10px;
+    min-height: 100vh;
+    align-items: flex-start;
+    padding-top: 20px;
   }
   
-  .login-header h1 {
-    font-size: 24px;
+  .login-box {
+    padding: 24px 16px;
+    max-width: 100%;
+    border-radius: 8px;
+  }
+  
+  .login-header {
+    margin-bottom: 24px;
+    
+    h1 {
+      font-size: 22px;
+      margin-bottom: 6px;
+    }
+    
+    p {
+      font-size: 13px;
+    }
+  }
+  
+  .login-input {
+    height: 48px; /* 手机端增大高度，防止iOS自动缩放 */
+    font-size: 16px; /* 16px防止iOS自动缩放 */
+    padding: 0 14px;
+  }
+  
+  .login-button {
+    height: 48px; /* 手机端增大高度 */
+    font-size: 16px;
+    font-weight: 500;
+    min-height: 48px; /* 确保最小高度 */
+  }
+  
+  .login-actions {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    margin-top: 16px;
+    
+    .el-link {
+      font-size: 14px;
+      padding: 8px 0;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+  
+  /* 忘记密码对话框手机端优化 */
+  :deep(.el-dialog) {
+    width: 90% !important;
+    margin: 5vh auto !important;
+    max-width: 400px;
+  }
+  
+  :deep(.el-dialog__body) {
+    padding: 16px !important;
+  }
+  
+  :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+  
+  :deep(.el-input__inner) {
+    height: 48px;
+    font-size: 16px;
+    padding: 0 14px;
+  }
+  
+  :deep(.el-button) {
+    min-height: 48px;
+    font-size: 16px;
+    padding: 12px 20px;
   }
 }
 </style> 

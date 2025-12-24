@@ -256,8 +256,17 @@
       </el-tabs>
       
       <!-- 编辑模式直接显示表单 -->
-      <el-form v-if="editingNode" :model="nodeForm" :label-width="isMobile ? '80px' : '100px'" class="node-edit-form">
+      <el-form 
+        v-if="editingNode" 
+        :model="nodeForm" 
+        :label-width="isMobile ? '0' : '100px'"
+        :label-position="isMobile ? 'top' : 'right'"
+        class="node-edit-form"
+      >
         <el-form-item label="节点名称" required>
+          <template v-if="isMobile">
+            <div class="mobile-label">节点名称 <span class="required">*</span></div>
+          </template>
           <el-input 
             v-model="nodeForm.name" 
             placeholder="请输入节点名称"
@@ -265,6 +274,9 @@
           />
         </el-form-item>
         <el-form-item label="地区" required>
+          <template v-if="isMobile">
+            <div class="mobile-label">地区 <span class="required">*</span></div>
+          </template>
           <el-input 
             v-model="nodeForm.region" 
             placeholder="请输入地区"
@@ -272,7 +284,10 @@
           />
         </el-form-item>
         <el-form-item label="类型" required>
-          <el-select v-model="nodeForm.type" placeholder="请选择类型">
+          <template v-if="isMobile">
+            <div class="mobile-label">类型 <span class="required">*</span></div>
+          </template>
+          <el-select v-model="nodeForm.type" placeholder="请选择类型" style="width: 100%">
             <el-option label="vmess" value="vmess" />
             <el-option label="vless" value="vless" />
             <el-option label="trojan" value="trojan" />
@@ -281,6 +296,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="配置(JSON)">
+          <template v-if="isMobile">
+            <div class="mobile-label">配置(JSON)</div>
+          </template>
           <el-input
             v-model="nodeForm.config"
             type="textarea"
@@ -290,6 +308,9 @@
           />
         </el-form-item>
         <el-form-item label="节点链接">
+          <template v-if="isMobile">
+            <div class="mobile-label">节点链接</div>
+          </template>
           <div class="node-link-container">
             <div class="link-input-wrapper">
               <el-input
@@ -325,15 +346,21 @@
           </div>
         </el-form-item>
         <el-form-item label="推荐节点">
+          <template v-if="isMobile">
+            <div class="mobile-label">推荐节点</div>
+          </template>
           <el-switch v-model="nodeForm.is_recommended" />
         </el-form-item>
         <el-form-item label="激活状态">
+          <template v-if="isMobile">
+            <div class="mobile-label">激活状态</div>
+          </template>
           <el-switch v-model="nodeForm.is_active" />
         </el-form-item>
       </el-form>
       
       <template #footer>
-        <div class="dialog-footer-buttons">
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
           <el-button @click="cancelAddNode" size="large" class="footer-btn">取消</el-button>
           <el-button 
             v-if="!editingNode && addNodeTab === 'link' && parsedNode"
@@ -1313,10 +1340,33 @@ export default {
       flex-shrink: 0;
       border-top: 1px solid #ebeef5;
       
-      .el-button {
-        min-height: 44px;
-        font-size: 16px;
-        padding: 10px 20px;
+      .dialog-footer-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        
+        &.mobile-footer {
+          flex-direction: column;
+          gap: 10px;
+          
+          .footer-btn,
+          .el-button {
+            width: 100%;
+            min-height: 48px;
+            font-size: 16px;
+            font-weight: 500;
+            margin: 0 !important;
+            border-radius: 8px;
+            -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+          }
+        }
+        
+        .footer-btn,
+        .el-button {
+          min-height: 44px;
+          font-size: 16px;
+          padding: 10px 20px;
+        }
       }
     }
   }

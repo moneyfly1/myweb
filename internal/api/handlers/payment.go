@@ -31,7 +31,7 @@ func GetPaymentMethods(c *gin.Context) {
 		}
 		res = append(res, gin.H{"id": m.ID, "key": m.PayType, "name": name, "status": m.Status})
 	}
-	c.JSON(200, gin.H{"success": true, "data": res})
+	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
 func CreatePayment(c *gin.Context) {
@@ -41,22 +41,22 @@ func CreatePayment(c *gin.Context) {
 		PaymentMethodID uint `json:"payment_method_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"success": false, "message": "参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
 	db := database.GetDB()
 	var order models.Order
 	if err := db.Where("id = ? AND user_id = ?", req.OrderID, u.ID).First(&order).Error; err != nil {
-		c.JSON(404, gin.H{"success": false, "message": "订单不存在"})
+		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", err)
 		return
 	}
 	if order.Status != "pending" {
-		c.JSON(400, gin.H{"success": false, "message": "订单不可支付"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "订单不可支付", nil)
 		return
 	}
 	var cfg models.PaymentConfig
 	if err := db.First(&cfg, req.PaymentMethodID).Error; err != nil || cfg.Status != 1 {
-		c.JSON(404, gin.H{"success": false, "message": "支付方式无效"})
+		utils.ErrorResponse(c, http.StatusNotFound, "支付方式无效", err)
 		return
 	}
 	amt := int(order.Amount * 100)
@@ -65,7 +65,7 @@ func CreatePayment(c *gin.Context) {
 	}
 	tx := models.PaymentTransaction{OrderID: order.ID, UserID: u.ID, PaymentMethodID: cfg.ID, Amount: amt, Status: "pending"}
 	db.Create(&tx)
-	c.JSON(200, gin.H{"success": true, "data": gin.H{"transaction_id": tx.ID, "amount": float64(amt) / 100}})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"transaction_id": tx.ID, "amount": float64(amt) / 100})
 }
 
 // PaymentNotify 支付回调
@@ -480,29 +480,20 @@ func GetPaymentStatus(c *gin.Context) {
 	transactionID := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var transaction models.PaymentTransaction
 	if err := db.Where("id = ? AND user_id = ?", transactionID, user.ID).First(&transaction).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "支付交易不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "支付交易不存在", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"status":   transaction.Status,
-			"amount":   float64(transaction.Amount) / 100,
-			"order_id": transaction.OrderID,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"status":   transaction.Status,
+		"amount":   float64(transaction.Amount) / 100,
+		"order_id": transaction.OrderID,
 	})
 }

@@ -251,10 +251,7 @@ func GetDeviceStats(c *gin.Context) {
 		stats.DevicesByType[ts.DeviceType] = ts.Count
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // getDeviceDisplayName 获取设备显示名称

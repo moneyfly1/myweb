@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"fmt"
 	"strconv"
 
 	"cboard-go/internal/core/database"
@@ -17,13 +18,24 @@ type SubscriptionService struct {
 
 // NewSubscriptionService 创建订阅服务
 func NewSubscriptionService() *SubscriptionService {
+	db := database.GetDB()
+	if db == nil {
+		// 如果数据库未初始化，记录错误但不panic
+		// 在实际使用时会返回错误
+		if utils.AppLogger != nil {
+			utils.AppLogger.Error("SubscriptionService: 数据库未初始化")
+		}
+	}
 	return &SubscriptionService{
-		db: database.GetDB(),
+		db: db,
 	}
 }
 
 // GetByUserID 根据用户ID获取订阅
 func (s *SubscriptionService) GetByUserID(userID uint) (*models.Subscription, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("数据库未初始化")
+	}
 	var subscription models.Subscription
 	if err := s.db.Where("user_id = ?", userID).First(&subscription).Error; err != nil {
 		return nil, err
@@ -33,6 +45,9 @@ func (s *SubscriptionService) GetByUserID(userID uint) (*models.Subscription, er
 
 // GetBySubscriptionURL 根据订阅URL获取订阅
 func (s *SubscriptionService) GetBySubscriptionURL(url string) (*models.Subscription, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("数据库未初始化")
+	}
 	var subscription models.Subscription
 	if err := s.db.Where("subscription_url = ?", url).First(&subscription).Error; err != nil {
 		return nil, err
@@ -42,6 +57,9 @@ func (s *SubscriptionService) GetBySubscriptionURL(url string) (*models.Subscrip
 
 // CreateSubscription 创建订阅
 func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, durationDays int) (*models.Subscription, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("数据库未初始化")
+	}
 	subscriptionURL := utils.GenerateSubscriptionURL()
 	now := utils.GetBeijingTime()
 	expireTime := now.AddDate(0, 0, durationDays)
@@ -87,6 +105,9 @@ func getDefaultDeviceLimit(db *gorm.DB) int {
 
 // UpdateExpireTime 更新过期时间
 func (s *SubscriptionService) UpdateExpireTime(subscriptionID uint, days int) error {
+	if s.db == nil {
+		return fmt.Errorf("数据库未初始化")
+	}
 	var subscription models.Subscription
 	if err := s.db.First(&subscription, subscriptionID).Error; err != nil {
 		return err
@@ -104,6 +125,9 @@ func (s *SubscriptionService) UpdateExpireTime(subscriptionID uint, days int) er
 
 // CheckExpired 检查并更新过期订阅
 func (s *SubscriptionService) CheckExpired() error {
+	if s.db == nil {
+		return fmt.Errorf("数据库未初始化")
+	}
 	now := utils.GetBeijingTime()
 	return s.db.Model(&models.Subscription{}).
 		Where("expire_time < ? AND status = ?", now, "active").

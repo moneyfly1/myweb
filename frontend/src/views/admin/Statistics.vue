@@ -60,7 +60,7 @@
       </el-row>
   
       <!-- 标签页：用户统计、地区分析 -->
-      <el-tabs v-model="activeTab" type="border-card" style="margin-top: 20px;">
+      <el-tabs v-model="activeTab" type="border-card" class="statistics-tabs" style="margin-top: 20px;">
         <el-tab-pane label="用户统计" name="users">
           <!-- 图表区域 -->
           <el-row :gutter="20" class="charts-section">
@@ -258,36 +258,75 @@
                   </div>
                 </el-col>
                 <el-col :xs="24" :sm="24" :md="12">
-                  <div class="region-stats-table">
-                    <h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133;">地区统计列表</h4>
-                    <el-table 
-                      :data="regionStats" 
-                      stripe 
-                      style="width: 100%"
-                      :empty-text="'暂无地区数据'"
-                      max-height="400"
-                    >
-                      <el-table-column prop="region" label="地区" min-width="120">
-                        <template #default="{ row }">
-                          <el-tag type="info" size="small">{{ row.region || '未知' }}</el-tag>
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="userCount" label="用户数" width="100" align="right">
-                        <template #default="{ row }">
-                          <el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="percentage" label="占比" width="100" align="right">
-                        <template #default="{ row }">
-                          <span style="color: #606266; font-weight: 500;">{{ row.percentage || '0.0' }}%</span>
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="loginCount" label="登录次数" width="110" align="right">
-                        <template #default="{ row }">
-                          <span style="color: #909399;">{{ row.loginCount || 0 }}</span>
-                        </template>
-                      </el-table-column>
-                    </el-table>
+                  <!-- 桌面端表格 -->
+                  <div class="desktop-only">
+                    <div class="region-stats-table">
+                      <h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133;">地区统计列表</h4>
+                      <el-table 
+                        :data="regionStats" 
+                        stripe 
+                        style="width: 100%"
+                        :empty-text="'暂无地区数据'"
+                        max-height="400"
+                      >
+                        <el-table-column prop="region" label="地区" min-width="120">
+                          <template #default="{ row }">
+                            <el-tag type="info" size="small">{{ row.region || '未知' }}</el-tag>
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="userCount" label="用户数" width="100" align="right">
+                          <template #default="{ row }">
+                            <el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="percentage" label="占比" width="100" align="right">
+                          <template #default="{ row }">
+                            <span style="color: #606266; font-weight: 500;">{{ row.percentage || '0.0' }}%</span>
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="loginCount" label="登录次数" width="110" align="right">
+                          <template #default="{ row }">
+                            <span style="color: #909399;">{{ row.loginCount || 0 }}</span>
+                          </template>
+                        </el-table-column>
+                      </el-table>
+                    </div>
+                  </div>
+                  
+                  <!-- 移动端卡片列表 -->
+                  <div class="mobile-only">
+                    <div class="region-stats-list">
+                      <h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133; font-weight: 600;">地区统计列表</h4>
+                      <div v-if="regionStats.length === 0" style="text-align: center; padding: 40px; color: #909399;">
+                        <el-empty description="暂无地区数据" :image-size="80" />
+                      </div>
+                      <div v-else class="region-card-list">
+                        <div 
+                          v-for="(stat, index) in regionStats" 
+                          :key="index"
+                          class="region-card-item"
+                        >
+                          <div class="region-card-header">
+                            <el-tag type="info" size="small" style="font-size: 14px; padding: 4px 12px;">
+                              {{ stat.region || '未知' }}
+                            </el-tag>
+                            <el-tag type="primary" size="small" style="font-size: 14px; padding: 4px 12px;">
+                              {{ stat.userCount || 0 }} 人
+                            </el-tag>
+                          </div>
+                          <div class="region-card-body">
+                            <div class="region-card-stat">
+                              <span class="stat-label">占比：</span>
+                              <span class="stat-value">{{ stat.percentage || '0.0' }}%</span>
+                            </div>
+                            <div class="region-card-stat">
+                              <span class="stat-label">登录次数：</span>
+                              <span class="stat-value">{{ stat.loginCount || 0 }}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </el-col>
               </el-row>
@@ -300,40 +339,84 @@
                 <h3 style="margin: 0;">地区详细统计</h3>
               </div>
             </template>
-            <el-table 
-              :data="regionDetails" 
-              stripe
-              :empty-text="'暂无详细统计数据'"
-              v-loading="loadingRegions"
-            >
-              <el-table-column prop="country" label="国家" width="140" fixed="left">
-                <template #default="{ row }">
-                  <el-tag type="success" size="small" v-if="row.country">{{ row.country }}</el-tag>
-                  <span v-else style="color: #c0c4cc;">-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="city" label="城市" width="140">
-                <template #default="{ row }">
-                  <span v-if="row.city">{{ row.city }}</span>
-                  <span v-else style="color: #c0c4cc;">-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="userCount" label="用户数" width="110" align="right">
-                <template #default="{ row }">
-                  <el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="loginCount" label="登录次数" width="120" align="right">
-                <template #default="{ row }">
-                  <span style="color: #606266;">{{ row.loginCount || 0 }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="lastLogin" label="最后登录" width="180">
-                <template #default="{ row }">
-                  <span style="color: #909399; font-size: 13px;">{{ row.lastLogin || '-' }}</span>
-                </template>
-              </el-table-column>
-            </el-table>
+            
+            <!-- 桌面端表格 -->
+            <div class="desktop-only">
+              <el-table 
+                :data="regionDetails" 
+                stripe
+                :empty-text="'暂无详细统计数据'"
+                v-loading="loadingRegions"
+              >
+                <el-table-column prop="country" label="国家" width="140" fixed="left">
+                  <template #default="{ row }">
+                    <el-tag type="success" size="small" v-if="row.country">{{ row.country }}</el-tag>
+                    <span v-else style="color: #c0c4cc;">-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="city" label="城市" width="140">
+                  <template #default="{ row }">
+                    <span v-if="row.city">{{ row.city }}</span>
+                    <span v-else style="color: #c0c4cc;">-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="userCount" label="用户数" width="110" align="right">
+                  <template #default="{ row }">
+                    <el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="loginCount" label="登录次数" width="120" align="right">
+                  <template #default="{ row }">
+                    <span style="color: #606266;">{{ row.loginCount || 0 }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="lastLogin" label="最后登录" width="180">
+                  <template #default="{ row }">
+                    <span style="color: #909399; font-size: 13px;">{{ row.lastLogin || '-' }}</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            
+            <!-- 移动端卡片列表 -->
+            <div class="mobile-only">
+              <div v-loading="loadingRegions" style="min-height: 200px;">
+                <div v-if="regionDetails.length === 0" style="text-align: center; padding: 40px;">
+                  <el-empty description="暂无详细统计数据" :image-size="80" />
+                </div>
+                <div v-else class="region-details-list">
+                  <div 
+                    v-for="(detail, index) in regionDetails" 
+                    :key="index"
+                    class="region-detail-card"
+                  >
+                    <div class="detail-card-header">
+                      <div class="detail-location">
+                        <el-tag type="success" size="small" v-if="detail.country" style="margin-right: 8px;">
+                          {{ detail.country }}
+                        </el-tag>
+                        <span v-if="detail.city" class="detail-city">{{ detail.city }}</span>
+                        <span v-else style="color: #c0c4cc; font-size: 13px;">-</span>
+                      </div>
+                    </div>
+                    <div class="detail-card-body">
+                      <div class="detail-stat-row">
+                        <span class="detail-label">用户数：</span>
+                        <el-tag type="primary" size="small">{{ detail.userCount || 0 }}</el-tag>
+                      </div>
+                      <div class="detail-stat-row">
+                        <span class="detail-label">登录次数：</span>
+                        <span class="detail-value">{{ detail.loginCount || 0 }}</span>
+                      </div>
+                      <div class="detail-stat-row" v-if="detail.lastLogin">
+                        <span class="detail-label">最后登录：</span>
+                        <span class="detail-time">{{ detail.lastLogin }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </el-card>
         </el-tab-pane>
       </el-tabs>
@@ -583,6 +666,9 @@
           
           const ctx = regionChart.value.getContext('2d')
           if (ctx) {
+            // 检测是否为移动端
+            const isMobile = window.innerWidth <= 768
+            
             regionChartInstance = new Chart(ctx, {
               type: 'doughnut',
               data: {
@@ -598,17 +684,17 @@
               },
               options: {
                 responsive: true,
-                maintainAspectRatio: true,
-                aspectRatio: 1.5,
+                maintainAspectRatio: false,
                 plugins: {
                   legend: {
-                    position: 'right',
+                    position: isMobile ? 'bottom' : 'right',
                     labels: {
-                      padding: 15,
+                      padding: isMobile ? 8 : 15,
                       usePointStyle: true,
                       font: {
-                        size: 12
-                      }
+                        size: isMobile ? 10 : 12
+                      },
+                      boxWidth: isMobile ? 10 : 12
                     }
                   },
                   tooltip: {
@@ -623,10 +709,10 @@
                     }
                   },
                   title: {
-                    display: true,
+                    display: !isMobile,
                     text: '用户地区分布',
                     font: {
-                      size: 16,
+                      size: isMobile ? 14 : 16,
                       weight: 'bold'
                     },
                     padding: {
@@ -768,6 +854,13 @@
     padding: 20px;
   }
   
+  @media (max-width: 768px) {
+    .region-chart-container {
+      height: 300px;
+      padding: 10px;
+    }
+  }
+  
   .region-stats-table {
     padding: 10px 0;
   }
@@ -778,6 +871,129 @@
     padding-bottom: 10px;
     border-bottom: 1px solid #ebeef5;
     margin-bottom: 15px;
+  }
+  
+  /* 移动端地区统计卡片 */
+  .region-stats-list {
+    padding: 10px 0;
+  }
+  
+  .region-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .region-card-item {
+    padding: 14px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+  }
+  
+  .region-card-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+  
+  .region-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .region-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .region-card-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+  }
+  
+  .region-card-stat .stat-label {
+    color: #606266;
+    font-weight: 500;
+  }
+  
+  .region-card-stat .stat-value {
+    color: #303133;
+    font-weight: 600;
+  }
+  
+  /* 移动端地区详细统计卡片 */
+  .region-details-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .region-detail-card {
+    padding: 14px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+  }
+  
+  .region-detail-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+  
+  .detail-card-header {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .detail-location {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .detail-city {
+    color: #303133;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  
+  .detail-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .detail-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+  }
+  
+  .detail-label {
+    color: #606266;
+    font-weight: 500;
+  }
+  
+  .detail-value {
+    color: #303133;
+    font-weight: 600;
+  }
+  
+  .detail-time {
+    color: #909399;
+    font-size: 13px;
   }
   
   .card-header h3 {
@@ -889,6 +1105,16 @@
       padding: 8px;
     }
     
+    .region-chart-wrapper {
+      min-height: 250px;
+      margin-bottom: 16px;
+    }
+    
+    .region-chart-container {
+      height: 280px;
+      padding: 10px;
+    }
+    
     .card-header {
       padding: 12px 0;
       
@@ -897,6 +1123,42 @@
         font-weight: 600;
         margin: 0;
       }
+    }
+    
+    .region-stats-list h4 {
+      font-size: 15px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ebeef5;
+    }
+    
+    .region-card-item {
+      padding: 12px;
+    }
+    
+    .region-card-header {
+      margin-bottom: 10px;
+    }
+    
+    .region-card-stat {
+      font-size: 13px;
+    }
+    
+    .region-detail-card {
+      padding: 12px;
+    }
+    
+    .detail-card-header {
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+    }
+    
+    .detail-stat-row {
+      font-size: 13px;
+    }
+    
+    .detail-time {
+      font-size: 12px;
     }
     
     .detailed-stats {

@@ -111,7 +111,8 @@
     <el-dialog
       v-model="showAddDialog"
       :title="editingNode ? '编辑专线节点' : '添加专线节点'"
-      width="700px"
+      :width="isMobile ? '95%' : '700px'"
+      class="custom-node-dialog"
     >
       <el-tabs v-model="addNodeTab" v-if="!editingNode">
         <el-tab-pane label="节点链接导入" name="link">
@@ -247,7 +248,8 @@
     <el-dialog
       v-model="showLinkDialog"
       title="节点订阅链接"
-      width="700px"
+      :width="isMobile ? '95%' : '700px'"
+      class="node-link-dialog"
     >
       <div v-if="nodeLink">
         <el-alert
@@ -290,7 +292,8 @@
     <el-dialog
       v-model="showAssignDialog"
       :title="assignMode === 'single' ? '分配专线节点' : '批量分配专线节点'"
-      width="800px"
+      :width="isMobile ? '95%' : '800px'"
+      class="assign-node-dialog"
     >
       <el-alert
         :title="assignMode === 'single' ? `节点: ${assigningNode?.name || ''}` : `已选择 ${selectedNodes.length} 个节点`"
@@ -378,7 +381,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
@@ -391,10 +394,15 @@ export default {
     Search
   },
   setup() {
+    const isMobile = ref(window.innerWidth <= 768)
     const loading = ref(false)
     const saving = ref(false)
     const parsing = ref(false)
     const customNodes = ref([])
+    
+    const handleResize = () => {
+      isMobile.value = window.innerWidth <= 768
+    }
     const showAddDialog = ref(false)
     const showLinkDialog = ref(false)
     const editingNode = ref(null)
@@ -1026,9 +1034,15 @@ export default {
     onMounted(() => {
       loadCustomNodes()
       loadUsers()
+      window.addEventListener('resize', handleResize)
+    })
+    
+    onUnmounted(() => {
+      window.removeEventListener('resize', handleResize)
     })
 
     return {
+      isMobile,
       loading,
       saving,
       parsing,
@@ -1172,21 +1186,89 @@ export default {
   border-radius: 0 !important;
 }
 
-@media (max-width: 768px) {
-  .desktop-only {
-    display: none;
+/* 桌面端/移动端显示控制 */
+.desktop-only {
+  @media (max-width: 768px) {
+    display: none !important;
   }
-  
+}
+
+.mobile-only {
+  display: none;
+  @media (max-width: 768px) {
+    display: block;
+  }
+}
+
+@media (max-width: 768px) {
   .admin-custom-nodes {
     padding: 10px;
   }
   
   .filter-bar {
     flex-direction: column;
+    gap: 10px;
   }
   
   .filter-bar > * {
     width: 100% !important;
+  }
+  
+  /* 对话框优化 */
+  :deep(.custom-node-dialog),
+  :deep(.node-link-dialog),
+  :deep(.assign-node-dialog) {
+    .el-dialog {
+      width: 95% !important;
+      margin: 2vh auto !important;
+      max-height: 96vh;
+    }
+    
+    .el-dialog__body {
+      padding: 15px !important;
+      max-height: calc(96vh - 140px);
+      overflow-y: auto;
+    }
+    
+    .el-dialog__footer {
+      padding: 12px 15px 15px;
+      
+      .el-button {
+        width: 100%;
+        margin: 0 0 10px 0 !important;
+        min-height: 44px;
+        font-size: 16px;
+        
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+    }
+  }
+  
+  /* 表单优化 */
+  :deep(.el-form-item) {
+    margin-bottom: 18px;
+    
+    .el-form-item__label {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+  }
+  
+  /* 表格优化 */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    
+    :deep(.el-table) {
+      min-width: 800px;
+      font-size: 12px;
+      
+      .el-table__cell {
+        padding: 8px 4px;
+      }
+    }
   }
 }
 </style>

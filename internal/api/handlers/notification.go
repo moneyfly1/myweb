@@ -21,10 +21,7 @@ import (
 func requireAuth(c *gin.Context) (*models.User, bool) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return nil, false
 	}
 	return user, true
@@ -32,22 +29,12 @@ func requireAuth(c *gin.Context) (*models.User, bool) {
 
 // errorResponse 返回错误响应
 func errorResponse(c *gin.Context, statusCode int, message string) {
-	c.JSON(statusCode, gin.H{
-		"success": false,
-		"message": message,
-	})
+	utils.ErrorResponse(c, statusCode, message, nil)
 }
 
 // successResponse 返回成功响应
 func successResponse(c *gin.Context, statusCode int, message string, data interface{}) {
-	response := gin.H{
-		"success": true,
-		"message": message,
-	}
-	if data != nil {
-		response["data"] = data
-	}
-	c.JSON(statusCode, response)
+	utils.SuccessResponse(c, statusCode, message, data)
 }
 
 // parsePaginationParams 解析分页参数

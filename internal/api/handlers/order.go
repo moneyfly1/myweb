@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -82,10 +83,7 @@ func CreateOrder(c *gin.Context) {
 func GetOrders(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -168,10 +166,7 @@ func GetOrders(c *gin.Context) {
 	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&orders).Error; err != nil {
 		// 不向客户端返回详细错误信息，防止信息泄露
 		utils.LogError("GetOrders: query orders", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取订单列表失败，请稍后重试",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败，请稍后重试", err)
 		return
 	}
 
@@ -247,15 +242,12 @@ func GetOrders(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"orders": formattedOrders,
-			"total":  total,
-			"page":   page,
-			"size":   size,
-			"pages":  pages,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"orders": formattedOrders,
+		"total":  total,
+		"page":   page,
+		"size":   size,
+		"pages":  pages,
 	})
 }
 
@@ -264,10 +256,7 @@ func GetOrder(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -284,23 +273,14 @@ func GetOrder(c *gin.Context) {
 
 	if err := query.First(&order).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "订单不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", err)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取订单失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单失败", err)
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    order,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", order)
 }
 
 // CancelOrder 取消订单
@@ -308,10 +288,7 @@ func CancelOrder(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -323,27 +300,17 @@ func CancelOrder(c *gin.Context) {
 	}
 
 	if order.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单状态不允许取消",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "订单状态不允许取消", nil)
 		return
 	}
 
 	order.Status = "cancelled"
 	if err := db.Save(&order).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "取消订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "取消订单失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "订单已取消",
-		"data":    order,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "订单已取消", order)
 }
 
 // CancelOrderByNo 通过订单号取消订单
@@ -351,45 +318,29 @@ func CancelOrderByNo(c *gin.Context) {
 	orderNo := c.Param("orderNo")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var order models.Order
 	if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&order).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", err)
 		return
 	}
 
 	if order.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单状态不允许取消",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "订单状态不允许取消", nil)
 		return
 	}
 
 	order.Status = "cancelled"
 	if err := db.Save(&order).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "取消订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "取消订单失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "订单已取消",
-		"data":    order,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "订单已取消", order)
 }
 
 // GetAdminOrders 管理员获取订单列表
@@ -465,10 +416,7 @@ func GetAdminOrders(c *gin.Context) {
 
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&orders).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取订单列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
 		return
 	}
 
@@ -599,19 +547,13 @@ func BulkMarkOrdersPaid(c *gin.Context) {
 		OrderIDs []uint `json:"order_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	if err := db.Model(&models.Order{}).Where("id IN ?", req.OrderIDs).Update("status", "paid").Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "批量更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量更新失败", err)
 		return
 	}
 
@@ -624,19 +566,13 @@ func BulkCancelOrders(c *gin.Context) {
 		OrderIDs []uint `json:"order_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	if err := db.Model(&models.Order{}).Where("id IN ? AND status = ?", req.OrderIDs, "pending").Update("status", "cancelled").Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "批量取消失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量取消失败", err)
 		return
 	}
 
@@ -785,10 +721,7 @@ func ExportOrders(c *gin.Context) {
 func GetOrderStats(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -830,20 +763,14 @@ func GetOrderStatusByNo(c *gin.Context) {
 	orderNo := c.Param("orderNo")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var order models.Order
 	if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&order).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", err)
 		return
 	}
 
@@ -934,10 +861,7 @@ func GetOrderStatusByNo(c *gin.Context) {
 func UpgradeDevices(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -961,15 +885,15 @@ func UpgradeDevices(c *gin.Context) {
 	// 获取用户的订阅
 	var subscription models.Subscription
 	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订阅不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
 		return
 	}
 
-	// 计算升级费用（假设每个设备每月10元，每天约0.33元）
-	devicePricePerMonth := 10.0
+	// 计算升级费用（从配置读取设备升级价格）
+	devicePricePerMonth := config.AppConfig.DeviceUpgradePricePerMonth
+	if devicePricePerMonth <= 0 {
+		devicePricePerMonth = 10.0 // 默认值
+	}
 	devicePricePerDay := devicePricePerMonth / 30.0
 	deviceCost := float64(req.AdditionalDevices) * devicePricePerMonth
 	daysCost := float64(req.AdditionalDays) * devicePricePerDay
@@ -990,10 +914,7 @@ func UpgradeDevices(c *gin.Context) {
 	finalAmount := totalAmount
 	if req.UseBalance {
 		if user.Balance <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "您的余额为0，无法使用余额支付",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "您的余额为0，无法使用余额支付", nil)
 			return
 		}
 
@@ -1043,10 +964,7 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	if err := db.Create(&order).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
 		return
 	}
 
@@ -1063,10 +981,7 @@ func UpgradeDevices(c *gin.Context) {
 		order.Status = "paid"
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
 		if err := db.Save(&order).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新订单状态失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单状态失败", err)
 			return
 		}
 
@@ -1077,26 +992,19 @@ func UpgradeDevices(c *gin.Context) {
 			utils.LogError("UpgradeDevices: process paid order failed", err, map[string]interface{}{
 				"order_id": order.ID,
 			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "处理订单失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "处理订单失败", err)
 			return
 		}
 
 		// 重新加载订阅以获取最新数据
 		db.Where("user_id = ?", user.ID).First(&subscription)
 
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "设备数量升级成功",
-			"data": gin.H{
-				"order_no":           order.OrderNo,
-				"status":             "paid",
-				"subscription":       subscription,
-				"additional_devices": req.AdditionalDevices,
-				"additional_days":    req.AdditionalDays,
-			},
+		utils.SuccessResponse(c, http.StatusOK, "设备数量升级成功", gin.H{
+			"order_no":           order.OrderNo,
+			"status":             "paid",
+			"subscription":       subscription,
+			"additional_devices": req.AdditionalDevices,
+			"additional_days":    req.AdditionalDays,
 		})
 		return
 	}
@@ -1187,10 +1095,7 @@ func PayOrder(c *gin.Context) {
 	orderNo := c.Param("orderNo")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 

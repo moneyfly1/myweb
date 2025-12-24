@@ -26,10 +26,7 @@ type SendVerificationCodeRequest struct {
 func SendVerificationCode(c *gin.Context) {
 	var req SendVerificationCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -40,10 +37,7 @@ func SendVerificationCode(c *gin.Context) {
 		var registrationConfig models.SystemConfig
 		if err := db.Where("key = ? AND category = ?", "registration_enabled", "registration").First(&registrationConfig).Error; err == nil {
 			if registrationConfig.Value != "true" {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": "注册功能已禁用，请联系管理员",
-				})
+				utils.ErrorResponse(c, http.StatusForbidden, "注册功能已禁用，请联系管理员", nil)
 				return
 			}
 		}
@@ -57,10 +51,7 @@ func SendVerificationCode(c *gin.Context) {
 
 	if req.Type == "email" {
 		if req.Email == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "邮箱不能为空",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "邮箱不能为空", nil)
 			return
 		}
 
@@ -74,10 +65,7 @@ func SendVerificationCode(c *gin.Context) {
 		}
 
 		if err := db.Create(&verificationCode).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "保存验证码失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "保存验证码失败", err)
 			return
 		}
 
@@ -87,23 +75,14 @@ func SendVerificationCode(c *gin.Context) {
 			utils.LogError("SendVerificationCode: send email failed", err, map[string]interface{}{
 				"email": req.Email,
 			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "发送邮件失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "发送邮件失败", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "验证码已发送到邮箱",
-		})
+		utils.SuccessResponse(c, http.StatusOK, "验证码已发送到邮箱", nil)
 
 	} else {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "不支持的验证码类型",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "不支持的验证码类型", nil)
 	}
 
 }
@@ -120,10 +99,7 @@ type VerifyCodeRequest struct {
 func VerifyCode(c *gin.Context) {
 	var req VerifyCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -140,10 +116,7 @@ func VerifyCode(c *gin.Context) {
 		Count(&failedAttempts)
 
 	if failedAttempts >= 5 {
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"success": false,
-			"message": "验证码尝试次数过多，请5分钟后再试",
-		})
+		utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码尝试次数过多，请5分钟后再试", nil)
 		return
 	}
 
@@ -162,10 +135,7 @@ func VerifyCode(c *gin.Context) {
 		}
 		db.Create(&attempt)
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "验证码错误或已使用",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误或已使用", err)
 		return
 	}
 
@@ -180,10 +150,7 @@ func VerifyCode(c *gin.Context) {
 		}
 		db.Create(&attempt)
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "验证码已过期",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期", nil)
 		return
 	}
 
@@ -200,10 +167,7 @@ func VerifyCode(c *gin.Context) {
 	verificationCode.MarkAsUsed()
 	db.Save(&verificationCode)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "验证成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "验证成功", nil)
 }
 
 // generateVerificationCode 生成6位数字验证码（使用加密安全的随机数生成器）

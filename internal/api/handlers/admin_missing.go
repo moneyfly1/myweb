@@ -69,21 +69,15 @@ func GetAdminInvites(c *gin.Context) {
 	var inviteCodes []models.InviteCode
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&inviteCodes).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取邀请码列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请码列表失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"invite_codes": inviteCodes,
-			"total":        total,
-			"page":         page,
-			"size":         size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"invite_codes": inviteCodes,
+		"total":        total,
+		"page":         page,
+		"size":         size,
 	})
 }
 
@@ -122,21 +116,15 @@ func GetAdminInviteRelations(c *gin.Context) {
 	var relations []models.InviteRelation
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&relations).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取邀请关系列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请关系列表失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"relations": relations,
-			"total":     total,
-			"page":      page,
-			"size":      size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"relations": relations,
+		"total":     total,
+		"page":      page,
+		"size":      size,
 	})
 }
 
@@ -159,10 +147,7 @@ func GetAdminInviteStatistics(c *gin.Context) {
 	db.Model(&models.User{}).Select("COALESCE(SUM(total_invite_reward), 0)").Scan(&totalReward)
 	stats.TotalInviteReward = totalReward
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // GetAdminTickets 管理员工单列表
@@ -204,10 +189,7 @@ func GetAdminTickets(c *gin.Context) {
 	var tickets []models.Ticket
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&tickets).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取工单列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单列表失败", err)
 		return
 	}
 
@@ -261,14 +243,11 @@ func GetAdminTickets(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"tickets": ticketList,
-			"total":   total,
-			"page":    page,
-			"size":    size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"tickets": ticketList,
+		"total":   total,
+		"page":    page,
+		"size":    size,
 	})
 }
 
@@ -290,10 +269,7 @@ func GetAdminTicketStatistics(c *gin.Context) {
 	db.Model(&models.Ticket{}).Where("status = ?", "resolved").Count(&stats.Resolved)
 	db.Model(&models.Ticket{}).Where("status = ?", "closed").Count(&stats.Closed)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // GetAdminTicket 管理员获取单个工单详情
@@ -310,15 +286,9 @@ func GetAdminTicket(c *gin.Context) {
 		Preload("Attachments").
 		First(&ticket, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "工单不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "工单不存在", err)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取工单失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单失败", err)
 		}
 		return
 	}
@@ -442,11 +412,8 @@ func GetAdminTicket(c *gin.Context) {
 		ticketData["closed_at"] = ticket.ClosedAt.Format("2006-01-02 15:04:05")
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"ticket": ticketData, // 前端期望嵌套在 ticket 字段中
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"ticket": ticketData, // 前端期望嵌套在 ticket 字段中
 	})
 }
 
@@ -507,21 +474,15 @@ func GetAdminCoupons(c *gin.Context) {
 	var coupons []models.Coupon
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&coupons).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取优惠券列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取优惠券列表失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"coupons": coupons,
-			"total":   total,
-			"page":    page,
-			"size":    size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"coupons": coupons,
+		"total":   total,
+		"page":    page,
+		"size":    size,
 	})
 }
 
@@ -530,17 +491,11 @@ func GetAdminUserLevels(c *gin.Context) {
 	db := database.GetDB()
 	var userLevels []models.UserLevel
 	if err := db.Order("level_order ASC").Find(&userLevels).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取用户等级列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户等级列表失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    userLevels,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", userLevels)
 }
 
 // CreateUserLevel 创建用户等级（管理员）
@@ -557,10 +512,7 @@ func CreateUserLevel(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
@@ -569,19 +521,13 @@ func CreateUserLevel(c *gin.Context) {
 	// 检查等级名称是否已存在
 	var existing models.UserLevel
 	if err := db.Where("level_name = ?", req.LevelName).First(&existing).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "等级名称已存在",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "等级名称已存在", nil)
 		return
 	}
 
 	// 检查等级顺序是否已存在
 	if err := db.Where("level_order = ?", req.LevelOrder).First(&existing).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "等级顺序已存在",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "等级顺序已存在", nil)
 		return
 	}
 
@@ -602,17 +548,11 @@ func CreateUserLevel(c *gin.Context) {
 	}
 
 	if err := db.Create(&userLevel).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建用户等级失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建用户等级失败", err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data":    userLevel,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "", userLevel)
 }
 
 // UpdateUserLevel 更新用户等级（管理员）
@@ -622,10 +562,7 @@ func UpdateUserLevel(c *gin.Context) {
 
 	var userLevel models.UserLevel
 	if err := db.First(&userLevel, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "用户等级不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "用户等级不存在", err)
 		return
 	}
 
@@ -641,10 +578,7 @@ func UpdateUserLevel(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
@@ -653,10 +587,7 @@ func UpdateUserLevel(c *gin.Context) {
 		// 检查新名称是否已存在
 		var existing models.UserLevel
 		if err := db.Where("level_name = ? AND id != ?", req.LevelName, id).First(&existing).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "等级名称已存在",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "等级名称已存在", nil)
 			return
 		}
 		userLevel.LevelName = req.LevelName
@@ -666,10 +597,7 @@ func UpdateUserLevel(c *gin.Context) {
 		// 检查新顺序是否已存在
 		var existing models.UserLevel
 		if err := db.Where("level_order = ? AND id != ?", req.LevelOrder, id).First(&existing).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "等级顺序已存在",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "等级顺序已存在", nil)
 			return
 		}
 		userLevel.LevelOrder = req.LevelOrder
@@ -697,28 +625,18 @@ func UpdateUserLevel(c *gin.Context) {
 	}
 
 	if err := db.Save(&userLevel).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新用户等级失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户等级失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    userLevel,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", userLevel)
 }
 
 // GetUserLevel 获取用户等级
 func GetUserLevel(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -726,28 +644,19 @@ func GetUserLevel(c *gin.Context) {
 	var userLevel models.UserLevel
 	if user.UserLevelID.Valid {
 		if err := db.First(&userLevel, user.UserLevelID.Int64).Error; err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": true,
-				"data":    nil,
-			})
+			utils.SuccessResponse(c, http.StatusOK, "", nil)
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    userLevel,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", userLevel)
 }
 
 // GetUserSubscription 获取用户订阅
 func GetUserSubscription(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -755,16 +664,10 @@ func GetUserSubscription(c *gin.Context) {
 	var subscription models.Subscription
 	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusOK, gin.H{
-				"success": true,
-				"data":    nil,
-			})
+			utils.SuccessResponse(c, http.StatusOK, "", nil)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取订阅失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
 		return
 	}
 
@@ -829,29 +732,20 @@ func GetUserSubscription(c *gin.Context) {
 		"created_at":       subscription.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    subscriptionData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", subscriptionData)
 }
 
 // GetUserTheme 获取用户主题
 func GetUserTheme(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"theme":    user.Theme,
-			"language": user.Language,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"theme":    user.Theme,
+		"language": user.Language,
 	})
 }
 
@@ -859,10 +753,7 @@ func GetUserTheme(c *gin.Context) {
 func UpdateUserTheme(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -872,10 +763,7 @@ func UpdateUserTheme(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -892,20 +780,13 @@ func UpdateUserTheme(c *gin.Context) {
 	}
 
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新主题失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新主题失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "主题更新成功",
-		"data": gin.H{
-			"theme":    user.Theme,
-			"language": user.Language,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "主题更新成功", gin.H{
+		"theme":    user.Theme,
+		"language": user.Language,
 	})
 }
 
@@ -944,10 +825,7 @@ func GetAdminEmailQueue(c *gin.Context) {
 	var emails []models.EmailQueue
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&emails).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取邮件队列失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邮件队列失败", err)
 		return
 	}
 
@@ -957,15 +835,12 @@ func GetAdminEmailQueue(c *gin.Context) {
 		pages = 1
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"emails": emails,
-			"total":  total,
-			"page":   page,
-			"size":   size,
-			"pages":  pages,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"emails": emails,
+		"total":  total,
+		"page":   page,
+		"size":   size,
+		"pages":  pages,
 	})
 }
 
@@ -995,10 +870,7 @@ func GetEmailQueueStatistics(c *gin.Context) {
 	stats.Sent = stats.SentEmails
 	stats.Failed = stats.FailedEmails
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // GetEmailQueueDetail 获取邮件详情
@@ -1009,23 +881,14 @@ func GetEmailQueueDetail(c *gin.Context) {
 	var email models.EmailQueue
 	if err := db.First(&email, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "邮件不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "邮件不存在", err)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取邮件详情失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取邮件详情失败", err)
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    email,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", email)
 }
 
 // DeleteEmailFromQueue 删除邮件
@@ -1036,31 +899,19 @@ func DeleteEmailFromQueue(c *gin.Context) {
 	var email models.EmailQueue
 	if err := db.First(&email, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "邮件不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "邮件不存在", err)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取邮件失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取邮件失败", err)
 		}
 		return
 	}
 
 	if err := db.Delete(&email).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除邮件失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除邮件失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "邮件删除成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "邮件删除成功", nil)
 }
 
 // RetryEmailFromQueue 重试发送邮件
@@ -1071,15 +922,9 @@ func RetryEmailFromQueue(c *gin.Context) {
 	var email models.EmailQueue
 	if err := db.First(&email, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "邮件不存在",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "邮件不存在", err)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "获取邮件失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取邮件失败", err)
 		}
 		return
 	}
@@ -1090,17 +935,11 @@ func RetryEmailFromQueue(c *gin.Context) {
 	email.ErrorMessage = sql.NullString{Valid: false}
 
 	if err := db.Save(&email).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "重试邮件失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "重试邮件失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "邮件已加入重试队列",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "邮件已加入重试队列", nil)
 }
 
 // ClearEmailQueue 清空邮件队列
@@ -1118,10 +957,7 @@ func ClearEmailQueue(c *gin.Context) {
 	}
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "清空邮件队列失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "清空邮件队列失败", result.Error)
 		return
 	}
 
@@ -1130,12 +966,8 @@ func ClearEmailQueue(c *gin.Context) {
 		message = fmt.Sprintf("已清空 %s 状态的邮件", status)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": message,
-		"data": gin.H{
-			"deleted_count": result.RowsAffected,
-		},
+	utils.SuccessResponse(c, http.StatusOK, message, gin.H{
+		"deleted_count": result.RowsAffected,
 	})
 }
 
@@ -1143,10 +975,7 @@ func ClearEmailQueue(c *gin.Context) {
 func UpdateAdminSystemConfig(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
@@ -1162,29 +991,20 @@ func UpdateAdminSystemConfig(c *gin.Context) {
 				Value:    fmt.Sprintf("%v", value),
 			}
 			if err := db.Create(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": fmt.Sprintf("保存配置 %s 失败", key),
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("保存配置 %s 失败", key), err)
 				return
 			}
 		} else {
 			// 更新现有配置
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败", key),
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新配置 %s 失败", key), err)
 				return
 			}
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "系统配置保存成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "系统配置保存成功", nil)
 }
 
 // GetAdminSystemConfig 获取系统配置
@@ -1216,10 +1036,7 @@ func GetAdminSystemConfig(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    configMap,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
 // GetAdminClashConfig 获取 Clash 配置
@@ -1227,17 +1044,11 @@ func GetAdminClashConfig(c *gin.Context) {
 	db := database.GetDB()
 	var config models.SystemConfig
 	if err := db.Where("category = ? AND key = ?", "clash", "config").First(&config).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    nil,
-		})
+		utils.SuccessResponse(c, http.StatusOK, "", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    config.Value,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", config.Value)
 }
 
 // GetAdminV2RayConfig 获取 V2Ray 配置
@@ -1245,17 +1056,11 @@ func GetAdminV2RayConfig(c *gin.Context) {
 	db := database.GetDB()
 	var config models.SystemConfig
 	if err := db.Where("category = ? AND key = ?", "v2ray", "config").First(&config).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    nil,
-		})
+		utils.SuccessResponse(c, http.StatusOK, "", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    config.Value,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", config.Value)
 }
 
 // GetAdminEmailConfig 获取邮件配置
@@ -1269,10 +1074,7 @@ func GetAdminEmailConfig(c *gin.Context) {
 		configMap[config.Key] = config.Value
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    configMap,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
 // GetAdminClashConfigInvalid 获取无效的 Clash 配置
@@ -1280,17 +1082,11 @@ func GetAdminClashConfigInvalid(c *gin.Context) {
 	db := database.GetDB()
 	var config models.SystemConfig
 	if err := db.Where("category = ? AND key = ?", "clash", "config_invalid").First(&config).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    "",
-		})
+		utils.SuccessResponse(c, http.StatusOK, "", "")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    config.Value,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", config.Value)
 }
 
 // GetAdminV2RayConfigInvalid 获取无效的 V2Ray 配置
@@ -1298,17 +1094,11 @@ func GetAdminV2RayConfigInvalid(c *gin.Context) {
 	db := database.GetDB()
 	var config models.SystemConfig
 	if err := db.Where("category = ? AND key = ?", "v2ray", "config_invalid").First(&config).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    "",
-		})
+		utils.SuccessResponse(c, http.StatusOK, "", "")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    config.Value,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", config.Value)
 }
 
 // GetSoftwareConfig 获取软件配置
@@ -1322,10 +1112,7 @@ func GetSoftwareConfig(c *gin.Context) {
 		configMap[config.Key] = config.Value
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    configMap,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
 // GetPaymentConfig 获取支付配置列表
@@ -1355,10 +1142,7 @@ func GetPaymentConfig(c *gin.Context) {
 	var paymentConfigs []models.PaymentConfig
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&paymentConfigs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取支付配置列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取支付配置列表失败", err)
 		return
 	}
 
@@ -1425,14 +1209,11 @@ func GetPaymentConfig(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"items": configsResponse,
-			"total": total,
-			"page":  page,
-			"size":  size,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"items": configsResponse,
+		"total": total,
+		"page":  page,
+		"size":  size,
 	})
 }
 
@@ -1475,12 +1256,9 @@ func GetUserTrend(c *gin.Context) {
 		data = append(data, trend.UserCount)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"labels": labels,
-			"data":   data,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"labels": labels,
+		"data":   data,
 	})
 }
 
@@ -1495,10 +1273,7 @@ func UpdateClashConfig(c *gin.Context) {
 		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -1513,35 +1288,23 @@ func UpdateClashConfig(c *gin.Context) {
 				Value:    req.Content,
 			}
 			if err := db.Create(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "创建配置失败",
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, "创建配置失败", err)
 				return
 			}
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "查询配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询配置失败", err)
 			return
 		}
 	} else {
 		// 更新现有配置
 		config.Value = req.Content
 		if err := db.Save(&config).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败", err)
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Clash 配置已更新",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "Clash 配置已更新", nil)
 }
 
 // UpdateV2RayConfig 更新 V2Ray 配置
@@ -1550,10 +1313,7 @@ func UpdateV2RayConfig(c *gin.Context) {
 		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -1568,45 +1328,30 @@ func UpdateV2RayConfig(c *gin.Context) {
 				Value:    req.Content,
 			}
 			if err := db.Create(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "创建配置失败",
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, "创建配置失败", err)
 				return
 			}
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "查询配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询配置失败", err)
 			return
 		}
 	} else {
 		// 更新现有配置
 		config.Value = req.Content
 		if err := db.Save(&config).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败", err)
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "V2Ray 配置已更新",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "V2Ray 配置已更新", nil)
 }
 
 // UpdateEmailConfig 更新邮件配置
 func UpdateEmailConfig(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -1622,10 +1367,7 @@ func UpdateEmailConfig(c *gin.Context) {
 					Value:    fmt.Sprintf("%v", value),
 				}
 				if err := db.Create(&config).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"success": false,
-						"message": fmt.Sprintf("保存配置 %s 失败", key),
-					})
+					utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("保存配置 %s 失败", key), err)
 					return
 				}
 			} else {
@@ -1633,29 +1375,20 @@ func UpdateEmailConfig(c *gin.Context) {
 				utils.LogError("UpdateSystemConfig: query config", err, map[string]interface{}{
 					"key": key,
 				})
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "更新配置失败，请稍后重试",
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败，请稍后重试", err)
 				return
 			}
 		} else {
 			// 更新现有配置
 			config.Value = fmt.Sprintf("%v", value)
 			if err := db.Save(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": fmt.Sprintf("更新配置 %s 失败", key),
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新配置 %s 失败", key), err)
 				return
 			}
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "邮件配置已更新",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "邮件配置已更新", nil)
 }
 
 // MarkClashConfigInvalid 保存 Clash 失效配置
@@ -1664,10 +1397,7 @@ func MarkClashConfigInvalid(c *gin.Context) {
 		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -1682,35 +1412,23 @@ func MarkClashConfigInvalid(c *gin.Context) {
 				Value:    req.Content,
 			}
 			if err := db.Create(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "创建配置失败",
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, "创建配置失败", err)
 				return
 			}
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "查询配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询配置失败", err)
 			return
 		}
 	} else {
 		// 更新现有配置
 		config.Value = req.Content
 		if err := db.Save(&config).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败", err)
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Clash 失效配置已保存",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "Clash 失效配置已保存", nil)
 }
 
 // MarkV2RayConfigInvalid 保存 V2Ray 失效配置
@@ -1719,10 +1437,7 @@ func MarkV2RayConfigInvalid(c *gin.Context) {
 		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -1737,35 +1452,23 @@ func MarkV2RayConfigInvalid(c *gin.Context) {
 				Value:    req.Content,
 			}
 			if err := db.Create(&config).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "创建配置失败",
-				})
+				utils.ErrorResponse(c, http.StatusInternalServerError, "创建配置失败", err)
 				return
 			}
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "查询配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询配置失败", err)
 			return
 		}
 	} else {
 		// 更新现有配置
 		config.Value = req.Content
 		if err := db.Save(&config).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "更新配置失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败", err)
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "V2Ray 失效配置已保存",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "V2Ray 失效配置已保存", nil)
 }
 
 // CreatePaymentConfig 创建支付配置
@@ -1794,10 +1497,7 @@ func CreatePaymentConfig(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
@@ -1855,18 +1555,11 @@ func CreatePaymentConfig(c *gin.Context) {
 	if err := db.Create(&paymentConfig).Error; err != nil {
 		// 不向客户端返回详细错误信息，防止信息泄露
 		utils.LogError("CreatePaymentConfig: create payment config", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建支付配置失败，请稍后重试",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付配置失败，请稍后重试", err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"message": "支付配置创建成功",
-		"data":    paymentConfig,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "支付配置创建成功", paymentConfig)
 }
 
 // UpdatePaymentConfig 更新支付配置
@@ -1897,20 +1590,14 @@ func UpdatePaymentConfig(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误，请检查输入格式",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
 	}
 
 	db := database.GetDB()
 	var paymentConfig models.PaymentConfig
 	if err := db.First(&paymentConfig, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "支付配置不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "支付配置不存在", err)
 		return
 	}
 
@@ -1997,10 +1684,7 @@ func UpdatePaymentConfig(c *gin.Context) {
 		utils.LogError("UpdatePaymentConfig: update payment config", err, map[string]interface{}{
 			"payment_config_id": id,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新支付配置失败，请稍后重试",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新支付配置失败，请稍后重试", err)
 		return
 	}
 
@@ -2038,11 +1722,7 @@ func UpdatePaymentConfig(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "支付配置更新成功",
-		"data":    responseData,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "支付配置更新成功", responseData)
 }
 
 // getPaymentConfigStringValue 辅助函数：从 sql.NullString 获取字符串值（用于支付配置）

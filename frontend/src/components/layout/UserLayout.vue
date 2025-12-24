@@ -320,12 +320,105 @@ onUnmounted(() => {
 }
 
 .mobile-drawer {
-  position: fixed; inset: 0; z-index: 2000;
-  .drawer-mask { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+  position: fixed; 
+  inset: 0; 
+  z-index: 2000;
+  
+  .drawer-mask { 
+    position: absolute; 
+    inset: 0; 
+    background: rgba(0,0,0,0.5); 
+    /* 确保遮罩层不会阻止菜单点击 */
+    pointer-events: auto;
+  }
+  
   .drawer-content {
-    position: absolute; left: 0; top: 0; bottom: 0; width: 280px;
-    background: white; color: #333;
-    .drawer-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+    position: absolute; 
+    left: 0; 
+    top: 0; 
+    bottom: 0; 
+    width: 280px;
+    max-width: 85vw;
+    background: #ffffff; /* 确保背景是纯白色，不透明 */
+    color: #333;
+    z-index: 2001; /* 确保菜单内容在遮罩层之上 */
+    box-shadow: 2px 0 16px rgba(0,0,0,0.15);
+    /* 确保菜单清晰可见 */
+    opacity: 1;
+    visibility: visible;
+    backdrop-filter: none; /* 移除模糊效果 */
+    -webkit-backdrop-filter: none;
+    
+    .drawer-header { 
+      padding: 20px; 
+      border-bottom: 1px solid #eee; 
+      display: flex; 
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      
+      i {
+        font-size: 20px;
+        cursor: pointer;
+        padding: 8px;
+        min-width: 40px;
+        min-height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        
+        &:hover {
+          background: #f5f7fa;
+          border-radius: 4px;
+        }
+      }
+    }
+    
+    .nav-list {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      height: calc(100% - 70px);
+      padding-bottom: 20px;
+    }
+    
+    .nav-item {
+      padding: 14px 20px;
+      min-height: 48px; /* 确保点击区域足够大 */
+      cursor: pointer;
+      -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+      /* 确保菜单项可以点击 */
+      pointer-events: auto;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: 0.2s;
+      
+      i {
+        font-size: 18px;
+        width: 20px;
+        text-align: center;
+      }
+      
+      &:hover {
+        background: #f5f7fa;
+      }
+      
+      &.active {
+        background: #ecf5ff;
+        color: #409EFF;
+        border-left: 4px solid #409EFF;
+      }
+      
+      &.admin-back {
+        background: #fff7e6;
+        color: #faad14;
+      }
+    }
   }
 }
 
