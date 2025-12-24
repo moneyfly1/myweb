@@ -3,6 +3,7 @@ package subscription
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -61,8 +62,25 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 		return nil, fmt.Errorf("数据库未初始化")
 	}
 	subscriptionURL := utils.GenerateSubscriptionURL()
-	now := utils.GetBeijingTime()
-	expireTime := now.AddDate(0, 0, durationDays)
+	// 使用 UTC 时间进行计算，避免时区问题
+	// SQLite 存储时间时可能会转换为 UTC，所以我们在 UTC 时区下计算过期时间
+	nowUTC := time.Now().UTC()
+
+	// 如果 durationDays 为 0 或负数，设置为默认值 30 天
+	if durationDays <= 0 {
+		durationDays = 30
+	}
+
+	// 在 UTC 时区下计算过期时间
+	expireTime := nowUTC.AddDate(0, 0, durationDays)
+
+	// 调试日志：记录订阅创建信息
+	if utils.AppLogger != nil {
+		utils.AppLogger.Info("创建订阅 - UserID=%d, PackageID=%d, DurationDays=%d, Now(UTC)=%s, ExpireTime(UTC)=%s",
+			userID, packageID, durationDays,
+			nowUTC.Format("2006-01-02 15:04:05 MST"),
+			expireTime.Format("2006-01-02 15:04:05 MST"))
+	}
 
 	// 从系统设置获取默认设备数
 	deviceLimit := getDefaultDeviceLimit(s.db)
@@ -81,6 +99,14 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 
 	if err := s.db.Create(&subscription).Error; err != nil {
 		return nil, err
+	}
+
+	// 调试日志：记录保存后的订阅信息
+	if utils.AppLogger != nil {
+		utils.AppLogger.Info("订阅创建成功 - SubscriptionID=%d, ExpireTime(保存后)=%s (时区:%s)",
+			subscription.ID,
+			subscription.ExpireTime.Format("2006-01-02 15:04:05 MST"),
+			subscription.ExpireTime.Location().String())
 	}
 
 	return &subscription, nil
@@ -121,12 +147,15 @@ func (s *SubscriptionService) UpdateExpireTime(subscriptionID uint, days int) er
 	}
 
 	now := utils.GetBeijingTime()
-	baseTime := subscription.ExpireTime
+	// 确保从数据库读取的时间转换为北京时间
+	baseTime := utils.ToBeijingTime(subscription.ExpireTime)
 	if baseTime.Before(now) {
 		baseTime = now
 	}
 
-	subscription.ExpireTime = baseTime.AddDate(0, 0, days)
+	// 计算新的过期时间并确保转换为北京时间
+	newExpireTime := baseTime.AddDate(0, 0, days)
+	subscription.ExpireTime = utils.ToBeijingTime(newExpireTime)
 	return s.db.Save(&subscription).Error
 }
 

@@ -49,7 +49,7 @@
     padding: 1rem;
   }
   
-  h1 {
+  :is(h1) {
     color: var(--primary-color);
     font-size: 2rem;
     margin-bottom: 0.5rem;
@@ -239,7 +239,7 @@
   font-size: 0.95rem;
   
   .el-table__header {
-    th {
+    :is(th) {
       background: #f8f9fa;
       color: var(--text-color);
       font-weight: 600;
@@ -254,7 +254,7 @@
   }
   
   .el-table__body {
-    tr {
+    :is(tr) {
       transition: background-color 0.2s;
       
       &:hover {
@@ -262,7 +262,7 @@
       }
     }
     
-    td {
+    :is(td) {
       padding: 12px 0;
       white-space: nowrap;
       
@@ -435,7 +435,7 @@
         
         // 如果按钮文字太长，隐藏部分文字
         &.action-btn {
-          span {
+          :is(span) {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;

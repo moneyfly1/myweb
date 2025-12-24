@@ -2587,7 +2587,7 @@ onUnmounted(() => {
       color: #ffffff;
     }
     
-    i {
+    :is(i) {
       font-size: 14px;
       color: #ffffff;
     }
@@ -3032,7 +3032,7 @@ onUnmounted(() => {
           color: #ffffff;
         }
         
-        i {
+        :is(i) {
           font-size: 15px;
           color: #ffffff;
         }

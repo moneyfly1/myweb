@@ -108,6 +108,16 @@ func InitDatabase() error {
 		return fmt.Errorf("数据库连接测试失败: %w", err)
 	}
 
+	// 对于 MySQL，设置会话时区为 UTC，然后我们在应用层转换为北京时间
+	// 这样可以避免数据库时区和应用时区不一致的问题
+	if strings.Contains(cfg.DatabaseURL, "mysql") || os.Getenv("USE_MYSQL") == "true" {
+		if err := DB.Exec("SET time_zone = '+00:00'").Error; err != nil {
+			log.Printf("警告: 设置 MySQL 时区失败: %v", err)
+		} else {
+			log.Println("MySQL 会话时区已设置为 UTC")
+		}
+	}
+
 	log.Println("数据库连接成功")
 	return nil
 }

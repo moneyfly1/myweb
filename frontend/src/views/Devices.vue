@@ -466,7 +466,7 @@ export default {
   align-items: flex-start;
   gap: 0.5rem;
   
-  i {
+  :is(i) {
     font-size: 1.2rem;
     color: var(--primary-color);
     margin-top: 2px;

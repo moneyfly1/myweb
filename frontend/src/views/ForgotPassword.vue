@@ -429,12 +429,12 @@ onUnmounted(() => {
   .forgot-header {
     margin-bottom: 24px;
     
-    h1 {
+    :is(h1) {
       font-size: 20px;
       margin-bottom: 8px;
     }
     
-    p {
+    :is(p) {
       font-size: 13px;
     }
   }

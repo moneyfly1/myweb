@@ -383,9 +383,9 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     .quick-stats { display: flex; gap: 24px; }
     .stat-item { 
         display: flex; flex-direction: column; align-items: center;
-        i { color: var(--theme-primary); font-size: 20px; }
-        span { font-size: 18px; font-weight: 600; }
-        small { font-size: 12px; opacity: 0.7; }
+        :is(i) { color: var(--theme-primary); font-size: 20px; }
+        :is(span) { font-size: 18px; font-weight: 600; }
+        :is(small) { font-size: 12px; opacity: 0.7; }
     }
   }
 }
@@ -439,7 +439,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       pointer-events: auto;
       z-index: 1;
       
-      i { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
+      :is(i) { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
       
       .nav-badge {
         position: absolute;

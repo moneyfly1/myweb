@@ -82,8 +82,18 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	subscriptionURL := utils.GenerateSubscriptionURL()
 
 	// 计算到期时间
-	now := utils.GetBeijingTime()
-	expireTime := now.AddDate(0, durationMonths, 0)
+	// 使用 UTC 时间进行计算，避免时区问题
+	// SQLite 存储时间时可能会转换为 UTC，所以我们在 UTC 时区下计算过期时间
+	nowUTC := time.Now().UTC()
+	var expireTime time.Time
+	// 如果 durationMonths 为 0 或负数，设置为当天到期（当天结束时间）
+	if durationMonths <= 0 {
+		// 设置为当天的结束时间（23:59:59）
+		expireTime = time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 23, 59, 59, 0, nowUTC.Location())
+	} else {
+		// 在 UTC 时区下计算过期时间
+		expireTime = nowUTC.AddDate(0, durationMonths, 0)
+	}
 
 	sub := models.Subscription{
 		UserID:          userID,
@@ -652,17 +662,27 @@ func CreateUser(c *gin.Context) {
 			// 尝试其他格式
 			parsedTime, err = time.Parse("2006-01-02 15:04:05", req.ExpireTime)
 			if err != nil {
-				// 使用系统默认值
-				expireTime = utils.GetBeijingTime().AddDate(0, defaultDurationMonths, 0)
+				// 使用系统默认值，在 UTC 时区下计算
+				months := defaultDurationMonths
+				if months <= 0 {
+					months = 1
+				}
+				expireTime = time.Now().UTC().AddDate(0, months, 0)
 			} else {
-				expireTime = parsedTime
+				// 解析的时间转换为 UTC
+				expireTime = parsedTime.UTC()
 			}
 		} else {
-			expireTime = parsedTime
+			// 解析的时间转换为 UTC
+			expireTime = parsedTime.UTC()
 		}
 	} else {
-		// 使用系统默认值
-		expireTime = utils.GetBeijingTime().AddDate(0, defaultDurationMonths, 0)
+		// 使用系统默认值，在 UTC 时区下计算
+		months := defaultDurationMonths
+		if months <= 0 {
+			months = 1
+		}
+		expireTime = time.Now().UTC().AddDate(0, months, 0)
 	}
 
 	subscription := models.Subscription{

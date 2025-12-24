@@ -880,7 +880,7 @@ onMounted(async () => {
       .el-table__header {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         
-        th {
+        :is(th) {
           background: transparent;
           color: #303133;
           font-weight: 600;
@@ -891,7 +891,7 @@ onMounted(async () => {
       }
       
       .el-table__body {
-        tr {
+        :is(tr) {
           transition: all 0.2s ease;
           
           &:hover {
@@ -899,7 +899,7 @@ onMounted(async () => {
             transform: scale(1.001);
           }
           
-          td {
+          :is(td) {
             padding: 16px 12px;
             font-size: 14px;
             border-bottom: 1px solid #f0f2f5;
@@ -1005,7 +1005,7 @@ onMounted(async () => {
       line-height: 1.8;
       color: #606266;
       
-      p {
+      :is(p) {
         margin: 8px 0;
         
         strong {

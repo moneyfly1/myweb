@@ -1042,7 +1042,7 @@ onUnmounted(() => {
     gap: 12px;
     margin-bottom: 16px;
     
-    h1 {
+    :is(h1) {
       font-size: 20px;
       margin: 0;
     }

@@ -1127,16 +1127,19 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 		Find(&customNodes).Error; err == nil {
 
 		for _, cn := range customNodes {
-			now := time.Now()
+			now := utils.GetBeijingTime()
 			isExpired := false
 			if cn.FollowUserExpire {
 				if user.SpecialNodeExpiresAt.Valid {
-					isExpired = user.SpecialNodeExpiresAt.Time.Before(now)
+					expireTimeBeijing := utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time)
+					isExpired = expireTimeBeijing.Before(now)
 				} else {
-					isExpired = sub.ExpireTime.Before(now)
+					expireTimeBeijing := utils.ToBeijingTime(sub.ExpireTime)
+					isExpired = expireTimeBeijing.Before(now)
 				}
 			} else if cn.ExpireTime != nil {
-				isExpired = cn.ExpireTime.Before(now)
+				expireTimeBeijing := utils.ToBeijingTime(*cn.ExpireTime)
+				isExpired = expireTimeBeijing.Before(now)
 			}
 
 			if isExpired || cn.Status == "timeout" {
@@ -1210,9 +1213,32 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 		ctx.Status = StatusInactive
 		return ctx
 	}
-	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(time.Now()) {
-		ctx.Status = StatusExpired
-		return ctx
+	// 检查订阅是否过期
+	// SQLite 存储的时间格式是 UTC (如: 2027-01-22 00:00:00+00:00)
+	// 我们需要统一使用 UTC 时间进行比较，避免时区问题
+	if !sub.ExpireTime.IsZero() {
+		// 将 ExpireTime 转换为 UTC（如果它还不是 UTC）
+		expireTimeUTC := sub.ExpireTime.UTC()
+		// 获取当前 UTC 时间
+		nowUTC := time.Now().UTC()
+
+		// 调试日志：记录时间比较信息
+		if utils.AppLogger != nil {
+			utils.AppLogger.Info("订阅过期检查 - SubscriptionID=%d, UserID=%d, ExpireTime(原始)=%s, ExpireTime(UTC)=%s, Now(UTC)=%s, ExpireTime.Unix=%d, Now.Unix=%d, Before=%v",
+				sub.ID, sub.UserID,
+				sub.ExpireTime.Format("2006-01-02 15:04:05 MST"),
+				expireTimeUTC.Format("2006-01-02 15:04:05 MST"),
+				nowUTC.Format("2006-01-02 15:04:05 MST"),
+				expireTimeUTC.Unix(),
+				nowUTC.Unix(),
+				expireTimeUTC.Before(nowUTC))
+		}
+
+		// 使用 UTC 时间进行比较
+		if expireTimeUTC.Before(nowUTC) {
+			ctx.Status = StatusExpired
+			return ctx
+		}
 	}
 
 	// 4. 检查设备

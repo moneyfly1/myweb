@@ -362,12 +362,12 @@ export default {
   .login-header {
     margin-bottom: 24px;
     
-    h1 {
+    :is(h1) {
       font-size: 22px;
       margin-bottom: 6px;
     }
     
-    p {
+    :is(p) {
       font-size: 13px;
     }
   }
