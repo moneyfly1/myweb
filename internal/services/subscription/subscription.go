@@ -91,11 +91,18 @@ func getDefaultDeviceLimit(db *gorm.DB) int {
 	// 默认值
 	deviceLimit := 3
 
-	// 从数据库读取配置
+	// 从数据库读取配置（优先从 registration category 读取，如果没有则从 general 读取）
 	var deviceLimitConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
+	// 先尝试从 registration category 读取
+	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err != nil {
+		// 如果 registration 中没有，尝试从 general category 读取
+		if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "general").First(&deviceLimitConfig).Error; err == nil {
+			if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
+				deviceLimit = limit
+			}
+		}
+	} else {
 		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
-			// 允许0值，0表示不限制或使用系统默认行为
 			deviceLimit = limit
 		}
 	}

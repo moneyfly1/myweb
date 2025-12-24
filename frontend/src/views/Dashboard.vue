@@ -279,7 +279,7 @@
                   <el-dropdown @command="handleMohomoCommand" trigger="click">
                     <el-button type="primary" class="mohomo-btn">
                       <i class="fas fa-cube"></i>
-                      Mohomo Part
+                      Clash Part
                       <i class="fas fa-chevron-down"></i>
                     </el-button>
                     <template #dropdown>
@@ -376,6 +376,7 @@
                       <template #append>
                         <el-button @click="copyClashSubscription" size="small">
                           <i class="fas fa-copy"></i>
+                          <span class="copy-text">复制</span>
                         </el-button>
                       </template>
                     </el-input>
@@ -393,6 +394,7 @@
                       <template #append>
                         <el-button @click="copyUniversalSubscription" size="small">
                           <i class="fas fa-copy"></i>
+                          <span class="copy-text">复制</span>
                         </el-button>
                       </template>
                     </el-input>
@@ -1208,15 +1210,15 @@ const importFlashSubscription = () => {
   }
 }
 
-// Mohomo Part相关方法
+// Clash Part相关方法
 const copyMohomoSubscription = () => {
   if (!userInfo.value.clashUrl) {
-    ElMessage.error('Mohomo Part 订阅地址不可用，请刷新页面重试')
+    ElMessage.error('Clash Part 订阅地址不可用，请刷新页面重试')
     return
   }
   
   try {
-    copyToClipboard(userInfo.value.clashUrl, 'Mohomo Part 订阅地址已复制到剪贴板')
+    copyToClipboard(userInfo.value.clashUrl, 'Clash Part 订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
@@ -1224,7 +1226,7 @@ const copyMohomoSubscription = () => {
 
 const importMohomoSubscription = () => {
   if (!userInfo.value.clashUrl) {
-    ElMessage.error('Mohomo Part 订阅地址不可用，请刷新页面重试')
+    ElMessage.error('Clash Part 订阅地址不可用，请刷新页面重试')
     return
   }
   
@@ -1242,7 +1244,7 @@ const importMohomoSubscription = () => {
     }
     
     oneclickImport('mohomo', url, name)
-    ElMessage.success('正在打开 Mohomo Part 客户端...')
+    ElMessage.success('正在打开 Clash Part 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
@@ -1406,7 +1408,7 @@ const oneclickImport = (client, url, name = '') => {
         }
         break
       case 'mohomo':
-        // Mohomo Part (Clash系列)
+        // Clash Part (Clash系列)
         if (name) {
           window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
         } else {
@@ -2548,6 +2550,50 @@ onUnmounted(() => {
   flex: 1;
 }
 
+/* 复制按钮样式 */
+:deep(.el-input-group__append) {
+  padding: 0;
+  border: none;
+  
+  .el-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    white-space: nowrap;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    color: #ffffff;
+    font-weight: 500;
+    border-radius: 0 4px 4px 0;
+    transition: all 0.3s ease;
+    min-width: 80px;
+    
+    &:hover {
+      background: linear-gradient(135deg, #5568d3, #6a3f8f);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    }
+    
+    &:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+    }
+    
+    .copy-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffff;
+    }
+    
+    i {
+      font-size: 14px;
+      color: #ffffff;
+    }
+  }
+}
+
 /* 二维码区域 */
 .qr-code-section {
   margin-bottom: 24px;
@@ -2950,9 +2996,47 @@ onUnmounted(() => {
   .url-input-group {
     flex-direction: column;
     
-    .el-button {
+    :deep(.el-input-group__append) {
       width: 100%;
-      margin-top: 8px;
+      border: none;
+      
+      .el-button {
+        width: 100%;
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px 16px;
+        border-radius: 6px;
+        min-height: 40px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border: none;
+        color: #ffffff;
+        font-weight: 500;
+        
+        &:hover {
+          background: linear-gradient(135deg, #5568d3, #6a3f8f);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        &:active {
+          transform: translateY(0);
+          box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+        }
+        
+        .copy-text {
+          font-size: 15px;
+          font-weight: 500;
+          color: #ffffff;
+        }
+        
+        i {
+          font-size: 15px;
+          color: #ffffff;
+        }
+      }
     }
   }
   

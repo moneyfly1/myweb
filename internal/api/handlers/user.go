@@ -26,19 +26,33 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 	deviceLimit = utils.DefaultDeviceLimit
 	durationMonths = utils.DefaultDurationMonths
 
-	// 从数据库读取配置
+	// 从数据库读取配置（优先从 registration category 读取，如果没有则从 general 读取）
 	var deviceLimitConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err == nil {
+	// 先尝试从 registration category 读取
+	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err != nil {
+		// 如果 registration 中没有，尝试从 general category 读取
+		if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "general").First(&deviceLimitConfig).Error; err == nil {
+			if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
+				deviceLimit = limit
+			}
+		}
+	} else {
 		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
-			// 允许0值，0表示不限制或使用系统默认行为
 			deviceLimit = limit
 		}
 	}
 
 	var durationConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err == nil {
+	// 先尝试从 registration category 读取
+	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err != nil {
+		// 如果 registration 中没有，尝试从 general category 读取
+		if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "general").First(&durationConfig).Error; err == nil {
+			if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
+				durationMonths = months
+			}
+		}
+	} else {
 		if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
-			// 允许0值，0表示立即过期或使用系统默认行为
 			durationMonths = months
 		}
 	}
@@ -67,6 +81,10 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	// 生成订阅 URL
 	subscriptionURL := utils.GenerateSubscriptionURL()
 
+	// 计算到期时间
+	now := utils.GetBeijingTime()
+	expireTime := now.AddDate(0, durationMonths, 0)
+
 	sub := models.Subscription{
 		UserID:          userID,
 		SubscriptionURL: subscriptionURL,
@@ -74,7 +92,7 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 		CurrentDevices:  0,
 		IsActive:        true,
 		Status:          "active",
-		ExpireTime:      utils.GetBeijingTime().AddDate(0, durationMonths, 0),
+		ExpireTime:      expireTime,
 	}
 
 	if err := db.Create(&sub).Error; err != nil {
