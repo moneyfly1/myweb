@@ -1093,56 +1093,97 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 
 // fetchProxiesForUser 获取用户的可用节点
 func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.Subscription) ([]*ProxyNode, error) {
-	var nodes []models.Node
-	query := s.db.Model(&models.Node{}).Where("is_active = ?", true).Where("status != ?", "timeout")
-
-	if err := query.Find(&nodes).Error; err != nil {
-		return nil, err
-	}
-
 	var proxies []*ProxyNode
 	processedNodes := make(map[string]bool)
 
-	for _, node := range nodes {
-		proxyNodes, err := s.parseNodeToProxies(&node)
-		if err != nil {
-			continue
+	now := utils.GetBeijingTime()
+
+	// 检查普通订阅是否过期
+	isOrdExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
+
+	// 计算专线到期时间
+	// 如果设置了专线到期时间，以专线到期时间为准
+	// 如果没设置专线到期时间，以普通线路到期时间为准
+	var specialExpireTime time.Time
+	hasSpecialExpireTime := false
+	if user.SpecialNodeExpiresAt.Valid {
+		specialExpireTime = utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time)
+		hasSpecialExpireTime = true
+	} else if !sub.ExpireTime.IsZero() {
+		specialExpireTime = utils.ToBeijingTime(sub.ExpireTime)
+		hasSpecialExpireTime = true
+	}
+	isSpecialExpired := hasSpecialExpireTime && specialExpireTime.Before(now)
+
+	// 根据用户的订阅类型决定是否包含普通节点
+	// special_only: 只包含专线节点，不包含普通节点
+	// both: 包含普通节点+专线节点，专线节点在最前面
+	// 如果普通订阅过期，客户无法订阅普通线路（但可以订阅专线，如果专线未过期）
+	includeNormalNodes := false
+	if user.SpecialNodeSubscriptionType == "both" {
+		// 全部订阅：只有普通订阅未过期时才包含普通节点
+		includeNormalNodes = !isOrdExpired
+	} else if user.SpecialNodeSubscriptionType == "special_only" {
+		// 仅专线：不包含普通节点
+		includeNormalNodes = false
+	} else {
+		// 默认情况：如果普通订阅未过期，包含普通节点
+		includeNormalNodes = !isOrdExpired
+	}
+
+	if includeNormalNodes {
+		// 获取普通节点
+		var nodes []models.Node
+		query := s.db.Model(&models.Node{}).Where("is_active = ?", true).Where("status != ?", "timeout")
+
+		if err := query.Find(&nodes).Error; err != nil {
+			return nil, err
 		}
 
-		for _, proxy := range proxyNodes {
-			// 使用统一的去重键生成函数
-			key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port)
-			if processedNodes[key] {
+		for _, node := range nodes {
+			proxyNodes, err := s.parseNodeToProxies(&node)
+			if err != nil {
 				continue
 			}
-			processedNodes[key] = true
-			proxies = append(proxies, proxy)
+
+			for _, proxy := range proxyNodes {
+				// 使用统一的去重键生成函数
+				key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port)
+				if processedNodes[key] {
+					continue
+				}
+				processedNodes[key] = true
+				proxies = append(proxies, proxy)
+			}
 		}
 	}
 
-	// 获取专属节点
+	// 获取专属节点（专线节点始终在最前面）
 	var customNodes []models.CustomNode
 	if err := s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
 		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", user.ID, true).
 		Find(&customNodes).Error; err == nil {
 
+		var customProxies []*ProxyNode
 		for _, cn := range customNodes {
-			now := utils.GetBeijingTime()
-			isExpired := false
+			// 判断专线节点是否过期
+			// 1. 如果节点设置了 FollowUserExpire，使用用户的专线到期时间（或普通到期时间）
+			// 2. 如果节点设置了 ExpireTime，使用节点的到期时间
+			// 3. 如果都没设置，使用用户的专线到期时间（或普通到期时间）
+			isSpecNodeExpired := false
 			if cn.FollowUserExpire {
-				if user.SpecialNodeExpiresAt.Valid {
-					expireTimeBeijing := utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time)
-					isExpired = expireTimeBeijing.Before(now)
-				} else {
-					expireTimeBeijing := utils.ToBeijingTime(sub.ExpireTime)
-					isExpired = expireTimeBeijing.Before(now)
-				}
+				// 跟随用户到期时间
+				isSpecNodeExpired = isSpecialExpired
 			} else if cn.ExpireTime != nil {
+				// 使用节点自己的到期时间
 				expireTimeBeijing := utils.ToBeijingTime(*cn.ExpireTime)
-				isExpired = expireTimeBeijing.Before(now)
+				isSpecNodeExpired = expireTimeBeijing.Before(now)
+			} else {
+				// 默认使用用户的专线到期时间（或普通到期时间）
+				isSpecNodeExpired = isSpecialExpired
 			}
 
-			if isExpired || cn.Status == "timeout" {
+			if isSpecNodeExpired || cn.Status == "timeout" {
 				continue
 			}
 
@@ -1155,10 +1196,13 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 				var proxyNode ProxyNode
 				if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err == nil {
 					proxyNode.Name = displayName
-					proxies = append(proxies, &proxyNode)
+					customProxies = append(customProxies, &proxyNode)
 				}
 			}
 		}
+
+		// 将专线节点放在最前面
+		proxies = append(customProxies, proxies...)
 	}
 
 	return proxies, nil
