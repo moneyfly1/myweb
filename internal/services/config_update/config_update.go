@@ -1793,6 +1793,11 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 // Utils & Helpers
 // ==========================================
 
+// NodeToLink 将节点转换为通用链接（公开方法）
+func (s *ConfigUpdateService) NodeToLink(node *ProxyNode) string {
+	return s.nodeToLink(node)
+}
+
 // nodeToLink 将节点转换为通用链接
 func (s *ConfigUpdateService) nodeToLink(node *ProxyNode) string {
 	switch node.Type {
@@ -1806,6 +1811,16 @@ func (s *ConfigUpdateService) nodeToLink(node *ProxyNode) string {
 		return s.shadowsocksToLink(node)
 	case "ssr":
 		return s.nodeToSSRLink(node)
+	case "hysteria":
+		return s.hysteriaToLink(node)
+	case "hysteria2":
+		return s.hysteria2ToLink(node)
+	case "tuic":
+		return s.tuicToLink(node)
+	case "naive":
+		return s.naiveToLink(node)
+	case "anytls":
+		return s.anytlsToLink(node)
 	default:
 		return ""
 	}
@@ -1915,6 +1930,171 @@ func (s *ConfigUpdateService) nodeToSSRLink(node *ProxyNode) string {
 		obfsparam, protoparam, remarks, group)
 
 	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(ssrStr))
+}
+
+func (s *ConfigUpdateService) hysteriaToLink(proxy *ProxyNode) string {
+	u := &url.URL{
+		Scheme:   "hysteria",
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+
+	q := url.Values{}
+	if proxy.Options != nil {
+		if auth, ok := proxy.Options["auth"].(string); ok && auth != "" {
+			q.Set("auth", auth)
+		}
+		if up, ok := proxy.Options["up"].(string); ok && up != "" {
+			// 移除 " mbps" 后缀
+			up = strings.TrimSuffix(up, " mbps")
+			q.Set("upmbps", up)
+		}
+		if down, ok := proxy.Options["down"].(string); ok && down != "" {
+			// 移除 " mbps" 后缀
+			down = strings.TrimSuffix(down, " mbps")
+			q.Set("downmbps", down)
+		}
+		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
+			q.Set("insecure", "1")
+		}
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (s *ConfigUpdateService) hysteria2ToLink(proxy *ProxyNode) string {
+	u := &url.URL{
+		Scheme:   "hysteria2",
+		User:     url.User(proxy.Password),
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+
+	q := url.Values{}
+	if proxy.Options != nil {
+		if up, ok := proxy.Options["up"].(string); ok && up != "" {
+			// 移除 " mbps" 后缀
+			up = strings.TrimSuffix(up, " mbps")
+			q.Set("mbpsUp", up)
+		}
+		if down, ok := proxy.Options["down"].(string); ok && down != "" {
+			// 移除 " mbps" 后缀
+			down = strings.TrimSuffix(down, " mbps")
+			q.Set("mbpsDown", down)
+		}
+		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
+			q.Set("insecure", "1")
+		}
+		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
+			q.Set("sni", sni)
+		} else if peer, ok := proxy.Options["peer"].(string); ok && peer != "" {
+			q.Set("peer", peer)
+		}
+		if alpn, ok := proxy.Options["alpn"].([]string); ok && len(alpn) > 0 {
+			q.Set("alpn", strings.Join(alpn, ","))
+		} else if alpn, ok := proxy.Options["alpn"].([]interface{}); ok && len(alpn) > 0 {
+			alpnStrs := make([]string, 0, len(alpn))
+			for _, v := range alpn {
+				if str, ok := v.(string); ok {
+					alpnStrs = append(alpnStrs, str)
+				}
+			}
+			if len(alpnStrs) > 0 {
+				q.Set("alpn", strings.Join(alpnStrs, ","))
+			}
+		}
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (s *ConfigUpdateService) tuicToLink(proxy *ProxyNode) string {
+	userInfo := url.UserPassword(proxy.UUID, proxy.Password)
+	u := &url.URL{
+		Scheme:   "tuic",
+		User:     userInfo,
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+
+	q := url.Values{}
+	if proxy.Options != nil {
+		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
+			q.Set("sni", sni)
+		}
+		if alpn, ok := proxy.Options["alpn"].([]string); ok && len(alpn) > 0 {
+			q.Set("alpn", alpn[0]) // TUIC 通常只支持单个 ALPN
+		} else if alpn, ok := proxy.Options["alpn"].([]interface{}); ok && len(alpn) > 0 {
+			if str, ok := alpn[0].(string); ok {
+				q.Set("alpn", str)
+			}
+		}
+		if cc, ok := proxy.Options["congestion_control"].(string); ok && cc != "" {
+			q.Set("congestion_control", cc)
+		}
+		if udpRelayMode, ok := proxy.Options["udp_relay_mode"].(string); ok && udpRelayMode != "" {
+			q.Set("udp_relay_mode", udpRelayMode)
+		}
+		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
+			q.Set("allow_insecure", "1")
+		}
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (s *ConfigUpdateService) naiveToLink(proxy *ProxyNode) string {
+	// Naive 使用 UUID 作为 username，Password 作为 password
+	userInfo := url.UserPassword(proxy.UUID, proxy.Password)
+	u := &url.URL{
+		Scheme:   "naive+https",
+		User:     userInfo,
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+
+	q := url.Values{}
+	if proxy.Options != nil {
+		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
+			q.Set("sni", sni)
+		}
+		if padding, ok := proxy.Options["padding"].(bool); ok && padding {
+			q.Set("padding", "true")
+		}
+		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
+			q.Set("insecure", "1")
+		}
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (s *ConfigUpdateService) anytlsToLink(proxy *ProxyNode) string {
+	u := &url.URL{
+		Scheme:   "anytls",
+		User:     url.User(proxy.UUID),
+		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
+		Fragment: proxy.Name,
+	}
+
+	q := url.Values{}
+	if proxy.Options != nil {
+		if peer, ok := proxy.Options["peer"].(string); ok && peer != "" {
+			q.Set("peer", peer)
+		} else if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
+			q.Set("sni", sni)
+		}
+		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
+			q.Set("insecure", "1")
+		}
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func (s *ConfigUpdateService) tryBase64Decode(text string) string {

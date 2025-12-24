@@ -365,39 +365,41 @@
               </h4>
               <div class="url-display">
                 <div class="url-item">
-                  <label>Clash订阅地址：</label>
-                  <div class="url-input-group">
+                  <label>Clash订阅地址</label>
+                  <div class="url-input-wrapper">
                     <el-input 
                       :value="userInfo.clashUrl" 
                       readonly 
                       size="small"
                       class="url-input"
+                    />
+                    <el-button 
+                      @click="copyClashSubscription" 
+                      size="small"
+                      class="copy-btn"
                     >
-                      <template #append>
-                        <el-button @click="copyClashSubscription" size="small">
-                          <i class="fas fa-copy"></i>
-                          <span class="copy-text">复制</span>
-                        </el-button>
-                      </template>
-                    </el-input>
+                      <i class="fas fa-copy"></i>
+                      <span>复制</span>
+                    </el-button>
                   </div>
                 </div>
                 <div class="url-item">
-                  <label>通用订阅地址：</label>
-                  <div class="url-input-group">
+                  <label>通用订阅地址</label>
+                  <div class="url-input-wrapper">
                     <el-input 
                       :value="userInfo.universalUrl" 
                       readonly 
                       size="small"
                       class="url-input"
+                    />
+                    <el-button 
+                      @click="copyUniversalSubscription" 
+                      size="small"
+                      class="copy-btn"
                     >
-                      <template #append>
-                        <el-button @click="copyUniversalSubscription" size="small">
-                          <i class="fas fa-copy"></i>
-                          <span class="copy-text">复制</span>
-                        </el-button>
-                      </template>
-                    </el-input>
+                      <i class="fas fa-copy"></i>
+                      <span>复制</span>
+                    </el-button>
                   </div>
                 </div>
               </div>
@@ -2537,60 +2539,67 @@ onUnmounted(() => {
 
 .url-item label {
   font-weight: 500;
-  color: #555;
-  font-size: 14px;
+  color: #606266;
+  font-size: 13px;
+  margin-bottom: 4px;
 }
 
-.url-input-group {
+.url-input-wrapper {
   display: flex;
+  align-items: center;
   gap: 8px;
+  position: relative;
+  width: 100%;
 }
 
 .url-input {
   flex: 1;
+  min-width: 0; /* 防止flex子元素溢出 */
 }
 
 /* 复制按钮样式 */
-:deep(.el-input-group__append) {
-  padding: 0;
-  border: none;
+.copy-btn {
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 28px !important;
+  padding: 4px 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background-color: #ffffff !important;
+  border: 1px solid #dcdfe6 !important;
+  color: #000000 !important;
+  transition: all 0.2s ease;
+  font-size: 11px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
   
-  .el-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 16px;
-    white-space: nowrap;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    border: none;
-    color: #ffffff;
-    font-weight: 500;
-    border-radius: 0 4px 4px 0;
-    transition: all 0.3s ease;
-    min-width: 80px;
-    
-    &:hover {
-      background: linear-gradient(135deg, #5568d3, #6a3f8f);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-    }
-    
-    &:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-    }
-    
-    .copy-text {
-      font-size: 14px;
-      font-weight: 500;
-      color: #ffffff;
-    }
-    
-    :is(i) {
-      font-size: 14px;
-      color: #ffffff;
-    }
+  &:hover {
+    background-color: #f5f7fa !important;
+    border-color: #c0c4cc !important;
+    color: #000000 !important;
+  }
+  
+  &:active {
+    background-color: #ebedf0 !important;
+  }
+  
+  i {
+    font-size: 11px !important;
+    color: #000000 !important;
+    flex-shrink: 0;
+  }
+  
+  span {
+    font-size: 11px !important;
+    color: #000000 !important;
+    font-weight: 400;
+    line-height: 1;
+    flex-shrink: 0;
   }
 }
 
@@ -2993,49 +3002,41 @@ onUnmounted(() => {
     }
   }
   
-  .url-input-group {
-    flex-direction: column;
+  .url-item {
+    gap: 6px;
     
-    :deep(.el-input-group__append) {
-      width: 100%;
-      border: none;
+    label {
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+  }
+  
+  .url-input-wrapper {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    
+    .url-input {
+      flex: 1 !important;
+      min-width: 0 !important;
+    }
+    
+    .copy-btn {
+      min-width: 48px !important;
+      max-width: 48px !important;
+      height: 28px !important;
+      padding: 4px 6px !important;
+      font-size: 11px !important;
+      flex-shrink: 0 !important;
+      gap: 3px !important;
       
-      .el-button {
-        width: 100%;
-        margin-top: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 10px 16px;
-        border-radius: 6px;
-        min-height: 40px;
-        background: linear-gradient(135deg, #667eea, #764ba2);
-        border: none;
-        color: #ffffff;
-        font-weight: 500;
-        
-        &:hover {
-          background: linear-gradient(135deg, #5568d3, #6a3f8f);
-          transform: translateY(-1px);
-          box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-        }
-        
-        &:active {
-          transform: translateY(0);
-          box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-        }
-        
-        .copy-text {
-          font-size: 15px;
-          font-weight: 500;
-          color: #ffffff;
-        }
-        
-        :is(i) {
-          font-size: 15px;
-          color: #ffffff;
-        }
+      i {
+        font-size: 11px !important;
+      }
+      
+      span {
+        font-size: 11px !important;
       }
     }
   }
@@ -3129,6 +3130,27 @@ onUnmounted(() => {
       :is(i) {
         font-size: 12px;
         margin-right: 3px;
+      }
+    }
+  }
+  
+  .url-input-wrapper {
+    gap: 6px !important;
+    
+    .copy-btn {
+      min-width: 46px !important;
+      max-width: 46px !important;
+      height: 28px !important;
+      padding: 4px 5px !important;
+      font-size: 10px !important;
+      gap: 2px !important;
+      
+      i {
+        font-size: 10px !important;
+      }
+      
+      span {
+        font-size: 10px !important;
       }
     }
   }

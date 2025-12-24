@@ -506,10 +506,55 @@ func GetCustomNodeLink(c *gin.Context) {
 		return
 	}
 
-	// 构建订阅链接（这里简化处理，实际应该根据配置生成完整的订阅链接）
-	link := fmt.Sprintf("专线节点: %s", node.Name)
+	// 解析配置并转换为节点链接格式
+	var link string
 	if node.Config != "" {
-		link = node.Config // 使用配置作为链接
+		// 解析 JSON 配置为 ProxyNode（因为存储时使用的是 ProxyNode 的 JSON 格式）
+		var proxyNode config_update.ProxyNode
+		if err := json.Unmarshal([]byte(node.Config), &proxyNode); err == nil {
+			// 如果 DisplayName 不为空，使用 DisplayName 作为节点名称
+			if node.DisplayName != "" {
+				proxyNode.Name = node.DisplayName
+			} else if proxyNode.Name == "" {
+				// 如果都没有，使用节点的 Name
+				proxyNode.Name = node.Name
+			}
+
+			// 使用 ConfigUpdateService 转换为链接格式
+			service := config_update.NewConfigUpdateService()
+			link = service.NodeToLink(&proxyNode)
+		} else {
+			// 如果解析失败，尝试解析为 NodeConfig（兼容旧格式）
+			var nodeConfig models.NodeConfig
+			if err2 := json.Unmarshal([]byte(node.Config), &nodeConfig); err2 == nil {
+				// 转换为 ProxyNode
+				proxyNode := &config_update.ProxyNode{
+					Name:     node.DisplayName,
+					Type:     nodeConfig.Type,
+					Server:   nodeConfig.Server,
+					Port:     nodeConfig.Port,
+					UUID:     nodeConfig.UUID,
+					Password: nodeConfig.Password,
+					Cipher:   nodeConfig.Encryption,
+					Network:  nodeConfig.Network,
+					TLS:      nodeConfig.Security == "tls",
+				}
+
+				// 如果 DisplayName 为空，使用 Name
+				if proxyNode.Name == "" {
+					proxyNode.Name = node.Name
+				}
+
+				// 使用 ConfigUpdateService 转换为链接格式
+				service := config_update.NewConfigUpdateService()
+				link = service.NodeToLink(proxyNode)
+			}
+		}
+	}
+
+	// 如果转换失败，返回错误信息
+	if link == "" {
+		link = "无法生成链接: 配置格式错误或协议不支持"
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{

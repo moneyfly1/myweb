@@ -414,6 +414,7 @@
 
 <script>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
@@ -432,6 +433,7 @@ export default {
     Filter, Refresh, Delete
   },
   setup() {
+    const route = useRoute()
     const api = useApi()
     const loading = ref(false)
     const orders = ref([])
@@ -789,6 +791,14 @@ export default {
     }
 
     onMounted(() => {
+      // 检查 URL 参数中是否有搜索关键词
+      if (route.query.search) {
+        const searchParam = String(route.query.search).trim()
+        if (searchParam) {
+          searchForm.keyword = searchParam
+          currentPage.value = 1
+        }
+      }
       window.addEventListener('resize', handleResize)
       loadOrders()
       loadStatistics()

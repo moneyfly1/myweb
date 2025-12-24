@@ -91,9 +91,14 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="ip_address" label="IP地址" width="140">
+        <el-table-column prop="ip_address" label="IP地址" width="200">
           <template #default="{ row }">
-            <span class="ip-address">{{ row.ip_address }}</span>
+            <div class="ip-location-cell">
+              <span class="ip-address">{{ row.ip_address }}</span>
+              <el-tag v-if="row.location" type="info" size="small" style="margin-left: 8px;">
+                {{ formatLocation(row.location) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
 
@@ -179,7 +184,14 @@
           </div>
           <div class="card-row">
             <span class="label">IP地址</span>
-            <span class="value ip-address">{{ device.ip_address }}</span>
+            <span class="value">
+              <div class="ip-location-cell">
+                <span class="ip-address">{{ device.ip_address }}</span>
+                <el-tag v-if="device.location" type="info" size="small" style="margin-left: 8px;">
+                  {{ formatLocation(device.location) }}
+                </el-tag>
+              </div>
+            </span>
           </div>
           <div class="card-row">
             <span class="label">最后访问</span>
@@ -245,6 +257,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { subscriptionAPI } from '@/utils/api'
 import { formatDateTime as formatTimeUtil } from '@/utils/date'
+import { formatLocation } from '@/utils/location'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -452,7 +465,8 @@ export default {
       getDeviceTypeColor,
       formatTime,
       truncateUserAgent,
-      getPercentage
+      getPercentage,
+      formatLocation
     }
   }
 }
@@ -518,6 +532,13 @@ export default {
   font-family: 'Courier New', monospace;
   color: #666;
   font-size: 0.9rem;
+}
+
+.ip-location-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .user-agent {
