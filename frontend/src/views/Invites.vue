@@ -41,7 +41,7 @@
           title="邀请奖励说明"
           type="info"
           :closable="false"
-          style="margin-top: 20px;"
+          class="reward-alert"
         >
           <template #default>
             <div style="line-height: 1.8;">
@@ -657,6 +657,31 @@ onMounted(async () => {
 <style scoped lang="scss">
 .invites-container {
   padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  
+  :deep(.el-card) {
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e4e7ed;
+    
+    .el-card__header {
+      background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+      border-bottom: 2px solid #e4e7ed;
+      padding: 20px 24px;
+      border-radius: 12px 12px 0 0;
+      
+      .header-content {
+        font-size: 20px;
+        font-weight: 600;
+        color: #303133;
+      }
+    }
+    
+    .el-card__body {
+      padding: 24px;
+    }
+  }
 }
 
 .header-content {
@@ -669,42 +694,98 @@ onMounted(async () => {
   margin-bottom: 30px;
   
   .stat-card {
-    background: #f5f7fa;
-    border-radius: 8px;
-    padding: 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 12px;
+    padding: 24px;
     text-align: center;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
+    border: 1px solid #e4e7ed;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    position: relative;
+    overflow: hidden;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
     
     &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
+      border-color: #c0c4cc;
+      
+      &::before {
+        opacity: 1;
+      }
     }
     
     &.highlight {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
+      border: none;
+      box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+      
+      &::before {
+        opacity: 0;
+      }
+      
+      &:hover {
+        box-shadow: 0 8px 28px rgba(102, 126, 234, 0.4);
+        transform: translateY(-4px) scale(1.02);
+      }
+      
+      .stat-value {
+        color: #ffffff;
+      }
       
       .stat-label {
-        color: rgba(255, 255, 255, 0.9);
+        color: rgba(255, 255, 255, 0.95);
       }
     }
     
     .stat-value {
-      font-size: 28px;
-      font-weight: bold;
+      font-size: 32px;
+      font-weight: 700;
       color: #303133;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      letter-spacing: -0.5px;
     }
     
     .stat-label {
-      font-size: 14px;
-      color: #909399;
+      font-size: 15px;
+      color: #606266;
+      font-weight: 500;
     }
   }
 }
 
 .generate-section {
   margin-bottom: 30px;
+  
+  .el-button {
+    padding: 12px 24px;
+    font-size: 15px;
+    font-weight: 500;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+    transition: all 0.3s ease;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+    
+    &:active {
+      transform: translateY(0);
+    }
+  }
 }
 
 .invite-codes-section,
@@ -712,16 +793,63 @@ onMounted(async () => {
   margin-top: 30px;
   
   :is(h3) {
-    margin-bottom: 20px;
-    font-size: 18px;
+    margin-bottom: 24px;
+    font-size: 20px;
     font-weight: 600;
     color: #303133;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e4e7ed;
+    position: relative;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    }
   }
 }
 
 .link-cell {
   .el-input {
     width: 100%;
+    
+    :deep(.el-input__wrapper) {
+      border-radius: 6px;
+      transition: all 0.3s ease;
+      
+      &:hover {
+        border-color: #c0c4cc;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+      }
+      
+      &.is-focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+      }
+    }
+  }
+  
+  :deep(.el-input-group__append) {
+    .el-button {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border: none;
+      color: #ffffff;
+      border-radius: 0 6px 6px 0;
+      transition: all 0.3s ease;
+      
+      &:hover {
+        background: linear-gradient(135deg, #5568d3, #6a3f8f);
+        transform: scale(1.05);
+      }
+      
+      &:active {
+        transform: scale(0.98);
+      }
+    }
   }
 }
 
@@ -730,6 +858,163 @@ onMounted(async () => {
   color: #909399;
   margin-top: 4px;
   line-height: 1.5;
+}
+
+/* 移动端卡片在桌面端隐藏 */
+.mobile-only {
+  display: none !important;
+  
+  @media (max-width: 768px) {
+    display: block !important;
+  }
+}
+
+/* 桌面端表格优化 - 仅在桌面端应用 */
+@media (min-width: 769px) {
+  .desktop-only {
+    :deep(.el-table) {
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      
+      .el-table__header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        
+        th {
+          background: transparent;
+          color: #303133;
+          font-weight: 600;
+          font-size: 14px;
+          padding: 16px 12px;
+          border-bottom: 2px solid #e4e7ed;
+        }
+      }
+      
+      .el-table__body {
+        tr {
+          transition: all 0.2s ease;
+          
+          &:hover {
+            background: #f5f7fa;
+            transform: scale(1.001);
+          }
+          
+          td {
+            padding: 16px 12px;
+            font-size: 14px;
+            border-bottom: 1px solid #f0f2f5;
+          }
+        }
+        
+        tr.el-table__row--striped {
+          background: #fafbfc;
+          
+          &:hover {
+            background: #f0f2f5;
+          }
+        }
+      }
+      
+      .el-tag {
+        border-radius: 6px;
+        padding: 4px 12px;
+        font-weight: 500;
+        font-size: 13px;
+      }
+      
+      .action-column {
+        .el-button {
+          margin: 0 4px;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-weight: 500;
+          transition: all 0.2s ease;
+          
+          &.el-button--primary {
+            &:hover {
+              background: linear-gradient(135deg, #667eea, #764ba2);
+              transform: translateY(-1px);
+              box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            }
+          }
+          
+          &.el-button--danger {
+            &:hover {
+              transform: translateY(-1px);
+              box-shadow: 0 2px 8px rgba(245, 108, 108, 0.3);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  /* 桌面端其他优化 */
+  .invites-container {
+    :deep(.el-card) {
+      .el-card__header {
+        .header-content {
+          font-size: 20px;
+        }
+      }
+    }
+  }
+  
+  .stats-section {
+    .stat-card {
+      .stat-value {
+        font-size: 32px;
+      }
+      
+      .stat-label {
+        font-size: 15px;
+      }
+    }
+  }
+  
+  .invite-codes-section,
+  .recent-invites-section {
+    :is(h3) {
+      font-size: 20px;
+    }
+  }
+  
+  .generate-section {
+    .el-button {
+      padding: 12px 24px;
+      font-size: 15px;
+    }
+  }
+}
+
+/* 奖励说明提示框优化 */
+.reward-alert {
+  margin-top: 24px;
+  border-radius: 8px;
+  border-left: 4px solid #409eff;
+  
+  :deep(.el-alert__content) {
+    .el-alert__title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #303133;
+    }
+    
+    .el-alert__description {
+      font-size: 14px;
+      line-height: 1.8;
+      color: #606266;
+      
+      p {
+        margin: 8px 0;
+        
+        strong {
+          color: #303133;
+          font-weight: 600;
+        }
+      }
+    }
+  }
 }
 
 /* 移除所有输入框的圆角和阴影效果，设置为简单长方形，只保留外部边框 */
