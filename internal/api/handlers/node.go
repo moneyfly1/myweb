@@ -172,30 +172,74 @@ func GetNodes(c *gin.Context) {
 	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
 		var sub models.Subscription
 		isOrdExpired := true
+		hasOrdSubscription := false
 		if err := db.Where("user_id = ? AND status = ?", user.ID, "active").First(&sub).Error; err == nil {
+			hasOrdSubscription = true
 			isOrdExpired = sub.ExpireTime.Before(utils.GetBeijingTime())
 		}
-		if user.SpecialNodeSubscriptionType == "special_only" || isOrdExpired {
-			uniqueNodes = make([]models.Node, 0)
+
+		now := utils.GetBeijingTime()
+
+		// 计算专线到期时间
+		// 如果设置了专线到期时间，以专线到期时间为准
+		// 如果没设置专线到期时间，以普通线路到期时间为准
+		var specialExpireTime time.Time
+		hasSpecialExpireTime := false
+		if user.SpecialNodeExpiresAt.Valid {
+			specialExpireTime = user.SpecialNodeExpiresAt.Time
+			hasSpecialExpireTime = true
+		} else if hasOrdSubscription {
+			specialExpireTime = sub.ExpireTime
+			hasSpecialExpireTime = true
 		}
+		isSpecialExpired := hasSpecialExpireTime && specialExpireTime.Before(now)
+
+		// 根据用户的订阅类型决定是否显示普通节点
+		// special_only: 只显示专线节点，不显示普通节点
+		// both: 显示普通节点+专线节点，专线节点在最前面
+		// 如果普通订阅过期，客户无法订阅普通线路（但可以订阅专线，如果专线未过期）
+		if user.SpecialNodeSubscriptionType == "special_only" {
+			// 仅专线：不显示普通节点，只显示专线节点
+			uniqueNodes = make([]models.Node, 0)
+			utils.LogInfo("GetNodes: 用户 %s (ID: %d) 订阅类型为 special_only，只显示专线节点", user.Username, user.ID)
+		} else if user.SpecialNodeSubscriptionType == "both" {
+			// 全部订阅：如果普通订阅过期，不显示普通节点
+			if isOrdExpired {
+				uniqueNodes = make([]models.Node, 0)
+				utils.LogInfo("GetNodes: 用户 %s (ID: %d) 订阅类型为 both，但普通订阅已过期，只显示专线节点", user.Username, user.ID)
+			} else {
+				utils.LogInfo("GetNodes: 用户 %s (ID: %d) 订阅类型为 both，显示普通节点+专线节点", user.Username, user.ID)
+			}
+		} else {
+			// 默认情况：如果普通订阅过期，不显示普通节点
+			if isOrdExpired {
+				uniqueNodes = make([]models.Node, 0)
+			}
+		}
+
 		var nodeIDs []uint
 		db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Pluck("custom_node_id", &nodeIDs)
 		if len(nodeIDs) > 0 {
 			var customNodes []models.CustomNode
 			if err := db.Where("id IN ? AND is_active = ?", nodeIDs, true).Find(&customNodes).Error; err == nil {
-				now := utils.GetBeijingTime()
 				for _, cn := range customNodes {
-					isSpecExpired := false
+					// 判断专线节点是否过期
+					// 1. 如果节点设置了 FollowUserExpire，使用用户的专线到期时间（或普通到期时间）
+					// 2. 如果节点设置了 ExpireTime，使用节点的到期时间
+					// 3. 如果都没设置，使用用户的专线到期时间（或普通到期时间）
+					isSpecNodeExpired := false
 					if cn.FollowUserExpire {
-						if user.SpecialNodeExpiresAt.Valid {
-							isSpecExpired = user.SpecialNodeExpiresAt.Time.Before(now)
-						} else {
-							isSpecExpired = isOrdExpired
-						}
+						// 跟随用户到期时间
+						isSpecNodeExpired = isSpecialExpired
 					} else if cn.ExpireTime != nil {
-						isSpecExpired = cn.ExpireTime.Before(now)
+						// 使用节点自己的到期时间
+						isSpecNodeExpired = cn.ExpireTime.Before(now)
+					} else {
+						// 默认使用用户的专线到期时间（或普通到期时间）
+						isSpecNodeExpired = isSpecialExpired
 					}
-					if isSpecExpired {
+
+					if isSpecNodeExpired {
 						continue
 					}
 					var nc models.NodeConfig
@@ -241,8 +285,16 @@ func GetNodes(c *gin.Context) {
 		}
 	}
 
-	// 先返回专线节点，然后返回普通节点（按 OrderIndex 排序）
+	// 先返回专线节点，然后返回普通节点（专线节点排列在最前面）
 	finalNodes := append(customNodesList, uniqueNodes...)
+
+	// 调试日志：记录返回的节点数量
+	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
+		utils.LogInfo("GetNodes: 用户 %s (ID: %d) 订阅类型=%s, 返回节点数: 专线=%d, 普通=%d, 总计=%d",
+			user.Username, user.ID, user.SpecialNodeSubscriptionType,
+			len(customNodesList), len(uniqueNodes), len(finalNodes))
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", finalNodes)
 }
 
