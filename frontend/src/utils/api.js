@@ -502,9 +502,6 @@ export const adminAPI = {
   testAdminEmailNotification: () => api.post('/admin/settings/admin-notification/test/email'),
   testAdminTelegramNotification: () => api.post('/admin/settings/admin-notification/test/telegram'),
   testAdminBarkNotification: () => api.post('/admin/settings/admin-notification/test/bark'),
-  // 通知设置（管理员个人）
-  getNotificationSettings: () => api.get('/admin/notification-settings'),
-  updateNotificationSettings: (data) => api.put('/admin/notification-settings', data)
 }
 
 

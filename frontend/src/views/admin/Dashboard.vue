@@ -50,6 +50,7 @@
               style="width: 100%"
               :show-header="false"
               size="small"
+              @row-click="goToUserSubscription"
             >
               <el-table-column width="40">
                 <template #default="scope">
@@ -60,7 +61,7 @@
               </el-table-column>
               <el-table-column>
                 <template #default="scope">
-                  <div class="user-info">
+                  <div class="user-info clickable-row">
                     <div class="user-name">{{ scope.row.username }}</div>
                     <div class="user-email">{{ scope.row.email }}</div>
                   </div>
@@ -96,6 +97,7 @@
               style="width: 100%"
               :show-header="false"
               size="small"
+              @row-click="goToOrderUserSubscription"
             >
               <el-table-column width="40">
                 <template #default="scope">
@@ -106,7 +108,7 @@
               </el-table-column>
               <el-table-column>
                 <template #default="scope">
-                  <div class="order-info">
+                  <div class="order-info clickable-row">
                     <div class="order-no">{{ scope.row.order_no }}</div>
                     <div class="order-amount">¥{{ formatMoney(scope.row.amount) }}</div>
                   </div>
@@ -184,15 +186,15 @@
     <!-- 七天内即将到期客户 -->
     <el-row :gutter="20" style="margin-top: 20px;">
       <el-col :span="24">
-        <el-card class="dashboard-card">
+        <el-card class="dashboard-card expiring-card">
           <template #header>
-            <div class="card-header">
+            <div class="card-header expiring-header">
               <span class="card-title">七天内即将到期客户</span>
-              <div class="header-actions">
+              <div class="header-actions expiring-actions">
                 <el-select 
                   v-model="expiringFilter" 
-                  placeholder="筛选到期时间" 
-                  style="width: 150px; margin-right: 10px;"
+                  placeholder="筛选" 
+                  class="expiring-filter-select"
                   @change="loadExpiringSubscriptions"
                 >
                   <el-option label="全部" value="all" />
@@ -202,15 +204,19 @@
                 </el-select>
                 <el-button 
                   type="primary" 
+                  class="batch-send-btn"
                   :disabled="!selectedExpiring || selectedExpiring.length === 0 || sendingExpireReminder"
                   @click="batchSendExpireReminder"
                 >
-                  {{ sendingExpireReminder ? '发送中...' : `批量发送到期提醒 (${selectedExpiring ? selectedExpiring.length : 0})` }}
+                  <span class="batch-send-text">
+                    {{ sendingExpireReminder ? '发送中...' : `批量发送 (${selectedExpiring ? selectedExpiring.length : 0})` }}
+                  </span>
                 </el-button>
               </div>
             </div>
           </template>
-          <div class="table-container">
+          <!-- 桌面端：表格显示 -->
+          <div class="table-container expiring-table-container desktop-only">
             <el-table 
               :data="expiringSubscriptions" 
               style="width: 100%"
@@ -259,8 +265,69 @@
                 </template>
               </el-table-column>
             </el-table>
-            <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" style="text-align: center; padding: 40px; color: #999;">
+            <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" class="empty-state">
               暂无即将到期的客户
+            </div>
+          </div>
+          <!-- 移动端：卡片列表显示 -->
+          <div class="mobile-expiring-list mobile-only">
+            <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" class="empty-state-mobile">
+              暂无即将到期的客户
+            </div>
+            <div 
+              v-for="item in expiringSubscriptions" 
+              :key="item.user_id || item.id"
+              class="expiring-item-card"
+            >
+              <div class="expiring-item-header">
+                <el-checkbox 
+                  :model-value="selectedExpiring.includes(item.user_id || item.id)"
+                  @change="toggleExpiringSelection(item)"
+                  class="expiring-checkbox"
+                />
+                <div class="expiring-user-info">
+                  <div class="expiring-username">{{ item.username }}</div>
+                  <div class="expiring-email">{{ item.email }}</div>
+                </div>
+                <el-tag 
+                  :type="getExpireTagType(item.days_until_expire)" 
+                  size="small"
+                  class="expiring-days-tag"
+                >
+                  {{ item.days_until_expire }} 天
+                </el-tag>
+              </div>
+              <div class="expiring-item-body">
+                <div class="expiring-item-row">
+                  <span class="expiring-label">QQ:</span>
+                  <span class="expiring-value">{{ item.qq || '-' }}</span>
+                </div>
+                <div class="expiring-item-row">
+                  <span class="expiring-label">到期时间:</span>
+                  <span class="expiring-value" :style="{ color: getExpireColor(item.days_until_expire) }">
+                    {{ item.expire_time }}
+                  </span>
+                </div>
+              </div>
+              <div class="expiring-item-actions">
+                <el-button 
+                  v-if="item.qq && item.qq !== ''" 
+                  type="primary" 
+                  size="small" 
+                  class="action-btn"
+                  @click="openQQChat(item)"
+                >
+                  联系QQ
+                </el-button>
+                <el-button 
+                  type="success" 
+                  size="small" 
+                  class="action-btn"
+                  @click="sendExpireReminder([item.user_id || item.id])"
+                >
+                  发送提醒
+                </el-button>
+              </div>
             </div>
           </div>
         </el-card>
@@ -473,6 +540,34 @@ export default {
       router.push('/admin/abnormal-users')
     }
 
+    // 跳转到用户订阅管理页面
+    const goToUserSubscription = (row) => {
+      // 优先使用邮箱进行搜索，邮箱搜索更准确
+      const searchParam = row.email || row.username || row.id || row.user_id
+      if (searchParam) {
+        router.push({
+          path: '/admin/subscriptions',
+          query: { search: searchParam }
+        })
+      } else {
+        ElMessage.warning('该用户信息不完整')
+      }
+    }
+
+    // 跳转到订单管理页面并搜索该订单
+    const goToOrderUserSubscription = (row) => {
+      // 使用订单号进行搜索
+      const orderNo = row.order_no || row.orderNo
+      if (orderNo) {
+        router.push({
+          path: '/admin/orders',
+          query: { search: orderNo }
+        })
+      } else {
+        ElMessage.warning('该订单号不存在')
+      }
+    }
+
     const formatMoney = (value) => {
       if (value === null || value === undefined || value === '') return '0.00'
       const num = typeof value === 'string' ? parseFloat(value) : value
@@ -507,6 +602,17 @@ export default {
     // 处理选择变化
     const handleExpiringSelectionChange = (selection) => {
       selectedExpiring.value = selection.map(item => item.user_id || item.id)
+    }
+
+    // 移动端切换选择
+    const toggleExpiringSelection = (item) => {
+      const id = item.user_id || item.id
+      const index = selectedExpiring.value.indexOf(id)
+      if (index > -1) {
+        selectedExpiring.value.splice(index, 1)
+      } else {
+        selectedExpiring.value.push(id)
+      }
     }
 
     // 获取到期标签类型
@@ -588,6 +694,8 @@ export default {
       getAbnormalTypeTag,
       getAbnormalTypeText,
       goToAbnormalUsers,
+      goToUserSubscription,
+      goToOrderUserSubscription,
       formatMoney,
       expiringSubscriptions,
       selectedExpiring,
@@ -595,6 +703,7 @@ export default {
       sendingExpireReminder,
       loadExpiringSubscriptions,
       handleExpiringSelectionChange,
+      toggleExpiringSelection,
       getExpireTagType,
       getExpireColor,
       openQQChat,
@@ -947,10 +1056,16 @@ export default {
 /* 表格行样式 */
 .table-container .el-table__row {
   height: 48px;
+  cursor: pointer;
 }
 
 .table-container .el-table__row:hover {
-  background-color: #f5f7fa;
+  background-color: #f0f9ff;
+}
+
+/* 可点击行样式 */
+.clickable-row {
+  cursor: pointer;
 }
 
 /* 标签样式优化 */
@@ -1011,5 +1126,247 @@ export default {
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
+}
+
+/* 七天内到期客户样式优化 */
+.expiring-card {
+  min-height: auto !important;
+}
+
+.expiring-header {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.expiring-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.expiring-filter-select {
+  min-width: 100px;
+}
+
+.batch-send-btn {
+  white-space: nowrap;
+}
+
+.batch-send-text {
+  font-size: 13px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
+
+/* 移动端到期客户卡片列表 */
+.mobile-expiring-list {
+  padding: 12px;
+}
+
+.empty-state-mobile {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 14px;
+}
+
+.expiring-item-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e9ecef;
+}
+
+.expiring-item-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.expiring-checkbox {
+  margin-top: 4px;
+}
+
+.expiring-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.expiring-username {
+  font-weight: 600;
+  color: #303133;
+  font-size: 15px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.expiring-email {
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.expiring-days-tag {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.expiring-item-body {
+  padding: 10px 0;
+  border-top: 1px solid #e9ecef;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 10px;
+}
+
+.expiring-item-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.expiring-item-row:last-child {
+  margin-bottom: 0;
+}
+
+.expiring-label {
+  color: #909399;
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.expiring-value {
+  color: #303133;
+  flex: 1;
+  word-break: break-all;
+}
+
+.expiring-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.expiring-item-actions .action-btn {
+  flex: 1;
+  min-width: 100px;
+}
+
+/* 移动端响应式优化 */
+@media (max-width: 768px) {
+  .expiring-card {
+    margin-bottom: 16px;
+  }
+
+  .expiring-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .expiring-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .expiring-filter-select {
+    width: 100%;
+    margin-bottom: 0;
+  }
+
+  .batch-send-btn {
+    width: 100%;
+  }
+
+  .batch-send-text {
+    font-size: 14px;
+  }
+
+  .expiring-table-container {
+    display: none !important;
+  }
+
+  .mobile-expiring-list {
+    display: block !important;
+  }
+
+  .expiring-item-card {
+    padding: 14px;
+  }
+
+  .expiring-username {
+    font-size: 16px;
+  }
+
+  .expiring-email {
+    font-size: 14px;
+  }
+
+  .expiring-item-row {
+    font-size: 14px;
+  }
+
+  .expiring-label {
+    min-width: 80px;
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-expiring-list {
+    display: none !important;
+  }
+
+  .expiring-table-container {
+    display: block !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .expiring-item-card {
+    padding: 12px;
+  }
+
+  .expiring-username {
+    font-size: 15px;
+  }
+
+  .expiring-email {
+    font-size: 13px;
+  }
+
+  .expiring-item-actions {
+    flex-direction: column;
+  }
+
+  .expiring-item-actions .action-btn {
+    width: 100%;
+    min-width: auto;
+  }
+}
+
+/* 桌面端和移动端显示控制 */
+.desktop-only {
+  display: block;
+}
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: block !important;
+  }
 }
 </style> 

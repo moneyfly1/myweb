@@ -13,6 +13,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -562,11 +563,22 @@ func GetUserDetails(c *gin.Context) {
 		}
 
 		for _, d := range uaMap {
+			ipAddress := formatIP(getString(d.IPAddress))
+			// 使用GeoIP解析地理位置
+			location := ""
+			if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+				locationStr := geoip.GetLocationString(ipAddress)
+				if locationStr.Valid {
+					location = locationStr.String
+				}
+			}
+
 			uaRecords = append(uaRecords, gin.H{
 				"user_agent":   *d.UserAgent,
 				"device_type":  getString(d.DeviceType),
 				"device_name":  getString(d.DeviceName),
-				"ip_address":   formatIP(getString(d.IPAddress)),
+				"ip_address":   ipAddress,
+				"location":     location,
 				"created_at":   d.CreatedAt.Format("2006-01-02 15:04:05"),
 				"last_access":  d.LastAccess.Format("2006-01-02 15:04:05"),
 				"access_count": d.AccessCount,

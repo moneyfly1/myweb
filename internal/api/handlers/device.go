@@ -6,6 +6,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -59,6 +60,16 @@ func GetDevices(c *gin.Context) {
 			firstSeen = d.FirstSeen.Format("2006-01-02 15:04:05")
 		}
 
+		ipAddress := getString(d.IPAddress)
+		// 使用GeoIP解析地理位置
+		location := ""
+		if ipAddress != "" && geoip.IsEnabled() {
+			locationStr := geoip.GetLocationString(ipAddress)
+			if locationStr.Valid {
+				location = locationStr.String
+			}
+		}
+
 		deviceList = append(deviceList, gin.H{
 			"id":                 d.ID,
 			"subscription_id":    d.SubscriptionID,
@@ -67,7 +78,8 @@ func GetDevices(c *gin.Context) {
 			"device_model":       getString(d.DeviceModel),
 			"device_brand":       getString(d.DeviceBrand),
 			"device_fingerprint": d.DeviceFingerprint,
-			"ip_address":         getString(d.IPAddress),
+			"ip_address":         ipAddress,
+			"location":           location,
 			"user_agent":         getString(d.UserAgent),
 			"software_name":      getString(d.SoftwareName),
 			"software_version":   getString(d.SoftwareVersion),

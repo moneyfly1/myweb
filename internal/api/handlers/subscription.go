@@ -174,14 +174,26 @@ func GetAdminSubscriptions(c *gin.Context) {
 	}
 
 	sort := c.DefaultQuery("sort", "add_time_desc")
+	utils.LogInfo("GetAdminSubscriptions sort parameter: %s", sort)
 	sortMap := map[string]string{
-		"add_time_desc": "created_at DESC", "add_time_asc": "created_at ASC",
-		"expire_time_desc": "expire_time DESC", "expire_time_asc": "expire_time ASC",
-		"device_count_desc": "current_devices DESC", "device_count_asc": "current_devices ASC",
+		"add_time_desc":       "created_at DESC",
+		"add_time_asc":        "created_at ASC",
+		"expire_time_desc":    "expire_time DESC",
+		"expire_time_asc":     "expire_time ASC",
+		"device_count_desc":   "current_devices DESC",
+		"device_count_asc":    "current_devices ASC",
+		"device_limit_desc":   "device_limit DESC",
+		"device_limit_asc":    "device_limit ASC",
+		"apple_count_desc":    "universal_count DESC",
+		"apple_count_asc":     "universal_count ASC",
+		"online_devices_desc": "(SELECT COUNT(*) FROM devices WHERE devices.subscription_id = subscriptions.id AND devices.is_active = 1) DESC",
+		"online_devices_asc":  "(SELECT COUNT(*) FROM devices WHERE devices.subscription_id = subscriptions.id AND devices.is_active = 1) ASC",
 	}
 	if order, ok := sortMap[sort]; ok {
+		utils.LogInfo("GetAdminSubscriptions applying sort order: %s", order)
 		query = query.Order(order)
 	} else {
+		utils.LogInfo("GetAdminSubscriptions using default sort order: created_at DESC")
 		query = query.Order("created_at DESC")
 	}
 

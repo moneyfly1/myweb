@@ -197,34 +197,6 @@
             </div>
           </div>
         </el-tab-pane>
-        <el-tab-pane label="通知设置" name="notifications">
-          <el-form label-width="120px" class="profile-form">
-            <el-form-item label="邮件通知">
-              <el-switch v-model="notificationForm.email_enabled" @change="toggleEmailNotification" />
-              <small class="form-tip">接收重要的系统通知邮件</small>
-            </el-form-item>
-            
-            <el-form-item label="系统通知">
-              <el-switch v-model="notificationForm.system_notification" @change="toggleSystemNotification" />
-              <small class="form-tip">接收系统维护、更新等通知</small>
-            </el-form-item>
-            
-            <el-form-item label="安全通知">
-              <el-switch v-model="notificationForm.security_notification" @change="toggleSecurityNotification" />
-              <small class="form-tip">接收安全相关的通知</small>
-            </el-form-item>
-            
-            <el-form-item label="通知频率">
-              <el-select v-model="notificationForm.frequency" @change="updateNotificationFrequency">
-                <el-option label="实时" value="realtime" />
-                <el-option label="每小时" value="hourly" />
-                <el-option label="每天" value="daily" />
-                <el-option label="每周" value="weekly" />
-              </el-select>
-              <small class="form-tip">设置通知的发送频率</small>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -297,12 +269,6 @@ export default {
       login_notification: true,
       notification_email: '',
       session_timeout: '120'
-    })
-    const notificationForm = reactive({
-      email_enabled: true,
-      system_notification: true,
-      security_notification: true,
-      frequency: 'realtime'
     })
     const loginHistory = ref([])
     const loginHistoryLoading = ref(false)
@@ -576,49 +542,6 @@ export default {
         ElMessage.error('设置失败')
       }
     }
-    const toggleEmailNotification = async (value) => {
-      try {
-        const response = await adminAPI.updateNotificationSettings({
-          email_enabled: value
-        })
-        ElMessage.success('邮件通知设置已保存')
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '设置失败')
-        notificationForm.email_enabled = !value
-      }
-    }
-    const toggleSystemNotification = async (value) => {
-      try {
-        const response = await adminAPI.updateNotificationSettings({
-          system_notification: value
-        })
-        ElMessage.success('系统通知设置已保存')
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '设置失败')
-        notificationForm.system_notification = !value
-      }
-    }
-    const toggleSecurityNotification = async (value) => {
-      try {
-        const response = await adminAPI.updateNotificationSettings({
-          security_notification: value
-        })
-        ElMessage.success('安全通知设置已保存')
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '设置失败')
-        notificationForm.security_notification = !value
-      }
-    }
-    const updateNotificationFrequency = async (value) => {
-      try {
-        const response = await adminAPI.updateNotificationSettings({
-          frequency: value
-        })
-        ElMessage.success('通知频率设置已保存')
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '设置失败')
-      }
-    }
     const loadLoginHistory = async () => {
       loginHistoryLoading.value = true
       try {
@@ -685,31 +608,6 @@ export default {
       } catch (error) {
         }
     }
-    const loadNotificationSettings = async () => {
-      try {
-        const response = await adminAPI.getNotificationSettings()
-        let data = null
-        if (response && response.data) {
-          if (response.data.success !== false && response.data.data) {
-            data = response.data.data
-          } else if (response.data) {
-            data = response.data
-          }
-        } else if (response) {
-          data = response
-        }
-        
-        if (data) {
-          Object.assign(notificationForm, {
-            email_enabled: data.email_enabled !== undefined ? data.email_enabled : true,
-            system_notification: data.system_notification !== undefined ? data.system_notification : true,
-            security_notification: data.security_notification !== undefined ? data.security_notification : true,
-            frequency: data.frequency || 'realtime'
-          })
-          }
-      } catch (error) {
-        }
-    }
     const formatDate = (dateString) => {
       if (!dateString) return ''
       const date = new Date(dateString)
@@ -760,7 +658,6 @@ export default {
     onMounted(() => {
       loadBasicInfo()
       loadSecuritySettings()
-      loadNotificationSettings()
       loadLoginHistory()
     })
 
@@ -774,7 +671,6 @@ export default {
       basicForm,
       passwordForm,
       securityForm,
-      notificationForm,
       loginHistory,
       loginHistoryLoading,
       basicRules,
@@ -790,10 +686,6 @@ export default {
       toggleLoginNotification,
       saveNotificationEmail,
       updateSessionTimeout,
-      toggleEmailNotification,
-      toggleSystemNotification,
-      toggleSecurityNotification,
-      updateNotificationFrequency,
       formatDate,
       getLocationText,
       getDeviceInfo

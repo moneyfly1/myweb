@@ -221,6 +221,7 @@
           @selection-change="handleSelectionChange"
           row-key="id"
           stripe
+          :default-sort="{prop: 'created_at', order: 'descending'}"
         >
         <!-- 选择列 -->
         <el-table-column type="selection" width="55" />
@@ -252,6 +253,10 @@
           v-if="visibleColumns.includes('expire_time')" 
           label="结束时间" 
           width="160"
+          prop="expire_time"
+          sortable="custom"
+          :sort-orders="['descending', 'ascending', null]"
+          @sort-change="handleExpireTimeSort"
         >
           <template #default="scope">
             <div class="expire-time-section">
@@ -399,8 +404,9 @@
           v-if="visibleColumns.includes('device_limit')" 
           label="最大设备数" 
           width="130"
+          prop="device_limit"
           sortable="custom"
-          :sort-orders="['descending', 'ascending']"
+          :sort-orders="['descending', 'ascending', null]"
           @sort-change="handleDeviceLimitSort"
         >
           <template #default="scope">
@@ -986,9 +992,14 @@
                 <span>{{ formatDate(scope.row.last_access) || '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="ip_address" label="IP地址" width="120">
+            <el-table-column prop="ip_address" label="IP地址" width="200">
               <template #default="scope">
-                <span>{{ scope.row.ip_address || '-' }}</span>
+                <div class="ip-location-cell">
+                  <span>{{ scope.row.ip_address || '-' }}</span>
+                  <el-tag v-if="scope.row.location" type="info" size="small" style="margin-left: 8px;">
+                    {{ formatLocation(scope.row.location) }}
+                  </el-tag>
+                </div>
               </template>
             </el-table-column>
             <el-table-column prop="access_count" label="访问次数" width="100">
@@ -1149,6 +1160,7 @@
 
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
@@ -1159,6 +1171,7 @@ import '@/styles/list-common.scss'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/secureStorage'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
+import { formatLocation } from '@/utils/location'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -1171,6 +1184,7 @@ export default {
     Check, Close
   },
   setup() {
+    const route = useRoute()
     const loading = ref(false)
     const subscriptions = ref([])
     const selectedSubscriptions = ref([])
@@ -1271,13 +1285,18 @@ export default {
           params.status = searchForm.status
         }
         
+        console.log('loadSubscriptions params:', params)
         const response = await adminAPI.getSubscriptions(params)
+        console.log('loadSubscriptions response:', response)
         if (response.data?.success !== false) {
           const subscriptionList = response.data?.data?.subscriptions || []
           // 确保 is_active 是布尔值
           subscriptions.value = subscriptionList.map(sub => ({
             ...sub,
-            is_active: sub.is_active === true || sub.is_active === 1 || sub.is_active === '1'
+            is_active: sub.is_active === true || sub.is_active === 1 || sub.is_active === '1',
+            // 确保排序字段格式正确
+            device_limit: Number(sub.device_limit) || 0,
+            expire_time: sub.expire_time || ''
           }))
           total.value = response.data?.data?.total || 0
           } else {
@@ -2426,13 +2445,33 @@ export default {
     }
 
     const handleDeviceLimitSort = ({ column, prop, order }) => {
-      if (order === 'descending') {
+      console.log('handleDeviceLimitSort called:', { column, prop, order })
+      if (!order || order === null) {
+        // 取消排序，恢复默认
+        currentSort.value = 'add_time_desc'
+      } else if (order === 'descending') {
         currentSort.value = 'device_limit_desc'
       } else if (order === 'ascending') {
         currentSort.value = 'device_limit_asc'
-      } else {
-        currentSort.value = 'add_time_desc' // 默认排序
       }
+      console.log('currentSort set to:', currentSort.value)
+      currentPage.value = 1 // 重置到第一页
+      loadSubscriptions()
+    }
+
+    // 处理结束时间排序
+    const handleExpireTimeSort = ({ column, prop, order }) => {
+      console.log('handleExpireTimeSort called:', { column, prop, order })
+      if (!order || order === null) {
+        // 取消排序，恢复默认
+        currentSort.value = 'add_time_desc'
+      } else if (order === 'descending') {
+        currentSort.value = 'expire_time_desc'
+      } else if (order === 'ascending') {
+        currentSort.value = 'expire_time_asc'
+      }
+      console.log('currentSort set to:', currentSort.value)
+      currentPage.value = 1 // 重置到第一页
       loadSubscriptions()
     }
 
@@ -2473,6 +2512,15 @@ export default {
 
     // 组件挂载时加载数据
     onMounted(() => {
+      // 检查 URL 参数中是否有搜索关键词
+      if (route.query.search) {
+        const searchParam = String(route.query.search).trim()
+        if (searchParam) {
+          searchForm.keyword = searchParam
+          searchQuery.value = searchParam
+          currentPage.value = 1
+        }
+      }
       loadSubscriptions()
       window.addEventListener('resize', handleResize)
     })
@@ -2558,8 +2606,10 @@ export default {
       sortByOnline,
       sortByCreatedTime,
       handleDeviceLimitSort,
+      handleExpireTimeSort,
       truncateUserAgent,
       formatTime,
+      formatLocation,
       handleActionCommand,
       truncateUrl
     }
@@ -2980,6 +3030,13 @@ export default {
 .empty-devices {
   text-align: center;
   padding: 20px;
+}
+
+.ip-location-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .detail-section {
