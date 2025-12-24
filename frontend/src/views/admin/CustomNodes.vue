@@ -456,10 +456,27 @@ export default {
         if (searchKeyword.value) params.search = searchKeyword.value
 
         const response = await adminAPI.getCustomNodes(params)
+        console.log('获取节点列表响应:', response)
         if (response && response.data) {
           if (response.data.success !== false) {
-            const data = response.data.data || response.data
-            customNodes.value = Array.isArray(data) ? data : []
+            // 后端返回格式: { success: true, data: { data: [...], total: 10, page: 1, size: 20 } }
+            const responseData = response.data.data
+            if (responseData && responseData.data && Array.isArray(responseData.data)) {
+              // 分页格式
+              customNodes.value = responseData.data
+              console.log('加载节点列表成功（分页格式）:', customNodes.value.length, '个节点')
+            } else if (Array.isArray(responseData)) {
+              // 直接数组格式（兼容）
+              customNodes.value = responseData
+              console.log('加载节点列表成功（数组格式）:', customNodes.value.length, '个节点')
+            } else if (Array.isArray(response.data.data)) {
+              // 另一种可能的格式
+              customNodes.value = response.data.data
+              console.log('加载节点列表成功（直接格式）:', customNodes.value.length, '个节点')
+            } else {
+              console.warn('无法解析节点列表数据:', responseData)
+              customNodes.value = []
+            }
           } else {
             ElMessage.error(response.data.message || '获取专线节点列表失败')
             customNodes.value = []
@@ -551,15 +568,26 @@ export default {
       saving.value = true
       try {
         const response = await adminAPI.createCustomNode({ node_link: firstLink })
-        if (response.data && response.data.success) {
-          ElMessage.success('专线节点添加成功')
-          showAddDialog.value = false
-          resetForm()
-          await loadCustomNodes()
+        console.log('创建节点响应:', response)
+        // 检查响应格式：可能是 { data: { success: true, data: {...} } } 或直接 { success: true, data: {...} }
+        if (response && response.data) {
+          const success = response.data.success !== false && response.data.success !== undefined
+          if (success || response.status === 201 || response.status === 200) {
+            ElMessage.success('专线节点添加成功')
+            showAddDialog.value = false
+            resetForm()
+            // 延迟一下再刷新，确保数据库已提交
+            setTimeout(async () => {
+              await loadCustomNodes()
+            }, 300)
+          } else {
+            ElMessage.error(response.data?.message || '添加失败')
+          }
         } else {
-          ElMessage.error(response.data?.message || '添加失败')
+          ElMessage.error('响应格式错误')
         }
       } catch (error) {
+        console.error('创建节点错误:', error)
         ElMessage.error('添加失败: ' + (error.response?.data?.message || error.message))
       } finally {
         saving.value = false
@@ -704,13 +732,18 @@ export default {
             })
           }
 
-          if (response.data.success) {
+          // 检查响应格式：可能是 { data: { success: true, data: {...} } } 或直接 { success: true, data: {...} }
+          const success = (response.data && (response.data.success !== false && response.data.success !== undefined)) || response.status === 201 || response.status === 200
+          if (success) {
             ElMessage.success(editingNode.value ? '节点更新成功' : '节点创建成功')
             showAddDialog.value = false
             resetForm()
-            await loadCustomNodes()
+            // 延迟一下再刷新，确保数据库已提交
+            setTimeout(async () => {
+              await loadCustomNodes()
+            }, 300)
           } else {
-            ElMessage.error(response.data.message || '保存失败')
+            ElMessage.error(response.data?.message || '保存失败')
           }
         } catch (error) {
           ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
