@@ -16,10 +16,7 @@ import (
 func CreateRecharge(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -29,10 +26,7 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -50,10 +44,7 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	if err := db.Create(&recharge).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建充值订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建充值订单失败", err)
 		return
 	}
 
@@ -91,15 +82,12 @@ func CreateRecharge(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data": gin.H{
-			"id":          recharge.ID,
-			"order_no":    recharge.OrderNo,
-			"amount":      recharge.Amount,
-			"status":      recharge.Status,
-			"payment_url": paymentURL,
-		},
+	utils.SuccessResponse(c, http.StatusCreated, "", gin.H{
+		"id":          recharge.ID,
+		"order_no":    recharge.OrderNo,
+		"amount":      recharge.Amount,
+		"status":      recharge.Status,
+		"payment_url": paymentURL,
 	})
 }
 
@@ -107,27 +95,18 @@ func CreateRecharge(c *gin.Context) {
 func GetRechargeRecords(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var records []models.RechargeRecord
 	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").Find(&records).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取充值记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取充值记录失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    records,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", records)
 }
 
 // GetRechargeRecord 获取单个充值记录
@@ -135,27 +114,18 @@ func GetRechargeRecord(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var record models.RechargeRecord
 	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&record).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "充值记录不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "充值记录不存在", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    record,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", record)
 }
 
 // CancelRecharge 取消充值订单
@@ -163,43 +133,27 @@ func CancelRecharge(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var record models.RechargeRecord
 	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&record).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "充值记录不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "充值记录不存在", err)
 		return
 	}
 
 	if record.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "只能取消待支付的充值订单",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "只能取消待支付的充值订单", nil)
 		return
 	}
 
 	record.Status = "cancelled"
 	if err := db.Save(&record).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "取消充值订单失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "取消充值订单失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "充值订单已取消",
-		"data":    record,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "充值订单已取消", record)
 }

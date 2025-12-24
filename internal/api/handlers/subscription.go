@@ -719,18 +719,12 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.SubscriptionIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要删除的订阅",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要删除的订阅", nil)
 		return
 	}
 
@@ -740,45 +734,30 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 	// 删除订阅相关的设备
 	if err := tx.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除订阅设备失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订阅设备失败", err)
 		return
 	}
 
 	// 删除订阅重置记录
 	if err := tx.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.SubscriptionReset{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除订阅重置记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订阅重置记录失败", err)
 		return
 	}
 
 	// 删除订阅
 	if err := tx.Where("id IN ?", req.SubscriptionIDs).Delete(&models.Subscription{}).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除订阅失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订阅失败", err)
 		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除操作失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)), nil)
 }
 
 // BatchEnableSubscriptions 批量启用订阅
@@ -788,18 +767,12 @@ func BatchEnableSubscriptions(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.SubscriptionIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要启用的订阅",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要启用的订阅", nil)
 		return
 	}
 
@@ -810,17 +783,11 @@ func BatchEnableSubscriptions(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "启用订阅失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "启用订阅失败", result.Error)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功启用 %d 个订阅", result.RowsAffected),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个订阅", result.RowsAffected), nil)
 }
 
 // BatchDisableSubscriptions 批量禁用订阅
@@ -830,18 +797,12 @@ func BatchDisableSubscriptions(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.SubscriptionIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要禁用的订阅",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要禁用的订阅", nil)
 		return
 	}
 
@@ -852,17 +813,11 @@ func BatchDisableSubscriptions(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "禁用订阅失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用订阅失败", result.Error)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功禁用 %d 个订阅", result.RowsAffected),
-	})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个订阅", result.RowsAffected), nil)
 }
 
 // BatchResetSubscriptions 批量重置订阅
@@ -872,28 +827,19 @@ func BatchResetSubscriptions(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.SubscriptionIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要重置的订阅",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要重置的订阅", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var subscriptions []models.Subscription
 	if err := db.Where("id IN ?", req.SubscriptionIDs).Preload("User").Find(&subscriptions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取订阅信息失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅信息失败", err)
 		return
 	}
 
@@ -943,13 +889,9 @@ func BatchResetSubscriptions(c *gin.Context) {
 		successCount++
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功重置 %d 个订阅，失败 %d 个", successCount, failCount),
-		"data": gin.H{
-			"success_count": successCount,
-			"fail_count":    failCount,
-		},
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功重置 %d 个订阅，失败 %d 个", successCount, failCount), gin.H{
+		"success_count": successCount,
+		"fail_count":    failCount,
 	})
 }
 
@@ -960,28 +902,19 @@ func BatchSendAdminSubEmail(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	if len(req.SubscriptionIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请选择要发送邮件的订阅",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要发送邮件的订阅", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var subscriptions []models.Subscription
 	if err := db.Where("id IN ?", req.SubscriptionIDs).Preload("User").Find(&subscriptions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取订阅信息失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅信息失败", err)
 		return
 	}
 
@@ -996,13 +929,9 @@ func BatchSendAdminSubEmail(c *gin.Context) {
 		successCount++
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount),
-		"data": gin.H{
-			"success_count": successCount,
-			"fail_count":    failCount,
-		},
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
+		"success_count": successCount,
+		"fail_count":    failCount,
 	})
 }
 
@@ -1047,10 +976,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 	}
 
 	if err := query.Find(&subscriptions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "查询失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询失败", err)
 		return
 	}
 
@@ -1093,8 +1019,5 @@ func GetExpiringSubscriptions(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", result)
 }

@@ -189,18 +189,12 @@ func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "请求过于频繁，账户已被临时锁定，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "请求过于频繁，账户已被临时锁定，请稍后再试", nil)
 			} else {
 				c.Header("X-RateLimit-Limit", "100")
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "请求过于频繁，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
 			}
 			c.Abort()
 			return
@@ -230,18 +224,12 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "登录失败次数过多，账户已被临时锁定15分钟，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "登录失败次数过多，账户已被临时锁定15分钟，请稍后再试", nil)
 			} else {
 				c.Header("X-RateLimit-Limit", "5")
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "登录失败次数过多，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "登录失败次数过多，请稍后再试", nil)
 			}
 			c.Abort()
 			return
@@ -281,18 +269,12 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "注册请求过于频繁，账户已被临时锁定，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "注册请求过于频繁，账户已被临时锁定，请稍后再试", nil)
 			} else {
 				c.Header("X-RateLimit-Limit", "3")
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "注册请求过于频繁，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "注册请求过于频繁，请稍后再试", nil)
 			}
 			c.Abort()
 			return
@@ -322,18 +304,12 @@ func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "验证码发送过于频繁，已被临时锁定，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码发送过于频繁，已被临时锁定，请稍后再试", nil)
 			} else {
 				c.Header("X-RateLimit-Limit", "5")
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"success": false,
-					"message": "验证码发送过于频繁，请稍后再试",
-				})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码发送过于频繁，请稍后再试", nil)
 			}
 			c.Abort()
 			return

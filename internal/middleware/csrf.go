@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -166,7 +168,7 @@ func CSRFMiddleware() gin.HandlerFunc {
 			referer := c.GetHeader("Referer")
 			host := c.Request.Host
 			if (origin != "" && !isValidOrigin(origin, host)) || (referer != "" && !isValidReferer(referer, host)) {
-				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "CSRF验证失败：无效的请求来源"})
+				utils.ErrorResponse(c, http.StatusForbidden, "CSRF验证失败：无效的请求来源", nil)
 				c.Abort()
 				return
 			}
@@ -176,11 +178,7 @@ func CSRFMiddleware() gin.HandlerFunc {
 			isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 			c.SetCookie("csrf_token", newToken, 86400, "/", "", isSecure, false)
 			c.Header("X-CSRF-Token", newToken)
-			c.JSON(http.StatusForbidden, gin.H{
-				"success":    false,
-				"message":    "CSRF验证失败，请刷新页面后重试",
-				"csrf_token": newToken,
-			})
+			utils.ErrorResponse(c, http.StatusForbidden, "CSRF验证失败，请刷新页面后重试", nil)
 			c.Abort()
 			return
 		}

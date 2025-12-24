@@ -5,6 +5,8 @@ import (
 	"runtime"
 
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,19 +17,16 @@ func GetSystemInfo(c *gin.Context) {
 
 	info := map[string]interface{}{
 		"memory": map[string]interface{}{
-			"allocated":      m.Alloc,
+			"allocated":       m.Alloc,
 			"total_allocated": m.TotalAlloc,
-			"sys":            m.Sys,
-			"num_gc":         m.NumGC,
+			"sys":             m.Sys,
+			"num_gc":          m.NumGC,
 		},
 		"goroutines": runtime.NumGoroutine(),
 		"cpu_count":  runtime.NumCPU(),
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    info,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", info)
 }
 
 // GetDatabaseStats 获取数据库统计
@@ -55,9 +54,5 @@ func GetDatabaseStats(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
-

@@ -28,10 +28,7 @@ func GenerateInviteCode() string {
 func CreateInviteCode(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -48,10 +45,7 @@ func CreateInviteCode(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.LogError("CreateInviteCode: bind JSON failed", err, nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -98,10 +92,7 @@ func CreateInviteCode(c *gin.Context) {
 			break
 		}
 		if i == maxAttempts-1 {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "生成唯一邀请码失败，请重试",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "生成唯一邀请码失败，请重试", nil)
 			return
 		}
 	}
@@ -126,10 +117,7 @@ func CreateInviteCode(c *gin.Context) {
 
 	if err := db.Create(&inviteCode).Error; err != nil {
 		utils.LogError("CreateInviteCode: create invite code failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建邀请码失败", err)
 		return
 	}
 
@@ -137,22 +125,18 @@ func CreateInviteCode(c *gin.Context) {
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	inviteLink := baseURL + "/register?invite=" + code
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"message": "邀请码生成成功",
-		"data": gin.H{
-			"id":             inviteCode.ID,
-			"code":           inviteCode.Code,
-			"invite_link":    inviteLink,
-			"max_uses":       inviteCode.MaxUses,
-			"used_count":     inviteCode.UsedCount,
-			"expires_at":     inviteCode.ExpiresAt,
-			"reward_type":    inviteCode.RewardType,
-			"inviter_reward": inviteCode.InviterReward,
-			"invitee_reward": inviteCode.InviteeReward,
-			"is_active":      inviteCode.IsActive,
-			"created_at":     inviteCode.CreatedAt,
-		},
+	utils.SuccessResponse(c, http.StatusCreated, "邀请码生成成功", gin.H{
+		"id":             inviteCode.ID,
+		"code":           inviteCode.Code,
+		"invite_link":    inviteLink,
+		"max_uses":       inviteCode.MaxUses,
+		"used_count":     inviteCode.UsedCount,
+		"expires_at":     inviteCode.ExpiresAt,
+		"reward_type":    inviteCode.RewardType,
+		"inviter_reward": inviteCode.InviterReward,
+		"invitee_reward": inviteCode.InviteeReward,
+		"is_active":      inviteCode.IsActive,
+		"created_at":     inviteCode.CreatedAt,
 	})
 }
 
@@ -160,20 +144,14 @@ func CreateInviteCode(c *gin.Context) {
 func GetInviteCodes(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var inviteCodes []models.InviteCode
 	if err := db.Where("user_id = ?", user.ID).Preload("InviteRelations").Find(&inviteCodes).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取邀请码列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请码列表失败", err)
 		return
 	}
 
@@ -221,20 +199,14 @@ func GetInviteCodes(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
 // GetInviteStats 获取邀请统计
 func GetInviteStats(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -259,20 +231,14 @@ func GetInviteStats(c *gin.Context) {
 	// 统计邀请关系
 	db.Model(&models.InviteRelation{}).Where("inviter_id = ?", user.ID).Count(&stats.TotalInviteRelations)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // GetRewardSettings 获取邀请奖励设置
 func GetRewardSettings(c *gin.Context) {
 	_, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -314,10 +280,7 @@ func GetRewardSettings(c *gin.Context) {
 		settings["new_user_only"] = false
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    settings,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
 // GetMyInviteCodes 获取我的邀请码列表（别名，实际使用 GetInviteCodes）
@@ -333,48 +296,33 @@ func ValidateInviteCode(c *gin.Context) {
 
 	var inviteCode models.InviteCode
 	if err := db.Where("code = ?", code).First(&inviteCode).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "邀请码不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在", err)
 		return
 	}
 
 	// 检查邀请码是否有效
 	now := utils.GetBeijingTime()
 	if !inviteCode.IsActive {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "邀请码已停用",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "邀请码已停用", nil)
 		return
 	}
 
 	if inviteCode.ExpiresAt.Valid && inviteCode.ExpiresAt.Time.Before(now) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "邀请码已过期",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "邀请码已过期", nil)
 		return
 	}
 
 	if inviteCode.MaxUses.Valid && inviteCode.UsedCount >= int(inviteCode.MaxUses.Int64) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "邀请码使用次数已达上限",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "邀请码使用次数已达上限", nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"code":       inviteCode.Code,
-			"is_valid":   true,
-			"expires_at": inviteCode.ExpiresAt,
-			"max_uses":   inviteCode.MaxUses,
-			"used_count": inviteCode.UsedCount,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"code":       inviteCode.Code,
+		"is_valid":   true,
+		"expires_at": inviteCode.ExpiresAt,
+		"max_uses":   inviteCode.MaxUses,
+		"used_count": inviteCode.UsedCount,
 	})
 }
 
@@ -383,20 +331,14 @@ func UpdateInviteCode(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var inviteCode models.InviteCode
 	if err := db.Where("id = ? AND created_by = ?", id, user.ID).First(&inviteCode).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "邀请码不存在或无权限",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在或无权限", err)
 		return
 	}
 
@@ -407,10 +349,7 @@ func UpdateInviteCode(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -425,18 +364,11 @@ func UpdateInviteCode(c *gin.Context) {
 	}
 
 	if err := db.Save(&inviteCode).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新邀请码失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    inviteCode,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", inviteCode)
 }
 
 // DeleteInviteCode 删除邀请码
@@ -444,10 +376,7 @@ func DeleteInviteCode(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
@@ -456,44 +385,29 @@ func DeleteInviteCode(c *gin.Context) {
 	// 修复：使用 UserID 而不是 created_by
 	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&inviteCode).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"message": "邀请码不存在或无权限",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在或无权限", err)
 		} else {
 			utils.LogError("DeleteInviteCode: query invite code failed", err, nil)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "查询邀请码失败",
-			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询邀请码失败", err)
 		}
 		return
 	}
 
 	// 检查邀请码是否已被使用
 	if inviteCode.UsedCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "邀请码已被使用，无法删除",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "邀请码已被使用，无法删除", nil)
 		return
 	}
 
 	// 删除邀请码
 	if err := db.Delete(&inviteCode).Error; err != nil {
 		utils.LogError("DeleteInviteCode: delete invite code failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除邀请码失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除邀请码失败", err)
 		return
 	}
 
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "delete_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("删除邀请码: %s", inviteCode.Code))
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "删除成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }

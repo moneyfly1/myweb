@@ -214,11 +214,15 @@
     >
       <el-form :model="configForm" :label-width="isMobile ? '0' : '120px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="支付类型">
+          <template v-if="isMobile">
+            <div class="mobile-label">支付类型</div>
+          </template>
           <el-select 
             v-model="configForm.pay_type" 
             placeholder="选择支付类型"
             style="width: 100%"
-            :teleported="!isMobile"
+            :teleported="isMobile"
+            :popper-class="isMobile ? 'mobile-select-popper' : ''"
           >
             <el-option-group label="官方支付">
               <el-option label="支付宝" value="alipay" />
@@ -242,6 +246,9 @@
         </el-form-item>
 
         <el-form-item label="应用ID" v-if="configForm.pay_type === 'alipay' || configForm.pay_type === 'wechat'">
+          <template v-if="isMobile">
+            <div class="mobile-label">应用ID</div>
+          </template>
           <el-input v-model="configForm.app_id" placeholder="请输入应用ID" style="width: 100%" />
           <div class="form-tip" v-if="configForm.pay_type === 'alipay'">
             <strong>⚠️ 重要提示：使用支付宝支付前必须完成以下步骤：</strong><br>
@@ -259,8 +266,8 @@
             1. 完成应用私钥和支付宝公钥的配置（见下方说明）<br>
             2. 确保应用公钥已上传到支付宝后台<br><br>
             <strong>第四步：配置回调地址（必须）</strong><br>
-            1. 在下方"异步回调地址"中填写：https://go.moneyfly.top/api/v1/payment/notify/alipay<br>
-            2. 在下方"同步回调地址"中填写：https://go.moneyfly.top/api/v1/payment/success<br>
+            1. 在下方"异步回调地址"中填写：<span style="color: #409EFF;">{{ baseUrl }}/api/v1/payment/notify/alipay</span><br>
+            2. 在下方"同步回调地址"中填写：<span style="color: #409EFF;">{{ baseUrl }}/api/v1/payment/success</span><br>
             3. <strong>重要：</strong>登录支付宝开放平台 → 开发设置 → 应用网关，填写相同的异步回调地址<br>
             4. <strong>重要：</strong>登录支付宝开放平台 → 开发设置 → 收单异步通知，配置通知地址<br><br>
             <strong>⚠️ 关于权限不足（40006错误）：</strong><br>
@@ -463,7 +470,7 @@
           <el-input v-model="configForm.return_url" placeholder="请输入同步回调地址" style="width: 100%" />
           <div class="form-tip">
             <strong>用途：</strong>支付完成后，用户浏览器跳转的地址（用于显示支付结果页面）<br>
-            <strong>填写示例：</strong>https://go.moneyfly.top/api/v1/payment/success<br>
+            <strong>填写示例：</strong><span style="color: #409EFF;">{{ baseUrl }}/api/v1/payment/success</span><br>
             <strong>注意：</strong>必须是公网可访问的HTTPS地址（生产环境）或HTTP地址（沙箱环境）
           </div>
         </el-form-item>
@@ -472,7 +479,7 @@
           <el-input v-model="configForm.notify_url" placeholder="请输入异步回调地址" style="width: 100%" />
           <div class="form-tip">
             <strong>用途：</strong>支付完成后，支付宝服务器主动通知您的服务器的地址（用于更新订单状态）<br>
-            <strong>填写示例：</strong>https://go.moneyfly.top/api/v1/payment/notify/alipay<br>
+            <strong>填写示例：</strong><span style="color: #409EFF;">{{ baseUrl }}/api/v1/payment/notify/alipay</span><br>
             <strong>注意：</strong>必须是公网可访问的HTTPS地址（生产环境）或HTTP地址（沙箱环境）<br>
             <strong>⚠️ 重要：</strong>此地址需要同时在支付宝开放平台的"开发设置" → "应用网关"中配置，否则无法接收回调通知
           </div>
@@ -501,9 +508,9 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showAddDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="saveConfig" :loading="saving" class="mobile-action-btn">
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button @click="showAddDialog = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
+          <el-button type="primary" @click="saveConfig" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">
             {{ editingConfig ? '更新' : '创建' }}
           </el-button>
         </div>
@@ -1286,6 +1293,14 @@ export default {
       }
     }
 
+    // 获取当前网站的基础URL
+    const baseUrl = computed(() => {
+      if (typeof window !== 'undefined') {
+        return window.location.origin
+      }
+      return 'https://your-domain.com' // 默认值，实际不会使用
+    })
+
     const typeStatsList = computed(() => {
       if (!statisticsData.value || !statisticsData.value.type_stats) {
         return []
@@ -1338,6 +1353,7 @@ export default {
     }
 
     return {
+      baseUrl,
       loading,
       saving,
       paymentConfigs,
@@ -1565,26 +1581,47 @@ export default {
   .mobile-dialog {
     :deep(.el-dialog) {
       width: 95% !important;
-      margin: 5vh auto !important;
-      max-height: 90vh;
-      border-radius: 12px;
+      margin: 2vh auto !important;
+      max-height: 96vh;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
     }
 
     :deep(.el-dialog__header) {
-      padding: 16px 20px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    :deep(.el-dialog__title) {
-      font-size: 18px;
-      font-weight: 600;
+      padding: 15px 15px 10px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #ebeef5;
+      
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      
+      .el-dialog__headerbtn {
+        top: 8px;
+        right: 8px;
+        width: 32px;
+        height: 32px;
+        
+        .el-dialog__close {
+          font-size: 18px;
+        }
+      }
     }
 
     :deep(.el-dialog__body) {
-      max-height: calc(90vh - 140px);
+      padding: 15px !important;
+      flex: 1;
       overflow-y: auto;
-      padding: 20px;
       -webkit-overflow-scrolling: touch;
+      max-height: calc(96vh - 140px);
+    }
+    
+    :deep(.el-dialog__footer) {
+      padding: 10px 15px 15px;
+      flex-shrink: 0;
+      border-top: 1px solid #ebeef5;
     }
 
     :deep(.el-form) {
@@ -1598,14 +1635,20 @@ export default {
     }
 
     :deep(.el-form-item__label) {
-      width: 100% !important;
-      text-align: left !important;
-      margin-bottom: 8px !important;
-      padding: 0 !important;
-      font-weight: 600;
+      display: none; /* 移动端隐藏默认标签 */
+    }
+    
+    .mobile-label {
       font-size: 14px;
-      color: #303133;
-      line-height: 1.5;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 8px;
+      display: block;
+      
+      .required {
+        color: #f56c6c;
+        margin-left: 2px;
+      }
     }
 
     :deep(.el-form-item__content) {
@@ -1646,20 +1689,34 @@ export default {
 
     .dialog-footer-buttons {
       display: flex;
-      flex-direction: column;
-      gap: 12px;
-      width: 100%;
-      padding-top: 16px;
-      border-top: 1px solid #f0f0f0;
+      justify-content: flex-end;
+      gap: 10px;
+      
+      &.mobile-footer {
+        flex-direction: column;
+        gap: 10px;
+        
+        .mobile-action-btn,
+        .el-button {
+          width: 100% !important;
+          min-height: 48px !important;
+          font-size: 16px !important;
+          font-weight: 500 !important;
+          margin: 0 !important;
+          border-radius: 8px;
+          -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        }
+      }
       
       .mobile-action-btn,
       .el-button {
         width: 100% !important;
-        height: 48px !important;
+        min-height: 48px !important;
         font-size: 16px !important;
         font-weight: 500 !important;
         margin: 0 !important;
         border-radius: 8px;
+        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
       }
     }
 

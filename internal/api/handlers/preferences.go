@@ -5,6 +5,8 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
+	"cboard-go/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,19 +24,13 @@ type UpdatePreferencesRequest struct {
 func UpdatePreferences(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	var req UpdatePreferencesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -60,17 +56,9 @@ func UpdatePreferences(c *gin.Context) {
 	}
 
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    user,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", user)
 }
-

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/config"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,10 +23,7 @@ func CreateBackup(c *gin.Context) {
 	// 创建备份目录（使用绝对路径，防止路径遍历）
 	wd, err := os.Getwd()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取工作目录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工作目录失败", err)
 		return
 	}
 
@@ -36,27 +34,18 @@ func CreateBackup(c *gin.Context) {
 
 	// 验证路径是否在允许的目录内（防止路径遍历）
 	if !strings.HasPrefix(backupDir, wd) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的备份路径",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
 	}
 
 	// 检查是否包含危险字符
 	if strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的备份路径",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
 	}
 
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建备份目录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建备份目录失败", err)
 		return
 	}
 
@@ -66,10 +55,7 @@ func CreateBackup(c *gin.Context) {
 	// 验证文件名（防止路径遍历）
 	if strings.Contains(backupFileName, "..") || strings.Contains(backupFileName, "/") ||
 		strings.Contains(backupFileName, "\\") || strings.Contains(backupFileName, "~") {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的文件名",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的文件名", nil)
 		return
 	}
 
@@ -77,20 +63,14 @@ func CreateBackup(c *gin.Context) {
 	// 再次清理和验证最终路径
 	backupPath = filepath.Clean(backupPath)
 	if !strings.HasPrefix(backupPath, backupDir) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的备份路径",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
 	}
 
 	// 创建 ZIP 文件
 	zipFile, err := os.Create(backupPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建备份文件失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建备份文件失败", err)
 		return
 	}
 	defer zipFile.Close()
@@ -145,14 +125,10 @@ func CreateBackup(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "备份创建成功",
-		"data": gin.H{
-			"filename": backupFileName,
-			"path":     backupPath,
-			"size":     getFileSize(backupPath),
-		},
+	utils.SuccessResponse(c, http.StatusOK, "备份创建成功", gin.H{
+		"filename": backupFileName,
+		"path":     backupPath,
+		"size":     getFileSize(backupPath),
 	})
 }
 
@@ -163,10 +139,7 @@ func ListBackups(c *gin.Context) {
 	// 使用绝对路径，防止路径遍历
 	wd, err := os.Getwd()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取工作目录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工作目录失败", err)
 		return
 	}
 
@@ -176,19 +149,13 @@ func ListBackups(c *gin.Context) {
 
 	// 验证路径是否在允许的目录内
 	if !strings.HasPrefix(backupDir, wd) || strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的备份路径",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
 	}
 
 	files, err := os.ReadDir(backupDir)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "读取备份目录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "读取备份目录失败", err)
 		return
 	}
 
@@ -214,10 +181,7 @@ func ListBackups(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    backups,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", backups)
 }
 
 // getFileSize 获取文件大小

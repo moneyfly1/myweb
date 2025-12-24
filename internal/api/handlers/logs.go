@@ -10,6 +10,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -244,14 +245,11 @@ func GetAuditLogs(c *gin.Context) {
 	db.Preload("User").Order("created_at DESC").
 		Offset(pagination.Offset).Limit(pagination.PageSize).Find(&logs)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"logs":      logs,
-			"total":     total,
-			"page":      pagination.Page,
-			"page_size": pagination.PageSize,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"logs":      logs,
+		"total":     total,
+		"page":      pagination.Page,
+		"page_size": pagination.PageSize,
 	})
 }
 
@@ -267,14 +265,11 @@ func GetLoginAttempts(c *gin.Context) {
 	db.Order("created_at DESC").
 		Offset(pagination.Offset).Limit(pagination.PageSize).Find(&attempts)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"attempts":  attempts,
-			"total":     total,
-			"page":      pagination.Page,
-			"page_size": pagination.PageSize,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"attempts":  attempts,
+		"total":     total,
+		"page":      pagination.Page,
+		"page_size": pagination.PageSize,
 	})
 }
 
@@ -293,20 +288,14 @@ func GetSystemLogs(c *gin.Context) {
 
 	var total int64
 	if err := countQuery.Count(&total).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取系统日志总数失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取系统日志总数失败", err)
 		return
 	}
 
 	var logs []models.AuditLog
 	if err := query.Order("created_at DESC").
 		Offset(pagination.Offset).Limit(pagination.PageSize).Find(&logs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取系统日志失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取系统日志失败", err)
 		return
 	}
 
@@ -316,14 +305,11 @@ func GetSystemLogs(c *gin.Context) {
 		logList = append(logList, formatAuditLogForAPI(db, log))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"logs":  logList,
-			"total": total,
-			"page":  pagination.Page,
-			"size":  pagination.PageSize,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"logs":  logList,
+		"total": total,
+		"page":  pagination.Page,
+		"size":  pagination.PageSize,
 	})
 }
 
@@ -350,10 +336,7 @@ func GetLogsStats(c *gin.Context) {
 	// 信息日志（响应状态 < 300 或 NULL）
 	db.Model(&models.AuditLog{}).Where("response_status < ? OR response_status IS NULL", 300).Count(&stats.Info)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // ExportLogs 导出日志
@@ -366,10 +349,7 @@ func ExportLogs(c *gin.Context) {
 
 	var logs []models.AuditLog
 	if err := query.Order("created_at DESC").Limit(10000).Find(&logs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "导出日志失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "导出日志失败", err)
 		return
 	}
 
@@ -396,18 +376,11 @@ func ClearLogs(c *gin.Context) {
 	result := db.Where("1 = 1").Delete(&models.AuditLog{})
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "清空日志失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "清空日志失败", result.Error)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": fmt.Sprintf("已清空 %d 条日志", result.RowsAffected),
-		"data": gin.H{
-			"deleted_count": result.RowsAffected,
-		},
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已清空 %d 条日志", result.RowsAffected), gin.H{
+		"deleted_count": result.RowsAffected,
 	})
 }

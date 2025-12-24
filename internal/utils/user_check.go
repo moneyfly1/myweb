@@ -22,13 +22,9 @@ func CheckUserActive(user *models.User) (bool, gin.H) {
 // CheckUserActiveWithResponse 检查用户是否激活，如果未激活则直接返回响应并中止请求
 func CheckUserActiveWithResponse(c *gin.Context, user *models.User) bool {
 	if !user.IsActive {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "账户已被禁用，无法使用服务。如有疑问，请联系管理员。",
-		})
+		ErrorResponse(c, http.StatusForbidden, "账户已被禁用，无法使用服务。如有疑问，请联系管理员。", nil)
 		c.Abort()
 		return false
 	}
 	return true
 }
-

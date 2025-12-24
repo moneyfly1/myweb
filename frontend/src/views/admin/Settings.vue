@@ -25,7 +25,7 @@
             <el-form-item label="网站域名" prop="domain_name">
               <el-input 
                 v-model="generalSettings.domain_name" 
-                placeholder="例如: dy.moneyfly.top (不需要 http:// 或 https://)"
+                placeholder="例如: example.com (不需要 http:// 或 https://)"
               />
               <div :class="['form-tip', { 'mobile': isMobile }]">
                 用于生成订阅地址和邮件中的链接。如果留空，将使用请求的域名。

@@ -540,6 +540,133 @@ export default {
   }
 }
 
+/* 手机端优化 */
+@media (max-width: 768px) {
+  .devices-container {
+    padding: 10px;
+  }
+  
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+    
+    .stat-card {
+      padding: 12px;
+      
+      .stat-number {
+        font-size: 1.5rem;
+        margin-bottom: 4px;
+      }
+      
+      .stat-label {
+        font-size: 0.75rem;
+      }
+    }
+  }
+  
+  .devices-card {
+    :deep(.el-card__header) {
+      padding: 12px;
+      
+      .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        
+        .el-button {
+          width: 100%;
+          min-height: 44px;
+          font-size: 16px;
+        }
+      }
+    }
+    
+    :deep(.el-card__body) {
+      padding: 12px;
+    }
+  }
+  
+  /* 表格在手机端隐藏 */
+  .table-wrapper {
+    display: none;
+  }
+  
+  /* 手机端卡片列表显示 */
+  .mobile-card-list {
+    display: block;
+  }
+  
+  .mobile-card {
+    padding: 14px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    
+    .card-row {
+      padding: 8px 0;
+      font-size: 14px;
+      
+      .label {
+        font-weight: 500;
+        color: #666;
+        min-width: 80px;
+      }
+      
+      .value {
+        color: #333;
+        word-break: break-word;
+      }
+    }
+    
+    .card-actions {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+      
+      .el-button {
+        width: 100%;
+        min-height: 44px;
+        font-size: 16px;
+        margin-bottom: 8px;
+        
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+    }
+  }
+  
+  /* 对话框优化 */
+  :deep(.el-dialog) {
+    width: 90% !important;
+    margin: 5vh auto !important;
+    max-height: 90vh;
+  }
+  
+  :deep(.el-dialog__body) {
+    padding: 15px !important;
+    max-height: calc(90vh - 120px);
+    overflow-y: auto;
+  }
+  
+  :deep(.el-dialog__footer) {
+    padding: 12px 15px !important;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 0 10px 0 !important;
+      min-height: 44px;
+      font-size: 16px;
+      
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
 .chart-item {
   display: flex;
   align-items: center;

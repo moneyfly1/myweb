@@ -19,17 +19,11 @@ func GetCoupons(c *gin.Context) {
 	var coupons []models.Coupon
 	now := utils.GetBeijingTime()
 	if err := db.Where("status = ? AND valid_from <= ? AND valid_until >= ?", "active", now, now).Find(&coupons).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取优惠券列表失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取优惠券列表失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    coupons,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", coupons)
 }
 
 // GetCoupon 获取单个优惠券
@@ -39,17 +33,11 @@ func GetCoupon(c *gin.Context) {
 	db := database.GetDB()
 	var coupon models.Coupon
 	if err := db.Where("code = ?", code).First(&coupon).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "优惠券不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "优惠券不存在", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    coupon,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", coupon)
 }
 
 // VerifyCoupon 验证优惠券
@@ -61,45 +49,30 @@ func VerifyCoupon(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	db := database.GetDB()
 	var coupon models.Coupon
 	if err := db.Where("code = ?", req.Code).First(&coupon).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "优惠券不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "优惠券不存在", err)
 		return
 	}
 
 	now := utils.GetBeijingTime()
 	if coupon.Status != "active" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "优惠券已失效",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "优惠券已失效", nil)
 		return
 	}
 
 	if now.Before(coupon.ValidFrom) || now.After(coupon.ValidUntil) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "优惠券不在有效期内",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "优惠券不在有效期内", nil)
 		return
 	}
 
 	if coupon.MinAmount.Valid && req.Amount < coupon.MinAmount.Float64 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单金额不满足优惠券使用条件",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "订单金额不满足优惠券使用条件", nil)
 		return
 	}
 
@@ -117,13 +90,10 @@ func VerifyCoupon(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"coupon":          coupon,
-			"discount_amount": discountAmount,
-			"final_amount":    req.Amount - discountAmount,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"coupon":          coupon,
+		"discount_amount": discountAmount,
+		"final_amount":    req.Amount - discountAmount,
 	})
 }
 
@@ -146,10 +116,7 @@ func CreateCoupon(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.LogError("CreateCoupon: bind JSON failed", err, nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -161,10 +128,7 @@ func CreateCoupon(c *gin.Context) {
 		// 尝试其他格式
 		validFrom, err = time.Parse("2006-01-02 15:04:05", req.ValidFrom)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "生效时间格式错误",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "生效时间格式错误", err)
 			return
 		}
 	}
@@ -173,10 +137,7 @@ func CreateCoupon(c *gin.Context) {
 		// 尝试其他格式
 		validUntil, err = time.Parse("2006-01-02 15:04:05", req.ValidUntil)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "失效时间格式错误",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "失效时间格式错误", err)
 			return
 		}
 	}
@@ -194,10 +155,7 @@ func CreateCoupon(c *gin.Context) {
 		// 检查优惠券码是否已存在
 		var existing models.Coupon
 		if err := db.Where("code = ?", code).First(&existing).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "优惠券码已存在",
-			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "优惠券码已存在", nil)
 			return
 		}
 	}
@@ -236,37 +194,25 @@ func CreateCoupon(c *gin.Context) {
 
 	if err := db.Create(&coupon).Error; err != nil {
 		utils.LogError("CreateCoupon: create coupon failed", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建优惠券失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建优惠券失败", err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data":    coupon,
-	})
+	utils.SuccessResponse(c, http.StatusCreated, "", coupon)
 }
 
 // GetUserCoupons 获取用户优惠券
 func GetUserCoupons(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	db := database.GetDB()
 	var usages []models.CouponUsage
 	if err := db.Where("user_id = ?", user.ID).Preload("Coupon").Find(&usages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取优惠券使用记录失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取优惠券使用记录失败", err)
 		return
 	}
 
@@ -281,10 +227,7 @@ func GetUserCoupons(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
 // GetAdminCoupon 管理员获取单个优惠券详情
@@ -294,17 +237,11 @@ func GetAdminCoupon(c *gin.Context) {
 
 	var coupon models.Coupon
 	if err := db.First(&coupon, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "优惠券不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "优惠券不存在", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    coupon,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", coupon)
 }
 
 // UpdateCoupon 更新优惠券（管理员）
@@ -314,10 +251,7 @@ func UpdateCoupon(c *gin.Context) {
 
 	var coupon models.Coupon
 	if err := db.First(&coupon, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "优惠券不存在",
-		})
+		utils.ErrorResponse(c, http.StatusNotFound, "优惠券不存在", err)
 		return
 	}
 
@@ -338,10 +272,7 @@ func UpdateCoupon(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.LogError("CreateCoupon: bind JSON failed", err, nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -371,10 +302,7 @@ func UpdateCoupon(c *gin.Context) {
 			// 尝试其他格式
 			validFrom, err = time.Parse("2006-01-02 15:04:05", req.ValidFrom)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"success": false,
-					"message": "生效时间格式错误",
-				})
+				utils.ErrorResponse(c, http.StatusBadRequest, "生效时间格式错误", err)
 				return
 			}
 		}
@@ -386,10 +314,7 @@ func UpdateCoupon(c *gin.Context) {
 			// 尝试其他格式
 			validUntil, err = time.Parse("2006-01-02 15:04:05", req.ValidUntil)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"success": false,
-					"message": "失效时间格式错误",
-				})
+				utils.ErrorResponse(c, http.StatusBadRequest, "失效时间格式错误", err)
 				return
 			}
 		}
@@ -413,18 +338,11 @@ func UpdateCoupon(c *gin.Context) {
 	}
 
 	if err := db.Save(&coupon).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "更新优惠券失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新优惠券失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "更新成功",
-		"data":    coupon,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", coupon)
 }
 
 // DeleteCoupon 删除优惠券（管理员）
@@ -433,15 +351,9 @@ func DeleteCoupon(c *gin.Context) {
 	db := database.GetDB()
 
 	if err := db.Delete(&models.Coupon{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "删除优惠券失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除优惠券失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "删除成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }

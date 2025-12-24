@@ -146,10 +146,7 @@ func GetUserDashboard(c *gin.Context) {
 		},
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    dashboard,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", dashboard)
 }
 
 // GetDashboard 获取管理员仪表盘统计
@@ -177,14 +174,11 @@ func GetDashboard(c *gin.Context) {
 	// 统计总收入（使用公共函数）
 	totalRevenue := utils.CalculateTotalRevenue(db, "paid")
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"totalUsers":          totalUsers,
-			"activeSubscriptions": activeSubscriptions,
-			"totalOrders":         totalOrders,
-			"totalRevenue":        totalRevenue,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"totalUsers":          totalUsers,
+		"activeSubscriptions": activeSubscriptions,
+		"totalOrders":         totalOrders,
+		"totalRevenue":        totalRevenue,
 	})
 }
 
@@ -214,10 +208,7 @@ func GetRecentUsers(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    userList,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", userList)
 }
 
 // GetRecentOrders 获取最近的订单
@@ -244,10 +235,7 @@ func GetRecentOrders(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    orderList,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", orderList)
 }
 
 // GetAbnormalUsers 获取异常用户（账户禁用、频繁重置、频繁订阅、长期未登录等）

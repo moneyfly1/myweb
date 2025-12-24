@@ -390,44 +390,44 @@
 
         <!-- 邀请统计 -->
         <el-tab-pane label="邀请统计" name="statistics">
-          <el-row :gutter="20" style="margin-bottom: 20px;">
-            <el-col :span="6">
-              <el-card shadow="hover">
-                <div style="text-align: center;">
-                  <div style="font-size: 32px; font-weight: bold; color: #409eff; margin-bottom: 10px;">
+          <el-row :gutter="20" class="statistics-row">
+            <el-col :xs="12" :sm="12" :md="6">
+              <el-card shadow="hover" class="stat-card">
+                <div class="stat-content">
+                  <div class="stat-value" style="color: #409eff;">
                     {{ statistics?.total_codes || 0 }}
                   </div>
-                  <div style="color: #909399;">总邀请码数</div>
+                  <div class="stat-label">总邀请码数</div>
                 </div>
               </el-card>
             </el-col>
-            <el-col :span="6">
-              <el-card shadow="hover">
-                <div style="text-align: center;">
-                  <div style="font-size: 32px; font-weight: bold; color: #67c23a; margin-bottom: 10px;">
+            <el-col :xs="12" :sm="12" :md="6">
+              <el-card shadow="hover" class="stat-card">
+                <div class="stat-content">
+                  <div class="stat-value" style="color: #67c23a;">
                     {{ statistics?.total_relations || 0 }}
                   </div>
-                  <div style="color: #909399;">总邀请关系数</div>
+                  <div class="stat-label">总邀请关系数</div>
                 </div>
               </el-card>
             </el-col>
-            <el-col :span="6">
-              <el-card shadow="hover">
-                <div style="text-align: center;">
-                  <div style="font-size: 32px; font-weight: bold; color: #e6a23c; margin-bottom: 10px;">
+            <el-col :xs="12" :sm="12" :md="6">
+              <el-card shadow="hover" class="stat-card">
+                <div class="stat-content">
+                  <div class="stat-value" style="color: #e6a23c;">
                     ¥{{ (statistics?.total_reward || 0).toFixed(2) }}
                   </div>
-                  <div style="color: #909399;">总奖励金额</div>
+                  <div class="stat-label">总奖励金额</div>
                 </div>
               </el-card>
             </el-col>
-            <el-col :span="6">
-              <el-card shadow="hover">
-                <div style="text-align: center;">
-                  <div style="font-size: 32px; font-weight: bold; color: #f56c6c; margin-bottom: 10px;">
+            <el-col :xs="12" :sm="12" :md="6">
+              <el-card shadow="hover" class="stat-card">
+                <div class="stat-content">
+                  <div class="stat-value" style="color: #f56c6c;">
                     ¥{{ (statistics?.total_consumption || 0).toFixed(2) }}
                   </div>
-                  <div style="color: #909399;">被邀请人总消费</div>
+                  <div class="stat-label">被邀请人总消费</div>
                 </div>
               </el-card>
             </el-col>
@@ -2030,6 +2030,79 @@ onUnmounted(() => {
 @media (min-width: 769px) {
   .mobile-action-bar {
     display: none !important;
+  }
+}
+
+/* 统计卡片统一样式 */
+.statistics-row {
+  margin-bottom: 20px;
+  
+  .stat-card {
+    height: 100%;
+    transition: all 0.3s ease;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+  }
+  
+  .stat-content {
+    text-align: center;
+    padding: 10px;
+  }
+  
+  .stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    line-height: 1.2;
+    word-break: break-all;
+    overflow-wrap: break-word;
+  }
+  
+  .stat-label {
+    color: #909399;
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  @media (max-width: 768px) {
+    .stat-content {
+      padding: 12px 8px;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      min-height: 32px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .stat-content {
+      padding: 10px 6px;
+    }
+    
+    .stat-value {
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      min-height: 28px;
+    }
   }
 }
 </style>

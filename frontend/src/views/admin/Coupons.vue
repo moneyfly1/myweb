@@ -177,36 +177,63 @@
       :width="isMobile ? '95%' : '600px'"
       :close-on-click-modal="!isMobile"
       class="coupon-form-dialog"
+      :class="{ 'mobile-dialog': isMobile }"
     >
-      <el-form :model="couponForm" :rules="couponRules" ref="couponFormRef" :label-width="isMobile ? '100px' : '120px'">
+      <el-form 
+        :model="couponForm" 
+        :rules="couponRules" 
+        ref="couponFormRef" 
+        :label-width="isMobile ? '0' : '120px'"
+        :label-position="isMobile ? 'top' : 'right'"
+      >
         <el-form-item label="优惠券码" prop="code" v-if="!editingCoupon">
+          <template v-if="isMobile">
+            <div class="mobile-label">优惠券码</div>
+          </template>
           <el-input v-model="couponForm.code" placeholder="留空自动生成" />
         </el-form-item>
         <el-form-item label="名称" prop="name">
+          <template v-if="isMobile">
+            <div class="mobile-label">名称 <span class="required">*</span></div>
+          </template>
           <el-input v-model="couponForm.name" placeholder="请输入优惠券名称" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
+          <template v-if="isMobile">
+            <div class="mobile-label">描述</div>
+          </template>
           <el-input v-model="couponForm.description" type="textarea" :rows="3" />
         </el-form-item>
         <el-form-item label="类型" prop="type">
-          <el-select v-model="couponForm.type" placeholder="请选择类型">
+          <template v-if="isMobile">
+            <div class="mobile-label">类型 <span class="required">*</span></div>
+          </template>
+          <el-select v-model="couponForm.type" placeholder="请选择类型" style="width: 100%">
             <el-option label="折扣（百分比）" value="discount" />
             <el-option label="固定金额减免" value="fixed" />
             <el-option label="赠送天数" value="free_days" />
           </el-select>
         </el-form-item>
         <el-form-item label="优惠值" prop="discount_value">
-          <el-input-number
-            v-model="couponForm.discount_value"
-            :min="0"
-            :precision="2"
-            style="width: 100%"
-          />
-          <span v-if="couponForm.type === 'discount'" style="margin-left: 10px">%</span>
-          <span v-else-if="couponForm.type === 'fixed'" style="margin-left: 10px">元</span>
-          <span v-else style="margin-left: 10px">天</span>
+          <template v-if="isMobile">
+            <div class="mobile-label">优惠值 <span class="required">*</span></div>
+          </template>
+          <div class="discount-value-wrapper">
+            <el-input-number
+              v-model="couponForm.discount_value"
+              :min="0"
+              :precision="2"
+              style="width: 100%"
+            />
+            <span v-if="couponForm.type === 'discount'" class="discount-unit">%</span>
+            <span v-else-if="couponForm.type === 'fixed'" class="discount-unit">元</span>
+            <span v-else class="discount-unit">天</span>
+          </div>
         </el-form-item>
         <el-form-item label="最低消费" prop="min_amount" v-if="couponForm.type !== 'free_days'">
+          <template v-if="isMobile">
+            <div class="mobile-label">最低消费</div>
+          </template>
           <el-input-number
             v-model="couponForm.min_amount"
             :min="0"
@@ -215,6 +242,9 @@
           />
         </el-form-item>
         <el-form-item label="最大折扣" prop="max_discount" v-if="couponForm.type === 'discount'">
+          <template v-if="isMobile">
+            <div class="mobile-label">最大折扣</div>
+          </template>
           <el-input-number
             v-model="couponForm.max_discount"
             :min="0"
@@ -223,22 +253,35 @@
           />
         </el-form-item>
         <el-form-item label="生效时间" prop="valid_from">
+          <template v-if="isMobile">
+            <div class="mobile-label">生效时间 <span class="required">*</span></div>
+          </template>
           <el-date-picker
             v-model="couponForm.valid_from"
             type="datetime"
             placeholder="选择生效时间"
             style="width: 100%"
+            :teleported="isMobile"
+            :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
           />
         </el-form-item>
         <el-form-item label="失效时间" prop="valid_until">
+          <template v-if="isMobile">
+            <div class="mobile-label">失效时间 <span class="required">*</span></div>
+          </template>
           <el-date-picker
             v-model="couponForm.valid_until"
             type="datetime"
             placeholder="选择失效时间"
             style="width: 100%"
+            :teleported="isMobile"
+            :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
           />
         </el-form-item>
         <el-form-item label="总数量" prop="total_quantity">
+          <template v-if="isMobile">
+            <div class="mobile-label">总数量</div>
+          </template>
           <el-input-number
             v-model="couponForm.total_quantity"
             :min="1"
@@ -247,6 +290,9 @@
           />
         </el-form-item>
         <el-form-item label="每用户限用" prop="max_uses_per_user">
+          <template v-if="isMobile">
+            <div class="mobile-label">每用户限用</div>
+          </template>
           <el-input-number
             v-model="couponForm.max_uses_per_user"
             :min="1"
@@ -254,6 +300,9 @@
           />
         </el-form-item>
         <el-form-item label="适用套餐" prop="applicable_packages">
+          <template v-if="isMobile">
+            <div class="mobile-label">适用套餐</div>
+          </template>
           <el-select
             v-model="couponForm.applicable_packages"
             multiple
@@ -264,9 +313,9 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showCreateDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="saveCoupon" :loading="saving" class="mobile-action-btn">保存</el-button>
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button @click="showCreateDialog = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
+          <el-button type="primary" @click="saveCoupon" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">保存</el-button>
         </div>
       </template>
     </el-dialog>
@@ -770,32 +819,218 @@ onUnmounted(() => {
   }
 
   .coupon-form-dialog {
+    &.mobile-dialog {
+      :deep(.el-dialog) {
+        width: 95% !important;
+        margin: 2vh auto !important;
+        max-height: 96vh;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      :deep(.el-dialog__header) {
+        padding: 15px 15px 10px;
+        flex-shrink: 0;
+        border-bottom: 1px solid #ebeef5;
+        
+        .el-dialog__title {
+          font-size: 18px;
+          font-weight: 600;
+        }
+        
+        .el-dialog__headerbtn {
+          top: 8px;
+          right: 8px;
+          width: 32px;
+          height: 32px;
+          
+          .el-dialog__close {
+            font-size: 18px;
+          }
+        }
+      }
+      
+      :deep(.el-dialog__body) {
+        padding: 15px !important;
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        max-height: calc(96vh - 140px);
+      }
+      
+      :deep(.el-dialog__footer) {
+        padding: 10px 15px 15px;
+        flex-shrink: 0;
+        border-top: 1px solid #ebeef5;
+      }
+    }
+    
+    :deep(.el-dialog) {
+      width: 95% !important;
+      margin: 1vh auto !important;
+      max-height: 98vh;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    :deep(.el-dialog__header) {
+      padding: 16px 16px 12px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #ebeef5;
+      
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      
+      .el-dialog__headerbtn {
+        top: 12px;
+        right: 12px;
+        width: 36px;
+        height: 36px;
+      }
+    }
+    
     :deep(.el-dialog__body) {
-      padding: 16px;
-      max-height: calc(100vh - 200px);
+      padding: 16px !important;
+      flex: 1;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
+      max-height: calc(98vh - 140px);
+    }
+    
+    :deep(.el-dialog__footer) {
+      padding: 12px 16px 16px;
+      flex-shrink: 0;
+      border-top: 1px solid #ebeef5;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
     
     :deep(.el-form-item) {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
+      
+      .el-form-item__label {
+        display: none; /* 移动端隐藏默认标签 */
+      }
+      
+      .el-form-item__content {
+        margin-left: 0 !important;
+        width: 100%;
+      }
     }
     
-    :deep(.el-form-item__label) {
+    .mobile-label {
       font-size: 14px;
-      padding-bottom: 8px;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 8px;
+      display: block;
+      
+      .required {
+        color: #f56c6c;
+        margin-left: 2px;
+      }
+    }
+    
+    .discount-value-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      
+      .el-input-number {
+        flex: 1;
+      }
+      
+      .discount-unit {
+        font-size: 14px;
+        color: #909399;
+        min-width: 30px;
+        flex-shrink: 0;
+      }
+    }
+    
+    :deep(.el-input),
+    :deep(.el-select),
+    :deep(.el-textarea),
+    :deep(.el-input-number) {
+      width: 100%;
+      
+      .el-input__wrapper,
+      .el-textarea__inner {
+        min-height: 40px;
+        font-size: 16px; /* 防止iOS自动缩放 */
+      }
+      
+      .el-input__inner {
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        min-height: 40px;
+        padding: 0 12px;
+      }
+    }
+    
+    :deep(.el-textarea .el-textarea__inner) {
+      min-height: 100px;
+      padding: 12px;
+      line-height: 1.6;
+      font-size: 16px; /* 防止iOS自动缩放 */
+    }
+    
+    :deep(.el-input-number) {
+      .el-input__wrapper {
+        min-height: 40px;
+      }
     }
   }
 
   .dialog-footer-buttons {
     display: flex;
-    gap: 12px;
-    width: 100%;
+    justify-content: flex-end;
+    gap: 10px;
+    
+    &.mobile-footer {
+      flex-direction: column;
+      gap: 10px;
+      
+      .mobile-action-btn {
+        width: 100%;
+        min-height: 48px;
+        font-size: 16px;
+        font-weight: 500;
+        margin: 0 !important;
+        border-radius: 8px;
+        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+      }
+    }
     
     .mobile-action-btn {
-      flex: 1;
-      height: 44px;
-      margin: 0;
+      width: 100%;
+      min-height: 48px;
+      font-size: 16px;
+      font-weight: 500;
+      margin: 0 !important;
+      border-radius: 8px;
+      -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+    }
+  }
+  
+  /* 移动端日期选择器优化 */
+  :deep(.mobile-date-picker-popper) {
+    .el-picker-panel {
+      width: 95vw;
+      max-width: 400px;
+    }
+    
+    .el-date-picker__header {
+      padding: 12px 16px;
+    }
+    
+    .el-picker-panel__content {
+      padding: 8px;
     }
   }
 }

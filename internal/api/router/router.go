@@ -3,6 +3,8 @@ package router
 import (
 	"cboard-go/internal/api/handlers"
 	"cboard-go/internal/middleware"
+	"cboard-go/internal/utils"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +34,7 @@ func SetupRouter() *gin.Engine {
 
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 			"status":  "healthy",
 			"version": "1.0.0",
 		})
@@ -77,7 +79,8 @@ func SetupRouter() *gin.Engine {
 			users.PUT("/privacy-settings", handlers.UpdatePrivacySettings)
 			users.GET("/my-level", handlers.GetUserLevel)
 			users.GET("/theme", handlers.GetUserTheme)
-			users.PUT("/theme", handlers.UpdateUserTheme) // 更新用户主题
+			// 更新用户主题
+			users.PUT("/theme", handlers.UpdateUserTheme)
 			users.GET("/login-history", handlers.GetLoginHistory)
 			users.GET("/activities", handlers.GetUserActivities)
 			users.GET("/subscription-resets", handlers.GetSubscriptionResets)
@@ -115,8 +118,8 @@ func SetupRouter() *gin.Engine {
 		{
 			orders.GET("", handlers.GetOrders)
 			orders.POST("", handlers.CreateOrder)
-			orders.POST("/", handlers.CreateOrder)
-			orders.POST("/upgrade-devices", handlers.UpgradeDevices) // 升级设备数
+			// 升级设备数
+			orders.POST("/upgrade-devices", handlers.UpgradeDevices)
 			orders.GET("/stats", handlers.GetOrderStats)
 			// 使用订单号的路由（放在前面，使用具体路径避免冲突）
 			orders.POST("/:orderNo/pay", handlers.PayOrder)             // 支付订单
@@ -182,7 +185,7 @@ func SetupRouter() *gin.Engine {
 		{
 			couponsAdmin.GET("", handlers.GetAdminCoupons)
 			couponsAdmin.GET("/:id", handlers.GetAdminCoupon)
-			couponsAdmin.POST("", handlers.CreateCoupon) // 添加创建路由
+			couponsAdmin.POST("", handlers.CreateCoupon)
 			couponsAdmin.PUT("/:id", handlers.UpdateCoupon)
 			couponsAdmin.DELETE("/:id", handlers.DeleteCoupon)
 		}
@@ -214,7 +217,8 @@ func SetupRouter() *gin.Engine {
 		tickets.Use(middleware.AuthMiddleware())
 		{
 			tickets.GET("", handlers.GetTickets)
-			tickets.GET("/unread-count", handlers.GetUnreadTicketRepliesCount) // 获取未读回复数量
+			// 获取未读回复数量
+			tickets.GET("/unread-count", handlers.GetUnreadTicketRepliesCount)
 			tickets.GET("/:id", handlers.GetTicket)
 			tickets.POST("", handlers.CreateTicket)
 			tickets.POST("/:id/reply", handlers.ReplyTicket)
@@ -228,7 +232,7 @@ func SetupRouter() *gin.Engine {
 			ticketsAdmin.GET("/all", handlers.GetAdminTickets)
 			ticketsAdmin.GET("/statistics", handlers.GetAdminTicketStatistics)
 			ticketsAdmin.GET("/:id", handlers.GetAdminTicket)
-			ticketsAdmin.PUT("/:id", handlers.UpdateTicketStatus) // 通用更新接口
+			ticketsAdmin.PUT("/:id", handlers.UpdateTicketStatus)
 		}
 
 		// 设备管理
@@ -248,7 +252,6 @@ func SetupRouter() *gin.Engine {
 		{
 			invites.GET("", handlers.GetInviteCodes)
 			invites.POST("", handlers.CreateInviteCode)
-			invites.POST("/", handlers.CreateInviteCode)
 			invites.GET("/stats", handlers.GetInviteStats)
 			invites.GET("/reward-settings", handlers.GetRewardSettings)
 			invites.GET("/my-codes", handlers.GetMyInviteCodes)
@@ -263,7 +266,6 @@ func SetupRouter() *gin.Engine {
 			recharge.GET("", handlers.GetRechargeRecords)
 			recharge.GET("/:id", handlers.GetRechargeRecord)
 			recharge.POST("", handlers.CreateRecharge)
-			recharge.POST("/", handlers.CreateRecharge)
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
 		}
 
@@ -370,8 +372,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/nodes/batch-delete", handlers.BatchDeleteNodes)
 			admin.POST("/nodes/import-from-file", handlers.ImportFromFile)
 
-			// 服务器管理（专线节点）
-
 			// 专线节点管理
 			admin.GET("/custom-nodes", handlers.GetCustomNodes)
 			admin.GET("/custom-nodes/:id/users", handlers.GetCustomNodeUsers)
@@ -389,20 +389,17 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/:id/custom-nodes", handlers.AssignCustomNodeToUser)
 			admin.DELETE("/users/:id/custom-nodes/:node_id", handlers.UnassignCustomNodeFromUser)
 
-			// 优惠券管理
-
 			// 工单管理
 			admin.PUT("/tickets/:id/status", handlers.UpdateTicketStatus)
 
 			// 设备统计
 			admin.GET("/devices/stats", handlers.GetDeviceStats)
 
-			// 配置管理
-
 			// 统计（管理员专用）
 			admin.GET("/statistics", handlers.GetStatistics)
 			admin.GET("/statistics/user-trend", handlers.GetUserTrend)
 			admin.GET("/statistics/revenue-trend", handlers.GetRevenueTrend)
+			admin.GET("/statistics/regions", handlers.GetRegionStats)
 
 			// 系统设置
 			admin.GET("/settings", handlers.GetAdminSettings)
@@ -490,7 +487,7 @@ func SetupRouter() *gin.Engine {
 			// 文件上传
 			admin.POST("/upload", handlers.UploadFile)
 
-			// 配置更新
+			// 订阅配置更新
 			admin.POST("/config-update", handlers.UpdateSubscriptionConfig)
 
 			// 系统监控
@@ -518,10 +515,7 @@ func SetupRouter() *gin.Engine {
 		// 如果是 API 请求，返回 404
 		path := c.Request.URL.Path
 		if len(path) >= 4 && path[:4] == "/api" {
-			c.JSON(404, gin.H{
-				"success": false,
-				"message": "API endpoint not found",
-			})
+			utils.ErrorResponse(c, http.StatusNotFound, "API endpoint not found", nil)
 			return
 		}
 		// 否则返回前端页面

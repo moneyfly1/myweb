@@ -6,18 +6,37 @@
     :width="isMobile ? '95%' : '600px'"
     :close-on-click-modal="!isMobile"
     class="user-form-dialog"
+    :class="{ 'mobile-dialog': isMobile }"
   >
-    <el-form :model="userForm" :rules="userRules" ref="userFormRef" :label-width="isMobile ? '90px' : '100px'">
+    <el-form 
+      :model="userForm" 
+      :rules="userRules" 
+      ref="userFormRef" 
+      :label-width="isMobile ? '0' : '100px'"
+      :label-position="isMobile ? 'top' : 'right'"
+    >
       <el-form-item label="邮箱" prop="email">
+        <template v-if="isMobile">
+          <div class="mobile-label">邮箱 <span class="required">*</span></div>
+        </template>
         <el-input v-model="userForm.email" placeholder="请输入邮箱" />
       </el-form-item>
       <el-form-item label="用户名" prop="username">
+        <template v-if="isMobile">
+          <div class="mobile-label">用户名 <span class="required">*</span></div>
+        </template>
         <el-input v-model="userForm.username" placeholder="请输入用户名" />
       </el-form-item>
       <el-form-item label="密码" prop="password" v-if="!editingUser">
+        <template v-if="isMobile">
+          <div class="mobile-label">密码 <span class="required">*</span></div>
+        </template>
         <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password />
       </el-form-item>
       <el-form-item label="状态" prop="status">
+        <template v-if="isMobile">
+          <div class="mobile-label">状态 <span class="required">*</span></div>
+        </template>
         <el-select v-model="userForm.status" placeholder="选择状态" style="width: 100%">
           <el-option label="活跃" value="active" />
           <el-option label="待激活" value="inactive" />
@@ -25,6 +44,9 @@
         </el-select>
       </el-form-item>
       <el-form-item label="最大设备数" prop="device_limit" v-if="!editingUser">
+        <template v-if="isMobile">
+          <div class="mobile-label">最大设备数 <span class="required">*</span></div>
+        </template>
         <el-input 
           v-model.number="userForm.device_limit" 
           type="number"
@@ -36,6 +58,9 @@
         <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
       </el-form-item>
       <el-form-item label="到期时间" prop="expire_time" v-if="!editingUser">
+        <template v-if="isMobile">
+          <div class="mobile-label">到期时间 <span class="required">*</span></div>
+        </template>
         <el-date-picker
           v-model="userForm.expire_time"
           type="datetime"
@@ -50,6 +75,9 @@
         <div class="form-item-hint">订阅的到期时间，到期后用户将无法使用服务</div>
       </el-form-item>
       <el-form-item label="管理员权限" v-if="editingUser">
+        <template v-if="isMobile">
+          <div class="mobile-label">管理员权限</div>
+        </template>
         <el-switch 
           v-model="userForm.is_admin" 
           active-text="是管理员"
@@ -57,6 +85,9 @@
         />
       </el-form-item>
       <el-form-item label="备注" prop="note">
+        <template v-if="isMobile">
+          <div class="mobile-label">备注</div>
+        </template>
         <el-input 
           v-model="userForm.note" 
           type="textarea" 
@@ -66,9 +97,9 @@
       </el-form-item>
     </el-form>
     <template #footer>
-      <div class="dialog-footer-buttons">
-        <el-button @click="$emit('update:visible', false)" class="mobile-action-btn">取消</el-button>
-        <el-button type="primary" @click="saveUser" :loading="saving" class="mobile-action-btn">
+      <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+        <el-button @click="$emit('update:visible', false)" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
+        <el-button type="primary" @click="saveUser" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">
           {{ editingUser ? '更新' : '创建' }}
         </el-button>
       </div>
@@ -428,24 +459,82 @@ export default {
   }
   
   // 手机端优化
+  &.mobile-dialog {
+    :deep(.el-dialog) {
+      width: 95% !important;
+      margin: 2vh auto !important;
+      max-height: 96vh;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    :deep(.el-dialog__header) {
+      padding: 15px 15px 10px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #ebeef5;
+      
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      
+      .el-dialog__headerbtn {
+        top: 8px;
+        right: 8px;
+        width: 32px;
+        height: 32px;
+        
+        .el-dialog__close {
+          font-size: 18px;
+        }
+      }
+    }
+    
+    :deep(.el-dialog__body) {
+      padding: 15px !important;
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      max-height: calc(96vh - 140px);
+    }
+    
+    :deep(.el-dialog__footer) {
+      padding: 10px 15px 15px;
+      flex-shrink: 0;
+      border-top: 1px solid #ebeef5;
+    }
+  }
+  
   @media (max-width: 768px) {
     :deep(.el-dialog__body) {
-      padding: 12px;
-      max-height: calc(100vh - 120px);
+      padding: 15px !important;
+      max-height: calc(96vh - 140px);
     }
     
     :deep(.el-form-item) {
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
     
     :deep(.el-form-item__label) {
-      font-size: 13px;
-      padding-bottom: 6px;
-      width: 90px !important;
+      display: none;
     }
     
     :deep(.el-form-item__content) {
-      margin-left: 90px !important;
+      margin-left: 0 !important;
+    }
+    
+    .mobile-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 8px;
+      display: block;
+      
+      .required {
+        color: #f56c6c;
+        margin-left: 2px;
+      }
     }
     
     :deep(.el-input),
@@ -453,6 +542,16 @@ export default {
     :deep(.el-date-editor),
     :deep(.el-input-number) {
       width: 100%;
+    }
+    
+    :deep(.el-input__wrapper),
+    :deep(.el-textarea__inner) {
+      min-height: 40px;
+      font-size: 16px; /* 防止iOS自动缩放 */
+    }
+    
+    :deep(.el-input__inner) {
+      font-size: 16px; /* 防止iOS自动缩放 */
     }
   }
 }
@@ -490,10 +589,30 @@ export default {
   justify-content: flex-end;
   gap: 10px;
   
+  &.mobile-footer {
+    flex-direction: column;
+    gap: 10px;
+    
+    .mobile-action-btn {
+      width: 100%;
+      min-height: 48px;
+      font-size: 16px;
+      font-weight: 500;
+      margin: 0 !important;
+      border-radius: 8px;
+      -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+    }
+  }
+  
   @media (max-width: 768px) {
     .mobile-action-btn {
-      flex: 1;
-      height: 40px;
+      width: 100%;
+      min-height: 48px;
+      font-size: 16px;
+      font-weight: 500;
+      margin: 0 !important;
+      border-radius: 8px;
+      -webkit-tap-highlight-color: rgba(0,0,0,0.1);
     }
   }
 }

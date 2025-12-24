@@ -188,32 +188,29 @@ func GetStatistics(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			// 直接返回统计数据
-			"total_users":          stats.TotalUsers,
-			"active_users":         stats.ActiveUsers,
-			"total_orders":         stats.TotalOrders,
-			"paid_orders":          stats.PaidOrders,
-			"total_revenue":        stats.TotalRevenue,
-			"total_subscriptions":  stats.TotalSubscriptions,
-			"active_subscriptions": stats.ActiveSubscriptions,
-			"today_revenue":        stats.TodayRevenue,
-			"today_orders":         stats.TodayOrders,
-			"overview": gin.H{
-				"totalUsers":          stats.TotalUsers,
-				"activeSubscriptions": stats.ActiveSubscriptions,
-				"totalOrders":         stats.TotalOrders,
-				"totalRevenue":        stats.TotalRevenue,
-			},
-			// 用户统计列表
-			"userStats": userStatsList,
-			// 订阅统计列表
-			"subscriptionStats": subscriptionStatsList,
-			// 最近活动列表
-			"recentActivities": recentActivitiesList,
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		// 直接返回统计数据
+		"total_users":          stats.TotalUsers,
+		"active_users":         stats.ActiveUsers,
+		"total_orders":         stats.TotalOrders,
+		"paid_orders":          stats.PaidOrders,
+		"total_revenue":        stats.TotalRevenue,
+		"total_subscriptions":  stats.TotalSubscriptions,
+		"active_subscriptions": stats.ActiveSubscriptions,
+		"today_revenue":        stats.TodayRevenue,
+		"today_orders":         stats.TodayOrders,
+		"overview": gin.H{
+			"totalUsers":          stats.TotalUsers,
+			"activeSubscriptions": stats.ActiveSubscriptions,
+			"totalOrders":         stats.TotalOrders,
+			"totalRevenue":        stats.TotalRevenue,
 		},
+		// 用户统计列表
+		"userStats": userStatsList,
+		// 订阅统计列表
+		"subscriptionStats": subscriptionStatsList,
+		// 最近活动列表
+		"recentActivities": recentActivitiesList,
 	})
 }
 
@@ -266,12 +263,9 @@ func GetRevenueChart(c *gin.Context) {
 		data = append(data, stat.Revenue)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"labels": labels,
-			"data":   data,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"labels": labels,
+		"data":   data,
 	})
 }
 
@@ -310,10 +304,7 @@ func GetUserStatistics(c *gin.Context) {
 	monthStartStr := monthStart.Format("2006-01-02")
 	db.Model(&models.User{}).Where("DATE(created_at) >= ?", monthStartStr).Count(&stats.NewUsersThisMonth)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
 // GetRegionStats 获取地区统计
@@ -489,11 +480,8 @@ func GetRegionStats(c *gin.Context) {
 		details = append(details, detail)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"regions": regions,
-			"details": details,
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"regions": regions,
+		"details": details,
 	})
 }

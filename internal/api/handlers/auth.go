@@ -42,7 +42,7 @@ type LoginJSONRequest struct {
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"success": false, "message": "请求格式错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求格式错误", err)
 		return
 	}
 
@@ -52,7 +52,7 @@ func Register(c *gin.Context) {
 	var count int64
 	db.Model(&models.User{}).Where("email = ? OR username = ?", req.Email, req.Username).Count(&count)
 	if count > 0 {
-		c.JSON(400, gin.H{"success": false, "message": "用户名或邮箱已存在"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "用户名或邮箱已存在", nil)
 		return
 	}
 
@@ -66,20 +66,20 @@ func Register(c *gin.Context) {
 	// 如果邮箱验证开关打开，需要验证验证码
 	if emailVerificationRequired {
 		if req.VerificationCode == "" {
-			c.JSON(400, gin.H{"success": false, "message": "请输入邮箱验证码"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "请输入邮箱验证码", nil)
 			return
 		}
 
 		// 验证验证码
 		var verificationCode models.VerificationCode
 		if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
-			c.JSON(400, gin.H{"success": false, "message": "验证码错误或已使用"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误或已使用", err)
 			return
 		}
 
 		// 检查验证码是否过期
 		if verificationCode.IsExpired() {
-			c.JSON(400, gin.H{"success": false, "message": "验证码已过期，请重新获取"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取", nil)
 			return
 		}
 
@@ -99,7 +99,7 @@ func Register(c *gin.Context) {
 	}
 
 	if err := db.Create(&user).Error; err != nil {
-		c.JSON(500, gin.H{"success": false, "message": "创建用户失败"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建用户失败", err)
 		return
 	}
 
@@ -111,13 +111,13 @@ func Register(c *gin.Context) {
 		processInviteCode(db, req.InviteCode, user.ID)
 	}
 
-	c.JSON(201, gin.H{"success": true, "message": "注册成功", "data": gin.H{"id": user.ID, "email": user.Email}})
+	utils.SuccessResponse(c, http.StatusCreated, "注册成功", gin.H{"id": user.ID, "email": user.Email})
 }
 
 func Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"success": false, "message": "请求参数错误"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 	db := database.GetDB()
@@ -126,13 +126,13 @@ func Login(c *gin.Context) {
 	if err != nil {
 		// 登录失败，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
-		c.JSON(401, gin.H{"success": false, "message": "邮箱或密码错误"})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "邮箱或密码错误", err)
 		return
 	}
 	if !user.IsActive {
 		// 账号被禁用，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
-		c.JSON(403, gin.H{"success": false, "message": "账号已禁用"})
+		utils.ErrorResponse(c, http.StatusForbidden, "账号已禁用", nil)
 		return
 	}
 
@@ -182,17 +182,14 @@ func Login(c *gin.Context) {
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
-	c.JSON(200, gin.H{"success": true, "data": gin.H{"access_token": atk, "refresh_token": rtk, "user": user}})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"access_token": atk, "refresh_token": rtk, "user": user})
 }
 
 // LoginJSON 登录
 func LoginJSON(c *gin.Context) {
 	var req LoginJSONRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
@@ -208,30 +205,20 @@ func LoginJSON(c *gin.Context) {
 			if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&tempUser).Error; err != nil {
 				// 登录失败，增加计数
 				middleware.IncrementLoginAttempt(ipAddress)
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"success": false,
-					"message": "用户名或密码错误",
-				})
+				utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", err)
 				return
 			}
 			if !auth.VerifyPassword(req.Password, tempUser.Password) {
 				// 登录失败，增加计数
 				middleware.IncrementLoginAttempt(ipAddress)
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"success": false,
-					"message": "用户名或密码错误",
-				})
+				utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", nil)
 				return
 			}
 			// 维护模式下，只有管理员可以登录
 			if !tempUser.IsAdmin {
 				// 非管理员在维护模式下无法登录，增加计数
 				middleware.IncrementLoginAttempt(ipAddress)
-				c.JSON(http.StatusServiceUnavailable, gin.H{
-					"success":          false,
-					"message":          "系统维护中，请稍后再试",
-					"maintenance_mode": true,
-				})
+				utils.ErrorResponse(c, http.StatusServiceUnavailable, "系统维护中，请稍后再试", nil)
 				return
 			}
 			// 管理员可以继续登录流程
@@ -242,10 +229,7 @@ func LoginJSON(c *gin.Context) {
 	if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&user).Error; err != nil {
 		// 登录失败，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "用户名或密码错误",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", err)
 		return
 	}
 
@@ -253,38 +237,26 @@ func LoginJSON(c *gin.Context) {
 	if !user.IsActive {
 		// 账号被禁用，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "账户已被禁用，无法使用服务。如有疑问，请联系管理员。",
-		})
+		utils.ErrorResponse(c, http.StatusForbidden, "账户已被禁用，无法使用服务。如有疑问，请联系管理员。", nil)
 		return
 	}
 
 	if !auth.VerifyPassword(req.Password, user.Password) {
 		// 登录失败，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "用户名或密码错误",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", nil)
 		return
 	}
 
 	accessToken, err := utils.CreateAccessToken(user.ID, user.Email, user.IsAdmin)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成令牌失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成令牌失败", err)
 		return
 	}
 
 	refreshToken, err := utils.CreateRefreshToken(user.ID, user.Email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成刷新令牌失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
 
@@ -332,18 +304,15 @@ func LoginJSON(c *gin.Context) {
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"access_token":  accessToken,
-			"refresh_token": refreshToken,
-			"token_type":    "bearer",
-			"user": gin.H{
-				"id":       user.ID,
-				"username": user.Username,
-				"email":    user.Email,
-				"is_admin": user.IsAdmin,
-			},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"token_type":    "bearer",
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"is_admin": user.IsAdmin,
 		},
 	})
 }
@@ -355,46 +324,31 @@ func RefreshToken(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "请求参数错误",
-		})
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
 
 	claims, err := utils.VerifyToken(req.RefreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "无效的刷新令牌",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "无效的刷新令牌", err)
 		return
 	}
 
 	if claims.Type != "refresh" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "令牌类型错误",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "令牌类型错误", nil)
 		return
 	}
 
 	// 生成新的访问令牌
 	accessToken, err := utils.CreateAccessToken(claims.UserID, claims.Email, claims.IsAdmin)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "生成令牌失败",
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成令牌失败", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"access_token": accessToken,
-			"token_type":   "bearer",
-		},
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"access_token": accessToken,
+		"token_type":   "bearer",
 	})
 }
 
@@ -403,30 +357,21 @@ func Logout(c *gin.Context) {
 	// 获取当前用户
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未登录",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	// 获取Token
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "未提供认证令牌",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未提供认证令牌", nil)
 		return
 	}
 
 	// 提取 Bearer token
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || parts[0] != "Bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "无效的认证格式",
-		})
+		utils.ErrorResponse(c, http.StatusUnauthorized, "无效的认证格式", nil)
 		return
 	}
 
@@ -436,10 +381,7 @@ func Logout(c *gin.Context) {
 	claims, err := utils.VerifyToken(token)
 	if err != nil {
 		// Token无效或已过期，仍然返回成功（避免信息泄露）
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "登出成功",
-		})
+		utils.SuccessResponse(c, http.StatusOK, "登出成功", nil)
 		return
 	}
 
@@ -464,10 +406,7 @@ func Logout(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "登出成功",
-	})
+	utils.SuccessResponse(c, http.StatusOK, "登出成功", nil)
 }
 
 // processInviteCode 处理邀请码（注册时使用）

@@ -35,13 +35,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV === 'development', // 仅开发环境开启sourcemap
     minify: 'terser', // 使用 Terser 进行压缩
     cssCodeSplit: true,
     terserOptions: {
       compress: {
-        drop_console: false, // 保留 console，方便调试
-        drop_debugger: false, // 保留 debugger
+        drop_console: process.env.NODE_ENV === 'production', // 生产环境移除console
+        drop_debugger: process.env.NODE_ENV === 'production', // 生产环境移除debugger
       },
     },
     rollupOptions: {

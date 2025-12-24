@@ -190,31 +190,53 @@
     <el-dialog
       v-model="showDialog"
       :title="editingLevel ? '编辑等级' : '添加等级'"
-      width="600px"
+      :width="isMobile ? '95%' : '600px'"
+      :close-on-click-modal="!isMobile"
+      class="level-form-dialog"
+      :class="{ 'mobile-dialog': isMobile }"
     >
-      <el-form :model="levelForm" label-width="120px" ref="levelFormRef">
+      <el-form 
+        :model="levelForm" 
+        :label-width="isMobile ? '0' : '120px'"
+        :label-position="isMobile ? 'top' : 'right'"
+        ref="levelFormRef"
+      >
         <el-form-item label="等级名称" prop="level_name" :rules="[{ required: true, message: '请输入等级名称' }]">
+          <template v-if="isMobile">
+            <div class="mobile-label">等级名称 <span class="required">*</span></div>
+          </template>
           <el-input v-model="levelForm.level_name" placeholder="如：VIP、超级VIP、钻石会员" />
         </el-form-item>
         <el-form-item label="等级排序" prop="level_order" :rules="[{ required: true, message: '请输入等级排序' }]">
+          <template v-if="isMobile">
+            <div class="mobile-label">等级排序 <span class="required">*</span></div>
+          </template>
           <el-input-number 
             v-model="levelForm.level_order" 
             :min="1" 
             :max="100"
             placeholder="数字越小等级越高"
+            style="width: 100%"
           />
           <div class="form-tip">数字越小，等级越高（1为最高等级）</div>
         </el-form-item>
         <el-form-item label="最低消费" prop="min_consumption" :rules="[{ required: true, message: '请输入最低消费' }]">
+          <template v-if="isMobile">
+            <div class="mobile-label">最低消费 <span class="required">*</span></div>
+          </template>
           <el-input-number 
             v-model="levelForm.min_consumption" 
             :min="0" 
             :precision="2"
             placeholder="累计消费达到此金额可升级"
+            style="width: 100%"
           />
           <div class="form-tip">用户累计消费达到此金额可升级到此等级（元）</div>
         </el-form-item>
         <el-form-item label="折扣率" prop="discount_rate">
+          <template v-if="isMobile">
+            <div class="mobile-label">折扣率</div>
+          </template>
           <el-input-number 
             v-model="levelForm.discount_rate" 
             :min="0.1" 
@@ -222,18 +244,28 @@
             :step="0.05"
             :precision="2"
             placeholder="0.9表示9折"
+            style="width: 100%"
           />
           <div class="form-tip">0.9表示9折，1.0表示无折扣</div>
         </el-form-item>
         <!-- 已删除设备限制功能，等级仅用于折扣优惠 -->
         <el-form-item label="等级颜色" prop="color">
+          <template v-if="isMobile">
+            <div class="mobile-label">等级颜色</div>
+          </template>
           <el-color-picker v-model="levelForm.color" />
           <div class="form-tip">用于前端显示等级的颜色</div>
         </el-form-item>
         <el-form-item label="图标URL" prop="icon_url">
+          <template v-if="isMobile">
+            <div class="mobile-label">图标URL</div>
+          </template>
           <el-input v-model="levelForm.icon_url" placeholder="等级图标URL（可选）" />
         </el-form-item>
         <el-form-item label="权益说明" prop="benefits">
+          <template v-if="isMobile">
+            <div class="mobile-label">权益说明</div>
+          </template>
           <el-input 
             v-model="levelForm.benefits" 
             type="textarea" 
@@ -243,12 +275,17 @@
           />
         </el-form-item>
         <el-form-item label="是否启用" prop="is_active">
+          <template v-if="isMobile">
+            <div class="mobile-label">是否启用</div>
+          </template>
           <el-switch v-model="levelForm.is_active" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveLevel" :loading="saving">保存</el-button>
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button @click="showDialog = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
+          <el-button type="primary" @click="saveLevel" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">保存</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -909,48 +946,150 @@ onUnmounted(() => {
   }
 
   /* 对话框优化 */
-  :deep(.el-dialog) {
-    width: 95% !important;
-    margin: 5vh auto !important;
+  .level-form-dialog {
+    &.mobile-dialog {
+      :deep(.el-dialog) {
+        width: 95% !important;
+        margin: 2vh auto !important;
+        max-height: 96vh;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      :deep(.el-dialog__header) {
+        padding: 15px 15px 10px;
+        flex-shrink: 0;
+        border-bottom: 1px solid #ebeef5;
+        
+        .el-dialog__title {
+          font-size: 18px;
+          font-weight: 600;
+        }
+        
+        .el-dialog__headerbtn {
+          top: 8px;
+          right: 8px;
+          width: 32px;
+          height: 32px;
+          
+          .el-dialog__close {
+            font-size: 18px;
+          }
+        }
+      }
+      
+      :deep(.el-dialog__body) {
+        padding: 15px !important;
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        max-height: calc(96vh - 140px);
+      }
+      
+      :deep(.el-dialog__footer) {
+        padding: 10px 15px 15px;
+        flex-shrink: 0;
+        border-top: 1px solid #ebeef5;
+      }
+    }
     
-    .el-dialog__body {
-      padding: 15px;
-      max-height: 70vh;
-      overflow-y: auto;
+    :deep(.el-dialog) {
+      width: 95% !important;
+      margin: 5vh auto !important;
+      
+      .el-dialog__body {
+        padding: 15px;
+        max-height: 70vh;
+        overflow-y: auto;
+      }
     }
   }
 
   /* 表单优化 */
-  :deep(.el-form) {
-    .el-form-item {
-      margin-bottom: 18px;
+  .level-form-dialog {
+    :deep(.el-form) {
+      .el-form-item {
+        margin-bottom: 18px;
+        
+        .el-form-item__label {
+          display: none; /* 移动端隐藏默认标签 */
+        }
+        
+        .el-form-item__content {
+          margin-left: 0 !important;
+          width: 100%;
+        }
+      }
       
-      .el-form-item__label {
-        width: 100% !important;
-        text-align: left;
-        margin-bottom: 8px;
-        padding: 0;
+      .mobile-label {
         font-size: 14px;
-        line-height: 1.5;
+        font-weight: 600;
+        color: #606266;
+        margin-bottom: 8px;
+        display: block;
+        
+        .required {
+          color: #f56c6c;
+          margin-left: 2px;
+        }
       }
       
-      .el-form-item__content {
-        margin-left: 0 !important;
-        width: 100%;
+      .el-input,
+      .el-input-number,
+      .el-select,
+      .el-textarea {
+        width: 100% !important;
+      }
+      
+      .el-input__wrapper,
+      .el-textarea__inner {
+        min-height: 40px;
+        font-size: 16px; /* 防止iOS自动缩放 */
+      }
+      
+      .el-input__inner {
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        min-height: 40px;
+      }
+      
+      .form-tip {
+        font-size: 12px;
+        margin-top: 5px;
+        color: #909399;
+        line-height: 1.4;
       }
     }
     
-    .el-input,
-    .el-input-number,
-    .el-select,
-    .el-textarea {
-      width: 100% !important;
-    }
-    
-    .form-tip {
-      font-size: 12px;
-      margin-top: 5px;
-      color: #909399;
+    .dialog-footer-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      
+      &.mobile-footer {
+        flex-direction: column;
+        gap: 10px;
+        
+        .mobile-action-btn {
+          width: 100%;
+          min-height: 48px;
+          font-size: 16px;
+          font-weight: 500;
+          margin: 0 !important;
+          border-radius: 8px;
+          -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        }
+      }
+      
+      .mobile-action-btn {
+        width: 100%;
+        min-height: 48px;
+        font-size: 16px;
+        font-weight: 500;
+        margin: 0 !important;
+        border-radius: 8px;
+        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+      }
     }
   }
 

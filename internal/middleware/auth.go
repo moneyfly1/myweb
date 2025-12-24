@@ -16,10 +16,7 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "未提供认证令牌",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "未提供认证令牌", nil)
 			c.Abort()
 			return
 		}
@@ -27,10 +24,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		// 提取 Bearer token
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "无效的认证格式",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "无效的认证格式", nil)
 			c.Abort()
 			return
 		}
@@ -41,30 +35,21 @@ func AuthMiddleware() gin.HandlerFunc {
 		db := database.GetDB()
 		tokenHash := utils.HashToken(token)
 		if models.IsTokenBlacklisted(db, tokenHash) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "令牌已失效，请重新登录",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "令牌已失效，请重新登录", nil)
 			c.Abort()
 			return
 		}
 
 		claims, err := utils.VerifyToken(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "无效或过期的令牌",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "无效或过期的令牌", err)
 			c.Abort()
 			return
 		}
 
 		// 检查令牌类型
 		if claims.Type != "access" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "刷新令牌不能用于访问",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌不能用于访问", nil)
 			c.Abort()
 			return
 		}
@@ -72,20 +57,14 @@ func AuthMiddleware() gin.HandlerFunc {
 		// 从数据库获取用户
 		var user models.User
 		if err := db.First(&user, claims.UserID).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "用户不存在",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "用户不存在", err)
 			c.Abort()
 			return
 		}
 
 		// 检查用户是否激活
 		if !user.IsActive {
-			c.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "账户已被禁用，无法使用服务。如有疑问，请联系管理员。",
-			})
+			utils.ErrorResponse(c, http.StatusForbidden, "账户已被禁用，无法使用服务。如有疑问，请联系管理员。", nil)
 			c.Abort()
 			return
 		}
@@ -104,20 +83,14 @@ func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		isAdmin, exists := c.Get("is_admin")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "请先登录",
-			})
+			utils.ErrorResponse(c, http.StatusUnauthorized, "请先登录", nil)
 			c.Abort()
 			return
 		}
 
 		admin, ok := isAdmin.(bool)
 		if !ok || !admin {
-			c.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "权限不足，需要管理员权限",
-			})
+			utils.ErrorResponse(c, http.StatusForbidden, "权限不足，需要管理员权限", nil)
 			c.Abort()
 			return
 		}
