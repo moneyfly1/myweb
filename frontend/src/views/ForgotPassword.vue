@@ -400,7 +400,7 @@ onUnmounted(() => {
     color: var(--text-color-secondary);
     font-size: 14px;
     
-    a {
+    :is(a) {
       color: var(--primary-color);
       text-decoration: none;
       
@@ -480,7 +480,7 @@ onUnmounted(() => {
   .forgot-footer {
     margin-top: 20px;
     
-    a {
+    :is(a) {
       font-size: 14px;
       padding: 8px 0;
       min-height: 44px;

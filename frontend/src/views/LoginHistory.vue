@@ -360,7 +360,7 @@ export default {
   color: #303133;
 }
 
-.card-header i {
+.card-header :is(i) {
   margin-right: 8px;
   color: #409eff;
 }

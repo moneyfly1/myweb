@@ -335,7 +335,7 @@ const getThemeDescription = (themeName) => {
     }
   }
   .el-table {
-    th, td {
+    :is(th), :is(td) {
       padding: 8px 12px;
     }
   }

@@ -17,15 +17,63 @@
         </div>
       </template>
 
-      <!-- 筛选栏 -->
-      <div class="filter-bar">
-        <el-select v-model="filters.status" placeholder="状态" clearable style="width: 120px" @change="loadCustomNodes">
+      <!-- 移动端操作栏 -->
+      <div class="mobile-action-bar">
+        <div class="mobile-search-section">
+          <div class="search-input-wrapper">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索节点名称"
+              class="mobile-search-input"
+              clearable
+              @keyup.enter="handleFilterChange"
+            />
+            <el-button 
+              @click="handleFilterChange" 
+              class="search-button-inside"
+              type="default"
+              plain
+            >
+              <el-icon><Search /></el-icon>
+            </el-button>
+          </div>
+        </div>
+        
+        <div class="mobile-filter-buttons">
+          <el-select v-model="filters.status" placeholder="状态" clearable class="mobile-filter-select" @change="handleFilterChange">
+            <el-option label="全部" value="" />
+            <el-option label="活跃" value="active" />
+            <el-option label="非活跃" value="inactive" />
+            <el-option label="错误" value="error" />
+          </el-select>
+          <el-select v-model="filters.is_active" placeholder="激活状态" clearable class="mobile-filter-select" @change="handleFilterChange">
+            <el-option label="全部" value="" />
+            <el-option label="已激活" value="true" />
+            <el-option label="已禁用" value="false" />
+          </el-select>
+        </div>
+        
+        <div class="mobile-action-buttons">
+          <el-button type="primary" @click="showAddDialog = true" class="mobile-action-btn">
+            <el-icon><Plus /></el-icon>
+            创建节点
+          </el-button>
+          <el-button @click="loadCustomNodes" :loading="loading" class="mobile-action-btn">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 桌面端筛选栏 -->
+      <div class="filter-bar desktop-only">
+        <el-select v-model="filters.status" placeholder="状态" clearable style="width: 120px" @change="handleFilterChange">
           <el-option label="全部" value="" />
           <el-option label="活跃" value="active" />
           <el-option label="非活跃" value="inactive" />
           <el-option label="错误" value="error" />
         </el-select>
-        <el-select v-model="filters.is_active" placeholder="激活状态" clearable style="width: 120px" @change="loadCustomNodes">
+        <el-select v-model="filters.is_active" placeholder="激活状态" clearable style="width: 120px" @change="handleFilterChange">
           <el-option label="全部" value="" />
           <el-option label="已激活" value="true" />
           <el-option label="已禁用" value="false" />
@@ -35,23 +83,33 @@
           placeholder="搜索节点名称"
           clearable
           style="width: 200px"
-          @keyup.enter="loadCustomNodes"
+          @keyup.enter="handleFilterChange"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <div v-if="selectedNodes.length > 0" class="batch-actions">
-          <el-button type="danger" @click="batchDelete" :loading="batchDeleting">
-            批量删除 ({{ selectedNodes.length }})
+      </div>
+
+      <!-- 批量操作栏 -->
+      <div v-if="selectedNodes.length > 0" class="batch-actions">
+        <div class="batch-info">
+          <span>已选择 {{ selectedNodes.length }} 个节点</span>
+        </div>
+        <div class="batch-buttons">
+          <el-button type="success" @click="batchTest" :loading="batchTesting" size="small">
+            批量测速
           </el-button>
-          <el-button type="primary" @click="handleBatchAssignClick">
-            批量分配 ({{ selectedNodes.length }})
+          <el-button type="primary" @click="handleBatchAssignClick" size="small">
+            批量分配
+          </el-button>
+          <el-button type="danger" @click="batchDelete" :loading="batchDeleting" size="small">
+            批量删除
           </el-button>
         </div>
       </div>
 
-      <!-- 专线节点列表 -->
+      <!-- 桌面端表格 -->
       <el-table
         :data="customNodes"
         v-loading="loading"
@@ -60,6 +118,7 @@
         @selection-change="handleSelectionChange"
         row-key="id"
         empty-text="暂无专线节点数据"
+        class="desktop-only"
       >
         <el-table-column type="selection" width="55" />
         <el-table-column prop="id" label="ID" width="80" />
@@ -105,6 +164,97 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 移动端卡片列表 -->
+      <div v-loading="loading" class="mobile-node-list mobile-only">
+        <div v-if="customNodes.length === 0" class="empty-state">
+          <p>暂无专线节点数据</p>
+        </div>
+        <div
+          v-for="node in customNodes"
+          :key="node.id"
+          class="node-card"
+        >
+          <div class="node-card-header">
+            <el-checkbox
+              :model-value="selectedNodes.some(n => n.id === node.id)"
+              @change="toggleNodeSelection(node, $event)"
+              class="node-checkbox"
+            />
+            <div class="node-title">
+              <span class="node-name">{{ node.name }}</span>
+              <el-tag :type="getStatusType(node.status)" size="small" class="status-tag">
+                {{ getStatusText(node.status) }}
+              </el-tag>
+            </div>
+          </div>
+          
+          <div class="node-card-body">
+            <div class="node-info-row">
+              <span class="info-label">显示名称:</span>
+              <span class="info-value">{{ node.display_name || '默认' }}</span>
+            </div>
+            <div class="node-info-row">
+              <span class="info-label">协议:</span>
+              <span class="info-value">{{ node.protocol }}</span>
+            </div>
+            <div class="node-info-row">
+              <span class="info-label">域名:</span>
+              <span class="info-value">{{ node.domain }}</span>
+            </div>
+            <div class="node-info-row">
+              <span class="info-label">端口:</span>
+              <span class="info-value">{{ node.port }}</span>
+            </div>
+            <div class="node-info-row">
+              <span class="info-label">激活状态:</span>
+              <el-switch
+                v-model="node.is_active"
+                @change="toggleNodeStatus(node)"
+                size="small"
+              />
+            </div>
+            <div class="node-info-row">
+              <span class="info-label">到期时间:</span>
+              <span class="info-value">
+                <span v-if="node.expire_time">{{ formatTime(node.expire_time) }}</span>
+                <span v-else-if="node.follow_user_expire" style="color: #909399">跟随用户</span>
+                <span v-else style="color: #909399">永久</span>
+              </span>
+            </div>
+          </div>
+          
+          <div class="node-card-actions">
+            <el-button size="small" @click="testNode(node)" :loading="node.testing" class="action-btn">
+              测试
+            </el-button>
+            <el-button size="small" type="success" @click="viewLink(node)" class="action-btn">
+              链接
+            </el-button>
+            <el-button size="small" type="warning" @click="assignSingleNode(node)" class="action-btn">
+              分配
+            </el-button>
+            <el-button size="small" type="primary" @click="editNode(node)" class="action-btn">
+              编辑
+            </el-button>
+            <el-button size="small" type="danger" @click="deleteNode(node)" class="action-btn">
+              删除
+            </el-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分页 -->
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.size"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="pagination.total"
+        :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
+        @size-change="handleSizeChange"
+        @current-change="handlePageChange"
+        class="pagination-wrapper"
+      />
     </el-card>
 
     <!-- 添加/编辑节点对话框 -->
@@ -139,25 +289,40 @@
               </div>
             </template>
           </el-alert>
-          <el-form label-width="100px">
-            <el-form-item label="节点链接" required>
+          <el-form :label-width="isMobile ? '0' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+            <el-form-item>
+              <template v-if="isMobile">
+                <div class="mobile-label">节点链接 <span class="required">*</span></div>
+              </template>
+              <template v-if="!isMobile" #label>
+                <span>节点链接 <span style="color: #f56c6c">*</span></span>
+              </template>
               <el-input
                 v-model="nodeLinkInput"
                 type="textarea"
-                :rows="8"
+                :rows="isMobile ? 6 : 8"
                 placeholder="请输入节点链接，支持单个或多个链接（每行一个）"
+                class="mobile-textarea"
               />
-              <div style="margin-top: 10px; color: #909399; font-size: 12px;">
+              <div class="form-tip">
                 支持格式：vmess://、vless://、trojan://、ss://、hysteria2:// 等
               </div>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="parseNodeLink" :loading="parsing">
-                解析并预览
-              </el-button>
-              <el-button @click="clearNodeLink">清空</el-button>
+              <div class="mobile-form-buttons">
+                <el-button type="primary" @click="parseNodeLink" :loading="parsing" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">
+                  解析并预览
+                </el-button>
+                <el-button @click="clearNodeLink" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">
+                  清空
+                </el-button>
+              </div>
             </el-form-item>
-            <el-form-item v-if="parsedNode" label="解析结果">
+            <el-form-item v-if="parsedNode">
+              <template v-if="isMobile">
+                <div class="mobile-label">解析结果</div>
+              </template>
+              <template v-if="!isMobile" #label>解析结果</template>
               <el-card style="background: #f5f7fa;">
                 <div style="margin-bottom: 10px;">
                   <strong>节点名称：</strong>{{ parsedNode.name }}
@@ -173,16 +338,32 @@
           </el-form>
         </el-tab-pane>
         <el-tab-pane label="手动填写" name="manual">
-      <el-form :model="nodeForm" label-width="140px" :rules="rules" ref="nodeFormRef">
-            <el-form-item label="节点名称" prop="name">
-              <el-input v-model="nodeForm.name" placeholder="请输入节点名称" />
+      <el-form :model="nodeForm" :label-width="isMobile ? '0' : '140px'" :label-position="isMobile ? 'top' : 'right'" :rules="rules" ref="nodeFormRef">
+            <el-form-item prop="name">
+              <template v-if="isMobile">
+                <div class="mobile-label">节点名称 <span class="required">*</span></div>
+              </template>
+              <template v-if="!isMobile" #label>
+                <span>节点名称 <span style="color: #f56c6c">*</span></span>
+              </template>
+              <el-input v-model="nodeForm.name" placeholder="请输入节点名称" :size="isMobile ? 'large' : 'default'" />
             </el-form-item>
-            <el-form-item label="显示名称" prop="display_name">
-              <el-input v-model="nodeForm.display_name" placeholder="可选，留空则使用默认名称" />
-              <div style="color: #909399; font-size: 12px; margin-top: 5px">在订阅中显示的节点名称，留空则使用"专线定制-节点名称"</div>
+            <el-form-item prop="display_name">
+              <template v-if="isMobile">
+                <div class="mobile-label">显示名称</div>
+              </template>
+              <template v-if="!isMobile" #label>显示名称</template>
+              <el-input v-model="nodeForm.display_name" placeholder="可选，留空则使用默认名称" :size="isMobile ? 'large' : 'default'" />
+              <div class="form-tip">在订阅中显示的节点名称，留空则使用"专线定制-节点名称"</div>
             </el-form-item>
-            <el-form-item label="协议类型" prop="protocol">
-              <el-select v-model="nodeForm.protocol" placeholder="请选择协议类型" style="width: 100%">
+            <el-form-item prop="protocol">
+              <template v-if="isMobile">
+                <div class="mobile-label">协议类型 <span class="required">*</span></div>
+              </template>
+              <template v-if="!isMobile" #label>
+                <span>协议类型 <span style="color: #f56c6c">*</span></span>
+              </template>
+              <el-select v-model="nodeForm.protocol" placeholder="请选择协议类型" style="width: 100%" :size="isMobile ? 'large' : 'default'">
                 <el-option label="vmess" value="vmess" />
                 <el-option label="vless" value="vless" />
                 <el-option label="trojan" value="trojan" />
@@ -193,12 +374,19 @@
                 <el-option label="anytls" value="anytls" />
           </el-select>
         </el-form-item>
-            <el-form-item label="配置(JSON)" prop="config">
+            <el-form-item prop="config">
+              <template v-if="isMobile">
+                <div class="mobile-label">配置(JSON) <span class="required">*</span></div>
+              </template>
+              <template v-if="!isMobile" #label>
+                <span>配置(JSON) <span style="color: #f56c6c">*</span></span>
+              </template>
               <el-input
                 v-model="nodeForm.config"
                 type="textarea"
-                :rows="6"
+                :rows="isMobile ? 6 : 8"
                 placeholder='请输入节点配置JSON，例如: {"server":"example.com","port":443,"uuid":"xxx"}'
+                class="mobile-textarea"
               />
             </el-form-item>
           </el-form>
@@ -206,41 +394,59 @@
       </el-tabs>
       
       <!-- 编辑模式直接显示表单 -->
-      <el-form v-if="editingNode" :model="nodeForm" label-width="140px" :rules="rules" ref="nodeFormRef">
-        <el-form-item label="节点名称" prop="name">
-          <el-input v-model="nodeForm.name" placeholder="请输入节点名称" />
+      <el-form v-if="editingNode" :model="nodeForm" :label-width="isMobile ? '0' : '140px'" :label-position="isMobile ? 'top' : 'right'" :rules="rules" ref="nodeFormRef">
+        <el-form-item prop="name">
+          <template v-if="isMobile">
+            <div class="mobile-label">节点名称 <span class="required">*</span></div>
+          </template>
+          <template v-if="!isMobile" #label>
+            <span>节点名称 <span style="color: #f56c6c">*</span></span>
+          </template>
+          <el-input v-model="nodeForm.name" placeholder="请输入节点名称" :size="isMobile ? 'large' : 'default'" />
         </el-form-item>
-        <el-form-item label="显示名称" prop="display_name">
-          <el-input v-model="nodeForm.display_name" placeholder="可选，留空则使用默认名称" />
+        <el-form-item prop="display_name">
+          <template v-if="isMobile">
+            <div class="mobile-label">显示名称</div>
+          </template>
+          <template v-if="!isMobile" #label>显示名称</template>
+          <el-input v-model="nodeForm.display_name" placeholder="可选，留空则使用默认名称" :size="isMobile ? 'large' : 'default'" />
         </el-form-item>
       </el-form>
       
       <template #footer>
-        <el-button @click="cancelAddNode">取消</el-button>
-        <el-button 
-          v-if="!editingNode && addNodeTab === 'link' && parsedNode"
-          type="primary" 
-          @click="saveNodeFromLink" 
-          :loading="saving"
-        >
-          保存节点
-        </el-button>
-        <el-button 
-          v-else-if="!editingNode && addNodeTab === 'link'"
-          type="success" 
-          @click="batchImportLinks" 
-          :loading="saving"
-        >
-          批量导入
-        </el-button>
-        <el-button 
-          v-else
-          type="primary" 
-          @click="saveNode" 
-          :loading="saving"
-        >
-          保存
-        </el-button>
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button @click="cancelAddNode" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">取消</el-button>
+          <el-button 
+            v-if="!editingNode && addNodeTab === 'link' && parsedNode"
+            type="primary" 
+            @click="saveNodeFromLink" 
+            :loading="saving"
+            :size="isMobile ? 'large' : 'default'"
+            class="mobile-action-btn"
+          >
+            保存节点
+          </el-button>
+          <el-button 
+            v-else-if="!editingNode && addNodeTab === 'link'"
+            type="success" 
+            @click="batchImportLinks" 
+            :loading="saving"
+            :size="isMobile ? 'large' : 'default'"
+            class="mobile-action-btn"
+          >
+            批量导入
+          </el-button>
+          <el-button 
+            v-else
+            type="primary" 
+            @click="saveNode" 
+            :loading="saving"
+            :size="isMobile ? 'large' : 'default'"
+            class="mobile-action-btn"
+          >
+            保存
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -258,18 +464,27 @@
           :closable="false"
           style="margin-bottom: 20px"
         />
-        <el-form-item label="订阅链接">
+        <el-form-item>
+          <template v-if="isMobile">
+            <div class="mobile-label">订阅链接</div>
+          </template>
+          <template v-if="!isMobile" #label>订阅链接</template>
           <el-input
             v-model="nodeLink.link"
             type="textarea"
-            :rows="4"
+            :rows="isMobile ? 6 : 4"
             readonly
+            class="mobile-textarea"
             style="font-family: monospace; font-size: 12px"
           />
         </el-form-item>
-        <div style="margin-top: 10px">
-          <el-button @click="copyLink" type="primary">复制链接</el-button>
-          <el-button @click="testNodeFromLink" :loading="testingFromLink">测试节点</el-button>
+        <div class="mobile-form-buttons" style="margin-top: 10px">
+          <el-button @click="copyLink" type="primary" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">
+            复制链接
+          </el-button>
+          <el-button @click="testNodeFromLink" :loading="testingFromLink" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">
+            测试节点
+          </el-button>
         </div>
         <el-alert
           title="提示"
@@ -301,11 +516,12 @@
         :closable="false"
         style="margin-bottom: 20px"
       />
-      <el-form label-width="120px" v-loading="loadingAssignedUsers">
+      <el-form :label-width="isMobile ? '0' : '120px'" :label-position="isMobile ? 'top' : 'right'" v-loading="loadingAssignedUsers">
         <!-- 已分配用户列表 -->
         <div v-if="assignMode === 'single'" class="assigned-users-section">
           <div class="section-title">该节点当前已分配给</div>
-          <el-table :data="assignedUsers" size="small" stripe style="margin-bottom: 20px" empty-text="暂无分配记录">
+          <!-- 桌面端表格 -->
+          <el-table :data="assignedUsers" size="small" stripe style="margin-bottom: 20px" empty-text="暂无分配记录" class="desktop-only">
             <el-table-column prop="username" label="用户名" />
             <el-table-column prop="email" label="邮箱" min-width="150" />
             <el-table-column label="订阅模式" width="120">
@@ -328,10 +544,47 @@
               </template>
             </el-table-column>
           </el-table>
+          
+          <!-- 移动端卡片列表 -->
+          <div class="mobile-user-list mobile-only">
+            <div v-if="assignedUsers.length === 0" class="empty-state">
+              <p>暂无分配记录</p>
+            </div>
+            <div v-for="user in assignedUsers" :key="user.id" class="user-card">
+              <div class="user-card-header">
+                <div class="user-info">
+                  <div class="user-name">{{ user.username }}</div>
+                  <div class="user-email">{{ user.email }}</div>
+                </div>
+                <el-tag size="small" :type="user.special_node_subscription_type === 'special_only' ? 'warning' : 'success'">
+                  {{ user.special_node_subscription_type === 'special_only' ? '仅专线' : '全部订阅' }}
+                </el-tag>
+              </div>
+              <div class="user-card-body">
+                <div class="user-info-row">
+                  <span class="info-label">专线到期:</span>
+                  <span class="info-value" :class="{ 'text-danger': isExpired(user.special_node_expires_at) }">
+                    {{ formatTime(user.special_node_expires_at) }}
+                  </span>
+                </div>
+              </div>
+              <div class="user-card-actions">
+                <el-button type="danger" size="small" @click="handleUnassign(user)" class="action-btn">
+                  取消分配
+                </el-button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="section-title" v-if="assignMode === 'single'">新增分配</div>
-        <el-form-item label="选择用户" required>
+        <el-form-item required>
+          <template v-if="isMobile">
+            <div class="mobile-label">选择用户 <span class="required">*</span></div>
+          </template>
+          <template v-if="!isMobile" #label>
+            <span>选择用户 <span style="color: #f56c6c">*</span></span>
+          </template>
           <el-select
             v-model="selectedUserIds"
             multiple
@@ -339,6 +592,7 @@
             placeholder="请选择要分配的用户（可多选）"
             style="width: 100%"
             :loading="loadingUsers"
+            :size="isMobile ? 'large' : 'default'"
           >
             <el-option
               v-for="user in users"
@@ -347,17 +601,25 @@
               :value="user.id"
             />
           </el-select>
-          <div style="color: #909399; font-size: 12px; margin-top: 5px">
+          <div class="form-tip">
             已选择 {{ selectedUserIds.length }} 个用户，将为每个用户分配 {{ assignMode === 'single' ? '1' : selectedNodes.length }} 个节点
           </div>
         </el-form-item>
-        <el-form-item label="订阅模式">
-          <el-radio-group v-model="assignExtraData.subscription_type">
+        <el-form-item>
+          <template v-if="isMobile">
+            <div class="mobile-label">订阅模式</div>
+          </template>
+          <template v-if="!isMobile" #label>订阅模式</template>
+          <el-radio-group v-model="assignExtraData.subscription_type" :size="isMobile ? 'large' : 'default'">
             <el-radio label="both">全部订阅（普通+专线）</el-radio>
             <el-radio label="special_only">仅专线节点</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="专线到期时间">
+        <el-form-item>
+          <template v-if="isMobile">
+            <div class="mobile-label">专线到期时间</div>
+          </template>
+          <template v-if="!isMobile" #label>专线到期时间</template>
           <el-date-picker
             v-model="assignExtraData.expires_at"
             type="datetime"
@@ -365,15 +627,18 @@
             style="width: 100%"
             format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
+            :size="isMobile ? 'large' : 'default'"
           />
-          <div style="color: #909399; font-size: 12px; margin-top: 5px">不选则跟随用户普通订阅到期时间</div>
+          <div class="form-tip">不选则跟随用户普通订阅到期时间</div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAssignDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleAssign" :loading="batchAssigning" :disabled="selectedUserIds.length === 0">
-          确定分配
-        </el-button>
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button @click="showAssignDialog = false" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">取消</el-button>
+          <el-button type="primary" @click="handleAssign" :loading="batchAssigning" :disabled="selectedUserIds.length === 0" :size="isMobile ? 'large' : 'default'" class="mobile-action-btn">
+            确定分配
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -415,6 +680,7 @@ export default {
     const users = ref([])
     const loadingUsers = ref(false)
     const batchDeleting = ref(false)
+    const batchTesting = ref(false)
     const batchAssigning = ref(false)
     const addNodeTab = ref('link')
     const nodeLinkInput = ref('')
@@ -434,6 +700,12 @@ export default {
       is_active: ''
     })
 
+    const pagination = reactive({
+      page: 1,
+      size: 20,
+      total: 0
+    })
+
     const nodeForm = reactive({
       name: '',
       display_name: '',
@@ -450,7 +722,10 @@ export default {
     const loadCustomNodes = async () => {
       loading.value = true
       try {
-        const params = {}
+        const params = {
+          page: pagination.page,
+          size: pagination.size
+        }
         if (filters.status) params.status = filters.status
         if (filters.is_active) params.is_active = filters.is_active
         if (searchKeyword.value) params.search = searchKeyword.value
@@ -464,31 +739,40 @@ export default {
             if (responseData && responseData.data && Array.isArray(responseData.data)) {
               // 分页格式
               customNodes.value = responseData.data
-              console.log('加载节点列表成功（分页格式）:', customNodes.value.length, '个节点')
+              pagination.total = responseData.total || 0
+              pagination.page = responseData.page || pagination.page
+              pagination.size = responseData.size || pagination.size
+              console.log('加载节点列表成功（分页格式）:', customNodes.value.length, '个节点，总计:', pagination.total)
             } else if (Array.isArray(responseData)) {
-              // 直接数组格式（兼容）
+              // 直接数组格式（兼容旧格式）
               customNodes.value = responseData
+              pagination.total = responseData.length
               console.log('加载节点列表成功（数组格式）:', customNodes.value.length, '个节点')
             } else if (Array.isArray(response.data.data)) {
               // 另一种可能的格式
               customNodes.value = response.data.data
+              pagination.total = response.data.data.length
               console.log('加载节点列表成功（直接格式）:', customNodes.value.length, '个节点')
             } else {
               console.warn('无法解析节点列表数据:', responseData)
               customNodes.value = []
+              pagination.total = 0
             }
           } else {
             ElMessage.error(response.data.message || '获取专线节点列表失败')
             customNodes.value = []
+            pagination.total = 0
           }
         } else {
           ElMessage.error('获取专线节点列表失败: 响应格式错误')
           customNodes.value = []
+          pagination.total = 0
         }
       } catch (error) {
         console.error('加载专线节点列表错误:', error)
         ElMessage.error('加载专线节点列表失败: ' + (error.response?.data?.message || error.message))
         customNodes.value = []
+        pagination.total = 0
       } finally {
         loading.value = false
       }
@@ -624,11 +908,16 @@ export default {
       saving.value = true
       try {
         const response = await adminAPI.importCustomNodeLinks(links)
+        console.log('批量导入响应:', response)
         if (response.data && response.data.success) {
-          const result = response.data
+          // 后端返回格式: { success: true, data: { imported: 5, error_count: 2, errors: [...] } }
+          const result = response.data.data || response.data
+          const imported = result.imported || 0
+          const errorCount = result.error_count || 0
+          
           ElMessage.success(
-            `批量导入完成: 成功 ${result.imported} 个` +
-            (result.error_count > 0 ? `, 失败 ${result.error_count} 个` : '')
+            `批量导入完成: 成功 ${imported} 个` +
+            (errorCount > 0 ? `, 失败 ${errorCount} 个` : '')
           )
           if (result.errors && result.errors.length > 0) {
             console.warn('导入错误:', result.errors)
@@ -640,6 +929,7 @@ export default {
           ElMessage.error(response.data?.message || '批量导入失败')
         }
       } catch (error) {
+        console.error('批量导入错误:', error)
         ElMessage.error('批量导入失败: ' + (error.response?.data?.message || error.message))
       } finally {
         saving.value = false
@@ -899,6 +1189,77 @@ export default {
       selectedNodes.value = selection
     }
 
+    // 移动端切换节点选择
+    const toggleNodeSelection = (node, checked) => {
+      if (checked) {
+        if (!selectedNodes.value.some(n => n.id === node.id)) {
+          selectedNodes.value.push(node)
+        }
+      } else {
+        selectedNodes.value = selectedNodes.value.filter(n => n.id !== node.id)
+      }
+    }
+
+    const batchTest = async () => {
+      if (selectedNodes.value.length === 0) {
+        ElMessage.warning('请选择要测试的节点')
+        return
+      }
+      batchTesting.value = true
+      try {
+        // 设置所有选中节点为测试中状态
+        selectedNodes.value.forEach(node => {
+          node.testing = true
+        })
+        
+        const nodeIds = selectedNodes.value.map(node => node.id)
+        const response = await adminAPI.batchTestCustomNodes(nodeIds)
+        
+        if (response.data && response.data.success) {
+          const results = response.data.data?.results || []
+          let successCount = 0
+          let errorCount = 0
+          
+          results.forEach((result, index) => {
+            if (selectedNodes.value[index]) {
+              selectedNodes.value[index].status = result.status
+              selectedNodes.value[index].latency = result.latency
+              selectedNodes.value[index].testing = false
+              
+              if (result.status === 'active' || result.status === 'online') {
+                successCount++
+              } else {
+                errorCount++
+              }
+            }
+          })
+          
+          ElMessage.success(
+            `批量测速完成: 成功 ${successCount} 个` +
+            (errorCount > 0 ? `, 失败 ${errorCount} 个` : '')
+          )
+          
+          // 刷新列表以更新状态
+          await loadCustomNodes()
+        } else {
+          ElMessage.error(response.data?.message || '批量测速失败')
+          // 重置测试状态
+          selectedNodes.value.forEach(node => {
+            node.testing = false
+          })
+        }
+      } catch (error) {
+        console.error('批量测速错误:', error)
+        ElMessage.error('批量测速失败: ' + (error.response?.data?.message || error.message))
+        // 重置测试状态
+        selectedNodes.value.forEach(node => {
+          node.testing = false
+        })
+      } finally {
+        batchTesting.value = false
+      }
+    }
+
     const batchDelete = async () => {
       if (selectedNodes.value.length === 0) {
         ElMessage.warning('请选择要删除的节点')
@@ -1064,6 +1425,24 @@ export default {
       }
     }
 
+    // 筛选条件改变时重置页码并重新加载
+    const handleFilterChange = () => {
+      pagination.page = 1
+      loadCustomNodes()
+    }
+
+    // 分页处理函数
+    const handleSizeChange = (size) => {
+      pagination.size = size
+      pagination.page = 1 // 改变每页数量时重置到第一页
+      loadCustomNodes()
+    }
+
+    const handlePageChange = (page) => {
+      pagination.page = page
+      loadCustomNodes()
+    }
+
     onMounted(() => {
       loadCustomNodes()
       loadUsers()
@@ -1080,6 +1459,7 @@ export default {
       saving,
       parsing,
       customNodes,
+      pagination,
       showAddDialog,
       addNodeTab,
       nodeLinkInput,
@@ -1104,8 +1484,13 @@ export default {
       users,
       loadingUsers,
       batchDeleting,
+      batchTesting,
       batchAssigning,
+      batchTest,
       loadCustomNodes,
+      handleSizeChange,
+      handlePageChange,
+      handleFilterChange,
       toggleNodeStatus,
       parseNodeLink,
       clearNodeLink,
@@ -1125,6 +1510,7 @@ export default {
       formatTime,
       isExpired,
       handleSelectionChange,
+      toggleNodeSelection,
       batchDelete,
       assignSingleNode,
       handleBatchAssignClick,
@@ -1152,7 +1538,210 @@ export default {
 .batch-actions {
   display: flex;
   gap: 10px;
-  margin-left: auto;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.batch-info {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+  margin-right: auto;
+}
+
+.batch-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 移动端操作栏 */
+.mobile-action-bar {
+  display: none;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.mobile-search-section {
+  margin-bottom: 12px;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mobile-search-input {
+  flex: 1;
+  
+  :deep(.el-input__wrapper) {
+    border-radius: 6px;
+    height: 44px;
+    padding-right: 50px;
+  }
+  
+  :deep(.el-input__inner) {
+    height: 44px;
+    line-height: 44px;
+    font-size: 16px;
+  }
+}
+
+.search-button-inside {
+  position: absolute;
+  right: 4px;
+  height: 36px;
+  padding: 6px 10px;
+  z-index: 1;
+}
+
+.mobile-filter-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mobile-filter-select {
+  flex: 1;
+  
+  :deep(.el-input__wrapper) {
+    border-radius: 6px;
+    height: 40px;
+  }
+  
+  :deep(.el-input__inner) {
+    height: 40px;
+    line-height: 40px;
+    font-size: 14px;
+  }
+}
+
+.mobile-action-buttons {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.mobile-action-btn {
+  flex: 1;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 6px;
+}
+
+/* 移动端节点卡片列表 */
+  .mobile-node-list {
+    display: none;
+  }
+  
+  .mobile-user-list {
+    display: none;
+  }
+
+.node-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.node-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.node-checkbox {
+  flex-shrink: 0;
+}
+
+.node-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.node-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.status-tag {
+  flex-shrink: 0;
+}
+
+.node-card-body {
+  margin-bottom: 12px;
+}
+
+.node-info-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.info-label {
+  color: #909399;
+  min-width: 80px;
+  margin-right: 8px;
+}
+
+.info-value {
+  color: #606266;
+  flex: 1;
+  word-break: break-all;
+}
+
+.node-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.node-card-actions .action-btn {
+  flex: 1;
+  min-width: calc(50% - 3px);
+  font-size: 12px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
+}
+
+.pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  
+  @media (max-width: 768px) {
+    justify-content: center;
+    margin-top: 16px;
+  }
 }
 
 .card-header {
@@ -1235,16 +1824,91 @@ export default {
 
 @media (max-width: 768px) {
   .admin-custom-nodes {
-    padding: 10px;
+    padding: 8px;
   }
   
-  .filter-bar {
-    flex-direction: column;
-    gap: 10px;
+  .mobile-action-bar {
+    display: block !important;
   }
   
-  .filter-bar > * {
+  .mobile-node-list {
+    display: block !important;
+  }
+  
+  .mobile-user-list {
+    display: block !important;
+  }
+  
+  /* 输入框和选择器优化 */
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-textarea),
+  :deep(.el-date-picker) {
     width: 100% !important;
+  }
+  
+  :deep(.el-input__wrapper),
+  :deep(.el-select__wrapper),
+  :deep(.el-textarea__inner) {
+    min-height: 44px;
+    font-size: 16px; /* 防止iOS自动缩放 */
+  }
+  
+  :deep(.el-input__inner) {
+    font-size: 16px !important; /* 防止iOS自动缩放 */
+    min-height: 44px;
+  }
+  
+  :deep(.el-radio-group) {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    
+    .el-radio {
+      margin-right: 0;
+      height: 44px;
+      line-height: 44px;
+      font-size: 15px;
+    }
+  }
+  
+  /* 警告框优化 */
+  :deep(.el-alert) {
+    margin-bottom: 16px;
+    
+    .el-alert__content {
+      font-size: 13px;
+    }
+  }
+  
+  /* 标签页优化 */
+  :deep(.el-tabs) {
+    .el-tabs__item {
+      font-size: 14px;
+      padding: 0 16px;
+      height: 44px;
+      line-height: 44px;
+    }
+  }
+  
+  .batch-actions {
+    flex-direction: column;
+    align-items: stretch;
+    
+    .batch-info {
+      margin-right: 0;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    
+    .batch-buttons {
+      width: 100%;
+      
+      .el-button {
+        flex: 1;
+        min-width: calc(33.333% - 6px);
+      }
+    }
   }
   
   /* 对话框优化 */
@@ -1289,18 +1953,26 @@ export default {
     }
   }
   
-  /* 表格优化 */
-  .table-wrapper {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  /* 分页优化 */
+  :deep(.el-pagination) {
+    .el-pagination__sizes,
+    .el-pagination__total,
+    .el-pagination__jump {
+      display: none;
+    }
     
-    :deep(.el-table) {
-      min-width: 800px;
-      font-size: 12px;
-      
-      .el-table__cell {
-        padding: 8px 4px;
-      }
+    .el-pager li {
+      min-width: 32px;
+      height: 32px;
+      line-height: 32px;
+      font-size: 13px;
+    }
+    
+    .btn-prev,
+    .btn-next {
+      min-width: 32px;
+      height: 32px;
+      line-height: 32px;
     }
   }
 }

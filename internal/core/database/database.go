@@ -1,6 +1,7 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -234,8 +235,65 @@ func AutoMigrate() error {
 		}
 	}
 
+	// 初始化默认套餐（如果套餐表为空）
+	initDefaultPackages()
+
 	log.Println("数据库迁移成功")
 	return nil
+}
+
+// initDefaultPackages 初始化默认套餐
+func initDefaultPackages() {
+	var count int64
+	DB.Model(&models.Package{}).Count(&count)
+
+	// 如果套餐表为空，创建默认套餐
+	if count == 0 {
+		log.Println("检测到套餐表为空，正在创建默认套餐...")
+
+		defaultPackages := []models.Package{
+			{
+				Name:          "基础套餐",
+				Description:   sql.NullString{String: "适合个人用户的基础套餐", Valid: true},
+				Price:         9.90,
+				DurationDays:  30,
+				DeviceLimit:   3,
+				SortOrder:     1,
+				IsActive:      true,
+				IsRecommended: false,
+			},
+			{
+				Name:          "标准套餐",
+				Description:   sql.NullString{String: "适合家庭用户的标准套餐", Valid: true},
+				Price:         19.90,
+				DurationDays:  30,
+				DeviceLimit:   5,
+				SortOrder:     2,
+				IsActive:      true,
+				IsRecommended: true,
+			},
+			{
+				Name:          "高级套餐",
+				Description:   sql.NullString{String: "适合多设备用户的高级套餐", Valid: true},
+				Price:         39.90,
+				DurationDays:  30,
+				DeviceLimit:   10,
+				SortOrder:     3,
+				IsActive:      true,
+				IsRecommended: false,
+			},
+		}
+
+		for _, pkg := range defaultPackages {
+			if err := DB.Create(&pkg).Error; err != nil {
+				log.Printf("创建默认套餐失败: %v", err)
+			} else {
+				log.Printf("已创建默认套餐: %s", pkg.Name)
+			}
+		}
+
+		log.Println("默认套餐初始化完成")
+	}
 }
 
 func GetDB() *gorm.DB {
