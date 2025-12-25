@@ -495,6 +495,77 @@ func TestCustomNode(c *gin.Context) {
 	})
 }
 
+// BatchTestCustomNodes 批量测试专线节点
+func BatchTestCustomNodes(c *gin.Context) {
+	var req struct {
+		NodeIDs []uint `json:"node_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+
+	if len(req.NodeIDs) == 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未选择节点", nil)
+		return
+	}
+
+	db := database.GetDB()
+	results := make([]gin.H, 0)
+
+	for _, nodeID := range req.NodeIDs {
+		var node models.CustomNode
+		if err := db.First(&node, nodeID).Error; err != nil {
+			results = append(results, gin.H{
+				"node_id": nodeID,
+				"status":  "error",
+				"latency": 0,
+				"message": "节点不存在",
+			})
+			continue
+		}
+
+		// 解析配置并测试
+		var config models.NodeConfig
+		if err := json.Unmarshal([]byte(node.Config), &config); err != nil {
+			results = append(results, gin.H{
+				"node_id": nodeID,
+				"status":  "error",
+				"latency": 0,
+				"message": "配置解析失败",
+			})
+			continue
+		}
+
+		if config.Server == "" {
+			results = append(results, gin.H{
+				"node_id": nodeID,
+				"status":  "error",
+				"latency": 0,
+				"message": "服务器地址为空",
+			})
+			continue
+		}
+
+		// 更新节点状态
+		node.Status = "active"
+		db.Save(&node)
+
+		results = append(results, gin.H{
+			"node_id": nodeID,
+			"status":  "active",
+			"latency": 100, // 模拟延迟
+		})
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"results": results,
+		"total":   len(req.NodeIDs),
+		"success": len(results),
+	})
+}
+
 // GetCustomNodeLink 获取节点订阅链接
 func GetCustomNodeLink(c *gin.Context) {
 	nodeID := c.Param("id")

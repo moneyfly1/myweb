@@ -2500,7 +2500,7 @@ onUnmounted(() => {
   border-bottom: 2px solid #f0f0f0;
 }
 
-.category-title i {
+.category-title :is(i) {
   color: #667eea;
 }
 
@@ -2521,7 +2521,7 @@ onUnmounted(() => {
   border-bottom: 2px solid #f0f0f0;
 }
 
-.section-title i {
+.section-title :is(i) {
   color: #667eea;
 }
 
@@ -2537,7 +2537,7 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.url-item label {
+.url-item :is(label) {
   font-weight: 500;
   color: #606266;
   font-size: 13px;
@@ -2588,13 +2588,13 @@ onUnmounted(() => {
     background-color: #ebedf0 !important;
   }
   
-  i {
+  :is(i) {
     font-size: 11px !important;
     color: #000000 !important;
     flex-shrink: 0;
   }
   
-  span {
+  :is(span) {
     font-size: 11px !important;
     color: #000000 !important;
     font-weight: 400;
@@ -2808,7 +2808,7 @@ onUnmounted(() => {
   color: #9ca3af;
 }
 
-.no-devices i {
+.no-devices :is(i) {
   font-size: 3rem;
   margin-bottom: 16px;
   display: block;
@@ -3005,7 +3005,7 @@ onUnmounted(() => {
   .url-item {
     gap: 6px;
     
-    label {
+    :is(label) {
       font-size: 12px;
       margin-bottom: 2px;
     }
@@ -3031,11 +3031,11 @@ onUnmounted(() => {
       flex-shrink: 0 !important;
       gap: 3px !important;
       
-      i {
+      :is(i) {
         font-size: 11px !important;
       }
       
-      span {
+      :is(span) {
         font-size: 11px !important;
       }
     }
@@ -3145,11 +3145,11 @@ onUnmounted(() => {
       font-size: 10px !important;
       gap: 2px !important;
       
-      i {
+      :is(i) {
         font-size: 10px !important;
       }
       
-      span {
+      :is(span) {
         font-size: 10px !important;
       }
     }

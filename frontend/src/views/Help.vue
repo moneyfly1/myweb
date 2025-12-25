@@ -1770,7 +1770,7 @@ export default {
   }
 }
 
-.contact-item i {
+.contact-item :is(i) {
   font-size: 1.5rem;
   color: #1677ff;
   width: 40px;
@@ -1886,12 +1886,12 @@ export default {
     font-size: 0.875rem;
     line-height: 1.7;
     
-    ol, ul {
+    :is(ol), :is(ul) {
       padding-left: 1.25rem;
       margin: 0.75rem 0;
     }
     
-    li {
+    :is(li) {
       margin-bottom: 0.5rem;
       line-height: 1.6;
     }
@@ -1908,7 +1908,7 @@ export default {
     }
     
     /* 代码块样式优化 */
-    pre {
+    :is(pre) {
       background: #f5f7fa;
       padding: 10px;
       border-radius: 6px;
@@ -1919,7 +1919,7 @@ export default {
       margin: 0.75rem 0;
     }
     
-    code {
+    :is(code) {
       background: #f0f2f5;
       padding: 2px 4px;
       border-radius: 4px;
@@ -1965,7 +1965,7 @@ export default {
     flex: 1;
     margin-bottom: 0;
     
-    h4 {
+    :is(h4) {
       font-size: 1rem;
       margin-bottom: 4px;
       font-weight: 600;
@@ -2047,7 +2047,7 @@ export default {
   .contact-details {
     width: 100%;
     
-    h4 {
+    :is(h4) {
       font-size: 1rem;
       margin-bottom: 8px;
       font-weight: 600;
@@ -2128,14 +2128,14 @@ export default {
     line-height: 1.8;
     color: #333;
     
-    h3 {
+    :is(h3) {
       color: #1677ff;
       margin-bottom: 15px;
       font-size: 1.25rem;
       font-weight: 600;
     }
     
-    h4 {
+    :is(h4) {
       color: #333;
       margin-top: 20px;
       margin-bottom: 10px;
@@ -2143,11 +2143,11 @@ export default {
       font-weight: 600;
     }
     
-    ol, ul {
+    :is(ol), :is(ul) {
       padding-left: 1.5rem;
       margin: 10px 0;
       
-      li {
+      :is(li) {
         margin-bottom: 8px;
         line-height: 1.6;
       }
@@ -2161,22 +2161,22 @@ export default {
       font-size: 0.875rem;
       line-height: 1.7;
       
-      h3 {
+      :is(h3) {
         font-size: 1.125rem;
         margin-bottom: 12px;
       }
       
-      h4 {
+      :is(h4) {
         font-size: 1rem;
         margin-top: 16px;
         margin-bottom: 8px;
       }
       
-      ol, ul {
+      :is(ol), :is(ul) {
         padding-left: 1.5rem;
         margin: 8px 0;
         
-        li {
+        :is(li) {
           margin-bottom: 6px;
           line-height: 1.6;
         }

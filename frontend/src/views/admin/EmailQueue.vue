@@ -891,7 +891,7 @@ export default {
 .detail-section {
   margin-top: 20px;
   
-  h4 {
+  :is(h4) {
     margin-bottom: 10px;
     color: #333;
     font-size: 1rem;

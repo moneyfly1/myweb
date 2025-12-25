@@ -699,7 +699,7 @@ onUnmounted(() => {
     color: var(--text-color-secondary);
     font-size: 14px;
     
-    a {
+    :is(a) {
       color: var(--primary-color);
       text-decoration: none;
       

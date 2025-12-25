@@ -1556,7 +1556,7 @@ onUnmounted(() => {
       }
     }
     
-    strong {
+    :is(strong) {
       color: #303133;
       font-weight: 600;
     }
@@ -1748,7 +1748,7 @@ onUnmounted(() => {
       }
     }
     
-    strong {
+    :is(strong) {
       color: #303133;
       font-weight: 600;
     }

@@ -492,6 +492,7 @@ export const adminAPI = {
   batchAssignCustomNodes: (nodeIds, userIds, extraData = {}) => api.post('/admin/custom-nodes/batch-assign', { node_ids: nodeIds, user_ids: userIds, ...extraData }),
   getCustomNodeUsers: (id) => api.get(`/admin/custom-nodes/${id}/users`),
   testCustomNode: (id) => api.post(`/admin/custom-nodes/${id}/test`),
+  batchTestCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-test', { node_ids: nodeIds }),
   getCustomNodeLink: (id) => api.get(`/admin/custom-nodes/${id}/link`),
   // 用户专线节点分配
   getUserCustomNodes: (userId) => api.get(`/admin/users/${userId}/custom-nodes`),

@@ -794,7 +794,7 @@
     margin-right: 20px;
   }
   
-  .stat-icon i {
+  .stat-icon :is(i) {
     font-size: 24px;
     color: white;
   }

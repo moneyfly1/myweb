@@ -149,39 +149,93 @@
     />
 
     <!-- 创建工单对话框 -->
-    <el-dialog v-model="showCreateDialog" title="创建工单" width="600px">
-      <el-form :model="ticketForm" :rules="ticketRules" ref="ticketFormRef" label-width="100px">
-        <el-form-item label="标题" prop="title">
-          <el-input v-model="ticketForm.title" placeholder="请输入工单标题" />
+    <el-dialog 
+      v-model="showCreateDialog" 
+      title="创建工单" 
+      :width="isMobile ? '95%' : '600px'"
+      class="create-ticket-dialog"
+    >
+      <el-form 
+        :model="ticketForm" 
+        :rules="ticketRules" 
+        ref="ticketFormRef" 
+        :label-width="isMobile ? '0' : '100px'"
+        :label-position="isMobile ? 'top' : 'right'"
+        class="ticket-form"
+      >
+        <el-form-item :label="isMobile ? '' : '标题'" prop="title">
+          <template #label v-if="isMobile">
+            <span class="form-label">*标题</span>
+          </template>
+          <el-input 
+            v-model="ticketForm.title" 
+            placeholder="请输入工单标题"
+            :size="isMobile ? 'large' : 'default'"
+          />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="ticketForm.type" placeholder="请选择类型">
+        <el-form-item :label="isMobile ? '' : '类型'" prop="type">
+          <template #label v-if="isMobile">
+            <span class="form-label">*类型</span>
+          </template>
+          <el-select 
+            v-model="ticketForm.type" 
+            placeholder="请选择类型"
+            :size="isMobile ? 'large' : 'default'"
+            style="width: 100%"
+          >
             <el-option label="技术问题" value="technical" />
             <el-option label="账单问题" value="billing" />
             <el-option label="账户问题" value="account" />
             <el-option label="其他" value="other" />
           </el-select>
         </el-form-item>
-        <el-form-item label="优先级" prop="priority">
-          <el-select v-model="ticketForm.priority" placeholder="请选择优先级">
+        <el-form-item :label="isMobile ? '' : '优先级'" prop="priority">
+          <template #label v-if="isMobile">
+            <span class="form-label">优先级</span>
+          </template>
+          <el-select 
+            v-model="ticketForm.priority" 
+            placeholder="请选择优先级"
+            :size="isMobile ? 'large' : 'default'"
+            style="width: 100%"
+          >
             <el-option label="低" value="low" />
             <el-option label="普通" value="normal" />
             <el-option label="高" value="high" />
             <el-option label="紧急" value="urgent" />
           </el-select>
         </el-form-item>
-        <el-form-item label="内容" prop="content">
+        <el-form-item :label="isMobile ? '' : '内容'" prop="content">
+          <template #label v-if="isMobile">
+            <span class="form-label">*内容</span>
+          </template>
           <el-input
             v-model="ticketForm.content"
             type="textarea"
-            :rows="6"
+            :rows="isMobile ? 5 : 6"
             placeholder="请详细描述您的问题"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="createTicket" :loading="creating">创建</el-button>
+        <div class="dialog-footer-buttons">
+          <el-button 
+            @click="showCreateDialog = false"
+            :size="isMobile ? 'large' : 'default'"
+            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
+          >
+            取消
+          </el-button>
+          <el-button 
+            type="primary" 
+            @click="createTicket" 
+            :loading="creating"
+            :size="isMobile ? 'large' : 'default'"
+            :style="isMobile ? 'width: 100%;' : ''"
+          >
+            创建
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -250,10 +304,26 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
+
+// 检测是否为移动端
+const isMobile = ref(window.innerWidth <= 768)
+
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+  loadTickets()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+})
 
 const loading = ref(false)
 const creating = ref(false)
@@ -472,10 +542,6 @@ const handleFilterChange = () => {
   pagination.page = 1 // 重置到第一页
   loadTickets()
 }
-
-onMounted(() => {
-  loadTickets()
-})
 </script>
 
 <style scoped lang="scss">
@@ -662,8 +728,65 @@ onMounted(() => {
   pointer-events: auto !important;
 }
 
+/* 创建工单对话框样式 */
+.create-ticket-dialog {
+  :deep(.el-dialog) {
+    .el-dialog__body {
+      padding: 20px;
+    }
+  }
+}
+
 /* 手机端优化 */
 @media (max-width: 768px) {
+  /* 创建工单对话框全屏显示 */
+  .create-ticket-dialog {
+    :deep(.el-dialog) {
+      margin: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 100vh !important;
+      max-height: 100vh !important;
+      border-radius: 0 !important;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    :deep(.el-dialog__header) {
+      flex-shrink: 0;
+      padding: 16px !important;
+      border-bottom: 1px solid #e5e7eb;
+      
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      
+      .el-dialog__headerbtn {
+        top: 16px;
+        right: 16px;
+        width: 32px;
+        height: 32px;
+        
+        .el-dialog__close {
+          font-size: 20px;
+        }
+      }
+    }
+    
+    :deep(.el-dialog__body) {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    :deep(.el-dialog__footer) {
+      flex-shrink: 0;
+      padding: 12px 16px 16px 16px !important;
+      border-top: 1px solid #e5e7eb;
+    }
+  }
   .tickets-container {
     padding: 10px;
   }
@@ -741,43 +864,19 @@ onMounted(() => {
     }
   }
   
-  /* 对话框优化 */
-  :deep(.el-dialog) {
-    width: 90% !important;
-    margin: 5vh auto !important;
-    max-height: 90vh;
+  /* 对话框优化（非创建工单对话框） */
+  :deep(.el-dialog:not(.create-ticket-dialog .el-dialog)) {
+    width: 95% !important;
+    margin: 2vh auto !important;
+    max-height: 96vh;
     overflow-y: auto;
-  }
-  
-  :deep(.el-dialog__body) {
-    padding: 15px !important;
-    max-height: calc(90vh - 120px);
-    overflow-y: auto;
-  }
-  
-  :deep(.el-dialog__header) {
-    padding: 15px !important;
-  }
-  
-  :deep(.el-dialog__footer) {
-    padding: 15px !important;
-    
-    .el-button {
-      width: 100%;
-      margin: 0 0 10px 0 !important;
-      min-height: 44px;
-      font-size: 16px;
-      
-      &:last-child {
-        margin-bottom: 0;
-      }
-    }
+    border-radius: 8px;
   }
   
   /* 表单优化 */
-  :deep(.el-form) {
-    .el-form-item {
-      margin-bottom: 18px;
+  .ticket-form {
+    :deep(.el-form-item) {
+      margin-bottom: 20px;
       
       .el-form-item__label {
         width: 100% !important;
@@ -785,17 +884,50 @@ onMounted(() => {
         margin-bottom: 8px;
         padding: 0;
         font-size: 14px;
+        font-weight: 500;
+        color: #333;
+        line-height: 1.5;
+        display: block;
       }
       
       .el-form-item__content {
         width: 100%;
+        margin-left: 0 !important;
         
         .el-input,
-        .el-select,
+        .el-select {
+          width: 100% !important;
+        }
+        
         .el-textarea {
           width: 100% !important;
         }
       }
+    }
+    
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+  }
+  
+  /* 对话框底部按钮优化 */
+  .dialog-footer-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+      min-height: 44px;
+      font-size: 16px;
+      border-radius: 6px;
     }
   }
   
@@ -932,4 +1064,5 @@ onMounted(() => {
   }
 }
 </style>
+
 

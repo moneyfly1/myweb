@@ -45,7 +45,7 @@
     background-color: #f8f8f8;
     color: #2c2c2c;
     
-    th, td {
+    :is(th), :is(td) {
       background-color: #f8f8f8;
       border-color: #d0d0d0;
       color: #2c2c2c;
@@ -101,7 +101,7 @@
     background-color: #ffffff;
     color: #303133;
     
-    th, td {
+    :is(th), :is(td) {
       background-color: #ffffff;
       border-color: #dcdfe6;
       color: #303133;
@@ -574,7 +574,7 @@ $breakpoints: (
   .el-table {
     font-size: 13px;
     
-    th, td {
+    :is(th), :is(td) {
       padding: 10px 6px;
     }
     
