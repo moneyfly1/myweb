@@ -3097,7 +3097,7 @@ export default {
   @media (max-width: 768px) {
     gap: 6px;
     
-    label {
+    :is(label) {
       font-size: 14px;
     }
     
@@ -3114,7 +3114,7 @@ export default {
   }
 }
 
-.url-item label {
+.url-item :is(label) {
   font-weight: 500;
   color: #606266;
 }

@@ -904,7 +904,7 @@ export default {
 .subscription-urls {
   margin-bottom: 30px;
   
-  h3 {
+  :is(h3) {
     color: #333;
     margin-bottom: 20px;
     font-size: 1.2rem;
@@ -935,7 +935,7 @@ export default {
 .qr-code-section {
   text-align: center;
   
-  h4 {
+  :is(h4) {
     color: #333;
     margin-bottom: 20px;
     font-size: 1.1rem;
@@ -1010,7 +1010,7 @@ export default {
       border: 1px solid #e4e7ed;
       border-radius: 8px;
       
-      img {
+      :is(img) {
         max-width: 256px;
         width: 100%;
         height: auto;
@@ -1071,7 +1071,7 @@ export default {
   .cost-calculation,
   .payment-method {
     margin-bottom: 24px;
-    h4 {
+    :is(h4) {
       color: #333;
       font-size: 1.1rem;
       margin-bottom: 16px;
@@ -1170,7 +1170,7 @@ export default {
 
     .qr-code-wrapper .qr-code {
       padding: 10px;
-      img {
+      :is(img) {
         width: 180px;
         height: 180px;
       }

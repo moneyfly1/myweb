@@ -288,24 +288,42 @@
     <el-dialog
       v-model="showGenerateDialog"
       title="生成邀请码"
-      :width="isMobile ? '95%' : '500px'"
+      :width="isMobile ? '100%' : '500px'"
       :close-on-click-modal="!isMobile"
+      class="generate-invite-dialog"
     >
-      <el-form :model="generateForm" :label-width="isMobile ? '0' : '120px'">
-        <el-form-item label="最大使用次数">
+      <el-form 
+        :model="generateForm" 
+        :label-width="isMobile ? '0' : '120px'"
+        :label-position="isMobile ? 'top' : 'right'"
+        class="generate-invite-form"
+      >
+        <el-form-item :label="isMobile ? '' : '最大使用次数'">
+          <template #label v-if="isMobile">
+            <span class="form-label">最大使用</span>
+          </template>
           <el-input-number 
             v-model="generateForm.max_uses" 
             :min="1" 
             :max="1000"
+            :size="isMobile ? 'large' : 'default'"
+            :controls-position="isMobile ? 'right' : 'default'"
+            style="width: 100%"
             placeholder="留空表示无限制"
           />
           <div class="form-tip">邀请码最多可被使用多少次（留空表示无限制）</div>
         </el-form-item>
-        <el-form-item label="有效期（天）">
+        <el-form-item :label="isMobile ? '' : '有效期（天）'">
+          <template #label v-if="isMobile">
+            <span class="form-label">有效期</span>
+          </template>
           <el-input-number 
             v-model="generateForm.expires_days" 
             :min="1" 
             :max="365"
+            :size="isMobile ? 'large' : 'default'"
+            :controls-position="isMobile ? 'right' : 'default'"
+            style="width: 100%"
             placeholder="留空表示永不过期"
           />
           <div class="form-tip">邀请码有效期，留空表示永不过期</div>
@@ -313,8 +331,22 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer-buttons">
-          <el-button @click="showGenerateDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="generateCode" :loading="generating" class="mobile-action-btn">生成</el-button>
+          <el-button 
+            @click="showGenerateDialog = false" 
+            :size="isMobile ? 'large' : 'default'"
+            :style="isMobile ? 'width: 100%; margin-bottom: 10px; min-height: 44px;' : ''"
+          >
+            取消
+          </el-button>
+          <el-button 
+            type="primary" 
+            @click="generateCode" 
+            :loading="generating"
+            :size="isMobile ? 'large' : 'default'"
+            :style="isMobile ? 'width: 100%; min-height: 44px;' : ''"
+          >
+            生成
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -322,7 +354,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, DocumentCopy, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
@@ -343,6 +375,10 @@ onMounted(async () => {
   await loadInviteRewardSettings()
   await loadInviteCodes()
   await loadStats()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 const stats = ref({
   total_invites: 0,
@@ -385,94 +421,36 @@ const loadInviteCodes = async () => {
   loading.value = true
   try {
     const response = await inviteAPI.getMyInviteCodes()
-    if (process.env.NODE_ENV === 'development') {
-      console.log('邀请码列表完整响应:', response)
-      console.log('响应数据结构:', {
-        hasResponse: !!response,
-        hasData: !!response?.data,
-        responseDataType: typeof response?.data,
-        responseDataKeys: response?.data ? Object.keys(response.data) : [],
-        responseDataSuccess: response?.data?.success,
-        responseDataMessage: response?.data?.message,
-        hasNestedData: !!response?.data?.data,
-        nestedDataKeys: response?.data?.data ? Object.keys(response.data.data) : []
-      })
-    }
     
-    // 处理多种可能的响应格式
+    // 处理响应格式：后端返回 { success: true, data: [...] }
     if (response && response.data) {
       const responseData = response.data
       
-      // 标准格式：{ success: true, data: { invite_codes: [...] } }
+      // 标准格式：{ success: true, data: [...] } - data 是数组
       if (responseData.success !== false && responseData.data) {
-        if (responseData.data.invite_codes && Array.isArray(responseData.data.invite_codes)) {
-          inviteCodes.value = responseData.data.invite_codes
-          if (process.env.NODE_ENV === 'development') {
-            console.log('✅ 成功加载邀请码（标准格式）:', inviteCodes.value.length, '个')
-          }
-        } else if (Array.isArray(responseData.data)) {
+        if (Array.isArray(responseData.data)) {
           inviteCodes.value = responseData.data
-          if (process.env.NODE_ENV === 'development') {
-            console.log('✅ 成功加载邀请码（data是数组）:', inviteCodes.value.length, '个')
-          }
         } else {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ data存在但不是预期格式:', responseData.data)
-          }
           inviteCodes.value = []
-        }
-      } 
-      else if (responseData.invite_codes && Array.isArray(responseData.invite_codes)) {
-        inviteCodes.value = responseData.invite_codes
-        if (process.env.NODE_ENV === 'development') {
-          console.log('✅ 成功加载邀请码（直接格式）:', inviteCodes.value.length, '个')
-        }
-      }
-      else if (Array.isArray(responseData.data)) {
-        inviteCodes.value = responseData.data
-        if (process.env.NODE_ENV === 'development') {
-          console.log('✅ 成功加载邀请码（data数组格式）:', inviteCodes.value.length, '个')
         }
       }
       // 如果 success 为 false，显示错误信息
       else if (responseData.success === false) {
         const errorMsg = responseData.message || '获取邀请码列表失败'
-        if (process.env.NODE_ENV === 'development') {
-          console.error('❌ API返回失败:', errorMsg)
-        }
         ElMessage.error(errorMsg)
         inviteCodes.value = []
       }
+      // 兼容旧格式：直接是数组
+      else if (Array.isArray(responseData)) {
+        inviteCodes.value = responseData
+      }
       else {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('⚠️ 未识别的响应格式:', {
-            responseData,
-            hasData: !!responseData.data,
-            dataType: typeof responseData.data,
-            dataKeys: responseData.data ? Object.keys(responseData.data) : []
-          })
-        }
         inviteCodes.value = []
       }
     } else {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('⚠️ 响应数据为空或格式异常:', {
-          hasResponse: !!response,
-          hasData: !!response?.data
-        })
-      }
       inviteCodes.value = []
     }
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('获取邀请码列表错误:', error)
-      console.error('错误详情:', {
-        message: error.message,
-        response: error.response,
-        responseData: error.response?.data,
-        responseStatus: error.response?.status
-      })
-    }
     const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
     ElMessage.error('获取邀请码列表失败: ' + errorMsg)
     inviteCodes.value = []
@@ -484,24 +462,37 @@ const loadInviteCodes = async () => {
 const loadStats = async () => {
   try {
     const response = await inviteAPI.getInviteStats()
-    if (process.env.NODE_ENV === 'development') {
-      console.log('邀请统计响应:', response)
-    }
     
-    // 处理多种可能的响应格式
+    // 处理响应格式：后端返回 { success: true, data: { total_invite_count, ... } }
     if (response && response.data) {
       const responseData = response.data
+      
       // 标准格式：{ success: true, data: { ... } }
-      if (responseData.data) {
-        stats.value = responseData.data
+      if (responseData.success !== false && responseData.data) {
+        const backendStats = responseData.data
+        // 映射后端字段到前端字段
+        stats.value = {
+          total_invites: backendStats.total_invite_count || 0,
+          registered_invites: backendStats.total_invite_relations || 0,
+          purchased_invites: 0, // 后端未提供此字段，需要从邀请关系中统计
+          total_reward: backendStats.total_invite_reward || 0,
+          total_consumption: 0,
+          recent_invites: [] // 后端未提供此字段
+        }
       }
-      // 直接包含统计数据
-      else if (responseData.total_invites !== undefined) {
-        stats.value = responseData
+      // 兼容旧格式：直接包含统计数据
+      else if (responseData.total_invite_count !== undefined) {
+        stats.value = {
+          total_invites: responseData.total_invite_count || 0,
+          registered_invites: responseData.total_invite_relations || 0,
+          purchased_invites: 0,
+          total_reward: responseData.total_invite_reward || 0,
+          total_consumption: 0,
+          recent_invites: []
+        }
       }
     }
   } catch (error) {
-    console.error('获取邀请统计错误:', error)
     const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
     ElMessage.error('获取邀请统计失败: ' + errorMsg)
   }
@@ -1008,7 +999,7 @@ onMounted(async () => {
       :is(p) {
         margin: 8px 0;
         
-        strong {
+        :is(strong) {
           color: #303133;
           font-weight: 600;
         }
@@ -1199,100 +1190,146 @@ onMounted(async () => {
   }
 
   /* 生成邀请码对话框在手机端优化 */
-  :deep(.el-dialog) {
-    width: 95% !important;
-    margin: 1vh auto !important;
-    max-height: 98vh;
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-  }
-
-  :deep(.el-dialog__header) {
-    padding: 16px 16px 12px;
-    flex-shrink: 0;
-    border-bottom: 1px solid #ebeef5;
-    
-    .el-dialog__title {
-      font-size: 18px;
-      font-weight: 600;
-    }
-    
-    .el-dialog__headerbtn {
-      top: 12px;
-      right: 12px;
-      width: 36px;
-      height: 36px;
-    }
-  }
-
-  :deep(.el-dialog__body) {
-    padding: 16px !important;
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    max-height: calc(98vh - 140px);
-  }
-
-  :deep(.el-dialog__footer) {
-    padding: 12px 16px 16px;
-    flex-shrink: 0;
-    border-top: 1px solid #ebeef5;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    
-    .dialog-footer-buttons {
+  .generate-invite-dialog {
+    :deep(.el-dialog) {
+      margin: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 100vh !important;
+      max-height: 100vh !important;
+      border-radius: 0 !important;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      width: 100%;
+    }
+    
+    :deep(.el-dialog__header) {
+      padding: 16px !important;
+      flex-shrink: 0;
+      border-bottom: 1px solid #e5e7eb;
       
-      .mobile-action-btn {
-        width: 100%;
-        min-height: 48px;
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0 !important;
-        border-radius: 8px;
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      
+      .el-dialog__headerbtn {
+        top: 16px;
+        right: 16px;
+        width: 32px;
+        height: 32px;
+        
+        .el-dialog__close {
+          font-size: 20px;
+        }
       }
     }
-  }
-
-  :deep(.el-form-item) {
-    margin-bottom: 20px;
     
-    .el-form-item__label {
-      width: 100% !important;
-      text-align: left !important;
-      margin-bottom: 8px !important;
-      padding: 0 !important;
-      font-weight: 500;
+    :deep(.el-dialog__body) {
+      padding: 16px !important;
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    :deep(.el-dialog__footer) {
+      padding: 12px 16px 16px 16px !important;
+      flex-shrink: 0;
+      border-top: 1px solid #e5e7eb;
+    }
+  }
+  
+  /* 生成邀请码表单优化 */
+  .generate-invite-form {
+    :deep(.el-form-item) {
+      margin-bottom: 24px;
+      
+      .el-form-item__label {
+        width: 100% !important;
+        text-align: left !important;
+        margin-bottom: 8px !important;
+        padding: 0 !important;
+        font-weight: 500;
+        font-size: 14px;
+        color: #303133;
+        line-height: 1.5;
+        display: block;
+      }
+      
+      .el-form-item__content {
+        margin-left: 0 !important;
+        width: 100%;
+      }
+    }
+    
+    .form-label {
+      display: block;
       font-size: 14px;
-      color: #303133;
-    }
-    
-    .el-form-item__content {
-      margin-left: 0 !important;
-      width: 100%;
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 8px;
+      line-height: 1.5;
     }
   }
 
-  :deep(.el-input-number),
-  :deep(.el-input) {
+  :deep(.el-input-number) {
     width: 100% !important;
+    
+    .el-input {
+      width: 100% !important;
+    }
+    
+    .el-input__wrapper {
+      width: 100% !important;
+      min-height: 44px;
+    }
     
     .el-input__inner {
       font-size: 16px !important;
       min-height: 44px;
       padding: 0 12px;
+      text-align: left;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    
+    .el-input-number__decrease,
+    .el-input-number__increase {
+      width: 36px;
+      height: 22px;
+      line-height: 22px;
+      font-size: 16px;
+      border: none;
+      background: #f5f7fa;
+      color: #606266;
+      
+      &:hover {
+        color: #409eff;
+        background: #ecf5ff;
+      }
+      
+      &:active {
+        background: #d9ecff;
+      }
+    }
+    
+    &.is-controls-right {
+      .el-input__wrapper {
+        padding-right: 40px;
+      }
+      
+      .el-input-number__decrease,
+      .el-input-number__increase {
+        right: 0;
+        width: 36px;
+        height: 22px;
+      }
     }
   }
   
   .form-tip {
     font-size: 12px;
     color: #909399;
-    margin-top: 6px;
+    margin-top: 8px;
     line-height: 1.6;
   }
 }

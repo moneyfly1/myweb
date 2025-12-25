@@ -467,7 +467,7 @@ export default {
   background: #f8f9fa;
   border-radius: 8px;
   
-  h4 {
+  :is(h4) {
     margin-bottom: 15px;
     color: #606266;
   }

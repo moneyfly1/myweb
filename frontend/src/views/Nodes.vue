@@ -548,7 +548,7 @@ export default {
   gap: 0.5rem;
 }
 
-.node-name i {
+.node-name :is(i) {
   font-size: 1.2rem;
   color: #1677ff;
 }

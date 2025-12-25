@@ -1036,7 +1036,7 @@ export default {
   font-weight: bold;
 }
 
-.card-header i {
+.card-header :is(i) {
   margin-right: 8px;
   color: #409eff;
 }
