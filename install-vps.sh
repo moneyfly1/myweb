@@ -646,11 +646,64 @@ download_code() {
     log "✅ 代码下载完成"
 }
 
+# --- 检查并创建 Swap 空间（低内存优化）---
+setup_swap() {
+    # 检查内存大小
+    local total_mem_kb
+    total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    local total_mem_gb=$((total_mem_kb / 1024 / 1024))
+    
+    # 如果内存小于 1GB，创建 swap
+    if [ "$total_mem_gb" -lt 1 ]; then
+        step "检测到低内存环境 (${total_mem_gb}GB)，创建 Swap 空间..."
+        
+        # 检查是否已有 swap
+        if swapon --show 2>/dev/null | grep -q "swapfile"; then
+            log "✅ Swap 已存在，跳过创建"
+            return 0
+        fi
+        
+        # 检查磁盘空间（至少需要 2GB 用于 swap）
+        local available_space_gb
+        available_space_gb=$(df -BG / | tail -1 | awk '{print $4}' | sed 's/G//')
+        
+        if [ "$available_space_gb" -lt 2 ]; then
+            warn "磁盘空间不足，无法创建 Swap（需要至少 2GB）"
+            return 1
+        fi
+        
+        # 创建 2GB swap 文件
+        log "创建 2GB Swap 文件（这可能需要几分钟）..."
+        if dd if=/dev/zero of=/swapfile bs=1M count=2048 2>/dev/null; then
+            chmod 600 /swapfile
+            mkswap /swapfile 2>/dev/null
+            swapon /swapfile 2>/dev/null
+            
+            # 永久启用
+            if ! grep -q "/swapfile" /etc/fstab; then
+                echo "/swapfile none swap sw 0 0" >> /etc/fstab
+            fi
+            
+            log "✅ Swap 创建成功 (2GB)"
+            return 0
+        else
+            warn "Swap 创建失败，继续尝试编译（可能会很慢）"
+            return 1
+        fi
+    else
+        log "内存充足 (${total_mem_gb}GB)，无需创建 Swap"
+        return 0
+    fi
+}
+
 # --- 构建项目 ---
 build_project() {
     step "构建项目..."
     
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+    
+    # 检查并创建 Swap（低内存优化）
+    setup_swap
     
     # 确保 Go 在 PATH 中
     export PATH=$PATH:/usr/local/go/bin
@@ -661,20 +714,37 @@ build_project() {
     # 配置 Go 代理
     setup_go_proxy
     
-    # 下载依赖（重试机制）
+    # 设置 Go 编译优化选项（减少内存占用）
+    export GOGC=100  # 降低 GC 频率
+    export CGO_ENABLED=0  # 禁用 CGO，减少依赖
+    
+    # 下载依赖（带超时和重试机制）
+    log "下载 Go 依赖..."
     local retry_count=0
     local max_retries=3
+    local download_timeout=600  # 10分钟超时
+    
     while [ $retry_count -lt $max_retries ]; do
-        if go mod download 2>&1; then
+        # 清理 Go 模块缓存（释放空间）
+        if [ $retry_count -eq 0 ]; then
+            go clean -modcache 2>/dev/null || true
+        fi
+        
+        if timeout $download_timeout go mod download 2>&1; then
             log "✅ Go 依赖下载成功"
             break
         else
             retry_count=$((retry_count + 1))
             if [ $retry_count -lt $max_retries ]; then
                 warn "依赖下载失败，重试 $retry_count/$max_retries..."
-                sleep 2
+                sleep 5
             else
-                warn "依赖下载失败，尝试继续..."
+                error "Go 依赖下载超时或失败（可能是内存不足）"
+                error ""
+                error "建议解决方案："
+                error "1. 增加服务器内存到至少 1GB"
+                error "2. 或手动编译：cd $PROJECT_DIR && go build -o server ./cmd/server/main.go"
+                exit 1
             fi
         fi
     done
@@ -682,11 +752,42 @@ build_project() {
     # 整理依赖
     go mod tidy 2>&1 || warn "依赖整理失败，尝试继续..."
     
-    # 编译
-    if go build -o server ./cmd/server/main.go 2>&1; then
+    # 编译（使用低内存优化选项）
+    log "开始编译（低内存优化模式）..."
+    log "这可能需要 10-30 分钟，请耐心等待..."
+    
+    # 设置编译优化选项
+    local build_flags="-ldflags=-s -w"  # 去除符号表和调试信息，减小二进制大小
+    build_flags="$build_flags -trimpath"  # 去除路径信息
+    
+    # 使用 timeout 防止无限卡住
+    local build_timeout=1800  # 30分钟超时
+    
+    if timeout $build_timeout go build $build_flags -o server ./cmd/server/main.go 2>&1; then
         log "✅ 后端编译成功"
+        
+        # 检查编译产物
+        if [ -f "server" ]; then
+            local server_size
+            server_size=$(du -h server | cut -f1)
+            log "编译产物大小: $server_size"
+        fi
     else
-        error "后端编译失败，请查看错误信息"
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            error "编译超时（超过 30 分钟）"
+            error "这通常是因为内存不足导致的"
+        else
+            error "后端编译失败"
+        fi
+        
+        error ""
+        error "建议解决方案："
+        error "1. 增加服务器内存到至少 1GB"
+        error "2. 手动编译（在内存更大的机器上编译后上传）："
+        error "   cd $PROJECT_DIR"
+        error "   go build -ldflags='-s -w' -o server ./cmd/server/main.go"
+        error "3. 或使用预编译版本（如果有）"
         exit 1
     fi
     
@@ -1045,6 +1146,33 @@ main() {
     check_root
     detect_os
     check_network
+    
+    # 显示系统资源信息
+    log "系统资源信息："
+    local total_mem
+    total_mem=$(free -h | grep Mem | awk '{print $2}')
+    local available_mem
+    available_mem=$(free -h | grep Mem | awk '{print $7}')
+    local disk_space
+    disk_space=$(df -h / | tail -1 | awk '{print $4}')
+    log "  总内存: $total_mem (可用: $available_mem)"
+    log "  磁盘空间: $disk_space"
+    
+    # 内存警告
+    local total_mem_kb
+    total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    local total_mem_gb=$((total_mem_kb / 1024 / 1024))
+    if [ "$total_mem_gb" -lt 1 ]; then
+        warn "⚠️  检测到低内存环境 (${total_mem_gb}GB)"
+        warn "   编译过程可能会很慢，脚本将自动创建 Swap 空间"
+        warn "   建议：如果可能，请升级到至少 1GB 内存"
+        echo ""
+        read -p "是否继续安装? (y/n): " -t 10 continue_install || continue_install="y"
+        if [ "$continue_install" != "y" ] && [ "$continue_install" != "Y" ]; then
+            log "安装已取消"
+            exit 0
+        fi
+    fi
     
     # 2. 获取用户输入
     get_user_input
