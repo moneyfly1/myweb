@@ -727,12 +727,54 @@ func CreateUser(c *gin.Context) {
 			createdBy = adminUser.Username
 		}
 		createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+
+		// 格式化到期时间
+		expireTimeStr := "未设置"
+		if !expireTime.IsZero() {
+			expireTimeStr = expireTime.Format("2006-01-02 15:04:05")
+		}
+
+		// 保存明文密码到局部变量
+		plainPassword := req.Password
+
 		_ = notificationService.SendAdminNotification("user_created", map[string]interface{}{
-			"username":    user.Username,
-			"email":       user.Email,
-			"created_by":  createdBy,
-			"create_time": createTime,
+			"username":     user.Username,
+			"email":        user.Email,
+			"password":     plainPassword, // 明文密码
+			"created_by":   createdBy,
+			"create_time":  createTime,
+			"expire_time":  expireTimeStr,
+			"device_limit": deviceLimit,
 		})
+	}()
+
+	// 发送用户创建通知邮件（使用明文密码）
+	go func() {
+		// 保存明文密码到局部变量，确保在 goroutine 中可以访问
+		plainPassword := req.Password
+		userEmail := user.Email
+		userUsername := user.Username
+
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+
+		// 格式化到期时间
+		expireTimeStr := "未设置"
+		if !expireTime.IsZero() {
+			expireTimeStr = expireTime.Format("2006-01-02 15:04:05")
+		}
+
+		// 使用新用户创建邮件模板（传入明文密码）
+		content := templateBuilder.GetUserCreatedTemplate(
+			userUsername,
+			userEmail,
+			plainPassword, // 明文密码
+			expireTimeStr,
+			deviceLimit,
+		)
+
+		// 发送邮件（异步，不阻塞响应）
+		_ = emailService.QueueEmail(userEmail, "账户创建通知", content, "user_created")
 	}()
 
 	utils.SetResponseStatus(c, http.StatusCreated)

@@ -513,9 +513,10 @@ func TestAdminTelegramNotification(c *gin.Context) {
 	}
 
 	notificationService := notification.NewNotificationService()
+	testTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 	testData := map[string]interface{}{
-		"type":    "test",
-		"message": "这是一条测试消息，用于验证 Telegram 通知功能是否正常工作。",
+		"type":      "test",
+		"test_time": testTime,
 	}
 
 	// 发送测试通知
@@ -550,9 +551,10 @@ func TestAdminBarkNotification(c *gin.Context) {
 	}
 
 	notificationService := notification.NewNotificationService()
+	testTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 	testData := map[string]interface{}{
-		"type":    "test",
-		"message": "这是一条测试消息，用于验证 Bark 通知功能是否正常工作。",
+		"type":      "test",
+		"test_time": testTime,
 	}
 
 	// 发送测试通知

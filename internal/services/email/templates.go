@@ -243,8 +243,8 @@ func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, c
 	}
 	if clashURL != "" {
 		urlList += fmt.Sprintf(`<div class="url-item">
-                        <strong>⚡ 移动端专用地址：</strong>
-                        <p style="margin: 5px 0; color: #666; font-size: 12px;">专为移动设备优化，支持规则分流</p>
+                        <strong>⚡ Clash 类型软件专用地址：</strong>
+                        <p style="margin: 5px 0; color: #666; font-size: 12px;">适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件</p>
                         <code class="url-code">%s</code>
                     </div>`, clashURL)
 	}
@@ -377,6 +377,52 @@ func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL stri
             <div style="text-align: center; margin: 30px 0;">
                 <a href="%s" class="btn">立即登录</a>
             </div>`, username, username, email, passwordRow, loginURL, loginURL, loginURL)
+
+	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
+}
+
+// GetUserCreatedTemplate 获取管理员创建用户通知邮件模板
+func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password, expireTime string, deviceLimit int) string {
+	title := "账户创建通知"
+	loginURL := fmt.Sprintf("%s/login", b.getBaseURL())
+
+	expireDisplay := expireTime
+	if expireTime == "" || expireTime == "未设置" {
+		expireDisplay = "未设置"
+	}
+
+	content := fmt.Sprintf(`<h2>您的账户已创建</h2>
+            <p>亲爱的 %s，</p>
+            <p>管理员已为您创建账户，以下是您的账户信息：</p>
+            <div class="info-box">
+                <h3>📋 账户信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>注册邮箱</th><td>%s</td></tr>
+                    <tr><th>登录密码</th><td style="color: #667eea; font-weight: bold; font-size: 16px;">%s</td></tr>
+                    <tr><th>登录地址</th><td><a href="%s" style="color: #667eea; text-decoration: none;">%s</a></td></tr>
+                </table>
+            </div>
+            <div class="success-box">
+                <h3>📡 服务信息</h3>
+                <table class="info-table">
+                    <tr><th>有效期</th><td style="color: #27ae60; font-weight: bold;">%s</td></tr>
+                    <tr><th>允许最大设备数</th><td style="color: #27ae60; font-weight: bold;">%d 台设备</td></tr>
+                </table>
+            </div>
+            <div class="warning-box">
+                <h3>⚠️ 重要提示</h3>
+                <ul>
+                    <li>请妥善保管您的登录密码，建议您登录后及时修改密码</li>
+                    <li>为了账户安全，建议设置强密码，包含字母、数字和特殊字符</li>
+                    <li>不要将密码泄露给他人，避免账户被盗用</li>
+                    <li>服务到期时间为：<strong>%s</strong></li>
+                    <li>您最多可以同时使用 <strong>%d 台设备</strong>连接服务</li>
+                </ul>
+            </div>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="%s" class="btn">立即登录</a>
+            </div>`, username, username, email, password, loginURL, loginURL, expireDisplay, deviceLimit, expireDisplay, deviceLimit, loginURL)
 
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }
