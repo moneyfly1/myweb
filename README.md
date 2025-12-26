@@ -65,13 +65,14 @@
 The easiest way is to run the one-click installation script directly on your VPS:
 
 ```bash
-# Download installation script
+# 1. Download installation script
 wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
 
-# Make executable
+# 2. Make executable
 chmod +x install-vps.sh
 
-# Run installation script (requires root)
+# 3. Run installation script (requires root)
+#    Script will auto-download code, install all dependencies, configure environment
 sudo bash install-vps.sh
 ```
 
@@ -93,28 +94,27 @@ sudo bash install-vps.sh
 
 ### One-Click Installation Steps
 
-#### Step 1: Download Installation Script
+#### Step 1: Download and Run Installation Script
 
 Connect to your VPS server via SSH, then execute:
 
 ```bash
-# Method 1: Direct download (Recommended)
+# Download installation script
 wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
+
+# Make executable
 chmod +x install-vps.sh
 
-# Method 2: If you've already cloned the repository
-cd /path/to/myweb
-chmod +x install-vps.sh
-```
-
-#### Step 2: Run Installation Script
-
-```bash
-# Run installation script with root privileges
+# Run installation script directly (script will auto-download code)
 sudo bash install-vps.sh
 ```
 
-**Note**: `install-vps.sh` is a fully automatic installation script that will automatically install all dependencies (Go, Node.js, Nginx, etc.), no manual configuration required.
+**Important Notes**:
+- The script will automatically download project code from GitHub, no need to clone manually
+- The script will automatically install all dependencies (Go, Node.js, Nginx, Certbot, etc.)
+- The script will automatically configure network proxies and mirrors
+- The script will automatically handle firewall, ports, domain resolution, etc.
+- Just follow the prompts to enter domain and admin information
 
 #### Step 3: Enter Information as Prompted
 
