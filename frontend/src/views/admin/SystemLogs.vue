@@ -289,7 +289,16 @@
             
             <el-table-column prop="username" label="用户" width="120" />
             
-            <el-table-column prop="ip_address" label="IP地址" width="140" />
+            <el-table-column prop="ip_address" label="IP地址" width="140">
+              <template #default="{ row }">
+                <div>
+                  <div>{{ row.ip_address }}</div>
+                  <div v-if="row.location" class="location-text">
+                    <el-tag size="small" type="info">{{ row.location }}</el-tag>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
             
             <el-table-column prop="user_agent" label="用户代理" width="200">
               <template #default="{ row }">
@@ -349,6 +358,10 @@
                   <span class="log-label">IP：</span>
                   <span class="log-value">{{ log.ip_address }}</span>
                 </div>
+                <div class="log-card-row" v-if="log.location">
+                  <span class="log-label">地理位置：</span>
+                  <el-tag size="small" type="info">{{ log.location }}</el-tag>
+                </div>
               </div>
               <div class="log-card-footer">
                 <el-button size="small" type="primary" @click.stop="showLogDetails(log)">
@@ -401,6 +414,14 @@
           </el-descriptions-item>
           <el-descriptions-item label="IP地址">
             {{ selectedLog.ip_address }}
+          </el-descriptions-item>
+          <el-descriptions-item label="地理位置" v-if="selectedLog.location">
+            <el-tag type="info">{{ selectedLog.location }}</el-tag>
+            <div v-if="selectedLog.location_info" class="location-details">
+              <div v-if="selectedLog.location_info.country">国家: {{ selectedLog.location_info.country }}</div>
+              <div v-if="selectedLog.location_info.city">城市: {{ selectedLog.location_info.city }}</div>
+              <div v-if="selectedLog.location_info.region">地区: {{ selectedLog.location_info.region }}</div>
+            </div>
           </el-descriptions-item>
           <el-descriptions-item label="用户代理">
             {{ selectedLog.user_agent }}
@@ -843,6 +864,24 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.location-text {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.location-details {
+  margin-top: 8px;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.location-details div {
+  margin: 4px 0;
 }
 
 .pagination-wrapper {

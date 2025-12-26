@@ -11,6 +11,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -96,6 +97,38 @@ func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 
 // getLogLevel 获取日志级别
 func getLogLevel(log models.AuditLog) string {
+	// 根据action_type判断日志级别（优先）
+	actionType := log.ActionType
+
+	// 安全日志根据事件类型判断
+	if strings.HasPrefix(actionType, "security_") {
+		switch actionType {
+		case "security_login_success", "security_login_attempt":
+			return "info"
+		case "security_login_failed", "security_login_blocked", "security_ip_blocked":
+			return "error"
+		case "security_login_rate_limit":
+			return "warning"
+		default:
+			// 根据severity判断
+			if log.ActionDescription.Valid {
+				desc := log.ActionDescription.String
+				if strings.Contains(desc, "[CRITICAL]") || strings.Contains(desc, "[HIGH]") {
+					return "error"
+				}
+				if strings.Contains(desc, "[MEDIUM]") {
+					return "warning"
+				}
+			}
+		}
+	}
+
+	// 普通登录成功应该是info
+	if actionType == "login" {
+		return "info"
+	}
+
+	// 根据响应状态码判断（作为后备）
 	if !log.ResponseStatus.Valid {
 		return "info"
 	}
@@ -111,6 +144,38 @@ func getLogLevel(log models.AuditLog) string {
 
 // getLogLevelCN 获取日志级别（中文）
 func getLogLevelCN(log models.AuditLog) string {
+	// 根据action_type判断日志级别（优先）
+	actionType := log.ActionType
+
+	// 安全日志根据事件类型判断
+	if strings.HasPrefix(actionType, "security_") {
+		switch actionType {
+		case "security_login_success", "security_login_attempt":
+			return "信息"
+		case "security_login_failed", "security_login_blocked", "security_ip_blocked":
+			return "错误"
+		case "security_login_rate_limit":
+			return "警告"
+		default:
+			// 根据severity判断
+			if log.ActionDescription.Valid {
+				desc := log.ActionDescription.String
+				if strings.Contains(desc, "[CRITICAL]") || strings.Contains(desc, "[HIGH]") {
+					return "错误"
+				}
+				if strings.Contains(desc, "[MEDIUM]") {
+					return "警告"
+				}
+			}
+		}
+	}
+
+	// 普通登录成功应该是info
+	if actionType == "login" {
+		return "信息"
+	}
+
+	// 根据响应状态码判断（作为后备）
 	if !log.ResponseStatus.Valid {
 		return "信息"
 	}
@@ -211,6 +276,48 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 		context["status"] = log.ResponseStatus.Int64
 	}
 
+	// 解析地理位置信息
+	var locationDisplay string
+	var locationInfo map[string]interface{}
+	if log.Location.Valid && log.Location.String != "" {
+		// 尝试解析JSON格式的位置信息
+		var location geoip.LocationInfo
+		if err := json.Unmarshal([]byte(log.Location.String), &location); err == nil {
+			// 成功解析JSON，构建显示字符串
+			if location.City != "" {
+				locationDisplay = fmt.Sprintf("%s, %s", location.Country, location.City)
+			} else {
+				locationDisplay = location.Country
+			}
+			locationInfo = map[string]interface{}{
+				"country":      location.Country,
+				"country_code": location.CountryCode,
+				"city":         location.City,
+				"region":       location.Region,
+			}
+		} else {
+			// 不是JSON格式，直接使用字符串
+			locationDisplay = log.Location.String
+		}
+	} else if log.IPAddress.Valid && log.IPAddress.String != "" {
+		// 如果没有location但有IP，尝试使用GeoIP解析
+		if geoip.IsEnabled() {
+			locationStr := geoip.GetLocationSimple(log.IPAddress.String)
+			if locationStr != "" {
+				locationDisplay = locationStr
+				// 获取完整信息
+				if location, err := geoip.GetLocation(log.IPAddress.String); err == nil {
+					locationInfo = map[string]interface{}{
+						"country":      location.Country,
+						"country_code": location.CountryCode,
+						"city":         location.City,
+						"region":       location.Region,
+					}
+				}
+			}
+		}
+	}
+
 	result := gin.H{
 		"id":          log.ID,
 		"timestamp":   log.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -219,6 +326,7 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 		"message":     message,
 		"username":    username,
 		"ip_address":  getNullableStringValue(log.IPAddress),
+		"location":    locationDisplay, // 添加地理位置显示
 		"user_agent":  getNullableStringValue(log.UserAgent),
 		"action_type": log.ActionType,
 		"details":     details,
@@ -231,6 +339,9 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 	}
 	if additionalInfo != nil {
 		result["additional_info"] = additionalInfo
+	}
+	if locationInfo != nil {
+		result["location_info"] = locationInfo
 	}
 
 	return result

@@ -159,15 +159,31 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		}
 	}
 
-	// 确定响应状态码（根据严重程度）
+	// 确定响应状态码（根据事件类型和严重程度）
 	var responseStatus sql.NullInt64
-	switch severity {
-	case "CRITICAL", "HIGH":
-		responseStatus = sql.NullInt64{Int64: http.StatusForbidden, Valid: true}
-	case "MEDIUM":
+	switch eventType {
+	case "login_success":
+		// 登录成功应该是200
+		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
+	case "login_attempt":
+		// 登录尝试应该是200（只是记录尝试）
+		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
+	case "login_failed", "login_blocked", "ip_blocked":
+		// 登录失败、被阻止、IP封禁应该是错误状态
+		responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
+	case "login_rate_limit":
+		// 速率限制应该是429
 		responseStatus = sql.NullInt64{Int64: http.StatusTooManyRequests, Valid: true}
 	default:
-		responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
+		// 其他情况根据严重程度判断
+		switch severity {
+		case "CRITICAL", "HIGH":
+			responseStatus = sql.NullInt64{Int64: http.StatusForbidden, Valid: true}
+		case "MEDIUM":
+			responseStatus = sql.NullInt64{Int64: http.StatusTooManyRequests, Valid: true}
+		default:
+			responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
+		}
 	}
 
 	// 创建安全审计日志
