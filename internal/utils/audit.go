@@ -292,3 +292,92 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 
 	return false, ""
 }
+
+// CreateSystemErrorLog 创建系统错误日志（记录系统内部错误、数据库错误、服务器错误等）
+func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err error) {
+	db := database.GetDB()
+	if db == nil {
+		// 如果数据库未初始化，只记录到文件日志
+		if AppLogger != nil {
+			AppLogger.Error("[系统错误] %s: %v", message, err)
+		}
+		return
+	}
+
+	// 获取IP地址
+	ipAddress := GetRealClientIP(c)
+	if ipAddress == "" {
+		ipAddress = c.ClientIP()
+	}
+
+	// 获取User-Agent
+	userAgent := c.GetHeader("User-Agent")
+
+	// 解析地理位置
+	var location sql.NullString
+	if ipAddress != "" {
+		location = geoip.GetLocationString(ipAddress)
+	}
+
+	// 获取用户ID（如果存在）
+	var userID sql.NullInt64
+	if uid, exists := c.Get("user_id"); exists {
+		if u, ok := uid.(uint); ok {
+			userID = sql.NullInt64{Int64: int64(u), Valid: true}
+		}
+	}
+
+	// 构建错误详情
+	errorDetails := map[string]interface{}{
+		"message": message,
+		"path":    c.Request.URL.Path,
+		"method":  c.Request.Method,
+	}
+	if err != nil {
+		errorDetails["error"] = err.Error()
+	}
+
+	// 序列化错误详情
+	var errorDetailsJSON sql.NullString
+	if data, err := json.Marshal(errorDetails); err == nil {
+		errorDetailsJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
+	// 创建系统错误审计日志
+	auditLog := models.AuditLog{
+		UserID:            userID,
+		ActionType:        "system_error",
+		ResourceType:      sql.NullString{String: "system", Valid: true},
+		ResourceID:        sql.NullInt64{Valid: false},
+		ActionDescription: sql.NullString{String: fmt.Sprintf("系统错误: %s", message), Valid: true},
+		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
+		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
+		Location:          location,
+		RequestMethod:     sql.NullString{String: c.Request.Method, Valid: true},
+		RequestPath:       sql.NullString{String: c.Request.URL.Path, Valid: true},
+		ResponseStatus:    sql.NullInt64{Int64: int64(statusCode), Valid: true},
+		BeforeData:        errorDetailsJSON,
+		AfterData:         sql.NullString{Valid: false},
+	}
+
+	// 异步保存，避免影响主流程
+	go func() {
+		// 保存错误详情到局部变量，避免闭包问题
+		errDetail := err
+		if saveErr := db.Create(&auditLog).Error; saveErr != nil {
+			// 如果保存失败，至少记录到文件日志
+			if AppLogger != nil {
+				AppLogger.Error("[系统错误日志保存失败] %s: %v, 错误: %v", message, errDetail, saveErr)
+			}
+		} else {
+			// 记录到文件日志（用于实时监控）
+			if AppLogger != nil {
+				errorMsg := fmt.Sprintf("[系统错误] 状态码:%d | 路径:%s | 错误:%s", statusCode, c.Request.URL.Path, message)
+				if errDetail != nil {
+					errorMsg += fmt.Sprintf(" | 详细错误:%v", errDetail)
+				}
+				AppLogger.Error(errorMsg)
+			}
+		}
+	}()
+}

@@ -22,7 +22,7 @@ func SetupRouter() *gin.Engine {
 	// 中间件
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.SecurityHeadersMiddleware()) // 添加安全响应头
-	r.Use(gin.Recovery())
+	r.Use(middleware.ErrorRecoveryMiddleware())   // 使用增强版错误恢复中间件（记录错误到系统日志）
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(middleware.RequestIDMiddleware())
 

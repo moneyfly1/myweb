@@ -70,5 +70,10 @@ func LogError(operation string, err error, context map[string]interface{}) {
 		msg += fmt.Sprintf(", Context: %+v", safeContext)
 	}
 
-	log.Printf("[ERROR] %s", msg)
+	// 记录到文件日志
+	if AppLogger != nil {
+		AppLogger.Error(msg)
+	} else {
+		log.Printf("[ERROR] %s", msg)
+	}
 }

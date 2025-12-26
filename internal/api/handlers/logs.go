@@ -100,6 +100,11 @@ func getLogLevel(log models.AuditLog) string {
 	// 根据action_type判断日志级别（优先）
 	actionType := log.ActionType
 
+	// 系统错误日志应该是error级别
+	if actionType == "system_error" {
+		return "error"
+	}
+
 	// 安全日志根据事件类型判断
 	if strings.HasPrefix(actionType, "security_") {
 		switch actionType {
@@ -146,6 +151,11 @@ func getLogLevel(log models.AuditLog) string {
 func getLogLevelCN(log models.AuditLog) string {
 	// 根据action_type判断日志级别（优先）
 	actionType := log.ActionType
+
+	// 系统错误日志应该是error级别
+	if actionType == "system_error" {
+		return "错误"
+	}
 
 	// 安全日志根据事件类型判断
 	if strings.HasPrefix(actionType, "security_") {
