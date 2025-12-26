@@ -9,6 +9,29 @@
 
 set +e  # 遇到错误不立即退出，允许重试
 
+# 错误处理函数
+handle_error() {
+    local line=$1
+    local command=$2
+    error "脚本执行出错！"
+    error "错误位置: 第 $line 行"
+    error "执行的命令: $command"
+    error ""
+    error "请检查以下内容："
+    error "1. 查看安装日志: tail -f $LOG_FILE"
+    error "2. 检查网络连接: ping -c 3 8.8.8.8"
+    error "3. 检查磁盘空间: df -h"
+    error "4. 检查系统资源: free -h"
+    error ""
+    error "如果问题持续，请提供以下信息："
+    error "- 操作系统版本: cat /etc/os-release"
+    error "- 错误日志: tail -50 $LOG_FILE"
+    exit 1
+}
+
+# 设置错误陷阱
+trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
+
 # --- 颜色定义 ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -32,6 +55,8 @@ LOG_FILE="/tmp/cboard_install_$(date +%Y%m%d_%H%M%S).log"
 # 记录日志
 exec > >(tee -a "$LOG_FILE")
 exec 2>&1
+
+# 显示日志文件位置（在 main 函数开始时显示）
 
 # --- 基础检查 ---
 check_root() {
