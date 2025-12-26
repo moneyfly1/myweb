@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -151,12 +152,43 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 		message = log.ActionType
 	}
 
+	// 解析BeforeData中的JSON数据（用于安全日志）
+	var failureReason string
+	var additionalInfo map[string]interface{}
+	if log.BeforeData.Valid && strings.HasPrefix(log.ActionType, "security_") {
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(log.BeforeData.String), &data); err == nil {
+			additionalInfo = data
+			// 提取失败原因
+			if reason, ok := data["reason"].(string); ok {
+				failureReason = reason
+			}
+			// 如果是登录失败，显示更详细的信息
+			if log.ActionType == "security_login_failed" {
+				if email, ok := data["email"].(string); ok {
+					failureReason += fmt.Sprintf(" (邮箱: %s)", email)
+				}
+				if username, ok := data["username"].(string); ok {
+					failureReason += fmt.Sprintf(" (用户名: %s)", username)
+				}
+				if locked, ok := data["locked"].(bool); ok && locked {
+					failureReason += " [IP已被封禁]"
+				}
+			}
+		}
+	}
+
 	// 构建详情
 	details := ""
 	if log.BeforeData.Valid || log.AfterData.Valid {
 		var detailParts []string
 		if log.BeforeData.Valid {
-			detailParts = append(detailParts, "Before: "+log.BeforeData.String)
+			if failureReason != "" {
+				// 如果有解析出的失败原因，优先显示
+				detailParts = append(detailParts, "失败原因: "+failureReason)
+			} else {
+				detailParts = append(detailParts, "Before: "+log.BeforeData.String)
+			}
 		}
 		if log.AfterData.Valid {
 			detailParts = append(detailParts, "After: "+log.AfterData.String)
@@ -179,7 +211,7 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 		context["status"] = log.ResponseStatus.Int64
 	}
 
-	return gin.H{
+	result := gin.H{
 		"id":          log.ID,
 		"timestamp":   log.CreatedAt.Format("2006-01-02 15:04:05"),
 		"level":       level,
@@ -192,6 +224,16 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 		"details":     details,
 		"context":     context,
 	}
+
+	// 如果是安全日志，添加失败原因字段
+	if failureReason != "" {
+		result["failure_reason"] = failureReason
+	}
+	if additionalInfo != nil {
+		result["additional_info"] = additionalInfo
+	}
+
+	return result
 }
 
 // getNullableStringValue 获取可空字符串值
