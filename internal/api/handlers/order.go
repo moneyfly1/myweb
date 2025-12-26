@@ -937,7 +937,11 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	// 创建订单（无论是否完全用余额支付）
-	orderNo := utils.GenerateOrderNo(user.ID)
+	orderNo, err := utils.GenerateOrderNo(db)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订单号失败", err)
+		return
+	}
 	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d,"balance_used":%.2f}`, req.AdditionalDevices, req.AdditionalDays, balanceUsed)
 
 	// 计算实际支付金额（余额+第三方支付）

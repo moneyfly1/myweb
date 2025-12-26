@@ -133,6 +133,19 @@ func CreateSubscription(c *gin.Context) {
 	db := database.GetDB()
 	// 从系统设置中获取默认订阅配置
 	deviceLimit, durationMonths := getDefaultSubscriptionSettings(db)
+
+	// 计算到期时间
+	nowUTC := time.Now().UTC()
+	var expireTime time.Time
+	// 如果 durationMonths 为 0 或负数，设置为当天到期（当天结束时间）
+	if durationMonths <= 0 {
+		// 设置为当天的结束时间（23:59:59）
+		expireTime = time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 23, 59, 59, 0, nowUTC.Location())
+	} else {
+		// 在 UTC 时区下计算过期时间
+		expireTime = nowUTC.AddDate(0, durationMonths, 0)
+	}
+
 	sub := models.Subscription{
 		UserID:          user.ID,
 		SubscriptionURL: utils.GenerateSubscriptionURL(),
@@ -140,7 +153,7 @@ func CreateSubscription(c *gin.Context) {
 		CurrentDevices:  0,
 		IsActive:        true,
 		Status:          utils.SubscriptionStatusActive,
-		ExpireTime:      utils.GetBeijingTime().AddDate(0, durationMonths, 0),
+		ExpireTime:      expireTime,
 	}
 	if err := db.Create(&sub).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建订阅失败", err)

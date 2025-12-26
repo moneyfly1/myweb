@@ -124,7 +124,10 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	}
 
 	// 创建订单
-	orderNo := utils.GenerateOrderNo(user.ID)
+	orderNo, err := utils.GenerateOrderNo(s.db)
+	if err != nil {
+		return nil, "", fmt.Errorf("生成订单号失败: %v", err)
+	}
 	order := models.Order{
 		OrderNo:        orderNo,
 		UserID:         user.ID,
