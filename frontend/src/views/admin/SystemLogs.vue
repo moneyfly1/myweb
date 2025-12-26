@@ -271,9 +271,12 @@
             <el-table-column prop="message" label="日志内容" min-width="300">
               <template #default="{ row }">
                 <div class="log-message">
-                  <span class="message-text">{{ row.message }}</span>
+                  <div class="message-text">{{ row.message }}</div>
+                  <div v-if="row.failure_reason" class="failure-reason-inline">
+                    <el-tag type="warning" size="small">{{ row.failure_reason }}</el-tag>
+                  </div>
                   <el-button
-                    v-if="row.details"
+                    v-if="row.details || row.failure_reason"
                     type="text"
                     size="small"
                     @click="showLogDetails(row)"
@@ -333,6 +336,10 @@
                 <div class="log-card-row">
                   <span class="log-label">内容：</span>
                   <span class="log-value log-message-text">{{ truncateText(log.message, 50) }}</span>
+                </div>
+                <div class="log-card-row" v-if="log.failure_reason">
+                  <span class="log-label">失败原因：</span>
+                  <el-tag type="warning" size="small">{{ log.failure_reason }}</el-tag>
                 </div>
                 <div class="log-card-row" v-if="log.username">
                   <span class="log-label">用户：</span>
@@ -403,6 +410,13 @@
         <div class="log-message-section">
           <h4>日志内容</h4>
           <div class="log-message-content">{{ selectedLog.message }}</div>
+        </div>
+        
+        <div v-if="selectedLog.failure_reason" class="log-failure-reason">
+          <h4>失败原因</h4>
+          <div class="failure-reason-content">
+            <el-tag type="warning" size="small">{{ selectedLog.failure_reason }}</el-tag>
+          </div>
         </div>
         
         <div v-if="selectedLog.details" class="log-details-section">

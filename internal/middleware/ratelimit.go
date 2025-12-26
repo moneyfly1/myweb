@@ -224,6 +224,27 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
+				// IP被封禁，记录详细日志
+				utils.CreateSecurityLog(c, "ip_blocked", "HIGH",
+					fmt.Sprintf("IP被封禁: %s (登录失败次数过多，已锁定15分钟)", key),
+					map[string]interface{}{
+						"ip":        key,
+						"reason":    "登录失败次数过多",
+						"lock_time": "15分钟",
+						"reset_at":  resetAt.Format("2006-01-02 15:04:05"),
+					})
+			} else {
+				// 接近限制，记录警告
+				utils.CreateSecurityLog(c, "login_rate_limit", "MEDIUM",
+					fmt.Sprintf("登录速率限制: IP %s 接近限制", key),
+					map[string]interface{}{
+						"ip":       key,
+						"reason":   "登录失败次数过多",
+						"reset_at": resetAt.Format("2006-01-02 15:04:05"),
+					})
+			}
+
+			if locked {
 				utils.ErrorResponse(c, http.StatusTooManyRequests, "登录失败次数过多，账户已被临时锁定15分钟，请稍后再试", nil)
 			} else {
 				c.Header("X-RateLimit-Limit", "5")
@@ -254,6 +275,11 @@ func IncrementLoginAttempt(ip string) {
 // ResetLoginAttempt 重置登录尝试计数（登录成功时调用）
 func ResetLoginAttempt(ip string) {
 	loginRateLimiter.Reset(ip)
+}
+
+// GetLoginAttemptStatus 获取登录尝试状态（用于日志记录）
+func GetLoginAttemptStatus(ip string) (allowed bool, resetAt time.Time, locked bool) {
+	return loginRateLimiter.Check(ip)
 }
 
 // RegisterRateLimitMiddleware 注册速率限制中间件
