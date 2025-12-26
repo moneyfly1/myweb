@@ -65,13 +65,14 @@
 最简单的方式是直接在 VPS 上运行一键安装脚本：
 
 ```bash
-# 下载安装脚本
+# 1. 下载安装脚本
 wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
 
-# 添加执行权限
+# 2. 添加执行权限
 chmod +x install-vps.sh
 
-# 运行安装脚本（需要 root 权限）
+# 3. 运行安装脚本（需要 root 权限）
+#    脚本会自动下载代码、安装所有依赖、配置环境
 sudo bash install-vps.sh
 ```
 
@@ -93,28 +94,27 @@ sudo bash install-vps.sh
 
 ### 一键安装步骤
 
-#### 步骤 1：下载安装脚本
+#### 步骤 1：下载并运行安装脚本
 
 通过 SSH 连接到您的 VPS 服务器，然后执行：
 
 ```bash
-# 方式一：直接下载安装脚本（推荐）
+# 下载安装脚本
 wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
+
+# 添加执行权限
 chmod +x install-vps.sh
 
-# 方式二：如果已经克隆了仓库
-cd /path/to/myweb
-chmod +x install-vps.sh
-```
-
-#### 步骤 2：运行安装脚本
-
-```bash
-# 使用 root 权限运行安装脚本
+# 直接运行安装脚本（脚本会自动下载代码）
 sudo bash install-vps.sh
 ```
 
-**注意**：`install-vps.sh` 是全自动安装脚本，会自动安装所有依赖（Go、Node.js、Nginx 等），无需手动配置。
+**重要说明**：
+- 脚本会自动从 GitHub 下载项目代码，无需手动克隆仓库
+- 脚本会自动安装所有依赖（Go、Node.js、Nginx、Certbot 等）
+- 脚本会自动配置网络代理和镜像源
+- 脚本会自动处理防火墙、端口、域名解析等问题
+- 只需按提示输入域名和管理员信息即可
 
 #### 步骤 3：按提示输入信息
 
