@@ -60,23 +60,230 @@
 
 ## 🚀 Installation
 
-### Quick Start - Clone from GitHub
+### Quick Start - VPS One-Click Installation (Recommended)
 
-The easiest way to get started is to clone the project directly from GitHub:
+The easiest way is to run the one-click installation script directly on your VPS:
 
 ```bash
-# Clone the repository
-git clone https://github.com/moneyfly1/myweb.git cboard
-cd cboard
+# Download installation script
+wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
 
-# Make installation script executable
-chmod +x install.sh
+# Make executable
+chmod +x install-vps.sh
 
 # Run installation script (requires root)
-sudo ./install.sh
+sudo bash install-vps.sh
 ```
 
 **GitHub Repository**: https://github.com/moneyfly1/myweb
+
+**One-Click Installation Script**: `install-vps.sh` - Fully automatic installation, handles all environment issues automatically
+
+---
+
+## 🚀 VPS One-Click Installation (Non-BT Panel)
+
+### Prerequisites
+
+- ✅ Server OS: Ubuntu 18.04+ / Debian 10+ / CentOS 7+
+- ✅ Server specs: At least 1 core CPU + 512 MB RAM + 10 GB disk
+- ✅ Domain name bound (for SSL certificate)
+- ✅ Domain DNS configured to point to server IP
+- ✅ Ports 80 and 443 open on server
+
+### One-Click Installation Steps
+
+#### Step 1: Download Installation Script
+
+Connect to your VPS server via SSH, then execute:
+
+```bash
+# Method 1: Direct download (Recommended)
+wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
+chmod +x install-vps.sh
+
+# Method 2: If you've already cloned the repository
+cd /path/to/myweb
+chmod +x install-vps.sh
+```
+
+#### Step 2: Run Installation Script
+
+```bash
+# Run installation script with root privileges
+sudo bash install-vps.sh
+```
+
+**Note**: `install-vps.sh` is a fully automatic installation script that will automatically install all dependencies (Go, Node.js, Nginx, etc.), no manual configuration required.
+
+#### Step 3: Enter Information as Prompted
+
+The installation script will prompt you to enter the following information:
+
+1. **Domain**: Enter your domain name (e.g., `example.com`)
+   - Required, must be in correct format
+   - Ensure domain is correctly resolved to server IP
+
+2. **Project Directory**: Enter installation path (default: `/opt/cboard`)
+   - Press Enter to use default path
+   - Or enter custom path
+
+3. **Admin Username**: Enter admin username (default: `admin`)
+   - Press Enter to use default
+   - Or enter custom username
+
+4. **Admin Email**: Enter admin email (required)
+   - Must be a valid email address
+   - Used for system notifications and SSL certificate application
+
+5. **Admin Password**: Enter admin password (required)
+   - Password must be at least 6 characters
+   - Need to enter twice for confirmation
+
+#### Step 4: Automatic Installation Process
+
+After confirming information, the script will automatically:
+
+- ✅ Detect operating system type
+- ✅ Install system dependencies (curl, wget, git, nginx, certbot, etc.)
+- ✅ Automatically install Go environment (1.21.5)
+- ✅ Automatically install Node.js environment (18.x)
+- ✅ Download project code from GitHub
+- ✅ Create environment configuration file (`.env`)
+- ✅ Compile backend program
+- ✅ Build frontend project
+- ✅ Create admin account
+- ✅ Configure Nginx reverse proxy
+- ✅ Apply for SSL certificate (Let's Encrypt)
+- ✅ Create systemd service
+- ✅ Start service
+
+#### Step 5: Verify Installation
+
+After installation, access your domain:
+
+- **Frontend Interface**: `https://yourdomain.com`
+- **Admin Login**: `https://yourdomain.com/admin/login`
+- **Health Check**: `https://yourdomain.com/health`
+- **API Endpoints**: `https://yourdomain.com/api/v1/...`
+
+### Post-Installation Management
+
+#### Common Commands
+
+```bash
+# View service status
+systemctl status cboard
+
+# View service logs
+journalctl -u cboard -f
+
+# Restart service
+systemctl restart cboard
+
+# Stop service
+systemctl stop cboard
+
+# Start service
+systemctl start cboard
+```
+
+#### View Application Logs
+
+```bash
+# View application log file
+tail -f /opt/cboard/server.log
+
+# Or view systemd logs
+journalctl -u cboard -n 100
+```
+
+#### Modify Configuration
+
+Configuration file location: `/opt/cboard/.env`
+
+After modification, restart the service:
+
+```bash
+systemctl restart cboard
+```
+
+### Troubleshooting
+
+#### 1. SSL Certificate Application Failed
+
+**Possible causes**:
+- Domain not correctly resolved to server IP
+- Port 80 not open
+- Firewall blocking Let's Encrypt verification
+
+**Solution**:
+```bash
+# Check domain resolution
+nslookup yourdomain.com
+
+# Check if port is open
+netstat -tlnp | grep :80
+
+# Manually apply for certificate
+certbot --nginx -d yourdomain.com
+```
+
+#### 2. Service Cannot Start
+
+**Check logs**:
+```bash
+journalctl -u cboard -n 50
+```
+
+**Common causes**:
+- Port occupied (default 8000)
+- Configuration file error
+- Database permission issue
+
+#### 3. Frontend Cannot Access Backend API
+
+**Check Nginx configuration**:
+```bash
+# View Nginx configuration
+cat /etc/nginx/sites-available/cboard
+# Or CentOS
+cat /etc/nginx/conf.d/cboard.conf
+
+# Test Nginx configuration
+nginx -t
+
+# Reload Nginx
+systemctl reload nginx
+```
+
+#### 4. Forgot Admin Password
+
+```bash
+cd /opt/cboard
+export ADMIN_USERNAME="admin"
+export ADMIN_EMAIL="your-email@example.com"
+export ADMIN_PASSWORD="your-new-password"
+go run scripts/create_admin.go
+```
+
+### Important Notes
+
+1. **First Installation**:
+   - Ensure server has sufficient disk space (at least 2GB)
+   - Ensure network connection is normal and can access GitHub
+   - Installation process may take 5-10 minutes
+
+2. **Security Recommendations**:
+   - Change default password immediately after installation
+   - Regularly update system and dependencies
+   - Configure firewall rules
+   - Regularly backup database
+
+3. **Performance Optimization**:
+   - For high-traffic scenarios, consider using MySQL/PostgreSQL
+   - Can configure Nginx caching for static files
+   - Monitor server resource usage
 
 ---
 

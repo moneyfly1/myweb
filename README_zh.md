@@ -60,23 +60,230 @@
 
 ## 🚀 安装指南
 
-### 快速开始 - 从 GitHub 克隆
+### 快速开始 - VPS 一键安装（推荐）
 
-最简单的方式是直接从 GitHub 克隆项目：
+最简单的方式是直接在 VPS 上运行一键安装脚本：
 
 ```bash
-# 克隆仓库
-git clone https://github.com/moneyfly1/myweb.git cboard
-cd cboard
+# 下载安装脚本
+wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
 
-# 添加安装脚本执行权限
-chmod +x install.sh
+# 添加执行权限
+chmod +x install-vps.sh
 
 # 运行安装脚本（需要 root 权限）
-sudo ./install.sh
+sudo bash install-vps.sh
 ```
 
 **GitHub 仓库地址**: https://github.com/moneyfly1/myweb
+
+**一键安装脚本**: `install-vps.sh` - 全自动安装，自动处理所有环境问题
+
+---
+
+## 🚀 VPS 一键安装（非宝塔面板）
+
+### 前置条件
+
+- ✅ 服务器系统：Ubuntu 18.04+ / Debian 10+ / CentOS 7+
+- ✅ 服务器配置：至少 1 核心 CPU + 512 MB 内存 + 10 GB 磁盘
+- ✅ 已绑定域名（用于 SSL 证书）
+- ✅ 已配置域名 DNS 解析到服务器 IP
+- ✅ 服务器已开放 80 和 443 端口
+
+### 一键安装步骤
+
+#### 步骤 1：下载安装脚本
+
+通过 SSH 连接到您的 VPS 服务器，然后执行：
+
+```bash
+# 方式一：直接下载安装脚本（推荐）
+wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
+chmod +x install-vps.sh
+
+# 方式二：如果已经克隆了仓库
+cd /path/to/myweb
+chmod +x install-vps.sh
+```
+
+#### 步骤 2：运行安装脚本
+
+```bash
+# 使用 root 权限运行安装脚本
+sudo bash install-vps.sh
+```
+
+**注意**：`install-vps.sh` 是全自动安装脚本，会自动安装所有依赖（Go、Node.js、Nginx 等），无需手动配置。
+
+#### 步骤 3：按提示输入信息
+
+安装脚本会依次提示您输入以下信息：
+
+1. **域名**：输入您的域名（例如：`example.com`）
+   - 必须输入，格式需正确
+   - 确保域名已正确解析到服务器 IP
+
+2. **项目安装目录**：输入项目安装路径（默认：`/opt/cboard`）
+   - 可直接按回车使用默认路径
+   - 或输入自定义路径
+
+3. **管理员用户名**：输入管理员用户名（默认：`admin`）
+   - 可直接按回车使用默认值
+   - 或输入自定义用户名
+
+4. **管理员邮箱**：输入管理员邮箱（必填）
+   - 必须输入有效的邮箱地址
+   - 用于接收系统通知和 SSL 证书申请
+
+5. **管理员密码**：输入管理员密码（必填）
+   - 密码长度至少 6 位
+   - 需要输入两次确认
+
+#### 步骤 4：自动安装过程
+
+确认信息后，脚本会自动完成以下操作：
+
+- ✅ 检测操作系统类型
+- ✅ 安装系统依赖（curl, wget, git, nginx, certbot 等）
+- ✅ 自动安装 Go 语言环境（1.21.5）
+- ✅ 自动安装 Node.js 环境（18.x）
+- ✅ 从 GitHub 下载项目代码
+- ✅ 创建环境配置文件（`.env`）
+- ✅ 编译后端程序
+- ✅ 构建前端项目
+- ✅ 创建管理员账户
+- ✅ 配置 Nginx 反向代理
+- ✅ 申请 SSL 证书（Let's Encrypt）
+- ✅ 创建 systemd 服务
+- ✅ 启动服务
+
+#### 步骤 5：验证安装
+
+安装完成后，访问您的域名：
+
+- **前端界面**: `https://yourdomain.com`
+- **管理员登录**: `https://yourdomain.com/admin/login`
+- **健康检查**: `https://yourdomain.com/health`
+- **API 接口**: `https://yourdomain.com/api/v1/...`
+
+### 安装后管理
+
+#### 常用命令
+
+```bash
+# 查看服务状态
+systemctl status cboard
+
+# 查看服务日志
+journalctl -u cboard -f
+
+# 重启服务
+systemctl restart cboard
+
+# 停止服务
+systemctl stop cboard
+
+# 启动服务
+systemctl start cboard
+```
+
+#### 查看应用日志
+
+```bash
+# 查看应用日志文件
+tail -f /opt/cboard/server.log
+
+# 或查看 systemd 日志
+journalctl -u cboard -n 100
+```
+
+#### 修改配置
+
+配置文件位置：`/opt/cboard/.env`
+
+修改后需要重启服务：
+
+```bash
+systemctl restart cboard
+```
+
+### 故障排除
+
+#### 1. SSL 证书申请失败
+
+**可能原因**：
+- 域名未正确解析到服务器 IP
+- 80 端口未开放
+- 防火墙阻止了 Let's Encrypt 验证
+
+**解决方法**：
+```bash
+# 检查域名解析
+nslookup yourdomain.com
+
+# 检查端口是否开放
+netstat -tlnp | grep :80
+
+# 手动申请证书
+certbot --nginx -d yourdomain.com
+```
+
+#### 2. 服务无法启动
+
+**检查日志**：
+```bash
+journalctl -u cboard -n 50
+```
+
+**常见原因**：
+- 端口被占用（默认 8000）
+- 配置文件错误
+- 数据库权限问题
+
+#### 3. 前端无法访问后端 API
+
+**检查 Nginx 配置**：
+```bash
+# 查看 Nginx 配置
+cat /etc/nginx/sites-available/cboard
+# 或 CentOS
+cat /etc/nginx/conf.d/cboard.conf
+
+# 测试 Nginx 配置
+nginx -t
+
+# 重载 Nginx
+systemctl reload nginx
+```
+
+#### 4. 忘记管理员密码
+
+```bash
+cd /opt/cboard
+export ADMIN_USERNAME="admin"
+export ADMIN_EMAIL="your-email@example.com"
+export ADMIN_PASSWORD="your-new-password"
+go run scripts/create_admin.go
+```
+
+### 注意事项
+
+1. **首次安装**：
+   - 确保服务器有足够的磁盘空间（至少 2GB）
+   - 确保网络连接正常，可以访问 GitHub
+   - 安装过程可能需要 5-10 分钟
+
+2. **安全建议**：
+   - 安装后立即修改默认密码
+   - 定期更新系统和依赖
+   - 配置防火墙规则
+   - 定期备份数据库
+
+3. **性能优化**：
+   - 对于高流量场景，建议使用 MySQL/PostgreSQL
+   - 可以配置 Nginx 缓存静态文件
+   - 监控服务器资源使用情况
 
 ---
 
