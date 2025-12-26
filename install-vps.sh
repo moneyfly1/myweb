@@ -756,14 +756,13 @@ build_project() {
     log "开始编译（低内存优化模式）..."
     log "这可能需要 10-30 分钟，请耐心等待..."
     
-    # 设置编译优化选项
-    local build_flags="-ldflags=-s -w"  # 去除符号表和调试信息，减小二进制大小
-    build_flags="$build_flags -trimpath"  # 去除路径信息
-    
     # 使用 timeout 防止无限卡住
     local build_timeout=1800  # 30分钟超时
     
-    if timeout $build_timeout go build $build_flags -o server ./cmd/server/main.go 2>&1; then
+    # 编译命令（使用正确的 ldflags 格式）
+    # -ldflags="-s -w" 去除符号表和调试信息，减小二进制大小
+    # -trimpath 去除路径信息
+    if timeout $build_timeout go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go 2>&1; then
         log "✅ 后端编译成功"
         
         # 检查编译产物
