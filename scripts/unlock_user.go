@@ -7,6 +7,7 @@ import (
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 )
 
@@ -112,6 +113,67 @@ func main() {
 
 	fmt.Printf("\n🗑️  清除登录记录: %d 条（包括成功和失败的记录）\n", result.RowsAffected)
 
+	// 获取用户最近登录的IP地址（从登录历史和审计日志中获取）
+	var loginHistories []models.LoginHistory
+	db.Where("user_id = ? AND ip_address IS NOT NULL", user.ID).
+		Order("login_time DESC").
+		Limit(10).
+		Find(&loginHistories)
+
+	// 从审计日志中获取用户相关的IP地址
+	var auditLogs []models.AuditLog
+	db.Where("user_id = ? AND ip_address IS NOT NULL AND action_type LIKE ?",
+		user.ID, "security_login%").
+		Order("created_at DESC").
+		Limit(10).
+		Find(&auditLogs)
+
+	// 收集所有相关的IP地址
+	ipSet := make(map[string]bool)
+	for _, history := range loginHistories {
+		if history.IPAddress.Valid && history.IPAddress.String != "" {
+			ipSet[history.IPAddress.String] = true
+		}
+	}
+	for _, log := range auditLogs {
+		if log.IPAddress.Valid && log.IPAddress.String != "" {
+			ipSet[log.IPAddress.String] = true
+		}
+	}
+
+	// 从登录失败记录中获取IP地址
+	for _, attempt := range recentAttempts {
+		if attempt.IPAddress.Valid && attempt.IPAddress.String != "" {
+			ipSet[attempt.IPAddress.String] = true
+		}
+	}
+
+	// 清除所有相关IP的速率限制
+	ipCount := 0
+	for ip := range ipSet {
+		middleware.ResetLoginAttempt(ip)
+		ipCount++
+	}
+
+	if ipCount > 0 {
+		fmt.Printf("🔓 清除IP速率限制: %d 个IP地址\n", ipCount)
+		fmt.Printf("   - 已清除的IP地址:\n")
+		ipList := make([]string, 0, len(ipSet))
+		for ip := range ipSet {
+			ipList = append(ipList, ip)
+		}
+		for i, ip := range ipList {
+			if i < 10 { // 最多显示10个IP
+				fmt.Printf("     %d. %s\n", i+1, ip)
+			}
+		}
+		if len(ipList) > 10 {
+			fmt.Printf("     ... 还有 %d 个IP地址\n", len(ipList)-10)
+		}
+	} else {
+		fmt.Printf("ℹ️  未找到相关的IP地址记录\n")
+	}
+
 	// 确保用户是激活状态
 	user.IsActive = true
 	user.IsVerified = true
@@ -124,16 +186,22 @@ func main() {
 	fmt.Println("\n✅ 用户账户已成功解锁!")
 	fmt.Println("\n📝 操作摘要:")
 	fmt.Printf("   - 清除了 %d 条登录记录\n", result.RowsAffected)
+	if ipCount > 0 {
+		fmt.Printf("   - 清除了 %d 个IP地址的速率限制\n", ipCount)
+	}
 	fmt.Printf("   - 账户状态: IsActive=true, IsVerified=true\n")
 
 	fmt.Println("\n⚠️  重要提示:")
-	fmt.Println("   1. 如果仍然无法登录，可能是 IP 地址被速率限制器锁定")
-	fmt.Println("   2. 速率限制器基于 IP 地址，锁定时间为 15 分钟")
-	fmt.Println("   3. 解决方案:")
-	fmt.Println("      a) 等待 15 分钟后重试")
-	fmt.Println("      b) 更换 IP 地址（使用 VPN 或移动网络）")
-	fmt.Println("      c) 重启服务器以清除内存中的速率限制记录")
-	fmt.Println("      d) 使用其他未锁定的 IP 地址登录")
+	if ipCount > 0 {
+		fmt.Println("   ✅ 已自动清除相关IP地址的速率限制")
+		fmt.Println("   ✅ 用户现在应该可以正常登录了")
+	} else {
+		fmt.Println("   ℹ️  未找到相关的IP地址记录，可能该用户没有登录历史")
+		fmt.Println("   ℹ️  如果用户仍然无法登录，请检查:")
+		fmt.Println("      a) 确认密码是否正确")
+		fmt.Println("      b) 确认账户状态是否为激活状态")
+		fmt.Println("      c) 如果IP被锁定，等待15分钟后重试或更换IP地址")
+	}
 
 	fmt.Println("\n💡 验证步骤:")
 	fmt.Println("   1. 确认账户状态: IsActive=true, IsVerified=true")

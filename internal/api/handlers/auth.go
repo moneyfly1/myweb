@@ -122,16 +122,69 @@ func Login(c *gin.Context) {
 	}
 	db := database.GetDB()
 	ipAddress := utils.GetRealClientIP(c)
+
+	// 检测批量登录和撞库行为
+	isSuspicious, reason := utils.CheckBruteForcePattern(c, req.Email)
+	if isSuspicious {
+		// 记录可疑行为
+		utils.CreateSecurityLog(c, "login_attempt", "HIGH",
+			fmt.Sprintf("检测到可疑登录行为: %s", reason),
+			map[string]interface{}{
+				"email":  req.Email,
+				"ip":     ipAddress,
+				"reason": reason,
+			})
+	}
+
+	// 记录登录尝试
+	utils.CreateSecurityLog(c, "login_attempt", "INFO",
+		fmt.Sprintf("登录尝试: 邮箱 %s", req.Email),
+		map[string]interface{}{
+			"email": req.Email,
+			"ip":    ipAddress,
+		})
+
 	user, err := auth.AuthenticateUser(db, req.Email, req.Password)
 	if err != nil {
 		// 登录失败，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
+
+		// 检查是否被封禁（增加计数后检查）
+		_, _, locked := middleware.GetLoginAttemptStatus(ipAddress)
+
+		// 记录密码错误日志
+		severity := "MEDIUM"
+		if locked {
+			severity = "HIGH"
+		}
+
+		utils.CreateSecurityLog(c, "login_failed", severity,
+			fmt.Sprintf("登录失败: 邮箱或密码错误 (IP: %s)", ipAddress),
+			map[string]interface{}{
+				"email":  req.Email,
+				"ip":     ipAddress,
+				"reason": "密码错误或用户不存在",
+				"locked": locked,
+			})
+
 		utils.ErrorResponse(c, http.StatusUnauthorized, "邮箱或密码错误", err)
 		return
 	}
 	if !user.IsActive {
 		// 账号被禁用，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
+
+		// 记录账号被禁用日志
+		utils.CreateSecurityLog(c, "login_blocked", "HIGH",
+			fmt.Sprintf("登录被阻止: 账号已禁用 (用户: %s, IP: %s)", user.Username, ipAddress),
+			map[string]interface{}{
+				"user_id":  user.ID,
+				"email":    req.Email,
+				"username": user.Username,
+				"ip":       ipAddress,
+				"reason":   "账号已禁用",
+			})
+
 		utils.ErrorResponse(c, http.StatusForbidden, "账号已禁用", nil)
 		return
 	}
@@ -179,6 +232,16 @@ func Login(c *gin.Context) {
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
 
+	// 记录登录成功日志
+	utils.CreateSecurityLog(c, "login_success", "INFO",
+		fmt.Sprintf("登录成功: 用户 %s (IP: %s)", user.Username, ipAddress),
+		map[string]interface{}{
+			"user_id":  user.ID,
+			"email":    user.Email,
+			"username": user.Username,
+			"ip":       ipAddress,
+		})
+
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
@@ -205,12 +268,32 @@ func LoginJSON(c *gin.Context) {
 			if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&tempUser).Error; err != nil {
 				// 登录失败，增加计数
 				middleware.IncrementLoginAttempt(ipAddress)
+
+				// 记录登录失败日志
+				utils.CreateSecurityLog(c, "login_failed", "MEDIUM",
+					fmt.Sprintf("登录失败: 维护模式下用户不存在 (IP: %s)", ipAddress),
+					map[string]interface{}{
+						"username": req.Username,
+						"ip":       ipAddress,
+						"reason":   "维护模式下用户不存在",
+					})
+
 				utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", err)
 				return
 			}
 			if !auth.VerifyPassword(req.Password, tempUser.Password) {
 				// 登录失败，增加计数
 				middleware.IncrementLoginAttempt(ipAddress)
+
+				// 记录密码错误日志
+				utils.CreateSecurityLog(c, "login_failed", "MEDIUM",
+					fmt.Sprintf("登录失败: 维护模式下密码错误 (IP: %s)", ipAddress),
+					map[string]interface{}{
+						"username": req.Username,
+						"ip":       ipAddress,
+						"reason":   "维护模式下密码错误",
+					})
+
 				utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", nil)
 				return
 			}
@@ -218,6 +301,17 @@ func LoginJSON(c *gin.Context) {
 			if !tempUser.IsAdmin {
 				// 非管理员在维护模式下无法登录，增加计数
 				middleware.IncrementLoginAttempt(ipAddress)
+
+				// 记录非管理员在维护模式下尝试登录
+				utils.CreateSecurityLog(c, "login_blocked", "MEDIUM",
+					fmt.Sprintf("登录被阻止: 维护模式下非管理员尝试登录 (用户: %s, IP: %s)", tempUser.Username, ipAddress),
+					map[string]interface{}{
+						"user_id":  tempUser.ID,
+						"username": tempUser.Username,
+						"ip":       ipAddress,
+						"reason":   "维护模式下非管理员无法登录",
+					})
+
 				utils.ErrorResponse(c, http.StatusServiceUnavailable, "系统维护中，请稍后再试", nil)
 				return
 			}
@@ -225,10 +319,50 @@ func LoginJSON(c *gin.Context) {
 		}
 	}
 
+	// 检测批量登录和撞库行为
+	isSuspicious, reason := utils.CheckBruteForcePattern(c, req.Username)
+	if isSuspicious {
+		// 记录可疑行为
+		utils.CreateSecurityLog(c, "login_attempt", "HIGH",
+			fmt.Sprintf("检测到可疑登录行为: %s", reason),
+			map[string]interface{}{
+				"username": req.Username,
+				"ip":       ipAddress,
+				"reason":   reason,
+			})
+	}
+
+	// 记录登录尝试
+	utils.CreateSecurityLog(c, "login_attempt", "INFO",
+		fmt.Sprintf("登录尝试: 用户名 %s", req.Username),
+		map[string]interface{}{
+			"username": req.Username,
+			"ip":       ipAddress,
+		})
+
 	var user models.User
 	if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&user).Error; err != nil {
 		// 登录失败，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
+
+		// 检查是否被封禁
+		_, _, locked := middleware.GetLoginAttemptStatus(ipAddress)
+
+		// 记录用户不存在或密码错误日志
+		severity := "MEDIUM"
+		if locked {
+			severity = "HIGH"
+		}
+
+		utils.CreateSecurityLog(c, "login_failed", severity,
+			fmt.Sprintf("登录失败: 用户名或密码错误 (IP: %s)", ipAddress),
+			map[string]interface{}{
+				"username": req.Username,
+				"ip":       ipAddress,
+				"reason":   "用户不存在或密码错误",
+				"locked":   locked,
+			})
+
 		utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", err)
 		return
 	}
@@ -237,6 +371,18 @@ func LoginJSON(c *gin.Context) {
 	if !user.IsActive {
 		// 账号被禁用，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
+
+		// 记录账号被禁用日志
+		utils.CreateSecurityLog(c, "login_blocked", "HIGH",
+			fmt.Sprintf("登录被阻止: 账号已禁用 (用户: %s, IP: %s)", user.Username, ipAddress),
+			map[string]interface{}{
+				"user_id":  user.ID,
+				"username": user.Username,
+				"email":    user.Email,
+				"ip":       ipAddress,
+				"reason":   "账号已禁用",
+			})
+
 		utils.ErrorResponse(c, http.StatusForbidden, "账户已被禁用，无法使用服务。如有疑问，请联系管理员。", nil)
 		return
 	}
@@ -244,6 +390,27 @@ func LoginJSON(c *gin.Context) {
 	if !auth.VerifyPassword(req.Password, user.Password) {
 		// 登录失败，增加计数
 		middleware.IncrementLoginAttempt(ipAddress)
+
+		// 检查是否被封禁
+		_, _, locked := middleware.GetLoginAttemptStatus(ipAddress)
+
+		// 记录密码错误日志
+		severity := "MEDIUM"
+		if locked {
+			severity = "HIGH"
+		}
+
+		utils.CreateSecurityLog(c, "login_failed", severity,
+			fmt.Sprintf("登录失败: 密码错误 (用户: %s, IP: %s)", user.Username, ipAddress),
+			map[string]interface{}{
+				"user_id":  user.ID,
+				"username": user.Username,
+				"email":    user.Email,
+				"ip":       ipAddress,
+				"reason":   "密码错误",
+				"locked":   locked,
+			})
+
 		utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", nil)
 		return
 	}
@@ -300,6 +467,16 @@ func LoginJSON(c *gin.Context) {
 	// 设置用户ID到上下文，以便审计日志可以获取
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
+
+	// 记录登录成功日志
+	utils.CreateSecurityLog(c, "login_success", "INFO",
+		fmt.Sprintf("登录成功: 用户 %s (IP: %s)", user.Username, ipAddress),
+		map[string]interface{}{
+			"user_id":  user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"ip":       ipAddress,
+		})
 
 	// 记录登录审计日志
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))

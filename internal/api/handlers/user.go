@@ -1208,6 +1208,41 @@ func UnlockUserLogin(c *gin.Context) {
 		Where("success = ?", false).
 		Delete(&models.LoginAttempt{})
 
+	// 获取用户最近登录的IP地址（从登录历史和审计日志中获取）
+	var loginHistories []models.LoginHistory
+	db.Where("user_id = ? AND ip_address IS NOT NULL", user.ID).
+		Order("login_time DESC").
+		Limit(10).
+		Find(&loginHistories)
+
+	// 从审计日志中获取用户相关的IP地址
+	var auditLogs []models.AuditLog
+	db.Where("user_id = ? AND ip_address IS NOT NULL AND action_type LIKE ?",
+		user.ID, "security_login%").
+		Order("created_at DESC").
+		Limit(10).
+		Find(&auditLogs)
+
+	// 收集所有相关的IP地址
+	ipSet := make(map[string]bool)
+	for _, history := range loginHistories {
+		if history.IPAddress.Valid && history.IPAddress.String != "" {
+			ipSet[history.IPAddress.String] = true
+		}
+	}
+	for _, log := range auditLogs {
+		if log.IPAddress.Valid && log.IPAddress.String != "" {
+			ipSet[log.IPAddress.String] = true
+		}
+	}
+
+	// 清除所有相关IP的速率限制
+	ipCount := 0
+	for ip := range ipSet {
+		middleware.ResetLoginAttempt(ip)
+		ipCount++
+	}
+
 	// 确保用户是激活状态
 	user.IsActive = true
 
@@ -1216,7 +1251,12 @@ func UnlockUserLogin(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("用户已解锁，清除了 %d 条登录失败记录", result.RowsAffected), nil)
+	message := fmt.Sprintf("用户已解锁，清除了 %d 条登录失败记录", result.RowsAffected)
+	if ipCount > 0 {
+		message += fmt.Sprintf("，已清除 %d 个IP地址的速率限制", ipCount)
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, message, nil)
 }
 
 // BatchDeleteUsers 批量删除用户
