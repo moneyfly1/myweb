@@ -243,3 +243,15 @@ func getFloat(data map[string]interface{}, key string, defaultValue float64) flo
 	}
 	return defaultValue
 }
+
+func getInt(data map[string]interface{}, key string, defaultValue int) int {
+	if val, ok := data[key]; ok {
+		if i, ok := val.(int); ok {
+			return i
+		}
+		if f, ok := val.(float64); ok {
+			return int(f)
+		}
+	}
+	return defaultValue
+}
