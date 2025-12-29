@@ -40,26 +40,29 @@ const (
 
 // 预编译正则表达式以提升性能
 // 注意：需要匹配完整的链接，包括参数部分（?和#之后的内容）
+// 重要：使用 (^|\s) 确保前面是行首或空白字符，避免被其他协议包含（如vmess://包含ss://）
 var nodeLinkPatterns = []*regexp.Regexp{
 	// VMess/VLESS: Base64编码的JSON，可能包含参数
-	regexp.MustCompile(`(vmess://[^\s]+)`),
-	regexp.MustCompile(`(vless://[^\s]+)`),
+	// 使用 (^|\s) 确保前面是行首或空白字符，避免被其他协议包含
+	regexp.MustCompile(`(?:^|\s)(vmess://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(vless://[^\s]+)`),
 	// Trojan: UUID@服务器:端口?参数#名称
-	regexp.MustCompile(`(trojan://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(trojan://[^\s]+)`),
 	// SS: 加密方法:密码@服务器:端口#名称 或 Base64编码格式
-	regexp.MustCompile(`(ss://[^\s]+)`),
+	// 特别注意：vmess://包含ss://，需要通过位置跟踪避免误匹配
+	regexp.MustCompile(`(?:^|\s)(ss://[^\s]+)`),
 	// SSR: Base64编码
-	regexp.MustCompile(`(ssr://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(ssr://[^\s]+)`),
 	// Hysteria: 可能包含参数
-	regexp.MustCompile(`(hysteria://[^\s]+)`),
-	regexp.MustCompile(`(hysteria2://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(hysteria://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(hysteria2://[^\s]+)`),
 	// TUIC: 可能包含参数
-	regexp.MustCompile(`(tuic://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(tuic://[^\s]+)`),
 	// Naive: 可能包含参数
-	regexp.MustCompile(`(naive\+https://[^\s]+)`),
-	regexp.MustCompile(`(naive://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(naive\+https://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(naive://[^\s]+)`),
 	// Anytls: 可能包含参数
-	regexp.MustCompile(`(anytls://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(anytls://[^\s]+)`),
 }
 
 // Clash 支持的节点类型
@@ -75,330 +78,9 @@ var supportedClashTypes = map[string]bool{
 	"direct":    true, // 信息节点
 }
 
-// 地区映射表：支持中英文名称和代码
-var regionMap = map[string]string{
-	// 亚洲
-	"中国": "中国", "CN": "中国", "China": "中国", "中华": "中国", "大陆": "中国", "Mainland": "中国",
-	"香港": "香港", "HK": "香港", "Hong Kong": "香港", "HongKong": "香港", "HKG": "香港", "港": "香港",
-	"台湾": "台湾", "TW": "台湾", "Taiwan": "台湾", "TWN": "台湾", "台": "台湾",
-	"日本": "日本", "JP": "日本", "Japan": "日本", "JPN": "日本", "日": "日本",
-	"韩国": "韩国", "KR": "韩国", "Korea": "韩国", "KOR": "韩国", "South Korea": "韩国", "韩": "韩国",
-	"新加坡": "新加坡", "SG": "新加坡", "Singapore": "新加坡", "SGP": "新加坡", "狮城": "新加坡",
-	"马来西亚": "马来西亚", "MY": "马来西亚", "Malaysia": "马来西亚", "MYS": "马来西亚", "大马": "马来西亚",
-	"泰国": "泰国", "TH": "泰国", "Thailand": "泰国", "THA": "泰国", "泰": "泰国",
-	"越南": "越南", "VN": "越南", "Vietnam": "越南", "VNM": "越南", "越": "越南",
-	"菲律宾": "菲律宾", "PH": "菲律宾", "Philippines": "菲律宾", "PHL": "菲律宾", "菲": "菲律宾",
-	"柬埔寨": "柬埔寨", "KH": "柬埔寨", "Cambodia": "柬埔寨", "KHM": "柬埔寨", "柬": "柬埔寨",
-	"印度尼西亚": "印度尼西亚", "印尼": "印度尼西亚", "ID": "印度尼西亚", "Indonesia": "印度尼西亚", "IDN": "印度尼西亚",
-	"印度": "印度", "IN": "印度", "India": "印度", "IND": "印度", "印": "印度",
-	"巴基斯坦": "巴基斯坦", "PK": "巴基斯坦", "Pakistan": "巴基斯坦", "PAK": "巴基斯坦",
-	"孟加拉": "孟加拉", "BD": "孟加拉", "Bangladesh": "孟加拉", "BGD": "孟加拉",
-	"斯里兰卡": "斯里兰卡", "LK": "斯里兰卡", "Sri Lanka": "斯里兰卡", "LKA": "斯里兰卡",
-	"缅甸": "缅甸", "MM": "缅甸", "Myanmar": "缅甸", "MMR": "缅甸",
-	"老挝": "老挝", "LA": "老挝", "Laos": "老挝", "LAO": "老挝",
-	"文莱": "文莱", "BN": "文莱", "Brunei": "文莱", "BRN": "文莱",
-	"蒙古": "蒙古", "MN": "蒙古", "Mongolia": "蒙古", "MNG": "蒙古",
-	"哈萨克斯坦": "哈萨克斯坦", "KZ": "哈萨克斯坦", "Kazakhstan": "哈萨克斯坦", "KAZ": "哈萨克斯坦",
-	"乌兹别克斯坦": "乌兹别克斯坦", "UZ": "乌兹别克斯坦", "Uzbekistan": "乌兹别克斯坦", "UZB": "乌兹别克斯坦",
-	"土耳其": "土耳其", "TR": "土耳其", "Turkey": "土耳其", "TUR": "土耳其", "土": "土耳其",
-	"以色列": "以色列", "IL": "以色列", "Israel": "以色列", "ISR": "以色列",
-	"阿联酋": "阿联酋", "AE": "阿联酋", "UAE": "阿联酋", "United Arab Emirates": "阿联酋", "迪拜": "阿联酋",
-	"沙特阿拉伯": "沙特阿拉伯", "SA": "沙特阿拉伯", "Saudi Arabia": "沙特阿拉伯", "SAU": "沙特阿拉伯",
-	"卡塔尔": "卡塔尔", "QA": "卡塔尔", "Qatar": "卡塔尔", "QAT": "卡塔尔",
-	"科威特": "科威特", "KW": "科威特", "Kuwait": "科威特", "KWT": "科威特",
-	"巴林": "巴林", "BH": "巴林", "Bahrain": "巴林", "BHR": "巴林",
-	"阿曼": "阿曼", "OM": "阿曼", "Oman": "阿曼", "OMN": "阿曼",
-	"约旦": "约旦", "JO": "约旦", "Jordan": "约旦", "JOR": "约旦",
-	"黎巴嫩": "黎巴嫩", "LB": "黎巴嫩", "Lebanon": "黎巴嫩", "LBN": "黎巴嫩",
-	"伊拉克": "伊拉克", "IQ": "伊拉克", "Iraq": "伊拉克", "IRQ": "伊拉克",
-	"伊朗": "伊朗", "IR": "伊朗", "Iran": "伊朗", "IRN": "伊朗",
-	"阿富汗": "阿富汗", "AF": "阿富汗", "Afghanistan": "阿富汗", "AFG": "阿富汗",
-	"格鲁吉亚": "格鲁吉亚", "GE": "格鲁吉亚", "Georgia": "格鲁吉亚", "GEO": "格鲁吉亚",
-	"亚美尼亚": "亚美尼亚", "AM": "亚美尼亚", "Armenia": "亚美尼亚", "ARM": "亚美尼亚",
-	"阿塞拜疆": "阿塞拜疆", "AZ": "阿塞拜疆", "Azerbaijan": "阿塞拜疆", "AZE": "阿塞拜疆",
-
-	// 欧洲
-	"英国": "英国", "UK": "英国", "United Kingdom": "英国", "GBR": "英国", "GB": "英国", "England": "英国",
-	"德国": "德国", "DE": "德国", "Germany": "德国", "DEU": "德国", "德": "德国",
-	"法国": "法国", "FR": "法国", "France": "法国", "FRA": "法国", "法": "法国",
-	"意大利": "意大利", "IT": "意大利", "Italy": "意大利", "ITA": "意大利", "意": "意大利",
-	"西班牙": "西班牙", "ES": "西班牙", "Spain": "西班牙", "ESP": "西班牙", "西": "西班牙",
-	"荷兰": "荷兰", "NL": "荷兰", "Netherlands": "荷兰", "NLD": "荷兰", "Holland": "荷兰", "荷": "荷兰",
-	"比利时": "比利时", "BE": "比利时", "Belgium": "比利时", "BEL": "比利时", "比": "比利时",
-	"瑞士": "瑞士", "CH": "瑞士", "Switzerland": "瑞士", "CHE": "瑞士",
-	"奥地利": "奥地利", "AT": "奥地利", "Austria": "奥地利", "AUT": "奥地利", "奥": "奥地利",
-	"瑞典": "瑞典", "SE": "瑞典", "Sweden": "瑞典", "SWE": "瑞典",
-	"挪威": "挪威", "NO": "挪威", "Norway": "挪威", "NOR": "挪威", "挪": "挪威",
-	"丹麦": "丹麦", "DK": "丹麦", "Denmark": "丹麦", "DNK": "丹麦", "丹": "丹麦",
-	"芬兰": "芬兰", "FI": "芬兰", "Finland": "芬兰", "FIN": "芬兰", "芬": "芬兰",
-	"波兰": "波兰", "PL": "波兰", "Poland": "波兰", "POL": "波兰", "波": "波兰",
-	"捷克": "捷克", "CZ": "捷克", "Czech Republic": "捷克", "CZE": "捷克", "Czech": "捷克",
-	"匈牙利": "匈牙利", "HU": "匈牙利", "Hungary": "匈牙利", "HUN": "匈牙利", "匈": "匈牙利",
-	"罗马尼亚": "罗马尼亚", "RO": "罗马尼亚", "Romania": "罗马尼亚", "ROU": "罗马尼亚",
-	"保加利亚": "保加利亚", "BG": "保加利亚", "Bulgaria": "保加利亚", "BGR": "保加利亚",
-	"希腊": "希腊", "GR": "希腊", "Greece": "希腊", "GRC": "希腊", "希": "希腊",
-	"葡萄牙": "葡萄牙", "PT": "葡萄牙", "Portugal": "葡萄牙", "PRT": "葡萄牙", "葡": "葡萄牙",
-	"爱尔兰": "爱尔兰", "IE": "爱尔兰", "Ireland": "爱尔兰", "IRL": "爱尔兰", "爱": "爱尔兰",
-	"冰岛": "冰岛", "IS": "冰岛", "Iceland": "冰岛", "ISL": "冰岛",
-	"俄罗斯": "俄罗斯", "RU": "俄罗斯", "Russia": "俄罗斯", "RUS": "俄罗斯", "俄": "俄罗斯",
-	"乌克兰": "乌克兰", "UA": "乌克兰", "Ukraine": "乌克兰", "UKR": "乌克兰", "乌": "乌克兰",
-	"白俄罗斯": "白俄罗斯", "BY": "白俄罗斯", "Belarus": "白俄罗斯", "BLR": "白俄罗斯",
-	"立陶宛": "立陶宛", "LT": "立陶宛", "Lithuania": "立陶宛", "LTU": "立陶宛",
-	"拉脱维亚": "拉脱维亚", "LV": "拉脱维亚", "Latvia": "拉脱维亚", "LVA": "拉脱维亚",
-	"爱沙尼亚": "爱沙尼亚", "EE": "爱沙尼亚", "Estonia": "爱沙尼亚", "EST": "爱沙尼亚",
-	"克罗地亚": "克罗地亚", "HR": "克罗地亚", "Croatia": "克罗地亚", "HRV": "克罗地亚",
-	"塞尔维亚": "塞尔维亚", "RS": "塞尔维亚", "Serbia": "塞尔维亚", "SRB": "塞尔维亚",
-	"斯洛文尼亚": "斯洛文尼亚", "SI": "斯洛文尼亚", "Slovenia": "斯洛文尼亚", "SVN": "斯洛文尼亚",
-	"斯洛伐克": "斯洛伐克", "SK": "斯洛伐克", "Slovakia": "斯洛伐克", "SVK": "斯洛伐克",
-	"卢森堡": "卢森堡", "LU": "卢森堡", "Luxembourg": "卢森堡", "LUX": "卢森堡",
-	"马耳他": "马耳他", "MT": "马耳他", "Malta": "马耳他", "MLT": "马耳他",
-	"塞浦路斯": "塞浦路斯", "CY": "塞浦路斯", "Cyprus": "塞浦路斯", "CYP": "塞浦路斯",
-
-	// 北美洲
-	"美国": "美国", "US": "美国", "USA": "美国", "United States": "美国", "United States of America": "美国", "美": "美国",
-	"加拿大": "加拿大", "CA": "加拿大", "Canada": "加拿大", "CAN": "加拿大", "加": "加拿大",
-	"墨西哥": "墨西哥", "MX": "墨西哥", "Mexico": "墨西哥", "MEX": "墨西哥", "墨": "墨西哥",
-	"巴拿马": "巴拿马", "PA": "巴拿马", "Panama": "巴拿马", "PAN": "巴拿马",
-	"哥斯达黎加": "哥斯达黎加", "CR": "哥斯达黎加", "Costa Rica": "哥斯达黎加", "CRI": "哥斯达黎加",
-	"古巴": "古巴", "CU": "古巴", "Cuba": "古巴", "CUB": "古巴",
-	"牙买加": "牙买加", "JM": "牙买加", "Jamaica": "牙买加", "JAM": "牙买加",
-	"多米尼加": "多米尼加", "DO": "多米尼加", "Dominican Republic": "多米尼加", "DOM": "多米尼加",
-	"危地马拉": "危地马拉", "GT": "危地马拉", "Guatemala": "危地马拉", "GTM": "危地马拉",
-	"洪都拉斯": "洪都拉斯", "HN": "洪都拉斯", "Honduras": "洪都拉斯", "HND": "洪都拉斯",
-	"萨尔瓦多": "萨尔瓦多", "SV": "萨尔瓦多", "El Salvador": "萨尔瓦多", "SLV": "萨尔瓦多",
-	"尼加拉瓜": "尼加拉瓜", "NI": "尼加拉瓜", "Nicaragua": "尼加拉瓜", "NIC": "尼加拉瓜",
-
-	// 南美洲
-	"巴西": "巴西", "BR": "巴西", "Brazil": "巴西", "BRA": "巴西", "巴": "巴西",
-	"阿根廷": "阿根廷", "AR": "阿根廷", "Argentina": "阿根廷", "ARG": "阿根廷", "阿": "阿根廷",
-	"智利": "智利", "CL": "智利", "Chile": "智利", "CHL": "智利", "智": "智利",
-	"哥伦比亚": "哥伦比亚", "CO": "哥伦比亚", "Colombia": "哥伦比亚", "COL": "哥伦比亚",
-	"秘鲁": "秘鲁", "PE": "秘鲁", "Peru": "秘鲁", "PER": "秘鲁", "秘": "秘鲁",
-	"委内瑞拉": "委内瑞拉", "VE": "委内瑞拉", "Venezuela": "委内瑞拉", "VEN": "委内瑞拉",
-	"厄瓜多尔": "厄瓜多尔", "EC": "厄瓜多尔", "Ecuador": "厄瓜多尔", "ECU": "厄瓜多尔",
-	"玻利维亚": "玻利维亚", "BO": "玻利维亚", "Bolivia": "玻利维亚", "BOL": "玻利维亚",
-	"巴拉圭": "巴拉圭", "PY": "巴拉圭", "Paraguay": "巴拉圭", "PRY": "巴拉圭",
-	"乌拉圭": "乌拉圭", "UY": "乌拉圭", "Uruguay": "乌拉圭", "URY": "乌拉圭",
-	"圭亚那": "圭亚那", "GY": "圭亚那", "Guyana": "圭亚那", "GUY": "圭亚那",
-	"苏里南": "苏里南", "SR": "苏里南", "Suriname": "苏里南", "SUR": "苏里南",
-
-	// 大洋洲
-	"澳大利亚": "澳大利亚", "澳洲": "澳大利亚", "AU": "澳大利亚", "Australia": "澳大利亚", "AUS": "澳大利亚", "澳": "澳大利亚",
-	"新西兰": "新西兰", "NZ": "新西兰", "New Zealand": "新西兰", "NZL": "新西兰", "新": "新西兰",
-	"斐济": "斐济", "FJ": "斐济", "Fiji": "斐济", "FJI": "斐济",
-	"巴布亚新几内亚": "巴布亚新几内亚", "PG": "巴布亚新几内亚", "Papua New Guinea": "巴布亚新几内亚", "PNG": "巴布亚新几内亚",
-	"新喀里多尼亚": "新喀里多尼亚", "NC": "新喀里多尼亚", "New Caledonia": "新喀里多尼亚", "NCL": "新喀里多尼亚",
-
-	// 非洲
-	"南非": "南非", "ZA": "南非", "South Africa": "南非", "ZAF": "南非",
-	"埃及": "埃及", "EG": "埃及", "Egypt": "埃及", "EGY": "埃及", "埃": "埃及",
-	"肯尼亚": "肯尼亚", "KE": "肯尼亚", "Kenya": "肯尼亚", "KEN": "肯尼亚",
-	"尼日利亚": "尼日利亚", "NG": "尼日利亚", "Nigeria": "尼日利亚", "NGA": "尼日利亚",
-	"摩洛哥": "摩洛哥", "MA": "摩洛哥", "Morocco": "摩洛哥", "MAR": "摩洛哥",
-	"阿尔及利亚": "阿尔及利亚", "DZ": "阿尔及利亚", "Algeria": "阿尔及利亚", "DZA": "阿尔及利亚",
-	"突尼斯": "突尼斯", "TN": "突尼斯", "Tunisia": "突尼斯", "TUN": "突尼斯",
-	"加纳": "加纳", "GH": "加纳", "Ghana": "加纳", "GHA": "加纳",
-	"坦桑尼亚": "坦桑尼亚", "TZ": "坦桑尼亚", "Tanzania": "坦桑尼亚", "TZA": "坦桑尼亚",
-	"埃塞俄比亚": "埃塞俄比亚", "ET": "埃塞俄比亚", "Ethiopia": "埃塞俄比亚", "ETH": "埃塞俄比亚",
-	"乌干达": "乌干达", "UG": "乌干达", "Uganda": "乌干达", "UGA": "乌干达",
-	"卢旺达": "卢旺达", "RW": "卢旺达", "Rwanda": "卢旺达", "RWA": "卢旺达",
-	"塞内加尔": "塞内加尔", "SN": "塞内加尔", "Senegal": "塞内加尔", "SEN": "塞内加尔",
-	"科特迪瓦": "科特迪瓦", "CI": "科特迪瓦", "Ivory Coast": "科特迪瓦", "CIV": "科特迪瓦",
-	"喀麦隆": "喀麦隆", "CM": "喀麦隆", "Cameroon": "喀麦隆", "CMR": "喀麦隆",
-	"安哥拉": "安哥拉", "AO": "安哥拉", "Angola": "安哥拉", "AGO": "安哥拉",
-	"莫桑比克": "莫桑比克", "MZ": "莫桑比克", "Mozambique": "莫桑比克", "MOZ": "莫桑比克",
-	"马达加斯加": "马达加斯加", "MG": "马达加斯加", "Madagascar": "马达加斯加", "MDG": "马达加斯加",
-	"毛里求斯": "毛里求斯", "MU": "毛里求斯", "Mauritius": "毛里求斯", "MUS": "毛里求斯",
-	"塞舌尔": "塞舌尔", "SC": "塞舌尔", "Seychelles": "塞舌尔", "SYC": "塞舌尔",
-}
-
-// 服务器域名关键词映射
-var serverCodeMap = map[string]string{
-	// 亚洲城市
-	"tokyo": "日本", "osaka": "日本", "kyoto": "日本", "yokohama": "日本", "nagoya": "日本", "fukuoka": "日本",
-	"seoul": "韩国", "busan": "韩国", "incheon": "韩国", "daegu": "韩国",
-	"singapore": "新加坡", "sgp": "新加坡",
-	"hongkong": "香港", "hong-kong": "香港", "hkg": "香港", "hk": "香港",
-	"taipei": "台湾", "taiwan": "台湾", "twn": "台湾",
-	"bangkok": "泰国", "thailand": "泰国",
-	"kuala-lumpur": "马来西亚", "kualalumpur": "马来西亚", "malaysia": "马来西亚",
-	"hanoi": "越南", "ho-chi-minh": "越南", "hochiminh": "越南", "vietnam": "越南",
-	"manila": "菲律宾", "philippines": "菲律宾",
-	"phnom-penh": "柬埔寨", "phnompenh": "柬埔寨", "cambodia": "柬埔寨",
-	"jakarta": "印度尼西亚", "indonesia": "印度尼西亚", "bali": "印度尼西亚",
-	"mumbai": "印度", "delhi": "印度", "bangalore": "印度", "chennai": "印度", "kolkata": "印度", "india": "印度",
-	"karachi": "巴基斯坦", "lahore": "巴基斯坦", "islamabad": "巴基斯坦", "pakistan": "巴基斯坦",
-	"dhaka": "孟加拉", "bangladesh": "孟加拉",
-	"colombo": "斯里兰卡", "sri-lanka": "斯里兰卡", "srilanka": "斯里兰卡",
-	"yangon": "缅甸", "myanmar": "缅甸",
-	"vientiane": "老挝", "laos": "老挝",
-	"bandar-seri-begawan": "文莱", "brunei": "文莱",
-	"ulaanbaatar": "蒙古", "mongolia": "蒙古",
-	"almaty": "哈萨克斯坦", "astana": "哈萨克斯坦", "kazakhstan": "哈萨克斯坦",
-	"tashkent": "乌兹别克斯坦", "uzbekistan": "乌兹别克斯坦",
-	"istanbul": "土耳其", "ankara": "土耳其", "turkey": "土耳其",
-	"tel-aviv": "以色列", "telaviv": "以色列", "jerusalem": "以色列", "israel": "以色列",
-	"dubai": "阿联酋", "abu-dhabi": "阿联酋", "abudhabi": "阿联酋", "uae": "阿联酋",
-	"riyadh": "沙特阿拉伯", "jeddah": "沙特阿拉伯", "saudi": "沙特阿拉伯",
-	"doha": "卡塔尔", "qatar": "卡塔尔",
-	"kuwait": "科威特", "kuwait-city": "科威特",
-	"manama": "巴林", "bahrain": "巴林",
-	"muscat": "阿曼", "oman": "阿曼",
-	"amman": "约旦", "jordan": "约旦",
-	"beirut": "黎巴嫩", "lebanon": "黎巴嫩",
-	"baghdad": "伊拉克", "iraq": "伊拉克",
-	"tehran": "伊朗", "iran": "伊朗",
-	"kabul": "阿富汗", "afghanistan": "阿富汗",
-	"tbilisi": "格鲁吉亚", "georgia": "格鲁吉亚",
-	"yerevan": "亚美尼亚", "armenia": "亚美尼亚",
-	"baku": "阿塞拜疆", "azerbaijan": "阿塞拜疆",
-
-	// 欧洲城市
-	"london": "英国", "manchester": "英国", "birmingham": "英国", "edinburgh": "英国", "uk": "英国", "england": "英国",
-	"berlin": "德国", "munich": "德国", "frankfurt": "德国", "hamburg": "德国", "cologne": "德国", "germany": "德国",
-	"paris": "法国", "lyon": "法国", "marseille": "法国", "toulouse": "法国", "france": "法国",
-	"rome": "意大利", "milan": "意大利", "naples": "意大利", "turin": "意大利", "italy": "意大利",
-	"madrid": "西班牙", "barcelona": "西班牙", "valencia": "西班牙", "seville": "西班牙", "spain": "西班牙",
-	"amsterdam": "荷兰", "rotterdam": "荷兰", "the-hague": "荷兰", "hague": "荷兰", "netherlands": "荷兰", "holland": "荷兰",
-	"brussels": "比利时", "antwerp": "比利时", "ghent": "比利时", "belgium": "比利时",
-	"zurich": "瑞士", "geneva": "瑞士", "basel": "瑞士", "bern": "瑞士", "switzerland": "瑞士",
-	"vienna": "奥地利", "salzburg": "奥地利", "graz": "奥地利", "austria": "奥地利",
-	"stockholm": "瑞典", "gothenburg": "瑞典", "malmo": "瑞典", "sweden": "瑞典",
-	"oslo": "挪威", "bergen": "挪威", "trondheim": "挪威", "norway": "挪威",
-	"copenhagen": "丹麦", "aarhus": "丹麦", "odense": "丹麦", "denmark": "丹麦",
-	"helsinki": "芬兰", "tampere": "芬兰", "turku": "芬兰", "finland": "芬兰",
-	"warsaw": "波兰", "krakow": "波兰", "gdansk": "波兰", "poland": "波兰",
-	"prague": "捷克", "brno": "捷克", "czech": "捷克", "czech-republic": "捷克",
-	"budapest": "匈牙利", "debrecen": "匈牙利", "hungary": "匈牙利",
-	"bucharest": "罗马尼亚", "cluj-napoca": "罗马尼亚", "romania": "罗马尼亚",
-	"sofia": "保加利亚", "plovdiv": "保加利亚", "bulgaria": "保加利亚",
-	"athens": "希腊", "thessaloniki": "希腊", "greece": "希腊",
-	"lisbon": "葡萄牙", "porto": "葡萄牙", "portugal": "葡萄牙",
-	"dublin": "爱尔兰", "cork": "爱尔兰", "ireland": "爱尔兰",
-	"reykjavik": "冰岛", "iceland": "冰岛",
-	"moscow": "俄罗斯", "saint-petersburg": "俄罗斯", "st-petersburg": "俄罗斯", "novosibirsk": "俄罗斯", "russia": "俄罗斯",
-	"kyiv": "乌克兰", "kiev": "乌克兰", "kharkiv": "乌克兰", "odessa": "乌克兰", "ukraine": "乌克兰",
-	"minsk": "白俄罗斯", "belarus": "白俄罗斯",
-	"vilnius": "立陶宛", "kaunas": "立陶宛", "lithuania": "立陶宛",
-	"riga": "拉脱维亚", "latvia": "拉脱维亚",
-	"tallinn": "爱沙尼亚", "estonia": "爱沙尼亚",
-	"zagreb": "克罗地亚", "split": "克罗地亚", "croatia": "克罗地亚",
-	"belgrade": "塞尔维亚", "novi-sad": "塞尔维亚", "serbia": "塞尔维亚",
-	"ljubljana": "斯洛文尼亚", "maribor": "斯洛文尼亚", "slovenia": "斯洛文尼亚",
-	"bratislava": "斯洛伐克", "kosice": "斯洛伐克", "slovakia": "斯洛伐克",
-	"luxembourg": "卢森堡", "luxemburg": "卢森堡",
-	"valletta": "马耳他", "malta": "马耳他",
-	"nicosia": "塞浦路斯", "cyprus": "塞浦路斯",
-
-	// 北美洲城市
-	"new-york": "美国", "newyork": "美国", "nyc": "美国", "los-angeles": "美国", "losangeles": "美国", "la": "美国",
-	"chicago": "美国", "houston": "美国", "phoenix": "美国", "philadelphia": "美国", "san-antonio": "美国",
-	"san-diego": "美国", "dallas": "美国", "san-jose": "美国", "austin": "美国", "jacksonville": "美国",
-	"san-francisco": "美国", "sanfrancisco": "美国", "sf": "美国", "seattle": "美国", "miami": "美国",
-	"boston": "美国", "denver": "美国", "atlanta": "美国", "detroit": "美国", "portland": "美国",
-	"america": "美国", "usa": "美国", "united-states": "美国",
-	"toronto": "加拿大", "vancouver": "加拿大", "montreal": "加拿大", "calgary": "加拿大", "ottawa": "加拿大",
-	"edmonton": "加拿大", "winnipeg": "加拿大", "quebec": "加拿大", "canada": "加拿大",
-	"mexico-city": "墨西哥", "mexicocity": "墨西哥", "guadalajara": "墨西哥", "monterrey": "墨西哥", "mexico": "墨西哥",
-	"panama-city": "巴拿马", "panamacity": "巴拿马", "panama": "巴拿马",
-	"san-jose-cr": "哥斯达黎加", "costarica": "哥斯达黎加", "costa-rica": "哥斯达黎加",
-	"havana": "古巴", "cuba": "古巴",
-	"kingston": "牙买加", "jamaica": "牙买加",
-	"santo-domingo": "多米尼加", "dominican": "多米尼加",
-	"guatemala-city": "危地马拉", "guatemala": "危地马拉",
-	"tegucigalpa": "洪都拉斯", "honduras": "洪都拉斯",
-	"san-salvador": "萨尔瓦多", "elsalvador": "萨尔瓦多",
-	"managua": "尼加拉瓜", "nicaragua": "尼加拉瓜",
-
-	// 南美洲城市
-	"sao-paulo": "巴西", "saopaulo": "巴西", "rio-de-janeiro": "巴西", "riodejaneiro": "巴西", "brasilia": "巴西",
-	"belo-horizonte": "巴西", "salvador": "巴西", "fortaleza": "巴西", "curitiba": "巴西", "brazil": "巴西",
-	"buenos-aires": "阿根廷", "buenosaires": "阿根廷", "cordoba": "阿根廷", "rosario": "阿根廷", "argentina": "阿根廷",
-	"santiago": "智利", "valparaiso": "智利", "concepcion": "智利", "chile": "智利",
-	"bogota": "哥伦比亚", "medellin": "哥伦比亚", "cali": "哥伦比亚", "colombia": "哥伦比亚",
-	"lima": "秘鲁", "arequipa": "秘鲁", "trujillo": "秘鲁", "peru": "秘鲁",
-	"caracas": "委内瑞拉", "maracaibo": "委内瑞拉", "valencia-ve": "委内瑞拉", "venezuela": "委内瑞拉",
-	"quito": "厄瓜多尔", "guayaquil": "厄瓜多尔", "ecuador": "厄瓜多尔",
-	"la-paz": "玻利维亚", "lapaz": "玻利维亚", "santa-cruz": "玻利维亚", "bolivia": "玻利维亚",
-	"asuncion": "巴拉圭", "paraguay": "巴拉圭",
-	"montevideo": "乌拉圭", "uruguay": "乌拉圭",
-	"georgetown": "圭亚那", "guyana": "圭亚那",
-	"paramaribo": "苏里南", "suriname": "苏里南",
-
-	// 大洋洲城市
-	"sydney": "澳大利亚", "melbourne": "澳大利亚", "brisbane": "澳大利亚", "perth": "澳大利亚", "adelaide": "澳大利亚",
-	"canberra": "澳大利亚", "darwin": "澳大利亚", "hobart": "澳大利亚", "australia": "澳大利亚",
-	"auckland": "新西兰", "wellington": "新西兰", "christchurch": "新西兰", "newzealand": "新西兰", "nz": "新西兰",
-	"suva": "斐济", "fiji": "斐济",
-	"port-moresby": "巴布亚新几内亚", "papua": "巴布亚新几内亚",
-	"noumea": "新喀里多尼亚", "new-caledonia": "新喀里多尼亚",
-
-	// 非洲城市
-	"johannesburg": "南非", "cape-town": "南非", "capetown": "南非", "durban": "南非", "southafrica": "南非",
-	"cairo": "埃及", "alexandria": "埃及", "giza": "埃及", "egypt": "埃及",
-	"nairobi": "肯尼亚", "mombasa": "肯尼亚", "kenya": "肯尼亚",
-	"lagos": "尼日利亚", "abuja": "尼日利亚", "kano": "尼日利亚", "nigeria": "尼日利亚",
-	"casablanca": "摩洛哥", "rabat": "摩洛哥", "marrakech": "摩洛哥", "morocco": "摩洛哥",
-	"algiers": "阿尔及利亚", "orán": "阿尔及利亚", "algeria": "阿尔及利亚",
-	"tunis": "突尼斯", "sfax": "突尼斯", "tunisia": "突尼斯",
-	"accra": "加纳", "kumasi": "加纳", "ghana": "加纳",
-	"dar-es-salaam": "坦桑尼亚", "dodoma": "坦桑尼亚", "tanzania": "坦桑尼亚",
-	"addis-ababa": "埃塞俄比亚", "ethiopia": "埃塞俄比亚",
-	"kampala": "乌干达", "uganda": "乌干达",
-	"kigali": "卢旺达", "rwanda": "卢旺达",
-	"dakar": "塞内加尔", "senegal": "塞内加尔",
-	"abidjan": "科特迪瓦", "ivory-coast": "科特迪瓦",
-	"douala": "喀麦隆", "yaounde": "喀麦隆", "cameroon": "喀麦隆",
-	"luanda": "安哥拉", "angola": "安哥拉",
-	"maputo": "莫桑比克", "mozambique": "莫桑比克",
-	"antananarivo": "马达加斯加", "madagascar": "马达加斯加",
-	"port-louis": "毛里求斯", "mauritius": "毛里求斯",
-	"victoria": "塞舌尔", "seychelles": "塞舌尔",
-}
-
-// 地区关键词（按长度排序）
-var regionKeys = []string{
-	// 长关键词优先
-	"巴布亚新几内亚", "新喀里多尼亚", "阿拉伯联合酋长国", "沙特阿拉伯", "乌兹别克斯坦", "哈萨克斯坦", "印度尼西亚",
-	"美利坚合众国", "United States of America", "United Arab Emirates", "Papua New Guinea", "New Caledonia",
-	"South Korea", "New Zealand", "South Africa", "Ivory Coast", "El Salvador", "Costa Rica", "Dominican Republic",
-	// 中等长度关键词
-	"香港", "台湾", "日本", "韩国", "新加坡", "美国", "英国", "德国", "法国", "加拿大", "澳大利亚", "新西兰",
-	"印度", "俄罗斯", "荷兰", "泰国", "马来西亚", "越南", "菲律宾", "柬埔寨", "印度尼西亚", "巴基斯坦", "孟加拉",
-	"斯里兰卡", "缅甸", "老挝", "文莱", "蒙古", "土耳其", "以色列", "阿联酋", "沙特", "卡塔尔", "科威特", "巴林",
-	"阿曼", "约旦", "黎巴嫩", "伊拉克", "伊朗", "阿富汗", "格鲁吉亚", "亚美尼亚", "阿塞拜疆",
-	"意大利", "西班牙", "比利时", "瑞士", "奥地利", "瑞典", "挪威", "丹麦", "芬兰", "波兰", "捷克", "匈牙利",
-	"罗马尼亚", "保加利亚", "希腊", "葡萄牙", "爱尔兰", "冰岛", "乌克兰", "白俄罗斯", "立陶宛", "拉脱维亚",
-	"爱沙尼亚", "克罗地亚", "塞尔维亚", "斯洛文尼亚", "斯洛伐克", "卢森堡", "马耳他", "塞浦路斯",
-	"墨西哥", "巴拿马", "哥斯达黎加", "古巴", "牙买加", "多米尼加", "危地马拉", "洪都拉斯", "萨尔瓦多", "尼加拉瓜",
-	"巴西", "阿根廷", "智利", "哥伦比亚", "秘鲁", "委内瑞拉", "厄瓜多尔", "玻利维亚", "巴拉圭", "乌拉圭", "圭亚那", "苏里南",
-	"斐济", "南非", "埃及", "肯尼亚", "尼日利亚", "摩洛哥", "阿尔及利亚", "突尼斯", "加纳", "坦桑尼亚",
-	"埃塞俄比亚", "乌干达", "卢旺达", "塞内加尔", "科特迪瓦", "喀麦隆", "安哥拉", "莫桑比克", "马达加斯加", "毛里求斯", "塞舌尔",
-	// 英文全称
-	"China", "Hong Kong", "Taiwan", "Japan", "Korea", "Singapore", "USA", "UK", "Germany", "France", "Canada",
-	"Australia", "India", "Russia", "Netherlands", "Thailand", "Malaysia", "Vietnam", "Philippines", "Cambodia",
-	"Indonesia", "Pakistan", "Bangladesh", "Sri Lanka", "Myanmar", "Laos", "Brunei", "Mongolia", "Kazakhstan",
-	"Uzbekistan", "Turkey", "Israel", "Qatar", "Kuwait", "Bahrain", "Oman", "Jordan", "Lebanon", "Iraq", "Iran",
-	"Afghanistan", "Georgia", "Armenia", "Azerbaijan", "Italy", "Spain", "Belgium", "Switzerland", "Austria",
-	"Sweden", "Norway", "Denmark", "Finland", "Poland", "Czech", "Hungary", "Romania", "Bulgaria", "Greece",
-	"Portugal", "Ireland", "Iceland", "Ukraine", "Belarus", "Lithuania", "Latvia", "Estonia", "Croatia", "Serbia",
-	"Slovenia", "Slovakia", "Luxembourg", "Malta", "Cyprus", "Mexico", "Panama", "Cuba", "Jamaica", "Guatemala",
-	"Honduras", "Nicaragua", "Brazil", "Argentina", "Chile", "Colombia", "Peru", "Venezuela", "Ecuador", "Bolivia",
-	"Paraguay", "Uruguay", "Guyana", "Suriname", "Fiji", "South Africa", "Egypt", "Kenya", "Nigeria", "Morocco",
-	"Algeria", "Tunisia", "Ghana", "Tanzania", "Ethiopia", "Uganda", "Rwanda", "Senegal", "Cameroon", "Angola",
-	"Mozambique", "Madagascar", "Mauritius", "Seychelles",
-	// 国家代码（2-3字母）
-	"CN", "HK", "TW", "JP", "KR", "SG", "US", "UK", "GB", "DE", "FR", "CA", "AU", "NZ", "IN", "RU", "NL", "TH",
-	"MY", "VN", "PH", "KH", "ID", "PK", "BD", "LK", "MM", "LA", "BN", "MN", "KZ", "UZ", "TR", "IL", "AE", "SA",
-	"QA", "KW", "BH", "OM", "JO", "LB", "IQ", "IR", "AF", "GE", "AM", "AZ", "IT", "ES", "BE", "CH", "AT", "SE",
-	"NO", "DK", "FI", "PL", "CZ", "HU", "RO", "BG", "GR", "PT", "IE", "IS", "UA", "BY", "LT", "LV", "EE", "HR",
-	"RS", "SI", "SK", "LU", "MT", "CY", "MX", "PA", "CR", "CU", "JM", "DO", "GT", "HN", "SV", "NI", "BR", "AR",
-	"CL", "CO", "PE", "VE", "EC", "BO", "PY", "UY", "GY", "SR", "FJ", "PG", "NC", "ZA", "EG", "KE", "NG", "MA",
-	"DZ", "TN", "GH", "TZ", "ET", "UG", "RW", "SN", "CI", "CM", "AO", "MZ", "MG", "MU", "SC",
-	// 简写
-	"港", "台", "日", "韩", "新", "美", "英", "德", "法", "加", "澳", "印", "俄", "荷", "泰", "马", "越", "菲", "柬",
-	"土", "埃", "巴", "智", "秘", "阿",
-}
+// 注意：regionMap、serverCodeMap 和 regionKeys 已移至 region_config.json 和 region_loader.go
+// 这些变量保留作为向后兼容的降级方案（当 JSON 文件不存在时使用）
+// 实际运行时优先使用从 JSON 文件加载的配置
 
 // ==========================================
 // Types
@@ -417,13 +99,13 @@ type SubscriptionContext struct {
 
 // ConfigUpdateService 配置更新服务
 type ConfigUpdateService struct {
-	db           *gorm.DB
-	isRunning    bool
-	runningMutex sync.Mutex
-	// 缓存站点URL，避免频繁查询
-	siteURL string
-	// 缓存客服QQ
-	supportQQ string
+	db            *gorm.DB
+	isRunning     bool
+	runningMutex  sync.Mutex
+	siteURL       string         // 缓存站点URL，避免频繁查询
+	supportQQ     string         // 缓存客服QQ
+	regionMatcher *RegionMatcher // 地区匹配器（优化版）
+	parserPool    *ParserPool    // 解析器池（并发处理）
 }
 
 // nodeWithOrder 用于排序导入
@@ -439,11 +121,43 @@ type nodeWithOrder struct {
 // NewConfigUpdateService 创建配置更新服务
 func NewConfigUpdateService() *ConfigUpdateService {
 	service := &ConfigUpdateService{
-		db: database.GetDB(),
+		db:         database.GetDB(),
+		parserPool: NewParserPool(10), // 默认10个worker
 	}
+
+	// 加载地区配置
+	regionConfig, err := LoadRegionConfig()
+	if err != nil {
+		// 记录警告，但不阻止服务启动
+		if utils.AppLogger != nil {
+			utils.AppLogger.Warn("地区配置加载失败: %v，将使用空配置", err)
+		}
+	}
+
+	if regionConfig != nil && (len(regionConfig.RegionMap) > 0 || len(regionConfig.ServerMap) > 0) {
+		service.regionMatcher = NewRegionMatcher(regionConfig.RegionMap, regionConfig.ServerMap)
+		if utils.AppLogger != nil {
+			utils.AppLogger.Info("地区配置加载成功: region_map=%d, server_map=%d",
+				len(regionConfig.RegionMap), len(regionConfig.ServerMap))
+		}
+	} else {
+		// 如果加载失败或配置为空，使用空的匹配器
+		service.regionMatcher = NewRegionMatcher(make(map[string]string), make(map[string]string))
+		if utils.AppLogger != nil {
+			utils.AppLogger.Warn("使用空的地区匹配器（所有节点将显示为'未知'地区）")
+		}
+	}
+
 	// 初始化缓存配置
 	service.refreshSystemConfig()
 	return service
+}
+
+// loadLegacyRegionMaps 从旧代码加载地区映射（向后兼容）
+// 注意：此方法已不再需要，因为配置现在从 JSON 文件加载
+// 如果 JSON 文件不存在，RegionMatcher 会使用空映射
+func (s *ConfigUpdateService) loadLegacyRegionMaps() {
+	// 不再需要，配置从 region_config.json 加载
 }
 
 // refreshSystemConfig 刷新系统配置缓存
@@ -563,7 +277,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	if len(urls) == 0 {
 		msg := "未配置节点源URL"
 		s.log("ERROR", msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	s.log("INFO", fmt.Sprintf("获取到 %d 个节点源URL", len(urls)))
@@ -578,7 +292,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	if len(nodes) == 0 {
 		msg := "未获取到有效节点"
 		s.log("WARN", msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	s.log("INFO", fmt.Sprintf("共获取到 %d 个有效节点链接，准备入库", len(nodes)))
@@ -588,7 +302,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	if keywords, ok := config["filter_keywords"].([]string); ok {
 		filterKeywords = keywords
 	} else if keywordsStr, ok := config["filter_keywords"].(string); ok && keywordsStr != "" {
-		// 处理字符串格式的关键词（用换行符分隔）
+		// 处理字符串格式的关键词（用换行符分隔）- 向后兼容
 		for _, kw := range strings.Split(keywordsStr, "\n") {
 			if kw = strings.TrimSpace(kw); kw != "" {
 				filterKeywords = append(filterKeywords, kw)
@@ -597,7 +311,9 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	}
 
 	if len(filterKeywords) > 0 {
-		s.log("INFO", fmt.Sprintf("已配置 %d 个过滤关键词，将过滤包含这些关键词的节点", len(filterKeywords)))
+		s.log("INFO", fmt.Sprintf("已配置 %d 个过滤关键词: %v，将过滤包含这些关键词的节点", len(filterKeywords), filterKeywords))
+	} else {
+		s.log("DEBUG", "未配置过滤关键词，将不过滤任何节点")
 	}
 
 	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
@@ -639,11 +355,9 @@ type updateStats struct {
 }
 
 // processFetchedNodes 处理获取到的节点：分组、去重、排序、关键词过滤
-// filterKeywords: 过滤关键词列表，如果节点名称或服务器地址包含任何关键词，则过滤掉该节点
 func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string) ([]nodeWithOrder, updateStats) {
 	var nodesWithOrder []nodeWithOrder
 	stats := updateStats{}
-
 	seenKeys := make(map[string]bool)
 	usedNames := make(map[string]bool)
 
@@ -653,105 +367,142 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 		sourceURL, _ := nodeInfo["source_url"].(string)
 		if sourceURL == "" {
 			stats.missingSource++
-			s.log("WARN", fmt.Sprintf("节点缺少来源URL，跳过: %v", nodeInfo))
 			continue
 		}
 		nodesByURL[sourceURL] = append(nodesByURL[sourceURL], nodeInfo)
 	}
 
-	if stats.missingSource > 0 {
-		s.log("WARN", fmt.Sprintf("共 %d 个节点缺少来源URL", stats.missingSource))
-	}
-
 	// 按照订阅地址的顺序处理节点
 	for urlIndex, url := range urls {
 		urlNodes := nodesByURL[url]
-		nodeIndexInURL := 0
-
-		if len(urlNodes) > 0 {
-			s.log("INFO", fmt.Sprintf("开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes)))
+		if len(urlNodes) == 0 {
+			continue
 		}
 
+		s.log("INFO", fmt.Sprintf("开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes)))
+
+		// 提取所有链接
+		links := make([]string, 0, len(urlNodes))
+		linkToNodeInfo := make(map[string]map[string]interface{})
 		for _, nodeInfo := range urlNodes {
 			link, ok := nodeInfo["url"].(string)
 			if !ok {
 				stats.invalidLinks++
-				s.log("WARN", fmt.Sprintf("节点链接格式无效，跳过: %v", nodeInfo))
+				s.log("WARN", fmt.Sprintf("订阅地址 [%d/%d] 中发现无效链接（缺少url字段）", urlIndex+1, len(urls)))
 				continue
 			}
+			links = append(links, link)
+			linkToNodeInfo[link] = nodeInfo
+		}
 
-			node, err := ParseNodeLink(link)
-			if err != nil {
-				stats.parseFailed++
-				linkPreview := link
-				if len(linkPreview) > 50 {
-					linkPreview = linkPreview[:50] + "..."
-				}
-				s.log("WARN", fmt.Sprintf("解析节点失败: %v, 链接: %s", err, linkPreview))
-				continue
-			}
+		// 使用 ParserPool 并发解析
+		results := s.parserPool.ParseLinks(links)
 
-			// 关键词过滤：检查节点名称或服务器地址是否包含关键词
-			if len(filterKeywords) > 0 {
-				shouldFilter := false
-				filteredByKeyword := ""
-				nodeNameLower := strings.ToLower(node.Name)
-				nodeServerLower := strings.ToLower(node.Server)
+		nodeIndexInURL := 0
+		counts := struct{ Processed, Failed, Filtered, Duplicate int }{}
 
-				for _, keyword := range filterKeywords {
-					keywordLower := strings.ToLower(strings.TrimSpace(keyword))
-					if keywordLower == "" {
-						continue
-					}
-					// 检查节点名称或服务器地址是否包含关键词
-					if strings.Contains(nodeNameLower, keywordLower) || strings.Contains(nodeServerLower, keywordLower) {
-						shouldFilter = true
-						filteredByKeyword = keyword
-						break
-					}
-				}
+		for _, result := range results {
+			link := result.Link
 
-				if shouldFilter {
-					stats.filtered++
-					s.log("DEBUG", fmt.Sprintf("节点被关键词过滤，跳过: %s (%s:%s:%d), 匹配关键词: %s", node.Name, node.Type, node.Server, node.Port, filteredByKeyword))
-					continue
-				}
-			}
-
-			// 生成去重键（统一使用 : 分隔符）
-			key := s.generateNodeDedupKey(node.Type, node.Server, node.Port)
-			if seenKeys[key] {
+			// 链接去重
+			if seenKeys[link] {
 				stats.duplicates++
-				s.log("DEBUG", fmt.Sprintf("节点重复，跳过: %s (%s:%s:%d)", node.Name, node.Type, node.Server, node.Port))
+				counts.Duplicate++
 				continue
 			}
-			seenKeys[key] = true
+			seenKeys[link] = true
 
-			// 处理名称重复
-			originalName := node.Name
-			newName := originalName
-			counter := 1
-			for usedNames[newName] {
-				newName = fmt.Sprintf("%s-%d", originalName, counter)
-				counter++
+			// 检查解析错误
+			if result.Err != nil {
+				stats.parseFailed++
+				counts.Failed++
+				// 增强错误日志：记录更多上下文信息
+				if counts.Failed <= 10 { // 增加到10条，提供更多调试信息
+					s.log("WARN", fmt.Sprintf("解析失败 [订阅地址 %d/%d, 链接索引 %d]: %v, 链接片段: %s",
+						urlIndex+1, len(urls), nodeIndexInURL, result.Err, truncateString(link, 50)))
+				}
+				continue
 			}
-			if newName != originalName {
-				s.log("DEBUG", fmt.Sprintf("节点名称重复，重命名为: %s -> %s", originalName, newName))
+
+			if result.Node == nil {
+				stats.parseFailed++
+				counts.Failed++
+				s.log("WARN", fmt.Sprintf("解析返回空节点 [订阅地址 %d/%d, 链接索引 %d]: %s",
+					urlIndex+1, len(urls), nodeIndexInURL, truncateString(link, 50)))
+				continue
 			}
-			node.Name = newName
-			usedNames[newName] = true
 
-			// 计算顺序索引：source_url_index * 10000 + node_index_in_url
-			orderIndex := urlIndex*10000 + nodeIndexInURL
-			nodeIndexInURL++
+			node := result.Node
 
+			// 关键词过滤
+			if filtered, keyword := s.isNodeFiltered(node, filterKeywords); filtered {
+				stats.filtered++
+				counts.Filtered++
+				s.log("DEBUG", fmt.Sprintf("节点被过滤 [订阅地址 %d/%d]: %s (关键词: %s)",
+					urlIndex+1, len(urls), node.Name, keyword))
+				continue
+			}
+
+			counts.Processed++
+
+			// 名称去重和重命名
+			node.Name = s.ensureUniqueName(node.Name, usedNames)
+			usedNames[node.Name] = true
+
+			// 添加到结果列表
 			nodesWithOrder = append(nodesWithOrder, nodeWithOrder{
 				node:       node,
-				orderIndex: orderIndex,
+				orderIndex: urlIndex*10000 + nodeIndexInURL,
 			})
+			nodeIndexInURL++
 		}
+
+		s.log("INFO", fmt.Sprintf("订阅地址 [%d/%d] 完成: 成功=%d, 失败=%d, 过滤=%d, 重复=%d",
+			urlIndex+1, len(urls), counts.Processed, counts.Failed, counts.Filtered, counts.Duplicate))
 	}
 	return nodesWithOrder, stats
+}
+
+// isNodeFiltered 检查节点是否应被过滤
+func (s *ConfigUpdateService) isNodeFiltered(node *ProxyNode, keywords []string) (bool, string) {
+	if len(keywords) == 0 {
+		return false, ""
+	}
+	nameLower := strings.ToLower(node.Name)
+	serverLower := strings.ToLower(node.Server)
+
+	for _, kw := range keywords {
+		kwLower := strings.ToLower(strings.TrimSpace(kw))
+		if kwLower == "" {
+			continue
+		}
+		if strings.Contains(nameLower, kwLower) || strings.Contains(serverLower, kwLower) {
+			return true, kw
+		}
+	}
+	return false, ""
+}
+
+// ensureUniqueName 确保节点名称唯一
+func (s *ConfigUpdateService) ensureUniqueName(name string, usedNames map[string]bool) string {
+	if !usedNames[name] {
+		return name
+	}
+	counter := 1
+	for {
+		newName := fmt.Sprintf("%s-%d", name, counter)
+		if !usedNames[newName] {
+			return newName
+		}
+		counter++
+	}
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
+	}
+	return s
 }
 
 // getConfig 获取配置
@@ -770,10 +521,22 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 	}
 
 	var urlsConfig *models.SystemConfig
+	var filterKeywordsConfig *models.SystemConfig
 
 	for _, config := range configs {
 		if config.Key == "urls" {
 			urlsConfig = &config
+		} else if config.Key == "filter_keywords" {
+			filterKeywordsConfig = &config
+		} else if config.Key == "enable_schedule" {
+			result[config.Key] = config.Value == "true" || config.Value == "1"
+		} else if config.Key == "schedule_interval" {
+			var interval int
+			fmt.Sscanf(config.Value, "%d", &interval)
+			if interval == 0 {
+				interval = 3600
+			}
+			result[config.Key] = interval
 		} else {
 			result[config.Key] = config.Value
 		}
@@ -788,6 +551,17 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 			}
 		}
 		result["urls"] = filtered
+	}
+
+	// 处理 filter_keywords（按换行符分割）
+	if filterKeywordsConfig != nil && strings.TrimSpace(filterKeywordsConfig.Value) != "" {
+		var filtered []string
+		for _, kw := range strings.Split(filterKeywordsConfig.Value, "\n") {
+			if kw = strings.TrimSpace(kw); kw != "" {
+				filtered = append(filtered, kw)
+			}
+		}
+		result["filter_keywords"] = filtered
 	}
 
 	return result, nil
@@ -824,8 +598,24 @@ func (s *ConfigUpdateService) log(level, message string) {
 		"message": message,
 	}
 
+	go s.saveLogToDB(logEntry)
+
+	// 同时打印到系统日志
+	if utils.AppLogger != nil {
+		if level == "ERROR" {
+			utils.AppLogger.Error("%s", message)
+		} else {
+			utils.AppLogger.Info("%s", message)
+		}
+	}
+}
+
+// saveLogToDB 保存日志到数据库 (异步执行)
+func (s *ConfigUpdateService) saveLogToDB(logEntry map[string]interface{}) {
 	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
+	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
+
+	if err != nil {
 		initialLogs := []map[string]interface{}{logEntry}
 		logsJSON, _ := json.Marshal(initialLogs)
 		config = models.SystemConfig{
@@ -851,15 +641,6 @@ func (s *ConfigUpdateService) log(level, message string) {
 		config.Value = string(logsJSON)
 		s.db.Save(&config)
 	}
-
-	// 同时打印到系统日志
-	if utils.AppLogger != nil {
-		if level == "ERROR" {
-			utils.AppLogger.Error(message)
-		} else {
-			utils.AppLogger.Info(message)
-		}
-	}
 }
 
 // ==========================================
@@ -869,35 +650,36 @@ func (s *ConfigUpdateService) log(level, message string) {
 // FetchNodesFromURLs 从URL列表获取节点
 func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]interface{}, error) {
 	var allNodes []map[string]interface{}
+	// 增加超时时间，特别是对于 GitHub Gist 等可能较慢的服务
+	client := &http.Client{
+		Timeout: 60 * time.Second, // 增加到 60 秒
+		Transport: &http.Transport{
+			DisableKeepAlives: false,
+			MaxIdleConns:      10,
+			IdleConnTimeout:   30 * time.Second,
+		},
+	}
 
 	for i, url := range urls {
 		s.log("INFO", fmt.Sprintf("正在下载节点源 [%d/%d]: %s", i+1, len(urls), url))
 
-		resp, err := http.Get(url)
+		content, err := s.fetchURLContent(client, url)
 		if err != nil {
-			s.log("ERROR", fmt.Sprintf("下载失败: %v", err))
-			continue
-		}
-		defer resp.Body.Close()
-
-		content, err := io.ReadAll(resp.Body)
-		if err != nil {
-			s.log("ERROR", fmt.Sprintf("读取内容失败: %v", err))
+			s.log("ERROR", fmt.Sprintf("获取节点源失败: %v", err))
 			continue
 		}
 
-		decoded := s.tryBase64Decode(string(content))
+		// 使用 node_parser.go 中的统一解码函数
+		decoded := TryDecodeNodeList(string(content))
 
 		// 调试日志
 		decodedPreview := decoded
 		if len(decodedPreview) > 200 {
 			decodedPreview = decodedPreview[:200] + "..."
 		}
-		s.log("DEBUG", fmt.Sprintf("解码后内容长度: %d, 预览: %s", len(decoded), decodedPreview))
+		s.log("DEBUG", fmt.Sprintf("处理后内容长度: %d, 预览: %s", len(decoded), decodedPreview))
 
 		nodeLinks := s.extractNodeLinks(decoded)
-
-		// 记录类型统计
 		s.logNodeTypeStats(url, nodeLinks)
 
 		for _, link := range nodeLinks {
@@ -909,6 +691,82 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 	}
 
 	return allNodes, nil
+}
+
+// fetchURLContent 下载单个 URL 内容（带重试）
+func (s *ConfigUpdateService) fetchURLContent(client *http.Client, url string) ([]byte, error) {
+	maxRetries := 3
+	retryDelay := 2 * time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("创建请求失败: %v", err)
+		}
+
+		// 设置请求头（针对 GitHub Gist 等服务的优化）
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "*/*")
+		req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+		// 对于 GitHub Gist，使用 close 而不是 keep-alive，避免连接问题
+		if strings.Contains(url, "gist.githubusercontent.com") {
+			req.Header.Set("Connection", "close")
+		} else {
+			req.Header.Set("Connection", "keep-alive")
+		}
+		// 不设置 Accept-Encoding，让服务器决定是否压缩，避免解压问题
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if attempt < maxRetries {
+				s.log("WARN", fmt.Sprintf("下载失败 (尝试 %d/%d): %v，%v 后重试", attempt, maxRetries, err, retryDelay))
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+				continue
+			}
+			return nil, fmt.Errorf("下载失败: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			if attempt < maxRetries {
+				s.log("WARN", fmt.Sprintf("状态码 %d (尝试 %d/%d)，%v 后重试", resp.StatusCode, attempt, maxRetries, retryDelay))
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+				continue
+			}
+			return nil, fmt.Errorf("状态码错误: %d", resp.StatusCode)
+		}
+
+		// 使用 LimitReader 防止读取过大内容，同时设置合理的限制
+		// GitHub Gist raw 文件通常不会超过 10MB
+		limitedReader := io.LimitReader(resp.Body, 10*1024*1024) // 10MB 限制
+		content, err := io.ReadAll(limitedReader)
+		if err != nil {
+			resp.Body.Close()
+			if attempt < maxRetries {
+				s.log("WARN", fmt.Sprintf("读取内容失败 (尝试 %d/%d): %v，%v 后重试", attempt, maxRetries, err, retryDelay))
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+				continue
+			}
+			return nil, fmt.Errorf("读取内容失败: %v", err)
+		}
+
+		if len(content) > 0 {
+			return content, nil
+		}
+
+		// 如果内容为空，也进行重试
+		if attempt < maxRetries {
+			s.log("WARN", fmt.Sprintf("内容为空 (尝试 %d/%d)，%v 后重试", attempt, maxRetries, retryDelay))
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+			continue
+		}
+	}
+	return nil, fmt.Errorf("内容为空或获取失败")
 }
 
 // logNodeTypeStats 记录节点类型统计
@@ -945,17 +803,71 @@ func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
 }
 
 // extractNodeLinks 提取节点链接
+// 注意：需要按优先级顺序提取，避免误匹配
+// 例如：vmess://xxx 的Base64部分可能包含 "ss://" 字符串，需要先匹配vmess
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	var links []string
 	var invalidLinks []string
+	// 用于记录已经匹配的位置，避免重复匹配
+	matchedPositions := make(map[int]bool)
 
+	// 按优先级顺序匹配：先匹配vmess/vless/trojan，再匹配ss/ssr
+	// 这样可以避免vmess链接的Base64部分被误识别为ss链接
 	for _, re := range nodeLinkPatterns {
-		matches := re.FindAllString(content, -1)
+		matches := re.FindAllStringSubmatchIndex(content, -1)
 		for _, match := range matches {
-			if s.isValidNodeLink(match) {
-				links = append(links, match)
+			// FindAllStringSubmatchIndex 返回 [完整匹配开始, 完整匹配结束, 子组1开始, 子组1结束, ...]
+			// 我们需要获取第一个捕获组（实际链接）的位置
+			var start, end int
+			var matchStr string
+
+			if len(match) >= 4 {
+				// 有捕获组：使用第一个捕获组（实际链接）
+				start = match[2]
+				end = match[3]
+				matchStr = content[start:end]
+			} else if len(match) >= 2 {
+				// 没有捕获组：使用完整匹配（向后兼容）
+				start = match[0]
+				end = match[1]
+				matchStr = content[start:end]
+				// 移除可能的前导空白字符
+				matchStr = strings.TrimSpace(matchStr)
 			} else {
-				invalidLinks = append(invalidLinks, match)
+				continue
+			}
+
+			// 额外检查：如果匹配到ss://，确保前面不是vme（避免匹配到vmess://中的ss://）
+			if strings.HasPrefix(matchStr, "ss://") && start >= 3 {
+				prefix := content[start-3 : start]
+				if prefix == "vme" {
+					// 这是vmess://中的ss://，应该跳过
+					continue
+				}
+			}
+
+			// 检查这个位置是否已经被其他模式匹配过
+			alreadyMatched := false
+			for pos := start; pos < end; pos++ {
+				if matchedPositions[pos] {
+					alreadyMatched = true
+					break
+				}
+			}
+
+			if alreadyMatched {
+				continue
+			}
+
+			// 标记这个位置已被匹配
+			for pos := start; pos < end; pos++ {
+				matchedPositions[pos] = true
+			}
+
+			if s.isValidNodeLink(matchStr) {
+				links = append(links, matchStr)
+			} else {
+				invalidLinks = append(invalidLinks, matchStr)
 			}
 		}
 	}
@@ -994,26 +906,22 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 	}
 
 	if strings.HasPrefix(link, "ss://") {
-		if strings.Contains(linkWithoutFragment, "@") {
-			parts := strings.Split(linkWithoutFragment, "@")
-			if len(parts) < 2 {
-				return false
-			}
-			serverPart := parts[1]
-			if idx := strings.Index(serverPart, "?"); idx != -1 {
-				serverPart = serverPart[:idx]
-			}
-			if !strings.Contains(serverPart, ":") {
-				return false
-			}
-		} else {
-			encoded := strings.TrimPrefix(linkWithoutFragment, "ss://")
-			if idx := strings.Index(encoded, "?"); idx != -1 {
-				encoded = encoded[:idx]
-			}
-			if len(encoded) < 10 {
-				return false
-			}
+		// SS 链接标准格式: ss://base64(method:password)@server:port#name
+		// 必须包含 @ 符号和服务器地址
+		if !strings.Contains(linkWithoutFragment, "@") {
+			// 没有 @ 符号，可能是格式错误的链接或被截断的链接
+			return false
+		}
+		parts := strings.Split(linkWithoutFragment, "@")
+		if len(parts) < 2 {
+			return false
+		}
+		serverPart := parts[1]
+		if idx := strings.Index(serverPart, "?"); idx != -1 {
+			serverPart = serverPart[:idx]
+		}
+		if !strings.Contains(serverPart, ":") {
+			return false
 		}
 	} else if strings.HasPrefix(link, "vmess://") || strings.HasPrefix(link, "vless://") {
 		encoded := strings.TrimPrefix(linkWithoutFragment, "vmess://")
@@ -1057,25 +965,12 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 	return true
 }
 
-// resolveRegion 从节点名称和服务器地址中解析地区信息
+// resolveRegion 从节点名称和服务器地址中解析地区信息（使用优化的匹配器）
 func (s *ConfigUpdateService) resolveRegion(name, server string) string {
-	nameUpper := strings.ToUpper(name)
-	// 按长度从长到短排序，优先匹配更长的关键词
-	for _, kw := range regionKeys {
-		if strings.Contains(nameUpper, strings.ToUpper(kw)) {
-			if region, ok := regionMap[kw]; ok {
-				return region
-			}
-		}
+	if s.regionMatcher != nil {
+		return s.regionMatcher.MatchRegion(name, server)
 	}
-
-	serverLower := strings.ToLower(server)
-	for kw, region := range serverCodeMap {
-		if strings.Contains(serverLower, kw) {
-			return region
-		}
-	}
-
+	// 如果匹配器未初始化，返回"未知"
 	return "未知"
 }
 
@@ -1386,36 +1281,22 @@ func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) e
 
 // GenerateClashConfig 生成 Clash 配置
 func (s *ConfigUpdateService) GenerateClashConfig(token string, clientIP string, userAgent string) (string, error) {
-	// 每次生成配置前都刷新系统配置，确保使用最新的域名设置
-	s.refreshSystemConfig()
-
-	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
-
-	if ctx.Status != StatusNormal {
-		errorNodes := s.generateErrorNodes(ctx.Status, ctx)
-		return s.generateClashYAML(errorNodes), nil
+	nodes, err := s.prepareExportNodes(token, clientIP, userAgent)
+	if err != nil {
+		return "", err
 	}
-
-	finalNodes := s.addInfoNodes(ctx.Proxies, ctx)
-	return s.generateClashYAML(finalNodes), nil
+	return s.generateClashYAML(nodes), nil
 }
 
 // GenerateUniversalConfig 生成通用订阅配置
 func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP string, userAgent string, format string) (string, error) {
-	// 每次生成配置前都刷新系统配置，确保使用最新的域名设置
-	s.refreshSystemConfig()
-
-	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
-	var nodesToExport []*ProxyNode
-
-	if ctx.Status != StatusNormal {
-		nodesToExport = s.generateErrorNodes(ctx.Status, ctx)
-	} else {
-		nodesToExport = s.addInfoNodes(ctx.Proxies, ctx)
+	nodes, err := s.prepareExportNodes(token, clientIP, userAgent)
+	if err != nil {
+		return "", err
 	}
 
 	var links []string
-	for _, node := range nodesToExport {
+	for _, node := range nodes {
 		var link string
 		if format == "ssr" && node.Type == "ssr" {
 			link = s.nodeToSSRLink(node)
@@ -1428,6 +1309,20 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP str
 	}
 
 	return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))), nil
+}
+
+// prepareExportNodes 准备导出的节点列表（包含信息节点或错误节点）
+func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent string) ([]*ProxyNode, error) {
+	// 每次生成配置前都刷新系统配置，确保使用最新的域名设置
+	s.refreshSystemConfig()
+
+	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
+
+	if ctx.Status != StatusNormal {
+		return s.generateErrorNodes(ctx.Status, ctx), nil
+	}
+
+	return s.addInfoNodes(ctx.Proxies, ctx), nil
 }
 
 // generateClashYAML 生成 Clash YAML 配置
@@ -1508,50 +1403,19 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 
 // addInfoNodes 添加信息节点
 func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *SubscriptionContext) []*ProxyNode {
-	// 确保配置已刷新（已在 GenerateClashConfig 和 GenerateUniversalConfig 中刷新）
-
 	expireTimeStr := "无限期"
 	if !ctx.Subscription.ExpireTime.IsZero() {
 		expireTimeStr = ctx.Subscription.ExpireTime.Format("2006-01-02")
 	}
 
 	infoNodes := []*ProxyNode{
-		{
-			Name:     fmt.Sprintf("📢 官网: %s", s.siteURL),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "info",
-		},
-		{
-			Name:     fmt.Sprintf("⏰ 到期: %s", expireTimeStr),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "info",
-		},
-		{
-			Name:     fmt.Sprintf("📱 设备: %d/%d", ctx.CurrentDevices, ctx.DeviceLimit),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "info",
-		},
+		s.createMessageNode(fmt.Sprintf("📢 官网: %s", s.siteURL)),
+		s.createMessageNode(fmt.Sprintf("⏰ 到期: %s", expireTimeStr)),
+		s.createMessageNode(fmt.Sprintf("📱 设备: %d/%d", ctx.CurrentDevices, ctx.DeviceLimit)),
 	}
 
-	// 如果配置了客服QQ，添加客服QQ信息节点
 	if s.supportQQ != "" {
-		infoNodes = append(infoNodes, &ProxyNode{
-			Name:     fmt.Sprintf("💬 客服QQ: %s", s.supportQQ),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "info",
-		})
+		infoNodes = append(infoNodes, s.createMessageNode(fmt.Sprintf("💬 客服QQ: %s", s.supportQQ)))
 	}
 
 	return append(infoNodes, proxies...)
@@ -1585,45 +1449,34 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 		solution = "检测到账户异常，请联系管理员"
 	}
 
-	// 确保配置已刷新（已在 GenerateClashConfig 和 GenerateUniversalConfig 中刷新）
-	return []*ProxyNode{
-		{
-			Name:     fmt.Sprintf("📢 官网: %s", s.siteURL),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "error",
-		},
-		{
-			Name:     fmt.Sprintf("❌ 原因: %s", reason),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "error",
-		},
-		{
-			Name:     fmt.Sprintf("💡 解决: %s", solution),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "error",
-		},
-		{
-			Name: func() string {
-				if s.supportQQ != "" {
-					return fmt.Sprintf("💬 客服QQ: %s", s.supportQQ)
-				}
-				return "💬 客服QQ: 请在系统设置中配置"
-			}(),
-			Type:     "ss",
-			Server:   "127.0.0.1",
-			Port:     1234,
-			Cipher:   "aes-128-gcm",
-			Password: "error",
-		},
+	infoNodes := []*ProxyNode{
+		s.createMessageNode(fmt.Sprintf("📢 官网: %s", s.siteURL)),
+		s.createMessageNode(fmt.Sprintf("❌ 原因: %s", reason), "error"),
+		s.createMessageNode(fmt.Sprintf("💡 解决: %s", solution), "error"),
+	}
+
+	qqMsg := "💬 客服QQ: 请在系统设置中配置"
+	if s.supportQQ != "" {
+		qqMsg = fmt.Sprintf("💬 客服QQ: %s", s.supportQQ)
+	}
+	infoNodes = append(infoNodes, s.createMessageNode(qqMsg, "error"))
+
+	return infoNodes
+}
+
+// createMessageNode 创建消息提示节点 (SS类型)
+func (s *ConfigUpdateService) createMessageNode(name string, password ...string) *ProxyNode {
+	pwd := "info"
+	if len(password) > 0 {
+		pwd = password[0]
+	}
+	return &ProxyNode{
+		Name:     name,
+		Type:     "ss",
+		Server:   "127.0.0.1",
+		Port:     1234,
+		Cipher:   "aes-128-gcm",
+		Password: pwd,
 	}
 }
 
@@ -2143,22 +1996,4 @@ func (s *ConfigUpdateService) anytlsToLink(proxy *ProxyNode) string {
 
 	u.RawQuery = q.Encode()
 	return u.String()
-}
-
-func (s *ConfigUpdateService) tryBase64Decode(text string) string {
-	cleanText := strings.ReplaceAll(text, " ", "")
-	cleanText = strings.ReplaceAll(cleanText, "\n", "")
-	cleanText = strings.ReplaceAll(cleanText, "\r", "")
-	cleanText = strings.ReplaceAll(cleanText, "-", "+")
-	cleanText = strings.ReplaceAll(cleanText, "_", "/")
-
-	if len(cleanText)%4 != 0 {
-		cleanText += strings.Repeat("=", 4-len(cleanText)%4)
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(cleanText)
-	if err != nil {
-		return text
-	}
-	return string(decoded)
 }
