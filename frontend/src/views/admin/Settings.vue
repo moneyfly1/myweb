@@ -811,9 +811,14 @@ export default {
           }
         if (settings.admin_notification) {
           // 将字符串 "true"/"false" 转换为布尔值
+          // 但保持某些字段为字符串（如 Chat ID、Token 等）
+          const stringFields = ['admin_telegram_chat_id', 'admin_telegram_bot_token', 'admin_bark_device_key', 'admin_notification_email', 'admin_bark_server_url']
           const adminNotifData = { ...settings.admin_notification }
           for (const key in adminNotifData) {
-            if (adminNotifData[key] === 'true' || adminNotifData[key] === true) {
+            if (stringFields.includes(key)) {
+              // 这些字段必须保持为字符串，即使后端返回的是数字
+              adminNotifData[key] = String(adminNotifData[key] || '')
+            } else if (adminNotifData[key] === 'true' || adminNotifData[key] === true) {
               adminNotifData[key] = true
             } else if (adminNotifData[key] === 'false' || adminNotifData[key] === false) {
               adminNotifData[key] = false

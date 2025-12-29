@@ -96,8 +96,10 @@
           <i class="fas fa-wallet"></i>
         </div>
         <div class="stat-content">
-          <h3 class="stat-title">¥ {{ userInfo.balance || '0.00' }}</h3>
-          <p class="stat-subtitle">账户余额</p>
+          <div class="balance-main">
+            <h3 class="stat-title">¥ {{ userInfo.balance || '0.00' }}</h3>
+            <p class="stat-subtitle">账户余额</p>
+          </div>
           <el-button 
             type="primary" 
             class="recharge-btn"
@@ -144,14 +146,16 @@
       </div>
 
       <div class="stat-card remaining-time-card">
+        <div class="stat-icon">
+          <i class="fas fa-clock"></i>
+        </div>
         <div class="stat-content">
           <div class="remaining-time-main">
-            <h3 class="remaining-time-title">用户剩余时间</h3>
             <div class="remaining-time-value">
               <span class="time-number">{{ getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) }}</span>
               <span class="time-unit">天</span>
             </div>
-            <p class="expiry-date">到期时间：{{ formatDate(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) || '未设置' }}</p>
+            <p class="stat-subtitle">到期时间：{{ formatDate(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) || '未设置' }}</p>
           </div>
           <el-button 
             type="primary" 
@@ -169,64 +173,6 @@
     <div class="main-content">
       <!-- 左侧内容 -->
       <div class="left-content">
-
-        <!-- 使用教程卡片 -->
-        <div class="card tutorial-card">
-          <div class="card-header">
-            <h3 class="card-title">
-              <i class="fas fa-graduation-cap"></i>
-              使用教程
-            </h3>
-          </div>
-          <div class="card-body">
-            <div class="tutorial-tabs">
-              <div 
-                v-for="platform in platforms" 
-                :key="platform.name"
-                class="tutorial-tab"
-                :class="{ active: activePlatform === platform.name }"
-                @click="activePlatform = platform.name"
-              >
-                <i :class="platform.icon"></i>
-                <span>{{ platform.name }}</span>
-              </div>
-            </div>
-            
-            <div class="tutorial-content">
-              <div 
-                v-for="platform in platforms" 
-                :key="platform.name"
-                v-show="activePlatform === platform.name"
-                class="tutorial-platform"
-              >
-                <div 
-                  v-for="app in platform.apps" 
-                  :key="app.name"
-                  class="tutorial-app"
-                >
-                  <div class="app-info">
-                    <div class="app-details">
-                      <h4 class="app-name">{{ app.name }}</h4>
-                      <p class="app-version">{{ app.version }}</p>
-                    </div>
-                  </div>
-                  <div class="app-actions">
-                    <el-button type="primary" size="small" @click="downloadApp(app.downloadKey)">
-                      立即下载
-                    </el-button>
-                    <el-button type="default" size="small" @click="openTutorial(app.tutorialUrl)">
-                      安装教程
-                    </el-button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 右侧内容 -->
-      <div class="right-content">
         <!-- 订阅地址卡片 -->
         <div class="card subscription-card">
           <div class="card-header">
@@ -424,7 +370,63 @@
             </div>
           </div>
         </div>
+      </div>
 
+      <!-- 右侧内容 -->
+      <div class="right-content">
+        <!-- 使用教程卡片 -->
+        <div class="card tutorial-card">
+          <div class="card-header">
+            <h3 class="card-title">
+              <i class="fas fa-graduation-cap"></i>
+              使用教程
+            </h3>
+          </div>
+          <div class="card-body">
+            <div class="tutorial-tabs">
+              <div 
+                v-for="platform in platforms" 
+                :key="platform.name"
+                class="tutorial-tab"
+                :class="{ active: activePlatform === platform.name }"
+                @click="activePlatform = platform.name"
+              >
+                <i :class="platform.icon"></i>
+                <span>{{ platform.name }}</span>
+              </div>
+            </div>
+            
+            <div class="tutorial-content">
+              <div 
+                v-for="platform in platforms" 
+                :key="platform.name"
+                v-show="activePlatform === platform.name"
+                class="tutorial-platform"
+              >
+                <div 
+                  v-for="app in platform.apps" 
+                  :key="app.name"
+                  class="tutorial-app"
+                >
+                  <div class="app-info">
+                    <div class="app-details">
+                      <h4 class="app-name">{{ app.name }}</h4>
+                      <p class="app-version">{{ app.version }}</p>
+                    </div>
+                  </div>
+                  <div class="app-actions">
+                    <el-button type="primary" size="small" @click="downloadApp(app.downloadKey)">
+                      立即下载
+                    </el-button>
+                    <el-button type="default" size="small" @click="openTutorial(app.tutorialUrl)">
+                      安装教程
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -433,11 +435,15 @@
     <el-dialog
       v-model="rechargeDialogVisible"
       title="账户充值"
-      width="500px"
+      :width="isMobile ? '90%' : '500px'"
       class="recharge-dialog"
+      :close-on-click-modal="false"
     >
-      <el-form :model="rechargeForm" :rules="rechargeRules" ref="rechargeFormRef" label-width="100px">
-        <el-form-item label="充值金额" prop="amount">
+      <el-form :model="rechargeForm" :rules="rechargeRules" ref="rechargeFormRef" :label-width="isMobile ? '0' : '100px'">
+        <el-form-item prop="amount" :label="isMobile ? '' : '充值金额'">
+          <template v-if="isMobile">
+            <div class="mobile-label">充值金额</div>
+          </template>
           <el-input-number
             v-model="rechargeForm.amount"
             :min="20"
@@ -445,6 +451,7 @@
             :precision="2"
             placeholder="请输入充值金额"
             style="width: 100%"
+            :controls-position="isMobile ? 'right' : 'right'"
           >
             <template #prepend>¥</template>
           </el-input-number>
@@ -457,6 +464,7 @@
                 size="small"
                 :type="rechargeForm.amount === amount ? 'primary' : 'default'"
                 @click="selectQuickAmount(amount)"
+                class="quick-amount-btn"
               >
                 ¥{{ amount }}
               </el-button>
@@ -916,11 +924,19 @@ const createRecharge = async () => {
         return
       }
       
-      // 获取支付URL
-      const paymentUrl = data.payment_qr_code || data.payment_url
+      // 获取支付URL（后端返回的是 payment_url）
+      const paymentUrl = data.payment_url || data.payment_qr_code
       
       if (!paymentUrl) {
         ElMessage.error('支付链接生成失败，请稍后重试')
+        return
+      }
+      
+      // 验证充值订单ID是否存在（后端返回的是 id 字段）
+      const rechargeId = data.id || data.recharge_id
+      if (!rechargeId) {
+        console.error('充值订单ID不存在:', data)
+        ElMessage.error('充值订单创建失败，订单ID缺失')
         return
       }
       
@@ -945,13 +961,26 @@ const createRecharge = async () => {
         rechargeQRCode.value = qrCodeDataURL
         ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
         
-        // 开始轮询检查支付状态
-        checkRechargeStatus(data.recharge_id)
+        // 开始轮询检查支付状态（使用 id 字段，不是 recharge_id）
+        const rechargeId = data.id || data.recharge_id
+        if (rechargeId) {
+          checkRechargeStatus(rechargeId)
+        } else {
+          console.error('充值订单ID不存在，无法检查支付状态:', data)
+          ElMessage.warning('充值订单创建成功，但无法自动检查支付状态')
+        }
       } catch (qrError) {
         // 如果二维码生成失败，直接使用URL
         rechargeQRCode.value = paymentUrl
         ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
-        checkRechargeStatus(data.recharge_id)
+        // 开始轮询检查支付状态（使用 id 字段，不是 recharge_id）
+        const rechargeId = data.id || data.recharge_id
+        if (rechargeId) {
+          checkRechargeStatus(rechargeId)
+        } else {
+          console.error('充值订单ID不存在，无法检查支付状态:', data)
+          ElMessage.warning('充值订单创建成功，但无法自动检查支付状态')
+        }
       }
     } else {
       ElMessage.error(response.data?.message || '创建充值订单失败')
@@ -965,10 +994,19 @@ const createRecharge = async () => {
 
 let rechargeStatusInterval = null
 const checkRechargeStatus = (rechargeId) => {
-  if (rechargeStatusInterval) {
-    clearInterval(rechargeStatusInterval)
+  // 验证 rechargeId 是否存在
+  if (!rechargeId) {
+    console.error('充值订单ID不存在，无法检查支付状态')
+    return
   }
   
+  // 清除之前的定时器
+  if (rechargeStatusInterval) {
+    clearInterval(rechargeStatusInterval)
+    rechargeStatusInterval = null
+  }
+  
+  // 开始轮询检查支付状态
   rechargeStatusInterval = setInterval(async () => {
     try {
       const response = await rechargeAPI.getRechargeDetail(rechargeId)
@@ -992,7 +1030,16 @@ const checkRechargeStatus = (rechargeId) => {
         }
       }
     } catch (error) {
+      // 如果是 404 错误，说明订单不存在，停止轮询
+      if (error.response?.status === 404) {
+        console.warn('充值订单不存在，停止检查支付状态')
+        clearInterval(rechargeStatusInterval)
+        rechargeStatusInterval = null
+      } else {
+        // 其他错误只记录，不停止轮询
+        console.warn('检查充值状态失败:', error)
       }
+    }
   }, 3000) // 每3秒检查一次
   
   // 30秒后停止检查
@@ -1850,6 +1897,7 @@ onUnmounted(() => {
 .stat-card:nth-child(1) .stat-icon { background: linear-gradient(135deg, #667eea, #764ba2); }
 .stat-card:nth-child(2) .stat-icon { background: linear-gradient(135deg, #4facfe, #00f2fe); }
 .stat-card:nth-child(3) .stat-icon { background: linear-gradient(135deg, #43e97b, #38f9d7); }
+.stat-card:nth-child(4) .stat-icon { background: linear-gradient(135deg, #f093fb, #f5576c); }
 
 .stat-title {
   font-size: 1.5rem;
@@ -1970,36 +2018,61 @@ onUnmounted(() => {
 
 /* 余额卡片样式 */
 .balance-card {
-  .recharge-btn {
-    margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  
+  .stat-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
-    padding: 10px 20px;
+    flex: 1;
+    min-width: 0;
+    gap: 12px;
+  }
+  
+  .balance-main {
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .recharge-btn {
+    margin-left: 12px;
+    padding: 8px 16px;
     font-weight: 600;
     border-radius: 8px;
-    font-size: 0.875rem;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    max-width: fit-content;
+    height: auto;
     
     :is(i) {
-      margin-right: 6px;
+      margin-right: 4px;
+      font-size: 12px;
     }
     
     @media (max-width: 768px) {
-      padding: 8px 14px;
-      font-size: 0.8125rem;
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      margin-left: 0;
       
       :is(i) {
-        margin-right: 4px;
-        font-size: 12px;
+        margin-right: 3px;
+        font-size: 11px;
       }
     }
     
     @media (max-width: 480px) {
-      padding: 12px 16px;
-      font-size: 0.875rem;
-      border-radius: 10px;
+      padding: 8px 16px;
+      font-size: 0.8125rem;
+      border-radius: 8px;
       
       :is(i) {
-        margin-right: 6px;
-        font-size: 14px;
+        margin-right: 4px;
+        font-size: 12px;
       }
     }
   }
@@ -2019,7 +2092,7 @@ onUnmounted(() => {
     width: 100%;
     flex: 1;
     min-width: 0;
-    gap: 10px;
+    gap: 12px;
     box-sizing: border-box;
   }
   
@@ -2027,40 +2100,38 @@ onUnmounted(() => {
     flex: 1;
     min-width: 0;
     overflow: hidden;
-  }
-  
-  .remaining-time-title {
-    font-size: 0.875rem;
-    color: #6b7280;
-    margin: 0 0 8px 0;
-    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   
   .remaining-time-value {
     display: flex;
     align-items: baseline;
     gap: 4px;
+    margin: 0 0 4px 0;
   }
   
   .time-number {
-    font-size: 2.5rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: #1f2937;
-    line-height: 1;
+    line-height: 1.3;
+    margin: 0;
   }
   
   .time-unit {
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 600;
     color: #6b7280;
   }
   
-  .expiry-date {
-    font-size: 0.8125rem;
-    color: #9ca3af;
-    margin: 8px 0 0 0;
-    font-weight: 400;
+  .remaining-time-card .stat-subtitle {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #6b7280;
     line-height: 1.4;
+    word-break: break-word;
   }
   
   .renew-btn {
@@ -2078,6 +2149,28 @@ onUnmounted(() => {
     :is(i) {
       margin-right: 4px;
       font-size: 12px;
+    }
+    
+    @media (max-width: 768px) {
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      margin-left: 0;
+      
+      :is(i) {
+        margin-right: 3px;
+        font-size: 11px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      padding: 8px 16px;
+      font-size: 0.8125rem;
+      border-radius: 8px;
+      
+      :is(i) {
+        margin-right: 4px;
+        font-size: 12px;
+      }
     }
   }
   
@@ -2189,12 +2282,42 @@ onUnmounted(() => {
 .recharge-dialog {
   :deep(.el-dialog__body) {
     padding: 20px;
+    
+    @media (max-width: 768px) {
+      padding: 16px;
+    }
   }
   
   :deep(.el-dialog) {
     @media (max-width: 768px) {
       width: 90% !important;
       margin: 5vh auto !important;
+      max-width: 400px;
+    }
+    
+    @media (max-width: 480px) {
+      width: 95% !important;
+      margin: 2vh auto !important;
+    }
+  }
+  
+  :deep(.el-dialog__header) {
+    @media (max-width: 768px) {
+      padding: 16px 16px 12px;
+    }
+  }
+  
+  :deep(.el-dialog__title) {
+    @media (max-width: 768px) {
+      font-size: 18px;
+    }
+  }
+  
+  :deep(.el-form-item) {
+    margin-bottom: 20px;
+    
+    @media (max-width: 768px) {
+      margin-bottom: 16px;
     }
   }
   
@@ -2202,23 +2325,69 @@ onUnmounted(() => {
     @media (max-width: 768px) {
       font-size: 14px;
       padding-bottom: 8px;
+      width: 100% !important;
+      text-align: left;
+      margin-bottom: 8px;
+      display: none; /* 移动端隐藏默认标签 */
+    }
+  }
+  
+  .mobile-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #606266;
+    margin-bottom: 8px;
+    display: block;
+    
+    @media (min-width: 769px) {
+      display: none;
+    }
+  }
+  
+  :deep(.el-form-item__content) {
+    @media (max-width: 768px) {
+      margin-left: 0 !important;
+    }
+  }
+  
+  :deep(.el-input-number) {
+    width: 100%;
+    
+    @media (max-width: 768px) {
+      width: 100%;
+    }
+    
+    :deep(.el-input__wrapper) {
+      @media (max-width: 768px) {
+        padding: 8px 12px;
+      }
+    }
+    
+    :deep(.el-input__inner) {
+      @media (max-width: 768px) {
+        font-size: 16px; /* 防止iOS自动缩放 */
+        height: 44px;
+      }
     }
   }
   
   .amount-tips {
-    margin-top: 10px;
+    margin-top: 12px;
     font-size: 12px;
     color: #909399;
     
     @media (max-width: 768px) {
-      font-size: 11px;
+      margin-top: 12px;
+      font-size: 12px;
     }
     
     :is(p) {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
+      line-height: 1.5;
       
       @media (max-width: 768px) {
-        margin-bottom: 8px;
+        margin-bottom: 10px;
+        font-size: 12px;
       }
     }
     
@@ -2229,18 +2398,25 @@ onUnmounted(() => {
       margin-top: 10px;
       
       @media (max-width: 768px) {
-        gap: 6px;
-        margin-top: 8px;
+        gap: 8px;
+        margin-top: 12px;
       }
       
-      .el-button {
+      .quick-amount-btn {
         margin: 0;
+        flex: 1 1 calc(33.333% - 6px);
+        min-width: calc(33.333% - 6px);
+        max-width: calc(33.333% - 6px);
+        padding: 10px 8px;
+        font-size: 13px;
+        border-radius: 6px;
         
-        @media (max-width: 768px) {
-          padding: 8px 12px;
-          font-size: 12px;
-          flex: 1 1 calc(33.333% - 4px);
-          min-width: calc(33.333% - 4px);
+        @media (max-width: 480px) {
+          flex: 1 1 calc(50% - 4px);
+          min-width: calc(50% - 4px);
+          max-width: calc(50% - 4px);
+          padding: 12px 8px;
+          font-size: 14px;
         }
       }
     }
@@ -2254,39 +2430,53 @@ onUnmounted(() => {
     border-radius: 8px;
     
     @media (max-width: 768px) {
-      margin-top: 15px;
-      padding: 15px;
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 8px;
     }
     
     :is(h4) {
       margin-bottom: 15px;
       color: #303133;
       font-size: 16px;
+      font-weight: 600;
+      line-height: 1.4;
       
       @media (max-width: 768px) {
-        font-size: 14px;
+        font-size: 15px;
         margin-bottom: 12px;
+        padding: 0 8px;
       }
     }
     
     .qr-code-wrapper {
       display: flex;
       justify-content: center;
+      align-items: center;
       margin: 20px 0;
       
       @media (max-width: 768px) {
-        margin: 15px 0;
+        margin: 16px 0;
       }
       
       .qr-code-img {
         max-width: 250px;
         max-height: 250px;
+        width: 100%;
+        height: auto;
         border: 1px solid #dcdfe6;
-        border-radius: 4px;
+        border-radius: 8px;
         padding: 10px;
         background: white;
+        box-sizing: border-box;
         
         @media (max-width: 768px) {
+          max-width: 220px;
+          max-height: 220px;
+          padding: 10px;
+        }
+        
+        @media (max-width: 480px) {
           max-width: 200px;
           max-height: 200px;
           padding: 8px;
@@ -2297,22 +2487,72 @@ onUnmounted(() => {
     .qr-tip {
       color: #909399;
       font-size: 12px;
-      margin-top: 10px;
+      margin-top: 12px;
+      line-height: 1.5;
+      padding: 0 8px;
       
       @media (max-width: 768px) {
-        font-size: 11px;
-        margin-top: 8px;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+    }
+    
+    .recharge-payment-actions {
+      margin-top: 15px;
+      
+      @media (max-width: 768px) {
+        margin-top: 12px;
+      }
+      
+      .el-button {
+        width: 100%;
+        padding: 12px 20px;
+        font-size: 15px;
+        border-radius: 8px;
+        font-weight: 600;
+        
+        @media (max-width: 480px) {
+          padding: 14px 20px;
+          font-size: 16px;
+        }
       }
     }
   }
   
   :deep(.el-dialog__footer) {
+    padding: 16px 20px;
+    border-top: 1px solid #e5e7eb;
+    
     @media (max-width: 768px) {
-      padding: 15px 20px;
+      padding: 12px 16px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .dialog-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      width: 100%;
       
-      .el-button {
+      @media (max-width: 768px) {
+        flex-direction: row;
+        gap: 10px;
+      }
+    }
+    
+    .el-button {
+      @media (max-width: 768px) {
         flex: 1;
-        margin: 0 5px;
+        margin: 0;
+        padding: 10px 16px;
+        font-size: 14px;
+        border-radius: 6px;
+      }
+      
+      @media (max-width: 480px) {
+        padding: 12px 16px;
+        font-size: 15px;
       }
     }
   }
@@ -2851,11 +3091,12 @@ onUnmounted(() => {
   
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 10px;
+    margin-bottom: 16px;
 
     @media (max-width: 480px) {
       grid-template-columns: 1fr;
+      gap: 12px;
     }
     
     /* 移动端禁用不必要的装饰动画以省电 */
@@ -2867,40 +3108,166 @@ onUnmounted(() => {
     }
     
     .stat-card {
-      padding: 12px;
+      padding: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
       
       .stat-icon {
-        width: 44px;
-        height: 44px;
-        font-size: 20px;
-        margin-right: 12px;
+        width: 48px;
+        height: 48px;
+        font-size: 22px;
+        margin-right: 0;
+        flex-shrink: 0;
+        border-radius: 10px;
       }
       
       .stat-content {
         flex: 1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
         
         .stat-title {
-          font-size: 1.125rem;
-          margin-bottom: 4px;
+          font-size: 1.25rem;
+          margin: 0;
           word-break: break-word;
+          line-height: 1.3;
+          font-weight: 700;
         }
         
         .stat-subtitle {
-          font-size: 0.75rem;
-          line-height: 1.3;
+          font-size: 0.8125rem;
+          line-height: 1.4;
           word-break: break-word;
+          margin: 0;
+          color: #6b7280;
         }
+      }
+    }
+    
+    /* 等级卡片在移动端的优化 */
+    .level-card {
+      padding: 16px;
+      
+      .level-card-inner {
+        gap: 14px;
+      }
+      
+      .level-icon {
+        width: 56px;
+        height: 56px;
+        font-size: 26px;
+        border-radius: 12px;
+      }
+      
+      .level-content {
+        .level-header {
+          margin-bottom: 10px;
+          gap: 8px;
+          
+          .level-name {
+            font-size: 1.5rem;
+            line-height: 1.2;
+          }
+          
+          .level-discount-tag {
+            font-size: 12px;
+            padding: 4px 10px;
+          }
+        }
+        
+        .level-expiry {
+          font-size: 0.8125rem;
+          margin-bottom: 12px;
+        }
+      }
+    }
+    
+    /* 余额卡片在移动端的优化 */
+    .balance-card {
+      .stat-content {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+      }
+      
+      .balance-main {
+        flex: 1;
+        min-width: 0;
+      }
+      
+      .recharge-btn {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+    }
+    
+    /* 设备卡片在移动端的优化 */
+    .device-card {
+      .stat-content {
+        width: 100%;
+      }
+      
+      .device-count-wrapper {
+        margin-bottom: 6px;
+        
+        .device-count {
+          font-size: 1.5rem;
+        }
+        
+        .device-separator {
+          font-size: 1.1rem;
+        }
+        
+        .device-limit {
+          font-size: 1.5rem;
+        }
+      }
+      
+      .stat-subtitle {
+        margin-top: 4px;
       }
     }
     
     /* 剩余时间卡片在移动端的特殊处理 */
     .remaining-time-card {
       grid-column: 1 / -1; /* 占据整行 */
+      padding: 16px;
       
       .stat-content {
         flex-direction: row;
         align-items: center;
+        gap: 12px;
+        width: 100%;
+      }
+      
+      .remaining-time-main {
+        flex: 1;
+        min-width: 0;
+      }
+      
+      .time-number {
+        font-size: 1.25rem;
+      }
+      
+      .time-unit {
+        font-size: 0.875rem;
+      }
+      
+      .stat-subtitle {
+        font-size: 0.75rem;
+        line-height: 1.3;
+      }
+      
+      .renew-btn {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        flex-shrink: 0;
       }
     }
   }
@@ -3083,6 +3450,7 @@ onUnmounted(() => {
 @media (max-width: 480px) {
   .stats-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
   
   .welcome-title {
@@ -3094,22 +3462,112 @@ onUnmounted(() => {
   }
   
   .stat-card {
-    padding: 12px;
+    padding: 16px;
+    gap: 12px;
     
     .stat-icon {
-      width: 40px;
-      height: 40px;
-      font-size: 18px;
+      width: 48px;
+      height: 48px;
+      font-size: 22px;
+      border-radius: 10px;
     }
     
     .stat-content {
+      gap: 6px;
+      
       .stat-title {
-        font-size: 1rem;
+        font-size: 1.25rem;
+        line-height: 1.3;
       }
       
       .stat-subtitle {
-        font-size: 0.6875rem;
+        font-size: 0.8125rem;
+        line-height: 1.4;
       }
+    }
+  }
+  
+  /* 等级卡片在小屏幕的优化 */
+  .level-card {
+    .level-icon {
+      width: 56px;
+      height: 56px;
+      font-size: 26px;
+    }
+    
+    .level-content {
+      .level-header {
+        .level-name {
+          font-size: 1.5rem;
+        }
+      }
+    }
+  }
+  
+  /* 余额卡片在小屏幕的优化 */
+  .balance-card {
+    .stat-content {
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .balance-main {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .recharge-btn {
+      padding: 8px 16px;
+      font-size: 0.8125rem;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+  }
+  
+  /* 设备卡片在小屏幕的优化 */
+  .device-card {
+    .device-count-wrapper {
+      .device-count,
+      .device-limit {
+        font-size: 1.5rem;
+      }
+    }
+  }
+  
+  /* 剩余时间卡片在小屏幕的优化 */
+  .remaining-time-card {
+    .stat-content {
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .remaining-time-main {
+      flex: 1;
+      min-width: 0;
+      gap: 4px;
+    }
+    
+    .time-number {
+      font-size: 1.25rem;
+    }
+    
+    .time-unit {
+      font-size: 0.875rem;
+    }
+    
+    .stat-subtitle {
+      font-size: 0.75rem;
+      line-height: 1.3;
+      text-align: left;
+    }
+    
+    .renew-btn {
+      padding: 8px 16px;
+      font-size: 0.8125rem;
+      flex-shrink: 0;
+      white-space: nowrap;
     }
   }
   

@@ -583,12 +583,31 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	s.log("INFO", fmt.Sprintf("共获取到 %d 个有效节点链接，准备入库", len(nodes)))
 
-	// 2. 解析节点并整理准备入库
-	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes)
+	// 2. 解析节点并整理准备入库（包含关键词过滤）
+	filterKeywords := []string{}
+	if keywords, ok := config["filter_keywords"].([]string); ok {
+		filterKeywords = keywords
+	} else if keywordsStr, ok := config["filter_keywords"].(string); ok && keywordsStr != "" {
+		// 处理字符串格式的关键词（用换行符分隔）
+		for _, kw := range strings.Split(keywordsStr, "\n") {
+			if kw = strings.TrimSpace(kw); kw != "" {
+				filterKeywords = append(filterKeywords, kw)
+			}
+		}
+	}
+
+	if len(filterKeywords) > 0 {
+		s.log("INFO", fmt.Sprintf("已配置 %d 个过滤关键词，将过滤包含这些关键词的节点", len(filterKeywords)))
+	}
+
+	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
 
 	// 输出统计信息
 	if stats.parseFailed > 0 {
 		s.log("WARN", fmt.Sprintf("解析失败的节点: %d 个", stats.parseFailed))
+	}
+	if stats.filtered > 0 {
+		s.log("INFO", fmt.Sprintf("被关键词过滤的节点: %d 个", stats.filtered))
 	}
 	if stats.duplicates > 0 {
 		s.log("INFO", fmt.Sprintf("去重跳过的节点: %d 个", stats.duplicates))
@@ -616,10 +635,12 @@ type updateStats struct {
 	duplicates    int
 	invalidLinks  int
 	missingSource int
+	filtered      int // 被关键词过滤的节点数量
 }
 
-// processFetchedNodes 处理获取到的节点：分组、去重、排序
-func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}) ([]nodeWithOrder, updateStats) {
+// processFetchedNodes 处理获取到的节点：分组、去重、排序、关键词过滤
+// filterKeywords: 过滤关键词列表，如果节点名称或服务器地址包含任何关键词，则过滤掉该节点
+func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string) ([]nodeWithOrder, updateStats) {
 	var nodesWithOrder []nodeWithOrder
 	stats := updateStats{}
 
@@ -668,6 +689,33 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 				}
 				s.log("WARN", fmt.Sprintf("解析节点失败: %v, 链接: %s", err, linkPreview))
 				continue
+			}
+
+			// 关键词过滤：检查节点名称或服务器地址是否包含关键词
+			if len(filterKeywords) > 0 {
+				shouldFilter := false
+				filteredByKeyword := ""
+				nodeNameLower := strings.ToLower(node.Name)
+				nodeServerLower := strings.ToLower(node.Server)
+
+				for _, keyword := range filterKeywords {
+					keywordLower := strings.ToLower(strings.TrimSpace(keyword))
+					if keywordLower == "" {
+						continue
+					}
+					// 检查节点名称或服务器地址是否包含关键词
+					if strings.Contains(nodeNameLower, keywordLower) || strings.Contains(nodeServerLower, keywordLower) {
+						shouldFilter = true
+						filteredByKeyword = keyword
+						break
+					}
+				}
+
+				if shouldFilter {
+					stats.filtered++
+					s.log("DEBUG", fmt.Sprintf("节点被关键词过滤，跳过: %s (%s:%s:%d), 匹配关键词: %s", node.Name, node.Type, node.Server, node.Port, filteredByKeyword))
+					continue
+				}
 			}
 
 			// 生成去重键（统一使用 : 分隔符）
