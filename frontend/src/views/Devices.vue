@@ -91,13 +91,15 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="ip_address" label="IP地址" width="200">
+        <el-table-column prop="ip_address" label="IP地址" width="280">
           <template #default="{ row }">
             <div class="ip-location-cell">
-              <span class="ip-address">{{ row.ip_address }}</span>
+              <span class="ip-address">{{ row.ip_address || '-' }}</span>
               <el-tag v-if="row.location" type="info" size="small" style="margin-left: 8px;">
+                <i class="el-icon-location"></i>
                 {{ formatLocation(row.location) }}
               </el-tag>
+              <span v-else class="no-location-text">位置信息不可用</span>
             </div>
           </template>
         </el-table-column>
@@ -143,16 +145,16 @@
           <div class="card-row">
             <span class="label">设备名称</span>
             <span class="value">
-              <i :class="getDeviceIcon(device.device_type)"></i>
               <div class="device-name-details">
                 <div class="device-main-name">
-                  {{ device.device_name || '未知设备' }}
-                  <el-tag v-if="device.software_name" type="info" size="small" style="margin-left: 8px;">
+                  <i :class="getDeviceIcon(device.device_type)"></i>
+                  <span class="device-name-text">{{ device.device_name || '未知设备' }}</span>
+                  <el-tag v-if="device.software_name" type="info" size="small" class="software-tag">
                     {{ device.software_name }}{{ device.software_version ? ' ' + device.software_version : '' }}
                   </el-tag>
                 </div>
                 <div v-if="device.device_model" class="device-model-info">
-                  <el-tag type="success" size="small" style="margin-top: 4px;">
+                  <el-tag type="success" size="small" class="model-tag">
                     {{ device.device_model }}{{ device.device_brand && device.device_brand !== 'Apple' ? ' (' + device.device_brand + ')' : '' }}
                   </el-tag>
                 </div>
@@ -186,18 +188,20 @@
             <span class="label">IP地址</span>
             <span class="value">
               <div class="ip-location-cell">
-                <span class="ip-address">{{ device.ip_address }}</span>
-                <el-tag v-if="device.location" type="info" size="small" style="margin-left: 8px;">
+                <span class="ip-address">{{ device.ip_address || '-' }}</span>
+                <el-tag v-if="device.location" type="info" size="small">
+                  <i class="el-icon-location"></i>
                   {{ formatLocation(device.location) }}
                 </el-tag>
+                <span v-else class="no-location">位置信息不可用</span>
               </div>
             </span>
           </div>
           <div class="card-row">
             <span class="label">最后访问</span>
-            <span class="value">{{ formatTime(device.last_access) }}</span>
+            <span class="value time-value">{{ formatTime(device.last_access) }}</span>
           </div>
-          <div class="card-row">
+          <div class="card-row" v-if="device.user_agent">
             <span class="label">User Agent</span>
             <span class="value user-agent">{{ truncateUserAgent(device.user_agent) }}</span>
           </div>
@@ -538,7 +542,39 @@ export default {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
+  
+  .ip-address {
+    font-family: 'Courier New', monospace;
+    color: #303133;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 2px 0;
+  }
+  
+  :deep(.el-tag) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 0;
+    
+    :is(i) {
+      font-size: 12px;
+    }
+  }
+  
+  .no-location-text {
+    font-size: 12px;
+    color: #909399;
+    font-style: italic;
+    margin-left: 8px;
+  }
+  
+  .no-location {
+    font-size: 12px;
+    color: #909399;
+    font-style: italic;
+  }
 }
 
 .user-agent {
@@ -617,44 +653,246 @@ export default {
   /* 手机端卡片列表显示 */
   .mobile-card-list {
     display: block;
+    width: 100%;
+    
+    .mobile-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
   }
   
   .mobile-card {
-    padding: 14px;
+    padding: 16px;
     margin-bottom: 12px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    background: #fff;
+    border: 1px solid #f0f0f0;
     
     .card-row {
-      padding: 8px 0;
-      font-size: 14px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      padding: 12px 0;
+      border-bottom: 1px solid #f5f5f5;
+      gap: 12px;
+      
+      &:last-of-type:not(.card-actions) {
+        border-bottom: none;
+      }
       
       .label {
-        font-weight: 500;
+        font-weight: 600;
         color: #666;
-        min-width: 80px;
+        font-size: 13px;
+        min-width: 85px;
+        width: 85px;
+        flex-shrink: 0;
+        display: block;
+        line-height: 1.5;
+        padding-top: 2px;
+        text-align: left;
       }
       
       .value {
         color: #333;
         word-break: break-word;
+        font-size: 14px;
+        line-height: 1.5;
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        
+        // 设备名称特殊处理
+        .device-name-details {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 100%;
+          
+          .device-main-name {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #303133;
+            line-height: 1.6;
+            width: 100%;
+            
+            :is(i) {
+              font-size: 18px;
+              color: var(--primary-color);
+              flex-shrink: 0;
+              line-height: 1;
+              margin-right: 0;
+            }
+            
+            .device-name-text {
+              flex: 1 1 auto;
+              min-width: 0;
+              word-break: break-all;
+              white-space: normal;
+              line-height: 1.6;
+              display: block;
+              overflow-wrap: break-word;
+            }
+            
+            :deep(.software-tag) {
+              flex-shrink: 0;
+              font-size: 11px;
+              padding: 4px 8px;
+              height: auto;
+              line-height: 1.3;
+              white-space: nowrap;
+              display: inline-flex;
+              align-items: center;
+              margin-left: 0;
+            }
+          }
+          
+          .device-model-info {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            
+            :deep(.el-tag) {
+              font-size: 11px;
+              padding: 4px 10px;
+              height: auto;
+              line-height: 1.3;
+              white-space: nowrap;
+              display: inline-block;
+            }
+          }
+        }
+        
+        // 操作系统信息
+        .os-info {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          width: 100%;
+          
+          .os-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #303133;
+            line-height: 1.5;
+          }
+          
+          .os-version {
+            margin-top: 0;
+            
+            :deep(.el-tag) {
+              font-size: 11px;
+              padding: 4px 10px;
+              height: auto;
+              line-height: 1.3;
+            }
+          }
+        }
+        
+        // 设备类型标签
+        :deep(.el-tag) {
+          font-size: 12px;
+          padding: 5px 12px;
+          height: auto;
+          line-height: 1.4;
+          border-radius: 6px;
+          display: inline-block;
+        }
+        
+        // IP地址和位置信息
+        .ip-location-cell {
+          display: flex;
+          flex-direction: row;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          width: 100%;
+          
+          .ip-address {
+            font-family: 'Courier New', monospace;
+            color: #303133;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 6px 10px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            display: inline-block;
+            border: 1px solid #e5e7eb;
+            flex-shrink: 0;
+          }
+          
+          :deep(.el-tag) {
+            margin-left: 0;
+            margin-top: 0;
+            font-size: 12px;
+            padding: 5px 12px;
+            height: auto;
+            line-height: 1.4;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+            
+            :is(i) {
+              font-size: 12px;
+            }
+          }
+          
+          .no-location {
+            font-size: 12px;
+            color: #909399;
+            font-style: italic;
+            padding: 4px 0;
+            flex-shrink: 0;
+          }
+        }
+        
+        // 时间显示
+        &.time-value {
+          font-size: 13px;
+          color: #606266;
+          font-weight: 500;
+        }
+        
+        // User Agent
+        &.user-agent {
+          font-family: 'Courier New', monospace;
+          font-size: 12px;
+          color: #666;
+          background: #f9f9f9;
+          padding: 10px;
+          border-radius: 6px;
+          word-break: break-all;
+          line-height: 1.5;
+          border: 1px solid #e5e7eb;
+        }
       }
     }
     
     .card-actions {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #f0f0f0;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
       
       .el-button {
         width: 100%;
         min-height: 44px;
-        font-size: 16px;
-        margin-bottom: 8px;
-        
-        &:last-child {
-          margin-bottom: 0;
-        }
+        font-size: 15px;
+        font-weight: 500;
+        border-radius: 8px;
+        margin: 0;
       }
     }
   }

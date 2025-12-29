@@ -589,3 +589,46 @@ func UpdateTicketStatus(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", ticket)
 }
+
+// CloseTicket 用户关闭自己的工单
+func CloseTicket(c *gin.Context) {
+	id := c.Param("id")
+	user, ok := getCurrentUserOrError(c)
+	if !ok {
+		return
+	}
+
+	db := database.GetDB()
+	var ticket models.Ticket
+	
+	// 用户只能关闭自己的工单
+	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&ticket).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "工单不存在或无权限", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取工单失败", err)
+		}
+		return
+	}
+
+	// 检查工单状态，只有非关闭状态的工单才能关闭
+	if ticket.Status == "closed" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "工单已关闭", nil)
+		return
+	}
+
+	// 更新工单状态为关闭
+	ticket.Status = "closed"
+	now := time.Now()
+	ticket.ClosedAt = &now
+
+	if err := db.Save(&ticket).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "关闭工单失败", err)
+		return
+	}
+
+	// 记录关闭工单审计日志
+	utils.CreateAuditLogSimple(c, "close_ticket", "ticket", ticket.ID, fmt.Sprintf("关闭工单: %s", ticket.Title))
+
+	utils.SuccessResponse(c, http.StatusOK, "工单已关闭", ticket)
+}

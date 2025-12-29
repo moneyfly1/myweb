@@ -310,27 +310,41 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 			locationDisplay = log.Location.String
 		}
 	} else if log.IPAddress.Valid && log.IPAddress.String != "" {
-		// 如果没有location但有IP，尝试使用GeoIP解析
+		// 如果没有location但有IP，尝试使用GeoIP解析（包括IPv6地址）
 		if geoip.IsEnabled() {
-			locationStr := geoip.GetLocationSimple(log.IPAddress.String)
-			if locationStr != "" {
-				locationDisplay = locationStr
-				// 获取完整信息
-				if location, err := geoip.GetLocation(log.IPAddress.String); err == nil {
-					locationInfo = map[string]interface{}{
-						"country":      location.Country,
-						"country_code": location.CountryCode,
-						"city":         location.City,
-						"region":       location.Region,
-					}
+			// 使用带 fallback 的解析函数，优先本地数据库，IPv6失败时尝试从 ipw.cn 获取
+			location, err := geoip.GetLocationWithFallback(log.IPAddress.String)
+			if err == nil && location != nil {
+				// 成功解析，构建显示字符串
+				if location.City != "" {
+					locationDisplay = fmt.Sprintf("%s, %s", location.Country, location.City)
+				} else if location.Region != "" {
+					locationDisplay = fmt.Sprintf("%s, %s", location.Country, location.Region)
+				} else {
+					locationDisplay = location.Country
+				}
+				locationInfo = map[string]interface{}{
+					"country":      location.Country,
+					"country_code": location.CountryCode,
+					"city":         location.City,
+					"region":       location.Region,
+				}
+			} else {
+				// 如果都失败了，尝试使用GetLocationSimple（它内部会处理错误）
+				locationStr := geoip.GetLocationSimple(log.IPAddress.String)
+				if locationStr != "" {
+					locationDisplay = locationStr
 				}
 			}
 		}
 	}
 
+	// 将时间转换为北京时间
+	beijingTime := utils.ToBeijingTime(log.CreatedAt)
+
 	result := gin.H{
 		"id":          log.ID,
-		"timestamp":   log.CreatedAt.Format("2006-01-02 15:04:05"),
+		"timestamp":   beijingTime.Format("2006-01-02 15:04:05"),
 		"level":       level,
 		"module":      getNullableStringValue(log.ResourceType),
 		"message":     message,
@@ -385,8 +399,11 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 	message = strings.ReplaceAll(message, "\n", " ")
 	message = strings.ReplaceAll(message, "\r", " ")
 
+	// 将时间转换为北京时间
+	beijingTime := utils.ToBeijingTime(log.CreatedAt)
+
 	return fmt.Sprintf("%s,%s,%s,%s,%s,%s,\"%s\"\n",
-		log.CreatedAt.Format("2006-01-02 15:04:05"),
+		beijingTime.Format("2006-01-02 15:04:05"),
 		level,
 		getNullableStringValue(log.ResourceType),
 		username,

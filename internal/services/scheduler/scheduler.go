@@ -8,6 +8,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/utils"
@@ -46,6 +47,7 @@ func (s *Scheduler) Start() {
 	go s.checkExpiringSubscriptions()
 	go s.cleanupExpiredData()
 	go s.checkNodeHealth()
+	go s.autoUpdateNodes()
 }
 
 // Stop 停止定时任务
@@ -433,4 +435,127 @@ func (s *Scheduler) checkNodeHealthNow() {
 	} else {
 		utils.LogInfo("节点健康检查完成")
 	}
+}
+
+// autoUpdateNodes 自动更新节点（根据配置的间隔执行）
+func (s *Scheduler) autoUpdateNodes() {
+	// 默认1小时检查一次配置
+	checkInterval := 1 * time.Hour
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	// 启动时立即检查一次
+	s.checkAndRunNodeUpdate()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.checkAndRunNodeUpdate()
+		}
+	}
+}
+
+// checkAndRunNodeUpdate 检查配置并执行节点更新
+func (s *Scheduler) checkAndRunNodeUpdate() {
+	// 获取配置更新服务的配置
+	configService := config_update.NewConfigUpdateService()
+	config, err := configService.GetConfig()
+	if err != nil {
+		utils.LogErrorMsg("获取节点更新配置失败: %v", err)
+		return
+	}
+
+	// 检查是否启用自动更新
+	enableSchedule := false
+	if val, ok := config["enable_schedule"]; ok {
+		if strVal, ok := val.(string); ok {
+			enableSchedule = strVal == "true" || strVal == "1"
+		} else if boolVal, ok := val.(bool); ok {
+			enableSchedule = boolVal
+		}
+	}
+
+	if !enableSchedule {
+		// 未启用自动更新，不执行
+		return
+	}
+
+	if !enableSchedule {
+		// 未启用自动更新，不执行
+		return
+	}
+
+	// 获取更新间隔（秒）
+	// 优先使用 update_interval，如果没有则使用 schedule_interval
+	intervalSeconds := 3600 // 默认1小时
+	if val, ok := config["update_interval"]; ok {
+		if strVal, ok := val.(string); ok {
+			if seconds, err := strconv.Atoi(strVal); err == nil {
+				intervalSeconds = seconds
+			}
+		} else if intVal, ok := val.(int); ok {
+			intervalSeconds = intVal
+		} else if floatVal, ok := val.(float64); ok {
+			intervalSeconds = int(floatVal)
+		}
+	} else if val, ok := config["schedule_interval"]; ok {
+		// 兼容旧的字段名
+		if strVal, ok := val.(string); ok {
+			if seconds, err := strconv.Atoi(strVal); err == nil {
+				intervalSeconds = seconds
+			}
+		} else if intVal, ok := val.(int); ok {
+			intervalSeconds = intVal
+		} else if floatVal, ok := val.(float64); ok {
+			intervalSeconds = int(floatVal)
+		}
+	}
+
+	// 检查是否到了更新时间
+	lastUpdateTime, shouldUpdate := s.shouldRunNodeUpdate(intervalSeconds)
+	if !shouldUpdate {
+		return
+	}
+
+	// 执行节点更新
+	utils.LogInfo("开始执行自动节点更新任务（上次更新: %s）", lastUpdateTime)
+	if err := configService.RunUpdateTask(); err != nil {
+		utils.LogErrorMsg("自动节点更新失败: %v", err)
+	} else {
+		utils.LogInfo("自动节点更新任务执行成功")
+	}
+}
+
+// shouldRunNodeUpdate 检查是否应该执行节点更新
+func (s *Scheduler) shouldRunNodeUpdate(intervalSeconds int) (string, bool) {
+	var config models.SystemConfig
+	err := s.db.Where("key = ?", "config_update_last_update").First(&config).Error
+
+	if err != nil {
+		// 从未更新过，应该执行
+		return "从未更新", true
+	}
+
+	// 解析最后更新时间
+	lastUpdateTime, err := time.Parse("2006-01-02T15:04:05", config.Value)
+	if err != nil {
+		// 时间格式错误，应该执行
+		return config.Value, true
+	}
+
+	// 转换为北京时间
+	lastUpdateTime = utils.ToBeijingTime(lastUpdateTime)
+	now := utils.GetBeijingTime()
+
+	// 计算时间差
+	elapsed := now.Sub(lastUpdateTime)
+	interval := time.Duration(intervalSeconds) * time.Second
+
+	if elapsed >= interval {
+		return lastUpdateTime.Format("2006-01-02 15:04:05"), true
+	}
+
+	return lastUpdateTime.Format("2006-01-02 15:04:05"), false
 }

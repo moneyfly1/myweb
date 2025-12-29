@@ -213,23 +213,70 @@ const settings = computed(() => settingsStore)
 // 表单验证规则
 const registerRules = computed(() => ({
   email: [
-    { required: true, message: '请选择邮箱类型', trigger: 'change' }
+    { 
+      validator: (rule, value, callback) => {
+        if (!registerForm.emailPrefix || !registerForm.emailDomain) {
+          callback(new Error('请填写完整的邮箱地址'))
+          return
+        }
+        const email = `${registerForm.emailPrefix}@${registerForm.emailDomain}`
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailPattern.test(email)) {
+          callback(new Error('邮箱格式不正确，请检查邮箱地址'))
+          return
+        }
+        callback()
+      }, 
+      trigger: ['change', 'blur'] 
+    }
   ],
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 2, max: 20, message: '用户名长度在 2 到 20 个字符', trigger: 'blur' },
+    { 
+      min: 2, 
+      max: 20, 
+      message: '用户名长度必须在 2 到 20 个字符之间', 
+      trigger: 'blur' 
+    },
     { 
       pattern: /^[a-zA-Z0-9_]+$/, 
-      message: '用户名只能包含字母、数字和下划线', 
+      message: '用户名只能包含字母、数字和下划线，不能包含空格或特殊字符', 
       trigger: 'blur' 
     }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: minPasswordLength.value, max: 50, message: `密码长度在 ${minPasswordLength.value} 到 50 个字符`, trigger: 'blur' },
     { 
-      pattern: /^(?=.*[A-Za-z])(?=.*\d)/, 
-      message: '密码必须包含字母和数字', 
+      min: minPasswordLength.value, 
+      max: 50, 
+      message: `密码长度至少 ${minPasswordLength.value} 位，最多 50 位`, 
+      trigger: 'blur' 
+    },
+    { 
+      validator: (rule, value, callback) => {
+        if (!value) {
+          callback()
+          return
+        }
+        // 检查密码是否包含字母和数字
+        const hasLetter = /[A-Za-z]/.test(value)
+        const hasDigit = /\d/.test(value)
+        if (!hasLetter || !hasDigit) {
+          callback(new Error('密码必须包含字母和数字'))
+          return
+        }
+        // 检查密码强度（至少包含大小写字母、数字和特殊字符中的三种）
+        let complexityCount = 0
+        if (/[a-z]/.test(value)) complexityCount++
+        if (/[A-Z]/.test(value)) complexityCount++
+        if (/\d/.test(value)) complexityCount++
+        if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(value)) complexityCount++
+        if (complexityCount < 3) {
+          callback(new Error('密码强度不足，建议包含大小写字母、数字和特殊字符'))
+          return
+        }
+        callback()
+      }, 
       trigger: 'blur' 
     }
   ],
@@ -248,7 +295,24 @@ const registerRules = computed(() => ({
   ],
   verificationCode: emailVerificationRequired.value ? [
     { required: true, message: '请输入验证码', trigger: 'blur' },
-    { min: 6, max: 6, message: '验证码为6位数字', trigger: 'blur' }
+    { 
+      validator: (rule, value, callback) => {
+        if (!value) {
+          callback(new Error('请输入验证码'))
+          return
+        }
+        if (value.length !== 6) {
+          callback(new Error('验证码必须为6位数字'))
+          return
+        }
+        if (!/^\d{6}$/.test(value)) {
+          callback(new Error('验证码只能包含数字'))
+          return
+        }
+        callback()
+      }, 
+      trigger: 'blur' 
+    }
   ] : [],
   inviteCode: inviteCodeRequired.value ? [
     { required: true, message: '请输入邀请码', trigger: 'blur' }
@@ -342,8 +406,19 @@ const handleRegister = async () => {
     }
     
   } catch (error) {
-    if (error.response?.data?.detail) {
-      ElMessage.error(error.response.data.detail)
+    // 改进错误提示，显示更友好的错误信息
+    if (error.response?.data) {
+      const errorData = error.response.data
+      // 优先显示 detail 字段的错误信息
+      if (errorData.detail) {
+        ElMessage.error(errorData.detail)
+      } else if (errorData.message) {
+        ElMessage.error(errorData.message)
+      } else {
+        ElMessage.error('注册失败，请检查输入信息')
+      }
+    } else if (error.message) {
+      ElMessage.error(error.message)
     } else {
       ElMessage.error('注册失败，请重试')
     }

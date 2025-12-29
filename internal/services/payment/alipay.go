@@ -92,7 +92,8 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 		return nil, fmt.Errorf("初始化支付宝客户端失败: %v。请检查：1) AppID是否正确 2) 应用私钥是否为完整的PEM格式（PKCS1或PKCS8）3) 私钥是否与AppID匹配 4) 私钥长度是否为2048位（推荐）", err)
 	}
 
-	utils.LogInfo("支付宝客户端初始化成功: AppID=%s, 环境=%s", appID, map[bool]string{true: "生产环境", false: "沙箱环境"}[isProduction])
+	// 将初始化日志改为 DEBUG 级别，避免频繁轮询时产生大量日志
+	// utils.LogInfo("支付宝客户端初始化成功: AppID=%s, 环境=%s", appID, map[bool]string{true: "生产环境", false: "沙箱环境"}[isProduction])
 
 	// 6. 加载支付宝公钥（普通公钥模式）
 	// 注意：此处使用的是支付宝公钥，不是应用公钥
@@ -107,7 +108,8 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 				// 这里只记录警告，不返回错误
 				utils.LogWarn("加载支付宝公钥失败（不影响创建支付，但会影响回调验证）: %v。请检查支付宝公钥格式是否正确", err)
 			} else {
-				utils.LogInfo("支付宝公钥加载成功")
+				// 将公钥加载日志改为 DEBUG 级别，避免频繁轮询时产生大量日志
+				// utils.LogInfo("支付宝公钥加载成功")
 			}
 		} else {
 			utils.LogWarn("支付宝公钥格式无法识别，回调验证可能失败")
@@ -124,7 +126,8 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 	// 设置回调地址
 	if paymentConfig.NotifyURL.Valid && paymentConfig.NotifyURL.String != "" {
 		service.notifyURL = strings.TrimSpace(paymentConfig.NotifyURL.String)
-		utils.LogInfo("支付宝回调地址已配置: %s", service.notifyURL)
+		// 将回调地址配置日志改为 DEBUG 级别，避免频繁轮询时产生大量日志
+		// utils.LogInfo("支付宝回调地址已配置: %s", service.notifyURL)
 	} else {
 		// 如果未配置回调地址，返回错误
 		utils.LogErrorMsg("支付宝回调地址未配置")
@@ -132,7 +135,8 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 	}
 	if paymentConfig.ReturnURL.Valid && paymentConfig.ReturnURL.String != "" {
 		service.returnURL = strings.TrimSpace(paymentConfig.ReturnURL.String)
-		utils.LogInfo("支付宝返回地址已配置: %s", service.returnURL)
+		// 将返回地址配置日志改为 DEBUG 级别，避免频繁轮询时产生大量日志
+		// utils.LogInfo("支付宝返回地址已配置: %s", service.returnURL)
 	}
 
 	return service, nil

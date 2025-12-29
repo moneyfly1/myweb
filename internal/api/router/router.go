@@ -223,6 +223,7 @@ func SetupRouter() *gin.Engine {
 			tickets.POST("", handlers.CreateTicket)
 			tickets.POST("/:id/reply", handlers.ReplyTicket)
 			tickets.POST("/:id/replies", handlers.ReplyTicket)
+			tickets.PUT("/:id", handlers.CloseTicket) // 用户关闭自己的工单
 		}
 		// 管理员工单
 		ticketsAdmin := api.Group("/tickets/admin")
@@ -278,6 +279,9 @@ func SetupRouter() *gin.Engine {
 
 		// 软件配置
 		api.GET("/software-config", handlers.GetSoftwareConfig)
+
+		// 移动端配置（公开访问，用于 Android/iOS 应用）
+		api.GET("/mobile-config", handlers.GetMobileConfig)
 		softwareConfig := api.Group("/software-config")
 		softwareConfig.Use(middleware.AuthMiddleware())
 		softwareConfig.Use(middleware.AdminMiddleware())

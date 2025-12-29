@@ -10,6 +10,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/utils"
 )
 
 // ShouldSendCustomerNotification 检查是否应该发送客户通知
@@ -112,8 +113,17 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		chatID := configMap["admin_telegram_chat_id"]
 		if botToken != "" && chatID != "" {
 			go func() {
-				_, _ = sendTelegramMessage(botToken, chatID, telegramMsg)
+				success, err := sendTelegramMessage(botToken, chatID, telegramMsg)
+				if err != nil {
+					utils.LogErrorMsg("发送 Telegram 通知失败: type=%s, error=%v", notificationType, err)
+				} else if success {
+					utils.LogInfo("Telegram 通知发送成功: type=%s", notificationType)
+				} else {
+					utils.LogErrorMsg("Telegram 通知发送失败: type=%s, API返回失败", notificationType)
+				}
 			}()
+		} else {
+			utils.LogWarn("Telegram 通知未发送: type=%s, bot_token或chat_id未配置", notificationType)
 		}
 	}
 
@@ -126,8 +136,17 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		}
 		if serverURL != "" && deviceKey != "" {
 			go func() {
-				_, _ = sendBarkMessage(serverURL, deviceKey, barkTitle, barkBody)
+				success, err := sendBarkMessage(serverURL, deviceKey, barkTitle, barkBody)
+				if err != nil {
+					utils.LogErrorMsg("发送 Bark 通知失败: type=%s, server=%s, error=%v", notificationType, serverURL, err)
+				} else if success {
+					utils.LogInfo("Bark 通知发送成功: type=%s, server=%s", notificationType, serverURL)
+				} else {
+					utils.LogErrorMsg("Bark 通知发送失败: type=%s, server=%s, API返回失败", notificationType, serverURL)
+				}
 			}()
+		} else {
+			utils.LogWarn("Bark 通知未发送: type=%s, server_url或device_key未配置", notificationType)
 		}
 	}
 
@@ -139,7 +158,13 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 			templateBuilder := email.NewEmailTemplateBuilder()
 			subject := getNotificationSubject(notificationType)
 			content := templateBuilder.GetAdminNotificationTemplate(notificationType, barkTitle, barkBody, data)
-			_ = emailService.QueueEmail(adminEmail, subject, content, "admin_notification")
+			if err := emailService.QueueEmail(adminEmail, subject, content, "admin_notification"); err != nil {
+				utils.LogErrorMsg("发送管理员邮件通知失败: type=%s, email=%s, error=%v", notificationType, adminEmail, err)
+			} else {
+				utils.LogInfo("管理员邮件通知已加入队列: type=%s, email=%s", notificationType, adminEmail)
+			}
+		} else {
+			utils.LogWarn("管理员邮件通知未发送: type=%s, admin_email未配置", notificationType)
 		}
 	}
 

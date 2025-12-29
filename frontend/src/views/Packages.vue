@@ -599,8 +599,10 @@ export default {
               '7×24小时技术支持',
               '高速稳定节点'
             ],
-            is_popular: pkg.sort_order === 2,
-            is_recommended: pkg.sort_order === 3
+            // 使用后端返回的 is_recommended 字段，而不是根据 sort_order 判断
+            is_recommended: pkg.is_recommended === true || pkg.is_recommended === 1 || pkg.is_recommended === '1' || pkg.is_recommended === 'true',
+            // 保留 is_popular 的判断（如果后端有 is_popular 字段，也应该使用后端字段）
+            is_popular: pkg.is_popular === true || pkg.is_popular === 1 || pkg.is_popular === '1' || pkg.is_popular === 'true' || pkg.sort_order === 2
           }))
           errorMessage.value = '' // 清除错误信息
         } else {

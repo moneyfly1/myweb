@@ -15,6 +15,7 @@ import (
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"gorm.io/gorm"
 )
 
@@ -42,17 +43,51 @@ type LoginJSONRequest struct {
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求格式错误", err)
+		// 提供更详细的错误信息
+		if validationErr, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErr {
+				switch fieldErr.Field() {
+				case "Email":
+					utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址", err)
+					return
+				case "Username":
+					utils.ErrorResponse(c, http.StatusBadRequest, "用户名不能为空", err)
+					return
+				case "Password":
+					if fieldErr.Tag() == "min" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "密码长度至少8位", err)
+					} else {
+						utils.ErrorResponse(c, http.StatusBadRequest, "密码不能为空", err)
+					}
+					return
+				}
+			}
+		}
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求格式错误，请检查输入信息", err)
 		return
 	}
 
 	db := database.GetDB()
 
-	// 检查用户名或邮箱是否已存在
-	var count int64
-	db.Model(&models.User{}).Where("email = ? OR username = ?", req.Email, req.Username).Count(&count)
-	if count > 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "用户名或邮箱已存在", nil)
+	// 分别检查邮箱和用户名，给出更明确的错误提示
+	var emailUser models.User
+	if err := db.Where("email = ?", req.Email).First(&emailUser).Error; err == nil {
+		// 邮箱已注册，提示用户直接登录
+		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已被注册，请直接登录或使用其他邮箱", nil)
+		return
+	}
+
+	var usernameUser models.User
+	if err := db.Where("username = ?", req.Username).First(&usernameUser).Error; err == nil {
+		// 用户名已存在
+		utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用，请选择其他用户名", nil)
+		return
+	}
+
+	// 验证密码强度
+	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
+	if !valid {
+		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
@@ -70,16 +105,37 @@ func Register(c *gin.Context) {
 			return
 		}
 
+		// 验证验证码格式（6位数字）
+		if len(req.VerificationCode) != 6 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码格式错误，请输入6位数字验证码", nil)
+			return
+		}
+
+		// 先检查是否有该邮箱的验证码（用于区分验证码不存在和验证码错误）
+		var codeCount int64
+		db.Model(&models.VerificationCode{}).Where("email = ? AND purpose = ?", req.Email, "register").Count(&codeCount)
+		if codeCount == 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未找到该邮箱的验证码，请先获取验证码", nil)
+			return
+		}
+
+		// 检查验证码是否已使用
+		var usedCode models.VerificationCode
+		if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 1, "register").First(&usedCode).Error; err == nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码已使用，请重新获取验证码", nil)
+			return
+		}
+
 		// 验证验证码
 		var verificationCode models.VerificationCode
 		if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误或已使用", err)
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误，请检查后重新输入", nil)
 			return
 		}
 
 		// 检查验证码是否过期
 		if verificationCode.IsExpired() {
-			utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取", nil)
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取验证码", nil)
 			return
 		}
 

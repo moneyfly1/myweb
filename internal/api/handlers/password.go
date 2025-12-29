@@ -15,6 +15,7 @@ import (
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 // ChangePasswordRequest 修改密码请求
@@ -155,7 +156,22 @@ type ForgotPasswordRequest struct {
 func ForgotPassword(c *gin.Context) {
 	var req ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		// 提供更详细的错误信息
+		if validationErr, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErr {
+				if fieldErr.Field() == "Email" {
+					if fieldErr.Tag() == "required" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "请输入邮箱地址", err)
+					} else if fieldErr.Tag() == "email" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址", err)
+					} else {
+						utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确", err)
+					}
+					return
+				}
+			}
+		}
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入信息", err)
 		return
 	}
 
@@ -225,7 +241,31 @@ type ResetPasswordByCodeRequest struct {
 func ResetPasswordByCode(c *gin.Context) {
 	var req ResetPasswordByCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		// 提供更详细的错误信息
+		if validationErr, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErr {
+				switch fieldErr.Field() {
+				case "Email":
+					if fieldErr.Tag() == "required" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "请输入邮箱地址", err)
+					} else if fieldErr.Tag() == "email" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址", err)
+					}
+					return
+				case "VerificationCode":
+					utils.ErrorResponse(c, http.StatusBadRequest, "请输入验证码", err)
+					return
+				case "NewPassword":
+					if fieldErr.Tag() == "required" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "请输入新密码", err)
+					} else if fieldErr.Tag() == "min" {
+						utils.ErrorResponse(c, http.StatusBadRequest, "密码长度至少8位", err)
+					}
+					return
+				}
+			}
+		}
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入信息", err)
 		return
 	}
 
@@ -239,20 +279,41 @@ func ResetPasswordByCode(c *gin.Context) {
 	db := database.GetDB()
 	var user models.User
 	if err := db.Where("email = ?", req.Email).First(&user).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		utils.ErrorResponse(c, http.StatusNotFound, "该邮箱未注册，请检查邮箱地址是否正确", nil)
+		return
+	}
+
+	// 验证验证码格式（6位数字）
+	if len(req.VerificationCode) != 6 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "验证码格式错误，请输入6位数字验证码", nil)
+		return
+	}
+
+	// 先检查是否有该邮箱的验证码（用于区分验证码不存在和验证码错误）
+	var codeCount int64
+	db.Model(&models.VerificationCode{}).Where("email = ? AND purpose = ?", req.Email, "reset_password").Count(&codeCount)
+	if codeCount == 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未找到该邮箱的验证码，请先获取验证码", nil)
+		return
+	}
+
+	// 检查验证码是否已使用
+	var usedCode models.VerificationCode
+	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 1, "reset_password").First(&usedCode).Error; err == nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已使用，请重新获取验证码", nil)
 		return
 	}
 
 	// 验证验证码
 	var verificationCode models.VerificationCode
 	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "reset_password").Order("created_at DESC").First(&verificationCode).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误或已使用", err)
+		utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误，请检查后重新输入", nil)
 		return
 	}
 
 	// 检查验证码是否过期
 	if verificationCode.IsExpired() {
-		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取", nil)
+		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取验证码", nil)
 		return
 	}
 
