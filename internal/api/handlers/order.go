@@ -775,10 +775,14 @@ func GetOrderStatusByNo(c *gin.Context) {
 	}
 
 	// 如果订单是 pending 状态，且创建时间超过5秒，主动查询支付状态
+	// 增加查询间隔限制，避免频繁查询（每30秒才查询一次支付宝状态）
 	if order.Status == "pending" {
 		// 检查订单创建时间，避免频繁查询
 		timeSinceCreated := time.Since(order.CreatedAt)
-		if timeSinceCreated > 5*time.Second {
+		// 增加间隔限制：每30秒才查询一次支付宝状态，避免频繁初始化
+		// 使用秒数取模，只在30秒的倍数时查询（例如：30秒、60秒、90秒...）
+		shouldQuery := timeSinceCreated > 5*time.Second && int(timeSinceCreated.Seconds())%30 < 2
+		if shouldQuery {
 			// 获取支付交易记录
 			var transaction models.PaymentTransaction
 			if err := db.Where("order_id = ?", order.ID).First(&transaction).Error; err == nil {

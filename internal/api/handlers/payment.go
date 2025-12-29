@@ -164,12 +164,8 @@ func PaymentNotify(c *gin.Context) {
 	}
 
 	// 记录支付回调日志
-	utils.LogError("PaymentNotify: received callback", nil, map[string]interface{}{
-		"payment_type":            paymentType,
-		"order_no":                orderNo,
-		"external_transaction_id": externalTransactionID,
-		"params":                  params,
-	})
+	utils.LogInfo("PaymentNotify: 收到支付回调 - payment_type=%s, order_no=%s, external_transaction_id=%s",
+		paymentType, orderNo, externalTransactionID)
 
 	var order models.Order
 	var recharge models.RechargeRecord
@@ -427,10 +423,27 @@ func PaymentNotify(c *gin.Context) {
 			packageName = "设备/时长升级"
 		}
 
+		// 发送客户付款成功通知邮件
 		if latestOrder.PackageID > 0 && notification.ShouldSendCustomerNotification("new_order") {
 			emailService := email.NewEmailService()
 			templateBuilder := email.NewEmailTemplateBuilder()
 
+			// 1. 发送付款成功通知邮件
+			paymentSuccessContent := templateBuilder.GetPaymentSuccessTemplate(
+				latestUser.Username,
+				latestOrder.OrderNo,
+				packageName,
+				paidAmount,
+				paymentMethod,
+				paymentTime,
+			)
+			if err := emailService.QueueEmail(latestUser.Email, "支付成功通知", paymentSuccessContent, "payment_success"); err != nil {
+				utils.LogErrorMsg("发送付款成功邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
+			} else {
+				utils.LogInfo("付款成功邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
+			}
+
+			// 2. 发送订阅配置信息邮件
 			var subscriptionInfo models.Subscription
 			if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
 				baseURL := templateBuilder.GetBaseURL()
@@ -457,7 +470,11 @@ func PaymentNotify(c *gin.Context) {
 					subscriptionInfo.DeviceLimit,
 					subscriptionInfo.CurrentDevices,
 				)
-				_ = emailService.QueueEmail(latestUser.Email, "服务配置信息", content, "subscription")
+				if err := emailService.QueueEmail(latestUser.Email, "服务配置信息", content, "subscription"); err != nil {
+					utils.LogErrorMsg("发送订阅配置邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
+				} else {
+					utils.LogInfo("订阅配置邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
+				}
 			}
 		}
 

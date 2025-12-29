@@ -290,6 +290,18 @@ func GetAdminSettings(c *gin.Context) {
 		configMap[conf.Category][conf.Key] = conf.Value
 	}
 
+	// 定义应该保持为字符串的字段（即使看起来像数字）
+	stringOnlyFields := map[string]bool{
+		"admin_telegram_chat_id":   true,
+		"admin_telegram_bot_token": true,
+		"admin_bark_device_key":    true,
+		"admin_notification_email": true,
+		"admin_bark_server_url":    true,
+		"support_qq":               true,
+		"support_email":            true,
+		"domain_name":              true,
+	}
+
 	// 填充数据
 	for cat, catDefaults := range settings {
 		for key := range catDefaults {
@@ -304,6 +316,9 @@ func GetAdminSettings(c *gin.Context) {
 					} else {
 						settings[cat][key] = val
 					}
+				} else if stringOnlyFields[key] {
+					// 这些字段必须保持为字符串，不转换为数字
+					settings[cat][key] = val
 				} else if num, err := strconv.Atoi(val); err == nil {
 					settings[cat][key] = num
 				} else {
@@ -665,4 +680,53 @@ func GetGeoIPStatus(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", status)
+}
+
+// GetMobileConfig 返回移动端应用配置（用于 UUVPN Android 应用）
+func GetMobileConfig(c *gin.Context) {
+	db := database.GetDB()
+	baseURL := utils.GetBuildBaseURL(c.Request, db)
+
+	// 从系统配置中获取相关设置
+	var configs []models.SystemConfig
+	db.Where("category IN (?)", []string{"software", "general"}).Find(&configs)
+
+	configMap := make(map[string]string)
+	for _, config := range configs {
+		configMap[config.Key] = config.Value
+	}
+
+	// 获取横幅图片（如果有配置）
+	var banners []string
+	bannersConfig := configMap["mobile_banners"]
+	if bannersConfig != "" {
+		// 假设 banners 是 JSON 数组格式的字符串
+		if err := json.Unmarshal([]byte(bannersConfig), &banners); err != nil {
+			// 如果不是 JSON，尝试按逗号分割
+			bannerList := strings.Split(bannersConfig, ",")
+			for _, banner := range bannerList {
+				if trimmed := strings.TrimSpace(banner); trimmed != "" {
+					banners = append(banners, trimmed)
+				}
+			}
+		}
+	}
+
+	// 构建响应数据，匹配 Android 应用期望的格式
+	configData := gin.H{
+		"baseURL":         baseURL + "/api/v1/",
+		"baseDYURL":       configMap["mobile_base_dy_url"], // 可选：用于测试节点的 URL
+		"mainregisterURL": baseURL + "/#/register?code=",
+		"paymentURL":      baseURL + "/#/payment",
+		"telegramurl":     configMap["telegram_url"],
+		"kefuurl":         baseURL + "/#/tickets",
+		"websiteURL":      baseURL,
+		"crisptoken":      configMap["crisp_token"], // 如果使用 Crisp 客服
+		"banners":         banners,
+		"message":         "OK",
+		"code":            1,
+	}
+
+	// 使用 SuccessResponse 包装，确保返回 {success: true, message: "", data: {...}} 格式
+	utils.SuccessResponse(c, http.StatusOK, "Mobile config fetched successfully", configData)
 }

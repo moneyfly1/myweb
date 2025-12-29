@@ -1,10 +1,27 @@
 package utils
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 )
+
+// beijingTimeWriter 自定义 Writer，在日志前添加北京时间
+type beijingTimeWriter struct {
+	writer io.Writer
+}
+
+func (w *beijingTimeWriter) Write(p []byte) (n int, err error) {
+	beijingTime := GetBeijingTime().Format("2006/01/02 15:04:05")
+	timestamp := fmt.Sprintf("[%s] ", beijingTime)
+	_, err = w.writer.Write([]byte(timestamp))
+	if err != nil {
+		return 0, err
+	}
+	return w.writer.Write(p)
+}
 
 // Logger 日志记录器
 type Logger struct {
@@ -31,10 +48,15 @@ func InitLogger(logDir string) error {
 		return err
 	}
 
+	// 使用自定义 Writer 添加北京时间
+	infoWriter := &beijingTimeWriter{writer: infoFile}
+	errorWriter := &beijingTimeWriter{writer: errorFile}
+	warnWriter := &beijingTimeWriter{writer: os.Stdout}
+
 	AppLogger = &Logger{
-		infoLog:  log.New(infoFile, "[INFO] ", log.Ldate|log.Ltime|log.Lshortfile),
-		errorLog: log.New(errorFile, "[ERROR] ", log.Ldate|log.Ltime|log.Lshortfile),
-		warnLog:  log.New(os.Stdout, "[WARN] ", log.Ldate|log.Ltime),
+		infoLog:  log.New(infoWriter, "[INFO] ", log.Lshortfile),
+		errorLog: log.New(errorWriter, "[ERROR] ", log.Lshortfile),
+		warnLog:  log.New(warnWriter, "[WARN] ", 0),
 	}
 
 	return nil

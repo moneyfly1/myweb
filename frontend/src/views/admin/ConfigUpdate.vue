@@ -154,10 +154,28 @@
         
         <el-form-item label="过滤关键词" :label-width="isMobile ? '0' : undefined">
           <div class="form-item-content">
+            <div class="filter-keywords-tip">
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 12px;"
+              >
+                <template #default>
+                  <div style="font-size: 13px;">
+                    <p style="margin: 0 0 4px 0;"><strong>过滤说明：</strong></p>
+                    <p style="margin: 0;">• 过滤针对从所有订阅源获取的节点</p>
+                    <p style="margin: 0;">• 如果节点名称或服务器地址包含任何关键词，该节点将被过滤掉，不会导入数据库</p>
+                    <p style="margin: 0;">• 关键词匹配不区分大小写</p>
+                    <p style="margin: 0;">• 支持多个关键词，每个关键词独立过滤</p>
+                  </div>
+                </template>
+              </el-alert>
+            </div>
             <div v-for="(keyword, index) in config.filter_keywords" :key="index" class="keyword-item">
               <el-input 
                 v-model="config.filter_keywords[index]" 
-                placeholder="过滤关键词"
+                placeholder="输入关键词（将过滤包含此关键词的节点）"
                 class="config-input"
               />
               <el-button 
