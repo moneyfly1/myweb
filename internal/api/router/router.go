@@ -45,10 +45,8 @@ func SetupRouter() *gin.Engine {
 
 	// API 路由组
 	api := r.Group("/api/v1")
-	// 对API路由应用CSRF保护（除了公开的GET请求）
-	api.Use(middleware.CSRFMiddleware())
 	{
-		// 认证相关
+		// 认证相关（豁免CSRF，因为移动应用无法处理CSRF token）
 		auth := api.Group("/auth")
 		{
 			// 登录和注册使用速率限制
@@ -63,6 +61,9 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/forgot-password", middleware.VerifyCodeRateLimitMiddleware(), handlers.ForgotPassword)
 			auth.POST("/reset-password", handlers.ResetPasswordByCode)
 		}
+
+		// 对需要认证的API路由应用CSRF保护（Web应用使用）
+		api.Use(middleware.CSRFMiddleware())
 
 		// 用户相关（需要认证）
 		users := api.Group("/users")
