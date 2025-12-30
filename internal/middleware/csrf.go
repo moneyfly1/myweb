@@ -148,6 +148,18 @@ func CSRFMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// 对于移动应用（使用 Bearer token 认证），豁免 CSRF 检查
+		// 移动应用使用 Bearer token 认证，不受 CSRF 攻击影响
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && parts[0] == "Bearer" && parts[1] != "" {
+				// 有有效的 Bearer token，豁免 CSRF 检查（移动应用）
+				c.Next()
+				return
+			}
+		}
+
 		// POST/PUT/DELETE/PATCH请求验证token
 		// 确保使用相同的sessionID（如果不存在则生成，但会导致验证失败）
 		sessionID := getSessionID(c)

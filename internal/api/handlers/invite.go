@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -82,13 +83,13 @@ func CreateInviteCode(c *gin.Context) {
 		req.RewardType = "balance"
 	}
 
-	// 生成唯一邀请码
+	// 生成唯一邀请码（统一转换为大写存储）
 	var code string
 	maxAttempts := 10
 	for i := 0; i < maxAttempts; i++ {
-		code = GenerateInviteCode()
+		code = strings.ToUpper(GenerateInviteCode())
 		var existing models.InviteCode
-		if err := db.Where("code = ?", code).First(&existing).Error; err == gorm.ErrRecordNotFound {
+		if err := db.Where("UPPER(code) = ?", code).First(&existing).Error; err == gorm.ErrRecordNotFound {
 			break
 		}
 		if i == maxAttempts-1 {
@@ -291,11 +292,12 @@ func GetMyInviteCodes(c *gin.Context) {
 
 // ValidateInviteCode 验证邀请码（公开访问，用于注册）
 func ValidateInviteCode(c *gin.Context) {
-	code := c.Param("code")
+	code := strings.ToUpper(strings.TrimSpace(c.Param("code")))
 	db := database.GetDB()
 
 	var inviteCode models.InviteCode
-	if err := db.Where("code = ?", code).First(&inviteCode).Error; err != nil {
+	// 使用 UPPER() 函数进行大小写不敏感查询
+	if err := db.Where("UPPER(code) = ?", code).First(&inviteCode).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在", err)
 		return
 	}
@@ -318,11 +320,16 @@ func ValidateInviteCode(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"code":       inviteCode.Code,
-		"is_valid":   true,
-		"expires_at": inviteCode.ExpiresAt,
-		"max_uses":   inviteCode.MaxUses,
-		"used_count": inviteCode.UsedCount,
+		"code":             inviteCode.Code,
+		"is_valid":         true,
+		"expires_at":       inviteCode.ExpiresAt,
+		"max_uses":         inviteCode.MaxUses,
+		"used_count":       inviteCode.UsedCount,
+		"invitee_reward":   inviteCode.InviteeReward,
+		"inviter_reward":   inviteCode.InviterReward,
+		"reward_type":      inviteCode.RewardType,
+		"min_order_amount": inviteCode.MinOrderAmount,
+		"new_user_only":    inviteCode.NewUserOnly,
 	})
 }
 
