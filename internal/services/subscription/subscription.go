@@ -113,9 +113,11 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 }
 
 // getDefaultDeviceLimit 从系统设置中获取默认设备数
+// 如果后台没有设置配置，返回0（设备数为0）
+// 只有在后台明确设置了配置值时才使用配置的值
 func getDefaultDeviceLimit(db *gorm.DB) int {
-	// 默认值
-	deviceLimit := 3
+	// 默认值设为0（除非后台明确配置了值）
+	deviceLimit := 0
 
 	// 从数据库读取配置（优先从 registration category 读取，如果没有则从 general 读取）
 	var deviceLimitConfig models.SystemConfig
@@ -123,13 +125,20 @@ func getDefaultDeviceLimit(db *gorm.DB) int {
 	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err != nil {
 		// 如果 registration 中没有，尝试从 general category 读取
 		if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "general").First(&deviceLimitConfig).Error; err == nil {
+			// 配置存在，尝试解析值
+			if deviceLimitConfig.Value != "" {
+				if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
+					deviceLimit = limit
+				}
+			}
+		}
+		// 如果两个地方都没有配置，保持默认值0
+	} else {
+		// registration category 中有配置
+		if deviceLimitConfig.Value != "" {
 			if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
 				deviceLimit = limit
 			}
-		}
-	} else {
-		if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
-			deviceLimit = limit
 		}
 	}
 
