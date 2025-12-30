@@ -1473,7 +1473,7 @@ func (s *ConfigUpdateService) createMessageNode(name string, password ...string)
 	return &ProxyNode{
 		Name:     name,
 		Type:     "ss",
-		Server:   "127.0.0.1",
+		Server:   "baidu.com",
 		Port:     1234,
 		Cipher:   "aes-128-gcm",
 		Password: pwd,
