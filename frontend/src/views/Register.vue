@@ -121,8 +121,8 @@
             clearable
           />
           <div class="form-tip" v-if="inviteCodeInfo">
-            <span v-if="inviteCodeInfo.success" style="color: #67c23a;">
-              ✓ 邀请码有效，注册后可获得 {{ inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励
+            <span v-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" style="color: #67c23a;">
+              ✓ 邀请码有效，注册后可获得 {{ inviteCodeInfo.invitee_reward || inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励
             </span>
             <span v-else style="color: #f56c6c;">
               ✗ {{ inviteCodeInfo.message }}

@@ -648,9 +648,12 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 		return
 	}
 
-	// 查找邀请码
+	// 统一转换为大写进行查询（大小写不敏感）
+	inviteCodeStr = strings.ToUpper(strings.TrimSpace(inviteCodeStr))
+
+	// 查找邀请码（使用 UPPER() 函数进行大小写不敏感查询）
 	var inviteCode models.InviteCode
-	if err := db.Where("code = ? AND is_active = ?", inviteCodeStr, true).First(&inviteCode).Error; err != nil {
+	if err := db.Where("UPPER(code) = ? AND is_active = ?", inviteCodeStr, true).First(&inviteCode).Error; err != nil {
 		// 邀请码不存在或已停用，忽略错误（不影响注册流程）
 		return
 	}
