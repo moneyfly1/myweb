@@ -135,7 +135,7 @@ func generateErrorConfig(title, message string, baseURL string) string {
 	proxyNames := ""
 	for i, nodeName := range errorNodes {
 		// 使用无效的 SS 节点配置，确保无法连接
-		proxyList += fmt.Sprintf("  - name: \"%s\"\n    type: ss\n    server: 127.0.0.1\n    port: %d\n    cipher: aes-256-gcm\n    password: \"invalid\"\n    # 错误节点，仅用于显示信息\n", nodeName, i)
+		proxyList += fmt.Sprintf("  - name: \"%s\"\n    type: ss\n    server: baidu.com\n    port: %d\n    cipher: aes-256-gcm\n    password: \"invalid\"\n    # 错误节点，仅用于显示信息\n", nodeName, i)
 		proxyNames += fmt.Sprintf("      - \"%s\"\n", nodeName)
 	}
 
@@ -203,7 +203,7 @@ func generateErrorConfigBase64(title, message string, baseURL string) string {
 		errorData := map[string]interface{}{
 			"v":    "2",
 			"ps":   nodeName,                               // 节点名称包含错误信息
-			"add":  "127.0.0.1",                            // 无效地址
+			"add":  "baidu.com",                            // 无效地址
 			"port": i,                                      // 使用不同的无效端口
 			"id":   "00000000-0000-0000-0000-000000000000", // 无效 UUID
 			"net":  "tcp",
