@@ -10,10 +10,10 @@ type Subscription struct {
 	UserID          uint      `gorm:"index;not null" json:"user_id"`
 	PackageID       *int64    `gorm:"index" json:"package_id,omitempty"`
 	SubscriptionURL string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"subscription_url"`
-	DeviceLimit     int       `gorm:"default:3" json:"device_limit"`
+	DeviceLimit     int       `json:"device_limit"`
 	CurrentDevices  int       `gorm:"default:0" json:"current_devices"`
 	UniversalCount  int       `gorm:"default:0" json:"universal_count"` // 通用订阅次数
-	ClashCount      int       `gorm:"default:0" json:"clash_count"`      // 猫咪订阅次数
+	ClashCount      int       `gorm:"default:0" json:"clash_count"`     // 猫咪订阅次数
 	IsActive        bool      `gorm:"default:true;index" json:"is_active"`
 	Status          string    `gorm:"type:varchar(20);default:active;index" json:"status"`
 	ExpireTime      time.Time `gorm:"not null;index" json:"expire_time"`
