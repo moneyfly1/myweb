@@ -704,7 +704,20 @@ const loadInviteRelations = async () => {
       // 标准格式：{ success: true, data: { relations: [...], total: ... } }
       if (responseData.success !== false && responseData.data) {
         if (responseData.data.relations && Array.isArray(responseData.data.relations)) {
-          inviteRelations.value = responseData.data.relations
+          // 处理数据，确保所有字段都存在
+          inviteRelations.value = responseData.data.relations.map(relation => ({
+            ...relation,
+            invite_code: relation.invite_code || '',
+            inviter_username: relation.inviter_username || '',
+            inviter_email: relation.inviter_email || '',
+            invitee_username: relation.invitee_username || '',
+            invitee_email: relation.invitee_email || '',
+            inviter_reward_amount: relation.inviter_reward_amount || 0,
+            invitee_reward_amount: relation.invitee_reward_amount || 0,
+            invitee_total_consumption: relation.invitee_total_consumption || 0,
+            inviter_reward_given: relation.inviter_reward_given || false,
+            invitee_reward_given: relation.invitee_reward_given || false
+          }))
           relationTotal.value = responseData.data.total || 0
           console.log('✅ 成功加载邀请关系（标准格式）:', inviteRelations.value.length, '条，总计:', relationTotal.value)
         } else {
@@ -714,7 +727,20 @@ const loadInviteRelations = async () => {
         }
       } 
       else if (responseData.relations && Array.isArray(responseData.relations)) {
-        inviteRelations.value = responseData.relations
+        // 处理数据，确保所有字段都存在
+        inviteRelations.value = responseData.relations.map(relation => ({
+          ...relation,
+          invite_code: relation.invite_code || '',
+          inviter_username: relation.inviter_username || '',
+          inviter_email: relation.inviter_email || '',
+          invitee_username: relation.invitee_username || '',
+          invitee_email: relation.invitee_email || '',
+          inviter_reward_amount: relation.inviter_reward_amount || 0,
+          invitee_reward_amount: relation.invitee_reward_amount || 0,
+          invitee_total_consumption: relation.invitee_total_consumption || 0,
+          inviter_reward_given: relation.inviter_reward_given || false,
+          invitee_reward_given: relation.invitee_reward_given || false
+        }))
         relationTotal.value = responseData.total || inviteRelations.value.length
         console.log('✅ 成功加载邀请关系（直接格式）:', inviteRelations.value.length, '条')
       }

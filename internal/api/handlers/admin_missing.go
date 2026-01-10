@@ -155,15 +155,37 @@ func GetAdminInviteRelations(c *gin.Context) {
 	// 处理数据格式，扁平化用户信息
 	var result []gin.H
 	for _, relation := range relations {
+		// 安全获取邀请码，防止空指针
+		inviteCode := ""
+		if relation.InviteCode.ID != 0 {
+			inviteCode = relation.InviteCode.Code
+		}
+		
+		// 安全获取邀请人信息
+		inviterUsername := ""
+		inviterEmail := ""
+		if relation.Inviter.ID != 0 {
+			inviterUsername = relation.Inviter.Username
+			inviterEmail = relation.Inviter.Email
+		}
+		
+		// 安全获取被邀请人信息
+		inviteeUsername := ""
+		inviteeEmail := ""
+		if relation.Invitee.ID != 0 {
+			inviteeUsername = relation.Invitee.Username
+			inviteeEmail = relation.Invitee.Email
+		}
+		
 		result = append(result, gin.H{
 			"id":                        relation.ID,
-			"invite_code":               relation.InviteCode.Code,
+			"invite_code":               inviteCode,
 			"inviter_id":                relation.InviterID,
-			"inviter_username":          relation.Inviter.Username,
-			"inviter_email":             relation.Inviter.Email,
+			"inviter_username":          inviterUsername,
+			"inviter_email":             inviterEmail,
 			"invitee_id":                relation.InviteeID,
-			"invitee_username":          relation.Invitee.Username,
-			"invitee_email":             relation.Invitee.Email,
+			"invitee_username":          inviteeUsername,
+			"invitee_email":             inviteeEmail,
 			"inviter_reward_amount":     relation.InviterRewardAmount,
 			"inviter_reward_given":      relation.InviterRewardGiven,
 			"invitee_reward_amount":     relation.InviteeRewardAmount,
