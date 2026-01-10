@@ -479,14 +479,16 @@ func PaymentNotify(c *gin.Context) {
 		}
 
 		notificationService := notification.NewNotificationService()
-		_ = notificationService.SendAdminNotification("order_paid", map[string]interface{}{
+		if err := notificationService.SendAdminNotification("order_paid", map[string]interface{}{
 			"order_no":       latestOrder.OrderNo,
 			"username":       latestUser.Username,
 			"amount":         paidAmount,
 			"package_name":   packageName,
 			"payment_method": paymentMethod,
 			"payment_time":   paymentTime,
-		})
+		}); err != nil {
+			utils.LogErrorMsg("发送管理员通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
+		}
 	}()
 
 	c.String(http.StatusOK, "success")
