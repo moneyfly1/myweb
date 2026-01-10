@@ -73,8 +73,40 @@ func GetAdminInvites(c *gin.Context) {
 		return
 	}
 
+	// 处理数据格式，将sql.NullInt64转换为普通数字或null
+	var result []gin.H
+	for _, code := range inviteCodes {
+		// 处理 max_uses（sql.NullInt64 -> int 或 null）
+		var maxUses interface{} = nil
+		if code.MaxUses.Valid {
+			maxUses = int(code.MaxUses.Int64)
+		}
+
+		// 处理 expires_at（sql.NullTime -> string 或 null）
+		var expiresAt interface{} = nil
+		if code.ExpiresAt.Valid {
+			expiresAt = code.ExpiresAt.Time.Format("2006-01-02 15:04:05")
+		}
+
+		result = append(result, gin.H{
+			"id":             code.ID,
+			"code":           code.Code,
+			"user_id":        code.UserID,
+			"username":       code.User.Username,
+			"email":          code.User.Email,
+			"used_count":     code.UsedCount,
+			"max_uses":       maxUses,
+			"expires_at":     expiresAt,
+			"reward_type":    code.RewardType,
+			"inviter_reward": code.InviterReward,
+			"invitee_reward": code.InviteeReward,
+			"is_active":      code.IsActive,
+			"created_at":     code.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"invite_codes": inviteCodes,
+		"invite_codes": result,
 		"total":        total,
 		"page":         page,
 		"size":         size,
@@ -84,7 +116,7 @@ func GetAdminInvites(c *gin.Context) {
 // GetAdminInviteRelations 管理员获取邀请关系列表
 func GetAdminInviteRelations(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Model(&models.InviteRelation{}).Preload("Inviter").Preload("Invitee")
+	query := db.Model(&models.InviteRelation{}).Preload("Inviter").Preload("Invitee").Preload("InviteCode")
 
 	// 分页参数
 	page := 1
@@ -119,6 +151,34 @@ func GetAdminInviteRelations(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请关系列表失败", err)
 		return
 	}
+
+	// 处理数据格式，扁平化用户信息
+	var result []gin.H
+	for _, relation := range relations {
+		result = append(result, gin.H{
+			"id":                        relation.ID,
+			"invite_code":               relation.InviteCode.Code,
+			"inviter_id":                relation.InviterID,
+			"inviter_username":          relation.Inviter.Username,
+			"inviter_email":             relation.Inviter.Email,
+			"invitee_id":                relation.InviteeID,
+			"invitee_username":          relation.Invitee.Username,
+			"invitee_email":             relation.Invitee.Email,
+			"inviter_reward_amount":     relation.InviterRewardAmount,
+			"inviter_reward_given":      relation.InviterRewardGiven,
+			"invitee_reward_amount":     relation.InviteeRewardAmount,
+			"invitee_reward_given":      relation.InviteeRewardGiven,
+			"invitee_total_consumption": relation.InviteeTotalConsumption,
+			"created_at":                relation.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"relations": result,
+		"total":     total,
+		"page":      page,
+		"size":      size,
+	})
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"relations": relations,
