@@ -88,6 +88,22 @@ func SetupRouter() *gin.Engine {
 			users.GET("/devices", handlers.GetUserDevices)
 		}
 
+		// XBoard 兼容路由（不影响原有功能，只是添加新路由）
+		// 这些路由使用相同的认证中间件，只是响应格式不同
+		xboardCompat := api.Group("")
+		xboardCompat.Use(middleware.AuthMiddleware())
+		{
+			// 兼容 XBoard 的用户信息接口
+			// 原接口: GET /api/v1/users/me (保持不变)
+			// 兼容接口: GET /api/v1/user/info (新增)
+			xboardCompat.GET("/user/info", handlers.GetCurrentUserXBoardCompat)
+
+			// 兼容 XBoard 的订阅接口
+			// 原接口: GET /api/v1/subscriptions/user-subscription (保持不变)
+			// 兼容接口: GET /api/v1/user/subscribe (新增)
+			xboardCompat.GET("/user/subscribe", handlers.GetUserSubscriptionXBoardCompat)
+		}
+
 		// 订阅相关
 		subscriptions := api.Group("/subscriptions")
 		subscriptions.Use(middleware.AuthMiddleware())
@@ -111,6 +127,11 @@ func SetupRouter() *gin.Engine {
 			subscribePublic.GET("/subscribe/:url", handlers.GetSubscriptionConfig)
 			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig)        // 猫咪订阅（Clash YAML格式）
 			subscribePublic.GET("/subscriptions/universal/:url", handlers.GetUniversalSubscription) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
+
+			// XBoard 兼容的客户端订阅接口（可选，如果 Orange 客户端使用此格式）
+			// 原接口: GET /api/v1/subscriptions/clash/:url (保持不变)
+			// 兼容接口: GET /api/v1/client/subscribe?token=xxx (新增)
+			subscribePublic.GET("/client/subscribe", handlers.GetClientSubscribeXBoardCompat)
 		}
 
 		// 订单相关
