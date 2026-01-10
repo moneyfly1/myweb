@@ -12,6 +12,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/geoip"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -166,6 +167,17 @@ func Register(c *gin.Context) {
 	if req.InviteCode != "" {
 		processInviteCode(db, req.InviteCode, user.ID)
 	}
+
+	// 发送管理员通知（新用户注册）
+	go func() {
+		notificationService := notification.NewNotificationService()
+		registerTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		_ = notificationService.SendAdminNotification("user_registered", map[string]interface{}{
+			"username":     user.Username,
+			"email":        user.Email,
+			"register_time": registerTime,
+		})
+	}()
 
 	utils.SuccessResponse(c, http.StatusCreated, "注册成功", gin.H{"id": user.ID, "email": user.Email})
 }
