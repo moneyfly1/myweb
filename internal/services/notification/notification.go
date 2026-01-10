@@ -123,7 +123,10 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 				}
 			}()
 		} else {
-			utils.LogWarn("Telegram 通知未发送: type=%s, bot_token或chat_id未配置", notificationType)
+			hasToken := botToken != ""
+			hasChatID := chatID != ""
+			utils.LogWarn("Telegram 通知未发送: type=%s, bot_token=%v, chat_id=%v (需要两者都配置)", 
+				notificationType, hasToken, hasChatID)
 		}
 	}
 
@@ -153,7 +156,8 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 	// 发送邮件通知（使用邮件模板）
 	if configMap["admin_email_notification"] == "true" {
 		adminEmail := configMap["admin_notification_email"]
-		if adminEmail != "" {
+		// 验证邮箱格式（简单验证：包含@符号）
+		if adminEmail != "" && strings.Contains(adminEmail, "@") {
 			emailService := email.NewEmailService()
 			templateBuilder := email.NewEmailTemplateBuilder()
 			subject := getNotificationSubject(notificationType)
@@ -164,7 +168,7 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 				utils.LogInfo("管理员邮件通知已加入队列: type=%s, email=%s", notificationType, adminEmail)
 			}
 		} else {
-			utils.LogWarn("管理员邮件通知未发送: type=%s, admin_email未配置", notificationType)
+			utils.LogWarn("管理员邮件通知未发送: type=%s, admin_email未配置或格式无效 (当前值: %s)", notificationType, adminEmail)
 		}
 	}
 
