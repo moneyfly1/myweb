@@ -88,12 +88,28 @@ func GetAdminInvites(c *gin.Context) {
 			expiresAt = code.ExpiresAt.Time.Format("2006-01-02 15:04:05")
 		}
 
+		// 安全获取用户信息
+		username := ""
+		email := ""
+		if code.User.ID != 0 {
+			username = code.User.Username
+			email = code.User.Email
+		} else if code.UserID != 0 {
+			// 如果预加载失败，手动查询用户
+			var user models.User
+			if err := db.First(&user, code.UserID).Error; err == nil {
+				username = user.Username
+				email = user.Email
+			}
+		}
+
 		result = append(result, gin.H{
 			"id":             code.ID,
 			"code":           code.Code,
 			"user_id":        code.UserID,
-			"username":       code.User.Username,
-			"email":          code.User.Email,
+			"username":       username,
+			"user_email":     email,
+			"email":          email, // 保持向后兼容
 			"used_count":     code.UsedCount,
 			"max_uses":       maxUses,
 			"expires_at":     expiresAt,
@@ -155,28 +171,48 @@ func GetAdminInviteRelations(c *gin.Context) {
 	// 处理数据格式，扁平化用户信息
 	var result []gin.H
 	for _, relation := range relations {
-		// 安全获取邀请码，防止空指针
+		// 安全获取邀请码，防止空指针或预加载失败
 		inviteCode := ""
-		if relation.InviteCode.ID != 0 {
+		if relation.InviteCode.ID != 0 && relation.InviteCode.Code != "" {
 			inviteCode = relation.InviteCode.Code
+		} else if relation.InviteCodeID != 0 {
+			// 如果预加载失败，手动查询邀请码
+			var code models.InviteCode
+			if err := db.First(&code, relation.InviteCodeID).Error; err == nil {
+				inviteCode = code.Code
+			}
 		}
-		
+
 		// 安全获取邀请人信息
 		inviterUsername := ""
 		inviterEmail := ""
-		if relation.Inviter.ID != 0 {
+		if relation.Inviter.ID != 0 && relation.Inviter.Username != "" {
 			inviterUsername = relation.Inviter.Username
 			inviterEmail = relation.Inviter.Email
+		} else if relation.InviterID != 0 {
+			// 如果预加载失败，手动查询邀请人
+			var inviter models.User
+			if err := db.First(&inviter, relation.InviterID).Error; err == nil {
+				inviterUsername = inviter.Username
+				inviterEmail = inviter.Email
+			}
 		}
-		
+
 		// 安全获取被邀请人信息
 		inviteeUsername := ""
 		inviteeEmail := ""
-		if relation.Invitee.ID != 0 {
+		if relation.Invitee.ID != 0 && relation.Invitee.Username != "" {
 			inviteeUsername = relation.Invitee.Username
 			inviteeEmail = relation.Invitee.Email
+		} else if relation.InviteeID != 0 {
+			// 如果预加载失败，手动查询被邀请人
+			var invitee models.User
+			if err := db.First(&invitee, relation.InviteeID).Error; err == nil {
+				inviteeUsername = invitee.Username
+				inviteeEmail = invitee.Email
+			}
 		}
-		
+
 		result = append(result, gin.H{
 			"id":                        relation.ID,
 			"invite_code":               inviteCode,
