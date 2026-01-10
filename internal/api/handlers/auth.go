@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
@@ -173,10 +174,36 @@ func Register(c *gin.Context) {
 		notificationService := notification.NewNotificationService()
 		registerTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 		_ = notificationService.SendAdminNotification("user_registered", map[string]interface{}{
-			"username":     user.Username,
-			"email":        user.Email,
+			"username":      user.Username,
+			"email":         user.Email,
 			"register_time": registerTime,
 		})
+	}()
+
+	// 发送客户欢迎邮件（新用户注册通知）
+	go func() {
+		if notification.ShouldSendCustomerNotification("new_user") {
+			emailService := email.NewEmailService()
+			templateBuilder := email.NewEmailTemplateBuilder()
+			baseURL := templateBuilder.GetBaseURL()
+			loginURL := fmt.Sprintf("%s/login", baseURL)
+			
+			content := templateBuilder.GetWelcomeTemplate(
+				user.Username,
+				user.Email,
+				loginURL,
+				false, // 不包含密码（用户自己设置的密码）
+				"",    // 不显示密码
+			)
+			
+			if err := emailService.QueueEmail(user.Email, "欢迎加入我们！", content, "welcome"); err != nil {
+				utils.LogErrorMsg("发送欢迎邮件失败: email=%s, error=%v", user.Email, err)
+			} else {
+				utils.LogInfo("欢迎邮件已加入队列: email=%s", user.Email)
+			}
+		} else {
+			utils.LogInfo("欢迎邮件未发送: email=%s, 客户通知已禁用", user.Email)
+		}
 	}()
 
 	utils.SuccessResponse(c, http.StatusCreated, "注册成功", gin.H{"id": user.ID, "email": user.Email})
