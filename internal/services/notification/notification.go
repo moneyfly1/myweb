@@ -125,7 +125,7 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		} else {
 			hasToken := botToken != ""
 			hasChatID := chatID != ""
-			utils.LogWarn("Telegram 通知未发送: type=%s, bot_token=%v, chat_id=%v (需要两者都配置)", 
+			utils.LogWarn("Telegram 通知未发送: type=%s, bot_token=%v, chat_id=%v (需要两者都配置)",
 				notificationType, hasToken, hasChatID)
 		}
 	}
