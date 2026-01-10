@@ -148,8 +148,8 @@
             <el-table-column prop="username" label="邀请人" min-width="150">
               <template #default="scope">
                 <div>
-                  <div>{{ scope.row.username }}</div>
-                  <div style="color: #909399; font-size: 12px;">{{ scope.row.email || '无邮箱' }}</div>
+                  <div>{{ scope.row.username || '未知用户' }}</div>
+                  <div style="color: #909399; font-size: 12px;">{{ scope.row.user_email || scope.row.email || '无邮箱' }}</div>
                 </div>
               </template>
             </el-table-column>
@@ -640,20 +640,21 @@ const loadInviteCodes = async () => {
         codeTotal.value = 0
       }
       // 确保 is_active 是布尔值，并处理 max_uses 字段
-      inviteCodes.value = codeList.map(code => ({
-        ...code,
-        is_active: code.is_active === true || code.is_active === 1 || code.is_active === '1',
-        // 处理 max_uses：如果是对象格式 {Int64, Valid}，转换为数字或null
-        max_uses: (() => {
-          if (code.max_uses === null || code.max_uses === undefined) return null
-          if (typeof code.max_uses === 'object' && code.max_uses.Valid !== undefined) {
-            return code.max_uses.Valid ? code.max_uses.Int64 : null
-          }
-          return code.max_uses
-        })(),
-        // 确保 email 字段存在（后端已扁平化）
-        email: code.email || code.user?.email || code.User?.Email || null
-      }))
+      inviteCodes.value = codeList.map(code => {
+        let maxUsesDisplay = null;
+        if (code.max_uses && typeof code.max_uses === 'object' && code.max_uses.Valid) {
+          maxUsesDisplay = code.max_uses.Int64;
+        } else if (typeof code.max_uses === 'number') {
+          maxUsesDisplay = code.max_uses;
+        }
+        return {
+          ...code,
+          is_active: code.is_active === true || code.is_active === 1 || code.is_active === '1',
+          username: code.username || code.user?.username || '未知用户',
+          user_email: code.user_email || code.email || code.user?.email || code.User?.Email || '无邮箱',
+          max_uses_display: maxUsesDisplay,
+        };
+      })
     } else {
       console.warn('⚠️ 响应数据为空')
       inviteCodes.value = []
