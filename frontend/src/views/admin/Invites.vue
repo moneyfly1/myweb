@@ -639,10 +639,20 @@ const loadInviteCodes = async () => {
         codeList = []
         codeTotal.value = 0
       }
-      // 确保 is_active 是布尔值
+      // 确保 is_active 是布尔值，并处理 max_uses 字段
       inviteCodes.value = codeList.map(code => ({
         ...code,
-        is_active: code.is_active === true || code.is_active === 1 || code.is_active === '1'
+        is_active: code.is_active === true || code.is_active === 1 || code.is_active === '1',
+        // 处理 max_uses：如果是对象格式 {Int64, Valid}，转换为数字或null
+        max_uses: (() => {
+          if (code.max_uses === null || code.max_uses === undefined) return null
+          if (typeof code.max_uses === 'object' && code.max_uses.Valid !== undefined) {
+            return code.max_uses.Valid ? code.max_uses.Int64 : null
+          }
+          return code.max_uses
+        })(),
+        // 确保 email 字段存在（后端已扁平化）
+        email: code.email || code.user?.email || code.User?.Email || null
       }))
     } else {
       console.warn('⚠️ 响应数据为空')
