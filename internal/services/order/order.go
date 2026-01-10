@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/payment"
 )
 
@@ -334,6 +335,21 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			utils.AppLogger.Info("ProcessPaidOrder: ✅ 创建新订阅成功 - user_id=%d, package_id=%d, device_limit=%d, duration_days=%d, expire_time=%s",
 				user.ID, pkg.ID, pkg.DeviceLimit, pkg.DurationDays, expireTime.Format("2006-01-02 15:04:05"))
 		}
+		
+		// 发送管理员通知（订阅创建）
+		go func() {
+			notificationService := notification.NewNotificationService()
+			createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+			_ = notificationService.SendAdminNotification("subscription_created", map[string]interface{}{
+				"username":     user.Username,
+				"email":        user.Email,
+				"package_name": pkg.Name,
+				"device_limit": pkg.DeviceLimit,
+				"duration_days": pkg.DurationDays,
+				"expire_time":  expireTime.Format("2006-01-02 15:04:05"),
+				"create_time":  createTime,
+			})
+		}()
 	} else {
 		// 续费：累加时间
 		oldExpireTime := subscription.ExpireTime

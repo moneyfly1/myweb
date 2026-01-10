@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/node_health"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
@@ -191,6 +192,24 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 
 		if err := emailService.QueueEmail(sub.User.Email, subject, content, "expiration_reminder"); err != nil {
 			utils.LogErrorMsg("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
+		}
+		
+		// 如果订阅已过期，发送管理员通知
+		if isExpired {
+			go func(sub models.Subscription) {
+				notificationService := notification.NewNotificationService()
+				expireTime := "未设置"
+				if !sub.ExpireTime.IsZero() {
+					expireTime = sub.ExpireTime.Format("2006-01-02 15:04:05")
+				}
+				_ = notificationService.SendAdminNotification("subscription_expired", map[string]interface{}{
+					"username":    sub.User.Username,
+					"email":       sub.User.Email,
+					"package_name": packageName,
+					"expire_time": expireTime,
+					"expired_time": utils.GetBeijingTime().Format("2006-01-02 15:04:05"),
+				})
+			}(sub)
 		}
 	}
 }
