@@ -190,10 +190,17 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 			subject = fmt.Sprintf("订阅即将到期（剩余%d天）", remainingDays)
 		}
 
-		if err := emailService.QueueEmail(sub.User.Email, subject, content, "expiration_reminder"); err != nil {
-			utils.LogErrorMsg("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
+		// 检查是否应该发送客户通知
+		if notification.ShouldSendCustomerNotification("subscription_expiry") {
+			if err := emailService.QueueEmail(sub.User.Email, subject, content, "expiration_reminder"); err != nil {
+				utils.LogErrorMsg("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
+			} else {
+				utils.LogInfo("订阅到期提醒邮件已加入队列: 用户 %s, 剩余天数: %d", sub.User.Email, remainingDays)
+			}
+		} else {
+			utils.LogInfo("订阅到期提醒邮件未发送: 用户 %s, 客户通知已禁用", sub.User.Email)
 		}
-		
+
 		// 如果订阅已过期，发送管理员通知
 		if isExpired {
 			go func(sub models.Subscription) {
@@ -203,10 +210,10 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 					expireTime = sub.ExpireTime.Format("2006-01-02 15:04:05")
 				}
 				_ = notificationService.SendAdminNotification("subscription_expired", map[string]interface{}{
-					"username":    sub.User.Username,
-					"email":       sub.User.Email,
+					"username":     sub.User.Username,
+					"email":        sub.User.Email,
 					"package_name": packageName,
-					"expire_time": expireTime,
+					"expire_time":  expireTime,
 					"expired_time": utils.GetBeijingTime().Format("2006-01-02 15:04:05"),
 				})
 			}(sub)
