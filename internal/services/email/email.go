@@ -3,7 +3,9 @@ package email
 import (
 	"crypto/tls"
 	"fmt"
+	"mime"
 	"net/smtp"
+	"strings"
 	"time"
 
 	"cboard-go/internal/core/config"
@@ -129,6 +131,58 @@ func getStringFromConfig(config map[string]interface{}, key string, defaultValue
 	return defaultValue
 }
 
+// encodeSubject 编码邮件标题（支持中文和emoji）
+func encodeSubject(subject string) string {
+	// 检查是否包含非ASCII字符
+	needsEncoding := false
+	for _, r := range subject {
+		if r > 127 {
+			needsEncoding = true
+			break
+		}
+	}
+
+	if !needsEncoding {
+		return subject
+	}
+
+	// 使用RFC 2047编码（Q-encoding）
+	encoded := mime.QEncoding.Encode("UTF-8", subject)
+	// 如果编码后的长度超过75字符，需要分段编码
+	if len(encoded) > 75 {
+		// 分段处理长标题
+		var parts []string
+		words := strings.Fields(subject)
+		currentLine := ""
+
+		for _, word := range words {
+			testLine := currentLine
+			if testLine != "" {
+				testLine += " " + word
+			} else {
+				testLine = word
+			}
+
+			encodedTest := mime.QEncoding.Encode("UTF-8", testLine)
+			if len(encodedTest) > 75 && currentLine != "" {
+				// 当前行已满，开始新行
+				parts = append(parts, mime.QEncoding.Encode("UTF-8", currentLine))
+				currentLine = word
+			} else {
+				currentLine = testLine
+			}
+		}
+
+		if currentLine != "" {
+			parts = append(parts, mime.QEncoding.Encode("UTF-8", currentLine))
+		}
+
+		return strings.Join(parts, "\r\n ")
+	}
+
+	return encoded
+}
+
 // SendEmail 发送邮件
 func (s *EmailService) SendEmail(to, subject, body string) error {
 	// 验证基本配置
@@ -147,9 +201,9 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 	// 构建邮件头
 	headers := make(map[string]string)
-	headers["From"] = fmt.Sprintf("%s <%s>", s.fromName, s.from)
+	headers["From"] = fmt.Sprintf("%s <%s>", encodeSubject(s.fromName), s.from)
 	headers["To"] = to
-	headers["Subject"] = subject
+	headers["Subject"] = encodeSubject(subject)
 	headers["MIME-Version"] = "1.0"
 	headers["Content-Type"] = "text/html; charset=UTF-8"
 
