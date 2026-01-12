@@ -129,6 +129,8 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	if err != nil {
 		return nil, "", fmt.Errorf("生成订单号失败: %v", err)
 	}
+	// 使用北京时间作为订单创建时间
+	now := utils.GetBeijingTime()
 	order := models.Order{
 		OrderNo:        orderNo,
 		UserID:         user.ID,
@@ -137,6 +139,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		Status:         "pending",
 		DiscountAmount: database.NullFloat64(totalDiscountAmount),
 		FinalAmount:    database.NullFloat64(balanceUsed + finalAmount), // 记录实际价值（余额+支付）
+		CreatedAt:      now,                                             // 显式设置创建时间为北京时间
 	}
 
 	if finalAmount == 0 {

@@ -835,6 +835,8 @@ func GetOrderStatusByNo(c *gin.Context) {
 																	svc := orderServicePkg.NewOrderService()
 																	svc.ProcessPaidOrder(&processedOrder)
 																}
+																// 发送邮件通知（客户和管理员）
+																sendPaymentNotifications(db, orderNo)
 															}
 														}
 													}()

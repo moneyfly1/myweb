@@ -304,11 +304,13 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 幂等性检查：如果订单已支付，直接返回成功
+	// 幂等性检查：如果订单已支付，检查是否需要发送通知
 	if order.Status == "paid" {
-		utils.LogError("PaymentNotify: order already paid", nil, map[string]interface{}{
-			"order_no": orderNo,
-		})
+		utils.LogInfo("PaymentNotify: order already paid, checking if notifications need to be sent - order_no=%s", orderNo)
+		// 即使订单已支付，也要尝试发送通知（可能是重复回调，但通知可能还没发送）
+		go func() {
+			sendPaymentNotifications(db, orderNo)
+		}()
 		c.String(http.StatusOK, "success")
 		return
 	}
@@ -397,53 +399,68 @@ func PaymentNotify(c *gin.Context) {
 		// 支付已成功，后续可通过补偿机制修复
 	}
 
+	// 异步发送邮件通知（使用订单号查询，避免使用可能过时的order对象）
 	go func() {
-		var latestOrder models.Order
-		if err := db.Preload("Package").Where("id = ?", order.ID).First(&latestOrder).Error; err != nil {
-			return
-		}
-		var latestUser models.User
-		if err := db.First(&latestUser, latestOrder.UserID).Error; err != nil {
-			return
+		sendPaymentNotifications(db, orderNo)
+	}()
+
+	c.String(http.StatusOK, "success")
+}
+
+// sendPaymentNotifications 发送付款成功通知（客户和管理员）
+func sendPaymentNotifications(db *gorm.DB, orderNo string) {
+	// 使用订单号重新查询订单，确保获取最新数据
+	var latestOrder models.Order
+	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&latestOrder).Error; err != nil {
+		utils.LogErrorMsg("sendPaymentNotifications: 查询订单失败: order_no=%s, error=%v", orderNo, err)
+		return
+	}
+
+	// 查询用户信息
+	var latestUser models.User
+	if err := db.First(&latestUser, latestOrder.UserID).Error; err != nil {
+		utils.LogErrorMsg("sendPaymentNotifications: 查询用户失败: order_no=%s, user_id=%d, error=%v", orderNo, latestOrder.UserID, err)
+		return
+	}
+
+	paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+	paidAmount := latestOrder.Amount
+	if latestOrder.FinalAmount.Valid {
+		paidAmount = latestOrder.FinalAmount.Float64
+	}
+	paymentMethod := "在线支付"
+	if latestOrder.PaymentMethodName.Valid {
+		paymentMethod = latestOrder.PaymentMethodName.String
+	}
+	packageName := "未知套餐"
+	if latestOrder.Package.ID > 0 {
+		packageName = latestOrder.Package.Name
+	} else if latestOrder.ExtraData.Valid {
+		packageName = "设备/时长升级"
+	}
+
+	// 发送客户付款成功通知邮件（不限制订单类型，所有订单都发送）
+	if notification.ShouldSendCustomerNotification("new_order") {
+		emailService := email.NewEmailService()
+		templateBuilder := email.NewEmailTemplateBuilder()
+
+		// 1. 发送付款成功通知邮件
+		paymentSuccessContent := templateBuilder.GetPaymentSuccessTemplate(
+			latestUser.Username,
+			latestOrder.OrderNo,
+			packageName,
+			paidAmount,
+			paymentMethod,
+			paymentTime,
+		)
+		if err := emailService.QueueEmail(latestUser.Email, "支付成功通知", paymentSuccessContent, "payment_success"); err != nil {
+			utils.LogErrorMsg("sendPaymentNotifications: 发送付款成功邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
+		} else {
+			utils.LogInfo("sendPaymentNotifications: 付款成功邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
 		}
 
-		paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
-		paidAmount := latestOrder.Amount
-		if latestOrder.FinalAmount.Valid {
-			paidAmount = latestOrder.FinalAmount.Float64
-		}
-		paymentMethod := "在线支付"
-		if latestOrder.PaymentMethodName.Valid {
-			paymentMethod = latestOrder.PaymentMethodName.String
-		}
-		packageName := "未知套餐"
-		if latestOrder.Package.ID > 0 {
-			packageName = latestOrder.Package.Name
-		} else if latestOrder.ExtraData.Valid {
-			packageName = "设备/时长升级"
-		}
-
-		// 发送客户付款成功通知邮件
-		if latestOrder.PackageID > 0 && notification.ShouldSendCustomerNotification("new_order") {
-			emailService := email.NewEmailService()
-			templateBuilder := email.NewEmailTemplateBuilder()
-
-			// 1. 发送付款成功通知邮件
-			paymentSuccessContent := templateBuilder.GetPaymentSuccessTemplate(
-				latestUser.Username,
-				latestOrder.OrderNo,
-				packageName,
-				paidAmount,
-				paymentMethod,
-				paymentTime,
-			)
-			if err := emailService.QueueEmail(latestUser.Email, "支付成功通知", paymentSuccessContent, "payment_success"); err != nil {
-				utils.LogErrorMsg("发送付款成功邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
-			} else {
-				utils.LogInfo("付款成功邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
-			}
-
-			// 2. 发送订阅配置信息邮件
+		// 2. 如果是套餐订单，发送订阅配置信息邮件
+		if latestOrder.PackageID > 0 {
 			var subscriptionInfo models.Subscription
 			if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
 				baseURL := templateBuilder.GetBaseURL()
@@ -471,27 +488,32 @@ func PaymentNotify(c *gin.Context) {
 					subscriptionInfo.CurrentDevices,
 				)
 				if err := emailService.QueueEmail(latestUser.Email, "服务配置信息", content, "subscription"); err != nil {
-					utils.LogErrorMsg("发送订阅配置邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
+					utils.LogErrorMsg("sendPaymentNotifications: 发送订阅配置邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
 				} else {
-					utils.LogInfo("订阅配置邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
+					utils.LogInfo("sendPaymentNotifications: 订阅配置邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
 				}
+			} else {
+				utils.LogErrorMsg("sendPaymentNotifications: 查询订阅信息失败: order_no=%s, user_id=%d, error=%v", latestOrder.OrderNo, latestUser.ID, err)
 			}
 		}
+	} else {
+		utils.LogInfo("sendPaymentNotifications: 客户通知已禁用，跳过发送: order_no=%s", latestOrder.OrderNo)
+	}
 
-		notificationService := notification.NewNotificationService()
-		if err := notificationService.SendAdminNotification("order_paid", map[string]interface{}{
-			"order_no":       latestOrder.OrderNo,
-			"username":       latestUser.Username,
-			"amount":         paidAmount,
-			"package_name":   packageName,
-			"payment_method": paymentMethod,
-			"payment_time":   paymentTime,
-		}); err != nil {
-			utils.LogErrorMsg("发送管理员通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
-		}
-	}()
-
-	c.String(http.StatusOK, "success")
+	// 发送管理员通知（总是尝试发送，不依赖客户通知配置）
+	notificationService := notification.NewNotificationService()
+	if err := notificationService.SendAdminNotification("order_paid", map[string]interface{}{
+		"order_no":       latestOrder.OrderNo,
+		"username":       latestUser.Username,
+		"amount":         paidAmount,
+		"package_name":   packageName,
+		"payment_method": paymentMethod,
+		"payment_time":   paymentTime,
+	}); err != nil {
+		utils.LogErrorMsg("sendPaymentNotifications: 发送管理员通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
+	} else {
+		utils.LogInfo("sendPaymentNotifications: 管理员通知已发送: order_no=%s", latestOrder.OrderNo)
+	}
 }
 
 // GetPaymentStatus 查询支付状态
