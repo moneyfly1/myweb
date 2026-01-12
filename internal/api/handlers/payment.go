@@ -389,20 +389,32 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// ProcessPaidOrder 统一处理所有订单类型
-	orderService := orderServicePkg.NewOrderService()
-	_, processErr := orderService.ProcessPaidOrder(&order)
-	if processErr != nil {
-		utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
-			"order_id": order.ID,
-		})
-		// 支付已成功，后续可通过补偿机制修复
-	}
+	// 异步处理订单后续逻辑（开通权益、发送通知等）
+	// 这样可以立即向支付网关返回 success，避免超时
+	go func(targetOrder models.Order) {
+		defer func() {
+			if r := recover(); r != nil {
+				utils.LogError("PaymentNotify: panic in async processing", fmt.Errorf("%v", r), map[string]interface{}{
+					"order_no": targetOrder.OrderNo,
+				})
+			}
+		}()
 
-	// 异步发送邮件通知（使用订单号查询，避免使用可能过时的order对象）
-	go func() {
-		sendPaymentNotifications(db, orderNo)
-	}()
+		// ProcessPaidOrder 统一处理所有订单类型
+		orderService := orderServicePkg.NewOrderService()
+		// 注意：这里传入的是 order 的副本的指针，确保线程安全
+		_, processErr := orderService.ProcessPaidOrder(&targetOrder)
+		if processErr != nil {
+			utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
+				"order_id": targetOrder.ID,
+			})
+			// 支付已成功，后续可通过补偿机制修复
+			// 即使处理业务逻辑失败，也要尝试发送通知（至少让用户知道付款成功了但服务可能没到账）
+		}
+
+		// 发送邮件通知
+		sendPaymentNotifications(db, targetOrder.OrderNo)
+	}(order)
 
 	c.String(http.StatusOK, "success")
 }
