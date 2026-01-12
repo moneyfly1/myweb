@@ -187,7 +187,7 @@ func Register(c *gin.Context) {
 			templateBuilder := email.NewEmailTemplateBuilder()
 			baseURL := templateBuilder.GetBaseURL()
 			loginURL := fmt.Sprintf("%s/login", baseURL)
-			
+
 			content := templateBuilder.GetWelcomeTemplate(
 				user.Username,
 				user.Email,
@@ -195,7 +195,7 @@ func Register(c *gin.Context) {
 				false, // 不包含密码（用户自己设置的密码）
 				"",    // 不显示密码
 			)
-			
+
 			if err := emailService.QueueEmail(user.Email, "欢迎加入我们！", content, "welcome"); err != nil {
 				utils.LogErrorMsg("发送欢迎邮件失败: email=%s, error=%v", user.Email, err)
 			} else {
