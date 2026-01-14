@@ -482,7 +482,7 @@
         <p class="qr-tip">支付完成后，余额将自动到账</p>
         
         <!-- 手机端跳转按钮 -->
-        <div v-if="isMobile && rechargePaymentUrl" class="recharge-payment-actions" style="margin-top: 15px;">
+        <div v-if="isMobile && rechargePaymentUrl && (rechargePaymentUrl.includes('alipay') || rechargePaymentUrl.includes('alipays'))" class="recharge-payment-actions" style="margin-top: 15px;">
           <el-button 
             type="success"
             size="large"
@@ -865,9 +865,15 @@ const showRechargeDialog = () => {
   rechargeForm.value.amount = 20
   rechargeQRCode.value = ''
   rechargePaymentUrl.value = ''
+  currentRechargeOrderNo.value = null
+  // 清除之前的定时器
+  if (rechargeStatusInterval) {
+    clearInterval(rechargeStatusInterval)
+    rechargeStatusInterval = null
+  }
 }
 
-// 跳转到支付宝App进行充值支付
+// 跳转到支付宝App进行充值支付（参考购买套餐的方式）
 const openAlipayAppForRecharge = () => {
   if (!rechargePaymentUrl.value) {
     ElMessage.error('支付链接不存在')
@@ -875,6 +881,7 @@ const openAlipayAppForRecharge = () => {
   }
   
   // 生成支付宝App跳转链接
+  // 支付宝App的URL Scheme格式：alipays://platformapi/startapp?saId=10000007&qrcode=支付URL
   const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(rechargePaymentUrl.value)}`
   
   try {
@@ -882,10 +889,21 @@ const openAlipayAppForRecharge = () => {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
         // 用户返回页面，立即检查支付状态
+        await checkRechargeStatus()
+        // 移除监听器
         document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // 添加页面焦点监听，当用户切换回页面时检查支付状态
+    const handleFocus = async () => {
+      if (rechargeDialogVisible.value) {
+        await checkRechargeStatus()
+        window.removeEventListener('focus', handleFocus)
+      }
+    }
+    window.addEventListener('focus', handleFocus)
     
     // 尝试打开支付宝App
     window.location.href = alipayAppUrl
@@ -933,16 +951,20 @@ const createRecharge = async () => {
         return
       }
       
-      // 验证充值订单ID是否存在（后端返回的是 id 字段）
+      // 验证充值订单信息是否存在
       const rechargeId = data.id || data.recharge_id
-      if (!rechargeId) {
-        console.error('充值订单ID不存在:', data)
-        ElMessage.error('充值订单创建失败，订单ID缺失')
+      const rechargeOrderNo = data.order_no
+      if (!rechargeId || !rechargeOrderNo) {
+        console.error('充值订单信息不完整:', data)
+        ElMessage.error('充值订单创建失败，订单信息缺失')
         return
       }
       
       // 保存支付URL，用于跳转支付宝App
       rechargePaymentUrl.value = paymentUrl
+      
+      // 保存充值订单号，用于状态检查
+      currentRechargeOrderNo.value = rechargeOrderNo
       
       // 使用qrcode库将支付URL生成为二维码图片（与订单支付相同的方式）
       try {
@@ -962,26 +984,14 @@ const createRecharge = async () => {
         rechargeQRCode.value = qrCodeDataURL
         ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
         
-        // 开始轮询检查支付状态（使用 id 字段，不是 recharge_id）
-        const rechargeId = data.id || data.recharge_id
-        if (rechargeId) {
-          checkRechargeStatus(rechargeId)
-        } else {
-          console.error('充值订单ID不存在，无法检查支付状态:', data)
-          ElMessage.warning('充值订单创建成功，但无法自动检查支付状态')
-        }
+        // 开始检查支付状态（使用订单号，参考购买套餐的方式）
+        startRechargeStatusCheck()
       } catch (qrError) {
         // 如果二维码生成失败，直接使用URL
         rechargeQRCode.value = paymentUrl
         ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
-        // 开始轮询检查支付状态（使用 id 字段，不是 recharge_id）
-        const rechargeId = data.id || data.recharge_id
-        if (rechargeId) {
-          checkRechargeStatus(rechargeId)
-        } else {
-          console.error('充值订单ID不存在，无法检查支付状态:', data)
-          ElMessage.warning('充值订单创建成功，但无法自动检查支付状态')
-        }
+        // 开始检查支付状态（使用订单号，参考购买套餐的方式）
+        startRechargeStatusCheck()
       }
     } else {
       ElMessage.error(response.data?.message || '创建充值订单失败')
@@ -994,66 +1004,126 @@ const createRecharge = async () => {
 }
 
 let rechargeStatusInterval = null
-const checkRechargeStatus = (rechargeId) => {
-  // 验证 rechargeId 是否存在
-  if (!rechargeId) {
-    console.error('充值订单ID不存在，无法检查支付状态')
-    return
-  }
-  
-  // 清除之前的定时器
+const currentRechargeOrderNo = ref(null)
+
+// 开始检查充值支付状态（参考购买套餐的方式）
+const startRechargeStatusCheck = () => {
+  // 清除之前的检查
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
   }
   
-  // 开始轮询检查支付状态
-  rechargeStatusInterval = setInterval(async () => {
-    try {
-      const response = await rechargeAPI.getRechargeDetail(rechargeId)
-      if (response.data && response.data.success) {
-        const recharge = response.data.data
-        if (recharge.status === 'paid') {
-          clearInterval(rechargeStatusInterval)
-          rechargeStatusInterval = null
-          ElMessage.success('充值成功！余额已到账')
-          rechargeQRCode.value = ''
-          rechargePaymentUrl.value = ''
-          rechargeDialogVisible.value = false
-          // 刷新用户信息，确保余额更新
-          await loadUserInfo()
-          // 延迟再次刷新，确保余额显示正确（防止缓存问题）
-          setTimeout(async () => {
-            await loadUserInfo()
-          }, 500)
-        } else if (recharge.status === 'cancelled' || recharge.status === 'failed') {
-          clearInterval(rechargeStatusInterval)
-          rechargeStatusInterval = null
-          rechargePaymentUrl.value = ''
-          ElMessage.warning('充值订单已取消或失败')
-          rechargeQRCode.value = ''
-        }
-      }
-    } catch (error) {
-      // 如果是 404 错误，说明订单不存在，停止轮询
-      if (error.response?.status === 404) {
-        console.warn('充值订单不存在，停止检查支付状态')
-        clearInterval(rechargeStatusInterval)
-        rechargeStatusInterval = null
-      } else {
-        // 其他错误只记录，不停止轮询
-        console.warn('检查充值状态失败:', error)
-      }
-    }
-  }, 3000) // 每3秒检查一次
+  // 立即检查一次支付状态
+  checkRechargeStatus()
   
-  // 30秒后停止检查
+  // 每2秒检查一次支付状态（提高检查频率，与购买套餐一致）
+  rechargeStatusInterval = setInterval(async () => {
+    await checkRechargeStatus()
+  }, 2000)
+  
+  // 添加页面可见性监听，当用户从其他应用返回时立即检查
+  const handleVisibilityChange = async () => {
+    if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
+      // 用户返回页面，立即检查支付状态
+      await checkRechargeStatus()
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  
+  // 添加页面焦点监听
+  const handleFocus = async () => {
+    if (rechargeDialogVisible.value) {
+      await checkRechargeStatus()
+    }
+  }
+  window.addEventListener('focus', handleFocus)
+  
+  // 30分钟后停止检查
   setTimeout(() => {
     if (rechargeStatusInterval) {
       clearInterval(rechargeStatusInterval)
       rechargeStatusInterval = null
     }
-  }, 30000)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.removeEventListener('focus', handleFocus)
+  }, 30 * 60 * 1000)
+}
+
+// 关闭充值对话框
+const closeRechargeDialog = () => {
+  // 清除支付状态检查定时器
+  if (rechargeStatusInterval) {
+    clearInterval(rechargeStatusInterval)
+    rechargeStatusInterval = null
+  }
+  rechargeDialogVisible.value = false
+  rechargeQRCode.value = ''
+  rechargePaymentUrl.value = ''
+  currentRechargeOrderNo.value = null
+}
+
+// 检查充值支付状态（使用订单号，支持主动查询支付状态）
+const checkRechargeStatus = async () => {
+  if (!currentRechargeOrderNo.value) {
+    return
+  }
+  
+  try {
+    const response = await rechargeAPI.getRechargeStatus(currentRechargeOrderNo.value)
+    
+    if (!response || !response.data) {
+      return
+    }
+
+    if (response.data.success === false) {
+      return
+    }
+    
+    const rechargeData = response.data.data
+    if (!rechargeData) {
+      return
+    }
+    
+    if (rechargeData.status === 'paid') {
+      // 支付成功
+      if (rechargeStatusInterval) {
+        clearInterval(rechargeStatusInterval)
+        rechargeStatusInterval = null
+      }
+      
+      ElMessage.success('充值成功！余额已到账')
+      closeRechargeDialog()
+      
+      // 刷新用户信息，确保余额更新
+      await loadUserInfo()
+      // 延迟再次刷新，确保余额显示正确（防止缓存问题）
+      setTimeout(async () => {
+        await loadUserInfo()
+      }, 500)
+    } else if (rechargeData.status === 'cancelled' || rechargeData.status === 'failed') {
+      // 充值已取消或失败
+      if (rechargeStatusInterval) {
+        clearInterval(rechargeStatusInterval)
+        rechargeStatusInterval = null
+      }
+      
+      closeRechargeDialog()
+      ElMessage.warning('充值订单已取消或失败')
+    }
+  } catch (error) {
+    // 如果是 404 错误，说明订单不存在，停止轮询
+    if (error.response?.status === 404) {
+      console.warn('充值订单不存在，停止检查支付状态')
+      if (rechargeStatusInterval) {
+        clearInterval(rechargeStatusInterval)
+        rechargeStatusInterval = null
+      }
+    } else {
+      // 其他错误只记录，不停止轮询
+      console.warn('检查充值状态失败:', error)
+    }
+  }
 }
 
 

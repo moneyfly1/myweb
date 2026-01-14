@@ -2,14 +2,18 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // CreateRecharge 创建充值订单
@@ -35,12 +39,16 @@ func CreateRecharge(c *gin.Context) {
 	// 生成订单号
 	orderNo := utils.GenerateRechargeOrderNo(user.ID)
 
+	// 使用北京时间创建充值记录
+	beijingTime := utils.GetBeijingTime()
 	recharge := models.RechargeRecord{
 		UserID:        user.ID,
 		OrderNo:       orderNo,
 		Amount:        req.Amount,
 		Status:        "pending",
 		PaymentMethod: database.NullString(req.PaymentMethod),
+		CreatedAt:     beijingTime,
+		UpdatedAt:     beijingTime,
 	}
 
 	if err := db.Create(&recharge).Error; err != nil {
@@ -106,7 +114,61 @@ func GetRechargeRecords(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", records)
+	// 格式化充值记录，确保支付方式等字段正确序列化
+	formattedRecords := make([]gin.H, 0, len(records))
+	formatIP := func(ip string) string {
+		if ip == "" {
+			return "-"
+		}
+		if ip == "::1" {
+			return "127.0.0.1"
+		}
+		if strings.HasPrefix(ip, "::ffff:") {
+			return strings.TrimPrefix(ip, "::ffff:")
+		}
+		return ip
+	}
+	for _, record := range records {
+		ipValue := utils.GetNullStringValue(record.IPAddress)
+		var ipStr string
+		if ipValue != nil {
+			ipStr = ipValue.(string)
+		}
+		ipAddress := formatIP(ipStr)
+		// 使用GeoIP解析地理位置
+		location := ""
+		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+			locationStr := geoip.GetLocationString(ipAddress)
+			if locationStr.Valid {
+				location = locationStr.String
+			}
+		}
+
+		formattedRecords = append(formattedRecords, gin.H{
+			"id":                     record.ID,
+			"user_id":                record.UserID,
+			"order_no":               record.OrderNo,
+			"amount":                 record.Amount,
+			"status":                 record.Status,
+			"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+			"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+			"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
+			"payment_url":            utils.GetNullStringValue(record.PaymentURL),
+			"ip_address":             ipAddress,
+			"location":               location, // 添加归属地信息
+			"user_agent":             utils.GetNullStringValue(record.UserAgent),
+			"paid_at": func() interface{} {
+				if record.PaidAt.Valid {
+					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+				}
+				return nil
+			}(),
+			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", formattedRecords)
 }
 
 // GetRechargeRecord 获取单个充值记录
@@ -125,7 +187,176 @@ func GetRechargeRecord(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", record)
+	// 格式化充值记录，确保支付方式等字段正确序列化
+	formatIP := func(ip string) string {
+		if ip == "" {
+			return "-"
+		}
+		if ip == "::1" {
+			return "127.0.0.1"
+		}
+		if strings.HasPrefix(ip, "::ffff:") {
+			return strings.TrimPrefix(ip, "::ffff:")
+		}
+		return ip
+	}
+	ipValue := utils.GetNullStringValue(record.IPAddress)
+	var ipStr string
+	if ipValue != nil {
+		ipStr = ipValue.(string)
+	}
+	ipAddress := formatIP(ipStr)
+	// 使用GeoIP解析地理位置
+	location := ""
+	if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+		locationStr := geoip.GetLocationString(ipAddress)
+		if locationStr.Valid {
+			location = locationStr.String
+		}
+	}
+
+	formattedRecord := gin.H{
+		"id":                     record.ID,
+		"user_id":                record.UserID,
+		"order_no":               record.OrderNo,
+		"amount":                 record.Amount,
+		"status":                 record.Status,
+		"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+		"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+		"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
+		"payment_url":            utils.GetNullStringValue(record.PaymentURL),
+		"ip_address":             ipAddress,
+		"location":               location, // 添加归属地信息
+		"user_agent":             utils.GetNullStringValue(record.UserAgent),
+		"paid_at": func() interface{} {
+			if record.PaidAt.Valid {
+				return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+			}
+			return nil
+		}(),
+		"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", formattedRecord)
+}
+
+// GetRechargeStatusByNo 通过订单号获取充值状态（支持主动查询支付状态）
+func GetRechargeStatusByNo(c *gin.Context) {
+	orderNo := c.Param("orderNo")
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+
+	db := database.GetDB()
+	var record models.RechargeRecord
+	if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&record).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "充值记录不存在", err)
+		return
+	}
+
+	// 如果充值记录是 pending 状态，且创建时间超过5秒，主动查询支付状态
+	// 增加查询间隔限制，避免频繁查询（每30秒才查询一次支付宝状态）
+	if record.Status == "pending" {
+		// 检查充值记录创建时间，避免频繁查询
+		timeSinceCreated := time.Since(record.CreatedAt)
+		// 增加间隔限制：每30秒才查询一次支付宝状态，避免频繁初始化
+		// 使用秒数取模，只在30秒的倍数时查询（例如：30秒、60秒、90秒...）
+		shouldQuery := timeSinceCreated > 5*time.Second && int(timeSinceCreated.Seconds())%30 < 2
+		if shouldQuery {
+			// 获取支付方式
+			paymentMethod := "alipay"
+			if record.PaymentMethod.Valid {
+				paymentMethod = record.PaymentMethod.String
+			}
+
+			// 获取支付配置
+			var paymentConfig models.PaymentConfig
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err == nil {
+				// 根据支付方式查询状态
+				if paymentConfig.PayType == "alipay" {
+					alipayService, err := payment.NewAlipayService(&paymentConfig)
+					if err == nil {
+						queryResult, err := alipayService.QueryOrder(orderNo)
+						if err == nil && queryResult != nil && queryResult.IsPaid() {
+							// 支付成功，更新充值记录状态（模拟回调处理）
+							utils.LogInfo("GetRechargeStatusByNo: payment query success, updating recharge - order_no=%s, trade_no=%s",
+								orderNo, queryResult.TradeNo)
+
+							// 使用事务更新充值记录状态
+							err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+								// 重新加载充值记录（获取最新状态，避免重复处理）
+								var latestRecord models.RechargeRecord
+								if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&latestRecord).Error; err == nil {
+									latestRecord.Status = "paid"
+									latestRecord.PaidAt = database.NullTime(utils.GetBeijingTime())
+									if queryResult.TradeNo != "" {
+										latestRecord.PaymentTransactionID = database.NullString(queryResult.TradeNo)
+									}
+									// 确保支付方式被正确设置
+									if !latestRecord.PaymentMethod.Valid || latestRecord.PaymentMethod.String == "" {
+										latestRecord.PaymentMethod = database.NullString(paymentMethod)
+									}
+									if err := tx.Save(&latestRecord).Error; err != nil {
+										return err
+									}
+
+									// 更新用户余额
+									var user models.User
+									if err := tx.First(&user, latestRecord.UserID).Error; err == nil {
+										oldBalance := user.Balance
+										user.Balance += latestRecord.Amount
+										if err := tx.Save(&user).Error; err != nil {
+											utils.LogError("GetRechargeStatusByNo: failed to update user balance", err, map[string]interface{}{
+												"order_no": orderNo,
+												"user_id":  user.ID,
+											})
+											return err
+										}
+										// 记录充值成功日志
+										utils.LogInfo("GetRechargeStatusByNo: 充值成功 - order_no=%s, user_id=%d, amount=%.2f, old_balance=%.2f, new_balance=%.2f",
+											orderNo, user.ID, latestRecord.Amount, oldBalance, user.Balance)
+									}
+								}
+								return nil
+							})
+
+							if err != nil {
+								utils.LogError("GetRechargeStatusByNo: failed to update recharge transaction", err, map[string]interface{}{
+									"order_no": orderNo,
+								})
+							} else {
+								// 重新加载充值记录以返回最新状态
+								db.Where("order_no = ?", orderNo).First(&record)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 格式化充值记录，确保支付方式等字段正确序列化
+	formattedRecord := gin.H{
+		"id":                     record.ID,
+		"user_id":                record.UserID,
+		"order_no":               record.OrderNo,
+		"amount":                 record.Amount,
+		"status":                 record.Status,
+		"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+		"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+		"paid_at": func() interface{} {
+			if record.PaidAt.Valid {
+				return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+			}
+			return nil
+		}(),
+		"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", formattedRecord)
 }
 
 // CancelRecharge 取消充值订单

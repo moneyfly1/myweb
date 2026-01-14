@@ -679,6 +679,19 @@ export default {
       
       // 添加充值记录（标记类型）
       recharges.value.forEach(recharge => {
+        // 处理支付方式字段，可能是对象格式
+        let paymentMethod = recharge.payment_method || 'alipay'
+        if (paymentMethod && typeof paymentMethod === 'object') {
+          if (paymentMethod.String) {
+            paymentMethod = paymentMethod.String
+          } else if (paymentMethod.payment_method) {
+            paymentMethod = paymentMethod.payment_method
+          } else {
+            const values = Object.values(paymentMethod).filter(v => typeof v === 'string' && v.length > 0)
+            paymentMethod = values.length > 0 ? values[0] : 'alipay'
+          }
+        }
+        
         merged.push({
           ...recharge,
           record_type: 'recharge',
@@ -686,7 +699,7 @@ export default {
           display_amount: recharge.amount,
           display_type: '充值',
           package_name: '账户充值',
-          payment_method: recharge.payment_method || 'alipay',
+          payment_method: paymentMethod,
           status: recharge.status
         })
       })
@@ -724,13 +737,26 @@ export default {
     
     // 格式化充值记录
     const formatRechargeRecord = (recharge) => {
+      // 处理支付方式字段，可能是对象格式
+      let paymentMethod = recharge.payment_method || 'alipay'
+      if (paymentMethod && typeof paymentMethod === 'object') {
+        if (paymentMethod.String) {
+          paymentMethod = paymentMethod.String
+        } else if (paymentMethod.payment_method) {
+          paymentMethod = paymentMethod.payment_method
+        } else {
+          const values = Object.values(paymentMethod).filter(v => typeof v === 'string' && v.length > 0)
+          paymentMethod = values.length > 0 ? values[0] : 'alipay'
+        }
+      }
+      
       return {
         ...recharge,
         record_type: 'recharge',
         display_no: recharge.order_no || '-',
         display_amount: recharge.amount || '0.00',
         package_name: '账户充值',
-        payment_method: recharge.payment_method || 'alipay',
+        payment_method: paymentMethod,
         status: recharge.status || 'pending',
         display_type: '充值',
         // 确保保留所有必要字段
@@ -1553,13 +1579,31 @@ export default {
     }
     
     const getPaymentMethodText = (method) => {
+      // 处理可能的对象格式（如 {"String": "alipay", "Valid": true}）
+      let methodStr = method
+      if (method && typeof method === 'object') {
+        if (method.String) {
+          methodStr = method.String
+        } else if (method.payment_method) {
+          methodStr = method.payment_method
+        } else {
+          // 尝试从对象中提取字符串值
+          const values = Object.values(method).filter(v => typeof v === 'string' && v.length > 0)
+          if (values.length > 0) {
+            methodStr = values[0]
+          } else {
+            methodStr = '未知'
+          }
+        }
+      }
+      
       const methodMap = {
         alipay: '支付宝',
         wechat: '微信支付',
         balance: '余额支付',
         mixed: '余额+支付宝'
       }
-      return methodMap[method] || method || '未知'
+      return methodMap[methodStr] || methodStr || '未知'
     }
     
     const getPaymentMethodType = (method) => {
