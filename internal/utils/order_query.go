@@ -1,161 +1,65 @@
 package utils
 
 import (
-	"database/sql"
+	"time"
 
 	"gorm.io/gorm"
 )
 
 // CalculateTotalRevenue 计算总收入
-// 使用final_amount，如果为NULL或0则使用amount
+// status: 订单状态筛选（如 "paid"），空字符串表示所有订单
 func CalculateTotalRevenue(db *gorm.DB, status string) float64 {
-	var result struct {
-		Total sql.NullFloat64
+	var total float64
+	query := db.Table("orders")
+
+	if status != "" {
+		query = query.Where("status = ?", status)
 	}
 
-	err := db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-				ELSE amount
-			END
-		), 0) as total
-		FROM orders 
-		WHERE status = ?
-	`, status).Scan(&result).Error
+	// 使用 COALESCE 优先使用 final_amount，如果为 NULL 或 0 则使用 amount
+	query.Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END), 0)").
+		Scan(&total)
 
-	if err != nil || !result.Total.Valid {
-		return 0
-	}
-
-	return result.Total.Float64
-}
-
-// CalculateTotalRevenueWithDateRange 计算指定日期范围内的总收入
-func CalculateTotalRevenueWithDateRange(db *gorm.DB, status string, startDate, endDate string) float64 {
-	var result struct {
-		Total sql.NullFloat64
-	}
-
-	var sqlQuery string
-	var args []interface{}
-
-	// 构建SQL查询
-	if startDate != "" && endDate != "" {
-		sqlQuery = `
-			SELECT COALESCE(SUM(
-				CASE 
-					WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-					ELSE amount
-				END
-			), 0) as total
-			FROM orders 
-			WHERE status = ? AND DATE(created_at) >= ? AND DATE(created_at) <= ?
-		`
-		args = []interface{}{status, startDate, endDate}
-	} else if startDate != "" {
-		sqlQuery = `
-			SELECT COALESCE(SUM(
-				CASE 
-					WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-					ELSE amount
-				END
-			), 0) as total
-			FROM orders 
-			WHERE status = ? AND DATE(created_at) >= ?
-		`
-		args = []interface{}{status, startDate}
-	} else if endDate != "" {
-		sqlQuery = `
-			SELECT COALESCE(SUM(
-				CASE 
-					WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-					ELSE amount
-				END
-			), 0) as total
-			FROM orders 
-			WHERE status = ? AND DATE(created_at) <= ?
-		`
-		args = []interface{}{status, endDate}
-	} else {
-		// 没有日期范围，使用基础函数
-		return CalculateTotalRevenue(db, status)
-	}
-
-	err := db.Raw(sqlQuery, args...).Scan(&result).Error
-	if err != nil || !result.Total.Valid {
-		return 0
-	}
-
-	return result.Total.Float64
+	return total
 }
 
 // CalculateTodayRevenue 计算今日收入
+// status: 订单状态筛选（如 "paid"），空字符串表示所有订单
 func CalculateTodayRevenue(db *gorm.DB, status string) float64 {
-	today := GetBeijingTime().Format("2006-01-02")
-	var result struct {
-		Total sql.NullFloat64
+	var total float64
+	today := time.Now().Format("2006-01-02")
+	query := db.Table("orders").Where("DATE(created_at) = ?", today)
+
+	if status != "" {
+		query = query.Where("status = ?", status)
 	}
 
-	err := db.Raw(`
-		SELECT COALESCE(SUM(
-			CASE 
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-				ELSE amount
-			END
-		), 0) as total
-		FROM orders 
-		WHERE status = ? AND DATE(created_at) = ?
-	`, status, today).Scan(&result).Error
+	// 使用 COALESCE 优先使用 final_amount，如果为 NULL 或 0 则使用 amount
+	query.Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END), 0)").
+		Scan(&total)
 
-	if err != nil || !result.Total.Valid {
-		return 0
-	}
-
-	return result.Total.Float64
+	return total
 }
 
-// CalculateUserOrderAmount 计算用户订单金额（支持绝对值）
-func CalculateUserOrderAmount(db *gorm.DB, userID uint, status string, useAbs bool) float64 {
-	var result struct {
-		Total sql.NullFloat64
-	}
+// CalculateUserOrderAmount 计算用户订单金额
+// userID: 用户ID
+// status: 订单状态筛选（如 "paid"），空字符串表示所有订单
+// useAbsolute: 是否使用绝对值
+func CalculateUserOrderAmount(db *gorm.DB, userID uint, status string, useAbsolute bool) float64 {
+	var total float64
+	query := db.Table("orders").Where("user_id = ?", userID)
 
-	var sqlQuery string
-	if useAbs {
-		sqlQuery = `
-			SELECT COALESCE(SUM(
-				CASE 
-					WHEN final_amount IS NOT NULL AND final_amount != 0 THEN ABS(final_amount)
-					ELSE ABS(amount)
-				END
-			), 0) as total
-			FROM orders 
-			WHERE user_id = ?
-		`
-	} else {
-		sqlQuery = `
-			SELECT COALESCE(SUM(
-				CASE 
-					WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-					ELSE amount
-				END
-			), 0) as total
-			FROM orders 
-			WHERE user_id = ?
-		`
-	}
-
-	args := []interface{}{userID}
 	if status != "" {
-		sqlQuery += " AND status = ?"
-		args = append(args, status)
+		query = query.Where("status = ?", status)
 	}
 
-	err := db.Raw(sqlQuery, args...).Scan(&result).Error
-	if err != nil || !result.Total.Valid {
-		return 0
+	// 使用 COALESCE 优先使用 final_amount，如果为 NULL 或 0 则使用 amount
+	selectExpr := "COALESCE(SUM(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END), 0)"
+	if useAbsolute {
+		selectExpr = "COALESCE(SUM(ABS(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END)), 0)"
 	}
 
-	return result.Total.Float64
+	query.Select(selectExpr).Scan(&total)
+
+	return total
 }

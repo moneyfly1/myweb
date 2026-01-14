@@ -259,7 +259,10 @@
           @sort-change="handleExpireTimeSort"
         >
           <template #default="scope">
-            <div class="expire-time-section">
+            <div 
+              class="expire-time-section"
+              :class="{ 'expire-time-expired': isExpired(scope.row) }"
+            >
               <el-date-picker
                 v-model="scope.row.expire_time"
                 type="date"
@@ -410,7 +413,10 @@
           @sort-change="handleDeviceLimitSort"
         >
           <template #default="scope">
-            <div class="device-limit-section">
+            <div 
+              class="device-limit-section"
+              :class="{ 'device-limit-overlimit': isDeviceOverlimit(scope.row) }"
+            >
               <el-input-number
                 v-model="scope.row.device_limit"
                 :min="0"
@@ -508,7 +514,10 @@
               </el-tag>
             </span>
           </div>
-          <div class="card-row">
+          <div 
+            class="card-row"
+            :class="{ 'expire-time-expired': isExpired(subscription) }"
+          >
             <span class="label">到期时间</span>
             <span class="value">
               <div class="expire-time-section">
@@ -551,7 +560,10 @@
               </div>
             </span>
           </div>
-          <div class="card-row">
+          <div 
+            class="card-row"
+            :class="{ 'device-limit-overlimit': isDeviceOverlimit(subscription) }"
+          >
             <span class="label">设备使用</span>
             <span class="value">
               <el-tooltip content="当前在线设备数" placement="top">
@@ -567,6 +579,11 @@
                 @change="updateDeviceLimit(subscription)"
                 controls-position="right"
               />
+              <div class="quick-device-buttons-mobile">
+                <el-button size="small" @click="addDeviceLimit(subscription, 5)">+5</el-button>
+                <el-button size="small" @click="addDeviceLimit(subscription, 10)">+10</el-button>
+                <el-button size="small" @click="addDeviceLimit(subscription, 15)">+15</el-button>
+              </div>
             </span>
           </div>
           <div class="card-row">
@@ -1451,6 +1468,21 @@ export default {
       } catch (error) {
         ElMessage.error('添加设备限制失败')
         }
+    }
+
+    // 判断订阅是否过期
+    const isExpired = (subscription) => {
+      if (!subscription || !subscription.expire_time) return false
+      const expireDate = dayjs(subscription.expire_time).tz('Asia/Shanghai')
+      if (!expireDate.isValid()) return false
+      return expireDate.isBefore(dayjs().tz('Asia/Shanghai'), 'day')
+    }
+
+    // 判断设备是否超限
+    const isDeviceOverlimit = (subscription) => {
+      const onlineDevices = subscription.online_devices || 0
+      const deviceLimit = subscription.device_limit || 0
+      return deviceLimit > 0 && onlineDevices >= deviceLimit
     }
 
     // 生成二维码
@@ -2562,6 +2594,8 @@ export default {
       addTime,
       updateDeviceLimit,
       addDeviceLimit,
+      isExpired,
+      isDeviceOverlimit,
       generateQRCode,
       showQRCode,
       downloadQRCode,
@@ -2791,6 +2825,15 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.3s;
+  
+  &.expire-time-expired {
+    background: #fef0f0;
+    border: 1px solid #f56c6c;
+    animation: pulse-alert 2s ease-in-out infinite;
+  }
 }
 
 .expire-picker {
@@ -2857,6 +2900,15 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.3s;
+  
+  &.device-limit-overlimit {
+    background: #fef0f0;
+    border: 1px solid #f56c6c;
+    animation: pulse-alert 2s ease-in-out infinite;
+  }
 }
 
 .device-limit-input {
@@ -2873,6 +2925,29 @@ export default {
   padding: 2px 6px;
   font-size: 11px;
   min-width: 0;
+}
+
+.quick-device-buttons-mobile {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-device-buttons-mobile .el-button {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+}
+
+@keyframes pulse-alert {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(245, 108, 108, 0);
+  }
 }
 
 .action-buttons {
@@ -3215,6 +3290,22 @@ export default {
       }
       
       .card-row {
+        padding: 12px;
+        border-radius: 8px;
+        transition: all 0.3s;
+        
+        &.expire-time-expired {
+          background: #fef0f0;
+          border: 1px solid #f56c6c;
+          animation: pulse-alert 2s ease-in-out infinite;
+        }
+        
+        &.device-limit-overlimit {
+          background: #fef0f0;
+          border: 1px solid #f56c6c;
+          animation: pulse-alert 2s ease-in-out infinite;
+        }
+        
         .value {
           // 日期选择器样式
           :deep(.el-date-picker) {
