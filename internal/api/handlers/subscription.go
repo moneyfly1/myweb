@@ -22,9 +22,8 @@ import (
 
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
-	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-	universal := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subURL, timestamp)
-	clash := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subURL, timestamp)
+	universal := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subURL)
+	clash := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subURL)
 	return universal, clash
 }
 

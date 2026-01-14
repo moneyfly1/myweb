@@ -23,6 +23,12 @@ func GetUserDashboard(c *gin.Context) {
 
 	db := database.GetDB()
 
+	// 从数据库重新加载用户信息，确保获取最新的余额
+	var freshUser models.User
+	if err := db.First(&freshUser, user.ID).Error; err == nil {
+		user = &freshUser
+	}
+
 	// 取用户等级
 	var userLevel *models.UserLevel
 	if user.UserLevelID.Valid {
@@ -71,12 +77,10 @@ func GetUserDashboard(c *gin.Context) {
 	universalURL := ""
 	qrcodeURL := ""
 	if subscription.ID > 0 && subscription.SubscriptionURL != "" {
-		// 使用时间戳避免缓存
-		timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
 		// 猫咪订阅地址（Clash YAML格式）
-		clashURL = fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+		clashURL = fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscription.SubscriptionURL)
 		// 通用订阅地址（Base64格式，适用于小火煎、v2ray等）
-		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL)
 
 		// 生成二维码 URL（sub://格式，包含到期时间）
 		encodedURL := base64.StdEncoding.EncodeToString([]byte(universalURL))

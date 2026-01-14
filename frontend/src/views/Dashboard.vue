@@ -775,6 +775,7 @@ const loadUserInfo = async () => {
       const dashboardData = dashboardResponse.data.data
       userInfo.value = {
         ...dashboardData,
+        balance: dashboardData.balance || '0.00', // 确保余额字段被正确设置
         clashUrl: dashboardData.clashUrl || dashboardData.subscription?.clashUrl || '',
         universalUrl: dashboardData.universalUrl || dashboardData.subscription?.universalUrl || '',
         qrcodeUrl: dashboardData.qrcodeUrl || dashboardData.subscription?.qrcodeUrl || '',
@@ -1019,8 +1020,12 @@ const checkRechargeStatus = (rechargeId) => {
           rechargeQRCode.value = ''
           rechargePaymentUrl.value = ''
           rechargeDialogVisible.value = false
-          // 刷新用户信息
+          // 刷新用户信息，确保余额更新
           await loadUserInfo()
+          // 延迟再次刷新，确保余额显示正确（防止缓存问题）
+          setTimeout(async () => {
+            await loadUserInfo()
+          }, 500)
         } else if (recharge.status === 'cancelled' || recharge.status === 'failed') {
           clearInterval(rechargeStatusInterval)
           rechargeStatusInterval = null
