@@ -726,11 +726,24 @@ export default {
         const response = await adminAPI.getUserDetails(userId)
         
         if (response && response.data && response.data.success) {
-          selectedUser.value = response.data.data
+          const userData = response.data.data
+          selectedUser.value = userData
+          // 调试信息（仅在开发环境）
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Users.vue - API response:', response.data)
+            console.log('Users.vue - selectedUser set to:', userData)
+            console.log('Users.vue - recharge_records:', userData?.recharge_records, 'length:', userData?.recharge_records?.length)
+            console.log('Users.vue - orders:', userData?.orders, 'length:', userData?.orders?.length)
+          }
           showUserDialog.value = true
           activeBalanceTab.value = 'recharge'
         } else if (response && response.success) {
           selectedUser.value = response.data
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Users.vue - selectedUser set to (alt path):', response.data)
+            console.log('Users.vue - recharge_records:', response.data?.recharge_records)
+            console.log('Users.vue - orders:', response.data?.orders)
+          }
           showUserDialog.value = true
           activeBalanceTab.value = 'recharge'
         } else {

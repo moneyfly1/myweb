@@ -350,9 +350,10 @@ export const userAPI = {
 
 export const rechargeAPI = {
   createRecharge: (amount, method = 'alipay') => api.post('/recharge/', { amount, payment_method: method }),
-  getRecharges: (params) => api.get('/recharge/', { params }),
-  getRechargeDetail: (id) => api.get(`/recharge/${id}`),
-  cancelRecharge: (id) => api.post(`/recharge/${id}/cancel`)
+  getRecharges: (params) => api.get('/recharge/', { params }),
+  getRechargeDetail: (id) => api.get(`/recharge/${id}`),
+  getRechargeStatus: (orderNo) => api.get(`/recharge/status/${orderNo}`),
+  cancelRecharge: (id) => api.post(`/recharge/${id}/cancel`)
 }
 
 export const subscriptionAPI = {

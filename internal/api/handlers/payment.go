@@ -222,6 +222,10 @@ func PaymentNotify(c *gin.Context) {
 			if externalTransactionID != "" {
 				recharge.PaymentTransactionID = database.NullString(externalTransactionID)
 			}
+			// 确保支付方式被正确设置
+			if !recharge.PaymentMethod.Valid || recharge.PaymentMethod.String == "" {
+				recharge.PaymentMethod = database.NullString(paymentType)
+			}
 			if err := tx.Save(&recharge).Error; err != nil {
 				utils.LogError("PaymentNotify: failed to update recharge", err, map[string]interface{}{
 					"order_no": orderNo,
@@ -231,6 +235,7 @@ func PaymentNotify(c *gin.Context) {
 
 			var user models.User
 			if err := tx.First(&user, recharge.UserID).Error; err == nil {
+				oldBalance := user.Balance
 				user.Balance += recharge.Amount
 				if err := tx.Save(&user).Error; err != nil {
 					utils.LogError("PaymentNotify: failed to update user balance", err, map[string]interface{}{
@@ -239,6 +244,9 @@ func PaymentNotify(c *gin.Context) {
 					})
 					return err
 				}
+				// 记录充值成功日志
+				utils.LogInfo("PaymentNotify: 充值成功 - order_no=%s, user_id=%d, amount=%.2f, old_balance=%.2f, new_balance=%.2f",
+					orderNo, user.ID, recharge.Amount, oldBalance, user.Balance)
 			}
 			return nil
 		})
@@ -250,6 +258,10 @@ func PaymentNotify(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "处理失败")
 			return
 		}
+
+		// 记录充值回调成功日志
+		utils.LogInfo("PaymentNotify: 充值回调处理成功 - order_no=%s, user_id=%d, amount=%.2f, payment_type=%s",
+			orderNo, recharge.UserID, recharge.Amount, paymentType)
 
 		c.String(http.StatusOK, "success")
 		return

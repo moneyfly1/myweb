@@ -492,7 +492,128 @@ func GetUserDetails(c *gin.Context) {
 	}
 
 	var orders []models.Order
-	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&orders)
+	db.Preload("Package").Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&orders)
+
+	// 格式化订单记录，确保支付方式和支付时间等字段正确序列化
+	formattedOrders := make([]gin.H, 0, len(orders))
+	for _, order := range orders {
+		formattedOrder := gin.H{
+			"id":         order.ID,
+			"order_no":   order.OrderNo,
+			"user_id":    order.UserID,
+			"package_id": order.PackageID,
+			"amount":     order.Amount,
+			"status":     order.Status,
+			"created_at": order.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at": order.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+
+		// 格式化支付方式名称
+		if order.PaymentMethodName.Valid {
+			formattedOrder["payment_method"] = order.PaymentMethodName.String
+			formattedOrder["payment_method_name"] = order.PaymentMethodName.String
+		} else {
+			formattedOrder["payment_method"] = nil
+			formattedOrder["payment_method_name"] = nil
+		}
+
+		// 格式化支付时间
+		if order.PaymentTime.Valid {
+			formattedOrder["payment_time"] = order.PaymentTime.Time.Format("2006-01-02 15:04:05")
+		} else {
+			formattedOrder["payment_time"] = nil
+		}
+
+		// 格式化支付交易ID
+		formattedOrder["payment_transaction_id"] = utils.GetNullStringValue(order.PaymentTransactionID)
+
+		// 格式化到期时间
+		if order.ExpireTime.Valid {
+			formattedOrder["expire_time"] = order.ExpireTime.Time.Format("2006-01-02 15:04:05")
+		} else {
+			formattedOrder["expire_time"] = nil
+		}
+
+		// 添加套餐信息
+		if order.Package.ID > 0 {
+			formattedOrder["package_name"] = order.Package.Name
+		} else {
+			formattedOrder["package_name"] = ""
+		}
+
+		// 添加折扣和最终金额
+		if order.DiscountAmount.Valid {
+			formattedOrder["discount_amount"] = order.DiscountAmount.Float64
+		} else {
+			formattedOrder["discount_amount"] = 0
+		}
+
+		if order.FinalAmount.Valid {
+			formattedOrder["final_amount"] = order.FinalAmount.Float64
+		} else {
+			formattedOrder["final_amount"] = order.Amount
+		}
+
+		formattedOrders = append(formattedOrders, formattedOrder)
+	}
+
+	// 获取充值记录
+	var recharges []models.RechargeRecord
+	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&recharges)
+
+	// 格式化充值记录，确保支付方式等字段正确序列化
+	formattedRecharges := make([]gin.H, 0, len(recharges))
+	formatIPForRecharge := func(ip string) string {
+		if ip == "" {
+			return "-"
+		}
+		if ip == "::1" {
+			return "127.0.0.1"
+		}
+		if strings.HasPrefix(ip, "::ffff:") {
+			return strings.TrimPrefix(ip, "::ffff:")
+		}
+		return ip
+	}
+	for _, record := range recharges {
+		ipValue := utils.GetNullStringValue(record.IPAddress)
+		var ipStr string
+		if ipValue != nil {
+			ipStr = ipValue.(string)
+		}
+		ipAddress := formatIPForRecharge(ipStr)
+		// 使用GeoIP解析地理位置
+		location := ""
+		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+			locationStr := geoip.GetLocationString(ipAddress)
+			if locationStr.Valid {
+				location = locationStr.String
+			}
+		}
+
+		formattedRecharges = append(formattedRecharges, gin.H{
+			"id":                     record.ID,
+			"user_id":                record.UserID,
+			"order_no":               record.OrderNo,
+			"amount":                 record.Amount,
+			"status":                 record.Status,
+			"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+			"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+			"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
+			"payment_url":            utils.GetNullStringValue(record.PaymentURL),
+			"ip_address":             ipAddress,
+			"location":               location, // 添加归属地信息
+			"user_agent":             utils.GetNullStringValue(record.UserAgent),
+			"paid_at": func() interface{} {
+				if record.PaidAt.Valid {
+					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+				}
+				return nil
+			}(),
+			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
 
 	// 统计总订单数
 	var totalOrders int64
@@ -543,7 +664,7 @@ func GetUserDetails(c *gin.Context) {
 		}
 		return ""
 	}
-	formatIP := func(ip string) string {
+	formatIPForUA := func(ip string) string {
 		if ip == "" {
 			return "-"
 		}
@@ -579,7 +700,7 @@ func GetUserDetails(c *gin.Context) {
 		}
 
 		for _, d := range uaMap {
-			ipAddress := formatIP(getString(d.IPAddress))
+			ipAddress := formatIPForUA(getString(d.IPAddress))
 			// 使用GeoIP解析地理位置
 			location := ""
 			if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
@@ -603,9 +724,10 @@ func GetUserDetails(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"user_info":     userInfo,
-		"subscriptions": formattedSubs,
-		"orders":        orders,
+		"user_info":        userInfo,
+		"subscriptions":    formattedSubs,
+		"orders":           formattedOrders,
+		"recharge_records": formattedRecharges,
 		"statistics": gin.H{
 			"total_subscriptions": len(subs),
 			"total_orders":        totalOrders,

@@ -80,9 +80,9 @@
         <el-tabs v-model="activeBalanceTab" class="balance-tabs">
           <!-- 充值记录 -->
           <el-tab-pane label="充值记录" name="recharge">
-            <div class="records-list" v-if="user.recharge_records && user.recharge_records.length">
+            <div class="records-list" v-if="rechargeRecords && rechargeRecords.length > 0" :key="'recharge-' + rechargeRecords.length">
               <div 
-                v-for="record in user.recharge_records" 
+                v-for="record in rechargeRecords" 
                 :key="record.id || record.order_no"
                 class="record-item recharge-item"
               >
@@ -102,7 +102,7 @@
                   </div>
                   <div class="record-info-row">
                     <span class="info-label">支付方式：</span>
-                    <span class="info-value">{{ record.payment_method || '未知' }}</span>
+                    <span class="info-value">{{ getPaymentMethodText(record.payment_method) }}</span>
                   </div>
                   <div class="record-info-row">
                     <span class="info-label">状态：</span>
@@ -117,13 +117,17 @@
                     <span class="info-label">IP地址：</span>
                     <span class="info-value">{{ record.ip_address || '未知' }}</span>
                   </div>
+                  <div class="record-info-row" v-if="record.location">
+                    <span class="info-label">归属地：</span>
+                    <span class="info-value">{{ record.location }}</span>
+                  </div>
                   <div class="record-info-row">
                     <span class="info-label">创建时间：</span>
-                    <span class="info-value">{{ record.created_at || '未知' }}</span>
+                    <span class="info-value">{{ formatDateTime(record.created_at) }}</span>
                   </div>
                   <div class="record-info-row" v-if="record.paid_at">
                     <span class="info-label">支付时间：</span>
-                    <span class="info-value">{{ record.paid_at }}</span>
+                    <span class="info-value">{{ formatDateTime(record.paid_at) }}</span>
                   </div>
                 </div>
               </div>
@@ -133,9 +137,9 @@
           
           <!-- 消费记录（订单） -->
           <el-tab-pane label="消费记录" name="consumption">
-            <div class="records-list" v-if="user.orders && user.orders.length">
+            <div class="records-list" v-if="orderRecords && orderRecords.length > 0" :key="'orders-' + orderRecords.length">
               <div 
-                v-for="order in user.orders" 
+                v-for="order in orderRecords" 
                 :key="order.id || order.order_no"
                 class="record-item consumption-item"
               >
@@ -159,7 +163,7 @@
                   </div>
                   <div class="record-info-row">
                     <span class="info-label">支付方式：</span>
-                    <span class="info-value">{{ order.payment_method || order.payment_method_name || '未知' }}</span>
+                    <span class="info-value">{{ getPaymentMethodText(order.payment_method || order.payment_method_name) }}</span>
                   </div>
                   <div class="record-info-row">
                     <span class="info-label">状态：</span>
@@ -172,11 +176,11 @@
                   </div>
                   <div class="record-info-row">
                     <span class="info-label">创建时间：</span>
-                    <span class="info-value">{{ order.created_at || '未知' }}</span>
+                    <span class="info-value">{{ formatDateTime(order.created_at) }}</span>
                   </div>
                   <div class="record-info-row" v-if="order.payment_time">
                     <span class="info-label">支付时间：</span>
-                    <span class="info-value">{{ order.payment_time }}</span>
+                    <span class="info-value">{{ formatDateTime(order.payment_time) }}</span>
                   </div>
                 </div>
               </div>
@@ -278,7 +282,7 @@
 </template>
 
 <script>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { Wallet, ShoppingCart, Clock, Connection, Plus } from '@element-plus/icons-vue'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import { ElMessage } from 'element-plus'
@@ -306,24 +310,55 @@ export default {
     const showAssignDialog = ref(false)
     const selectedNodeId = ref(null)
     const assigning = ref(false)
-
-    watch(() => props.initialTab, (newVal) => {
-      if (newVal) activeBalanceTab.value = newVal
-    }, { immediate: true })
-
-    watch(() => props.user, async (newUser) => {
-      if (newUser && newUser.user_info?.id) {
-        await loadUserCustomNodes(newUser.user_info.id)
-      } else if (newUser && newUser.id) {
-        await loadUserCustomNodes(newUser.id)
+    
+    // 从 user 对象中提取充值记录和订单记录
+    const rechargeRecords = computed(() => {
+      if (!props.user) {
+        return []
       }
-    }, { immediate: true })
-
-    watch(() => props.visible, async (visible) => {
-      if (visible) {
-        await loadAvailableNodes()
+      
+      // 后端返回的数据结构：{ user_info, subscriptions, orders, recharge_records, ... }
+      const records = props.user.recharge_records
+      
+      // 确保返回数组，即使为空也要返回，这样模板可以正确显示空状态
+      if (Array.isArray(records)) {
+        return records
       }
+      
+      // 如果数据不存在或不是数组，返回空数组
+      return []
     })
+    
+    const orderRecords = computed(() => {
+      if (!props.user) {
+        return []
+      }
+      
+      // 后端返回的数据结构：{ user_info, subscriptions, orders, recharge_records, ... }
+      const orders = props.user.orders
+      
+      // 确保返回数组，即使为空也要返回，这样模板可以正确显示空状态
+      if (Array.isArray(orders)) {
+        return orders
+      }
+      
+      // 如果数据不存在或不是数组，返回空数组
+      return []
+    })
+    
+    // 调试：打印 user 对象结构（开发环境）
+    if (process.env.NODE_ENV === 'development') {
+      watch(() => props.user, (newUser) => {
+        if (newUser) {
+          console.log('UserDetailDialog - user object:', newUser)
+          console.log('UserDetailDialog - user object keys:', Object.keys(newUser))
+          console.log('UserDetailDialog - recharge_records:', newUser.recharge_records, 'type:', typeof newUser.recharge_records, 'isArray:', Array.isArray(newUser.recharge_records))
+          console.log('UserDetailDialog - orders:', newUser.orders, 'type:', typeof newUser.orders, 'isArray:', Array.isArray(newUser.orders))
+          console.log('UserDetailDialog - computed rechargeRecords:', rechargeRecords.value, 'length:', rechargeRecords.value.length)
+          console.log('UserDetailDialog - computed orderRecords:', orderRecords.value, 'length:', orderRecords.value.length)
+        }
+      }, { immediate: true, deep: true })
+    }
 
     const loadUserCustomNodes = async (userId) => {
       try {
@@ -350,6 +385,24 @@ export default {
         availableNodes.value = []
       }
     }
+
+    watch(() => props.initialTab, (newVal) => {
+      if (newVal) activeBalanceTab.value = newVal
+    }, { immediate: true })
+
+    watch(() => props.user, async (newUser) => {
+      if (newUser && newUser.user_info?.id) {
+        await loadUserCustomNodes(newUser.user_info.id)
+      } else if (newUser && newUser.id) {
+        await loadUserCustomNodes(newUser.id)
+      }
+    }, { immediate: true })
+
+    watch(() => props.visible, async (visible) => {
+      if (visible) {
+        await loadAvailableNodes()
+      }
+    })
 
     const assignNode = async () => {
       if (!selectedNodeId.value) {
@@ -404,6 +457,49 @@ export default {
     }
 
     const formatDate = (date) => formatDateUtil(date) || ''
+    
+    const formatDateTime = (dateTime) => {
+      if (!dateTime) return '未知'
+      // 如果已经是格式化好的字符串，直接返回
+      if (typeof dateTime === 'string') {
+        // 检查是否是 ISO 格式或时间戳格式
+        if (dateTime.includes('T') || dateTime.includes('+')) {
+          try {
+            const date = new Date(dateTime)
+            if (!isNaN(date.getTime())) {
+              return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              }).replace(/\//g, '-')
+            }
+          } catch (e) {
+            // 如果解析失败，尝试使用 formatDateUtil
+            return formatDateUtil(dateTime) || dateTime
+          }
+        }
+        // 如果已经是正确格式的字符串，直接返回
+        if (dateTime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+          return dateTime
+        }
+        return formatDateUtil(dateTime) || dateTime
+      }
+      // 如果是 Date 对象
+      if (dateTime instanceof Date) {
+        return dateTime.toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }).replace(/\//g, '-')
+      }
+      return formatDateUtil(dateTime) || '未知'
+    }
 
     const getStatusType = (status) => {
       const statusMap = {
@@ -423,6 +519,34 @@ export default {
       return statusMap[status] || status
     }
 
+    const getPaymentMethodText = (method) => {
+      // 处理可能的对象格式（如 {"String": "alipay", "Valid": true}）
+      let methodStr = method
+      if (method && typeof method === 'object') {
+        if (method.String) {
+          methodStr = method.String
+        } else if (method.payment_method) {
+          methodStr = method.payment_method
+        } else {
+          // 尝试从对象中提取字符串值
+          const values = Object.values(method).filter(v => typeof v === 'string' && v.length > 0)
+          if (values.length > 0) {
+            methodStr = values[0]
+          } else {
+            methodStr = '未知'
+          }
+        }
+      }
+      
+      const methodMap = {
+        alipay: '支付宝',
+        wechat: '微信支付',
+        balance: '余额支付',
+        mixed: '余额+支付宝'
+      }
+      return methodMap[methodStr] || methodStr || '未知'
+    }
+
     return {
       activeBalanceTab,
       customNodes,
@@ -433,8 +557,12 @@ export default {
       assignNode,
       unassignNode,
       formatDate,
+      formatDateTime,
       getStatusType,
-      getStatusText
+      getStatusText,
+      getPaymentMethodText,
+      rechargeRecords,
+      orderRecords
     }
   }
 }

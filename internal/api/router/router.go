@@ -287,6 +287,7 @@ func SetupRouter() *gin.Engine {
 		recharge.Use(middleware.AuthMiddleware())
 		{
 			recharge.GET("", handlers.GetRechargeRecords)
+			recharge.GET("/status/:orderNo", handlers.GetRechargeStatusByNo) // 通过订单号获取充值状态
 			recharge.GET("/:id", handlers.GetRechargeRecord)
 			recharge.POST("", handlers.CreateRecharge)
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
