@@ -50,7 +50,7 @@ type User struct {
 
 	// 专线节点相关配置
 	SpecialNodeSubscriptionType string       `gorm:"type:varchar(20);default:both" json:"special_node_subscription_type"` // both, special_only
-	SpecialNodeExpiresAt       sql.NullTime `json:"special_node_expires_at,omitempty"`
+	SpecialNodeExpiresAt        sql.NullTime `json:"special_node_expires_at,omitempty"`
 
 	// 关系
 	Subscriptions            []Subscription       `gorm:"foreignKey:UserID" json:"-"`
