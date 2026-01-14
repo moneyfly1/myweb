@@ -476,9 +476,8 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 			var subscriptionInfo models.Subscription
 			if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
 				baseURL := templateBuilder.GetBaseURL()
-				timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-				universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)
-				clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscriptionInfo.SubscriptionURL, timestamp)
+				universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscriptionInfo.SubscriptionURL)
+				clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscriptionInfo.SubscriptionURL)
 
 				expireTime := "未设置"
 				remainingDays := 0

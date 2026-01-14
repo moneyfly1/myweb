@@ -86,9 +86,8 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 
 	// 3. 生成订阅地址
 	baseURL := utils.GetBuildBaseURL(c.Request, db)
-	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
-	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscription.SubscriptionURL)
+	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL)
 
 	// 4. 计算到期时间
 	expiryDate := ""

@@ -791,9 +791,8 @@ func GetUserSubscription(c *gin.Context) {
 
 	// 生成订阅地址（使用统一的 GetBuildBaseURL 逻辑，优先从数据库配置获取域名）
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
-	timestamp := fmt.Sprintf("%d", utils.GetBeijingTime().Unix())
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp)         // 猫咪订阅（Clash YAML格式）
-	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s?t=%s", baseURL, subscription.SubscriptionURL, timestamp) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
+	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscription.SubscriptionURL)         // 猫咪订阅（Clash YAML格式）
+	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
 
 	// 计算到期时间
 	expiryDate := "未设置"
