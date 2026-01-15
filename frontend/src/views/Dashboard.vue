@@ -446,7 +446,7 @@
           </template>
           <el-input-number
             v-model="rechargeForm.amount"
-            :min="20"
+            :min="0.01"
             :step="1"
             :precision="2"
             placeholder="请输入充值金额"
@@ -456,7 +456,7 @@
             <template #prepend>¥</template>
           </el-input-number>
           <div class="amount-tips">
-            <p>最低充值金额20元，可自定义金额</p>
+            <p>默认金额20元，可自定义金额</p>
             <div class="quick-amounts">
               <el-button 
                 v-for="amount in quickAmounts" 
@@ -569,7 +569,7 @@ const rechargeForm = ref({
 const rechargeRules = {
   amount: [
     { required: true, message: '请输入充值金额', trigger: 'blur' },
-    { type: 'number', min: 20, message: '充值金额不能少于20元', trigger: 'blur' }
+    { type: 'number', min: 0.01, message: '充值金额必须大于0', trigger: 'blur' }
   ]
 }
 const rechargeFormRef = ref()
@@ -925,8 +925,8 @@ const createRecharge = async () => {
   try {
     await rechargeFormRef.value.validate()
     
-    if (rechargeForm.value.amount < 20) {
-      ElMessage.error('充值金额不能少于20元')
+    if (rechargeForm.value.amount <= 0) {
+      ElMessage.error('充值金额必须大于0')
       return
     }
     

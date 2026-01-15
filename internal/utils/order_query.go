@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -50,7 +51,8 @@ func CalculateUserOrderAmount(db *gorm.DB, userID uint, status string, useAbsolu
 	query := db.Table("orders").Where("user_id = ?", userID)
 
 	if status != "" {
-		query = query.Where("status = ?", status)
+		// 使用 LOWER() 确保不区分大小写匹配状态
+		query = query.Where("LOWER(status) = ?", strings.ToLower(status))
 	}
 
 	// 使用 COALESCE 优先使用 final_amount，如果为 NULL 或 0 则使用 amount
