@@ -403,10 +403,10 @@ func GetAdminOrders(c *gin.Context) {
 				// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
 				orderQuery = orderQuery.Where(
 					"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-					"%"+sanitizedKeyword+"%", // 完整订单号匹配
+					"%"+sanitizedKeyword+"%",     // 完整订单号匹配
 					"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配（订单号格式：ORD + timestamp + 随机数）
-					"%"+sanitizedKeyword+"%", // 用户名匹配
-					"%"+sanitizedKeyword+"%", // 邮箱匹配
+					"%"+sanitizedKeyword+"%",     // 用户名匹配
+					"%"+sanitizedKeyword+"%",     // 邮箱匹配
 				)
 			}
 		}
@@ -436,10 +436,10 @@ func GetAdminOrders(c *gin.Context) {
 				// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
 				rechargeQuery = rechargeQuery.Where(
 					"recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-					"%"+sanitizedKeyword+"%", // 完整订单号匹配
+					"%"+sanitizedKeyword+"%",     // 完整订单号匹配
 					"%RCH%"+sanitizedKeyword+"%", // 时间戳匹配（充值订单号格式：RCH + timestamp + userID + 随机数）
-					"%"+sanitizedKeyword+"%", // 用户名匹配
-					"%"+sanitizedKeyword+"%", // 邮箱匹配
+					"%"+sanitizedKeyword+"%",     // 用户名匹配
+					"%"+sanitizedKeyword+"%",     // 邮箱匹配
 				)
 			}
 		}
@@ -553,10 +553,10 @@ func GetAdminOrders(c *gin.Context) {
 			// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
 			query = query.Where(
 				"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-				"%"+sanitizedKeyword+"%", // 完整订单号匹配
+				"%"+sanitizedKeyword+"%",     // 完整订单号匹配
 				"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配（订单号格式：ORD + timestamp + 随机数）
-				"%"+sanitizedKeyword+"%", // 用户名匹配
-				"%"+sanitizedKeyword+"%", // 邮箱匹配
+				"%"+sanitizedKeyword+"%",     // 用户名匹配
+				"%"+sanitizedKeyword+"%",     // 邮箱匹配
 			)
 		}
 	}
@@ -572,10 +572,10 @@ func GetAdminOrders(c *gin.Context) {
 		if sanitizedKeyword != "" {
 			countQuery = countQuery.Where(
 				"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-				"%"+sanitizedKeyword+"%", // 完整订单号匹配
+				"%"+sanitizedKeyword+"%",     // 完整订单号匹配
 				"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配
-				"%"+sanitizedKeyword+"%", // 用户名匹配
-				"%"+sanitizedKeyword+"%", // 邮箱匹配
+				"%"+sanitizedKeyword+"%",     // 用户名匹配
+				"%"+sanitizedKeyword+"%",     // 邮箱匹配
 			)
 		}
 	}
@@ -923,34 +923,41 @@ func GetOrderStats(c *gin.Context) {
 
 	db := database.GetDB()
 
-	var stats struct {
-		TotalOrders     int64   `json:"total_orders"`
-		PendingOrders   int64   `json:"pending_orders"`
-		PaidOrders      int64   `json:"paid_orders"`
-		CancelledOrders int64   `json:"cancelled_orders"`
-		TotalAmount     float64 `json:"total_amount"`
-		PaidAmount      float64 `json:"paid_amount"`
+	var orderTotal, orderPending, orderPaid, orderCancelled int64
+	var orderPaidAmount float64
+
+	db.Model(&models.Order{}).Where("user_id = ?", user.ID).Count(&orderTotal)
+	db.Model(&models.Order{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "pending").Count(&orderPending)
+	db.Model(&models.Order{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "paid").Count(&orderPaid)
+	db.Model(&models.Order{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "cancelled").Count(&orderCancelled)
+	orderPaidAmount = utils.CalculateUserOrderAmount(db, user.ID, "paid", true)
+
+	var rechargeTotal, rechargePending, rechargePaid int64
+	var rechargePaidAmount float64
+
+	db.Model(&models.RechargeRecord{}).Where("user_id = ?", user.ID).Count(&rechargeTotal)
+	db.Model(&models.RechargeRecord{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "pending").Count(&rechargePending)
+	db.Model(&models.RechargeRecord{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "paid").Count(&rechargePaid)
+
+	var paidRecharges []models.RechargeRecord
+	if err := db.Model(&models.RechargeRecord{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "paid").Find(&paidRecharges).Error; err == nil {
+		for _, recharge := range paidRecharges {
+			rechargePaidAmount += recharge.Amount
+		}
 	}
 
-	// 统计订单数量
-	db.Model(&models.Order{}).Where("user_id = ?", user.ID).Count(&stats.TotalOrders)
-	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "pending").Count(&stats.PendingOrders)
-	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").Count(&stats.PaidOrders)
-	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "cancelled").Count(&stats.CancelledOrders)
-
-	// 统计总金额（所有订单，使用公共函数，使用绝对值）
-	stats.TotalAmount = utils.CalculateUserOrderAmount(db, user.ID, "", true)
-
-	// 统计已支付金额（只统计已支付订单，使用公共函数，使用绝对值）
-	stats.PaidAmount = utils.CalculateUserOrderAmount(db, user.ID, "paid", true)
+	totalOrders := orderTotal + rechargeTotal
+	pendingOrders := orderPending + rechargePending
+	paidOrders := orderPaid + rechargePaid
+	totalAmount := orderPaidAmount + rechargePaidAmount
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"total_orders":     stats.TotalOrders,
-		"pending_orders":   stats.PendingOrders,
-		"paid_orders":      stats.PaidOrders,
-		"cancelled_orders": stats.CancelledOrders,
-		"total_amount":     stats.TotalAmount,
-		"paid_amount":      stats.PaidAmount,
+		"total":       totalOrders,
+		"pending":     pendingOrders,
+		"paid":        paidOrders,
+		"cancelled":   orderCancelled,
+		"totalAmount": totalAmount,
+		"paidAmount":  totalAmount,
 	})
 }
 
@@ -991,12 +998,7 @@ func GetOrderStatusByNo(c *gin.Context) {
 						if err == nil {
 							queryResult, err := alipayService.QueryOrder(orderNo)
 							if err == nil && queryResult != nil && queryResult.IsPaid() {
-								// 支付成功，更新订单状态（模拟回调处理）
-								utils.LogError("GetOrderStatusByNo: payment query success, updating order", nil, map[string]interface{}{
-									"order_no":     orderNo,
-									"trade_no":     queryResult.TradeNo,
-									"trade_status": queryResult.TradeStatus,
-								})
+								// 支付成功，更新订单状态
 
 								// 使用事务更新订单状态
 								tx := db.Begin()
