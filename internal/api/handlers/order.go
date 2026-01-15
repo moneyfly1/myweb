@@ -394,22 +394,29 @@ func GetAdminOrders(c *gin.Context) {
 		// 同时查询订单和充值记录，合并后统一分页
 		allRecords := make([]gin.H, 0)
 
-		// 查询订单
-		orderQuery := db.Model(&models.Order{})
+		// 查询订单（使用JOIN提高性能）
+		orderQuery := db.Model(&models.Order{}).Joins("LEFT JOIN users ON orders.user_id = users.id")
 		if keyword != "" {
 			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 			if sanitizedKeyword != "" {
-				orderQuery = orderQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-					"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+				// 支持通过订单号、用户名、邮箱查询
+				// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
+				orderQuery = orderQuery.Where(
+					"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+					"%"+sanitizedKeyword+"%", // 完整订单号匹配
+					"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配（订单号格式：ORD + timestamp + 随机数）
+					"%"+sanitizedKeyword+"%", // 用户名匹配
+					"%"+sanitizedKeyword+"%", // 邮箱匹配
+				)
 			}
 		}
 		if status != "" && status != "all" {
-			orderQuery = orderQuery.Where("status = ?", status)
+			orderQuery = orderQuery.Where("orders.status = ?", status)
 		}
 
 		var orders []models.Order
 		orderQuery = orderQuery.Preload("User").Preload("Package")
-		if err := orderQuery.Order("created_at DESC").Find(&orders).Error; err == nil {
+		if err := orderQuery.Order("orders.created_at DESC").Find(&orders).Error; err == nil {
 			orderList := buildOrderListData(db, orders)
 			for _, order := range orderList {
 				allRecords = append(allRecords, gin.H{
@@ -420,17 +427,24 @@ func GetAdminOrders(c *gin.Context) {
 			}
 		}
 
-		// 查询充值记录
-		rechargeQuery := db.Model(&models.RechargeRecord{}).Preload("User")
+		// 查询充值记录（使用JOIN提高性能）
+		rechargeQuery := db.Model(&models.RechargeRecord{}).Joins("LEFT JOIN users ON recharge_records.user_id = users.id")
 		if keyword != "" {
 			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 			if sanitizedKeyword != "" {
-				rechargeQuery = rechargeQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-					"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+				// 支持通过订单号、用户名、邮箱查询
+				// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
+				rechargeQuery = rechargeQuery.Where(
+					"recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+					"%"+sanitizedKeyword+"%", // 完整订单号匹配
+					"%RCH%"+sanitizedKeyword+"%", // 时间戳匹配（充值订单号格式：RCH + timestamp + userID + 随机数）
+					"%"+sanitizedKeyword+"%", // 用户名匹配
+					"%"+sanitizedKeyword+"%", // 邮箱匹配
+				)
 			}
 		}
 		if status != "" && status != "all" {
-			rechargeQuery = rechargeQuery.Where("status = ?", status)
+			rechargeQuery = rechargeQuery.Where("recharge_records.status = ?", status)
 		}
 
 		var recharges []models.RechargeRecord
@@ -528,40 +542,52 @@ func GetAdminOrders(c *gin.Context) {
 		return
 	}
 
-	// 原有逻辑：只返回订单
+	// 原有逻辑：只返回订单（使用JOIN提高性能）
 	var orders []models.Order
-	query := db.Model(&models.Order{})
+	query := db.Model(&models.Order{}).Joins("LEFT JOIN users ON orders.user_id = users.id")
 
 	if keyword != "" {
 		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 		if sanitizedKeyword != "" {
-			query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+			// 支持通过订单号、用户名、邮箱查询
+			// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
+			query = query.Where(
+				"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+				"%"+sanitizedKeyword+"%", // 完整订单号匹配
+				"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配（订单号格式：ORD + timestamp + 随机数）
+				"%"+sanitizedKeyword+"%", // 用户名匹配
+				"%"+sanitizedKeyword+"%", // 邮箱匹配
+			)
 		}
 	}
 
 	if status != "" && status != "all" {
-		query = query.Where("status = ?", status)
+		query = query.Where("orders.status = ?", status)
 	}
 
 	var total int64
-	countQuery := db.Model(&models.Order{})
+	countQuery := db.Model(&models.Order{}).Joins("LEFT JOIN users ON orders.user_id = users.id")
 	if keyword != "" {
 		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 		if sanitizedKeyword != "" {
-			countQuery = countQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+			countQuery = countQuery.Where(
+				"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+				"%"+sanitizedKeyword+"%", // 完整订单号匹配
+				"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配
+				"%"+sanitizedKeyword+"%", // 用户名匹配
+				"%"+sanitizedKeyword+"%", // 邮箱匹配
+			)
 		}
 	}
 	if status != "" && status != "all" {
-		countQuery = countQuery.Where("status = ?", status)
+		countQuery = countQuery.Where("orders.status = ?", status)
 	}
 	countQuery.Count(&total)
 
 	query = query.Preload("User").Preload("Package")
 
 	offset := (page - 1) * size
-	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&orders).Error; err != nil {
+	if err := query.Offset(offset).Limit(size).Order("orders.created_at DESC").Find(&orders).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
 		return
 	}

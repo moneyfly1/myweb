@@ -92,7 +92,7 @@ func CreateRecharge(c *gin.Context) {
 				paymentURL, _ = wechatService.CreatePayment(tempOrder, recharge.Amount)
 			}
 		}
-		
+
 		// 如果支付URL生成成功，更新充值记录
 		if paymentURL != "" {
 			recharge.PaymentURL = database.NullString(paymentURL)
@@ -432,15 +432,22 @@ func GetAdminRechargeRecords(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
-	// 构建查询
-	query := db.Model(&models.RechargeRecord{}).Preload("User")
+	// 构建查询（使用JOIN提高性能）
+	query := db.Model(&models.RechargeRecord{}).Joins("LEFT JOIN users ON recharge_records.user_id = users.id").Preload("User")
 
 	// 搜索关键词
 	if keyword != "" {
 		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 		if sanitizedKeyword != "" {
-			query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+			// 支持通过订单号、用户名、邮箱查询
+			// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
+			query = query.Where(
+				"recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+				"%"+sanitizedKeyword+"%", // 完整订单号匹配
+				"%RCH%"+sanitizedKeyword+"%", // 时间戳匹配（充值订单号格式：RCH + timestamp + userID + 随机数）
+				"%"+sanitizedKeyword+"%", // 用户名匹配
+				"%"+sanitizedKeyword+"%", // 邮箱匹配
+			)
 		}
 	}
 
