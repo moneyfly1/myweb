@@ -841,10 +841,10 @@ export default {
           statistics.pendingOrders = statsData.pending_orders || 0
           statistics.paidOrders = statsData.paid_orders || 0
           statistics.totalRevenue = statsData.total_revenue || 0
-        } else {
-          }
+        }
       } catch (error) {
-        ElMessage.error('加载统计数据失败')
+        console.error('加载统计数据失败:', error)
+        // 统计失败不影响主要功能，只记录错误
       }
     }
 
