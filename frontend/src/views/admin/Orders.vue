@@ -126,22 +126,46 @@
         </el-form-item>
       </el-form>
 
+      <!-- 标签页切换 -->
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="records-tabs">
+        <el-tab-pane label="订单记录" name="orders">
+          <template #label>
+            <span><el-icon><ShoppingCart /></el-icon> 订单记录</span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="充值记录" name="recharges">
+          <template #label>
+            <span><el-icon><Wallet /></el-icon> 充值记录</span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+
       <!-- 桌面端表格 -->
       <div class="table-wrapper">
         <el-table 
-          :data="orders" 
+          :data="activeTab === 'orders' ? orders : recharges" 
           style="width: 100%" 
           v-loading="loading" 
           stripe
           @selection-change="handleSelectionChange"
         >
-        <el-table-column type="selection" width="55" />
+        <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" />
         <el-table-column prop="order_no" label="订单号" width="180" />
-        <el-table-column prop="user.email" label="用户邮箱" />
-        <el-table-column prop="package_name" label="套餐名称" />
+        <el-table-column label="用户邮箱">
+          <template #default="scope">
+            {{ activeTab === 'orders' ? (scope.row.user?.email || '-') : (scope.row.user?.email || '-') }}
+          </template>
+        </el-table-column>
+        <el-table-column :label="activeTab === 'orders' ? '套餐名称' : '类型'">
+          <template #default="scope">
+            {{ activeTab === 'orders' ? (scope.row.package_name || '-') : '账户充值' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="amount" label="金额">
           <template #default="scope">
-            ¥{{ formatMoney(scope.row.amount) }}
+            <span :class="activeTab === 'recharges' ? 'positive-amount' : ''">
+              {{ activeTab === 'recharges' ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="payment_method" label="支付方式" />
@@ -153,12 +177,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" />
-        <el-table-column prop="payment_time" label="支付时间">
+        <el-table-column :label="activeTab === 'orders' ? '支付时间' : '支付时间'">
           <template #default="scope">
-            {{ scope.row.payment_time || '-' }}
+            {{ (activeTab === 'orders' ? scope.row.payment_time : scope.row.paid_at) || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right" v-if="activeTab === 'orders'">
           <template #default="scope">
             <div class="action-buttons-grid">
               <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
@@ -201,54 +225,60 @@
       </div>
 
       <!-- 移动端卡片式列表 -->
-      <div class="mobile-card-list" v-if="orders.length > 0">
+      <div class="mobile-card-list" v-if="(activeTab === 'orders' && orders.length > 0) || (activeTab === 'recharges' && recharges.length > 0)">
         <div 
-          v-for="order in orders" 
-          :key="order.id || order.order_no"
+          v-for="item in (activeTab === 'orders' ? orders : recharges)" 
+          :key="item.id || item.order_no"
           class="mobile-card"
         >
           <div class="card-row">
             <span class="label">订单号</span>
-            <span class="value">{{ order.order_no }}</span>
+            <span class="value">{{ item.order_no }}</span>
           </div>
           <div class="card-row">
             <span class="label">用户邮箱</span>
-            <span class="value">{{ order.user?.email || '-' }}</span>
+            <span class="value">{{ item.user?.email || '-' }}</span>
           </div>
           <div class="card-row">
-            <span class="label">套餐名称</span>
-            <span class="value">{{ order.package_name }}</span>
+            <span class="label">{{ activeTab === 'orders' ? '套餐名称' : '类型' }}</span>
+            <span class="value">{{ activeTab === 'orders' ? (item.package_name || '-') : '账户充值' }}</span>
           </div>
           <div class="card-row">
             <span class="label">金额</span>
-            <span class="value">¥{{ formatMoney(order.amount) }}</span>
+            <span class="value" :class="activeTab === 'recharges' ? 'positive-amount' : ''">
+              {{ activeTab === 'recharges' ? '+' : '' }}¥{{ formatMoney(item.amount) }}
+            </span>
           </div>
           <div class="card-row">
             <span class="label">支付方式</span>
-            <span class="value">{{ order.payment_method }}</span>
+            <span class="value">{{ item.payment_method || '-' }}</span>
           </div>
           <div class="card-row">
             <span class="label">状态</span>
             <span class="value">
-              <el-tag :type="getStatusType(order.status)">
-                {{ getStatusText(order.status) }}
+              <el-tag :type="getStatusType(item.status)">
+                {{ getStatusText(item.status) }}
               </el-tag>
             </span>
           </div>
           <div class="card-row">
             <span class="label">创建时间</span>
-            <span class="value">{{ order.created_at }}</span>
+            <span class="value">{{ item.created_at }}</span>
           </div>
-          <div class="card-actions">
-            <el-button size="small" @click="viewOrder(order)" class="action-btn">
+          <div class="card-row" v-if="(activeTab === 'orders' && item.payment_time) || (activeTab === 'recharges' && item.paid_at)">
+            <span class="label">支付时间</span>
+            <span class="value">{{ (activeTab === 'orders' ? item.payment_time : item.paid_at) || '-' }}</span>
+          </div>
+          <div class="card-actions" v-if="activeTab === 'orders'">
+            <el-button size="small" @click="viewOrder(item)" class="action-btn">
               <el-icon><View /></el-icon>
               查看
             </el-button>
             <el-button 
-              v-if="order.status === 'pending'"
+              v-if="item.status === 'pending'"
               size="small" 
               type="success" 
-              @click="markAsPaid(order)"
+              @click="markAsPaid(item)"
               class="action-btn"
             >
               <el-icon><Check /></el-icon>
@@ -257,17 +287,17 @@
             <el-button 
               size="small" 
               type="danger" 
-              @click="deleteOrder(order)"
+              @click="deleteOrder(item)"
               class="action-btn"
             >
               <el-icon><Delete /></el-icon>
               删除
             </el-button>
             <el-button 
-              v-if="order.status === 'pending'"
+              v-if="item.status === 'pending'"
               size="small" 
               type="danger" 
-              @click="cancelOrder(order)"
+              @click="cancelOrder(item)"
               class="action-btn"
             >
               <el-icon><Close /></el-icon>
@@ -278,10 +308,10 @@
       </div>
 
       <!-- 移动端空状态 -->
-      <div class="mobile-card-list" v-if="orders.length === 0 && !loading">
+      <div class="mobile-card-list" v-if="((activeTab === 'orders' && orders.length === 0) || (activeTab === 'recharges' && recharges.length === 0)) && !loading">
         <div class="empty-state">
-          <i class="el-icon-shopping-cart-2"></i>
-          <p>暂无订单数据</p>
+          <i :class="activeTab === 'orders' ? 'el-icon-shopping-cart-2' : 'el-icon-wallet'"></i>
+          <p>{{ activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录' }}</p>
         </div>
       </div>
 
@@ -291,7 +321,7 @@
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
-          :total="total"
+          :total="activeTab === 'recharges' ? rechargeTotal : total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
@@ -420,7 +450,7 @@ import {
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
   Filter, Refresh, Delete
 } from '@element-plus/icons-vue'
-import { useApi } from '@/utils/api'
+import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -430,16 +460,19 @@ export default {
   name: 'AdminOrders',
   components: {
     Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
-    Filter, Refresh, Delete
+    Filter, Refresh, Delete, Wallet, ShoppingCart
   },
   setup() {
     const route = useRoute()
     const api = useApi()
     const loading = ref(false)
     const orders = ref([])
+    const recharges = ref([]) // 充值记录
+    const activeTab = ref('orders') // 标签页：orders-订单，recharges-充值
     const currentPage = ref(1)
     const pageSize = ref(20)
     const total = ref(0)
+    const rechargeTotal = ref(0) // 充值记录总数
     const showOrderDialog = ref(false)
     const showStatisticsDialog = ref(false)
     const selectedOrder = ref({})
@@ -494,9 +527,59 @@ export default {
       }
     }
 
+    // 加载充值记录
+    const loadRecharges = async () => {
+      loading.value = true
+      try {
+        const params = {
+          page: currentPage.value,
+          size: pageSize.value
+        }
+        
+        // 添加搜索参数
+        if (searchForm.keyword) {
+          params.keyword = searchForm.keyword
+        }
+        if (searchForm.status) {
+          params.status = searchForm.status
+        }
+        
+        const response = await adminAPI.getAdminRechargeRecords(params)
+        
+        if (response && response.data && response.data.success) {
+          const data = response.data.data
+          recharges.value = data.recharges || []
+          rechargeTotal.value = data.total || 0
+        } else {
+          recharges.value = []
+          rechargeTotal.value = 0
+        }
+      } catch (error) {
+        ElMessage.error('加载充值记录失败: ' + (error.response?.data?.message || error.message))
+        recharges.value = []
+        rechargeTotal.value = 0
+      } finally {
+        loading.value = false
+      }
+    }
+
+    // 标签页切换处理
+    const handleTabChange = (tabName) => {
+      currentPage.value = 1
+      if (tabName === 'recharges') {
+        loadRecharges()
+      } else {
+        loadOrders()
+      }
+    }
+
     const searchOrders = () => {
       currentPage.value = 1
-      loadOrders()
+      if (activeTab.value === 'recharges') {
+        loadRecharges()
+      } else {
+        loadOrders()
+      }
     }
 
     const resetSearch = () => {
@@ -504,7 +587,12 @@ export default {
         keyword: '', 
         status: '' 
       })
-      searchOrders()
+      currentPage.value = 1
+      if (activeTab.value === 'recharges') {
+        loadRecharges()
+      } else {
+        loadOrders()
+      }
     }
 
     // 处理状态筛选
@@ -811,9 +899,12 @@ export default {
     return {
       loading,
       orders,
+      recharges,
+      activeTab,
       currentPage,
       pageSize,
       total,
+      rechargeTotal,
       searchForm,
       showOrderDialog,
       selectedOrder,
@@ -834,6 +925,8 @@ export default {
       bulkCancel,
       bulkDelete,
       loadStatistics,
+      loadRecharges,
+      handleTabChange,
       getStatusType,
       getStatusText,
       formatDateTime,
@@ -852,6 +945,15 @@ export default {
 @use '@/styles/list-common.scss';
 
 // admin-orders 使用 list-container 的样式，无需额外定义
+
+.positive-amount {
+  color: #67c23a;
+  font-weight: 600;
+}
+
+.records-tabs {
+  margin-bottom: 20px;
+}
 
 /* 批量操作按钮组样式 */
 .bulk-actions {

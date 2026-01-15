@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -262,9 +263,9 @@ func GetRechargeStatusByNo(c *gin.Context) {
 	if record.Status == "pending" {
 		// 检查充值记录创建时间，避免频繁查询
 		timeSinceCreated := time.Since(record.CreatedAt)
-		// 增加间隔限制：每30秒才查询一次支付宝状态，避免频繁初始化
-		// 使用秒数取模，只在30秒的倍数时查询（例如：30秒、60秒、90秒...）
-		shouldQuery := timeSinceCreated > 5*time.Second && int(timeSinceCreated.Seconds())%30 < 2
+		// 优化查询间隔：每10秒查询一次支付宝状态，确保及时回调
+		// 使用秒数取模，只在10秒的倍数时查询（例如：10秒、20秒、30秒...）
+		shouldQuery := timeSinceCreated > 5*time.Second && int(timeSinceCreated.Seconds())%10 < 2
 		if shouldQuery {
 			// 获取支付方式
 			paymentMethod := "alipay"
@@ -387,4 +388,146 @@ func CancelRecharge(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "充值订单已取消", record)
+}
+
+// GetAdminRechargeRecords 管理员获取充值记录列表
+func GetAdminRechargeRecords(c *gin.Context) {
+	db := database.GetDB()
+	
+	// 分页参数
+	page := 1
+	size := 20
+	if pageStr := c.Query("page"); pageStr != "" {
+		fmt.Sscanf(pageStr, "%d", &page)
+	}
+	if sizeStr := c.Query("size"); sizeStr != "" {
+		fmt.Sscanf(sizeStr, "%d", &size)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 100 {
+		size = 20
+	}
+
+	// 搜索参数
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		keyword = c.Query("search")
+	}
+
+	// 状态筛选
+	status := c.Query("status")
+
+	// 日期范围筛选
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	// 构建查询
+	query := db.Model(&models.RechargeRecord{}).Preload("User")
+
+	// 搜索关键词
+	if keyword != "" {
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
+				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
+	}
+
+	// 状态筛选
+	if status != "" && status != "all" {
+		query = query.Where("status = ?", status)
+	}
+
+	// 日期范围筛选
+	if startDate != "" {
+		query = query.Where("DATE(created_at) >= ?", startDate)
+	}
+	if endDate != "" {
+		query = query.Where("DATE(created_at) <= ?", endDate)
+	}
+
+	// 计算总数
+	var total int64
+	query.Count(&total)
+
+	// 分页查询
+	offset := (page - 1) * size
+	var records []models.RechargeRecord
+	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&records).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取充值记录失败", err)
+		return
+	}
+
+	// 格式化充值记录
+	formattedRecords := make([]gin.H, 0, len(records))
+	formatIP := func(ip string) string {
+		if ip == "" {
+			return "-"
+		}
+		if ip == "::1" {
+			return "127.0.0.1"
+		}
+		if strings.HasPrefix(ip, "::ffff:") {
+			return strings.TrimPrefix(ip, "::ffff:")
+		}
+		return ip
+	}
+	for _, record := range records {
+		ipValue := utils.GetNullStringValue(record.IPAddress)
+		var ipStr string
+		if ipValue != nil {
+			ipStr = ipValue.(string)
+		}
+		ipAddress := formatIP(ipStr)
+		// 使用GeoIP解析地理位置
+		location := ""
+		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+			locationStr := geoip.GetLocationString(ipAddress)
+			if locationStr.Valid {
+				location = locationStr.String
+			}
+		}
+
+		userInfo := gin.H{}
+		if record.User.ID > 0 {
+			userInfo = gin.H{
+				"id":       record.User.ID,
+				"username": record.User.Username,
+				"email":    record.User.Email,
+			}
+		}
+
+		formattedRecords = append(formattedRecords, gin.H{
+			"id":                     record.ID,
+			"user_id":                record.UserID,
+			"user":                   userInfo,
+			"order_no":               record.OrderNo,
+			"amount":                 record.Amount,
+			"status":                 record.Status,
+			"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+			"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+			"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
+			"payment_url":            utils.GetNullStringValue(record.PaymentURL),
+			"ip_address":             ipAddress,
+			"location":               location,
+			"user_agent":             utils.GetNullStringValue(record.UserAgent),
+			"paid_at": func() interface{} {
+				if record.PaidAt.Valid {
+					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+				}
+				return nil
+			}(),
+			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"recharges": formattedRecords,
+		"total":     total,
+		"page":      page,
+		"size":      size,
+	})
 }
