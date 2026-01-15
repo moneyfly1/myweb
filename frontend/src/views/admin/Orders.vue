@@ -53,7 +53,7 @@
           <div class="search-input-wrapper">
             <el-input 
               v-model="searchForm.keyword" 
-              placeholder="搜索订单号、用户邮箱或用户名"
+              placeholder="搜索订单号、时间戳、用户邮箱或用户名"
               class="mobile-search-input"
               clearable
               @keyup.enter="searchOrders"
@@ -99,12 +99,12 @@
           </el-button>
         </div>
       </div>
-      <el-form :inline="true" :model="searchForm" class="search-form desktop-only">
+      <el-form :inline="true" :model="searchForm" class="search-form">
         <el-form-item label="搜索">
           <el-input 
             v-model="searchForm.keyword" 
-            placeholder="输入订单号、用户邮箱或用户名进行搜索"
-            style="width: 300px;"
+            placeholder="输入订单号、时间戳、用户邮箱或用户名进行搜索"
+            style="width: 350px;"
             clearable
             @keyup.enter="searchOrders"
           />
