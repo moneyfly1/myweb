@@ -1107,9 +1107,25 @@ export default {
   background: #f5f7fa;
   border-radius: 8px;
   
-  &.desktop-only {
-    @media (max-width: 768px) {
-      display: none !important;
+  // 移动端优化显示
+  @media (max-width: 768px) {
+    padding: 15px;
+    
+    :deep(.el-form-item) {
+      margin-bottom: 10px;
+      width: 100%;
+    }
+    
+    :deep(.el-input) {
+      width: 100% !important;
+    }
+    
+    :deep(.el-select) {
+      width: 100% !important;
+    }
+    
+    :deep(.el-form-item__content) {
+      width: 100%;
     }
   }
 }
