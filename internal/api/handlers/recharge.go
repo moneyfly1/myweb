@@ -258,14 +258,14 @@ func GetRechargeStatusByNo(c *gin.Context) {
 		return
 	}
 
-	// 如果充值记录是 pending 状态，且创建时间超过5秒，主动查询支付状态
-	// 增加查询间隔限制，避免频繁查询（每30秒才查询一次支付宝状态）
+	// 如果充值记录是 pending 状态，且创建时间超过3秒，主动查询支付状态
+	// 优化查询间隔：每5秒查询一次支付宝状态，确保及时回调
 	if record.Status == "pending" {
 		// 检查充值记录创建时间，避免频繁查询
 		timeSinceCreated := time.Since(record.CreatedAt)
-		// 优化查询间隔：每10秒查询一次支付宝状态，确保及时回调
-		// 使用秒数取模，只在10秒的倍数时查询（例如：10秒、20秒、30秒...）
-		shouldQuery := timeSinceCreated > 5*time.Second && int(timeSinceCreated.Seconds())%10 < 2
+		// 使用秒数取模，只在5秒的倍数时查询（例如：5秒、10秒、15秒...）
+		// 这样可以更快地检测到支付成功，同时避免过于频繁的查询
+		shouldQuery := timeSinceCreated > 3*time.Second && int(timeSinceCreated.Seconds())%5 < 2
 		if shouldQuery {
 			// 获取支付方式
 			paymentMethod := "alipay"
@@ -393,7 +393,7 @@ func CancelRecharge(c *gin.Context) {
 // GetAdminRechargeRecords 管理员获取充值记录列表
 func GetAdminRechargeRecords(c *gin.Context) {
 	db := database.GetDB()
-	
+
 	// 分页参数
 	page := 1
 	size := 20
