@@ -857,18 +857,46 @@ export default {
     const loadOrderStats = async () => {
       try {
         const response = await api.get('/orders/stats')
-        
-        if (response.data && response.data.success && response.data.data) {
-          const statsData = response.data.data
+        let statsData = null
+
+        if (response && response.data) {
+          if (response.data.success !== false && response.data.data) {
+            statsData = response.data.data
+          } else if (response.data.total !== undefined || response.data.total_orders !== undefined) {
+            statsData = response.data
+          } else if (response.data.data && typeof response.data.data === 'object') {
+            statsData = response.data.data
+          }
+        }
+
+        if (statsData) {
+          const getValue = (primary, ...alternatives) => {
+            if (primary !== undefined && primary !== null) return primary
+            for (const alt of alternatives) {
+              if (alt !== undefined && alt !== null) return alt
+            }
+            return 0
+          }
+
+          const toNumber = (val) => {
+            const num = Number(val)
+            return isNaN(num) ? 0 : num
+          }
+
+          const total = getValue(statsData.total, statsData.total_orders, statsData.totalOrders)
+          const pending = getValue(statsData.pending, statsData.pending_orders, statsData.pendingOrders)
+          const paid = getValue(statsData.paid, statsData.paid_orders, statsData.paidOrders)
+          const cancelled = getValue(statsData.cancelled, statsData.cancelled_orders, statsData.cancelledOrders)
+          const totalAmount = getValue(statsData.totalAmount, statsData.total_amount)
+
           orderStats.value = {
-            total: statsData.total || 0,
-            pending: statsData.pending || 0,
-            paid: statsData.paid || 0,
-            cancelled: statsData.cancelled || 0,
-            totalAmount: statsData.totalAmount || 0
+            total: toNumber(total),
+            pending: toNumber(pending),
+            paid: toNumber(paid),
+            cancelled: toNumber(cancelled),
+            totalAmount: toNumber(totalAmount)
           }
         } else {
-          // 设置默认值
           orderStats.value = {
             total: 0,
             pending: 0,
@@ -878,7 +906,6 @@ export default {
           }
         }
       } catch (error) {
-        // 设置默认值
         orderStats.value = {
           total: 0,
           pending: 0,
@@ -903,13 +930,15 @@ export default {
     }
     
     const refreshOrders = async () => {
-      await loadOrders()
+      await loadOrders() // loadOrders 内部会调用 loadOrderStats
       if (activeTab.value === 'all' || activeTab.value === 'recharges') {
         await loadRecharges()
         if (activeTab.value === 'all') {
           mergeRecords()
         }
       }
+      // 确保统计数据也被刷新
+      await loadOrderStats()
     }
     
     const handleSizeChange = (size) => {
@@ -965,7 +994,6 @@ export default {
               paymentMethodId = paymentMethods[0].id
             }
           } catch (error) {
-            console.warn('获取支付方式列表失败:', error)
           }
         }
         
@@ -1208,7 +1236,6 @@ export default {
                   paymentMethodId = paymentMethods[0].id
                 }
               } catch (error) {
-                console.warn('获取支付方式列表失败:', error)
               }
             }
             
@@ -1328,52 +1355,22 @@ export default {
           }
         } else {
           if (!selectedOrder.value.order_no) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('检查支付状态：订单号不存在', selectedOrder.value)
-            }
             return
           }
 
           const response = await api.get(`/orders/${selectedOrder.value.order_no}/status`)
 
-          if (process.env.NODE_ENV === 'development') {
-            console.log('订单状态检查响应:', {
-              order_no: selectedOrder.value.order_no,
-              response: response.data,
-              status: response.data?.data?.status
-            })
-          }
 
-          if (!response || !response.data) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('订单状态检查：响应格式错误', response)
-            }
-            return
-          }
-
-          if (response.data.success === false) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('订单状态检查：API返回失败', response.data.message)
-            }
+          if (!response || !response.data || response.data.success === false) {
             return
           }
 
           const orderData = response.data.data
           if (!orderData) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('订单状态检查：订单数据不存在', response.data)
-            }
             return
           }
 
-          if (process.env.NODE_ENV === 'development') {
-            console.log('当前订单状态:', orderData.status, '订单号:', orderData.order_no)
-          }
-
           if (orderData.status === 'paid') {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('✅ 订单支付成功，开始处理...')
-            }
             if (paymentStatusCheckInterval) {
               clearInterval(paymentStatusCheckInterval)
               paymentStatusCheckInterval = null
@@ -1387,9 +1384,6 @@ export default {
               mergeRecords()
             }
           } else if (orderData.status === 'cancelled') {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('订单已取消')
-            }
             if (paymentStatusCheckInterval) {
               clearInterval(paymentStatusCheckInterval)
               paymentStatusCheckInterval = null
@@ -1402,8 +1396,6 @@ export default {
               await loadRecharges()
               mergeRecords()
             }
-          } else {
-            console.log('订单状态:', orderData.status, '继续等待...')
           }
         }
         
@@ -1626,6 +1618,8 @@ export default {
     
     // 生命周期
     onMounted(async () => {
+      // 先加载统计数据，确保即使订单加载失败也能显示统计
+      await loadOrderStats()
       await loadOrders()
       // 如果默认显示全部记录，加载充值记录
       if (activeTab.value === 'all') {

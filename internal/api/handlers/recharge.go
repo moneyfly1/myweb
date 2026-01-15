@@ -291,9 +291,7 @@ func GetRechargeStatusByNo(c *gin.Context) {
 					if err == nil {
 						queryResult, err := alipayService.QueryOrder(orderNo)
 						if err == nil && queryResult != nil && queryResult.IsPaid() {
-							// 支付成功，更新充值记录状态（模拟回调处理）
-							utils.LogInfo("GetRechargeStatusByNo: payment query success, updating recharge - order_no=%s, trade_no=%s",
-								orderNo, queryResult.TradeNo)
+							// 支付成功，更新充值记录状态
 
 							// 使用事务更新充值记录状态
 							err := utils.WithTransaction(db, func(tx *gorm.DB) error {
@@ -313,31 +311,18 @@ func GetRechargeStatusByNo(c *gin.Context) {
 										return err
 									}
 
-									// 更新用户余额
 									var user models.User
 									if err := tx.First(&user, latestRecord.UserID).Error; err == nil {
-										oldBalance := user.Balance
 										user.Balance += latestRecord.Amount
 										if err := tx.Save(&user).Error; err != nil {
-											utils.LogError("GetRechargeStatusByNo: failed to update user balance", err, map[string]interface{}{
-												"order_no": orderNo,
-												"user_id":  user.ID,
-											})
 											return err
 										}
-										// 记录充值成功日志
-										utils.LogInfo("GetRechargeStatusByNo: 充值成功 - order_no=%s, user_id=%d, amount=%.2f, old_balance=%.2f, new_balance=%.2f",
-											orderNo, user.ID, latestRecord.Amount, oldBalance, user.Balance)
 									}
 								}
 								return nil
 							})
 
-							if err != nil {
-								utils.LogError("GetRechargeStatusByNo: failed to update recharge transaction", err, map[string]interface{}{
-									"order_no": orderNo,
-								})
-							} else {
+							if err == nil {
 								// 重新加载充值记录以返回最新状态
 								db.Where("order_no = ?", orderNo).First(&record)
 							}
@@ -443,10 +428,10 @@ func GetAdminRechargeRecords(c *gin.Context) {
 			// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
 			query = query.Where(
 				"recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-				"%"+sanitizedKeyword+"%", // 完整订单号匹配
+				"%"+sanitizedKeyword+"%",     // 完整订单号匹配
 				"%RCH%"+sanitizedKeyword+"%", // 时间戳匹配（充值订单号格式：RCH + timestamp + userID + 随机数）
-				"%"+sanitizedKeyword+"%", // 用户名匹配
-				"%"+sanitizedKeyword+"%", // 邮箱匹配
+				"%"+sanitizedKeyword+"%",     // 用户名匹配
+				"%"+sanitizedKeyword+"%",     // 邮箱匹配
 			)
 		}
 	}

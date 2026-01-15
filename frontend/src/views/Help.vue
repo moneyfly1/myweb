@@ -434,7 +434,7 @@ export default {
             <ol>
               <li>登录账户后，进入"仪表板"页面</li>
               <li>在"账户余额"卡片中，点击"充值"按钮</li>
-              <li>在弹出的充值对话框中，输入充值金额（最低20元）</li>
+              <li>在弹出的充值对话框中，输入充值金额（默认20元，可自定义）</li>
               <li>可以选择快速金额（20、50、100、200、500、1000元）或自定义金额</li>
               <li>点击"确认充值"按钮</li>
               <li>系统会生成支付二维码，使用手机支付宝扫描二维码完成支付</li>
@@ -443,7 +443,7 @@ export default {
             <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 提示：</strong>
               <ul style="margin: 10px 0 0 20px;">
-                <li>充值金额最低20元，支持自定义金额</li>
+                <li>默认充值金额20元，支持自定义任意金额</li>
                 <li>充值成功后，余额可用于购买套餐或升级设备数量</li>
                 <li>可以在"订单记录"页面查看充值记录</li>
                 <li>如果支付后余额未到账，请联系客服处理</li>
