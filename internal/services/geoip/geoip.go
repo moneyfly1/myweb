@@ -190,9 +190,17 @@ func GetLocationString(ipAddress string) sql.NullString {
 		}
 	}
 
+	// 首先尝试使用本地数据库
 	location, err := GetLocation(ipAddress)
-	if err != nil {
-		return sql.NullString{Valid: false}
+	if err != nil || location == nil || location.Country == "" {
+		// 本地数据库失败，尝试使用 ping0.cc API
+		ping0Location, err2 := GetLocationFromPing0(ipAddress)
+		if err2 == nil && ping0Location != nil && ping0Location.Country != "" {
+			location = ping0Location
+		} else {
+			// 如果都失败了，返回无效
+			return sql.NullString{Valid: false}
+		}
 	}
 
 	// 格式化为 JSON 字符串
@@ -202,6 +210,8 @@ func GetLocationString(ipAddress string) sql.NullString {
 		locationStr := location.Country
 		if location.City != "" {
 			locationStr = location.Country + ", " + location.City
+		} else if location.Region != "" {
+			locationStr = location.Country + ", " + location.Region
 		}
 		return sql.NullString{String: locationStr, Valid: true}
 	}
@@ -210,14 +220,24 @@ func GetLocationString(ipAddress string) sql.NullString {
 }
 
 // GetLocationSimple 获取简单的位置字符串（国家, 城市）
+// 优先使用本地数据库，失败时尝试使用 ping0.cc API
 func GetLocationSimple(ipAddress string) string {
+	// 首先尝试使用本地数据库
 	location, err := GetLocation(ipAddress)
-	if err != nil {
-		return ""
+	if err != nil || location == nil || location.Country == "" {
+		// 本地数据库失败，尝试使用 ping0.cc API
+		ping0Location, err2 := GetLocationFromPing0(ipAddress)
+		if err2 == nil && ping0Location != nil && ping0Location.Country != "" {
+			location = ping0Location
+		} else {
+			return ""
+		}
 	}
 
 	if location.City != "" {
 		return fmt.Sprintf("%s, %s", location.Country, location.City)
+	} else if location.Region != "" {
+		return fmt.Sprintf("%s, %s", location.Country, location.Region)
 	}
 	return location.Country
 }
@@ -418,7 +438,114 @@ func GetLocationFromIPW(ipAddress string) (*LocationInfo, error) {
 	return nil, fmt.Errorf("未能从网站解析到地理位置信息")
 }
 
-// GetLocationWithFallback 获取地理位置信息，优先使用本地数据库，失败时尝试从 ipw.cn 获取（仅 IPv6）
+// GetLocationFromPing0 从 ping0.cc API 获取 IP 地址的地理位置信息
+// 使用免费API：curl ping0.cc/geo?ip=IP地址
+// 返回格式：4行文本，第一行IP，第二行位置，第三行ASN，第四行商家
+func GetLocationFromPing0(ipAddress string) (*LocationInfo, error) {
+	// 跳过本地地址
+	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
+		return nil, fmt.Errorf("本地地址，跳过解析")
+	}
+
+	// 解析IP地址
+	parsedIP := net.ParseIP(ipAddress)
+	if parsedIP == nil {
+		return nil, fmt.Errorf("无效的IP地址格式: %s", ipAddress)
+	}
+
+	// 构建查询 URL（使用免费API）
+	url := fmt.Sprintf("https://ping0.cc/geo?ip=%s", ipAddress)
+
+	// 创建 HTTP 客户端，设置超时
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// 发送请求
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	// 设置 User-Agent
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("请求失败，状态码: %d", resp.StatusCode)
+	}
+
+	// 读取响应内容
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	// 解析响应（4行文本格式）
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	if len(lines) < 2 {
+		return nil, fmt.Errorf("响应格式不正确")
+	}
+
+	// 第二行是位置信息，格式如：美国 华盛顿州 西雅圖 — 斯巴达
+	locationStr := strings.TrimSpace(lines[1])
+	if locationStr == "" {
+		return nil, fmt.Errorf("位置信息为空")
+	}
+
+	// 解析位置字符串
+	location := &LocationInfo{}
+
+	// 移除可能的商家名称（— 后面的内容）
+	parts := strings.Split(locationStr, "—")
+	locationParts := strings.TrimSpace(parts[0])
+
+	// 按空格分割位置信息
+	locationFields := strings.Fields(locationParts)
+	if len(locationFields) == 0 {
+		return nil, fmt.Errorf("无法解析位置信息")
+	}
+
+	// 第一段通常是国家
+	location.Country = locationFields[0]
+
+	// 设置国家代码（简单映射）
+	if strings.Contains(location.Country, "中国") || location.Country == "China" {
+		location.CountryCode = "CN"
+		if location.Country == "China" {
+			location.Country = "中国"
+		}
+	} else if strings.Contains(location.Country, "美国") || location.Country == "United States" {
+		location.CountryCode = "US"
+		if location.Country == "United States" {
+			location.Country = "美国"
+		}
+	}
+
+	// 第二段可能是省份/州
+	if len(locationFields) >= 2 {
+		location.Region = locationFields[1]
+	}
+
+	// 第三段及之后是城市
+	if len(locationFields) >= 3 {
+		location.City = strings.Join(locationFields[2:], " ")
+	}
+
+	// 如果解析成功，返回结果
+	if location.Country != "" {
+		return location, nil
+	}
+
+	return nil, fmt.Errorf("未能从API解析到地理位置信息")
+}
+
+// GetLocationWithFallback 获取地理位置信息，优先使用本地数据库，失败时尝试从 ping0.cc 或 ipw.cn 获取
 func GetLocationWithFallback(ipAddress string) (*LocationInfo, error) {
 	// 首先尝试使用本地数据库
 	location, err := GetLocation(ipAddress)
@@ -427,7 +554,13 @@ func GetLocationWithFallback(ipAddress string) (*LocationInfo, error) {
 		return location, nil
 	}
 
-	// 如果是 IPv6 地址且本地数据库解析失败，尝试从 ipw.cn 获取
+	// 本地数据库解析失败，尝试使用 ping0.cc API（支持IPv4和IPv6）
+	ping0Location, err := GetLocationFromPing0(ipAddress)
+	if err == nil && ping0Location != nil && ping0Location.Country != "" {
+		return ping0Location, nil
+	}
+
+	// 如果是 IPv6 地址且 ping0.cc 也失败，尝试从 ipw.cn 获取（作为最后的fallback）
 	parsedIP := net.ParseIP(ipAddress)
 	if parsedIP != nil && parsedIP.To4() == nil {
 		// 是 IPv6 地址

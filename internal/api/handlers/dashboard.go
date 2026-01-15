@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -245,6 +246,8 @@ func GetRecentOrders(c *gin.Context) {
 // GetAbnormalUsers 获取异常用户（账户禁用、频繁重置、频繁订阅、长期未登录等）
 func GetAbnormalUsers(c *gin.Context) {
 	db := database.GetDB()
+	now := utils.GetBeijingTime()
+
 	// 前端筛选参数
 	dateRange := c.QueryArray("date_range[]")
 	if len(dateRange) == 0 {
@@ -259,55 +262,82 @@ func GetAbnormalUsers(c *gin.Context) {
 			dateRange = []string{startDate, endDate}
 		}
 	}
-	subscriptionCountFilter := c.DefaultQuery("subscription_count", "")
-	resetCountFilter := c.DefaultQuery("reset_count", "")
+
+	// 如果没有提供日期范围，默认使用本月1号到今天
+	var startTime, endTime time.Time
+	if len(dateRange) == 2 {
+		var err error
+		startTime, err = time.Parse("2006-01-02", dateRange[0])
+		if err != nil {
+			startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		}
+		endTime, err = time.Parse("2006-01-02", dateRange[1])
+		if err != nil {
+			endTime = now
+		}
+		// 确保结束时间包含当天的23:59:59
+		endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 0, endTime.Location())
+	} else {
+		// 默认：本月1号 00:00:00 到今天 23:59:59
+		startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		endTime = now
+	}
+
+	subscriptionCountFilter := c.DefaultQuery("subscription_count", "10") // 默认10次
+	resetCountFilter := c.DefaultQuery("reset_count", "3")                // 默认3次
 
 	// 基础筛选：异常用户包括：
 	// 1. 账户被禁用
-	// 2. 频繁重置订阅（>=5次）
-	// 3. 频繁创建订阅（>=10次）
+	// 2. 频繁重置订阅（在时间范围内>=3次，默认）
+	// 3. 频繁创建订阅（在时间范围内>=10次，默认）
 	// 4. 长期未登录（注册超过1个月且从未登录）
-	// 5. 订阅过期但仍在频繁使用
-	now := utils.GetBeijingTime()
 	oneMonthAgo := now.AddDate(0, -1, 0)
 
 	// 构建查询：查找异常用户
 	// 使用 OR 条件组合所有异常情况
+	// 注意：订阅次数和重置次数是"或"的关系，不是"和"的关系
+	var minSub, minReset int
+	fmt.Sscanf(subscriptionCountFilter, "%d", &minSub)
+	fmt.Sscanf(resetCountFilter, "%d", &minReset)
+
+	// 如果未指定，使用默认值
+	if minSub <= 0 {
+		minSub = 10
+	}
+	if minReset <= 0 {
+		minReset = 3
+	}
+
+	// 构建子查询：在时间范围内统计订阅次数
+	subscriptionSubQuery := db.Model(&models.Subscription{}).
+		Select("user_id").
+		Where("created_at >= ? AND created_at <= ?", startTime, endTime).
+		Group("user_id").
+		Having("COUNT(*) >= ?", minSub)
+
+	// 构建子查询：在时间范围内统计重置次数
+	resetSubQuery := db.Model(&models.SubscriptionReset{}).
+		Select("user_id").
+		Where("created_at >= ? AND created_at <= ?", startTime, endTime).
+		Group("user_id").
+		Having("COUNT(*) >= ?", minReset)
+
+	// 构建主查询：订阅次数和重置次数是"或"的关系
 	query := db.Model(&models.User{}).
-		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR id IN (SELECT user_id FROM subscription_resets GROUP BY user_id HAVING COUNT(*) >= ?) OR id IN (SELECT user_id FROM subscriptions GROUP BY user_id HAVING COUNT(*) >= ?)",
-			false, oneMonthAgo, 5, 10)
+		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR id IN (?) OR id IN (?)",
+			false, oneMonthAgo, subscriptionSubQuery, resetSubQuery)
 
-	// 时间范围（注册时间）
+	// 时间范围（注册时间）- 如果提供了日期范围，也限制注册时间
 	if len(dateRange) == 2 {
-		start := dateRange[0]
-		end := dateRange[1]
-		query = query.Where("created_at BETWEEN ? AND ?", start, end)
-	}
-
-	// 订阅次数过滤
-	if subscriptionCountFilter != "" {
-		var minSub int
-		fmt.Sscanf(subscriptionCountFilter, "%d", &minSub)
-		if minSub > 0 {
-			query = query.Where("id IN (SELECT user_id FROM subscriptions GROUP BY user_id HAVING COUNT(*) >= ?)", minSub)
-		}
-	}
-
-	// 重置次数过滤
-	if resetCountFilter != "" {
-		var minReset int
-		fmt.Sscanf(resetCountFilter, "%d", &minReset)
-		if minReset > 0 {
-			query = query.Where("id IN (SELECT user_id FROM subscription_resets GROUP BY user_id HAVING COUNT(*) >= ?)", minReset)
-		}
+		query = query.Where("created_at BETWEEN ? AND ?", startTime, endTime)
 	}
 
 	// 获取用户
 	var users []models.User
 	query.Order("created_at DESC").Limit(200).Find(&users)
 
-	// 使用辅助函数构建异常用户数据
-	userList := buildAbnormalUserData(db, users)
+	// 使用辅助函数构建异常用户数据（需要传入时间范围用于统计）
+	userList := buildAbnormalUserDataWithDateRange(db, users, startTime, endTime, minSub, minReset)
 	utils.SuccessResponse(c, http.StatusOK, "", userList)
 }
 

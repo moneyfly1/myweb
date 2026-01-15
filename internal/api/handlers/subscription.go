@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -63,6 +64,16 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			lastSeen = d.LastSeen.Format("2006-01-02 15:04:05")
 		}
 		ipAddress := formatIP(getString(d.IPAddress))
+
+		// 使用GeoIP解析地理位置
+		location := ""
+		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+			locationStr := geoip.GetLocationString(ipAddress)
+			if locationStr.Valid {
+				location = locationStr.String
+			}
+		}
+
 		deviceList = append(deviceList, gin.H{
 			"id":                 d.ID,
 			"device_name":        getString(d.DeviceName),
@@ -72,6 +83,7 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"type":               getString(d.DeviceType),
 			"ip_address":         ipAddress,
 			"ip":                 ipAddress,
+			"location":           location, // 添加归属地信息
 			"os_name":            getString(d.OSName),
 			"os_version":         getString(d.OSVersion),
 			"last_access":        d.LastAccess.Format("2006-01-02 15:04:05"),

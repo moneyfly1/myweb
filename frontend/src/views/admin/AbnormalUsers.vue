@@ -293,10 +293,22 @@ export default {
     const showUserDetailsDialog = ref(false)
     const userDetails = ref(null)
     const isMobile = ref(window.innerWidth <= 768)
+    
+    // 设置默认日期范围：本月1号到今天
+    const getDefaultDateRange = () => {
+      const now = new Date()
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      return [
+        firstDay.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      ]
+    }
+    
     const filters = reactive({
-      dateRange: null,
-      subscriptionCount: null,  // 订阅次数筛选（可选）
-      resetCount: null  // 重置次数筛选（可选）
+      dateRange: getDefaultDateRange(),  // 默认：本月1号到今天
+      subscriptionCount: 10,  // 默认：订阅次数>=10次
+      resetCount: 3  // 默认：重置次数>=3次
     })
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
@@ -305,13 +317,16 @@ export default {
       loading.value = true
       try {
         const params = {}
+        // 日期范围：如果有值就传递，后端会使用默认值（本月1号到今天）
         if (filters.dateRange && filters.dateRange.length === 2) {
           params['date_range[]'] = filters.dateRange
         }
-        if (filters.subscriptionCount !== null && filters.subscriptionCount !== undefined) {
+        // 订阅次数：如果有值就传递，后端默认值是10
+        if (filters.subscriptionCount !== null && filters.subscriptionCount !== undefined && filters.subscriptionCount > 0) {
           params.subscription_count = filters.subscriptionCount.toString()
         }
-        if (filters.resetCount !== null && filters.resetCount !== undefined) {
+        // 重置次数：如果有值就传递，后端默认值是3
+        if (filters.resetCount !== null && filters.resetCount !== undefined && filters.resetCount > 0) {
           params.reset_count = filters.resetCount.toString()
         }
         const response = await adminAPI.getAbnormalUsers(params)
@@ -340,10 +355,11 @@ export default {
       loadAbnormalUsers()
     }
     const resetFilters = () => {
-      filters.dateRange = null
-      filters.subscriptionCount = null
-      filters.resetCount = null
-      abnormalUsers.value = []
+      filters.dateRange = getDefaultDateRange()  // 重置为默认日期范围
+      filters.subscriptionCount = 10  // 重置为默认值
+      filters.resetCount = 3  // 重置为默认值
+      // 重置后自动查询
+      loadAbnormalUsers()
     }
     const viewUserDetails = async (userId) => {
       try {
@@ -392,7 +408,7 @@ export default {
     }
     onMounted(() => {
       window.addEventListener('resize', handleResize)
-      // 页面加载时自动查询（使用默认筛选条件）
+      // 页面加载时自动查询（使用默认筛选条件：本月1号到今天，订阅次数>=10，重置次数>=3）
       loadAbnormalUsers()
     })
     onUnmounted(() => {
