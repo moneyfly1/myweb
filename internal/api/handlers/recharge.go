@@ -41,6 +41,7 @@ func CreateRecharge(c *gin.Context) {
 	orderNo := utils.GenerateRechargeOrderNo(user.ID)
 
 	// 使用北京时间创建充值记录
+	// 注意：无论支付URL是否生成成功，充值记录都应该被创建
 	beijingTime := utils.GetBeijingTime()
 	recharge := models.RechargeRecord{
 		UserID:        user.ID,
@@ -52,12 +53,14 @@ func CreateRecharge(c *gin.Context) {
 		UpdatedAt:     beijingTime,
 	}
 
+	// 先创建充值记录，确保记录一定存在
 	if err := db.Create(&recharge).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建充值订单失败", err)
 		return
 	}
 
 	// 调用支付接口生成支付链接
+	// 即使支付URL生成失败，充值记录也已经创建，可以后续重试
 	var paymentURL string
 	paymentMethod := req.PaymentMethod
 	if paymentMethod == "" {
@@ -88,6 +91,12 @@ func CreateRecharge(c *gin.Context) {
 				}
 				paymentURL, _ = wechatService.CreatePayment(tempOrder, recharge.Amount)
 			}
+		}
+		
+		// 如果支付URL生成成功，更新充值记录
+		if paymentURL != "" {
+			recharge.PaymentURL = database.NullString(paymentURL)
+			db.Save(&recharge)
 		}
 	}
 

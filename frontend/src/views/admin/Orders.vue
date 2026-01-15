@@ -567,16 +567,34 @@ export default {
           const data = response.data.data
           recharges.value = data.recharges || []
           rechargeTotal.value = data.total || 0
+          // 如果没有记录，不显示错误，只显示空状态
+          if (recharges.value.length === 0 && rechargeTotal.value === 0) {
+            // 静默处理，不显示错误消息
+          }
         } else {
+          // API返回失败，但不一定是错误，可能是没有数据
           recharges.value = []
           rechargeTotal.value = 0
+          // 不显示错误消息，让页面显示"暂无数据"
         }
       } catch (error) {
         console.error('加载充值记录失败:', error)
-        const errorMsg = error.response?.data?.message || error.message || '加载充值记录失败'
-        ElMessage.error('加载充值记录失败: ' + errorMsg)
-        recharges.value = []
-        rechargeTotal.value = 0
+        // 只有在真正的错误（如网络错误、服务器错误）时才显示错误消息
+        // 如果是404或"记录不存在"，可能是真的没有数据，不显示错误
+        const errorStatus = error.response?.status
+        const errorMsg = error.response?.data?.message || error.message || ''
+        
+        // 如果是404或"记录不存在"，不显示错误，只显示空状态
+        if (errorStatus === 404 || errorMsg.includes('不存在')) {
+          recharges.value = []
+          rechargeTotal.value = 0
+          // 不显示错误消息
+        } else {
+          // 其他错误才显示错误消息
+          ElMessage.error('加载充值记录失败: ' + errorMsg)
+          recharges.value = []
+          rechargeTotal.value = 0
+        }
       } finally {
         loading.value = false
       }
