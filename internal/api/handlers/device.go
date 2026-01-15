@@ -60,10 +60,28 @@ func GetDevices(c *gin.Context) {
 			firstSeen = d.FirstSeen.Format("2006-01-02 15:04:05")
 		}
 
-		ipAddress := getString(d.IPAddress)
+		// IP地址格式化函数
+		formatIP := func(ip string) string {
+			if ip == "" {
+				return "-"
+			}
+			// 将 IPv6 本地地址转换为 IPv4 本地地址
+			if ip == "::1" {
+				return "127.0.0.1"
+			}
+			// 将 IPv6 映射的 IPv4 地址转换
+			if len(ip) >= 7 && ip[:7] == "::ffff:" {
+				return ip[7:]
+			}
+			return ip
+		}
+
+		ipStr := getString(d.IPAddress)
+		ipAddress := formatIP(ipStr)
+
 		// 使用GeoIP解析地理位置
 		location := ""
-		if ipAddress != "" && geoip.IsEnabled() {
+		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
 			locationStr := geoip.GetLocationString(ipAddress)
 			if locationStr.Valid {
 				location = locationStr.String

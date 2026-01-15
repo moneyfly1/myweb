@@ -914,7 +914,18 @@
               </template>
             </el-table-column>
             
-            <el-table-column prop="ip_address" label="IP地址" width="120" />
+            <el-table-column prop="ip_address" label="IP地址" width="200">
+              <template #default="scope">
+                <div class="ip-location-cell">
+                  <span class="ip-address">{{ scope.row.ip_address || '-' }}</span>
+                  <el-tag v-if="scope.row.location" type="info" size="small" style="margin-left: 8px;">
+                    <i class="el-icon-location"></i>
+                    {{ formatLocation(scope.row.location) }}
+                  </el-tag>
+                  <span v-else class="no-location-text">位置信息不可用</span>
+                </div>
+              </template>
+            </el-table-column>
             
             <el-table-column prop="os_name" label="操作系统" width="180">
               <template #default="scope">
@@ -1693,6 +1704,7 @@ export default {
               device_name: device.device_name || device.name || '未知设备',
               device_type: device.device_type || device.type || 'unknown',
               ip_address: device.ip_address || device.ip || '-',
+              location: device.location || '', // 添加归属地字段
               os_name: device.os_name || '-',
               os_version: device.os_version || '',
               last_seen: device.last_seen || device.last_access || null,
