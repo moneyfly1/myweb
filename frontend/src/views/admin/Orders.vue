@@ -448,7 +448,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
-  Filter, Refresh, Delete
+  Filter, Refresh, Delete, Wallet, ShoppingCart
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
@@ -515,13 +515,23 @@ export default {
         
         const response = await api.get('/admin/orders', { params })
         
+        // 调试信息
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Orders API Response:', response.data)
+        }
+        
         const ordersList = response.data.data?.orders || []
         
         // 确保响应式更新
         orders.value = ordersList
         total.value = response.data.data?.total || response.data.total || 0
       } catch (error) {
-        ElMessage.error('加载订单列表失败')
+        console.error('加载订单列表失败:', error)
+        const errorMsg = error.response?.data?.message || error.message || '加载订单列表失败'
+        ElMessage.error(errorMsg)
+        // 确保即使出错也清空数据，避免显示旧数据
+        orders.value = []
+        total.value = 0
       } finally {
         loading.value = false
       }
