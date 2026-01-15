@@ -347,7 +347,7 @@ func CancelOrderByNo(c *gin.Context) {
 // 支持 include_recharges 参数，当为 true 时同时返回订单和充值记录
 func GetAdminOrders(c *gin.Context) {
 	db := database.GetDB()
-	
+
 	// 检查是否包含充值记录
 	includeRecharges := c.Query("include_recharges") == "true"
 
@@ -393,7 +393,7 @@ func GetAdminOrders(c *gin.Context) {
 	if includeRecharges {
 		// 同时查询订单和充值记录，合并后统一分页
 		allRecords := make([]gin.H, 0)
-		
+
 		// 查询订单
 		orderQuery := db.Model(&models.Order{})
 		if keyword != "" {
@@ -406,7 +406,7 @@ func GetAdminOrders(c *gin.Context) {
 		if status != "" && status != "all" {
 			orderQuery = orderQuery.Where("status = ?", status)
 		}
-		
+
 		var orders []models.Order
 		orderQuery = orderQuery.Preload("User").Preload("Package")
 		if err := orderQuery.Order("created_at DESC").Find(&orders).Error; err == nil {
@@ -419,7 +419,7 @@ func GetAdminOrders(c *gin.Context) {
 				})
 			}
 		}
-		
+
 		// 查询充值记录
 		rechargeQuery := db.Model(&models.RechargeRecord{}).Preload("User")
 		if keyword != "" {
@@ -432,7 +432,7 @@ func GetAdminOrders(c *gin.Context) {
 		if status != "" && status != "all" {
 			rechargeQuery = rechargeQuery.Where("status = ?", status)
 		}
-		
+
 		var recharges []models.RechargeRecord
 		if err := rechargeQuery.Order("created_at DESC").Find(&recharges).Error; err == nil {
 			formatIP := func(ip string) string {
@@ -447,7 +447,7 @@ func GetAdminOrders(c *gin.Context) {
 				}
 				return ip
 			}
-			
+
 			for _, record := range recharges {
 				ipValue := utils.GetNullStringValue(record.IPAddress)
 				var ipStr string
@@ -455,7 +455,7 @@ func GetAdminOrders(c *gin.Context) {
 					ipStr = ipValue.(string)
 				}
 				formatIP(ipStr) // 格式化IP（暂时不使用，但保留格式化逻辑）
-				
+
 				userInfo := gin.H{}
 				if record.User.ID > 0 {
 					userInfo = gin.H{
@@ -464,7 +464,7 @@ func GetAdminOrders(c *gin.Context) {
 						"email":    record.User.Email,
 					}
 				}
-				
+
 				rechargeData := gin.H{
 					"id":                     record.ID,
 					"user_id":                record.UserID,
@@ -482,7 +482,7 @@ func GetAdminOrders(c *gin.Context) {
 					}(),
 					"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
 				}
-				
+
 				allRecords = append(allRecords, gin.H{
 					"record_type": "recharge",
 					"created_at":  rechargeData["created_at"],
@@ -490,7 +490,7 @@ func GetAdminOrders(c *gin.Context) {
 				})
 			}
 		}
-		
+
 		// 按创建时间倒序排序
 		for i := 0; i < len(allRecords)-1; i++ {
 			for j := i + 1; j < len(allRecords); j++ {
@@ -501,7 +501,7 @@ func GetAdminOrders(c *gin.Context) {
 				}
 			}
 		}
-		
+
 		// 统一分页
 		total := int64(len(allRecords))
 		offset := (page - 1) * size
@@ -509,7 +509,7 @@ func GetAdminOrders(c *gin.Context) {
 		if end > len(allRecords) {
 			end = len(allRecords)
 		}
-		
+
 		mergedList := make([]gin.H, 0)
 		if offset < len(allRecords) {
 			for i := offset; i < end; i++ {
@@ -518,7 +518,7 @@ func GetAdminOrders(c *gin.Context) {
 				mergedList = append(mergedList, record)
 			}
 		}
-		
+
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 			"orders": mergedList,
 			"total":  total,
@@ -531,7 +531,7 @@ func GetAdminOrders(c *gin.Context) {
 	// 原有逻辑：只返回订单
 	var orders []models.Order
 	query := db.Model(&models.Order{})
-	
+
 	if keyword != "" {
 		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 		if sanitizedKeyword != "" {
@@ -662,21 +662,46 @@ func DeleteAdminOrder(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "订单已删除", nil)
 }
 
-// GetOrderStatistics 获取订单统计
+// GetOrderStatistics 获取订单统计（包含订单和充值记录）
 func GetOrderStatistics(c *gin.Context) {
 	db := database.GetDB()
 
-	var totalOrders int64
-	var pendingOrders int64
-	var paidOrders int64
-	var totalRevenue float64
+	// 订单统计
+	var orderTotal int64
+	var orderPending int64
+	var orderPaid int64
+	var orderRevenue float64
 
-	db.Model(&models.Order{}).Count(&totalOrders)
-	db.Model(&models.Order{}).Where("status = ?", "pending").Count(&pendingOrders)
-	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&paidOrders)
+	db.Model(&models.Order{}).Count(&orderTotal)
+	db.Model(&models.Order{}).Where("status = ?", "pending").Count(&orderPending)
+	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&orderPaid)
 
-	// 统计总收入（使用公共函数）
-	totalRevenue = utils.CalculateTotalRevenue(db, "paid")
+	// 订单总收入（使用公共函数）
+	orderRevenue = utils.CalculateTotalRevenue(db, "paid")
+
+	// 充值记录统计
+	var rechargeTotal int64
+	var rechargePending int64
+	var rechargePaid int64
+	var rechargeRevenue float64
+
+	db.Model(&models.RechargeRecord{}).Count(&rechargeTotal)
+	db.Model(&models.RechargeRecord{}).Where("status = ?", "pending").Count(&rechargePending)
+	db.Model(&models.RechargeRecord{}).Where("status = ?", "paid").Count(&rechargePaid)
+
+	// 充值记录总收入（已支付的充值金额）
+	var paidRecharges []models.RechargeRecord
+	if err := db.Model(&models.RechargeRecord{}).Where("status = ?", "paid").Find(&paidRecharges).Error; err == nil {
+		for _, recharge := range paidRecharges {
+			rechargeRevenue += recharge.Amount
+		}
+	}
+
+	// 合并统计
+	totalOrders := orderTotal + rechargeTotal
+	pendingOrders := orderPending + rechargePending
+	paidOrders := orderPaid + rechargePaid
+	totalRevenue := orderRevenue + rechargeRevenue
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"total_orders":   totalOrders,
