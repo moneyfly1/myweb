@@ -541,6 +541,13 @@ export default {
     const loadRecharges = async () => {
       loading.value = true
       try {
+        // 检查 adminAPI 和 getAdminRechargeRecords 是否存在
+        if (!adminAPI || typeof adminAPI.getAdminRechargeRecords !== 'function') {
+          console.error('adminAPI.getAdminRechargeRecords 函数不存在', adminAPI)
+          ElMessage.error('加载充值记录失败: API 函数未定义，请刷新页面重试')
+          return
+        }
+        
         const params = {
           page: currentPage.value,
           size: pageSize.value
@@ -565,7 +572,9 @@ export default {
           rechargeTotal.value = 0
         }
       } catch (error) {
-        ElMessage.error('加载充值记录失败: ' + (error.response?.data?.message || error.message))
+        console.error('加载充值记录失败:', error)
+        const errorMsg = error.response?.data?.message || error.message || '加载充值记录失败'
+        ElMessage.error('加载充值记录失败: ' + errorMsg)
         recharges.value = []
         rechargeTotal.value = 0
       } finally {
