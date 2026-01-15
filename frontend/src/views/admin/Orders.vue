@@ -699,10 +699,6 @@ export default {
       }
     }
     
-    const handleCurrentChangeOld = (val) => {
-      pageSize.value = val
-      loadOrders()
-    }
 
     const handleCurrentChange = (val) => {
       currentPage.value = val
