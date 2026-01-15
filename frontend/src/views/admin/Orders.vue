@@ -143,7 +143,7 @@
       <!-- 桌面端表格 -->
       <div class="table-wrapper">
         <el-table 
-          :data="activeTab === 'orders' ? orders : recharges" 
+          :data="activeTab === 'orders' ? allRecords : recharges" 
           style="width: 100%" 
           v-loading="loading" 
           stripe
@@ -156,15 +156,19 @@
             {{ activeTab === 'orders' ? (scope.row.user?.email || '-') : (scope.row.user?.email || '-') }}
           </template>
         </el-table-column>
-        <el-table-column :label="activeTab === 'orders' ? '套餐名称' : '类型'">
+        <el-table-column :label="activeTab === 'orders' ? '套餐名称/类型' : '类型'">
           <template #default="scope">
-            {{ activeTab === 'orders' ? (scope.row.package_name || '-') : '账户充值' }}
+            <span v-if="activeTab === 'orders'">
+              <el-tag v-if="scope.row.record_type === 'recharge'" type="success" size="small">充值</el-tag>
+              <span v-else>{{ scope.row.package_name || '-' }}</span>
+            </span>
+            <span v-else>账户充值</span>
           </template>
         </el-table-column>
         <el-table-column prop="amount" label="金额">
           <template #default="scope">
-            <span :class="activeTab === 'recharges' ? 'positive-amount' : ''">
-              {{ activeTab === 'recharges' ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
+            <span :class="(activeTab === 'recharges' || scope.row.record_type === 'recharge') ? 'positive-amount' : ''">
+              {{ (activeTab === 'recharges' || scope.row.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
             </span>
           </template>
         </el-table-column>
@@ -184,7 +188,7 @@
         </el-table-column>
         <el-table-column label="操作" width="280" fixed="right" v-if="activeTab === 'orders'">
           <template #default="scope">
-            <div class="action-buttons-grid">
+            <div class="action-buttons-grid" v-if="scope.row.record_type === 'order'">
               <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
                 <el-icon><View /></el-icon>
                 查看
@@ -219,15 +223,16 @@
                 取消
               </el-button>
             </div>
+            <span v-else class="text-muted">充值记录</span>
           </template>
         </el-table-column>
       </el-table>
       </div>
 
       <!-- 移动端卡片式列表 -->
-      <div class="mobile-card-list" v-if="(activeTab === 'orders' && orders.length > 0) || (activeTab === 'recharges' && recharges.length > 0)">
+      <div class="mobile-card-list" v-if="(activeTab === 'orders' && allRecords.length > 0) || (activeTab === 'recharges' && recharges.length > 0)">
         <div 
-          v-for="item in (activeTab === 'orders' ? orders : recharges)" 
+          v-for="item in (activeTab === 'orders' ? allRecords : recharges)" 
           :key="item.id || item.order_no"
           class="mobile-card"
         >
@@ -240,13 +245,19 @@
             <span class="value">{{ item.user?.email || '-' }}</span>
           </div>
           <div class="card-row">
-            <span class="label">{{ activeTab === 'orders' ? '套餐名称' : '类型' }}</span>
-            <span class="value">{{ activeTab === 'orders' ? (item.package_name || '-') : '账户充值' }}</span>
+            <span class="label">{{ activeTab === 'orders' ? '套餐名称/类型' : '类型' }}</span>
+            <span class="value">
+              <span v-if="activeTab === 'orders'">
+                <el-tag v-if="item.record_type === 'recharge'" type="success" size="small">充值</el-tag>
+                <span v-else>{{ item.package_name || '-' }}</span>
+              </span>
+              <span v-else>账户充值</span>
+            </span>
           </div>
           <div class="card-row">
             <span class="label">金额</span>
-            <span class="value" :class="activeTab === 'recharges' ? 'positive-amount' : ''">
-              {{ activeTab === 'recharges' ? '+' : '' }}¥{{ formatMoney(item.amount) }}
+            <span class="value" :class="(activeTab === 'recharges' || item.record_type === 'recharge') ? 'positive-amount' : ''">
+              {{ (activeTab === 'recharges' || item.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(item.amount) }}
             </span>
           </div>
           <div class="card-row">
@@ -269,7 +280,7 @@
             <span class="label">支付时间</span>
             <span class="value">{{ (activeTab === 'orders' ? item.payment_time : item.paid_at) || '-' }}</span>
           </div>
-          <div class="card-actions" v-if="activeTab === 'orders'">
+          <div class="card-actions" v-if="activeTab === 'orders' && item.record_type === 'order'">
             <el-button size="small" @click="viewOrder(item)" class="action-btn">
               <el-icon><View /></el-icon>
               查看
@@ -304,11 +315,14 @@
               取消
             </el-button>
           </div>
+          <div v-else-if="activeTab === 'orders' && item.record_type === 'recharge'" class="text-muted" style="padding: 8px;">
+            充值记录
+          </div>
         </div>
       </div>
 
       <!-- 移动端空状态 -->
-      <div class="mobile-card-list" v-if="((activeTab === 'orders' && orders.length === 0) || (activeTab === 'recharges' && recharges.length === 0)) && !loading">
+      <div class="mobile-card-list" v-if="((activeTab === 'orders' && allRecords.length === 0) || (activeTab === 'recharges' && recharges.length === 0)) && !loading">
         <div class="empty-state">
           <i :class="activeTab === 'orders' ? 'el-icon-shopping-cart-2' : 'el-icon-wallet'"></i>
           <p>{{ activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录' }}</p>
@@ -321,7 +335,7 @@
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
-          :total="activeTab === 'recharges' ? rechargeTotal : total"
+          :total="activeTab === 'recharges' ? rechargeTotal : (total + rechargeTotal)"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
@@ -468,6 +482,7 @@ export default {
     const loading = ref(false)
     const orders = ref([])
     const recharges = ref([]) // 充值记录
+    const allRecords = ref([]) // 合并的订单和充值记录（用于"订单记录"标签页）
     const activeTab = ref('orders') // 标签页：orders-订单，recharges-充值
     const currentPage = ref(1)
     const pageSize = ref(20)
@@ -525,6 +540,11 @@ export default {
         // 确保响应式更新
         orders.value = ordersList
         total.value = response.data.data?.total || response.data.total || 0
+        
+        // 如果当前在"订单记录"标签页，合并记录
+        if (activeTab.value === 'orders') {
+          mergeRecords()
+        }
       } catch (error) {
         console.error('加载订单列表失败:', error)
         const errorMsg = error.response?.data?.message || error.message || '加载订单列表失败'
@@ -532,6 +552,7 @@ export default {
         // 确保即使出错也清空数据，避免显示旧数据
         orders.value = []
         total.value = 0
+        allRecords.value = []
       } finally {
         loading.value = false
       }
@@ -571,11 +592,21 @@ export default {
           if (recharges.value.length === 0 && rechargeTotal.value === 0) {
             // 静默处理，不显示错误消息
           }
+          
+          // 如果当前在"订单记录"标签页，合并记录
+          if (activeTab.value === 'orders') {
+            mergeRecords()
+          }
         } else {
           // API返回失败，但不一定是错误，可能是没有数据
           recharges.value = []
           rechargeTotal.value = 0
           // 不显示错误消息，让页面显示"暂无数据"
+          
+          // 如果当前在"订单记录"标签页，合并记录
+          if (activeTab.value === 'orders') {
+            mergeRecords()
+          }
         }
       } catch (error) {
         console.error('加载充值记录失败:', error)
@@ -600,13 +631,46 @@ export default {
       }
     }
 
+    // 合并订单和充值记录（用于"订单记录"标签页）
+    const mergeRecords = () => {
+      const merged = []
+      
+      // 添加订单记录（标记类型）
+      orders.value.forEach(order => {
+        merged.push({
+          ...order,
+          record_type: 'order'
+        })
+      })
+      
+      // 添加充值记录（标记类型）
+      recharges.value.forEach(recharge => {
+        merged.push({
+          ...recharge,
+          record_type: 'recharge'
+        })
+      })
+      
+      // 按创建时间倒序排序
+      merged.sort((a, b) => {
+        const timeA = new Date(a.created_at || 0).getTime()
+        const timeB = new Date(b.created_at || 0).getTime()
+        return timeB - timeA
+      })
+      
+      allRecords.value = merged
+    }
+
     // 标签页切换处理
     const handleTabChange = (tabName) => {
       currentPage.value = 1
       if (tabName === 'recharges') {
         loadRecharges()
       } else {
-        loadOrders()
+        // "订单记录"标签页需要同时加载订单和充值记录
+        Promise.all([loadOrders(), loadRecharges()]).then(() => {
+          mergeRecords()
+        })
       }
     }
 
@@ -615,7 +679,10 @@ export default {
       if (activeTab.value === 'recharges') {
         loadRecharges()
       } else {
-        loadOrders()
+        // "订单记录"标签页需要同时加载订单和充值记录
+        Promise.all([loadOrders(), loadRecharges()]).then(() => {
+          mergeRecords()
+        })
       }
     }
 
@@ -628,7 +695,10 @@ export default {
       if (activeTab.value === 'recharges') {
         loadRecharges()
       } else {
-        loadOrders()
+        // "订单记录"标签页需要同时加载订单和充值记录
+        Promise.all([loadOrders(), loadRecharges()]).then(() => {
+          mergeRecords()
+        })
       }
     }
 
@@ -651,12 +721,32 @@ export default {
 
     const handleSizeChange = (val) => {
       pageSize.value = val
+      currentPage.value = 1
+      if (activeTab.value === 'recharges') {
+        loadRecharges()
+      } else {
+        // "订单记录"标签页需要同时加载订单和充值记录
+        Promise.all([loadOrders(), loadRecharges()]).then(() => {
+          mergeRecords()
+        })
+      }
+    }
+    
+    const handleCurrentChangeOld = (val) => {
+      pageSize.value = val
       loadOrders()
     }
 
     const handleCurrentChange = (val) => {
       currentPage.value = val
-      loadOrders()
+      if (activeTab.value === 'recharges') {
+        loadRecharges()
+      } else {
+        // "订单记录"标签页需要同时加载订单和充值记录
+        Promise.all([loadOrders(), loadRecharges()]).then(() => {
+          mergeRecords()
+        })
+      }
     }
 
     const viewOrder = (order) => {
@@ -925,7 +1015,10 @@ export default {
         }
       }
       window.addEventListener('resize', handleResize)
-      loadOrders()
+      // "订单记录"标签页需要同时加载订单和充值记录
+      Promise.all([loadOrders(), loadRecharges()]).then(() => {
+        mergeRecords()
+      })
       loadStatistics()
     })
     
@@ -937,6 +1030,7 @@ export default {
       loading,
       orders,
       recharges,
+      allRecords,
       activeTab,
       currentPage,
       pageSize,
