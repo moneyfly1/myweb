@@ -1093,14 +1093,22 @@ const checkRechargeStatus = async () => {
       }
       
       ElMessage.success('充值成功！余额已到账')
-      closeRechargeDialog()
       
-      // 刷新用户信息，确保余额更新
+      // 立即刷新用户信息，确保余额更新
       await loadUserInfo()
+      
       // 延迟再次刷新，确保余额显示正确（防止缓存问题）
       setTimeout(async () => {
         await loadUserInfo()
-      }, 500)
+      }, 300)
+      
+      // 再延迟一次刷新，确保余额完全同步
+      setTimeout(async () => {
+        await loadUserInfo()
+      }, 1000)
+      
+      // 关闭对话框
+      closeRechargeDialog()
     } else if (rechargeData.status === 'cancelled' || rechargeData.status === 'failed') {
       // 充值已取消或失败
       if (rechargeStatusInterval) {
