@@ -292,6 +292,13 @@ func SetupRouter() *gin.Engine {
 			recharge.POST("", handlers.CreateRecharge)
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
 		}
+		// 管理员充值记录
+		rechargeAdmin := api.Group("/recharge/admin")
+		rechargeAdmin.Use(middleware.AuthMiddleware())
+		rechargeAdmin.Use(middleware.AdminMiddleware())
+		{
+			rechargeAdmin.GET("", handlers.GetAdminRechargeRecords)
+		}
 
 		// 配置
 		config := api.Group("/config")
