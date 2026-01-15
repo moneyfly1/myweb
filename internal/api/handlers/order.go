@@ -344,11 +344,12 @@ func CancelOrderByNo(c *gin.Context) {
 }
 
 // GetAdminOrders 管理员获取订单列表
+// 支持 include_recharges 参数，当为 true 时同时返回订单和充值记录
 func GetAdminOrders(c *gin.Context) {
 	db := database.GetDB()
-	var orders []models.Order
-	// 不 Preload，避免 PackageID=0 的问题，在循环中单独查询
-	query := db.Model(&models.Order{})
+	
+	// 检查是否包含充值记录
+	includeRecharges := c.Query("include_recharges") == "true"
 
 	// 分页参数（支持 page/size 和 skip/limit）
 	page := 1
@@ -385,8 +386,153 @@ func GetAdminOrders(c *gin.Context) {
 	if keyword == "" {
 		keyword = c.Query("search")
 	}
+
+	// 状态筛选
+	status := c.Query("status")
+
+	if includeRecharges {
+		// 同时查询订单和充值记录，合并后统一分页
+		allRecords := make([]gin.H, 0)
+		
+		// 查询订单
+		orderQuery := db.Model(&models.Order{})
+		if keyword != "" {
+			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+			if sanitizedKeyword != "" {
+				orderQuery = orderQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
+					"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+			}
+		}
+		if status != "" && status != "all" {
+			orderQuery = orderQuery.Where("status = ?", status)
+		}
+		
+		var orders []models.Order
+		orderQuery = orderQuery.Preload("User").Preload("Package")
+		if err := orderQuery.Order("created_at DESC").Find(&orders).Error; err == nil {
+			orderList := buildOrderListData(db, orders)
+			for _, order := range orderList {
+				allRecords = append(allRecords, gin.H{
+					"record_type": "order",
+					"created_at":  order["created_at"],
+					"data":        order,
+				})
+			}
+		}
+		
+		// 查询充值记录
+		rechargeQuery := db.Model(&models.RechargeRecord{}).Preload("User")
+		if keyword != "" {
+			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+			if sanitizedKeyword != "" {
+				rechargeQuery = rechargeQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
+					"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+			}
+		}
+		if status != "" && status != "all" {
+			rechargeQuery = rechargeQuery.Where("status = ?", status)
+		}
+		
+		var recharges []models.RechargeRecord
+		if err := rechargeQuery.Order("created_at DESC").Find(&recharges).Error; err == nil {
+			formatIP := func(ip string) string {
+				if ip == "" {
+					return "-"
+				}
+				if ip == "::1" {
+					return "127.0.0.1"
+				}
+				if strings.HasPrefix(ip, "::ffff:") {
+					return strings.TrimPrefix(ip, "::ffff:")
+				}
+				return ip
+			}
+			
+			for _, record := range recharges {
+				ipValue := utils.GetNullStringValue(record.IPAddress)
+				var ipStr string
+				if ipValue != nil {
+					ipStr = ipValue.(string)
+				}
+				formatIP(ipStr) // 格式化IP（暂时不使用，但保留格式化逻辑）
+				
+				userInfo := gin.H{}
+				if record.User.ID > 0 {
+					userInfo = gin.H{
+						"id":       record.User.ID,
+						"username": record.User.Username,
+						"email":    record.User.Email,
+					}
+				}
+				
+				rechargeData := gin.H{
+					"id":                     record.ID,
+					"user_id":                record.UserID,
+					"user":                   userInfo,
+					"order_no":               record.OrderNo,
+					"amount":                 record.Amount,
+					"status":                 record.Status,
+					"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+					"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+					"paid_at": func() interface{} {
+						if record.PaidAt.Valid {
+							return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+						}
+						return nil
+					}(),
+					"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+				}
+				
+				allRecords = append(allRecords, gin.H{
+					"record_type": "recharge",
+					"created_at":  rechargeData["created_at"],
+					"data":        rechargeData,
+				})
+			}
+		}
+		
+		// 按创建时间倒序排序
+		for i := 0; i < len(allRecords)-1; i++ {
+			for j := i + 1; j < len(allRecords); j++ {
+				timeI, _ := time.Parse("2006-01-02 15:04:05", allRecords[i]["created_at"].(string))
+				timeJ, _ := time.Parse("2006-01-02 15:04:05", allRecords[j]["created_at"].(string))
+				if timeI.Before(timeJ) {
+					allRecords[i], allRecords[j] = allRecords[j], allRecords[i]
+				}
+			}
+		}
+		
+		// 统一分页
+		total := int64(len(allRecords))
+		offset := (page - 1) * size
+		end := offset + size
+		if end > len(allRecords) {
+			end = len(allRecords)
+		}
+		
+		mergedList := make([]gin.H, 0)
+		if offset < len(allRecords) {
+			for i := offset; i < end; i++ {
+				record := allRecords[i]["data"].(gin.H)
+				record["record_type"] = allRecords[i]["record_type"]
+				mergedList = append(mergedList, record)
+			}
+		}
+		
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"orders": mergedList,
+			"total":  total,
+			"page":   page,
+			"size":   size,
+		})
+		return
+	}
+
+	// 原有逻辑：只返回订单
+	var orders []models.Order
+	query := db.Model(&models.Order{})
+	
 	if keyword != "" {
-		// 清理和验证搜索关键词，防止SQL注入
 		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 		if sanitizedKeyword != "" {
 			query = query.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
@@ -394,24 +540,24 @@ func GetAdminOrders(c *gin.Context) {
 		}
 	}
 
-	// 状态筛选
-	if status := c.Query("status"); status != "" {
+	if status != "" && status != "all" {
 		query = query.Where("status = ?", status)
 	}
 
 	var total int64
-	// 使用相同的查询条件计算总数
 	countQuery := db.Model(&models.Order{})
 	if keyword != "" {
-		countQuery = countQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
-			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			countQuery = countQuery.Where("order_no LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)",
+				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
-	if status := c.Query("status"); status != "" {
+	if status != "" && status != "all" {
 		countQuery = countQuery.Where("status = ?", status)
 	}
 	countQuery.Count(&total)
 
-	// 使用 Preload 预加载 User 和 Package，避免 N+1 查询
 	query = query.Preload("User").Preload("Package")
 
 	offset := (page - 1) * size
@@ -420,7 +566,6 @@ func GetAdminOrders(c *gin.Context) {
 		return
 	}
 
-	// 使用辅助函数构建订单列表数据
 	orderList := buildOrderListData(db, orders)
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"orders": orderList,

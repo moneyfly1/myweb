@@ -335,7 +335,7 @@
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
-          :total="activeTab === 'recharges' ? rechargeTotal : (total + rechargeTotal)"
+          :total="activeTab === 'recharges' ? rechargeTotal : total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
@@ -528,6 +528,11 @@ export default {
           params.status = searchForm.status
         }
         
+        // 如果当前在"订单记录"标签页，请求包含充值记录
+        if (activeTab.value === 'orders') {
+          params.include_recharges = 'true'
+        }
+        
         const response = await api.get('/admin/orders', { params })
         
         // 调试信息
@@ -537,14 +542,17 @@ export default {
         
         const ordersList = response.data.data?.orders || []
         
-        // 确保响应式更新
-        orders.value = ordersList
-        total.value = response.data.data?.total || response.data.total || 0
-        
-        // 如果当前在"订单记录"标签页，合并记录
         if (activeTab.value === 'orders') {
-          mergeRecords()
+          // "订单记录"标签页：使用合并后的数据
+          allRecords.value = ordersList
+          orders.value = ordersList.filter(r => r.record_type === 'order')
+          recharges.value = ordersList.filter(r => r.record_type === 'recharge')
+        } else {
+          // "充值记录"标签页：只显示充值记录
+          orders.value = ordersList
         }
+        
+        total.value = response.data.data?.total || response.data.total || 0
       } catch (error) {
         console.error('加载订单列表失败:', error)
         const errorMsg = error.response?.data?.message || error.message || '加载订单列表失败'
@@ -553,6 +561,7 @@ export default {
         orders.value = []
         total.value = 0
         allRecords.value = []
+        recharges.value = []
       } finally {
         loading.value = false
       }
@@ -592,11 +601,6 @@ export default {
           if (recharges.value.length === 0 && rechargeTotal.value === 0) {
             // 静默处理，不显示错误消息
           }
-          
-          // 如果当前在"订单记录"标签页，合并记录
-          if (activeTab.value === 'orders') {
-            mergeRecords()
-          }
         } else {
           // API返回失败，但不一定是错误，可能是没有数据
           recharges.value = []
@@ -605,7 +609,6 @@ export default {
           
           // 如果当前在"订单记录"标签页，合并记录
           if (activeTab.value === 'orders') {
-            mergeRecords()
           }
         }
       } catch (error) {
@@ -631,46 +634,14 @@ export default {
       }
     }
 
-    // 合并订单和充值记录（用于"订单记录"标签页）
-    const mergeRecords = () => {
-      const merged = []
-      
-      // 添加订单记录（标记类型）
-      orders.value.forEach(order => {
-        merged.push({
-          ...order,
-          record_type: 'order'
-        })
-      })
-      
-      // 添加充值记录（标记类型）
-      recharges.value.forEach(recharge => {
-        merged.push({
-          ...recharge,
-          record_type: 'recharge'
-        })
-      })
-      
-      // 按创建时间倒序排序
-      merged.sort((a, b) => {
-        const timeA = new Date(a.created_at || 0).getTime()
-        const timeB = new Date(b.created_at || 0).getTime()
-        return timeB - timeA
-      })
-      
-      allRecords.value = merged
-    }
-
     // 标签页切换处理
     const handleTabChange = (tabName) => {
       currentPage.value = 1
       if (tabName === 'recharges') {
         loadRecharges()
       } else {
-        // "订单记录"标签页需要同时加载订单和充值记录
-        Promise.all([loadOrders(), loadRecharges()]).then(() => {
-          mergeRecords()
-        })
+        // "订单记录"标签页：后端会同时返回订单和充值记录
+        loadOrders()
       }
     }
 
@@ -679,10 +650,8 @@ export default {
       if (activeTab.value === 'recharges') {
         loadRecharges()
       } else {
-        // "订单记录"标签页需要同时加载订单和充值记录
-        Promise.all([loadOrders(), loadRecharges()]).then(() => {
-          mergeRecords()
-        })
+        // "订单记录"标签页：后端会同时返回订单和充值记录
+        loadOrders()
       }
     }
 
@@ -695,10 +664,8 @@ export default {
       if (activeTab.value === 'recharges') {
         loadRecharges()
       } else {
-        // "订单记录"标签页需要同时加载订单和充值记录
-        Promise.all([loadOrders(), loadRecharges()]).then(() => {
-          mergeRecords()
-        })
+        // "订单记录"标签页：后端会同时返回订单和充值记录
+        loadOrders()
       }
     }
 
@@ -1015,10 +982,8 @@ export default {
         }
       }
       window.addEventListener('resize', handleResize)
-      // "订单记录"标签页需要同时加载订单和充值记录
-      Promise.all([loadOrders(), loadRecharges()]).then(() => {
-        mergeRecords()
-      })
+      // "订单记录"标签页：后端会同时返回订单和充值记录
+      loadOrders()
       loadStatistics()
     })
     
