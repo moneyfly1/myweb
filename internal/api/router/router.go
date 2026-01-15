@@ -288,16 +288,15 @@ func SetupRouter() *gin.Engine {
 		{
 			recharge.GET("", handlers.GetRechargeRecords)
 			recharge.GET("/status/:orderNo", handlers.GetRechargeStatusByNo) // 通过订单号获取充值状态
+			// 管理员充值记录（必须在 /:id 之前，避免路由冲突）
+			rechargeAdmin := recharge.Group("/admin")
+			rechargeAdmin.Use(middleware.AdminMiddleware())
+			{
+				rechargeAdmin.GET("", handlers.GetAdminRechargeRecords)
+			}
 			recharge.GET("/:id", handlers.GetRechargeRecord)
 			recharge.POST("", handlers.CreateRecharge)
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
-		}
-		// 管理员充值记录
-		rechargeAdmin := api.Group("/recharge/admin")
-		rechargeAdmin.Use(middleware.AuthMiddleware())
-		rechargeAdmin.Use(middleware.AdminMiddleware())
-		{
-			rechargeAdmin.GET("", handlers.GetAdminRechargeRecords)
 		}
 
 		// 配置
