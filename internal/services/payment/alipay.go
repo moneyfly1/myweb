@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -123,20 +124,19 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 		isProduction: isProduction,
 	}
 
-	// 设置回调地址
+	// 设置回调地址（可选）
+	// 如果未配置回调地址，则不设置 s.notifyURL，创建支付时将不传递 notify_url 参数
+	// 此时支付宝将使用应用在支付宝后台配置的回调地址
 	if paymentConfig.NotifyURL.Valid && paymentConfig.NotifyURL.String != "" {
 		service.notifyURL = strings.TrimSpace(paymentConfig.NotifyURL.String)
-		// 将回调地址配置日志改为 DEBUG 级别，避免频繁轮询时产生大量日志
-		// utils.LogInfo("支付宝回调地址已配置: %s", service.notifyURL)
 	} else {
-		// 如果未配置回调地址，返回错误
-		utils.LogErrorMsg("支付宝回调地址未配置")
+		// 允许为空，使用支付宝后台配置
+		utils.LogInfo("支付宝回调地址未配置，将使用支付宝后台配置的地址")
 		service.notifyURL = ""
 	}
+
 	if paymentConfig.ReturnURL.Valid && paymentConfig.ReturnURL.String != "" {
 		service.returnURL = strings.TrimSpace(paymentConfig.ReturnURL.String)
-		// 将返回地址配置日志改为 DEBUG 级别，避免频繁轮询时产生大量日志
-		// utils.LogInfo("支付宝返回地址已配置: %s", service.returnURL)
 	}
 
 	return service, nil
@@ -155,20 +155,24 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 	if amount <= 0 {
 		return "", fmt.Errorf("支付金额必须大于0，当前金额: %.2f", amount)
 	}
-	if s.notifyURL == "" {
-		return "", fmt.Errorf("异步回调地址未配置，请在支付配置中设置 NotifyURL")
+
+	// 2. 创建支付参数 (关键修复: 必须先初始化 param 变量!)
+	var param = alipay.TradePreCreate{}
+
+	// 3. 设置回调地址
+	// 如果配置了 notifyURL 则使用，否则不传（走支付宝后台配置）
+	if s.notifyURL != "" {
+		param.NotifyURL = s.notifyURL
+		utils.LogInfo("支付宝回调地址(NotifyURL)已设置: %s", s.notifyURL)
+	} else {
+		utils.LogWarn("支付宝回调地址未配置，将使用支付宝后台配置的地址（如果后台也未配置，将无法收到回调）")
 	}
 
-	// 2. 使用 TradePreCreate 接口生成二维码（推荐用于PC端扫码支付）
-	// 参考：https://opendocs.alipay.com/apis/api_1/alipay.trade.precreate
-	// 重要：TradePreCreate（当面付-生成二维码）接口不需要 ProductCode 字段
-	// FAST_INSTANT_TRADE_PAY 是电脑网站支付的产品码，不适用于当面付接口
-	// 如果设置了错误的产品码，会导致权限不足（40006）错误
-	param := alipay.TradePreCreate{}
-	param.NotifyURL = s.notifyURL
 	if s.returnURL != "" {
 		param.ReturnURL = s.returnURL
 	}
+
+	// 4. 设置订单信息
 	param.Subject = fmt.Sprintf("订单支付-%s", order.OrderNo)
 	param.OutTradeNo = order.OrderNo
 	param.TotalAmount = fmt.Sprintf("%.2f", amount)
@@ -177,6 +181,7 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 	// FAST_INSTANT_TRADE_PAY 是电脑网站支付的产品码，会导致权限不足错误
 	param.ProductCode = "" // 明确设置为空，避免使用默认值
 
+	// 5. 记录请求参数（便于排查问题）
 	utils.LogInfo("支付宝TradePreCreate请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s",
 		param.OutTradeNo, param.TotalAmount, param.Subject, param.NotifyURL)
 
@@ -258,15 +263,19 @@ func (s *AlipayService) createPagePayURL(order *models.Order, amount float64) (s
 	if amount <= 0 {
 		return "", fmt.Errorf("支付金额必须大于0")
 	}
-	if s.notifyURL == "" {
-		return "", fmt.Errorf("异步回调地址未配置")
-	}
 
-	param := alipay.TradePagePay{}
-	param.NotifyURL = s.notifyURL
+	// 创建支付参数 (关键修复: 必须先初始化 param 变量!)
+	var param = alipay.TradePagePay{}
+
+	// 设置回调地址
+	if s.notifyURL != "" {
+		param.NotifyURL = s.notifyURL
+	}
 	if s.returnURL != "" {
 		param.ReturnURL = s.returnURL
 	}
+
+	// 设置订单信息
 	param.Subject = fmt.Sprintf("订单支付-%s", order.OrderNo)
 	param.OutTradeNo = order.OrderNo
 	param.TotalAmount = fmt.Sprintf("%.2f", amount)
@@ -292,7 +301,32 @@ func (s *AlipayService) createPagePayURL(order *models.Order, amount float64) (s
 	return payURL.String(), nil
 }
 
-// VerifyNotify 验证回调
+// ParseNotification 解析并验证异步通知
+// 直接使用 SDK 的 GetTradeNotification 方法，它会自动处理签名验证和参数解析
+func (s *AlipayService) ParseNotification(req *http.Request) (*AlipayNotification, error) {
+	// 使用 SDK 解析请求
+	notification, err := s.client.GetTradeNotification(req)
+	if err != nil {
+		return nil, fmt.Errorf("解析或验证支付宝通知失败: %v", err)
+	}
+
+	// 转换为内部结构
+	return &AlipayNotification{
+		NotifyID:      notification.NotifyId,
+		TradeNo:       notification.TradeNo,
+		OutTradeNo:    notification.OutTradeNo,
+		TradeStatus:   string(notification.TradeStatus),
+		TotalAmount:   notification.TotalAmount,
+		ReceiptAmount: notification.ReceiptAmount,
+		BuyerID:       notification.BuyerId,
+		BuyerLogonID:  notification.BuyerLogonId,
+		SellerID:      notification.SellerId,
+		SellerEmail:   notification.SellerEmail,
+		GmtPayment:    notification.GmtPayment,
+	}, nil
+}
+
+// VerifyNotify 验证回调 (已废弃，建议使用 ParseNotification)
 func (s *AlipayService) VerifyNotify(params map[string]string) bool {
 	// 将 map 转换为 url.Values
 	values := url.Values{}
@@ -308,7 +342,7 @@ func (s *AlipayService) VerifyNotify(params map[string]string) bool {
 	return true
 }
 
-// DecodeNotification 解析异步通知
+// DecodeNotification 解析异步通知 (已废弃，建议使用 ParseNotification)
 func (s *AlipayService) DecodeNotification(params map[string]string) (*AlipayNotification, error) {
 	// 将 map 转换为 url.Values
 	values := url.Values{}

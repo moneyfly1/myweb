@@ -307,33 +307,37 @@ func GetUserStatistics(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
-// GetRegionStats 获取地区统计
 func GetRegionStats(c *gin.Context) {
 	db := database.GetDB()
 
-	// 从审计日志中获取地区信息
 	var auditLogs []models.AuditLog
-	db.Select("DISTINCT user_id, location, ip_address").
-		Where("user_id IS NOT NULL AND (location IS NOT NULL AND location != '' OR ip_address IS NOT NULL AND ip_address != '' AND ip_address != '127.0.0.1' AND ip_address != '::1')").
+	db.Select("DISTINCT user_id, location, ip_address, created_at").
+		Where("user_id IS NOT NULL AND (location IS NOT NULL AND location != '' OR ip_address IS NOT NULL AND ip_address != '')").
+		Order("created_at DESC").
 		Find(&auditLogs)
 
-	// 从用户活动中获取地区信息
 	var activities []models.UserActivity
 	db.Select("DISTINCT user_id, location, ip_address").
 		Where("location IS NOT NULL AND location != ''").
 		Find(&activities)
 
-	// 统计地区分布
-	regionMap := make(map[string]map[string]interface{})
-	userRegionMap := make(map[uint]string)
-	regionDetailsMap := make(map[string]map[string]interface{})
+	type RegionStat struct {
+		Region     string `json:"region"`
+		Country    string `json:"country"`
+		City       string `json:"city"`
+		UserCount  int    `json:"userCount"`
+		LoginCount int    `json:"loginCount"`
+		Percentage string `json:"percentage"`
+		LastLogin  string `json:"lastLogin"`
+	}
 
-	// 解析位置信息的辅助函数
+	statsMap := make(map[string]*RegionStat)
+	userRegionMap := make(map[uint]string)
+
 	parseLocation := func(locationStr string) (country, city string) {
 		if locationStr == "" {
 			return "", ""
 		}
-		// 尝试解析JSON格式
 		var locationData map[string]interface{}
 		if err := json.Unmarshal([]byte(locationStr), &locationData); err == nil {
 			if c, ok := locationData["country"].(string); ok {
@@ -344,7 +348,6 @@ func GetRegionStats(c *gin.Context) {
 			}
 			return
 		}
-		// 尝试解析逗号分隔格式
 		if strings.Contains(locationStr, ",") {
 			parts := strings.Split(locationStr, ",")
 			if len(parts) >= 1 {
@@ -359,32 +362,19 @@ func GetRegionStats(c *gin.Context) {
 		return
 	}
 
-	// 处理审计日志
-	for _, log := range auditLogs {
-		if !log.UserID.Valid {
-			continue
-		}
-		userID := uint(log.UserID.Int64)
-
+	processEntry := func(userID uint, locationStr, ipStr string, createdAt time.Time) {
 		var country, city string
-		if log.Location.Valid && log.Location.String != "" {
-			country, city = parseLocation(log.Location.String)
-		} else if log.IPAddress.Valid && log.IPAddress.String != "" {
-			// 如果没有location，尝试使用GeoIP解析
-			ip := log.IPAddress.String
-			if geoip.IsEnabled() {
-				location, err := geoip.GetLocation(ip)
-				if err == nil && location != nil {
-					country = location.Country
-					city = location.City
-				}
+		if locationStr != "" {
+			country, city = parseLocation(locationStr)
+		} else if ipStr != "" && ipStr != "127.0.0.1" && ipStr != "::1" && geoip.IsEnabled() {
+			if location, err := geoip.GetLocation(ipStr); err == nil && location != nil {
+				country = location.Country
+				city = location.City
 			}
-		} else {
-			continue
 		}
 
 		if country == "" {
-			continue
+			return
 		}
 
 		regionKey := country
@@ -392,96 +382,56 @@ func GetRegionStats(c *gin.Context) {
 			regionKey = country + " - " + city
 		}
 
-		// 统计地区
-		if _, exists := regionMap[regionKey]; !exists {
-			regionMap[regionKey] = map[string]interface{}{
-				"region":     regionKey,
-				"country":    country,
-				"city":       city,
-				"userCount":  0,
-				"loginCount": 0,
+		if _, exists := statsMap[regionKey]; !exists {
+			statsMap[regionKey] = &RegionStat{
+				Region:    regionKey,
+				Country:   country,
+				City:      city,
+				LastLogin: "-",
 			}
 		}
-		regionMap[regionKey]["loginCount"] = regionMap[regionKey]["loginCount"].(int) + 1
 
-		// 记录用户地区
+		stat := statsMap[regionKey]
+		stat.LoginCount++
+
+		if !createdAt.IsZero() {
+			currentLastLogin := time.Time{}
+			if stat.LastLogin != "-" {
+				currentLastLogin, _ = time.Parse("2006-01-02 15:04:05", stat.LastLogin)
+			}
+			if createdAt.After(currentLastLogin) {
+				stat.LastLogin = createdAt.Format("2006-01-02 15:04:05")
+			}
+		}
+
 		if _, exists := userRegionMap[userID]; !exists {
 			userRegionMap[userID] = regionKey
-			regionMap[regionKey]["userCount"] = regionMap[regionKey]["userCount"].(int) + 1
-		}
-
-		// 详细统计
-		detailKey := country + "|" + city
-		if _, exists := regionDetailsMap[detailKey]; !exists {
-			regionDetailsMap[detailKey] = map[string]interface{}{
-				"country":    country,
-				"city":       city,
-				"userCount":  0,
-				"loginCount": 0,
-				"lastLogin":  log.CreatedAt.Format("2006-01-02 15:04:05"),
-			}
-		}
-		regionDetailsMap[detailKey]["loginCount"] = regionDetailsMap[detailKey]["loginCount"].(int) + 1
-		lastLoginStr := regionDetailsMap[detailKey]["lastLogin"].(string)
-		lastLoginTime, _ := time.Parse("2006-01-02 15:04:05", lastLoginStr)
-		if log.CreatedAt.After(lastLoginTime) {
-			regionDetailsMap[detailKey]["lastLogin"] = log.CreatedAt.Format("2006-01-02 15:04:05")
+			stat.UserCount++
 		}
 	}
 
-	// 处理用户活动
+	for _, log := range auditLogs {
+		if log.UserID.Valid {
+			processEntry(uint(log.UserID.Int64), log.Location.String, log.IPAddress.String, log.CreatedAt)
+		}
+	}
+
 	for _, activity := range activities {
-		if !activity.Location.Valid || activity.Location.String == "" {
-			continue
-		}
-
-		country, city := parseLocation(activity.Location.String)
-		if country == "" {
-			continue
-		}
-
-		regionKey := country
-		if city != "" {
-			regionKey = country + " - " + city
-		}
-
-		if _, exists := regionMap[regionKey]; !exists {
-			regionMap[regionKey] = map[string]interface{}{
-				"region":     regionKey,
-				"country":    country,
-				"city":       city,
-				"userCount":  0,
-				"loginCount": 0,
-			}
-		}
-
-		if _, exists := userRegionMap[activity.UserID]; !exists {
-			userRegionMap[activity.UserID] = regionKey
-			regionMap[regionKey]["userCount"] = regionMap[regionKey]["userCount"].(int) + 1
-		}
+		processEntry(activity.UserID, activity.Location.String, "", time.Time{})
 	}
 
-	// 转换为数组并计算百分比
 	totalUsers := len(userRegionMap)
-	regions := make([]map[string]interface{}, 0, len(regionMap))
-	for _, region := range regionMap {
-		userCount := region["userCount"].(int)
+	regions := make([]*RegionStat, 0, len(statsMap))
+	for _, stat := range statsMap {
 		percentage := 0.0
 		if totalUsers > 0 {
-			percentage = float64(userCount) / float64(totalUsers) * 100
+			percentage = float64(stat.UserCount) / float64(totalUsers) * 100
 		}
-		region["percentage"] = fmt.Sprintf("%.1f", percentage)
-		regions = append(regions, region)
-	}
-
-	// 转换为详细统计数组
-	details := make([]map[string]interface{}, 0, len(regionDetailsMap))
-	for _, detail := range regionDetailsMap {
-		details = append(details, detail)
+		stat.Percentage = fmt.Sprintf("%.1f", percentage)
+		regions = append(regions, stat)
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"regions": regions,
-		"details": details,
 	})
 }
