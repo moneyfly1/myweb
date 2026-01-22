@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -391,22 +392,47 @@ func GetAdminOrders(c *gin.Context) {
 	status := c.Query("status")
 
 	if includeRecharges {
-		// 同时查询订单和充值记录，合并后统一分页
+		var orderCount, rechargeCount int64
+		orderCountQuery := db.Model(&models.Order{})
+		rechargeCountQuery := db.Model(&models.RechargeRecord{})
+
+		if keyword != "" {
+			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+			if sanitizedKeyword != "" {
+				orderCountQuery = orderCountQuery.Joins("LEFT JOIN users ON orders.user_id = users.id").Where(
+					"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+					"%"+sanitizedKeyword+"%", "%ORD%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%",
+				)
+				rechargeCountQuery = rechargeCountQuery.Joins("LEFT JOIN users ON recharge_records.user_id = users.id").Where(
+					"recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
+					"%"+sanitizedKeyword+"%", "%RCH%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%",
+				)
+			}
+		}
+		if status != "" && status != "all" {
+			orderCountQuery = orderCountQuery.Where("orders.status = ?", status)
+			rechargeCountQuery = rechargeCountQuery.Where("recharge_records.status = ?", status)
+		}
+		orderCountQuery.Count(&orderCount)
+		rechargeCountQuery.Count(&rechargeCount)
+		total := orderCount + rechargeCount
+
+		// 限制查询数据量：只查询足够的数据用于当前页和排序
+		// 查询 (page * size) + size 条记录，确保有足够数据用于分页
+		limit := page*size + size
+		if limit > 500 {
+			limit = 500
+		}
+
 		allRecords := make([]gin.H, 0)
 
-		// 查询订单（使用JOIN提高性能）
 		orderQuery := db.Model(&models.Order{}).Joins("LEFT JOIN users ON orders.user_id = users.id")
 		if keyword != "" {
 			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 			if sanitizedKeyword != "" {
-				// 支持通过订单号、用户名、邮箱查询
-				// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
 				orderQuery = orderQuery.Where(
 					"orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-					"%"+sanitizedKeyword+"%",     // 完整订单号匹配
-					"%ORD%"+sanitizedKeyword+"%", // 时间戳匹配（订单号格式：ORD + timestamp + 随机数）
-					"%"+sanitizedKeyword+"%",     // 用户名匹配
-					"%"+sanitizedKeyword+"%",     // 邮箱匹配
+					"%"+sanitizedKeyword+"%", "%ORD%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%",
 				)
 			}
 		}
@@ -416,7 +442,7 @@ func GetAdminOrders(c *gin.Context) {
 
 		var orders []models.Order
 		orderQuery = orderQuery.Preload("User").Preload("Package")
-		if err := orderQuery.Order("orders.created_at DESC").Find(&orders).Error; err == nil {
+		if err := orderQuery.Order("orders.created_at DESC").Limit(limit).Find(&orders).Error; err == nil {
 			orderList := buildOrderListData(db, orders)
 			for _, order := range orderList {
 				allRecords = append(allRecords, gin.H{
@@ -427,19 +453,13 @@ func GetAdminOrders(c *gin.Context) {
 			}
 		}
 
-		// 查询充值记录（使用JOIN提高性能）
 		rechargeQuery := db.Model(&models.RechargeRecord{}).Joins("LEFT JOIN users ON recharge_records.user_id = users.id")
 		if keyword != "" {
 			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
 			if sanitizedKeyword != "" {
-				// 支持通过订单号、用户名、邮箱查询
-				// 如果关键词是纯数字，可能是时间戳，也尝试匹配订单号中的时间戳部分
 				rechargeQuery = rechargeQuery.Where(
 					"recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?",
-					"%"+sanitizedKeyword+"%",     // 完整订单号匹配
-					"%RCH%"+sanitizedKeyword+"%", // 时间戳匹配（充值订单号格式：RCH + timestamp + userID + 随机数）
-					"%"+sanitizedKeyword+"%",     // 用户名匹配
-					"%"+sanitizedKeyword+"%",     // 邮箱匹配
+					"%"+sanitizedKeyword+"%", "%RCH%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%",
 				)
 			}
 		}
@@ -448,28 +468,8 @@ func GetAdminOrders(c *gin.Context) {
 		}
 
 		var recharges []models.RechargeRecord
-		if err := rechargeQuery.Order("created_at DESC").Find(&recharges).Error; err == nil {
-			formatIP := func(ip string) string {
-				if ip == "" {
-					return "-"
-				}
-				if ip == "::1" {
-					return "127.0.0.1"
-				}
-				if strings.HasPrefix(ip, "::ffff:") {
-					return strings.TrimPrefix(ip, "::ffff:")
-				}
-				return ip
-			}
-
+		if err := rechargeQuery.Order("created_at DESC").Limit(limit).Find(&recharges).Error; err == nil {
 			for _, record := range recharges {
-				ipValue := utils.GetNullStringValue(record.IPAddress)
-				var ipStr string
-				if ipValue != nil {
-					ipStr = ipValue.(string)
-				}
-				formatIP(ipStr) // 格式化IP（暂时不使用，但保留格式化逻辑）
-
 				userInfo := gin.H{}
 				if record.User.ID > 0 {
 					userInfo = gin.H{
@@ -505,19 +505,13 @@ func GetAdminOrders(c *gin.Context) {
 			}
 		}
 
-		// 按创建时间倒序排序
-		for i := 0; i < len(allRecords)-1; i++ {
-			for j := i + 1; j < len(allRecords); j++ {
-				timeI, _ := time.Parse("2006-01-02 15:04:05", allRecords[i]["created_at"].(string))
-				timeJ, _ := time.Parse("2006-01-02 15:04:05", allRecords[j]["created_at"].(string))
-				if timeI.Before(timeJ) {
-					allRecords[i], allRecords[j] = allRecords[j], allRecords[i]
-				}
-			}
-		}
+		// 使用高效的排序算法
+		sort.Slice(allRecords, func(i, j int) bool {
+			timeI, _ := time.Parse("2006-01-02 15:04:05", allRecords[i]["created_at"].(string))
+			timeJ, _ := time.Parse("2006-01-02 15:04:05", allRecords[j]["created_at"].(string))
+			return timeI.After(timeJ)
+		})
 
-		// 统一分页
-		total := int64(len(allRecords))
 		offset := (page - 1) * size
 		end := offset + size
 		if end > len(allRecords) {
@@ -748,12 +742,38 @@ func BulkMarkOrdersPaid(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	if err := db.Model(&models.Order{}).Where("id IN ?", req.OrderIDs).Update("status", "paid").Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "批量更新失败", err)
-		return
+	svc := orderServicePkg.NewOrderService()
+	successCount := 0
+	failCount := 0
+
+	for _, orderID := range req.OrderIDs {
+		var order models.Order
+		// 查找待支付的订单
+		if err := db.Where("id = ? AND status = ?", orderID, "pending").First(&order).Error; err != nil {
+			failCount++
+			continue
+		}
+
+		// 设置支付时间
+		now := utils.GetBeijingTime()
+		order.PaymentTime = database.NullTime(now)
+
+		// 显式调用 ProcessPaidOrder 以触发业务逻辑（发放订阅、增加余额等）
+		// 注意：ProcessPaidOrder 内部会处理事务和状态更新
+		if _, err := svc.ProcessPaidOrder(&order); err != nil {
+			utils.LogError("BulkMarkOrdersPaid: process order failed", err, map[string]interface{}{
+				"order_id": orderID,
+			})
+			failCount++
+		} else {
+			successCount++
+
+			// 尝试发送通知（非阻塞）
+			go sendPaymentNotifications(db, order.OrderNo)
+		}
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "批量标记成功", nil)
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("处理完成: 成功 %d, 失败 %d", successCount, failCount), nil)
 }
 
 // BulkCancelOrders 批量取消订单
@@ -977,14 +997,34 @@ func GetOrderStatusByNo(c *gin.Context) {
 		return
 	}
 
-	// 如果订单是 pending 状态，且创建时间超过5秒，主动查询支付状态
-	// 增加查询间隔限制，避免频繁查询（每30秒才查询一次支付宝状态）
+	// 如果订单是 pending 状态，且创建时间超过3秒，主动查询支付状态
 	if order.Status == "pending" {
-		// 检查订单创建时间，避免频繁查询
+		// 检查订单创建时间
 		timeSinceCreated := time.Since(order.CreatedAt)
-		// 增加间隔限制：每30秒才查询一次支付宝状态，避免频繁初始化
-		// 使用秒数取模，只在30秒的倍数时查询（例如：30秒、60秒、90秒...）
-		shouldQuery := timeSinceCreated > 5*time.Second && int(timeSinceCreated.Seconds())%30 < 2
+
+		// 分段查询策略(优化用户体验):
+		// 1. 创建后3-10秒: 每次请求都查询(用户刚支付,最需要快速反馈)
+		// 2. 10-60秒: 每5秒查询一次(给回调足够时间,同时保持响应)
+		// 3. 60秒以上: 每30秒查询一次(长时间未支付,降低查询频率)
+		var shouldQuery bool
+		if timeSinceCreated >= 3*time.Second && timeSinceCreated < 10*time.Second {
+			// 刚支付阶段,每次都查询
+			shouldQuery = true
+			utils.LogInfo("订单状态查询(快速模式): order_no=%s, time_since_created=%.1fs", orderNo, timeSinceCreated.Seconds())
+		} else if timeSinceCreated >= 10*time.Second && timeSinceCreated < 60*time.Second {
+			// 中等时间,每5秒查询一次
+			shouldQuery = int(timeSinceCreated.Seconds())%5 < 2
+			if shouldQuery {
+				utils.LogInfo("订单状态查询(常规模式): order_no=%s, time_since_created=%.1fs", orderNo, timeSinceCreated.Seconds())
+			}
+		} else if timeSinceCreated >= 60*time.Second {
+			// 长时间未支付,每30秒查询一次
+			shouldQuery = int(timeSinceCreated.Seconds())%30 < 2
+			if shouldQuery {
+				utils.LogInfo("订单状态查询(慢速模式): order_no=%s, time_since_created=%.1fs", orderNo, timeSinceCreated.Seconds())
+			}
+		}
+
 		if shouldQuery {
 			// 获取支付交易记录
 			var transaction models.PaymentTransaction
@@ -997,55 +1037,63 @@ func GetOrderStatusByNo(c *gin.Context) {
 						alipayService, err := payment.NewAlipayService(&paymentConfig)
 						if err == nil {
 							queryResult, err := alipayService.QueryOrder(orderNo)
-							if err == nil && queryResult != nil && queryResult.IsPaid() {
-								// 支付成功，更新订单状态
+							if err == nil && queryResult != nil {
+								utils.LogInfo("支付宝查询结果: order_no=%s, status=%s, paid=%v", orderNo, queryResult.TradeStatus, queryResult.IsPaid())
 
-								// 使用事务更新订单状态
-								tx := db.Begin()
-								success := false
-								defer func() {
-									if !success {
-										tx.Rollback()
-									}
-								}()
+								if queryResult.IsPaid() {
+									// 支付成功，更新订单状态
 
-								// 重新加载订单（获取最新状态，避免重复处理）
-								var latestOrder models.Order
-								if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&latestOrder).Error; err == nil {
-									latestOrder.Status = "paid"
-									latestOrder.PaymentTime = database.NullTime(utils.GetBeijingTime())
-									if err := tx.Save(&latestOrder).Error; err == nil {
-										var latestTransaction models.PaymentTransaction
-										if err := tx.Where("order_id = ?", latestOrder.ID).First(&latestTransaction).Error; err == nil {
-											latestTransaction.Status = "success"
-											latestTransaction.ExternalTransactionID = database.NullString(queryResult.TradeNo)
-											if err := tx.Save(&latestTransaction).Error; err == nil {
-												if err := tx.Commit().Error; err == nil {
-													success = true
-													// 订单状态已更新，处理后续逻辑（异步）
-													go func() {
-														var processedOrder models.Order
-														if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&processedOrder).Error; err == nil {
-															if processedOrder.Status == "paid" {
-																// 统一使用 ProcessPaidOrder 处理所有订单类型（套餐订单和设备升级订单）
-																var processedUser models.User
-																if db.First(&processedUser, processedOrder.UserID).Error == nil {
-																	svc := orderServicePkg.NewOrderService()
-																	svc.ProcessPaidOrder(&processedOrder)
+									// 使用事务更新订单状态
+									tx := db.Begin()
+									success := false
+									defer func() {
+										if !success {
+											tx.Rollback()
+										}
+									}()
+
+									// 重新加载订单（获取最新状态，避免重复处理）
+									var latestOrder models.Order
+									if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&latestOrder).Error; err == nil {
+										latestOrder.Status = "paid"
+										latestOrder.PaymentTime = database.NullTime(utils.GetBeijingTime())
+										if err := tx.Save(&latestOrder).Error; err == nil {
+											var latestTransaction models.PaymentTransaction
+											if err := tx.Where("order_id = ?", latestOrder.ID).First(&latestTransaction).Error; err == nil {
+												latestTransaction.Status = "success"
+												latestTransaction.ExternalTransactionID = database.NullString(queryResult.TradeNo)
+												if err := tx.Save(&latestTransaction).Error; err == nil {
+													if err := tx.Commit().Error; err == nil {
+														success = true
+														utils.LogInfo("主动查询发现支付成功: order_no=%s, trade_no=%s", orderNo, queryResult.TradeNo)
+
+														// 订单状态已更新，处理后续逻辑（异步）
+														go func() {
+															var processedOrder models.Order
+															if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&processedOrder).Error; err == nil {
+																if processedOrder.Status == "paid" {
+																	// 统一使用 ProcessPaidOrder 处理所有订单类型（套餐订单和设备升级订单）
+																	var processedUser models.User
+																	if db.First(&processedUser, processedOrder.UserID).Error == nil {
+																		svc := orderServicePkg.NewOrderService()
+																		svc.ProcessPaidOrder(&processedOrder)
+																	}
+																	// 发送邮件通知（客户和管理员）
+																	sendPaymentNotifications(db, orderNo)
 																}
-																// 发送邮件通知（客户和管理员）
-																sendPaymentNotifications(db, orderNo)
 															}
-														}
-													}()
+														}()
 
-													// 重新加载订单以返回最新状态
-													db.Where("order_no = ?", orderNo).First(&order)
+														// 重新加载订单以返回最新状态
+														db.Where("order_no = ?", orderNo).First(&order)
+													}
 												}
 											}
 										}
 									}
 								}
+							} else if err != nil {
+								utils.LogWarn("查询支付宝订单状态失败: order_no=%s, error=%v", orderNo, err)
 							}
 						}
 					}
