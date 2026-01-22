@@ -528,33 +528,24 @@ export default {
           params.status = searchForm.status
         }
         
-        // 如果当前在"订单记录"标签页，请求包含充值记录
         if (activeTab.value === 'orders') {
           params.include_recharges = 'true'
         }
         
         const response = await api.get('/admin/orders', { params })
         
-        // 调试信息
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Orders API Response:', response.data)
-        }
-        
         const ordersList = response.data.data?.orders || []
         
         if (activeTab.value === 'orders') {
-          // "订单记录"标签页：使用合并后的数据
           allRecords.value = ordersList
           orders.value = ordersList.filter(r => r.record_type === 'order')
           recharges.value = ordersList.filter(r => r.record_type === 'recharge')
         } else {
-          // "充值记录"标签页：只显示充值记录
           orders.value = ordersList
         }
         
         total.value = response.data.data?.total || response.data.total || 0
       } catch (error) {
-        console.error('加载订单列表失败:', error)
         const errorMsg = error.response?.data?.message || error.message || '加载订单列表失败'
         ElMessage.error(errorMsg)
         // 确保即使出错也清空数据，避免显示旧数据
@@ -567,14 +558,11 @@ export default {
       }
     }
 
-    // 加载充值记录
     const loadRecharges = async () => {
       loading.value = true
       try {
-        // 检查 adminAPI 和 getAdminRechargeRecords 是否存在
         if (!adminAPI || typeof adminAPI.getAdminRechargeRecords !== 'function') {
-          console.error('adminAPI.getAdminRechargeRecords 函数不存在', adminAPI)
-          ElMessage.error('加载充值记录失败: API 函数未定义，请刷新页面重试')
+          ElMessage.error('加载充值记录失败: API 函数未定义')
           return
         }
         
@@ -583,7 +571,6 @@ export default {
           size: pageSize.value
         }
         
-        // 添加搜索参数
         if (searchForm.keyword) {
           params.keyword = searchForm.keyword
         }
@@ -593,38 +580,38 @@ export default {
         
         const response = await adminAPI.getAdminRechargeRecords(params)
         
-        if (response && response.data && response.data.success) {
-          const data = response.data.data
-          recharges.value = data.recharges || []
-          rechargeTotal.value = data.total || 0
-          // 如果没有记录，不显示错误，只显示空状态
-          if (recharges.value.length === 0 && rechargeTotal.value === 0) {
-            // 静默处理，不显示错误消息
+        if (response && response.data) {
+          let data = null
+          
+          if (response.data.success !== false && response.data.data) {
+            data = response.data.data
+          } else if (response.data.recharges !== undefined) {
+            data = response.data
+          } else if (response.data.data && Array.isArray(response.data.data)) {
+            data = { recharges: response.data.data, total: response.data.total || 0 }
+          } else if (response.data.success === undefined && response.data.recharges === undefined) {
+            data = response.data
+          }
+          
+          if (data && (data.recharges !== undefined || Array.isArray(data))) {
+            recharges.value = Array.isArray(data.recharges) ? data.recharges : (Array.isArray(data) ? data : [])
+            rechargeTotal.value = Number(data.total) || 0
+          } else {
+            recharges.value = []
+            rechargeTotal.value = 0
           }
         } else {
-          // API返回失败，但不一定是错误，可能是没有数据
           recharges.value = []
           rechargeTotal.value = 0
-          // 不显示错误消息，让页面显示"暂无数据"
-          
-          // 如果当前在"订单记录"标签页，合并记录
-          if (activeTab.value === 'orders') {
-          }
         }
       } catch (error) {
-        console.error('加载充值记录失败:', error)
-        // 只有在真正的错误（如网络错误、服务器错误）时才显示错误消息
-        // 如果是404或"记录不存在"，可能是真的没有数据，不显示错误
         const errorStatus = error.response?.status
         const errorMsg = error.response?.data?.message || error.message || ''
         
-        // 如果是404或"记录不存在"，不显示错误，只显示空状态
         if (errorStatus === 404 || errorMsg.includes('不存在')) {
           recharges.value = []
           rechargeTotal.value = 0
-          // 不显示错误消息
         } else {
-          // 其他错误才显示错误消息
           ElMessage.error('加载充值记录失败: ' + errorMsg)
           recharges.value = []
           rechargeTotal.value = 0
@@ -692,23 +679,16 @@ export default {
       if (activeTab.value === 'recharges') {
         loadRecharges()
       } else {
-        // "订单记录"标签页需要同时加载订单和充值记录
-        Promise.all([loadOrders(), loadRecharges()]).then(() => {
-          mergeRecords()
-        })
+        loadOrders()
       }
     }
-    
 
     const handleCurrentChange = (val) => {
       currentPage.value = val
       if (activeTab.value === 'recharges') {
         loadRecharges()
       } else {
-        // "订单记录"标签页需要同时加载订单和充值记录
-        Promise.all([loadOrders(), loadRecharges()]).then(() => {
-          mergeRecords()
-        })
+        loadOrders()
       }
     }
 
@@ -729,8 +709,11 @@ export default {
         
         if (response.data.success) {
           ElMessage.success('订单状态更新成功')
-          // 立即刷新订单列表以获取最新数据
-          await loadOrders()
+          if (activeTab.value === 'recharges') {
+            await loadRecharges()
+          } else {
+            await loadOrders()
+          }
         } else {
           ElMessage.error(response.data.message || '操作失败')
         }
@@ -751,7 +734,11 @@ export default {
         })
         await api.put(`/admin/orders/${order.id}`, { status: 'cancelled' })
         ElMessage.success('订单已取消')
-        loadOrders()
+        if (activeTab.value === 'recharges') {
+          loadRecharges()
+        } else {
+          loadOrders()
+        }
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error('操作失败')
@@ -768,7 +755,11 @@ export default {
         })
         await api.delete(`/admin/orders/${order.id}`)
         ElMessage.success('订单删除成功')
-        loadOrders()
+        if (activeTab.value === 'recharges') {
+          loadRecharges()
+        } else {
+          loadOrders()
+        }
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error('删除失败')
@@ -846,7 +837,11 @@ export default {
         })
         ElMessage.success('批量标记已付成功')
         selectedOrders.value = []
-        await loadOrders()
+        if (activeTab.value === 'recharges') {
+          await loadRecharges()
+        } else {
+          await loadOrders()
+        }
       } catch (error) {
         if (error !== 'cancel') {
           const errorMsg = error.response?.data?.message || error.message || '批量操作失败'
@@ -878,7 +873,11 @@ export default {
         })
         ElMessage.success('批量取消成功')
         selectedOrders.value = []
-        await loadOrders()
+        if (activeTab.value === 'recharges') {
+          await loadRecharges()
+        } else {
+          await loadOrders()
+        }
       } catch (error) {
         if (error !== 'cancel') {
           const errorMsg = error.response?.data?.message || error.message || '批量操作失败'
@@ -910,7 +909,11 @@ export default {
         })
         ElMessage.success('批量删除成功')
         selectedOrders.value = []
-        await loadOrders()
+        if (activeTab.value === 'recharges') {
+          await loadRecharges()
+        } else {
+          await loadOrders()
+        }
       } catch (error) {
         if (error !== 'cancel') {
           const errorMsg = error.response?.data?.message || error.message || '批量操作失败'
@@ -933,7 +936,6 @@ export default {
           statistics.totalRevenue = statsData.total_revenue || 0
         }
       } catch (error) {
-        console.error('加载统计数据失败:', error)
         // 统计失败不影响主要功能，只记录错误
       }
     }

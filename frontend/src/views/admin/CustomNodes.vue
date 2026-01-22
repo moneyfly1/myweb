@@ -23,7 +23,7 @@
           <div class="search-input-wrapper">
             <el-input
               v-model="searchKeyword"
-              placeholder="搜索节点名称"
+              placeholder="搜索名称/域名/用户名/邮箱"
               class="mobile-search-input"
               clearable
               @keyup.enter="handleFilterChange"
@@ -80,7 +80,7 @@
         </el-select>
         <el-input
           v-model="searchKeyword"
-          placeholder="搜索节点名称"
+          placeholder="搜索名称/域名/用户名/邮箱"
           clearable
           style="width: 200px"
           @keyup.enter="handleFilterChange"

@@ -146,28 +146,43 @@ func Register(c *gin.Context) {
 		db.Save(&verificationCode)
 	}
 
-	// 创建用户
-	hashed, _ := auth.HashPassword(req.Password)
-	user := models.User{
-		Username:   req.Username,
-		Email:      req.Email,
-		Password:   hashed,
-		IsActive:   true,
-		IsVerified: true, // 注册成功即视为已验证（无论是否通过验证码）
-	}
+	var user models.User
 
-	if err := db.Create(&user).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "创建用户失败", err)
+	// 开启事务
+	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+		// 创建用户
+		hashed, _ := auth.HashPassword(req.Password)
+		user = models.User{
+			Username:   req.Username,
+			Email:      req.Email,
+			Password:   hashed,
+			IsActive:   true,
+			IsVerified: true, // 注册成功即视为已验证（无论是否通过验证码）
+		}
+
+		if err := tx.Create(&user).Error; err != nil {
+			return fmt.Errorf("创建用户失败: %v", err)
+		}
+
+		// 创建默认订阅
+		if err := createDefaultSubscription(tx, user.ID); err != nil {
+			return fmt.Errorf("创建默认订阅失败: %v", err)
+		}
+
+		// 处理邀请码
+		if req.InviteCode != "" {
+			processInviteCode(tx, req.InviteCode, user.ID)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "注册失败", err)
 		return
 	}
 
-	// 创建默认订阅
-	_ = createDefaultSubscription(db, user.ID)
-
-	// 处理邀请码
-	if req.InviteCode != "" {
-		processInviteCode(db, req.InviteCode, user.ID)
-	}
+	// 事务提交成功后，执行非事务性的后续操作（发送通知等）
 
 	// 发送管理员通知（新用户注册）
 	go func() {

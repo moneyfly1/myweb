@@ -35,7 +35,25 @@ func GetCustomNodes(c *gin.Context) {
 		}
 	}
 	if search := c.Query("search"); search != "" {
-		query = query.Where("name LIKE ? OR display_name LIKE ? OR domain LIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+		// 1. 查找匹配的用户ID
+		var userIDs []uint
+		db.Model(&models.User{}).Where("username LIKE ? OR email LIKE ?", "%"+search+"%", "%"+search+"%").Pluck("id", &userIDs)
+
+		// 2. 查找这些用户拥有的专线节点ID
+		var userNodeIDs []uint
+		if len(userIDs) > 0 {
+			db.Model(&models.UserCustomNode{}).Where("user_id IN ?", userIDs).Pluck("custom_node_id", &userNodeIDs)
+		}
+
+		// 3. 构建查询：名称/域名匹配 OR 属于匹配的用户
+		searchPattern := "%" + search + "%"
+		if len(userNodeIDs) > 0 {
+			query = query.Where("name LIKE ? OR display_name LIKE ? OR domain LIKE ? OR id IN ?",
+				searchPattern, searchPattern, searchPattern, userNodeIDs)
+		} else {
+			query = query.Where("name LIKE ? OR display_name LIKE ? OR domain LIKE ?",
+				searchPattern, searchPattern, searchPattern)
+		}
 	}
 
 	// 分页
