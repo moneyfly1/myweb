@@ -1038,116 +1038,65 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.Subscription) ([]*ProxyNode, error) {
 	var proxies []*ProxyNode
 	processedNodes := make(map[string]bool)
-
 	now := utils.GetBeijingTime()
-
-	// 检查普通订阅是否过期
 	isOrdExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
-
-	// 计算专线到期时间
-	// 如果设置了专线到期时间，以专线到期时间为准
-	// 如果没设置专线到期时间，以普通线路到期时间为准
 	var specialExpireTime time.Time
 	hasSpecialExpireTime := false
 	if user.SpecialNodeExpiresAt.Valid {
 		specialExpireTime = utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time)
 		hasSpecialExpireTime = true
-	} else if !sub.ExpireTime.IsZero() {
+	} else if user.SpecialNodeSubscriptionType != "special_only" && !sub.ExpireTime.IsZero() {
 		specialExpireTime = utils.ToBeijingTime(sub.ExpireTime)
 		hasSpecialExpireTime = true
 	}
 	isSpecialExpired := hasSpecialExpireTime && specialExpireTime.Before(now)
-
-	// 根据用户的订阅类型决定是否包含普通节点
-	// special_only: 只包含专线节点，不包含普通节点
-	// both: 包含普通节点+专线节点，专线节点在最前面
-	// 如果普通订阅过期，客户无法订阅普通线路（但可以订阅专线，如果专线未过期）
-	includeNormalNodes := false
-	if user.SpecialNodeSubscriptionType == "both" {
-		// 全部订阅：只有普通订阅未过期时才包含普通节点
-		includeNormalNodes = !isOrdExpired
-	} else if user.SpecialNodeSubscriptionType == "special_only" {
-		// 仅专线：不包含普通节点
-		includeNormalNodes = false
-	} else {
-		// 默认情况：如果普通订阅未过期，包含普通节点
-		includeNormalNodes = !isOrdExpired
-	}
-
-	if includeNormalNodes {
-		// 获取普通节点
-		var nodes []models.Node
-		query := s.db.Model(&models.Node{}).Where("is_active = ?", true).Where("status != ?", "timeout")
-
-		if err := query.Find(&nodes).Error; err != nil {
-			return nil, err
-		}
-
-		for _, node := range nodes {
-			proxyNodes, err := s.parseNodeToProxies(&node)
-			if err != nil {
-				continue
-			}
-
-			for _, proxy := range proxyNodes {
-				// 使用统一的去重键生成函数
-				key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port)
-				if processedNodes[key] {
-					continue
-				}
-				processedNodes[key] = true
-				proxies = append(proxies, proxy)
-			}
-		}
-	}
-
-	// 获取专属节点（专线节点始终在最前面）
 	var customNodes []models.CustomNode
 	if err := s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
 		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", user.ID, true).
 		Find(&customNodes).Error; err == nil {
-
-		var customProxies []*ProxyNode
 		for _, cn := range customNodes {
-			// 判断专线节点是否过期
-			// 1. 如果节点设置了 FollowUserExpire，使用用户的专线到期时间（或普通到期时间）
-			// 2. 如果节点设置了 ExpireTime，使用节点的到期时间
-			// 3. 如果都没设置，使用用户的专线到期时间（或普通到期时间）
 			isSpecNodeExpired := false
-			if cn.FollowUserExpire {
-				// 跟随用户到期时间
-				isSpecNodeExpired = isSpecialExpired
-			} else if cn.ExpireTime != nil {
-				// 使用节点自己的到期时间
-				expireTimeBeijing := utils.ToBeijingTime(*cn.ExpireTime)
-				isSpecNodeExpired = expireTimeBeijing.Before(now)
-			} else {
-				// 默认使用用户的专线到期时间（或普通到期时间）
+			if cn.ExpireTime != nil {
+				isSpecNodeExpired = utils.ToBeijingTime(*cn.ExpireTime).Before(now)
+			} else if cn.FollowUserExpire {
 				isSpecNodeExpired = isSpecialExpired
 			}
-
 			if isSpecNodeExpired || cn.Status == "timeout" {
 				continue
 			}
-
 			displayName := cn.DisplayName
 			if displayName == "" {
 				displayName = "专线-" + cn.Name
 			}
-
 			if cn.Config != "" {
 				var proxyNode ProxyNode
 				if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err == nil {
 					proxyNode.Name = displayName
-					customProxies = append(customProxies, &proxyNode)
+					proxies = append(proxies, &proxyNode)
+					key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
+					processedNodes[key] = true
 				}
 			}
 		}
-
-		// 将专线节点放在最前面
-		proxies = append(customProxies, proxies...)
 	}
-
+	if user.SpecialNodeSubscriptionType != "special_only" && !isOrdExpired {
+		var nodes []models.Node
+		if err := s.db.Model(&models.Node{}).Where("is_active = ?", true).Where("status != ?", "timeout").Find(&nodes).Error; err == nil {
+			for _, node := range nodes {
+				proxyNodes, err := s.parseNodeToProxies(&node)
+				if err != nil {
+					continue
+				}
+				for _, proxy := range proxyNodes {
+					key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port)
+					if !processedNodes[key] {
+						processedNodes[key] = true
+						proxies = append(proxies, proxy)
+					}
+				}
+			}
+		}
+	}
 	return proxies, nil
 }
 
@@ -1165,11 +1114,7 @@ func (s *ConfigUpdateService) parseNodeToProxies(node *models.Node) ([]*ProxyNod
 
 // getSubscriptionContext 获取订阅上下文
 func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP string, userAgent string) *SubscriptionContext {
-	ctx := &SubscriptionContext{
-		Status: StatusNotFound,
-	}
-
-	// 1. 查找订阅
+	ctx := &SubscriptionContext{Status: StatusNotFound}
 	var sub models.Subscription
 	if err := s.db.Where("subscription_url = ?", token).First(&sub).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1183,15 +1128,11 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 		return ctx
 	}
 	ctx.Subscription = sub
-
-	// 2. 查找用户
 	var user models.User
 	if err := s.db.First(&user, sub.UserID).Error; err != nil {
 		return ctx
 	}
 	ctx.User = user
-
-	// 3. 检查状态
 	if !user.IsActive {
 		ctx.Status = StatusAccountAbnormal
 		return ctx
@@ -1200,67 +1141,33 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 		ctx.Status = StatusInactive
 		return ctx
 	}
-	// 检查订阅是否过期
-	// SQLite 存储的时间格式是 UTC (如: 2027-01-22 00:00:00+00:00)
-	// 我们需要统一使用 UTC 时间进行比较，避免时区问题
-	if !sub.ExpireTime.IsZero() {
-		// 将 ExpireTime 转换为 UTC（如果它还不是 UTC）
-		expireTimeUTC := sub.ExpireTime.UTC()
-		// 获取当前 UTC 时间
-		nowUTC := time.Now().UTC()
-
-		// 调试日志：记录时间比较信息
-		if utils.AppLogger != nil {
-			utils.AppLogger.Info("订阅过期检查 - SubscriptionID=%d, UserID=%d, ExpireTime(原始)=%s, ExpireTime(UTC)=%s, Now(UTC)=%s, ExpireTime.Unix=%d, Now.Unix=%d, Before=%v",
-				sub.ID, sub.UserID,
-				sub.ExpireTime.Format("2006-01-02 15:04:05 MST"),
-				expireTimeUTC.Format("2006-01-02 15:04:05 MST"),
-				nowUTC.Format("2006-01-02 15:04:05 MST"),
-				expireTimeUTC.Unix(),
-				nowUTC.Unix(),
-				expireTimeUTC.Before(nowUTC))
-		}
-
-		// 使用 UTC 时间进行比较
-		if expireTimeUTC.Before(nowUTC) {
-			ctx.Status = StatusExpired
-			return ctx
-		}
-	}
-
-	// 4. 检查设备
-	var currentDevices int64
-	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&currentDevices)
-	ctx.CurrentDevices = int(currentDevices)
-	ctx.DeviceLimit = sub.DeviceLimit
-
-	// 设备限制检查：如果限制为0，不允许使用
-	if sub.DeviceLimit == 0 {
-		ctx.Status = StatusDeviceOverLimit
-		return ctx
-	}
-
-	// 如果设备数量达到或超过限制，检查当前设备是否已存在
-	if sub.DeviceLimit > 0 && int(currentDevices) >= sub.DeviceLimit {
-		var device models.Device
-		isKnownDevice := false
-		if err := s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&device).Error; err == nil {
-			isKnownDevice = true
-		}
-		if !isKnownDevice {
-			ctx.Status = StatusDeviceOverLimit
-			return ctx
-		}
-	}
-
-	// 5. 获取节点
 	proxies, err := s.fetchProxiesForUser(user, sub)
 	if err != nil {
 		ctx.Proxies = []*ProxyNode{}
 	} else {
 		ctx.Proxies = proxies
 	}
-
+	if len(ctx.Proxies) == 0 {
+		if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(time.Now()) {
+			ctx.Status = StatusExpired
+			return ctx
+		}
+	}
+	var currentDevices int64
+	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&currentDevices)
+	ctx.CurrentDevices = int(currentDevices)
+	ctx.DeviceLimit = sub.DeviceLimit
+	if sub.DeviceLimit == 0 {
+		ctx.Status = StatusDeviceOverLimit
+		return ctx
+	}
+	if sub.DeviceLimit > 0 && int(currentDevices) >= sub.DeviceLimit {
+		var device models.Device
+		if err := s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&device).Error; err != nil {
+			ctx.Status = StatusDeviceOverLimit
+			return ctx
+		}
+	}
 	ctx.Status = StatusNormal
 	return ctx
 }
