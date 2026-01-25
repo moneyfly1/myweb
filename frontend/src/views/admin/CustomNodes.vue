@@ -1580,26 +1580,85 @@ export default {
 
 .mobile-search-input {
   flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
   
   :deep(.el-input__wrapper) {
-    border-radius: 6px;
-    height: 44px;
-    padding-right: 50px;
+    border-radius: 10px;
+    height: 48px;
+    padding-left: 14px;
+    padding-right: 60px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    transition: all 0.3s ease;
+    
+    &:hover {
+      background: #ffffff;
+      border-color: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    }
+    
+    &.is-focus {
+      background: #ffffff;
+      border-color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    }
   }
   
   :deep(.el-input__inner) {
-    height: 44px;
-    line-height: 44px;
-    font-size: 16px;
+    height: 48px;
+    line-height: 48px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #1e293b;
+    
+    &::placeholder {
+      color: #94a3b8;
+      font-weight: 400;
+    }
   }
 }
 
 .search-button-inside {
   position: absolute;
   right: 4px;
-  height: 36px;
-  padding: 6px 10px;
-  z-index: 1;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.98);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  color: #667eea;
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  height: 40px;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  z-index: 10;
+  
+  &:hover {
+    background: #ffffff;
+    border-color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    color: #5568d3;
+  }
+  
+  &:active {
+    transform: translateY(-50%) scale(0.96);
+  }
+  
+  .el-icon {
+    font-size: 18px;
+    margin: 0;
+  }
 }
 
 .mobile-filter-buttons {
