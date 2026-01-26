@@ -471,11 +471,27 @@
             </div>
           </div>
         </el-form-item>
+        
+        <el-form-item label="支付方式" v-if="!isMobile || rechargePaymentMethods.length > 0">
+          <template v-if="isMobile">
+            <div class="mobile-label">支付方式</div>
+          </template>
+          <el-radio-group v-model="rechargePaymentMethod" @change="handleRechargePaymentMethodChange">
+            <el-radio
+              v-for="method in rechargePaymentMethods"
+              :key="method.key"
+              :label="method.key"
+              style="margin-right: 15px; margin-bottom: 10px;"
+            >
+              {{ method.name || method.key }}
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
       </el-form>
       
       <!-- 支付二维码 -->
       <div v-if="rechargeQRCode" class="recharge-qr-section">
-        <h4>请使用支付宝扫描二维码完成支付</h4>
+        <h4>请使用{{ getRechargePaymentMethodName() }}扫描二维码完成支付</h4>
         <div class="qr-code-wrapper">
           <img :src="rechargeQRCode" alt="支付二维码" class="qr-code-img" />
         </div>
@@ -517,11 +533,12 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, useApi } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import DOMPurify from 'dompurify'
 
 const router = useRouter()
+const api = useApi()
 
 // HTML内容清理函数，防止XSS攻击
 const sanitizeHtml = (html) => {
@@ -576,8 +593,35 @@ const rechargeFormRef = ref()
 const rechargeLoading = ref(false)
 const rechargeQRCode = ref('')
 const rechargePaymentUrl = ref('') // 保存支付URL，用于跳转支付宝App
+const rechargePaymentMethod = ref('alipay')
+const rechargePaymentMethods = ref([])
 const isMobile = ref(window.innerWidth <= 768)
 const quickAmounts = [20, 50, 100, 200, 500, 1000]
+
+const loadRechargePaymentMethods = async () => {
+  try {
+    const response = await api.get('/payment-methods/active')
+    if (response && response.data) {
+      let methods = []
+      if (response.data.success && response.data.data) {
+        methods = Array.isArray(response.data.data) ? response.data.data : []
+      } else if (Array.isArray(response.data)) {
+        methods = response.data
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        methods = response.data.data
+      }
+      rechargePaymentMethods.value = methods
+      if (methods.length > 0) {
+        rechargePaymentMethod.value = methods[0].key
+      }
+    }
+  } catch (error) {
+    rechargePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
+  }
+}
+
+const handleRechargePaymentMethodChange = (value) => {
+}
 const softwareConfig = ref({
   // Windows软件
   clash_windows_url: '',
@@ -866,7 +910,7 @@ const showRechargeDialog = () => {
   rechargeQRCode.value = ''
   rechargePaymentUrl.value = ''
   currentRechargeOrderNo.value = null
-  // 清除之前的定时器
+  loadRechargePaymentMethods()
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
@@ -921,6 +965,12 @@ const selectQuickAmount = (amount) => {
   rechargeForm.value.amount = amount
 }
 
+// 获取充值支付方式名称
+const getRechargePaymentMethodName = () => {
+  const method = rechargePaymentMethods.value.find(m => m.key === rechargePaymentMethod.value)
+  return method ? method.name : '支付'
+}
+
 const createRecharge = async () => {
   try {
     await rechargeFormRef.value.validate()
@@ -931,8 +981,7 @@ const createRecharge = async () => {
     }
     
     rechargeLoading.value = true
-    
-    const response = await rechargeAPI.createRecharge(rechargeForm.value.amount, 'alipay')
+    const response = await rechargeAPI.createRecharge(rechargeForm.value.amount, rechargePaymentMethod.value)
     
     if (response.data && response.data.success !== false) {
       const data = response.data.data
@@ -960,38 +1009,44 @@ const createRecharge = async () => {
         return
       }
       
-      // 保存支付URL，用于跳转支付宝App
-      rechargePaymentUrl.value = paymentUrl
+      // 判断是否是易支付，如果是则跳转到新页面
+      const isYipay = rechargePaymentMethod.value && (
+        rechargePaymentMethod.value.includes('yipay') || 
+        rechargePaymentMethod.value.includes('易支付')
+      )
       
-      // 保存充值订单号，用于状态检查
-      currentRechargeOrderNo.value = rechargeOrderNo
-      
-      // 使用qrcode库将支付URL生成为二维码图片（与订单支付相同的方式）
-      try {
-        const QRCode = await import('qrcode')
-        // 根据设备类型调整二维码参数
-        const qrOptions = {
-          width: isMobile.value ? 200 : 256, // 手机端使用较小的尺寸
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M' // 使用中等纠错级别，避免二维码过于复杂
+      if (isYipay) {
+        if (paymentUrl) {
+          ElMessage.info('正在跳转到支付页面...')
+          window.location.href = paymentUrl
+        } else {
+          ElMessage.error('支付链接不存在')
         }
-        // 将支付URL生成为base64格式的二维码图片
-        const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, qrOptions)
-        rechargeQRCode.value = qrCodeDataURL
-        ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
+      } else {
+        // 原始支付宝等，在当前页面显示二维码
+        rechargePaymentUrl.value = paymentUrl
+        currentRechargeOrderNo.value = rechargeOrderNo
         
-        // 开始检查支付状态（使用订单号，参考购买套餐的方式）
-        startRechargeStatusCheck()
-      } catch (qrError) {
-        // 如果二维码生成失败，直接使用URL
-        rechargeQRCode.value = paymentUrl
-        ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
-        // 开始检查支付状态（使用订单号，参考购买套餐的方式）
-        startRechargeStatusCheck()
+        try {
+          const QRCode = await import('qrcode')
+          const qrOptions = {
+            width: isMobile.value ? 200 : 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            },
+            errorCorrectionLevel: 'M'
+          }
+          const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, qrOptions)
+          rechargeQRCode.value = qrCodeDataURL
+          ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
+          startRechargeStatusCheck()
+        } catch (qrError) {
+          rechargeQRCode.value = paymentUrl
+          ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
+          startRechargeStatusCheck()
+        }
       }
     } else {
       ElMessage.error(response.data?.message || '创建充值订单失败')
@@ -1097,14 +1152,19 @@ const checkRechargeStatus = async () => {
       // 立即刷新用户信息，确保余额更新
       await loadUserInfo()
       
+      // 触发全局事件，通知其他页面刷新用户信息
+      window.dispatchEvent(new CustomEvent('user-info-updated'))
+      
       // 延迟再次刷新，确保余额显示正确（防止缓存问题）
       setTimeout(async () => {
         await loadUserInfo()
+        window.dispatchEvent(new CustomEvent('user-info-updated'))
       }, 300)
       
       // 再延迟一次刷新，确保余额完全同步
       setTimeout(async () => {
         await loadUserInfo()
+        window.dispatchEvent(new CustomEvent('user-info-updated'))
       }, 1000)
       
       // 关闭对话框
@@ -1652,6 +1712,31 @@ onMounted(() => {
   setTimeout(() => {
     checkAndShowAnnouncement()
   }, 500)
+  
+  // 监听订阅更新事件
+  const handleSubscriptionUpdate = async () => {
+    console.log('收到订阅更新事件，刷新订阅信息...')
+    await loadSubscriptionInfo()
+    await loadUserInfo()
+  }
+  
+  // 监听用户信息更新事件
+  const handleUserInfoUpdate = async () => {
+    console.log('收到用户信息更新事件，刷新用户信息...')
+    await loadUserInfo()
+  }
+  
+  window.addEventListener('subscription-updated', handleSubscriptionUpdate)
+  window.addEventListener('user-info-updated', handleUserInfoUpdate)
+  
+  // 清理事件监听器
+  onUnmounted(() => {
+    window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
+    window.removeEventListener('user-info-updated', handleUserInfoUpdate)
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', handleResize)
+    }
+  })
 })
 
 onUnmounted(() => {

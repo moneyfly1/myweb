@@ -523,15 +523,6 @@
             跳转到支付宝支付
           </el-button>
           <el-button 
-            @click="checkPaymentStatus" 
-            :loading="isCheckingPayment"
-            type="primary"
-            size="large"
-            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
-          >
-            检查支付状态
-          </el-button>
-          <el-button 
             @click="closePaymentQR"
             size="large"
             :style="isMobile ? 'width: 100%;' : ''"

@@ -1626,6 +1626,8 @@ func CreatePaymentConfig(c *gin.Context) {
 		notifySuffix := "alipay"
 		if req.PayType == "wechat" {
 			notifySuffix = "wechat"
+		} else if req.PayType == "yipay" || strings.HasPrefix(req.PayType, "yipay_") {
+			notifySuffix = "yipay"
 		}
 		req.NotifyURL = fmt.Sprintf("%s/api/v1/payment/notify/%s", baseURL, notifySuffix)
 	}
@@ -1721,6 +1723,13 @@ func UpdatePaymentConfig(c *gin.Context) {
 	// 构建基础 URL
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 
+	// 如果易支付没有提供回调地址，自动生成
+	if (req.PayType == "yipay" || strings.HasPrefix(req.PayType, "yipay_")) && req.NotifyURL == nil {
+		notifyURL := fmt.Sprintf("%s/api/v1/payment/notify/yipay", baseURL)
+		req.NotifyURL = &notifyURL
+		utils.LogInfo("易支付回调地址自动生成: %s", notifyURL)
+	}
+
 	// 更新字段
 	if req.PayType != "" {
 		paymentConfig.PayType = req.PayType
@@ -1782,6 +1791,8 @@ func UpdatePaymentConfig(c *gin.Context) {
 		notifySuffix := "alipay"
 		if req.PayType == "wechat" {
 			notifySuffix = "wechat"
+		} else if req.PayType == "yipay" || strings.HasPrefix(req.PayType, "yipay_") {
+			notifySuffix = "yipay"
 		}
 		paymentConfig.NotifyURL = database.NullString(fmt.Sprintf("%s/api/v1/payment/notify/%s", baseURL, notifySuffix))
 	}

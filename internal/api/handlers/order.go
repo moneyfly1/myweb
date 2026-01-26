@@ -64,6 +64,10 @@ func CreateOrder(c *gin.Context) {
 		"created_at":      order.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 
+	if order.PaymentMethodName.Valid {
+		data["payment_method_name"] = order.PaymentMethodName.String
+	}
+
 	if paymentURL != "" {
 		data["payment_url"] = paymentURL
 		data["payment_qr_code"] = paymentURL
@@ -1271,36 +1275,59 @@ func UpgradeDevices(c *gin.Context) {
 	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
 		var paymentConfig models.PaymentConfig
 		payType := req.PaymentMethod
-		if payType == "alipay" || payType == "wechat" {
-			// 查找对应类型的支付配置（不区分大小写）
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-				// 创建支付交易（注意：金额是第三方支付部分，不包括余额）
-				transaction := models.PaymentTransaction{
-					OrderID:         order.ID,
-					UserID:          user.ID,
-					PaymentMethodID: paymentConfig.ID,
-					Amount:          int(finalAmount * 100), // 只记录第三方支付部分
-					Currency:        "CNY",
-					Status:          "pending",
+		queryPayType := payType
+
+		if strings.HasPrefix(payType, "yipay_") {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
+				queryPayType = "yipay"
+			} else {
+				if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+					utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+					return
 				}
-				if err := db.Create(&transaction).Error; err == nil {
-					// 生成支付URL（只传递第三方支付部分）
-					if paymentConfig.PayType == "alipay" {
-						alipayService, err := payment.NewAlipayService(&paymentConfig)
-						if err == nil {
-							paymentURL, err = alipayService.CreatePayment(&order, finalAmount)
-							if err != nil {
-								utils.LogError("UpgradeDevices: create alipay payment failed", err, nil)
-							}
-						}
-					} else if paymentConfig.PayType == "wechat" {
-						wechatService, err := payment.NewWechatService(&paymentConfig)
-						if err == nil {
-							paymentURL, err = wechatService.CreatePayment(&order, finalAmount)
-							if err != nil {
-								utils.LogError("UpgradeDevices: create wechat payment failed", err, nil)
-							}
-						}
+			}
+		} else if payType == "alipay" || payType == "wechat" {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+				return
+			}
+		} else {
+			utils.ErrorResponse(c, http.StatusBadRequest, "不支持的支付方式", nil)
+			return
+		}
+
+		transaction := models.PaymentTransaction{
+			OrderID:         order.ID,
+			UserID:          user.ID,
+			PaymentMethodID: paymentConfig.ID,
+			Amount:          int(finalAmount * 100),
+			Currency:        "CNY",
+			Status:          "pending",
+		}
+		if err := db.Create(&transaction).Error; err == nil {
+			if paymentConfig.PayType == "alipay" {
+				alipayService, err := payment.NewAlipayService(&paymentConfig)
+				if err == nil {
+					paymentURL, err = alipayService.CreatePayment(&order, finalAmount)
+					if err != nil {
+						utils.LogError("UpgradeDevices: create alipay payment failed", err, nil)
+					}
+				}
+			} else if paymentConfig.PayType == "wechat" {
+				wechatService, err := payment.NewWechatService(&paymentConfig)
+				if err == nil {
+					paymentURL, err = wechatService.CreatePayment(&order, finalAmount)
+					if err != nil {
+						utils.LogError("UpgradeDevices: create wechat payment failed", err, nil)
+					}
+				}
+			} else if queryPayType == "yipay" || strings.HasPrefix(payType, "yipay_") {
+				yipayService, err := payment.NewYipayService(&paymentConfig)
+				if err == nil {
+					paymentType := extractYipayPaymentType(payType)
+					paymentURL, err = yipayService.CreatePayment(&order, finalAmount, paymentType)
+					if err != nil {
+						utils.LogError("UpgradeDevices: create yipay payment failed", err, nil)
 					}
 				}
 			}
@@ -1356,7 +1383,8 @@ func PayOrder(c *gin.Context) {
 	}
 
 	var req struct {
-		PaymentMethodID uint `json:"payment_method_id" binding:"required"`
+		PaymentMethodID uint   `json:"payment_method_id" binding:"required"`
+		PaymentMethod   string `json:"payment_method"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1427,6 +1455,50 @@ func PayOrder(c *gin.Context) {
 		} else {
 			paymentURL, payErr = wechatService.CreatePayment(&order, amount)
 		}
+	} else if paymentConfig.PayType == "yipay" || strings.HasPrefix(paymentConfig.PayType, "yipay_") {
+		yipayService, err := payment.NewYipayService(&paymentConfig)
+		if err != nil {
+			payErr = fmt.Errorf("初始化易支付服务失败: %v", err)
+		} else {
+			// 优先从请求参数获取支付方式，其次从订单的PaymentMethodName提取，最后从paymentConfig.PayType提取
+			paymentType := "alipay"
+			if req.PaymentMethod != "" && strings.HasPrefix(req.PaymentMethod, "yipay_") {
+				paymentType = strings.TrimPrefix(req.PaymentMethod, "yipay_")
+			} else if order.PaymentMethodName.Valid {
+				paymentMethodName := order.PaymentMethodName.String
+				// 检查是否包含 yipay_wxpay 或 易支付-微信
+				if strings.Contains(paymentMethodName, "yipay_wxpay") || strings.Contains(paymentMethodName, "易支付-微信") {
+					paymentType = "wxpay"
+				} else if strings.Contains(paymentMethodName, "yipay_alipay") || strings.Contains(paymentMethodName, "易支付-支付宝") {
+					paymentType = "alipay"
+				} else if strings.Contains(paymentMethodName, "yipay_qqpay") || strings.Contains(paymentMethodName, "易支付-QQ") {
+					paymentType = "qqpay"
+				} else if strings.HasPrefix(paymentMethodName, "yipay_") {
+					// 提取 yipay_ 后面的部分
+					parts := strings.Split(paymentMethodName, "yipay_")
+					if len(parts) > 1 {
+						// 可能包含其他内容，如 "余额支付(10.00元)+yipay_wxpay"
+						for _, part := range parts {
+							if strings.HasPrefix(part, "wxpay") {
+								paymentType = "wxpay"
+								break
+							} else if strings.HasPrefix(part, "alipay") {
+								paymentType = "alipay"
+								break
+							} else if strings.HasPrefix(part, "qqpay") {
+								paymentType = "qqpay"
+								break
+							}
+						}
+					}
+				}
+			} else {
+				paymentType = extractYipayPaymentType(paymentConfig.PayType)
+			}
+			utils.LogInfo("PayOrder: 易支付支付类型提取 - payment_method=%s, payment_method_name=%s, extracted_type=%s",
+				req.PaymentMethod, order.PaymentMethodName.String, paymentType)
+			paymentURL, payErr = yipayService.CreatePayment(&order, amount, paymentType)
+		}
 	} else {
 		payErr = fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
 	}
@@ -1445,4 +1517,11 @@ func PayOrder(c *gin.Context) {
 		"amount":         amount,
 		"transaction_id": transaction.ID,
 	})
+}
+
+func extractYipayPaymentType(payType string) string {
+	if strings.HasPrefix(payType, "yipay_") {
+		return strings.TrimPrefix(payType, "yipay_")
+	}
+	return "alipay"
 }

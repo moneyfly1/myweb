@@ -1,19 +1,18 @@
 package order
 
 import (
-	"database/sql"
-	"encoding/json"
-	"fmt"
-
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/utils"
-
-	"gorm.io/gorm"
-
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/payment"
+	"cboard-go/internal/utils"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"gorm.io/gorm"
 )
 
 // CreateOrderParams 创建订单参数
@@ -183,13 +182,21 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	// 需要第三方支付
 	var paymentURL string
 	if params.PaymentMethod != "" && params.PaymentMethod != "balance" {
+		utils.LogInfo("CreateOrder: 开始生成支付链接 - payment_method=%s, order_no=%s, amount=%.2f",
+			params.PaymentMethod, order.OrderNo, finalAmount)
 		// 生成支付链接
 		url, err := s.generatePaymentURL(&order, params.PaymentMethod, finalAmount)
 		if err != nil {
 			// 支付链接生成失败，但订单已创建
+			utils.LogError("CreateOrder: 生成支付链接失败", err, map[string]interface{}{
+				"payment_method": params.PaymentMethod,
+				"order_no":       order.OrderNo,
+			})
 			return &order, "", fmt.Errorf("生成支付链接失败: %v", err)
 		}
 		paymentURL = url
+		utils.LogInfo("CreateOrder: 支付链接生成成功 - payment_method=%s, order_no=%s, payment_url=%s",
+			params.PaymentMethod, order.OrderNo, paymentURL)
 	}
 
 	return &order, paymentURL, nil
@@ -198,8 +205,18 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 // generatePaymentURL 生成支付链接
 func (s *OrderService) generatePaymentURL(order *models.Order, payType string, amount float64) (string, error) {
 	var paymentConfig models.PaymentConfig
-	if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-		return "", fmt.Errorf("未找到启用的支付配置")
+
+	if strings.HasPrefix(payType, "yipay_") {
+		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
+		} else {
+			if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+				return "", fmt.Errorf("未找到启用的支付配置")
+			}
+		}
+	} else {
+		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+			return "", fmt.Errorf("未找到启用的支付配置")
+		}
 	}
 
 	// 创建支付交易记录
@@ -238,9 +255,24 @@ func (s *OrderService) generatePaymentURL(order *models.Order, payType string, a
 			return "", err
 		}
 		return svc.CreatePayment(order, amount)
+	case "yipay", "yipay_alipay", "yipay_wxpay", "yipay_qqpay":
+		svc, err := payment.NewYipayService(&paymentConfig)
+		if err != nil {
+			return "", err
+		}
+		paymentType := extractYipayType(payType)
+		utils.LogInfo("易支付生成支付链接: payType=%s, extracted_paymentType=%s, order_no=%s", payType, paymentType, order.OrderNo)
+		return svc.CreatePayment(order, amount, paymentType)
 	default:
 		return "", fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
 	}
+}
+
+func extractYipayType(payType string) string {
+	if strings.HasPrefix(payType, "yipay_") {
+		return strings.TrimPrefix(payType, "yipay_")
+	}
+	return "alipay"
 }
 
 // sendPaymentSuccessEmail 发送支付成功邮件
