@@ -29,7 +29,8 @@ const routes = [
       { path: 'tickets', name: 'Tickets', component: () => import('@/views/Tickets.vue'), meta: { title: '工单中心', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '工单中心', path: '/tickets' }] } },
       { path: 'settings', name: 'UserSettings', component: () => import('@/views/UserSettings.vue'), meta: { title: '用户设置', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '用户设置', path: '/settings' }] } },
       { path: 'tutorials', name: 'SoftwareTutorials', component: () => import('@/views/SoftwareTutorials.vue'), meta: { title: '软件教程', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '软件教程', path: '/tutorials' }] } },
-      { path: 'invites', name: 'Invites', component: () => import('@/views/Invites.vue'), meta: { title: '我的邀请', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '我的邀请', path: '/invites' }] } }
+      { path: 'invites', name: 'Invites', component: () => import('@/views/Invites.vue'), meta: { title: '我的邀请', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '我的邀请', path: '/invites' }] } },
+      { path: 'payment/return', name: 'PaymentReturn', component: () => import('@/views/PaymentReturn.vue'), meta: { title: '支付返回', requiresAuth: true } }
     ]
   },
   {

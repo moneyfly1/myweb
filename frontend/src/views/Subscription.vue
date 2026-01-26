@@ -221,7 +221,14 @@
               <span>账户余额：¥{{ userBalance.toFixed(2) }}</span>
             </div>
             <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange">
-              <el-radio label="alipay">支付宝支付</el-radio>
+              <el-radio 
+                v-for="method in availableUpgradePaymentMethods" 
+                :key="method.key"
+                :label="method.key"
+                :disabled="method.key === 'balance' && userBalance <= 0"
+              >
+                {{ method.name || method.key }}
+              </el-radio>
               <el-radio label="balance" :disabled="userBalance <= 0">余额支付</el-radio>
               <el-radio label="mixed" :disabled="userBalance <= 0 || userBalance >= finalAmount">
                 余额+支付宝（余额不足时）
@@ -323,14 +330,6 @@
             跳转支付宝App支付
           </el-button>
           
-          <el-button 
-            type="primary" 
-            size="large"
-            class="payment-btn confirm-btn"
-            @click="checkUpgradeOrderStatus" 
-          >
-            我已支付
-          </el-button>
 
           <el-button 
             size="large"
@@ -346,11 +345,12 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Wallet, DocumentCopy, InfoFilled } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
-import { subscriptionAPI, userAPI, orderAPI, userLevelAPI } from '@/utils/api'
+import { subscriptionAPI, userAPI, orderAPI, userLevelAPI, useApi } from '@/utils/api'
+import { useRouter } from 'vue-router'
 import { formatDateTime, formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -366,6 +366,8 @@ export default {
     InfoFilled
   },
   setup() {
+    const router = useRouter()
+    const api = useApi()
     const subscription = ref(null)
     const resetLoading = ref(false)
     const sendEmailLoading = ref(false)
@@ -387,6 +389,29 @@ export default {
     const levelDiscount = ref(0)
     const finalAmount = ref(0)
     const paymentMethod = ref('alipay')
+    const availableUpgradePaymentMethods = ref([])
+    
+    const loadUpgradePaymentMethods = async () => {
+      try {
+        const response = await api.get('/payment-methods/active')
+        if (response && response.data) {
+          let methods = []
+          if (response.data.success && response.data.data) {
+            methods = Array.isArray(response.data.data) ? response.data.data : []
+          } else if (Array.isArray(response.data)) {
+            methods = response.data
+          } else if (response.data.data && Array.isArray(response.data.data)) {
+            methods = response.data.data
+          }
+          availableUpgradePaymentMethods.value = methods
+          if (methods.length > 0) {
+            paymentMethod.value = methods[0].key
+          }
+        }
+      } catch (error) {
+        availableUpgradePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
+      }
+    }
     const upgradeOrder = ref(null)
     const paymentQRVisible = ref(false)
     const paymentQRCode = ref(null)
@@ -403,6 +428,33 @@ export default {
       window.addEventListener('resize', handleResize)
       fetchSubscription()
       fetchUserInfo()
+      
+      // 监听订阅更新事件
+      const handleSubscriptionUpdate = async () => {
+        console.log('收到订阅更新事件，刷新订阅信息...')
+        await fetchSubscription()
+        await fetchUserInfo()
+      }
+      
+      // 监听用户信息更新事件
+      const handleUserInfoUpdate = async () => {
+        console.log('收到用户信息更新事件，刷新用户信息...')
+        await fetchUserInfo()
+      }
+      
+      window.addEventListener('subscription-updated', handleSubscriptionUpdate)
+      window.addEventListener('user-info-updated', handleUserInfoUpdate)
+      
+      // 清理事件监听器
+      onUnmounted(() => {
+        window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
+        window.removeEventListener('user-info-updated', handleUserInfoUpdate)
+        window.removeEventListener('resize', handleResize)
+        if (paymentStatusCheckTimer.value) {
+          clearInterval(paymentStatusCheckTimer.value)
+          paymentStatusCheckTimer.value = null
+        }
+      })
     })
 
     onUnmounted(() => {
@@ -654,7 +706,12 @@ export default {
       upgradeCost.value = 0
       levelDiscount.value = 0
       finalAmount.value = 0
-      paymentMethod.value = userBalance.value >= 0.01 ? 'balance' : 'alipay'
+      loadUpgradePaymentMethods()
+      if (userBalance.value >= 0.01) {
+        paymentMethod.value = 'balance'
+      } else {
+        paymentMethod.value = availableUpgradePaymentMethods.value[0]?.key || 'alipay'
+      }
       fetchUserInfo()
       setTimeout(calculateUpgradeCost, 300)
     }
@@ -715,13 +772,31 @@ export default {
               ElMessage.error('支付链接生成失败，请稍后重试')
               return
             }
-            upgradeOrder.value = {
-              ...data,
-              additional_devices: upgradeForm.value.additionalDevices,
-              additional_days: upgradeForm.value.additionalDays || 0
+            
+            // 判断是否是易支付，如果是则跳转到新页面
+            const paymentMethodName = data.payment_method_name || data.payment_method || paymentMethod.value
+            const isYipay = paymentMethodName && (
+              paymentMethodName.includes('yipay') || 
+              paymentMethodName.includes('易支付')
+            )
+            
+            if (isYipay) {
+              if (paymentUrlVal) {
+                ElMessage.info('正在跳转到支付页面...')
+                window.location.href = paymentUrlVal
+              } else {
+                ElMessage.error('支付链接不存在')
+              }
+            } else {
+              // 原始支付宝等，在当前页面显示二维码
+              upgradeOrder.value = {
+                ...data,
+                additional_devices: upgradeForm.value.additionalDevices,
+                additional_days: upgradeForm.value.additionalDays || 0
+              }
+              showUpgradeDialog.value = false
+              await showPaymentQRCode(data)
             }
-            showUpgradeDialog.value = false
-            await showPaymentQRCode(data)
           }
         } else {
           ElMessage.error(response?.data?.message || '升级设备数量失败')
@@ -791,8 +866,21 @@ export default {
           if (paymentStatusCheckTimer.value) clearInterval(paymentStatusCheckTimer.value)
           paymentQRVisible.value = false
           ElMessage.success('支付成功，设备已升级！')
-          await fetchSubscription()
-          await fetchUserInfo()
+          
+          // 立即刷新订阅和用户信息
+          await Promise.all([fetchSubscription(), fetchUserInfo()])
+          
+          // 触发全局事件，通知其他页面刷新
+          window.dispatchEvent(new CustomEvent('subscription-updated'))
+          window.dispatchEvent(new CustomEvent('user-info-updated'))
+          
+          // 延迟再次刷新，确保数据完全同步
+          setTimeout(async () => {
+            await Promise.all([fetchSubscription(), fetchUserInfo()])
+            window.dispatchEvent(new CustomEvent('subscription-updated'))
+            window.dispatchEvent(new CustomEvent('user-info-updated'))
+          }, 500)
+          
           // 重置状态
           upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
           upgradeCost.value = 0

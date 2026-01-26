@@ -268,6 +268,7 @@
 
 <script>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
@@ -288,6 +289,7 @@ export default {
     Refresh, View, Check, Search
   },
   setup() {
+    const route = useRoute()
     const loading = ref(false)
     const abnormalUsers = ref([])
     const showUserDetailsDialog = ref(false)
@@ -410,6 +412,16 @@ export default {
       window.addEventListener('resize', handleResize)
       // 页面加载时自动查询（使用默认筛选条件：本月1号到今天，订阅次数>=10，重置次数>=3）
       loadAbnormalUsers()
+      
+      // 检查URL参数中是否有user_id，如果有则自动查看该用户详情
+      const route = useRoute()
+      const userId = route.query.user_id
+      if (userId) {
+        // 等待数据加载完成后再查看详情
+        setTimeout(() => {
+          viewUserDetails(Number(userId))
+        }, 500)
+      }
     })
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)

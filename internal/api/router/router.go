@@ -9,30 +9,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRouter 设置路由
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
-	// 配置信任的代理，以便正确获取客户端真实IP
-	// 设置为 nil 表示信任所有代理（在生产环境中，建议明确指定代理IP）
-	// 如果部署在 Nginx/负载均衡器后面，需要配置具体的代理IP
-	r.SetTrustedProxies(nil) // 信任所有代理（开发环境）
-	// 生产环境建议使用：r.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8"})
+	r.SetTrustedProxies(nil)
 
-	// 中间件
 	r.Use(middleware.CORSMiddleware())
-	r.Use(middleware.SecurityHeadersMiddleware()) // 添加安全响应头
-	r.Use(middleware.ErrorRecoveryMiddleware())   // 使用增强版错误恢复中间件（记录错误到系统日志）
+	r.Use(middleware.SecurityHeadersMiddleware())
+	r.Use(middleware.ErrorRecoveryMiddleware())
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(middleware.RequestIDMiddleware())
 
-	// 静态文件服务（前端构建后的文件）
-	// 注意：这些路由需要在 API 路由之前注册
 	r.Static("/static", "./frontend/dist/assets")
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
 
-	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 			"status":  "healthy",
@@ -40,32 +31,27 @@ func SetupRouter() *gin.Engine {
 		})
 	})
 
-	// 维护模式中间件（在所有路由之前，但允许静态文件和健康检查）
 	r.Use(middleware.MaintenanceMiddleware())
 
-	// API 路由组
 	api := r.Group("/api/v1")
 	{
-		// 认证相关（豁免CSRF，因为移动应用无法处理CSRF token）
 		auth := api.Group("/auth")
 		{
-			// 登录和注册使用速率限制
 			auth.POST("/register", middleware.RegisterRateLimitMiddleware(), handlers.Register)
 			auth.POST("/login", middleware.LoginRateLimitMiddleware(), handlers.Login)
 			auth.POST("/login-json", middleware.LoginRateLimitMiddleware(), handlers.LoginJSON)
 			auth.POST("/refresh", handlers.RefreshToken)
 			auth.POST("/logout", middleware.AuthMiddleware(), handlers.Logout)
-			// 验证码发送使用速率限制
 			auth.POST("/verification/send", middleware.VerifyCodeRateLimitMiddleware(), handlers.SendVerificationCode)
 			auth.POST("/verification/verify", handlers.VerifyCode)
 			auth.POST("/forgot-password", middleware.VerifyCodeRateLimitMiddleware(), handlers.ForgotPassword)
 			auth.POST("/reset-password", handlers.ResetPasswordByCode)
 		}
 
-		// 对需要认证的API路由应用CSRF保护（Web应用使用）
+		api.POST("/payment/notify/:type", handlers.PaymentNotify)
+
 		api.Use(middleware.CSRFMiddleware())
 
-		// 用户相关（需要认证）
 		users := api.Group("/users")
 		users.Use(middleware.AuthMiddleware())
 		{
@@ -80,7 +66,6 @@ func SetupRouter() *gin.Engine {
 			users.PUT("/privacy-settings", handlers.UpdatePrivacySettings)
 			users.GET("/my-level", handlers.GetUserLevel)
 			users.GET("/theme", handlers.GetUserTheme)
-			// 更新用户主题
 			users.PUT("/theme", handlers.UpdateUserTheme)
 			users.GET("/login-history", handlers.GetLoginHistory)
 			users.GET("/activities", handlers.GetUserActivities)
@@ -88,23 +73,14 @@ func SetupRouter() *gin.Engine {
 			users.GET("/devices", handlers.GetUserDevices)
 		}
 
-		// XBoard 兼容路由（不影响原有功能，只是添加新路由）
-		// 这些路由使用相同的认证中间件，只是响应格式不同
 		xboardCompat := api.Group("")
 		xboardCompat.Use(middleware.AuthMiddleware())
 		{
-			// 兼容 XBoard 的用户信息接口
-			// 原接口: GET /api/v1/users/me (保持不变)
-			// 兼容接口: GET /api/v1/user/info (新增)
 			xboardCompat.GET("/user/info", handlers.GetCurrentUserXBoardCompat)
 
-			// 兼容 XBoard 的订阅接口
-			// 原接口: GET /api/v1/subscriptions/user-subscription (保持不变)
-			// 兼容接口: GET /api/v1/user/subscribe (新增)
 			xboardCompat.GET("/user/subscribe", handlers.GetUserSubscriptionXBoardCompat)
 		}
 
-		// 订阅相关
 		subscriptions := api.Group("/subscriptions")
 		subscriptions.Use(middleware.AuthMiddleware())
 		{
@@ -112,53 +88,42 @@ func SetupRouter() *gin.Engine {
 			subscriptions.GET("/:id", handlers.GetSubscription)
 			subscriptions.POST("", handlers.CreateSubscription)
 			subscriptions.GET("/user-subscription", handlers.GetUserSubscription)
-			subscriptions.GET("/devices", handlers.GetUserSubscriptionDevices)                 // 获取当前用户的订阅设备
-			subscriptions.POST("/reset-subscription", handlers.ResetUserSubscriptionSelf)      // 用户重置自己的订阅
-			subscriptions.POST("/send-subscription-email", handlers.SendSubscriptionEmailSelf) // 用户发送订阅邮件
-			subscriptions.POST("/convert-to-balance", handlers.ConvertSubscriptionToBalance)   // 转换订阅为余额
-			subscriptions.DELETE("/devices/:id", handlers.DeleteDevice)                        // 删除设备
+			subscriptions.GET("/devices", handlers.GetUserSubscriptionDevices)
+			subscriptions.POST("/reset-subscription", handlers.ResetUserSubscriptionSelf)
+			subscriptions.POST("/send-subscription-email", handlers.SendSubscriptionEmailSelf)
+			subscriptions.POST("/convert-to-balance", handlers.ConvertSubscriptionToBalance)
+			subscriptions.DELETE("/devices/:id", handlers.DeleteDevice)
 		}
 
-		// 订阅配置（公开访问，用于 Clash 等客户端，豁免CSRF）
-		// 注意：虽然路径是公开的，但订阅URL本身就是密钥，只有知道URL的用户才能访问
 		subscribePublic := api.Group("")
 		subscribePublic.Use(middleware.CSRFExemptMiddleware())
 		{
 			subscribePublic.GET("/subscribe/:url", handlers.GetSubscriptionConfig)
-			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig)        // 猫咪订阅（Clash YAML格式）
-			subscribePublic.GET("/subscriptions/universal/:url", handlers.GetUniversalSubscription) // 通用订阅（Base64格式，适用于小火煎、v2ray等）
+			subscribePublic.GET("/subscriptions/clash/:url", handlers.GetSubscriptionConfig)
+			subscribePublic.GET("/subscriptions/universal/:url", handlers.GetUniversalSubscription)
 
-			// XBoard 兼容的客户端订阅接口（可选，如果 Orange 客户端使用此格式）
-			// 原接口: GET /api/v1/subscriptions/clash/:url (保持不变)
-			// 兼容接口: GET /api/v1/client/subscribe?token=xxx (新增)
 			subscribePublic.GET("/client/subscribe", handlers.GetClientSubscribeXBoardCompat)
 		}
 
-		// 订单相关
 		orders := api.Group("/orders")
 		orders.Use(middleware.AuthMiddleware())
 		{
 			orders.GET("", handlers.GetOrders)
 			orders.POST("", handlers.CreateOrder)
-			// 升级设备数
 			orders.POST("/upgrade-devices", handlers.UpgradeDevices)
 			orders.GET("/stats", handlers.GetOrderStats)
-			// 使用订单号的路由（放在前面，使用具体路径避免冲突）
-			orders.POST("/:orderNo/pay", handlers.PayOrder)             // 支付订单
-			orders.POST("/:orderNo/cancel", handlers.CancelOrderByNo)   // 通过订单号取消订单
-			orders.GET("/:orderNo/status", handlers.GetOrderStatusByNo) // 通过订单号获取状态
-			// 使用 ID 的路由（使用不同的路径前缀避免冲突）
-			orders.GET("/id/:id", handlers.GetOrder) // 通过 ID 获取订单
+			orders.POST("/:orderNo/pay", handlers.PayOrder)
+			orders.POST("/:orderNo/cancel", handlers.CancelOrderByNo)
+			orders.GET("/:orderNo/status", handlers.GetOrderStatusByNo)
+			orders.GET("/id/:id", handlers.GetOrder)
 		}
 
-		// 套餐相关
 		packages := api.Group("/packages")
 		{
 			packages.GET("", handlers.GetPackages)
 			packages.GET("/:id", handlers.GetPackage)
 		}
 
-		// 支付相关
 		payment := api.Group("/payment")
 		payment.Use(middleware.AuthMiddleware())
 		{
@@ -166,20 +131,14 @@ func SetupRouter() *gin.Engine {
 			payment.POST("", handlers.CreatePayment)
 			payment.GET("/status/:id", handlers.GetPaymentStatus)
 		}
-		// 支付方式（公开访问）
 		api.GET("/payment-methods/active", handlers.GetPaymentMethods)
 
-		// 支付回调（不需要认证）
-		api.POST("/payment/notify/:type", handlers.PaymentNotify)
-
-		// 节点相关（公开访问，但支持可选认证以获取专线节点）
 		nodes := api.Group("/nodes")
 		{
 			nodes.GET("", middleware.TryAuthMiddleware(), handlers.GetNodes)
 			nodes.GET("/stats", middleware.TryAuthMiddleware(), handlers.GetNodeStats)
 			nodes.GET("/:id", handlers.GetNode)
 		}
-		// 节点操作（需要认证）
 		nodesAuth := api.Group("/nodes")
 		nodesAuth.Use(middleware.AuthMiddleware())
 		{
@@ -188,7 +147,6 @@ func SetupRouter() *gin.Engine {
 			nodesAuth.POST("/import-from-clash", handlers.ImportFromClash)
 		}
 
-		// 优惠券相关
 		coupons := api.Group("/coupons")
 		{
 			coupons.GET("", handlers.GetCoupons)
@@ -200,7 +158,6 @@ func SetupRouter() *gin.Engine {
 		{
 			couponsAuth.GET("/my", handlers.GetUserCoupons)
 		}
-		// 管理员优惠券
 		couponsAdmin := coupons.Group("/admin")
 		couponsAdmin.Use(middleware.AuthMiddleware())
 		couponsAdmin.Use(middleware.AdminMiddleware())
@@ -212,7 +169,6 @@ func SetupRouter() *gin.Engine {
 			couponsAdmin.DELETE("/:id", handlers.DeleteCoupon)
 		}
 
-		// 通知相关
 		notifications := api.Group("/notifications")
 		notifications.Use(middleware.AuthMiddleware())
 		{
@@ -223,7 +179,6 @@ func SetupRouter() *gin.Engine {
 			notifications.DELETE("/:id", handlers.DeleteNotification)
 			notifications.GET("/user-notifications", handlers.GetUserNotifications)
 		}
-		// 管理员通知
 		notificationsAdmin := api.Group("/notifications/admin")
 		notificationsAdmin.Use(middleware.AuthMiddleware())
 		notificationsAdmin.Use(middleware.AdminMiddleware())
@@ -234,20 +189,17 @@ func SetupRouter() *gin.Engine {
 			notificationsAdmin.DELETE("/notifications/:id", handlers.DeleteAdminNotification)
 		}
 
-		// 工单相关
 		tickets := api.Group("/tickets")
 		tickets.Use(middleware.AuthMiddleware())
 		{
 			tickets.GET("", handlers.GetTickets)
-			// 获取未读回复数量
 			tickets.GET("/unread-count", handlers.GetUnreadTicketRepliesCount)
 			tickets.GET("/:id", handlers.GetTicket)
 			tickets.POST("", handlers.CreateTicket)
 			tickets.POST("/:id/reply", handlers.ReplyTicket)
 			tickets.POST("/:id/replies", handlers.ReplyTicket)
-			tickets.PUT("/:id", handlers.CloseTicket) // 用户关闭自己的工单
+			tickets.PUT("/:id", handlers.CloseTicket)
 		}
-		// 管理员工单
 		ticketsAdmin := api.Group("/tickets/admin")
 		ticketsAdmin.Use(middleware.AuthMiddleware())
 		ticketsAdmin.Use(middleware.AdminMiddleware())
@@ -258,7 +210,6 @@ func SetupRouter() *gin.Engine {
 			ticketsAdmin.PUT("/:id", handlers.UpdateTicketStatus)
 		}
 
-		// 设备管理
 		devices := api.Group("/devices")
 		devices.Use(middleware.AuthMiddleware())
 		{
@@ -266,10 +217,8 @@ func SetupRouter() *gin.Engine {
 			devices.DELETE("/:id", handlers.DeleteDevice)
 		}
 
-		// 邀请码（公开访问，用于注册时验证）
 		api.GET("/invites/validate/:code", handlers.ValidateInviteCode)
 
-		// 邀请码（需要认证）
 		invites := api.Group("/invites")
 		invites.Use(middleware.AuthMiddleware())
 		{
@@ -282,13 +231,11 @@ func SetupRouter() *gin.Engine {
 			invites.DELETE("/:id", handlers.DeleteInviteCode)
 		}
 
-		// 充值
 		recharge := api.Group("/recharge")
 		recharge.Use(middleware.AuthMiddleware())
 		{
 			recharge.GET("", handlers.GetRechargeRecords)
-			recharge.GET("/status/:orderNo", handlers.GetRechargeStatusByNo) // 通过订单号获取充值状态
-			// 管理员充值记录（必须在 /:id 之前，避免路由冲突）
+			recharge.GET("/status/:orderNo", handlers.GetRechargeStatusByNo)
 			rechargeAdmin := recharge.Group("/admin")
 			rechargeAdmin.Use(middleware.AdminMiddleware())
 			{
@@ -299,17 +246,14 @@ func SetupRouter() *gin.Engine {
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
 		}
 
-		// 配置
 		config := api.Group("/config")
 		{
 			config.GET("", handlers.GetSystemConfigs)
 			config.GET("/:key", handlers.GetSystemConfig)
 		}
 
-		// 软件配置
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 
-		// 移动端配置（公开访问，用于 Android/iOS 应用）
 		api.GET("/mobile-config", handlers.GetMobileConfig)
 		softwareConfig := api.Group("/software-config")
 		softwareConfig.Use(middleware.AuthMiddleware())
@@ -318,7 +262,6 @@ func SetupRouter() *gin.Engine {
 			softwareConfig.PUT("", handlers.UpdateSoftwareConfig)
 		}
 
-		// 支付配置
 		paymentConfig := api.Group("/payment-config")
 		paymentConfig.Use(middleware.AuthMiddleware())
 		paymentConfig.Use(middleware.AdminMiddleware())
@@ -328,13 +271,11 @@ func SetupRouter() *gin.Engine {
 			paymentConfig.PUT("/:id", handlers.UpdatePaymentConfig)
 		}
 
-		// 公开设置
 		settings := api.Group("/settings")
 		{
 			settings.GET("/public-settings", handlers.GetPublicSettings)
 		}
 
-		// 统计
 		statistics := api.Group("/statistics")
 		statistics.Use(middleware.AuthMiddleware())
 		statistics.Use(middleware.AdminMiddleware())
@@ -347,12 +288,10 @@ func SetupRouter() *gin.Engine {
 			statistics.GET("/regions", handlers.GetRegionStats)
 		}
 
-		// 管理员路由
 		admin := api.Group("/admin")
 		admin.Use(middleware.AuthMiddleware())
 		admin.Use(middleware.AdminMiddleware())
 		{
-			// Dashboard 相关
 			admin.GET("/dashboard", handlers.GetDashboard)
 			admin.GET("/stats", handlers.GetDashboard)
 			admin.GET("/users/recent", handlers.GetRecentUsers)
@@ -360,7 +299,6 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/users/abnormal", handlers.GetAbnormalUsers)
 			admin.POST("/users/abnormal/:id/mark-normal", handlers.MarkUserNormal)
 
-			// 用户管理
 			admin.GET("/users", handlers.GetUsers)
 			admin.POST("/users", handlers.CreateUser)
 			admin.GET("/users/:id", handlers.GetUser)
@@ -377,7 +315,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/batch-send-subscription-email", handlers.BatchSendSubEmail)
 			admin.POST("/users/batch-expire-reminder", handlers.BatchSendExpireReminder)
 
-			// 订单管理
 			admin.GET("/orders", handlers.GetAdminOrders)
 			admin.PUT("/orders/:id", handlers.UpdateAdminOrder)
 			admin.DELETE("/orders/:id", handlers.DeleteAdminOrder)
@@ -387,13 +324,11 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/orders/bulk-cancel", handlers.BulkCancelOrders)
 			admin.POST("/orders/batch-delete", handlers.BatchDeleteOrders)
 
-			// 套餐管理
 			admin.GET("/packages", handlers.GetAdminPackages)
 			admin.POST("/packages", handlers.CreatePackage)
 			admin.PUT("/packages/:id", handlers.UpdatePackage)
 			admin.DELETE("/packages/:id", handlers.DeletePackage)
 
-			// 节点管理
 			admin.GET("/nodes", handlers.GetAdminNodes)
 			admin.GET("/nodes/stats", handlers.GetNodeStats)
 			admin.POST("/nodes", handlers.CreateNode)
@@ -405,7 +340,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/nodes/batch-delete", handlers.BatchDeleteNodes)
 			admin.POST("/nodes/import-from-file", handlers.ImportFromFile)
 
-			// 专线节点管理
 			admin.GET("/custom-nodes", handlers.GetCustomNodes)
 			admin.GET("/custom-nodes/:id/users", handlers.GetCustomNodeUsers)
 			admin.POST("/custom-nodes", handlers.CreateCustomNode)
@@ -418,24 +352,19 @@ func SetupRouter() *gin.Engine {
 			admin.PUT("/custom-nodes/:id", handlers.UpdateCustomNode)
 			admin.DELETE("/custom-nodes/:id", handlers.DeleteCustomNode)
 
-			// 用户专线节点分配
 			admin.GET("/users/:id/custom-nodes", handlers.GetUserCustomNodes)
 			admin.POST("/users/:id/custom-nodes", handlers.AssignCustomNodeToUser)
 			admin.DELETE("/users/:id/custom-nodes/:node_id", handlers.UnassignCustomNodeFromUser)
 
-			// 工单管理
 			admin.PUT("/tickets/:id/status", handlers.UpdateTicketStatus)
 
-			// 设备统计
 			admin.GET("/devices/stats", handlers.GetDeviceStats)
 
-			// 统计（管理员专用）
 			admin.GET("/statistics", handlers.GetStatistics)
 			admin.GET("/statistics/user-trend", handlers.GetUserTrend)
 			admin.GET("/statistics/revenue-trend", handlers.GetRevenueTrend)
 			admin.GET("/statistics/regions", handlers.GetRegionStats)
 
-			// 系统设置
 			admin.GET("/settings", handlers.GetAdminSettings)
 			admin.PUT("/settings/general", handlers.UpdateGeneralSettings)
 			admin.PUT("/settings/registration", handlers.UpdateRegistrationSettings)
@@ -452,7 +381,6 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/settings/geoip/status", handlers.GetGeoIPStatus)
 			admin.POST("/settings/geoip/update", handlers.UpdateGeoIPDatabase)
 
-			// 管理员个人资料
 			admin.GET("/profile", handlers.GetAdminProfile)
 			admin.PUT("/profile", handlers.UpdateAdminProfile)
 			admin.POST("/change-password", handlers.ChangePassword)
@@ -462,7 +390,6 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/notification-settings", handlers.GetNotificationSettings)
 			admin.PUT("/notification-settings", handlers.UpdateAdminNotificationSettings)
 
-			// 订阅管理
 			admin.GET("/subscriptions", handlers.GetAdminSubscriptions)
 			admin.PUT("/subscriptions/:id", handlers.UpdateSubscription)
 			admin.POST("/subscriptions/:id/reset", handlers.ResetSubscription)
@@ -482,7 +409,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/subscriptions/batch-send-email", handlers.BatchSendAdminSubEmail)
 			admin.GET("/subscriptions/expiring", handlers.GetExpiringSubscriptions)
 
-			// 配置更新相关
 			admin.GET("/config-update/status", handlers.GetConfigUpdateStatus)
 			admin.GET("/config-update/config", handlers.GetConfigUpdateConfig)
 			admin.PUT("/config-update/config", handlers.UpdateConfigUpdateConfig)
@@ -493,17 +419,14 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/config-update/logs", handlers.GetConfigUpdateLogs)
 			admin.POST("/config-update/logs/clear", handlers.ClearConfigUpdateLogs)
 
-			// 邀请管理
 			admin.GET("/invites", handlers.GetAdminInvites)
 			admin.GET("/invite-relations", handlers.GetAdminInviteRelations)
 			admin.GET("/invite-statistics", handlers.GetAdminInviteStatistics)
 
-			// 用户等级管理
 			admin.GET("/user-levels", handlers.GetAdminUserLevels)
 			admin.POST("/user-levels", handlers.CreateUserLevel)
 			admin.PUT("/user-levels/:id", handlers.UpdateUserLevel)
 
-			// 邮件队列管理
 			admin.GET("/email-queue", handlers.GetAdminEmailQueue)
 			admin.GET("/email-queue/statistics", handlers.GetEmailQueueStatistics)
 			admin.GET("/email-queue/:id", handlers.GetEmailQueueDetail)
@@ -511,31 +434,24 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/email-queue/:id/retry", handlers.RetryEmailFromQueue)
 			admin.POST("/email-queue/clear", handlers.ClearEmailQueue)
 
-			// 配置管理
 			admin.GET("/email-config", handlers.GetAdminEmailConfig)
 			admin.POST("/email-config", handlers.UpdateEmailConfig)
 			admin.GET("/configs", handlers.GetSystemConfigs)
 			admin.POST("/configs", handlers.CreateSystemConfig)
 			admin.PUT("/configs/:key", handlers.UpdateSystemConfig)
 
-			// 文件上传
 			admin.POST("/upload", handlers.UploadFile)
 
-			// 订阅配置更新
 			admin.POST("/config-update", handlers.UpdateSubscriptionConfig)
 
-			// 系统监控
 			admin.GET("/monitoring/system", handlers.GetSystemInfo)
 			admin.GET("/monitoring/database", handlers.GetDatabaseStats)
 
-			// 备份管理
 			admin.POST("/backup", handlers.CreateBackup)
 			admin.GET("/backups", handlers.ListBackups)
 
-			// 日志管理
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)
-			// 系统日志
 			admin.GET("/system-logs", handlers.GetSystemLogs)
 			admin.GET("/logs-stats", handlers.GetLogsStats)
 			admin.GET("/export-logs", handlers.ExportLogs)
@@ -543,16 +459,12 @@ func SetupRouter() *gin.Engine {
 		}
 	}
 
-	// SPA 路由处理：所有未匹配的路由都返回前端 index.html
-	// 这样前端路由可以正常工作
 	r.NoRoute(func(c *gin.Context) {
-		// 如果是 API 请求，返回 404
 		path := c.Request.URL.Path
 		if len(path) >= 4 && path[:4] == "/api" {
 			utils.ErrorResponse(c, http.StatusNotFound, "API endpoint not found", nil)
 			return
 		}
-		// 否则返回前端页面
 		c.File("./frontend/dist/index.html")
 	})
 

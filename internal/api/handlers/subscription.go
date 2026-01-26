@@ -356,44 +356,28 @@ func ResetSubscription(c *gin.Context) {
 	var deviceCountBefore int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
 
-	// 开启事务
-	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-		// 生成新订阅地址
-		newURL := utils.GenerateSubscriptionURL()
-		sub.SubscriptionURL = newURL
-		sub.CurrentDevices = 0
-		if err := tx.Save(&sub).Error; err != nil {
-			return err
-		}
+	// 生成新订阅地址
+	newURL := utils.GenerateSubscriptionURL()
+	sub.SubscriptionURL = newURL
+	sub.CurrentDevices = 0
+	db.Save(&sub)
 
-		// 记录订阅重置
-		reset := models.SubscriptionReset{
-			UserID:             sub.UserID,
-			SubscriptionID:     sub.ID,
-			ResetType:          "admin_reset",
-			Reason:             "管理员重置订阅地址",
-			OldSubscriptionURL: &oldURL,
-			NewSubscriptionURL: &newURL,
-			DeviceCountBefore:  int(deviceCountBefore),
-			DeviceCountAfter:   0,
-			ResetBy:            getCurrentAdminUsername(c),
-		}
-		if err := tx.Create(&reset).Error; err != nil {
-			return err
-		}
-
-		// 清理设备记录
-		if err := tx.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "重置订阅失败", err)
-		return
+	// 记录订阅重置
+	reset := models.SubscriptionReset{
+		UserID:             sub.UserID,
+		SubscriptionID:     sub.ID,
+		ResetType:          "admin_reset",
+		Reason:             "管理员重置订阅地址",
+		OldSubscriptionURL: &oldURL,
+		NewSubscriptionURL: &newURL,
+		DeviceCountBefore:  int(deviceCountBefore),
+		DeviceCountAfter:   0,
+		ResetBy:            getCurrentAdminUsername(c),
 	}
+	db.Create(&reset)
+
+	// 清理设备记录
+	db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{})
 
 	go sendResetEmail(c, sub, sub.User, "管理员重置")
 	utils.SuccessResponse(c, http.StatusOK, "订阅已重置", sub)
@@ -690,27 +674,18 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 		// 保留两位小数
 		convertedAmount = float64(int(convertedAmount*100+0.5)) / 100
 
-		// 使用事务执行余额更新和订阅删除
-		err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-			user.Balance += convertedAmount
-			if err := tx.Save(&user).Error; err != nil {
-				return err
-			}
-
-			// 删除订阅
-			if err := tx.Delete(&sub).Error; err != nil {
-				utils.LogError("ConvertSubscriptionToBalance: failed to delete subscription", err, map[string]interface{}{
-					"user_id":         user.ID,
-					"subscription_id": sub.ID,
-				})
-				return err
-			}
-			return nil
-		})
-
-		if err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "转换失败", err)
+		user.Balance += convertedAmount
+		if err := db.Save(&user).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新余额失败", err)
 			return
+		}
+
+		// 删除订阅
+		if err := db.Delete(&sub).Error; err != nil {
+			utils.LogError("ConvertSubscriptionToBalance: failed to delete subscription", err, map[string]interface{}{
+				"user_id":         user.ID,
+				"subscription_id": sub.ID,
+			})
 		}
 
 		utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{

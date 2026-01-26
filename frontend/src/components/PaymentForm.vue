@@ -149,7 +149,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleCheckFilled, CircleCloseFilled, Loading } from '@element-plus/icons-vue'
 import { useApi } from '@/utils/api'
@@ -186,6 +186,7 @@ export default {
       error_message: ''
     })
     let statusCheckTimer = null
+    
     const onPaymentMethodChange = (method) => {
       selectedPaymentMethod.value = method
     }

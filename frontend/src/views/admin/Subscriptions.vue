@@ -55,7 +55,7 @@
           <div class="search-input-wrapper">
             <el-input
               v-model="searchForm.keyword"
-              placeholder="输入QQ或订阅地址查询"
+              placeholder="输入QQ、订阅地址或旧订阅地址查询"
               class="mobile-search-input"
               clearable
               @keyup.enter="searchSubscriptions"
@@ -154,7 +154,7 @@
         <el-form-item label="搜索">
           <el-input 
             v-model="searchForm.keyword" 
-            placeholder="输入QQ或订阅地址进行搜索"
+            placeholder="输入QQ、订阅地址或旧订阅地址进行搜索"
             style="width: 300px;"
             clearable
             @keyup.enter="searchSubscriptions"
@@ -1039,7 +1039,7 @@
         </el-card>
 
         <!-- 订阅重置记录 -->
-        <el-card class="detail-section" v-if="selectedUser.user && selectedUser.user.subscription_resets && selectedUser.user.subscription_resets.length > 0">
+        <el-card class="detail-section" v-if="selectedUser.user">
           <template #header>
             <h4>
               <el-icon><Refresh /></el-icon>
