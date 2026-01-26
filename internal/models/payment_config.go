@@ -102,6 +102,18 @@ func (p *PaymentConfig) GetConfig() map[string]interface{} {
 		if p.WalletAddress.Valid {
 			config["wallet_address"] = p.WalletAddress.String
 		}
+	case "yipay", "yipay_alipay", "yipay_wxpay", "yipay_qqpay":
+		// 易支付配置
+		// AppID 存储商户ID (pid)
+		if p.AppID.Valid {
+			config["pid"] = p.AppID.String
+			config["app_id"] = p.AppID.String
+		}
+		// MerchantPrivateKey 存储商户密钥 (key)
+		if p.MerchantPrivateKey.Valid {
+			config["key"] = p.MerchantPrivateKey.String
+			config["merchant_private_key"] = p.MerchantPrivateKey.String
+		}
 	}
 
 	// 解析 ConfigJSON

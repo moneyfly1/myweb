@@ -317,17 +317,29 @@
               <span class="amount">¥{{ parseFloat(currentOrder?.amount || orderInfo.amount || 0).toFixed(2) }}</span>
             </el-descriptions-item>
             <el-descriptions-item label="支付方式">
-              <el-tag type="primary">支付宝</el-tag>
+              <el-tag type="primary">{{ getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) }}</el-tag>
             </el-descriptions-item>
           </el-descriptions>
         </div>
         
         <div class="qr-code-wrapper">
-          <div v-if="paymentQRCode" class="qr-code">
+          <!-- 如果是支付页面URL，使用iframe嵌入，让浏览器自动处理跳转 -->
+          <div v-if="isPaymentPageUrl && paymentUrl" class="payment-page-iframe">
+            <iframe 
+              ref="paymentIframe"
+              :src="paymentUrl" 
+              frameborder="0"
+              scrolling="auto"
+              style="width: 100%; min-height: 600px; border: none;"
+              @load="onIframeLoad"
+            ></iframe>
+          </div>
+          <!-- 如果是二维码图片，直接显示 -->
+          <div v-else-if="paymentQRCode" class="qr-code">
             <img 
               :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())" 
               alt="支付二维码" 
-              title="支付宝二维码"
+              :title="getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) + '二维码'"
               @error="onImageError"
               @load="onImageLoad"
             />
@@ -340,15 +352,30 @@
         
         <div class="payment-tips">
           <el-alert
+            v-if="isPaymentPageUrl"
             title="支付提示"
             type="info"
             :closable="false"
             show-icon
           >
             <template #default>
-              <p>1. 请使用支付宝扫描上方二维码</p>
+              <p><strong>支付页面已加载</strong></p>
+              <p>1. 页面将自动跳转到支付页面</p>
+              <p>2. 在支付页面使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) }}扫描二维码完成支付</p>
+              <p>3. 支付完成后请勿关闭此窗口，系统将自动检测支付状态并开通套餐</p>
+            </template>
+          </el-alert>
+          <el-alert
+            v-else
+            title="支付提示"
+            type="info"
+            :closable="false"
+            show-icon
+          >
+            <template #default>
+              <p>1. 请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) }}扫描上方二维码</p>
               <p>2. 确认订单信息无误后完成支付</p>
-              <p>3. 支付完成后请勿关闭此窗口，系统将自动检测支付状态</p>
+              <p>3. 支付完成后请勿关闭此窗口，系统将自动检测支付状态并开通套餐</p>
             </template>
           </el-alert>
         </div>
@@ -363,16 +390,6 @@
           >
             <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
             跳转到支付宝支付
-          </el-button>
-          
-          <el-button 
-            @click="checkPaymentStatus" 
-            :loading="isCheckingPayment"
-            type="primary"
-            size="large"
-            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
-          >
-            检查支付状态
           </el-button>
           
           <el-button 
@@ -438,7 +455,18 @@ export default {
     const selectedPackage = ref(null)
     const currentOrder = ref(null)
     const paymentQRCode = ref('')
-    const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App
+    const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App或iframe嵌入
+    
+    // 判断是否是支付页面URL（需要使用iframe嵌入）
+    const isPaymentPageUrl = computed(() => {
+      if (!paymentUrl.value) return false
+      const url = String(paymentUrl.value).toLowerCase()
+      // 如果是易支付的支付页面URL，使用iframe嵌入
+      return url.includes('payapi/pay/payment') || 
+             url.includes('9801w.com') || 
+             url.includes('idzew.com') ||
+             (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
+    })
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
     
@@ -448,8 +476,8 @@ export default {
     const couponInfo = ref(null)
     
     // 支付方式相关
-    const paymentMethod = ref('alipay')  // 'balance', 'alipay', 'yipay', 'mixed'
-    const availablePaymentMethods = ref([])  // 可用的支付方式列表
+    const paymentMethod = ref('alipay')
+    const availablePaymentMethods = ref([])
     const userBalance = ref(0)
     
     // 用户等级相关
@@ -530,6 +558,24 @@ export default {
     const clearCoupon = () => {
       couponCode.value = ''
       couponInfo.value = null
+    }
+    
+    // 获取支付方式显示名称
+    const getPaymentMethodDisplayName = (method) => {
+      if (!method) return '支付宝'
+      const methodStr = String(method).toLowerCase()
+      if (methodStr.includes('yipay_wxpay') || methodStr.includes('易支付-微信') || methodStr.includes('wxpay')) {
+        return '微信'
+      } else if (methodStr.includes('yipay_alipay') || methodStr.includes('易支付-支付宝') || methodStr.includes('alipay')) {
+        return '支付宝'
+      } else if (methodStr.includes('yipay_qqpay') || methodStr.includes('易支付-qq')) {
+        return 'QQ钱包'
+      } else if (methodStr.includes('wechat') || methodStr.includes('微信')) {
+        return '微信'
+      } else if (methodStr.includes('alipay') || methodStr.includes('支付宝')) {
+        return '支付宝'
+      }
+      return '支付宝'
     }
     
     const orderInfo = reactive({
@@ -718,9 +764,7 @@ export default {
           // 余额不足但大于0，默认选择混合支付
           paymentMethod.value = 'mixed'
         } else {
-          // 余额为0，优先选择易支付，如果没有则选择支付宝
-          const hasYipay = availablePaymentMethods.value.some(m => m.key === 'yipay')
-          paymentMethod.value = hasYipay ? 'yipay' : (availablePaymentMethods.value[0]?.key || 'alipay')
+          paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
         }
         
         purchaseDialogVisible.value = true
@@ -738,7 +782,7 @@ export default {
         const orderData = {
           package_id: selectedPackage.value.id,
           payment_method: paymentMethod.value === 'balance' ? 'balance' : paymentMethod.value,
-          amount: finalAmount.value, // 使用最终金额（已扣除优惠券）
+          amount: finalAmount.value,
           currency: 'CNY'
         }
         
@@ -790,6 +834,8 @@ export default {
         
         // 处理响应数据结构：ResponseBase { data: {...}, message: "...", success: true/false }
         let order = null
+        console.log('订单创建响应:', response.data)
+        
         if (response.data) {
           if (response.data.success !== false) {
             // success 为 true 或 undefined，尝试获取 data
@@ -805,11 +851,18 @@ export default {
           throw new Error('订单创建失败：未返回订单数据')
         }
         
+        console.log('解析后的订单数据:', order)
+        
         // 设置订单信息（确保订单号正确设置）
         orderInfo.orderNo = order.order_no || order.orderNo || order.order_id || ''
         orderInfo.packageName = selectedPackage.value.name
         orderInfo.amount = order.amount
         orderInfo.duration = selectedPackage.value.duration_days
+        
+        // 保存订单的支付方式信息
+        const orderPaymentMethod = order.payment_method_name || paymentMethod.value
+        order.payment_method_name = orderPaymentMethod
+        order.payment_method = orderPaymentMethod
         
         if (order.status === 'paid') {
           purchaseDialogVisible.value = false
@@ -827,14 +880,42 @@ export default {
           purchaseDialogVisible.value = false
           
           // 设置订单信息用于显示
-          orderInfo.orderNo = order.order_no
+          orderInfo.orderNo = order.order_no || order.orderNo
           orderInfo.packageName = selectedPackage.value.name
           orderInfo.amount = order.amount
           orderInfo.duration = selectedPackage.value.duration_days
           orderInfo.paymentUrl = order.payment_url || order.payment_qr_code
           
-          // 显示支付二维码对话框
-          showPaymentQRCode(order)
+          // 确保订单包含支付方式信息
+          if (!order.payment_method_name && !order.payment_method) {
+            order.payment_method_name = paymentMethod.value
+            order.payment_method = paymentMethod.value
+          }
+          
+           // 判断是否是易支付，如果是则跳转到新页面
+          const paymentMethodName = order.payment_method_name || order.payment_method || paymentMethod.value
+          const isYipay = paymentMethodName && (
+            paymentMethodName.includes('yipay') || 
+            paymentMethodName.includes('易支付')
+          )
+          
+          if (isYipay) {
+            const paymentUrl = order.payment_url || order.payment_qr_code
+            if (paymentUrl) {
+              ElMessage.info('正在跳转到支付页面...')
+              window.location.href = paymentUrl
+            } else {
+              ElMessage.error('支付链接不存在')
+            }
+          } else {
+            // 原始支付宝等，在当前页面显示二维码
+            try {
+              await showPaymentQRCode(order)
+            } catch (error) {
+              console.error('显示支付二维码失败:', error)
+              ElMessage.error('显示支付二维码失败: ' + (error.message || '未知错误'))
+            }
+          }
         } else {
           // 支付URL生成失败，显示提示信息并提供重试选项
           const errorMsg = order.payment_error || order.note || '支付链接生成失败，可能是网络问题或支付宝配置问题'
@@ -998,111 +1079,216 @@ export default {
     
     // 显示支付二维码
     const showPaymentQRCode = async (order) => {
-      // 尝试多种方式获取支付URL
-      const url = order.payment_url || order.payment_qr_code || orderInfo.paymentUrl
-      
-      if (!url) {
-        ElMessage.error('支付链接生成失败，请重试或前往订单页面重新生成')
-        return
-      }
-      
-      // 保存原始支付URL，用于跳转支付宝App
-      paymentUrl.value = url
-      
-      // 设置当前订单信息
-      currentOrder.value = {
-        order_no: order.order_no || orderInfo.orderNo,
-        amount: order.amount || orderInfo.amount,
-        package_name: orderInfo.packageName,
-        payment_method_name: order.payment_method_name || 'alipay',
-        payment_method: order.payment_method || 'alipay'
-      }
-      
-      // 使用qrcode库将支付URL生成为二维码图片
-      const paymentMethod = order.payment_method_name || order.payment_method || 'alipay'
+      try {
+        // 尝试多种方式获取支付URL
+        const url = order.payment_url || order.payment_qr_code || orderInfo.paymentUrl
+        
+        console.log('showPaymentQRCode 开始:', { url, order })
+        
+        if (!url) {
+          ElMessage.error('支付链接生成失败，请重试或前往订单页面重新生成')
+          return
+        }
+        
+        // 保存原始支付URL，用于跳转支付宝App
+        paymentUrl.value = url
+        
+        // 设置当前订单信息，优先使用订单中的支付方式，其次使用当前选择的支付方式
+        const orderPaymentMethod = order.payment_method_name || order.payment_method || paymentMethod.value
+        currentOrder.value = {
+          order_no: order.order_no || orderInfo.orderNo,
+          amount: order.amount || orderInfo.amount,
+          package_name: orderInfo.packageName || selectedPackage.value?.name,
+          payment_method_name: orderPaymentMethod,
+          payment_method: orderPaymentMethod
+        }
+        
+        // 调试日志
+        console.log('显示支付二维码:', {
+          orderPaymentMethod,
+          order: order.payment_method_name || order.payment_method,
+          selected: paymentMethod.value,
+          displayName: getPaymentMethodDisplayName(orderPaymentMethod),
+          url: url
+        })
+        
+        // 使用qrcode库将支付URL生成为二维码图片
+        const paymentMethodForQR = orderPaymentMethod
       
       try {
         // 动态导入qrcode库
         const QRCode = await import('qrcode')
         
-        // 支付宝返回的可能是：
-        // 1. 二维码URL（如 https://qr.alipay.com/xxx）- 直接使用
-        // 2. 支付页面URL（如 https://openapi.alipay.com/gateway.do?...）- 也可以生成二维码
-        // 3. 其他支付方式的URL - 同样生成二维码
-        
         // 根据设备类型调整二维码参数
         const isMobileDevice = window.innerWidth <= 768
         const qrOptions = {
-          width: isMobileDevice ? 200 : 256, // 手机端使用较小的尺寸
+          width: isMobileDevice ? 200 : 256,
           margin: 2,
           color: {
             dark: '#000000',
             light: '#FFFFFF'
           },
-          errorCorrectionLevel: 'M' // 使用中等纠错级别，避免二维码过于复杂
+          errorCorrectionLevel: 'M'
         }
         
-        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-          // 将URL生成为base64格式的二维码图片
-          const qrCodeDataURL = await QRCode.toDataURL(url, qrOptions)
-          paymentQRCode.value = qrCodeDataURL
-        } else if (url && url.trim() !== '') {
-          // 即使不是http/https开头的URL，也尝试生成二维码（可能是其他格式）
-          const qrCodeDataURL = await QRCode.toDataURL(url, qrOptions)
-          paymentQRCode.value = qrCodeDataURL
-        } else {
+        if (!url || url.trim() === '') {
           ElMessage.error('支付链接为空，请联系管理员检查配置')
           return
         }
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('生成二维码失败:', error)
+        
+        // 确保URL是字符串格式
+        const urlString = String(url).trim()
+        
+        // 检查是否是支付页面URL（需要使用iframe嵌入）
+        const isYipayPaymentPage = urlString.includes('payApi/pay/payment') || 
+                                   urlString.includes('payapi/pay/payment') ||
+                                   urlString.includes('9801w.com') || 
+                                   urlString.includes('idzew.com')
+        
+        if (isYipayPaymentPage) {
+          // 如果是支付页面URL，使用iframe嵌入，不生成二维码
+          console.log('检测到支付页面URL，使用iframe嵌入:', urlString)
+          paymentQRCode.value = '' // 清空二维码，使用iframe
+          // paymentUrl已经设置，iframe会自动加载
+        } else {
+          // 如果是二维码URL，生成二维码图片
+          const qrCodeDataURL = await QRCode.toDataURL(urlString, qrOptions)
+          paymentQRCode.value = qrCodeDataURL
         }
+      } catch (error) {
+        console.error('生成二维码失败:', error)
         ElMessage.error('生成二维码失败: ' + (error.message || '未知错误') + '，请刷新页面重试')
         return
       }
       
-      // 显示二维码对话框
-      paymentQRVisible.value = true
+        // 显示二维码对话框
+        paymentQRVisible.value = true
+        
+        // 等待一下确保对话框已渲染
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // 开始检查支付状态
+        startPaymentStatusCheck()
+      } catch (error) {
+        console.error('showPaymentQRCode 错误:', error)
+        ElMessage.error('显示支付二维码失败: ' + (error.message || '未知错误'))
+        throw error
+      }
+    }
+    
+    // iframe引用
+    const paymentIframe = ref(null)
+    
+    // iframe加载完成处理
+    const onIframeLoad = (event) => {
+      console.log('支付页面iframe加载完成')
+      const iframe = event.target
       
-      // 等待一下确保对话框已渲染
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // 监听iframe的URL变化，如果跳转到支付成功页面，立即检测
+      try {
+        // 尝试获取iframe的URL（可能因为跨域无法访问）
+        const iframeUrl = iframe.contentWindow?.location?.href || iframe.src
+        console.log('iframe当前URL:', iframeUrl)
+        
+        // 检查URL中是否包含支付成功的标识
+        if (iframeUrl && (
+          iframeUrl.includes('success') || 
+          iframeUrl.includes('paid') || 
+          iframeUrl.includes('支付成功') ||
+          iframeUrl.includes('支付完成') ||
+          iframeUrl.includes('callback') ||
+          iframeUrl.includes('return')
+        )) {
+          console.log('检测到iframe跳转到支付成功页面，立即检测支付状态')
+          // 立即检测支付状态（延迟一点确保后端已处理回调）
+          setTimeout(() => {
+            checkPaymentStatus()
+          }, 1000)
+        }
+      } catch (e) {
+        // 跨域限制，无法访问iframe内容，这是正常的
+        console.log('无法访问iframe内容（跨域限制），使用轮询检测:', e.message)
+      }
       
-      // 开始检查支付状态
+      // 设置定时器，定期检查iframe URL变化（如果可能）
+      const iframeCheckInterval = setInterval(() => {
+        try {
+          if (iframe && iframe.contentWindow) {
+            const currentUrl = iframe.contentWindow.location.href
+            if (currentUrl && (
+              currentUrl.includes('success') || 
+              currentUrl.includes('paid') || 
+              currentUrl.includes('支付成功') ||
+              currentUrl.includes('支付完成') ||
+              currentUrl.includes('callback') ||
+              currentUrl.includes('return')
+            )) {
+              console.log('检测到iframe URL变化，跳转到支付成功页面')
+              clearInterval(iframeCheckInterval)
+              // 立即检测支付状态
+              setTimeout(() => {
+                checkPaymentStatus()
+              }, 1000)
+            }
+          }
+        } catch (e) {
+          // 跨域限制，无法访问
+        }
+      }, 2000)
+      
+      // 10秒后停止检查iframe URL（避免无限检查）
+      setTimeout(() => {
+        clearInterval(iframeCheckInterval)
+      }, 10000)
+      
+      // iframe加载完成后，开始检查支付状态
       startPaymentStatusCheck()
     }
+    
+    // 存储事件监听器引用，以便清理
+    let visibilityChangeHandler = null
+    let focusHandler = null
     
     // 开始检查支付状态
     const startPaymentStatusCheck = () => {
       // 清除之前的检查
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
+        paymentStatusCheckInterval = null
+      }
+      
+      // 清理之前的事件监听器
+      if (visibilityChangeHandler) {
+        document.removeEventListener('visibilitychange', visibilityChangeHandler)
+      }
+      if (focusHandler) {
+        window.removeEventListener('focus', focusHandler)
       }
       
       // 立即检查一次支付状态
       checkPaymentStatus()
       
-      // 每2秒检查一次支付状态（提高检查频率）
+      // 每1秒检查一次支付状态（提高检查频率，快速响应支付成功）
       paymentStatusCheckInterval = setInterval(async () => {
         await checkPaymentStatus()
-      }, 2000)
+      }, 1000)
       
       // 添加页面可见性监听，当用户从其他应用返回时立即检查
-      const handleVisibilityChange = async () => {
+      visibilityChangeHandler = async () => {
         if (document.visibilityState === 'visible' && paymentQRVisible.value) {
           // 用户返回页面，立即检查支付状态
           await checkPaymentStatus()
         }
       }
-      document.addEventListener('visibilitychange', handleVisibilityChange)
+      document.addEventListener('visibilitychange', visibilityChangeHandler)
       
       // 添加页面焦点监听
-      const handleFocus = async () => {
+      focusHandler = async () => {
         if (paymentQRVisible.value) {
           await checkPaymentStatus()
         }
       }
-      window.addEventListener('focus', handleFocus)
+      window.addEventListener('focus', focusHandler)
       
       // 30分钟后停止检查
       setTimeout(() => {
@@ -1110,8 +1296,14 @@ export default {
           clearInterval(paymentStatusCheckInterval)
           paymentStatusCheckInterval = null
         }
-        document.removeEventListener('visibilitychange', handleVisibilityChange)
-        window.removeEventListener('focus', handleFocus)
+        if (visibilityChangeHandler) {
+          document.removeEventListener('visibilitychange', visibilityChangeHandler)
+          visibilityChangeHandler = null
+        }
+        if (focusHandler) {
+          window.removeEventListener('focus', focusHandler)
+          focusHandler = null
+        }
       }, 30 * 60 * 1000)
     }
     
@@ -1121,6 +1313,11 @@ export default {
         if (process.env.NODE_ENV === 'development') {
           console.log('检查支付状态：订单信息不存在', currentOrder.value)
         }
+        return
+      }
+      
+      // 如果已经检测到支付成功，不再继续检测
+      if (!paymentQRVisible.value) {
         return
       }
       
@@ -1170,14 +1367,30 @@ export default {
             console.log('✅ 支付成功，开始处理...')
           }
 
+          // 立即停止所有检测
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
+            console.log('✅ 已停止支付状态检测')
+          }
+          
+          // 清理事件监听器
+          if (visibilityChangeHandler) {
+            document.removeEventListener('visibilitychange', visibilityChangeHandler)
+            visibilityChangeHandler = null
+          }
+          if (focusHandler) {
+            window.removeEventListener('focus', focusHandler)
+            focusHandler = null
           }
 
+          // 立即关闭支付对话框，防止继续检测
           paymentQRVisible.value = false
           successDialogVisible.value = true
           ElMessage.success('支付成功！您的订阅已激活')
+          
+          // 设置标志，防止重复处理
+          isCheckingPayment.value = false
 
           const refreshUserInfo = async () => {
             try {
@@ -1198,16 +1411,54 @@ export default {
             }
           }
 
-          await refreshUserInfo()
+          const refreshSubscription = async () => {
+            try {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('刷新订阅信息...')
+              }
+              const { subscriptionAPI } = await import('@/utils/api')
+              const subscriptionResponse = await subscriptionAPI.getUserSubscription()
+              if (subscriptionResponse?.data?.success) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('✅ 订阅信息已刷新', subscriptionResponse.data.data)
+                }
+                // 触发全局事件，通知其他页面刷新订阅信息
+                window.dispatchEvent(new CustomEvent('subscription-updated', {
+                  detail: subscriptionResponse.data.data
+                }))
+              }
+            } catch (refreshError) {
+              if (process.env.NODE_ENV === 'development') {
+                console.error('刷新订阅信息失败:', refreshError)
+              }
+            }
+          }
+
+          // 立即刷新用户信息和订阅信息（异步执行，不阻塞）
+          Promise.all([refreshUserInfo(), refreshSubscription()]).then(() => {
+            // 延迟再次刷新，确保数据完全同步
+            setTimeout(async () => {
+              await Promise.all([refreshUserInfo(), refreshSubscription()])
+            }, 500)
+          })
 
           setTimeout(() => {
             successDialogVisible.value = false
             loadPackages()
-            refreshUserInfo()
+            // 再次刷新确保数据最新
+            Promise.all([refreshUserInfo(), refreshSubscription()])
+            // 如果当前在订阅页面，刷新整个页面以确保显示最新数据
             if (router.currentRoute.value.path === '/subscription') {
               router.go(0)
             }
+            // 如果当前在仪表板页面，也刷新
+            if (router.currentRoute.value.path === '/dashboard') {
+              router.go(0)
+            }
           }, 3000)
+          
+          // 立即返回，不再执行后续检测逻辑
+          return
         } else if (orderData.status === 'cancelled') {
           if (process.env.NODE_ENV === 'development') {
             console.log('订单已取消')
@@ -1215,6 +1466,16 @@ export default {
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
+          }
+          
+          // 清理事件监听器
+          if (visibilityChangeHandler) {
+            document.removeEventListener('visibilitychange', visibilityChangeHandler)
+            visibilityChangeHandler = null
+          }
+          if (focusHandler) {
+            window.removeEventListener('focus', focusHandler)
+            focusHandler = null
           }
           
           paymentQRVisible.value = false
@@ -1308,6 +1569,31 @@ export default {
         windowWidth.value = window.innerWidth
         window.addEventListener('resize', handleResize)
       }
+      
+      // 监听订阅更新事件（从其他页面触发）
+      const handleSubscriptionUpdate = async (event) => {
+        console.log('收到订阅更新事件，刷新用户信息...', event.detail)
+        // 刷新用户余额（可能因为支付而改变）
+        await loadUserBalance()
+      }
+      
+      // 监听用户信息更新事件
+      const handleUserInfoUpdate = async () => {
+        console.log('收到用户信息更新事件，刷新用户信息...')
+        await loadUserBalance()
+      }
+      
+      window.addEventListener('subscription-updated', handleSubscriptionUpdate)
+      window.addEventListener('user-info-updated', handleUserInfoUpdate)
+      
+      // 在 onUnmounted 中清理
+      onUnmounted(() => {
+        window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
+        window.removeEventListener('user-info-updated', handleUserInfoUpdate)
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('resize', handleResize)
+        }
+      })
     })
     
     onUnmounted(() => {
@@ -1332,6 +1618,7 @@ export default {
       successDialogVisible,
       paymentQRCode,
       paymentUrl,
+      isPaymentPageUrl,
       currentOrder,
       isCheckingPayment,
       showPaymentQRCode,
@@ -1339,6 +1626,7 @@ export default {
       openAlipayApp,
       onImageLoad,
       onImageError,
+      onIframeLoad,
       selectedPackage,
       orderInfo,
       loadPackages,
@@ -1366,6 +1654,7 @@ export default {
       isMobile,
       validateCoupon,
       clearCoupon,
+      getPaymentMethodDisplayName,
       // 用户等级相关
       userLevel,
       levelDiscountRate,
@@ -2037,26 +2326,219 @@ export default {
 }
 
 /* -----------------------------
-   新增代码：支付弹窗底部按钮布局优化 
+   支付二维码弹窗样式优化
    ----------------------------- */
-.payment-qr-container .payment-actions {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-  gap: 15px; /* 桌面端按钮间距 */
-
-  /* 重置按钮默认边距 */
-  .el-button {
-    margin: 0;
+.payment-qr-dialog {
+  .el-dialog__body {
+    padding: 20px;
   }
+}
 
-  /* 移动端布局 */
-  &.mobile-layout {
-    flex-direction: column;
-    gap: 12px; /* 移动端垂直间距 */
+.payment-qr-container {
+  .order-info {
+    margin-bottom: 20px;
+    
+    h3 {
+      margin: 0 0 15px 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: #303133;
+    }
+    
+    .el-descriptions {
+      :deep(.el-descriptions__label) {
+        font-weight: 500;
+        color: #606266;
+      }
+      
+      :deep(.el-descriptions__content) {
+        color: #303133;
+      }
+      
+      .amount {
+        font-size: 18px;
+        font-weight: 600;
+        color: #f56c6c;
+      }
+    }
+  }
+  
+  .qr-code-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 25px 0;
+    padding: 20px;
+    background: #f5f7fa;
+    border-radius: 8px;
+    min-height: 280px;
+    
+    .qr-code {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      
+      img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+        background: #fff;
+        padding: 10px;
+      }
+    }
+    
+    .qr-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #909399;
+      
+      .el-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+      }
+      
+      p {
+        margin: 0;
+        font-size: 14px;
+      }
+    }
+    
+    .payment-page-iframe {
+      width: 100%;
+      min-height: 600px;
+      border: 1px solid #e4e7ed;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      
+      iframe {
+        width: 100%;
+        min-height: 600px;
+        border: none;
+        display: block;
+      }
+    }
+  }
+  
+  .payment-tips {
+    margin: 20px 0;
+    
+    :deep(.el-alert) {
+      .el-alert__content {
+        .el-alert__title {
+          font-weight: 600;
+          margin-bottom: 8px;
+        }
+        
+        p {
+          margin: 6px 0;
+          font-size: 14px;
+          line-height: 1.6;
+          
+          strong {
+            color: #e6a23c;
+          }
+        }
+      }
+    }
+  }
+  
+  .payment-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
     
     .el-button {
-      width: 100%;
+      margin: 0;
+    }
+    
+    &.mobile-layout {
+      flex-direction: column;
+      gap: 10px;
+      
+      .el-button {
+        width: 100%;
+      }
+    }
+  }
+}
+
+/* 手机端优化 */
+@media (max-width: 768px) {
+  .payment-qr-dialog {
+    :deep(.el-dialog) {
+      margin: 5vh auto;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    
+    .el-dialog__body {
+      padding: 15px;
+    }
+  }
+  
+  .payment-qr-container {
+    .order-info {
+      margin-bottom: 15px;
+      
+      h3 {
+        font-size: 16px;
+        margin-bottom: 12px;
+      }
+      
+      .el-descriptions {
+        :deep(.el-descriptions__table) {
+          .el-descriptions__label,
+          .el-descriptions__content {
+            font-size: 13px;
+            padding: 8px 10px;
+          }
+        }
+      }
+    }
+    
+    .qr-code-wrapper {
+      margin: 20px 0;
+      padding: 15px;
+      min-height: 240px;
+      
+      .qr-code img {
+        max-width: 90%;
+      }
+    }
+    
+    .payment-tips {
+      margin: 15px 0;
+      
+      :deep(.el-alert) {
+        .el-alert__content {
+          .el-alert__title {
+            font-size: 14px;
+          }
+          
+          p {
+            font-size: 13px;
+            margin: 5px 0;
+          }
+        }
+      }
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .payment-qr-container {
+    .qr-code-wrapper {
+      min-height: 200px;
+      padding: 10px;
+      
+      .qr-code img {
+        max-width: 85%;
+      }
     }
   }
 }
