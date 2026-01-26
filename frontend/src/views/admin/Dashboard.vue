@@ -149,7 +149,9 @@
               :data="abnormalUsers.slice(0, 10)" 
               style="width: 100%"
               :show-header="false"
+
               size="small"
+              @row-click="handleAbnormalUserClick"
             >
               <el-table-column width="40">
                 <template #default="scope">
@@ -160,7 +162,7 @@
               </el-table-column>
               <el-table-column>
                 <template #default="scope">
-                  <div class="abnormal-info">
+                  <div class="abnormal-info" style="cursor: pointer;">
                     <div class="abnormal-user">{{ scope.row.username }}</div>
                     <div class="abnormal-email">{{ scope.row.email }}</div>
                   </div>
@@ -338,7 +340,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
@@ -540,6 +542,43 @@ export default {
       router.push('/admin/abnormal-users')
     }
 
+    // 处理异常用户点击事件
+    const handleAbnormalUserClick = (row) => {
+      // 显示操作菜单：查看订阅列表或查看异常详情
+      ElMessageBox.confirm(
+        `选择操作：`,
+        `用户 ${row.username || row.email}`,
+        {
+          distinguishCancelAndClose: true,
+          confirmButtonText: '查看订阅列表',
+          cancelButtonText: '查看异常详情',
+          type: 'info',
+          showClose: false
+        }
+      ).then(() => {
+        // 确认：跳转到订阅列表
+        goToUserSubscription(row)
+      }).catch((action) => {
+        if (action === 'cancel') {
+          // 取消：跳转到异常用户列表并查看详情
+          viewAbnormalUserDetails(row)
+        }
+      })
+    }
+
+    // 查看异常用户详情
+    const viewAbnormalUserDetails = (row) => {
+      const userId = row.user_id || row.id
+      if (userId) {
+        router.push({
+          path: '/admin/abnormal-users',
+          query: { user_id: userId }
+        })
+      } else {
+        ElMessage.warning('无法获取用户ID')
+      }
+    }
+
     // 跳转到用户订阅管理页面
     const goToUserSubscription = (row) => {
       // 优先使用邮箱进行搜索，邮箱搜索更准确
@@ -694,6 +733,8 @@ export default {
       getAbnormalTypeTag,
       getAbnormalTypeText,
       goToAbnormalUsers,
+      handleAbnormalUserClick,
+      viewAbnormalUserDetails,
       goToUserSubscription,
       goToOrderUserSubscription,
       formatMoney,

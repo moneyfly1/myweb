@@ -59,7 +59,24 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	var paymentConfig models.PaymentConfig
-	if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err == nil {
+	queryPayType := paymentMethod
+	if strings.HasPrefix(paymentMethod, "yipay_") {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).First(&paymentConfig).Error; err == nil {
+			queryPayType = "yipay"
+		} else {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+				return
+			}
+		}
+	} else {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+			return
+		}
+	}
+
+	if paymentConfig.Status == 1 {
 		if paymentMethod == "alipay" {
 			alipayService, err := payment.NewAlipayService(&paymentConfig)
 			if err == nil {
@@ -79,6 +96,20 @@ func CreateRecharge(c *gin.Context) {
 					Amount:  recharge.Amount,
 				}
 				paymentURL, _ = wechatService.CreatePayment(tempOrder, recharge.Amount)
+			}
+		} else if queryPayType == "yipay" || strings.HasPrefix(paymentMethod, "yipay_") {
+			yipayService, err := payment.NewYipayService(&paymentConfig)
+			if err == nil {
+				tempOrder := &models.Order{
+					OrderNo: recharge.OrderNo,
+					UserID:  user.ID,
+					Amount:  recharge.Amount,
+				}
+				paymentType := "alipay"
+				if strings.HasPrefix(paymentMethod, "yipay_") {
+					paymentType = strings.TrimPrefix(paymentMethod, "yipay_")
+				}
+				paymentURL, _ = yipayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
 			}
 		}
 

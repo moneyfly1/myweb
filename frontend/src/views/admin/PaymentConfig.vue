@@ -229,11 +229,10 @@
               <el-option label="微信支付" value="wechat" />
             </el-option-group>
             <el-option-group label="第三方支付网关">
+              <el-option label="易支付（统一配置）" value="yipay" />
               <el-option label="易支付-支付宝" value="yipay_alipay" />
               <el-option label="易支付-微信" value="yipay_wxpay" />
-              <el-option label="码支付-支付宝" value="codepay_alipay" />
-              <el-option label="码支付-微信" value="codepay_wechat" />
-              <el-option label="码支付-QQ钱包" value="codepay_qq" />
+              <el-option label="易支付-QQ钱包" value="yipay_qqpay" />
             </el-option-group>
             <el-option-group label="国际支付">
               <el-option label="PayPal" value="paypal" />
@@ -281,6 +280,103 @@
             • <strong>无法接收回调：</strong>应用网关未配置或回调地址不正确
           </div>
         </el-form-item>
+        <!-- 易支付统一配置（yipay类型） -->
+        <el-form-item label="商户ID" v-if="configForm.pay_type === 'yipay' || configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay' || configForm.pay_type === 'yipay_qqpay'">
+          <template v-if="isMobile">
+            <div class="mobile-label">商户ID</div>
+          </template>
+          <el-input v-model="configForm.app_id" placeholder="请输入易支付商户ID (pid)" style="width: 100%" />
+          <div class="form-tip">在易支付商户后台->个人资料->API信息中查看商户ID (pid)</div>
+        </el-form-item>
+
+        <el-form-item label="商户密钥" v-if="configForm.pay_type === 'yipay' || configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay' || configForm.pay_type === 'yipay_qqpay'">
+          <template v-if="isMobile">
+            <div class="mobile-label">商户密钥</div>
+          </template>
+          <el-input 
+            v-model="configForm.merchant_private_key" 
+            type="password"
+            show-password
+            placeholder="请输入易支付商户密钥 (key)" 
+            style="width: 100%"
+          />
+          <div class="form-tip">在易支付商户后台->个人资料->API信息中查看商户密钥 (key)，用于MD5签名</div>
+        </el-form-item>
+
+        <el-form-item label="网关地址" v-if="configForm.pay_type === 'yipay'">
+          <template v-if="isMobile">
+            <div class="mobile-label">网关地址</div>
+          </template>
+          <el-input v-model="configForm.yipay_gateway_url" placeholder="请输入易支付网关地址" style="width: 100%" />
+          <div class="form-tip">填写易支付官网地址（系统会自动拼接API路径 /openapi/pay/create）</div>
+        </el-form-item>
+
+        <el-form-item label="签名方式" v-if="configForm.pay_type === 'yipay'">
+          <template v-if="isMobile">
+            <div class="mobile-label">签名方式</div>
+          </template>
+          <el-select 
+            v-model="configForm.yipay_sign_type" 
+            placeholder="选择签名方式"
+            style="width: 100%"
+            :teleported="!isMobile"
+          >
+            <el-option label="MD5签名" value="MD5" />
+            <el-option label="RSA签名" value="RSA" />
+            <el-option label="MD5+RSA签名（推荐）" value="MD5+RSA" />
+          </el-select>
+          <div class="form-tip">选择签名方式：MD5（使用MD5密钥）、RSA（使用RSA密钥对）或MD5+RSA（推荐，更安全）</div>
+        </el-form-item>
+
+        <el-form-item label="平台公钥（RSA签名）" v-if="configForm.pay_type === 'yipay' && (configForm.yipay_sign_type === 'RSA' || configForm.yipay_sign_type === 'MD5+RSA')">
+          <template v-if="isMobile">
+            <div class="mobile-label">平台公钥</div>
+          </template>
+          <el-input
+            v-model="configForm.yipay_platform_public_key"
+            type="textarea"
+            :rows="isMobile ? 6 : 4"
+            placeholder="请输入易支付平台公钥（从易支付后台复制）"
+            style="width: 100%"
+          />
+          <div class="form-tip">
+            <strong>重要：</strong>这是易支付平台提供的公钥，用于验证易支付回调通知的签名。<br>
+            在易支付后台->个人资料->API信息->RSA密钥->平台公钥中复制并粘贴到这里。
+          </div>
+        </el-form-item>
+
+        <el-form-item label="商户私钥（RSA签名）" v-if="configForm.pay_type === 'yipay' && (configForm.yipay_sign_type === 'RSA' || configForm.yipay_sign_type === 'MD5+RSA')">
+          <template v-if="isMobile">
+            <div class="mobile-label">商户私钥</div>
+          </template>
+          <el-input
+            v-model="configForm.yipay_merchant_private_key"
+            type="textarea"
+            :rows="isMobile ? 6 : 4"
+            placeholder="请输入商户RSA私钥（您自己生成的）"
+            style="width: 100%"
+          />
+          <div class="form-tip">
+            <strong>重要：</strong>这是您自己生成的RSA私钥，用于签名发送给易支付的请求。<br>
+            1. 使用OpenSSL或在线工具生成RSA密钥对<br>
+            2. 将生成的公钥填写到易支付后台->个人资料->API信息->RSA密钥->商户公钥<br>
+            3. 将生成的私钥填写到这里（请妥善保管，不要泄露）
+          </div>
+        </el-form-item>
+
+        <el-form-item label="支持的支付方式" v-if="configForm.pay_type === 'yipay'">
+          <template v-if="isMobile">
+            <div class="mobile-label">支持的支付方式</div>
+          </template>
+          <el-checkbox-group v-model="configForm.yipay_supported_types">
+            <el-checkbox label="alipay">支付宝</el-checkbox>
+            <el-checkbox label="wxpay">微信支付</el-checkbox>
+            <el-checkbox label="qqpay">QQ钱包</el-checkbox>
+          </el-checkbox-group>
+          <div class="form-tip">选择易支付平台支持哪些支付方式，客户可以在这些方式中选择</div>
+        </el-form-item>
+
+        <!-- 易支付独立类型配置（兼容旧配置） -->
         <el-form-item label="商户ID" v-if="configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay'">
           <el-input v-model="configForm.yipay_pid" placeholder="请输入易支付商户ID" style="width: 100%" />
           <div class="form-tip">在易支付商户后台->个人资料->API信息中查看（易支付-支付宝和易支付-微信使用相同的商户ID）</div>
@@ -438,19 +534,6 @@
           <div class="form-tip">用于验证Webhook回调的签名密钥（可选）</div>
         </el-form-item>
 
-        <!-- 码支付配置 -->
-        <el-form-item label="码支付ID" v-if="configForm.pay_type.startsWith('codepay_')">
-          <el-input v-model="configForm.codepay_id" placeholder="请输入码支付商户ID" style="width: 100%" />
-          <div class="form-tip">在码支付后台->商户中心查看</div>
-        </el-form-item>
-        <el-form-item label="码支付Token" v-if="configForm.pay_type.startsWith('codepay_')">
-          <el-input v-model="configForm.codepay_token" type="password" show-password placeholder="请输入码支付通信密钥Token" style="width: 100%" />
-          <div class="form-tip">在码支付后台->商户中心->API接口中查看</div>
-        </el-form-item>
-        <el-form-item label="码支付网关" v-if="configForm.pay_type.startsWith('codepay_')">
-          <el-input v-model="configForm.codepay_gateway" placeholder="请输入码支付网关地址" style="width: 100%" />
-          <div class="form-tip">默认: https://api.xiuxiu888.com/creat_order</div>
-        </el-form-item>
 
         <!-- 银行转账配置 -->
         <el-form-item label="银行名称" v-if="configForm.pay_type === 'bank_transfer'">
@@ -492,7 +575,19 @@
 
         <el-form-item label="异步回调地址" v-if="configForm.pay_type !== 'alipay'">
           <el-input v-model="configForm.notify_url" placeholder="请输入异步回调地址" style="width: 100%" />
-          <div class="form-tip">支付完成后服务器通知的地址</div>
+          <div class="form-tip" v-if="configForm.pay_type === 'yipay' || configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay' || configForm.pay_type === 'yipay_qqpay'">
+            <strong>易支付回调地址配置：</strong><br>
+            <strong>用途：</strong>支付完成后，易支付服务器主动通知您的服务器的地址（用于更新订单状态和开通套餐）<br>
+            <strong>填写示例：</strong><span style="color: #409EFF;">{{ baseUrl }}/api/v1/payment/notify/yipay</span><br>
+            <strong>⚠️ 重要：</strong><br>
+            1. 必须是公网可访问的HTTPS地址（生产环境）<br>
+            2. 如果留空，系统会根据"系统设置"中的域名自动生成<br>
+            3. 建议手动填写，确保回调地址正确（格式：https://您的域名/api/v1/payment/notify/yipay）<br>
+            4. 此地址需要在易支付商户后台的"接口设置"中配置，否则无法接收回调通知
+          </div>
+          <div class="form-tip" v-else>
+            支付完成后服务器通知的地址
+          </div>
         </el-form-item>
 
         <el-form-item label="状态">
@@ -676,7 +771,13 @@ export default {
       // 微信支付配置
       wechat_mch_id: '',
       wechat_api_key: '',
-      // 易支付配置
+      // 易支付配置（统一类型yipay）
+      yipay_gateway_url: '',
+      yipay_sign_type: 'MD5',
+      yipay_platform_public_key: '', // 平台公钥（易支付提供）
+      yipay_merchant_private_key: '', // 商户私钥（自己生成）
+      yipay_supported_types: ['alipay', 'wxpay'], // 支持的支付方式列表
+      // 易支付配置（独立类型，兼容旧配置）
       yipay_type: 'alipay',  // 支付类型：alipay 或 wxpay
       yipay_sign_type: 'RSA',  // 签名类型：RSA 或 MD5
       yipay_pid: '',
@@ -692,10 +793,6 @@ export default {
       stripe_publishable_key: '',
       stripe_secret_key: '',
       stripe_webhook_secret: '',
-      // 码支付配置
-      codepay_id: '',
-      codepay_token: '',
-      codepay_gateway: 'https://api.xiuxiu888.com/creat_order',
       // 银行转账配置
       bank_name: '',
       bank_account: '',
@@ -826,8 +923,34 @@ export default {
           requestData.wechat_app_id = configForm.app_id
           requestData.wechat_mch_id = configForm.wechat_mch_id
           requestData.wechat_api_key = configForm.wechat_api_key
+        } else if (configForm.pay_type === 'yipay') {
+          // 易支付统一配置
+          requestData.app_id = configForm.app_id || '' // 商户ID (pid)
+          // 根据签名方式存储不同的密钥
+          if (configForm.yipay_sign_type === 'MD5') {
+            requestData.merchant_private_key = configForm.merchant_private_key || '' // MD5密钥 (key)
+          } else if (configForm.yipay_sign_type === 'RSA' || configForm.yipay_sign_type === 'MD5+RSA') {
+            // RSA签名时，MD5密钥仍然需要（用于MD5+RSA方式）
+            requestData.merchant_private_key = configForm.merchant_private_key || ''
+            // 平台公钥存储在AlipayPublicKey字段（用于验证回调）
+            requestData.alipay_public_key = configForm.yipay_platform_public_key || ''
+          }
+          if (!configForm.yipay_gateway_url || !configForm.yipay_gateway_url.trim()) {
+            ElMessage.error('请填写易支付网关地址')
+            saving.value = false
+            return
+          }
+          const gatewayUrl = configForm.yipay_gateway_url.trim().replace(/\/$/, '')
+          requestData.config_json = {
+            gateway_url: gatewayUrl,
+            api_url: `${gatewayUrl}/openapi/pay/create`,
+            sign_type: configForm.yipay_sign_type || 'MD5',
+            platform_public_key: configForm.yipay_platform_public_key || '',
+            merchant_private_key: configForm.yipay_merchant_private_key || '',
+            supported_types: configForm.yipay_supported_types || ['alipay', 'wxpay']
+          }
         } else if (configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay') {
-          // 易支付配置保存到config_json
+          // 易支付配置保存到config_json（兼容旧配置）
           // 根据 pay_type 确定 yipay_type（调用值）
           const yipay_type = configForm.pay_type === 'yipay_alipay' ? 'alipay' : 'wxpay'
           requestData.config_json = {
@@ -847,19 +970,6 @@ export default {
           requestData.stripe_publishable_key = configForm.stripe_publishable_key
           requestData.stripe_secret_key = configForm.stripe_secret_key
           requestData.stripe_webhook_secret = configForm.stripe_webhook_secret || ''
-        } else if (configForm.pay_type.startsWith('codepay_')) {
-          // 码支付配置保存到config_json
-          const codepay_type_map = {
-            'codepay_alipay': '1',
-            'codepay_wechat': '3',
-            'codepay_qq': '2'
-          }
-          requestData.config_json = {
-            codepay_type: codepay_type_map[configForm.pay_type] || '1',
-            codepay_id: configForm.codepay_id,
-            codepay_token: configForm.codepay_token,
-            codepay_gateway: configForm.codepay_gateway || 'https://api.xiuxiu888.com/creat_order'
-          }
         } else if (configForm.pay_type === 'bank_transfer') {
           // 银行转账配置保存到config_json
           requestData.config_json = {
@@ -912,9 +1022,14 @@ export default {
         // 微信支付配置
         wechat_mch_id: config.wechat_mch_id || '',
         wechat_api_key: config.wechat_api_key || '',
-        // 易支付配置
-        yipay_type: configData.yipay_type || 'alipay',  // 支付类型
-        yipay_sign_type: configData.yipay_sign_type || 'RSA',  // 签名类型
+        // 易支付配置（统一类型yipay）
+        yipay_gateway_url: configData.gateway_url || (configData.api_url ? configData.api_url.replace('/openapi/pay/create', '').replace(/\/$/, '') : ''),
+        yipay_sign_type: configData.sign_type || 'MD5',
+        yipay_platform_public_key: configData.platform_public_key || config.alipay_public_key || '',
+        yipay_merchant_private_key: configData.merchant_private_key || '',
+        yipay_supported_types: configData.supported_types || ['alipay', 'wxpay'],
+        // 易支付配置（独立类型，兼容旧配置）
+        yipay_type: configData.yipay_type || 'alipay',
         yipay_pid: configData.yipay_pid || '',
         yipay_private_key: configData.yipay_private_key || '',
         yipay_public_key: configData.yipay_public_key || '',
@@ -928,10 +1043,6 @@ export default {
         stripe_publishable_key: config.stripe_publishable_key || '',
         stripe_secret_key: config.stripe_secret_key || '',
         stripe_webhook_secret: config.stripe_webhook_secret || '',
-        // 码支付配置
-        codepay_id: configData.codepay_id || '',
-        codepay_token: configData.codepay_token || '',
-        codepay_gateway: configData.codepay_gateway || 'https://api.xiuxiu888.com/creat_order',
         // 银行转账配置
         bank_name: configData.bank_name || '',
         bank_account: configData.bank_account || '',
@@ -1019,9 +1130,14 @@ export default {
         // 微信支付配置
         wechat_mch_id: '',
         wechat_api_key: '',
-        // 易支付配置
-        yipay_type: 'alipay',  // 支付类型
-        yipay_sign_type: 'RSA',  // 签名类型
+        // 易支付配置（统一类型yipay）
+        yipay_gateway_url: '',
+        yipay_sign_type: 'MD5',
+        yipay_platform_public_key: '',
+        yipay_merchant_private_key: '',
+        yipay_supported_types: ['alipay', 'wxpay'],
+        // 易支付配置（独立类型，兼容旧配置）
+        yipay_type: 'alipay',
         yipay_pid: '',
         yipay_private_key: '',
         yipay_public_key: '',
@@ -1035,10 +1151,6 @@ export default {
         stripe_publishable_key: '',
         stripe_secret_key: '',
         stripe_webhook_secret: '',
-        // 码支付配置
-        codepay_id: '',
-        codepay_token: '',
-        codepay_gateway: 'https://api.xiuxiu888.com/creat_order',
         // 银行转账配置
         bank_name: '',
         bank_account: '',
@@ -1059,9 +1171,7 @@ export default {
         'yipay': '易支付',
         'yipay_alipay': '易支付-支付宝',
         'yipay_wxpay': '易支付-微信',
-        'codepay_alipay': '码支付-支付宝',
-        'codepay_wechat': '码支付-微信',
-        'codepay_qq': '码支付-QQ钱包',
+        'yipay_qqpay': '易支付-QQ钱包',
         'paypal': 'PayPal',
         'stripe': 'Stripe',
         'bank_transfer': '银行转账'
@@ -1076,9 +1186,7 @@ export default {
         'yipay': 'warning',
         'yipay_alipay': 'warning',
         'yipay_wxpay': 'warning',
-        'codepay_alipay': 'success',
-        'codepay_wechat': 'primary',
-        'codepay_qq': 'info',
+        'yipay_qqpay': 'warning',
         'paypal': 'warning',
         'stripe': 'success',
         'bank_transfer': 'info'

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
@@ -22,14 +23,64 @@ func GetPaymentMethods(c *gin.Context) {
 	db := database.GetDB()
 	var cfg []models.PaymentConfig
 	db.Where("status = ?", 1).Order("sort_order ASC").Find(&cfg)
-	res := make([]gin.H, 0, len(cfg))
-	mMap := map[string]string{"alipay": "支付宝", "wechat": "微信支付", "yipay": "易支付", "paypal": "PayPal", "applepay": "Apple Pay", "stripe": "Stripe", "bank": "银行转账"}
+	res := make([]gin.H, 0)
+	mMap := map[string]string{
+		"alipay":       "支付宝",
+		"wechat":       "微信支付",
+		"yipay_alipay": "易支付-支付宝",
+		"yipay_wxpay":  "易支付-微信",
+		"yipay_qqpay":  "易支付-QQ钱包",
+		"paypal":       "PayPal",
+		"applepay":     "Apple Pay",
+		"stripe":       "Stripe",
+		"bank":         "银行转账",
+	}
+
+	yipaySubTypeMap := map[string]string{
+		"alipay": "支付宝",
+		"wxpay":  "微信支付",
+		"qqpay":  "QQ钱包",
+	}
+
 	for _, m := range cfg {
-		name := mMap[m.PayType]
-		if name == "" {
-			name = m.PayType
+		if m.PayType == "yipay" {
+			supportedTypes := payment.GetYipaySupportedTypes(&m)
+			for _, t := range supportedTypes {
+				subTypeKey := fmt.Sprintf("yipay_%s", t)
+				subTypeName := yipaySubTypeMap[t]
+				if subTypeName == "" {
+					subTypeName = t
+				}
+				res = append(res, gin.H{
+					"id":     m.ID,
+					"key":    subTypeKey,
+					"name":   fmt.Sprintf("易支付-%s", subTypeName),
+					"status": m.Status,
+				})
+			}
+		} else if strings.HasPrefix(m.PayType, "yipay_") {
+			name := mMap[m.PayType]
+			if name == "" {
+				name = m.PayType
+			}
+			res = append(res, gin.H{
+				"id":     m.ID,
+				"key":    m.PayType,
+				"name":   name,
+				"status": m.Status,
+			})
+		} else {
+			name := mMap[m.PayType]
+			if name == "" {
+				name = m.PayType
+			}
+			res = append(res, gin.H{
+				"id":     m.ID,
+				"key":    m.PayType,
+				"name":   name,
+				"status": m.Status,
+			})
 		}
-		res = append(res, gin.H{"id": m.ID, "key": m.PayType, "name": name, "status": m.Status})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
@@ -68,19 +119,47 @@ func CreatePayment(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"transaction_id": tx.ID, "amount": float64(amt) / 100})
 }
 
-// PaymentNotify 支付回调
 func PaymentNotify(c *gin.Context) {
-	paymentType := c.Param("type") // alipay, wechat, etc.
+	paymentType := c.Param("type")
 	db := database.GetDB()
 
 	params := make(map[string]string)
-	if err := c.Request.ParseForm(); err == nil {
-		for k, v := range c.Request.PostForm {
-			if len(v) > 0 {
-				params[k] = v[0]
+
+	if c.Request.Method == "POST" {
+		contentType := c.Request.Header.Get("Content-Type")
+		if strings.Contains(contentType, "application/x-www-form-urlencoded") {
+			if err := c.Request.ParseForm(); err == nil {
+				for k, v := range c.Request.PostForm {
+					if len(v) > 0 {
+						params[k] = v[0]
+					}
+				}
+			}
+		} else if strings.Contains(contentType, "multipart/form-data") {
+			// 处理 multipart/form-data 格式（易支付可能使用这种格式）
+			if err := c.Request.ParseMultipartForm(32 << 20); err == nil { // 32MB max
+				if c.Request.MultipartForm != nil && c.Request.MultipartForm.Value != nil {
+					for k, v := range c.Request.MultipartForm.Value {
+						if len(v) > 0 {
+							params[k] = v[0]
+						}
+					}
+				}
+			}
+		} else if strings.Contains(contentType, "application/json") {
+			var jsonParams map[string]interface{}
+			if err := c.ShouldBindJSON(&jsonParams); err == nil {
+				for k, v := range jsonParams {
+					if str, ok := v.(string); ok {
+						params[k] = str
+					} else {
+						params[k] = fmt.Sprintf("%v", v)
+					}
+				}
 			}
 		}
 	}
+
 	if len(params) == 0 {
 		for k, v := range c.Request.URL.Query() {
 			if len(v) > 0 {
@@ -89,16 +168,59 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	var paymentConfig models.PaymentConfig
-	if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
-		utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
-			"payment_type": paymentType,
-		})
-		c.String(http.StatusBadRequest, "支付配置不存在")
-		return
+	utils.LogInfo("PaymentNotify: 解析后的参数 - 原始参数数量=%d", len(params))
+	for k, v := range params {
+		if k != "sign" && k != "rsa_sign" {
+			utils.LogInfo("PaymentNotify: 参数[%s]=%s (长度=%d)", k, v, len(v))
+		} else {
+			utils.LogInfo("PaymentNotify: 参数[%s]=*** (隐藏)", k)
+		}
 	}
 
-	// 验证签名
+	// 记录回调请求详情
+	utils.LogInfo("PaymentNotify: 收到回调请求 - payment_type=%s, method=%s, content_type=%s, params_count=%d, url=%s, remote_addr=%s",
+		paymentType, c.Request.Method, c.Request.Header.Get("Content-Type"), len(params), c.Request.URL.String(), c.ClientIP())
+
+	// 记录所有回调参数（敏感信息除外）
+	safeParams := make(map[string]string)
+	for k, v := range params {
+		if k != "sign" && k != "rsa_sign" {
+			safeParams[k] = v
+		} else {
+			safeParams[k] = "***"
+		}
+	}
+	utils.LogInfo("PaymentNotify: 回调参数 - %+v", safeParams)
+
+	// 对于易支付，需要查找统一的yipay配置
+	var paymentConfig models.PaymentConfig
+	queryPayType := paymentType
+	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).First(&paymentConfig).Error; err == nil {
+			queryPayType = "yipay"
+		} else {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+				utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
+					"payment_type": paymentType,
+					"query_type":   queryPayType,
+				})
+				c.String(http.StatusBadRequest, "支付配置不存在")
+				return
+			}
+		}
+	} else {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+			utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
+				"payment_type": paymentType,
+			})
+			c.String(http.StatusBadRequest, "支付配置不存在")
+			return
+		}
+	}
+
+	utils.LogInfo("PaymentNotify: 找到支付配置 - payment_type=%s, config_id=%d, config_pay_type=%s",
+		paymentType, paymentConfig.ID, paymentConfig.PayType)
+
 	var verified bool
 	switch paymentType {
 	case "alipay":
@@ -121,30 +243,77 @@ func PaymentNotify(c *gin.Context) {
 		if err == nil {
 			verified = applePayService.VerifyNotify(params)
 		}
+	case "yipay", "yipay_alipay", "yipay_wxpay", "yipay_qqpay":
+		yipayService, err := payment.NewYipayService(&paymentConfig)
+		if err != nil {
+			utils.LogError("PaymentNotify: 创建易支付服务失败", err, map[string]interface{}{
+				"payment_type": paymentType,
+			})
+		} else {
+			verified = yipayService.VerifyNotify(params)
+			utils.LogInfo("PaymentNotify: 易支付签名验证结果 - verified=%v, payment_type=%s", verified, paymentType)
+		}
 	}
 
 	if !verified {
-		// 记录签名验证失败（用于安全审计）
 		utils.LogError("PaymentNotify: signature verification failed", nil, map[string]interface{}{
 			"payment_type": paymentType,
 			"order_no":     params["out_trade_no"],
+			"params_count": len(params),
 		})
-		c.String(http.StatusBadRequest, "签名验证失败")
+		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+			c.String(http.StatusOK, "fail")
+		} else {
+			c.String(http.StatusBadRequest, "签名验证失败")
+		}
 		return
 	}
 
 	orderNo := params["out_trade_no"]
-	externalTransactionID := params["trade_no"] // 支付宝/微信的交易号
+	externalTransactionID := params["trade_no"]
 
-	// 支付宝回调中，trade_status 字段表示交易状态
-	// TRADE_SUCCESS: 交易成功
-	// TRADE_FINISHED: 交易完成
-	// WAIT_BUYER_PAY: 等待买家付款
-	// TRADE_CLOSED: 交易关闭
+	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+		tradeStatus := params["trade_status"]
+		if tradeStatus == "" {
+			tradeStatus = params["status"]
+		}
+
+		if tradeStatus == "TRADE_FREEZE" {
+			utils.LogWarn("PaymentNotify: yipay trade frozen", map[string]interface{}{
+				"payment_type": paymentType,
+				"order_no":     orderNo,
+				"trade_status": tradeStatus,
+			})
+			c.String(http.StatusOK, "success")
+			return
+		}
+
+		if tradeStatus == "TRADE_UNFREEZE" {
+			utils.LogInfo("PaymentNotify: yipay trade unfrozen", map[string]interface{}{
+				"payment_type": paymentType,
+				"order_no":     orderNo,
+				"trade_status": tradeStatus,
+			})
+			c.String(http.StatusOK, "success")
+			return
+		}
+
+		if tradeStatus != "TRADE_SUCCESS" {
+			utils.LogWarn("PaymentNotify: yipay trade status not success", map[string]interface{}{
+				"payment_type": paymentType,
+				"order_no":     orderNo,
+				"trade_status": tradeStatus,
+			})
+			c.String(http.StatusOK, "success")
+			return
+		}
+
+		utils.LogInfo("PaymentNotify: 易支付订单状态为TRADE_SUCCESS，继续处理 - order_no=%s, trade_status=%s", orderNo, tradeStatus)
+	}
+
 	if paymentType == "alipay" {
 		tradeStatus := params["trade_status"]
 		if tradeStatus != "TRADE_SUCCESS" && tradeStatus != "TRADE_FINISHED" {
-			// 如果不是成功状态，记录日志但返回success，避免支付宝重复回调
 			utils.LogError("PaymentNotify: trade status not success", nil, map[string]interface{}{
 				"payment_type": paymentType,
 				"order_no":     orderNo,
@@ -163,7 +332,6 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
-	// 记录支付回调日志
 	utils.LogInfo("PaymentNotify: 收到支付回调 - payment_type=%s, order_no=%s, external_transaction_id=%s",
 		paymentType, orderNo, externalTransactionID)
 
@@ -171,9 +339,7 @@ func PaymentNotify(c *gin.Context) {
 	var recharge models.RechargeRecord
 	isRecharge := false
 
-	// 先尝试查找订单
 	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&order).Error; err != nil {
-		// 如果不是订单，尝试查找充值记录
 		if err2 := db.Where("order_no = ?", orderNo).First(&recharge).Error; err2 == nil {
 			isRecharge = true
 		} else {
@@ -193,7 +359,6 @@ func PaymentNotify(c *gin.Context) {
 				return
 			}
 		}
-		// 验证充值金额
 		if paymentType == "alipay" {
 			if amountStr, ok := params["total_amount"]; ok {
 				var callbackAmount float64
@@ -215,14 +380,12 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 
-		// 使用事务处理充值
 		err := utils.WithTransaction(db, func(tx *gorm.DB) error {
 			recharge.Status = "paid"
 			recharge.PaidAt = database.NullTime(utils.GetBeijingTime())
 			if externalTransactionID != "" {
 				recharge.PaymentTransactionID = database.NullString(externalTransactionID)
 			}
-			// 确保支付方式被正确设置
 			if !recharge.PaymentMethod.Valid || recharge.PaymentMethod.String == "" {
 				recharge.PaymentMethod = database.NullString(paymentType)
 			}
@@ -244,7 +407,6 @@ func PaymentNotify(c *gin.Context) {
 					})
 					return err
 				}
-				// 记录充值成功日志
 				utils.LogInfo("PaymentNotify: 充值成功 - order_no=%s, user_id=%d, amount=%.2f, old_balance=%.2f, new_balance=%.2f",
 					orderNo, user.ID, recharge.Amount, oldBalance, user.Balance)
 			}
@@ -267,13 +429,10 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
-	// 验证订单金额（防止金额篡改）
 	if paymentType == "alipay" {
-		// 支付宝回调中的金额（转换为元）
 		if amountStr, ok := params["total_amount"]; ok {
 			var callbackAmount float64
 			fmt.Sscanf(amountStr, "%f", &callbackAmount)
-			// 混合支付时，回调金额可能只是第三方支付部分，需要加上余额部分
 			expectedAmount := order.Amount
 			if order.FinalAmount.Valid {
 				expectedAmount = order.FinalAmount.Float64
@@ -316,13 +475,38 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 幂等性检查：如果订单已支付，检查是否需要发送通知
 	if order.Status == "paid" {
-		utils.LogInfo("PaymentNotify: order already paid, checking if notifications need to be sent - order_no=%s", orderNo)
-		// 即使订单已支付，也要尝试发送通知（可能是重复回调，但通知可能还没发送）
-		go func() {
-			sendPaymentNotifications(db, orderNo)
-		}()
+		utils.LogInfo("PaymentNotify: order already paid, ensuring subscription is activated - order_no=%s", orderNo)
+		// 即使订单已标记为paid，也确保订阅已正确开通（防止处理失败的情况）
+		go func(targetOrder models.Order) {
+			defer func() {
+				if r := recover(); r != nil {
+					utils.LogError("PaymentNotify: panic in async processing (already paid)", fmt.Errorf("%v", r), map[string]interface{}{
+						"order_no": targetOrder.OrderNo,
+					})
+				}
+			}()
+
+			// 检查订阅是否已正确开通
+			var subscription models.Subscription
+			if err := db.Where("user_id = ?", targetOrder.UserID).First(&subscription).Error; err != nil {
+				// 订阅不存在，重新处理订单以确保开通
+				utils.LogInfo("PaymentNotify: subscription not found, reprocessing order to activate - order_no=%s", targetOrder.OrderNo)
+				orderService := orderServicePkg.NewOrderService()
+				if _, err := orderService.ProcessPaidOrder(&targetOrder); err != nil {
+					utils.LogError("PaymentNotify: failed to reprocess order for subscription activation", err, map[string]interface{}{
+						"order_no": targetOrder.OrderNo,
+					})
+				} else {
+					utils.LogInfo("PaymentNotify: subscription activated successfully - order_no=%s", targetOrder.OrderNo)
+				}
+			} else {
+				// 订阅存在，发送通知即可
+				utils.LogInfo("PaymentNotify: subscription already exists, sending notifications - order_no=%s", targetOrder.OrderNo)
+			}
+
+			sendPaymentNotifications(db, targetOrder.OrderNo)
+		}(order)
 		c.String(http.StatusOK, "success")
 		return
 	}
@@ -401,8 +585,8 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 异步处理订单后续逻辑（开通权益、发送通知等）
-	// 这样可以立即向支付网关返回 success，避免超时
+	utils.LogInfo("PaymentNotify: 订单状态已更新为paid，开始异步处理订单 - order_no=%s, order_id=%d", orderNo, order.ID)
+
 	go func(targetOrder models.Order) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -412,35 +596,31 @@ func PaymentNotify(c *gin.Context) {
 			}
 		}()
 
-		// ProcessPaidOrder 统一处理所有订单类型
+		utils.LogInfo("PaymentNotify: 开始处理已支付订单 - order_no=%s", targetOrder.OrderNo)
 		orderService := orderServicePkg.NewOrderService()
-		// 注意：这里传入的是 order 的副本的指针，确保线程安全
 		_, processErr := orderService.ProcessPaidOrder(&targetOrder)
 		if processErr != nil {
 			utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
 				"order_id": targetOrder.ID,
+				"order_no": targetOrder.OrderNo,
 			})
-			// 支付已成功，后续可通过补偿机制修复
-			// 即使处理业务逻辑失败，也要尝试发送通知（至少让用户知道付款成功了但服务可能没到账）
+		} else {
+			utils.LogInfo("PaymentNotify: 订单处理成功 - order_no=%s", targetOrder.OrderNo)
 		}
 
-		// 发送邮件通知
 		sendPaymentNotifications(db, targetOrder.OrderNo)
 	}(order)
 
 	c.String(http.StatusOK, "success")
 }
 
-// sendPaymentNotifications 发送付款成功通知（客户和管理员）
 func sendPaymentNotifications(db *gorm.DB, orderNo string) {
-	// 使用订单号重新查询订单，确保获取最新数据
 	var latestOrder models.Order
 	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&latestOrder).Error; err != nil {
 		utils.LogErrorMsg("sendPaymentNotifications: 查询订单失败: order_no=%s, error=%v", orderNo, err)
 		return
 	}
 
-	// 查询用户信息
 	var latestUser models.User
 	if err := db.First(&latestUser, latestOrder.UserID).Error; err != nil {
 		utils.LogErrorMsg("sendPaymentNotifications: 查询用户失败: order_no=%s, user_id=%d, error=%v", orderNo, latestOrder.UserID, err)
@@ -463,12 +643,10 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 		packageName = "设备/时长升级"
 	}
 
-	// 发送客户付款成功通知邮件（不限制订单类型，所有订单都发送）
 	if notification.ShouldSendCustomerNotification("new_order") {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
 
-		// 1. 发送付款成功通知邮件
 		paymentSuccessContent := templateBuilder.GetPaymentSuccessTemplate(
 			latestUser.Username,
 			latestOrder.OrderNo,
@@ -483,7 +661,6 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 			utils.LogInfo("sendPaymentNotifications: 付款成功邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
 		}
 
-		// 2. 如果是套餐订单，发送订阅配置信息邮件
 		if latestOrder.PackageID > 0 {
 			var subscriptionInfo models.Subscription
 			if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
@@ -523,7 +700,6 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 		utils.LogInfo("sendPaymentNotifications: 客户通知已禁用，跳过发送: order_no=%s", latestOrder.OrderNo)
 	}
 
-	// 发送管理员通知（总是尝试发送，不依赖客户通知配置）
 	notificationService := notification.NewNotificationService()
 	if err := notificationService.SendAdminNotification("order_paid", map[string]interface{}{
 		"order_no":       latestOrder.OrderNo,
@@ -539,7 +715,6 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 	}
 }
 
-// GetPaymentStatus 查询支付状态
 func GetPaymentStatus(c *gin.Context) {
 	transactionID := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
