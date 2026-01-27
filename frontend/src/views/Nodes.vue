@@ -59,7 +59,7 @@
       <!-- 桌面端表格 -->
       <div class="table-wrapper">
         <el-table 
-          :data="filteredNodes" 
+          :data="paginatedNodes" 
           v-loading="loading"
           style="width: 100%"
           class="desktop-table"
@@ -106,6 +106,19 @@
 
         <!-- 移除延迟、最后测试和操作列，用户端不需要这些功能 -->
         </el-table>
+        
+        <!-- 分页组件 -->
+        <div class="pagination-wrapper" v-if="filteredNodes.length > 0">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.size"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="filteredNodes.length"
+            :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
+            @size-change="handleSizeChange"
+            @current-change="handlePageChange"
+          />
+        </div>
       </div>
 
       <!-- 空状态 -->
@@ -120,9 +133,9 @@
     </el-card>
 
     <!-- 移动端卡片式列表 -->
-    <div class="mobile-card-list" v-if="filteredNodes.length > 0">
+    <div class="mobile-card-list" v-if="paginatedNodes.length > 0">
       <div 
-        v-for="node in filteredNodes" 
+        v-for="node in paginatedNodes" 
         :key="node.id"
         class="mobile-node-card"
       >
@@ -166,12 +179,25 @@
           </span>
         </div>
       </div>
+      
+      <!-- 移动端分页 -->
+      <div class="mobile-pagination" v-if="filteredNodes.length > 0">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.size"
+          :page-sizes="[10, 20, 50]"
+          :total="filteredNodes.length"
+          layout="prev, pager, next"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { nodeAPI } from '@/utils/api'
 import '@/styles/list-common.scss'
@@ -184,6 +210,13 @@ export default {
     const filterRegion = ref('')
     const filterType = ref('')
     const isMobile = ref(window.innerWidth <= 768)
+
+    // 分页配置
+    const pagination = reactive({
+      page: 1,
+      size: 20,
+      total: 0
+    })
 
     const nodeStats = reactive({
       total: 0,
@@ -206,6 +239,33 @@ export default {
 
       return result
     })
+
+    // 分页后的节点列表
+    const paginatedNodes = computed(() => {
+      const start = (pagination.page - 1) * pagination.size
+      const end = start + pagination.size
+      return filteredNodes.value.slice(start, end)
+    })
+
+    // 监听过滤条件变化，重置到第一页
+    watch([filterRegion, filterType], () => {
+      pagination.page = 1
+    })
+
+    // 处理分页大小变化
+    const handleSizeChange = (size) => {
+      pagination.size = size
+      pagination.page = 1 // 重置到第一页
+    }
+
+    // 处理页码变化
+    const handlePageChange = (page) => {
+      pagination.page = page
+      // 滚动到顶部
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    }
 
     // 获取地区列表
     const regions = computed(() => {
@@ -417,10 +477,14 @@ export default {
       filterType,
       nodeStats,
       filteredNodes,
+      paginatedNodes,
+      pagination,
       regions,
       nodeTypes,
       fetchNodes,
       refreshNodes,
+      handleSizeChange,
+      handlePageChange,
       getNodeIcon,
       getRegionColor,
       getTypeColor,
@@ -617,6 +681,21 @@ export default {
   @media (max-width: 768px) {
     display: none;
   }
+}
+
+/* 分页样式 */
+.pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.mobile-pagination {
+  margin-top: 20px;
+  padding: 20px 0;
+  display: flex;
+  justify-content: center;
 }
 
 /* 移动端卡片列表显示 */
