@@ -176,6 +176,17 @@ func isValidOrigin(origin, host string) bool {
 	if origin == "" {
 		return false
 	}
+	if origin == "http://localhost" || origin == "https://localhost" ||
+		origin == "http://localhost:5173" || origin == "https://localhost:5173" ||
+		origin == "http://127.0.0.1" || origin == "https://127.0.0.1" ||
+		origin == "http://127.0.0.1:5173" || origin == "https://127.0.0.1:5173" {
+		return true
+	}
+	if strings.HasPrefix(origin, "http://192.168.") || strings.HasPrefix(origin, "https://192.168.") ||
+		strings.HasPrefix(origin, "http://10.") || strings.HasPrefix(origin, "https://10.") ||
+		strings.HasPrefix(origin, "http://172.") || strings.HasPrefix(origin, "https://172.") {
+		return true
+	}
 	return origin == "https://"+host || origin == "http://"+host ||
 		origin == "https://"+host+"/" || origin == "http://"+host+"/" ||
 		strings.HasPrefix(origin, "https://"+host+":") || strings.HasPrefix(origin, "http://"+host+":")
@@ -184,6 +195,15 @@ func isValidOrigin(origin, host string) bool {
 func isValidReferer(referer, host string) bool {
 	if referer == "" {
 		return false
+	}
+	if strings.HasPrefix(referer, "http://localhost") || strings.HasPrefix(referer, "https://localhost") ||
+		strings.HasPrefix(referer, "http://127.0.0.1") || strings.HasPrefix(referer, "https://127.0.0.1") {
+		return true
+	}
+	if strings.HasPrefix(referer, "http://192.168.") || strings.HasPrefix(referer, "https://192.168.") ||
+		strings.HasPrefix(referer, "http://10.") || strings.HasPrefix(referer, "https://10.") ||
+		strings.HasPrefix(referer, "http://172.") || strings.HasPrefix(referer, "https://172.") {
+		return true
 	}
 	return referer == "https://"+host || referer == "http://"+host ||
 		referer == "https://"+host+"/" || referer == "http://"+host+"/" ||

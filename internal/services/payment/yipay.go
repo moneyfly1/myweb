@@ -104,6 +104,12 @@ func resolveCallbackURL(explicit sql.NullString, jsonVal string, path string, is
 	// 2. 使用JSON中的配置
 	if jsonVal != "" {
 		utils.LogInfo("易支付从配置JSON中获取回调地址: %s", jsonVal)
+		// 检查生产环境配置了本地地址的警告
+		if isNotify && !isLocalDomain(jsonVal) {
+			if domain := utils.GetDomainFromDB(database.GetDB()); isLocalDomain(domain) {
+				utils.LogWarn("易支付回调地址配置为生产域名 (%s)，但当前环境是本地 (%s)，回调可能无法到达", jsonVal, domain)
+			}
+		}
 		return jsonVal
 	}
 
@@ -126,7 +132,11 @@ func resolveCallbackURL(explicit sql.NullString, jsonVal string, path string, is
 
 	genURL := buildBaseURL(domain, path)
 	if isNotify {
-		utils.LogInfo("易支付自动生成回调地址: %s", genURL)
+		if isLocalDomain(domain) {
+			utils.LogWarn("易支付本地环境自动生成回调地址: %s (需内网穿透)", genURL)
+		} else {
+			utils.LogInfo("易支付生产环境自动生成回调地址: %s", genURL)
+		}
 	} else {
 		utils.LogInfo("易支付自动生成同步回调地址: %s", genURL)
 	}
@@ -488,7 +498,7 @@ func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType 
 	htmlContent := string(bodyBytes)
 
 	// 1. 处理特定的表单自动提交 (idzew.com / submit.php)
-	if strings.Contains(htmlContent, "<form") && strings.Contains(htmlContent, "action=") && strings.Contains(htmlContent, "submit") {
+	if strings.Contains(htmlContent, "idzew.com") || strings.Contains(htmlContent, "submit.php") {
 		return s.handleFormRedirect(htmlContent, paymentType)
 	}
 
