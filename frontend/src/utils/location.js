@@ -21,7 +21,7 @@ export function parseLocation(locationStr) {
     }
   } catch (e) {
     // 如果不是JSON，尝试解析逗号分隔格式
-    if (locationStr.includes(',')) {
+    if (locationStr && typeof locationStr === 'string' && locationStr.includes(',')) {
       const parts = locationStr.split(',').map(s => s.trim())
       return {
         country: parts[0] || '',
