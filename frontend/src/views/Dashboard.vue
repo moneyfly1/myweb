@@ -814,12 +814,13 @@ const formatDate = (dateString) => {
 
 const loadUserInfo = async () => {
   try {
+    // 使用聚合接口，一次获取所有数据
     const dashboardResponse = await userAPI.getUserInfo()
     if (dashboardResponse.data && dashboardResponse.data.success) {
       const dashboardData = dashboardResponse.data.data
       userInfo.value = {
         ...dashboardData,
-        balance: dashboardData.balance || '0.00', // 确保余额字段被正确设置
+        balance: dashboardData.balance || '0.00',
         clashUrl: dashboardData.clashUrl || dashboardData.subscription?.clashUrl || '',
         universalUrl: dashboardData.universalUrl || dashboardData.subscription?.universalUrl || '',
         qrcodeUrl: dashboardData.qrcodeUrl || dashboardData.subscription?.qrcodeUrl || '',
@@ -837,6 +838,11 @@ const loadUserInfo = async () => {
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
         status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
+      
+      // 处理公告信息（如果接口返回了）
+      if (dashboardData.notice) {
+        handleAnnouncement(dashboardData.notice)
+      }
     } else {
       throw new Error('用户信息加载失败')
     }
@@ -846,7 +852,6 @@ const loadUserInfo = async () => {
       const subscriptionResponse = await subscriptionAPI.getUserSubscription()
       if (subscriptionResponse.data && subscriptionResponse.data.success) {
         const subscriptionData = subscriptionResponse.data.data
-        // 设置基本的用户信息
         userInfo.value = {
           username: '用户',
           email: '',
@@ -859,7 +864,6 @@ const loadUserInfo = async () => {
           balance: '0.00',
           subscription_url: subscriptionData.subscription_url || '',
           subscription_status: subscriptionData.status || 'inactive',
-          // 使用订阅API的地址
           clashUrl: subscriptionData.clashUrl || '',
           universalUrl: subscriptionData.universalUrl || '',
           qrcodeUrl: subscriptionData.qrcodeUrl || ''
@@ -872,6 +876,31 @@ const loadUserInfo = async () => {
       ElMessage.error('加载用户信息失败，请刷新页面重试')
     }
   }
+}
+
+// 处理公告信息（提取为独立函数）
+const handleAnnouncement = (notice) => {
+  if (!notice || !notice.enabled || !notice.content) {
+    return
+  }
+  
+  const content = String(notice.content).trim()
+  if (!content) {
+    return
+  }
+  
+  // 使用DOMPurify清理HTML，移除所有标签只保留纯文本，防止XSS
+  const sanitizedContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
+  
+  ElNotification({
+    title: '系统公告',
+    message: sanitizedContent,
+    type: 'info',
+    position: 'bottom-right',
+    duration: 0,
+    dangerouslyUseHTMLString: false, // 禁用HTML渲染，防止XSS
+    showClose: true
+  })
 }
 
 // 获取订阅信息
@@ -1340,8 +1369,8 @@ const copyClashSubscription = () => {
 }
 
 const copyShadowrocketSubscription = () => {
-  if (!userInfo.value.universalUrl) {
-    ElMessage.error('通用订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.universalUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
@@ -1353,8 +1382,8 @@ const copyShadowrocketSubscription = () => {
 }
 
 const copyUniversalSubscription = () => {
-  if (!userInfo.value.universalUrl) {
-    ElMessage.error('通用订阅地址不可用')
+  if (!userInfo.value || !userInfo.value.universalUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐')
     return
   }
   
@@ -1364,8 +1393,8 @@ const copyUniversalSubscription = () => {
 
 // Flash相关方法
 const copyFlashSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Flash 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
@@ -1377,22 +1406,24 @@ const copyFlashSubscription = () => {
 }
 
 const importFlashSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Flash 订阅地址不可用，请刷新页面重试')
+  // 安全检查：确保订阅地址存在
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
   try {
     let url = userInfo.value.clashUrl
-    let name = '' // 用于clash://install-config的name参数
+    let name = ''
     
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      // 格式化到期时间用于name参数，参考格式：到期时间YYYY-MM-DD_到期
       const expiryDate = new Date(userInfo.value.expiryDate)
-      const year = expiryDate.getFullYear()
-      const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-      const day = String(expiryDate.getDate()).padStart(2, '0')
-      name = `到期时间${year}-${month}-${day}_到期`
+      if (!isNaN(expiryDate.getTime())) {
+        const year = expiryDate.getFullYear()
+        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
+        const day = String(expiryDate.getDate()).padStart(2, '0')
+        name = `到期时间${year}-${month}-${day}_到期`
+      }
     }
     
     oneclickImport('flash', url, name)
@@ -1404,8 +1435,8 @@ const importFlashSubscription = () => {
 
 // Clash Part相关方法
 const copyMohomoSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Clash Part 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
@@ -1417,22 +1448,23 @@ const copyMohomoSubscription = () => {
 }
 
 const importMohomoSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Clash Part 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
   try {
     let url = userInfo.value.clashUrl
-    let name = '' // 用于clash://install-config的name参数
+    let name = ''
     
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      // 格式化到期时间用于name参数，参考格式：到期时间YYYY-MM-DD_到期
       const expiryDate = new Date(userInfo.value.expiryDate)
-      const year = expiryDate.getFullYear()
-      const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-      const day = String(expiryDate.getDate()).padStart(2, '0')
-      name = `到期时间${year}-${month}-${day}_到期`
+      if (!isNaN(expiryDate.getTime())) {
+        const year = expiryDate.getFullYear()
+        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
+        const day = String(expiryDate.getDate()).padStart(2, '0')
+        name = `到期时间${year}-${month}-${day}_到期`
+      }
     }
     
     oneclickImport('mohomo', url, name)
@@ -1444,8 +1476,8 @@ const importMohomoSubscription = () => {
 
 // Sparkle相关方法
 const copySparkleSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Sparkle 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
@@ -1457,22 +1489,23 @@ const copySparkleSubscription = () => {
 }
 
 const importSparkleSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Sparkle 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
   try {
     let url = userInfo.value.clashUrl
-    let name = '' // 用于clash://install-config的name参数
+    let name = ''
     
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      // 格式化到期时间用于name参数，参考格式：到期时间YYYY-MM-DD_到期
       const expiryDate = new Date(userInfo.value.expiryDate)
-      const year = expiryDate.getFullYear()
-      const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-      const day = String(expiryDate.getDate()).padStart(2, '0')
-      name = `到期时间${year}-${month}-${day}_到期`
+      if (!isNaN(expiryDate.getTime())) {
+        const year = expiryDate.getFullYear()
+        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
+        const day = String(expiryDate.getDate()).padStart(2, '0')
+        name = `到期时间${year}-${month}-${day}_到期`
+      }
     }
     
     oneclickImport('sparkle', url, name)
@@ -1509,22 +1542,23 @@ const copyToClipboard = async (text, message) => {
 }
 
 const importClashSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Clash 订阅地址不可用，请刷新页面重试')
+  if (!userInfo.value || !userInfo.value.clashUrl) {
+    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
   
   try {
     let url = userInfo.value.clashUrl
-    let name = '' // 用于clash://install-config的name参数
+    let name = ''
     
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      // 格式化到期时间用于name参数，参考格式：到期时间YYYY-MM-DD_到期
       const expiryDate = new Date(userInfo.value.expiryDate)
-      const year = expiryDate.getFullYear()
-      const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-      const day = String(expiryDate.getDate()).padStart(2, '0')
-      name = `到期时间${year}-${month}-${day}_到期`
+      if (!isNaN(expiryDate.getTime())) {
+        const year = expiryDate.getFullYear()
+        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
+        const day = String(expiryDate.getDate()).padStart(2, '0')
+        name = `到期时间${year}-${month}-${day}_到期`
+      }
     }
     
     oneclickImport('clashx', url, name)
@@ -1655,38 +1689,48 @@ const oneclickImport = (client, url, name = '') => {
   }
 }
 
-// 检查并显示公告
+// 处理公告信息（提取为独立函数）
+const handleAnnouncement = (notice) => {
+  if (!notice || !notice.enabled || !notice.content) {
+    return
+  }
+  
+  const content = String(notice.content).trim()
+  if (!content) {
+    return
+  }
+  
+  // 使用DOMPurify清理HTML，移除所有标签只保留纯文本，防止XSS
+  const sanitizedContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
+  
+  ElNotification({
+    title: '系统公告',
+    message: sanitizedContent,
+    type: 'info',
+    position: 'bottom-right',
+    duration: 0,
+    dangerouslyUseHTMLString: false, // 禁用HTML渲染，防止XSS
+    showClose: true
+  })
+}
+
+// 检查并显示公告（保留作为降级方案，如果聚合接口没有返回公告）
 const checkAndShowAnnouncement = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
     const settings = response.data?.data || response.data || {}
     
-    // 处理布尔值（可能是字符串 "true"/"false" 或布尔值）
     const isEnabled = settings.announcement_enabled === true || 
                       settings.announcement_enabled === 'true' || 
                       String(settings.announcement_enabled).toLowerCase() === 'true'
     
-    // 每次登录都显示公告（如果启用），除非用户手动关闭
-    // 不记录到 localStorage，这样每次登录都会显示
     if (isEnabled && settings.announcement_content && String(settings.announcement_content).trim()) {
-      const content = String(settings.announcement_content).trim()
-      const sanitizedContent = sanitizeHtml(content)
-      const displayContent = sanitizedContent || content || '暂无公告内容'
-      
-      // 使用 ElNotification 在右下角显示公告
-      // 每次登录都会显示，用户需要手动点击关闭按钮才会关闭
-      ElNotification({
-        title: '系统公告',
-        message: displayContent,
-        type: 'info',
-        position: 'bottom-right',
-        duration: 0, // 不自动关闭，需要用户手动关闭
-        dangerouslyUseHTMLString: true,
-        showClose: true // 显示关闭按钮
+      handleAnnouncement({
+        enabled: isEnabled,
+        content: settings.announcement_content
       })
     }
   } catch (error) {
-    // 静默失败，不影响页面加载
     console.warn('获取公告失败:', error)
   }
 }
@@ -1705,13 +1749,14 @@ onMounted(() => {
     isMobile.value = window.innerWidth <= 768
     window.addEventListener('resize', handleResize)
   }
-  loadUserInfo()
-  loadSubscriptionInfo()
+  // 使用聚合接口，减少请求数量
+  loadUserInfo() // 这个接口现在返回所有数据（包括订阅和公告）
+  // loadSubscriptionInfo() // 不再需要单独调用，因为loadUserInfo已经包含订阅信息
   loadSoftwareConfig()
-  // 延迟一下再检查公告，确保页面已经渲染完成
+  // 延迟一下再检查公告（作为降级方案，如果聚合接口没有返回）
   setTimeout(() => {
     checkAndShowAnnouncement()
-  }, 500)
+  }, 1000)
   
   // 监听订阅更新事件
   const handleSubscriptionUpdate = async () => {
