@@ -775,7 +775,24 @@ export default {
     
     // 确认购买
     const confirmPurchase = async () => {
+      // 安全检查：余额检查
+      if (paymentMethod.value === 'balance' && userBalance.value < finalAmount.value) {
+        ElMessage.error(`余额不足，当前余额：¥${userBalance.value.toFixed(2)}，需要：¥${finalAmount.value.toFixed(2)}`)
+        return
+      }
+      
+      // 安全检查：混合支付时，余额必须大于0
+      if (paymentMethod.value === 'mixed' && userBalance.value <= 0) {
+        ElMessage.error('余额不足，无法使用混合支付，请选择其他支付方式')
+        return
+      }
+      
       try {
+        // 防抖：如果正在处理中，直接返回
+        if (isProcessing.value) {
+          return
+        }
+        
         isProcessing.value = true
         
         // 创建订单

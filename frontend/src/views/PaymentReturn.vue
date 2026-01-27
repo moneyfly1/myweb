@@ -82,10 +82,8 @@ export default {
         errorMessage.value = ''
 
 
-        console.log('PaymentReturn: 所有URL参数:', route.query)
-        console.log('PaymentReturn: 完整URL:', window.location.href)
-
-
+        // 安全修复：不信任URL参数，只用于获取订单号，实际状态从后端查询
+        // 从URL参数中提取订单号（仅作为提示，不用于判断支付状态）
         let orderNoParam = route.query.out_trade_no || 
                           route.query.order_no || 
                           route.query.trade_no ||
@@ -93,7 +91,7 @@ export default {
                           route.query.orderNo ||
                           route.query.tradeNo
 
-
+        // 如果URL中没有订单号，尝试从用户最近订单中获取
         if (!orderNoParam) {
           console.log('PaymentReturn: URL参数中没有订单号，尝试从用户最近订单中获取')
           try {
@@ -144,7 +142,8 @@ export default {
         orderNo.value = orderNoParam
         console.log('PaymentReturn: 使用订单号:', orderNo.value)
 
-
+        // 安全修复：不信任URL参数中的支付状态，必须从后端查询真实状态
+        // 等待一下让后端处理回调
         await new Promise(resolve => setTimeout(resolve, 2000))
 
 
