@@ -368,12 +368,32 @@ const handleSendVerificationCode = async () => {
   }
 }
 
+// 防抖处理：防止重复提交
+let registerDebounceTimer = null
+
 // 方法
 const handleRegister = async () => {
-  try {
-    await registerFormRef.value.validate()
-    
-    loading.value = true
+  // 防抖：如果正在加载中，直接返回
+  if (loading.value) {
+    return
+  }
+  
+  // 清除之前的防抖定时器
+  if (registerDebounceTimer) {
+    clearTimeout(registerDebounceTimer)
+  }
+  
+  // 设置防抖：300ms内只能提交一次
+  registerDebounceTimer = setTimeout(async () => {
+    try {
+      await registerFormRef.value.validate()
+      
+      // 再次检查loading状态，防止竞态条件
+      if (loading.value) {
+        return
+      }
+      
+      loading.value = true
     
     // 构建注册请求数据
     const registerData = {
@@ -424,7 +444,9 @@ const handleRegister = async () => {
     }
   } finally {
     loading.value = false
+    registerDebounceTimer = null
   }
+  }, 300)
 }
 
 // 检查注册是否允许

@@ -137,7 +137,7 @@
             <el-tab-pane label="HTML预览" name="preview">
               <div 
                 class="email-html-preview" 
-                v-html="emailDetail.content"
+                v-html="sanitizedEmailContent"
               ></div>
             </el-tab-pane>
             <el-tab-pane label="HTML源码" name="source">
@@ -224,6 +224,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, Delete, CopyDocument, Download } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import DOMPurify from 'dompurify'
 
 export default {
   name: 'EmailDetail',
@@ -334,6 +335,27 @@ export default {
       ElMessage.success('模板数据下载成功')
     }
     
+    // HTML内容清理函数，防止XSS攻击
+    const sanitizeHtml = (html) => {
+      if (!html) return ''
+      try {
+        return DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'div', 'span', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'],
+          ALLOWED_ATTR: ['href', 'target', 'style', 'class', 'id', 'src', 'alt', 'width', 'height'],
+          ALLOW_DATA_ATTR: false
+        })
+      } catch (error) {
+        console.error('sanitizeHtml 错误:', error)
+        return html
+      }
+    }
+    
+    // 清理后的邮件内容（计算属性）
+    const sanitizedEmailContent = computed(() => {
+      if (!emailDetail.value?.content) return ''
+      return sanitizeHtml(emailDetail.value.content)
+    })
+    
     // 格式化模板数据
     const formattedTemplateData = computed(() => {
       if (!emailDetail.value?.template_data) return ''
@@ -404,6 +426,7 @@ export default {
       retryLoading,
       emailDetail,
       contentViewMode,
+      sanitizedEmailContent,
       fetchEmailDetail,
       retryEmail,
       deleteEmail,
