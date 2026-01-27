@@ -253,7 +253,11 @@ export default {
           // 确保 smtp_port 是数字类型
           smtp_port: typeof emailForm.smtp_port === 'number' ? emailForm.smtp_port : Number(emailForm.smtp_port) || 587,
           email_username: emailForm.email_username,
-          email_password: emailForm.email_password,
+          // 安全修复：如果密码是掩码（******），不发送给后端，让后端保持原值
+          // 只有用户真正修改了密码（不是掩码）时才发送
+          email_password: (emailForm.email_password && emailForm.email_password !== '******') 
+            ? emailForm.email_password 
+            : undefined, // 不发送掩码，让后端保持原值
           sender_name: emailForm.sender_name,
           smtp_encryption: emailForm.smtp_encryption,
           from_email: emailForm.from_email
@@ -282,7 +286,21 @@ export default {
           const port = configData.smtp_port
           emailForm.smtp_port = port ? Number(port) : 587
           emailForm.email_username = configData.email_username || configData.smtp_username || ''
-          emailForm.email_password = configData.email_password || configData.smtp_password || ''
+          // 安全修复：密码字段不直接显示真实值，使用掩码或空字符串
+          // 如果后端返回了密码，使用掩码显示；否则留空，让用户重新输入
+          if (configData.email_password || configData.smtp_password) {
+            // 如果后端返回了掩码（如******），直接使用；否则使用掩码
+            const passwordValue = configData.email_password || configData.smtp_password
+            if (passwordValue && passwordValue.length > 0 && !passwordValue.startsWith('*')) {
+              // 后端返回了真实密码，使用掩码保护
+              emailForm.email_password = '******'
+            } else {
+              // 后端返回了掩码或空值
+              emailForm.email_password = passwordValue || ''
+            }
+          } else {
+            emailForm.email_password = ''
+          }
           emailForm.sender_name = configData.sender_name || ''
           emailForm.smtp_encryption = configData.smtp_encryption || 'tls'
           emailForm.from_email = configData.from_email || ''

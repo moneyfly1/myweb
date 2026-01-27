@@ -252,9 +252,11 @@
                   <el-input
                     v-model="adminNotificationSettings.admin_telegram_chat_id"
                     placeholder="请输入 Telegram Chat ID"
+                    type="password"
+                    show-password
                   />
                   <div :class="['form-tip', { 'mobile': isMobile }]">
-                    发送消息给 @userinfobot 获取您的 Chat ID
+                    发送消息给 @userinfobot 获取您的 Chat ID（已隐藏显示，防止泄露）
                   </div>
                 </el-form-item>
                 
