@@ -498,7 +498,7 @@ func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType 
 	htmlContent := string(bodyBytes)
 
 	// 1. 处理特定的表单自动提交 (idzew.com / submit.php)
-	if strings.Contains(htmlContent, "idzew.com") || strings.Contains(htmlContent, "submit.php") {
+	if strings.Contains(htmlContent, "<form") && strings.Contains(htmlContent, "action=") && strings.Contains(htmlContent, "submit") {
 		return s.handleFormRedirect(htmlContent, paymentType)
 	}
 
