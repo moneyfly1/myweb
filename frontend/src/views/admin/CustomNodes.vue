@@ -996,6 +996,25 @@ export default {
             ElMessage.warning('请填写必填项')
             return
           }
+          
+          // 安全修复：验证JSON配置格式
+          if (nodeForm.config) {
+            try {
+              // 尝试解析JSON，验证格式是否正确
+              const configObj = typeof nodeForm.config === 'string' 
+                ? JSON.parse(nodeForm.config) 
+                : nodeForm.config
+              
+              // 确保解析后是对象
+              if (typeof configObj !== 'object' || configObj === null || Array.isArray(configObj)) {
+                ElMessage.error('节点配置必须是有效的JSON对象格式')
+                return
+              }
+            } catch (jsonError) {
+              ElMessage.error('节点配置JSON格式错误，请检查语法（如缺少逗号、引号等）: ' + jsonError.message)
+              return
+            }
+          }
         }
 
         saving.value = true
@@ -1012,11 +1031,17 @@ export default {
             response = await adminAPI.updateCustomNode(editingNode.value.id, updateData)
           } else {
             // 创建模式（手动填写）
+            // 确保config是字符串格式（如果是对象，转换为JSON字符串）
+            let configValue = nodeForm.config
+            if (typeof configValue === 'object' && configValue !== null) {
+              configValue = JSON.stringify(configValue)
+            }
+            
             response = await adminAPI.createCustomNode({
               name: nodeForm.name,
               display_name: nodeForm.display_name,
               protocol: nodeForm.protocol,
-              config: nodeForm.config,
+              config: configValue,
               expire_time: nodeForm.expire_time,
               follow_user_expire: nodeForm.follow_user_expire
             })
