@@ -1009,13 +1009,20 @@ const createRecharge = async () => {
         return
       }
       
-      // 判断是否是易支付，如果是则跳转到新页面
+      const paymentUrlLower = String(paymentUrl).toLowerCase()
+      const isPaymentPageUrl = paymentUrl && (
+        paymentUrlLower.includes('payapi/pay/payment') ||
+        paymentUrlLower.includes('9801w.com') ||
+        paymentUrlLower.includes('idzew.com') ||
+        (paymentUrlLower.startsWith('http') && !paymentUrlLower.includes('qrcode') && !paymentUrlLower.includes('qr.alipay') && !paymentUrlLower.startsWith('weixin://') && !paymentUrlLower.startsWith('wxp://'))
+      )
+      
       const isYipay = rechargePaymentMethod.value && (
         rechargePaymentMethod.value.includes('yipay') || 
         rechargePaymentMethod.value.includes('易支付')
       )
       
-      if (isYipay) {
+      if (isYipay || isPaymentPageUrl) {
         if (paymentUrl) {
           ElMessage.info('正在跳转到支付页面...')
           window.location.href = paymentUrl
