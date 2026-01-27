@@ -118,8 +118,19 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       
       // 用户登录使用 sessionStorage
+      // 只存储必要的用户信息，避免存储敏感数据
+      const safeUserData = {
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        is_admin: userData.is_admin,
+        is_verified: userData.is_verified,
+        is_active: userData.is_active,
+        theme: userData.theme,
+        language: userData.language
+      }
       secureStorage.set('user_token', access_token, true, TOKEN_TTL)
-      secureStorage.set('user_data', userData, true, TOKEN_TTL)
+      secureStorage.set('user_data', safeUserData, true, TOKEN_TTL)
       secureStorage.set('user_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
       
       resetRefreshFailed()
@@ -178,8 +189,19 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       
       // 管理员登录使用 localStorage
+      // 只存储必要的用户信息，避免存储敏感数据
+      const safeUserData = {
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        is_admin: userData.is_admin,
+        is_verified: userData.is_verified,
+        is_active: userData.is_active,
+        theme: userData.theme,
+        language: userData.language
+      }
       secureStorage.set('admin_token', access_token, false, TOKEN_TTL)
-      secureStorage.set('admin_user', userData, false, TOKEN_TTL)
+      secureStorage.set('admin_user', safeUserData, false, TOKEN_TTL)
       secureStorage.set('admin_refresh_token', refresh_token, false, REFRESH_TOKEN_TTL)
       
       resetRefreshFailed()

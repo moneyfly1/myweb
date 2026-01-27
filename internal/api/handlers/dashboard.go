@@ -117,6 +117,29 @@ func GetUserDashboard(c *gin.Context) {
 		}
 	}
 
+	// 获取用户统计信息
+	var orderCount int64
+	var totalSpent float64
+	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").Count(&orderCount)
+	db.Model(&models.Order{}).
+		Where("user_id = ? AND status = ?", user.ID, "paid").
+		Select("COALESCE(SUM(final_amount), SUM(amount), 0)").
+		Scan(&totalSpent)
+
+	// 获取公告信息（从系统设置）
+	var announcementConfig models.SystemConfig
+	var announcementEnabled bool
+	var announcementContent string
+	if err := db.Where("key = ? AND category = ?", "announcement_enabled", "system").First(&announcementConfig).Error; err == nil {
+		announcementEnabled = announcementConfig.Value == "true"
+	}
+	if announcementEnabled {
+		var contentConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "announcement_content", "system").First(&contentConfig).Error; err == nil {
+			announcementContent = contentConfig.Value
+		}
+	}
+
 	dashboard := gin.H{
 		"username":            user.Username,
 		"email":               user.Email,
@@ -130,13 +153,12 @@ func GetUserDashboard(c *gin.Context) {
 		"total_devices":       subscription.DeviceLimit,
 		"subscription_url":    subscription.SubscriptionURL,
 		"clashUrl":            clashURL,
-		"universalUrl":        universalURL, // 通用订阅（Base64格式）
-		"qrcodeUrl":           qrcodeURL,    // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
+		"universalUrl":        universalURL,
+		"qrcodeUrl":           qrcodeURL,
 		"subscription_status": subStatus,
 		"expire_time":         expiryDate,
 		"expiryDate":          expiryDate,
 		"remaining_days":      remainingDays,
-		// 订阅信息
 		"subscription": gin.H{
 			"status":           subStatus,
 			"remaining_days":   remainingDays,
@@ -146,8 +168,17 @@ func GetUserDashboard(c *gin.Context) {
 			"maxDevices":       subscription.DeviceLimit,
 			"subscription_url": subscription.SubscriptionURL,
 			"clashUrl":         clashURL,
-			"universalUrl":     universalURL, // 通用订阅（Base64格式）
-			"qrcodeUrl":        qrcodeURL,    // 通用订阅地址生成的二维码（用于 Shadowrocket 扫码）
+			"universalUrl":     universalURL,
+			"qrcodeUrl":        qrcodeURL,
+		},
+		"stat": gin.H{
+			"order_count":  orderCount,
+			"total_spent":  totalSpent,
+			"device_count": deviceCount,
+		},
+		"notice": gin.H{
+			"enabled": announcementEnabled,
+			"content": announcementContent,
 		},
 	}
 
