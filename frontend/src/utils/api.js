@@ -338,18 +338,26 @@ export const authAPI = {
 export const userAPI = {
   getProfile: () => api.get('/users/me'),
   updateProfile: (data) => api.put('/users/me', data),
-  changePassword: (data) => api.post('/users/change-password', data),
-  getLoginHistory: () => api.get('/users/login-history'),
-  getUserActivities: () => api.get('/users/activities'),
-  getSubscriptionResets: () => api.get('/users/subscription-resets'),
-  getUserInfo: () => api.get('/users/dashboard-info'),
-  getUserDevices: () => api.get('/users/devices'),
-  getMyLevel: () => api.get('/users/my-level'),
-  getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } })
+  changePassword: (data) => api.post('/users/change-password', data),
+  getLoginHistory: () => api.get('/users/login-history'),
+  getUserActivities: () => api.get('/users/activities'),
+  getSubscriptionResets: () => api.get('/users/subscription-resets'),
+  getUserInfo: () => api.get('/users/dashboard-info'),
+  getUserStatistics: () => api.get('/user/stat'), // 用户统计信息
+  getUserDashboard: () => api.get('/user/dashboard'), // 聚合接口
+  getUserDevices: () => api.get('/users/devices'),
+  getMyLevel: () => api.get('/users/my-level'),
+  getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
+  // 设备相关
+  getDeviceList: () => api.get('/devices'),
+  addDevice: (data) => api.post('/devices', data),
+  deleteDevice: (id) => api.delete(`/devices/${id}`)
 }
 
 export const rechargeAPI = {
-  createRecharge: (amount, method = 'alipay') => api.post('/recharge/', { amount, payment_method: method }),
+  createRecharge: (data) => api.post('/recharge', data), // 通用创建充值（兼容）
+  createRechargeWithMethod: (amount, method = 'alipay') => api.post('/recharge/', { amount, payment_method: method }),
+  getRechargeRecords: () => api.get('/recharge/records'), // 充值记录
   getRecharges: (params) => api.get('/recharge/', { params }),
   getRechargeDetail: (id) => api.get(`/recharge/${id}`),
   getRechargeStatus: (orderNo) => api.get(`/recharge/status/${orderNo}`),
@@ -376,12 +384,14 @@ export const packageAPI = {
 }
 
 export const orderAPI = {
-  upgradeDevices: (data) => api.post('/orders/upgrade-devices', data),
+  upgradeDevices: (data) => api.post('/orders/upgrade-devices', data),
   createOrder: (data) => api.post('/orders/', data),
-  getUserOrders: (params) => api.get('/orders/', { params }),
-  getOrderStatus: (orderNo) => api.get(`/orders/${orderNo}/status`),
-  cancelOrder: (orderNo) => api.post(`/orders/${orderNo}/cancel`),
-  getPackages: () => api.get('/packages/')
+  getOrderList: (params) => api.get('/orders', { params }), // 订单列表（兼容别名）
+  getUserOrders: (params) => api.get('/orders/', { params }),
+  getOrderDetail: (id) => api.get(`/orders/${id}`), // 订单详情
+  getOrderStatus: (orderNo) => api.get(`/orders/${orderNo}/status`),
+  cancelOrder: (orderNo) => api.post(`/orders/${orderNo}/cancel`),
+  getPackages: () => api.get('/packages/')
 }
 
 export const nodeAPI = {
