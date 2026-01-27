@@ -1407,7 +1407,20 @@ export default {
       selectedOrder.value = null
     }
     
+    const cancelOrderLoading = ref(false)
+    
     const cancelOrder = async (order) => {
+      // 安全检查：只有待支付状态的订单才能取消
+      if (order.status !== 'pending' && order.status !== 'unpaid') {
+        ElMessage.warning('只有待支付状态的订单才能取消')
+        return
+      }
+      
+      // 防抖：如果正在处理中，直接返回
+      if (cancelOrderLoading.value) {
+        return
+      }
+      
       try {
         await ElMessageBox.confirm(
           '确定要取消这个订单吗？取消后无法恢复。',
@@ -1419,14 +1432,22 @@ export default {
           }
         )
         
-        await api.post(`/orders/${order.order_no}/cancel`)
-        ElMessage.success('订单已取消')
-        loadOrders()
+        cancelOrderLoading.value = true
+        
+        try {
+          await api.post(`/orders/${order.order_no}/cancel`)
+          ElMessage.success('订单已取消')
+          await loadOrders()
+        } finally {
+          cancelOrderLoading.value = false
+        }
         
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('取消订单失败')
-          }
+          const errorMsg = error.response?.data?.message || error.response?.data?.detail || '取消订单失败'
+          ElMessage.error(errorMsg)
+        }
+        cancelOrderLoading.value = false
       }
     }
     
@@ -1667,6 +1688,7 @@ export default {
       onImageLoad,
       onImageError,
       cancelOrder,
+      cancelOrderLoading,
       payRecharge,
       cancelRecharge,
       viewOrderDetail,
