@@ -428,7 +428,18 @@ export default {
       ],
       newPassword: [
         { required: true, message: '请输入新密码', trigger: 'blur' },
-        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+        {
+          validator: (rule, value, callback) => {
+            // 安全检查：新密码不能等于旧密码
+            if (value && passwordForm.oldPassword && value === passwordForm.oldPassword) {
+              callback(new Error('新密码不能与当前密码相同'))
+            } else {
+              callback()
+            }
+          },
+          trigger: 'blur'
+        }
       ],
       confirmPassword: [
         { required: true, message: '请确认新密码', trigger: 'blur' },
@@ -549,9 +560,21 @@ export default {
         return
       }
       
+      // 安全检查：新密码不能等于旧密码
+      if (passwordForm.newPassword && passwordForm.oldPassword && 
+          passwordForm.newPassword === passwordForm.oldPassword) {
+        ElMessage.error('新密码不能与当前密码相同')
+        return
+      }
+      
       try {
         await passwordFormRef.value.validate()
       } catch (error) {
+        return
+      }
+      
+      // 防抖：如果正在加载中，直接返回
+      if (passwordLoading.value) {
         return
       }
       
