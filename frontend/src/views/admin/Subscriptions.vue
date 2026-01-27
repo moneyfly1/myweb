@@ -1890,7 +1890,7 @@ export default {
 
         const userName = subscription.user?.username || subscription.user?.email || subscription.username || subscription.email || '未知用户'
         await ElMessageBox.confirm(
-          `确定要以用户 ${userName} 的身份登录吗？将在新标签页中打开用户后台。`,
+          `确定要以用户 ${userName} 的身份登录吗？将跳转到用户后台。`,
           '确认登录',
           {
             confirmButtonText: '确定',
@@ -1946,13 +1946,9 @@ export default {
         const dashboardUrl = window.location.origin + '/dashboard'
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
 
-        const newWindow = window.open(finalUrl, '_blank')
-
-        if (newWindow) {
-          ElMessage.success('正在新标签页中打开用户后台...')
-        } else {
-          ElMessage.error('无法打开新标签页，请检查浏览器弹窗设置')
-        }
+        // 在当前页面跳转，而不是新标签页（手机浏览器兼容）
+        ElMessage.success('正在跳转到用户后台...')
+        window.location.href = finalUrl
         
       } catch (error) {
         if (error !== 'cancel') {

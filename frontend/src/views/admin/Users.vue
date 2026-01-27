@@ -869,9 +869,9 @@ export default {
         
         const userDataStr = encodeURIComponent(JSON.stringify(userDataToSend))
         
-        // 在新标签页中打开用户后台，通过URL参数传递认证信息
+        // 在当前页面跳转到用户后台，通过URL参数传递认证信息（手机浏览器兼容）
         const dashboardUrl = `/dashboard?token=${userToken}&user=${userDataStr}`
-        window.open(dashboardUrl, '_blank')
+        window.location.href = dashboardUrl
         
       } catch (error) {
         if (error !== 'cancel') {
