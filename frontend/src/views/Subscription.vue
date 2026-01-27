@@ -773,14 +773,21 @@ export default {
               return
             }
             
-            // 判断是否是易支付，如果是则跳转到新页面
+            const paymentUrlLower = String(paymentUrlVal).toLowerCase()
+            const isPaymentPageUrl = paymentUrlVal && (
+              paymentUrlLower.includes('payapi/pay/payment') ||
+              paymentUrlLower.includes('9801w.com') ||
+              paymentUrlLower.includes('idzew.com') ||
+              (paymentUrlLower.startsWith('http') && !paymentUrlLower.includes('qrcode') && !paymentUrlLower.includes('qr.alipay') && !paymentUrlLower.startsWith('weixin://') && !paymentUrlLower.startsWith('wxp://'))
+            )
+            
             const paymentMethodName = data.payment_method_name || data.payment_method || paymentMethod.value
             const isYipay = paymentMethodName && (
               paymentMethodName.includes('yipay') || 
               paymentMethodName.includes('易支付')
             )
             
-            if (isYipay) {
+            if (isYipay || isPaymentPageUrl) {
               if (paymentUrlVal) {
                 ElMessage.info('正在跳转到支付页面...')
                 window.location.href = paymentUrlVal
