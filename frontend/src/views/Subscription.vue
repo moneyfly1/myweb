@@ -775,11 +775,13 @@ export default {
             
             const paymentUrlLower = String(paymentUrlVal).toLowerCase()
             const isPaymentPageUrl = paymentUrlVal && (
-              paymentUrlLower.includes('payapi/pay/payment') ||
-              paymentUrlLower.includes('9801w.com') ||
-              paymentUrlLower.includes('idzew.com') ||
-              (paymentUrlLower.startsWith('http') && !paymentUrlLower.includes('qrcode') && !paymentUrlLower.includes('qr.alipay') && !paymentUrlLower.startsWith('weixin://') && !paymentUrlLower.startsWith('wxp://'))
-            )
+              paymentUrlLower.startsWith('http://') || 
+              paymentUrlLower.startsWith('https://')
+            ) && !paymentUrlLower.includes('qrcode') && 
+              !paymentUrlLower.includes('qr.alipay') && 
+              !paymentUrlLower.startsWith('weixin://') && 
+              !paymentUrlLower.startsWith('wxp://') &&
+              !paymentUrlLower.startsWith('alipays://')
             
             const paymentMethodName = data.payment_method_name || data.payment_method || paymentMethod.value
             const isYipay = paymentMethodName && (
