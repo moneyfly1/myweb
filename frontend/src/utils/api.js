@@ -83,19 +83,10 @@ async function testConnection() {
 }
 
 function getCookie(name) {
-  if (!name || typeof name !== 'string') {
-    return null
-  }
-  const value = `; ${document.cookie}`
-  if (!value || value.length <= 2) {
-    return null
-  }
-  const parts = value.split(`; ${name}=`)
-  if (parts.length === 2) {
-    const result = parts.pop()
-    return result ? result.split(';').shift() : null
-  }
-  return null
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop().split(';').shift()
+  return null
 }
 
 const clearRoleTokens = (isAdmin) => {

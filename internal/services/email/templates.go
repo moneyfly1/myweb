@@ -28,21 +28,27 @@ func (b *EmailTemplateBuilder) GetBaseURL() string {
 
 // getBaseURL 获取基础URL（内部方法）
 func (b *EmailTemplateBuilder) getBaseURL() string {
-	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
-		return baseURL
-	}
-
-	if config.AppConfig.BaseURL != "" {
-		return config.AppConfig.BaseURL
-	}
-
-	if db := database.GetDB(); db != nil {
-		if domain := utils.GetDomainFromDB(db); domain != "" {
+	// 从数据库配置获取域名（使用公共函数）
+	db := database.GetDB()
+	if db != nil {
+		domain := utils.GetDomainFromDB(db)
+		if domain != "" {
 			return utils.FormatDomainURL(domain)
 		}
 	}
 
-	return ""
+	// 从环境变量获取
+	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
+		return baseURL
+	}
+
+	// 从配置文件获取
+	if config.AppConfig.BaseURL != "" {
+		return config.AppConfig.BaseURL
+	}
+
+	// 默认值
+	return "http://localhost:5173"
 }
 
 // GetBaseTemplate 获取基础邮件模板
