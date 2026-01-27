@@ -1011,11 +1011,13 @@ const createRecharge = async () => {
       
       const paymentUrlLower = String(paymentUrl).toLowerCase()
       const isPaymentPageUrl = paymentUrl && (
-        paymentUrlLower.includes('payapi/pay/payment') ||
-        paymentUrlLower.includes('9801w.com') ||
-        paymentUrlLower.includes('idzew.com') ||
-        (paymentUrlLower.startsWith('http') && !paymentUrlLower.includes('qrcode') && !paymentUrlLower.includes('qr.alipay') && !paymentUrlLower.startsWith('weixin://') && !paymentUrlLower.startsWith('wxp://'))
-      )
+        paymentUrlLower.startsWith('http://') || 
+        paymentUrlLower.startsWith('https://')
+      ) && !paymentUrlLower.includes('qrcode') && 
+        !paymentUrlLower.includes('qr.alipay') && 
+        !paymentUrlLower.startsWith('weixin://') && 
+        !paymentUrlLower.startsWith('wxp://') &&
+        !paymentUrlLower.startsWith('alipays://')
       
       const isYipay = rechargePaymentMethod.value && (
         rechargePaymentMethod.value.includes('yipay') || 

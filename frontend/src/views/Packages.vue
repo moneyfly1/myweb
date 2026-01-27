@@ -461,11 +461,12 @@ export default {
     const isPaymentPageUrl = computed(() => {
       if (!paymentUrl.value) return false
       const url = String(paymentUrl.value).toLowerCase()
-      // 如果是易支付的支付页面URL，使用iframe嵌入
-      return url.includes('payapi/pay/payment') || 
-             url.includes('9801w.com') || 
-             url.includes('idzew.com') ||
-             (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
+      return (url.startsWith('http://') || url.startsWith('https://')) &&
+             !url.includes('qrcode') && 
+             !url.includes('qr.alipay') && 
+             !url.startsWith('weixin://') && 
+             !url.startsWith('wxp://') &&
+             !url.startsWith('alipays://')
     })
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
@@ -1140,10 +1141,12 @@ export default {
         const urlString = String(url).trim()
         
         // 检查是否是支付页面URL（需要使用iframe嵌入）
-        const isYipayPaymentPage = urlString.includes('payApi/pay/payment') || 
-                                   urlString.includes('payapi/pay/payment') ||
-                                   urlString.includes('9801w.com') || 
-                                   urlString.includes('idzew.com')
+        const isYipayPaymentPage = (urlString.startsWith('http://') || urlString.startsWith('https://')) &&
+                                   !urlString.includes('qrcode') && 
+                                   !urlString.includes('qr.alipay') && 
+                                   !urlString.startsWith('weixin://') && 
+                                   !urlString.startsWith('wxp://') &&
+                                   !urlString.startsWith('alipays://')
         
         if (isYipayPaymentPage) {
           // 如果是支付页面URL，使用iframe嵌入，不生成二维码
