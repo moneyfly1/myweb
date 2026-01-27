@@ -88,14 +88,21 @@ func LoadConfig() (*Config, error) {
 		ProjectName: getString("PROJECT_NAME", "CBoard Modern"),
 		Version:     getString("VERSION", "1.0.0"),
 		APIv1Str:    getString("API_V1_STR", "/api/v1"),
-		CorsOrigins: getStringSlice("BACKEND_CORS_ORIGINS", []string{}),
+		CorsOrigins: getStringSlice("BACKEND_CORS_ORIGINS", []string{
+			"http://localhost:3000",
+			"http://localhost:5173",
+			"http://localhost:8080",
+			"http://127.0.0.1:3000",
+			"http://127.0.0.1:5173",
+			"http://127.0.0.1:8080",
+		}),
 		DatabaseURL:                getString("DATABASE_URL", "sqlite:///./cboard.db"),
-		MySQLHost:                  getMySQLHost(),
+		MySQLHost:                  getString("MYSQL_HOST", "localhost"),
 		MySQLPort:                  getInt("MYSQL_PORT", 3306),
 		MySQLUser:                  getString("MYSQL_USER", "cboard_user"),
 		MySQLPassword:              getString("MYSQL_PASSWORD", ""),
 		MySQLDatabase:              getString("MYSQL_DATABASE", "cboard_db"),
-		PostgresServer:             getPostgresServer(),
+		PostgresServer:             getString("POSTGRES_SERVER", "localhost"),
 		PostgresUser:               getString("POSTGRES_USER", "postgres"),
 		PostgresPass:               getString("POSTGRES_PASSWORD", ""),
 		PostgresDB:                 getString("POSTGRES_DB", "cboard"),
@@ -217,36 +224,6 @@ func getSecretKey() string {
 		return generatedKey
 	}
 	return key
-}
-
-// getMySQLHost 获取MySQL主机地址
-// 生产环境必须通过环境变量配置，开发环境默认使用localhost
-func getMySQLHost() string {
-	value := viper.GetString("MYSQL_HOST")
-	if value != "" {
-		return value
-	}
-	// 生产环境必须配置
-	if os.Getenv("ENV") == "production" {
-		return ""
-	}
-	// 开发环境默认使用localhost
-	return "localhost"
-}
-
-// getPostgresServer 获取PostgreSQL服务器地址
-// 生产环境必须通过环境变量配置，开发环境默认使用localhost
-func getPostgresServer() string {
-	value := viper.GetString("POSTGRES_SERVER")
-	if value != "" {
-		return value
-	}
-	// 生产环境必须配置
-	if os.Getenv("ENV") == "production" {
-		return ""
-	}
-	// 开发环境默认使用localhost
-	return "localhost"
 }
 
 func validateConfig(config *Config) error {
