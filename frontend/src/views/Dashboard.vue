@@ -1689,31 +1689,6 @@ const oneclickImport = (client, url, name = '') => {
   }
 }
 
-// 处理公告信息（提取为独立函数）
-const handleAnnouncement = (notice) => {
-  if (!notice || !notice.enabled || !notice.content) {
-    return
-  }
-  
-  const content = String(notice.content).trim()
-  if (!content) {
-    return
-  }
-  
-  // 使用DOMPurify清理HTML，移除所有标签只保留纯文本，防止XSS
-  const sanitizedContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
-  
-  ElNotification({
-    title: '系统公告',
-    message: sanitizedContent,
-    type: 'info',
-    position: 'bottom-right',
-    duration: 0,
-    dangerouslyUseHTMLString: false, // 禁用HTML渲染，防止XSS
-    showClose: true
-  })
-}
-
 // 检查并显示公告（保留作为降级方案，如果聚合接口没有返回公告）
 const checkAndShowAnnouncement = async () => {
   try {
