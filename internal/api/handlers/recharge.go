@@ -35,7 +35,11 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	orderNo := utils.GenerateRechargeOrderNo(user.ID)
+	orderNo, err := utils.GenerateRechargeOrderNo(user.ID, db)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成充值订单号失败", err)
+		return
+	}
 	beijingTime := utils.GetBeijingTime()
 	recharge := models.RechargeRecord{
 		UserID:        user.ID,
