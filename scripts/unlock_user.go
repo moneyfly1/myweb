@@ -26,20 +26,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 加载配置
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Printf("❌ 配置加载失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 确保配置已设置
 	if cfg == nil {
 		fmt.Println("❌ 配置未正确加载")
 		os.Exit(1)
 	}
 
-	// 初始化数据库
 	if err := database.InitDatabase(); err != nil {
 		fmt.Printf("❌ 数据库连接失败: %v\n", err)
 		os.Exit(1)
@@ -47,7 +44,6 @@ func main() {
 
 	db := database.GetDB()
 
-	// 查找用户（支持管理员和普通用户）
 	var user models.User
 	query := db.Model(&models.User{})
 	if strings.Contains(identifier, "@") {
@@ -76,7 +72,6 @@ func main() {
 	fmt.Printf("   类型: %s\n", userType)
 	fmt.Printf("   当前状态: IsActive=%v, IsVerified=%v\n", user.IsActive, user.IsVerified)
 
-	// 检查登录失败记录
 	var failedAttempts int64
 	db.Model(&models.LoginAttempt{}).
 		Where("(username = ? OR username = ?) AND success = ?", user.Username, user.Email, false).
@@ -85,7 +80,6 @@ func main() {
 	fmt.Printf("\n📊 登录失败记录统计:\n")
 	fmt.Printf("   - 失败记录数: %d 条\n", failedAttempts)
 
-	// 显示最近的失败记录
 	var recentAttempts []models.LoginAttempt
 	db.Where("(username = ? OR username = ?) AND success = ?", user.Username, user.Email, false).
 		Order("created_at DESC").
@@ -107,20 +101,17 @@ func main() {
 		}
 	}
 
-	// 清除所有登录失败记录（包括成功和失败的）
 	result := db.Where("username = ? OR username = ?", user.Username, user.Email).
 		Delete(&models.LoginAttempt{})
 
 	fmt.Printf("\n🗑️  清除登录记录: %d 条（包括成功和失败的记录）\n", result.RowsAffected)
 
-	// 获取用户最近登录的IP地址（从登录历史和审计日志中获取）
 	var loginHistories []models.LoginHistory
 	db.Where("user_id = ? AND ip_address IS NOT NULL", user.ID).
 		Order("login_time DESC").
 		Limit(10).
 		Find(&loginHistories)
 
-	// 从审计日志中获取用户相关的IP地址
 	var auditLogs []models.AuditLog
 	db.Where("user_id = ? AND ip_address IS NOT NULL AND action_type LIKE ?",
 		user.ID, "security_login%").
@@ -128,7 +119,6 @@ func main() {
 		Limit(10).
 		Find(&auditLogs)
 
-	// 收集所有相关的IP地址
 	ipSet := make(map[string]bool)
 	for _, history := range loginHistories {
 		if history.IPAddress.Valid && history.IPAddress.String != "" {
@@ -141,14 +131,12 @@ func main() {
 		}
 	}
 
-	// 从登录失败记录中获取IP地址
 	for _, attempt := range recentAttempts {
 		if attempt.IPAddress.Valid && attempt.IPAddress.String != "" {
 			ipSet[attempt.IPAddress.String] = true
 		}
 	}
 
-	// 清除所有相关IP的速率限制
 	ipCount := 0
 	for ip := range ipSet {
 		middleware.ResetLoginAttempt(ip)
@@ -174,7 +162,6 @@ func main() {
 		fmt.Printf("ℹ️  未找到相关的IP地址记录\n")
 	}
 
-	// 确保用户是激活状态
 	user.IsActive = true
 	user.IsVerified = true
 

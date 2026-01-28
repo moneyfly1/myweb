@@ -12,13 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MaintenanceMiddleware 维护模式中间件
-// 如果系统处于维护模式，阻止所有非管理员访问（除了管理员接口）
 func MaintenanceMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
-		// 允许访问的路径（管理员接口和维护状态检查接口）
 		allowedPaths := []string{
 			"/api/v1/admin",                    // 所有管理员接口
 			"/api/v1/settings/public-settings", // 公开设置（包含维护状态）
@@ -29,7 +26,6 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 			"/uploads",                         // 上传文件
 		}
 
-		// 检查是否在允许的路径中
 		isAllowed := false
 		for _, allowed := range allowedPaths {
 			if strings.HasPrefix(path, allowed) {
@@ -38,25 +34,19 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 			}
 		}
 
-		// 如果不在允许的路径中，检查维护模式
 		if !isAllowed {
 			db := database.GetDB()
 			var maintenanceConfig models.SystemConfig
-			// 维护模式配置存储在 system 类别中
-			// 如果数据库查询失败，继续处理请求（避免维护模式检查导致系统不可用）
 			if err := db.Where("key = ? AND category = ?", "maintenance_mode", "system").First(&maintenanceConfig).Error; err == nil {
 				if maintenanceConfig.Value == "true" {
-					// 获取维护消息
 					var messageConfig models.SystemConfig
 					maintenanceMessage := "系统维护中，请稍后再试"
 					if err := db.Where("key = ? AND category = ?", "maintenance_message", "system").First(&messageConfig).Error; err == nil {
 						maintenanceMessage = messageConfig.Value
 					}
 
-					// 获取网站名称和Logo（可能在 general 或 system 类别中）
 					var siteNameConfig models.SystemConfig
 					siteName := "CBoard Modern"
-					// 先尝试从 general 类别获取
 					if err := db.Where("key = ? AND category = ?", "site_name", "general").First(&siteNameConfig).Error; err == nil {
 						siteName = siteNameConfig.Value
 					} else if err := db.Where("key = ? AND category = ?", "site_name", "system").First(&siteNameConfig).Error; err == nil {
@@ -65,21 +55,18 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 
 					var logoConfig models.SystemConfig
 					logoURL := ""
-					// 先尝试从 general 类别获取
 					if err := db.Where("key = ? AND category = ?", "logo_url", "general").First(&logoConfig).Error; err == nil {
 						logoURL = logoConfig.Value
 					} else if err := db.Where("key = ? AND category = ?", "logo_url", "system").First(&logoConfig).Error; err == nil {
 						logoURL = logoConfig.Value
 					}
 
-					// 如果是API请求，返回JSON
 					if strings.HasPrefix(path, "/api/") {
 						utils.ErrorResponse(c, http.StatusServiceUnavailable, maintenanceMessage, nil)
 						c.Abort()
 						return
 					}
 
-					// 返回HTML维护页面
 					htmlContent := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -217,7 +204,6 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 	}
 }
 
-// getLogoHTML 获取Logo的HTML
 func getLogoHTML(logoURL string) string {
 	if logoURL != "" {
 		return fmt.Sprintf(`<img src="%s" alt="Logo" />`, logoURL)

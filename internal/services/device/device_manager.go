@@ -14,19 +14,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// DeviceManager 设备管理器
 type DeviceManager struct {
 	db *gorm.DB
 }
 
-// NewDeviceManager 创建设备管理器
 func NewDeviceManager() *DeviceManager {
 	return &DeviceManager{
 		db: database.GetDB(),
 	}
 }
 
-// DeviceInfo 设备信息
 type DeviceInfo struct {
 	SoftwareName    string
 	SoftwareVersion string
@@ -38,7 +35,6 @@ type DeviceInfo struct {
 	DeviceName      string
 }
 
-// ParseUserAgent 解析 User-Agent
 func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 	info := &DeviceInfo{
 		SoftwareName:    "Unknown",
@@ -57,15 +53,12 @@ func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 
 	uaLower := strings.ToLower(userAgent)
 
-	// 识别软件
 	info.SoftwareName = dm.matchSoftware(userAgent, uaLower)
 
-	// 解析操作系统
 	osInfo := dm.parseOSInfo(userAgent, uaLower)
 	info.OSName = osInfo["os_name"]
 	info.OSVersion = osInfo["os_version"]
 
-	// 如果 OS 未知，从软件推断
 	if info.OSName == "Unknown" && info.SoftwareName != "Unknown" {
 		inferredOS := dm.inferOSFromSoftware(info.SoftwareName)
 		if inferredOS != nil {
@@ -74,12 +67,10 @@ func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 		}
 	}
 
-	// 解析设备信息
 	deviceInfo := dm.parseDeviceInfo(userAgent, info.OSName)
 	info.DeviceModel = deviceInfo["device_model"]
 	info.DeviceBrand = deviceInfo["device_brand"]
 
-	// 从软件推断设备
 	if info.DeviceModel == "" && info.SoftwareName != "Unknown" {
 		inferredDevice := dm.inferDeviceFromSoftware(info.SoftwareName)
 		if inferredDevice != nil {
@@ -87,26 +78,20 @@ func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 		}
 	}
 
-	// 解析版本
 	info.SoftwareVersion = dm.parseVersion(userAgent)
 
-	// 确定设备类型
 	info.DeviceType = dm.determineDeviceType(userAgent, info)
 
-	// 生成设备名称
 	info.DeviceName = dm.generateDeviceName(info)
 
 	return info
 }
 
-// matchSoftware 匹配软件
 func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
-	// Shadowrocket
 	if strings.Contains(uaLower, "shadowrocket") {
 		return "Shadowrocket"
 	}
 
-	// iOS 代理应用
 	hasIPhoneID := regexp.MustCompile(`iPhone\d+,\d+`).MatchString(userAgent)
 	if hasIPhoneID && (strings.Contains(uaLower, "cfnetwork") || strings.Contains(uaLower, "darwin")) {
 		if strings.Contains(uaLower, "quantumult") {
@@ -124,12 +109,10 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Shadowrocket"
 	}
 
-	// v2rayN
 	if strings.Contains(uaLower, "v2rayn") {
 		return "v2rayN"
 	}
 
-	// Mihomo / Mihomo Party (优先识别，避免被识别为 Clash)
 	if strings.Contains(uaLower, "mihomo.party") || strings.Contains(uaLower, "mihomo/") {
 		return "Mihomo Party"
 	}
@@ -137,7 +120,6 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Mihomo"
 	}
 
-	// 其他常见软件
 	softwares := map[string]string{
 		"quantumult": "Quantumult",
 		"hiddify":    "Hiddify",
@@ -156,17 +138,14 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 	return "Unknown"
 }
 
-// parseOSInfo 解析操作系统信息
 func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]string {
 	result := map[string]string{
 		"os_name":    "Unknown",
 		"os_version": "",
 	}
 
-	// iOS - 改进识别逻辑，支持多种格式
 	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
 		result["os_name"] = "iOS"
-		// 尝试多种 iOS 版本格式
 		patterns := []string{
 			`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,          // OS 16_6_1, OS 16.6.1
 			`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`, // iPhone OS 16_6_1
@@ -186,7 +165,6 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
-	// Android
 	if strings.Contains(uaLower, "android") {
 		result["os_name"] = "Android"
 		if match := regexp.MustCompile(`Android\s+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -195,7 +173,6 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
-	// Windows
 	if strings.Contains(uaLower, "windows") {
 		result["os_name"] = "Windows"
 		if match := regexp.MustCompile(`Windows\s+NT\s+(\d+\.\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -204,7 +181,6 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
-	// macOS
 	if strings.Contains(uaLower, "macintosh") || strings.Contains(uaLower, "mac os") {
 		result["os_name"] = "macOS"
 		if match := regexp.MustCompile(`Mac OS X\s+(\d+[._]\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -213,7 +189,6 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
-	// Linux
 	if strings.Contains(uaLower, "linux") {
 		result["os_name"] = "Linux"
 		return result
@@ -222,7 +197,6 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	return result
 }
 
-// inferOSFromSoftware 从软件推断操作系统
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
 	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng"}
@@ -259,7 +233,6 @@ func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]str
 	return nil
 }
 
-// parseDeviceInfo 解析设备信息
 func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]string {
 	result := map[string]string{
 		"device_model": "",
@@ -268,11 +241,9 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 
 	uaLower := strings.ToLower(userAgent)
 
-	// Apple 设备 - 改进识别逻辑，支持 iPhone 型号标识符
 	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
 		result["device_brand"] = "Apple"
 
-		// iPhone 型号映射表（根据 Apple 的型号标识符）
 		iphoneModelMap := map[string]string{
 			"iPhone14,2": "iPhone 13 Pro",
 			"iPhone14,3": "iPhone 13 Pro Max",
@@ -288,13 +259,11 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			"iPhone16,4": "iPhone 15 Plus",
 		}
 
-		// 尝试匹配 iPhone 型号标识符（如 iPhone13,2）
 		if match := regexp.MustCompile(`iPhone(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
 			modelID := "iPhone" + match[1]
 			if modelName, exists := iphoneModelMap[modelID]; exists {
 				result["device_model"] = modelName
 			} else {
-				// 如果没有映射，使用原始格式
 				result["device_model"] = fmt.Sprintf("iPhone %s", strings.Replace(match[1], ",", ".", -1))
 			}
 		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+Pro\s+Max`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -307,7 +276,6 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			result["device_model"] = fmt.Sprintf("iPhone %s", match[1])
 		}
 
-		// iPad 型号
 		if match := regexp.MustCompile(`iPad(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
 		} else if match := regexp.MustCompile(`iPad`).FindStringSubmatch(userAgent); len(match) > 0 {
@@ -317,12 +285,10 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 		return result
 	}
 
-	// Android 设备
 	if strings.Contains(uaLower, "android") {
 		if match := regexp.MustCompile(`;\s*([^;]+)\s*build`).FindStringSubmatch(userAgent); len(match) > 1 {
 			name := strings.TrimSpace(match[1])
 			result["device_model"] = name
-			// 识别品牌
 			brands := map[string][]string{
 				"Samsung": {"samsung", "galaxy"},
 				"Huawei":  {"huawei", "honor"},
@@ -345,7 +311,6 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 	return result
 }
 
-// inferDeviceFromSoftware 从软件推断设备
 func (dm *DeviceManager) inferDeviceFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
 	swLower := strings.ToLower(softwareName)
@@ -357,7 +322,6 @@ func (dm *DeviceManager) inferDeviceFromSoftware(softwareName string) map[string
 	return nil
 }
 
-// parseVersion 解析版本号
 func (dm *DeviceManager) parseVersion(userAgent string) string {
 	patterns := []string{
 		`(\d+\.\d+\.\d+)`,
@@ -375,7 +339,6 @@ func (dm *DeviceManager) parseVersion(userAgent string) string {
 	return ""
 }
 
-// determineDeviceType 确定设备类型
 func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo) string {
 	uaLower := strings.ToLower(userAgent)
 	osName := strings.ToLower(info.OSName)
@@ -391,14 +354,12 @@ func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo)
 		return "desktop"
 	}
 
-	// 从软件推断
 	if strings.Contains(swName, "shadowrocket") || strings.Contains(swName, "quantumult") || strings.Contains(swName, "surge") {
 		if strings.Contains(uaLower, "ipad") {
 			return "tablet"
 		}
 		return "mobile"
 	}
-	// Mihomo / Mihomo Party 是桌面端软件（Windows/macOS/Linux）
 	if strings.Contains(swName, "mihomo") {
 		return "desktop"
 	}
@@ -409,7 +370,6 @@ func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo)
 	return "unknown"
 }
 
-// generateDeviceName 生成设备名称
 func (dm *DeviceManager) generateDeviceName(info *DeviceInfo) string {
 	parts := []string{}
 
@@ -441,7 +401,6 @@ func (dm *DeviceManager) generateDeviceName(info *DeviceInfo) string {
 	return "Unknown Device"
 }
 
-// GenerateDeviceHash 生成设备哈希
 func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID string) string {
 	if deviceID != "" {
 		hash := sha256.Sum256([]byte("device_id:" + strings.TrimSpace(deviceID)))
@@ -481,15 +440,10 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 	return hex.EncodeToString(hash[:])
 }
 
-// RecordDeviceAccess 记录设备访问
 func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string) (*models.Device, error) {
-	// 解析设备信息
 	deviceInfo := dm.ParseUserAgent(userAgent)
 
-	// 检查是否为订阅软件客户端（不是浏览器）
-	// 浏览器或其他非订阅软件打开订阅地址，不算新设备
 	if deviceInfo.SoftwareName == "Unknown" {
-		// 检查是否为浏览器 User-Agent
 		uaLower := strings.ToLower(userAgent)
 		browserKeywords := []string{
 			"mozilla", "chrome", "safari", "firefox", "edge", "opera", "msie",
@@ -498,7 +452,6 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		isBrowser := false
 		for _, keyword := range browserKeywords {
 			if strings.Contains(uaLower, keyword) {
-				// 进一步检查是否包含订阅软件标识
 				subscriptionSoftwareKeywords := []string{
 					"shadowrocket", "quantumult", "surge", "loon", "stash",
 					"v2rayn", "clash", "hiddify", "v2ray", "mihomo",
@@ -516,7 +469,6 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 				}
 			}
 		}
-		// 如果是浏览器且不是订阅软件，不记录设备
 		if isBrowser {
 			return nil, nil
 		}
@@ -524,12 +476,10 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 
 	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
 
-	// 查找现有设备
 	var existingDevice models.Device
 	err := dm.db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscriptionID).First(&existingDevice).Error
 
 	if err == nil {
-		// 更新现有设备
 		now := utils.GetBeijingTime()
 		existingDevice.LastAccess = now
 		existingDevice.LastSeen = &now
@@ -538,13 +488,11 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		existingDevice.UserAgent = &userAgent
 		existingDevice.IsActive = true // 确保设备标记为活跃
 
-		// 更新订阅类型（如果之前没有或需要更新）
 		if subscriptionType != "" {
 			subscriptionTypeStr := subscriptionType
 			existingDevice.SubscriptionType = &subscriptionTypeStr
 		}
 
-		// 更新设备信息（如果之前没有或需要更新）
 		if deviceInfo.DeviceName != "Unknown Device" && (existingDevice.DeviceName == nil || *existingDevice.DeviceName == "" || *existingDevice.DeviceName == "Unknown Device") {
 			existingDevice.DeviceName = &deviceInfo.DeviceName
 		}
@@ -575,7 +523,6 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		}
 		return &existingDevice, nil
 	} else if err == gorm.ErrRecordNotFound {
-		// 创建新设备
 		now := utils.GetBeijingTime()
 		userIDInt64 := int64(userID)
 		subscriptionTypeStr := subscriptionType
@@ -608,7 +555,6 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			return nil, err
 		}
 
-		// 更新订阅的设备计数
 		var deviceCount int64
 		dm.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&deviceCount)
 		dm.db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", deviceCount)

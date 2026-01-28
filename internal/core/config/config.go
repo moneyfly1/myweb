@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config 应用配置
 type Config struct {
 	ProjectName                string
 	Version                    string
@@ -62,7 +61,6 @@ type Config struct {
 
 var AppConfig *Config
 
-// LoadConfig 加载配置
 func LoadConfig() (*Config, error) {
 	viper.SetConfigType("env")
 	viper.SetConfigName(".env")
@@ -70,15 +68,11 @@ func LoadConfig() (*Config, error) {
 	viper.AddConfigPath("..")
 	viper.AddConfigPath("../..")
 
-	// 自动读取环境变量
 	viper.AutomaticEnv()
 
-	// 设置默认值
 	setDefaults()
 
-	// 读取配置文件（如果存在）
 	if err := viper.ReadInConfig(); err != nil {
-		// 配置文件不存在时使用环境变量和默认值
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("读取配置文件失败: %w", err)
 		}
@@ -140,7 +134,6 @@ func LoadConfig() (*Config, error) {
 		DeviceUpgradePricePerMonth: getFloat64("DEVICE_UPGRADE_PRICE_PER_MONTH", 10.0),
 	}
 
-	// 验证配置
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
@@ -197,7 +190,6 @@ func getStringSlice(key string, defaultValue []string) []string {
 		return defaultValue
 	}
 
-	// 处理逗号分隔的字符串
 	origins := strings.Split(value, ",")
 	result := make([]string, 0, len(origins))
 	for _, origin := range origins {
@@ -216,7 +208,6 @@ func getStringSlice(key string, defaultValue []string) []string {
 func getSecretKey() string {
 	key := viper.GetString("SECRET_KEY")
 	if key == "" || key == "your-secret-key-here" || len(key) < 32 {
-		// 自动生成密钥
 		b := make([]byte, 32)
 		rand.Read(b)
 		generatedKey := base64.URLEncoding.EncodeToString(b)
@@ -227,14 +218,12 @@ func getSecretKey() string {
 }
 
 func validateConfig(config *Config) error {
-	// 验证 CORS 源
 	for _, origin := range config.CorsOrigins {
 		if origin == "*" || origin == "null" {
 			return fmt.Errorf("CORS源不能使用通配符 '*' 或 'null'，必须明确指定域名")
 		}
 	}
 
-	// 生产环境密码检查
 	if os.Getenv("ENV") == "production" {
 		if config.MySQLPassword == "" || config.MySQLPassword == "cboard_password_2024" {
 			return fmt.Errorf("生产环境必须设置强密码！(MYSQL_PASSWORD)")

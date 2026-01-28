@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// UserActivity 用户活动模型
 type UserActivity struct {
 	ID               uint           `gorm:"primaryKey" json:"id"`
 	UserID           uint           `gorm:"index;not null" json:"user_id"`
@@ -19,16 +18,13 @@ type UserActivity struct {
 	ActivityMetadata sql.NullString `gorm:"type:json" json:"activity_metadata,omitempty"`
 	CreatedAt        time.Time      `gorm:"autoCreateTime" json:"created_at"`
 
-	// 关系
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (UserActivity) TableName() string {
 	return "user_activities"
 }
 
-// LoginHistory 登录历史记录
 type LoginHistory struct {
 	ID                uint           `gorm:"primaryKey" json:"id"`
 	UserID            uint           `gorm:"index;not null" json:"user_id"`
@@ -42,16 +38,13 @@ type LoginHistory struct {
 	FailureReason     sql.NullString `gorm:"type:text" json:"failure_reason,omitempty"`
 	SessionDuration   sql.NullInt64  `json:"session_duration,omitempty"`
 
-	// 关系
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (LoginHistory) TableName() string {
 	return "login_history"
 }
 
-// GetLocationInfo 解析位置信息
 func (h *LoginHistory) GetLocationInfo() (country, city string) {
 	if !h.Location.Valid || h.Location.String == "" {
 		return "", ""

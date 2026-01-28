@@ -14,11 +14,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateAuditLog 创建审计日志记录到数据库
 func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID uint, description string, beforeData, afterData interface{}) {
 	db := database.GetDB()
 	if db == nil {
-		// 如果数据库未初始化，只记录到文件日志
 		if userID, exists := c.Get("user_id"); exists {
 			if uid, ok := userID.(uint); ok {
 				LogAudit(uid, actionType, resourceType, resourceID, description)
@@ -27,7 +25,6 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		return
 	}
 
-	// 获取用户ID
 	var userID sql.NullInt64
 	if uid, exists := c.Get("user_id"); exists {
 		if u, ok := uid.(uint); ok {
@@ -35,19 +32,15 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		}
 	}
 
-	// 获取IP地址（使用统一的真实IP获取函数）
 	ipAddress := GetRealClientIP(c)
 
-	// 获取User-Agent
 	userAgent := c.GetHeader("User-Agent")
 
-	// 解析地理位置（如果 GeoIP 已启用）
 	var location sql.NullString
 	if ipAddress != "" {
 		location = geoip.GetLocationString(ipAddress)
 	}
 
-	// 序列化前后数据
 	var beforeDataJSON, afterDataJSON sql.NullString
 	if beforeData != nil {
 		if data, err := json.Marshal(beforeData); err == nil {
@@ -60,18 +53,15 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		}
 	}
 
-	// 获取响应状态码
 	var responseStatus sql.NullInt64
 	if status, exists := c.Get("response_status"); exists {
 		if s, ok := status.(int); ok {
 			responseStatus = sql.NullInt64{Int64: int64(s), Valid: true}
 		}
 	} else {
-		// 如果没有设置，尝试从响应中获取
 		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
 	}
 
-	// 创建审计日志
 	auditLog := models.AuditLog{
 		UserID:            userID,
 		ActionType:        actionType,
@@ -88,10 +78,8 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		AfterData:         afterDataJSON,
 	}
 
-	// 异步保存，避免影响主流程
 	go func() {
 		if err := db.Create(&auditLog).Error; err != nil {
-			// 如果保存失败，至少记录到文件日志
 			if userID.Valid {
 				LogAudit(uint(userID.Int64), actionType, resourceType, resourceID, description)
 			}
@@ -102,48 +90,39 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 	}()
 }
 
-// CreateAuditLogSimple 创建简单的审计日志（不需要前后数据）
 func CreateAuditLogSimple(c *gin.Context, actionType, resourceType string, resourceID uint, description string) {
 	CreateAuditLog(c, actionType, resourceType, resourceID, description, nil, nil)
 }
 
-// CreateAuditLogWithData 创建带前后数据的审计日志
 func CreateAuditLogWithData(c *gin.Context, actionType, resourceType string, resourceID uint, description string, beforeData, afterData interface{}) {
 	CreateAuditLog(c, actionType, resourceType, resourceID, description, beforeData, afterData)
 }
 
-// SetResponseStatus 设置响应状态码（用于审计日志）
 func SetResponseStatus(c *gin.Context, status int) {
 	c.Set("response_status", status)
 }
 
-// CreateSecurityLog 创建安全日志（记录登录尝试、密码错误、IP封禁、批量登录等安全事件）
 func CreateSecurityLog(c *gin.Context, eventType, severity, description string, additionalData map[string]interface{}) {
 	db := database.GetDB()
 	if db == nil {
-		// 如果数据库未初始化，只记录到文件日志
 		if AppLogger != nil {
 			AppLogger.Warn("[安全日志] %s - %s: %s", severity, eventType, description)
 		}
 		return
 	}
 
-	// 获取IP地址
 	ipAddress := GetRealClientIP(c)
 	if ipAddress == "" {
 		ipAddress = c.ClientIP()
 	}
 
-	// 获取User-Agent
 	userAgent := c.GetHeader("User-Agent")
 
-	// 解析地理位置
 	var location sql.NullString
 	if ipAddress != "" {
 		location = geoip.GetLocationString(ipAddress)
 	}
 
-	// 序列化附加数据
 	var additionalDataJSON sql.NullString
 	if additionalData != nil && len(additionalData) > 0 {
 		if data, err := json.Marshal(additionalData); err == nil {
@@ -151,7 +130,6 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		}
 	}
 
-	// 获取用户ID（如果存在）
 	var userID sql.NullInt64
 	if uid, exists := c.Get("user_id"); exists {
 		if u, ok := uid.(uint); ok {
@@ -159,23 +137,17 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		}
 	}
 
-	// 确定响应状态码（根据事件类型和严重程度）
 	var responseStatus sql.NullInt64
 	switch eventType {
 	case "login_success":
-		// 登录成功应该是200
 		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
 	case "login_attempt":
-		// 登录尝试应该是200（只是记录尝试）
 		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
 	case "login_failed", "login_blocked", "ip_blocked":
-		// 登录失败、被阻止、IP封禁应该是错误状态
 		responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
 	case "login_rate_limit":
-		// 速率限制应该是429
 		responseStatus = sql.NullInt64{Int64: http.StatusTooManyRequests, Valid: true}
 	default:
-		// 其他情况根据严重程度判断
 		switch severity {
 		case "CRITICAL", "HIGH":
 			responseStatus = sql.NullInt64{Int64: http.StatusForbidden, Valid: true}
@@ -186,7 +158,6 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		}
 	}
 
-	// 创建安全审计日志
 	auditLog := models.AuditLog{
 		UserID:            userID,
 		ActionType:        "security_" + eventType, // 使用 security_ 前缀标识安全事件
@@ -203,15 +174,12 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	// 异步保存，避免影响主流程
 	go func() {
 		if err := db.Create(&auditLog).Error; err != nil {
-			// 如果保存失败，至少记录到文件日志
 			if AppLogger != nil {
 				AppLogger.Error("[安全日志保存失败] %s - %s: %s, 错误: %v", severity, eventType, description, err)
 			}
 		} else {
-			// 记录到文件日志（用于实时监控）
 			if AppLogger != nil {
 				logMsg := fmt.Sprintf("[安全事件] IP:%s | 类型:%s | 严重程度:%s | 描述:%s",
 					ipAddress, eventType, severity, description)
@@ -236,7 +204,6 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 	}()
 }
 
-// CheckBruteForcePattern 检测批量登录和撞库行为
 func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool, reason string) {
 	db := database.GetDB()
 	if db == nil {
@@ -250,7 +217,6 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 
 	now := GetBeijingTime()
 
-	// 检查1分钟内同一IP尝试登录不同用户名的次数（撞库检测）
 	var recentAttempts int64
 	db.Model(&models.AuditLog{}).
 		Where("ip_address = ? AND action_type LIKE ? AND created_at > ?",
@@ -258,11 +224,9 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 		Count(&recentAttempts)
 
 	if recentAttempts >= 10 {
-		// 1分钟内尝试10次以上，可能是批量登录
 		return true, fmt.Sprintf("检测到批量登录行为：IP %s 在1分钟内尝试登录 %d 次", ipAddress, recentAttempts)
 	}
 
-	// 检查5分钟内同一IP尝试登录不同用户名的数量（撞库检测）
 	var uniqueUsernames int64
 	db.Model(&models.AuditLog{}).
 		Where("ip_address = ? AND action_type LIKE ? AND created_at > ?",
@@ -271,11 +235,9 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 		Count(&uniqueUsernames)
 
 	if uniqueUsernames >= 5 {
-		// 5分钟内尝试5个以上不同用户名，可能是撞库
 		return true, fmt.Sprintf("检测到撞库行为：IP %s 在5分钟内尝试登录 %d 个不同用户名", ipAddress, uniqueUsernames)
 	}
 
-	// 检查同一用户名在短时间内被多个IP尝试（账户定向攻击）
 	if username != "" {
 		var uniqueIPs int64
 		db.Model(&models.AuditLog{}).
@@ -285,7 +247,6 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 			Count(&uniqueIPs)
 
 		if uniqueIPs >= 3 {
-			// 10分钟内同一用户名被3个以上不同IP尝试，可能是账户定向攻击
 			return true, fmt.Sprintf("检测到账户定向攻击：用户名 %s 在10分钟内被 %d 个不同IP尝试登录", username, uniqueIPs)
 		}
 	}
@@ -293,33 +254,27 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 	return false, ""
 }
 
-// CreateSystemErrorLog 创建系统错误日志（记录系统内部错误、数据库错误、服务器错误等）
 func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err error) {
 	db := database.GetDB()
 	if db == nil {
-		// 如果数据库未初始化，只记录到文件日志
 		if AppLogger != nil {
 			AppLogger.Error("[系统错误] %s: %v", message, err)
 		}
 		return
 	}
 
-	// 获取IP地址
 	ipAddress := GetRealClientIP(c)
 	if ipAddress == "" {
 		ipAddress = c.ClientIP()
 	}
 
-	// 获取User-Agent
 	userAgent := c.GetHeader("User-Agent")
 
-	// 解析地理位置
 	var location sql.NullString
 	if ipAddress != "" {
 		location = geoip.GetLocationString(ipAddress)
 	}
 
-	// 获取用户ID（如果存在）
 	var userID sql.NullInt64
 	if uid, exists := c.Get("user_id"); exists {
 		if u, ok := uid.(uint); ok {
@@ -327,7 +282,6 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		}
 	}
 
-	// 构建错误详情
 	errorDetails := map[string]interface{}{
 		"message": message,
 		"path":    c.Request.URL.Path,
@@ -337,13 +291,11 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		errorDetails["error"] = err.Error()
 	}
 
-	// 序列化错误详情
 	var errorDetailsJSON sql.NullString
 	if data, err := json.Marshal(errorDetails); err == nil {
 		errorDetailsJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
-	// 创建系统错误审计日志
 	auditLog := models.AuditLog{
 		UserID:            userID,
 		ActionType:        "system_error",
@@ -360,17 +312,13 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	// 异步保存，避免影响主流程
 	go func() {
-		// 保存错误详情到局部变量，避免闭包问题
 		errDetail := err
 		if saveErr := db.Create(&auditLog).Error; saveErr != nil {
-			// 如果保存失败，至少记录到文件日志
 			if AppLogger != nil {
 				AppLogger.Error("[系统错误日志保存失败] %s: %v, 错误: %v", message, errDetail, saveErr)
 			}
 		} else {
-			// 记录到文件日志（用于实时监控）
 			if AppLogger != nil {
 				errorMsg := fmt.Sprintf("[系统错误] 状态码:%d | 路径:%s | 错误:%s", statusCode, c.Request.URL.Path, message)
 				if errDetail != nil {

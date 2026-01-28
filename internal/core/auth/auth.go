@@ -11,13 +11,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// VerifyPassword 验证密码
 func VerifyPassword(plainPassword, hashedPassword string) bool {
 	if hashedPassword == "" {
 		return false
 	}
 
-	// 检查是否是 bcrypt 哈希
 	if len(hashedPassword) < 7 ||
 		(hashedPassword[:4] != "$2a$" && hashedPassword[:4] != "$2b$" && hashedPassword[:4] != "$2y$") {
 		return false
@@ -27,9 +25,7 @@ func VerifyPassword(plainPassword, hashedPassword string) bool {
 	return err == nil
 }
 
-// HashPassword 生成密码哈希
 func HashPassword(password string) (string, error) {
-	// 限制密码长度（bcrypt 最大 72 字节）
 	if len(password) > 72 {
 		password = password[:72]
 	}
@@ -41,13 +37,11 @@ func HashPassword(password string) (string, error) {
 	return string(hashed), nil
 }
 
-// ValidatePasswordStrength 验证密码强度
 func ValidatePasswordStrength(password string, minLength int) (bool, string) {
 	if len(password) < minLength {
 		return false, fmt.Sprintf("密码长度至少%d位", minLength)
 	}
 
-	// 检查密码复杂度
 	hasUpper := false
 	hasLower := false
 	hasDigit := false
@@ -66,7 +60,6 @@ func ValidatePasswordStrength(password string, minLength int) (bool, string) {
 		}
 	}
 
-	// 要求至少包含大小写字母、数字和特殊字符中的三种
 	complexityCount := 0
 	if hasUpper {
 		complexityCount++
@@ -85,7 +78,6 @@ func ValidatePasswordStrength(password string, minLength int) (bool, string) {
 		return false, "密码必须包含大小写字母、数字和特殊字符中的至少三种"
 	}
 
-	// 检查弱密码
 	weakPasswords := []string{
 		"password", "123456", "123456789", "qwerty", "abc123",
 		"password123", "admin", "root", "user", "test",
@@ -102,10 +94,6 @@ func ValidatePasswordStrength(password string, minLength int) (bool, string) {
 	return true, "密码强度符合要求"
 }
 
-// CreateAccessToken 创建访问令牌（已移至 utils/jwt.go）
-// CreateRefreshToken 创建刷新令牌（已移至 utils/jwt.go）
-
-// AuthenticateUser 认证用户
 func AuthenticateUser(db *gorm.DB, email, password string) (*models.User, error) {
 	var user models.User
 	if err := db.Where("email = ?", email).First(&user).Error; err != nil {

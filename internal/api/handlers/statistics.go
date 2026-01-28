@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetStatistics 获取统计数据
 func GetStatistics(c *gin.Context) {
 	db := database.GetDB()
 
@@ -31,25 +30,19 @@ func GetStatistics(c *gin.Context) {
 		TodayOrders         int64   `json:"today_orders"`
 	}
 
-	// 用户统计
 	db.Model(&models.User{}).Count(&stats.TotalUsers)
 	db.Model(&models.User{}).Where("is_active = ?", true).Count(&stats.ActiveUsers)
 
-	// 订单统计
 	db.Model(&models.Order{}).Count(&stats.TotalOrders)
 	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&stats.PaidOrders)
 
-	// 收入统计（使用公共函数）
 	stats.TotalRevenue = utils.CalculateTotalRevenue(db, "paid")
 
-	// 今日统计
 	today := time.Now().Format("2006-01-02")
 	db.Model(&models.Order{}).Where("status = ? AND DATE(created_at) = ?", "paid", today).Count(&stats.TodayOrders)
 	stats.TodayRevenue = utils.CalculateTodayRevenue(db, "paid")
 
-	// 订阅统计
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
-	// 统计活跃订阅数（状态为active且is_active为true，并且未过期）
 	now := time.Now()
 	db.Model(&models.Subscription{}).
 		Where("is_active = ?", true).
@@ -57,7 +50,6 @@ func GetStatistics(c *gin.Context) {
 		Where("expire_time > ?", now).
 		Count(&stats.ActiveSubscriptions)
 
-	// 生成用户统计列表
 	var inactiveUsers int64
 	db.Model(&models.User{}).Where("is_active = ?", false).Count(&inactiveUsers)
 	var verifiedUsers int64
@@ -113,7 +105,6 @@ func GetStatistics(c *gin.Context) {
 		},
 	}
 
-	// 生成订阅统计列表
 	var expiredSubscriptions int64
 	db.Model(&models.Subscription{}).
 		Where("expire_time <= ?", now).
@@ -161,7 +152,6 @@ func GetStatistics(c *gin.Context) {
 		},
 	}
 
-	// 获取最近活动（最近10条订单）
 	var recentOrders []models.Order
 	db.Preload("User").Order("created_at DESC").Limit(10).Find(&recentOrders)
 	recentActivitiesList := make([]gin.H, 0)
@@ -189,7 +179,6 @@ func GetStatistics(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		// 直接返回统计数据
 		"total_users":          stats.TotalUsers,
 		"active_users":         stats.ActiveUsers,
 		"total_orders":         stats.TotalOrders,
@@ -205,20 +194,15 @@ func GetStatistics(c *gin.Context) {
 			"totalOrders":         stats.TotalOrders,
 			"totalRevenue":        stats.TotalRevenue,
 		},
-		// 用户统计列表
-		"userStats": userStatsList,
-		// 订阅统计列表
+		"userStats":         userStatsList,
 		"subscriptionStats": subscriptionStatsList,
-		// 最近活动列表
-		"recentActivities": recentActivitiesList,
+		"recentActivities":  recentActivitiesList,
 	})
 }
 
-// GetRevenueChart 获取收入图表数据
 func GetRevenueChart(c *gin.Context) {
 	_ = c.DefaultQuery("days", "30")
 
-	// 按日期分组的收入统计
 	type RevenueStat struct {
 		Date    string  `json:"date"`
 		Revenue float64 `json:"revenue"`
@@ -255,7 +239,6 @@ func GetRevenueChart(c *gin.Context) {
 		}
 	}
 
-	// 转换为前端期望的格式
 	labels := make([]string, 0)
 	data := make([]float64, 0)
 	for _, stat := range stats {
@@ -269,7 +252,6 @@ func GetRevenueChart(c *gin.Context) {
 	})
 }
 
-// GetUserStatistics 获取用户统计
 func GetUserStatistics(c *gin.Context) {
 	db := database.GetDB()
 
@@ -289,7 +271,6 @@ func GetUserStatistics(c *gin.Context) {
 	today := time.Now().Format("2006-01-02")
 	db.Model(&models.User{}).Where("DATE(created_at) = ?", today).Count(&stats.NewUsersToday)
 
-	// 本周统计（从周一开始）
 	now := time.Now()
 	weekday := int(now.Weekday())
 	if weekday == 0 {
@@ -299,7 +280,6 @@ func GetUserStatistics(c *gin.Context) {
 	weekStartStr := weekStart.Format("2006-01-02")
 	db.Model(&models.User{}).Where("DATE(created_at) >= ?", weekStartStr).Count(&stats.NewUsersThisWeek)
 
-	// 本月统计
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	monthStartStr := monthStart.Format("2006-01-02")
 	db.Model(&models.User{}).Where("DATE(created_at) >= ?", monthStartStr).Count(&stats.NewUsersThisMonth)

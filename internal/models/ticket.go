@@ -2,7 +2,6 @@ package models
 
 import "time"
 
-// TicketStatus 工单状态
 type TicketStatus string
 
 const (
@@ -13,7 +12,6 @@ const (
 	TicketStatusCancelled  TicketStatus = "cancelled"
 )
 
-// TicketType 工单类型
 type TicketType string
 
 const (
@@ -23,7 +21,6 @@ const (
 	TicketTypeOther     TicketType = "other"
 )
 
-// TicketPriority 工单优先级
 type TicketPriority string
 
 const (
@@ -33,7 +30,6 @@ const (
 	TicketPriorityUrgent TicketPriority = "urgent"
 )
 
-// Ticket 工单模型
 type Ticket struct {
 	ID            uint       `gorm:"primaryKey" json:"id"`
 	TicketNo      string     `gorm:"type:varchar(50);uniqueIndex;not null" json:"ticket_no"`
@@ -52,41 +48,35 @@ type Ticket struct {
 	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
 	ClosedAt      *time.Time `json:"closed_at,omitempty"`
 
-	// 关系
 	User        User               `gorm:"foreignKey:UserID" json:"-"`
 	Assignee    User               `gorm:"foreignKey:AssignedTo" json:"-"`
 	Replies     []TicketReply      `gorm:"foreignKey:TicketID" json:"-"`
 	Attachments []TicketAttachment `gorm:"foreignKey:TicketID" json:"-"`
 }
 
-// TableName 指定表名
 func (Ticket) TableName() string {
 	return "tickets"
 }
 
-// TicketReply 工单回复模型
 type TicketReply struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	TicketID  uint      `gorm:"index;not null" json:"ticket_id"`
-	UserID    uint      `gorm:"index;not null" json:"user_id"`
-	Content   string    `gorm:"type:text;not null" json:"content"`
-	IsAdmin   string    `gorm:"type:varchar(10);default:false" json:"is_admin"`
-	IsRead    bool      `gorm:"default:false" json:"is_read"` // 是否已读（对应用户或管理员）
-	ReadBy    *uint     `gorm:"index" json:"read_by,omitempty"` // 被谁已读（用户ID或管理员ID）
-	ReadAt    *time.Time `json:"read_at,omitempty"` // 已读时间
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	TicketID  uint       `gorm:"index;not null" json:"ticket_id"`
+	UserID    uint       `gorm:"index;not null" json:"user_id"`
+	Content   string     `gorm:"type:text;not null" json:"content"`
+	IsAdmin   string     `gorm:"type:varchar(10);default:false" json:"is_admin"`
+	IsRead    bool       `gorm:"default:false" json:"is_read"`   // 是否已读（对应用户或管理员）
+	ReadBy    *uint      `gorm:"index" json:"read_by,omitempty"` // 被谁已读（用户ID或管理员ID）
+	ReadAt    *time.Time `json:"read_at,omitempty"`              // 已读时间
+	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`
 
-	// 关系
 	Ticket Ticket `gorm:"foreignKey:TicketID" json:"-"`
 	User   User   `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (TicketReply) TableName() string {
 	return "ticket_replies"
 }
 
-// TicketAttachment 工单附件模型
 type TicketAttachment struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	TicketID   uint      `gorm:"index;not null" json:"ticket_id"`
@@ -98,18 +88,15 @@ type TicketAttachment struct {
 	UploadedBy uint      `gorm:"index;not null" json:"uploaded_by"`
 	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
 
-	// 关系
 	Ticket   Ticket      `gorm:"foreignKey:TicketID" json:"-"`
 	Reply    TicketReply `gorm:"foreignKey:ReplyID" json:"-"`
 	Uploader User        `gorm:"foreignKey:UploadedBy" json:"-"`
 }
 
-// TableName 指定表名
 func (TicketAttachment) TableName() string {
 	return "ticket_attachments"
 }
 
-// TicketRead 工单已读记录模型（记录用户查看工单的时间）
 type TicketRead struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	TicketID  uint      `gorm:"index;not null" json:"ticket_id"`
@@ -118,12 +105,10 @@ type TicketRead struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	Ticket Ticket `gorm:"foreignKey:TicketID" json:"-"`
 	User   User   `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (TicketRead) TableName() string {
 	return "ticket_reads"
 }

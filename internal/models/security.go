@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// LoginAttempt 登录尝试记录
 type LoginAttempt struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	Username  string         `gorm:"type:varchar(100);index;not null" json:"username"`
@@ -15,12 +14,10 @@ type LoginAttempt struct {
 	CreatedAt time.Time      `gorm:"autoCreateTime;not null" json:"created_at"`
 }
 
-// TableName 指定表名
 func (LoginAttempt) TableName() string {
 	return "login_attempts"
 }
 
-// VerificationAttempt 验证码尝试记录
 type VerificationAttempt struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	Email     string         `gorm:"type:varchar(100);index;not null" json:"email"`
@@ -30,12 +27,10 @@ type VerificationAttempt struct {
 	CreatedAt time.Time      `gorm:"autoCreateTime;not null" json:"created_at"`
 }
 
-// TableName 指定表名
 func (VerificationAttempt) TableName() string {
 	return "verification_attempts"
 }
 
-// VerificationCode 验证码模型
 type VerificationCode struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Email     string    `gorm:"type:varchar(100);index;not null" json:"email"`
@@ -46,22 +41,18 @@ type VerificationCode struct {
 	Purpose   string    `gorm:"type:varchar(50);default:register" json:"purpose"`
 }
 
-// TableName 指定表名
 func (VerificationCode) TableName() string {
 	return "verification_codes"
 }
 
-// IsExpired 检查验证码是否过期
 func (v *VerificationCode) IsExpired() bool {
 	return time.Now().After(v.ExpiresAt)
 }
 
-// IsUsed 检查验证码是否已使用
 func (v *VerificationCode) IsUsed() bool {
 	return v.Used == 1
 }
 
-// MarkAsUsed 标记验证码为已使用
 func (v *VerificationCode) MarkAsUsed() {
 	v.Used = 1
 }

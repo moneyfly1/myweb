@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// Order 订单模型
 type Order struct {
 	ID                   uint            `gorm:"primaryKey" json:"id"`
 	OrderNo              string          `gorm:"type:varchar(50);uniqueIndex;not null" json:"order_no"`
@@ -25,13 +24,11 @@ type Order struct {
 	CreatedAt            time.Time       `gorm:"autoCreateTime;index" json:"created_at"`
 	UpdatedAt            time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	User    User    `gorm:"foreignKey:UserID" json:"-"`
 	Package Package `gorm:"foreignKey:PackageID" json:"-"`
 	Coupon  Coupon  `gorm:"foreignKey:CouponID" json:"-"`
 }
 
-// TableName 指定表名
 func (Order) TableName() string {
 	return "orders"
 }

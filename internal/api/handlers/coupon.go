@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetCoupons 获取优惠券列表
 func GetCoupons(c *gin.Context) {
 	db := database.GetDB()
 
@@ -26,7 +25,6 @@ func GetCoupons(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", coupons)
 }
 
-// GetCoupon 获取单个优惠券
 func GetCoupon(c *gin.Context) {
 	code := c.Param("code")
 
@@ -40,7 +38,6 @@ func GetCoupon(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", coupon)
 }
 
-// VerifyCoupon 验证优惠券
 func VerifyCoupon(c *gin.Context) {
 	var req struct {
 		Code      string  `json:"code" binding:"required"`
@@ -76,7 +73,6 @@ func VerifyCoupon(c *gin.Context) {
 		return
 	}
 
-	// 计算折扣金额
 	discountAmount := 0.0
 	if coupon.Type == "discount" {
 		discountAmount = req.Amount * (coupon.DiscountValue / 100)
@@ -97,7 +93,6 @@ func VerifyCoupon(c *gin.Context) {
 	})
 }
 
-// CreateCoupon 创建优惠券（管理员）
 func CreateCoupon(c *gin.Context) {
 	var req struct {
 		Code               string  `json:"code"`
@@ -122,10 +117,8 @@ func CreateCoupon(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 解析日期时间
 	validFrom, err := time.Parse("2006-01-02T15:04:05", req.ValidFrom)
 	if err != nil {
-		// 尝试其他格式
 		validFrom, err = time.Parse("2006-01-02 15:04:05", req.ValidFrom)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "生效时间格式错误", err)
@@ -134,7 +127,6 @@ func CreateCoupon(c *gin.Context) {
 	}
 	validUntil, err := time.Parse("2006-01-02T15:04:05", req.ValidUntil)
 	if err != nil {
-		// 尝试其他格式
 		validUntil, err = time.Parse("2006-01-02 15:04:05", req.ValidUntil)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "失效时间格式错误", err)
@@ -142,17 +134,14 @@ func CreateCoupon(c *gin.Context) {
 		}
 	}
 
-	// 如果code为空，自动生成
 	code := req.Code
 	if code == "" {
 		code = utils.GenerateCouponCode()
-		// 确保生成的code不重复
 		var existing models.Coupon
 		for db.Where("code = ?", code).First(&existing).Error == nil {
 			code = utils.GenerateCouponCode()
 		}
 	} else {
-		// 检查优惠券码是否已存在
 		var existing models.Coupon
 		if err := db.Where("code = ?", code).First(&existing).Error; err == nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "优惠券码已存在", nil)
@@ -201,7 +190,6 @@ func CreateCoupon(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "", coupon)
 }
 
-// GetUserCoupons 获取用户优惠券
 func GetUserCoupons(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -216,7 +204,6 @@ func GetUserCoupons(c *gin.Context) {
 		return
 	}
 
-	// 转换为前端需要的格式
 	var result []map[string]interface{}
 	for _, usage := range usages {
 		result = append(result, map[string]interface{}{
@@ -230,7 +217,6 @@ func GetUserCoupons(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
-// GetAdminCoupon 管理员获取单个优惠券详情
 func GetAdminCoupon(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
@@ -244,7 +230,6 @@ func GetAdminCoupon(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", coupon)
 }
 
-// UpdateCoupon 更新优惠券（管理员）
 func UpdateCoupon(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
@@ -276,7 +261,6 @@ func UpdateCoupon(c *gin.Context) {
 		return
 	}
 
-	// 更新字段
 	if req.Name != "" {
 		coupon.Name = req.Name
 	}
@@ -295,11 +279,9 @@ func UpdateCoupon(c *gin.Context) {
 	if req.MaxDiscount > 0 {
 		coupon.MaxDiscount = database.NullFloat64(req.MaxDiscount)
 	}
-	// 解析日期时间
 	if req.ValidFrom != "" {
 		validFrom, err := time.Parse("2006-01-02T15:04:05", req.ValidFrom)
 		if err != nil {
-			// 尝试其他格式
 			validFrom, err = time.Parse("2006-01-02 15:04:05", req.ValidFrom)
 			if err != nil {
 				utils.ErrorResponse(c, http.StatusBadRequest, "生效时间格式错误", err)
@@ -311,7 +293,6 @@ func UpdateCoupon(c *gin.Context) {
 	if req.ValidUntil != "" {
 		validUntil, err := time.Parse("2006-01-02T15:04:05", req.ValidUntil)
 		if err != nil {
-			// 尝试其他格式
 			validUntil, err = time.Parse("2006-01-02 15:04:05", req.ValidUntil)
 			if err != nil {
 				utils.ErrorResponse(c, http.StatusBadRequest, "失效时间格式错误", err)
@@ -329,11 +310,9 @@ func UpdateCoupon(c *gin.Context) {
 	if req.Status != "" {
 		coupon.Status = req.Status
 	}
-	// ApplicablePackages 字段允许更新（包括空字符串）
 	if req.ApplicablePackages != "" {
 		coupon.ApplicablePackages = req.ApplicablePackages
 	} else if req.ApplicablePackages == "" {
-		// 允许清空
 		coupon.ApplicablePackages = ""
 	}
 
@@ -345,7 +324,6 @@ func UpdateCoupon(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", coupon)
 }
 
-// DeleteCoupon 删除优惠券（管理员）
 func DeleteCoupon(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()

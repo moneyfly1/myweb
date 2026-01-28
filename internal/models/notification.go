@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// Notification 通知模型
 type Notification struct {
 	ID        uint          `gorm:"primaryKey" json:"id"`
 	UserID    sql.NullInt64 `gorm:"index" json:"user_id,omitempty"`
@@ -18,16 +17,13 @@ type Notification struct {
 	UpdatedAt time.Time     `gorm:"autoUpdateTime" json:"updated_at"`
 	ReadAt    sql.NullTime  `json:"read_at,omitempty"`
 
-	// 关系
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (Notification) TableName() string {
 	return "notifications"
 }
 
-// EmailTemplate 邮件模板模型
 type EmailTemplate struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Name      string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
@@ -39,12 +35,10 @@ type EmailTemplate struct {
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// TableName 指定表名
 func (EmailTemplate) TableName() string {
 	return "email_templates"
 }
 
-// EmailQueue 邮件队列模型
 type EmailQueue struct {
 	ID           uint           `gorm:"primaryKey" json:"id"`
 	ToEmail      string         `gorm:"type:varchar(100);not null" json:"to_email"`
@@ -62,7 +56,6 @@ type EmailQueue struct {
 	UpdatedAt    time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// TableName 指定表名
 func (EmailQueue) TableName() string {
 	return "email_queue"
 }

@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// Subscription 订阅模型
 type Subscription struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
 	UserID          uint      `gorm:"index;not null" json:"user_id"`
@@ -20,19 +19,16 @@ type Subscription struct {
 	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	User    User                `gorm:"foreignKey:UserID" json:"-"`
 	Package Package             `gorm:"foreignKey:PackageID" json:"-"`
 	Devices []Device            `gorm:"foreignKey:SubscriptionID" json:"-"`
 	Resets  []SubscriptionReset `gorm:"foreignKey:SubscriptionID" json:"-"`
 }
 
-// TableName 指定表名
 func (Subscription) TableName() string {
 	return "subscriptions"
 }
 
-// SubscriptionReset 订阅重置记录
 type SubscriptionReset struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
 	UserID             uint      `gorm:"index;not null" json:"user_id"`
@@ -46,12 +42,10 @@ type SubscriptionReset struct {
 	ResetBy            *string   `gorm:"type:varchar(50)" json:"reset_by,omitempty"`
 	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
 
-	// 关系
 	User         User         `gorm:"foreignKey:UserID" json:"-"`
 	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"-"`
 }
 
-// TableName 指定表名
 func (SubscriptionReset) TableName() string {
 	return "subscription_resets"
 }

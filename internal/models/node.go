@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// Node 节点模型
 type Node struct {
 	ID            uint       `gorm:"primaryKey" json:"id"`
 	Name          string     `gorm:"type:varchar(100);not null" json:"name"`
@@ -27,7 +26,6 @@ type Node struct {
 	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// TableName 指定表名
 func (Node) TableName() string {
 	return "nodes"
 }

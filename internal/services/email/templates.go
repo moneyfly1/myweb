@@ -13,22 +13,17 @@ import (
 	"cboard-go/internal/utils"
 )
 
-// EmailTemplateBuilder 邮件模板构建器
 type EmailTemplateBuilder struct{}
 
-// NewEmailTemplateBuilder 创建邮件模板构建器
 func NewEmailTemplateBuilder() *EmailTemplateBuilder {
 	return &EmailTemplateBuilder{}
 }
 
-// GetBaseURL 获取基础URL（公开方法）
 func (b *EmailTemplateBuilder) GetBaseURL() string {
 	return b.getBaseURL()
 }
 
-// getBaseURL 获取基础URL（内部方法）
 func (b *EmailTemplateBuilder) getBaseURL() string {
-	// 从数据库配置获取域名（使用公共函数）
 	db := database.GetDB()
 	if db != nil {
 		domain := utils.GetDomainFromDB(db)
@@ -37,21 +32,17 @@ func (b *EmailTemplateBuilder) getBaseURL() string {
 		}
 	}
 
-	// 从环境变量获取
 	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
 		return baseURL
 	}
 
-	// 从配置文件获取
 	if config.AppConfig.BaseURL != "" {
 		return config.AppConfig.BaseURL
 	}
 
-	// 默认值
 	return "http://localhost:5173"
 }
 
-// GetBaseTemplate 获取基础邮件模板
 func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string) string {
 	currentYear := time.Now().Year()
 	siteName := "网络服务"
@@ -130,7 +121,6 @@ func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string
 	return buf.String()
 }
 
-// GetVerificationCodeTemplate 获取验证码邮件模板
 func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificationCode string) string {
 	title := "注册验证码"
 	content := fmt.Sprintf(`<h2>📧 您的注册验证码</h2>
@@ -158,7 +148,6 @@ func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificatio
 	return b.GetBaseTemplate(title, content, "完成注册，开启您的专属网络体验")
 }
 
-// GetPasswordResetTemplate 获取密码重置邮件模板
 func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink string) string {
 	title := "密码重置"
 	content := fmt.Sprintf(`<h2>您的密码重置请求</h2>
@@ -201,7 +190,6 @@ func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink stri
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
 
-// GetPasswordResetVerificationCodeTemplate 获取密码重置验证码邮件模板
 func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username, verificationCode string) string {
 	title := "密码重置验证码"
 	content := fmt.Sprintf(`<h2>🔐 您的密码重置验证码</h2>
@@ -229,7 +217,6 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 	return b.GetBaseTemplate(title, content, "安全重置您的账户密码")
 }
 
-// GetSubscriptionTemplate 获取订阅信息邮件模板
 func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
 	title := "服务配置信息"
 
@@ -283,7 +270,6 @@ func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, c
 	return b.GetBaseTemplate(title, content, "享受高速稳定的网络服务")
 }
 
-// GetOrderConfirmationTemplate 获取订单确认邮件模板
 func (b *EmailTemplateBuilder) GetOrderConfirmationTemplate(username, orderNo, packageName string, amount float64, paymentMethod, orderTime string) string {
 	title := "订单确认"
 	content := fmt.Sprintf(`<h2>✅ 订单确认</h2>
@@ -314,7 +300,6 @@ func (b *EmailTemplateBuilder) GetOrderConfirmationTemplate(username, orderNo, p
 	return b.GetBaseTemplate(title, content, "开启您的专属网络体验")
 }
 
-// GetPaymentSuccessTemplate 获取支付成功邮件模板
 func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, packageName string, amount float64, paymentMethod, paymentTime string) string {
 	title := "支付成功通知"
 	content := fmt.Sprintf(`<h2>🎉 支付成功！</h2>
@@ -345,7 +330,6 @@ func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, pack
 	return b.GetBaseTemplate(title, content, "感谢您的信任")
 }
 
-// GetWelcomeTemplate 获取欢迎邮件模板
 func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL string, hasPassword bool, password string) string {
 	title := "欢迎加入我们！"
 
@@ -381,7 +365,6 @@ func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL stri
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }
 
-// GetUserCreatedTemplate 获取管理员创建用户通知邮件模板
 func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password, expireTime string, deviceLimit int) string {
 	title := "账户创建通知"
 	loginURL := fmt.Sprintf("%s/login", b.getBaseURL())
@@ -427,7 +410,6 @@ func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password,
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }
 
-// GetPasswordChangedTemplate 获取密码修改成功邮件模板
 func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, loginURL string) string {
 	title := "密码修改成功"
 	content := fmt.Sprintf(`<h2>您的密码已修改</h2>
@@ -466,7 +448,6 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
 
-// GetSubscriptionResetTemplate 获取订阅重置邮件模板
 func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
 	title := "订阅重置通知"
 
@@ -531,7 +512,6 @@ func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalU
 	return b.GetBaseTemplate(title, content, "请及时更新您的客户端配置")
 }
 
-// GetAccountDeletionTemplate 获取账户删除确认邮件模板
 func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate, reason, dataRetentionPeriod string) string {
 	title := "账号删除确认"
 	content := fmt.Sprintf(`<h2>账号删除确认</h2>
@@ -557,7 +537,6 @@ func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate
 	return b.GetBaseTemplate(title, content, "感谢您曾经选择我们的服务")
 }
 
-// GetAccountDeletionWarningTemplate 获取账户删除警告邮件模板
 func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email, lastLogin string, daysUntilDeletion int) string {
 	title := "账号删除提醒"
 	baseURL := b.getBaseURL()
@@ -601,7 +580,6 @@ func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email
 	return b.GetBaseTemplate(title, content, "请及时登录以保留您的账号")
 }
 
-// GetExpirationReminderTemplate 获取到期提醒续费邮件模板
 func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageName, expireDate string, remainingDays, deviceLimit, currentDevices int, isExpired bool) string {
 	title := "订阅已到期"
 	if !isExpired {
@@ -688,7 +666,6 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
 	return b.GetBaseTemplate(title, content, "我们期待继续为您服务")
 }
 
-// GetRenewalConfirmationTemplate 获取续费成功邮件模板
 func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageName, oldExpiryDate, newExpiryDate, renewalDate string, amount float64) string {
 	title := "续费成功"
 	baseURL := b.getBaseURL()
@@ -723,7 +700,6 @@ func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageN
 	return b.GetBaseTemplate(title, content, "开启您的专属网络体验")
 }
 
-// GetMarketingEmailTemplate 获取营销邮件模板
 func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) string {
 	baseURL := b.getBaseURL()
 
@@ -739,7 +715,6 @@ func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) 
 	return b.GetBaseTemplate(title, emailContent, "感谢您的关注")
 }
 
-// GetBroadcastNotificationTemplate 获取广播通知邮件模板
 func (b *EmailTemplateBuilder) GetBroadcastNotificationTemplate(title, content string) string {
 	emailContent := fmt.Sprintf(`<div class="content">
                 <h2>%s</h2>
@@ -749,7 +724,6 @@ func (b *EmailTemplateBuilder) GetBroadcastNotificationTemplate(title, content s
 	return b.GetBaseTemplate(title, emailContent, "此邮件由系统自动发送，请勿回复。")
 }
 
-// GetAdminNotificationTemplate 获取管理员通知邮件模板（规范工整格式）
 func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, title, body string, data map[string]interface{}) string {
 	var content string
 
@@ -915,7 +889,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
 	return b.GetBaseTemplate(title, content, "此邮件由系统自动发送，请勿回复。")
 }
 
-// Helper functions for template
 func getStringFromData(data map[string]interface{}, key string, defaultValue string) string {
 	if val, ok := data[key]; ok {
 		if str, ok := val.(string); ok {
