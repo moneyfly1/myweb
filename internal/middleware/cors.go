@@ -7,14 +7,13 @@ import (
 	"time"
 )
 
-// CORSMiddleware CORS 中间件
 func CORSMiddleware() gin.HandlerFunc {
 	cfg := config.AppConfig
 	origins := []string{"*"}
 	if cfg != nil && len(cfg.CorsOrigins) > 0 {
 		origins = cfg.CorsOrigins
 	}
-	
+
 	return cors.New(cors.Config{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
@@ -24,4 +23,3 @@ func CORSMiddleware() gin.HandlerFunc {
 		MaxAge:           12 * time.Hour,
 	})
 }
-

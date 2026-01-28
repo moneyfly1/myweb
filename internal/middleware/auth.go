@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AuthMiddleware 认证中间件
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -21,7 +20,6 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 提取 Bearer token
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			utils.ErrorResponse(c, http.StatusUnauthorized, "无效的认证格式", nil)
@@ -31,7 +29,6 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		token := parts[1]
 
-		// 检查Token是否在黑名单中（已撤销）
 		db := database.GetDB()
 		tokenHash := utils.HashToken(token)
 		if models.IsTokenBlacklisted(db, tokenHash) {
@@ -47,14 +44,12 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 检查令牌类型
 		if claims.Type != "access" {
 			utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌不能用于访问", nil)
 			c.Abort()
 			return
 		}
 
-		// 从数据库获取用户
 		var user models.User
 		if err := db.First(&user, claims.UserID).Error; err != nil {
 			utils.ErrorResponse(c, http.StatusUnauthorized, "用户不存在", err)
@@ -62,14 +57,12 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 检查用户是否激活
 		if !user.IsActive {
 			utils.ErrorResponse(c, http.StatusForbidden, "账户已被禁用，无法使用服务。如有疑问，请联系管理员。", nil)
 			c.Abort()
 			return
 		}
 
-		// 将用户信息存储到上下文
 		c.Set("user", &user)
 		c.Set("user_id", user.ID)
 		c.Set("is_admin", user.IsAdmin)
@@ -78,7 +71,6 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AdminMiddleware 管理员中间件
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		isAdmin, exists := c.Get("is_admin")
@@ -99,7 +91,6 @@ func AdminMiddleware() gin.HandlerFunc {
 	}
 }
 
-// GetCurrentUser 获取当前用户
 func GetCurrentUser(c *gin.Context) (*models.User, bool) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -110,8 +101,6 @@ func GetCurrentUser(c *gin.Context) (*models.User, bool) {
 	return u, ok
 }
 
-// TryAuthMiddleware 尝试认证中间件
-// 如果提供了有效的token，则设置当前用户，否则不设置（不阻止请求）
 func TryAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")

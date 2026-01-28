@@ -20,7 +20,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// GetAdminInvites 管理员获取邀请码列表
 func GetAdminInvites(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.InviteCode{}).Preload("User").Preload("InviteRelations")
@@ -89,7 +88,6 @@ func GetAdminInvites(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"invite_codes": result, "total": total, "page": page, "size": size})
 }
 
-// GetAdminInviteRelations 管理员获取邀请关系列表
 func GetAdminInviteRelations(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.InviteRelation{}).Preload("Inviter").Preload("Invitee").Preload("InviteCode")
@@ -162,7 +160,6 @@ func GetAdminInviteRelations(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"relations": result, "total": total, "page": page, "size": size})
 }
 
-// GetAdminInviteStatistics 管理员获取邀请统计
 func GetAdminInviteStatistics(c *gin.Context) {
 	db := database.GetDB()
 	var stats struct {
@@ -180,7 +177,6 @@ func GetAdminInviteStatistics(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
-// GetAdminTickets 管理员工单列表
 func GetAdminTickets(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Ticket{}).Preload("User").Preload("Assignee")
@@ -253,7 +249,6 @@ func GetAdminTickets(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"tickets": ticketList, "total": total, "page": page, "size": size})
 }
 
-// GetAdminTicketStatistics 管理员工单统计
 func GetAdminTicketStatistics(c *gin.Context) {
 	db := database.GetDB()
 	var stats struct {
@@ -271,7 +266,6 @@ func GetAdminTicketStatistics(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
-// GetAdminTicket 管理员获取单个工单详情
 func GetAdminTicket(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
@@ -391,7 +385,6 @@ func GetAdminTicket(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"ticket": ticketData})
 }
 
-// GetAdminCoupons 管理员获取优惠券列表
 func GetAdminCoupons(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Coupon{})
@@ -424,7 +417,6 @@ func GetAdminCoupons(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"coupons": coupons, "total": total, "page": page, "size": size})
 }
 
-// GetAdminUserLevels 管理员获取用户等级列表
 func GetAdminUserLevels(c *gin.Context) {
 	var userLevels []models.UserLevel
 	if err := database.GetDB().Order("level_order ASC").Find(&userLevels).Error; err != nil {
@@ -434,7 +426,6 @@ func GetAdminUserLevels(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", userLevels)
 }
 
-// CreateUserLevel 创建用户等级（管理员）
 func CreateUserLevel(c *gin.Context) {
 	var req struct {
 		LevelName      string  `json:"level_name" binding:"required"`
@@ -484,7 +475,6 @@ func CreateUserLevel(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "", userLevel)
 }
 
-// UpdateUserLevel 更新用户等级（管理员）
 func UpdateUserLevel(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
@@ -551,7 +541,6 @@ func UpdateUserLevel(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", userLevel)
 }
 
-// GetUserLevel 获取用户等级
 func GetUserLevel(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -565,7 +554,6 @@ func GetUserLevel(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", userLevel)
 }
 
-// GetUserSubscription 获取用户订阅
 func GetUserSubscription(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -628,7 +616,6 @@ func GetUserSubscription(c *gin.Context) {
 	})
 }
 
-// GetUserTheme 获取用户主题
 func GetUserTheme(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -638,7 +625,6 @@ func GetUserTheme(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"theme": user.Theme, "language": user.Language})
 }
 
-// UpdateUserTheme 更新用户主题
 func UpdateUserTheme(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -666,7 +652,6 @@ func UpdateUserTheme(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "主题更新成功", gin.H{"theme": user.Theme, "language": user.Language})
 }
 
-// GetAdminEmailQueue 管理员获取邮件队列
 func GetAdminEmailQueue(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.EmailQueue{})
@@ -693,7 +678,6 @@ func GetAdminEmailQueue(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"emails": emails, "total": total, "page": page, "size": size, "pages": pages})
 }
 
-// GetEmailQueueStatistics 获取邮件队列统计
 func GetEmailQueueStatistics(c *gin.Context) {
 	db := database.GetDB()
 	var stats struct {
@@ -717,7 +701,6 @@ func GetEmailQueueStatistics(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
-// GetEmailQueueDetail 获取邮件详情
 func GetEmailQueueDetail(c *gin.Context) {
 	id := c.Param("id")
 	var email models.EmailQueue
@@ -732,7 +715,6 @@ func GetEmailQueueDetail(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", email)
 }
 
-// DeleteEmailFromQueue 删除邮件
 func DeleteEmailFromQueue(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
@@ -748,7 +730,6 @@ func DeleteEmailFromQueue(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "邮件删除成功", nil)
 }
 
-// RetryEmailFromQueue 重试发送邮件
 func RetryEmailFromQueue(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
@@ -767,7 +748,6 @@ func RetryEmailFromQueue(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "邮件已加入重试队列", nil)
 }
 
-// ClearEmailQueue 清空邮件队列
 func ClearEmailQueue(c *gin.Context) {
 	status := c.Query("status")
 	db := database.GetDB()
@@ -788,24 +768,6 @@ func ClearEmailQueue(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, message, gin.H{"deleted_count": result.RowsAffected})
 }
 
-// UpdateAdminSystemConfig 批量更新系统配置（管理员）
-func UpdateAdminSystemConfig(c *gin.Context) {
-	var req map[string]interface{}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
-		return
-	}
-	db := database.GetDB()
-	for key, value := range req {
-		if err := upsertSystemConfig(db, "system", key, fmt.Sprintf("%v", value)); err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("保存配置 %s 失败", key), err)
-			return
-		}
-	}
-	utils.SuccessResponse(c, http.StatusOK, "系统配置保存成功", nil)
-}
-
-// GetAdminSystemConfig 获取系统配置
 func GetAdminSystemConfig(c *gin.Context) {
 	var configs []models.SystemConfig
 	database.GetDB().Where("category = ?", "system").Order("sort_order ASC").Find(&configs)
@@ -823,19 +785,6 @@ func GetAdminSystemConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
-// GetAdminClashConfig 获取 Clash 配置
-func GetAdminClashConfig(c *gin.Context) {
-	val, _ := getSystemConfigValue(database.GetDB(), "clash", "config")
-	utils.SuccessResponse(c, http.StatusOK, "", val)
-}
-
-// GetAdminV2RayConfig 获取 V2Ray 配置
-func GetAdminV2RayConfig(c *gin.Context) {
-	val, _ := getSystemConfigValue(database.GetDB(), "v2ray", "config")
-	utils.SuccessResponse(c, http.StatusOK, "", val)
-}
-
-// GetAdminEmailConfig 获取邮件配置
 func GetAdminEmailConfig(c *gin.Context) {
 	var configs []models.SystemConfig
 	database.GetDB().Where("category = ?", "email").Find(&configs)
@@ -846,19 +795,6 @@ func GetAdminEmailConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
-// GetAdminClashConfigInvalid 获取无效的 Clash 配置
-func GetAdminClashConfigInvalid(c *gin.Context) {
-	val, _ := getSystemConfigValue(database.GetDB(), "clash", "config_invalid")
-	utils.SuccessResponse(c, http.StatusOK, "", val)
-}
-
-// GetAdminV2RayConfigInvalid 获取无效的 V2Ray 配置
-func GetAdminV2RayConfigInvalid(c *gin.Context) {
-	val, _ := getSystemConfigValue(database.GetDB(), "v2ray", "config_invalid")
-	utils.SuccessResponse(c, http.StatusOK, "", val)
-}
-
-// GetSoftwareConfig 获取软件配置
 func GetSoftwareConfig(c *gin.Context) {
 	var configs []models.SystemConfig
 	database.GetDB().Where("category = ?", "software").Find(&configs)
@@ -869,12 +805,10 @@ func GetSoftwareConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
-// GetPaymentConfig 获取支付配置列表
 func GetPaymentConfig(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.PaymentConfig{})
 
-	// 单独处理分页：保持原代码默认 size=100 的逻辑
 	page, size := 1, 100
 	if pageStr := c.Query("page"); pageStr != "" {
 		fmt.Sscanf(pageStr, "%d", &page)
@@ -960,7 +894,6 @@ func GetPaymentConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"items": configsResponse, "total": total, "page": page, "size": size})
 }
 
-// GetUserTrend 获取用户趋势
 func GetUserTrend(c *gin.Context) {
 	db := database.GetDB()
 	days := 30
@@ -990,22 +923,18 @@ func GetUserTrend(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"labels": labels, "data": data})
 }
 
-// GetRevenueTrend 获取收入趋势
 func GetRevenueTrend(c *gin.Context) {
 	GetRevenueChart(c)
 }
 
-// UpdateClashConfig 更新 Clash 配置
 func UpdateClashConfig(c *gin.Context) {
 	updateSingleConfig(c, "clash", "config", "Clash 配置")
 }
 
-// UpdateV2RayConfig 更新 V2Ray 配置
 func UpdateV2RayConfig(c *gin.Context) {
 	updateSingleConfig(c, "v2ray", "config", "V2Ray 配置")
 }
 
-// UpdateEmailConfig 更新邮件配置
 func UpdateEmailConfig(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1023,17 +952,14 @@ func UpdateEmailConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "邮件配置已更新", nil)
 }
 
-// MarkClashConfigInvalid 保存 Clash 失效配置
 func MarkClashConfigInvalid(c *gin.Context) {
 	updateSingleConfig(c, "clash", "config_invalid", "Clash 失效配置")
 }
 
-// MarkV2RayConfigInvalid 保存 V2Ray 失效配置
 func MarkV2RayConfigInvalid(c *gin.Context) {
 	updateSingleConfig(c, "v2ray", "config_invalid", "V2Ray 失效配置")
 }
 
-// CreatePaymentConfig 创建支付配置
 func CreatePaymentConfig(c *gin.Context) {
 	var req struct {
 		PayType              string                 `json:"pay_type" binding:"required"`
@@ -1116,7 +1042,6 @@ func CreatePaymentConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "支付配置创建成功", paymentConfig)
 }
 
-// UpdatePaymentConfig 更新支付配置
 func UpdatePaymentConfig(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
@@ -1270,9 +1195,6 @@ func UpdatePaymentConfig(c *gin.Context) {
 	}
 	utils.SuccessResponse(c, http.StatusOK, "支付配置更新成功", responseData)
 }
-
-// ---------------- Helper Functions ----------------
-
 func getPagination(c *gin.Context) (page int, size int, offset int) {
 	page, size = 1, 20
 	if pageStr := c.Query("page"); pageStr != "" {

@@ -18,14 +18,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// GenerateInviteCode 生成邀请码
 func GenerateInviteCode() string {
 	b := make([]byte, 8)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)[:8]
 }
 
-// CreateInviteCode 创建邀请码
 func CreateInviteCode(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -52,7 +50,6 @@ func CreateInviteCode(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 从系统配置获取默认奖励设置（如果请求中未提供）
 	if req.InviterReward == 0 || req.InviteeReward == 0 {
 		var configs []models.SystemConfig
 		db.Where("category = ? AND `key` IN (?)", "invite", []string{
@@ -73,17 +70,14 @@ func CreateInviteCode(c *gin.Context) {
 		}
 	}
 
-	// 如果提供了 expires_days，转换为 expires_at
 	if req.ExpiresDays > 0 && req.ExpiresAt.IsZero() {
 		req.ExpiresAt = utils.GetBeijingTime().AddDate(0, 0, req.ExpiresDays)
 	}
 
-	// 设置默认值
 	if req.RewardType == "" {
 		req.RewardType = "balance"
 	}
 
-	// 生成唯一邀请码（统一转换为大写存储）
 	var code string
 	maxAttempts := 10
 	for i := 0; i < maxAttempts; i++ {
@@ -122,7 +116,6 @@ func CreateInviteCode(c *gin.Context) {
 		return
 	}
 
-	// 生成邀请链接
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	inviteLink := baseURL + "/register?invite=" + code
 
@@ -141,7 +134,6 @@ func CreateInviteCode(c *gin.Context) {
 	})
 }
 
-// GetInviteCodes 获取邀请码列表
 func GetInviteCodes(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -156,26 +148,22 @@ func GetInviteCodes(c *gin.Context) {
 		return
 	}
 
-	// 生成邀请链接
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	now := utils.GetBeijingTime()
 	var result []gin.H
 	for _, code := range inviteCodes {
 		inviteLink := baseURL + "/register?invite=" + code.Code
 
-		// 处理 max_uses（sql.NullInt64 -> int 或 null）
 		var maxUses interface{} = nil
 		if code.MaxUses.Valid {
 			maxUses = int(code.MaxUses.Int64)
 		}
 
-		// 处理 expires_at（sql.NullTime -> string 或 null）
 		var expiresAt interface{} = nil
 		if code.ExpiresAt.Valid {
 			expiresAt = code.ExpiresAt.Time.Format("2006-01-02 15:04:05")
 		}
 
-		// 计算是否有效
 		isValid := code.IsActive
 		if isValid && code.ExpiresAt.Valid {
 			isValid = code.ExpiresAt.Time.After(now)
@@ -203,7 +191,6 @@ func GetInviteCodes(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
-// GetInviteStats 获取邀请统计
 func GetInviteStats(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -220,22 +207,18 @@ func GetInviteStats(c *gin.Context) {
 		TotalInviteRelations int64   `json:"total_invite_relations"`
 	}
 
-	// 从用户表获取
 	var u models.User
 	db.First(&u, user.ID)
 	stats.TotalInviteCount = u.TotalInviteCount
 	stats.TotalInviteReward = u.TotalInviteReward
 
-	// 统计活跃邀请码
 	db.Model(&models.InviteCode{}).Where("user_id = ? AND is_active = ?", user.ID, true).Count(&stats.ActiveInviteCodes)
 
-	// 统计邀请关系
 	db.Model(&models.InviteRelation{}).Where("inviter_id = ?", user.ID).Count(&stats.TotalInviteRelations)
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
-// GetRewardSettings 获取邀请奖励设置
 func GetRewardSettings(c *gin.Context) {
 	_, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -245,7 +228,6 @@ func GetRewardSettings(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 从系统配置中获取邀请奖励设置
 	var configs []models.SystemConfig
 	db.Where("category = ? AND `key` IN (?)", "invite", []string{
 		"inviter_reward", "invitee_reward", "min_order_amount", "new_user_only",
@@ -253,7 +235,6 @@ func GetRewardSettings(c *gin.Context) {
 
 	settings := make(map[string]interface{})
 	for _, cfg := range configs {
-		// 将数值类型的配置转换为数字
 		if cfg.Key == "inviter_reward" || cfg.Key == "invitee_reward" || cfg.Key == "min_order_amount" {
 			if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
 				settings[cfg.Key] = val
@@ -267,7 +248,6 @@ func GetRewardSettings(c *gin.Context) {
 		}
 	}
 
-	// 如果没有配置，返回默认值（数字类型）
 	if _, ok := settings["inviter_reward"]; !ok {
 		settings["inviter_reward"] = 0.0
 	}
@@ -284,25 +264,20 @@ func GetRewardSettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
-// GetMyInviteCodes 获取我的邀请码列表（别名，实际使用 GetInviteCodes）
 func GetMyInviteCodes(c *gin.Context) {
-	// 直接调用 GetInviteCodes
 	GetInviteCodes(c)
 }
 
-// ValidateInviteCode 验证邀请码（公开访问，用于注册）
 func ValidateInviteCode(c *gin.Context) {
 	code := strings.ToUpper(strings.TrimSpace(c.Param("code")))
 	db := database.GetDB()
 
 	var inviteCode models.InviteCode
-	// 使用 UPPER() 函数进行大小写不敏感查询
 	if err := db.Where("UPPER(code) = ?", code).First(&inviteCode).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在", err)
 		return
 	}
 
-	// 检查邀请码是否有效
 	now := utils.GetBeijingTime()
 	if !inviteCode.IsActive {
 		utils.ErrorResponse(c, http.StatusBadRequest, "邀请码已停用", nil)
@@ -333,7 +308,6 @@ func ValidateInviteCode(c *gin.Context) {
 	})
 }
 
-// UpdateInviteCode 更新邀请码
 func UpdateInviteCode(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
@@ -378,7 +352,6 @@ func UpdateInviteCode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", inviteCode)
 }
 
-// DeleteInviteCode 删除邀请码
 func DeleteInviteCode(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := middleware.GetCurrentUser(c)
@@ -389,7 +362,6 @@ func DeleteInviteCode(c *gin.Context) {
 
 	db := database.GetDB()
 	var inviteCode models.InviteCode
-	// 修复：使用 UserID 而不是 created_by
 	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&inviteCode).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在或无权限", err)
@@ -400,20 +372,17 @@ func DeleteInviteCode(c *gin.Context) {
 		return
 	}
 
-	// 检查邀请码是否已被使用
 	if inviteCode.UsedCount > 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "邀请码已被使用，无法删除", nil)
 		return
 	}
 
-	// 删除邀请码
 	if err := db.Delete(&inviteCode).Error; err != nil {
 		utils.LogError("DeleteInviteCode: delete invite code failed", err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除邀请码失败", err)
 		return
 	}
 
-	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "delete_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("删除邀请码: %s", inviteCode.Code))
 
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)

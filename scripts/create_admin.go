@@ -14,33 +14,26 @@ import (
 	"gorm.io/gorm"
 )
 
-// 简单的初始化脚本：确保存在管理员账号
-// 密码从环境变量 ADMIN_PASSWORD 读取，如果未设置则使用默认值（仅用于开发环境）
 func main() {
-	// 加载配置
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("配置加载失败: %v", err)
 	}
 
-	// 确保配置已设置
 	if cfg == nil {
 		log.Fatal("配置未正确加载")
 	}
 
-	// 初始化数据库
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
 
-	// 运行数据库迁移（如果表不存在，会自动创建）
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
 
 	db := database.GetDB()
 
-	// 从环境变量读取用户名、邮箱和密码
 	username := os.Getenv("ADMIN_USERNAME")
 	if username == "" {
 		username = "admin"
@@ -55,11 +48,9 @@ func main() {
 
 	password := os.Getenv("ADMIN_PASSWORD")
 	if password == "" {
-		// 检查是否为生产环境
 		if os.Getenv("ENV") == "production" {
 			log.Fatalf("错误: 生产环境必须设置 ADMIN_PASSWORD 环境变量")
 		}
-		// 开发环境使用默认密码，但给出警告
 		password = "admin123"
 		log.Println("警告: 未设置 ADMIN_PASSWORD 环境变量，使用默认密码 'admin123'")
 		log.Println("警告: 生产环境请务必设置强密码！")
@@ -74,10 +65,8 @@ func main() {
 	result := db.Where("username = ? OR email = ?", username, email).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			// 检查是否已有其他管理员账户
 			var existingAdmin models.User
 			if err := db.Where("is_admin = ?", true).First(&existingAdmin).Error; err == nil {
-				// 如果已有管理员，更新该管理员的信息
 				updates := map[string]interface{}{
 					"username":    username,
 					"email":       email,
@@ -91,7 +80,6 @@ func main() {
 				}
 				fmt.Printf("管理员已更新: 用户名=%s 邮箱=%s\n", username, email)
 			} else {
-				// 没有管理员，创建新管理员
 				user = models.User{
 					Username:   username,
 					Email:      email,
@@ -109,7 +97,6 @@ func main() {
 			log.Fatalf("查询用户失败: %v", result.Error)
 		}
 	} else {
-		// 找到现有用户，更新信息
 		updates := map[string]interface{}{
 			"username":    username,
 			"email":       email,
@@ -134,7 +121,6 @@ func main() {
 		fmt.Printf("  密码:   [已从环境变量读取]\n")
 	}
 
-	// 验证密码哈希
 	fmt.Println("\n🔍 验证信息：")
 	fmt.Printf("  密码哈希长度: %d 字符\n", len(hashed))
 	if len(hashed) >= 4 {
@@ -146,7 +132,6 @@ func main() {
 		}
 	}
 
-	// 测试密码验证
 	if auth.VerifyPassword(password, hashed) {
 		fmt.Printf("  ✅ 密码验证测试通过\n")
 	} else {

@@ -21,8 +21,6 @@ import (
 
 const timeLayout = "2006-01-02 15:04:05"
 
-// --- Helper Functions ---
-
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	return fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subURL),
@@ -113,7 +111,6 @@ func getSubscriptionByID(db *gorm.DB, id string, userID uint) (*models.Subscript
 	return &sub, nil
 }
 
-// performSubscriptionReset 封装重置订阅的核心逻辑
 func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, reason string, resetBy *string) error {
 	oldURL := sub.SubscriptionURL
 	var deviceCountBefore int64
@@ -143,8 +140,6 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 	}
 	return db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error
 }
-
-// --- Handlers ---
 
 func GetSubscriptions(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
@@ -267,6 +262,130 @@ func GetAdminSubscriptions(c *gin.Context) {
 
 	list := buildSubscriptionListData(db, subscriptions, c)
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"subscriptions": list, "total": total, "page": page, "size": size})
+}
+
+func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription, c *gin.Context) []gin.H {
+	if len(subscriptions) == 0 {
+		return []gin.H{}
+	}
+
+	subIDs := make([]uint, len(subscriptions))
+	userIDs := make([]uint, 0, len(subscriptions))
+	userIDSet := make(map[uint]bool)
+	for i, s := range subscriptions {
+		subIDs[i] = s.ID
+		if !userIDSet[s.UserID] {
+			userIDs = append(userIDs, s.UserID)
+			userIDSet[s.UserID] = true
+		}
+	}
+
+	var users []models.User
+	userMap := make(map[uint]*models.User)
+	if len(userIDs) > 0 {
+		db.Where("id IN ?", userIDs).Find(&users)
+		for i := range users {
+			userMap[users[i].ID] = &users[i]
+		}
+	}
+
+	type Stat struct {
+		SubID uint
+		Type  *string
+		Count int64
+	}
+	var onlineStats []Stat
+	db.Model(&models.Device{}).Select("subscription_id as sub_id, count(*) as count").
+		Where("subscription_id IN ? AND is_active = ?", subIDs, true).
+		Group("subscription_id").Scan(&onlineStats)
+
+	var typeStats []Stat
+	db.Model(&models.Device{}).Select("subscription_id as sub_id, subscription_type as type, count(*) as count").
+		Where("subscription_id IN ?", subIDs).
+		Group("subscription_id, subscription_type").Scan(&typeStats)
+
+	onlineMap, appleMap, clashMap := make(map[uint]int64), make(map[uint]int64), make(map[uint]int64)
+	for _, s := range onlineStats {
+		onlineMap[s.SubID] = s.Count
+	}
+	for _, s := range typeStats {
+		if s.Type == nil {
+			continue
+		}
+		if *s.Type == "v2ray" || *s.Type == "ssr" {
+			appleMap[s.SubID] += s.Count
+		}
+		if *s.Type == "clash" {
+			clashMap[s.SubID] += s.Count
+		}
+	}
+
+	list := make([]gin.H, 0, len(subscriptions))
+	for _, sub := range subscriptions {
+		online := onlineMap[sub.ID]
+		curr := sub.CurrentDevices
+		if curr < int(online) {
+			curr = int(online)
+		}
+
+		universal, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
+
+		var userInfo gin.H
+		if sub.User.ID > 0 {
+			userInfo = gin.H{"id": sub.User.ID, "username": sub.User.Username, "email": sub.User.Email}
+		} else if user, ok := userMap[sub.UserID]; ok {
+			userInfo = gin.H{"id": user.ID, "username": user.Username, "email": user.Email}
+		} else {
+			userInfo = gin.H{
+				"id":       0,
+				"username": fmt.Sprintf("用户已删除 (ID: %d)", sub.UserID),
+				"email":    fmt.Sprintf("deleted_user_%d", sub.UserID),
+				"deleted":  true,
+			}
+		}
+
+		daysUntil, isExpired, now := 0, false, utils.GetBeijingTime()
+		if !sub.ExpireTime.IsZero() {
+			if diff := sub.ExpireTime.Sub(now); diff > 0 {
+				daysUntil = int(diff.Hours() / 24)
+			} else {
+				isExpired = true
+			}
+		}
+
+		universalCount := sub.UniversalCount
+		clashCount := sub.ClashCount
+		if universalCount == 0 && appleMap[sub.ID] > 0 {
+			universalCount = int(appleMap[sub.ID])
+		}
+		if clashCount == 0 && clashMap[sub.ID] > 0 {
+			clashCount = int(clashMap[sub.ID])
+		}
+
+		list = append(list, gin.H{
+			"id":                sub.ID,
+			"user_id":           sub.UserID,
+			"user":              userInfo,
+			"username":          userInfo["username"],
+			"email":             userInfo["email"],
+			"subscription_url":  sub.SubscriptionURL,
+			"universal_url":     universal,
+			"clash_url":         clash,
+			"status":            sub.Status,
+			"is_active":         sub.IsActive,
+			"device_limit":      sub.DeviceLimit,
+			"current_devices":   curr,
+			"online_devices":    online,
+			"apple_count":       universalCount,
+			"clash_count":       clashCount,
+			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+			"days_until_expire": daysUntil,
+			"is_expired":        isExpired,
+			"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	return list
 }
 
 func GetUserSubscriptionDevices(c *gin.Context) {
@@ -435,8 +554,6 @@ func ResetUserSubscription(c *gin.Context) {
 	adminName := getCurrentAdminUsername(c)
 
 	for _, sub := range subs {
-		// 这里虽然在循环中，但使用 shared helper 依然比重复代码好
-		// 注意：subs 循环出来的对象是指针副本，需要小心处理
 		subCopy := sub
 		_ = performSubscriptionReset(db, &subCopy, "admin_reset", "管理员重置用户订阅地址", adminName)
 	}
@@ -540,7 +657,6 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	var originalPkgPrice float64 = 0
 	var originalPkgDays int = 0
 
-	// 1. 尝试从订阅的 PackageID 获取
 	if sub.PackageID != nil {
 		var pkg models.Package
 		if err := db.First(&pkg, *sub.PackageID).Error; err == nil {
@@ -549,7 +665,6 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 		}
 	}
 
-	// 2. 尝试从订单记录获取
 	if originalPkgDays <= 0 {
 		totalDuration := int(sub.ExpireTime.Sub(sub.CreatedAt).Hours() / 24)
 		if totalDuration <= 0 {
@@ -563,7 +678,6 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 				originalPkgDays = pkg.DurationDays
 			}
 		}
-		// 3. 查找相似时长套餐
 		if originalPkgDays <= 0 {
 			var similarPkg models.Package
 			if err := db.Where("duration_days BETWEEN ? AND ? AND is_active = ?", totalDuration-5, totalDuration+5, true).
@@ -573,7 +687,6 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 				originalPkgDays = similarPkg.DurationDays
 			}
 		}
-		// 4. 估算
 		if originalPkgDays <= 0 {
 			originalPkgDays = totalDuration
 			if originalPkgDays <= 0 {

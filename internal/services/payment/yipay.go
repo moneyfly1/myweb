@@ -24,8 +24,6 @@ import (
 	"cboard-go/internal/utils"
 )
 
-// --- Constants & Structs ---
-
 type YipayService struct {
 	PID                string
 	Key                string
@@ -48,8 +46,6 @@ type YipayResponse struct {
 		Img        string `json:"img"`
 	} `json:"data"`
 }
-
-// --- Helper Functions ---
 
 func parseConfigData(configJSON sql.NullString) map[string]interface{} {
 	if !configJSON.Valid {
@@ -92,19 +88,15 @@ func buildBaseURL(domain, path string) string {
 	return fmt.Sprintf("%s%s", utils.FormatDomainURL(domain), path)
 }
 
-// resolveCallbackURL 统一处理回调地址生成的优先级：Config字段 -> JSON配置 -> 数据库自动生成
 func resolveCallbackURL(explicit sql.NullString, jsonVal string, path string, isNotify bool) string {
-	// 1. 优先使用数据库字段显式配置
 	if explicit.Valid && explicit.String != "" {
 		urlStr := strings.TrimSpace(explicit.String)
 		utils.LogInfo("易支付使用配置的回调地址: %s", urlStr)
 		return urlStr
 	}
 
-	// 2. 使用JSON中的配置
 	if jsonVal != "" {
 		utils.LogInfo("易支付从配置JSON中获取回调地址: %s", jsonVal)
-		// 检查生产环境配置了本地地址的警告
 		if isNotify && !isLocalDomain(jsonVal) {
 			if domain := utils.GetDomainFromDB(database.GetDB()); isLocalDomain(domain) {
 				utils.LogWarn("易支付回调地址配置为生产域名 (%s)，但当前环境是本地 (%s)，回调可能无法到达", jsonVal, domain)
@@ -113,7 +105,6 @@ func resolveCallbackURL(explicit sql.NullString, jsonVal string, path string, is
 		return jsonVal
 	}
 
-	// 3. 自动生成
 	db := database.GetDB()
 	if db == nil {
 		if isNotify {
@@ -143,7 +134,6 @@ func resolveCallbackURL(explicit sql.NullString, jsonVal string, path string, is
 	return genURL
 }
 
-// buildSignString 构建待签名字符串 (按key排序，排除空值和指定key)
 func buildSignString(params map[string]string, excludeKeys ...string) string {
 	var keys []string
 	excludeMap := make(map[string]bool)
@@ -171,8 +161,6 @@ func buildSignString(params map[string]string, excludeKeys ...string) string {
 	return sb.String()
 }
 
-// --- Service Implementation ---
-
 func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error) {
 	pid := ""
 	if paymentConfig.AppID.Valid {
@@ -196,7 +184,6 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		return nil, fmt.Errorf("易支付MD5密钥未配置")
 	}
 
-	// RSA Key Logic
 	platformPublicKey := ""
 	merchantPrivateKey := ""
 	if strings.Contains(signType, "RSA") {
@@ -216,7 +203,6 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		}
 	}
 
-	// API URL Logic
 	apiURL := getConfigString(configData, "gateway_url")
 	if apiURL != "" {
 		apiURL = strings.TrimSuffix(apiURL, "/") + "/openapi/pay/create"
@@ -256,7 +242,6 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		utils.LogWarn("易支付类型默认: alipay")
 	}
 
-	// 1. 构建参数
 	params := map[string]string{
 		"pid":          s.PID,
 		"paytype_code": paymentType,
@@ -284,21 +269,17 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		params["return_url"] = returnURL
 	}
 
-	// 2. 签名
 	params["sign"] = s.Sign(params)
 
 	utils.LogInfo("易支付发起请求: URL=%s, Order=%s, Amount=%s", s.APIURL, order.OrderNo, params["total_amount"])
 
-	// 3. 发送请求
 	respBytes, err := s.postForm(s.APIURL, params)
 	if err != nil {
 		return "", err
 	}
 
 	respStr := string(respBytes)
-	// 4. 处理特殊响应 (HTML 或 URL)
 	if strings.HasPrefix(respStr, "<!DOCTYPE") || strings.HasPrefix(respStr, "<html") {
-		// 检查是否有错误提示
 		if strings.Contains(respStr, "404") || strings.Contains(respStr, "Not Found") {
 			return "", fmt.Errorf("易支付API 404错误，请检查网关地址")
 		}
@@ -308,7 +289,6 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		return respStr, nil
 	}
 
-	// 5. 解析 JSON
 	var yipayResp YipayResponse
 	if err := json.Unmarshal(respBytes, &yipayResp); err != nil {
 		utils.LogError("易支付解析响应失败", err, map[string]interface{}{"resp": respStr})
@@ -319,7 +299,6 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		return "", fmt.Errorf("易支付API错误: %s (code: %d)", yipayResp.Msg, yipayResp.Code)
 	}
 
-	// 6. 返回结果优先级: Img > QRCode > PayURL
 	if yipayResp.Data.Img != "" {
 		return yipayResp.Data.Img, nil
 	}
@@ -360,11 +339,7 @@ func (s *YipayService) postForm(apiURL string, params map[string]string) ([]byte
 	return body, nil
 }
 
-// --- Signature Logic ---
-
 func (s *YipayService) Sign(params map[string]string) string {
-	// 注意：根据原始逻辑，即便是RSA模式，请求签名也使用MD5逻辑。
-	// 这通常取决于具体的易支付实现，保持原逻辑不变。
 	return s.calculateMD5Sign(params)
 }
 
@@ -380,7 +355,6 @@ func (s *YipayService) VerifyNotify(params map[string]string) bool {
 		signType = t
 	}
 
-	// 过滤不需要签名的参数
 	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")
 	utils.LogInfo("易支付验签字符串: %s", signStr)
 
@@ -388,13 +362,11 @@ func (s *YipayService) VerifyNotify(params map[string]string) bool {
 	case "RSA":
 		return s.verifyRSASign(signStr, sign)
 	case "MD5+RSA":
-		// 先验MD5
 		md5Sign := s.calcMD5FromStr(signStr)
 		if !strings.EqualFold(sign, md5Sign) {
 			utils.LogError("MD5+RSA模式: MD5校验失败", nil, nil)
 			return false
 		}
-		// 再验RSA
 		if rsaSign, ok := params["rsa_sign"]; ok && rsaSign != "" {
 			return s.verifyRSASign(signStr, rsaSign)
 		}
@@ -432,12 +404,10 @@ func (s *YipayService) verifyRSASign(content, sign string) bool {
 	var pubKeyBytes []byte
 	var err error
 
-	// 尝试作为 PEM 解析
 	block, _ := pem.Decode([]byte(s.PlatformPublicKey))
 	if block != nil {
 		pubKeyBytes = block.Bytes
 	} else {
-		// 尝试作为 Base64 解析
 		pubKeyBytes, err = base64.StdEncoding.DecodeString(s.PlatformPublicKey)
 		if err != nil {
 			utils.LogError("RSA公钥格式错误", err, nil)
@@ -470,8 +440,6 @@ func (s *YipayService) verifyRSASign(content, sign string) bool {
 	return true
 }
 
-// --- Scraping Utilities (Unchanged functionality, improved structure) ---
-
 func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType string) (string, error) {
 	utils.LogInfo("开始从页面提取二维码: %s", pageURL)
 
@@ -497,23 +465,19 @@ func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	htmlContent := string(bodyBytes)
 
-	// 1. 处理特定的表单自动提交 (idzew.com / submit.php)
 	if strings.Contains(htmlContent, "idzew.com") || strings.Contains(htmlContent, "submit.php") {
 		return s.handleFormRedirect(htmlContent, paymentType)
 	}
 
-	// 2. 处理 JS 跳转
 	if redirect, ok := matchJSRedirect(htmlContent); ok {
 		target := s.resolveRelativeURL(redirect, pageURL)
 		return s.extractQRCodeFromPaymentPage(target, paymentType)
 	}
 
-	// 3. 提取二维码
 	return s.extractQRCodeFromHTML(htmlContent, pageURL, paymentType)
 }
 
 func (s *YipayService) handleFormRedirect(htmlContent, paymentType string) (string, error) {
-	// 简化的表单提取逻辑
 	formRe := regexp.MustCompile(`<form[^>]*action=["']([^"']+)["'][^>]*>([\s\S]*?)</form>`)
 	matches := formRe.FindStringSubmatch(htmlContent)
 	if len(matches) < 3 {
@@ -567,7 +531,6 @@ func (s *YipayService) resolveRelativeURL(rel, base string) string {
 }
 
 func (s *YipayService) extractQRCodeFromHTML(html, baseURL, paymentType string) (string, error) {
-	// 尝试 JS 变量 code_url
 	jsPattern := regexp.MustCompile(`(code_url|url)\s*[:=]\s*["']([^"']+)["']`)
 	if m := jsPattern.FindStringSubmatch(html); len(m) > 2 {
 		val := m[2]
@@ -576,7 +539,6 @@ func (s *YipayService) extractQRCodeFromHTML(html, baseURL, paymentType string) 
 		}
 	}
 
-	// 尝试 img src
 	patterns := s.getQRCodePatterns(paymentType)
 	for _, p := range patterns {
 		re := regexp.MustCompile(p)
@@ -585,7 +547,6 @@ func (s *YipayService) extractQRCodeFromHTML(html, baseURL, paymentType string) 
 		}
 	}
 
-	// 尝试 Base64
 	if m := regexp.MustCompile(`data:image/[^;]+;base64,([A-Za-z0-9+/=]{100,})`).FindStringSubmatch(html); len(m) > 0 {
 		return m[0], nil
 	}

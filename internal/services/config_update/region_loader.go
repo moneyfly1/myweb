@@ -14,19 +14,15 @@ var (
 	regionConfigErr  error
 )
 
-// RegionConfig 地区配置结构
 type RegionConfig struct {
 	RegionMap map[string]string `json:"region_map"`
 	ServerMap map[string]string `json:"server_map"`
 }
 
-// LoadRegionConfig 加载地区配置（单例模式）
 func LoadRegionConfig() (*RegionConfig, error) {
 	regionConfigOnce.Do(func() {
-		// 获取当前工作目录
 		wd, _ := os.Getwd()
 
-		// 尝试多个可能的路径
 		paths := []string{
 			"./internal/services/config_update/region_config.json",
 			"./region_config.json",
@@ -42,7 +38,6 @@ func LoadRegionConfig() (*RegionConfig, error) {
 			if err == nil {
 				var config RegionConfig
 				if err := json.Unmarshal(data, &config); err == nil {
-					// 验证配置不为空
 					if len(config.RegionMap) > 0 || len(config.ServerMap) > 0 {
 						regionConfig = &config
 						return
@@ -56,7 +51,6 @@ func LoadRegionConfig() (*RegionConfig, error) {
 			}
 		}
 
-		// 如果所有路径都失败，记录错误并使用空配置
 		if lastErr != nil {
 			regionConfigErr = fmt.Errorf("无法加载地区配置文件，尝试的路径都失败，最后错误: %v", lastErr)
 		}
@@ -70,10 +64,7 @@ func LoadRegionConfig() (*RegionConfig, error) {
 	return regionConfig, regionConfigErr
 }
 
-// getDefaultRegionConfig 获取默认配置（向后兼容：返回空配置，实际使用时会从 region_config.json 加载）
 func getDefaultRegionConfig() *RegionConfig {
-	// 返回空配置，实际配置应该从 region_config.json 文件加载
-	// 如果文件不存在，RegionMatcher 会使用空映射，返回"未知"地区
 	return &RegionConfig{
 		RegionMap: make(map[string]string),
 		ServerMap: make(map[string]string),

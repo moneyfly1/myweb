@@ -13,15 +13,12 @@ import (
 	"cboard-go/internal/utils"
 )
 
-// ShouldSendCustomerNotification 检查是否应该发送客户通知
-// notificationType: "system", "email", "subscription_expiry", "new_user", "new_order"
 func ShouldSendCustomerNotification(notificationType string) bool {
 	db := database.GetDB()
 	if db == nil {
 		return true // 默认发送
 	}
 
-	// 获取客户通知配置
 	var configs []models.SystemConfig
 	db.Where("category = ?", "notification").Find(&configs)
 
@@ -30,17 +27,14 @@ func ShouldSendCustomerNotification(notificationType string) bool {
 		configMap[config.Key] = config.Value
 	}
 
-	// 检查是否启用邮件通知
 	if configMap["email_notifications"] != "true" {
 		return false
 	}
 
-	// 检查系统通知是否启用
 	if configMap["system_notifications"] != "true" {
 		return false
 	}
 
-	// 根据通知类型检查对应的开关
 	switch notificationType {
 	case "subscription_expiry":
 		return configMap["subscription_expiry_notifications"] == "true"
@@ -49,27 +43,22 @@ func ShouldSendCustomerNotification(notificationType string) bool {
 	case "new_order":
 		return configMap["new_order_notifications"] == "true"
 	case "system", "email":
-		// 系统通知和邮件通知已经通过上面的检查
 		return true
 	default:
 		return true // 默认发送
 	}
 }
 
-// NotificationService 通知服务
 type NotificationService struct {
 }
 
-// NewNotificationService 创建通知服务
 func NewNotificationService() *NotificationService {
 	return &NotificationService{}
 }
 
-// SendAdminNotification 发送管理员通知
 func (s *NotificationService) SendAdminNotification(notificationType string, data map[string]interface{}) error {
 	db := database.GetDB()
 
-	// 获取管理员通知配置
 	var configs []models.SystemConfig
 	db.Where("category = ?", "admin_notification").Find(&configs)
 
@@ -78,12 +67,10 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		configMap[config.Key] = config.Value
 	}
 
-	// 检查是否启用管理员通知
 	if configMap["admin_notification_enabled"] != "true" {
 		return nil
 	}
 
-	// 检查该通知类型是否启用
 	notificationKeyMap := map[string]string{
 		"order_paid":           "admin_notify_order_paid",
 		"user_registered":      "admin_notify_user_registered",
@@ -97,17 +84,14 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 
 	if key, ok := notificationKeyMap[notificationType]; ok {
 		if configMap[key] != "true" {
-			// 该通知类型未启用，直接返回
 			return nil
 		}
 	}
 
-	// 使用模板构建器格式化消息
 	templateBuilder := NewMessageTemplateBuilder()
 	telegramMsg := templateBuilder.BuildTelegramMessage(notificationType, data)
 	barkTitle, barkBody := templateBuilder.BuildBarkMessage(notificationType, data)
 
-	// 发送 Telegram 通知
 	if configMap["admin_telegram_notification"] == "true" {
 		botToken := configMap["admin_telegram_bot_token"]
 		chatID := configMap["admin_telegram_chat_id"]
@@ -130,7 +114,6 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		}
 	}
 
-	// 发送 Bark 通知
 	if configMap["admin_bark_notification"] == "true" {
 		serverURL := configMap["admin_bark_server_url"]
 		deviceKey := configMap["admin_bark_device_key"]
@@ -153,10 +136,8 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		}
 	}
 
-	// 发送邮件通知（使用邮件模板）
 	if configMap["admin_email_notification"] == "true" {
 		adminEmail := configMap["admin_notification_email"]
-		// 验证邮箱格式（简单验证：包含@符号）
 		if adminEmail != "" && strings.Contains(adminEmail, "@") {
 			emailService := email.NewEmailService()
 			templateBuilder := email.NewEmailTemplateBuilder()
@@ -175,7 +156,6 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 	return nil
 }
 
-// sendTelegramMessage 发送 Telegram 消息
 func sendTelegramMessage(botToken, chatID, message string) (bool, error) {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
 
@@ -204,9 +184,7 @@ func sendTelegramMessage(botToken, chatID, message string) (bool, error) {
 	return result["ok"] == true, nil
 }
 
-// sendBarkMessage 发送 Bark 消息
 func sendBarkMessage(serverURL, deviceKey, title, body string) (bool, error) {
-	// 移除末尾的斜杠
 	serverURL = strings.TrimSuffix(serverURL, "/")
 	apiURL := fmt.Sprintf("%s/push", serverURL)
 
@@ -235,7 +213,6 @@ func sendBarkMessage(serverURL, deviceKey, title, body string) (bool, error) {
 	return result["code"] == float64(200), nil
 }
 
-// getNotificationSubject 获取通知邮件主题
 func getNotificationSubject(notificationType string) string {
 	subjectMap := map[string]string{
 		"order_paid":           "💰 新订单支付成功",
@@ -253,7 +230,6 @@ func getNotificationSubject(notificationType string) string {
 	return "系统通知"
 }
 
-// Helper functions
 func getString(data map[string]interface{}, key string, defaultValue string) string {
 	if val, ok := data[key]; ok {
 		if str, ok := val.(string); ok {

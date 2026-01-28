@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// GetDevices 获取用户设备列表
 func GetDevices(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -23,7 +22,6 @@ func GetDevices(c *gin.Context) {
 	db := database.GetDB()
 	var devices []models.Device
 
-	// 获取用户的订阅ID列表
 	var subscriptionIDs []uint
 	db.Model(&models.Subscription{}).Where("user_id = ?", user.ID).Pluck("id", &subscriptionIDs)
 
@@ -32,7 +30,6 @@ func GetDevices(c *gin.Context) {
 		return
 	}
 
-	// 查询设备，按最后访问时间排序
 	if err := db.Where("subscription_id IN ?", subscriptionIDs).
 		Order("last_access DESC").
 		Find(&devices).Error; err != nil {
@@ -40,7 +37,6 @@ func GetDevices(c *gin.Context) {
 		return
 	}
 
-	// 格式化设备信息
 	deviceList := make([]gin.H, 0, len(devices))
 	for _, d := range devices {
 		getString := func(ptr *string) string {
@@ -60,16 +56,13 @@ func GetDevices(c *gin.Context) {
 			firstSeen = d.FirstSeen.Format("2006-01-02 15:04:05")
 		}
 
-		// IP地址格式化函数
 		formatIP := func(ip string) string {
 			if ip == "" {
 				return "-"
 			}
-			// 将 IPv6 本地地址转换为 IPv4 本地地址
 			if ip == "::1" {
 				return "127.0.0.1"
 			}
-			// 将 IPv6 映射的 IPv4 地址转换
 			if len(ip) >= 7 && ip[:7] == "::ffff:" {
 				return ip[7:]
 			}
@@ -79,7 +72,6 @@ func GetDevices(c *gin.Context) {
 		ipStr := getString(d.IPAddress)
 		ipAddress := formatIP(ipStr)
 
-		// 使用GeoIP解析地理位置
 		location := ""
 		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
 			locationStr := geoip.GetLocationString(ipAddress)
@@ -117,7 +109,6 @@ func GetDevices(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", deviceList)
 }
 
-// DeleteDevice 用户删除自己的设备
 func DeleteDevice(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -128,7 +119,6 @@ func DeleteDevice(c *gin.Context) {
 	deviceID := c.Param("id")
 
 	var device models.Device
-	// 验证设备是否属于当前用户
 	if err := db.Where("devices.id = ?", deviceID).
 		Joins("JOIN subscriptions ON devices.subscription_id = subscriptions.id").
 		Where("subscriptions.user_id = ?", user.ID).
@@ -141,24 +131,20 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
-	// 删除设备
 	if err := db.Delete(&device).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
 		return
 	}
 
-	// 更新订阅的设备计数
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&count)
 	db.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count)
 
-	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
 
 	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
 }
 
-// RemoveDevice 管理员删除设备
 func RemoveDevice(c *gin.Context) {
 	db := database.GetDB()
 	deviceID := c.Param("id")
@@ -173,28 +159,23 @@ func RemoveDevice(c *gin.Context) {
 		return
 	}
 
-	// 保存设备信息用于审计日志
 	deviceInfo := getDeviceDisplayName(&device)
 	subscriptionID := device.SubscriptionID
 
-	// 删除设备
 	if err := db.Delete(&device).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
 		return
 	}
 
-	// 更新订阅的设备计数
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&count)
 	db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", count)
 
-	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "admin_delete_device", "device", device.ID, fmt.Sprintf("管理员删除设备: %s", deviceInfo))
 
 	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
 }
 
-// BatchDeleteDevices 批量删除设备（管理员）
 func BatchDeleteDevices(c *gin.Context) {
 	var req struct {
 		DeviceIDs []uint `json:"device_ids" binding:"required"`
@@ -212,7 +193,6 @@ func BatchDeleteDevices(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 查询要删除的设备
 	var devices []models.Device
 	if err := db.Where("id IN ?", req.DeviceIDs).Find(&devices).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "查询设备失败", err)
@@ -224,32 +204,27 @@ func BatchDeleteDevices(c *gin.Context) {
 		return
 	}
 
-	// 收集需要更新计数的订阅ID
 	subscriptionIDMap := make(map[uint]bool)
 	for _, d := range devices {
 		subscriptionIDMap[d.SubscriptionID] = true
 	}
 
-	// 批量删除设备
 	if err := db.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除设备失败", err)
 		return
 	}
 
-	// 更新相关订阅的设备计数
 	for subID := range subscriptionIDMap {
 		var count int64
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subID, true).Count(&count)
 		db.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count)
 	}
 
-	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "batch_delete_devices", "device", 0, fmt.Sprintf("管理员批量删除设备: %d 个", len(devices)))
 
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个设备", len(devices)), gin.H{"deleted_count": len(devices)})
 }
 
-// GetDeviceStats 获取设备统计（管理员）
 func GetDeviceStats(c *gin.Context) {
 	db := database.GetDB()
 
@@ -266,7 +241,6 @@ func GetDeviceStats(c *gin.Context) {
 	db.Model(&models.Device{}).Where("is_active = ?", false).Count(&stats.InactiveDevices)
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
 
-	// 按设备类型统计
 	stats.DevicesByType = make(map[string]int64)
 	var typeStats []struct {
 		DeviceType string
@@ -284,7 +258,6 @@ func GetDeviceStats(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
-// getDeviceDisplayName 获取设备显示名称
 func getDeviceDisplayName(device *models.Device) string {
 	if device.DeviceName != nil && *device.DeviceName != "" {
 		return *device.DeviceName

@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetPackages 获取套餐列表
 func GetPackages(c *gin.Context) {
 	db := database.GetDB()
 
@@ -23,7 +22,6 @@ func GetPackages(c *gin.Context) {
 		return
 	}
 
-	// 确保返回格式正确
 	result := make([]gin.H, 0)
 	for _, pkg := range packages {
 		result = append(result, gin.H{
@@ -44,7 +42,6 @@ func GetPackages(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
-// GetPackage 获取单个套餐
 func GetPackage(c *gin.Context) {
 	id := c.Param("id")
 
@@ -58,7 +55,6 @@ func GetPackage(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", pkg)
 }
 
-// CreatePackage 创建套餐（管理员）
 func CreatePackage(c *gin.Context) {
 	var req struct {
 		Name          string  `json:"name" binding:"required"`
@@ -99,7 +95,6 @@ func CreatePackage(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "", pkg)
 }
 
-// UpdatePackage 更新套餐（管理员）
 func UpdatePackage(c *gin.Context) {
 	id := c.Param("id")
 
@@ -129,7 +124,6 @@ func UpdatePackage(c *gin.Context) {
 		return
 	}
 
-	// 更新字段（只有提供的字段才更新）
 	if req.Name != nil {
 		nameValue := strings.TrimSpace(*req.Name)
 		if nameValue == "" {
@@ -139,7 +133,6 @@ func UpdatePackage(c *gin.Context) {
 		pkg.Name = nameValue
 	}
 	if req.Description != nil {
-		// 允许清空描述
 		descValue := strings.TrimSpace(*req.Description)
 		utils.LogInfo("UpdatePackage: 更新描述字段 - package_id=%s, description_value=%q, trimmed_length=%d", id, *req.Description, len(descValue))
 		if descValue == "" {
@@ -188,7 +181,6 @@ func UpdatePackage(c *gin.Context) {
 		return
 	}
 
-	// 格式化返回数据，确保 description 字段是字符串而不是对象
 	responseData := gin.H{
 		"id":             pkg.ID,
 		"name":           pkg.Name,
@@ -206,7 +198,6 @@ func UpdatePackage(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", responseData)
 }
 
-// DeletePackage 删除套餐（管理员）
 func DeletePackage(c *gin.Context) {
 	id := c.Param("id")
 
@@ -219,12 +210,10 @@ func DeletePackage(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
-// GetAdminPackages 管理员获取套餐列表（包含所有套餐，包括未激活的）
 func GetAdminPackages(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Package{})
 
-	// 分页参数
 	page := 1
 	size := 20
 	if pageStr := c.Query("page"); pageStr != "" {
@@ -240,16 +229,13 @@ func GetAdminPackages(c *gin.Context) {
 		size = 20
 	}
 
-	// 搜索参数
 	if name := c.Query("name"); name != "" {
-		// 清理和验证搜索关键词，防止SQL注入
 		sanitizedName := utils.SanitizeSearchKeyword(name)
 		if sanitizedName != "" {
 			query = query.Where("name LIKE ?", "%"+sanitizedName+"%")
 		}
 	}
 
-	// 状态筛选
 	if status := c.Query("status"); status != "" {
 		switch status {
 		case "active":
@@ -259,11 +245,9 @@ func GetAdminPackages(c *gin.Context) {
 		}
 	}
 
-	// 计算总数
 	var total int64
 	query.Count(&total)
 
-	// 分页查询
 	var packages []models.Package
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("sort_order ASC, created_at DESC").Find(&packages).Error; err != nil {
@@ -271,7 +255,6 @@ func GetAdminPackages(c *gin.Context) {
 		return
 	}
 
-	// 格式化返回数据，确保 description 字段是字符串而不是对象
 	formattedPackages := make([]gin.H, 0, len(packages))
 	for _, pkg := range packages {
 		formattedPackages = append(formattedPackages, gin.H{

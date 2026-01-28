@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// RechargeRecord 充值记录模型
 type RechargeRecord struct {
 	ID                   uint           `gorm:"primaryKey" json:"id"`
 	UserID               uint           `gorm:"index;not null" json:"user_id"`
@@ -22,11 +21,9 @@ type RechargeRecord struct {
 	CreatedAt            time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt            time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (RechargeRecord) TableName() string {
 	return "recharge_records"
 }

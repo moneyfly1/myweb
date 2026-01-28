@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// Device 设备模型
 type Device struct {
 	ID                uint       `gorm:"primaryKey" json:"id"`
 	UserID            *int64     `gorm:"index" json:"user_id,omitempty"`
@@ -32,12 +31,10 @@ type Device struct {
 	CreatedAt         time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt         time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	User         User         `gorm:"foreignKey:UserID" json:"-"`
 	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"-"`
 }
 
-// TableName 指定表名
 func (Device) TableName() string {
 	return "devices"
 }

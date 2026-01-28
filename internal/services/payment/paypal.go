@@ -11,18 +11,16 @@ import (
 	"cboard-go/internal/models"
 )
 
-// PayPalService PayPal支付服务
 type PayPalService struct {
-	clientID     string
-	secret       string
-	baseURL      string
-	notifyURL    string
-	returnURL    string
-	accessToken  string
-	tokenExpiry  time.Time
+	clientID    string
+	secret      string
+	baseURL     string
+	notifyURL   string
+	returnURL   string
+	accessToken string
+	tokenExpiry time.Time
 }
 
-// NewPayPalService 创建PayPal服务
 func NewPayPalService(paymentConfig *models.PaymentConfig) (*PayPalService, error) {
 	clientID := ""
 	if paymentConfig.PaypalClientID.Valid {
@@ -40,7 +38,6 @@ func NewPayPalService(paymentConfig *models.PaymentConfig) (*PayPalService, erro
 		return nil, fmt.Errorf("PayPal Secret 未配置")
 	}
 
-	// 判断是否为生产环境
 	isProduction := false
 	if paymentConfig.ConfigJSON.Valid {
 		var configData map[string]interface{}
@@ -57,9 +54,9 @@ func NewPayPalService(paymentConfig *models.PaymentConfig) (*PayPalService, erro
 	}
 
 	service := &PayPalService{
-		clientID:  clientID,
-		secret:    secret,
-		baseURL:   baseURL,
+		clientID: clientID,
+		secret:   secret,
+		baseURL:  baseURL,
 	}
 
 	if paymentConfig.NotifyURL.Valid {
@@ -72,14 +69,11 @@ func NewPayPalService(paymentConfig *models.PaymentConfig) (*PayPalService, erro
 	return service, nil
 }
 
-// getAccessToken 获取访问令牌
 func (s *PayPalService) getAccessToken() (string, error) {
-	// 如果令牌未过期，直接返回
 	if s.accessToken != "" && time.Now().Before(s.tokenExpiry) {
 		return s.accessToken, nil
 	}
 
-	// 请求新的访问令牌
 	url := s.baseURL + "/v1/oauth2/token"
 	req, err := http.NewRequest("POST", url, bytes.NewBufferString("grant_type=client_credentials"))
 	if err != nil {
@@ -117,14 +111,12 @@ func (s *PayPalService) getAccessToken() (string, error) {
 	return s.accessToken, nil
 }
 
-// CreatePayment 创建支付
 func (s *PayPalService) CreatePayment(order *models.Order, amount float64) (string, error) {
 	accessToken, err := s.getAccessToken()
 	if err != nil {
 		return "", fmt.Errorf("获取访问令牌失败: %v", err)
 	}
 
-	// 创建支付请求
 	paymentReq := map[string]interface{}{
 		"intent": "sale",
 		"payer": map[string]string{
@@ -136,7 +128,7 @@ func (s *PayPalService) CreatePayment(order *models.Order, amount float64) (stri
 					"total":    fmt.Sprintf("%.2f", amount),
 					"currency": "USD",
 				},
-				"description": fmt.Sprintf("订单支付-%s", order.OrderNo),
+				"description":    fmt.Sprintf("订单支付-%s", order.OrderNo),
 				"invoice_number": order.OrderNo,
 			},
 		},
@@ -173,9 +165,9 @@ func (s *PayPalService) CreatePayment(order *models.Order, amount float64) (stri
 	}
 
 	var paymentResp struct {
-		ID     string `json:"id"`
-		State  string `json:"state"`
-		Links  []struct {
+		ID    string `json:"id"`
+		State string `json:"state"`
+		Links []struct {
 			Href   string `json:"href"`
 			Rel    string `json:"rel"`
 			Method string `json:"method"`
@@ -186,7 +178,6 @@ func (s *PayPalService) CreatePayment(order *models.Order, amount float64) (stri
 		return "", err
 	}
 
-	// 查找 approval_url
 	for _, link := range paymentResp.Links {
 		if link.Rel == "approval_url" {
 			return link.Href, nil
@@ -196,9 +187,7 @@ func (s *PayPalService) CreatePayment(order *models.Order, amount float64) (stri
 	return "", fmt.Errorf("未找到支付URL")
 }
 
-// VerifyNotify 验证回调
 func (s *PayPalService) VerifyNotify(params map[string]string) bool {
-	// PayPal 回调验证需要调用 PayPal API 验证
 	paymentID := params["paymentId"]
 	if paymentID == "" {
 		return false
@@ -209,7 +198,6 @@ func (s *PayPalService) VerifyNotify(params map[string]string) bool {
 		return false
 	}
 
-	// 查询支付状态
 	url := s.baseURL + "/v1/payments/payment/" + paymentID
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -231,4 +219,3 @@ func (s *PayPalService) VerifyNotify(params map[string]string) bool {
 
 	return true
 }
-

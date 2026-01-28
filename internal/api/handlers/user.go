@@ -21,30 +21,20 @@ import (
 	"gorm.io/gorm"
 )
 
-// getDefaultSubscriptionSettings 从系统设置中获取默认订阅配置
-// 如果后台没有设置配置，返回0（设备数为0，时长为0即当天到期）
-// 只有在后台明确设置了配置值时才使用配置的值
 func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonths int) {
-	// 默认值设为0（除非后台明确配置了值）
 	deviceLimit = 0
 	durationMonths = 0
 
-	// 从数据库读取配置（优先从 registration category 读取，如果没有则从 general 读取）
 	var deviceLimitConfig models.SystemConfig
-	// 先尝试从 registration category 读取
 	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err != nil {
-		// 如果 registration 中没有，尝试从 general category 读取
 		if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "general").First(&deviceLimitConfig).Error; err == nil {
-			// 配置存在，尝试解析值
 			if deviceLimitConfig.Value != "" {
 				if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
 					deviceLimit = limit
 				}
 			}
 		}
-		// 如果两个地方都没有配置，保持默认值0
 	} else {
-		// registration category 中有配置
 		if deviceLimitConfig.Value != "" {
 			if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
 				deviceLimit = limit
@@ -53,20 +43,15 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 	}
 
 	var durationConfig models.SystemConfig
-	// 先尝试从 registration category 读取
 	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err != nil {
-		// 如果 registration 中没有，尝试从 general category 读取
 		if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "general").First(&durationConfig).Error; err == nil {
-			// 配置存在，尝试解析值
 			if durationConfig.Value != "" {
 				if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
 					durationMonths = months
 				}
 			}
 		}
-		// 如果两个地方都没有配置，保持默认值0
 	} else {
-		// registration category 中有配置
 		if durationConfig.Value != "" {
 			if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
 				durationMonths = months
@@ -77,38 +62,25 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 	return deviceLimit, durationMonths
 }
 
-// createDefaultSubscription 为用户创建默认订阅（如果不存在）
 func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	var existing models.Subscription
 	err := db.Where("user_id = ?", userID).First(&existing).Error
 	if err == nil {
-		// 订阅已存在，直接返回
 		return nil
 	}
-	// 如果是记录未找到错误，这是正常的，继续创建订阅
-	// 使用 errors.Is 来检查，避免在日志中记录这个预期的错误
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		// 其他错误才需要返回
 		return err
 	}
 
-	// 从系统设置获取默认配置
 	deviceLimit, durationMonths := getDefaultSubscriptionSettings(db)
 
-	// 生成订阅 URL
 	subscriptionURL := utils.GenerateSubscriptionURL()
 
-	// 计算到期时间
-	// 使用 UTC 时间进行计算，避免时区问题
-	// SQLite 存储时间时可能会转换为 UTC，所以我们在 UTC 时区下计算过期时间
 	nowUTC := time.Now().UTC()
 	var expireTime time.Time
-	// 如果 durationMonths 为 0 或负数，设置为当天到期（当天结束时间）
 	if durationMonths <= 0 {
-		// 设置为当天的结束时间（23:59:59）
 		expireTime = time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 23, 59, 59, 0, nowUTC.Location())
 	} else {
-		// 在 UTC 时区下计算过期时间
 		expireTime = nowUTC.AddDate(0, durationMonths, 0)
 	}
 
@@ -128,20 +100,17 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	return nil
 }
 
-// GetCurrentUser 获取当前用户
 func GetCurrentUser(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
 
-	// 格式化时间字段
 	lastLoginStr := ""
 	if user.LastLogin.Valid {
 		lastLoginStr = user.LastLogin.Time.Format("2006-01-02 15:04:05")
 	}
 
-	// 构建响应数据，确保包含所有必要字段
 	responseData := gin.H{
 		"id":                  user.ID,
 		"username":            user.Username,
@@ -163,12 +132,10 @@ func GetCurrentUser(c *gin.Context) {
 		"balance":             user.Balance,
 	}
 
-	// 添加昵称（如果存在）
 	if user.Nickname.Valid {
 		responseData["nickname"] = user.Nickname.String
 	}
 
-	// 添加头像（如果存在）
 	if user.Avatar.Valid {
 		responseData["avatar"] = user.Avatar.String
 		responseData["avatar_url"] = user.Avatar.String
@@ -177,7 +144,6 @@ func GetCurrentUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
-// UpdateCurrentUser 更新当前用户
 func UpdateCurrentUser(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -201,7 +167,6 @@ func UpdateCurrentUser(c *gin.Context) {
 	db := database.GetDB()
 
 	if req.Username != "" {
-		// 检查用户名是否已被其他用户使用
 		var existingUser models.User
 		if err := db.Where("username = ? AND id != ?", req.Username, user.ID).First(&existingUser).Error; err == nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用", nil)
@@ -212,7 +177,6 @@ func UpdateCurrentUser(c *gin.Context) {
 	if req.Nickname != "" {
 		user.Nickname = database.NullString(req.Nickname)
 	} else if req.Nickname == "" {
-		// 如果传入空字符串，清空昵称
 		user.Nickname = database.NullString("")
 	}
 	if req.Avatar != "" {
@@ -233,7 +197,6 @@ func UpdateCurrentUser(c *gin.Context) {
 		return
 	}
 
-	// 构建响应数据
 	responseData := gin.H{
 		"id":       user.ID,
 		"username": user.Username,
@@ -275,16 +238,13 @@ func GetUsers(c *gin.Context) {
 	var users []models.User
 	query.Offset(pagination.GetOffset()).Limit(pagination.Size).Order("created_at DESC").Find(&users)
 
-	// 批量查询优化：避免 N+1 查询问题
 	userIDs := make([]uint, len(users))
 	for i, u := range users {
 		userIDs[i] = u.ID
 	}
 
-	// 批量查询所有用户的订阅（每个用户只取最新的一个）
 	var subscriptions []models.Subscription
 	if len(userIDs) > 0 {
-		// 使用子查询获取每个用户最新的订阅
 		db.Raw(`
 			SELECT s1.* FROM subscriptions s1
 			INNER JOIN (
@@ -297,13 +257,11 @@ func GetUsers(c *gin.Context) {
 		`, userIDs, userIDs).Scan(&subscriptions)
 	}
 
-	// 构建订阅映射
 	subMap := make(map[uint]*models.Subscription)
 	for i := range subscriptions {
 		subMap[subscriptions[i].UserID] = &subscriptions[i]
 	}
 
-	// 批量查询设备数量
 	subIDs := make([]uint, 0)
 	for _, sub := range subscriptions {
 		if sub.ID > 0 {
@@ -340,7 +298,6 @@ func GetUsers(c *gin.Context) {
 			online = deviceCountMap[sub.ID]
 			deviceLimit = sub.DeviceLimit
 			currentDevices = sub.CurrentDevices
-			// 如果当前设备数小于在线设备数，更新为在线设备数
 			if currentDevices < int(online) {
 				currentDevices = int(online)
 			}
@@ -400,7 +357,6 @@ func GetUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": list, "total": total, "page": page, "size": size})
 }
 
-// GetUser 获取用户信息（管理员，简化版）
 func GetUser(c *gin.Context) {
 	db := database.GetDB()
 	var u models.User
@@ -419,7 +375,6 @@ func GetUserDetails(c *gin.Context) {
 		return
 	}
 
-	// 格式化用户信息，确保时间字段正确格式化
 	lastLogin := ""
 	if u.LastLogin.Valid {
 		lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
@@ -440,7 +395,6 @@ func GetUserDetails(c *gin.Context) {
 		"timezone":    u.Timezone,
 	}
 
-	// 添加可选字段
 	if u.Nickname.Valid {
 		userInfo["nickname"] = u.Nickname.String
 	}
@@ -452,7 +406,6 @@ func GetUserDetails(c *gin.Context) {
 	var subs []models.Subscription
 	db.Where("user_id = ?", u.ID).Find(&subs)
 
-	// 格式化订阅信息
 	formattedSubs := make([]gin.H, 0, len(subs))
 	for _, sub := range subs {
 		var online int64
@@ -470,7 +423,6 @@ func GetUserDetails(c *gin.Context) {
 			}
 		}
 
-		// 使用数据库中的订阅次数字段
 		universalCount := sub.UniversalCount
 		clashCount := sub.ClashCount
 
@@ -494,7 +446,6 @@ func GetUserDetails(c *gin.Context) {
 	var orders []models.Order
 	db.Preload("Package").Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&orders)
 
-	// 格式化订单记录，确保支付方式和支付时间等字段正确序列化
 	formattedOrders := make([]gin.H, 0, len(orders))
 	for _, order := range orders {
 		formattedOrder := gin.H{
@@ -508,7 +459,6 @@ func GetUserDetails(c *gin.Context) {
 			"updated_at": order.UpdatedAt.Format("2006-01-02 15:04:05"),
 		}
 
-		// 格式化支付方式名称
 		if order.PaymentMethodName.Valid {
 			formattedOrder["payment_method"] = order.PaymentMethodName.String
 			formattedOrder["payment_method_name"] = order.PaymentMethodName.String
@@ -517,31 +467,26 @@ func GetUserDetails(c *gin.Context) {
 			formattedOrder["payment_method_name"] = nil
 		}
 
-		// 格式化支付时间
 		if order.PaymentTime.Valid {
 			formattedOrder["payment_time"] = order.PaymentTime.Time.Format("2006-01-02 15:04:05")
 		} else {
 			formattedOrder["payment_time"] = nil
 		}
 
-		// 格式化支付交易ID
 		formattedOrder["payment_transaction_id"] = utils.GetNullStringValue(order.PaymentTransactionID)
 
-		// 格式化到期时间
 		if order.ExpireTime.Valid {
 			formattedOrder["expire_time"] = order.ExpireTime.Time.Format("2006-01-02 15:04:05")
 		} else {
 			formattedOrder["expire_time"] = nil
 		}
 
-		// 添加套餐信息
 		if order.Package.ID > 0 {
 			formattedOrder["package_name"] = order.Package.Name
 		} else {
 			formattedOrder["package_name"] = ""
 		}
 
-		// 添加折扣和最终金额
 		if order.DiscountAmount.Valid {
 			formattedOrder["discount_amount"] = order.DiscountAmount.Float64
 		} else {
@@ -557,11 +502,9 @@ func GetUserDetails(c *gin.Context) {
 		formattedOrders = append(formattedOrders, formattedOrder)
 	}
 
-	// 获取充值记录
 	var recharges []models.RechargeRecord
 	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&recharges)
 
-	// 格式化充值记录，确保支付方式等字段正确序列化
 	formattedRecharges := make([]gin.H, 0, len(recharges))
 	formatIPForRecharge := func(ip string) string {
 		if ip == "" {
@@ -582,7 +525,6 @@ func GetUserDetails(c *gin.Context) {
 			ipStr = ipValue.(string)
 		}
 		ipAddress := formatIPForRecharge(ipStr)
-		// 使用GeoIP解析地理位置
 		location := ""
 		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
 			locationStr := geoip.GetLocationString(ipAddress)
@@ -615,19 +557,15 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
-	// 统计总订单数
 	var totalOrders int64
 	db.Model(&models.Order{}).Where("user_id = ?", u.ID).Count(&totalOrders)
 
-	// 统计总消费（已支付订单）
 	var totalSpent float64
 	db.Model(&models.Order{}).Where("user_id = ? AND status = 'paid'", u.ID).Select("COALESCE(SUM(final_amount), SUM(amount), 0)").Scan(&totalSpent)
 
-	// 统计总重置次数
 	var totalResets int64
 	db.Model(&models.SubscriptionReset{}).Where("user_id = ?", u.ID).Count(&totalResets)
 
-	// 获取订阅重置记录
 	var resets []models.SubscriptionReset
 	db.Where("user_id = ?", u.ID).Order("created_at DESC").Find(&resets)
 	formattedResets := make([]gin.H, 0, len(resets))
@@ -652,7 +590,6 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
-	// 获取 UA 记录（从设备记录中提取唯一的 UserAgent）
 	var subIDs []uint
 	for _, sub := range subs {
 		subIDs = append(subIDs, sub.ID)
@@ -683,7 +620,6 @@ func GetUserDetails(c *gin.Context) {
 			Order("last_access DESC").
 			Find(&devices)
 
-		// 使用 map 去重，保留每个 UserAgent 的最新记录
 		uaMap := make(map[string]*models.Device)
 		for i := range devices {
 			if devices[i].UserAgent != nil && *devices[i].UserAgent != "" {
@@ -691,7 +627,6 @@ func GetUserDetails(c *gin.Context) {
 				if existing, exists := uaMap[ua]; !exists {
 					uaMap[ua] = &devices[i]
 				} else {
-					// 保留最后访问时间更晚的记录
 					if devices[i].LastAccess.After(existing.LastAccess) {
 						uaMap[ua] = &devices[i]
 					}
@@ -701,7 +636,6 @@ func GetUserDetails(c *gin.Context) {
 
 		for _, d := range uaMap {
 			ipAddress := formatIPForUA(getString(d.IPAddress))
-			// 使用GeoIP解析地理位置
 			location := ""
 			if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
 				locationStr := geoip.GetLocationString(ipAddress)
@@ -740,7 +674,6 @@ func GetUserDetails(c *gin.Context) {
 	})
 }
 
-// CreateUser 创建用户（管理员）
 func CreateUser(c *gin.Context) {
 	var req struct {
 		Username    string  `json:"username" binding:"required"`
@@ -755,7 +688,6 @@ func CreateUser(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// 不向客户端返回详细错误信息，防止信息泄露
 		utils.LogError("CreateUser: bind request", err, nil)
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入格式", err)
 		return
@@ -769,14 +701,12 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	// 验证密码强度
 	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
 	if !valid {
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
-	// 哈希密码
 	hashedPassword, err := auth.HashPassword(req.Password)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "密码加密失败", err)
@@ -806,28 +736,22 @@ func CreateUser(c *gin.Context) {
 
 	var expireTime time.Time
 	if req.ExpireTime != "" {
-		// 解析时间字符串
 		parsedTime, err := time.Parse("2006-01-02T15:04:05", req.ExpireTime)
 		if err != nil {
-			// 尝试其他格式
 			parsedTime, err = time.Parse("2006-01-02 15:04:05", req.ExpireTime)
 			if err != nil {
-				// 使用系统默认值，在 UTC 时区下计算
 				months := defaultDurationMonths
 				if months <= 0 {
 					months = 1
 				}
 				expireTime = time.Now().UTC().AddDate(0, months, 0)
 			} else {
-				// 解析的时间转换为 UTC
 				expireTime = parsedTime.UTC()
 			}
 		} else {
-			// 解析的时间转换为 UTC
 			expireTime = parsedTime.UTC()
 		}
 	} else {
-		// 使用系统默认值，在 UTC 时区下计算
 		months := defaultDurationMonths
 		if months <= 0 {
 			months = 1
@@ -846,17 +770,14 @@ func CreateUser(c *gin.Context) {
 	}
 
 	if err := db.Create(&subscription).Error; err != nil {
-		// 订阅创建失败不影响用户创建，但记录错误
 		if utils.AppLogger != nil {
 			utils.AppLogger.Error("创建用户订阅失败: %v", err)
 		}
 	}
 
-	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "create_user", "user", user.ID,
 		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限: %v", user.Username, user.Email, user.IsAdmin))
 
-	// 发送管理员通知
 	go func() {
 		notificationService := notification.NewNotificationService()
 		adminUser, _ := middleware.GetCurrentUser(c)
@@ -866,13 +787,11 @@ func CreateUser(c *gin.Context) {
 		}
 		createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 
-		// 格式化到期时间
 		expireTimeStr := "未设置"
 		if !expireTime.IsZero() {
 			expireTimeStr = expireTime.Format("2006-01-02 15:04:05")
 		}
 
-		// 保存明文密码到局部变量
 		plainPassword := req.Password
 
 		_ = notificationService.SendAdminNotification("user_created", map[string]interface{}{
@@ -886,9 +805,7 @@ func CreateUser(c *gin.Context) {
 		})
 	}()
 
-	// 发送用户创建通知邮件（使用明文密码）
 	go func() {
-		// 保存明文密码到局部变量，确保在 goroutine 中可以访问
 		plainPassword := req.Password
 		userEmail := user.Email
 		userUsername := user.Username
@@ -896,13 +813,11 @@ func CreateUser(c *gin.Context) {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
 
-		// 格式化到期时间
 		expireTimeStr := "未设置"
 		if !expireTime.IsZero() {
 			expireTimeStr = expireTime.Format("2006-01-02 15:04:05")
 		}
 
-		// 使用新用户创建邮件模板（传入明文密码）
 		content := templateBuilder.GetUserCreatedTemplate(
 			userUsername,
 			userEmail,
@@ -911,7 +826,6 @@ func CreateUser(c *gin.Context) {
 			deviceLimit,
 		)
 
-		// 发送邮件（异步，不阻塞响应）
 		_ = emailService.QueueEmail(userEmail, "账户创建通知", content, "user_created")
 	}()
 
@@ -919,7 +833,6 @@ func CreateUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "创建成功", user)
 }
 
-// UpdateUser 更新用户（管理员）
 func UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 
@@ -955,7 +868,6 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if req.Username != "" {
-		// 检查用户名是否已被其他用户使用
 		var existing models.User
 		if err := db.Where("username = ? AND id != ?", req.Username, id).First(&existing).Error; err == nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用", nil)
@@ -1008,7 +920,6 @@ func UpdateUser(c *gin.Context) {
 		"balance":     user.Balance,
 	}
 
-	// 记录审计日志
 	description := fmt.Sprintf("管理员更新用户: %s (%s)", user.Username, user.Email)
 	if req.Password != "" {
 		description += " (包含密码重置)"
@@ -1019,11 +930,9 @@ func UpdateUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", user)
 }
 
-// DeleteUser 删除用户（管理员）
 func DeleteUser(c *gin.Context) {
 	id := c.Param("id")
 
-	// 验证ID是否有效
 	if id == "" || id == "0" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的用户ID", nil)
 		return
@@ -1163,7 +1072,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 删除未使用的邀请码，禁用已使用的邀请码
 	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count = 0", user.ID).Delete(&models.InviteCode{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete invite codes failed", err, map[string]interface{}{
@@ -1172,7 +1080,6 @@ func DeleteUser(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请码失败", err)
 		return
 	}
-	// 禁用已使用的邀请码
 	if err := tx.Model(&models.InviteCode{}).Where("user_id = ? AND used_count > 0", user.ID).Update("is_active", false).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: disable invite codes failed", err, map[string]interface{}{
@@ -1182,7 +1089,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 14. 删除用户作为邀请人的邀请关系
 	if err := tx.Where("inviter_id = ?", user.ID).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete invite relations as inviter failed", err, map[string]interface{}{
@@ -1192,7 +1098,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 15. 删除用户作为被邀请人的邀请关系
 	if err := tx.Where("invitee_id = ?", user.ID).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete invite relations as invitee failed", err, map[string]interface{}{
@@ -1202,9 +1107,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 16. 删除用户的优惠券使用记录（如果有 CouponUsage 表）
-
-	// 17. 最后删除用户本身
 	if err := tx.Delete(&user).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete user failed", err, map[string]interface{}{
@@ -1214,7 +1116,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 提交事务
 	if err := tx.Commit().Error; err != nil {
 		utils.LogError("DeleteUser: commit transaction failed", err, map[string]interface{}{
 			"user_id": user.ID,
@@ -1223,11 +1124,9 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 记录审计日志
 	utils.CreateAuditLogWithData(c, "delete_user", "user", user.ID,
 		fmt.Sprintf("管理员删除用户: %s (%s)", user.Username, user.Email), userData, nil)
 
-	// 发送账户删除确认邮件（在删除前发送）
 	go func() {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
@@ -1243,7 +1142,6 @@ func DeleteUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "用户及其所有相关数据已成功删除", nil)
 }
 
-// LoginAsUser 管理员以用户身份登录
 func LoginAsUser(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
@@ -1254,7 +1152,6 @@ func LoginAsUser(c *gin.Context) {
 		return
 	}
 
-	// 生成令牌
 	accessToken, err := utils.CreateAccessToken(targetUser.ID, targetUser.Email, targetUser.IsAdmin)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成令牌失败", err)
@@ -1280,7 +1177,6 @@ func LoginAsUser(c *gin.Context) {
 	})
 }
 
-// UpdateUserStatus 更新用户状态
 func UpdateUserStatus(c *gin.Context) {
 	id := c.Param("id")
 
@@ -1303,7 +1199,6 @@ func UpdateUserStatus(c *gin.Context) {
 		return
 	}
 
-	// 优先使用 status 字段，如果没有则使用 is_active
 	if req.Status != "" {
 		switch req.Status {
 		case "active":
@@ -1330,7 +1225,6 @@ func UpdateUserStatus(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "用户状态已更新", user)
 }
 
-// UnlockUserLogin 解锁用户登录
 func UnlockUserLogin(c *gin.Context) {
 	id := c.Param("id")
 
@@ -1341,19 +1235,16 @@ func UnlockUserLogin(c *gin.Context) {
 		return
 	}
 
-	// 清除该用户的所有登录失败记录
 	result := db.Where("username = ? OR username = ?", user.Username, user.Email).
 		Where("success = ?", false).
 		Delete(&models.LoginAttempt{})
 
-	// 获取用户最近登录的IP地址（从登录历史和审计日志中获取）
 	var loginHistories []models.LoginHistory
 	db.Where("user_id = ? AND ip_address IS NOT NULL", user.ID).
 		Order("login_time DESC").
 		Limit(10).
 		Find(&loginHistories)
 
-	// 从审计日志中获取用户相关的IP地址
 	var auditLogs []models.AuditLog
 	db.Where("user_id = ? AND ip_address IS NOT NULL AND action_type LIKE ?",
 		user.ID, "security_login%").
@@ -1361,7 +1252,6 @@ func UnlockUserLogin(c *gin.Context) {
 		Limit(10).
 		Find(&auditLogs)
 
-	// 收集所有相关的IP地址
 	ipSet := make(map[string]bool)
 	for _, history := range loginHistories {
 		if history.IPAddress.Valid && history.IPAddress.String != "" {
@@ -1374,14 +1264,12 @@ func UnlockUserLogin(c *gin.Context) {
 		}
 	}
 
-	// 清除所有相关IP的速率限制
 	ipCount := 0
 	for ip := range ipSet {
 		middleware.ResetLoginAttempt(ip)
 		ipCount++
 	}
 
-	// 确保用户是激活状态
 	user.IsActive = true
 
 	if err := db.Save(&user).Error; err != nil {
@@ -1397,7 +1285,6 @@ func UnlockUserLogin(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, message, nil)
 }
 
-// BatchDeleteUsers 批量删除用户
 func BatchDeleteUsers(c *gin.Context) {
 	var req struct {
 		UserIDs []uint `json:"user_ids" binding:"required"`
@@ -1415,135 +1302,115 @@ func BatchDeleteUsers(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 检查是否包含管理员用户
 	var adminUsers []models.User
 	if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "不能删除管理员用户", nil)
 		return
 	}
 
-	// 开始事务
 	tx := db.Begin()
 
-	// 删除用户的订阅
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Subscription{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅失败", err)
 		return
 	}
 
-	// 删除用户的设备（通过 subscription_id 关联的设备）
 	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id IN ?)", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 
-	// 删除用户直接关联的设备（通过 user_id）
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 
-	// 删除用户的订阅重置记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.SubscriptionReset{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅重置记录失败", err)
 		return
 	}
 
-	// 删除用户的订单
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Order{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订单失败", err)
 		return
 	}
 
-	// 删除用户的支付交易记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.PaymentTransaction{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户支付记录失败", err)
 		return
 	}
 
-	// 删除用户的充值记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.RechargeRecord{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户充值记录失败", err)
 		return
 	}
 
-	// 删除用户的工单回复
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.TicketReply{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户工单回复失败", err)
 		return
 	}
 
-	// 删除用户的工单
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Ticket{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户工单失败", err)
 		return
 	}
 
-	// 删除用户的通知
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Notification{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户通知失败", err)
 		return
 	}
 
-	// 删除用户的活动记录
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.UserActivity{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户活动记录失败", err)
 		return
 	}
 
-	// 删除用户的登录历史
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.LoginHistory{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户登录历史失败", err)
 		return
 	}
 
-	// 删除用户的邀请码（未使用的删除，已使用的禁用）
 	if err := tx.Where("user_id IN ? AND used_count = 0", req.UserIDs).Delete(&models.InviteCode{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请码失败", err)
 		return
 	}
-	// 禁用已使用的邀请码
 	if err := tx.Model(&models.InviteCode{}).Where("user_id IN ? AND used_count > 0", req.UserIDs).Update("is_active", false).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户邀请码失败", err)
 		return
 	}
 
-	// 删除用户作为邀请人的邀请关系
 	if err := tx.Where("inviter_id IN ?", req.UserIDs).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户邀请关系失败", err)
 		return
 	}
 
-	// 删除用户作为被邀请人的邀请关系
 	if err := tx.Where("invitee_id IN ?", req.UserIDs).Delete(&models.InviteRelation{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户被邀请关系失败", err)
 		return
 	}
 
-	// 删除用户
 	if err := tx.Where("id IN ?", req.UserIDs).Delete(&models.User{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户失败", err)
 		return
 	}
 
-	// 提交事务
 	if err := tx.Commit().Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
@@ -1552,7 +1419,6 @@ func BatchDeleteUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)), nil)
 }
 
-// BatchEnableUsers 批量启用用户
 func BatchEnableUsers(c *gin.Context) {
 	var req struct {
 		UserIDs []uint `json:"user_ids" binding:"required"`
@@ -1579,7 +1445,6 @@ func BatchEnableUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected), nil)
 }
 
-// BatchDisableUsers 批量禁用用户
 func BatchDisableUsers(c *gin.Context) {
 	var req struct {
 		UserIDs []uint `json:"user_ids" binding:"required"`
@@ -1597,7 +1462,6 @@ func BatchDisableUsers(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 检查是否包含管理员用户
 	var adminUsers []models.User
 	if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用管理员用户", nil)
@@ -1614,7 +1478,6 @@ func BatchDisableUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected), nil)
 }
 
-// BatchSendSubEmail 批量发送订阅邮件
 func BatchSendSubEmail(c *gin.Context) {
 	var req struct {
 		UserIDs []uint `json:"user_ids" binding:"required"`
@@ -1660,7 +1523,6 @@ func BatchSendSubEmail(c *gin.Context) {
 	})
 }
 
-// BatchSendExpireReminder 批量发送到期提醒
 func BatchSendExpireReminder(c *gin.Context) {
 	var req struct {
 		UserIDs []uint `json:"user_ids" binding:"required"`

@@ -15,9 +15,57 @@ import (
 	"gorm.io/gorm"
 )
 
-// ==================== 公共辅助函数 ====================
+type UpdatePreferencesRequest struct {
+	Theme              string `json:"theme"`
+	Language           string `json:"language"`
+	Timezone           string `json:"timezone"`
+	EmailNotifications *bool  `json:"email_notifications"`
+	SMSNotifications   *bool  `json:"sms_notifications"`
+	PushNotifications  *bool  `json:"push_notifications"`
+}
 
-// getCurrentUserOrError 获取当前用户，如果未登录则返回错误响应
+func UpdatePreferences(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+
+	var req UpdatePreferencesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+
+	db := database.GetDB()
+
+	if req.Theme != "" {
+		user.Theme = req.Theme
+	}
+	if req.Language != "" {
+		user.Language = req.Language
+	}
+	if req.Timezone != "" {
+		user.Timezone = req.Timezone
+	}
+	if req.EmailNotifications != nil {
+		user.EmailNotifications = *req.EmailNotifications
+	}
+	if req.SMSNotifications != nil {
+		user.SMSNotifications = *req.SMSNotifications
+	}
+	if req.PushNotifications != nil {
+		user.PushNotifications = *req.PushNotifications
+	}
+
+	if err := db.Save(&user).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "更新成功", user)
+}
+
 func getCurrentUserOrError(c *gin.Context) (*models.User, bool) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -27,7 +75,6 @@ func getCurrentUserOrError(c *gin.Context) (*models.User, bool) {
 	return user, true
 }
 
-// getUserConfigs 获取用户配置（从 SystemConfig 表）
 func getUserConfigs(db *gorm.DB, userID uint, category string, keys []string) map[string]string {
 	configs := make(map[string]string, len(keys))
 
@@ -35,7 +82,6 @@ func getUserConfigs(db *gorm.DB, userID uint, category string, keys []string) ma
 		return configs
 	}
 
-	// 构建查询条件
 	keyPatterns := make([]string, len(keys))
 	prefix := fmt.Sprintf("user_%d_", userID)
 	for i, key := range keys {
@@ -45,7 +91,6 @@ func getUserConfigs(db *gorm.DB, userID uint, category string, keys []string) ma
 	var dbConfigs []models.SystemConfig
 	db.Where("category = ? AND key IN (?)", category, keyPatterns).Find(&dbConfigs)
 
-	// 提取配置键名（去掉 user_{id}_ 前缀）
 	for _, config := range dbConfigs {
 		key := strings.TrimPrefix(config.Key, prefix)
 		if key != config.Key { // 确保前缀被成功移除
@@ -56,7 +101,6 @@ func getUserConfigs(db *gorm.DB, userID uint, category string, keys []string) ma
 	return configs
 }
 
-// updateUserConfig 更新或创建用户配置
 func updateUserConfig(db *gorm.DB, userID uint, category, key, value string) error {
 	configKey := fmt.Sprintf("user_%d_%s", userID, key)
 	var config models.SystemConfig
@@ -64,7 +108,6 @@ func updateUserConfig(db *gorm.DB, userID uint, category, key, value string) err
 	err := db.Where("key = ? AND category = ?", configKey, category).First(&config).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			// 创建新配置
 			config = models.SystemConfig{
 				Key:      configKey,
 				Category: category,
@@ -75,12 +118,10 @@ func updateUserConfig(db *gorm.DB, userID uint, category, key, value string) err
 		return err
 	}
 
-	// 更新现有配置
 	config.Value = value
 	return db.Save(&config).Error
 }
 
-// buildProfileResponse 构建个人资料响应
 func buildProfileResponse(user *models.User, configs map[string]string) gin.H {
 	displayName := configs["display_name"]
 	if displayName == "" {
@@ -102,9 +143,6 @@ func buildProfileResponse(user *models.User, configs map[string]string) gin.H {
 	}
 }
 
-// ==================== 个人资料相关 ====================
-
-// GetAdminProfile 获取管理员个人资料
 func GetAdminProfile(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -117,7 +155,6 @@ func GetAdminProfile(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", buildProfileResponse(user, configs))
 }
 
-// UpdateAdminProfile 更新管理员个人资料
 func UpdateAdminProfile(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -141,7 +178,6 @@ func UpdateAdminProfile(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 更新用户表中的字段
 	if req.AvatarURL != "" {
 		user.Avatar = database.NullString(req.AvatarURL)
 	} else if req.Avatar != "" {
@@ -160,7 +196,6 @@ func UpdateAdminProfile(c *gin.Context) {
 		return
 	}
 
-	// 更新配置表中的字段
 	configUpdates := map[string]string{
 		"display_name": req.DisplayName,
 		"phone":        req.Phone,
@@ -176,7 +211,6 @@ func UpdateAdminProfile(c *gin.Context) {
 		}
 	}
 
-	// 构建响应（使用更新后的值）
 	responseConfigs := map[string]string{
 		"display_name": req.DisplayName,
 		"phone":        req.Phone,
@@ -186,9 +220,6 @@ func UpdateAdminProfile(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "个人资料更新成功", buildProfileResponse(user, responseConfigs))
 }
 
-// ==================== 登录历史相关 ====================
-
-// GetLoginHistory 获取登录历史
 func GetLoginHistory(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -226,9 +257,6 @@ func GetLoginHistory(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", historyList)
 }
 
-// ==================== 安全设置相关 ====================
-
-// GetSecuritySettings 获取安全设置
 func GetSecuritySettings(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -251,7 +279,6 @@ func GetSecuritySettings(c *gin.Context) {
 		}
 	}
 
-	// 设置默认值
 	if settings["login_notification"] == nil {
 		settings["login_notification"] = true
 	}
@@ -265,7 +292,6 @@ func GetSecuritySettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
-// UpdateAdminSecuritySettings 更新安全设置（管理员个人）
 func UpdateAdminSecuritySettings(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -291,9 +317,6 @@ func UpdateAdminSecuritySettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "安全设置已保存", nil)
 }
 
-// ==================== 通知设置相关 ====================
-
-// GetNotificationSettings 获取通知设置
 func GetNotificationSettings(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -312,7 +335,6 @@ func GetNotificationSettings(c *gin.Context) {
 	})
 }
 
-// UpdateUserNotificationSettings 更新通知设置（用户端）
 func UpdateUserNotificationSettings(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -327,7 +349,6 @@ func UpdateUserNotificationSettings(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 更新用户表中的通知设置
 	if emailNotifications, ok := req["email_notifications"].(bool); ok {
 		user.EmailNotifications = emailNotifications
 	} else if emailEnabled, ok := req["email_enabled"].(bool); ok {
@@ -359,14 +380,10 @@ func UpdateUserNotificationSettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "通知设置已保存", nil)
 }
 
-// UpdateAdminNotificationSettings 更新通知设置（管理员个人）
 func UpdateAdminNotificationSettings(c *gin.Context) {
 	UpdateUserNotificationSettings(c)
 }
 
-// ==================== 用户活动相关 ====================
-
-// GetUserActivities 获取用户活动记录
 func GetUserActivities(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -391,7 +408,6 @@ func GetUserActivities(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", activityList)
 }
 
-// GetSubscriptionResets 获取订阅重置记录
 func GetSubscriptionResets(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -418,7 +434,6 @@ func GetSubscriptionResets(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", resetList)
 }
 
-// GetUserDevices 获取用户设备列表
 func GetUserDevices(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -446,9 +461,6 @@ func GetUserDevices(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", deviceList)
 }
 
-// ==================== 隐私设置相关 ====================
-
-// GetPrivacySettings 获取隐私设置
 func GetPrivacySettings(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -461,7 +473,6 @@ func GetPrivacySettings(c *gin.Context) {
 	})
 }
 
-// UpdatePrivacySettings 更新隐私设置
 func UpdatePrivacySettings(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
