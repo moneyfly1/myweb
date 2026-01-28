@@ -26,63 +26,51 @@ import (
 )
 
 func main() {
-	// 加载配置
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 确保配置已设置
 	if cfg == nil {
 		log.Fatal("配置未正确加载")
 	}
 
-	// 设置 Gin 模式
 	if cfg.Debug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// 初始化数据库
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
 
-	// 自动迁移
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
 
-	// 确保默认管理员存在
 	ensureDefaultAdmin()
 
-	// 初始化默认邮件模板
 	ensureDefaultEmailTemplates()
 
-	// 创建上传目录
 	if err := os.MkdirAll(cfg.UploadDir, 0755); err != nil {
 		log.Printf("创建上传目录失败: %v", err)
 	}
 
-	// 创建日志目录
 	logDir := filepath.Join(cfg.UploadDir, "logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Printf("创建日志目录失败: %v", err)
 	}
 
-	// 初始化日志
 	if err := utils.InitLogger(logDir); err != nil {
 		log.Printf("初始化日志失败: %v", err)
 	}
 
-	// 初始化 GeoIP（如果数据库文件存在）
 	geoipPath := os.Getenv("GEOIP_DB_PATH")
 	if geoipPath == "" {
 		geoipPath = "./GeoLite2-City.mmdb"
 	}
 
-	// 如果文件不存在，尝试自动下载
 	if _, err := os.Stat(geoipPath); os.IsNotExist(err) {
 		log.Println("GeoIP 数据库文件不存在，尝试自动下载...")
 		if err := downloadGeoIPDatabase(geoipPath); err != nil {
@@ -103,17 +91,14 @@ func main() {
 	}
 	defer geoip.Close()
 
-	// 启动定时任务（如果未禁用）
 	if !cfg.DisableScheduleTasks {
 		sched := scheduler.NewScheduler()
 		sched.Start()
 		log.Println("定时任务已启动")
 	}
 
-	// 创建路由
 	r := router.SetupRouter()
 
-	// 启动服务器
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	log.Printf("服务器启动在 %s", addr)
 
@@ -122,18 +107,15 @@ func main() {
 	}
 }
 
-// downloadGeoIPDatabase 下载 GeoIP 数据库
 func downloadGeoIPDatabase(filePath string) error {
 	url := "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
 
-	// 创建文件
 	out, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("创建文件失败: %w", err)
 	}
 	defer out.Close()
 
-	// 下载文件
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("下载失败: %w", err)
@@ -144,7 +126,6 @@ func downloadGeoIPDatabase(filePath string) error {
 		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
 	}
 
-	// 复制内容
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return fmt.Errorf("保存文件失败: %w", err)
@@ -153,8 +134,6 @@ func downloadGeoIPDatabase(filePath string) error {
 	return nil
 }
 
-// ensureDefaultAdmin 创建默认管理员账号（仅在首次启动时创建）
-// 如果管理员已存在，则不进行任何操作，避免覆盖现有密码
 func ensureDefaultAdmin() {
 	db := database.GetDB()
 	if db == nil {
@@ -165,11 +144,9 @@ func ensureDefaultAdmin() {
 	username := "admin"
 	email := "admin@example.com"
 
-	// 检查管理员是否已存在
 	var user models.User
 	err := db.Where("username = ? OR email = ?", username, email).First(&user).Error
 	if err == nil {
-		// 管理员已存在，不进行任何操作
 		log.Printf("管理员账号已存在: %s (%s)", username, email)
 		return
 	}
@@ -179,7 +156,6 @@ func ensureDefaultAdmin() {
 		return
 	}
 
-	// 管理员不存在，自动生成随机密码
 	password := generateRandomPassword()
 	hashed, err := auth.HashPassword(password)
 	if err != nil {
@@ -187,7 +163,6 @@ func ensureDefaultAdmin() {
 		return
 	}
 
-	// 创建管理员账号
 	user = models.User{
 		Username:   username,
 		Email:      email,
@@ -202,7 +177,6 @@ func ensureDefaultAdmin() {
 		return
 	}
 
-	// 输出管理员账号信息（仅首次创建时）
 	log.Println("========================================")
 	log.Printf("管理员账号已自动创建")
 	log.Printf("用户名: %s", username)
@@ -214,8 +188,6 @@ func ensureDefaultAdmin() {
 	log.Println("========================================")
 }
 
-// generateRandomPassword 生成安全的随机密码
-// 密码长度16位，包含大小写字母、数字和特殊字符
 func generateRandomPassword() string {
 	const (
 		lowercase = "abcdefghijklmnopqrstuvwxyz"
@@ -225,22 +197,17 @@ func generateRandomPassword() string {
 		allChars  = lowercase + uppercase + digits + special
 	)
 
-	// 确保至少包含每种类型的字符
 	password := make([]byte, 16)
 
-	// 使用 crypto/rand 生成安全的随机数
-	// 确保包含至少一个每种类型的字符
 	password[0] = lowercase[randomInt(len(lowercase))]
 	password[1] = uppercase[randomInt(len(uppercase))]
 	password[2] = digits[randomInt(len(digits))]
 	password[3] = special[randomInt(len(special))]
 
-	// 填充剩余字符
 	for i := 4; i < 16; i++ {
 		password[i] = allChars[randomInt(len(allChars))]
 	}
 
-	// 打乱顺序
 	for i := len(password) - 1; i > 0; i-- {
 		j := randomInt(i + 1)
 		password[i], password[j] = password[j], password[i]
@@ -249,17 +216,14 @@ func generateRandomPassword() string {
 	return string(password)
 }
 
-// randomInt 生成 0 到 max-1 之间的随机整数
 func randomInt(max int) int {
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
 	if err != nil {
-		// 如果生成失败，使用时间戳作为后备（不推荐，但比崩溃好）
 		return int(time.Now().UnixNano()) % max
 	}
 	return int(n.Int64())
 }
 
-// ensureDefaultEmailTemplates 确保默认邮件模板存在
 func ensureDefaultEmailTemplates() {
 	db := database.GetDB()
 	if db == nil {

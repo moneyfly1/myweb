@@ -14,14 +14,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// GetUnreadTicketRepliesCount 获取未读工单回复总数（用户和管理员通用）
 func GetUnreadTicketRepliesCount(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
 
-	// 检查是否为管理员
 	isAdmin := false
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
@@ -35,22 +33,18 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 	var totalUnread int64 = 0
 
 	if !isAdmin {
-		// 用户端：统计未读的管理员回复
 		db.Model(&models.TicketReply{}).
 			Joins("JOIN tickets ON ticket_replies.ticket_id = tickets.id").
 			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_replies.is_read = ? OR ticket_replies.read_by != ? OR ticket_replies.read_by IS NULL)",
 				user.ID, "true", false, user.ID).
 			Count(&totalUnread)
 	} else {
-		// 管理员端：统计未读的用户回复 + 新工单
-		// 1. 统计未读的用户回复
 		var unreadReplies int64
 		db.Model(&models.TicketReply{}).
 			Where("is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
 				"true", false, user.ID).
 			Count(&unreadReplies)
 
-		// 2. 统计管理员未查看的新工单
 		var newTickets int64
 		db.Model(&models.Ticket{}).
 			Where("id NOT IN (SELECT ticket_id FROM ticket_reads WHERE user_id = ?)", user.ID).
@@ -64,7 +58,6 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 	})
 }
 
-// CreateTicket 创建工单
 func CreateTicket(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -92,14 +85,11 @@ func CreateTicket(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 生成工单号
 	ticketNo := utils.GenerateTicketNo(user.ID)
 
-	// 清理输入，防止XSS
 	title := utils.SanitizeInput(req.Title)
 	content := utils.SanitizeInput(req.Content)
 
-	// 限制长度
 	if len(title) > 200 {
 		title = title[:200]
 	}
@@ -122,21 +112,18 @@ func CreateTicket(c *gin.Context) {
 		return
 	}
 
-	// 记录创建工单审计日志
 	utils.SetResponseStatus(c, http.StatusCreated)
 	utils.CreateAuditLogSimple(c, "create_ticket", "ticket", ticket.ID, fmt.Sprintf("创建工单: %s", ticket.Title))
 
 	utils.SuccessResponse(c, http.StatusCreated, "", ticket)
 }
 
-// GetTickets 获取工单列表
 func GetTickets(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
 
-	// 检查是否为管理员
 	isAdmin := false
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
@@ -149,12 +136,10 @@ func GetTickets(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Ticket{}).Preload("User").Preload("Assignee")
 
-	// 如果不是管理员，只查询当前用户的工单
 	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
 	}
 
-	// 筛选条件
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -165,16 +150,13 @@ func GetTickets(c *gin.Context) {
 		query = query.Where("priority = ?", priority)
 	}
 
-	// 分页参数
 	pagination := utils.ParsePagination(c)
 	page := pagination.Page
 	size := pagination.Size
 
-	// 计算总数
 	var total int64
 	query.Count(&total)
 
-	// 查询工单列表
 	var tickets []models.Ticket
 	offset := (page - 1) * size
 	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&tickets).Error; err != nil {
@@ -182,13 +164,11 @@ func GetTickets(c *gin.Context) {
 		return
 	}
 
-	// 批量查询优化：避免 N+1 查询问题
 	ticketIDs := make([]uint, len(tickets))
 	for i, t := range tickets {
 		ticketIDs[i] = t.ID
 	}
 
-	// 批量查询所有工单的回复统计
 	type ReplyStat struct {
 		TicketID uint
 		Count    int64
@@ -197,16 +177,13 @@ func GetTickets(c *gin.Context) {
 	var unreadRepliesStats []ReplyStat
 
 	if len(ticketIDs) > 0 {
-		// 批量查询总回复数量
 		db.Model(&models.TicketReply{}).
 			Select("ticket_id, COUNT(*) as count").
 			Where("ticket_id IN ?", ticketIDs).
 			Group("ticket_id").
 			Scan(&totalRepliesStats)
 
-		// 批量查询未读回复数量
 		if !isAdmin {
-			// 用户端：统计未读的管理员回复
 			db.Model(&models.TicketReply{}).
 				Select("ticket_id, COUNT(*) as count").
 				Where("ticket_id IN ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
@@ -214,7 +191,6 @@ func GetTickets(c *gin.Context) {
 				Group("ticket_id").
 				Scan(&unreadRepliesStats)
 		} else {
-			// 管理员端：统计未读的用户回复
 			db.Model(&models.TicketReply{}).
 				Select("ticket_id, COUNT(*) as count").
 				Where("ticket_id IN ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
@@ -224,7 +200,6 @@ func GetTickets(c *gin.Context) {
 		}
 	}
 
-	// 批量查询管理员查看记录（仅管理员端需要）
 	var ticketReads []models.TicketRead
 	ticketReadMap := make(map[uint]bool)
 	if isAdmin && len(ticketIDs) > 0 {
@@ -234,7 +209,6 @@ func GetTickets(c *gin.Context) {
 		}
 	}
 
-	// 构建统计映射
 	totalRepliesMap := make(map[uint]int64)
 	unreadRepliesMap := make(map[uint]int64)
 	for _, stat := range totalRepliesStats {
@@ -244,7 +218,6 @@ func GetTickets(c *gin.Context) {
 		unreadRepliesMap[stat.TicketID] = stat.Count
 	}
 
-	// 格式化工单数据，包含未读回复数量
 	ticketList := make([]gin.H, 0)
 	for _, ticket := range tickets {
 		unreadRepliesCount := unreadRepliesMap[ticket.ID]
@@ -254,7 +227,6 @@ func GetTickets(c *gin.Context) {
 		if !isAdmin {
 			hasUnread = unreadRepliesCount > 0
 		} else {
-			// 管理员端：检查是否有新工单（未查看过）或未读回复
 			hasUnread = !ticketReadMap[ticket.ID] || unreadRepliesCount > 0
 		}
 
@@ -282,7 +254,6 @@ func GetTickets(c *gin.Context) {
 	})
 }
 
-// GetTicket 获取单个工单
 func GetTicket(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := getCurrentUserOrError(c)
@@ -290,7 +261,6 @@ func GetTicket(c *gin.Context) {
 		return
 	}
 
-	// 检查是否为管理员
 	isAdmin := false
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
@@ -322,7 +292,6 @@ func GetTicket(c *gin.Context) {
 		return
 	}
 
-	// 构建响应数据，确保包含 replies
 	responseData := gin.H{
 		"id":         ticket.ID,
 		"ticket_no":  ticket.TicketNo,
@@ -336,7 +305,6 @@ func GetTicket(c *gin.Context) {
 		"updated_at": ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 
-	// 添加可选字段
 	if ticket.AssignedTo != nil {
 		responseData["assigned_to"] = *ticket.AssignedTo
 	}
@@ -356,7 +324,6 @@ func GetTicket(c *gin.Context) {
 		responseData["closed_at"] = ticket.ClosedAt.Format("2006-01-02 15:04:05")
 	}
 
-	// 格式化回复数据，突出显示管理员回复，并标记未读状态
 	replies := make([]gin.H, 0)
 	for _, reply := range ticket.Replies {
 		replyData := gin.H{
@@ -367,18 +334,14 @@ func GetTicket(c *gin.Context) {
 			"is_admin":   reply.IsAdmin,
 			"created_at": reply.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
-		// 标记是否为管理员回复，用于前端样式区分
 		if reply.IsAdmin == "true" {
 			replyData["is_admin_reply"] = true
 		}
 
-		// 判断是否为未读（对于用户：管理员回复未读；对于管理员：用户回复未读）
 		isUnread := false
 		if !isAdmin && reply.IsAdmin == "true" {
-			// 用户查看：管理员回复未读
 			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
 		} else if isAdmin && reply.IsAdmin != "true" {
-			// 管理员查看：用户回复未读
 			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
 		}
 		replyData["is_unread"] = isUnread
@@ -387,7 +350,6 @@ func GetTicket(c *gin.Context) {
 	}
 	responseData["replies"] = replies
 
-	// 格式化附件数据
 	attachments := make([]gin.H, 0)
 	for _, attachment := range ticket.Attachments {
 		att := gin.H{
@@ -411,7 +373,6 @@ func GetTicket(c *gin.Context) {
 	}
 	responseData["attachments"] = attachments
 
-	// 添加用户信息（如果已预加载）
 	if ticket.User.ID > 0 {
 		responseData["user"] = gin.H{
 			"id":       ticket.User.ID,
@@ -420,7 +381,6 @@ func GetTicket(c *gin.Context) {
 		}
 	}
 
-	// 添加分配人信息（如果已预加载）
 	if ticket.Assignee.ID > 0 {
 		responseData["assignee"] = gin.H{
 			"id":       ticket.Assignee.ID,
@@ -429,17 +389,14 @@ func GetTicket(c *gin.Context) {
 		}
 	}
 
-	// 标记回复为已读：用户查看时标记管理员回复为已读，管理员查看时标记用户回复为已读
 	nowTime := utils.GetBeijingTime()
 	userID := user.ID
 	for i := range ticket.Replies {
 		reply := &ticket.Replies[i]
 		shouldMarkAsRead := false
 		if !isAdmin && reply.IsAdmin == "true" {
-			// 用户查看：标记管理员回复为已读
 			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
 		} else if isAdmin && reply.IsAdmin != "true" {
-			// 管理员查看：标记用户回复为已读
 			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
 		}
 
@@ -451,7 +408,6 @@ func GetTicket(c *gin.Context) {
 		}
 	}
 
-	// 记录工单查看时间（用于统计）
 	var ticketRead models.TicketRead
 	err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, user.ID).First(&ticketRead).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -469,7 +425,6 @@ func GetTicket(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
-// ReplyTicket 回复工单
 func ReplyTicket(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := getCurrentUserOrError(c)
@@ -488,11 +443,9 @@ func ReplyTicket(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 验证工单
 	var ticket models.Ticket
 	query := db.Where("id = ?", id)
 
-	// 检查是否为管理员
 	isAdmin := false
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
@@ -502,7 +455,6 @@ func ReplyTicket(c *gin.Context) {
 		}
 	}
 
-	// 如果不是管理员，只能回复自己的工单
 	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
 	}
@@ -516,7 +468,6 @@ func ReplyTicket(c *gin.Context) {
 		return
 	}
 
-	// 创建回复（默认未读）
 	reply := models.TicketReply{
 		TicketID: ticket.ID,
 		UserID:   user.ID,
@@ -530,7 +481,6 @@ func ReplyTicket(c *gin.Context) {
 		return
 	}
 
-	// 更新工单状态
 	if ticket.Status == "pending" {
 		ticket.Status = "processing"
 		db.Save(&ticket)
@@ -539,7 +489,6 @@ func ReplyTicket(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "", reply)
 }
 
-// UpdateTicketStatus 更新工单状态（管理员）
 func UpdateTicketStatus(c *gin.Context) {
 	id := c.Param("id")
 
@@ -590,7 +539,6 @@ func UpdateTicketStatus(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", ticket)
 }
 
-// CloseTicket 用户关闭自己的工单
 func CloseTicket(c *gin.Context) {
 	id := c.Param("id")
 	user, ok := getCurrentUserOrError(c)
@@ -600,8 +548,7 @@ func CloseTicket(c *gin.Context) {
 
 	db := database.GetDB()
 	var ticket models.Ticket
-	
-	// 用户只能关闭自己的工单
+
 	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&ticket).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			utils.ErrorResponse(c, http.StatusNotFound, "工单不存在或无权限", err)
@@ -611,13 +558,11 @@ func CloseTicket(c *gin.Context) {
 		return
 	}
 
-	// 检查工单状态，只有非关闭状态的工单才能关闭
 	if ticket.Status == "closed" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "工单已关闭", nil)
 		return
 	}
 
-	// 更新工单状态为关闭
 	ticket.Status = "closed"
 	now := time.Now()
 	ticket.ClosedAt = &now
@@ -627,7 +572,6 @@ func CloseTicket(c *gin.Context) {
 		return
 	}
 
-	// 记录关闭工单审计日志
 	utils.CreateAuditLogSimple(c, "close_ticket", "ticket", ticket.ID, fmt.Sprintf("关闭工单: %s", ticket.Title))
 
 	utils.SuccessResponse(c, http.StatusOK, "工单已关闭", ticket)

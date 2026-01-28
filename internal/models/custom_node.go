@@ -14,8 +14,8 @@ type CustomNode struct {
 	Config           string     `gorm:"type:text" json:"config"`
 	Status           string     `gorm:"type:varchar(20);default:inactive" json:"status"`
 	IsActive         bool       `gorm:"default:true" json:"is_active"`
-	Latency          int        `gorm:"default:0" json:"latency"`           // 延迟（毫秒）
-	LastTest         *time.Time `json:"last_test,omitempty"`                // 最后测试时间
+	Latency          int        `gorm:"default:0" json:"latency"` // 延迟（毫秒）
+	LastTest         *time.Time `json:"last_test,omitempty"`      // 最后测试时间
 	ExpireTime       *time.Time `json:"expire_time,omitempty"`
 	FollowUserExpire bool       `gorm:"default:false" json:"follow_user_expire"`
 	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`

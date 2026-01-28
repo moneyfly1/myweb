@@ -136,7 +136,6 @@ func PaymentNotify(c *gin.Context) {
 				}
 			}
 		} else if strings.Contains(contentType, "multipart/form-data") {
-			// 处理 multipart/form-data 格式（易支付可能使用这种格式）
 			if err := c.Request.ParseMultipartForm(32 << 20); err == nil { // 32MB max
 				if c.Request.MultipartForm != nil && c.Request.MultipartForm.Value != nil {
 					for k, v := range c.Request.MultipartForm.Value {
@@ -177,11 +176,9 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 记录回调请求详情
 	utils.LogInfo("PaymentNotify: 收到回调请求 - payment_type=%s, method=%s, content_type=%s, params_count=%d, url=%s, remote_addr=%s",
 		paymentType, c.Request.Method, c.Request.Header.Get("Content-Type"), len(params), c.Request.URL.String(), c.ClientIP())
 
-	// 记录所有回调参数（敏感信息除外）
 	safeParams := make(map[string]string)
 	for k, v := range params {
 		if k != "sign" && k != "rsa_sign" {
@@ -192,7 +189,6 @@ func PaymentNotify(c *gin.Context) {
 	}
 	utils.LogInfo("PaymentNotify: 回调参数 - %+v", safeParams)
 
-	// 对于易支付，需要查找统一的yipay配置
 	var paymentConfig models.PaymentConfig
 	queryPayType := paymentType
 	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
@@ -421,7 +417,6 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 
-		// 记录充值回调成功日志
 		utils.LogInfo("PaymentNotify: 充值回调处理成功 - order_no=%s, user_id=%d, amount=%.2f, payment_type=%s",
 			orderNo, recharge.UserID, recharge.Amount, paymentType)
 
@@ -477,7 +472,6 @@ func PaymentNotify(c *gin.Context) {
 
 	if order.Status == "paid" {
 		utils.LogInfo("PaymentNotify: order already paid, ensuring subscription is activated - order_no=%s", orderNo)
-		// 即使订单已标记为paid，也确保订阅已正确开通（防止处理失败的情况）
 		go func(targetOrder models.Order) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -487,10 +481,8 @@ func PaymentNotify(c *gin.Context) {
 				}
 			}()
 
-			// 检查订阅是否已正确开通
 			var subscription models.Subscription
 			if err := db.Where("user_id = ?", targetOrder.UserID).First(&subscription).Error; err != nil {
-				// 订阅不存在，重新处理订单以确保开通
 				utils.LogInfo("PaymentNotify: subscription not found, reprocessing order to activate - order_no=%s", targetOrder.OrderNo)
 				orderService := orderServicePkg.NewOrderService()
 				if _, err := orderService.ProcessPaidOrder(&targetOrder); err != nil {
@@ -501,7 +493,6 @@ func PaymentNotify(c *gin.Context) {
 					utils.LogInfo("PaymentNotify: subscription activated successfully - order_no=%s", targetOrder.OrderNo)
 				}
 			} else {
-				// 订阅存在，发送通知即可
 				utils.LogInfo("PaymentNotify: subscription already exists, sending notifications - order_no=%s", targetOrder.OrderNo)
 			}
 

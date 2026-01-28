@@ -24,43 +24,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 加载配置
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("配置加载失败: %v", err)
 	}
 
-	// 确保配置已设置
 	if cfg == nil {
 		log.Fatal("配置未正确加载")
 	}
 
-	// 初始化数据库
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
 
 	db := database.GetDB()
 
-	// 查找管理员账号
 	var user models.User
 	err = db.Where("username = ? OR email = ?", "admin", "admin@example.com").First(&user).Error
 	if err != nil {
 		log.Fatalf("未找到管理员账号: %v\n请先创建管理员账号", err)
 	}
 
-	// 生成新密码哈希
 	hashed, err := auth.HashPassword(newPassword)
 	if err != nil {
 		log.Fatalf("生成密码哈希失败: %v", err)
 	}
 
-	// 更新密码
 	if err := db.Model(&user).Update("password", hashed).Error; err != nil {
 		log.Fatalf("更新密码失败: %v", err)
 	}
 
-	// 确保管理员属性正确
 	updates := map[string]interface{}{
 		"is_admin":    true,
 		"is_verified": true,

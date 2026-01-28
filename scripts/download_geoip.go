@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-	// 获取目标目录（默认为当前目录）
 	geoipDir := "."
 	if len(os.Args) > 1 {
 		geoipDir = os.Args[1]
@@ -23,21 +22,17 @@ func main() {
 	fmt.Println("==========================================")
 	fmt.Println()
 
-	// 检查目录是否存在
 	if err := os.MkdirAll(geoipDir, 0755); err != nil {
 		fmt.Printf("❌ 创建目录失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 检查文件是否已存在
 	if _, err := os.Stat(geoipFile); err == nil {
 		fmt.Printf("⚠️  GeoIP 数据库文件已存在: %s\n", geoipFile)
-		// 构建模式（非交互模式），跳过下载
 		if os.Getenv("CI") != "" || os.Getenv("BUILD_MODE") != "" {
 			fmt.Println("构建模式：跳过下载（文件已存在）")
 			os.Exit(0)
 		}
-		// 交互模式：询问是否覆盖
 		fmt.Print("是否覆盖? (y/N): ")
 		var response string
 		fmt.Scanln(&response)
@@ -53,13 +48,11 @@ func main() {
 	fmt.Printf("保存路径: %s\n", geoipFile)
 	fmt.Println()
 
-	// 下载文件
 	if err := downloadFile(geoipURL, geoipFile); err != nil {
 		fmt.Printf("❌ 下载失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 检查文件大小
 	if info, err := os.Stat(geoipFile); err == nil {
 		size := float64(info.Size())
 		var sizeStr string
@@ -82,16 +75,13 @@ func main() {
 	}
 }
 
-// downloadFile 下载文件
 func downloadFile(url, filePath string) error {
-	// 创建文件
 	out, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("创建文件失败: %w", err)
 	}
 	defer out.Close()
 
-	// 下载文件
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("下载失败: %w", err)
@@ -102,10 +92,8 @@ func downloadFile(url, filePath string) error {
 		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
 	}
 
-	// 显示进度（简单版本）
 	fmt.Print("下载中... ")
 
-	// 复制内容
 	written, err := io.Copy(out, resp.Body)
 	if err != nil {
 		return fmt.Errorf("保存文件失败: %w", err)
@@ -114,4 +102,3 @@ func downloadFile(url, filePath string) error {
 	fmt.Printf("✅ 已下载 %d 字节\n", written)
 	return nil
 }
-

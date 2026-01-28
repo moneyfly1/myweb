@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// SystemConfig 系统配置模型
 type SystemConfig struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Key         string    `gorm:"type:varchar(100);uniqueIndex:idx_key_category;not null" json:"key"`
@@ -19,12 +18,10 @@ type SystemConfig struct {
 	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// TableName 指定表名
 func (SystemConfig) TableName() string {
 	return "system_configs"
 }
 
-// Announcement 公告模型
 type Announcement struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	Title       string     `gorm:"type:varchar(200);not null" json:"title"`
@@ -40,12 +37,10 @@ type Announcement struct {
 	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// TableName 指定表名
 func (Announcement) TableName() string {
 	return "announcements"
 }
 
-// ThemeConfig 主题配置模型
 type ThemeConfig struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	Name         string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
@@ -58,7 +53,6 @@ type ThemeConfig struct {
 	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// TableName 指定表名
 func (ThemeConfig) TableName() string {
 	return "theme_configs"
 }

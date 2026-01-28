@@ -17,13 +17,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetCustomNodes 获取专线节点列表
 func GetCustomNodes(c *gin.Context) {
 	db := database.GetDB()
 	var nodes []models.CustomNode
 	query := db.Model(&models.CustomNode{})
 
-	// 筛选条件
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -35,17 +33,14 @@ func GetCustomNodes(c *gin.Context) {
 		}
 	}
 	if search := c.Query("search"); search != "" {
-		// 1. 查找匹配的用户ID
 		var userIDs []uint
 		db.Model(&models.User{}).Where("username LIKE ? OR email LIKE ?", "%"+search+"%", "%"+search+"%").Pluck("id", &userIDs)
 
-		// 2. 查找这些用户拥有的专线节点ID
 		var userNodeIDs []uint
 		if len(userIDs) > 0 {
 			db.Model(&models.UserCustomNode{}).Where("user_id IN ?", userIDs).Pluck("custom_node_id", &userNodeIDs)
 		}
 
-		// 3. 构建查询：名称/域名匹配 OR 属于匹配的用户
 		searchPattern := "%" + search + "%"
 		if len(userNodeIDs) > 0 {
 			query = query.Where("name LIKE ? OR display_name LIKE ? OR domain LIKE ? OR id IN ?",
@@ -56,7 +51,6 @@ func GetCustomNodes(c *gin.Context) {
 		}
 	}
 
-	// 分页
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 	if page < 1 {
@@ -83,7 +77,6 @@ func GetCustomNodes(c *gin.Context) {
 	})
 }
 
-// GetCustomNodeUsers 获取节点的已分配用户列表
 func GetCustomNodeUsers(c *gin.Context) {
 	nodeID := c.Param("id")
 	db := database.GetDB()
@@ -100,7 +93,6 @@ func GetCustomNodeUsers(c *gin.Context) {
 		return
 	}
 
-	// 获取用户详细信息
 	users := make([]gin.H, 0)
 	for _, un := range userNodes {
 		var user models.User
@@ -118,7 +110,6 @@ func GetCustomNodeUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", users)
 }
 
-// CreateCustomNode 创建专线节点
 func CreateCustomNode(c *gin.Context) {
 	var req struct {
 		NodeLink         string     `json:"node_link"`
@@ -140,7 +131,6 @@ func CreateCustomNode(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 如果提供了节点链接，解析链接
 	if req.NodeLink != "" {
 		parsed, err := config_update.ParseNodeLink(strings.TrimSpace(req.NodeLink))
 		if err != nil {
@@ -148,11 +138,9 @@ func CreateCustomNode(c *gin.Context) {
 			return
 		}
 
-		// 构建节点配置
 		configJSON, _ := json.Marshal(parsed)
 		configStr := string(configJSON)
 
-		// 构建节点名称
 		name := req.Name
 		if name == "" {
 			name = parsed.Name
@@ -161,7 +149,6 @@ func CreateCustomNode(c *gin.Context) {
 			}
 		}
 
-		// 构建 CustomNode
 		customNode := models.CustomNode{
 			Name:             name,
 			DisplayName:      req.DisplayName,
@@ -195,7 +182,6 @@ func CreateCustomNode(c *gin.Context) {
 		return
 	}
 
-	// 手动创建模式
 	if req.Name == "" || req.Protocol == "" || req.Config == "" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "节点名称、协议和配置为必填项", nil)
 		return
@@ -222,7 +208,6 @@ func CreateCustomNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "", customNode)
 }
 
-// ImportCustomNodeLinks 批量导入节点链接
 func ImportCustomNodeLinks(c *gin.Context) {
 	var req struct {
 		Links []string `json:"links" binding:"required"`
@@ -286,7 +271,6 @@ func ImportCustomNodeLinks(c *gin.Context) {
 	})
 }
 
-// UpdateCustomNode 更新专线节点
 func UpdateCustomNode(c *gin.Context) {
 	nodeID := c.Param("id")
 	db := database.GetDB()
@@ -315,7 +299,6 @@ func UpdateCustomNode(c *gin.Context) {
 		return
 	}
 
-	// 更新字段
 	if req.Name != "" {
 		node.Name = req.Name
 	}
@@ -355,7 +338,6 @@ func UpdateCustomNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", node)
 }
 
-// DeleteCustomNode 删除专线节点
 func DeleteCustomNode(c *gin.Context) {
 	nodeID := c.Param("id")
 	db := database.GetDB()
@@ -366,10 +348,8 @@ func DeleteCustomNode(c *gin.Context) {
 		return
 	}
 
-	// 删除用户关联
 	db.Where("custom_node_id = ?", nodeID).Delete(&models.UserCustomNode{})
 
-	// 删除节点
 	if err := db.Delete(&node).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除失败: "+err.Error(), err)
 		return
@@ -378,7 +358,6 @@ func DeleteCustomNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
-// BatchDeleteCustomNodes 批量删除专线节点
 func BatchDeleteCustomNodes(c *gin.Context) {
 	var req struct {
 		NodeIDs []uint `json:"node_ids" binding:"required"`
@@ -391,10 +370,8 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 删除用户关联
 	db.Where("custom_node_id IN ?", req.NodeIDs).Delete(&models.UserCustomNode{})
 
-	// 删除节点
 	if err := db.Where("id IN ?", req.NodeIDs).Delete(&models.CustomNode{}).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败: "+err.Error(), err)
 		return
@@ -403,7 +380,6 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", len(req.NodeIDs)), nil)
 }
 
-// BatchAssignCustomNodes 批量分配专线节点给用户
 func BatchAssignCustomNodes(c *gin.Context) {
 	var req struct {
 		NodeIDs          []uint     `json:"node_ids" binding:"required"`
@@ -419,7 +395,6 @@ func BatchAssignCustomNodes(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 验证节点存在
 	var nodeCount int64
 	db.Model(&models.CustomNode{}).Where("id IN ?", req.NodeIDs).Count(&nodeCount)
 	if nodeCount != int64(len(req.NodeIDs)) {
@@ -427,7 +402,6 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		return
 	}
 
-	// 验证用户存在
 	var userCount int64
 	db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Count(&userCount)
 	if userCount != int64(len(req.UserIDs)) {
@@ -435,17 +409,14 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		return
 	}
 
-	// 分配节点
 	assignedCount := 0
 	for _, userID := range req.UserIDs {
 		for _, nodeID := range req.NodeIDs {
-			// 检查是否已分配
 			var existing models.UserCustomNode
 			if err := db.Where("user_id = ? AND custom_node_id = ?", userID, nodeID).First(&existing).Error; err == nil {
 				continue // 已存在，跳过
 			}
 
-			// 创建分配记录
 			userNode := models.UserCustomNode{
 				UserID:       userID,
 				CustomNodeID: nodeID,
@@ -454,7 +425,6 @@ func BatchAssignCustomNodes(c *gin.Context) {
 				assignedCount++
 			}
 
-			// 更新用户订阅类型和到期时间
 			var user models.User
 			if err := db.First(&user, userID).Error; err == nil {
 				if req.SubscriptionType != "" {
@@ -471,7 +441,6 @@ func BatchAssignCustomNodes(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功分配 %d 个节点关系", assignedCount), nil)
 }
 
-// TestCustomNode 测试专线节点
 func TestCustomNode(c *gin.Context) {
 	nodeID := c.Param("id")
 	db := database.GetDB()
@@ -482,7 +451,6 @@ func TestCustomNode(c *gin.Context) {
 		return
 	}
 
-	// 简单的测试逻辑：解析配置并检查基本字段
 	var config models.NodeConfig
 	if err := json.Unmarshal([]byte(node.Config), &config); err != nil {
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
@@ -493,7 +461,6 @@ func TestCustomNode(c *gin.Context) {
 		return
 	}
 
-	// 检查基本字段
 	if config.Server == "" {
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 			"status":  "error",
@@ -503,7 +470,6 @@ func TestCustomNode(c *gin.Context) {
 		return
 	}
 
-	// 更新节点状态为 active（简单测试通过）
 	node.Status = "active"
 	db.Save(&node)
 
@@ -513,7 +479,6 @@ func TestCustomNode(c *gin.Context) {
 	})
 }
 
-// BatchTestCustomNodes 批量测试专线节点
 func BatchTestCustomNodes(c *gin.Context) {
 	var req struct {
 		NodeIDs []uint `json:"node_ids" binding:"required"`
@@ -544,7 +509,6 @@ func BatchTestCustomNodes(c *gin.Context) {
 			continue
 		}
 
-		// 解析配置并测试
 		var config models.NodeConfig
 		if err := json.Unmarshal([]byte(node.Config), &config); err != nil {
 			results = append(results, gin.H{
@@ -566,7 +530,6 @@ func BatchTestCustomNodes(c *gin.Context) {
 			continue
 		}
 
-		// 更新节点状态
 		node.Status = "active"
 		db.Save(&node)
 
@@ -584,7 +547,6 @@ func BatchTestCustomNodes(c *gin.Context) {
 	})
 }
 
-// GetCustomNodeLink 获取节点订阅链接
 func GetCustomNodeLink(c *gin.Context) {
 	nodeID := c.Param("id")
 	db := database.GetDB()
@@ -595,28 +557,21 @@ func GetCustomNodeLink(c *gin.Context) {
 		return
 	}
 
-	// 解析配置并转换为节点链接格式
 	var link string
 	if node.Config != "" {
-		// 解析 JSON 配置为 ProxyNode（因为存储时使用的是 ProxyNode 的 JSON 格式）
 		var proxyNode config_update.ProxyNode
 		if err := json.Unmarshal([]byte(node.Config), &proxyNode); err == nil {
-			// 如果 DisplayName 不为空，使用 DisplayName 作为节点名称
 			if node.DisplayName != "" {
 				proxyNode.Name = node.DisplayName
 			} else if proxyNode.Name == "" {
-				// 如果都没有，使用节点的 Name
 				proxyNode.Name = node.Name
 			}
 
-			// 使用 ConfigUpdateService 转换为链接格式
 			service := config_update.NewConfigUpdateService()
 			link = service.NodeToLink(&proxyNode)
 		} else {
-			// 如果解析失败，尝试解析为 NodeConfig（兼容旧格式）
 			var nodeConfig models.NodeConfig
 			if err2 := json.Unmarshal([]byte(node.Config), &nodeConfig); err2 == nil {
-				// 转换为 ProxyNode
 				proxyNode := &config_update.ProxyNode{
 					Name:     node.DisplayName,
 					Type:     nodeConfig.Type,
@@ -629,19 +584,16 @@ func GetCustomNodeLink(c *gin.Context) {
 					TLS:      nodeConfig.Security == "tls",
 				}
 
-				// 如果 DisplayName 为空，使用 Name
 				if proxyNode.Name == "" {
 					proxyNode.Name = node.Name
 				}
 
-				// 使用 ConfigUpdateService 转换为链接格式
 				service := config_update.NewConfigUpdateService()
 				link = service.NodeToLink(proxyNode)
 			}
 		}
 	}
 
-	// 如果转换失败，返回错误信息
 	if link == "" {
 		link = "无法生成链接: 配置格式错误或协议不支持"
 	}
@@ -653,7 +605,6 @@ func GetCustomNodeLink(c *gin.Context) {
 	})
 }
 
-// GetUserCustomNodes 获取用户的专线节点列表
 func GetUserCustomNodes(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
@@ -674,7 +625,6 @@ func GetUserCustomNodes(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", nodes)
 }
 
-// AssignCustomNodeToUser 为用户分配专线节点
 func AssignCustomNodeToUser(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
@@ -690,14 +640,12 @@ func AssignCustomNodeToUser(c *gin.Context) {
 		return
 	}
 
-	// 检查是否已分配
 	var existing models.UserCustomNode
 	if err := db.Where("user_id = ? AND custom_node_id = ?", userID, req.CustomNodeID).First(&existing).Error; err == nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "节点已分配给该用户", nil)
 		return
 	}
 
-	// 创建分配记录
 	userNode := models.UserCustomNode{
 		UserID:       parseUint(userID),
 		CustomNodeID: req.CustomNodeID,
@@ -708,7 +656,6 @@ func AssignCustomNodeToUser(c *gin.Context) {
 		return
 	}
 
-	// 更新用户订阅类型和到期时间
 	var user models.User
 	if err := db.First(&user, userID).Error; err == nil {
 		if req.SubscriptionType != "" {
@@ -723,7 +670,6 @@ func AssignCustomNodeToUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "分配成功", userNode)
 }
 
-// UnassignCustomNodeFromUser 取消用户的专线节点分配
 func UnassignCustomNodeFromUser(c *gin.Context) {
 	userID := c.Param("id")
 	nodeID := c.Param("node_id")
@@ -737,7 +683,6 @@ func UnassignCustomNodeFromUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "取消分配成功", nil)
 }
 
-// 辅助函数
 func parseUint(s string) uint {
 	i, _ := strconv.ParseUint(s, 10, 32)
 	return uint(i)

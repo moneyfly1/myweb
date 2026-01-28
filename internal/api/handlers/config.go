@@ -24,7 +24,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// updateSettingsCommon 通用配置更新逻辑
 func updateSettingsCommon(c *gin.Context, category string) {
 	var settings map[string]interface{}
 	if err := c.ShouldBindJSON(&settings); err != nil {
@@ -39,7 +38,6 @@ func updateSettingsCommon(c *gin.Context, category string) {
 				targetCat = "system" // 特殊处理
 			}
 
-			// 处理数组/切片转JSON字符串
 			valStr := fmt.Sprintf("%v", val)
 			if _, ok := val.([]interface{}); ok {
 				if jsonBytes, err := json.Marshal(val); err == nil {
@@ -47,7 +45,6 @@ func updateSettingsCommon(c *gin.Context, category string) {
 				}
 			}
 
-			// 使用 Upsert (OnConflict) 减少查询次数，或先查后改
 			var conf models.SystemConfig
 			if err := tx.Where("key = ? AND category = ?", key, targetCat).First(&conf).Error; err != nil {
 				conf = models.SystemConfig{Key: key, Category: targetCat, Value: valStr}
@@ -72,9 +69,6 @@ func updateSettingsCommon(c *gin.Context, category string) {
 	utils.SuccessResponse(c, http.StatusOK, "设置已保存", nil)
 }
 
-// --- Handlers ---
-
-// GetSystemConfigs 获取系统配置
 func GetSystemConfigs(c *gin.Context) {
 	db := database.GetDB()
 	var configs []models.SystemConfig
@@ -94,7 +88,6 @@ func GetSystemConfigs(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", configs)
 }
 
-// GetSystemConfig 获取单个配置
 func GetSystemConfig(c *gin.Context) {
 	var config models.SystemConfig
 	if err := database.GetDB().Where("key = ?", c.Param("key")).First(&config).Error; err != nil {
@@ -104,7 +97,6 @@ func GetSystemConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", config)
 }
 
-// CreateSystemConfig 创建系统配置
 func CreateSystemConfig(c *gin.Context) {
 	var req models.SystemConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -131,19 +123,16 @@ func CreateSystemConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "", req)
 }
 
-// UpdateSystemConfig 更新配置 (单条或批量)
 func UpdateSystemConfig(c *gin.Context) {
 	key := c.Param("key")
 	db := database.GetDB()
 
-	// 批量更新
 	if key == "batch" {
 		var req map[string]interface{}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 			return
 		}
-		// 复用通用逻辑，但 category 设为 system (或者根据业务需求调整)
 		for k, v := range req {
 			val := fmt.Sprintf("%v", v)
 			db.Clauses(clause.OnConflict{
@@ -161,17 +150,14 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
-	// 确定 category
 	category := req.Category
 	if category == "" {
 		category = "system" // 默认 category
 	}
 
-	// 查找配置（根据 key 和 category）
 	var config models.SystemConfig
 	err := db.Where("key = ? AND category = ?", key, category).First(&config).Error
 	if err != nil {
-		// 配置不存在，创建新配置
 		config = models.SystemConfig{
 			Key:         key,
 			Value:       req.Value,
@@ -187,7 +173,6 @@ func UpdateSystemConfig(c *gin.Context) {
 			return
 		}
 	} else {
-		// 配置存在，更新
 		config.Value = req.Value
 		if req.Type != "" {
 			config.Type = req.Type
@@ -203,19 +188,7 @@ func UpdateSystemConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", config)
 }
 
-// ExportConfig 导出配置
-func ExportConfig(c *gin.Context) {
-	var configs []models.SystemConfig
-	if err := database.GetDB().Find(&configs).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "获取配置失败", err)
-		return
-	}
-	utils.SuccessResponse(c, http.StatusOK, "", configs)
-}
-
-// GetAdminSettings 获取聚合的管理员设置
 func GetAdminSettings(c *gin.Context) {
-	// 定义默认值
 	settings := map[string]map[string]interface{}{
 		"general": {
 			"site_name": "CBoard Modern", "site_description": "现代化的代理服务管理平台", "site_logo": "", "default_theme": "default",
@@ -274,7 +247,6 @@ func GetAdminSettings(c *gin.Context) {
 
 	db := database.GetDB()
 	var configs []models.SystemConfig
-	// 一次性查出所有相关配置，减少数据库往返
 	cats := make([]string, 0, len(settings)+1)
 	for k := range settings {
 		cats = append(cats, k)
@@ -290,7 +262,6 @@ func GetAdminSettings(c *gin.Context) {
 		configMap[conf.Category][conf.Key] = conf.Value
 	}
 
-	// 定义应该保持为字符串的字段（即使看起来像数字）
 	stringOnlyFields := map[string]bool{
 		"admin_telegram_chat_id":   true,
 		"admin_telegram_bot_token": true,
@@ -302,11 +273,9 @@ func GetAdminSettings(c *gin.Context) {
 		"domain_name":              true,
 	}
 
-	// 填充数据
 	for cat, catDefaults := range settings {
 		for key := range catDefaults {
 			if val, ok := configMap[cat][key]; ok {
-				// 尝试转换类型
 				if val == "true" || val == "false" {
 					settings[cat][key] = (val == "true")
 				} else if strings.HasPrefix(val, "[") {
@@ -317,7 +286,6 @@ func GetAdminSettings(c *gin.Context) {
 						settings[cat][key] = val
 					}
 				} else if stringOnlyFields[key] {
-					// 这些字段必须保持为字符串，不转换为数字
 					settings[cat][key] = val
 				} else if num, err := strconv.Atoi(val); err == nil {
 					settings[cat][key] = num
@@ -327,7 +295,6 @@ func GetAdminSettings(c *gin.Context) {
 			}
 		}
 	}
-	// 特殊处理 domain_name
 	if val, ok := configMap["system"]["domain_name"]; ok {
 		settings["general"]["domain_name"] = val
 	}
@@ -335,7 +302,6 @@ func GetAdminSettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
-// 统一的 Update Handlers
 func UpdateGeneralSettings(c *gin.Context)      { updateSettingsCommon(c, "general") }
 func UpdateRegistrationSettings(c *gin.Context) { updateSettingsCommon(c, "registration") }
 func UpdateSecuritySettings(c *gin.Context)     { updateSettingsCommon(c, "security") }
@@ -351,7 +317,6 @@ func UpdateNodeHealthSettings(c *gin.Context) {
 	updateSettingsCommon(c, "node_health")
 }
 
-// UploadFile 文件上传
 func UploadFile(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -377,7 +342,6 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	// 路径安全处理
 	safeName := utils.SanitizeInput(file.Filename)
 	if safeName == "" {
 		safeName = "file" + ext
@@ -409,26 +373,21 @@ func UploadFile(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "上传成功", gin.H{"url": "/" + filepath.Join(uploadDir, safeName), "filename": safeName})
 }
 
-// GetPublicSettings 获取公开设置
 func GetPublicSettings(c *gin.Context) {
 	var configs []models.SystemConfig
 	db := database.GetDB()
-	// 获取所有公开设置
 	db.Where("is_public = ?", true).Find(&configs)
 	settings := make(map[string]interface{})
 	for _, conf := range configs {
 		settings[conf.Key] = conf.Value
 	}
 
-	// 添加注册相关配置（这些配置需要在前端注册页面使用）
 	var registrationConfigs []models.SystemConfig
 	db.Where("category = ?", "registration").Find(&registrationConfigs)
 	for _, conf := range registrationConfigs {
-		// 将字符串 "true"/"false" 转换为布尔值
 		if conf.Key == "email_verification_required" || conf.Key == "registration_enabled" || conf.Key == "invite_code_required" {
 			settings[conf.Key] = conf.Value == "true"
 		} else if conf.Key == "min_password_length" || conf.Key == "default_subscription_device_limit" || conf.Key == "default_subscription_duration_months" {
-			// 数值类型配置
 			if val, err := strconv.Atoi(conf.Value); err == nil {
 				settings[conf.Key] = val
 			} else {
@@ -459,7 +418,6 @@ func GetPublicSettings(c *gin.Context) {
 		settings["announcement_enabled"] = false
 	}
 
-	// 添加售后QQ和售后邮箱（只从 category = "general" 获取）
 	var supportQQConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", "support_qq", "general").First(&supportQQConfig).Error; err == nil && supportQQConfig.Value != "" {
 		settings["support_qq"] = strings.TrimSpace(supportQQConfig.Value)
@@ -477,7 +435,6 @@ func GetPublicSettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
-// TestAdminEmailNotification 测试管理员邮件通知
 func TestAdminEmailNotification(c *gin.Context) {
 	db := database.GetDB()
 	var configs []models.SystemConfig
@@ -508,7 +465,6 @@ func TestAdminEmailNotification(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "测试邮件已加入队列，请检查您的邮箱", nil)
 }
 
-// TestAdminTelegramNotification 测试管理员 Telegram 通知
 func TestAdminTelegramNotification(c *gin.Context) {
 	db := database.GetDB()
 	var configs []models.SystemConfig
@@ -534,7 +490,6 @@ func TestAdminTelegramNotification(c *gin.Context) {
 		"test_time": testTime,
 	}
 
-	// 发送测试通知
 	go func() {
 		_ = notificationService.SendAdminNotification("test", testData)
 	}()
@@ -542,7 +497,6 @@ func TestAdminTelegramNotification(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "测试消息已发送，请检查您的 Telegram", nil)
 }
 
-// TestAdminBarkNotification 测试管理员 Bark 通知
 func TestAdminBarkNotification(c *gin.Context) {
 	db := database.GetDB()
 	var configs []models.SystemConfig
@@ -572,7 +526,6 @@ func TestAdminBarkNotification(c *gin.Context) {
 		"test_time": testTime,
 	}
 
-	// 发送测试通知
 	go func() {
 		_ = notificationService.SendAdminNotification("test", testData)
 	}()
@@ -580,9 +533,7 @@ func TestAdminBarkNotification(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "测试消息已发送，请检查您的设备", nil)
 }
 
-// UpdateGeoIPDatabase 更新 GeoIP 数据库
 func UpdateGeoIPDatabase(c *gin.Context) {
-	// 检查是否为管理员
 	userID, exists := c.Get("user_id")
 	if !exists {
 		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权", nil)
@@ -596,19 +547,15 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	// 执行下载脚本
 	geoipPath := os.Getenv("GEOIP_DB_PATH")
 	if geoipPath == "" {
 		geoipPath = "./GeoLite2-City.mmdb"
 	}
 
-	// 使用 Go 下载 GeoIP 数据库
 	geoipURL := "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
 
-	// 创建临时文件
 	tmpFile := geoipPath + ".tmp"
 
-	// 下载文件
 	resp, err := http.Get(geoipURL)
 	if err != nil {
 		utils.LogError("UpdateGeoIPDatabase: 下载失败", err, nil)
@@ -622,7 +569,6 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	// 保存到临时文件
 	out, err := os.Create(tmpFile)
 	if err != nil {
 		utils.LogError("UpdateGeoIPDatabase: 创建临时文件失败", err, nil)
@@ -631,7 +577,6 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 	}
 	defer out.Close()
 
-	// 复制响应体到文件
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		os.Remove(tmpFile)
@@ -641,7 +586,6 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 	}
 	out.Close()
 
-	// 替换原文件
 	if err := os.Rename(tmpFile, geoipPath); err != nil {
 		os.Remove(tmpFile)
 		utils.LogError("UpdateGeoIPDatabase: 替换文件失败", err, nil)
@@ -649,7 +593,6 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	// 重新加载 GeoIP 数据库
 	if err := geoip.InitGeoIP(geoipPath); err != nil {
 		utils.SuccessResponse(c, http.StatusOK, "文件下载成功，但重新加载失败: "+err.Error(), nil)
 		return
@@ -658,7 +601,6 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "GeoIP 数据库更新成功", nil)
 }
 
-// GetGeoIPStatus 获取 GeoIP 状态
 func GetGeoIPStatus(c *gin.Context) {
 	geoipPath := os.Getenv("GEOIP_DB_PATH")
 	if geoipPath == "" {
@@ -682,12 +624,10 @@ func GetGeoIPStatus(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", status)
 }
 
-// GetMobileConfig 返回移动端应用配置（用于 UUVPN Android 应用）
 func GetMobileConfig(c *gin.Context) {
 	db := database.GetDB()
 	baseURL := utils.GetBuildBaseURL(c.Request, db)
 
-	// 从系统配置中获取相关设置
 	var configs []models.SystemConfig
 	db.Where("category IN (?)", []string{"software", "general"}).Find(&configs)
 
@@ -696,13 +636,10 @@ func GetMobileConfig(c *gin.Context) {
 		configMap[config.Key] = config.Value
 	}
 
-	// 获取横幅图片（如果有配置）
 	var banners []string
 	bannersConfig := configMap["mobile_banners"]
 	if bannersConfig != "" {
-		// 假设 banners 是 JSON 数组格式的字符串
 		if err := json.Unmarshal([]byte(bannersConfig), &banners); err != nil {
-			// 如果不是 JSON，尝试按逗号分割
 			bannerList := strings.Split(bannersConfig, ",")
 			for _, banner := range bannerList {
 				if trimmed := strings.TrimSpace(banner); trimmed != "" {
@@ -712,7 +649,6 @@ func GetMobileConfig(c *gin.Context) {
 		}
 	}
 
-	// 构建响应数据，匹配 Android 应用期望的格式
 	configData := gin.H{
 		"baseURL":         baseURL + "/api/v1/",
 		"baseDYURL":       configMap["mobile_base_dy_url"], // 可选：用于测试节点的 URL
@@ -727,6 +663,5 @@ func GetMobileConfig(c *gin.Context) {
 		"code":            1,
 	}
 
-	// 使用 SuccessResponse 包装，确保返回 {success: true, message: "", data: {...}} 格式
 	utils.SuccessResponse(c, http.StatusOK, "Mobile config fetched successfully", configData)
 }

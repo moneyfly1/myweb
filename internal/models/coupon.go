@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// CouponType 优惠券类型
 type CouponType string
 
 const (
@@ -15,7 +14,6 @@ const (
 	CouponTypeFreeDays CouponType = "free_days" // 赠送天数
 )
 
-// CouponStatus 优惠券状态
 type CouponStatus string
 
 const (
@@ -24,7 +22,6 @@ const (
 	CouponStatusExpired  CouponStatus = "expired"  // 已过期
 )
 
-// Coupon 优惠券模型
 type Coupon struct {
 	ID                 uint            `gorm:"primaryKey" json:"id"`
 	Code               string          `gorm:"type:varchar(50);uniqueIndex;not null" json:"code"`
@@ -45,16 +42,13 @@ type Coupon struct {
 	CreatedAt          time.Time       `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	Usages []CouponUsage `gorm:"foreignKey:CouponID" json:"-"`
 }
 
-// TableName 指定表名
 func (Coupon) TableName() string {
 	return "coupons"
 }
 
-// CouponResponse 优惠券响应结构，用于正确序列化sql.NullInt64
 type CouponResponse struct {
 	ID                 uint      `json:"id"`
 	Code               string    `json:"code"`
@@ -76,7 +70,6 @@ type CouponResponse struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 
-// ToCouponResponse 将Coupon转换为CouponResponse
 func (c *Coupon) ToCouponResponse() CouponResponse {
 	resp := CouponResponse{
 		ID:                 c.ID,
@@ -111,12 +104,10 @@ func (c *Coupon) ToCouponResponse() CouponResponse {
 	return resp
 }
 
-// MarshalJSON 自定义JSON序列化
 func (c *Coupon) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.ToCouponResponse())
 }
 
-// CouponUsage 优惠券使用记录
 type CouponUsage struct {
 	ID             uint          `gorm:"primaryKey" json:"id"`
 	CouponID       uint          `gorm:"index;not null" json:"coupon_id"`
@@ -125,13 +116,11 @@ type CouponUsage struct {
 	DiscountAmount float64       `gorm:"type:decimal(10,2);not null" json:"discount_amount"`
 	UsedAt         time.Time     `gorm:"autoCreateTime" json:"used_at"`
 
-	// 关系
 	Coupon Coupon `gorm:"foreignKey:CouponID" json:"coupon,omitempty"`
 	User   User   `gorm:"foreignKey:UserID" json:"-"`
 	Order  Order  `gorm:"foreignKey:OrderID" json:"-"`
 }
 
-// TableName 指定表名
 func (CouponUsage) TableName() string {
 	return "coupon_usages"
 }

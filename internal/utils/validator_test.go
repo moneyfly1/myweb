@@ -4,7 +4,6 @@ import (
 	"testing"
 )
 
-// TestValidateEmail 测试邮箱验证
 func TestValidateEmail(t *testing.T) {
 	testCases := []struct {
 		name      string
@@ -31,7 +30,6 @@ func TestValidateEmail(t *testing.T) {
 	}
 }
 
-// TestSanitizeSearchKeyword 测试搜索关键词清理
 func TestSanitizeSearchKeyword(t *testing.T) {
 	testCases := []struct {
 		name  string
