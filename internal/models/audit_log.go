@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// AuditLog 审计日志模型
 type AuditLog struct {
 	ID                uint           `gorm:"primaryKey" json:"id"`
 	UserID            sql.NullInt64  `gorm:"index" json:"user_id,omitempty"`
@@ -24,11 +23,9 @@ type AuditLog struct {
 	AfterData         sql.NullString `gorm:"type:json" json:"after_data,omitempty"`
 	CreatedAt         time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
 
-	// 关系
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// TableName 指定表名
 func (AuditLog) TableName() string {
 	return "audit_logs"
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetSystemInfo 获取系统信息
 func GetSystemInfo(c *gin.Context) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -29,7 +28,6 @@ func GetSystemInfo(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", info)
 }
 
-// GetDatabaseStats 获取数据库统计
 func GetDatabaseStats(c *gin.Context) {
 	db := database.GetDB()
 
@@ -37,7 +35,6 @@ func GetDatabaseStats(c *gin.Context) {
 		"status": "connected",
 	}
 
-	// 测试连接
 	sqlDB, err := db.DB()
 	if err != nil {
 		stats["status"] = "error"

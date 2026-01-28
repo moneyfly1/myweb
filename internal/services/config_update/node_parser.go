@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// ProxyNode 代理节点结构
 type ProxyNode struct {
 	Name     string                 `yaml:"name"`
 	Type     string                 `yaml:"type"`
@@ -24,7 +23,6 @@ type ProxyNode struct {
 	Options  map[string]interface{} `yaml:",inline"`
 }
 
-// ParseNodeLink 解析节点链接
 func ParseNodeLink(link string) (*ProxyNode, error) {
 	link = strings.TrimSpace(link)
 
@@ -55,10 +53,6 @@ func ParseNodeLink(link string) (*ProxyNode, error) {
 	}
 	return nil, fmt.Errorf("不支持的协议")
 }
-
-// ==========================================
-// Protocol Parsers
-// ==========================================
 
 func parseVMess(link string) (*ProxyNode, error) {
 	encoded := strings.TrimPrefix(link, "vmess://")
@@ -291,7 +285,6 @@ func parseTrojan(link string) (*ProxyNode, error) {
 }
 
 func parseShadowsocks(link string) (*ProxyNode, error) {
-	// 1. 尝试全Base64格式 (ss://base64(method:password@server:port)#name)
 	if !strings.Contains(link, "@") {
 		encoded := strings.TrimPrefix(link, "ss://")
 		if idx := strings.Index(encoded, "#"); idx != -1 {
@@ -306,7 +299,6 @@ func parseShadowsocks(link string) (*ProxyNode, error) {
 		}
 	}
 
-	// 2. 标准格式或混合格式
 	parsed, err := url.Parse(link)
 	if err != nil {
 		return nil, err
@@ -514,7 +506,6 @@ func parseAnytls(link string) (*ProxyNode, error) {
 	})
 }
 
-// 通用节点解析辅助函数
 func parseGenericNode(link, nodeType string, modifier func(*ProxyNode, url.Values)) (*ProxyNode, error) {
 	parsed, err := url.Parse(link)
 	if err != nil {
@@ -533,17 +524,11 @@ func parseGenericNode(link, nodeType string, modifier func(*ProxyNode, url.Value
 	return node, nil
 }
 
-// ==========================================
-// Helpers
-// ==========================================
-
-// DecodeBase64 统一的 Base64 解码函数（增强版：支持 URLSafe 和自动补全）
 func DecodeBase64(s string) (string, error) {
 	if s == "" {
 		return "", nil
 	}
 
-	// 移除所有空白字符
 	s = strings.Map(func(r rune) rune {
 		if r == ' ' || r == '\n' || r == '\t' || r == '\r' {
 			return -1
@@ -555,25 +540,21 @@ func DecodeBase64(s string) (string, error) {
 		return "", nil
 	}
 
-	// 尝试标准 Base64 解码
 	decoded, err := tryDecodeBase64(s, base64.StdEncoding)
 	if err == nil {
 		return decoded, nil
 	}
 
-	// 尝试 URLSafe Base64 解码
 	decoded, err = tryDecodeBase64(s, base64.URLEncoding)
 	if err == nil {
 		return decoded, nil
 	}
 
-	// 尝试 RawStdEncoding（无填充）
 	decoded, err = tryDecodeBase64(s, base64.RawStdEncoding)
 	if err == nil {
 		return decoded, nil
 	}
 
-	// 尝试 RawURLEncoding（无填充）
 	decoded, err = tryDecodeBase64(s, base64.RawURLEncoding)
 	if err == nil {
 		return decoded, nil
@@ -582,16 +563,13 @@ func DecodeBase64(s string) (string, error) {
 	return "", fmt.Errorf("Base64解码失败: 所有编码方式都失败")
 }
 
-// tryDecodeBase64 尝试使用指定的编码方式解码
 func tryDecodeBase64(s string, encoding *base64.Encoding) (string, error) {
-	// 处理 URLSafe 字符转换
 	clean := s
 	if encoding == base64.StdEncoding || encoding == base64.RawStdEncoding {
 		clean = strings.ReplaceAll(clean, "-", "+")
 		clean = strings.ReplaceAll(clean, "_", "/")
 	}
 
-	// 自动补全填充（仅对需要填充的编码）
 	if encoding == base64.StdEncoding || encoding == base64.URLEncoding {
 		if m := len(clean) % 4; m != 0 {
 			clean += strings.Repeat("=", 4-m)
@@ -605,22 +583,17 @@ func tryDecodeBase64(s string, encoding *base64.Encoding) (string, error) {
 	return string(b), nil
 }
 
-// TryDecodeNodeList 尝试解码节点列表内容（整体或逐行）
 func TryDecodeNodeList(content string) string {
-	// 1. 检查是否包含明文链接
 	if containsNodeLinks(content) {
 		return content
 	}
 
-	// 2. 尝试整体解码
 	if decoded, err := DecodeBase64(content); err == nil {
 		if containsNodeLinks(decoded) {
 			return decoded
 		}
-		// 如果整体解码后仍看起来像 Base64，可能需要再次解码（虽然少见），这里只做一层
 	}
 
-	// 3. 尝试逐行解码
 	lines := strings.Split(content, "\n")
 	var decodedLines []string
 	hasDecoded := false
@@ -631,22 +604,18 @@ func TryDecodeNodeList(content string) string {
 			continue
 		}
 
-		// 尝试解码当前行
 		if decoded, err := DecodeBase64(line); err == nil && decoded != "" {
 			if containsNodeLinks(decoded) {
 				decodedLines = append(decodedLines, decoded)
 				hasDecoded = true
 				continue
 			}
-			// 如果解码成功但没有协议头，可能只是普通Base64，也保留
-			// 但如果有协议头（如 vmess://）则必须匹配
 			if strings.Contains(decoded, "://") {
 				decodedLines = append(decodedLines, decoded)
 				hasDecoded = true
 				continue
 			}
 		}
-		// 无法解码或解码后无意义，保留原行
 		decodedLines = append(decodedLines, line)
 	}
 

@@ -4,7 +4,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// WithTransaction 统一的事务处理辅助函数
 func WithTransaction(db *gorm.DB, fn func(*gorm.DB) error) error {
 	tx := db.Begin()
 	defer func() {
@@ -21,4 +20,3 @@ func WithTransaction(db *gorm.DB, fn func(*gorm.DB) error) error {
 
 	return tx.Commit().Error
 }
-

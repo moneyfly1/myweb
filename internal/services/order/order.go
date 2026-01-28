@@ -15,7 +15,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// CreateOrderParams 创建订单参数
 type CreateOrderParams struct {
 	PackageID     uint    `json:"package_id"`
 	CouponCode    string  `json:"coupon_code"`
@@ -24,27 +23,22 @@ type CreateOrderParams struct {
 	BalanceAmount float64 `json:"balance_amount"`
 }
 
-// OrderService 订单服务
 type OrderService struct {
 	db *gorm.DB
 }
 
-// NewOrderService 创建订单服务
 func NewOrderService() *OrderService {
 	return &OrderService{
 		db: database.GetDB(),
 	}
 }
 
-// CreateOrder 创建订单
 func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*models.Order, string, error) {
-	// 获取用户信息
 	var user models.User
 	if err := s.db.First(&user, userID).Error; err != nil {
 		return nil, "", fmt.Errorf("用户不存在")
 	}
 
-	// 获取套餐
 	var pkg models.Package
 	if err := s.db.First(&pkg, params.PackageID).Error; err != nil {
 		return nil, "", fmt.Errorf("套餐不存在")
@@ -59,7 +53,6 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	couponDiscountAmount := 0.0
 	finalAmount := baseAmount
 
-	// 计算等级折扣
 	if user.UserLevelID.Valid {
 		var lvl models.UserLevel
 		if err := s.db.First(&lvl, user.UserLevelID.Int64).Error; err == nil {
@@ -70,7 +63,6 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		}
 	}
 
-	// 计算优惠券折扣
 	var couponID *int64
 	if params.CouponCode != "" {
 		var coupon models.Coupon
@@ -100,7 +92,6 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount
 	balanceUsed := 0.0
 
-	// 处理余额支付
 	if params.UseBalance && params.BalanceAmount > 0 {
 		if user.Balance < params.BalanceAmount {
 			return nil, "", fmt.Errorf("余额不足")
@@ -111,24 +102,20 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		balanceUsed = params.BalanceAmount
 		finalAmount -= balanceUsed
 
-		// 扣除余额
 		user.Balance -= balanceUsed
 		if err := s.db.Save(&user).Error; err != nil {
 			return nil, "", fmt.Errorf("扣除余额失败")
 		}
 	}
 
-	// 修正浮点数误差
 	if finalAmount <= 0.01 {
 		finalAmount = 0
 	}
 
-	// 创建订单
 	orderNo, err := utils.GenerateOrderNo(s.db)
 	if err != nil {
 		return nil, "", fmt.Errorf("生成订单号失败: %v", err)
 	}
-	// 使用北京时间作为订单创建时间
 	now := utils.GetBeijingTime()
 	order := models.Order{
 		OrderNo:        orderNo,
@@ -146,12 +133,10 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
 		order.PaymentMethodName = database.NullString("余额支付")
 	} else {
-		// 混合支付或其他
 		methodName := params.PaymentMethod
 		if balanceUsed > 0 {
 			methodName = fmt.Sprintf("余额支付(%.2f元)+%s", balanceUsed, params.PaymentMethod)
 
-			// 记录余额使用量
 			extraData := fmt.Sprintf(`{"balance_used":%.2f}`, balanceUsed)
 			order.ExtraData = database.NullString(extraData)
 		}
@@ -166,28 +151,21 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		return nil, "", fmt.Errorf("创建订单失败: %v", err)
 	}
 
-	// 如果已全额支付（余额）
 	if order.Status == "paid" {
 		if _, err := s.ProcessPaidOrder(&order); err != nil {
 			utils.LogError("CreateOrder: process paid order failed", err, nil)
-			// 这里虽然处理失败，但订单已创建且钱已扣，不能简单返回错误，记录日志即可
-			// 返回nil error表示订单创建成功，但后续处理有异常
 		}
 
-		// 发送邮件
 		go s.sendPaymentSuccessEmail(&user, &order, &pkg, balanceUsed+finalAmount, "余额支付")
 		return &order, "", nil
 	}
 
-	// 需要第三方支付
 	var paymentURL string
 	if params.PaymentMethod != "" && params.PaymentMethod != "balance" {
 		utils.LogInfo("CreateOrder: 开始生成支付链接 - payment_method=%s, order_no=%s, amount=%.2f",
 			params.PaymentMethod, order.OrderNo, finalAmount)
-		// 生成支付链接
 		url, err := s.generatePaymentURL(&order, params.PaymentMethod, finalAmount)
 		if err != nil {
-			// 支付链接生成失败，但订单已创建
 			utils.LogError("CreateOrder: 生成支付链接失败", err, map[string]interface{}{
 				"payment_method": params.PaymentMethod,
 				"order_no":       order.OrderNo,
@@ -202,7 +180,6 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	return &order, paymentURL, nil
 }
 
-// generatePaymentURL 生成支付链接
 func (s *OrderService) generatePaymentURL(order *models.Order, payType string, amount float64) (string, error) {
 	var paymentConfig models.PaymentConfig
 
@@ -219,7 +196,6 @@ func (s *OrderService) generatePaymentURL(order *models.Order, payType string, a
 		}
 	}
 
-	// 创建支付交易记录
 	transaction := models.PaymentTransaction{
 		OrderID:         order.ID,
 		UserID:          order.UserID,
@@ -275,7 +251,6 @@ func extractYipayType(payType string) string {
 	return "alipay"
 }
 
-// sendPaymentSuccessEmail 发送支付成功邮件
 func (s *OrderService) sendPaymentSuccessEmail(user *models.User, order *models.Order, pkg *models.Package, amount float64, paymentMethod string) {
 	emailService := email.NewEmailService()
 	templateBuilder := email.NewEmailTemplateBuilder()
@@ -292,53 +267,38 @@ func (s *OrderService) sendPaymentSuccessEmail(user *models.User, order *models.
 	_ = emailService.QueueEmail(user.Email, "支付成功通知", content, "payment_success")
 }
 
-// ProcessPaidOrder 处理已支付订单的后续逻辑（开通/续费订阅、更新消费、升级等级）
-// 调用此方法前，订单状态应已更新为 paid
-// 支持套餐订单（PackageID > 0）和设备升级订单（PackageID = 0）
 func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscription, error) {
 	if order.Status != "paid" {
 		return nil, fmt.Errorf("订单状态未支付")
 	}
 
-	// 获取用户信息
 	var user models.User
 	if err := s.db.First(&user, order.UserID).Error; err != nil {
 		return nil, fmt.Errorf("用户不存在: %v", err)
 	}
 
-	// 计算支付金额（用于其他业务逻辑，如邀请奖励）
 	paidAmount := order.Amount
 	if order.FinalAmount.Valid {
 		paidAmount = order.FinalAmount.Float64
 	}
 
-	// 1. 更新用户累计消费（所有订单类型都需要）
-	// 注意：累计消费应该使用原价（Amount），而不是折扣后的价格（FinalAmount）
-	// 这样等级升级才能正确反映用户的真实消费水平
 	user.TotalConsumption += order.Amount
 	if err := s.db.Save(&user).Error; err != nil {
 		return nil, fmt.Errorf("更新用户累计消费失败: %v", err)
 	}
 
-	// 2. 检查并更新用户等级（所有订单类型都需要）
 	s.updateUserLevel(&user)
 
-	// 3. 处理邀请奖励（所有订单类型都需要）
 	s.processInviteRewards(order, paidAmount)
 
-	// 4. 处理订单特定的业务逻辑
 	if order.PackageID > 0 {
-		// 套餐订单：处理订阅开通/续费
 		return s.processPackageOrder(order, &user)
 	} else {
-		// 设备升级订单：处理订阅升级
 		return s.processDeviceUpgradeOrder(order, &user)
 	}
 }
 
-// processPackageOrder 处理套餐订单
 func (s *OrderService) processPackageOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
-	// 获取套餐信息
 	var pkg models.Package
 	if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
 		return nil, fmt.Errorf("套餐不存在: %v", err)
@@ -346,10 +306,8 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 
 	now := utils.GetBeijingTime()
 
-	// 更新或创建订阅
 	var subscription models.Subscription
 	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
-		// 创建新订阅
 		subscriptionURL := utils.GenerateSubscriptionURL()
 		expireTime := now.AddDate(0, 0, pkg.DurationDays)
 		pkgID := int64(pkg.ID)
@@ -371,7 +329,6 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 				user.ID, pkg.ID, pkg.DeviceLimit, pkg.DurationDays, expireTime.Format("2006-01-02 15:04:05"))
 		}
 
-		// 发送管理员通知（订阅创建）
 		go func() {
 			notificationService := notification.NewNotificationService()
 			createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
@@ -386,7 +343,6 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			})
 		}()
 	} else {
-		// 续费：累加时间
 		oldExpireTime := subscription.ExpireTime
 		if subscription.ExpireTime.Before(now) {
 			subscription.ExpireTime = now.AddDate(0, 0, pkg.DurationDays)
@@ -412,14 +368,11 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 	return &subscription, nil
 }
 
-// processDeviceUpgradeOrder 处理设备升级订单
 func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
-	// 从 ExtraData 中解析升级信息
 	var additionalDevices int
 	var additionalDays int
 
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		// 解析 JSON
 		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
 			if extraData["type"] == "device_upgrade" {
@@ -433,18 +386,15 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 		}
 	}
 
-	// 查找用户的订阅
 	var subscription models.Subscription
 	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		return nil, fmt.Errorf("订阅不存在: %v", err)
 	}
 
-	// 升级设备数量
 	if additionalDevices > 0 {
 		subscription.DeviceLimit += additionalDevices
 	}
 
-	// 延长订阅时间
 	if additionalDays > 0 {
 		now := utils.GetBeijingTime()
 		if subscription.ExpireTime.Before(now) {
@@ -466,32 +416,25 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 	return &subscription, nil
 }
 
-// updateUserLevel 更新用户等级
 func (s *OrderService) updateUserLevel(user *models.User) {
 	var userLevels []models.UserLevel
 	if err := s.db.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
-		// 找到所有满足条件的等级，选择 level_order 最小的（最高等级）
 		var targetLevel *models.UserLevel
 		for i := range userLevels {
 			level := &userLevels[i]
 			if user.TotalConsumption >= level.MinConsumption {
-				// 如果还没有目标等级，或者当前等级的 level_order 更小（等级更高）
 				if targetLevel == nil || level.LevelOrder < targetLevel.LevelOrder {
 					targetLevel = level
 				}
 			}
 		}
 
-		// 如果找到了满足条件的等级
 		if targetLevel != nil {
-			// 检查是否需要升级
 			if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(targetLevel.ID) {
-				// 需要升级
 				var currentLevel models.UserLevel
 				shouldUpgrade := true
 				if user.UserLevelID.Valid {
 					if err := s.db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
-						// 如果当前等级更高（level_order 更小），不降级
 						if currentLevel.LevelOrder < targetLevel.LevelOrder {
 							shouldUpgrade = false
 						}
@@ -513,18 +456,13 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 	}
 }
 
-// processInviteRewards 处理邀请奖励（订单支付成功后）
 func (s *OrderService) processInviteRewards(order *models.Order, paidAmount float64) {
-	// 查找该用户的邀请关系（查找未完全发放奖励的关系）
 	var inviteRelation models.InviteRelation
-	// 查找邀请者或被邀请者奖励未发放的关系
 	if err := s.db.Where("invitee_id = ? AND (inviter_reward_given = ? OR invitee_reward_given = ?)",
 		order.UserID, false, false).First(&inviteRelation).Error; err != nil {
-		// 没有未发放奖励的邀请关系，直接返回
 		return
 	}
 
-	// 获取邀请码信息
 	var inviteCode models.InviteCode
 	if err := s.db.First(&inviteCode, inviteRelation.InviteCodeID).Error; err != nil {
 		utils.LogError("processInviteRewards: invite code not found", err, map[string]interface{}{
@@ -533,7 +471,6 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		return
 	}
 
-	// 检查是否满足最小订单金额要求
 	if inviteCode.MinOrderAmount > 0 && paidAmount < inviteCode.MinOrderAmount {
 		if utils.AppLogger != nil {
 			utils.AppLogger.Info("processInviteRewards: ⏳ 订单金额未达到最小要求 - order_id=%d, paid_amount=%.2f, min_amount=%.2f",
@@ -542,13 +479,10 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		return
 	}
 
-	// 检查是否是新用户订单（如果设置了 NewUserOnly）
 	if inviteCode.NewUserOnly {
-		// 检查这是否是被邀请者的第一个订单
 		var orderCount int64
 		s.db.Model(&models.Order{}).Where("user_id = ? AND status = ?", order.UserID, "paid").Count(&orderCount)
 		if orderCount > 1 {
-			// 不是第一个订单，不发放奖励
 			if utils.AppLogger != nil {
 				utils.AppLogger.Info("processInviteRewards: ⏸️ 不是新用户订单，不发放奖励 - order_id=%d, order_count=%d",
 					order.ID, orderCount)
@@ -557,15 +491,12 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		}
 	}
 
-	// 更新邀请关系的首次订单ID
 	if !inviteRelation.InviteeFirstOrderID.Valid {
 		inviteRelation.InviteeFirstOrderID = sql.NullInt64{Int64: int64(order.ID), Valid: true}
 	}
 
-	// 更新累计消费
 	inviteRelation.InviteeTotalConsumption += paidAmount
 
-	// 发放邀请者奖励（如果还未发放）
 	if !inviteRelation.InviterRewardGiven && inviteRelation.InviterRewardAmount > 0 {
 		var inviter models.User
 		if err := s.db.First(&inviter, inviteRelation.InviterID).Error; err == nil {
@@ -587,7 +518,6 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		}
 	}
 
-	// 发放被邀请者奖励（如果还未发放）
 	if !inviteRelation.InviteeRewardGiven && inviteRelation.InviteeRewardAmount > 0 {
 		var invitee models.User
 		if err := s.db.First(&invitee, order.UserID).Error; err == nil {
@@ -607,7 +537,6 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		}
 	}
 
-	// 保存邀请关系
 	if err := s.db.Save(&inviteRelation).Error; err != nil {
 		utils.LogError("processInviteRewards: failed to save invite relation", err, map[string]interface{}{
 			"invite_relation_id": inviteRelation.ID,

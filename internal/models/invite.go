@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// InviteCode 邀请码模型
 type InviteCode struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
 	Code           string         `gorm:"type:varchar(20);uniqueIndex;not null" json:"code"`
@@ -23,17 +22,14 @@ type InviteCode struct {
 	CreatedAt      time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	User            User             `gorm:"foreignKey:UserID" json:"-"`
 	InviteRelations []InviteRelation `gorm:"foreignKey:InviteCodeID" json:"-"`
 }
 
-// TableName 指定表名
 func (InviteCode) TableName() string {
 	return "invite_codes"
 }
 
-// InviteRelation 邀请关系模型
 type InviteRelation struct {
 	ID                      uint          `gorm:"primaryKey" json:"id"`
 	InviteCodeID            uint          `gorm:"index;not null" json:"invite_code_id"`
@@ -48,14 +44,12 @@ type InviteRelation struct {
 	CreatedAt               time.Time     `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt               time.Time     `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	InviteCode InviteCode `gorm:"foreignKey:InviteCodeID" json:"-"`
 	Inviter    User       `gorm:"foreignKey:InviterID" json:"-"`
 	Invitee    User       `gorm:"foreignKey:InviteeID" json:"-"`
 	FirstOrder Order      `gorm:"foreignKey:InviteeFirstOrderID" json:"-"`
 }
 
-// TableName 指定表名
 func (InviteRelation) TableName() string {
 	return "invite_relations"
 }

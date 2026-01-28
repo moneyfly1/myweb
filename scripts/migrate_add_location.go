@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-	// 加载配置
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("配置加载失败: %v", err)
@@ -19,27 +18,23 @@ func main() {
 		log.Fatal("配置未正确加载")
 	}
 
-	// 初始化数据库
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
 
 	db := database.GetDB()
 
-	// 运行迁移以添加 location 字段
 	log.Println("正在运行数据库迁移...")
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
 
-	// 检查 audit_logs 表是否有 location 字段
 	var hasLocation bool
 	if db.Migrator().HasColumn(&models.AuditLog{}, "location") {
 		hasLocation = true
 		log.Println("✅ audit_logs 表已有 location 字段")
 	} else {
 		log.Println("⚠️  audit_logs 表缺少 location 字段，正在添加...")
-		// 手动添加字段
 		if err := db.Migrator().AddColumn(&models.AuditLog{}, "location"); err != nil {
 			log.Printf("添加 location 字段失败: %v", err)
 		} else {
@@ -55,4 +50,3 @@ func main() {
 		log.Println("\n⚠️  请手动运行数据库迁移或重启服务器")
 	}
 }
-

@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// PaymentTransaction 支付交易模型
 type PaymentTransaction struct {
 	ID                    uint           `gorm:"primaryKey" json:"id"`
 	OrderID               uint           `gorm:"index;not null" json:"order_id"`
@@ -21,17 +20,14 @@ type PaymentTransaction struct {
 	CreatedAt             time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt             time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	User  User  `gorm:"foreignKey:UserID" json:"-"`
 	Order Order `gorm:"foreignKey:OrderID" json:"-"`
 }
 
-// TableName 指定表名
 func (PaymentTransaction) TableName() string {
 	return "payment_transactions"
 }
 
-// PaymentCallback 支付回调模型
 type PaymentCallback struct {
 	ID                   uint           `gorm:"primaryKey" json:"id"`
 	PaymentTransactionID uint           `gorm:"not null" json:"payment_transaction_id"`
@@ -44,7 +40,6 @@ type PaymentCallback struct {
 	CreatedAt            time.Time      `gorm:"autoCreateTime" json:"created_at"`
 }
 
-// TableName 指定表名
 func (PaymentCallback) TableName() string {
 	return "payment_callbacks"
 }

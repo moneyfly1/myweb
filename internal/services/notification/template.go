@@ -4,16 +4,13 @@ import (
 	"fmt"
 )
 
-// MessageTemplateBuilder 消息模板构建器
 type MessageTemplateBuilder struct {
 }
 
-// NewMessageTemplateBuilder 创建消息模板构建器
 func NewMessageTemplateBuilder() *MessageTemplateBuilder {
 	return &MessageTemplateBuilder{}
 }
 
-// BuildTelegramMessage 构建 Telegram 消息
 func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, data map[string]interface{}) string {
 	switch notificationType {
 	case "order_paid":
@@ -39,7 +36,6 @@ func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, d
 	}
 }
 
-// BuildBarkMessage 构建 Bark 消息
 func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data map[string]interface{}) (string, string) {
 	switch notificationType {
 	case "order_paid":
@@ -64,8 +60,6 @@ func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data 
 		return b.buildDefaultBark(data)
 	}
 }
-
-// ==================== Telegram 消息模板 ====================
 
 func (b *MessageTemplateBuilder) buildOrderPaidTelegram(data map[string]interface{}) string {
 	orderNo := getString(data, "order_no", "N/A")
@@ -309,8 +303,6 @@ func (b *MessageTemplateBuilder) buildDefaultTelegram(data map[string]interface{
 ┃  💡 <b>系统自动发送</b>
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, title, message)
 }
-
-// ==================== Bark 消息模板 ====================
 
 func (b *MessageTemplateBuilder) buildOrderPaidBark(data map[string]interface{}) (string, string) {
 	orderNo := getString(data, "order_no", "N/A")

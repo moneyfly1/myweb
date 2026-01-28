@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// UserLevel 用户等级模型
 type UserLevel struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
 	LevelName      string         `gorm:"type:varchar(50);uniqueIndex;not null" json:"level_name"`
@@ -21,16 +20,13 @@ type UserLevel struct {
 	CreatedAt      time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
-	// 关系
 	Users []User `gorm:"foreignKey:UserLevelID" json:"-"`
 }
 
-// TableName 指定表名
 func (UserLevel) TableName() string {
 	return "user_levels"
 }
 
-// UserLevelResponse 用户等级响应结构，用于正确序列化sql.NullString
 type UserLevelResponse struct {
 	ID             uint      `json:"id"`
 	LevelName      string    `json:"level_name"`
@@ -46,7 +42,6 @@ type UserLevelResponse struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// ToUserLevelResponse 将UserLevel转换为UserLevelResponse
 func (ul *UserLevel) ToUserLevelResponse() UserLevelResponse {
 	resp := UserLevelResponse{
 		ID:             ul.ID,
@@ -71,7 +66,6 @@ func (ul *UserLevel) ToUserLevelResponse() UserLevelResponse {
 	return resp
 }
 
-// MarshalJSON 自定义JSON序列化
 func (ul *UserLevel) MarshalJSON() ([]byte, error) {
 	return json.Marshal(ul.ToUserLevelResponse())
 }

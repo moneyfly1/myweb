@@ -16,29 +16,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateBackup 创建备份
 func CreateBackup(c *gin.Context) {
 	cfg := config.AppConfig
 
-	// 创建备份目录（使用绝对路径，防止路径遍历）
 	wd, err := os.Getwd()
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工作目录失败", err)
 		return
 	}
 
-	// 构建备份目录路径
 	backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
-	// 清理路径，防止路径遍历攻击
 	backupDir = filepath.Clean(backupDir)
 
-	// 验证路径是否在允许的目录内（防止路径遍历）
 	if !strings.HasPrefix(backupDir, wd) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
 	}
 
-	// 检查是否包含危险字符
 	if strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
@@ -49,10 +43,8 @@ func CreateBackup(c *gin.Context) {
 		return
 	}
 
-	// 生成备份文件名（使用白名单验证，只允许字母、数字、下划线和连字符）
 	backupFileName := fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405"))
 
-	// 验证文件名（防止路径遍历）
 	if strings.Contains(backupFileName, "..") || strings.Contains(backupFileName, "/") ||
 		strings.Contains(backupFileName, "\\") || strings.Contains(backupFileName, "~") {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的文件名", nil)
@@ -60,14 +52,12 @@ func CreateBackup(c *gin.Context) {
 	}
 
 	backupPath := filepath.Join(backupDir, backupFileName)
-	// 再次清理和验证最终路径
 	backupPath = filepath.Clean(backupPath)
 	if !strings.HasPrefix(backupPath, backupDir) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
 	}
 
-	// 创建 ZIP 文件
 	zipFile, err := os.Create(backupPath)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建备份文件失败", err)
@@ -78,17 +68,14 @@ func CreateBackup(c *gin.Context) {
 	zipWriter := zip.NewWriter(zipFile)
 	defer zipWriter.Close()
 
-	// 备份数据库文件（使用绝对路径，防止路径遍历）
 	dbPath := filepath.Join(wd, "cboard.db")
 	dbPath = filepath.Clean(dbPath)
-	// 验证路径在允许的目录内
 	if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
 		if _, err := os.Stat(dbPath); err == nil {
 			dbFile, err := os.Open(dbPath)
 			if err == nil {
 				defer dbFile.Close()
 
-				// 使用filepath.Base确保只使用文件名，防止路径遍历
 				writer, err := zipWriter.Create("cboard.db")
 				if err == nil {
 					io.Copy(writer, dbFile)
@@ -97,10 +84,8 @@ func CreateBackup(c *gin.Context) {
 		}
 	}
 
-	// 备份配置文件（使用白名单，只允许特定文件）
 	configFiles := []string{".env", "config.yaml"}
 	for _, configFile := range configFiles {
-		// 验证文件名（防止路径遍历）
 		if strings.Contains(configFile, "..") || strings.Contains(configFile, "/") ||
 			strings.Contains(configFile, "\\") || strings.Contains(configFile, "~") {
 			continue // 跳过无效的文件名
@@ -108,14 +93,12 @@ func CreateBackup(c *gin.Context) {
 
 		configPath := filepath.Join(wd, configFile)
 		configPath = filepath.Clean(configPath)
-		// 验证路径在允许的目录内
 		if strings.HasPrefix(configPath, wd) && !strings.Contains(configPath, "..") {
 			if _, err := os.Stat(configPath); err == nil {
 				file, err := os.Open(configPath)
 				if err == nil {
 					defer file.Close()
 
-					// 使用filepath.Base确保只使用文件名
 					writer, err := zipWriter.Create(filepath.Base(configFile))
 					if err == nil {
 						io.Copy(writer, file)
@@ -132,11 +115,9 @@ func CreateBackup(c *gin.Context) {
 	})
 }
 
-// ListBackups 列出备份文件
 func ListBackups(c *gin.Context) {
 	cfg := config.AppConfig
 
-	// 使用绝对路径，防止路径遍历
 	wd, err := os.Getwd()
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工作目录失败", err)
@@ -144,10 +125,8 @@ func ListBackups(c *gin.Context) {
 	}
 
 	backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
-	// 清理路径，防止路径遍历攻击
 	backupDir = filepath.Clean(backupDir)
 
-	// 验证路径是否在允许的目录内
 	if !strings.HasPrefix(backupDir, wd) || strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
@@ -161,10 +140,8 @@ func ListBackups(c *gin.Context) {
 
 	var backups []map[string]interface{}
 	for _, file := range files {
-		// 验证文件名（防止路径遍历）
 		fileName := file.Name()
 		if !file.IsDir() && filepath.Ext(fileName) == ".zip" {
-			// 检查文件名是否包含危险字符
 			if strings.Contains(fileName, "..") || strings.Contains(fileName, "/") ||
 				strings.Contains(fileName, "\\") || strings.Contains(fileName, "~") {
 				continue // 跳过无效的文件名
@@ -184,7 +161,6 @@ func ListBackups(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", backups)
 }
 
-// getFileSize 获取文件大小
 func getFileSize(filePath string) int64 {
 	info, err := os.Stat(filePath)
 	if err != nil {
