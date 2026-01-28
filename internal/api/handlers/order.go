@@ -1193,7 +1193,8 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	// 创建订单（无论是否完全用余额支付）
-	orderNo, err := utils.GenerateOrderNo(db)
+	// 设备升级订单使用UPG前缀
+	orderNo, err := utils.GenerateDeviceUpgradeOrderNo(db)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订单号失败", err)
 		return

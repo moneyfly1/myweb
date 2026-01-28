@@ -5,17 +5,9 @@
         <div class="header-content">
           <span>支付配置管理</span>
           <div class="header-actions desktop-only">
-            <el-button type="success" @click="exportConfigs">
-              <el-icon><Download /></el-icon>
-              导出配置
-            </el-button>
             <el-button type="warning" @click="showBulkOperationsDialog = true">
               <el-icon><Operation /></el-icon>
               批量操作
-            </el-button>
-            <el-button type="info" @click="handleShowStatistics">
-              <el-icon><DataAnalysis /></el-icon>
-              配置统计
             </el-button>
             <el-button type="primary" @click="showAddDialog = true">
               <el-icon><Plus /></el-icon>
@@ -34,17 +26,9 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="export">
-                    <el-icon><Download /></el-icon>
-                    导出配置
-                  </el-dropdown-item>
                   <el-dropdown-item command="bulk">
                     <el-icon><Operation /></el-icon>
                     批量操作
-                  </el-dropdown-item>
-                  <el-dropdown-item command="statistics">
-                    <el-icon><DataAnalysis /></el-icon>
-                    配置统计
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -677,64 +661,13 @@
         <el-button @click="showBulkOperationsDialog = false">关闭</el-button>
       </template>
     </el-dialog>
-
-    <!-- 配置统计对话框 -->
-    <el-dialog
-      v-model="showStatisticsDialog"
-      title="配置统计"
-      :width="isMobile ? '95%' : '600px'"
-      :class="isMobile ? 'mobile-dialog' : ''"
-    >
-      <div v-if="statisticsLoading" style="text-align: center; padding: 40px;">
-        <el-icon class="is-loading" style="font-size: 24px;"><Loading /></el-icon>
-        <p style="margin-top: 10px;">加载中...</p>
-      </div>
-      <div v-else-if="statisticsData">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="总配置数">
-            <el-tag type="info">{{ statisticsData.total_configs || 0 }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="已启用">
-            <el-tag type="success">{{ statisticsData.active_configs || 0 }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="已禁用">
-            <el-tag type="warning">{{ statisticsData.inactive_configs || 0 }}</el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-        
-        <div style="margin-top: 20px;">
-          <h4 style="margin-bottom: 15px;">按支付类型统计：</h4>
-          <el-table :data="typeStatsList" style="width: 100%" size="small">
-            <el-table-column prop="type" label="支付类型" width="150">
-              <template #default="scope">
-                <el-tag :type="getTypeTagType(scope.row.type)">
-                  {{ getTypeText(scope.row.type) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="count" label="已启用数量" align="center">
-              <template #default="scope">
-                <el-tag type="success">{{ scope.row.count }}</el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </div>
-      <div v-else style="text-align: center; padding: 40px;">
-        <el-empty description="暂无统计数据" />
-      </div>
-      <template #footer>
-        <el-button type="primary" @click="loadStatistics">刷新</el-button>
-        <el-button @click="showStatisticsDialog = false">关闭</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Operation, Plus, Edit, Delete, DataAnalysis, Check, Close, Loading } from '@element-plus/icons-vue'
+import { Operation, Plus, Edit, Delete, Check, Close, Loading } from '@element-plus/icons-vue'
 import { paymentAPI } from '@/utils/api'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -742,20 +675,17 @@ dayjs.extend(timezone)
 
 export default {
   name: 'AdminPaymentConfig',
-  components: { Download, Operation, Plus, Edit, Delete, DataAnalysis, Check, Close, Loading },
+  components: { Operation, Plus, Edit, Delete, Check, Close, Loading },
   setup() {
     const loading = ref(false)
     const saving = ref(false)
     const paymentConfigs = ref([])
     const showAddDialog = ref(false)
     const showBulkOperationsDialog = ref(false)
-    const showStatisticsDialog = ref(false)
     const editingConfig = ref(null)
     const isMobile = ref(false)
     const selectedConfigs = ref([])
     const batchOperating = ref(false)
-    const statisticsLoading = ref(false)
-    const statisticsData = ref(null)
     const tableRef = ref(null)
 
     const checkMobile = () => {
@@ -1194,92 +1124,6 @@ export default {
       return typeMap[type] || 'info'
     }
 
-    const exportConfigs = async () => {
-      try {
-        const response = await paymentAPI.exportPaymentConfigs()
-        // 检查响应是否为Blob（CSV文件）
-        let blob = null
-        if (response.data instanceof Blob) {
-          blob = response.data
-        } else if (response.data && typeof response.data === 'object' && response.data.data) {
-          // axios可能包装了Blob
-          blob = response.data.data
-        }
-        
-        if (blob instanceof Blob) {
-          // 从响应头获取文件名
-          const contentDisposition = response.headers['content-disposition'] || response.headers['Content-Disposition']
-          // 使用北京时间生成文件名
-          const beijingDate = dayjs().tz('Asia/Shanghai')
-          let filename = `payment_configs_export_${beijingDate.format('YYYYMMDD')}.csv`
-          
-          if (contentDisposition) {
-            // 优先解析 RFC 5987 格式: filename*=UTF-8''filename
-            let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-            if (filenameMatch && filenameMatch.length > 1) {
-              filename = decodeURIComponent(filenameMatch[1])
-            } else {
-              // 解析标准格式: filename="filename"
-              filenameMatch = contentDisposition.match(/filename=['"]?([^'";]+)['"]?/i)
-              if (filenameMatch && filenameMatch.length > 1) {
-                filename = decodeURIComponent(filenameMatch[1])
-              }
-            }
-          }
-          
-          // 创建下载链接
-          const url = window.URL.createObjectURL(blob)
-          const link = document.createElement('a')
-          link.style.display = 'none'
-          link.href = url
-          link.download = filename
-          
-          // 添加到DOM并触发点击
-          document.body.appendChild(link)
-          // 使用requestAnimationFrame确保DOM已更新
-          requestAnimationFrame(() => {
-            link.click()
-            // 延迟清理
-            setTimeout(() => {
-              document.body.removeChild(link)
-              window.URL.revokeObjectURL(url)
-            }, 1000)
-          })
-          
-          ElMessage.success('支付配置导出成功，文件下载已开始')
-        } else {
-          // 如果不是Blob，可能是JSON错误响应
-          ElMessage.error('导出失败：响应格式不正确')
-        }
-      } catch (error) {
-        // 处理错误响应
-        if (error.response) {
-          // 如果是Blob类型的错误响应，尝试读取错误信息
-          if (error.response.data instanceof Blob) {
-            error.response.data.text().then(text => {
-              try {
-                const errorData = JSON.parse(text)
-                ElMessage.error(errorData.message || errorData.detail || '导出失败')
-              } catch (e) {
-                ElMessage.error('导出失败：服务器返回错误')
-              }
-            }).catch(() => {
-              ElMessage.error('导出失败：无法读取错误信息')
-            })
-          } else if (error.response.data?.message || error.response.data?.detail) {
-            // 如果是JSON错误响应
-            ElMessage.error(error.response.data.message || error.response.data.detail || '导出失败')
-          } else {
-            ElMessage.error(`导出失败：${error.response.status} ${error.response.statusText}`)
-          }
-        } else if (error.message) {
-          ElMessage.error(`导出失败：${error.message}`)
-        } else {
-          ElMessage.error('导出失败：未知错误')
-        }
-      }
-    }
-
     const handleSelectionChange = (selection) => {
       selectedConfigs.value = selection
     }
@@ -1373,34 +1217,6 @@ export default {
       }
     }
 
-    const loadStatistics = async () => {
-      statisticsLoading.value = true
-      try {
-        const response = await paymentAPI.getPaymentConfigStats()
-        if (response && response.data) {
-          statisticsData.value = response.data
-        } else {
-          statisticsData.value = null
-        }
-      } catch (error) {
-        // 处理不同类型的错误
-        let errorMessage = '加载统计数据失败'
-        if (error.isNetworkError) {
-          errorMessage = '网络连接失败，请检查网络连接'
-        } else if (error.isTimeoutError) {
-          errorMessage = '请求超时，请稍后重试'
-        } else if (error.response?.data?.detail) {
-          errorMessage = error.response.data.detail
-        } else if (error.message) {
-          errorMessage = error.message
-        }
-        ElMessage.error(errorMessage)
-        statisticsData.value = null
-      } finally {
-        statisticsLoading.value = false
-      }
-    }
-
     // 获取当前网站的基础URL
     const baseUrl = computed(() => {
       if (typeof window !== 'undefined') {
@@ -1409,35 +1225,11 @@ export default {
       return 'https://your-domain.com' // 默认值，实际不会使用
     })
 
-    const typeStatsList = computed(() => {
-      if (!statisticsData.value || !statisticsData.value.type_stats) {
-        return []
-      }
-      return Object.entries(statisticsData.value.type_stats).map(([type, count]) => ({
-        type,
-        count
-      }))
-    })
-
     const handleMobileAction = (command) => {
       switch (command) {
-        case 'export':
-          exportConfigs()
-          break
         case 'bulk':
           showBulkOperationsDialog.value = true
           break
-        case 'statistics':
-          showStatisticsDialog.value = true
-          loadStatistics()
-          break
-      }
-    }
-
-    // 监听统计对话框打开
-    const watchStatisticsDialog = () => {
-      if (showStatisticsDialog.value && !statisticsData.value) {
-        loadStatistics()
       }
     }
 
@@ -1445,20 +1237,11 @@ export default {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       loadPaymentConfigs()
-      // 监听统计对话框
-      if (showStatisticsDialog.value) {
-        loadStatistics()
-      }
     })
 
     onUnmounted(() => {
       window.removeEventListener('resize', checkMobile)
     })
-
-    const handleShowStatistics = () => {
-      showStatisticsDialog.value = true
-      loadStatistics()
-    }
 
     return {
       baseUrl,
@@ -1467,14 +1250,10 @@ export default {
       paymentConfigs,
       showAddDialog,
       showBulkOperationsDialog,
-      showStatisticsDialog,
       editingConfig,
       configForm,
       selectedConfigs,
       batchOperating,
-      statisticsLoading,
-      statisticsData,
-      typeStatsList,
       loadPaymentConfigs,
       saveConfig,
       editConfig,
@@ -1483,15 +1262,12 @@ export default {
       resetConfigForm,
       getTypeText,
       getTypeTagType,
-      exportConfigs,
       handleMobileAction,
       handleSelectionChange,
       clearSelection,
       batchEnableConfigs,
       batchDisableConfigs,
       batchDeleteConfigs,
-      loadStatistics,
-      handleShowStatistics,
       tableRef,
       isMobile
     }
