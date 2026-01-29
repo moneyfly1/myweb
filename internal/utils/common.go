@@ -24,21 +24,29 @@ func GenerateSubscriptionURL() string {
 	return base64.URLEncoding.EncodeToString(b)
 }
 
-type orderNoRecord struct {
-	OrderNo string `gorm:"column:order_no"`
-}
+func findMaxSequenceFromTable(db *gorm.DB, tableName string, prefix string) int {
+	var maxSeq int
+	dateStr := GetBeijingTime().Format("20060102")
+	fullPrefix := fmt.Sprintf("%s%s", prefix, dateStr)
 
-func findMaxSequence(db *gorm.DB, prefix string) int {
-	var records []orderNoRecord
-	if err := db.Model(&orderNoRecord{}).Where("order_no LIKE ?", prefix+"%").Select("order_no").Find(&records).Error; err != nil {
+	validTableNames := map[string]bool{
+		"orders":           true,
+		"recharge_records": true,
+	}
+	if !validTableNames[tableName] {
 		return 0
 	}
 
-	maxSeq := 0
-	for _, record := range records {
-		if len(record.OrderNo) >= len(prefix)+3 {
+	var orderNos []string
+	query := fmt.Sprintf("SELECT order_no FROM %s WHERE order_no LIKE ? ORDER BY order_no DESC LIMIT 100", tableName)
+	if err := db.Raw(query, fullPrefix+"%").Scan(&orderNos).Error; err != nil {
+		return 0
+	}
+
+	for _, orderNo := range orderNos {
+		if len(orderNo) >= len(fullPrefix)+3 {
 			var seq int
-			if _, err := fmt.Sscanf(record.OrderNo[len(prefix):], "%d", &seq); err == nil && seq > maxSeq {
+			if _, err := fmt.Sscanf(orderNo[len(fullPrefix):], "%d", &seq); err == nil && seq > maxSeq {
 				maxSeq = seq
 			}
 		}
@@ -46,9 +54,18 @@ func findMaxSequence(db *gorm.DB, prefix string) int {
 	return maxSeq
 }
 
-func checkOrderNoExists(db *gorm.DB, orderNo string) bool {
+func checkOrderNoExistsInTable(db *gorm.DB, tableName string, orderNo string) bool {
+	validTableNames := map[string]bool{
+		"orders":           true,
+		"recharge_records": true,
+	}
+	if !validTableNames[tableName] {
+		return false
+	}
+
 	var count int64
-	if err := db.Model(&orderNoRecord{}).Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE order_no = ?", tableName)
+	if err := db.Raw(query, orderNo).Scan(&count).Error; err != nil {
 		return false
 	}
 	return count > 0
@@ -62,7 +79,7 @@ func incrementSequence(seq int) int {
 	return seq
 }
 
-func generateOrderNoWithPrefix(prefix string, db interface{}) (string, error) {
+func generateOrderNoWithPrefix(prefix string, tableName string, db interface{}) (string, error) {
 	now := GetBeijingTime()
 	dateStr := now.Format("20060102")
 	fullPrefix := fmt.Sprintf("%s%s", prefix, dateStr)
@@ -70,7 +87,7 @@ func generateOrderNoWithPrefix(prefix string, db interface{}) (string, error) {
 	maxSeq := 0
 	if db != nil {
 		if gormDB, ok := db.(*gorm.DB); ok {
-			maxSeq = findMaxSequence(gormDB, fullPrefix)
+			maxSeq = findMaxSequenceFromTable(gormDB, tableName, prefix)
 		}
 	}
 
@@ -79,7 +96,10 @@ func generateOrderNoWithPrefix(prefix string, db interface{}) (string, error) {
 
 	if db != nil {
 		if gormDB, ok := db.(*gorm.DB); ok {
-			if checkOrderNoExists(gormDB, orderNo) {
+			for i := 0; i < 10; i++ {
+				if !checkOrderNoExistsInTable(gormDB, tableName, orderNo) {
+					break
+				}
 				maxSeq = incrementSequence(maxSeq)
 				orderNo = fmt.Sprintf("%s%03d", fullPrefix, maxSeq)
 			}
@@ -90,15 +110,15 @@ func generateOrderNoWithPrefix(prefix string, db interface{}) (string, error) {
 }
 
 func GenerateOrderNo(db interface{}) (string, error) {
-	return generateOrderNoWithPrefix("ORD", db)
+	return generateOrderNoWithPrefix("ORD", "orders", db)
 }
 
 func GenerateRechargeOrderNo(userID uint, db interface{}) (string, error) {
-	return generateOrderNoWithPrefix("RCH", db)
+	return generateOrderNoWithPrefix("RCH", "recharge_records", db)
 }
 
 func GenerateDeviceUpgradeOrderNo(db interface{}) (string, error) {
-	return generateOrderNoWithPrefix("UPG", db)
+	return generateOrderNoWithPrefix("UPG", "orders", db)
 }
 
 func GenerateCouponCode() string {

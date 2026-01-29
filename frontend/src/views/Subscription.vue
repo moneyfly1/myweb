@@ -215,28 +215,39 @@
             </el-descriptions>
           </div>
 
-          <div class="payment-method" v-if="finalAmount > 0">
+          <div class="payment-method" v-if="finalAmount > 0 || upgradeForm.additionalDevices >= 5">
             <h4>支付方式</h4>
             <div class="balance-info">
               <span>账户余额：¥{{ userBalance.toFixed(2) }}</span>
             </div>
-            <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange">
-              <el-radio 
-                v-for="method in availableUpgradePaymentMethods" 
-                :key="method.key"
-                :label="method.key"
-                :disabled="method.key === 'balance' && userBalance <= 0"
-              >
-                {{ method.name || method.key }}
+            <div v-if="!availableUpgradePaymentMethods || availableUpgradePaymentMethods.length === 0" style="color: #909399; padding: 10px;">
+              正在加载支付方式...
+            </div>
+            <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" v-else>
+              <el-radio label="balance" :disabled="userBalance <= 0 || (finalAmount > 0 && userBalance < finalAmount)">
+                余额支付
+                <span v-if="finalAmount > 0 && userBalance >= finalAmount" style="color: #67c23a; margin-left: 5px">（余额充足）</span>
+                <span v-else-if="finalAmount > 0 && userBalance > 0" style="color: #f56c6c; margin-left: 5px">（余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）</span>
               </el-radio>
-              <el-radio label="balance" :disabled="userBalance <= 0">余额支付</el-radio>
-              <el-radio label="mixed" :disabled="userBalance <= 0 || userBalance >= finalAmount">
+              <template v-for="method in availableUpgradePaymentMethods" :key="method.key">
+                <el-radio 
+                  v-if="method && method.key && method.key !== 'balance' && method.key !== 'mixed'"
+                  :label="method.key"
+                >
+                  {{ method.name || method.key }}
+                </el-radio>
+              </template>
+              <el-radio label="mixed" :disabled="userBalance <= 0 || userBalance >= finalAmount" v-if="finalAmount > 0 && userBalance > 0 && userBalance < finalAmount">
                 余额+支付宝（余额不足时）
+                <span style="color: #409eff; margin-left: 5px">（余额 ¥{{ userBalance.toFixed(2) }} + 支付宝 ¥{{ (finalAmount - userBalance).toFixed(2) }}）</span>
               </el-radio>
             </el-radio-group>
             <div class="payment-amount" v-if="paymentMethod === 'mixed'">
               <p>余额支付：¥{{ Math.min(userBalance, finalAmount).toFixed(2) }}</p>
               <p>支付宝支付：¥{{ Math.max(0, finalAmount - userBalance).toFixed(2) }}</p>
+            </div>
+            <div style="margin-top: 10px; color: #909399; font-size: 12px;" v-if="availableUpgradePaymentMethods">
+              可用支付方式数量: {{ availableUpgradePaymentMethods.length }}
             </div>
           </div>
         </div>
@@ -394,22 +405,51 @@ export default {
     const loadUpgradePaymentMethods = async () => {
       try {
         const response = await api.get('/payment-methods/active')
+        console.log('支付方式API完整响应:', response)
+        console.log('响应数据类型:', typeof response)
+        console.log('响应数据:', response?.data)
+        
+        let methods = []
         if (response && response.data) {
-          let methods = []
-          if (response.data.success && response.data.data) {
+          if (response.data.success !== false && response.data.data) {
             methods = Array.isArray(response.data.data) ? response.data.data : []
+            console.log('从 response.data.data 解析:', methods)
           } else if (Array.isArray(response.data)) {
             methods = response.data
+            console.log('从 response.data 解析（数组）:', methods)
           } else if (response.data.data && Array.isArray(response.data.data)) {
             methods = response.data.data
+            console.log('从 response.data.data 解析（二次检查）:', methods)
           }
-          availableUpgradePaymentMethods.value = methods
-          if (methods.length > 0) {
-            paymentMethod.value = methods[0].key
+          
+          if (methods.length === 0 && response.data && typeof response.data === 'object') {
+            if (Array.isArray(response.data)) {
+              methods = response.data
+              console.log('从 response.data 解析（对象检查）:', methods)
+            }
+          }
+        }
+        
+        console.log('最终解析的支付方式列表:', methods)
+        console.log('支付方式数量:', methods.length)
+        
+        availableUpgradePaymentMethods.value = methods.length > 0 ? methods : []
+        
+        console.log('设置后的 availableUpgradePaymentMethods:', availableUpgradePaymentMethods.value)
+        console.log('availableUpgradePaymentMethods 长度:', availableUpgradePaymentMethods.value.length)
+        
+        if (methods.length > 0) {
+          const firstMethod = methods.find(m => m.key && m.key !== 'balance' && m.key !== 'mixed') || methods[0]
+          if (firstMethod && firstMethod.key) {
+            paymentMethod.value = firstMethod.key
+            console.log('设置默认支付方式:', paymentMethod.value)
           }
         }
       } catch (error) {
-        availableUpgradePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
+        console.error('加载支付方式失败:', error)
+        console.error('错误响应:', error.response)
+        console.error('错误详情:', error.response?.data)
+        availableUpgradePaymentMethods.value = []
       }
     }
     const upgradeOrder = ref(null)
@@ -701,19 +741,32 @@ export default {
     }
 
     // 升级对话框逻辑
-    const handleUpgradeDialogOpen = () => {
+    const handleUpgradeDialogOpen = async () => {
       upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
       upgradeCost.value = 0
       levelDiscount.value = 0
       finalAmount.value = 0
-      loadUpgradePaymentMethods()
-      if (userBalance.value >= 0.01) {
-        paymentMethod.value = 'balance'
-      } else {
-        paymentMethod.value = availableUpgradePaymentMethods.value[0]?.key || 'alipay'
-      }
-      fetchUserInfo()
-      setTimeout(calculateUpgradeCost, 300)
+      paymentMethod.value = ''
+      
+      await Promise.all([
+        loadUpgradePaymentMethods(),
+        fetchUserInfo()
+      ])
+      
+      setTimeout(() => {
+        calculateUpgradeCost()
+        setTimeout(() => {
+          if (userBalance.value >= finalAmount.value && finalAmount.value > 0) {
+            paymentMethod.value = 'balance'
+          } else if (userBalance.value > 0 && userBalance.value < finalAmount.value && finalAmount.value > 0) {
+            paymentMethod.value = 'mixed'
+          } else if (availableUpgradePaymentMethods.value.length > 0) {
+            paymentMethod.value = availableUpgradePaymentMethods.value[0]?.key || 'alipay'
+          } else {
+            paymentMethod.value = 'alipay'
+          }
+        }, 300)
+      }, 500)
     }
 
     const calculateUpgradeCost = async () => {
@@ -910,6 +963,7 @@ export default {
       finalAmount,
       userBalance,
       paymentMethod,
+      availableUpgradePaymentMethods,
       upgradeOrder,
       copyUrl,
       resetSubscription,
