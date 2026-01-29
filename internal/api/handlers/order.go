@@ -100,13 +100,14 @@ func buildOrderListData(db *gorm.DB, orders []models.Order) []gin.H {
 }
 
 type CreateOrderRequest struct {
-	PackageID     uint    `json:"package_id" binding:"required"`
-	CouponCode    string  `json:"coupon_code"`
-	PaymentMethod string  `json:"payment_method"`
-	Amount        float64 `json:"amount"`
-	UseBalance    bool    `json:"use_balance"`
-	BalanceAmount float64 `json:"balance_amount"`
-	Currency      string  `json:"currency"`
+	PackageID      uint    `json:"package_id" binding:"required"`
+	CouponCode     string  `json:"coupon_code"`
+	PaymentMethod  string  `json:"payment_method"`
+	Amount         float64 `json:"amount"`
+	UseBalance     bool    `json:"use_balance"`
+	BalanceAmount  float64 `json:"balance_amount"`
+	Currency       string  `json:"currency"`
+	DurationMonths int     `json:"duration_months"`
 }
 
 func CreateOrder(c *gin.Context) {

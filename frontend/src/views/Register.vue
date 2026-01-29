@@ -157,7 +157,9 @@ import { ElMessage } from 'element-plus'
 import { authAPI, inviteAPI } from '@/utils/api'
 import { useSettingsStore } from '@/store/settings'
 import { useAuthStore } from '@/store/auth'
-import { settingsAPI } from '@/utils/api'
+import { settingsAPI, resetRefreshFailed } from '@/utils/api'
+import { secureStorage } from '@/utils/secureStorage'
+import { useThemeStore } from '@/store/theme'
 
 const router = useRouter()
 const route = useRoute()
@@ -386,7 +388,21 @@ const handleRegister = async () => {
   // 设置防抖：300ms内只能提交一次
   registerDebounceTimer = setTimeout(async () => {
     try {
-      await registerFormRef.value.validate()
+      const valid = await registerFormRef.value.validate().catch(err => {
+        console.error('表单验证失败:', err)
+        ElMessage.warning('请检查表单输入是否正确')
+        return false
+      })
+      
+      if (!valid) {
+        return
+      }
+      
+      if (registerForm.password !== registerForm.confirmPassword) {
+        ElMessage.error('两次输入的密码不一致，请重新输入')
+        registerFormRef.value?.validateField('confirmPassword')
+        return
+      }
       
       // 再次检查loading状态，防止竞态条件
       if (loading.value) {
@@ -411,36 +427,100 @@ const handleRegister = async () => {
     const response = await authAPI.register(registerData)
     
     if (response.data) {
-      ElMessage.success('注册成功！请登录')
+      const responseData = response.data?.data || response.data
       
-      router.push({
-        path: '/login',
-        query: {
-          username: registerForm.username,
-          email: registerForm.email,
-          registered: 'true'
+      if (responseData.access_token && responseData.user) {
+        const { access_token, refresh_token, user: userData } = responseData
+        
+        if (userData.is_admin) {
+          ElMessage.warning('管理员账户请使用管理员登录页面登录')
+          router.push('/login')
+          return
         }
-      })
+        
+        const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000
+        
+        const safeUserData = {
+          id: userData.id,
+          username: userData.username,
+          email: userData.email,
+          is_admin: userData.is_admin || false,
+          is_verified: userData.is_verified,
+          is_active: userData.is_active,
+          theme: userData.theme,
+          language: userData.language
+        }
+        
+        authStore.setAuth(access_token, safeUserData, true)
+        
+        if (refresh_token) {
+          secureStorage.set('user_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
+        }
+        
+        resetRefreshFailed()
+        
+        setTimeout(() => {
+          const themeStore = useThemeStore()
+          themeStore.loadUserTheme().catch(() => {})
+        }, 500)
+        
+        ElMessage.success('注册成功！正在跳转到用户中心...')
+        
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 500)
+      } else {
+        ElMessage.success('注册成功！请登录')
+        router.push({
+          path: '/login',
+          query: {
+            username: registerForm.username,
+            email: registerForm.email,
+            registered: 'true'
+          }
+        })
+      }
     } else {
       ElMessage.error('注册失败，请重试')
     }
     
   } catch (error) {
-    // 改进错误提示，显示更友好的错误信息
+    console.error('注册错误:', error)
+    
     if (error.response?.data) {
       const errorData = error.response.data
-      // 优先显示 detail 字段的错误信息
+      let errorMessage = '注册失败，请重试'
+      
       if (errorData.detail) {
-        ElMessage.error(errorData.detail)
+        errorMessage = errorData.detail
       } else if (errorData.message) {
-        ElMessage.error(errorData.message)
-      } else {
-        ElMessage.error('注册失败，请检查输入信息')
+        errorMessage = errorData.message
+      } else if (typeof errorData === 'string') {
+        errorMessage = errorData
+      }
+      
+      ElMessage.error(errorMessage)
+      
+      if (error.response.status === 400) {
+        if (errorMessage.includes('邮箱') || errorMessage.includes('email')) {
+          registerFormRef.value?.validateField('email')
+        } else if (errorMessage.includes('用户名') || errorMessage.includes('username')) {
+          registerFormRef.value?.validateField('username')
+        } else if (errorMessage.includes('密码') || errorMessage.includes('password')) {
+          registerFormRef.value?.validateField('password')
+          registerFormRef.value?.validateField('confirmPassword')
+        } else if (errorMessage.includes('验证码') || errorMessage.includes('verification')) {
+          registerFormRef.value?.validateField('verificationCode')
+        }
       }
     } else if (error.message) {
-      ElMessage.error(error.message)
+      if (error.message.includes('validate') || error.message.includes('验证')) {
+        ElMessage.warning('请检查表单输入是否正确')
+      } else {
+        ElMessage.error(error.message)
+      }
     } else {
-      ElMessage.error('注册失败，请重试')
+      ElMessage.error('注册失败，请检查网络连接后重试')
     }
   } finally {
     loading.value = false
