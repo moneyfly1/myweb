@@ -1251,6 +1251,11 @@ func UpgradeDevices(c *gin.Context) {
 		payType := req.PaymentMethod
 		queryPayType := payType
 
+		if payType == "mixed" {
+			payType = "alipay"
+			queryPayType = "alipay"
+		}
+
 		if strings.HasPrefix(payType, "yipay_") {
 			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 				queryPayType = "yipay"

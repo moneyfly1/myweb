@@ -57,6 +57,7 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	var paymentURL string
+	var paymentError error
 	paymentMethod := req.PaymentMethod
 	if paymentMethod == "" {
 		paymentMethod = "alipay"
@@ -81,46 +82,63 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	if paymentConfig.Status == 1 {
+		tempOrder := &models.Order{
+			OrderNo: recharge.OrderNo,
+			UserID:  user.ID,
+			Amount:  recharge.Amount,
+		}
+
 		if paymentMethod == "alipay" {
 			alipayService, err := payment.NewAlipayService(&paymentConfig)
-			if err == nil {
-				tempOrder := &models.Order{
-					OrderNo: recharge.OrderNo,
-					UserID:  user.ID,
-					Amount:  recharge.Amount,
-				}
-				paymentURL, _ = alipayService.CreatePayment(tempOrder, recharge.Amount)
+			if err != nil {
+				paymentError = err
+			} else {
+				paymentURL, paymentError = alipayService.CreatePayment(tempOrder, recharge.Amount)
 			}
 		} else if paymentMethod == "wechat" {
 			wechatService, err := payment.NewWechatService(&paymentConfig)
-			if err == nil {
-				tempOrder := &models.Order{
-					OrderNo: recharge.OrderNo,
-					UserID:  user.ID,
-					Amount:  recharge.Amount,
-				}
-				paymentURL, _ = wechatService.CreatePayment(tempOrder, recharge.Amount)
+			if err != nil {
+				paymentError = err
+			} else {
+				paymentURL, paymentError = wechatService.CreatePayment(tempOrder, recharge.Amount)
 			}
 		} else if queryPayType == "yipay" || strings.HasPrefix(paymentMethod, "yipay_") {
 			yipayService, err := payment.NewYipayService(&paymentConfig)
-			if err == nil {
-				tempOrder := &models.Order{
-					OrderNo: recharge.OrderNo,
-					UserID:  user.ID,
-					Amount:  recharge.Amount,
-				}
+			if err != nil {
+				paymentError = err
+			} else {
 				paymentType := "alipay"
 				if strings.HasPrefix(paymentMethod, "yipay_") {
 					paymentType = strings.TrimPrefix(paymentMethod, "yipay_")
 				}
-				paymentURL, _ = yipayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
+				paymentURL, paymentError = yipayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
 			}
+		} else {
+			utils.ErrorResponse(c, http.StatusBadRequest, "不支持的支付方式", nil)
+			return
+		}
+
+		if paymentError != nil {
+			utils.LogError("CreateRecharge: create payment failed", paymentError, map[string]interface{}{
+				"payment_method": paymentMethod,
+				"order_no":       recharge.OrderNo,
+			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败: "+paymentError.Error(), nil)
+			return
 		}
 
 		if paymentURL != "" {
 			recharge.PaymentURL = database.NullString(paymentURL)
-			db.Save(&recharge)
+			if err := db.Save(&recharge).Error; err != nil {
+				utils.LogError("CreateRecharge: save payment URL failed", err, nil)
+			}
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "支付链接生成失败", nil)
+			return
 		}
+	} else {
+		utils.ErrorResponse(c, http.StatusBadRequest, "支付配置未启用", nil)
+		return
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "", gin.H{

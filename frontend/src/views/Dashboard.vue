@@ -1010,7 +1010,10 @@ const createRecharge = async () => {
     }
     
     rechargeLoading.value = true
-    const response = await rechargeAPI.createRecharge(rechargeForm.value.amount, rechargePaymentMethod.value)
+    const response = await rechargeAPI.createRecharge({
+      amount: rechargeForm.value.amount,
+      payment_method: rechargePaymentMethod.value
+    })
     
     if (response.data && response.data.success !== false) {
       const data = response.data.data
