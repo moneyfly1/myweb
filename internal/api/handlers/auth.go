@@ -70,7 +70,10 @@ func Register(c *gin.Context) {
 
 	var user models.User
 	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-		hashed, _ := auth.HashPassword(req.Password)
+		hashed, hashErr := auth.HashPassword(req.Password)
+		if hashErr != nil {
+			return fmt.Errorf("密码加密失败: %v", hashErr)
+		}
 		user = models.User{
 			Username:   req.Username,
 			Email:      req.Email,
@@ -79,6 +82,15 @@ func Register(c *gin.Context) {
 			IsVerified: true,
 		}
 		if err := tx.Create(&user).Error; err != nil {
+			if strings.Contains(err.Error(), "UNIQUE constraint") || strings.Contains(err.Error(), "Duplicate entry") {
+				if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "Email") {
+					return fmt.Errorf("该邮箱已被注册，请直接登录或使用其他邮箱")
+				}
+				if strings.Contains(err.Error(), "username") || strings.Contains(err.Error(), "Username") {
+					return fmt.Errorf("用户名已被使用，请选择其他用户名")
+				}
+				return fmt.Errorf("邮箱或用户名已被使用，请检查后重试")
+			}
 			return fmt.Errorf("创建用户失败: %v", err)
 		}
 		if err := createDefaultSubscription(tx, user.ID); err != nil {
@@ -91,12 +103,74 @@ func Register(c *gin.Context) {
 	})
 
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "注册失败", err)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "邮箱已被注册") || strings.Contains(errMsg, "用户名已被使用") {
+			utils.ErrorResponse(c, http.StatusBadRequest, errMsg, nil)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, errMsg, err)
+		}
 		return
 	}
 
+	db.Where("id = ?", user.ID).First(&user)
+
+	ipAddress := c.ClientIP()
+	if ipAddress == "" {
+		ipAddress = c.RemoteIP()
+	}
+
+	atk, err := utils.CreateAccessToken(user.ID, user.Email, user.IsAdmin)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成令牌失败", err)
+		return
+	}
+	rtk, err := utils.CreateRefreshToken(user.ID, user.Email)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
+		return
+	}
+
+	now := utils.GetBeijingTime()
+	user.LastLogin = database.NullTime(now)
+	if saveErr := db.Save(user).Error; saveErr != nil {
+		utils.LogError("Register: 更新最后登录时间失败", saveErr, nil)
+	}
+
+	var location sql.NullString
+	if geoip.IsEnabled() {
+		location = geoip.GetLocationString(ipAddress)
+	}
+
+	loginHistory := models.LoginHistory{
+		UserID:      user.ID,
+		LoginTime:   now,
+		IPAddress:   database.NullString(ipAddress),
+		UserAgent:   database.NullString(c.GetHeader("User-Agent")),
+		Location:    location,
+		LoginStatus: "success",
+	}
+	if err := db.Create(&loginHistory).Error; err != nil {
+		utils.LogError("Register: 创建登录历史失败", err, map[string]interface{}{"user_id": user.ID, "ip": ipAddress})
+	}
+
+	utils.CreateSecurityLog(c, "register_success", "INFO",
+		fmt.Sprintf("注册成功: 用户 %s (IP: %s)", user.Username, ipAddress),
+		map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
+
 	handleRegisterNotification(user)
-	utils.SuccessResponse(c, http.StatusCreated, "注册成功", gin.H{"id": user.ID, "email": user.Email})
+	utils.SuccessResponse(c, http.StatusCreated, "注册成功", gin.H{
+		"access_token":  atk,
+		"refresh_token": rtk,
+		"token_type":    "bearer",
+		"user": gin.H{
+			"id":          user.ID,
+			"username":    user.Username,
+			"email":       user.Email,
+			"is_admin":    user.IsAdmin,
+			"is_verified": user.IsVerified,
+			"is_active":   user.IsActive,
+		},
+	})
 }
 
 func Login(c *gin.Context) {
@@ -223,20 +297,32 @@ func handleValidationError(c *gin.Context, err error) {
 		for _, fieldErr := range validationErr {
 			switch fieldErr.Field() {
 			case "Email":
-				utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址", err)
+				if fieldErr.Tag() == "email" {
+					utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址（例如：user@example.com）", nil)
+				} else {
+					utils.ErrorResponse(c, http.StatusBadRequest, "邮箱不能为空，请输入您的邮箱地址", nil)
+				}
 				return
 			case "Username":
-				utils.ErrorResponse(c, http.StatusBadRequest, "用户名不能为空", err)
+				if fieldErr.Tag() == "required" {
+					utils.ErrorResponse(c, http.StatusBadRequest, "用户名不能为空，请输入用户名", nil)
+				} else {
+					utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("用户名验证失败: %s", fieldErr.Tag()), nil)
+				}
 				return
 			case "Password":
 				if fieldErr.Tag() == "min" {
-					utils.ErrorResponse(c, http.StatusBadRequest, "密码长度至少8位", err)
+					utils.ErrorResponse(c, http.StatusBadRequest, "密码长度至少8位，请设置更长的密码", nil)
+				} else if fieldErr.Tag() == "required" {
+					utils.ErrorResponse(c, http.StatusBadRequest, "密码不能为空，请输入密码", nil)
 				} else {
-					utils.ErrorResponse(c, http.StatusBadRequest, "密码不能为空", err)
+					utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("密码验证失败: %s", fieldErr.Tag()), nil)
 				}
 				return
 			}
 		}
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数验证失败，请检查输入信息", err)
+		return
 	}
 	utils.ErrorResponse(c, http.StatusBadRequest, "请求格式错误，请检查输入信息", err)
 }

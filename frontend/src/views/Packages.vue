@@ -85,122 +85,160 @@
     <el-dialog
       v-model="purchaseDialogVisible"
       title="确认购买"
-      :width="isMobile ? '90%' : '500px'"
+      :width="isMobile ? '90%' : '800px'"
       :close-on-click-modal="false"
       class="purchase-dialog"
+      :show-close="true"
     >
-      <div class="purchase-confirm">
-        <div class="package-summary">
-          <h4>套餐信息</h4>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="套餐名称">{{ selectedPackage?.name }}</el-descriptions-item>
-            <el-descriptions-item label="有效期">{{ selectedPackage?.duration_days }}天</el-descriptions-item>
-            <el-descriptions-item label="设备限制">{{ selectedPackage?.device_limit }}个</el-descriptions-item>
-            <el-descriptions-item label="原价">
-              <span>¥{{ selectedPackage?.price }}</span>
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
+      <div class="purchase-confirm-horizontal">
+        <div class="purchase-left">
+          <div class="package-summary">
+            <h4>套餐信息</h4>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="套餐名称">{{ selectedPackage?.name }}</el-descriptions-item>
+              <el-descriptions-item label="套餐单价">
+                <span>¥{{ selectedPackage?.price }}</span>
+                <span style="color: #909399; margin-left: 8px;">/{{ packageType?.type === 'monthly' ? '月' : packageType?.type === 'yearly' ? '年' : packageType?.type === 'half_yearly' ? '半年' : packageType?.type === 'quarterly' ? '季度' : `${selectedPackage?.duration_days || 30}天` }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="设备限制">{{ selectedPackage?.device_limit }}个</el-descriptions-item>
+            </el-descriptions>
+          </div>
 
-        <div class="coupon-section" style="margin-top: 20px; padding: 15px; background: #f5f7fa; border-radius: 4px">
-          <h4 style="margin-bottom: 10px">优惠券（可选）</h4>
-          <div class="coupon-input-group">
-            <el-input
-              v-model="couponCode"
-              placeholder="输入优惠券码"
-              class="coupon-input"
-              :disabled="validatingCoupon || isProcessing"
-              @input="handleCouponInput"
-              @focus="handleCouponFocus"
-            />
-            <div class="coupon-buttons">
-              <el-button
-                @click="validateCoupon"
-                :loading="validatingCoupon"
-                :disabled="!couponCode || isProcessing"
-                size="default"
-              >
-                验证
-              </el-button>
-              <el-button
-                v-if="couponCode"
-                @click="clearCoupon"
-                :disabled="isProcessing"
-                size="default"
-              >
-                清除
-              </el-button>
+          <div class="duration-selection" style="margin-top: 12px;">
+            <h4>购买时长</h4>
+            <el-select
+              v-model="selectedQuantity"
+              @change="handleQuantityChange"
+              style="width: 100%"
+              :placeholder="durationPlaceholder"
+              :size="isMobile ? 'large' : 'default'"
+            >
+              <el-option
+                v-for="option in durationOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <div class="form-hint" style="margin-top: 4px; color: #909399; font-size: 11px;">
+              {{ durationHint }}
             </div>
           </div>
-          <div v-if="couponInfo" style="margin-top: 10px">
-            <el-alert
-              :title="couponInfo.message"
-              :type="couponInfo.valid ? 'success' : 'error'"
-              :closable="false"
-              show-icon
-            />
-            <div v-if="couponInfo.valid && couponInfo.discount_amount" style="margin-top: 10px; color: #67c23a; font-weight: bold">
-              优惠金额：¥{{ couponInfo.discount_amount.toFixed(2) }}
-            </div>
-          </div>
-        </div>
 
-        <div v-if="userLevel && levelDiscountRate < 1.0" class="level-discount-tip">
-          <div class="tip-header">
-            <el-icon class="tip-icon"><StarFilled /></el-icon>
-            <span class="tip-title">
-              您当前是 <span class="level-name-highlight" :style="{ color: userLevel.color || '#4caf50' }">{{ userLevel.name }}</span>，享受 {{ (levelDiscountRate * 10).toFixed(1) }}折优惠！
-            </span>
-          </div>
-          <div class="tip-content">
-            💡 本次购买可节省 ¥{{ calculateLevelDiscount(selectedPackage?.price).toFixed(2) }}，累计消费达到更高等级可享受更多优惠！
-          </div>
-        </div>
-        
-        <div v-else-if="!userLevel || levelDiscountRate >= 1.0" class="level-upgrade-tip">
-          <div class="tip-header">
-            <el-icon class="tip-icon upgrade-icon"><Promotion /></el-icon>
-            <span class="tip-title upgrade-title">
-              升级会员等级，享受更多优惠！
-            </span>
-          </div>
-          <div class="tip-content upgrade-content">
-            💡 累计消费达到一定金额即可升级会员等级，享受专属折扣优惠。立即购买即可开始累计消费！
-          </div>
-        </div>
-
-        <div class="price-summary">
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="原价">
-              <span>¥{{ selectedPackage?.price }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="等级折扣" v-if="userLevel && levelDiscountRate < 1.0">
-              <div class="discount-item">
-                <span class="discount-amount">
-                  -¥{{ calculateLevelDiscount(selectedPackage?.price).toFixed(2) }}
-                </span>
-                <el-tag 
-                  :type="userLevel.color ? 'info' : 'success'" 
-                  size="small" 
-                  class="level-tag"
-                  :style="{ backgroundColor: userLevel.color || '#67c23a', color: '#fff', border: 'none' }"
+          <div class="coupon-section" style="margin-top: 12px; padding: 12px; background: #f5f7fa; border-radius: 4px">
+            <h4 style="margin-bottom: 8px; font-size: 14px;">优惠券（可选）</h4>
+            <div class="coupon-input-group">
+              <el-input
+                v-model="couponCode"
+                placeholder="输入优惠券码"
+                class="coupon-input"
+                :disabled="validatingCoupon || isProcessing"
+                @input="handleCouponInput"
+                @focus="handleCouponFocus"
+                :size="isMobile ? 'large' : 'default'"
+              />
+              <div class="coupon-buttons">
+                <el-button
+                  @click="validateCoupon"
+                  :loading="validatingCoupon"
+                  :disabled="!couponCode || isProcessing"
+                  :size="isMobile ? 'large' : 'default'"
                 >
-                  {{ userLevel.name }} {{ (levelDiscountRate * 10).toFixed(1) }}折
-                </el-tag>
+                  验证
+                </el-button>
+                <el-button
+                  v-if="couponCode"
+                  @click="clearCoupon"
+                  :disabled="isProcessing"
+                  :size="isMobile ? 'large' : 'default'"
+                >
+                  清除
+                </el-button>
               </div>
-            </el-descriptions-item>
-            <el-descriptions-item label="优惠券折扣" v-if="couponInfo && couponInfo.valid && couponInfo.discount_amount">
-              <span class="discount-amount">-¥{{ couponInfo.discount_amount.toFixed(2) }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="实付金额">
-              <span class="final-amount">
-                ¥{{ finalAmount.toFixed(2) }}
-              </span>
-            </el-descriptions-item>
-          </el-descriptions>
+            </div>
+            <div v-if="couponInfo" style="margin-top: 8px">
+              <el-alert
+                :title="couponInfo.message"
+                :type="couponInfo.valid ? 'success' : 'error'"
+                :closable="false"
+                show-icon
+                :effect="'plain'"
+              />
+              <div v-if="couponInfo.valid && couponInfo.discount_amount" style="margin-top: 6px; color: #67c23a; font-weight: bold; font-size: 13px;">
+                优惠金额：¥{{ couponInfo.discount_amount.toFixed(2) }}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="payment-method-section">
+        <div class="purchase-right">
+          <div class="price-summary">
+            <h4>费用明细</h4>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="套餐单价">
+                <span>¥{{ selectedPackage?.price }}</span>
+                <span style="color: #909399; margin-left: 8px;">/{{ packageType?.type === 'monthly' ? '月' : packageType?.type === 'yearly' ? '年' : packageType?.type === 'half_yearly' ? '半年' : packageType?.type === 'quarterly' ? '季度' : `${selectedPackage?.duration_days || 30}天` }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="购买时长">
+                <span>{{ durationDisplayText }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="设备数量">
+                <span>{{ selectedPackage?.device_limit || 0 }} 个设备</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="原价总计">
+                <span>¥{{ totalOriginalPrice.toFixed(2) }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="等级折扣" v-if="userLevel && levelDiscountRate < 1.0">
+                <div class="discount-item">
+                  <span class="discount-amount">
+                    -¥{{ calculateLevelDiscount(totalOriginalPrice).toFixed(2) }}
+                  </span>
+                  <el-tag 
+                    :type="userLevel.color ? 'info' : 'success'" 
+                    size="small" 
+                    class="level-tag"
+                    :style="{ backgroundColor: userLevel.color || '#67c23a', color: '#fff', border: 'none' }"
+                  >
+                    {{ userLevel.name }} {{ (levelDiscountRate * 10).toFixed(1) }}折
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              <el-descriptions-item label="优惠券折扣" v-if="couponInfo && couponInfo.valid && couponInfo.discount_amount">
+                <span class="discount-amount">-¥{{ couponInfo.discount_amount.toFixed(2) }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="实付金额">
+                <span class="final-amount">
+                  ¥{{ finalAmount.toFixed(2) }}
+                </span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+
+          <div v-if="userLevel && levelDiscountRate < 1.0" class="level-discount-tip" style="margin-top: 12px;">
+            <div class="tip-header">
+              <el-icon class="tip-icon"><StarFilled /></el-icon>
+              <span class="tip-title">
+                您当前是 <span class="level-name-highlight" :style="{ color: userLevel.color || '#4caf50' }">{{ userLevel.name }}</span>，享受 {{ (levelDiscountRate * 10).toFixed(1) }}折优惠！
+              </span>
+            </div>
+            <div class="tip-content">
+              💡 本次购买可节省 ¥{{ calculateLevelDiscount(totalOriginalPrice).toFixed(2) }}，累计消费达到更高等级可享受更多优惠！
+            </div>
+          </div>
+          
+          <div v-else-if="!userLevel || levelDiscountRate >= 1.0" class="level-upgrade-tip" style="margin-top: 12px;">
+            <div class="tip-header">
+              <el-icon class="tip-icon upgrade-icon"><Promotion /></el-icon>
+              <span class="tip-title upgrade-title">
+                升级会员等级，享受更多优惠！
+              </span>
+            </div>
+            <div class="tip-content upgrade-content">
+              💡 累计消费达到一定金额即可升级会员等级，享受专属折扣优惠。立即购买即可开始累计消费！
+            </div>
+          </div>
+
+          <div class="payment-method-section" style="margin-top: 12px;">
           <h4 class="payment-section-title">支付方式</h4>
           
           <div class="balance-info">
@@ -214,31 +252,29 @@
             <el-radio 
               label="balance" 
               :disabled="userBalance < finalAmount" 
-              style="width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #e4e7ed; border-radius: 4px"
+              class="payment-option"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
-                <span>
-                  <el-icon style="margin-right: 5px"><Wallet /></el-icon>
+              <div class="payment-option-content">
+                <span class="payment-option-label">
+                  <el-icon class="payment-icon"><Wallet /></el-icon>
                   余额支付
                 </span>
-                <span v-if="userBalance >= finalAmount" style="color: #67c23a; font-weight: 600">（余额充足，可直接支付）</span>
-                <span v-else-if="userBalance > 0" style="color: #f56c6c; font-weight: 600">
-                  （余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}，请选择其他支付方式）
+                <span v-if="userBalance >= finalAmount" class="payment-status success">（余额充足）</span>
+                <span v-else-if="userBalance > 0" class="payment-status error">
+                  （余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）
                 </span>
-                <span v-else style="color: #909399; font-weight: 600">
-                  （余额为0，请选择其他支付方式）
-                </span>
+                <span v-else class="payment-status disabled">（余额为0）</span>
               </div>
             </el-radio>
             <el-radio 
               v-for="method in availablePaymentMethods" 
               :key="method.key"
               :label="method.key" 
-              style="width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #e4e7ed; border-radius: 4px"
+              class="payment-option"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
-                <span>
-                  <el-icon style="margin-right: 5px"><CreditCard /></el-icon>
+              <div class="payment-option-content">
+                <span class="payment-option-label">
+                  <el-icon class="payment-icon"><CreditCard /></el-icon>
                   {{ method.name || method.key }}
                 </span>
               </div>
@@ -246,11 +282,11 @@
             <el-radio 
               v-if="availablePaymentMethods.length === 0"
               label="alipay" 
-              style="width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #e4e7ed; border-radius: 4px"
+              class="payment-option"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
-                <span>
-                  <el-icon style="margin-right: 5px"><CreditCard /></el-icon>
+              <div class="payment-option-content">
+                <span class="payment-option-label">
+                  <el-icon class="payment-icon"><CreditCard /></el-icon>
                   支付宝支付
                 </span>
               </div>
@@ -258,43 +294,46 @@
             <el-radio 
               v-if="userBalance > 0 && userBalance < finalAmount" 
               label="mixed" 
-              style="width: 100%; padding: 10px; border: 1px solid #e4e7ed; border-radius: 4px"
+              class="payment-option"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
-                <span>
-                  <el-icon style="margin-right: 5px"><Money /></el-icon>
-                  余额+支付宝合并支付
+              <div class="payment-option-content">
+                <span class="payment-option-label">
+                  <el-icon class="payment-icon"><Money /></el-icon>
+                  余额+支付宝
                 </span>
-                <span style="color: #409eff; font-weight: 600">
+                <span class="payment-status info">
                   （余额 ¥{{ userBalance.toFixed(2) }} + 支付宝 ¥{{ (finalAmount - userBalance).toFixed(2) }}）
                 </span>
               </div>
             </el-radio>
           </el-radio-group>
 
-          <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 10px; padding: 10px; background: #e1f3d8; border-radius: 4px">
+          <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 8px; padding: 8px; background: #e1f3d8; border-radius: 4px">
             <el-alert
               title="将使用余额全额支付"
               type="success"
               :closable="false"
               show-icon
+              :effect="'plain'"
             />
           </div>
-          <div v-else-if="paymentMethod === 'mixed'" style="margin-top: 10px; padding: 10px; background: #ecf5ff; border-radius: 4px">
+          <div v-else-if="paymentMethod === 'mixed'" style="margin-top: 8px; padding: 8px; background: #ecf5ff; border-radius: 4px">
             <el-alert
               :title="`将使用余额 ¥${userBalance.toFixed(2)} 和支付宝 ¥${(finalAmount - userBalance).toFixed(2)} 合并支付`"
               type="info"
               :closable="false"
               show-icon
+              :effect="'plain'"
             />
           </div>
         </div>
         
-        <div class="purchase-actions" style="margin-top: 20px">
-          <el-button @click="purchaseDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmPurchase" :loading="isProcessing">
-            确认购买
-          </el-button>
+          <div class="purchase-actions" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e4e7ed;">
+            <el-button @click="purchaseDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
+            <el-button type="primary" @click="confirmPurchase" :loading="isProcessing" :size="isMobile ? 'large' : 'default'">
+              确认购买
+            </el-button>
+          </div>
         </div>
       </div>
     </el-dialog>
@@ -453,6 +492,7 @@ export default {
     const paymentQRVisible = ref(false)
     const successDialogVisible = ref(false)
     const selectedPackage = ref(null)
+    const selectedQuantity = ref(1)
     const currentOrder = ref(null)
     const paymentQRCode = ref('')
     const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App或iframe嵌入
@@ -520,8 +560,8 @@ export default {
       
       validatingCoupon.value = true
       try {
-        const originalPrice = parseFloat(selectedPackage.value.price) || 0
-        const levelDiscountedPrice = originalPrice * levelDiscountRate.value
+        const totalPrice = totalOriginalPrice.value
+        const levelDiscountedPrice = totalPrice * levelDiscountRate.value
 
         const response = await couponAPI.validateCoupon({
           code: couponCode.value.trim(),
@@ -586,26 +626,148 @@ export default {
       paymentUrl: ''
     })
     
-    const calculateLevelDiscount = (price) => {if (!price || levelDiscountRate.value >= 1.0) return 0
+    const calculateLevelDiscount = (price) => {
+      if (!price || levelDiscountRate.value >= 1.0) return 0
       return price * (1 - levelDiscountRate.value)
     }
     
-    // 计算最终金额（原价 - 等级折扣 - 优惠券折扣）
+    // 识别套餐类型
+    const packageType = computed(() => {
+      if (!selectedPackage.value) return null
+      const days = selectedPackage.value.duration_days || 30
+      
+      // 判断套餐类型（允许一定的误差范围）
+      if (days >= 28 && days <= 32) {
+        return { type: 'monthly', unit: '个月', days: 30, max: 12 }
+      } else if (days >= 88 && days <= 92) {
+        return { type: 'quarterly', unit: '个季度', days: 90, max: 8 }
+      } else if (days >= 175 && days <= 185) {
+        return { type: 'half_yearly', unit: '个半年', days: 180, max: 6 }
+      } else if (days >= 360 && days <= 370) {
+        return { type: 'yearly', unit: '年', days: 365, max: 5 }
+      } else if (days >= 720 && days <= 730) {
+        return { type: 'two_yearly', unit: '个两年', days: 730, max: 3 }
+      } else {
+        // 其他情况，使用实际天数作为单位
+        return { type: 'custom', unit: '个周期', days: days, max: 12 }
+      }
+    })
+    
+    // 生成时长选项
+    const durationOptions = computed(() => {
+      if (!packageType.value) return []
+      const type = packageType.value
+      const options = []
+      
+      for (let i = 1; i <= type.max; i++) {
+        const totalDays = type.days * i
+        let label = ''
+        
+        if (type.type === 'monthly') {
+          label = `${i} 个月（${totalDays} 天）`
+        } else if (type.type === 'quarterly') {
+          label = `${i} 个季度（${totalDays} 天）`
+        } else if (type.type === 'half_yearly') {
+          label = `${i} 个半年（${totalDays} 天）`
+        } else if (type.type === 'yearly') {
+          label = `${i} 年（${totalDays} 天）`
+        } else if (type.type === 'two_yearly') {
+          label = `${i} 个两年（${totalDays} 天）`
+        } else {
+          label = `${i} 个周期（${totalDays} 天）`
+        }
+        
+        options.push({
+          value: i,
+          label: label
+        })
+      }
+      
+      return options
+    })
+    
+    // 时长选择占位符
+    const durationPlaceholder = computed(() => {
+      if (!packageType.value) return '请选择购买时长'
+      const type = packageType.value
+      if (type.type === 'monthly') return '请选择购买月数'
+      if (type.type === 'quarterly') return '请选择购买季度数'
+      if (type.type === 'half_yearly') return '请选择购买半年数'
+      if (type.type === 'yearly') return '请选择购买年数'
+      if (type.type === 'two_yearly') return '请选择购买两年数'
+      return '请选择购买数量'
+    })
+    
+    // 时长选择提示
+    const durationHint = computed(() => {
+      if (!packageType.value) return '选择购买数量，价格将按比例计算'
+      const type = packageType.value
+      if (type.type === 'monthly') return '选择购买月数，价格将按比例计算'
+      if (type.type === 'quarterly') return '选择购买季度数，价格将按比例计算'
+      if (type.type === 'half_yearly') return '选择购买半年数，价格将按比例计算'
+      if (type.type === 'yearly') return '选择购买年数，价格将按比例计算'
+      if (type.type === 'two_yearly') return '选择购买两年数，价格将按比例计算'
+      return '选择购买数量，价格将按比例计算'
+    })
+    
+    // 时长显示文本
+    const durationDisplayText = computed(() => {
+      if (!selectedPackage.value || !selectedQuantity.value || !packageType.value) return ''
+      const type = packageType.value
+      const totalDays = type.days * selectedQuantity.value
+      
+      if (type.type === 'monthly') {
+        return `${selectedQuantity.value} 个月（${totalDays} 天）`
+      } else if (type.type === 'quarterly') {
+        return `${selectedQuantity.value} 个季度（${totalDays} 天）`
+      } else if (type.type === 'half_yearly') {
+        return `${selectedQuantity.value} 个半年（${totalDays} 天）`
+      } else if (type.type === 'yearly') {
+        return `${selectedQuantity.value} 年（${totalDays} 天）`
+      } else if (type.type === 'two_yearly') {
+        return `${selectedQuantity.value} 个两年（${totalDays} 天）`
+      } else {
+        return `${selectedQuantity.value} 个周期（${totalDays} 天）`
+      }
+    })
+    
+    // 计算总原价（根据选择的数量）
+    const totalOriginalPrice = computed(() => {
+      if (!selectedPackage.value || !selectedQuantity.value) return 0
+      const singlePrice = parseFloat(selectedPackage.value.price) || 0
+      return singlePrice * selectedQuantity.value
+    })
+    
+    // 计算总天数
+    const totalDurationDays = computed(() => {
+      if (!selectedPackage.value || !selectedQuantity.value || !packageType.value) return 0
+      return packageType.value.days * selectedQuantity.value
+    })
+    
+    // 计算最终金额（总原价 - 等级折扣 - 优惠券折扣）
     const finalAmount = computed(() => {
-      if (!selectedPackage.value) return 0
-      const originalPrice = parseFloat(selectedPackage.value.price) || 0
+      if (!selectedPackage.value || !selectedQuantity.value) return 0
+      const totalPrice = totalOriginalPrice.value
       
       // 先应用等级折扣
-      const levelDiscount = calculateLevelDiscount(originalPrice)
+      const levelDiscount = calculateLevelDiscount(totalPrice)
       
       // 再应用优惠券折扣（基于等级折扣后的价格）
       const couponDiscount = (couponInfo.value && couponInfo.value.valid && couponInfo.value.discount_amount) 
         ? couponInfo.value.discount_amount 
         : 0
       
-      // 最终金额 = 原价 - 等级折扣 - 优惠券折扣
-      return Math.max(0, originalPrice - levelDiscount - couponDiscount)
+      // 最终金额 = 总原价 - 等级折扣 - 优惠券折扣
+      return Math.max(0, totalPrice - levelDiscount - couponDiscount)
     })
+    
+    // 处理数量变化
+    const handleQuantityChange = () => {
+      // 当数量变化时，重新验证优惠券（如果需要）
+      if (couponCode.value && couponInfo.value && couponInfo.value.valid) {
+        validateCoupon()
+      }
+    }
     
     // 获取套餐列表
     const loadPackages = async () => {
@@ -748,6 +910,7 @@ export default {
         }
         
         selectedPackage.value = pkg
+        selectedQuantity.value = 1
         
         // 加载用户余额
         await loadUserBalance()
@@ -800,7 +963,8 @@ export default {
           package_id: selectedPackage.value.id,
           payment_method: paymentMethod.value === 'balance' ? 'balance' : paymentMethod.value,
           amount: finalAmount.value,
-          currency: 'CNY'
+          currency: 'CNY',
+          duration_months: selectedQuantity.value
         }
         
         if (couponInfo.value && couponInfo.value.valid && couponCode.value) {
@@ -1575,6 +1739,17 @@ export default {
     const onPaymentError = (error) => {
     }
     
+    // 事件处理函数（需要在 onMounted 和 onUnmounted 中共享）
+    const handleSubscriptionUpdate = async (event) => {
+      console.log('收到订阅更新事件，刷新用户信息...', event.detail)
+      await loadUserBalance()
+    }
+    
+    const handleUserInfoUpdate = async () => {
+      console.log('收到用户信息更新事件，刷新用户信息...')
+      await loadUserBalance()
+    }
+    
     // 生命周期
     onMounted(async () => {
       // 先加载用户等级信息（用于显示折扣价格）
@@ -1588,29 +1763,8 @@ export default {
       }
       
       // 监听订阅更新事件（从其他页面触发）
-      const handleSubscriptionUpdate = async (event) => {
-        console.log('收到订阅更新事件，刷新用户信息...', event.detail)
-        // 刷新用户余额（可能因为支付而改变）
-        await loadUserBalance()
-      }
-      
-      // 监听用户信息更新事件
-      const handleUserInfoUpdate = async () => {
-        console.log('收到用户信息更新事件，刷新用户信息...')
-        await loadUserBalance()
-      }
-      
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
-      
-      // 在 onUnmounted 中清理
-      onUnmounted(() => {
-        window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
-        window.removeEventListener('user-info-updated', handleUserInfoUpdate)
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('resize', handleResize)
-        }
-      })
     })
     
     onUnmounted(() => {
@@ -1623,6 +1777,9 @@ export default {
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)
       }
+      // 清理事件监听器
+      window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
+      window.removeEventListener('user-info-updated', handleUserInfoUpdate)
     })
     
     return {
@@ -1675,7 +1832,17 @@ export default {
       // 用户等级相关
       userLevel,
       levelDiscountRate,
-      calculateLevelDiscount
+      calculateLevelDiscount,
+      // 时长选择相关
+      selectedQuantity,
+      packageType,
+      durationOptions,
+      durationPlaceholder,
+      durationHint,
+      durationDisplayText,
+      handleQuantityChange,
+      totalOriginalPrice,
+      totalDurationDays
     }
   }
 }
@@ -1807,13 +1974,38 @@ export default {
 }
 
 /* 购买确认对话框 */
-.purchase-confirm {
-  padding: 20px 0;
+.purchase-confirm-horizontal {
+  display: flex;
+  gap: 16px;
+  padding: 10px 0;
+  max-height: calc(80vh - 120px);
+  overflow-y: auto;
 }
 
-.package-summary :is(h4) {
-  margin-bottom: 15px;
+.purchase-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.purchase-right {
+  flex: 1;
+  min-width: 0;
+}
+
+.purchase-confirm {
+  padding: 10px 0;
+}
+
+
+.package-summary :is(h4),
+.duration-selection :is(h4),
+.price-summary :is(h4),
+.payment-section-title {
+  margin-bottom: 8px;
+  margin-top: 0;
   color: #303133;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .amount {
@@ -1823,11 +2015,15 @@ export default {
 
 .purchase-actions {
   text-align: center;
-  margin-top: 20px;
+  margin-top: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
 .purchase-actions .el-button {
-  margin: 0 10px;
+  margin: 0;
+  min-width: 100px;
 }
 
 /* 成功提示对话框 */
@@ -1879,42 +2075,45 @@ export default {
 /* 手机端对话框优化 */
 .purchase-dialog {
   :deep(.el-dialog) {
-    margin: 5vh auto !important;
-    max-height: 90vh;
+    margin: 3vh auto !important;
+    max-height: 92vh;
     overflow-y: auto;
   }
   
   :deep(.el-dialog__body) {
-    padding: 15px !important;
-    max-height: calc(90vh - 120px);
+    padding: 12px 20px !important;
+    max-height: calc(92vh - 100px);
     overflow-y: auto;
   }
 }
 
 /* 用户等级提示样式 */
 .level-discount-tip {
-  margin-top: 20px;
-  padding: 15px;
+  margin-top: 0;
+  padding: 10px;
   background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
   border-radius: 4px;
-  border-left: 4px solid #4caf50;
+  border-left: 3px solid #4caf50;
 }
 
 .level-discount-tip .tip-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .level-discount-tip .tip-icon {
   color: #4caf50;
-  font-size: 20px;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .level-discount-tip .tip-title {
-  font-weight: bold;
+  font-weight: 600;
   color: #2e7d32;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .level-discount-tip .level-name-highlight {
@@ -1922,47 +2121,52 @@ export default {
 }
 
 .level-discount-tip .tip-content {
-  font-size: 13px;
+  font-size: 12px;
   color: #388e3c;
-  line-height: 1.6;
+  line-height: 1.5;
+  margin-top: 4px;
 }
 
 .level-upgrade-tip {
-  margin-top: 20px;
-  padding: 15px;
+  margin-top: 0;
+  padding: 10px;
   background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
   border-radius: 4px;
-  border-left: 4px solid #ff9800;
+  border-left: 3px solid #ff9800;
 }
 
 .level-upgrade-tip .tip-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .level-upgrade-tip .upgrade-icon {
   color: #ff9800;
-  font-size: 20px;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .level-upgrade-tip .upgrade-title {
-  font-weight: bold;
+  font-weight: 600;
   color: #e65100;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .level-upgrade-tip .upgrade-content {
-  font-size: 13px;
+  font-size: 12px;
   color: #f57c00;
-  line-height: 1.6;
+  line-height: 1.5;
+  margin-top: 4px;
 }
 
 /* 价格汇总样式 */
 .price-summary {
-  margin-top: 20px;
-  padding: 15px;
-  background: #f0f9ff;
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
   border-radius: 4px;
 }
 
@@ -1982,18 +2186,79 @@ export default {
 }
 
 .price-summary .final-amount {
-  font-size: 20px;
+  font-size: 18px;
   color: #f56c6c;
   font-weight: bold;
 }
 
 /* 支付方式选择样式 */
 .payment-method-section {
-  margin-top: 20px;
-  padding: 15px;
-  background: #fff;
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
   border-radius: 4px;
   border: 1px solid #e4e7ed;
+}
+
+.payment-option {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  transition: all 0.3s;
+  
+  &:hover {
+    border-color: #409eff;
+    background-color: #f0f9ff;
+  }
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.payment-option-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  font-size: 14px;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.payment-option-label {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.payment-icon {
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+.payment-status {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  
+  &.success {
+    color: #67c23a;
+  }
+  
+  &.error {
+    color: #f56c6c;
+  }
+  
+  &.disabled {
+    color: #909399;
+  }
+  
+  &.info {
+    color: #409eff;
+  }
 }
 
 .payment-method-section .payment-section-title {
@@ -2006,8 +2271,8 @@ export default {
 
 /* 账户余额显示样式 */
 .balance-info {
-  margin-bottom: 15px;
-  padding: 10px;
+  margin-bottom: 10px;
+  padding: 8px;
   background: #f5f7fa;
   border-radius: 4px;
 }
@@ -2021,10 +2286,11 @@ export default {
 .balance-info .balance-label {
   font-weight: 600;
   color: #606266;
+  font-size: 13px;
 }
 
 .balance-info .balance-amount {
-  font-size: 18px;
+  font-size: 16px;
   color: #409eff;
   font-weight: 700;
 }
@@ -2050,20 +2316,82 @@ export default {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  // 页面头部已移除，统一风格
-  
   /* 手机端对话框 */
   .purchase-dialog {
     :deep(.el-dialog) {
-      width: 90% !important;
-      margin: 5vh auto !important;
+      width: 95% !important;
+      margin: 2vh auto !important;
+      max-height: 96vh;
+    }
+    
+    :deep(.el-dialog__header) {
+      padding: 15px 15px 10px 15px;
+    }
+    
+    :deep(.el-dialog__title) {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    :deep(.el-dialog__body) {
+      padding: 10px 15px 15px 15px !important;
+      max-height: calc(96vh - 80px);
+      overflow-y: auto;
     }
   }
   
+  /* 手机端布局优化 */
+  .purchase-confirm-horizontal {
+    flex-direction: column;
+    gap: 16px;
+    padding: 5px 0;
+    max-height: calc(96vh - 120px);
+  }
+  
+  .purchase-left,
+  .purchase-right {
+    width: 100%;
+  }
+  
+  /* 手机端标题优化 */
+  .package-summary :is(h4),
+  .duration-selection :is(h4),
+  .price-summary :is(h4),
+  .payment-section-title {
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+  
+  /* 手机端描述列表优化 */
+  .purchase-confirm-horizontal :deep(.el-descriptions) {
+    font-size: 13px;
+  }
+  
+  .purchase-confirm-horizontal :deep(.el-descriptions__label) {
+    width: 32% !important;
+    font-size: 13px;
+    padding: 10px 8px !important;
+    font-weight: 500;
+  }
+  
+  .purchase-confirm-horizontal :deep(.el-descriptions__content) {
+    width: 68% !important;
+    font-size: 13px;
+    padding: 10px 8px !important;
+  }
+  
+  .purchase-confirm-horizontal :deep(.el-descriptions__table) {
+    width: 100%;
+  }
+  
   /* 手机端优惠券输入布局 */
+  .coupon-section {
+    padding: 12px !important;
+  }
+  
   .coupon-input-group {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
   }
   
   .coupon-input {
@@ -2073,32 +2401,212 @@ export default {
   .coupon-buttons {
     width: 100%;
     display: flex;
-    gap: 10px;
+    gap: 8px;
   }
   
   .coupon-buttons .el-button {
     flex: 1;
-    min-height: 44px; /* 增加按钮高度便于点击 */
-    font-size: 16px; /* 增加字体大小 */
+    min-height: 44px;
+    font-size: 15px;
+  }
+  
+  /* 手机端购买时长选择优化 */
+  .duration-selection {
+    :deep(.el-select) {
+      .el-input__wrapper {
+        min-height: 44px;
+      }
+      
+      .el-input__inner {
+        font-size: 15px;
+      }
+    }
+  }
+  
+  .form-hint {
+    font-size: 12px !important;
+    margin-top: 6px !important;
+  }
+  
+  /* 手机端支付方式优化 */
+  .payment-method-section {
+    border: none;
+    padding: 0;
+    
+    :deep(.el-radio-group) {
+      width: 100%;
+    }
+  }
+  
+  .payment-option {
+    padding: 14px;
+    margin-bottom: 12px;
+    min-height: 56px;
+    border: 1.5px solid #e4e7ed;
+    
+    &:active {
+      background-color: #f0f9ff;
+      border-color: #409eff;
+    }
+  }
+  
+  .payment-option-content {
+    font-size: 15px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .payment-option-label {
+    font-size: 15px;
+    font-weight: 600;
+    width: 100%;
+  }
+  
+  .payment-icon {
+    font-size: 18px;
+    margin-right: 8px;
+  }
+  
+  .payment-status {
+    font-size: 13px;
+    width: 100%;
+    text-align: left;
+    line-height: 1.4;
+  }
+  
+  .balance-info {
+    padding: 10px;
+    margin-bottom: 12px;
+    
+    .balance-label {
+      font-size: 14px;
+    }
+    
+    .balance-amount {
+      font-size: 18px;
+    }
+  }
+  
+  /* 手机端提示框优化 */
+  .level-discount-tip,
+  .level-upgrade-tip {
+    padding: 12px;
+    margin-top: 12px;
+    
+    .tip-title {
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    
+    .tip-content {
+      font-size: 12px;
+      line-height: 1.5;
+      margin-top: 6px;
+    }
   }
   
   /* 手机端购买按钮优化 */
   .purchase-actions {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
   }
   
   .purchase-actions .el-button {
     width: 100%;
-    min-height: 44px;
+    min-height: 48px;
     font-size: 16px;
+    font-weight: 600;
     margin: 0 !important;
   }
   
-  /* 手机端描述列表优化 */
+  /* 手机端价格显示优化 */
+  .price-summary {
+    .final-amount {
+      font-size: 20px;
+    }
+    
+    .discount-amount {
+      font-size: 14px;
+    }
+  }
+  
+  /* 手机端套餐卡片优化 */
+  .packages-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 12px;
+    margin-top: 12px;
+  }
+  
+  .package-card {
+    margin: 0;
+    border-radius: 12px;
+    
+    :deep(.el-card__body) {
+      padding: 16px;
+    }
+    
+    .package-header {
+      margin-bottom: 16px;
+      
+      .package-name {
+        font-size: 18px;
+        font-weight: 600;
+      }
+    }
+    
+    .package-price {
+      margin-bottom: 16px;
+      
+      .amount {
+        font-size: 28px;
+      }
+      
+      .currency {
+        font-size: 18px;
+      }
+      
+      .period {
+        font-size: 14px;
+      }
+    }
+    
+    .package-features {
+      margin-bottom: 16px;
+      text-align: left;
+      
+      ul {
+        padding-left: 20px;
+        
+        li {
+          font-size: 14px;
+          line-height: 1.8;
+          margin-bottom: 6px;
+        }
+      }
+    }
+    
+    .package-actions {
+      .el-button {
+        min-height: 48px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+    }
+  }
+  
+  .popular-badge,
+  .recommended-badge {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  
   .purchase-confirm :deep(.el-descriptions) {
-    font-size: 14px;
+    font-size: 13px;
   }
   
   .purchase-confirm :deep(.el-descriptions__label) {
