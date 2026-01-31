@@ -71,30 +71,6 @@ func (p *PaymentConfig) GetConfig() map[string]interface{} {
 		if p.WechatAPIKey.Valid {
 			config["api_key"] = p.WechatAPIKey.String
 		}
-	case "paypal":
-		if p.PaypalClientID.Valid {
-			config["client_id"] = p.PaypalClientID.String
-		}
-		if p.PaypalSecret.Valid {
-			config["secret"] = p.PaypalSecret.String
-		}
-	case "stripe":
-		if p.StripePublishableKey.Valid {
-			config["publishable_key"] = p.StripePublishableKey.String
-		}
-		if p.StripeSecretKey.Valid {
-			config["secret_key"] = p.StripeSecretKey.String
-		}
-	case "bank_transfer":
-		if p.BankName.Valid {
-			config["bank_name"] = p.BankName.String
-		}
-		if p.AccountName.Valid {
-			config["account_name"] = p.AccountName.String
-		}
-		if p.AccountNumber.Valid {
-			config["account_number"] = p.AccountNumber.String
-		}
 	case "crypto":
 		if p.WalletAddress.Valid {
 			config["wallet_address"] = p.WalletAddress.String
