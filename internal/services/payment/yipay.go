@@ -36,15 +36,12 @@ type YipayService struct {
 }
 
 type YipayResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		TradeNo    string `json:"trade_no"`
-		OutTradeNo string `json:"out_trade_no"`
-		PayURL     string `json:"pay_url"`
-		QRCode     string `json:"qrcode"`
-		Img        string `json:"img"`
-	} `json:"data"`
+	Code      int    `json:"code"`
+	Msg       string `json:"msg"`
+	TradeNo   string `json:"trade_no"`
+	PayURL    string `json:"payurl"`
+	QRCode    string `json:"qrcode"`
+	URLScheme string `json:"urlscheme"`
 }
 
 func parseConfigData(configJSON sql.NullString) map[string]interface{} {
@@ -203,13 +200,11 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		}
 	}
 
-	apiURL := getConfigString(configData, "gateway_url")
-	if apiURL != "" {
-		apiURL = strings.TrimSuffix(apiURL, "/") + "/openapi/pay/create"
-	} else {
-		apiURL = getConfigString(configData, "api_url")
-		if strings.Contains(apiURL, "/api/pay/create") {
-			apiURL = strings.Replace(apiURL, "/api/pay/create", "/openapi/pay/create", 1)
+	apiURL := getConfigString(configData, "api_url")
+	if apiURL == "" {
+		gatewayURL := getConfigString(configData, "gateway_url")
+		if gatewayURL != "" {
+			apiURL = strings.TrimSuffix(gatewayURL, "/") + "/mapi.php"
 		}
 	}
 	if apiURL == "" {
@@ -244,11 +239,12 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 
 	params := map[string]string{
 		"pid":          s.PID,
-		"paytype_code": paymentType,
+		"type":         paymentType,
 		"out_trade_no": order.OrderNo,
-		"total_amount": fmt.Sprintf("%.2f", amount),
-		"subject":      fmt.Sprintf("订单支付-%s", order.OrderNo),
-		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()),
+		"money":        fmt.Sprintf("%.2f", amount),
+		"name":         fmt.Sprintf("订单支付-%s", order.OrderNo),
+		"clientip":     "127.0.0.1",
+		"device":       "pc",
 		"sign_type":    s.SignType,
 	}
 
@@ -269,9 +265,38 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		params["return_url"] = returnURL
 	}
 
-	params["sign"] = s.Sign(params)
+	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")
 
-	utils.LogInfo("易支付发起请求: URL=%s, Order=%s, Amount=%s", s.APIURL, order.OrderNo, params["total_amount"])
+	if s.SignType == "MD5" || s.SignType == "" {
+		params["sign"] = s.calcMD5FromStr(signStr)
+		params["sign_type"] = "MD5"
+	} else if s.SignType == "MD5+RSA" {
+		params["sign"] = s.calcMD5FromStr(signStr)
+		if rsaSign, err := s.signRSASign(signStr); err == nil {
+			params["rsa_sign"] = rsaSign
+		} else {
+			utils.LogError("易支付RSA签名生成失败", err, nil)
+		}
+	} else if s.SignType == "RSA" {
+		if rsaSign, err := s.signRSASign(signStr); err == nil {
+			params["sign"] = rsaSign
+			params["sign_type"] = "RSA"
+		} else {
+			utils.LogError("易支付RSA签名生成失败", err, nil)
+			return "", fmt.Errorf("RSA签名生成失败: %v", err)
+		}
+	}
+
+	utils.LogInfo("易支付发起请求: URL=%s, Order=%s, Amount=%s, SignType=%s", s.APIURL, order.OrderNo, params["money"], s.SignType)
+	rsaSignPreview := "(无)"
+	if rsa, ok := params["rsa_sign"]; ok && len(rsa) > 20 {
+		rsaSignPreview = rsa[:20] + "..."
+	} else if rsa, ok := params["rsa_sign"]; ok {
+		rsaSignPreview = rsa
+	}
+	utils.LogInfo("易支付请求参数: pid=%s, type=%s, out_trade_no=%s, money=%s, sign=%s, rsa_sign=%s",
+		params["pid"], params["type"], params["out_trade_no"], params["money"],
+		params["sign"], rsaSignPreview)
 
 	respBytes, err := s.postForm(s.APIURL, params)
 	if err != nil {
@@ -295,18 +320,21 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		return "", fmt.Errorf("易支付解析失败: %v", err)
 	}
 
+	utils.LogInfo("易支付返回结果: code=%d, msg=%s, trade_no=%s, payurl=%s, qrcode=%s, urlscheme=%s",
+		yipayResp.Code, yipayResp.Msg, yipayResp.TradeNo, yipayResp.PayURL, yipayResp.QRCode, yipayResp.URLScheme)
+
 	if yipayResp.Code != 1 {
 		return "", fmt.Errorf("易支付API错误: %s (code: %d)", yipayResp.Msg, yipayResp.Code)
 	}
 
-	if yipayResp.Data.Img != "" {
-		return yipayResp.Data.Img, nil
+	if yipayResp.PayURL != "" {
+		return yipayResp.PayURL, nil
 	}
-	if yipayResp.Data.QRCode != "" {
-		return yipayResp.Data.QRCode, nil
+	if yipayResp.QRCode != "" {
+		return yipayResp.QRCode, nil
 	}
-	if yipayResp.Data.PayURL != "" {
-		return yipayResp.Data.PayURL, nil
+	if yipayResp.URLScheme != "" {
+		return yipayResp.URLScheme, nil
 	}
 
 	return "", fmt.Errorf("易支付未返回有效支付链接")
@@ -332,8 +360,16 @@ func (s *YipayService) postForm(apiURL string, params map[string]string) ([]byte
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		utils.LogError("易支付HTTP状态异常", nil, map[string]interface{}{"status": resp.StatusCode, "body": string(body)})
-		return nil, fmt.Errorf("API状态码异常: %d", resp.StatusCode)
+		bodyStr := string(body)
+		if len(bodyStr) > 500 {
+			bodyStr = bodyStr[:500] + "..."
+		}
+		utils.LogError("易支付HTTP状态异常", nil, map[string]interface{}{
+			"status": resp.StatusCode,
+			"url":    apiURL,
+			"body":   bodyStr,
+		})
+		return nil, fmt.Errorf("API状态码异常: %d, 响应: %s", resp.StatusCode, bodyStr)
 	}
 
 	return body, nil
@@ -390,9 +426,9 @@ func (s *YipayService) calculateMD5Sign(params map[string]string) string {
 }
 
 func (s *YipayService) calcMD5FromStr(signStr string) string {
-	fullStr := signStr + "&key=" + s.Key
+	fullStr := signStr + s.Key
 	hash := md5.Sum([]byte(fullStr))
-	return strings.ToUpper(fmt.Sprintf("%x", hash))
+	return strings.ToLower(fmt.Sprintf("%x", hash))
 }
 
 func (s *YipayService) verifyRSASign(content, sign string) bool {
@@ -438,6 +474,46 @@ func (s *YipayService) verifyRSASign(content, sign string) bool {
 		return false
 	}
 	return true
+}
+
+func (s *YipayService) signRSASign(content string) (string, error) {
+	if s.MerchantPrivateKey == "" {
+		return "", fmt.Errorf("商户私钥未配置")
+	}
+
+	var privKeyBytes []byte
+	var err error
+
+	block, _ := pem.Decode([]byte(s.MerchantPrivateKey))
+	if block != nil {
+		privKeyBytes = block.Bytes
+	} else {
+		privKeyBytes, err = base64.StdEncoding.DecodeString(s.MerchantPrivateKey)
+		if err != nil {
+			return "", fmt.Errorf("RSA私钥格式错误: %v", err)
+		}
+	}
+
+	privKey, err := x509.ParsePKCS8PrivateKey(privKeyBytes)
+	if err != nil {
+		privKey, err = x509.ParsePKCS1PrivateKey(privKeyBytes)
+		if err != nil {
+			return "", fmt.Errorf("RSA私钥解析失败: %v", err)
+		}
+	}
+
+	rsaPrivKey, ok := privKey.(*rsa.PrivateKey)
+	if !ok {
+		return "", fmt.Errorf("不是有效的RSA私钥")
+	}
+
+	hashed := sha256.Sum256([]byte(content))
+	signBytes, err := rsa.SignPKCS1v15(nil, rsaPrivKey, crypto.SHA256, hashed[:])
+	if err != nil {
+		return "", fmt.Errorf("RSA签名失败: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(signBytes), nil
 }
 
 func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType string) (string, error) {
