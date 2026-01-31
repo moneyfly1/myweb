@@ -131,6 +131,37 @@ func resolveCallbackURL(explicit sql.NullString, jsonVal string, path string, is
 	return genURL
 }
 
+func detectDeviceType(userAgent string, paymentType string) string {
+	if userAgent == "" {
+		return "pc"
+	}
+
+	ua := strings.ToLower(userAgent)
+
+	if strings.Contains(ua, "micromessenger") {
+		if paymentType == "wxpay" {
+			return "wechat"
+		}
+		return "mobile"
+	}
+
+	if strings.Contains(ua, "alipay") {
+		return "alipay"
+	}
+
+	if strings.Contains(ua, "qq/") {
+		return "qq"
+	}
+
+	if strings.Contains(ua, "mobile") || strings.Contains(ua, "android") ||
+		strings.Contains(ua, "iphone") || strings.Contains(ua, "ipad") ||
+		strings.Contains(ua, "ios") {
+		return "mobile"
+	}
+
+	return "pc"
+}
+
 func buildSignString(params map[string]string, excludeKeys ...string) string {
 	var keys []string
 	excludeMap := make(map[string]bool)
@@ -205,13 +236,14 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		gatewayURL := getConfigString(configData, "gateway_url")
 		if gatewayURL != "" {
 			apiURL = strings.TrimSuffix(gatewayURL, "/") + "/mapi.php"
+			utils.LogInfo("易支付从gateway_url生成api_url: gateway_url=%s, api_url=%s", gatewayURL, apiURL)
 		}
 	}
 	if apiURL == "" {
 		return nil, fmt.Errorf("易支付API地址未配置")
 	}
 
-	utils.LogInfo("易支付初始化: api_url=%s, pid=%s, sign_type=%s", apiURL, pid, signType)
+	utils.LogInfo("易支付初始化: api_url=%s, pid=%s, sign_type=%s, config_json=%s", apiURL, pid, signType, paymentConfig.ConfigJSON.String)
 
 	return &YipayService{
 		PID:                pid,
@@ -226,6 +258,10 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 }
 
 func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymentType string) (string, error) {
+	return s.CreatePaymentWithDevice(order, amount, paymentType, "")
+}
+
+func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float64, paymentType string, userAgent string) (string, error) {
 	if order == nil || order.OrderNo == "" {
 		return "", fmt.Errorf("订单信息无效")
 	}
@@ -237,6 +273,9 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		utils.LogWarn("易支付类型默认: alipay")
 	}
 
+	deviceType := detectDeviceType(userAgent, paymentType)
+	utils.LogInfo("易支付设备类型检测: userAgent=%s, paymentType=%s, device=%s", userAgent, paymentType, deviceType)
+
 	params := map[string]string{
 		"pid":          s.PID,
 		"type":         paymentType,
@@ -244,8 +283,7 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		"money":        fmt.Sprintf("%.2f", amount),
 		"name":         fmt.Sprintf("订单支付-%s", order.OrderNo),
 		"clientip":     "127.0.0.1",
-		"device":       "pc",
-		"sign_type":    s.SignType,
+		"device":       deviceType,
 	}
 
 	if s.NotifyURL == "" {
@@ -254,15 +292,7 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 	params["notify_url"] = s.NotifyURL
 
 	if s.ReturnURL != "" {
-		returnURL := s.ReturnURL
-		sep := "?"
-		if strings.Contains(returnURL, "?") {
-			sep = "&"
-		}
-		if !strings.Contains(returnURL, "out_trade_no") {
-			returnURL = fmt.Sprintf("%s%sout_trade_no=%s", returnURL, sep, order.OrderNo)
-		}
-		params["return_url"] = returnURL
+		params["return_url"] = s.ReturnURL
 	}
 
 	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")
@@ -271,7 +301,9 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		params["sign"] = s.calcMD5FromStr(signStr)
 		params["sign_type"] = "MD5"
 	} else if s.SignType == "MD5+RSA" {
-		params["sign"] = s.calcMD5FromStr(signStr)
+		md5Sign := s.calcMD5FromStr(signStr)
+		params["sign"] = md5Sign
+		params["sign_type"] = "MD5+RSA"
 		if rsaSign, err := s.signRSASign(signStr); err == nil {
 			params["rsa_sign"] = rsaSign
 		} else {
@@ -320,21 +352,26 @@ func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymen
 		return "", fmt.Errorf("易支付解析失败: %v", err)
 	}
 
-	utils.LogInfo("易支付返回结果: code=%d, msg=%s, trade_no=%s, payurl=%s, qrcode=%s, urlscheme=%s",
-		yipayResp.Code, yipayResp.Msg, yipayResp.TradeNo, yipayResp.PayURL, yipayResp.QRCode, yipayResp.URLScheme)
+	utils.LogInfo("易支付返回结果: code=%d, msg=%s, trade_no=%s, device=%s, payurl=%s, qrcode=%s, urlscheme=%s",
+		yipayResp.Code, yipayResp.Msg, yipayResp.TradeNo, deviceType, yipayResp.PayURL, yipayResp.QRCode, yipayResp.URLScheme)
 
 	if yipayResp.Code != 1 {
 		return "", fmt.Errorf("易支付API错误: %s (code: %d)", yipayResp.Msg, yipayResp.Code)
 	}
 
+	if yipayResp.URLScheme != "" {
+		utils.LogInfo("易支付返回URLScheme: %s", yipayResp.URLScheme)
+		return yipayResp.URLScheme, nil
+	}
+
 	if yipayResp.PayURL != "" {
+		utils.LogInfo("易支付返回PayURL: %s", yipayResp.PayURL)
 		return yipayResp.PayURL, nil
 	}
+
 	if yipayResp.QRCode != "" {
+		utils.LogInfo("易支付返回QRCode: %s", yipayResp.QRCode)
 		return yipayResp.QRCode, nil
-	}
-	if yipayResp.URLScheme != "" {
-		return yipayResp.URLScheme, nil
 	}
 
 	return "", fmt.Errorf("易支付未返回有效支付链接")
@@ -368,6 +405,11 @@ func (s *YipayService) postForm(apiURL string, params map[string]string) ([]byte
 			"status": resp.StatusCode,
 			"url":    apiURL,
 			"body":   bodyStr,
+		})
+		utils.LogError("易支付请求详情", nil, map[string]interface{}{
+			"request_url":   apiURL,
+			"status_code":   resp.StatusCode,
+			"response_body": bodyStr,
 		})
 		return nil, fmt.Errorf("API状态码异常: %d, 响应: %s", resp.StatusCode, bodyStr)
 	}
@@ -478,8 +520,10 @@ func (s *YipayService) verifyRSASign(content, sign string) bool {
 
 func (s *YipayService) signRSASign(content string) (string, error) {
 	if s.MerchantPrivateKey == "" {
+		utils.LogError("易支付RSA签名: 商户私钥为空", nil, nil)
 		return "", fmt.Errorf("商户私钥未配置")
 	}
+	utils.LogInfo("易支付RSA签名: 私钥长度=%d, 内容前50字符=%s", len(s.MerchantPrivateKey), s.MerchantPrivateKey[:min(50, len(s.MerchantPrivateKey))])
 
 	var privKeyBytes []byte
 	var err error
@@ -516,6 +560,13 @@ func (s *YipayService) signRSASign(content string) (string, error) {
 	return base64.StdEncoding.EncodeToString(signBytes), nil
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType string) (string, error) {
 	utils.LogInfo("开始从页面提取二维码: %s", pageURL)
 
@@ -541,7 +592,7 @@ func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	htmlContent := string(bodyBytes)
 
-	if strings.Contains(htmlContent, "idzew.com") || strings.Contains(htmlContent, "submit.php") {
+	if strings.Contains(htmlContent, "submit.php") {
 		return s.handleFormRedirect(htmlContent, paymentType)
 	}
 

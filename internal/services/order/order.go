@@ -22,6 +22,8 @@ type CreateOrderParams struct {
 	UseBalance     bool    `json:"use_balance"`
 	BalanceAmount  float64 `json:"balance_amount"`
 	DurationMonths int     `json:"duration_months"`
+	UserAgent      string  `json:"-"`
+	ClientIP       string  `json:"-"`
 }
 
 type OrderService struct {
@@ -180,7 +182,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	if params.PaymentMethod != "" && params.PaymentMethod != "balance" {
 		utils.LogInfo("CreateOrder: 开始生成支付链接 - payment_method=%s, order_no=%s, amount=%.2f",
 			params.PaymentMethod, order.OrderNo, finalAmount)
-		url, err := s.generatePaymentURL(&order, params.PaymentMethod, finalAmount)
+		url, err := s.generatePaymentURLWithUA(&order, params.PaymentMethod, finalAmount, params.UserAgent)
 		if err != nil {
 			utils.LogError("CreateOrder: 生成支付链接失败", err, map[string]interface{}{
 				"payment_method": params.PaymentMethod,
@@ -197,6 +199,10 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 }
 
 func (s *OrderService) generatePaymentURL(order *models.Order, payType string, amount float64) (string, error) {
+	return s.generatePaymentURLWithUA(order, payType, amount, "")
+}
+
+func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType string, amount float64, userAgent string) (string, error) {
 	var paymentConfig models.PaymentConfig
 
 	if strings.HasPrefix(payType, "yipay_") {
@@ -254,6 +260,10 @@ func (s *OrderService) generatePaymentURL(order *models.Order, payType string, a
 		}
 		paymentType := extractYipayType(payType)
 		utils.LogInfo("易支付生成支付链接: payType=%s, extracted_paymentType=%s, order_no=%s", payType, paymentType, order.OrderNo)
+		if userAgent != "" {
+			utils.LogInfo("易支付使用UserAgent: %s", userAgent)
+			return svc.CreatePaymentWithDevice(order, amount, paymentType, userAgent)
+		}
 		return svc.CreatePayment(order, amount, paymentType)
 	default:
 		return "", fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
