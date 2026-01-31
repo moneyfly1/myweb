@@ -30,10 +30,7 @@ func GetPaymentMethods(c *gin.Context) {
 		"yipay_alipay": "易支付-支付宝",
 		"yipay_wxpay":  "易支付-微信",
 		"yipay_qqpay":  "易支付-QQ钱包",
-		"paypal":       "PayPal",
 		"applepay":     "Apple Pay",
-		"stripe":       "Stripe",
-		"bank":         "银行转账",
 	}
 
 	yipaySubTypeMap := map[string]string{
@@ -228,11 +225,6 @@ func PaymentNotify(c *gin.Context) {
 		wechatService, err := payment.NewWechatService(&paymentConfig)
 		if err == nil {
 			verified = wechatService.VerifyNotify(params)
-		}
-	case "paypal":
-		paypalService, err := payment.NewPayPalService(&paymentConfig)
-		if err == nil {
-			verified = paypalService.VerifyNotify(params)
 		}
 	case "applepay":
 		applePayService, err := payment.NewApplePayService(&paymentConfig)
