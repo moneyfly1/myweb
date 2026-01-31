@@ -342,7 +342,11 @@ func PaymentNotify(c *gin.Context) {
 			utils.LogError("PaymentNotify: order or recharge not found", err, map[string]interface{}{
 				"order_no": orderNo,
 			})
-			c.String(http.StatusBadRequest, "订单或充值记录不存在")
+			if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+				c.String(http.StatusOK, "success")
+			} else {
+				c.String(http.StatusBadRequest, "订单或充值记录不存在")
+			}
 			return
 		}
 	}
@@ -472,45 +476,68 @@ func PaymentNotify(c *gin.Context) {
 
 	if order.Status == "paid" {
 		utils.LogInfo("PaymentNotify: order already paid, ensuring subscription is activated - order_no=%s", orderNo)
-		go func(targetOrder models.Order) {
+		go func(orderNoParam string) {
 			defer func() {
 				if r := recover(); r != nil {
 					utils.LogError("PaymentNotify: panic in async processing (already paid)", fmt.Errorf("%v", r), map[string]interface{}{
-						"order_no": targetOrder.OrderNo,
+						"order_no": orderNoParam,
 					})
 				}
 			}()
 
-			var subscription models.Subscription
-			if err := db.Where("user_id = ?", targetOrder.UserID).First(&subscription).Error; err != nil {
-				utils.LogInfo("PaymentNotify: subscription not found, reprocessing order to activate - order_no=%s", targetOrder.OrderNo)
-				orderService := orderServicePkg.NewOrderService()
-				if _, err := orderService.ProcessPaidOrder(&targetOrder); err != nil {
-					utils.LogError("PaymentNotify: failed to reprocess order for subscription activation", err, map[string]interface{}{
-						"order_no": targetOrder.OrderNo,
-					})
-				} else {
-					utils.LogInfo("PaymentNotify: subscription activated successfully - order_no=%s", targetOrder.OrderNo)
-				}
-			} else {
-				utils.LogInfo("PaymentNotify: subscription already exists, sending notifications - order_no=%s", targetOrder.OrderNo)
+			var freshOrder models.Order
+			if err := db.Preload("Package").Where("order_no = ?", orderNoParam).First(&freshOrder).Error; err != nil {
+				utils.LogError("PaymentNotify: 重新加载订单失败 (already paid)", err, map[string]interface{}{
+					"order_no": orderNoParam,
+				})
+				return
 			}
 
-			sendPaymentNotifications(db, targetOrder.OrderNo)
-		}(order)
+			var subscription models.Subscription
+			if err := db.Where("user_id = ?", freshOrder.UserID).First(&subscription).Error; err != nil {
+				utils.LogInfo("PaymentNotify: subscription not found, reprocessing order to activate - order_no=%s", orderNoParam)
+				orderService := orderServicePkg.NewOrderService()
+				if _, err := orderService.ProcessPaidOrder(&freshOrder); err != nil {
+					utils.LogError("PaymentNotify: failed to reprocess order for subscription activation", err, map[string]interface{}{
+						"order_no": orderNoParam,
+					})
+				} else {
+					utils.LogInfo("PaymentNotify: subscription activated successfully - order_no=%s, package_id=%d", orderNoParam, freshOrder.PackageID)
+				}
+			} else {
+				utils.LogInfo("PaymentNotify: subscription already exists, sending notifications - order_no=%s", orderNoParam)
+			}
+
+			sendPaymentNotifications(db, orderNoParam)
+		}(orderNo)
 		c.String(http.StatusOK, "success")
 		return
 	}
 
 	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-		order.Status = "paid"
-		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		if err := tx.Save(&order).Error; err != nil {
+		var freshOrder models.Order
+		if err := tx.Preload("Package").Where("order_no = ?", orderNo).First(&freshOrder).Error; err != nil {
+			utils.LogError("PaymentNotify: 事务中重新加载订单失败", err, map[string]interface{}{
+				"order_no": orderNo,
+			})
+			return err
+		}
+
+		if freshOrder.Status == "paid" {
+			utils.LogInfo("PaymentNotify: 订单已经是paid状态，跳过更新 - order_no=%s", orderNo)
+			order = freshOrder
+			return nil
+		}
+
+		freshOrder.Status = "paid"
+		freshOrder.PaymentTime = database.NullTime(utils.GetBeijingTime())
+		if err := tx.Save(&freshOrder).Error; err != nil {
 			utils.LogError("PaymentNotify: failed to update order", err, map[string]interface{}{
 				"order_no": orderNo,
 			})
 			return err
 		}
+		order = freshOrder
 
 		var transaction models.PaymentTransaction
 		if err := tx.Where("order_id = ?", order.ID).First(&transaction).Error; err == nil {
@@ -535,9 +562,15 @@ func PaymentNotify(c *gin.Context) {
 		utils.LogError("PaymentNotify: failed to process payment transaction", err, map[string]interface{}{
 			"order_no": orderNo,
 		})
-		c.String(http.StatusInternalServerError, "处理失败")
+		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+			c.String(http.StatusOK, "fail")
+		} else {
+			c.String(http.StatusInternalServerError, "处理失败")
+		}
 		return
 	}
+
+	utils.LogInfo("PaymentNotify: 订单状态已更新为paid - order_no=%s, order_id=%d, status=%s", orderNo, order.ID, order.Status)
 
 	var balanceUsed float64 = 0
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
@@ -576,31 +609,45 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	utils.LogInfo("PaymentNotify: 订单状态已更新为paid，开始异步处理订单 - order_no=%s, order_id=%d", orderNo, order.ID)
+	utils.LogInfo("PaymentNotify: 订单状态已更新为paid，开始处理订单 - order_no=%s, order_id=%d", orderNo, order.ID)
 
-	go func(targetOrder models.Order) {
+	go func(orderNoParam string) {
 		defer func() {
 			if r := recover(); r != nil {
 				utils.LogError("PaymentNotify: panic in async processing", fmt.Errorf("%v", r), map[string]interface{}{
-					"order_no": targetOrder.OrderNo,
+					"order_no": orderNoParam,
 				})
 			}
 		}()
 
-		utils.LogInfo("PaymentNotify: 开始处理已支付订单 - order_no=%s", targetOrder.OrderNo)
-		orderService := orderServicePkg.NewOrderService()
-		_, processErr := orderService.ProcessPaidOrder(&targetOrder)
-		if processErr != nil {
-			utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
-				"order_id": targetOrder.ID,
-				"order_no": targetOrder.OrderNo,
+		utils.LogInfo("PaymentNotify: 开始处理已支付订单 - order_no=%s", orderNoParam)
+
+		var freshOrder models.Order
+		if err := db.Preload("Package").Where("order_no = ?", orderNoParam).First(&freshOrder).Error; err != nil {
+			utils.LogError("PaymentNotify: 重新加载订单失败", err, map[string]interface{}{
+				"order_no": orderNoParam,
 			})
-		} else {
-			utils.LogInfo("PaymentNotify: 订单处理成功 - order_no=%s", targetOrder.OrderNo)
+			return
 		}
 
-		sendPaymentNotifications(db, targetOrder.OrderNo)
-	}(order)
+		if freshOrder.Status != "paid" {
+			utils.LogWarn("PaymentNotify: 订单状态不是paid，跳过处理 - order_no=%s, status=%s", orderNoParam, freshOrder.Status)
+			return
+		}
+
+		orderService := orderServicePkg.NewOrderService()
+		_, processErr := orderService.ProcessPaidOrder(&freshOrder)
+		if processErr != nil {
+			utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
+				"order_id": freshOrder.ID,
+				"order_no": orderNoParam,
+			})
+		} else {
+			utils.LogInfo("PaymentNotify: 订单处理成功，套餐已开通 - order_no=%s, package_id=%d", orderNoParam, freshOrder.PackageID)
+		}
+
+		sendPaymentNotifications(db, orderNoParam)
+	}(orderNo)
 
 	c.String(http.StatusOK, "success")
 }

@@ -292,7 +292,7 @@
             <div class="mobile-label">网关地址</div>
           </template>
           <el-input v-model="configForm.yipay_gateway_url" placeholder="请输入易支付网关地址" style="width: 100%" />
-          <div class="form-tip">填写易支付官网地址（系统会自动拼接API路径 /openapi/pay/create）</div>
+          <div class="form-tip">填写易支付官网地址（系统会自动拼接API路径 /mapi.php）</div>
         </el-form-item>
 
         <el-form-item label="签名方式" v-if="configForm.pay_type === 'yipay'">
@@ -873,7 +873,7 @@ export default {
           const gatewayUrl = configForm.yipay_gateway_url.trim().replace(/\/$/, '')
           requestData.config_json = {
             gateway_url: gatewayUrl,
-            api_url: `${gatewayUrl}/openapi/pay/create`,
+            api_url: `${gatewayUrl}/mapi.php`,
             sign_type: configForm.yipay_sign_type || 'MD5',
             platform_public_key: configForm.yipay_platform_public_key || '',
             merchant_private_key: configForm.yipay_merchant_private_key || '',
@@ -911,9 +911,11 @@ export default {
         }
 
         if (editingConfig.value) {
+          console.log('更新支付配置:', { id: editingConfig.value.id, requestData })
           await paymentAPI.updatePaymentConfig(editingConfig.value.id, requestData)
           ElMessage.success('支付配置更新成功')
         } else {
+          console.log('创建支付配置:', requestData)
           await paymentAPI.createPaymentConfig(requestData)
           ElMessage.success('支付配置创建成功')
         }
@@ -953,7 +955,7 @@ export default {
         wechat_mch_id: config.wechat_mch_id || '',
         wechat_api_key: config.wechat_api_key || '',
         // 易支付配置（统一类型yipay）
-        yipay_gateway_url: configData.gateway_url || (configData.api_url ? configData.api_url.replace('/openapi/pay/create', '').replace(/\/$/, '') : ''),
+        yipay_gateway_url: configData.gateway_url || (configData.api_url ? configData.api_url.replace('/mapi.php', '').replace('/openapi/pay/create', '').replace(/\/$/, '') : ''),
         yipay_sign_type: configData.sign_type || 'MD5',
         yipay_platform_public_key: configData.platform_public_key || config.alipay_public_key || '',
         yipay_merchant_private_key: configData.merchant_private_key || '',

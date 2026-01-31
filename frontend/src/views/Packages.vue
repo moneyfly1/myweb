@@ -503,8 +503,7 @@ export default {
       const url = String(paymentUrl.value).toLowerCase()
       // 如果是易支付的支付页面URL，使用iframe嵌入
       return url.includes('payapi/pay/payment') || 
-             url.includes('9801w.com') || 
-             url.includes('idzew.com') ||
+             url.includes('submit.php') ||
              (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
     })
     const isCheckingPayment = ref(false)
@@ -1083,8 +1082,31 @@ export default {
           if (isYipay) {
             const paymentUrl = order.payment_url || order.payment_qr_code
             if (paymentUrl) {
-              ElMessage.info('正在跳转到支付页面...')
-              window.location.href = paymentUrl
+              console.log('易支付链接类型:', paymentUrl)
+              
+              // 检查是否是微信URLScheme（以weixin://或wxp://开头）
+              if (paymentUrl.startsWith('weixin://') || paymentUrl.startsWith('wxp://')) {
+                console.log('检测到微信URLScheme，直接跳转:', paymentUrl)
+                ElMessage.info('正在唤起微信支付...')
+                window.location.href = paymentUrl
+                
+                // 添加页面可见性监听，当用户从微信返回时检查支付状态
+                const handleVisibilityChange = async () => {
+                  if (document.visibilityState === 'visible') {
+                    console.log('用户从微信返回，检查支付状态')
+                    await checkPaymentStatus()
+                    document.removeEventListener('visibilitychange', handleVisibilityChange)
+                  }
+                }
+                document.addEventListener('visibilitychange', handleVisibilityChange)
+                
+                // 开始定时检查支付状态
+                startPaymentStatusCheck()
+              } else {
+                // 其他链接类型，跳转到支付页面
+                ElMessage.info('正在跳转到支付页面...')
+                window.location.href = paymentUrl
+              }
             } else {
               ElMessage.error('支付链接不存在')
             }
@@ -1323,8 +1345,7 @@ export default {
         // 检查是否是支付页面URL（需要使用iframe嵌入）
         const isYipayPaymentPage = urlString.includes('payApi/pay/payment') || 
                                    urlString.includes('payapi/pay/payment') ||
-                                   urlString.includes('9801w.com') || 
-                                   urlString.includes('idzew.com')
+                                   urlString.includes('submit.php')
         
         if (isYipayPaymentPage) {
           // 如果是支付页面URL，使用iframe嵌入，不生成二维码
