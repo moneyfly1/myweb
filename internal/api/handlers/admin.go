@@ -1067,8 +1067,14 @@ func UpdatePaymentConfig(c *gin.Context) {
 		ConfigJSON           map[string]interface{} `json:"config_json"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.LogError("UpdatePaymentConfig: JSON绑定失败", err, map[string]interface{}{"id": id})
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
+	}
+
+	utils.LogInfo("UpdatePaymentConfig: 收到请求, id=%s, pay_type=%s, config_json不为nil=%v", id, req.PayType, req.ConfigJSON != nil)
+	if req.ConfigJSON != nil {
+		utils.LogInfo("UpdatePaymentConfig: config_json内容=%+v", req.ConfigJSON)
 	}
 
 	db := database.GetDB()
@@ -1152,16 +1158,32 @@ func UpdatePaymentConfig(c *gin.Context) {
 	}
 	if req.ConfigJSON != nil {
 		bytes, err := json.Marshal(req.ConfigJSON)
-		if err == nil {
-			paymentConfig.ConfigJSON = sql.NullString{String: string(bytes), Valid: true}
+		if err != nil {
+			utils.LogError("UpdatePaymentConfig: ConfigJSON序列化失败", err, map[string]interface{}{
+				"id":          id,
+				"config_json": req.ConfigJSON,
+			})
+			utils.ErrorResponse(c, http.StatusBadRequest, "配置JSON格式错误", err)
+			return
 		}
+		oldConfigJSON := paymentConfig.ConfigJSON.String
+		paymentConfig.ConfigJSON = sql.NullString{String: string(bytes), Valid: true}
+		utils.LogInfo("UpdatePaymentConfig: 更新ConfigJSON, id=%s, 旧值长度=%d, 新值长度=%d, 新值=%s",
+			id, len(oldConfigJSON), len(string(bytes)), string(bytes))
+	} else {
+		utils.LogInfo("UpdatePaymentConfig: ConfigJSON为nil，跳过更新, id=%s", id)
 	}
 
 	if err := db.Save(&paymentConfig).Error; err != nil {
-		utils.LogError("UpdatePaymentConfig", err, map[string]interface{}{"id": id})
+		utils.LogError("UpdatePaymentConfig: 数据库保存失败", err, map[string]interface{}{
+			"id":                 id,
+			"config_json_length": len(paymentConfig.ConfigJSON.String),
+		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新支付配置失败", err)
 		return
 	}
+
+	utils.LogInfo("UpdatePaymentConfig: 保存成功, id=%s, 最终ConfigJSON长度=%d", id, len(paymentConfig.ConfigJSON.String))
 
 	responseData := gin.H{
 		"id":                     paymentConfig.ID,
