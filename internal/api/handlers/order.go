@@ -123,6 +123,9 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
+	req.UserAgent = c.GetHeader("User-Agent")
+	req.ClientIP = c.ClientIP()
+
 	svc := orderServicePkg.NewOrderService()
 	order, paymentURL, err := svc.CreateOrder(user.ID, req)
 	if err != nil {
@@ -131,15 +134,17 @@ func CreateOrder(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"order_no":        order.OrderNo,
-		"id":              order.ID,
-		"user_id":         order.UserID,
-		"package_id":      order.PackageID,
-		"amount":          order.Amount,
-		"final_amount":    utils.GetNullFloat64Value(order.FinalAmount),
-		"discount_amount": utils.GetNullFloat64Value(order.DiscountAmount),
-		"status":          order.Status,
-		"created_at":      order.CreatedAt.Format("2006-01-02 15:04:05"),
+		"order_no":            order.OrderNo,
+		"id":                  order.ID,
+		"user_id":             order.UserID,
+		"package_id":          order.PackageID,
+		"amount":              order.Amount,
+		"final_amount":        utils.GetNullFloat64Value(order.FinalAmount),
+		"discount_amount":     utils.GetNullFloat64Value(order.DiscountAmount),
+		"status":              order.Status,
+		"payment_method":      utils.GetNullStringValue(order.PaymentMethodName),
+		"payment_method_name": utils.GetNullStringValue(order.PaymentMethodName),
+		"created_at":          order.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 
 	if order.PaymentMethodName.Valid {
