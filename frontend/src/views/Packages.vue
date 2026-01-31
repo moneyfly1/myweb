@@ -1083,6 +1083,28 @@ export default {
             const paymentUrl = order.payment_url || order.payment_qr_code
             if (paymentUrl) {
               console.log('易支付链接类型:', paymentUrl)
+              console.log('当前UserAgent:', navigator.userAgent)
+              
+              // 检测是否在微信内
+              const isInWeChat = /MicroMessenger/i.test(navigator.userAgent)
+              const isWxpayMethod = paymentMethodName && (
+                paymentMethodName.includes('wxpay') || 
+                paymentMethodName.includes('微信')
+              )
+              
+              console.log('环境检测:', { isInWeChat, isWxpayMethod, paymentMethodName })
+              
+              // 如果是微信内 + 微信支付 + HTTP链接，直接跳转（易支付的微信支付页面）
+              if (isInWeChat && isWxpayMethod && (paymentUrl.startsWith('http://') || paymentUrl.startsWith('https://'))) {
+                console.log('检测到微信内+微信支付+HTTP链接，直接跳转到支付页面:', paymentUrl)
+                ElMessage.info('正在跳转到微信支付页面...')
+                
+                // 直接跳转到支付页面
+                window.location.href = paymentUrl
+                
+                // 不需要监听返回，因为支付完成后会自动跳转到return_url
+                return
+              }
               
               // 检查是否是微信URLScheme（以weixin://或wxp://开头）
               if (paymentUrl.startsWith('weixin://') || paymentUrl.startsWith('wxp://')) {
@@ -1090,7 +1112,7 @@ export default {
                 ElMessage.info('正在唤起微信支付...')
                 window.location.href = paymentUrl
                 
-                // 添加页面可见性监听，当用户从微信返回时检查支付状态
+                // 添加页面可见性监听
                 const handleVisibilityChange = async () => {
                   if (document.visibilityState === 'visible') {
                     console.log('用户从微信返回，检查支付状态')
@@ -1100,7 +1122,6 @@ export default {
                 }
                 document.addEventListener('visibilitychange', handleVisibilityChange)
                 
-                // 开始定时检查支付状态
                 startPaymentStatusCheck()
               } else {
                 // 其他链接类型，跳转到支付页面
