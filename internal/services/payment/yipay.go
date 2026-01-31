@@ -33,6 +33,8 @@ type YipayService struct {
 	APIURL             string
 	NotifyURL          string
 	ReturnURL          string
+	Adapter            YipayPlatformAdapter
+	PlatformName       string
 }
 
 type YipayResponse struct {
@@ -211,6 +213,11 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		signType = "MD5"
 	}
 
+	adapter, platformName := detectYipayPlatform(paymentConfig)
+	if !adapter.SupportsSignatureType(signType) {
+		utils.LogWarn("平台 %s 可能不支持签名类型 %s，将尝试使用", platformName, signType)
+	}
+
 	key := ""
 	if paymentConfig.MerchantPrivateKey.Valid {
 		key = strings.TrimSpace(paymentConfig.MerchantPrivateKey.String)
@@ -238,19 +245,19 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		}
 	}
 
+	gatewayURL := getConfigString(configData, "gateway_url")
 	apiURL := getConfigString(configData, "api_url")
 	if apiURL == "" {
-		gatewayURL := getConfigString(configData, "gateway_url")
 		if gatewayURL != "" {
-			apiURL = strings.TrimSuffix(gatewayURL, "/") + "/mapi.php"
-			utils.LogInfo("易支付从gateway_url生成api_url: gateway_url=%s, api_url=%s", gatewayURL, apiURL)
+			apiURL = adapter.GetAPIURL(gatewayURL)
+			utils.LogInfo("易支付从gateway_url生成api_url: gateway_url=%s, api_url=%s, platform=%s", gatewayURL, apiURL, platformName)
 		}
 	}
 	if apiURL == "" {
 		return nil, fmt.Errorf("易支付API地址未配置")
 	}
 
-	utils.LogInfo("易支付初始化: api_url=%s, pid=%s, sign_type=%s, config_json=%s", apiURL, pid, signType, paymentConfig.ConfigJSON.String)
+	utils.LogInfo("易支付初始化: platform=%s, api_url=%s, pid=%s, sign_type=%s", platformName, apiURL, pid, signType)
 
 	return &YipayService{
 		PID:                pid,
@@ -261,6 +268,8 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		APIURL:             apiURL,
 		NotifyURL:          resolveCallbackURL(paymentConfig.NotifyURL, getConfigString(configData, "notify_url"), "/api/v1/payment/notify/yipay", true),
 		ReturnURL:          resolveCallbackURL(paymentConfig.ReturnURL, "", "/payment/return", false),
+		Adapter:            adapter,
+		PlatformName:       platformName,
 	}, nil
 }
 
@@ -356,14 +365,26 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 		return respStr, nil
 	}
 
-	var yipayResp YipayResponse
-	if err := json.Unmarshal(respBytes, &yipayResp); err != nil {
+	var rawResp map[string]interface{}
+	if err := json.Unmarshal(respBytes, &rawResp); err != nil {
 		utils.LogError("易支付解析响应失败", err, map[string]interface{}{"resp": respStr})
 		return "", fmt.Errorf("易支付解析失败: %v", err)
 	}
 
-	utils.LogInfo("易支付返回结果: code=%d, msg=%s, trade_no=%s, device=%s, payurl=%s, qrcode=%s, urlscheme=%s",
-		yipayResp.Code, yipayResp.Msg, yipayResp.TradeNo, deviceType, yipayResp.PayURL, yipayResp.QRCode, yipayResp.URLScheme)
+	var yipayResp *YipayResponse
+	if s.Adapter != nil {
+		yipayResp = s.Adapter.NormalizeResponse(rawResp)
+	} else {
+		var standardResp YipayResponse
+		if err := json.Unmarshal(respBytes, &standardResp); err == nil {
+			yipayResp = &standardResp
+		} else {
+			return "", fmt.Errorf("易支付解析失败: %v", err)
+		}
+	}
+
+	utils.LogInfo("易支付返回结果 [平台=%s]: code=%d, msg=%s, trade_no=%s, device=%s, payurl=%s, qrcode=%s, urlscheme=%s",
+		s.PlatformName, yipayResp.Code, yipayResp.Msg, yipayResp.TradeNo, deviceType, yipayResp.PayURL, yipayResp.QRCode, yipayResp.URLScheme)
 
 	if yipayResp.Code != 1 {
 		return "", fmt.Errorf("易支付API错误: %s (code: %d)", yipayResp.Msg, yipayResp.Code)

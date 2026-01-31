@@ -241,12 +241,6 @@ func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType str
 			return "", err
 		}
 		return svc.CreatePayment(order, amount)
-	case "paypal":
-		svc, err := payment.NewPayPalService(&paymentConfig)
-		if err != nil {
-			return "", err
-		}
-		return svc.CreatePayment(order, amount)
 	case "applepay":
 		svc, err := payment.NewApplePayService(&paymentConfig)
 		if err != nil {

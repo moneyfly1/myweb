@@ -213,17 +213,10 @@
               <el-option label="微信支付" value="wechat" />
             </el-option-group>
             <el-option-group label="第三方支付网关">
-              <el-option label="易支付（统一配置）" value="yipay" />
-              <el-option label="易支付-支付宝" value="yipay_alipay" />
-              <el-option label="易支付-微信" value="yipay_wxpay" />
-              <el-option label="易支付-QQ钱包" value="yipay_qqpay" />
-            </el-option-group>
-            <el-option-group label="国际支付">
-              <el-option label="PayPal" value="paypal" />
-              <el-option label="Stripe" value="stripe" />
-            </el-option-group>
-            <el-option-group label="其他">
-              <el-option label="银行转账" value="bank_transfer" />
+              <el-option label="易支付（统一配置，推荐）" value="yipay" />
+              <el-option label="易支付-支付宝（不推荐，仅兼容旧配置）" value="yipay_alipay" />
+              <el-option label="易支付-微信（不推荐，仅兼容旧配置）" value="yipay_wxpay" />
+              <el-option label="易支付-QQ钱包（不推荐，仅兼容旧配置）" value="yipay_qqpay" />
             </el-option-group>
           </el-select>
         </el-form-item>
@@ -360,7 +353,30 @@
           <div class="form-tip">选择易支付平台支持哪些支付方式，客户可以在这些方式中选择</div>
         </el-form-item>
 
-        <!-- 易支付独立类型配置（兼容旧配置） -->
+        <!-- 易支付独立类型配置（兼容旧配置，不推荐使用） -->
+        <el-alert
+          v-if="configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay' || configForm.pay_type === 'yipay_qqpay'"
+          title="不推荐使用单独配置"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 20px;"
+        >
+          <template #default>
+            <div>
+              <p><strong>建议使用"易支付（统一配置）"：</strong></p>
+              <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>统一配置可以同时支持支付宝、微信、QQ钱包等多种支付方式</li>
+                <li>配置更简单，只需配置一次即可使用所有支付方式</li>
+                <li>管理更方便，无需为每种支付方式单独配置</li>
+              </ul>
+              <p style="margin-top: 10px; color: #909399;">
+                单独配置类型仅用于兼容旧配置，新配置请使用"易支付（统一配置）"
+              </p>
+            </div>
+          </template>
+        </el-alert>
+        
         <el-form-item label="商户ID" v-if="configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay'">
           <el-input v-model="configForm.yipay_pid" placeholder="请输入易支付商户ID" style="width: 100%" />
           <div class="form-tip">在易支付商户后台->个人资料->API信息中查看（易支付-支付宝和易支付-微信使用相同的商户ID）</div>
@@ -412,9 +428,25 @@
           <div class="form-tip">在易支付商户后台->个人资料->API信息中查看（MD5签名时必填）</div>
         </el-form-item>
 
-        <el-form-item label="网关地址" v-if="configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay'">
-          <el-input v-model="configForm.yipay_gateway" placeholder="请输入易支付网关地址" style="width: 100%" />
-          <div class="form-tip">默认: https://pay.yi-zhifu.cn/（系统会自动拼接V2接口路径 /api/pay/create）</div>
+        <el-form-item label="网关地址" v-if="configForm.pay_type === 'yipay' || configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay'">
+          <el-input 
+            v-model="configForm.yipay_gateway_url" 
+            placeholder="请输入易支付网关地址，例如：https://fhymw.com 或 https://pay.yi-zhifu.cn" 
+            style="width: 100%"
+            @blur="detectYipayPlatform"
+          />
+          <div class="form-tip">
+            <div>系统会自动识别易支付平台类型，支持的平台包括：</div>
+            <div style="margin-top: 5px;">
+              • fhymw.com • yi-zhifu.cn • ezfp.cn • myzfw.com • 8-pay.cn • epay.hehanwang.com • wx8g.com
+            </div>
+            <div style="margin-top: 5px; color: #67C23A;">
+              ✓ 系统会自动根据网关地址识别平台，无需手动选择
+            </div>
+            <div style="margin-top: 5px;">
+              系统会自动拼接API路径：/mapi.php（API接口支付）或 /submit.php（页面跳转支付）
+            </div>
+          </div>
         </el-form-item>
         <el-form-item label="支付宝公钥" v-if="configForm.pay_type === 'alipay'">
           <el-input
@@ -480,57 +512,6 @@
 
         <el-form-item label="API密钥" v-if="configForm.pay_type === 'wechat'">
           <el-input v-model="configForm.wechat_api_key" placeholder="请输入微信API密钥" style="width: 100%" />
-        </el-form-item>
-
-        <!-- PayPal配置 -->
-        <el-form-item label="PayPal客户端ID" v-if="configForm.pay_type === 'paypal'">
-          <el-input v-model="configForm.paypal_client_id" placeholder="请输入PayPal客户端ID" style="width: 100%" />
-          <div class="form-tip">在PayPal开发者后台创建应用后获取</div>
-        </el-form-item>
-        <el-form-item label="PayPal客户端密钥" v-if="configForm.pay_type === 'paypal'">
-          <el-input v-model="configForm.paypal_secret" type="password" show-password placeholder="请输入PayPal客户端密钥" style="width: 100%" />
-          <div class="form-tip">在PayPal开发者后台创建应用后获取</div>
-        </el-form-item>
-        <el-form-item label="PayPal模式" v-if="configForm.pay_type === 'paypal'">
-          <el-select 
-            v-model="configForm.paypal_mode" 
-            placeholder="选择PayPal模式"
-            style="width: 100%"
-            :teleported="!isMobile"
-          >
-            <el-option label="沙箱模式（测试）" value="sandbox" />
-            <el-option label="生产模式（正式）" value="live" />
-          </el-select>
-          <div class="form-tip">沙箱模式用于测试，生产模式用于正式环境</div>
-        </el-form-item>
-
-        <!-- Stripe配置 -->
-        <el-form-item label="Stripe公钥" v-if="configForm.pay_type === 'stripe'">
-          <el-input v-model="configForm.stripe_publishable_key" placeholder="请输入Stripe公钥" style="width: 100%" />
-          <div class="form-tip">用于前端的公钥（Publishable Key）</div>
-        </el-form-item>
-        <el-form-item label="Stripe私钥" v-if="configForm.pay_type === 'stripe'">
-          <el-input v-model="configForm.stripe_secret_key" type="password" show-password placeholder="请输入Stripe私钥" style="width: 100%" />
-          <div class="form-tip">用于后端的私钥（Secret Key）</div>
-        </el-form-item>
-        <el-form-item label="Stripe Webhook密钥" v-if="configForm.pay_type === 'stripe'">
-          <el-input v-model="configForm.stripe_webhook_secret" type="password" show-password placeholder="请输入Stripe Webhook签名密钥（可选）" style="width: 100%" />
-          <div class="form-tip">用于验证Webhook回调的签名密钥（可选）</div>
-        </el-form-item>
-
-
-        <!-- 银行转账配置 -->
-        <el-form-item label="银行名称" v-if="configForm.pay_type === 'bank_transfer'">
-          <el-input v-model="configForm.bank_name" placeholder="请输入银行名称" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="银行账号" v-if="configForm.pay_type === 'bank_transfer'">
-          <el-input v-model="configForm.bank_account" placeholder="请输入银行账号" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="开户支行" v-if="configForm.pay_type === 'bank_transfer'">
-          <el-input v-model="configForm.bank_branch" placeholder="请输入开户支行（可选）" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="账户持有人" v-if="configForm.pay_type === 'bank_transfer'">
-          <el-input v-model="configForm.account_holder" placeholder="请输入账户持有人姓名" style="width: 100%" />
         </el-form-item>
 
         <el-form-item label="同步回调地址" v-if="configForm.pay_type === 'alipay'">
@@ -715,19 +696,6 @@ export default {
       yipay_public_key: '',
       yipay_gateway: 'https://pay.yi-zhifu.cn/',
       yipay_md5_key: '',
-      // PayPal配置
-      paypal_client_id: '',
-      paypal_secret: '',
-      paypal_mode: 'sandbox',  // sandbox 或 live
-      // Stripe配置
-      stripe_publishable_key: '',
-      stripe_secret_key: '',
-      stripe_webhook_secret: '',
-      // 银行转账配置
-      bank_name: '',
-      bank_account: '',
-      bank_branch: '',
-      account_holder: '',
       return_url: '',
       notify_url: '',
       status: 1,
@@ -784,12 +752,6 @@ export default {
             wechat_app_id: extractValue(config.wechat_app_id),
             wechat_mch_id: extractValue(config.wechat_mch_id),
             wechat_api_key: extractValue(config.wechat_api_key),
-            paypal_client_id: extractValue(config.paypal_client_id),
-            paypal_secret: extractValue(config.paypal_secret),
-            stripe_publishable_key: extractValue(config.stripe_publishable_key),
-            stripe_secret_key: extractValue(config.stripe_secret_key),
-            bank_name: extractValue(config.bank_name),
-            account_name: extractValue(config.account_name),
             account_number: extractValue(config.account_number),
             wallet_address: extractValue(config.wallet_address),
             return_url: extractValue(config.return_url),
@@ -820,6 +782,30 @@ export default {
       } finally {
         loading.value = false
       }
+    }
+
+    const detectYipayPlatform = () => {
+      if (!configForm.yipay_gateway_url) return
+      
+      const gatewayUrl = configForm.yipay_gateway_url.trim().toLowerCase()
+      const knownPlatforms = [
+        { domain: 'fhymw.com', name: 'FH易支付' },
+        { domain: 'yi-zhifu.cn', name: '易支付官方' },
+        { domain: 'ezfp.cn', name: 'EZ易支付' },
+        { domain: 'myzfw.com', name: 'MY易支付' },
+        { domain: '8-pay.cn', name: '8-Pay' },
+        { domain: 'epay.hehanwang.com', name: '易支付' },
+        { domain: 'wx8g.com', name: '易支付' }
+      ]
+      
+      for (const platform of knownPlatforms) {
+        if (gatewayUrl.includes(platform.domain)) {
+          console.log(`检测到易支付平台: ${platform.name} (${platform.domain})`)
+          return
+        }
+      }
+      
+      console.log('未识别的易支付平台，将使用标准适配器')
     }
 
     const saveConfig = async () => {
@@ -871,6 +857,9 @@ export default {
             return
           }
           const gatewayUrl = configForm.yipay_gateway_url.trim().replace(/\/$/, '')
+          
+          detectYipayPlatform()
+          
           requestData.config_json = {
             gateway_url: gatewayUrl,
             api_url: `${gatewayUrl}/mapi.php`,
@@ -879,6 +868,8 @@ export default {
             merchant_private_key: configForm.yipay_merchant_private_key || '',
             supported_types: configForm.yipay_supported_types || ['alipay', 'wxpay']
           }
+          
+          console.log('保存易支付配置:', JSON.stringify(requestData.config_json, null, 2))
         } else if (configForm.pay_type === 'yipay_alipay' || configForm.pay_type === 'yipay_wxpay') {
           // 易支付配置保存到config_json（兼容旧配置）
           // 根据 pay_type 确定 yipay_type（调用值）
@@ -891,22 +882,6 @@ export default {
             yipay_public_key: configForm.yipay_public_key || '',
             yipay_gateway: configForm.yipay_gateway || 'https://pay.yi-zhifu.cn/',
             yipay_md5_key: configForm.yipay_md5_key || ''
-          }
-        } else if (configForm.pay_type === 'paypal') {
-          requestData.paypal_client_id = configForm.paypal_client_id
-          requestData.paypal_secret = configForm.paypal_secret
-          requestData.paypal_mode = configForm.paypal_mode || 'sandbox'
-        } else if (configForm.pay_type === 'stripe') {
-          requestData.stripe_publishable_key = configForm.stripe_publishable_key
-          requestData.stripe_secret_key = configForm.stripe_secret_key
-          requestData.stripe_webhook_secret = configForm.stripe_webhook_secret || ''
-        } else if (configForm.pay_type === 'bank_transfer') {
-          // 银行转账配置保存到config_json
-          requestData.config_json = {
-            bank_name: configForm.bank_name,
-            bank_account: configForm.bank_account,
-            bank_branch: configForm.bank_branch || '',
-            account_holder: configForm.account_holder
           }
         }
 
@@ -967,19 +942,6 @@ export default {
         yipay_public_key: configData.yipay_public_key || '',
         yipay_gateway: configData.yipay_gateway || 'https://pay.yi-zhifu.cn/',
         yipay_md5_key: configData.yipay_md5_key || '',
-        // PayPal配置
-        paypal_client_id: config.paypal_client_id || '',
-        paypal_secret: config.paypal_secret || '',
-        paypal_mode: configData.paypal_mode || configData.is_production === false ? 'sandbox' : 'production',
-        // Stripe配置
-        stripe_publishable_key: config.stripe_publishable_key || '',
-        stripe_secret_key: config.stripe_secret_key || '',
-        stripe_webhook_secret: config.stripe_webhook_secret || '',
-        // 银行转账配置
-        bank_name: configData.bank_name || '',
-        bank_account: configData.bank_account || '',
-        bank_branch: configData.bank_branch || '',
-        account_holder: configData.account_holder || '',
         return_url: config.return_url || '',
         notify_url: config.notify_url || '',
         status: config.status !== undefined ? config.status : 1,
@@ -1075,19 +1037,6 @@ export default {
         yipay_public_key: '',
         yipay_gateway: 'https://pay.yi-zhifu.cn/',
         yipay_md5_key: '',
-        // PayPal配置
-        paypal_client_id: '',
-        paypal_secret: '',
-        paypal_mode: 'sandbox',
-        // Stripe配置
-        stripe_publishable_key: '',
-        stripe_secret_key: '',
-        stripe_webhook_secret: '',
-        // 银行转账配置
-        bank_name: '',
-        bank_account: '',
-        bank_branch: '',
-        account_holder: '',
         return_url: '',
         notify_url: '',
         status: 1,
@@ -1103,10 +1052,7 @@ export default {
         'yipay': '易支付',
         'yipay_alipay': '易支付-支付宝',
         'yipay_wxpay': '易支付-微信',
-        'yipay_qqpay': '易支付-QQ钱包',
-        'paypal': 'PayPal',
-        'stripe': 'Stripe',
-        'bank_transfer': '银行转账'
+        'yipay_qqpay': '易支付-QQ钱包'
       }
       return typeMap[type] || type
     }
@@ -1118,10 +1064,7 @@ export default {
         'yipay': 'warning',
         'yipay_alipay': 'warning',
         'yipay_wxpay': 'warning',
-        'yipay_qqpay': 'warning',
-        'paypal': 'warning',
-        'stripe': 'success',
-        'bank_transfer': 'info'
+        'yipay_qqpay': 'warning'
       }
       return typeMap[type] || 'info'
     }
@@ -1270,6 +1213,7 @@ export default {
       batchEnableConfigs,
       batchDisableConfigs,
       batchDeleteConfigs,
+      detectYipayPlatform,
       tableRef,
       isMobile
     }
