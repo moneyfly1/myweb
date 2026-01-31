@@ -156,10 +156,22 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	if len(params) == 0 {
+	// 处理 GET 请求参数（包括同步回调）
+	if len(params) == 0 || c.Request.Method == "GET" {
 		for k, v := range c.Request.URL.Query() {
 			if len(v) > 0 {
-				params[k] = v[0]
+				paramValue := v[0]
+				// 如果参数值包含逗号，说明可能是重复参数，取第一个
+				if strings.Contains(paramValue, ",") {
+					paramValue = strings.Split(paramValue, ",")[0]
+					utils.LogWarn("PaymentNotify: 检测到参数 %s 包含逗号，已修正为: %s", k, paramValue)
+				}
+				// 如果参数已存在且值不同，取第一个（避免重复参数）
+				if existingVal, exists := params[k]; exists && existingVal != paramValue {
+					utils.LogWarn("PaymentNotify: 检测到重复参数 %s，原值=%s，新值=%s，使用原值", k, existingVal, paramValue)
+				} else if !exists {
+					params[k] = paramValue
+				}
 			}
 		}
 	}
@@ -258,7 +270,18 @@ func PaymentNotify(c *gin.Context) {
 	}
 
 	orderNo := params["out_trade_no"]
+	// 处理订单号参数重复的情况（易支付平台可能会在 return_url 中自动添加参数）
+	if orderNo != "" && strings.Contains(orderNo, ",") {
+		// 如果订单号包含逗号，说明参数重复了，取第一个
+		orderNo = strings.Split(orderNo, ",")[0]
+		utils.LogWarn("PaymentNotify: 检测到重复的订单号参数，已修正为: %s", orderNo)
+	}
 	externalTransactionID := params["trade_no"]
+	// 处理交易号参数重复的情况
+	if externalTransactionID != "" && strings.Contains(externalTransactionID, ",") {
+		externalTransactionID = strings.Split(externalTransactionID, ",")[0]
+		utils.LogWarn("PaymentNotify: 检测到重复的交易号参数，已修正为: %s", externalTransactionID)
+	}
 
 	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
 		tradeStatus := params["trade_status"]

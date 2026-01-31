@@ -10,14 +10,22 @@
         <div class="success-content">
           <el-icon class="success-icon"><CircleCheckFilled /></el-icon>
           <h2 class="success-title">支付成功！</h2>
-          <p class="success-subtitle">订单已支付，套餐已开通</p>
+          <p class="success-subtitle" v-if="orderType === 'recharge'">订单已支付，充值已到账</p>
+          <p class="success-subtitle" v-else-if="orderType === 'device_upgrade'">订单已支付，设备已升级</p>
+          <p class="success-subtitle" v-else>订单已支付，套餐已开通</p>
           <el-descriptions :column="1" border style="max-width: 500px; margin: 30px auto;">
             <el-descriptions-item label="订单号">{{ orderNo }}</el-descriptions-item>
             <el-descriptions-item label="支付金额">¥{{ amount }}</el-descriptions-item>
             <el-descriptions-item label="支付状态">
               <el-tag type="success">已支付</el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="套餐状态">
+            <el-descriptions-item label="订单类型" v-if="orderType === 'recharge'">
+              <el-tag type="info">账户充值</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="订单类型" v-else-if="orderType === 'device_upgrade'">
+              <el-tag type="warning">设备升级</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="套餐状态" v-else>
               <el-tag type="success">已开通</el-tag>
             </el-descriptions-item>
           </el-descriptions>
@@ -75,6 +83,7 @@ export default {
     const isLoading = ref(true)
     const paymentSuccess = ref(false)
     const errorMessage = ref('')
+    const orderType = ref('order') // 'order' 或 'recharge'
 
     const processPaymentReturn = async () => {
       try {
@@ -88,10 +97,19 @@ export default {
                           urlParams.outTradeNo ||
                           urlParams.orderNo
         
-        // 如果订单号包含逗号，说明参数重复了，取第一个
-        if (orderNoParam && orderNoParam.includes(',')) {
-          orderNoParam = orderNoParam.split(',')[0].trim()
-          console.log('PaymentReturn: 检测到重复的订单号参数，已修正为:', orderNoParam)
+        // 处理订单号参数重复的情况（易支付平台可能会在 return_url 中自动添加参数）
+        if (orderNoParam) {
+          // 如果订单号是数组，取第一个
+          if (Array.isArray(orderNoParam)) {
+            orderNoParam = orderNoParam[0]
+          }
+          // 如果订单号包含逗号，说明参数重复了，取第一个
+          if (typeof orderNoParam === 'string' && orderNoParam.includes(',')) {
+            orderNoParam = orderNoParam.split(',')[0].trim()
+            console.log('PaymentReturn: 检测到重复的订单号参数，已修正为:', orderNoParam)
+          }
+          // 确保是字符串类型
+          orderNoParam = String(orderNoParam).trim()
         }
         
         // 检查是否是易支付同步回调（带有trade_status参数）
@@ -155,7 +173,15 @@ export default {
         }
 
         orderNo.value = orderNoParam
-        console.log('PaymentReturn: 使用订单号:', orderNo.value)
+        // 判断订单类型：RCH开头是充值订单，UPG开头是设备升级订单，ORD开头是普通订单
+        if (orderNo.value.startsWith('RCH')) {
+          orderType.value = 'recharge'
+        } else if (orderNo.value.startsWith('UPG')) {
+          orderType.value = 'device_upgrade'
+        } else {
+          orderType.value = 'order'
+        }
+        console.log('PaymentReturn: 使用订单号:', orderNo.value, '订单类型:', orderType.value)
 
         // 如果是易支付同步回调且支付状态为成功，立即验证并显示
         if (isYipayReturn && tradeStatus === 'TRADE_SUCCESS') {
@@ -179,17 +205,30 @@ export default {
               isLoading.value = false
               amount.value = parseFloat(orderData.amount || 0)
               
-              ElMessage.success('支付成功！套餐已开通！')
+              // 根据订单类型显示不同的成功消息
+              if (orderData.type === 'recharge' || orderType.value === 'recharge') {
+                ElMessage.success('支付成功！充值已到账！')
+              } else if (orderData.type === 'device_upgrade' || orderType.value === 'device_upgrade') {
+                ElMessage.success('支付成功！设备已升级！')
+              } else {
+                ElMessage.success('支付成功！套餐已开通！')
+              }
               
               // 刷新用户信息
               try {
                 const { userAPI, subscriptionAPI } = await import('@/utils/api')
-                await Promise.all([
-                  userAPI.getUserInfo(),
-                  subscriptionAPI.getSubscription()
-                ])
-                window.dispatchEvent(new CustomEvent('subscription-updated'))
-                window.dispatchEvent(new CustomEvent('user-info-updated'))
+                // 充值订单只需要刷新用户信息（余额），不需要刷新订阅
+                if (orderData.type === 'recharge' || orderType.value === 'recharge') {
+                  await userAPI.getUserInfo()
+                  window.dispatchEvent(new CustomEvent('user-info-updated'))
+                } else {
+                  await Promise.all([
+                    userAPI.getUserInfo(),
+                    subscriptionAPI.getSubscription()
+                  ])
+                  window.dispatchEvent(new CustomEvent('subscription-updated'))
+                  window.dispatchEvent(new CustomEvent('user-info-updated'))
+                }
               } catch (error) {
                 console.warn('PaymentReturn: 刷新用户信息失败:', error)
               }
@@ -280,33 +319,50 @@ export default {
             if (orderData.status === 'paid') {
               paymentSuccess.value = true
               isLoading.value = false
-              ElMessage.success('支付成功！回调成功！套餐已开通！')
+              
+              // 根据订单类型显示不同的成功消息
+              if (orderData.type === 'recharge' || orderType.value === 'recharge') {
+                ElMessage.success('支付成功！充值已到账！')
+              } else if (orderData.type === 'device_upgrade' || orderType.value === 'device_upgrade') {
+                ElMessage.success('支付成功！设备已升级！')
+              } else {
+                ElMessage.success('支付成功！回调成功！套餐已开通！')
+              }
 
 
               try {
                 const { userAPI, subscriptionAPI } = await import('@/utils/api')
-                await Promise.all([
-                  userAPI.getUserInfo(),
-                  subscriptionAPI.getSubscription()
-                ])
-              } catch (error) {
-                console.warn('PaymentReturn: 刷新用户信息失败:', error)
-              }
-
-
-              window.dispatchEvent(new CustomEvent('subscription-updated'))
-              window.dispatchEvent(new CustomEvent('user-info-updated'))
-
-
-              setTimeout(async () => {
-                try {
-                  const { userAPI, subscriptionAPI } = await import('@/utils/api')
+                // 充值订单只需要刷新用户信息（余额），不需要刷新订阅
+                if (orderData.type === 'recharge' || orderType.value === 'recharge') {
+                  await userAPI.getUserInfo()
+                  window.dispatchEvent(new CustomEvent('user-info-updated'))
+                } else {
                   await Promise.all([
                     userAPI.getUserInfo(),
                     subscriptionAPI.getSubscription()
                   ])
                   window.dispatchEvent(new CustomEvent('subscription-updated'))
                   window.dispatchEvent(new CustomEvent('user-info-updated'))
+                }
+              } catch (error) {
+                console.warn('PaymentReturn: 刷新用户信息失败:', error)
+              }
+
+              // 延迟再次刷新，确保数据完全同步
+              setTimeout(async () => {
+                try {
+                  const { userAPI, subscriptionAPI } = await import('@/utils/api')
+                  if (orderData.type === 'recharge' || orderType.value === 'recharge') {
+                    await userAPI.getUserInfo()
+                    window.dispatchEvent(new CustomEvent('user-info-updated'))
+                  } else {
+                    await Promise.all([
+                      userAPI.getUserInfo(),
+                      subscriptionAPI.getSubscription()
+                    ])
+                    window.dispatchEvent(new CustomEvent('subscription-updated'))
+                    window.dispatchEvent(new CustomEvent('user-info-updated'))
+                  }
                 } catch (error) {
                   console.warn('PaymentReturn: 二次刷新用户信息失败:', error)
                 }
@@ -369,6 +425,7 @@ export default {
       isLoading,
       paymentSuccess,
       errorMessage,
+      orderType,
       goToDashboard,
       goToOrders
     }
