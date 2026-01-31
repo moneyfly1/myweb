@@ -162,6 +162,13 @@ func detectDeviceType(userAgent string, paymentType string) string {
 	return "pc"
 }
 
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 func buildSignString(params map[string]string, excludeKeys ...string) string {
 	var keys []string
 	excludeMap := make(map[string]bool)
@@ -274,7 +281,8 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 	}
 
 	deviceType := detectDeviceType(userAgent, paymentType)
-	utils.LogInfo("易支付设备类型检测: userAgent=%s, paymentType=%s, device=%s", userAgent, paymentType, deviceType)
+	utils.LogInfo("易支付设备类型检测: order_no=%s, userAgent长度=%d, userAgent前50字符=%s, paymentType=%s, device=%s",
+		order.OrderNo, len(userAgent), truncateString(userAgent, 50), paymentType, deviceType)
 
 	params := map[string]string{
 		"pid":          s.PID,
@@ -285,6 +293,8 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 		"clientip":     "127.0.0.1",
 		"device":       deviceType,
 	}
+
+	utils.LogInfo("易支付device参数: order_no=%s, device=%s, type=%s", order.OrderNo, deviceType, paymentType)
 
 	if s.NotifyURL == "" {
 		return "", fmt.Errorf("回调地址未配置")
