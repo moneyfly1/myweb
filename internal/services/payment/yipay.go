@@ -311,7 +311,15 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 	params["notify_url"] = s.NotifyURL
 
 	if s.ReturnURL != "" {
-		params["return_url"] = s.ReturnURL
+		// 确保 return_url 不包含查询参数，易支付平台会自动添加订单号等参数
+		returnURL := s.ReturnURL
+		if parsedURL, err := url.Parse(returnURL); err == nil {
+			// 移除所有查询参数，只保留基础路径
+			parsedURL.RawQuery = ""
+			returnURL = parsedURL.String()
+		}
+		params["return_url"] = returnURL
+		utils.LogInfo("易支付设置return_url: %s (已移除查询参数，易支付平台会自动添加)", returnURL)
 	}
 
 	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")

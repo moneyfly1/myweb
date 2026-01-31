@@ -1009,6 +1009,85 @@ func GetOrderStatusByNo(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 根据订单号前缀判断订单类型
+	// RCH开头 = 充值订单，查询recharge_records表
+	// UPG/ORD开头 = 普通订单或设备升级订单，查询orders表
+	if strings.HasPrefix(orderNo, "RCH") {
+		// 处理充值订单
+		var recharge models.RechargeRecord
+		if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&recharge).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusNotFound, "充值记录不存在", err)
+			return
+		}
+
+		// 如果状态是pending，尝试主动查询支付状态
+		if recharge.Status == "pending" {
+			timeSinceCreated := time.Since(recharge.CreatedAt)
+			var shouldQuery bool
+			if timeSinceCreated >= 3*time.Second && timeSinceCreated < 10*time.Second {
+				shouldQuery = true
+			} else if timeSinceCreated >= 10*time.Second && timeSinceCreated < 60*time.Second {
+				shouldQuery = int(timeSinceCreated.Seconds())%5 < 2
+			} else if timeSinceCreated >= 60*time.Second {
+				shouldQuery = int(timeSinceCreated.Seconds())%30 < 2
+			}
+
+			if shouldQuery {
+				paymentMethod := "alipay"
+				if recharge.PaymentMethod.Valid {
+					paymentMethod = recharge.PaymentMethod.String
+				}
+
+				var paymentConfig models.PaymentConfig
+				if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err == nil {
+					if paymentConfig.PayType == "alipay" {
+						alipayService, err := payment.NewAlipayService(&paymentConfig)
+						if err == nil {
+							queryResult, err := alipayService.QueryOrder(orderNo)
+							if err == nil && queryResult != nil && queryResult.IsPaid() {
+								err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+									var latestRecord models.RechargeRecord
+									if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&latestRecord).Error; err == nil {
+										latestRecord.Status = "paid"
+										latestRecord.PaidAt = database.NullTime(utils.GetBeijingTime())
+										if queryResult.TradeNo != "" {
+											latestRecord.PaymentTransactionID = database.NullString(queryResult.TradeNo)
+										}
+										if err := tx.Save(&latestRecord).Error; err != nil {
+											return err
+										}
+										var user models.User
+										if err := tx.First(&user, latestRecord.UserID).Error; err == nil {
+											user.Balance += latestRecord.Amount
+											if err := tx.Save(&user).Error; err != nil {
+												return err
+											}
+										}
+									}
+									return nil
+								})
+
+								if err == nil {
+									db.Where("order_no = ?", orderNo).First(&recharge)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"order_no": recharge.OrderNo,
+			"status":   recharge.Status,
+			"amount":   recharge.Amount,
+			"type":     "recharge",
+		})
+		return
+	}
+
+	// 处理普通订单或设备升级订单（ORD或UPG开头）
 	var order models.Order
 	if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&order).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", err)
@@ -1101,10 +1180,16 @@ func GetOrderStatusByNo(c *gin.Context) {
 		}
 	}
 
+	orderType := "order"
+	if order.PackageID == 0 {
+		orderType = "device_upgrade"
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"order_no": order.OrderNo,
 		"status":   order.Status,
 		"amount":   order.Amount,
+		"type":     orderType,
 	})
 }
 
