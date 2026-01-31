@@ -81,15 +81,30 @@ export default {
         isLoading.value = true
         errorMessage.value = ''
 
-
-        // 安全修复：不信任URL参数，只用于获取订单号，实际状态从后端查询
-        // 从URL参数中提取订单号（仅作为提示，不用于判断支付状态）
-        let orderNoParam = route.query.out_trade_no || 
-                          route.query.order_no || 
-                          route.query.trade_no ||
-                          route.query.outTradeNo ||
-                          route.query.orderNo ||
-                          route.query.tradeNo
+        // 从URL参数中提取订单号和支付状态
+        const urlParams = route.query
+        let orderNoParam = urlParams.out_trade_no || 
+                          urlParams.order_no || 
+                          urlParams.outTradeNo ||
+                          urlParams.orderNo
+        
+        // 如果订单号包含逗号，说明参数重复了，取第一个
+        if (orderNoParam && orderNoParam.includes(',')) {
+          orderNoParam = orderNoParam.split(',')[0].trim()
+          console.log('PaymentReturn: 检测到重复的订单号参数，已修正为:', orderNoParam)
+        }
+        
+        // 检查是否是易支付同步回调（带有trade_status参数）
+        const isYipayReturn = urlParams.trade_status && urlParams.pid
+        const tradeStatus = urlParams.trade_status
+        
+        console.log('PaymentReturn: URL参数:', {
+          orderNo: orderNoParam,
+          isYipayReturn,
+          tradeStatus,
+          hasSign: !!urlParams.sign,
+          pid: urlParams.pid
+        })
 
         // 如果URL中没有订单号，尝试从用户最近订单中获取
         if (!orderNoParam) {
@@ -142,13 +157,63 @@ export default {
         orderNo.value = orderNoParam
         console.log('PaymentReturn: 使用订单号:', orderNo.value)
 
-        // 安全修复：不信任URL参数中的支付状态，必须从后端查询真实状态
+        // 如果是易支付同步回调且支付状态为成功，立即验证并显示
+        if (isYipayReturn && tradeStatus === 'TRADE_SUCCESS') {
+          console.log('PaymentReturn: 检测到易支付同步回调，支付状态为TRADE_SUCCESS，立即查询订单')
+          
+          // 等待500ms，给异步回调一点处理时间
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          // 立即查询订单状态
+          try {
+            const response = await api.get(`/orders/${orderNo.value}/status`, {
+              timeout: 5000
+            })
+            
+            console.log('PaymentReturn: 同步回调后立即查询响应:', response)
+            
+            const orderData = response.data.data || response.data
+            if (orderData && orderData.status === 'paid') {
+              // 订单已支付，立即显示成功
+              paymentSuccess.value = true
+              isLoading.value = false
+              amount.value = parseFloat(orderData.amount || 0)
+              
+              ElMessage.success('支付成功！套餐已开通！')
+              
+              // 刷新用户信息
+              try {
+                const { userAPI, subscriptionAPI } = await import('@/utils/api')
+                await Promise.all([
+                  userAPI.getUserInfo(),
+                  subscriptionAPI.getSubscription()
+                ])
+                window.dispatchEvent(new CustomEvent('subscription-updated'))
+                window.dispatchEvent(new CustomEvent('user-info-updated'))
+              } catch (error) {
+                console.warn('PaymentReturn: 刷新用户信息失败:', error)
+              }
+              
+              // 2秒后跳转到订单页面
+              setTimeout(() => {
+                router.push('/orders')
+              }, 2000)
+              return
+            } else {
+              console.log('PaymentReturn: 同步回调后查询订单状态仍为:', orderData?.status, '继续轮询')
+            }
+          } catch (error) {
+            console.warn('PaymentReturn: 同步回调后立即查询失败:', error)
+            // 继续下面的轮询逻辑
+          }
+        }
+
         // 等待一下让后端处理回调
         await new Promise(resolve => setTimeout(resolve, 2000))
 
 
         let checkCount = 0
-        const maxChecks = 10
+        const maxChecks = 15
         let orderData = null
 
         while (checkCount < maxChecks && !paymentSuccess.value) {
@@ -160,7 +225,10 @@ export default {
               timeout: 10000
             })
 
+            console.log(`PaymentReturn: 第${checkCount}次查询订单状态响应:`, response)
+
             if (!response || !response.data) {
+              console.warn(`PaymentReturn: 响应数据为空，第${checkCount}次`)
               if (checkCount >= maxChecks) {
                 errorMessage.value = '无法获取订单状态，请稍后重试'
                 isLoading.value = false
@@ -171,6 +239,7 @@ export default {
             }
 
             if (response.data.success === false) {
+              console.warn(`PaymentReturn: API返回失败，第${checkCount}次:`, response.data.message)
               if (checkCount >= maxChecks) {
                 errorMessage.value = response.data.message || '获取订单状态失败'
                 isLoading.value = false
@@ -180,8 +249,9 @@ export default {
               continue
             }
 
-            orderData = response.data.data
+            orderData = response.data.data || response.data
             if (!orderData) {
+              console.warn(`PaymentReturn: 订单数据不存在，第${checkCount}次，响应:`, response.data)
               if (checkCount >= maxChecks) {
                 errorMessage.value = '订单数据不存在'
                 isLoading.value = false
@@ -191,7 +261,20 @@ export default {
               continue
             }
 
+            console.log(`PaymentReturn: 订单数据:`, orderData, `订单状态:`, orderData.status)
+
             amount.value = parseFloat(orderData.amount || 0)
+            
+            if (!orderData.status) {
+              console.warn(`PaymentReturn: 订单状态字段不存在，第${checkCount}次`)
+              if (checkCount >= maxChecks) {
+                errorMessage.value = '订单状态字段不存在'
+                isLoading.value = false
+                return
+              }
+              await new Promise(resolve => setTimeout(resolve, 2000))
+              continue
+            }
 
 
             if (orderData.status === 'paid') {

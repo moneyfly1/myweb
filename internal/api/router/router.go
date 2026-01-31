@@ -49,6 +49,7 @@ func SetupRouter() *gin.Engine {
 		}
 
 		api.POST("/payment/notify/:type", handlers.PaymentNotify)
+		api.GET("/payment/notify/:type", handlers.PaymentNotify)
 
 		api.Use(middleware.CSRFMiddleware())
 
