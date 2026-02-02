@@ -957,35 +957,13 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 			continue
 		}
 
-		// 先解析为 NodeConfig，然后转换为 ProxyNode
-		var nodeConfig models.NodeConfig
-		if err := json.Unmarshal([]byte(cn.Config), &nodeConfig); err != nil {
-			// 如果解析失败，尝试直接解析为 ProxyNode（兼容旧格式）
-			var proxyNode ProxyNode
-			if err2 := json.Unmarshal([]byte(cn.Config), &proxyNode); err2 == nil {
-				proxyNode.Name = cn.DisplayName
-				if proxyNode.Name == "" {
-					proxyNode.Name = "专线-" + cn.Name
-				}
-				key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
-				*proxies = append(*proxies, &proxyNode)
-				processed[key] = true
-			}
+		// 专线节点配置应该直接存储为 ProxyNode JSON（与普通节点相同）
+		// 这样可以保留所有解析的配置字段
+		var proxyNode ProxyNode
+		if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err != nil {
+			// 如果解析失败，记录错误并跳过
+			s.log("ERROR", fmt.Sprintf("专线节点 %s 配置解析失败: %v", cn.Name, err))
 			continue
-		}
-
-		// 将 NodeConfig 转换为 ProxyNode
-		proxyNode := ProxyNode{
-			Type:     nodeConfig.Type,
-			Server:   nodeConfig.Server,
-			Port:     nodeConfig.Port,
-			UUID:     nodeConfig.UUID,
-			Password: nodeConfig.Password,
-			Cipher:   nodeConfig.Encryption,
-			Network:  nodeConfig.Network,
-			TLS:      nodeConfig.Security == "tls",
-			UDP:      true, // 默认启用 UDP
-			Options:  make(map[string]interface{}),
 		}
 
 		// 设置节点名称
@@ -994,79 +972,11 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 			proxyNode.Name = "专线-" + cn.Name
 		}
 
-		// 设置 Options 中的额外字段
-		if nodeConfig.SNI != "" {
-			proxyNode.Options["servername"] = nodeConfig.SNI
-		}
-		if nodeConfig.Fingerprint != "" {
-			proxyNode.Options["client-fingerprint"] = nodeConfig.Fingerprint
-		}
-		if nodeConfig.Flow != "" {
-			proxyNode.Options["flow"] = nodeConfig.Flow
-		}
-		
-		// Reality 配置
-		if nodeConfig.PublicKey != "" || nodeConfig.ShortID != "" {
-			realityOpts := make(map[string]interface{})
-			if nodeConfig.PublicKey != "" {
-				realityOpts["public-key"] = nodeConfig.PublicKey
-			}
-			if nodeConfig.ShortID != "" {
-				realityOpts["short-id"] = nodeConfig.ShortID
-			}
-			proxyNode.Options["reality-opts"] = realityOpts
-		}
-		
-		// ALPN 配置
-		if nodeConfig.ALPN != "" {
-			alpnList := strings.Split(nodeConfig.ALPN, ",")
-			for i, a := range alpnList {
-				alpnList[i] = strings.TrimSpace(a)
-			}
-			proxyNode.Options["alpn"] = alpnList
-		}
-		
-		// WebSocket 配置
-		if nodeConfig.Network == "ws" && (nodeConfig.Path != "" || nodeConfig.Host != "") {
-			wsOpts := make(map[string]interface{})
-			if nodeConfig.Path != "" {
-				wsOpts["path"] = nodeConfig.Path
-			}
-			if nodeConfig.Host != "" {
-				headers := make(map[string]interface{})
-				headers["Host"] = nodeConfig.Host
-				wsOpts["headers"] = headers
-			}
-			proxyNode.Options["ws-opts"] = wsOpts
-		}
-		
-		// gRPC 配置
-		if nodeConfig.Network == "grpc" && nodeConfig.ServiceName != "" {
-			grpcOpts := make(map[string]interface{})
-			grpcOpts["grpc-mode"] = "gun"
-			grpcOpts["grpc-service-name"] = nodeConfig.ServiceName
-			proxyNode.Options["grpc-opts"] = grpcOpts
-		}
-		
-		// 其他字段
-		if nodeConfig.Padding {
-			proxyNode.Options["padding"] = nodeConfig.Padding
-		}
-		if nodeConfig.CongestionControl != "" {
-			proxyNode.Options["congestion-control"] = nodeConfig.CongestionControl
-		}
-		if nodeConfig.UDPRelayMode != "" {
-			proxyNode.Options["udp-relay-mode"] = nodeConfig.UDPRelayMode
-		}
-		
-		// skip-cert-verify 对于 TLS 连接应该始终设置
-		if proxyNode.TLS || nodeConfig.Security != "" {
-			proxyNode.Options["skip-cert-verify"] = nodeConfig.SkipCertVerify
-		}
-
 		key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
-		*proxies = append(*proxies, &proxyNode)
-		processed[key] = true
+		if !processed[key] {
+			processed[key] = true
+			*proxies = append(*proxies, &proxyNode)
+		}
 	}
 }
 
