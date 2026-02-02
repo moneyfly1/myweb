@@ -251,7 +251,15 @@ func parseHysteria(link string) (*ProxyNode, error) {
 
 func parseHysteria2(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "hysteria2", func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.Password, _ = p.User.Password()
+		// Hysteria2 链接格式: hysteria2://password@host:port
+		// 密码在 @ 前面，使用 Username() 获取
+		if p.User != nil {
+			n.Password = p.User.Username()
+			// 如果 URL 中有 password 部分（user:password@host），也尝试获取
+			if password, ok := p.User.Password(); ok && password != "" {
+				n.Password = password
+			}
+		}
 		n.TLS = true
 		applyHysteriaBandwidth(n, q, "mbpsUp", "mbpsDown")
 		applyTLSOptions(n, q, n.Server)
@@ -301,7 +309,15 @@ func parseNaive(link string) (*ProxyNode, error) {
 
 func parseAnytls(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "anytls", func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.UUID = p.User.Username()
+		// Anytls 链接格式: anytls://uuid@host:port 或 anytls://uuid:password@host:port
+		// UUID 在 @ 前面，使用 Username() 获取
+		if p.User != nil {
+			n.UUID = p.User.Username()
+			// 如果 URL 中有 password 部分（uuid:password@host），也尝试获取
+			if password, ok := p.User.Password(); ok && password != "" {
+				n.Password = password
+			}
+		}
 		n.UDP, n.TLS = true, true
 		applyTLSOptions(n, q, n.Server)
 	})
@@ -313,8 +329,32 @@ func parseSOCKS(link string) (*ProxyNode, error) {
 		scheme = "socks"
 	}
 	return parseGenericNode(link, scheme, func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.UUID = p.User.Username()
-		n.Password, _ = p.User.Password()
+		if p.User != nil {
+			username := p.User.Username()
+			password, hasPassword := p.User.Password()
+
+			// SOCKS 链接可能使用 base64 编码的 username:password 格式
+			// 尝试解码 username 部分
+			if decoded, err := DecodeBase64(username); err == nil {
+				// 如果解码成功，检查是否是 username:password 格式
+				if parts := strings.SplitN(decoded, ":", 2); len(parts) == 2 {
+					n.UUID = parts[0]
+					n.Password = parts[1]
+				} else {
+					// 解码后不是 username:password 格式，使用原始值
+					n.UUID = username
+					if hasPassword {
+						n.Password = password
+					}
+				}
+			} else {
+				// 解码失败，使用原始值
+				n.UUID = username
+				if hasPassword {
+					n.Password = password
+				}
+			}
+		}
 		n.UDP = true
 	})
 }

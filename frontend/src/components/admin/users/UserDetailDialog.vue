@@ -257,28 +257,71 @@
       width="600px"
     >
       <el-form label-width="120px">
-        <el-form-item label="选择节点">
+        <el-form-item label="搜索并选择节点">
+          <!-- 节点搜索区域 -->
+          <div class="node-search-section">
+            <div class="search-input-group">
+              <el-input
+                v-model="nodeSearchKeyword"
+                placeholder="请输入节点名称或域名搜索节点"
+                clearable
+                @keyup.enter="handleNodeSearch"
+                @clear="handleNodeSearchClear"
+                style="flex: 1"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+              <el-button
+                type="primary"
+                @click="handleNodeSearch"
+                :loading="loadingNodes"
+                style="margin-left: 10px"
+              >
+                <el-icon><Search /></el-icon>
+                搜索
+              </el-button>
+            </div>
+            
+            <!-- 搜索结果提示 -->
+            <div v-if="nodeSearchKeyword && searchedNodes.length > 0" class="search-result-tip">
+              找到 {{ searchedNodes.length }} 个匹配的节点
+            </div>
+            <div v-else-if="nodeSearchKeyword && !loadingNodes && searchedNodes.length === 0" class="search-result-tip empty">
+              未找到匹配的节点，请检查输入的节点名称或域名
+            </div>
+          </div>
+          
+          <!-- 节点选择器 -->
           <el-select
             v-model="selectedNodeId"
-            placeholder="请输入节点名称搜索（可输入名称、域名等）"
-            filterable
-            remote
-            :remote-method="searchAvailableNodes"
+            placeholder="请先搜索节点，然后从搜索结果中选择"
+            style="width: 100%; margin-top: 10px"
             :loading="loadingNodes"
-            style="width: 100%"
+            :disabled="searchedNodes.length === 0 && !nodeSearchKeyword"
           >
             <el-option
-              v-for="node in availableNodes"
+              v-for="node in searchedNodes"
               :key="node.id"
               :label="`${node.name} (${node.protocol})`"
               :value="node.id"
             />
           </el-select>
+          
+          <div class="form-tip">
+            <div v-if="selectedNodeId">
+              已选择节点，点击"确定"完成分配
+            </div>
+            <div v-else>
+              提示：在上方搜索框中输入节点名称或域名，点击"搜索"按钮查找节点，然后从下拉列表中选择
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showAssignDialog = false">取消</el-button>
-        <el-button type="primary" @click="assignNode" :loading="assigning">确定</el-button>
+        <el-button type="primary" @click="assignNode" :loading="assigning" :disabled="!selectedNodeId">确定</el-button>
       </template>
     </el-dialog>
   </el-dialog>
@@ -286,7 +329,7 @@
 
 <script>
 import { ref, watch, onMounted, computed } from 'vue'
-import { Wallet, ShoppingCart, Clock, Connection, Plus } from '@element-plus/icons-vue'
+import { Wallet, ShoppingCart, Clock, Connection, Plus, Search } from '@element-plus/icons-vue'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import { ElMessage } from 'element-plus'
 import { adminAPI } from '@/utils/api'
@@ -294,7 +337,7 @@ import { adminAPI } from '@/utils/api'
 export default {
   name: 'UserDetailDialog',
   components: {
-    Wallet, ShoppingCart, Clock, Connection, Plus
+    Wallet, ShoppingCart, Clock, Connection, Plus, Search
   },
   props: {
     visible: Boolean,
@@ -310,6 +353,8 @@ export default {
     const activeBalanceTab = ref('recharge')
     const customNodes = ref([])
     const availableNodes = ref([])
+    const searchedNodes = ref([]) // 搜索结果节点列表
+    const nodeSearchKeyword = ref('') // 节点搜索关键词
     const showAssignDialog = ref(false)
     const selectedNodeId = ref(null)
     const assigning = ref(false)
@@ -377,32 +422,63 @@ export default {
     }
 
     const loadAvailableNodes = async () => {
-      // 初始加载时，加载前 100 个激活的节点作为默认选项
-      await searchAvailableNodes('')
+      // 不再自动加载，需要用户主动搜索
+      searchedNodes.value = []
+      nodeSearchKeyword.value = ''
     }
 
-    const searchAvailableNodes = async (keyword) => {
+    // 处理节点搜索
+    const handleNodeSearch = async () => {
+      const keyword = nodeSearchKeyword.value?.trim()
+      
+      if (!keyword) {
+        ElMessage.warning('请输入节点名称或域名进行搜索')
+        return
+      }
+
+      if (keyword.length < 2) {
+        ElMessage.warning('搜索关键词至少需要2个字符')
+        return
+      }
+
       loadingNodes.value = true
       try {
-        const params = { is_active: 'true', page: 1, size: 100 }
-        if (keyword && keyword.trim()) {
-          params.search = keyword.trim()
+        const params = { 
+          is_active: 'true', 
+          page: 1, 
+          size: 200, // 增加搜索结果数量
+          search: keyword
         }
         const response = await adminAPI.getCustomNodes(params)
         if (response.data && response.data.success) {
           const allNodes = response.data.data?.data || response.data.data || []
           const assignedIds = customNodes.value.map(n => n.id)
-          availableNodes.value = allNodes.filter(n => !assignedIds.includes(n.id))
+          const filteredNodes = allNodes.filter(n => !assignedIds.includes(n.id))
+          searchedNodes.value = filteredNodes
+          
+          if (filteredNodes.length === 0) {
+            ElMessage.info('未找到匹配的节点，请检查输入的节点名称或域名')
+          } else {
+            ElMessage.success(`找到 ${filteredNodes.length} 个匹配的节点`)
+          }
         } else {
-          availableNodes.value = []
+          searchedNodes.value = []
+          ElMessage.error(response.data?.message || '搜索失败')
         }
       } catch (error) {
-        console.error('搜索可用节点失败:', error)
-        ElMessage.error('搜索节点失败')
-        availableNodes.value = []
+        console.error('搜索节点失败:', error)
+        ElMessage.error('搜索节点失败: ' + (error.response?.data?.message || error.message))
+        searchedNodes.value = []
       } finally {
         loadingNodes.value = false
       }
+    }
+
+    // 清除搜索结果
+    const handleNodeSearchClear = () => {
+      nodeSearchKeyword.value = ''
+      searchedNodes.value = []
+      selectedNodeId.value = null
     }
 
     watch(() => props.initialTab, (newVal) => {
@@ -425,8 +501,9 @@ export default {
 
     watch(() => showAssignDialog.value, async (visible) => {
       if (visible) {
-        // 打开分配对话框时，重新加载可用节点
+        // 打开分配对话框时，重置搜索状态
         await loadAvailableNodes()
+        selectedNodeId.value = null
       }
     })
 
@@ -577,6 +654,8 @@ export default {
       activeBalanceTab,
       customNodes,
       availableNodes,
+      searchedNodes,
+      nodeSearchKeyword,
       showAssignDialog,
       selectedNodeId,
       assigning,
@@ -584,7 +663,8 @@ export default {
       assignNode,
       unassignNode,
       loadAvailableNodes,
-      searchAvailableNodes,
+      handleNodeSearch,
+      handleNodeSearchClear,
       formatDate,
       formatDateTime,
       getStatusType,
@@ -802,6 +882,36 @@ export default {
 
 .custom-nodes-actions {
   margin-bottom: 15px;
+}
+
+/* 节点搜索区域样式 */
+.node-search-section {
+  margin-bottom: 10px;
+}
+
+.search-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.search-result-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+  padding: 5px 0;
+  
+  &.empty {
+    color: #f56c6c;
+  }
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 8px;
+  line-height: 1.5;
 }
 </style>
 
