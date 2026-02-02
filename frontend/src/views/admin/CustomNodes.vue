@@ -580,31 +580,74 @@
         <div class="section-title" v-if="assignMode === 'single'">新增分配</div>
         <el-form-item required>
           <template v-if="isMobile">
-            <div class="mobile-label">选择用户 <span class="required">*</span></div>
+            <div class="mobile-label">搜索并选择用户 <span class="required">*</span></div>
           </template>
           <template v-if="!isMobile" #label>
-            <span>选择用户 <span style="color: #f56c6c">*</span></span>
+            <span>搜索并选择用户 <span style="color: #f56c6c">*</span></span>
           </template>
+          
+          <!-- 用户搜索区域 -->
+          <div class="user-search-section">
+            <div class="search-input-group">
+              <el-input
+                v-model="userSearchKeyword"
+                placeholder="请输入用户名或邮箱搜索用户"
+                clearable
+                @keyup.enter="handleUserSearch"
+                @clear="handleUserSearchClear"
+                :size="isMobile ? 'large' : 'default'"
+                style="flex: 1"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+              <el-button
+                type="primary"
+                @click="handleUserSearch"
+                :loading="loadingUsers"
+                :size="isMobile ? 'large' : 'default'"
+                style="margin-left: 10px"
+              >
+                <el-icon><Search /></el-icon>
+                搜索
+              </el-button>
+            </div>
+            
+            <!-- 搜索结果提示 -->
+            <div v-if="userSearchKeyword && searchedUsers.length > 0" class="search-result-tip">
+              找到 {{ searchedUsers.length }} 个匹配的用户
+            </div>
+            <div v-else-if="userSearchKeyword && !loadingUsers && searchedUsers.length === 0" class="search-result-tip empty">
+              未找到匹配的用户，请检查输入的用户名或邮箱
+            </div>
+          </div>
+          
+          <!-- 用户选择器 -->
           <el-select
             v-model="selectedUserIds"
             multiple
-            filterable
-            remote
-            :remote-method="searchUsers"
-            placeholder="请输入用户名或邮箱搜索用户（可多选）"
-            style="width: 100%"
+            placeholder="请先搜索用户，然后从搜索结果中选择（可多选）"
+            style="width: 100%; margin-top: 10px"
             :loading="loadingUsers"
             :size="isMobile ? 'large' : 'default'"
+            :disabled="searchedUsers.length === 0 && !userSearchKeyword"
           >
             <el-option
-              v-for="user in users"
+              v-for="user in searchedUsers"
               :key="user.id"
               :label="`${user.username} (${user.email})`"
               :value="user.id"
             />
           </el-select>
+          
           <div class="form-tip">
-            已选择 {{ selectedUserIds.length }} 个用户，将为每个用户分配 {{ assignMode === 'single' ? '1' : selectedNodes.length }} 个节点
+            <div v-if="selectedUserIds.length > 0">
+              已选择 {{ selectedUserIds.length }} 个用户，将为每个用户分配 {{ assignMode === 'single' ? '1' : selectedNodes.length }} 个节点
+            </div>
+            <div v-else>
+              提示：在上方搜索框中输入用户名或邮箱，点击"搜索"按钮查找用户，然后从下拉列表中选择
+            </div>
           </div>
         </el-form-item>
         <el-form-item>
@@ -680,6 +723,8 @@ export default {
     const selectedNodes = ref([])
     const selectedUserIds = ref([])
     const users = ref([])
+    const searchedUsers = ref([]) // 搜索结果用户列表
+    const userSearchKeyword = ref('') // 用户搜索关键词
     const loadingUsers = ref(false)
     const batchDeleting = ref(false)
     const batchTesting = ref(false)
@@ -1322,30 +1367,61 @@ export default {
     }
 
     const loadUsers = async () => {
-      // 初始加载时，加载前 100 个用户作为默认选项
-      if (users.value.length === 0) {
-        await searchUsers('')
-      }
+      // 不再自动加载，需要用户主动搜索
+      users.value = []
+      searchedUsers.value = []
+      userSearchKeyword.value = ''
     }
 
-    const searchUsers = async (keyword) => {
+    // 处理用户搜索
+    const handleUserSearch = async () => {
+      const keyword = userSearchKeyword.value?.trim()
+      
+      if (!keyword) {
+        ElMessage.warning('请输入用户名或邮箱进行搜索')
+        return
+      }
+
+      if (keyword.length < 2) {
+        ElMessage.warning('搜索关键词至少需要2个字符')
+        return
+      }
+
       loadingUsers.value = true
       try {
-        const params = { page: 1, size: 100 }
-        if (keyword && keyword.trim()) {
-          params.keyword = keyword.trim()
+        const params = { 
+          page: 1, 
+          size: 200, // 增加搜索结果数量
+          keyword: keyword
         }
         const response = await adminAPI.getUsers(params)
         if (response.data && response.data.success) {
-          users.value = response.data.data?.users || response.data.data || []
+          const foundUsers = response.data.data?.users || response.data.data || []
+          searchedUsers.value = foundUsers
+          
+          if (foundUsers.length === 0) {
+            ElMessage.info('未找到匹配的用户，请检查输入的用户名或邮箱')
+          } else {
+            ElMessage.success(`找到 ${foundUsers.length} 个匹配的用户`)
+          }
+        } else {
+          searchedUsers.value = []
+          ElMessage.error(response.data?.message || '搜索失败')
         }
       } catch (error) {
         console.error('搜索用户失败:', error)
-        ElMessage.error('搜索用户失败')
-        users.value = []
+        ElMessage.error('搜索用户失败: ' + (error.response?.data?.message || error.message))
+        searchedUsers.value = []
       } finally {
         loadingUsers.value = false
       }
+    }
+
+    // 清除搜索结果
+    const handleUserSearchClear = () => {
+      userSearchKeyword.value = ''
+      searchedUsers.value = []
+      selectedUserIds.value = []
     }
 
     const loadAssignedUsers = async (nodeId) => {
@@ -1400,6 +1476,9 @@ export default {
       assignedUsers.value = []
       assignExtraData.subscription_type = 'both'
       assignExtraData.expires_at = null
+      // 重置搜索状态
+      userSearchKeyword.value = ''
+      searchedUsers.value = []
       loadUsers()
       if (mode === 'single' && node) {
         loadAssignedUsers(node.id)
@@ -1483,7 +1562,7 @@ export default {
 
     onMounted(() => {
       loadCustomNodes()
-      loadUsers()
+      // 不再自动加载用户，需要用户主动搜索
       window.addEventListener('resize', handleResize)
     })
     
@@ -1555,7 +1634,10 @@ export default {
       handleAssign,
       handleUnassign,
       loadUsers,
-      searchUsers,
+      handleUserSearch,
+      handleUserSearchClear,
+      userSearchKeyword,
+      searchedUsers,
     }
   }
 }
@@ -1869,6 +1951,29 @@ export default {
   padding-left: 10px;
 }
 
+/* 用户搜索区域样式 */
+.user-search-section {
+  margin-bottom: 10px;
+}
+
+.search-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.search-result-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+  padding: 5px 0;
+  
+  &.empty {
+    color: #f56c6c;
+  }
+}
+
 .text-danger {
   color: #f56c6c;
 }
@@ -1943,6 +2048,17 @@ export default {
   :deep(.el-textarea),
   :deep(.el-date-picker) {
     width: 100% !important;
+  }
+
+  /* 移动端搜索区域优化 */
+  .search-input-group {
+    flex-direction: column;
+    gap: 10px;
+    
+    .el-button {
+      width: 100%;
+      margin-left: 0 !important;
+    }
   }
   
   :deep(.el-input__wrapper),
