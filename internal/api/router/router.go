@@ -318,6 +318,7 @@ func SetupRouter() *gin.Engine {
 
 			admin.GET("/orders", handlers.GetAdminOrders)
 			admin.PUT("/orders/:id", handlers.UpdateAdminOrder)
+			admin.POST("/orders/:id/refund", handlers.RefundAdminOrder)
 			admin.DELETE("/orders/:id", handlers.DeleteAdminOrder)
 			admin.GET("/orders/export", handlers.ExportOrders)
 			admin.GET("/orders/statistics", handlers.GetOrderStatistics)

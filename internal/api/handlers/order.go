@@ -680,6 +680,110 @@ func UpdateAdminOrder(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "订单已更新", order)
 }
 
+func RefundAdminOrder(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+	var order models.Order
+	if err := db.Preload("Package").Preload("User").First(&order, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", nil)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单失败", err)
+		}
+		return
+	}
+
+	// 只能退款已支付的订单
+	if order.Status != "paid" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "只能退款已支付的订单", nil)
+		return
+	}
+
+	// 检查支付方式，只有易支付订单才能退款
+	paymentMethodName := ""
+	if order.PaymentMethodName.Valid {
+		paymentMethodName = order.PaymentMethodName.String
+	}
+
+	isYipay := strings.Contains(paymentMethodName, "易支付") || strings.Contains(paymentMethodName, "yipay")
+	if !isYipay && order.PaymentMethodID.Valid {
+		var paymentConfig models.PaymentConfig
+		if err := db.First(&paymentConfig, order.PaymentMethodID.Int64).Error; err == nil {
+			if paymentConfig.PayType == "yipay" || strings.HasPrefix(paymentConfig.PayType, "yipay_") {
+				isYipay = true
+			}
+		}
+	}
+
+	if !isYipay {
+		utils.ErrorResponse(c, http.StatusBadRequest, "只有易支付订单才能退款", nil)
+		return
+	}
+
+	// 获取支付配置
+	var paymentConfig models.PaymentConfig
+	if order.PaymentMethodID.Valid {
+		if err := db.First(&paymentConfig, order.PaymentMethodID.Int64).Error; err != nil {
+			// 如果找不到支付配置，尝试查找易支付配置
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).First(&paymentConfig).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, "未找到易支付配置", nil)
+				return
+			}
+		}
+	} else {
+		// 如果没有支付方式ID，尝试查找易支付配置
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).First(&paymentConfig).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未找到易支付配置", nil)
+			return
+		}
+	}
+
+	// 创建易支付服务
+	yipayService, err := payment.NewYipayService(&paymentConfig)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "初始化易支付服务失败: "+err.Error(), nil)
+		return
+	}
+
+	// 计算退款金额
+	refundAmount := order.Amount
+	if order.FinalAmount.Valid {
+		refundAmount = order.FinalAmount.Float64
+	}
+
+	// 获取易支付交易号
+	tradeNo := ""
+	if order.PaymentTransactionID.Valid {
+		tradeNo = order.PaymentTransactionID.String
+	}
+
+	// 调用易支付退款API
+	utils.LogInfo("RefundAdminOrder: 开始退款 - order_id=%d, order_no=%s, trade_no=%s, refund_amount=%.2f", order.ID, order.OrderNo, tradeNo, refundAmount)
+	if err := yipayService.RefundOrder(order.OrderNo, tradeNo, refundAmount); err != nil {
+		utils.LogError("RefundAdminOrder: 易支付退款失败", err, map[string]interface{}{
+			"order_id":      order.ID,
+			"order_no":      order.OrderNo,
+			"trade_no":      tradeNo,
+			"refund_amount": refundAmount,
+		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "退款失败: "+err.Error(), nil)
+		return
+	}
+
+	// 退款成功，处理订单回退逻辑
+	orderService := orderServicePkg.NewOrderService()
+	if err := orderService.ProcessRefundOrder(&order); err != nil {
+		utils.LogError("RefundAdminOrder: 处理退款订单失败", err, map[string]interface{}{
+			"order_id": order.ID,
+		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "处理退款订单失败: "+err.Error(), nil)
+		return
+	}
+
+	utils.LogInfo("RefundAdminOrder: 订单退款成功 - order_id=%d, order_no=%s, refund_amount=%.2f", order.ID, order.OrderNo, refundAmount)
+	utils.SuccessResponse(c, http.StatusOK, "订单退款成功", order)
+}
+
 func DeleteAdminOrder(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()

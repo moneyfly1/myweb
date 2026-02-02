@@ -214,6 +214,16 @@
               </el-button>
               <el-button 
                 size="small" 
+                type="warning" 
+                @click="refundOrder(scope.row)"
+                v-if="scope.row.status === 'paid' && isYipayOrder(scope.row)"
+                class="action-btn"
+              >
+                <el-icon><Money /></el-icon>
+                退款
+              </el-button>
+              <el-button 
+                size="small" 
                 type="danger" 
                 @click="cancelOrder(scope.row)"
                 v-if="scope.row.status === 'pending'"
@@ -303,6 +313,16 @@
             >
               <el-icon><Delete /></el-icon>
               删除
+            </el-button>
+            <el-button 
+              v-if="item.status === 'paid' && isYipayOrder(item)"
+              size="small" 
+              type="warning" 
+              @click="refundOrder(item)"
+              class="action-btn"
+            >
+              <el-icon><Money /></el-icon>
+              退款
             </el-button>
             <el-button 
               v-if="item.status === 'pending'"
@@ -764,6 +784,47 @@ export default {
         if (error !== 'cancel') {
           ElMessage.error('删除失败')
           }
+      }
+    }
+
+    // 判断是否是易支付订单
+    const isYipayOrder = (order) => {
+      const paymentMethod = order.payment_method_name || order.payment_method || ''
+      return paymentMethod.includes('易支付') || paymentMethod.toLowerCase().includes('yipay')
+    }
+
+    // 退款订单
+    const refundOrder = async (order) => {
+      try {
+        const refundAmount = order.final_amount || order.amount
+        await ElMessageBox.confirm(
+          `确定要退款此订单吗？\n订单号：${order.order_no}\n退款金额：¥${refundAmount.toFixed(2)}\n\n退款后将自动回退订阅、余额等相关数据。`,
+          '确认退款',
+          {
+            confirmButtonText: '确定退款',
+            cancelButtonText: '取消',
+            type: 'warning',
+            dangerouslyUseHTMLString: false
+          }
+        )
+        
+        const response = await api.post(`/admin/orders/${order.id}/refund`)
+        
+        if (response.data.success) {
+          ElMessage.success('订单退款成功')
+          if (activeTab.value === 'recharges') {
+            await loadRecharges()
+          } else {
+            await loadOrders()
+          }
+        } else {
+          ElMessage.error(response.data.message || '退款失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          const errorMsg = error.response?.data?.message || error.message || '退款失败'
+          ElMessage.error(`退款失败: ${errorMsg}`)
+        }
       }
     }
     

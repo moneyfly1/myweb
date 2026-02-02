@@ -25,6 +25,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// ==========================================
+// 常量与类型定义
+// ==========================================
+
 type SubscriptionStatus int
 
 const (
@@ -49,6 +53,10 @@ var nodeLinkPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?:^|\s)(naive\+https://[^\s]+)`),
 	regexp.MustCompile(`(?:^|\s)(naive://[^\s]+)`),
 	regexp.MustCompile(`(?:^|\s)(anytls://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(socks5://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(socks://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(http://[^\s]+)`),
+	regexp.MustCompile(`(?:^|\s)(https://[^\s]+)`),
 }
 
 var supportedClashTypes = map[string]bool{
@@ -56,11 +64,15 @@ var supportedClashTypes = map[string]bool{
 	"vless":     true,
 	"trojan":    true,
 	"ss":        true,
-	"ssr":       true, // Clash Verge/Meta 支持 SSR
+	"ssr":       true,
 	"hysteria":  true,
 	"hysteria2": true,
 	"tuic":      true,
-	"direct":    true, // 信息节点
+	"anytls":    true,
+	"socks":     true,
+	"socks5":    true,
+	"http":      true,
+	"direct":    true,
 }
 
 type SubscriptionContext struct {
@@ -68,7 +80,7 @@ type SubscriptionContext struct {
 	Subscription   models.Subscription
 	Proxies        []*ProxyNode
 	Status         SubscriptionStatus
-	ResetRecord    *models.SubscriptionReset // 如果是旧订阅地址，这里会有记录
+	ResetRecord    *models.SubscriptionReset
 	CurrentDevices int
 	DeviceLimit    int
 }
@@ -77,10 +89,10 @@ type ConfigUpdateService struct {
 	db            *gorm.DB
 	isRunning     bool
 	runningMutex  sync.Mutex
-	siteURL       string         // 缓存站点URL，避免频繁查询
-	supportQQ     string         // 缓存客服QQ
-	regionMatcher *RegionMatcher // 地区匹配器（优化版）
-	parserPool    *ParserPool    // 解析器池（并发处理）
+	siteURL       string
+	supportQQ     string
+	regionMatcher *RegionMatcher
+	parserPool    *ParserPool
 }
 
 type nodeWithOrder struct {
@@ -88,10 +100,22 @@ type nodeWithOrder struct {
 	orderIndex int
 }
 
+type updateStats struct {
+	parseFailed   int
+	duplicates    int
+	invalidLinks  int
+	missingSource int
+	filtered      int
+}
+
+// ==========================================
+// 初始化与生命周期
+// ==========================================
+
 func NewConfigUpdateService() *ConfigUpdateService {
 	service := &ConfigUpdateService{
 		db:         database.GetDB(),
-		parserPool: NewParserPool(10), // 默认10个worker
+		parserPool: NewParserPool(10),
 	}
 
 	regionConfig, err := LoadRegionConfig()
@@ -119,6 +143,7 @@ func NewConfigUpdateService() *ConfigUpdateService {
 }
 
 func (s *ConfigUpdateService) loadLegacyRegionMaps() {
+	// 占位符，保持原样
 }
 
 func (s *ConfigUpdateService) refreshSystemConfig() {
@@ -133,7 +158,7 @@ func (s *ConfigUpdateService) refreshSystemConfig() {
 	if err := s.db.Where("key = ? AND category = ?", "support_qq", "general").First(&supportQQConfig).Error; err == nil && supportQQConfig.Value != "" {
 		s.supportQQ = strings.TrimSpace(supportQQConfig.Value)
 	} else {
-		s.supportQQ = "" // 不设置默认值，如果未配置则为空
+		s.supportQQ = ""
 	}
 }
 
@@ -142,6 +167,10 @@ func (s *ConfigUpdateService) IsRunning() bool {
 	defer s.runningMutex.Unlock()
 	return s.isRunning
 }
+
+// ==========================================
+// 状态与日志管理
+// ==========================================
 
 func (s *ConfigUpdateService) GetStatus() map[string]interface{} {
 	var lastUpdate string
@@ -177,21 +206,70 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 func (s *ConfigUpdateService) ClearLogs() error {
 	var config models.SystemConfig
 	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
-
 	if err != nil {
-		config = models.SystemConfig{
-			Key:         "config_update_logs",
-			Value:       "[]",
-			Type:        "json",
-			Category:    "general",
-			DisplayName: "配置更新日志",
-			Description: "配置更新任务日志",
-		}
-		return s.db.Create(&config).Error
+		return s.saveLogConfig("[]")
 	}
 	config.Value = "[]"
 	return s.db.Save(&config).Error
 }
+
+func (s *ConfigUpdateService) log(level, message string) {
+	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+	logEntry := map[string]interface{}{
+		"time":    now,
+		"level":   level,
+		"message": message,
+	}
+
+	go s.saveLogToDB(logEntry)
+
+	if utils.AppLogger != nil {
+		if level == "ERROR" {
+			utils.AppLogger.Error("%s", message)
+		} else {
+			utils.AppLogger.Info("%s", message)
+		}
+	}
+}
+
+func (s *ConfigUpdateService) saveLogToDB(logEntry map[string]interface{}) {
+	var config models.SystemConfig
+	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
+
+	var logs []map[string]interface{}
+	if err == nil {
+		json.Unmarshal([]byte(config.Value), &logs)
+	}
+
+	logs = append(logs, logEntry)
+	if len(logs) > 100 {
+		logs = logs[len(logs)-100:]
+	}
+
+	logsJSON, _ := json.Marshal(logs)
+	if err != nil {
+		s.saveLogConfig(string(logsJSON))
+	} else {
+		config.Value = string(logsJSON)
+		s.db.Save(&config)
+	}
+}
+
+func (s *ConfigUpdateService) saveLogConfig(value string) error {
+	config := models.SystemConfig{
+		Key:         "config_update_logs",
+		Value:       value,
+		Type:        "json",
+		Category:    "config_update",
+		DisplayName: "配置更新日志",
+		Description: "配置更新任务日志",
+	}
+	return s.db.Create(&config).Error
+}
+
+// ==========================================
+// 任务执行逻辑
+// ==========================================
 
 func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) {
 	return s.getConfig()
@@ -243,7 +321,26 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	s.log("INFO", fmt.Sprintf("共获取到 %d 个有效节点链接，准备入库", len(nodes)))
 
-	filterKeywords := []string{}
+	filterKeywords := s.extractFilterKeywords(config)
+	if len(filterKeywords) > 0 {
+		s.log("INFO", fmt.Sprintf("已配置 %d 个过滤关键词，将过滤包含这些关键词的节点", len(filterKeywords)))
+	} else {
+		s.log("DEBUG", "未配置过滤关键词，将不过滤任何节点")
+	}
+
+	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
+
+	s.logUpdateStats(stats, len(nodesWithOrder))
+
+	importedCount := s.importNodesToDatabaseWithOrder(nodesWithOrder)
+	s.updateLastUpdateTime()
+
+	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，成功入库/更新 %d 个", len(nodesWithOrder), importedCount))
+	return nil
+}
+
+func (s *ConfigUpdateService) extractFilterKeywords(config map[string]interface{}) []string {
+	var filterKeywords []string
 	if keywords, ok := config["filter_keywords"].([]string); ok {
 		filterKeywords = keywords
 	} else if keywordsStr, ok := config["filter_keywords"].(string); ok && keywordsStr != "" {
@@ -253,15 +350,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 			}
 		}
 	}
+	return filterKeywords
+}
 
-	if len(filterKeywords) > 0 {
-		s.log("INFO", fmt.Sprintf("已配置 %d 个过滤关键词: %v，将过滤包含这些关键词的节点", len(filterKeywords), filterKeywords))
-	} else {
-		s.log("DEBUG", "未配置过滤关键词，将不过滤任何节点")
-	}
-
-	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
-
+func (s *ConfigUpdateService) logUpdateStats(stats updateStats, successCount int) {
 	if stats.parseFailed > 0 {
 		s.log("WARN", fmt.Sprintf("解析失败的节点: %d 个", stats.parseFailed))
 	}
@@ -274,21 +366,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	if stats.invalidLinks > 0 {
 		s.log("WARN", fmt.Sprintf("无效链接的节点: %d 个", stats.invalidLinks))
 	}
-	s.log("INFO", fmt.Sprintf("成功解析并准备入库的节点: %d 个", len(nodesWithOrder)))
-
-	importedCount := s.importNodesToDatabaseWithOrder(nodesWithOrder)
-	s.updateLastUpdateTime()
-
-	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，成功入库/更新 %d 个", len(nodesWithOrder), importedCount))
-	return nil
-}
-
-type updateStats struct {
-	parseFailed   int
-	duplicates    int
-	invalidLinks  int
-	missingSource int
-	filtered      int // 被关键词过滤的节点数量
+	s.log("INFO", fmt.Sprintf("成功解析并准备入库的节点: %d 个", successCount))
 }
 
 func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string) ([]nodeWithOrder, updateStats) {
@@ -316,26 +394,25 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 		s.log("INFO", fmt.Sprintf("开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes)))
 
 		links := make([]string, 0, len(urlNodes))
-		linkToNodeInfo := make(map[string]map[string]interface{})
 		for _, nodeInfo := range urlNodes {
 			link, ok := nodeInfo["url"].(string)
 			if !ok {
 				stats.invalidLinks++
-				s.log("WARN", fmt.Sprintf("订阅地址 [%d/%d] 中发现无效链接（缺少url字段）", urlIndex+1, len(urls)))
 				continue
 			}
 			links = append(links, link)
-			linkToNodeInfo[link] = nodeInfo
+		}
+
+		if len(links) == 0 {
+			continue
 		}
 
 		results := s.parserPool.ParseLinks(links)
-
 		nodeIndexInURL := 0
 		counts := struct{ Processed, Failed, Filtered, Duplicate int }{}
 
 		for _, result := range results {
 			link := result.Link
-
 			if seenKeys[link] {
 				stats.duplicates++
 				counts.Duplicate++
@@ -343,36 +420,25 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			}
 			seenKeys[link] = true
 
-			if result.Err != nil {
+			if result.Err != nil || result.Node == nil {
 				stats.parseFailed++
 				counts.Failed++
-				if counts.Failed <= 10 { // 增加到10条，提供更多调试信息
-					s.log("WARN", fmt.Sprintf("解析失败 [订阅地址 %d/%d, 链接索引 %d]: %v, 链接片段: %s",
-						urlIndex+1, len(urls), nodeIndexInURL, result.Err, truncateString(link, 50)))
+				if counts.Failed <= 10 && result.Err != nil {
+					s.log("WARN", fmt.Sprintf("解析失败 [订阅地址 %d/%d]: %v, 链接: %s",
+						urlIndex+1, len(urls), result.Err, truncateString(link, 50)))
 				}
 				continue
 			}
 
-			if result.Node == nil {
-				stats.parseFailed++
-				counts.Failed++
-				s.log("WARN", fmt.Sprintf("解析返回空节点 [订阅地址 %d/%d, 链接索引 %d]: %s",
-					urlIndex+1, len(urls), nodeIndexInURL, truncateString(link, 50)))
-				continue
-			}
-
 			node := result.Node
-
 			if filtered, keyword := s.isNodeFiltered(node, filterKeywords); filtered {
 				stats.filtered++
 				counts.Filtered++
-				s.log("DEBUG", fmt.Sprintf("节点被过滤 [订阅地址 %d/%d]: %s (关键词: %s)",
-					urlIndex+1, len(urls), node.Name, keyword))
+				s.log("DEBUG", fmt.Sprintf("节点被过滤: %s (关键词: %s)", node.Name, keyword))
 				continue
 			}
 
 			counts.Processed++
-
 			node.Name = s.ensureUniqueName(node.Name, usedNames)
 			usedNames[node.Name] = true
 
@@ -443,46 +509,37 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 		"schedule_interval": 3600,
 	}
 
-	var urlsConfig *models.SystemConfig
-	var filterKeywordsConfig *models.SystemConfig
-
 	for _, config := range configs {
-		if config.Key == "urls" {
-			urlsConfig = &config
-		} else if config.Key == "filter_keywords" {
-			filterKeywordsConfig = &config
-		} else if config.Key == "enable_schedule" {
+		switch config.Key {
+		case "urls":
+			// 内联替代 utils.SplitLinesFilterEmpty
+			var urls []string
+			for _, line := range strings.Split(config.Value, "\n") {
+				if trimmed := strings.TrimSpace(line); trimmed != "" {
+					urls = append(urls, trimmed)
+				}
+			}
+			result["urls"] = urls
+		case "filter_keywords":
+			// 内联替代 utils.SplitLinesFilterEmpty
+			var kws []string
+			for _, line := range strings.Split(config.Value, "\n") {
+				if trimmed := strings.TrimSpace(line); trimmed != "" {
+					kws = append(kws, trimmed)
+				}
+			}
+			result["filter_keywords"] = kws
+		case "enable_schedule":
 			result[config.Key] = config.Value == "true" || config.Value == "1"
-		} else if config.Key == "schedule_interval" {
-			var interval int
-			fmt.Sscanf(config.Value, "%d", &interval)
+		case "schedule_interval":
+			interval, _ := strconv.Atoi(config.Value)
 			if interval == 0 {
 				interval = 3600
 			}
 			result[config.Key] = interval
-		} else {
+		default:
 			result[config.Key] = config.Value
 		}
-	}
-
-	if urlsConfig != nil && strings.TrimSpace(urlsConfig.Value) != "" {
-		var filtered []string
-		for _, u := range strings.Split(urlsConfig.Value, "\n") {
-			if u = strings.TrimSpace(u); u != "" {
-				filtered = append(filtered, u)
-			}
-		}
-		result["urls"] = filtered
-	}
-
-	if filterKeywordsConfig != nil && strings.TrimSpace(filterKeywordsConfig.Value) != "" {
-		var filtered []string
-		for _, kw := range strings.Split(filterKeywordsConfig.Value, "\n") {
-			if kw = strings.TrimSpace(kw); kw != "" {
-				filtered = append(filtered, kw)
-			}
-		}
-		result["filter_keywords"] = filtered
 	}
 
 	return result, nil
@@ -509,60 +566,14 @@ func (s *ConfigUpdateService) updateLastUpdateTime() {
 	}
 }
 
-func (s *ConfigUpdateService) log(level, message string) {
-	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
-	logEntry := map[string]interface{}{
-		"time":    now,
-		"level":   level,
-		"message": message,
-	}
-
-	go s.saveLogToDB(logEntry)
-
-	if utils.AppLogger != nil {
-		if level == "ERROR" {
-			utils.AppLogger.Error("%s", message)
-		} else {
-			utils.AppLogger.Info("%s", message)
-		}
-	}
-}
-
-func (s *ConfigUpdateService) saveLogToDB(logEntry map[string]interface{}) {
-	var config models.SystemConfig
-	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
-
-	if err != nil {
-		initialLogs := []map[string]interface{}{logEntry}
-		logsJSON, _ := json.Marshal(initialLogs)
-		config = models.SystemConfig{
-			Key:         "config_update_logs",
-			Value:       string(logsJSON),
-			Type:        "json",
-			Category:    "config_update",
-			DisplayName: "配置更新日志",
-			Description: "配置更新任务日志",
-		}
-		s.db.Create(&config)
-	} else {
-		var logs []map[string]interface{}
-		json.Unmarshal([]byte(config.Value), &logs)
-		logs = append(logs, logEntry)
-
-		if len(logs) > 100 {
-			logs = logs[len(logs)-100:]
-		}
-
-		logsJSON, _ := json.Marshal(logs)
-		config.Value = string(logsJSON)
-		s.db.Save(&config)
-	}
-}
+// ==========================================
+// 节点获取与解析
+// ==========================================
 
 func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]interface{}, error) {
 	var allNodes []map[string]interface{}
 	client := &http.Client{
-		Timeout: 60 * time.Second, // 增加到 60 秒
+		Timeout: 60 * time.Second,
 		Transport: &http.Transport{
 			DisableKeepAlives: false,
 			MaxIdleConns:      10,
@@ -580,12 +591,7 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 		}
 
 		decoded := TryDecodeNodeList(string(content))
-
-		decodedPreview := decoded
-		if len(decodedPreview) > 200 {
-			decodedPreview = decodedPreview[:200] + "..."
-		}
-		s.log("DEBUG", fmt.Sprintf("处理后内容长度: %d, 预览: %s", len(decoded), decodedPreview))
+		s.log("DEBUG", fmt.Sprintf("内容长度: %d, 预览: %s", len(decoded), truncateString(decoded, 200)))
 
 		nodeLinks := s.extractNodeLinks(decoded)
 		s.logNodeTypeStats(url, nodeLinks)
@@ -606,92 +612,59 @@ func (s *ConfigUpdateService) fetchURLContent(client *http.Client, url string) (
 	retryDelay := 2 * time.Second
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("创建请求失败: %v", err)
-		}
-
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-		req.Header.Set("Accept", "*/*")
-		req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-		if strings.Contains(url, "gist.githubusercontent.com") {
-			req.Header.Set("Connection", "close")
-		} else {
-			req.Header.Set("Connection", "keep-alive")
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			if attempt < maxRetries {
-				s.log("WARN", fmt.Sprintf("下载失败 (尝试 %d/%d): %v，%v 后重试", attempt, maxRetries, err, retryDelay))
-				time.Sleep(retryDelay)
-				retryDelay *= 2
-				continue
-			}
-			return nil, fmt.Errorf("下载失败: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			if attempt < maxRetries {
-				s.log("WARN", fmt.Sprintf("状态码 %d (尝试 %d/%d)，%v 后重试", resp.StatusCode, attempt, maxRetries, retryDelay))
-				time.Sleep(retryDelay)
-				retryDelay *= 2
-				continue
-			}
-			return nil, fmt.Errorf("状态码错误: %d", resp.StatusCode)
-		}
-
-		limitedReader := io.LimitReader(resp.Body, 10*1024*1024) // 10MB 限制
-		content, err := io.ReadAll(limitedReader)
-		if err != nil {
-			resp.Body.Close()
-			if attempt < maxRetries {
-				s.log("WARN", fmt.Sprintf("读取内容失败 (尝试 %d/%d): %v，%v 后重试", attempt, maxRetries, err, retryDelay))
-				time.Sleep(retryDelay)
-				retryDelay *= 2
-				continue
-			}
-			return nil, fmt.Errorf("读取内容失败: %v", err)
-		}
-
-		if len(content) > 0 {
+		content, err := s.doFetch(client, url)
+		if err == nil {
 			return content, nil
 		}
 
 		if attempt < maxRetries {
-			s.log("WARN", fmt.Sprintf("内容为空 (尝试 %d/%d)，%v 后重试", attempt, maxRetries, retryDelay))
+			s.log("WARN", fmt.Sprintf("下载失败 (尝试 %d/%d): %v，%v 后重试", attempt, maxRetries, err, retryDelay))
 			time.Sleep(retryDelay)
 			retryDelay *= 2
-			continue
+		} else {
+			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("内容为空或获取失败")
+	return nil, fmt.Errorf("多次重试后失败")
+}
+
+func (s *ConfigUpdateService) doFetch(client *http.Client, url string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	if strings.Contains(url, "gist.githubusercontent.com") {
+		req.Header.Set("Connection", "close")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("状态码错误: %d", resp.StatusCode)
+	}
+
+	limitedReader := io.LimitReader(resp.Body, 10*1024*1024) // 10MB Limit
+	content, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, err
+	}
+	if len(content) == 0 {
+		return nil, fmt.Errorf("内容为空")
+	}
+	return content, nil
 }
 
 func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
 	typeCount := make(map[string]int)
 	for _, link := range nodeLinks {
-		found := false
-		for t := range supportedClashTypes {
-			if strings.HasPrefix(link, t+"://") {
-				typeCount[t]++
-				found = true
-				break
-			}
-		}
-		if !found {
-			if strings.HasPrefix(link, "hysteria2://") {
-				typeCount["hysteria2"]++
-			} else if strings.HasPrefix(link, "naive://") || strings.HasPrefix(link, "naive+https://") {
-				typeCount["naive"]++
-			} else if strings.HasPrefix(link, "anytls://") {
-				typeCount["anytls"]++
-			} else {
-				typeCount["other"]++
-			}
-		}
+		scheme := strings.Split(link, ":")[0]
+		typeCount[scheme]++
 	}
 
 	var parts []string
@@ -704,46 +677,39 @@ func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	var links []string
 	var invalidLinks []string
+	// 使用 bitset 或区间树会更高效，但这里用 map[int]bool 简单处理
 	matchedPositions := make(map[int]bool)
 
 	for _, re := range nodeLinkPatterns {
 		matches := re.FindAllStringSubmatchIndex(content, -1)
 		for _, match := range matches {
-			var start, end int
-			var matchStr string
-
-			if len(match) >= 4 {
-				start = match[2]
-				end = match[3]
-				matchStr = content[start:end]
-			} else if len(match) >= 2 {
-				start = match[0]
-				end = match[1]
-				matchStr = content[start:end]
-				matchStr = strings.TrimSpace(matchStr)
-			} else {
+			// match[0], match[1] 是整个匹配的起止（包括前缀空格）
+			// match[2], match[3] 是捕获组的起止（真正的链接）
+			if len(match) < 4 {
 				continue
 			}
+			start, end := match[2], match[3]
+			matchStr := content[start:end]
 
+			// VME 过滤逻辑
 			if strings.HasPrefix(matchStr, "ss://") && start >= 3 {
-				prefix := content[start-3 : start]
-				if prefix == "vme" {
+				if content[start-3:start] == "vme" {
 					continue
 				}
 			}
 
-			alreadyMatched := false
+			// 重叠检查
+			isOverlapped := false
 			for pos := start; pos < end; pos++ {
 				if matchedPositions[pos] {
-					alreadyMatched = true
+					isOverlapped = true
 					break
 				}
 			}
-
-			if alreadyMatched {
+			if isOverlapped {
 				continue
 			}
-
+			// 标记位置
 			for pos := start; pos < end; pos++ {
 				matchedPositions[pos] = true
 			}
@@ -756,6 +722,7 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		}
 	}
 
+	// 记录无效链接样本
 	if len(invalidLinks) > 0 {
 		limit := 3
 		if len(invalidLinks) < limit {
@@ -764,16 +731,16 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		s.log("DEBUG", fmt.Sprintf("发现 %d 个无效链接，示例: %v", len(invalidLinks), invalidLinks[:limit]))
 	}
 
-	uniqueLinks := make(map[string]bool)
-	var result []string
+	// 内联替代 utils.RemoveDuplicates
+	uniqueMap := make(map[string]bool)
+	var uniqueLinks []string
 	for _, link := range links {
-		if !uniqueLinks[link] {
-			uniqueLinks[link] = true
-			result = append(result, link)
+		if !uniqueMap[link] {
+			uniqueMap[link] = true
+			uniqueLinks = append(uniqueLinks, link)
 		}
 	}
-
-	return result
+	return uniqueLinks
 }
 
 func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
@@ -782,66 +749,37 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 		return false
 	}
 
-	linkWithoutFragment := link
-	if idx := strings.Index(link, "#"); idx != -1 {
-		linkWithoutFragment = link[:idx]
+	parts := strings.SplitN(link, ":", 2)
+	if len(parts) != 2 {
+		return false
 	}
+	scheme := parts[0]
+	// 移除fragment
+	body := strings.Split(link, "#")[0]
 
-	if strings.HasPrefix(link, "ss://") {
-		if !strings.Contains(linkWithoutFragment, "@") {
+	switch scheme {
+	case "ss":
+		// ss://method:pass@server:port or ss://base64@server:port
+		if !strings.Contains(body, "@") {
 			return false
 		}
-		parts := strings.Split(linkWithoutFragment, "@")
-		if len(parts) < 2 {
-			return false
-		}
-		serverPart := parts[1]
-		if idx := strings.Index(serverPart, "?"); idx != -1 {
-			serverPart = serverPart[:idx]
-		}
-		if !strings.Contains(serverPart, ":") {
-			return false
-		}
-	} else if strings.HasPrefix(link, "vmess://") || strings.HasPrefix(link, "vless://") {
-		encoded := strings.TrimPrefix(linkWithoutFragment, "vmess://")
-		encoded = strings.TrimPrefix(encoded, "vless://")
-		if idx := strings.Index(encoded, "?"); idx != -1 {
-			encoded = encoded[:idx]
-		}
-		if len(encoded) < 10 {
-			return false
-		}
-	} else if strings.HasPrefix(link, "trojan://") {
-		if !strings.Contains(linkWithoutFragment, "@") {
-			return false
-		}
-		parts := strings.Split(linkWithoutFragment, "@")
-		if len(parts) < 2 {
-			return false
-		}
-		serverPart := parts[1]
-		if idx := strings.Index(serverPart, "?"); idx != -1 {
-			serverPart = serverPart[:idx]
-		}
-		if !strings.Contains(serverPart, ":") {
-			return false
-		}
-	} else if strings.HasPrefix(link, "ssr://") {
-		encoded := strings.TrimPrefix(linkWithoutFragment, "ssr://")
-		if len(encoded) < 10 {
-			return false
-		}
-	} else if strings.HasPrefix(link, "hysteria://") || strings.HasPrefix(link, "hysteria2://") {
-		if !strings.Contains(linkWithoutFragment, "@") && !strings.Contains(linkWithoutFragment, ":") {
-			return false
-		}
-	} else if strings.HasPrefix(link, "tuic://") {
-		if !strings.Contains(linkWithoutFragment, "@") {
-			return false
-		}
+		serverPart := strings.Split(body, "@")[1]
+		serverPart = strings.Split(serverPart, "?")[0]
+		return strings.Contains(serverPart, ":")
+	case "vmess", "vless", "ssr":
+		// 需要一定长度
+		encoded := strings.TrimPrefix(body, scheme+"://")
+		return len(strings.Split(encoded, "?")[0]) >= 10
+	case "trojan", "tuic", "naive+https", "socks", "socks5", "http", "https":
+		// user:pass@host:port
+		return strings.Contains(body, "@")
+	case "hysteria", "hysteria2":
+		// host:port?params or user@host:port
+		return strings.Contains(body, ":")
+	default:
+		// 默认放行其他类型
+		return true
 	}
-
-	return true
 }
 
 func (s *ConfigUpdateService) resolveRegion(name, server string) string {
@@ -851,38 +789,36 @@ func (s *ConfigUpdateService) resolveRegion(name, server string) string {
 	return "未知"
 }
 
-func (s *ConfigUpdateService) generateNodeDedupKey(nodeType, server string, port int) string {
-	return fmt.Sprintf("%s:%s:%d", nodeType, server, port)
-}
+// ==========================================
+// 数据库存储与节点导入
+// ==========================================
 
 func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []nodeWithOrder) int {
 	importedCount := 0
 
 	for _, item := range nodesWithOrder {
 		node := item.node
-		orderIndex := item.orderIndex
-
 		configJSON, _ := json.Marshal(node)
 		configStr := string(configJSON)
-
 		region := s.resolveRegion(node.Name, node.Server)
 
+		// 尝试更新或创建
+		// 使用 Assign 配合 FirstOrInit 可以简化逻辑，但为了保持 status 逻辑不变，手动判断
 		var existingNode models.Node
 		err := s.db.Where("type = ? AND name = ?", node.Type, node.Name).First(&existingNode).Error
 
 		if err == nil {
+			// Update
 			existingNode.Config = &configStr
 			existingNode.Status = "online"
 			existingNode.IsActive = true
-			existingNode.OrderIndex = orderIndex
+			existingNode.OrderIndex = item.orderIndex
 			existingNode.Region = region
-
-			if err := s.db.Save(&existingNode).Error; err == nil {
+			if s.db.Save(&existingNode).Error == nil {
 				importedCount++
-			} else {
-				s.log("ERROR", fmt.Sprintf("更新节点失败: %s (%s), 错误: %v", node.Name, node.Type, err))
 			}
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Create
 			newNode := models.Node{
 				Name:       node.Name,
 				Type:       node.Type,
@@ -891,116 +827,44 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 				IsManual:   false,
 				Config:     &configStr,
 				Region:     region,
-				OrderIndex: orderIndex,
+				OrderIndex: item.orderIndex,
 			}
-			if err := s.db.Create(&newNode).Error; err == nil {
+			if s.db.Create(&newNode).Error == nil {
 				importedCount++
-			} else {
-				s.log("ERROR", fmt.Sprintf("创建节点失败: %s (%s), 错误: %v", node.Name, node.Type, err))
 			}
 		} else {
-			s.log("ERROR", fmt.Sprintf("查询节点失败: %s (%s), 错误: %v", node.Name, node.Type, err))
+			s.log("ERROR", fmt.Sprintf("数据库错误 (%s): %v", node.Name, err))
 		}
 	}
 	return importedCount
 }
 
-func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.Subscription) ([]*ProxyNode, error) {
-	var proxies []*ProxyNode
-	processedNodes := make(map[string]bool)
-	now := utils.GetBeijingTime()
-	isOrdExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
-	var specialExpireTime time.Time
-	hasSpecialExpireTime := false
-	if user.SpecialNodeExpiresAt.Valid {
-		specialExpireTime = utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time)
-		hasSpecialExpireTime = true
-	} else if user.SpecialNodeSubscriptionType != "special_only" && !sub.ExpireTime.IsZero() {
-		specialExpireTime = utils.ToBeijingTime(sub.ExpireTime)
-		hasSpecialExpireTime = true
-	}
-	isSpecialExpired := hasSpecialExpireTime && specialExpireTime.Before(now)
-	var customNodes []models.CustomNode
-	if err := s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
-		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", user.ID, true).
-		Find(&customNodes).Error; err == nil {
-		for _, cn := range customNodes {
-			isSpecNodeExpired := false
-			if cn.ExpireTime != nil {
-				isSpecNodeExpired = utils.ToBeijingTime(*cn.ExpireTime).Before(now)
-			} else if cn.FollowUserExpire {
-				isSpecNodeExpired = isSpecialExpired
-			}
-			if isSpecNodeExpired || cn.Status == "timeout" {
-				continue
-			}
-			displayName := cn.DisplayName
-			if displayName == "" {
-				displayName = "专线-" + cn.Name
-			}
-			if cn.Config != "" {
-				var proxyNode ProxyNode
-				if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err == nil {
-					proxyNode.Name = displayName
-					proxies = append(proxies, &proxyNode)
-					key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
-					processedNodes[key] = true
-				}
-			}
-		}
-	}
-	if user.SpecialNodeSubscriptionType != "special_only" && !isOrdExpired {
-		var nodes []models.Node
-		if err := s.db.Model(&models.Node{}).Where("is_active = ?", true).Where("status != ?", "timeout").Find(&nodes).Error; err == nil {
-			for _, node := range nodes {
-				proxyNodes, err := s.parseNodeToProxies(&node)
-				if err != nil {
-					continue
-				}
-				for _, proxy := range proxyNodes {
-					key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port)
-					if !processedNodes[key] {
-						processedNodes[key] = true
-						proxies = append(proxies, proxy)
-					}
-				}
-			}
-		}
-	}
-	return proxies, nil
-}
-
-func (s *ConfigUpdateService) parseNodeToProxies(node *models.Node) ([]*ProxyNode, error) {
-	if node.Config != nil && *node.Config != "" {
-		var configProxy ProxyNode
-		if err := json.Unmarshal([]byte(*node.Config), &configProxy); err == nil {
-			configProxy.Name = node.Name
-			return []*ProxyNode{&configProxy}, nil
-		}
-	}
-	return nil, fmt.Errorf("节点配置为空")
-}
+// ==========================================
+// 订阅内容生成
+// ==========================================
 
 func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP string, userAgent string) *SubscriptionContext {
 	ctx := &SubscriptionContext{Status: StatusNotFound}
 	var sub models.Subscription
+
 	if err := s.db.Where("subscription_url = ?", token).First(&sub).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			var reset models.SubscriptionReset
-			if err := s.db.Where("old_subscription_url = ?", token).First(&reset).Error; err == nil {
-				ctx.Status = StatusOldAddress
-				ctx.ResetRecord = &reset
-				return ctx
-			}
+		// 检查是否为旧订阅
+		var reset models.SubscriptionReset
+		if s.db.Where("old_subscription_url = ?", token).First(&reset).Error == nil {
+			ctx.Status = StatusOldAddress
+			ctx.ResetRecord = &reset
 		}
 		return ctx
 	}
+
 	ctx.Subscription = sub
 	var user models.User
 	if err := s.db.First(&user, sub.UserID).Error; err != nil {
 		return ctx
 	}
 	ctx.User = user
+
+	// 状态检查
 	if !user.IsActive {
 		ctx.Status = StatusAccountAbnormal
 		return ctx
@@ -1009,35 +873,125 @@ func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP stri
 		ctx.Status = StatusInactive
 		return ctx
 	}
-	proxies, err := s.fetchProxiesForUser(user, sub)
-	if err != nil {
-		ctx.Proxies = []*ProxyNode{}
-	} else {
-		ctx.Proxies = proxies
+
+	// 检查过期
+	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(time.Now()) {
+		// 即便过期也可能需要显示节点（视业务逻辑而定），但这里标记为过期
+		// 原始代码逻辑：如果没有节点且过期，才标记过期。如果有节点，会先获取节点。
+		// 但 fetchProxiesForUser 内部也会判断过期。
 	}
+
+	proxies, _ := s.fetchProxiesForUser(user, sub)
+	ctx.Proxies = proxies
+
 	if len(ctx.Proxies) == 0 {
 		if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(time.Now()) {
 			ctx.Status = StatusExpired
 			return ctx
 		}
 	}
+
+	// 设备限制检查
 	var currentDevices int64
 	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&currentDevices)
 	ctx.CurrentDevices = int(currentDevices)
 	ctx.DeviceLimit = sub.DeviceLimit
+
 	if sub.DeviceLimit == 0 {
 		ctx.Status = StatusDeviceOverLimit
 		return ctx
 	}
 	if sub.DeviceLimit > 0 && int(currentDevices) >= sub.DeviceLimit {
+		// 检查当前设备是否在允许列表中
 		var device models.Device
 		if err := s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&device).Error; err != nil {
 			ctx.Status = StatusDeviceOverLimit
 			return ctx
 		}
 	}
+
 	ctx.Status = StatusNormal
 	return ctx
+}
+
+func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.Subscription) ([]*ProxyNode, error) {
+	proxies := make([]*ProxyNode, 0)
+	processedNodes := make(map[string]bool)
+	now := utils.GetBeijingTime()
+
+	// 确定过期时间
+	isSubExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
+	isSpecialExpired := false
+	if user.SpecialNodeExpiresAt.Valid {
+		isSpecialExpired = utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).Before(now)
+	} else if user.SpecialNodeSubscriptionType != "special_only" && isSubExpired {
+		isSpecialExpired = true
+	}
+
+	// 1. 获取自定义节点
+	s.appendCustomNodes(user.ID, now, isSpecialExpired, &proxies, processedNodes)
+
+	// 2. 获取普通节点
+	if user.SpecialNodeSubscriptionType != "special_only" && !isSubExpired {
+		s.appendSystemNodes(&proxies, processedNodes)
+	}
+
+	return proxies, nil
+}
+
+func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGlobalExpired bool, proxies *[]*ProxyNode, processed map[string]bool) {
+	var customNodes []models.CustomNode
+	s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
+		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", userID, true).
+		Find(&customNodes)
+
+	for _, cn := range customNodes {
+		isNodeExpired := false
+		if cn.ExpireTime != nil {
+			isNodeExpired = utils.ToBeijingTime(*cn.ExpireTime).Before(now)
+		} else if cn.FollowUserExpire {
+			isNodeExpired = isGlobalExpired
+		}
+
+		if isNodeExpired || cn.Status == "timeout" {
+			continue
+		}
+
+		var proxyNode ProxyNode
+		if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err == nil {
+			proxyNode.Name = cn.DisplayName
+			if proxyNode.Name == "" {
+				proxyNode.Name = "专线-" + cn.Name
+			}
+			key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
+			*proxies = append(*proxies, &proxyNode)
+			processed[key] = true
+		}
+	}
+}
+
+func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed map[string]bool) {
+	var nodes []models.Node
+	s.db.Model(&models.Node{}).Where("is_active = ? AND status != ?", true, "timeout").Find(&nodes)
+
+	for _, node := range nodes {
+		if node.Config == nil || *node.Config == "" {
+			continue
+		}
+		var proxy ProxyNode
+		if err := json.Unmarshal([]byte(*node.Config), &proxy); err == nil {
+			proxy.Name = node.Name
+			key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port)
+			if !processed[key] {
+				processed[key] = true
+				*proxies = append(*proxies, &proxy)
+			}
+		}
+	}
+}
+
+func (s *ConfigUpdateService) generateNodeDedupKey(nodeType, server string, port int) string {
+	return fmt.Sprintf("%s:%s:%d", nodeType, server, port)
 }
 
 func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) error {
@@ -1081,18 +1035,19 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP str
 
 func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent string) ([]*ProxyNode, error) {
 	s.refreshSystemConfig()
-
 	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
 
 	if ctx.Status != StatusNormal {
 		return s.generateErrorNodes(ctx.Status, ctx), nil
 	}
-
 	return s.addInfoNodes(ctx.Proxies, ctx), nil
 }
 
+// ==========================================
+// Clash YAML 生成逻辑
+// ==========================================
+
 func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
-	// 过滤支持的代理类型
 	filteredProxies := make([]*ProxyNode, 0)
 	for _, proxy := range proxies {
 		if supportedClashTypes[proxy.Type] {
@@ -1100,7 +1055,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		}
 	}
 
-	// 处理代理名称，避免重复
+	// 节点命名去重
 	usedNames := make(map[string]bool)
 	var proxyNames []string
 	for _, proxy := range filteredProxies {
@@ -1116,106 +1071,81 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		proxyNames = append(proxyNames, proxy.Name)
 	}
 
-	// 尝试读取模板文件
+	// 尝试加载模板
 	templatePath := filepath.Join("uploads", "config", "temp.yaml")
 	templateData, err := os.ReadFile(templatePath)
 	if err != nil {
-		// 如果模板文件不存在，使用默认配置
 		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
 	}
 
-	// 解析模板 YAML
 	var templateConfig map[string]interface{}
 	if err := yaml.Unmarshal(templateData, &templateConfig); err != nil {
-		// 如果解析失败，使用默认配置
 		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
 	}
 
-	// 生成代理列表
+	// 注入节点
 	proxyList := make([]map[string]interface{}, 0)
 	for _, proxy := range filteredProxies {
-		proxyMap := s.nodeToMap(proxy)
-		proxyList = append(proxyList, proxyMap)
+		proxyList = append(proxyList, s.nodeToMap(proxy))
 	}
 	templateConfig["proxies"] = proxyList
 
-	// 更新 proxy-groups 中的代理列表
+	// 更新 Proxy Groups
 	if proxyGroups, ok := templateConfig["proxy-groups"].([]interface{}); ok {
-		// 收集所有代理组名称，用于识别哪些是组名
-		groupNames := make(map[string]bool)
-		for _, groupRaw := range proxyGroups {
-			if group, ok := groupRaw.(map[string]interface{}); ok {
-				if name, ok := group["name"].(string); ok {
-					groupNames[name] = true
-				}
-			}
-		}
-
-		for _, groupRaw := range proxyGroups {
-			if group, ok := groupRaw.(map[string]interface{}); ok {
-				groupType, _ := group["type"].(string)
-
-				// 对于 select、url-test、fallback、load-balance 等类型，更新代理列表
-				if groupType == "select" || groupType == "url-test" || groupType == "fallback" || groupType == "load-balance" {
-					// 保留原有的特殊代理和组名
-					existingProxies := make([]string, 0)
-					if proxiesRaw, ok := group["proxies"].([]interface{}); ok {
-						for _, p := range proxiesRaw {
-							if pStr, ok := p.(string); ok {
-								// 保留特殊代理（DIRECT、REJECT）和其他代理组名称
-								if pStr == "DIRECT" || pStr == "REJECT" || groupNames[pStr] {
-									existingProxies = append(existingProxies, pStr)
-								}
-							}
-						}
-					}
-
-					// 对于 url-test、fallback 和 load-balance 类型，只添加实际节点（不包含其他组）
-					// 对于 select 类型，保留组名并添加实际节点
-					if groupType == "url-test" || groupType == "fallback" || groupType == "load-balance" {
-						// 只包含实际节点
-						group["proxies"] = proxyNames
-					} else {
-						// select 类型：保留组名和特殊代理，添加实际节点
-						allProxies := append(existingProxies, proxyNames...)
-						group["proxies"] = allProxies
-					}
-				}
-			}
-		}
+		s.updateProxyGroups(proxyGroups, proxyNames)
 		templateConfig["proxy-groups"] = proxyGroups
 	}
 
-	// 确保 rules 被保留（如果没有 rules，从模板中保留）
-	if _, ok := templateConfig["rules"]; !ok {
-		// 如果 rules 不存在，尝试从原始模板中读取
-		var originalTemplate map[string]interface{}
-		if err := yaml.Unmarshal(templateData, &originalTemplate); err == nil {
-			if rules, ok := originalTemplate["rules"]; ok {
-				templateConfig["rules"] = rules
+	output, err := yaml.Marshal(templateConfig)
+	if err != nil {
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+	}
+
+	return unescapeUnicode(string(output))
+}
+
+func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames []string) {
+	groupNames := make(map[string]bool)
+	for _, g := range groups {
+		if m, ok := g.(map[string]interface{}); ok {
+			if name, ok := m["name"].(string); ok {
+				groupNames[name] = true
 			}
 		}
 	}
 
-	// 将配置转换回 YAML
-	// 注意：不能直接使用 yaml.Marshal，因为它会转义 Unicode 字符（emoji）
-	// 需要先转换为 JSON，再手动格式化为 YAML
-	output, err := yaml.Marshal(templateConfig)
-	if err != nil {
-		// 如果转换失败，使用默认配置
-		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+	for _, g := range groups {
+		group, ok := g.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		gType, _ := group["type"].(string)
+
+		// 需要注入节点的组类型
+		if gType == "select" || gType == "url-test" || gType == "fallback" || gType == "load-balance" {
+			existingProxies := make([]string, 0)
+			if oldProxies, ok := group["proxies"].([]interface{}); ok {
+				for _, p := range oldProxies {
+					if pStr, ok := p.(string); ok {
+						// 保留特殊策略和组名
+						if pStr == "DIRECT" || pStr == "REJECT" || groupNames[pStr] {
+							existingProxies = append(existingProxies, pStr)
+						}
+					}
+				}
+			}
+
+			if gType == "select" {
+				group["proxies"] = append(existingProxies, proxyNames...)
+			} else {
+				// 自动测速类通常只包含具体节点
+				group["proxies"] = proxyNames
+			}
+		}
 	}
-
-	// 将 Unicode 转义序列还原为实际字符
-	// 例如：将 \U0001F1ED\U0001F1F0 还原为 🇭🇰
-	outputStr := string(output)
-	outputStr = unescapeUnicode(outputStr)
-
-	return outputStr
 }
 
-// 生成默认配置（当模板文件不存在或解析失败时使用）
-func (s *ConfigUpdateService) generateDefaultClashYAML(filteredProxies []*ProxyNode, proxyNames []string) string {
+func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string) string {
 	var builder strings.Builder
 
 	builder.WriteString("port: 7890\n")
@@ -1226,12 +1156,12 @@ func (s *ConfigUpdateService) generateDefaultClashYAML(filteredProxies []*ProxyN
 	builder.WriteString("external-controller: 127.0.0.1:9090\n\n")
 
 	builder.WriteString("proxies:\n")
-	for _, proxy := range filteredProxies {
+	for _, proxy := range proxies {
 		builder.WriteString(s.nodeToYAML(proxy, 2))
 	}
 
 	builder.WriteString("\nproxy-groups:\n")
-
+	// 节点选择组
 	builder.WriteString("  - name: \"🚀 节点选择\"\n")
 	builder.WriteString("    type: select\n")
 	builder.WriteString("    proxies:\n")
@@ -1240,6 +1170,7 @@ func (s *ConfigUpdateService) generateDefaultClashYAML(filteredProxies []*ProxyN
 		builder.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(name)))
 	}
 
+	// 自动选择组
 	builder.WriteString("  - name: \"♻️ 自动选择\"\n")
 	builder.WriteString("    type: url-test\n")
 	builder.WriteString("    url: http://www.gstatic.com/generate_204\n")
@@ -1337,130 +1268,80 @@ func (s *ConfigUpdateService) createMessageNode(name string, password ...string)
 	}
 }
 
+// ==========================================
+// 节点对象转 YAML/Map
+// ==========================================
+
 func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	indentStr := strings.Repeat(" ", indent)
 	var builder strings.Builder
 
-	escapedName := s.escapeYAMLString(node.Name)
-
-	builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, escapedName))
+	// 基础字段
+	builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, s.escapeYAMLString(node.Name)))
 	builder.WriteString(fmt.Sprintf("%s  type: %s\n", indentStr, node.Type))
 	builder.WriteString(fmt.Sprintf("%s  server: %s\n", indentStr, node.Server))
 	builder.WriteString(fmt.Sprintf("%s  port: %d\n", indentStr, node.Port))
 
-	switch node.Type {
-	case "ss":
-		if node.Cipher != "" {
-			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
+	// 特有字段映射
+	m := s.nodeToMap(node)
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		// 跳过已处理的基础字段
+		if k == "name" || k == "type" || k == "server" || k == "port" {
+			continue
 		}
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	case "vmess":
-		if node.UUID != "" {
-			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
-		}
-		if alterId, ok := node.Options["alterId"]; !ok {
-			builder.WriteString(fmt.Sprintf("%s  alterId: 0\n", indentStr))
-		} else {
-			builder.WriteString(fmt.Sprintf("%s  alterId: %v\n", indentStr, alterId))
-		}
-		if node.Cipher == "" {
-			node.Cipher = "auto"
-		}
-		builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
-	case "vless":
-		if node.UUID != "" {
-			builder.WriteString(fmt.Sprintf("%s  uuid: %s\n", indentStr, node.UUID))
-		}
-	case "trojan":
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	case "ssr":
-		if node.Cipher != "" {
-			builder.WriteString(fmt.Sprintf("%s  cipher: %s\n", indentStr, node.Cipher))
-		}
-		if node.Password != "" {
-			builder.WriteString(fmt.Sprintf("%s  password: %s\n", indentStr, node.Password))
-		}
-	}
-
-	if node.TLS {
-		builder.WriteString(fmt.Sprintf("%s  tls: true\n", indentStr))
-	}
-	if node.Network != "" && node.Network != "tcp" {
-		builder.WriteString(fmt.Sprintf("%s  network: %s\n", indentStr, node.Network))
-	}
-	if node.UDP {
-		builder.WriteString(fmt.Sprintf("%s  udp: true\n", indentStr))
-	}
-
-	optionsIndentStr := indentStr + "  "
-
-	var keys []string
-	for k := range node.Options {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	for _, key := range keys {
-		value := node.Options[key]
-		if key == "alterId" && node.Type == "vmess" {
-			continue
-		}
-		s.writeYAMLValue(&builder, optionsIndentStr, key, value, 2)
+	for _, k := range keys {
+		s.writeYAMLValue(&builder, indentStr+"  ", k, m[k], indent+2)
 	}
 
 	return builder.String()
 }
 
-// nodeToMap 将 ProxyNode 转换为 map[string]interface{}，用于 YAML 序列化
 func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} {
 	result := make(map[string]interface{})
-
 	result["name"] = node.Name
 	result["type"] = node.Type
 	result["server"] = node.Server
 	result["port"] = node.Port
 
+	// 通用字段处理 helper
+	setIfNotEmpty := func(key, val string) {
+		if val != "" {
+			result[key] = val
+		}
+	}
+
 	switch node.Type {
 	case "ss":
-		if node.Cipher != "" {
-			result["cipher"] = node.Cipher
-		}
-		if node.Password != "" {
-			result["password"] = node.Password
-		}
+		setIfNotEmpty("cipher", node.Cipher)
+		setIfNotEmpty("password", node.Password)
 	case "vmess":
-		if node.UUID != "" {
-			result["uuid"] = node.UUID
+		setIfNotEmpty("uuid", node.UUID)
+		result["alterId"] = 0
+		if val, ok := node.Options["alterId"]; ok {
+			result["alterId"] = val
 		}
-		if alterId, ok := node.Options["alterId"]; ok {
-			result["alterId"] = alterId
-		} else {
-			result["alterId"] = 0
-		}
-		if node.Cipher == "" {
-			result["cipher"] = "auto"
-		} else {
+		result["cipher"] = "auto"
+		if node.Cipher != "" {
 			result["cipher"] = node.Cipher
 		}
 	case "vless":
-		if node.UUID != "" {
-			result["uuid"] = node.UUID
+		setIfNotEmpty("uuid", node.UUID)
+	case "trojan", "ssr":
+		setIfNotEmpty("password", node.Password)
+		if node.Type == "ssr" {
+			setIfNotEmpty("cipher", node.Cipher)
 		}
-	case "trojan":
-		if node.Password != "" {
-			result["password"] = node.Password
-		}
-	case "ssr":
-		if node.Cipher != "" {
-			result["cipher"] = node.Cipher
-		}
-		if node.Password != "" {
-			result["password"] = node.Password
-		}
+	case "tuic", "anytls":
+		setIfNotEmpty("uuid", node.UUID)
+		setIfNotEmpty("password", node.Password)
+	case "socks", "socks5", "http":
+		setIfNotEmpty("username", node.UUID) // 借用 UUID 字段存 user
+		setIfNotEmpty("password", node.Password)
 	}
 
 	if node.TLS {
@@ -1473,7 +1354,6 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 		result["udp"] = true
 	}
 
-	// 复制 Options 中的其他字段（排除已处理的 alterId）
 	for key, value := range node.Options {
 		if key == "alterId" && node.Type == "vmess" {
 			continue
@@ -1490,73 +1370,69 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 	switch v := value.(type) {
 	case map[string]interface{}:
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		subIndentStr := indentStr + "  "
-
-		if key == "http-opts" {
-			s.writeHTTPOpts(builder, subIndentStr, v)
-			return
-		}
-
-		for k, val := range v {
-			if strMap, ok := val.(map[string]string); ok {
-				escapedK := s.escapeYAMLString(k)
-				builder.WriteString(fmt.Sprintf("%s%s:\n", subIndentStr, escapedK))
-				subSubIndentStr := subIndentStr + "  "
-				for k2, v2 := range strMap {
-					escapedK2 := s.escapeYAMLString(k2)
-					escapedV2 := s.escapeYAMLString(v2)
-					builder.WriteString(fmt.Sprintf("%s%s: %s\n", subSubIndentStr, escapedK2, escapedV2))
-				}
-			} else {
-				s.writeYAMLValue(builder, subIndentStr, k, val, indentLevel+1)
-			}
-		}
+		s.writeMapContent(builder, indentStr+"  ", v, key, indentLevel+1)
 	case []interface{}:
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		subIndentStr := indentStr + "  "
+		subIndent := indentStr + "  "
 		for _, item := range v {
-			builder.WriteString(fmt.Sprintf("%s- ", subIndentStr))
+			builder.WriteString(fmt.Sprintf("%s- ", subIndent))
 			s.writeYAMLValueInline(builder, item)
 			builder.WriteString("\n")
 		}
 	case []string:
 		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		subIndentStr := indentStr + "  "
 		for _, item := range v {
-			escapedItem := s.escapeYAMLString(item)
-			builder.WriteString(fmt.Sprintf("%s- %s\n", subIndentStr, escapedItem))
+			builder.WriteString(fmt.Sprintf("%s  - %s\n", indentStr, s.escapeYAMLString(item)))
 		}
 	default:
-		escapedVal := s.escapeYAMLString(fmt.Sprintf("%v", v))
-		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, escapedVal))
+		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, s.formatYAMLInline(v)))
 	}
 }
 
-func (s *ConfigUpdateService) writeHTTPOpts(builder *strings.Builder, indentStr string, v map[string]interface{}) {
-	for k, val := range v {
-		if k == "path" {
-			s.writeYAMLList(builder, indentStr, k, val)
-		} else if k == "headers" {
-			escapedK := s.escapeYAMLString(k)
-			builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedK))
-			subIndentStr := indentStr + "  "
-			if headersMap, ok := val.(map[string]interface{}); ok {
-				for hk, hv := range headersMap {
-					s.writeYAMLList(builder, subIndentStr, hk, hv)
-				}
+func (s *ConfigUpdateService) writeMapContent(builder *strings.Builder, indentStr string, v map[string]interface{}, parentKey string, level int) {
+	if parentKey == "http-opts" {
+		// 特殊处理 http-opts
+		if path, ok := v["path"]; ok {
+			s.writeYAMLList(builder, indentStr, "path", path)
+		}
+		if headers, ok := v["headers"].(map[string]interface{}); ok {
+			builder.WriteString(fmt.Sprintf("%sheaders:\n", indentStr))
+			for hk, hv := range headers {
+				s.writeYAMLList(builder, indentStr+"  ", hk, hv)
 			}
+		}
+		return
+	}
+
+	// 通用 Map 递归
+	// 为了稳定排序
+	keys := make([]string, 0, len(v))
+	for k := range v {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		val := v[k]
+		if strMap, ok := val.(map[string]string); ok {
+			// 转换 map[string]string 到 map[string]interface{} 以复用逻辑
+			newMap := make(map[string]interface{})
+			for mk, mv := range strMap {
+				newMap[mk] = mv
+			}
+			s.writeYAMLValue(builder, indentStr, k, newMap, level+1)
+		} else {
+			s.writeYAMLValue(builder, indentStr, k, val, level+1)
 		}
 	}
 }
 
 func (s *ConfigUpdateService) writeYAMLList(builder *strings.Builder, indentStr, key string, val interface{}) {
-	escapedK := s.escapeYAMLString(key)
-	builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedK))
-	subIndentStr := indentStr + "  "
+	builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, s.escapeYAMLString(key)))
+	subIndent := indentStr + "  "
 
 	writeItem := func(item interface{}) {
-		escapedItem := s.escapeYAMLString(fmt.Sprintf("%v", item))
-		builder.WriteString(fmt.Sprintf("%s- %s\n", subIndentStr, escapedItem))
+		builder.WriteString(fmt.Sprintf("%s- %s\n", subIndent, s.formatYAMLInline(item)))
 	}
 
 	if str, ok := val.(string); ok {
@@ -1572,15 +1448,19 @@ func (s *ConfigUpdateService) writeYAMLList(builder *strings.Builder, indentStr,
 	}
 }
 
-func (s *ConfigUpdateService) writeYAMLValueInline(builder *strings.Builder, value interface{}) {
-	switch v := value.(type) {
+func (s *ConfigUpdateService) formatYAMLInline(v interface{}) string {
+	switch val := v.(type) {
 	case string:
-		builder.WriteString(s.escapeYAMLString(v))
+		return s.escapeYAMLString(val)
 	case int, int64, float64, bool:
-		builder.WriteString(fmt.Sprintf("%v", v))
+		return fmt.Sprintf("%v", val)
 	default:
-		builder.WriteString(s.escapeYAMLString(fmt.Sprintf("%v", v)))
+		return s.escapeYAMLString(fmt.Sprintf("%v", val))
 	}
+}
+
+func (s *ConfigUpdateService) writeYAMLValueInline(builder *strings.Builder, v interface{}) {
+	builder.WriteString(s.formatYAMLInline(v))
 }
 
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
@@ -1607,6 +1487,10 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	return str
 }
 
+// ==========================================
+// 链接生成 (ToLink)
+// ==========================================
+
 func (s *ConfigUpdateService) NodeToLink(node *ProxyNode) string {
 	return s.nodeToLink(node)
 }
@@ -1615,27 +1499,160 @@ func (s *ConfigUpdateService) nodeToLink(node *ProxyNode) string {
 	switch node.Type {
 	case "vmess":
 		return s.vmessToLink(node)
-	case "vless":
-		return s.vlessToLink(node)
-	case "trojan":
-		return s.trojanToLink(node)
 	case "ss":
 		return s.shadowsocksToLink(node)
 	case "ssr":
 		return s.nodeToSSRLink(node)
+	// 以下类型均符合标准URL格式，使用统一函数处理
+	case "vless":
+		return s.buildStandardNodeURL("vless", node.UUID, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
+	case "trojan":
+		return s.buildStandardNodeURL("trojan", node.Password, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "hysteria":
-		return s.hysteriaToLink(node)
+		return s.buildStandardNodeURL("hysteria", "", "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "hysteria2":
-		return s.hysteria2ToLink(node)
+		return s.buildStandardNodeURL("hysteria2", node.Password, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "tuic":
-		return s.tuicToLink(node)
+		return s.buildStandardNodeURL("tuic", node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "naive":
-		return s.naiveToLink(node)
+		return s.buildStandardNodeURL("naive+https", node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "anytls":
-		return s.anytlsToLink(node)
+		return s.buildStandardNodeURL("anytls", node.UUID, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
+	case "socks", "socks5":
+		scheme := "socks5"
+		if node.Type == "socks" {
+			scheme = "socks"
+		}
+		return s.buildStandardNodeURL(scheme, node.UUID, node.Password, node.Server, node.Port, node.Name, nil)
+	case "http":
+		scheme := "http"
+		if node.TLS {
+			scheme = "https"
+		}
+		return s.buildStandardNodeURL(scheme, node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	default:
 		return ""
 	}
+}
+
+// 通用链接构建函数
+func (s *ConfigUpdateService) buildStandardNodeURL(scheme, user, password, host string, port int, fragment string, query url.Values) string {
+	u := &url.URL{
+		Scheme:   scheme,
+		Host:     fmt.Sprintf("%s:%d", host, port),
+		Fragment: fragment,
+	}
+
+	if user != "" {
+		if password != "" {
+			u.User = url.UserPassword(user, password)
+		} else {
+			u.User = url.User(user)
+		}
+	} else if password != "" {
+		u.User = url.User(password)
+	}
+
+	if query != nil && len(query) > 0 {
+		u.RawQuery = query.Encode()
+	}
+
+	return u.String()
+}
+
+// 提取通用 Query 参数
+func (s *ConfigUpdateService) getQueryFromOptions(node *ProxyNode) url.Values {
+	q := url.Values{}
+	if node.Options == nil {
+		return q
+	}
+
+	// 辅助函数：简化获取 string/bool 选项
+	optStr := func(k string) string {
+		if v, ok := node.Options[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	optBool := func(k string) bool {
+		if v, ok := node.Options[k].(bool); ok {
+			return v
+		}
+		return false
+	}
+
+	// 1. 通用参数
+	if sni := optStr("servername"); sni != "" {
+		q.Set("sni", sni)
+	}
+	if peer := optStr("peer"); peer != "" {
+		if q.Get("sni") == "" {
+			q.Set("peer", peer) // 部分协议优先用 sni，无 sni 用 peer
+		} else if node.Type == "anytls" {
+			q.Set("peer", peer) // anytls 可能同时需要
+		}
+	}
+	if optBool("skip-cert-verify") {
+		q.Set("insecure", "1")
+		q.Set("allow_insecure", "1") // 兼容不同客户端
+	}
+
+	// ALPN 处理
+	if alpnVal, ok := node.Options["alpn"]; ok {
+		var alpnStr string
+		if strs, ok := alpnVal.([]string); ok && len(strs) > 0 {
+			alpnStr = strings.Join(strs, ",")
+		} else if infs, ok := alpnVal.([]interface{}); ok {
+			var tmp []string
+			for _, v := range infs {
+				if s, ok := v.(string); ok {
+					tmp = append(tmp, s)
+				}
+			}
+			if len(tmp) > 0 {
+				alpnStr = strings.Join(tmp, ",")
+			}
+		}
+		if alpnStr != "" {
+			q.Set("alpn", alpnStr)
+		}
+	}
+
+	// 2. 协议特定参数
+	switch node.Type {
+	case "vless":
+		if node.Network != "" {
+			q.Set("type", node.Network)
+		}
+		if node.TLS {
+			q.Set("security", "tls")
+		}
+	case "hysteria", "hysteria2":
+		if auth := optStr("auth"); auth != "" {
+			q.Set("auth", auth)
+		}
+		if up := optStr("up"); up != "" {
+			q.Set("upmbps", strings.TrimSuffix(up, " mbps"))
+			q.Set("mbpsUp", strings.TrimSuffix(up, " mbps"))
+		}
+		if down := optStr("down"); down != "" {
+			q.Set("downmbps", strings.TrimSuffix(down, " mbps"))
+			q.Set("mbpsDown", strings.TrimSuffix(down, " mbps"))
+		}
+	case "tuic":
+		if cc := optStr("congestion_control"); cc != "" {
+			q.Set("congestion_control", cc)
+		}
+		if mode := optStr("udp_relay_mode"); mode != "" {
+			q.Set("udp_relay_mode", mode)
+		}
+	case "naive":
+		if optBool("padding") {
+			q.Set("padding", "true")
+		}
+	}
+
+	return q
 }
 
 func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
@@ -1671,258 +1688,45 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 	return "vmess://" + encoded
 }
 
-func (s *ConfigUpdateService) vlessToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "vless",
-		User:     url.User(proxy.UUID),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Network != "" {
-		q.Set("type", proxy.Network)
-	}
-	if proxy.TLS {
-		q.Set("security", "tls")
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (s *ConfigUpdateService) trojanToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "trojan",
-		User:     url.User(proxy.Password),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-	return u.String()
-}
-
 func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
 	auth := fmt.Sprintf("%s:%s", proxy.Cipher, proxy.Password)
 	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
-	u := &url.URL{
-		Scheme:   "ss",
-		User:     url.User(encoded),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-	return u.String()
+	return s.buildStandardNodeURL("ss", encoded, "", proxy.Server, proxy.Port, proxy.Name, nil)
 }
 
 func (s *ConfigUpdateService) nodeToSSRLink(node *ProxyNode) string {
-	if node.Type != "ssr" && node.Type != "ss" {
-		return ""
-	}
-
-	getString := func(opts map[string]interface{}, key, defaultValue string) string {
-		if v, ok := opts[key].(string); ok {
+	getString := func(key, def string) string {
+		if v, ok := node.Options[key].(string); ok {
 			return v
 		}
-		return defaultValue
+		return def
 	}
 
-	server := node.Server
-	port := node.Port
-	protocol := getString(node.Options, "protocol", "origin")
-	method := node.Cipher
-	obfs := getString(node.Options, "obfs", "plain")
 	password := base64.RawURLEncoding.EncodeToString([]byte(node.Password))
-
-	obfsparam := base64.RawURLEncoding.EncodeToString([]byte(getString(node.Options, "obfs-param", "")))
-	protoparam := base64.RawURLEncoding.EncodeToString([]byte(getString(node.Options, "protocol-param", "")))
+	obfsparam := base64.RawURLEncoding.EncodeToString([]byte(getString("obfs-param", "")))
+	protoparam := base64.RawURLEncoding.EncodeToString([]byte(getString("protocol-param", "")))
 	remarks := base64.RawURLEncoding.EncodeToString([]byte(node.Name))
 	group := base64.RawURLEncoding.EncodeToString([]byte("GoWeb"))
 
 	ssrStr := fmt.Sprintf("%s:%d:%s:%s:%s:%s/?obfsparam=%s&protoparam=%s&remarks=%s&group=%s",
-		server, port, protocol, method, obfs, password,
+		node.Server, node.Port,
+		getString("protocol", "origin"),
+		node.Cipher,
+		getString("obfs", "plain"),
+		password,
 		obfsparam, protoparam, remarks, group)
 
 	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(ssrStr))
 }
 
-func (s *ConfigUpdateService) hysteriaToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "hysteria",
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Options != nil {
-		if auth, ok := proxy.Options["auth"].(string); ok && auth != "" {
-			q.Set("auth", auth)
-		}
-		if up, ok := proxy.Options["up"].(string); ok && up != "" {
-			up = strings.TrimSuffix(up, " mbps")
-			q.Set("upmbps", up)
-		}
-		if down, ok := proxy.Options["down"].(string); ok && down != "" {
-			down = strings.TrimSuffix(down, " mbps")
-			q.Set("downmbps", down)
-		}
-		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
-			q.Set("insecure", "1")
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (s *ConfigUpdateService) hysteria2ToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "hysteria2",
-		User:     url.User(proxy.Password),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Options != nil {
-		if up, ok := proxy.Options["up"].(string); ok && up != "" {
-			up = strings.TrimSuffix(up, " mbps")
-			q.Set("mbpsUp", up)
-		}
-		if down, ok := proxy.Options["down"].(string); ok && down != "" {
-			down = strings.TrimSuffix(down, " mbps")
-			q.Set("mbpsDown", down)
-		}
-		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
-			q.Set("insecure", "1")
-		}
-		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
-			q.Set("sni", sni)
-		} else if peer, ok := proxy.Options["peer"].(string); ok && peer != "" {
-			q.Set("peer", peer)
-		}
-		if alpn, ok := proxy.Options["alpn"].([]string); ok && len(alpn) > 0 {
-			q.Set("alpn", strings.Join(alpn, ","))
-		} else if alpn, ok := proxy.Options["alpn"].([]interface{}); ok && len(alpn) > 0 {
-			alpnStrs := make([]string, 0, len(alpn))
-			for _, v := range alpn {
-				if str, ok := v.(string); ok {
-					alpnStrs = append(alpnStrs, str)
-				}
-			}
-			if len(alpnStrs) > 0 {
-				q.Set("alpn", strings.Join(alpnStrs, ","))
-			}
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (s *ConfigUpdateService) tuicToLink(proxy *ProxyNode) string {
-	userInfo := url.UserPassword(proxy.UUID, proxy.Password)
-	u := &url.URL{
-		Scheme:   "tuic",
-		User:     userInfo,
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Options != nil {
-		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
-			q.Set("sni", sni)
-		}
-		if alpn, ok := proxy.Options["alpn"].([]string); ok && len(alpn) > 0 {
-			q.Set("alpn", alpn[0]) // TUIC 通常只支持单个 ALPN
-		} else if alpn, ok := proxy.Options["alpn"].([]interface{}); ok && len(alpn) > 0 {
-			if str, ok := alpn[0].(string); ok {
-				q.Set("alpn", str)
-			}
-		}
-		if cc, ok := proxy.Options["congestion_control"].(string); ok && cc != "" {
-			q.Set("congestion_control", cc)
-		}
-		if udpRelayMode, ok := proxy.Options["udp_relay_mode"].(string); ok && udpRelayMode != "" {
-			q.Set("udp_relay_mode", udpRelayMode)
-		}
-		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
-			q.Set("allow_insecure", "1")
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (s *ConfigUpdateService) naiveToLink(proxy *ProxyNode) string {
-	userInfo := url.UserPassword(proxy.UUID, proxy.Password)
-	u := &url.URL{
-		Scheme:   "naive+https",
-		User:     userInfo,
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Options != nil {
-		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
-			q.Set("sni", sni)
-		}
-		if padding, ok := proxy.Options["padding"].(bool); ok && padding {
-			q.Set("padding", "true")
-		}
-		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
-			q.Set("insecure", "1")
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (s *ConfigUpdateService) anytlsToLink(proxy *ProxyNode) string {
-	u := &url.URL{
-		Scheme:   "anytls",
-		User:     url.User(proxy.UUID),
-		Host:     fmt.Sprintf("%s:%d", proxy.Server, proxy.Port),
-		Fragment: proxy.Name,
-	}
-
-	q := url.Values{}
-	if proxy.Options != nil {
-		if peer, ok := proxy.Options["peer"].(string); ok && peer != "" {
-			q.Set("peer", peer)
-		} else if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
-			q.Set("sni", sni)
-		}
-		if skipCert, ok := proxy.Options["skip-cert-verify"].(bool); ok && skipCert {
-			q.Set("insecure", "1")
-		}
-	}
-
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-// unescapeUnicode 将 Unicode 转义序列还原为实际字符
-// 例如：将 \U0001F1ED\U0001F1F0 还原为 🇭🇰
 func unescapeUnicode(s string) string {
-	// 匹配 \U 开头的 8 位十六进制 Unicode 转义序列
 	re := regexp.MustCompile(`\\U([0-9A-Fa-f]{8})`)
-
-	result := re.ReplaceAllStringFunc(s, func(match string) string {
-		// 提取十六进制数字部分
-		hexStr := match[2:] // 跳过 \U
-
-		// 转换为整数
+	return re.ReplaceAllStringFunc(s, func(match string) string {
+		hexStr := match[2:]
 		codePoint, err := strconv.ParseInt(hexStr, 16, 64)
 		if err != nil {
-			return match // 如果解析失败，保持原样
+			return match
 		}
-
-		// 转换为 rune（Unicode 字符）
 		return string(rune(codePoint))
 	})
-
-	return result
 }
