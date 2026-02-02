@@ -589,7 +589,9 @@
             v-model="selectedUserIds"
             multiple
             filterable
-            placeholder="请选择要分配的用户（可多选）"
+            remote
+            :remote-method="searchUsers"
+            placeholder="请输入用户名或邮箱搜索用户（可多选）"
             style="width: 100%"
             :loading="loadingUsers"
             :size="isMobile ? 'large' : 'default'"
@@ -1320,16 +1322,27 @@ export default {
     }
 
     const loadUsers = async () => {
-      if (users.value.length > 0) return
+      // 初始加载时，加载前 100 个用户作为默认选项
+      if (users.value.length === 0) {
+        await searchUsers('')
+      }
+    }
+
+    const searchUsers = async (keyword) => {
       loadingUsers.value = true
       try {
-        const response = await adminAPI.getUsers({ page: 1, size: 1000 })
+        const params = { page: 1, size: 100 }
+        if (keyword && keyword.trim()) {
+          params.keyword = keyword.trim()
+        }
+        const response = await adminAPI.getUsers(params)
         if (response.data && response.data.success) {
           users.value = response.data.data?.users || response.data.data || []
         }
       } catch (error) {
-        console.error('加载用户列表失败:', error)
-        ElMessage.error('加载用户列表失败')
+        console.error('搜索用户失败:', error)
+        ElMessage.error('搜索用户失败')
+        users.value = []
       } finally {
         loadingUsers.value = false
       }
@@ -1542,6 +1555,7 @@ export default {
       handleAssign,
       handleUnassign,
       loadUsers,
+      searchUsers,
     }
   }
 }
