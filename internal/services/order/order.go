@@ -582,3 +582,208 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		})
 	}
 }
+
+// ProcessRefundOrder 处理订单退款
+// 回退订阅、余额、累计消费等
+func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
+	if order.Status != "paid" {
+		return fmt.Errorf("只能退款已支付的订单")
+	}
+
+	var user models.User
+	if err := s.db.First(&user, order.UserID).Error; err != nil {
+		return fmt.Errorf("用户不存在: %v", err)
+	}
+
+	paidAmount := order.Amount
+	if order.FinalAmount.Valid {
+		paidAmount = order.FinalAmount.Float64
+	}
+
+	// 回退用户累计消费
+	if user.TotalConsumption >= order.Amount {
+		user.TotalConsumption -= order.Amount
+	} else {
+		user.TotalConsumption = 0
+	}
+
+	// 回退余额（如果使用了余额支付）
+	var balanceUsed float64 = 0
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+				balanceUsed = balanceUsedVal
+			}
+		}
+	}
+
+	// 回退订阅或设备升级
+	if order.PackageID > 0 {
+		// 套餐订单：回退订阅时长和设备限制
+		if err := s.rollbackPackageOrder(order, &user); err != nil {
+			return fmt.Errorf("回退套餐订单失败: %v", err)
+		}
+	} else {
+		// 设备升级订单：回退设备数量和时长
+		if err := s.rollbackDeviceUpgradeOrder(order, &user); err != nil {
+			return fmt.Errorf("回退设备升级订单失败: %v", err)
+		}
+	}
+
+	// 回退余额
+	if balanceUsed > 0 {
+		user.Balance += balanceUsed
+		utils.LogInfo("ProcessRefundOrder: 回退余额 - user_id=%d, balance_used=%.2f, new_balance=%.2f", user.ID, balanceUsed, user.Balance)
+	}
+
+	// 回退邀请奖励（如果已发放）
+	s.rollbackInviteRewards(order, paidAmount)
+
+	// 更新用户信息
+	if err := s.db.Save(&user).Error; err != nil {
+		return fmt.Errorf("更新用户信息失败: %v", err)
+	}
+
+	// 更新订单状态
+	order.Status = "refunded"
+	if err := s.db.Save(order).Error; err != nil {
+		return fmt.Errorf("更新订单状态失败: %v", err)
+	}
+
+	utils.LogInfo("ProcessRefundOrder: 订单退款成功 - order_id=%d, order_no=%s, user_id=%d, amount=%.2f", order.ID, order.OrderNo, user.ID, paidAmount)
+	return nil
+}
+
+func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.User) error {
+	var subscription models.Subscription
+	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+		// 如果订阅不存在，说明可能是新创建的，退款时不需要回退
+		utils.LogWarn("ProcessRefundOrder: 订阅不存在，跳过回退 - user_id=%d", user.ID)
+		return nil
+	}
+
+	var pkg models.Package
+	if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
+		return fmt.Errorf("套餐不存在: %v", err)
+	}
+
+	durationMonths := 1
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if months, ok := extraData["duration_months"].(float64); ok {
+				durationMonths = int(months)
+			}
+		}
+	}
+	if durationMonths <= 0 {
+		durationMonths = 1
+	}
+
+	totalDurationDays := pkg.DurationDays * durationMonths
+	now := utils.GetBeijingTime()
+
+	// 回退订阅时长
+	if subscription.ExpireTime.After(now) {
+		subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, -totalDurationDays)
+		// 如果回退后到期时间早于当前时间，设置为当前时间
+		if subscription.ExpireTime.Before(now) {
+			subscription.ExpireTime = now
+		}
+	}
+
+	// 如果订阅到期时间已过，设置为当前时间
+	if subscription.ExpireTime.Before(now) || subscription.ExpireTime.Equal(now) {
+		subscription.IsActive = false
+		subscription.Status = "expired"
+	}
+
+	if err := s.db.Save(&subscription).Error; err != nil {
+		return fmt.Errorf("回退订阅失败: %v", err)
+	}
+
+	utils.LogInfo("ProcessRefundOrder: 回退套餐订单成功 - user_id=%d, package_id=%d, duration_days=%d, expire_time=%s",
+		user.ID, pkg.ID, totalDurationDays, subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+	return nil
+}
+
+func (s *OrderService) rollbackDeviceUpgradeOrder(order *models.Order, user *models.User) error {
+	var additionalDevices int
+	var additionalDays int
+
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if extraData["type"] == "device_upgrade" {
+				if devices, ok := extraData["additional_devices"].(float64); ok {
+					additionalDevices = int(devices)
+				}
+				if days, ok := extraData["additional_days"].(float64); ok {
+					additionalDays = int(days)
+				}
+			}
+		}
+	}
+
+	var subscription models.Subscription
+	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+		return fmt.Errorf("订阅不存在: %v", err)
+	}
+
+	// 回退设备数量
+	if additionalDevices > 0 {
+		if subscription.DeviceLimit >= additionalDevices {
+			subscription.DeviceLimit -= additionalDevices
+		} else {
+			subscription.DeviceLimit = 0
+		}
+	}
+
+	// 回退时长
+	if additionalDays > 0 {
+		now := utils.GetBeijingTime()
+		if subscription.ExpireTime.After(now) {
+			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, -additionalDays)
+			// 如果回退后到期时间早于当前时间，设置为当前时间
+			if subscription.ExpireTime.Before(now) {
+				subscription.ExpireTime = now
+			}
+		}
+	}
+
+	if err := s.db.Save(&subscription).Error; err != nil {
+		return fmt.Errorf("回退设备升级失败: %v", err)
+	}
+
+	utils.LogInfo("ProcessRefundOrder: 回退设备升级成功 - user_id=%d, additional_devices=%d, additional_days=%d, device_limit=%d, expire_time=%s",
+		user.ID, additionalDevices, additionalDays, subscription.DeviceLimit, subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+	return nil
+}
+
+func (s *OrderService) rollbackInviteRewards(order *models.Order, paidAmount float64) {
+	var inviteRelation models.InviteRelation
+	if err := s.db.Where("invitee_id = ?", order.UserID).First(&inviteRelation).Error; err != nil {
+		// 没有邀请关系，不需要回退
+		return
+	}
+
+	// 回退被邀请者累计消费
+	if inviteRelation.InviteeTotalConsumption >= paidAmount {
+		inviteRelation.InviteeTotalConsumption -= paidAmount
+	} else {
+		inviteRelation.InviteeTotalConsumption = 0
+	}
+
+	// 如果邀请奖励已发放，需要回退（这里只记录，实际回退需要手动处理或通过其他机制）
+	// 注意：回退邀请奖励比较复杂，因为可能已经使用，这里只记录日志
+	if inviteRelation.InviterRewardGiven || inviteRelation.InviteeRewardGiven {
+		utils.LogWarn("ProcessRefundOrder: 订单已发放邀请奖励，需要手动处理回退 - order_id=%d, invite_relation_id=%d", order.ID, inviteRelation.ID)
+	}
+
+	if err := s.db.Save(&inviteRelation).Error; err != nil {
+		utils.LogError("ProcessRefundOrder: 回退邀请关系失败", err, map[string]interface{}{
+			"invite_relation_id": inviteRelation.ID,
+		})
+	}
+}
