@@ -313,7 +313,9 @@ func parseAnytls(link string) (*ProxyNode, error) {
 		// UUID 在 @ 前面，使用 Username() 获取
 		if p.User != nil {
 			n.UUID = p.User.Username()
-			// 如果 URL 中有 password 部分（uuid:password@host），也尝试获取
+			// Anytls 协议特殊：@ 前面的值同时作为 UUID 和 password
+			n.Password = p.User.Username()
+			// 如果 URL 中有显式的 password 部分（uuid:password@host），优先使用
 			if password, ok := p.User.Password(); ok && password != "" {
 				n.Password = password
 			}
