@@ -309,13 +309,12 @@ func parseNaive(link string) (*ProxyNode, error) {
 
 func parseAnytls(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "anytls", func(n *ProxyNode, q url.Values, p *url.URL) {
-		// Anytls 链接格式: anytls://uuid@host:port 或 anytls://uuid:password@host:port
-		// UUID 在 @ 前面，使用 Username() 获取
+		// Anytls 链接格式: anytls://password@host:port
+		// Anytls 协议没有 UUID，只有 password
+		// @ 前面的值是 password
 		if p.User != nil {
-			n.UUID = p.User.Username()
-			// Anytls 协议特殊：@ 前面的值同时作为 UUID 和 password
 			n.Password = p.User.Username()
-			// 如果 URL 中有显式的 password 部分（uuid:password@host），优先使用
+			// 如果 URL 中有显式的 password 部分（user:password@host），优先使用 password 部分
 			if password, ok := p.User.Password(); ok && password != "" {
 				n.Password = password
 			}
