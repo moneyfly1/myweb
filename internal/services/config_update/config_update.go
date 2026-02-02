@@ -1361,13 +1361,64 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 		} else {
 			result["password"] = "" // 即使为空也要设置
 		}
-	case "tuic", "anytls":
+	case "tuic":
 		setIfNotEmpty("uuid", node.UUID)
-		// TUIC 和 Anytls 协议必须要有 password 字段
+		// TUIC 协议必须要有 password 字段
 		if node.Password != "" {
 			result["password"] = node.Password
 		} else {
 			result["password"] = "" // 即使为空也要设置
+		}
+		// TUIC 特殊字段处理
+		if node.TLS {
+			result["tls"] = true
+		}
+		// 设置默认值
+		if _, ok := node.Options["disable-sni"]; !ok {
+			result["disable-sni"] = false
+		}
+		if _, ok := node.Options["reduce-rtt"]; !ok {
+			result["reduce-rtt"] = false
+		}
+		if _, ok := node.Options["request-timeout"]; !ok {
+			result["request-timeout"] = 15000
+		}
+		if _, ok := node.Options["udp-relay-mode"]; !ok {
+			result["udp-relay-mode"] = "native"
+		}
+		// 字段名映射：congestion_control → congestion-controller
+		if cc, ok := node.Options["congestion_control"].(string); ok && cc != "" {
+			result["congestion-controller"] = cc
+			delete(node.Options, "congestion_control") // 避免重复
+		} else if cc, ok := node.Options["congestion-controller"].(string); ok && cc != "" {
+			result["congestion-controller"] = cc
+		}
+		// sni 字段映射
+		if sni, ok := node.Options["servername"].(string); ok && sni != "" {
+			result["sni"] = sni
+			delete(node.Options, "servername") // TUIC 使用 sni 而不是 servername
+		}
+	case "anytls":
+		setIfNotEmpty("uuid", node.UUID)
+		// Anytls 协议必须要有 password 字段
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else {
+			result["password"] = "" // 即使为空也要设置
+		}
+		// Anytls 需要 TLS 和 sni
+		if node.TLS {
+			result["tls"] = true
+		}
+		// sni 字段映射
+		if sni, ok := node.Options["servername"].(string); ok && sni != "" {
+			result["sni"] = sni
+			delete(node.Options, "servername") // Anytls 使用 sni 而不是 servername
+		}
+		// udp 字段：Anytls 通常设置为 false
+		result["udp"] = false
+		if node.UDP {
+			result["udp"] = true
 		}
 	case "hysteria", "hysteria2":
 		// Hysteria 和 Hysteria2 协议必须要有 password 字段（auth）
