@@ -957,16 +957,87 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 			continue
 		}
 
-		var proxyNode ProxyNode
-		if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err == nil {
-			proxyNode.Name = cn.DisplayName
-			if proxyNode.Name == "" {
-				proxyNode.Name = "专线-" + cn.Name
+		// 先解析为 NodeConfig，然后转换为 ProxyNode
+		var nodeConfig models.NodeConfig
+		if err := json.Unmarshal([]byte(cn.Config), &nodeConfig); err != nil {
+			// 如果解析失败，尝试直接解析为 ProxyNode（兼容旧格式）
+			var proxyNode ProxyNode
+			if err2 := json.Unmarshal([]byte(cn.Config), &proxyNode); err2 == nil {
+				proxyNode.Name = cn.DisplayName
+				if proxyNode.Name == "" {
+					proxyNode.Name = "专线-" + cn.Name
+				}
+				key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
+				*proxies = append(*proxies, &proxyNode)
+				processed[key] = true
 			}
-			key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
-			*proxies = append(*proxies, &proxyNode)
-			processed[key] = true
+			continue
 		}
+
+		// 将 NodeConfig 转换为 ProxyNode
+		proxyNode := ProxyNode{
+			Type:     nodeConfig.Type,
+			Server:   nodeConfig.Server,
+			Port:     nodeConfig.Port,
+			UUID:     nodeConfig.UUID,
+			Password: nodeConfig.Password,
+			Cipher:   nodeConfig.Encryption,
+			Network:  nodeConfig.Network,
+			TLS:      nodeConfig.Security == "tls",
+			UDP:      true, // 默认启用 UDP
+			Options:  make(map[string]interface{}),
+		}
+
+		// 设置节点名称
+		proxyNode.Name = cn.DisplayName
+		if proxyNode.Name == "" {
+			proxyNode.Name = "专线-" + cn.Name
+		}
+
+		// 设置 Options 中的额外字段
+		if nodeConfig.SNI != "" {
+			proxyNode.Options["servername"] = nodeConfig.SNI
+		}
+		if nodeConfig.Fingerprint != "" {
+			proxyNode.Options["client-fingerprint"] = nodeConfig.Fingerprint
+		}
+		if nodeConfig.Flow != "" {
+			proxyNode.Options["flow"] = nodeConfig.Flow
+		}
+		if nodeConfig.PublicKey != "" {
+			proxyNode.Options["public-key"] = nodeConfig.PublicKey
+		}
+		if nodeConfig.ShortID != "" {
+			proxyNode.Options["short-id"] = nodeConfig.ShortID
+		}
+		if nodeConfig.ALPN != "" {
+			proxyNode.Options["alpn"] = strings.Split(nodeConfig.ALPN, ",")
+		}
+		if nodeConfig.Host != "" {
+			proxyNode.Options["host"] = nodeConfig.Host
+		}
+		if nodeConfig.Path != "" {
+			proxyNode.Options["path"] = nodeConfig.Path
+		}
+		if nodeConfig.ServiceName != "" {
+			proxyNode.Options["service-name"] = nodeConfig.ServiceName
+		}
+		if nodeConfig.Padding {
+			proxyNode.Options["padding"] = nodeConfig.Padding
+		}
+		if nodeConfig.CongestionControl != "" {
+			proxyNode.Options["congestion-control"] = nodeConfig.CongestionControl
+		}
+		if nodeConfig.UDPRelayMode != "" {
+			proxyNode.Options["udp-relay-mode"] = nodeConfig.UDPRelayMode
+		}
+		if nodeConfig.SkipCertVerify {
+			proxyNode.Options["skip-cert-verify"] = nodeConfig.SkipCertVerify
+		}
+
+		key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port)
+		*proxies = append(*proxies, &proxyNode)
+		processed[key] = true
 	}
 }
 
@@ -1318,7 +1389,12 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 	switch node.Type {
 	case "ss":
 		setIfNotEmpty("cipher", node.Cipher)
-		setIfNotEmpty("password", node.Password)
+		// SS 协议必须要有 password 字段
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else {
+			result["password"] = "" // 即使为空也要设置
+		}
 	case "vmess":
 		setIfNotEmpty("uuid", node.UUID)
 		result["alterId"] = 0
@@ -1331,17 +1407,52 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 		}
 	case "vless":
 		setIfNotEmpty("uuid", node.UUID)
-	case "trojan", "ssr":
-		setIfNotEmpty("password", node.Password)
-		if node.Type == "ssr" {
-			setIfNotEmpty("cipher", node.Cipher)
+	case "trojan":
+		// Trojan 协议必须要有 password 字段
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else {
+			result["password"] = "" // 即使为空也要设置
+		}
+	case "ssr":
+		setIfNotEmpty("cipher", node.Cipher)
+		// SSR 协议必须要有 password 字段
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else {
+			result["password"] = "" // 即使为空也要设置
 		}
 	case "tuic", "anytls":
 		setIfNotEmpty("uuid", node.UUID)
-		setIfNotEmpty("password", node.Password)
+		// TUIC 和 Anytls 协议必须要有 password 字段
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else {
+			result["password"] = "" // 即使为空也要设置
+		}
+	case "hysteria", "hysteria2":
+		// Hysteria 和 Hysteria2 协议必须要有 password 字段（auth）
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else if auth, ok := node.Options["auth"].(string); ok && auth != "" {
+			result["password"] = auth
+		} else {
+			result["password"] = "" // 即使为空也要设置
+		}
+		// Hysteria2 还需要设置其他字段
+		if node.Type == "hysteria2" {
+			if node.TLS {
+				result["tls"] = true
+			}
+		}
 	case "socks", "socks5", "http":
 		setIfNotEmpty("username", node.UUID) // 借用 UUID 字段存 user
-		setIfNotEmpty("password", node.Password)
+		// SOCKS 和 HTTP 协议必须要有 password 字段
+		if node.Password != "" {
+			result["password"] = node.Password
+		} else {
+			result["password"] = "" // 即使为空也要设置
+		}
 	}
 
 	if node.TLS {
