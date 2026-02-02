@@ -754,3 +754,218 @@ func GetYipaySupportedTypes(paymentConfig *models.PaymentConfig) []string {
 	}
 	return defaultTypes
 }
+
+type YipayRefundResponse struct {
+	Code        int    `json:"code"`
+	Msg         string `json:"msg"`
+	RefundNo    string `json:"refund_no,omitempty"`     // 平台退款单号（新格式）
+	OutRefundNo string `json:"out_refund_no,omitempty"` // 商户退款单号（新格式）
+	TradeNo     string `json:"trade_no,omitempty"`      // 平台订单号（新格式）
+	Money       string `json:"money,omitempty"`         // 退款金额（新格式）
+	ReduceMoney string `json:"reducemoney,omitempty"`   // 扣减商户余额（新格式）
+	Timestamp   string `json:"timestamp,omitempty"`     // 时间戳（新格式）
+	Sign        string `json:"sign,omitempty"`          // 签名（新格式）
+	SignType    string `json:"sign_type,omitempty"`     // 签名类型（新格式）
+}
+
+// RefundOrder 提交订单退款（兼容两种API格式）
+// orderNo: 商户订单号
+// tradeNo: 易支付订单号（可选，如果提供则优先使用）
+// refundAmount: 退款金额
+func (s *YipayService) RefundOrder(orderNo, tradeNo string, refundAmount float64) error {
+	if orderNo == "" && tradeNo == "" {
+		return fmt.Errorf("订单号不能为空")
+	}
+	if refundAmount <= 0 {
+		return fmt.Errorf("退款金额必须大于0")
+	}
+
+	// 检测退款API格式
+	refundURL, isNewFormat := s.buildRefundURL()
+
+	var params map[string]string
+	if isNewFormat {
+		// 新格式：需要timestamp和签名
+		params = s.buildNewFormatRefundParams(orderNo, tradeNo, refundAmount)
+	} else {
+		// 旧格式：标准格式
+		params = s.buildOldFormatRefundParams(orderNo, tradeNo, refundAmount)
+	}
+
+	utils.LogInfo("易支付退款请求: URL=%s, format=%s, order_no=%s, trade_no=%s, refund_amount=%.2f",
+		refundURL, map[bool]string{true: "新格式", false: "旧格式"}[isNewFormat], orderNo, tradeNo, refundAmount)
+
+	respBytes, err := s.postForm(refundURL, params)
+	if err != nil {
+		return fmt.Errorf("退款请求失败: %v", err)
+	}
+
+	respStr := string(respBytes)
+	utils.LogInfo("易支付退款响应: %s", respStr)
+
+	var refundResp YipayRefundResponse
+	if err := json.Unmarshal(respBytes, &refundResp); err != nil {
+		utils.LogError("易支付退款响应解析失败", err, map[string]interface{}{"resp": respStr})
+		return fmt.Errorf("退款响应解析失败: %v", err)
+	}
+
+	if refundResp.Code != 0 {
+		utils.LogError("易支付退款失败", nil, map[string]interface{}{
+			"code": refundResp.Code,
+			"msg":  refundResp.Msg,
+		})
+		return fmt.Errorf("退款失败: %s (code: %d)", refundResp.Msg, refundResp.Code)
+	}
+
+	// 记录退款成功信息
+	refundInfo := fmt.Sprintf("order_no=%s, trade_no=%s, refund_amount=%.2f, msg=%s", orderNo, tradeNo, refundAmount, refundResp.Msg)
+	if refundResp.RefundNo != "" {
+		refundInfo += fmt.Sprintf(", refund_no=%s", refundResp.RefundNo)
+	}
+	if refundResp.OutRefundNo != "" {
+		refundInfo += fmt.Sprintf(", out_refund_no=%s", refundResp.OutRefundNo)
+	}
+	utils.LogInfo("易支付退款成功: %s", refundInfo)
+	return nil
+}
+
+// buildRefundURL 构建退款API地址，返回URL和是否为新格式
+func (s *YipayService) buildRefundURL() (string, bool) {
+	apiURL := s.APIURL
+	apiURLLower := strings.ToLower(apiURL)
+
+	// 检测是否是新格式（包含 /api/pay/ 路径或特定域名）
+	// 新格式特征：包含 /api/pay/ 或域名包含 myzfw.com
+	if strings.Contains(apiURL, "/api/pay/") || strings.Contains(apiURLLower, "myzfw.com") {
+		// 新格式：/api/pay/refund
+		baseURL := apiURL
+		// 移除可能的查询参数
+		if idx := strings.Index(baseURL, "?"); idx > 0 {
+			baseURL = baseURL[:idx]
+		}
+		// 移除可能的路径参数（如 /mapi.php, /api.php）
+		if strings.Contains(baseURL, "/mapi.php") {
+			baseURL = strings.Replace(baseURL, "/mapi.php", "", 1)
+		}
+		if strings.Contains(baseURL, "/api.php") {
+			baseURL = strings.Split(baseURL, "/api.php")[0]
+		}
+		// 移除末尾的斜杠
+		baseURL = strings.TrimSuffix(baseURL, "/")
+		// 构建新格式退款URL
+		return baseURL + "/api/pay/refund", true
+	}
+
+	// 旧格式：api.php?act=refund
+	refundURL := apiURL
+	// 移除可能的查询参数
+	if idx := strings.Index(refundURL, "?"); idx > 0 {
+		refundURL = refundURL[:idx]
+	}
+
+	if strings.Contains(refundURL, "api.php") {
+		// 如果已经包含api.php，添加或替换act参数
+		if strings.Contains(apiURL, "act=") {
+			// 替换现有的act参数
+			refundURL = strings.Split(apiURL, "act=")[0] + "act=refund"
+			if idx := strings.Index(apiURL, "&"); idx > 0 && strings.Contains(apiURL[idx:], "&") {
+				// 保留其他参数
+				parts := strings.Split(apiURL, "&")
+				for _, part := range parts {
+					if !strings.HasPrefix(part, "act=") {
+						refundURL += "&" + part
+					}
+				}
+			}
+		} else {
+			refundURL = refundURL + "?act=refund"
+		}
+	} else {
+		// 如果不包含api.php，添加路径
+		if strings.HasSuffix(refundURL, "/") {
+			refundURL = strings.TrimSuffix(refundURL, "/") + "/api.php?act=refund"
+		} else {
+			refundURL = refundURL + "/api.php?act=refund"
+		}
+	}
+	return refundURL, false
+}
+
+// buildOldFormatRefundParams 构建旧格式退款参数
+func (s *YipayService) buildOldFormatRefundParams(orderNo, tradeNo string, refundAmount float64) map[string]string {
+	params := map[string]string{
+		"pid":   s.PID,
+		"key":   s.Key,
+		"money": fmt.Sprintf("%.2f", refundAmount),
+	}
+
+	// trade_no 和 out_trade_no 不能同时为空，如果都传了以trade_no为准
+	if tradeNo != "" {
+		params["trade_no"] = tradeNo
+	} else {
+		params["out_trade_no"] = orderNo
+	}
+
+	return params
+}
+
+// buildNewFormatRefundParams 构建新格式退款参数（需要签名）
+func (s *YipayService) buildNewFormatRefundParams(orderNo, tradeNo string, refundAmount float64) map[string]string {
+	// 生成商户退款单号（避免重复请求）
+	outRefundNo := fmt.Sprintf("REF%s%d", orderNo, time.Now().Unix())
+
+	// 生成时间戳（10位整数，单位秒）
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+
+	params := map[string]string{
+		"pid":           s.PID,
+		"money":         fmt.Sprintf("%.2f", refundAmount),
+		"out_refund_no": outRefundNo,
+		"timestamp":     timestamp,
+	}
+
+	// trade_no 和 out_trade_no 不能同时为空，如果都传了以trade_no为准
+	if tradeNo != "" {
+		params["trade_no"] = tradeNo
+	} else {
+		params["out_trade_no"] = orderNo
+	}
+
+	// 设置签名类型
+	signType := s.SignType
+	if signType == "" {
+		signType = "RSA" // 新格式默认使用RSA
+	}
+	params["sign_type"] = signType
+
+	// 生成签名
+	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")
+	var sign string
+	var err error
+
+	switch signType {
+	case "RSA":
+		sign, err = s.signRSASign(signStr)
+		if err != nil {
+			utils.LogError("易支付退款RSA签名生成失败", err, nil)
+			// 如果RSA签名失败，尝试使用MD5（某些平台可能支持）
+			sign = s.calcMD5FromStr(signStr)
+			params["sign_type"] = "MD5"
+		}
+	case "MD5+RSA":
+		md5Sign := s.calcMD5FromStr(signStr)
+		params["sign"] = md5Sign
+		if rsaSign, err := s.signRSASign(signStr); err == nil {
+			params["rsa_sign"] = rsaSign
+		} else {
+			utils.LogWarn("易支付退款MD5+RSA模式: RSA签名生成失败，仅使用MD5", nil)
+		}
+		sign = md5Sign
+	default: // MD5
+		sign = s.calcMD5FromStr(signStr)
+	}
+
+	params["sign"] = sign
+
+	return params
+}

@@ -12,6 +12,7 @@ require (
 	github.com/smartwalle/alipay/v3 v3.2.28
 	github.com/spf13/viper v1.18.2
 	golang.org/x/crypto v0.46.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.2
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/driver/sqlite v1.5.4
@@ -74,5 +75,4 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
