@@ -8,8 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +21,7 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
 
@@ -1088,8 +1092,7 @@ func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent stri
 }
 
 func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
-	var builder strings.Builder
-
+	// 过滤支持的代理类型
 	filteredProxies := make([]*ProxyNode, 0)
 	for _, proxy := range proxies {
 		if supportedClashTypes[proxy.Type] {
@@ -1097,18 +1100,9 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		}
 	}
 
-	builder.WriteString("port: 7890\n")
-	builder.WriteString("socks-port: 7891\n")
-	builder.WriteString("allow-lan: true\n")
-	builder.WriteString("mode: Rule\n")
-	builder.WriteString("log-level: info\n")
-	builder.WriteString("external-controller: 127.0.0.1:9090\n\n")
-
-	builder.WriteString("proxies:\n")
-
+	// 处理代理名称，避免重复
 	usedNames := make(map[string]bool)
 	var proxyNames []string
-
 	for _, proxy := range filteredProxies {
 		originalName := proxy.Name
 		newName := originalName
@@ -1119,9 +1113,121 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		}
 		proxy.Name = newName
 		usedNames[newName] = true
+		proxyNames = append(proxyNames, proxy.Name)
+	}
 
+	// 尝试读取模板文件
+	templatePath := filepath.Join("uploads", "config", "temp.yaml")
+	templateData, err := os.ReadFile(templatePath)
+	if err != nil {
+		// 如果模板文件不存在，使用默认配置
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+	}
+
+	// 解析模板 YAML
+	var templateConfig map[string]interface{}
+	if err := yaml.Unmarshal(templateData, &templateConfig); err != nil {
+		// 如果解析失败，使用默认配置
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+	}
+
+	// 生成代理列表
+	proxyList := make([]map[string]interface{}, 0)
+	for _, proxy := range filteredProxies {
+		proxyMap := s.nodeToMap(proxy)
+		proxyList = append(proxyList, proxyMap)
+	}
+	templateConfig["proxies"] = proxyList
+
+	// 更新 proxy-groups 中的代理列表
+	if proxyGroups, ok := templateConfig["proxy-groups"].([]interface{}); ok {
+		// 收集所有代理组名称，用于识别哪些是组名
+		groupNames := make(map[string]bool)
+		for _, groupRaw := range proxyGroups {
+			if group, ok := groupRaw.(map[string]interface{}); ok {
+				if name, ok := group["name"].(string); ok {
+					groupNames[name] = true
+				}
+			}
+		}
+
+		for _, groupRaw := range proxyGroups {
+			if group, ok := groupRaw.(map[string]interface{}); ok {
+				groupType, _ := group["type"].(string)
+
+				// 对于 select、url-test、fallback、load-balance 等类型，更新代理列表
+				if groupType == "select" || groupType == "url-test" || groupType == "fallback" || groupType == "load-balance" {
+					// 保留原有的特殊代理和组名
+					existingProxies := make([]string, 0)
+					if proxiesRaw, ok := group["proxies"].([]interface{}); ok {
+						for _, p := range proxiesRaw {
+							if pStr, ok := p.(string); ok {
+								// 保留特殊代理（DIRECT、REJECT）和其他代理组名称
+								if pStr == "DIRECT" || pStr == "REJECT" || groupNames[pStr] {
+									existingProxies = append(existingProxies, pStr)
+								}
+							}
+						}
+					}
+
+					// 对于 url-test、fallback 和 load-balance 类型，只添加实际节点（不包含其他组）
+					// 对于 select 类型，保留组名并添加实际节点
+					if groupType == "url-test" || groupType == "fallback" || groupType == "load-balance" {
+						// 只包含实际节点
+						group["proxies"] = proxyNames
+					} else {
+						// select 类型：保留组名和特殊代理，添加实际节点
+						allProxies := append(existingProxies, proxyNames...)
+						group["proxies"] = allProxies
+					}
+				}
+			}
+		}
+		templateConfig["proxy-groups"] = proxyGroups
+	}
+
+	// 确保 rules 被保留（如果没有 rules，从模板中保留）
+	if _, ok := templateConfig["rules"]; !ok {
+		// 如果 rules 不存在，尝试从原始模板中读取
+		var originalTemplate map[string]interface{}
+		if err := yaml.Unmarshal(templateData, &originalTemplate); err == nil {
+			if rules, ok := originalTemplate["rules"]; ok {
+				templateConfig["rules"] = rules
+			}
+		}
+	}
+
+	// 将配置转换回 YAML
+	// 注意：不能直接使用 yaml.Marshal，因为它会转义 Unicode 字符（emoji）
+	// 需要先转换为 JSON，再手动格式化为 YAML
+	output, err := yaml.Marshal(templateConfig)
+	if err != nil {
+		// 如果转换失败，使用默认配置
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+	}
+
+	// 将 Unicode 转义序列还原为实际字符
+	// 例如：将 \U0001F1ED\U0001F1F0 还原为 🇭🇰
+	outputStr := string(output)
+	outputStr = unescapeUnicode(outputStr)
+
+	return outputStr
+}
+
+// 生成默认配置（当模板文件不存在或解析失败时使用）
+func (s *ConfigUpdateService) generateDefaultClashYAML(filteredProxies []*ProxyNode, proxyNames []string) string {
+	var builder strings.Builder
+
+	builder.WriteString("port: 7890\n")
+	builder.WriteString("socks-port: 7891\n")
+	builder.WriteString("allow-lan: true\n")
+	builder.WriteString("mode: Rule\n")
+	builder.WriteString("log-level: info\n")
+	builder.WriteString("external-controller: 127.0.0.1:9090\n\n")
+
+	builder.WriteString("proxies:\n")
+	for _, proxy := range filteredProxies {
 		builder.WriteString(s.nodeToYAML(proxy, 2))
-		proxyNames = append(proxyNames, s.escapeYAMLString(proxy.Name))
 	}
 
 	builder.WriteString("\nproxy-groups:\n")
@@ -1131,7 +1237,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	builder.WriteString("    proxies:\n")
 	builder.WriteString("      - \"♻️ 自动选择\"\n")
 	for _, name := range proxyNames {
-		builder.WriteString(fmt.Sprintf("      - %s\n", name))
+		builder.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(name)))
 	}
 
 	builder.WriteString("  - name: \"♻️ 自动选择\"\n")
@@ -1141,7 +1247,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 	builder.WriteString("    tolerance: 50\n")
 	builder.WriteString("    proxies:\n")
 	for _, name := range proxyNames {
-		builder.WriteString(fmt.Sprintf("      - %s\n", name))
+		builder.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(name)))
 	}
 
 	builder.WriteString("\nrules:\n")
@@ -1307,6 +1413,75 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	}
 
 	return builder.String()
+}
+
+// nodeToMap 将 ProxyNode 转换为 map[string]interface{}，用于 YAML 序列化
+func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	result["name"] = node.Name
+	result["type"] = node.Type
+	result["server"] = node.Server
+	result["port"] = node.Port
+
+	switch node.Type {
+	case "ss":
+		if node.Cipher != "" {
+			result["cipher"] = node.Cipher
+		}
+		if node.Password != "" {
+			result["password"] = node.Password
+		}
+	case "vmess":
+		if node.UUID != "" {
+			result["uuid"] = node.UUID
+		}
+		if alterId, ok := node.Options["alterId"]; ok {
+			result["alterId"] = alterId
+		} else {
+			result["alterId"] = 0
+		}
+		if node.Cipher == "" {
+			result["cipher"] = "auto"
+		} else {
+			result["cipher"] = node.Cipher
+		}
+	case "vless":
+		if node.UUID != "" {
+			result["uuid"] = node.UUID
+		}
+	case "trojan":
+		if node.Password != "" {
+			result["password"] = node.Password
+		}
+	case "ssr":
+		if node.Cipher != "" {
+			result["cipher"] = node.Cipher
+		}
+		if node.Password != "" {
+			result["password"] = node.Password
+		}
+	}
+
+	if node.TLS {
+		result["tls"] = true
+	}
+	if node.Network != "" && node.Network != "tcp" {
+		result["network"] = node.Network
+	}
+	if node.UDP {
+		result["udp"] = true
+	}
+
+	// 复制 Options 中的其他字段（排除已处理的 alterId）
+	for key, value := range node.Options {
+		if key == "alterId" && node.Type == "vmess" {
+			continue
+		}
+		result[key] = value
+	}
+
+	return result
 }
 
 func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr, key string, value interface{}, indentLevel int) {
@@ -1727,4 +1902,27 @@ func (s *ConfigUpdateService) anytlsToLink(proxy *ProxyNode) string {
 
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+// unescapeUnicode 将 Unicode 转义序列还原为实际字符
+// 例如：将 \U0001F1ED\U0001F1F0 还原为 🇭🇰
+func unescapeUnicode(s string) string {
+	// 匹配 \U 开头的 8 位十六进制 Unicode 转义序列
+	re := regexp.MustCompile(`\\U([0-9A-Fa-f]{8})`)
+
+	result := re.ReplaceAllStringFunc(s, func(match string) string {
+		// 提取十六进制数字部分
+		hexStr := match[2:] // 跳过 \U
+
+		// 转换为整数
+		codePoint, err := strconv.ParseInt(hexStr, 16, 64)
+		if err != nil {
+			return match // 如果解析失败，保持原样
+		}
+
+		// 转换为 rune（Unicode 字符）
+		return string(rune(codePoint))
+	})
+
+	return result
 }
