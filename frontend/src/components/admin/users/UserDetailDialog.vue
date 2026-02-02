@@ -260,8 +260,11 @@
         <el-form-item label="选择节点">
           <el-select
             v-model="selectedNodeId"
-            placeholder="请选择要分配的专线节点"
+            placeholder="请输入节点名称搜索（可输入名称、域名等）"
             filterable
+            remote
+            :remote-method="searchAvailableNodes"
+            :loading="loadingNodes"
             style="width: 100%"
           >
             <el-option
@@ -310,6 +313,7 @@ export default {
     const showAssignDialog = ref(false)
     const selectedNodeId = ref(null)
     const assigning = ref(false)
+    const loadingNodes = ref(false)
     
     // 从 user 对象中提取充值记录和订单记录
     const rechargeRecords = computed(() => {
@@ -373,16 +377,31 @@ export default {
     }
 
     const loadAvailableNodes = async () => {
+      // 初始加载时，加载前 100 个激活的节点作为默认选项
+      await searchAvailableNodes('')
+    }
+
+    const searchAvailableNodes = async (keyword) => {
+      loadingNodes.value = true
       try {
-        const response = await adminAPI.getCustomNodes({ is_active: 'true' })
+        const params = { is_active: 'true', page: 1, size: 100 }
+        if (keyword && keyword.trim()) {
+          params.search = keyword.trim()
+        }
+        const response = await adminAPI.getCustomNodes(params)
         if (response.data && response.data.success) {
-          const allNodes = response.data.data || []
+          const allNodes = response.data.data?.data || response.data.data || []
           const assignedIds = customNodes.value.map(n => n.id)
           availableNodes.value = allNodes.filter(n => !assignedIds.includes(n.id))
+        } else {
+          availableNodes.value = []
         }
       } catch (error) {
-        console.error('加载可用节点失败:', error)
+        console.error('搜索可用节点失败:', error)
+        ElMessage.error('搜索节点失败')
         availableNodes.value = []
+      } finally {
+        loadingNodes.value = false
       }
     }
 
@@ -400,6 +419,13 @@ export default {
 
     watch(() => props.visible, async (visible) => {
       if (visible) {
+        await loadAvailableNodes()
+      }
+    })
+
+    watch(() => showAssignDialog.value, async (visible) => {
+      if (visible) {
+        // 打开分配对话框时，重新加载可用节点
         await loadAvailableNodes()
       }
     })
@@ -554,8 +580,11 @@ export default {
       showAssignDialog,
       selectedNodeId,
       assigning,
+      loadingNodes,
       assignNode,
       unassignNode,
+      loadAvailableNodes,
+      searchAvailableNodes,
       formatDate,
       formatDateTime,
       getStatusType,
