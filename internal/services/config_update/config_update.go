@@ -1399,7 +1399,7 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 			delete(node.Options, "servername") // TUIC 使用 sni 而不是 servername
 		}
 	case "anytls":
-		setIfNotEmpty("uuid", node.UUID)
+		// Anytls 协议没有 UUID 字段，只有 password
 		// Anytls 协议必须要有 password 字段
 		if node.Password != "" {
 			result["password"] = node.Password
