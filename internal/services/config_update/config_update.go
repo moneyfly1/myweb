@@ -1004,24 +1004,51 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 		if nodeConfig.Flow != "" {
 			proxyNode.Options["flow"] = nodeConfig.Flow
 		}
-		if nodeConfig.PublicKey != "" {
-			proxyNode.Options["public-key"] = nodeConfig.PublicKey
+		
+		// Reality 配置
+		if nodeConfig.PublicKey != "" || nodeConfig.ShortID != "" {
+			realityOpts := make(map[string]interface{})
+			if nodeConfig.PublicKey != "" {
+				realityOpts["public-key"] = nodeConfig.PublicKey
+			}
+			if nodeConfig.ShortID != "" {
+				realityOpts["short-id"] = nodeConfig.ShortID
+			}
+			proxyNode.Options["reality-opts"] = realityOpts
 		}
-		if nodeConfig.ShortID != "" {
-			proxyNode.Options["short-id"] = nodeConfig.ShortID
-		}
+		
+		// ALPN 配置
 		if nodeConfig.ALPN != "" {
-			proxyNode.Options["alpn"] = strings.Split(nodeConfig.ALPN, ",")
+			alpnList := strings.Split(nodeConfig.ALPN, ",")
+			for i, a := range alpnList {
+				alpnList[i] = strings.TrimSpace(a)
+			}
+			proxyNode.Options["alpn"] = alpnList
 		}
-		if nodeConfig.Host != "" {
-			proxyNode.Options["host"] = nodeConfig.Host
+		
+		// WebSocket 配置
+		if nodeConfig.Network == "ws" && (nodeConfig.Path != "" || nodeConfig.Host != "") {
+			wsOpts := make(map[string]interface{})
+			if nodeConfig.Path != "" {
+				wsOpts["path"] = nodeConfig.Path
+			}
+			if nodeConfig.Host != "" {
+				headers := make(map[string]interface{})
+				headers["Host"] = nodeConfig.Host
+				wsOpts["headers"] = headers
+			}
+			proxyNode.Options["ws-opts"] = wsOpts
 		}
-		if nodeConfig.Path != "" {
-			proxyNode.Options["path"] = nodeConfig.Path
+		
+		// gRPC 配置
+		if nodeConfig.Network == "grpc" && nodeConfig.ServiceName != "" {
+			grpcOpts := make(map[string]interface{})
+			grpcOpts["grpc-mode"] = "gun"
+			grpcOpts["grpc-service-name"] = nodeConfig.ServiceName
+			proxyNode.Options["grpc-opts"] = grpcOpts
 		}
-		if nodeConfig.ServiceName != "" {
-			proxyNode.Options["service-name"] = nodeConfig.ServiceName
-		}
+		
+		// 其他字段
 		if nodeConfig.Padding {
 			proxyNode.Options["padding"] = nodeConfig.Padding
 		}
@@ -1031,7 +1058,9 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 		if nodeConfig.UDPRelayMode != "" {
 			proxyNode.Options["udp-relay-mode"] = nodeConfig.UDPRelayMode
 		}
-		if nodeConfig.SkipCertVerify {
+		
+		// skip-cert-verify 对于 TLS 连接应该始终设置
+		if proxyNode.TLS || nodeConfig.Security != "" {
 			proxyNode.Options["skip-cert-verify"] = nodeConfig.SkipCertVerify
 		}
 
@@ -1434,16 +1463,17 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 		// Hysteria 和 Hysteria2 协议必须要有 password 字段（auth）
 		if node.Password != "" {
 			result["password"] = node.Password
+			// Hysteria2 的 auth 和 password 是同一个值
+			if node.Type == "hysteria2" {
+				result["auth"] = node.Password
+			}
 		} else if auth, ok := node.Options["auth"].(string); ok && auth != "" {
 			result["password"] = auth
+			if node.Type == "hysteria2" {
+				result["auth"] = auth
+			}
 		} else {
 			result["password"] = "" // 即使为空也要设置
-		}
-		// Hysteria2 还需要设置其他字段
-		if node.Type == "hysteria2" {
-			if node.TLS {
-				result["tls"] = true
-			}
 		}
 	case "socks", "socks5", "http":
 		setIfNotEmpty("username", node.UUID) // 借用 UUID 字段存 user
