@@ -1189,7 +1189,8 @@ func UpgradeDevices(c *gin.Context) {
 		}
 
 		var paymentConfig models.PaymentConfig
-		if err := db.Where("LOWER(pay_type) LIKE ? AND status = 1", "%"+queryPayType+"%").Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+		escapedPayType := utils.EscapeLikePattern(queryPayType)
+		if err := db.Where("LOWER(pay_type) LIKE ? AND status = 1", "%"+escapedPayType+"%").Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
 			return
 		}
