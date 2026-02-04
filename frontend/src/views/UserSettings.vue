@@ -34,10 +34,6 @@
               <i class="el-icon-bell"></i>
               <span>通知设置</span>
             </el-menu-item>
-            <el-menu-item index="privacy">
-              <i class="el-icon-view"></i>
-              <span>隐私设置</span>
-            </el-menu-item>
             <el-menu-item index="preferences">
               <i class="el-icon-star-on"></i>
               <span>偏好设置</span>
@@ -160,41 +156,6 @@
           </div>
         </el-card>
 
-        <!-- 隐私设置 -->
-        <el-card v-if="activeSetting === 'privacy'" class="setting-content">
-          <template #header>
-            <div class="card-header">
-              <i class="el-icon-view"></i>
-              隐私设置
-            </div>
-          </template>
-          
-          <div class="privacy-settings">
-            <h4>数据共享</h4>
-            <el-switch
-              v-model="privacyForm.dataSharing"
-              active-text="允许数据共享"
-              inactive-text="禁止数据共享"
-            ></el-switch>
-            <p class="privacy-tip">数据共享用于改进服务质量，不会泄露个人信息</p>
-            
-            <el-divider></el-divider>
-            
-            <h4>分析统计</h4>
-            <el-switch
-              v-model="privacyForm.analytics"
-              active-text="启用使用统计"
-              inactive-text="禁用使用统计"
-            ></el-switch>
-            
-            <el-divider></el-divider>
-            
-            <el-button type="primary" @click="savePrivacySettings" :loading="privacySaving">
-              保存设置
-            </el-button>
-          </div>
-        </el-card>
-
         <!-- 偏好设置 -->
         <el-card v-if="activeSetting === 'preferences'" class="setting-content">
           <template #header>
@@ -221,13 +182,6 @@
                   <el-radio label="aurora">Aurora主题</el-radio>
                   <el-radio label="auto">跟随系统</el-radio>
                 </el-radio-group>
-              </el-form-item>
-              
-              <el-form-item label="语言">
-                <el-select v-model="preferenceForm.language" placeholder="选择语言">
-                  <el-option label="简体中文" value="zh-CN"></el-option>
-                  <el-option label="English" value="en-US"></el-option>
-                </el-select>
               </el-form-item>
               
               <el-form-item label="时区">
@@ -266,11 +220,6 @@
           <el-tab-pane label="通知设置" name="notifications">
             <template #label>
               <span><i class="el-icon-bell"></i> 通知设置</span>
-            </template>
-          </el-tab-pane>
-          <el-tab-pane label="隐私设置" name="privacy">
-            <template #label>
-              <span><i class="el-icon-view"></i> 隐私设置</span>
             </template>
           </el-tab-pane>
           <el-tab-pane label="偏好设置" name="preferences">
@@ -395,41 +344,6 @@
           </div>
         </el-card>
 
-        <!-- 隐私设置 -->
-        <el-card v-if="activeSetting === 'privacy'" class="setting-content mobile-setting-card">
-          <template #header>
-            <div class="card-header">
-              <i class="el-icon-view"></i>
-              隐私设置
-            </div>
-          </template>
-          
-          <div class="privacy-settings">
-            <h4>数据共享</h4>
-            <el-switch
-              v-model="privacyForm.dataSharing"
-              active-text="允许数据共享"
-              inactive-text="禁止数据共享"
-            ></el-switch>
-            <p class="privacy-tip">数据共享用于改进服务质量，不会泄露个人信息</p>
-            
-            <el-divider></el-divider>
-            
-            <h4>分析统计</h4>
-            <el-switch
-              v-model="privacyForm.analytics"
-              active-text="启用使用统计"
-              inactive-text="禁用使用统计"
-            ></el-switch>
-            
-            <el-divider></el-divider>
-            
-            <el-button type="primary" @click="savePrivacySettings" :loading="privacySaving" style="width: 100%">
-              保存设置
-            </el-button>
-          </div>
-        </el-card>
-
         <!-- 偏好设置 -->
         <el-card v-if="activeSetting === 'preferences'" class="setting-content mobile-setting-card">
           <template #header>
@@ -456,13 +370,6 @@
                   <el-radio label="aurora">Aurora主题</el-radio>
                   <el-radio label="auto">跟随系统</el-radio>
                 </el-radio-group>
-              </el-form-item>
-              
-              <el-form-item label="语言">
-                <el-select v-model="preferenceForm.language" placeholder="选择语言" style="width: 100%">
-                  <el-option label="简体中文" value="zh-CN"></el-option>
-                  <el-option label="English" value="en-US"></el-option>
-                </el-select>
               </el-form-item>
               
               <el-form-item label="时区">
@@ -554,7 +461,6 @@ export default {
     const profileSaving = ref(false)
     const passwordChanging = ref(false)
     const notificationSaving = ref(false)
-    const privacySaving = ref(false)
     const preferenceSaving = ref(false)
     const emailChanging = ref(false)
     const codeSending = ref(false)
@@ -581,14 +487,8 @@ export default {
       notificationTypes: ['subscription', 'payment', 'system', 'marketing']  // 默认所有类型都开启
     })
     
-    const privacyForm = reactive({
-      dataSharing: true,
-      analytics: true
-    })
-    
     const preferenceForm = reactive({
       theme: themeStore.currentTheme,
-      language: 'zh-CN',
       timezone: 'Asia/Shanghai'
     })
     
@@ -682,54 +582,71 @@ export default {
       // 加载通知设置
       try {
         const notificationResponse = await api.get('/users/notification-settings')
-        if (notificationResponse.data && notificationResponse.data.success && notificationResponse.data.data) {
-          const settings = notificationResponse.data.data
-          notificationForm.emailNotifications = settings.email_notifications !== false  // 默认true
-          // 解析 notification_types（可能是JSON字符串或数组）
-          if (settings.notification_types) {
-            if (typeof settings.notification_types === 'string') {
-              try {
-                notificationForm.notificationTypes = JSON.parse(settings.notification_types)
-              } catch (e) {
-                notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
-              }
-            } else if (Array.isArray(settings.notification_types)) {
-              notificationForm.notificationTypes = settings.notification_types
+        // 支持多种响应格式：response.data.data 或 response.data
+        const settings = notificationResponse.data?.data || notificationResponse.data || {}
+        
+        // 处理邮件通知开关 - 明确处理 undefined、null、布尔值和字符串
+        if (settings.email_notifications !== undefined && settings.email_notifications !== null) {
+          notificationForm.emailNotifications = settings.email_notifications === true || settings.email_notifications === 'true'
+        } else if (settings.email_enabled !== undefined && settings.email_enabled !== null) {
+          notificationForm.emailNotifications = settings.email_enabled === true || settings.email_enabled === 'true'
+        } else {
+          // 如果都没有，使用默认值 true
+          notificationForm.emailNotifications = true
+        }
+        
+        // 解析 notification_types（可能是JSON字符串或数组）
+        if (settings.notification_types !== undefined && settings.notification_types !== null) {
+          if (typeof settings.notification_types === 'string' && settings.notification_types.trim() !== '') {
+            try {
+              const parsed = JSON.parse(settings.notification_types)
+              notificationForm.notificationTypes = Array.isArray(parsed) ? parsed : ['subscription', 'payment', 'system', 'marketing']
+            } catch (e) {
+              console.warn('解析通知类型失败:', e, '原始值:', settings.notification_types)
+              notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
             }
+          } else if (Array.isArray(settings.notification_types) && settings.notification_types.length > 0) {
+            notificationForm.notificationTypes = settings.notification_types
+          } else {
+            // 空数组或无效值，使用默认值
+            notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
           }
+        } else {
+          // 如果没有设置，使用默认值
+          notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
         }
       } catch (error) {
-        // 使用默认值
+        // 使用默认值，记录详细错误日志
+        console.error('加载通知设置失败:', {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          url: '/users/notification-settings'
+        })
         notificationForm.emailNotifications = true
         notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
-      }
-      
-      // 加载隐私设置
-      try {
-        const privacyResponse = await api.get('/users/privacy-settings')
-        if (privacyResponse.data && privacyResponse.data.success && privacyResponse.data.data) {
-          const settings = privacyResponse.data.data
-          privacyForm.dataSharing = settings.data_sharing !== false  // 默认true
-          privacyForm.analytics = settings.analytics !== false  // 默认true
-        }
-      } catch (error) {
-        // 使用默认值
-        privacyForm.dataSharing = true
-        privacyForm.analytics = true
       }
       
       // 加载偏好设置（从用户信息中获取）
       try {
         const userResponse = await api.get('/users/me')
-        if (userResponse.data && userResponse.data.success && userResponse.data.data) {
-          const userData = userResponse.data.data
-          if (userData.theme) preferenceForm.theme = userData.theme
-          if (userData.language) preferenceForm.language = userData.language
-          if (userData.timezone) preferenceForm.timezone = userData.timezone
+        // 支持多种响应格式
+        const userData = userResponse.data?.data || userResponse.data || {}
+        if (userData && typeof userData === 'object') {
+          if (userData.theme && typeof userData.theme === 'string') {
+            preferenceForm.theme = userData.theme
+          }
+          if (userData.timezone && typeof userData.timezone === 'string') {
+            preferenceForm.timezone = userData.timezone
+          }
         }
       } catch (error) {
-        // 使用默认值
-        console.warn('加载偏好设置失败:', error)
+        // 使用默认值，记录错误日志
+        console.warn('加载偏好设置失败:', {
+          error: error.message,
+          response: error.response?.data,
+          url: '/users/me'
+        })
       }
     }
     
@@ -741,12 +658,12 @@ export default {
         
         // 调用API保存个人资料
         const response = await api.put('/users/me', {
-          username: profileForm.username,
+          username: profileForm.username || '',
           nickname: profileForm.nickname || '',
-          avatar: profileForm.avatar
+          avatar: profileForm.avatar || ''
         })
         
-        if (response.data && response.data.success) {
+        if (response.data && response.data.success !== false) {
           // 重新加载用户信息以确保数据同步
           await loadUserInfo()
           // 更新本地用户信息
@@ -758,7 +675,18 @@ export default {
           ElMessage.error(response.data?.message || '保存失败')
         }
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '保存失败'
+        // 记录详细错误日志
+        console.error('保存个人资料失败:', {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          requestData: {
+            username: profileForm.username,
+            nickname: profileForm.nickname,
+            avatar: profileForm.avatar
+          }
+        })
+        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '保存失败'
         ElMessage.error(errorMsg)
       } finally {
         profileSaving.value = false
@@ -773,11 +701,11 @@ export default {
         
         // 调用API修改密码
         const response = await api.post('/users/change-password', {
-          current_password: securityForm.currentPassword,
-          new_password: securityForm.newPassword
+          current_password: securityForm.currentPassword || '',
+          new_password: securityForm.newPassword || ''
         })
         
-        if (response.data && response.data.success) {
+        if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '密码修改成功')
           securityForm.currentPassword = ''
           securityForm.newPassword = ''
@@ -790,6 +718,14 @@ export default {
           ElMessage.error(response.data?.message || '密码修改失败')
         }
       } catch (error) {
+        // 记录详细错误日志（不记录密码内容）
+        console.error('修改密码失败:', {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          url: '/users/change-password'
+          // 注意：不记录密码内容
+        })
         const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '密码修改失败'
         ElMessage.error(errorMsg)
       } finally {
@@ -803,37 +739,31 @@ export default {
         notificationSaving.value = true
         
         // 调用API保存通知设置
-        await api.put('/users/notification-settings', {
+        const response = await api.put('/users/notification-settings', {
           email_notifications: notificationForm.emailNotifications,
           notification_types: notificationForm.notificationTypes
         })
         
-        ElMessage.success('通知设置保存成功')
+        if (response.data && response.data.success !== false) {
+          ElMessage.success(response.data.message || '通知设置保存成功')
+        } else {
+          ElMessage.error(response.data?.message || '通知设置保存失败')
+        }
       } catch (error) {
-        const errorMessage = error.response?.data?.detail || error.message || '保存失败'
+        // 记录详细错误日志
+        console.error('保存通知设置失败:', {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          requestData: {
+            email_notifications: notificationForm.emailNotifications,
+            notification_types: notificationForm.notificationTypes
+          }
+        })
+        const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || '保存失败'
         ElMessage.error('保存失败：' + errorMessage)
       } finally {
         notificationSaving.value = false
-      }
-    }
-    
-    // 保存隐私设置
-    const savePrivacySettings = async () => {
-      try {
-        privacySaving.value = true
-        
-        // 调用API保存隐私设置
-        await api.put('/users/privacy-settings', {
-          data_sharing: privacyForm.dataSharing,
-          analytics: privacyForm.analytics
-        })
-        
-        ElMessage.success('隐私设置保存成功')
-      } catch (error) {
-        const errorMessage = error.response?.data?.detail || error.message || '保存失败'
-        ElMessage.error('保存失败：' + errorMessage)
-      } finally {
-        privacySaving.value = false
       }
     }
     
@@ -842,33 +772,75 @@ export default {
       try {
         preferenceSaving.value = true
         
-        // 保存主题设置
-        if (themeStore && themeStore.setTheme) {
+        // 检查主题是否发生变化
+        const themeChanged = themeStore && themeStore.currentTheme !== preferenceForm.theme
+        
+        // 保存主题设置（如果主题发生变化，会立即应用到界面，并保存到后端）
+        let themeSaved = false
+        let themeLocalApplied = false
+        if (themeChanged && themeStore && themeStore.setTheme) {
           const themeResult = await themeStore.setTheme(preferenceForm.theme)
-          if (!themeResult.success) {
-            ElMessage.warning(themeResult.message || '主题保存失败，仅本地生效')
-            // 如果主题已在本地应用，继续保存其他设置
-            if (!themeResult.localApplied) {
-              return
-            }
-          } else {
-            ElMessage.success('主题已保存到云端')
+          themeSaved = themeResult.success
+          themeLocalApplied = themeResult.localApplied || false
+          // 如果主题保存失败且未本地应用，则终止保存
+          if (!themeResult.success && !themeResult.localApplied) {
+            ElMessage.error(themeResult.message || '主题保存失败')
+            return
           }
         }
         
-        // 保存其他偏好设置（使用 preferences 端点）
-        const response = await api.put('/users/preferences', {
-          theme: preferenceForm.theme,
-          language: preferenceForm.language,
-          timezone: preferenceForm.timezone
-        })
-        
-        if (response.data && response.data.success) {
-          ElMessage.success(response.data.message || '偏好设置保存成功')
-        } else {
-          ElMessage.error(response.data?.message || '偏好设置保存失败')
+        // 保存时区设置（主题已通过 themeStore.setTheme 保存，避免重复调用）
+        // 只保存时区，不包含主题，避免重复保存
+        try {
+          const response = await api.put('/users/preferences', {
+            timezone: preferenceForm.timezone
+            // 注意：不包含 theme，因为主题已通过 themeStore.setTheme 保存
+          })
+          
+          if (response.data && response.data.success !== false) {
+            if (themeChanged) {
+              if (themeSaved) {
+                ElMessage.success('偏好设置保存成功')
+              } else if (themeLocalApplied) {
+                ElMessage.success('偏好设置保存成功（主题已本地应用）')
+              } else {
+                ElMessage.success('时区设置保存成功')
+              }
+            } else {
+              ElMessage.success('时区设置保存成功')
+            }
+          } else {
+            if (themeChanged && (themeSaved || themeLocalApplied)) {
+              ElMessage.warning(response.data?.message || '时区保存失败，但主题已保存')
+            } else {
+              ElMessage.error(response.data?.message || '时区保存失败')
+            }
+          }
+        } catch (timezoneError) {
+          // 时区保存失败不影响主题，只记录警告
+          console.warn('保存时区失败:', {
+            error: timezoneError.message,
+            response: timezoneError.response?.data,
+            status: timezoneError.response?.status
+          })
+          if (themeChanged && (themeSaved || themeLocalApplied)) {
+            ElMessage.warning('时区保存失败，但主题已保存')
+          } else {
+            // 如果主题没有变化，时区保存失败需要提示错误
+            throw timezoneError
+          }
         }
       } catch (error) {
+        // 记录详细错误日志
+        console.error('保存偏好设置失败:', {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          requestData: {
+            theme: preferenceForm.theme,
+            timezone: preferenceForm.timezone
+          }
+        })
         const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '保存失败'
         ElMessage.error(errorMsg)
       } finally {
@@ -967,7 +939,6 @@ export default {
       profileSaving,
       passwordChanging,
       notificationSaving,
-      privacySaving,
       preferenceSaving,
       emailChanging,
       codeSending,
@@ -975,7 +946,6 @@ export default {
       profileForm,
       securityForm,
       notificationForm,
-      privacyForm,
       preferenceForm,
       emailChangeForm,
       profileRules,
@@ -985,7 +955,6 @@ export default {
       saveProfile,
       changePassword,
       saveNotificationSettings,
-      savePrivacySettings,
       savePreferenceSettings,
       showEmailChangeDialog,
       sendVerificationCode,
@@ -1116,21 +1085,18 @@ export default {
 
 .security-options,
 .notification-settings,
-.privacy-settings,
 .preference-settings {
   margin-top: 20px;
 }
 
 .security-options h4,
 .notification-settings h4,
-.privacy-settings h4,
 .preference-settings h4 {
   margin: 0 0 15px 0;
   color: #333;
 }
 
-.security-tip,
-.privacy-tip {
+.security-tip {
   margin: 10px 0 0 0;
   color: #666;
   font-size: 14px;
@@ -1412,7 +1378,6 @@ export default {
   /* 手机端标题 */
   .security-options h4,
   .notification-settings h4,
-  .privacy-settings h4,
   .preference-settings h4 {
     font-size: 1rem;
     margin-bottom: 12px;
@@ -1421,8 +1386,7 @@ export default {
   }
   
   /* 手机端提示文字 */
-  .security-tip,
-  .privacy-tip {
+  .security-tip {
     font-size: 0.8125rem;
     color: #666;
     line-height: 1.6;

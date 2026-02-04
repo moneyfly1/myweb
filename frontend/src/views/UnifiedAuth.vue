@@ -753,8 +753,36 @@ const handleLogin = async () => {
                       error.message || 
                       '登录失败，请重试'
     
-    // 处理登录限制和锁定相关的错误
-    if (error.response?.status === 429) {
+    // 处理不同状态码的错误
+    if (error.response?.status === 403) {
+      // 403 禁止访问 - 可能是账户被禁用或 CSRF 验证失败
+      if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
+        ElMessage({
+          message: '账户已被禁用，无法使用服务。如有疑问，请联系管理员。',
+          type: 'error',
+          duration: 5000,
+          showClose: true
+        })
+      } else if (errorMessage.includes('CSRF') || errorMessage.includes('csrf')) {
+        ElMessage({
+          message: '安全验证失败，请刷新页面后重试',
+          type: 'error',
+          duration: 5000,
+          showClose: true
+        })
+        // 刷新页面以获取新的 CSRF token
+        setTimeout(() => {
+          window.location.reload()
+        }, 2000)
+      } else {
+        ElMessage({
+          message: errorMessage || '访问被拒绝，请刷新页面后重试',
+          type: 'error',
+          duration: 5000,
+          showClose: true
+        })
+      }
+    } else if (error.response?.status === 429) {
       // 请求过于频繁或账户被锁定
       if (errorMessage.includes('锁定') || errorMessage.includes('锁定15分钟')) {
         errorMessage = '登录失败次数过多，账户已被临时锁定15分钟，请稍后再试'
@@ -769,7 +797,7 @@ const handleLogin = async () => {
         ElMessage.error(errorMessage)
       }
     } else if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
-      // 账户被禁用
+      // 账户被禁用（即使不是 403 状态码）
       ElMessage({
         message: '账户已被禁用，无法使用服务。如有疑问，请联系管理员。',
         type: 'error',
