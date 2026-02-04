@@ -58,12 +58,16 @@ func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 	}
 
 	if module := strings.TrimSpace(c.Query("module")); module != "" {
-		query = query.Where("resource_type LIKE ?", "%"+module+"%")
+		sanitizedModule := utils.SanitizeSearchKeyword(module)
+		escapedModule := utils.EscapeLikePattern(sanitizedModule)
+		query = query.Where("resource_type LIKE ?", "%"+escapedModule+"%")
 	}
 
 	if username := strings.TrimSpace(c.Query("username")); username != "" {
+		sanitizedUsername := utils.SanitizeSearchKeyword(username)
+		escapedUsername := utils.EscapeLikePattern(sanitizedUsername)
 		query = query.Joins("JOIN users ON audit_logs.user_id = users.id").
-			Where("users.username LIKE ?", "%"+username+"%")
+			Where("users.username LIKE ?", "%"+escapedUsername+"%")
 	}
 
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {

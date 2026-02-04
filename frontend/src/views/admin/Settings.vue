@@ -69,6 +69,13 @@
                 用于帮助中心页面显示，留空则不显示。
               </div>
             </el-form-item>
+            <el-divider content-position="left">用户界面设置</el-divider>
+            <el-form-item label="统一认证页面">
+              <el-switch v-model="generalSettings.unified_auth_enabled" />
+              <div :class="['form-tip', { 'mobile': isMobile }]">
+                开启后，用户将使用集成的登录/注册/忘记密码页面；关闭后，使用传统的分离页面。
+              </div>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
             </el-form-item>
@@ -658,7 +665,8 @@ export default {
       site_logo: '',
       default_theme: 'default',
       support_qq: '',
-      support_email: ''
+      support_email: '',
+      unified_auth_enabled: false
     })
 
     const generalRules = {
@@ -786,7 +794,15 @@ export default {
         const settings = response.data?.data || response.data || {}
         // 加载各项设置
         if (settings.general) {
-          Object.assign(generalSettings, settings.general)
+          const generalData = { ...settings.general }
+          // 处理 unified_auth_enabled 字段（可能是字符串 "true"/"false" 或布尔值）
+          if (generalData.unified_auth_enabled !== undefined) {
+            generalData.unified_auth_enabled = generalData.unified_auth_enabled === true || generalData.unified_auth_enabled === 'true' || generalData.unified_auth_enabled === true
+          } else {
+            // 如果后端没有返回该字段，使用默认值 false
+            generalData.unified_auth_enabled = false
+          }
+          Object.assign(generalSettings, generalData)
           }
         if (settings.registration) {
           Object.assign(registrationSettings, settings.registration)
@@ -856,11 +872,16 @@ export default {
     const saveGeneralSettings = async () => {
       try {
         await generalFormRef.value.validate()
-        const response = await api.put('/admin/settings/general', generalSettings)
+        // 确保 unified_auth_enabled 作为布尔值发送
+        const settingsToSave = {
+          ...generalSettings,
+          unified_auth_enabled: generalSettings.unified_auth_enabled === true || generalSettings.unified_auth_enabled === 'true'
+        }
+        const response = await api.put('/admin/settings/general', settingsToSave)
         if (response.data && response.data.success !== false) {
           ElMessage.success('基本设置保存成功')
           // 保存成功后重新加载设置，确保显示最新值
-          loadSettings()
+          await loadSettings()
         } else {
           ElMessage.error(response.data?.message || '保存失败')
         }
