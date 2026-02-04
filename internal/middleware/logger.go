@@ -41,13 +41,22 @@ func ErrorRecoveryMiddleware() gin.HandlerFunc {
 
 		stack := string(debug.Stack())
 
+		// 清理错误信息中的敏感路径
+		safeErrMsg := utils.SanitizeErrorPath(errMsg)
+
 		utils.CreateSystemErrorLog(c, http.StatusInternalServerError,
-			fmt.Sprintf("系统异常: %s", errMsg), err)
+			fmt.Sprintf("系统异常: %s", safeErrMsg), err)
 
 		if utils.AppLogger != nil {
-			utils.AppLogger.Error("[PANIC] %s\n堆栈信息:\n%s", errMsg, stack)
+			// 生产环境不记录完整堆栈信息
+			if utils.IsProduction() {
+				utils.AppLogger.Error("[PANIC] %s", safeErrMsg)
+			} else {
+				utils.AppLogger.Error("[PANIC] %s\n堆栈信息:\n%s", safeErrMsg, stack)
+			}
 		}
 
+		// ErrorResponse 会自动处理生产环境的错误信息隐藏
 		utils.ErrorResponse(c, http.StatusInternalServerError, "服务器内部错误，请稍后重试", err)
 		c.Abort()
 	})

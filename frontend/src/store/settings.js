@@ -60,10 +60,32 @@ export const useSettingsStore = defineStore('settings', {
         this.siteKeywords = settings.site_keywords || '面板,管理,系统'
         this.siteLogo = settings.site_logo || ''
         this.siteFavicon = settings.site_favicon || ''
-        this.allowRegistration = settings.allowRegistration !== false
-        this.requireEmailVerification = settings.require_email_verification !== false
+        
+        // 支持多种字段名格式：registration_enabled 或 allowRegistration
+        const registrationValue = settings.registration_enabled !== undefined 
+                                ? settings.registration_enabled
+                                : (settings.allowRegistration !== undefined 
+                                   ? settings.allowRegistration 
+                                   : true)
+        this.allowRegistration = registrationValue === true || registrationValue === "true"
+        
+        // 支持多种字段名格式：email_verification_required 或 require_email_verification
+        const emailVerificationValue = settings.email_verification_required !== undefined 
+                                     ? settings.email_verification_required
+                                     : (settings.require_email_verification !== undefined 
+                                        ? settings.require_email_verification 
+                                        : true)
+        this.requireEmailVerification = emailVerificationValue === true || emailVerificationValue === "true"
+        
         this.allowQqEmailOnly = settings.allow_qq_email_only !== false
-        this.minPasswordLength = settings.min_password_length || 8
+        
+        // 支持多种字段名格式：min_password_length 或 minPasswordLength
+        const minPasswordValue = settings.min_password_length !== undefined 
+                               ? settings.min_password_length
+                               : (settings.minPasswordLength !== undefined 
+                                  ? settings.minPasswordLength 
+                                  : 8)
+        this.minPasswordLength = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
         this.defaultTheme = settings.default_theme || 'light'
         this.allowUserTheme = settings.allow_user_theme !== false
         this.availableThemes = settings.available_themes || ['light', 'dark', 'blue', 'green', 'purple', 'orange', 'red', 'cyan', 'luck', 'aurora', 'auto']

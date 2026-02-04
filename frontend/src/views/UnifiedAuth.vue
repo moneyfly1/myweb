@@ -968,9 +968,24 @@ const checkRegistrationSettings = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
     const settings = response.data?.data || response.data || {}
-    registrationEnabled.value = settings.allowRegistration !== false
-    inviteCodeRequired.value = settings.inviteCodeRequired === true
     
+    // 支持多种字段名格式：registration_enabled 或 allowRegistration
+    const registrationValue = settings.registration_enabled !== undefined 
+                            ? settings.registration_enabled
+                            : (settings.allowRegistration !== undefined 
+                               ? settings.allowRegistration 
+                               : true)
+    registrationEnabled.value = registrationValue === true || registrationValue === "true"
+    
+    // 支持多种字段名格式：invite_code_required 或 inviteCodeRequired
+    const inviteCodeValue = settings.invite_code_required !== undefined 
+                           ? settings.invite_code_required
+                           : (settings.inviteCodeRequired !== undefined 
+                              ? settings.inviteCodeRequired 
+                              : false)
+    inviteCodeRequired.value = inviteCodeValue === true || inviteCodeValue === "true"
+    
+    // 支持多种字段名格式：email_verification_required 或 emailVerificationRequired
     const emailVerificationValue = settings.email_verification_required !== undefined 
                                    ? settings.email_verification_required
                                    : (settings.emailVerificationRequired !== undefined 
@@ -980,7 +995,13 @@ const checkRegistrationSettings = async () => {
                                          : true))
     emailVerificationRequired.value = emailVerificationValue === true || emailVerificationValue === "true"
     
-    minPasswordLength.value = settings.minPasswordLength || 8
+    // 支持多种字段名格式：min_password_length 或 minPasswordLength
+    const minPasswordValue = settings.min_password_length !== undefined 
+                            ? settings.min_password_length
+                            : (settings.minPasswordLength !== undefined 
+                               ? settings.minPasswordLength 
+                               : 8)
+    minPasswordLength.value = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
     
     if (!registrationEnabled.value) {
       ElMessage.warning('注册功能已禁用，请联系管理员')
