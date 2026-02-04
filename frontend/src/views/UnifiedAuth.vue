@@ -208,11 +208,11 @@
                 </el-form-item>
 
                 <!-- 验证码模块 -->
-                <el-form-item prop="verificationCode" v-if="emailVerificationRequired" required>
+                <el-form-item prop="verificationCode" :required="emailVerificationRequired">
                   <div class="verification-code-group">
                     <el-input
                       v-model="registerForm.verificationCode"
-                      placeholder="6位验证码（必填）"
+                      :placeholder="emailVerificationRequired ? '6位验证码（必填）' : '6位验证码（选填）'"
                       size="large"
                       prefix-icon="Message"
                       maxlength="6"
@@ -1529,6 +1529,123 @@ onUnmounted(() => {
   .el-input__inner {
     height: 42px !important;
     line-height: 42px !important;
+  }
+}
+
+// 手机端验证码输入框优化
+@media (max-width: 768px) {
+  .verification-code-group {
+    gap: 8px;
+    flex-wrap: nowrap;
+    
+    .verification-code-input {
+      flex: 1;
+      min-width: 0; /* 允许缩小 */
+    }
+    
+    .send-code-button {
+      min-width: 90px;
+      max-width: 120px;
+      flex-shrink: 0; /* 防止按钮被压缩 */
+      white-space: nowrap;
+      font-size: 14px;
+      padding: 0 12px;
+    }
+  }
+  
+  /* 手机端验证码输入框文字颜色和输入修复 */
+  :deep(.verification-code-input) {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper) {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+    background-color: #ffffff !important;
+    min-height: 48px !important; /* 手机端增大高度，防止iOS自动缩放 */
+  }
+  
+  :deep(.verification-code-input .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important; /* 防止iOS自动缩放 */
+    opacity: 1 !important;
+    caret-color: #1677ff !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: transparent !important;
+    height: 46px !important;
+    line-height: 46px !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper.is-focus .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: transparent !important;
+  }
+  
+  :deep(.verification-code-input .el-input__wrapper:hover .el-input__inner) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+  }
+  
+  /* 确保输入框在所有状态下都可以正常输入 */
+  :deep(.verification-code-input input) {
+    color: #303133 !important;
+    -webkit-text-fill-color: #303133 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
+    caret-color: #1677ff !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+}
+
+// 小屏幕手机端进一步优化
+@media (max-width: 480px) {
+  .verification-code-group {
+    gap: 6px;
+    
+    .verification-code-input {
+      flex: 2; /* 增加输入框占比，让它更长 */
+      min-width: 0;
+    }
+    
+    .send-code-button {
+      min-width: 80px;
+      max-width: 100px;
+      font-size: 13px;
+      padding: 0 10px;
+    }
   }
 }
 </style>
