@@ -1,20 +1,28 @@
 package scheduler
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
+	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/gitee"
 	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Scheduler struct {
@@ -45,6 +53,7 @@ func (s *Scheduler) Start() {
 	go s.cleanupExpiredData()
 	go s.checkNodeHealth()
 	go s.autoUpdateNodes()
+	go s.autoBackup()
 }
 
 func (s *Scheduler) Stop() {
@@ -508,4 +517,209 @@ func (s *Scheduler) shouldRunNodeUpdate(intervalSeconds int) (string, bool) {
 	}
 
 	return lastUpdateTime.Format("2006-01-02 15:04:05"), false
+}
+
+func (s *Scheduler) autoBackup() {
+	// 初始检查
+	s.checkAndRunAutoBackup()
+
+	// 每分钟检查一次配置变化
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.checkAndRunAutoBackup()
+		}
+	}
+}
+
+func (s *Scheduler) checkAndRunAutoBackup() {
+	// 检查是否启用自动备份
+	var config models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "backup_auto_enabled", "backup").First(&config).Error; err != nil {
+		return // 未配置或未启用
+	}
+
+	if config.Value != "true" {
+		return // 未启用自动备份
+	}
+
+	// 获取备份间隔
+	interval := 24 // 默认24小时
+	if err := s.db.Where("key = ? AND category = ?", "backup_auto_interval", "backup").First(&config).Error; err == nil {
+		if hours, err := strconv.Atoi(config.Value); err == nil && hours > 0 {
+			interval = hours
+		}
+	}
+
+	// 检查是否需要执行备份
+	shouldBackup := s.shouldRunAutoBackup(interval)
+	if !shouldBackup {
+		return
+	}
+
+	// 执行备份
+	utils.LogInfo("开始执行自动备份任务")
+	if err := s.runAutoBackup(); err != nil {
+		utils.LogErrorMsg("自动备份失败: %v", err)
+	} else {
+		utils.LogInfo("自动备份任务执行成功")
+		// 更新最后备份时间
+		now := utils.GetBeijingTime()
+		lastBackupTime := now.Format("2006-01-02T15:04:05")
+		s.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "key"}, {Name: "category"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{"value": lastBackupTime}),
+		}).Create(&models.SystemConfig{
+			Key:      "backup_auto_last_time",
+			Category: "backup",
+			Value:    lastBackupTime,
+		})
+	}
+}
+
+func (s *Scheduler) shouldRunAutoBackup(intervalHours int) bool {
+	var config models.SystemConfig
+	err := s.db.Where("key = ? AND category = ?", "backup_auto_last_time", "backup").First(&config).Error
+
+	if err != nil {
+		return true // 从未备份过，需要备份
+	}
+
+	lastBackupTime, err := time.Parse("2006-01-02T15:04:05", config.Value)
+	if err != nil {
+		return true // 时间格式错误，需要备份
+	}
+
+	lastBackupTime = utils.ToBeijingTime(lastBackupTime)
+	now := utils.GetBeijingTime()
+
+	elapsed := now.Sub(lastBackupTime)
+	interval := time.Duration(intervalHours) * time.Hour
+
+	return elapsed >= interval
+}
+
+func (s *Scheduler) runAutoBackup() error {
+	cfg := config.AppConfig
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("获取工作目录失败: %w", err)
+	}
+
+	backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
+	backupDir = filepath.Clean(backupDir)
+
+	if !strings.HasPrefix(backupDir, wd) {
+		return fmt.Errorf("无效的备份路径")
+	}
+
+	if strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
+		return fmt.Errorf("无效的备份路径")
+	}
+
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return fmt.Errorf("创建备份目录失败: %w", err)
+	}
+
+	// 使用固定文件名（覆盖模式）
+	backupFileName := "backup_auto.zip"
+	backupPath := filepath.Join(backupDir, backupFileName)
+	backupPath = filepath.Clean(backupPath)
+
+	// 删除旧文件
+	if _, err := os.Stat(backupPath); err == nil {
+		if err := os.Remove(backupPath); err != nil {
+			return fmt.Errorf("删除旧备份文件失败: %w", err)
+		}
+	}
+
+	zipFile, err := os.Create(backupPath)
+	if err != nil {
+		return fmt.Errorf("创建备份文件失败: %w", err)
+	}
+	defer zipFile.Close()
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	// 备份数据库文件
+	dbPath := filepath.Join(wd, "cboard.db")
+	dbPath = filepath.Clean(dbPath)
+	if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
+		if _, err := os.Stat(dbPath); err == nil {
+			dbFile, err := os.Open(dbPath)
+			if err == nil {
+				defer dbFile.Close()
+
+				writer, err := zipWriter.Create("cboard.db")
+				if err == nil {
+					io.Copy(writer, dbFile)
+				}
+			}
+		}
+	}
+
+	// 备份配置文件
+	configFiles := []string{".env", "config.yaml"}
+	for _, configFile := range configFiles {
+		if strings.Contains(configFile, "..") || strings.Contains(configFile, "/") ||
+			strings.Contains(configFile, "\\") || strings.Contains(configFile, "~") {
+			continue
+		}
+
+		configPath := filepath.Join(wd, configFile)
+		configPath = filepath.Clean(configPath)
+		if strings.HasPrefix(configPath, wd) && !strings.Contains(configPath, "..") {
+			if _, err := os.Stat(configPath); err == nil {
+				file, err := os.Open(configPath)
+				if err == nil {
+					defer file.Close()
+
+					writer, err := zipWriter.Create(filepath.Base(configFile))
+					if err == nil {
+						io.Copy(writer, file)
+					}
+				}
+			}
+		}
+	}
+
+	var backupConfig models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "backup_gitee_enabled", "backup").First(&backupConfig).Error; err == nil {
+		if backupConfig.Value == "true" {
+			var tokenConfig models.SystemConfig
+			if err := s.db.Where("key = ? AND category = ?", "backup_gitee_token", "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
+				var ownerConfig models.SystemConfig
+				var repoConfig models.SystemConfig
+				owner := "moneyfly"
+				repo := "backup"
+				if err := s.db.Where("key = ? AND category = ?", "backup_gitee_owner", "backup").First(&ownerConfig).Error; err == nil {
+					owner = ownerConfig.Value
+				}
+				if err := s.db.Where("key = ? AND category = ?", "backup_gitee_repo", "backup").First(&repoConfig).Error; err == nil {
+					repo = repoConfig.Value
+				}
+
+				client := gitee.NewGiteeClient(tokenConfig.Value, owner, repo)
+				if err := client.UploadBackup(backupPath); err != nil {
+					utils.LogErrorMsg("上传备份到 Gitee 失败: %v", err)
+				} else {
+					utils.LogInfo("备份文件已成功上传到 Gitee")
+					if err := os.Remove(backupPath); err != nil {
+						utils.LogErrorMsg("删除本地备份文件失败: %v", err)
+					} else {
+						utils.LogInfo("本地备份文件已删除")
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }

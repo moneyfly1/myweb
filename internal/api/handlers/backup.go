@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"cboard-go/internal/core/config"
+	"cboard-go/internal/core/database"
+	"cboard-go/internal/models"
+	"cboard-go/internal/services/gitee"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -43,7 +46,13 @@ func CreateBackup(c *gin.Context) {
 		return
 	}
 
-	backupFileName := fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405"))
+	isAutoBackup := c.Query("auto") == "true" || c.GetHeader("X-Auto-Backup") == "true"
+	var backupFileName string
+	if isAutoBackup {
+		backupFileName = "backup_auto.zip"
+	} else {
+		backupFileName = fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405"))
+	}
 
 	if strings.Contains(backupFileName, "..") || strings.Contains(backupFileName, "/") ||
 		strings.Contains(backupFileName, "\\") || strings.Contains(backupFileName, "~") {
@@ -56,6 +65,15 @@ func CreateBackup(c *gin.Context) {
 	if !strings.HasPrefix(backupPath, backupDir) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
 		return
+	}
+
+	if isAutoBackup {
+		if _, err := os.Stat(backupPath); err == nil {
+			if err := os.Remove(backupPath); err != nil {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "删除旧备份文件失败", err)
+				return
+			}
+		}
 	}
 
 	zipFile, err := os.Create(backupPath)
@@ -88,7 +106,7 @@ func CreateBackup(c *gin.Context) {
 	for _, configFile := range configFiles {
 		if strings.Contains(configFile, "..") || strings.Contains(configFile, "/") ||
 			strings.Contains(configFile, "\\") || strings.Contains(configFile, "~") {
-			continue // 跳过无效的文件名
+			continue
 		}
 
 		configPath := filepath.Join(wd, configFile)
@@ -108,10 +126,57 @@ func CreateBackup(c *gin.Context) {
 		}
 	}
 
+	uploadResult := gin.H{
+		"uploaded": false,
+	}
+
+	db := database.GetDB()
+	var backupConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "backup_gitee_enabled", "backup").First(&backupConfig).Error; err == nil {
+		if backupConfig.Value == "true" {
+			var tokenConfig models.SystemConfig
+			if err := db.Where("key = ? AND category = ?", "backup_gitee_token", "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
+				var ownerConfig models.SystemConfig
+				var repoConfig models.SystemConfig
+				owner := "moneyfly"
+				repo := "backup"
+				if err := db.Where("key = ? AND category = ?", "backup_gitee_owner", "backup").First(&ownerConfig).Error; err == nil {
+					owner = ownerConfig.Value
+				}
+				if err := db.Where("key = ? AND category = ?", "backup_gitee_repo", "backup").First(&repoConfig).Error; err == nil {
+					repo = repoConfig.Value
+				}
+
+				client := gitee.NewGiteeClient(tokenConfig.Value, owner, repo)
+				if err := client.UploadBackup(backupPath); err != nil {
+					utils.LogError("上传备份到 Gitee 失败", err, nil)
+					uploadResult["error"] = err.Error()
+				} else {
+					uploadResult["uploaded"] = true
+					uploadResult["message"] = "已成功上传到 Gitee"
+					if err := os.Remove(backupPath); err != nil {
+						utils.LogError("删除本地备份文件失败", err, nil)
+						uploadResult["local_file_deleted"] = false
+						uploadResult["local_file_deletion_error"] = err.Error()
+					} else {
+						uploadResult["local_file_deleted"] = true
+						uploadResult["message"] = "已成功上传到 Gitee，本地文件已删除"
+					}
+				}
+			}
+		}
+	}
+
+	var fileSize int64
+	if _, err := os.Stat(backupPath); err == nil {
+		fileSize = getFileSize(backupPath)
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "备份创建成功", gin.H{
 		"filename": backupFileName,
 		"path":     backupPath,
-		"size":     getFileSize(backupPath),
+		"size":     fileSize,
+		"gitee":    uploadResult,
 	})
 }
 
@@ -144,13 +209,13 @@ func ListBackups(c *gin.Context) {
 		if !file.IsDir() && filepath.Ext(fileName) == ".zip" {
 			if strings.Contains(fileName, "..") || strings.Contains(fileName, "/") ||
 				strings.Contains(fileName, "\\") || strings.Contains(fileName, "~") {
-				continue // 跳过无效的文件名
+				continue
 			}
 
 			info, err := file.Info()
 			if err == nil {
 				backups = append(backups, map[string]interface{}{
-					"filename":   fileName, // 只返回文件名，不返回完整路径
+					"filename":   fileName,
 					"size":       info.Size(),
 					"created_at": info.ModTime().Format("2006-01-02 15:04:05"),
 				})
@@ -167,4 +232,61 @@ func getFileSize(filePath string) int64 {
 		return 0
 	}
 	return info.Size()
+}
+
+func TestGiteeConnection(c *gin.Context) {
+	var req struct {
+		Token string `json:"token"`
+		Owner string `json:"owner"`
+		Repo  string `json:"repo"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		db := database.GetDB()
+		var tokenConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "backup_gitee_token", "backup").First(&tokenConfig).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未配置 Gitee Token，请在请求中提供token或先保存设置", nil)
+			return
+		}
+		req.Token = tokenConfig.Value
+
+		var ownerConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "backup_gitee_owner", "backup").First(&ownerConfig).Error; err == nil {
+			req.Owner = ownerConfig.Value
+		} else {
+			req.Owner = "moneyfly"
+		}
+
+		var repoConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "backup_gitee_repo", "backup").First(&repoConfig).Error; err == nil {
+			req.Repo = repoConfig.Value
+		} else {
+			req.Repo = "backup"
+		}
+	}
+
+	if req.Token == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Token不能为空", nil)
+		return
+	}
+
+	if req.Owner == "" {
+		req.Owner = "moneyfly"
+	}
+	if req.Repo == "" {
+		req.Repo = "backup"
+	}
+
+	client := gitee.NewGiteeClient(req.Token, req.Owner, req.Repo)
+	if err := client.TestConnection(); err != nil {
+		utils.LogError("测试 Gitee 连接失败", err, nil)
+		utils.ErrorResponse(c, http.StatusBadRequest, "Gitee 连接测试失败: "+err.Error(), err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Gitee 连接测试成功", gin.H{
+		"owner":   req.Owner,
+		"repo":    req.Repo,
+		"message": "连接正常，可以正常上传文件",
+	})
 }
