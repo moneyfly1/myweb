@@ -84,3 +84,55 @@ func EscapeLikePattern(pattern string) string {
 	pattern = strings.ReplaceAll(pattern, "_", "\\_")
 	return pattern
 }
+
+// SanitizeErrorPath 清理错误信息中的文件路径，防止泄露系统结构
+func SanitizeErrorPath(errMsg string) string {
+	if errMsg == "" {
+		return errMsg
+	}
+	
+	// 移除绝对路径，只保留文件名
+	// 例如: /Users/apple/Downloads/goweb/file.go -> file.go
+	parts := strings.Split(errMsg, "/")
+	if len(parts) > 0 {
+		lastPart := parts[len(parts)-1]
+		// 如果包含文件名，尝试提取
+		if strings.Contains(lastPart, ".") {
+			// 保留最后两个部分（目录名和文件名）
+			if len(parts) >= 2 {
+				return strings.Join(parts[len(parts)-2:], "/")
+			}
+			return lastPart
+		}
+	}
+	
+	// 移除常见的系统路径前缀
+	pathPrefixes := []string{
+		"/Users/",
+		"/home/",
+		"/var/www/",
+		"/usr/local/",
+		"/opt/",
+		"C:\\",
+		"D:\\",
+	}
+	
+	result := errMsg
+	for _, prefix := range pathPrefixes {
+		if strings.Contains(result, prefix) {
+			// 移除路径前缀，只保留相对路径
+			idx := strings.Index(result, prefix)
+			if idx >= 0 {
+				// 找到最后一个斜杠后的部分
+				remaining := result[idx+len(prefix):]
+				if slashIdx := strings.LastIndex(remaining, "/"); slashIdx >= 0 {
+					result = "..." + remaining[slashIdx:]
+				} else {
+					result = "..." + remaining
+				}
+			}
+		}
+	}
+	
+	return result
+}
