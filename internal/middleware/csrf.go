@@ -187,9 +187,21 @@ func isValidOrigin(origin, host string) bool {
 		strings.HasPrefix(origin, "http://172.") || strings.HasPrefix(origin, "https://172.") {
 		return true
 	}
-	return origin == "https://"+host || origin == "http://"+host ||
-		origin == "https://"+host+"/" || origin == "http://"+host+"/" ||
-		strings.HasPrefix(origin, "https://"+host+":") || strings.HasPrefix(origin, "http://"+host+":")
+
+	// 兼容用户误输入尾部点域名（如 example.com.）
+	hosts := []string{host}
+	trimmedHost := strings.TrimRight(host, ".")
+	if trimmedHost != "" && trimmedHost != host {
+		hosts = append(hosts, trimmedHost)
+	}
+	for _, h := range hosts {
+		if origin == "https://"+h || origin == "http://"+h ||
+			origin == "https://"+h+"/" || origin == "http://"+h+"/" ||
+			strings.HasPrefix(origin, "https://"+h+":") || strings.HasPrefix(origin, "http://"+h+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func isValidReferer(referer, host string) bool {
@@ -205,10 +217,22 @@ func isValidReferer(referer, host string) bool {
 		strings.HasPrefix(referer, "http://172.") || strings.HasPrefix(referer, "https://172.") {
 		return true
 	}
-	return referer == "https://"+host || referer == "http://"+host ||
-		referer == "https://"+host+"/" || referer == "http://"+host+"/" ||
-		strings.HasPrefix(referer, "https://"+host+":") || strings.HasPrefix(referer, "http://"+host+":") ||
-		strings.HasPrefix(referer, "https://"+host+"/") || strings.HasPrefix(referer, "http://"+host+"/")
+
+	// 兼容用户误输入尾部点域名（如 example.com.）
+	hosts := []string{host}
+	trimmedHost := strings.TrimRight(host, ".")
+	if trimmedHost != "" && trimmedHost != host {
+		hosts = append(hosts, trimmedHost)
+	}
+	for _, h := range hosts {
+		if referer == "https://"+h || referer == "http://"+h ||
+			referer == "https://"+h+"/" || referer == "http://"+h+"/" ||
+			strings.HasPrefix(referer, "https://"+h+":") || strings.HasPrefix(referer, "http://"+h+":") ||
+			strings.HasPrefix(referer, "https://"+h+"/") || strings.HasPrefix(referer, "http://"+h+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func CSRFExemptMiddleware() gin.HandlerFunc {

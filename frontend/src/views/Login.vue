@@ -164,17 +164,73 @@ export default {
         }
       } catch (error) {
         // 提取详细的错误信息
-        let errorMessage = '登录失败，请重试'
-        if (error.response?.data) {
-          errorMessage = error.response.data.detail || 
-                        error.response.data.message || 
-                        error.message || 
-                        errorMessage
-        } else if (error.message) {
-          errorMessage = error.message
-        }
+        let errorMessage = error.response?.data?.detail || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          '登录失败，请重试'
         
-        ElMessage.error(errorMessage)
+        // 处理不同状态码的错误
+        if (error.response?.status === 403) {
+          // 403 禁止访问 - 可能是账户被禁用或 CSRF 验证失败
+          if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
+            ElMessage({
+              message: '账户已被禁用，无法使用服务。如有疑问，请联系管理员。',
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            })
+          } else if (errorMessage.includes('CSRF') || errorMessage.includes('csrf')) {
+            ElMessage({
+              message: '安全验证失败，请刷新页面后重试',
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            })
+            // 刷新页面以获取新的 CSRF token
+            setTimeout(() => {
+              window.location.reload()
+            }, 2000)
+          } else {
+            ElMessage({
+              message: errorMessage || '访问被拒绝，请刷新页面后重试',
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            })
+          }
+        } else if (error.response?.status === 429) {
+          // 请求过于频繁或账户被锁定
+          if (errorMessage.includes('锁定') || errorMessage.includes('锁定15分钟')) {
+            errorMessage = '登录失败次数过多，账户已被临时锁定15分钟，请稍后再试'
+            ElMessage({
+              message: errorMessage,
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            })
+          } else {
+            errorMessage = '登录失败次数过多，请稍后再试'
+            ElMessage.error(errorMessage)
+          }
+        } else if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
+          // 账户被禁用（即使不是 403 状态码）
+          ElMessage({
+            message: '账户已被禁用，无法使用服务。如有疑问，请联系管理员。',
+            type: 'error',
+            duration: 5000,
+            showClose: true
+          })
+        } else if (errorMessage.includes('系统维护')) {
+          // 系统维护中
+          ElMessage({
+            message: '系统维护中，请稍后再试',
+            type: 'warning',
+            duration: 5000,
+            showClose: true
+          })
+        } else {
+          ElMessage.error(errorMessage)
+        }
         console.error('登录异常:', error)
       } finally {
         loading.value = false
