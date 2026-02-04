@@ -643,7 +643,7 @@
           
           <div class="form-tip">
             <div v-if="selectedUserIds.length > 0">
-              已选择 {{ selectedUserIds.length }} 个用户，将为每个用户分配 {{ assignMode === 'single' ? '1' : selectedNodes.length }} 个节点
+            已选择 {{ selectedUserIds.length }} 个用户，将为每个用户分配 {{ assignMode === 'single' ? '1' : selectedNodes.length }} 个节点
             </div>
             <div v-else>
               提示：在上方搜索框中输入用户名或邮箱，点击"搜索"按钮查找用户，然后从下拉列表中选择

@@ -193,6 +193,7 @@ func GetAdminSettings(c *gin.Context) {
 		"general": {
 			"site_name": "CBoard Modern", "site_description": "现代化的代理服务管理平台", "site_logo": "", "default_theme": "default",
 			"support_qq": "", "support_email": "",
+			"unified_auth_enabled": "false",
 		},
 		"registration": {
 			"registration_enabled": "true", "email_verification_required": "true", "min_password_length": 8,
@@ -292,6 +293,15 @@ func GetAdminSettings(c *gin.Context) {
 				} else {
 					settings[cat][key] = val
 				}
+			} else {
+				// 如果数据库中没有值，使用默认值，但需要处理布尔值
+				if defaultVal, ok := catDefaults[key]; ok {
+					if defaultValStr, ok := defaultVal.(string); ok && (defaultValStr == "true" || defaultValStr == "false") {
+						settings[cat][key] = (defaultValStr == "true")
+					} else {
+						settings[cat][key] = defaultVal
+					}
+				}
 			}
 		}
 	}
@@ -342,6 +352,51 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
+	// 验证文件内容（读取文件头）
+	fileHeader, err := file.Open()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "无法读取文件", err)
+		return
+	}
+	defer fileHeader.Close()
+
+	// 读取文件前512字节用于验证文件类型
+	buffer := make([]byte, 512)
+	n, err := fileHeader.Read(buffer)
+	if err != nil && err != io.EOF {
+		utils.ErrorResponse(c, http.StatusBadRequest, "文件读取失败", err)
+		return
+	}
+
+	// 验证文件内容类型
+	contentType := http.DetectContentType(buffer[:n])
+	allowedMimeTypes := map[string]bool{
+		"image/jpeg":                true,
+		"image/png":                 true,
+		"image/gif":                 true,
+		"application/pdf":            true,
+		"text/plain":                true,
+		"application/msword":         true,
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+		"application/vnd.ms-excel":   true,
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
+		"application/zip":            true,
+		"application/x-rar-compressed": true,
+		"application/x-zip-compressed": true,
+	}
+
+	// 对于某些文件类型，MIME检测可能不准确，允许通过扩展名验证
+	if !allowedMimeTypes[contentType] && !strings.HasPrefix(contentType, "application/octet-stream") {
+		// 对于zip和rar，MIME类型可能不准确，检查扩展名
+		if ext != ".zip" && ext != ".rar" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "文件类型验证失败，文件内容与扩展名不匹配", nil)
+			return
+		}
+	}
+
+	// 重置文件指针以便保存
+	fileHeader.Seek(0, 0)
+
 	safeName := utils.SanitizeInput(file.Filename)
 	if safeName == "" {
 		safeName = "file" + ext
@@ -365,11 +420,19 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	if err := c.SaveUploadedFile(file, filepath.Join(uploadDir, safeName)); err != nil {
+	fullPath := filepath.Join(uploadDir, safeName)
+	if err := c.SaveUploadedFile(file, fullPath); err != nil {
 		utils.LogError("UploadFile", err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存失败", err)
 		return
 	}
+
+	// 设置文件权限，移除执行权限（仅允许读写）
+	if err := os.Chmod(fullPath, 0644); err != nil {
+		utils.LogError("UploadFile: Chmod failed", err, nil)
+		// 不返回错误，仅记录日志
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "上传成功", gin.H{"url": "/" + filepath.Join(uploadDir, safeName), "filename": safeName})
 }
 
@@ -430,6 +493,14 @@ func GetPublicSettings(c *gin.Context) {
 		settings["support_email"] = strings.TrimSpace(supportEmailConfig.Value)
 	} else {
 		settings["support_email"] = "" // 不设置默认值
+	}
+
+	// 读取 unified_auth_enabled 设置
+	var unifiedAuthConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "unified_auth_enabled", "general").First(&unifiedAuthConfig).Error; err == nil {
+		settings["unified_auth_enabled"] = unifiedAuthConfig.Value == "true"
+	} else {
+		settings["unified_auth_enabled"] = false // 默认值
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", settings)

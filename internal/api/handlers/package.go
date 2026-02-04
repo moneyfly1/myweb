@@ -232,7 +232,8 @@ func GetAdminPackages(c *gin.Context) {
 	if name := c.Query("name"); name != "" {
 		sanitizedName := utils.SanitizeSearchKeyword(name)
 		if sanitizedName != "" {
-			query = query.Where("name LIKE ?", "%"+sanitizedName+"%")
+			escapedName := utils.EscapeLikePattern(sanitizedName)
+			query = query.Where("name LIKE ?", "%"+escapedName+"%")
 		}
 	}
 

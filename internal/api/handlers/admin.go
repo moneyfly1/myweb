@@ -26,10 +26,12 @@ func GetAdminInvites(c *gin.Context) {
 	page, size, offset := getPagination(c)
 
 	if userQuery := utils.SanitizeSearchKeyword(c.Query("user_query")); userQuery != "" {
-		query = query.Where("user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+userQuery+"%", "%"+userQuery+"%")
+		escapedQuery := utils.EscapeLikePattern(userQuery)
+		query = query.Where("user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+escapedQuery+"%", "%"+escapedQuery+"%")
 	}
 	if code := utils.SanitizeSearchKeyword(c.Query("code")); code != "" {
-		query = query.Where("code LIKE ?", "%"+code+"%")
+		escapedCode := utils.EscapeLikePattern(code)
+		query = query.Where("code LIKE ?", "%"+escapedCode+"%")
 	}
 	if isActiveStr := c.Query("is_active"); isActiveStr != "" {
 		if isActiveStr == "true" || isActiveStr == "1" {
@@ -93,11 +95,13 @@ func GetAdminInviteRelations(c *gin.Context) {
 	query := db.Model(&models.InviteRelation{}).Preload("Inviter").Preload("Invitee").Preload("InviteCode")
 	page, size, offset := getPagination(c)
 
-	if inviterQuery := c.Query("inviter_query"); inviterQuery != "" {
-		query = query.Where("inviter_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+inviterQuery+"%", "%"+inviterQuery+"%")
+	if inviterQuery := utils.SanitizeSearchKeyword(c.Query("inviter_query")); inviterQuery != "" {
+		escapedQuery := utils.EscapeLikePattern(inviterQuery)
+		query = query.Where("inviter_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+escapedQuery+"%", "%"+escapedQuery+"%")
 	}
-	if inviteeQuery := c.Query("invitee_query"); inviteeQuery != "" {
-		query = query.Where("invitee_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+inviteeQuery+"%", "%"+inviteeQuery+"%")
+	if inviteeQuery := utils.SanitizeSearchKeyword(c.Query("invitee_query")); inviteeQuery != "" {
+		escapedQuery := utils.EscapeLikePattern(inviteeQuery)
+		query = query.Where("invitee_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?)", "%"+escapedQuery+"%", "%"+escapedQuery+"%")
 	}
 
 	var total int64
@@ -183,7 +187,8 @@ func GetAdminTickets(c *gin.Context) {
 	page, size, offset := getPagination(c)
 
 	if keyword := utils.SanitizeSearchKeyword(c.Query("keyword")); keyword != "" {
-		query = query.Where("ticket_no LIKE ? OR title LIKE ? OR content LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		escapedKeyword := utils.EscapeLikePattern(keyword)
+		query = query.Where("ticket_no LIKE ? OR title LIKE ? OR content LIKE ?", "%"+escapedKeyword+"%", "%"+escapedKeyword+"%", "%"+escapedKeyword+"%")
 	}
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
@@ -391,7 +396,8 @@ func GetAdminCoupons(c *gin.Context) {
 	page, size, offset := getPagination(c)
 
 	if keyword := utils.SanitizeSearchKeyword(c.Query("keyword")); keyword != "" {
-		query = query.Where("code LIKE ? OR name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		escapedKeyword := utils.EscapeLikePattern(keyword)
+		query = query.Where("code LIKE ? OR name LIKE ?", "%"+escapedKeyword+"%", "%"+escapedKeyword+"%")
 	}
 	if status := c.Query("status"); status != "" {
 		switch status {
@@ -661,7 +667,9 @@ func GetAdminEmailQueue(c *gin.Context) {
 		query = query.Where("status = ?", status)
 	}
 	if email := strings.TrimSpace(c.Query("email")); email != "" {
-		query = query.Where("to_email LIKE ?", "%"+email+"%")
+		sanitizedEmail := utils.SanitizeSearchKeyword(email)
+		escapedEmail := utils.EscapeLikePattern(sanitizedEmail)
+		query = query.Where("to_email LIKE ?", "%"+escapedEmail+"%")
 	}
 
 	var total int64

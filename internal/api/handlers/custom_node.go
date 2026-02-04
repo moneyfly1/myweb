@@ -33,8 +33,10 @@ func GetCustomNodes(c *gin.Context) {
 		}
 	}
 	if search := c.Query("search"); search != "" {
+		sanitizedSearch := utils.SanitizeSearchKeyword(search)
+		escapedSearch := utils.EscapeLikePattern(sanitizedSearch)
 		var userIDs []uint
-		db.Model(&models.User{}).Where("username LIKE ? OR email LIKE ?", "%"+search+"%", "%"+search+"%").Pluck("id", &userIDs)
+		db.Model(&models.User{}).Where("username LIKE ? OR email LIKE ?", "%"+escapedSearch+"%", "%"+escapedSearch+"%").Pluck("id", &userIDs)
 
 		var userNodeIDs []uint
 		if len(userIDs) > 0 {

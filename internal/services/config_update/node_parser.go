@@ -118,7 +118,7 @@ func parseVLESS(link string) (*ProxyNode, error) {
 		n.UDP = true
 
 		security := q.Get("security")
-		if security == "tls" || security == "xtls" || security == "reality" {
+	if security == "tls" || security == "xtls" || security == "reality" {
 			n.TLS = true
 			applyTLSOptions(n, q, p.Hostname())
 			if security == "reality" || q.Get("pbk") != "" {
@@ -126,11 +126,11 @@ func parseVLESS(link string) (*ProxyNode, error) {
 			}
 			if flow := q.Get("flow"); flow != "" {
 				n.Options["flow"] = flow
-			}
+		}
 			if enc := q.Get("encryption"); enc != "" {
 				n.Options["encryption"] = enc
-			}
 		}
+	}
 		applyTransportOptions(n, q)
 	})
 }
@@ -226,13 +226,13 @@ func parseSSR(link string) (*ProxyNode, error) {
 		paramsPart := strings.SplitN(parts[1], "#", 2)[0]
 		if params, err := url.ParseQuery(paramsPart); err == nil {
 			if d, err := DecodeBase64(params.Get("remarks")); err == nil && d != "" {
-				node.Name = d
+					node.Name = d
 			}
 			if d, err := DecodeBase64(params.Get("protoparam")); err == nil && d != "" {
-				node.Options["protocol-param"] = d
+					node.Options["protocol-param"] = d
 			}
 			if d, err := DecodeBase64(params.Get("obfsparam")); err == nil && d != "" {
-				node.Options["obfs-param"] = d
+					node.Options["obfs-param"] = d
 			}
 		}
 	}
@@ -297,8 +297,8 @@ func parseNaive(link string) (*ProxyNode, error) {
 		}
 	}
 	return parseGenericNode(normalized, "naive", func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.UUID = p.User.Username()
-		n.Password, _ = p.User.Password()
+			n.UUID = p.User.Username()
+			n.Password, _ = p.User.Password()
 		n.TLS = true
 		applyTLSOptions(n, q, n.Server)
 		if pad := q.Get("padding"); pad != "" {
@@ -520,17 +520,17 @@ func DecodeBase64(s string) (string, error) {
 	}
 
 	for _, enc := range encodings {
-		clean := s
+	clean := s
 		if enc == base64.StdEncoding || enc == base64.RawStdEncoding {
 			clean = strings.ReplaceAll(strings.ReplaceAll(clean, "-", "+"), "_", "/")
-		}
+	}
 		if enc == base64.StdEncoding || enc == base64.URLEncoding {
-			if m := len(clean) % 4; m != 0 {
-				clean += strings.Repeat("=", 4-m)
-			}
+		if m := len(clean) % 4; m != 0 {
+			clean += strings.Repeat("=", 4-m)
 		}
+	}
 		if b, err := enc.DecodeString(clean); err == nil {
-			return string(b), nil
+	return string(b), nil
 		}
 	}
 	return "", fmt.Errorf("Base64 解码失败")
@@ -541,7 +541,7 @@ func TryDecodeNodeList(content string) string {
 		return content
 	}
 	if decoded, err := DecodeBase64(content); err == nil && containsNodeLinks(decoded) {
-		return decoded
+			return decoded
 	}
 
 	lines := strings.Split(content, "\n")
@@ -554,7 +554,7 @@ func TryDecodeNodeList(content string) string {
 			changed = true
 		} else {
 			result = append(result, line)
-		}
+	}
 	}
 	if changed {
 		return strings.Join(result, "\n")
@@ -585,7 +585,7 @@ func getInt(m map[string]interface{}, key string) int {
 		return int(v)
 	case string:
 		i, _ := strconv.Atoi(v)
-		return i
+				return i
 	}
 	return 0
 }
@@ -596,7 +596,7 @@ func getFloat(m map[string]interface{}, key string) float64 {
 		return v
 	case string:
 		f, _ := strconv.ParseFloat(v, 64)
-		return f
+				return f
 	}
 	return 0
 }
@@ -604,7 +604,7 @@ func getFloat(m map[string]interface{}, key string) float64 {
 func getBool(m map[string]interface{}, key string, def bool) bool {
 	if v, ok := m[key].(bool); ok {
 		return v
-	}
+		}
 	if v, ok := m[key].(string); ok {
 		return isTrue(v)
 	}
@@ -624,7 +624,7 @@ func getFragment(parsed *url.URL, def string) string {
 func getPort(parsed *url.URL) int {
 	if p := parsed.Port(); p != "" {
 		i, _ := strconv.Atoi(p)
-		return i
+			return i
 	}
 	if parsed.Scheme == "ss" || parsed.Scheme == "ssr" {
 		return 8388

@@ -75,3 +75,12 @@ func ValidatePath(path string, baseDir string) bool {
 
 	return strings.HasPrefix(cleaned, baseDir)
 }
+
+// EscapeLikePattern 转义LIKE查询中的特殊字符，防止注入
+func EscapeLikePattern(pattern string) string {
+	// 转义LIKE模式中的特殊字符: %, _, \
+	pattern = strings.ReplaceAll(pattern, "\\", "\\\\")
+	pattern = strings.ReplaceAll(pattern, "%", "\\%")
+	pattern = strings.ReplaceAll(pattern, "_", "\\_")
+	return pattern
+}
