@@ -4,7 +4,6 @@
       <template #header>
         <div class="card-header">
           <span>用户列表</span>
-          <!-- 桌面端操作按钮 -->
           <div class="header-actions desktop-only">
             <el-button type="primary" @click="showAddUserDialog = true">
               <el-icon><Plus /></el-icon>
@@ -14,9 +13,7 @@
         </div>
       </template>
 
-      <!-- 移动端智能操作栏 -->
       <div class="mobile-action-bar">
-        <!-- 搜索栏（移动端优先显示） -->
         <div class="mobile-search-section">
           <div class="search-input-wrapper">
             <el-input
@@ -37,7 +34,6 @@
           </div>
         </div>
 
-        <!-- 筛选按钮组 -->
         <div class="mobile-filter-buttons">
           <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start">
             <el-button 
@@ -72,7 +68,6 @@
           </el-button>
         </div>
         
-        <!-- 时间选择器 - 移动端使用两个独立的日期选择器 -->
         <div class="mobile-date-picker-section">
           <div class="date-picker-row">
             <el-date-picker
@@ -105,7 +100,6 @@
           </div>
         </div>
 
-        <!-- 操作按钮 -->
         <div class="mobile-action-buttons">
           <el-button 
             type="primary" 
@@ -118,7 +112,6 @@
         </div>
       </div>
 
-      <!-- 桌面端搜索栏 -->
       <el-form :inline="true" :model="searchForm" class="search-form desktop-only">
         <el-form-item label="搜索">
           <el-input 
@@ -158,7 +151,6 @@
         </el-form-item>
       </el-form>
 
-      <!-- 批量操作工具栏 -->
       <div class="batch-actions" v-if="selectedUsers.length > 0">
         <div class="batch-info">
           <span>已选择 {{ selectedUsers.length }} 个用户</span>
@@ -191,7 +183,6 @@
         </div>
       </div>
 
-      <!-- 桌面端表格 -->
       <div class="table-wrapper desktop-only">
         <el-table 
           :data="users" 
@@ -377,7 +368,6 @@
       </el-table>
       </div>
 
-      <!-- 移动端卡片式列表 -->
       <div class="mobile-card-list" v-if="users.length > 0 && isMobile">
         <div 
           v-for="user in users" 
@@ -476,7 +466,6 @@
         </div>
       </div>
 
-      <!-- 移动端空状态 -->
       <div class="mobile-card-list" v-if="users.length === 0 && !loading && isMobile">
         <div class="empty-state">
           <i class="el-icon-user"></i>
@@ -484,7 +473,6 @@
         </div>
       </div>
 
-      <!-- 分页 -->
       <div class="pagination">
         <el-pagination
           v-model:current-page="currentPage"
@@ -498,7 +486,6 @@
       </div>
     </el-card>
 
-    <!-- 添加/编辑用户对话框 -->
     <UserFormDialog
       v-model:visible="showAddUserDialog"
       :editingUser="editingUser"
@@ -506,7 +493,6 @@
       @success="handleUserSaved"
     />
 
-    <!-- 用户详情对话框 -->
     <UserDetailDialog
       v-model:visible="showUserDialog"
       :user="selectedUser"
@@ -518,36 +504,52 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Plus, Edit, Delete, View, Search, Refresh, 
-  Switch, Key, Close, HomeFilled, Filter,
-  Wallet, ShoppingCart, Clock, Connection,
+  Plus, Edit, Delete, Search, Refresh, 
+  Switch, Key, Close, Filter,
+  Connection, Monitor,
   Unlock, Check, Message, Bell
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/secureStorage'
-import dayjs from 'dayjs'
-import timezone from 'dayjs/plugin/timezone'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import UserFormDialog from '@/components/admin/users/UserFormDialog.vue'
 import UserDetailDialog from '@/components/admin/users/UserDetailDialog.vue'
-dayjs.extend(timezone)
+
+const STATUS_MAP = {
+  active: { type: 'success', text: '活跃' },
+  inactive: { type: 'warning', text: '待激活' },
+  disabled: { type: 'danger', text: '禁用' }
+}
+
+const SUBSCRIPTION_STATUS_MAP = {
+  active: { type: 'success', text: '活跃' },
+  inactive: { type: 'info', text: '未激活' },
+  expired: { type: 'danger', text: '已过期' }
+}
+
+const STATUS_FILTER_MAP = {
+  '': '状态筛选',
+  'active': '活跃',
+  'inactive': '待激活',
+  'disabled': '禁用',
+  'device_overlimit': '⚠️ 设备超限'
+}
 
 export default {
   name: 'AdminUsers',
   components: {
     UserFormDialog,
     UserDetailDialog,
-    Plus, Edit, Delete, View, Search, Refresh, 
-    Switch, Key, Close, HomeFilled, Filter,
-    Wallet, ShoppingCart, Clock, Connection
+    Plus, Edit, Delete, Search, Refresh, 
+    Switch, Key, Close, Filter,
+    Connection, Monitor,
+    Unlock, Check, Message, Bell
   },
   setup() {
-    const api = adminAPI
     const loading = ref(false)
-    const saving = ref(false)
     const batchDeleting = ref(false)
     const batchOperating = ref(false)
     const users = ref([])
@@ -559,12 +561,23 @@ export default {
     const showUserDialog = ref(false)
     const editingUser = ref(null)
     const selectedUser = ref(null)
-    const userFormRef = ref()
     const activeBalanceTab = ref('recharge')
     const isMobile = ref(window.innerWidth <= 768)
     
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
+    }
+
+    const getStatusType = (status) => STATUS_MAP[status]?.type || 'info'
+    const getStatusText = (status) => STATUS_MAP[status]?.text || status
+    const getSubscriptionStatusType = (status) => SUBSCRIPTION_STATUS_MAP[status]?.type || 'info'
+    const getSubscriptionStatusText = (status) => SUBSCRIPTION_STATUS_MAP[status]?.text || '未知'
+    const getStatusFilterText = () => STATUS_FILTER_MAP[searchForm.status] || '状态筛选'
+    const formatDate = (date) => formatDateUtil(date) || ''
+    const isDeviceOverlimit = (user) => {
+      const onlineDevices = user.online_devices || 0
+      const deviceLimit = user.subscription?.device_limit || 0
+      return deviceLimit > 0 && onlineDevices >= deviceLimit
     }
 
     const searchForm = reactive({
@@ -586,13 +599,6 @@ export default {
       showAddUserDialog.value = true
     }
 
-    // 判断设备是否超限
-    const isDeviceOverlimit = (user) => {
-      const onlineDevices = user.online_devices || 0
-      const deviceLimit = user.subscription?.device_limit || 0
-      return deviceLimit > 0 && onlineDevices >= deviceLimit
-    }
-
     const loadUsers = async () => {
       loading.value = true
       try {
@@ -603,8 +609,6 @@ export default {
           status: searchForm.status
         }
         
-        // 处理日期范围参数
-        // 优先使用 start_date 和 end_date，如果没有则使用 date_range
         if (searchForm.start_date && searchForm.end_date) {
           params.start_date = searchForm.start_date
           params.end_date = searchForm.end_date
@@ -612,17 +616,15 @@ export default {
           params.start_date = searchForm.date_range[0]
           params.end_date = searchForm.date_range[1]
         } else if (searchForm.date_range) {
-          // 如果 date_range 是字符串或其他格式，尝试处理
           params.date_range = searchForm.date_range
         }
         
-        const response = await api.getUsers(params)
+        const response = await adminAPI.getUsers(params)
         
         if (response.data && response.data.success && response.data.data) {
           const responseData = response.data.data
           let userList = responseData.users || []
           
-          // 确保 is_active 和 is_verified 是布尔值
           userList = userList.map(user => ({
             ...user,
             is_active: user.is_active === true || user.is_active === 1 || user.is_active === '1',
@@ -630,7 +632,6 @@ export default {
             is_admin: user.is_admin === true || user.is_admin === 1 || user.is_admin === '1'
           }))
           
-          // 如果筛选设备超限用户，进行前端筛选
           if (searchForm.status === 'device_overlimit') {
             userList = userList.filter(user => isDeviceOverlimit(user))
           }
@@ -640,8 +641,6 @@ export default {
         } else {
           users.value = []
           total.value = 0
-          
-          // 如果有错误消息，显示给用户
           if (response.data?.message) {
             ElMessage.error(`加载用户列表失败: ${response.data.message}`)
           }
@@ -671,27 +670,12 @@ export default {
       searchUsers()
     }
 
-    // 处理状态筛选
     const handleStatusFilter = (command) => {
       searchForm.status = command
       searchUsers()
     }
-
-    // 获取状态筛选文本
-    const getStatusFilterText = () => {
-      const statusMap = {
-        '': '状态筛选',
-        'active': '活跃',
-        'inactive': '待激活',
-        'disabled': '禁用',
-        'device_overlimit': '⚠️ 设备超限'
-      }
-      return statusMap[searchForm.status] || '状态筛选'
-    }
     
-    // 处理日期范围变更
     const handleDateRangeChange = () => {
-      // 同步 start_date 和 end_date 到 date_range
       if (searchForm.start_date && searchForm.end_date) {
         searchForm.date_range = [searchForm.start_date, searchForm.end_date]
       } else if (!searchForm.start_date && !searchForm.end_date) {
@@ -700,7 +684,6 @@ export default {
       searchUsers()
     }
     
-    // 监听 date_range 变化，同步到 start_date 和 end_date
     watch(() => searchForm.date_range, (newVal) => {
       if (Array.isArray(newVal) && newVal.length === 2) {
         searchForm.start_date = newVal[0]
@@ -725,25 +708,12 @@ export default {
       try {
         const response = await adminAPI.getUserDetails(userId)
         
-        if (response && response.data && response.data.success) {
-          const userData = response.data.data
-          selectedUser.value = userData
-          // 调试信息（仅在开发环境）
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Users.vue - API response:', response.data)
-            console.log('Users.vue - selectedUser set to:', userData)
-            console.log('Users.vue - recharge_records:', userData?.recharge_records, 'length:', userData?.recharge_records?.length)
-            console.log('Users.vue - orders:', userData?.orders, 'length:', userData?.orders?.length)
-          }
+        if (response?.data?.success) {
+          selectedUser.value = response.data.data
           showUserDialog.value = true
           activeBalanceTab.value = 'recharge'
-        } else if (response && response.success) {
+        } else if (response?.success) {
           selectedUser.value = response.data
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Users.vue - selectedUser set to (alt path):', response.data)
-            console.log('Users.vue - recharge_records:', response.data?.recharge_records)
-            console.log('Users.vue - orders:', response.data?.orders)
-          }
           showUserDialog.value = true
           activeBalanceTab.value = 'recharge'
         } else {
@@ -761,8 +731,7 @@ export default {
 
 
     const deleteUser = async (user) => {
-      // 检查用户ID是否有效
-      if (!user || !user.id || user.id === 0) {
+      if (!user?.id) {
         ElMessage.warning('无效的用户ID，无法删除')
         return
       }
@@ -805,30 +774,6 @@ export default {
       }
     }
 
-
-    const getStatusType = (status) => {
-      const statusMap = {
-        'active': 'success',
-        'inactive': 'warning',
-        'disabled': 'danger'
-      }
-      return statusMap[status] || 'info'
-    }
-
-    const getStatusText = (status) => {
-      const statusMap = {
-        'active': '活跃',
-        'inactive': '待激活',
-        'disabled': '禁用'
-      }
-      return statusMap[status] || status
-    }
-
-    const formatDate = (date) => {
-      // 使用统一的北京时间格式化函数
-      return formatDateUtil(date) || ''
-    }
-
     const loginAsUser = async (user) => {
       try {
         await ElMessageBox.confirm(
@@ -841,49 +786,37 @@ export default {
           }
         )
         
-        const response = await api.post(`/admin/users/${user.id}/login-as`)
+        const response = await adminAPI.post(`/admin/users/${user.id}/login-as`, {})
         
-        // 后端返回格式: {success: true, message: "...", data: {access_token: "...", user: {...}}}
-        if (!response.data || !response.data.data || !response.data.data.access_token || !response.data.data.user) {
+        if (!response.data?.data?.access_token || !response.data?.data?.user) {
           ElMessage.error('登录失败：服务器返回数据不完整')
           return
         }
         
         ElMessage.success('登录成功，正在跳转...')
         
-        // 保存管理员信息到 secureStorage（用于返回管理员后台）
         const adminToken = secureStorage.get('admin_token')
         const adminUser = secureStorage.get('admin_user')
-        
-        // 通过URL参数传递token和用户信息，在新标签页中打开用户后台
         const userToken = response.data.data.access_token
         const userData = response.data.data.user
         
-        // 构建用户数据，如果存在管理员信息，也包含在用户数据中
         let userDataToSend = { ...userData }
         if (adminToken && adminUser) {
-          // 将管理员信息编码到用户数据中（通过一个特殊字段）
           userDataToSend._adminToken = adminToken
           userDataToSend._adminUser = typeof adminUser === 'string' ? adminUser : JSON.stringify(adminUser)
         }
         
         const userDataStr = encodeURIComponent(JSON.stringify(userDataToSend))
-        
-        // 在当前页面跳转到用户后台，通过URL参数传递认证信息（手机浏览器兼容）
         const dashboardUrl = `/dashboard?token=${userToken}&user=${userDataStr}`
         window.location.href = dashboardUrl
         
       } catch (error) {
         if (error !== 'cancel') {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('登录失败:', error)
-          }
           ElMessage.error(error.response?.data?.message || '登录失败')
         }
       }
     }
 
-    // 重置用户密码
     const resetUserPassword = async (user) => {
       try {
         const { value: newPassword } = await ElMessageBox.prompt(
@@ -932,40 +865,40 @@ export default {
       }
     }
 
-    // 获取订阅状态类型
-    const getSubscriptionStatusType = (status) => {
-      const statusMap = {
-        'active': 'success',
-        'inactive': 'info',
-        'expired': 'danger'
-      }
-      return statusMap[status] || 'info'
-    }
-
-    // 获取订阅状态文本
-    const getSubscriptionStatusText = (status) => {
-      const statusMap = {
-        'active': '活跃',
-        'inactive': '未激活',
-        'expired': '已过期'
-      }
-      return statusMap[status] || '未知'
-    }
-
-    // 批量操作相关函数
     const handleSelectionChange = (selection) => {
       selectedUsers.value = selection
     }
 
     const clearSelection = () => {
       selectedUsers.value = []
-      // 清除表格选择
-      const table = document.querySelector('.el-table')
-      if (table) {
-        const checkboxes = table.querySelectorAll('input[type="checkbox"]')
-        checkboxes.forEach(checkbox => {
-          checkbox.checked = false
-        })
+    }
+
+    const executeBatchOperation = async (operation, params, successMessage) => {
+      if (selectedUsers.value.length === 0) {
+        ElMessage.warning('请先选择用户')
+        return
+      }
+
+      try {
+        batchOperating.value = true
+        const userIds = selectedUsers.value.map(user => user.id)
+        const response = await operation(userIds, params)
+        
+        if (response.data?.success !== false) {
+          const data = response.data?.data || {}
+          const successCount = data.success_count || selectedUsers.value.length
+          const failCount = data.fail_count || 0
+          const message = successMessage || response.data?.message || '操作成功'
+          ElMessage.success(failCount > 0 ? `${message}，成功 ${successCount} 个，失败 ${failCount} 个` : message)
+          clearSelection()
+          loadUsers()
+        } else {
+          ElMessage.error(response.data?.message || '操作失败')
+        }
+      } catch (error) {
+        ElMessage.error(`操作失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        batchOperating.value = false
       }
     }
 
@@ -975,7 +908,6 @@ export default {
         return
       }
 
-      // 检查是否包含管理员用户
       const adminUsers = selectedUsers.value.filter(user => user.is_admin)
       if (adminUsers.length > 0) {
         ElMessage.error('不能删除管理员用户')
@@ -994,19 +926,11 @@ export default {
         )
 
         batchDeleting.value = true
-        
-        // 获取要删除的用户ID列表
         const userIds = selectedUsers.value.map(user => user.id)
-        
-        // 调用批量删除API
         await adminAPI.batchDeleteUsers(userIds)
-        
         ElMessage.success(`成功删除 ${selectedUsers.value.length} 个用户`)
-        
-        // 清空选择并重新加载数据
         clearSelection()
         loadUsers()
-        
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error(`批量删除失败: ${error.response?.data?.message || error.message}`)
@@ -1017,28 +941,11 @@ export default {
     }
 
     const batchEnableUsers = async () => {
-      if (selectedUsers.value.length === 0) {
-        ElMessage.warning('请先选择要启用的用户')
-        return
-      }
-
-      try {
-        batchOperating.value = true
-        const userIds = selectedUsers.value.map(user => user.id)
-        const response = await adminAPI.batchEnableUsers(userIds)
-        
-        if (response.data?.success !== false) {
-          ElMessage.success(response.data?.message || `成功启用 ${selectedUsers.value.length} 个用户`)
-          clearSelection()
-          loadUsers()
-        } else {
-          ElMessage.error(response.data?.message || '批量启用失败')
-        }
-      } catch (error) {
-        ElMessage.error(`批量启用失败: ${error.response?.data?.message || error.message}`)
-      } finally {
-        batchOperating.value = false
-      }
+      await executeBatchOperation(
+        (userIds) => adminAPI.batchEnableUsers(userIds),
+        null,
+        `成功启用 ${selectedUsers.value.length} 个用户`
+      )
     }
 
     const batchDisableUsers = async () => {
@@ -1047,7 +954,6 @@ export default {
         return
       }
 
-      // 检查是否包含管理员用户
       const adminUsers = selectedUsers.value.filter(user => user.is_admin)
       if (adminUsers.length > 0) {
         ElMessage.error('不能禁用管理员用户')
@@ -1065,95 +971,48 @@ export default {
           }
         )
 
-        batchOperating.value = true
-        const userIds = selectedUsers.value.map(user => user.id)
-        const response = await adminAPI.batchDisableUsers(userIds)
-        
-        if (response.data?.success !== false) {
-          ElMessage.success(response.data?.message || `成功禁用 ${selectedUsers.value.length} 个用户`)
-          clearSelection()
-          loadUsers()
-        } else {
-          ElMessage.error(response.data?.message || '批量禁用失败')
-        }
+        await executeBatchOperation(
+          (userIds) => adminAPI.batchDisableUsers(userIds),
+          null,
+          `成功禁用 ${selectedUsers.value.length} 个用户`
+        )
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error(`批量禁用失败: ${error.response?.data?.message || error.message}`)
         }
-      } finally {
-        batchOperating.value = false
       }
     }
 
     const batchSendSubEmail = async () => {
-      if (selectedUsers.value.length === 0) {
-        ElMessage.warning('请先选择要发送邮件的用户')
-        return
-      }
-
-      try {
-        batchOperating.value = true
-        const userIds = selectedUsers.value.map(user => user.id)
-        const response = await adminAPI.batchSendSubEmail(userIds)
-        
-        if (response.data?.success !== false) {
-          const data = response.data?.data || {}
-          const successCount = data.success_count || selectedUsers.value.length
-          const failCount = data.fail_count || 0
-          ElMessage.success(response.data?.message || `成功发送 ${successCount} 封邮件${failCount > 0 ? `，失败 ${failCount} 封` : ''}`)
-        } else {
-          ElMessage.error(response.data?.message || '批量发送邮件失败')
-        }
-      } catch (error) {
-        ElMessage.error(`批量发送邮件失败: ${error.response?.data?.message || error.message}`)
-      } finally {
-        batchOperating.value = false
-      }
+      await executeBatchOperation(
+        (userIds) => adminAPI.batchSendSubEmail(userIds),
+        null,
+        `成功发送 ${selectedUsers.value.length} 封邮件`
+      )
     }
 
     const batchSendExpireReminder = async () => {
-      if (selectedUsers.value.length === 0) {
-        ElMessage.warning('请先选择要发送提醒的用户')
-        return
-      }
-
-      try {
-        batchOperating.value = true
-        const userIds = selectedUsers.value.map(user => user.id)
-        const response = await adminAPI.batchSendExpireReminder(userIds)
-        
-        if (response.data?.success !== false) {
-          const data = response.data?.data || {}
-          const successCount = data.success_count || selectedUsers.value.length
-          const failCount = data.fail_count || 0
-          ElMessage.success(response.data?.message || `成功发送 ${successCount} 封提醒邮件${failCount > 0 ? `，失败 ${failCount} 封` : ''}`)
-        } else {
-          ElMessage.error(response.data?.message || '批量发送提醒失败')
-        }
-      } catch (error) {
-        ElMessage.error(`批量发送提醒失败: ${error.response?.data?.message || error.message}`)
-      } finally {
-        batchOperating.value = false
-      }
+      await executeBatchOperation(
+        (userIds) => adminAPI.batchSendExpireReminder(userIds),
+        null,
+        `成功发送 ${selectedUsers.value.length} 封提醒邮件`
+      )
     }
 
     onMounted(() => {
       loadUsers()
       window.addEventListener('resize', handleResize)
-      // 监听订阅管理更新设备限制的事件
       window.addEventListener('subscription-device-limit-updated', loadUsers)
     })
 
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
-      // 移除订阅管理更新设备限制的事件监听
       window.removeEventListener('subscription-device-limit-updated', loadUsers)
     })
 
       return {
       isMobile,
       loading,
-      saving,
       batchDeleting,
       batchOperating,
       users,
@@ -1195,7 +1054,6 @@ export default {
       batchSendExpireReminder,
       isDeviceOverlimit,
       handleUserSaved,
-      // 导出图标组件供模板使用
       Search,
       Unlock,
       Check,
@@ -1265,16 +1123,59 @@ export default {
     .el-select {
       min-width: 180px;
       width: 180px;
+      
+      .el-input__wrapper {
+        border: 1px solid #dcdfe6;
+        box-shadow: none;
+        padding: 0 11px;
+      }
+      
+      .el-input__inner {
+        border: none !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+      }
     }
     
     .el-date-editor {
       min-width: 240px;
       width: 240px;
+      
+      .el-input__wrapper {
+        border: 1px solid #dcdfe6;
+        box-shadow: none;
+        padding: 0 11px;
+      }
+      
+      .el-input__inner {
+        border: none !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+      }
+    }
+    
+    .el-input {
+      .el-input__wrapper {
+        border: 1px solid #dcdfe6;
+        box-shadow: none;
+        padding: 0 11px;
+      }
+      
+      .el-input__inner {
+        border: none !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+      }
     }
   }
 }
 
-// 移动端样式适配
 @media (max-width: 768px) {
   .mobile-action-bar {
     padding: 16px !important;
@@ -1297,9 +1198,18 @@ export default {
           width: 100% !important;
           
           :deep(.el-input__wrapper) {
+            border: 1px solid #dcdfe6 !important;
             border-radius: 10px !important;
             padding-right: 60px !important;
             min-height: 48px !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            
+            .el-input__inner {
+              border: none !important;
+              box-shadow: none !important;
+              background: transparent !important;
+            }
           }
         }
         
@@ -1352,9 +1262,18 @@ export default {
       min-width: 0;
       
       :deep(.el-input__wrapper) {
+        border: 1px solid #dcdfe6;
+        box-shadow: none;
         min-height: 48px;
         border-radius: 10px;
         width: 100%;
+        background: #fff;
+        
+        .el-input__inner {
+          border: none;
+          box-shadow: none;
+          background: transparent;
+        }
       }
     }
     

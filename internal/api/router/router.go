@@ -380,6 +380,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/settings/admin-notification/test/telegram", handlers.TestAdminTelegramNotification)
 			admin.POST("/settings/admin-notification/test/bark", handlers.TestAdminBarkNotification)
 			admin.PUT("/settings/node_health", handlers.UpdateNodeHealthSettings)
+			admin.PUT("/settings/backup", handlers.UpdateBackupSettings)
 			admin.GET("/settings/geoip/status", handlers.GetGeoIPStatus)
 			admin.POST("/settings/geoip/update", handlers.UpdateGeoIPDatabase)
 
@@ -451,6 +452,7 @@ func SetupRouter() *gin.Engine {
 
 			admin.POST("/backup", handlers.CreateBackup)
 			admin.GET("/backups", handlers.ListBackups)
+			admin.POST("/backup/test-gitee", handlers.TestGiteeConnection)
 
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)
