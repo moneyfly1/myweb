@@ -86,11 +86,11 @@
           />
         </el-form-item>
 
-        <el-form-item prop="verificationCode" v-if="emailVerificationRequired">
+        <el-form-item prop="verificationCode" v-if="emailVerificationRequired" required>
           <div class="verification-code-group">
             <el-input
               v-model="registerForm.verificationCode"
-              placeholder="请输入验证码"
+              placeholder="6位验证码（必填）"
               prefix-icon="Message"
               size="large"
               class="verification-code-input"
@@ -112,10 +112,10 @@
           </div>
         </el-form-item>
 
-        <el-form-item prop="inviteCode">
+        <el-form-item prop="inviteCode" :required="inviteCodeRequired">
           <el-input
             v-model="registerForm.inviteCode"
-            :placeholder="inviteCodeRequired ? '请输入邀请码（必填）' : '邀请码（可选，填写可获得注册奖励）'"
+            :placeholder="inviteCodeRequired ? '邀请码（必填）' : '邀请码（选填，填写可获得注册奖励）'"
             prefix-icon="UserFilled"
             size="large"
             clearable
@@ -534,10 +534,24 @@ const checkRegistrationEnabled = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
     const settings = response.data?.data || response.data || {}
-    registrationEnabled.value = settings.allowRegistration !== false
-    inviteCodeRequired.value = settings.inviteCodeRequired === true
     
-    // 检查邮箱验证开关：后端返回的是布尔值
+    // 支持多种字段名格式：registration_enabled 或 allowRegistration
+    const registrationValue = settings.registration_enabled !== undefined 
+                            ? settings.registration_enabled
+                            : (settings.allowRegistration !== undefined 
+                               ? settings.allowRegistration 
+                               : true)
+    registrationEnabled.value = registrationValue === true || registrationValue === "true"
+    
+    // 支持多种字段名格式：invite_code_required 或 inviteCodeRequired
+    const inviteCodeValue = settings.invite_code_required !== undefined 
+                           ? settings.invite_code_required
+                           : (settings.inviteCodeRequired !== undefined 
+                              ? settings.inviteCodeRequired 
+                              : false)
+    inviteCodeRequired.value = inviteCodeValue === true || inviteCodeValue === "true"
+    
+    // 支持多种字段名格式：email_verification_required 或 emailVerificationRequired
     const emailVerificationValue = settings.email_verification_required !== undefined 
                                    ? settings.email_verification_required
                                    : (settings.emailVerificationRequired !== undefined 
@@ -548,7 +562,13 @@ const checkRegistrationEnabled = async () => {
     // 如果值是布尔值 true 或字符串 "true"，则开启验证
     emailVerificationRequired.value = emailVerificationValue === true || emailVerificationValue === "true"
     
-    minPasswordLength.value = settings.minPasswordLength || 8
+    // 支持多种字段名格式：min_password_length 或 minPasswordLength
+    const minPasswordValue = settings.min_password_length !== undefined 
+                            ? settings.min_password_length
+                            : (settings.minPasswordLength !== undefined 
+                               ? settings.minPasswordLength 
+                               : 8)
+    minPasswordLength.value = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
     registerFormRef.value?.clearValidate()
     
     if (!registrationEnabled.value) {
