@@ -147,20 +147,47 @@ func CreateBackup(c *gin.Context) {
 					repo = repoConfig.Value
 				}
 
-				client := gitee.NewGiteeClient(tokenConfig.Value, owner, repo)
-				if err := client.UploadBackup(backupPath); err != nil {
-					utils.LogError("上传备份到 Gitee 失败", err, nil)
-					uploadResult["error"] = err.Error()
-				} else {
-					uploadResult["uploaded"] = true
-					uploadResult["message"] = "已成功上传到 Gitee"
-					if err := os.Remove(backupPath); err != nil {
-						utils.LogError("删除本地备份文件失败", err, nil)
-						uploadResult["local_file_deleted"] = false
-						uploadResult["local_file_deletion_error"] = err.Error()
-					} else {
-						uploadResult["local_file_deleted"] = true
-						uploadResult["message"] = "已成功上传到 Gitee，本地文件已删除"
+				// 创建只包含数据库的临时备份文件用于上传到Gitee
+				giteeBackupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
+				giteeBackupPath := filepath.Join(backupDir, giteeBackupFileName)
+				giteeBackupPath = filepath.Clean(giteeBackupPath)
+
+				if strings.HasPrefix(giteeBackupPath, backupDir) {
+					giteeZipFile, err := os.Create(giteeBackupPath)
+					if err == nil {
+						giteeZipWriter := zip.NewWriter(giteeZipFile)
+
+						// 只添加数据库文件到Gitee备份
+						dbPath := filepath.Join(wd, "cboard.db")
+						dbPath = filepath.Clean(dbPath)
+						if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
+							if _, err := os.Stat(dbPath); err == nil {
+								dbFile, err := os.Open(dbPath)
+								if err == nil {
+									writer, err := giteeZipWriter.Create("cboard.db")
+									if err == nil {
+										io.Copy(writer, dbFile)
+									}
+									dbFile.Close()
+								}
+							}
+						}
+
+						giteeZipWriter.Close()
+						giteeZipFile.Close()
+
+						// 上传只包含数据库的备份到Gitee
+						client := gitee.NewGiteeClient(tokenConfig.Value, owner, repo)
+						if err := client.UploadBackup(giteeBackupPath); err != nil {
+							utils.LogError("上传备份到 Gitee 失败", err, nil)
+							uploadResult["error"] = err.Error()
+						} else {
+							uploadResult["uploaded"] = true
+							uploadResult["message"] = "已成功上传数据库备份到 Gitee（仅数据库文件）"
+						}
+
+						// 删除临时的Gitee备份文件
+						os.Remove(giteeBackupPath)
 					}
 				}
 			}
