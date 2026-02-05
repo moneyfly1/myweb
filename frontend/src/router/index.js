@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/secureStorage'
+import { useApi } from '@/utils/api'
 
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
@@ -9,7 +10,7 @@ const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
 // 动态获取认证页面组件
 const getAuthComponent = async () => {
   try {
-    const { api } = await import('@/utils/api')
+    const api = useApi()
     const response = await api.get('/settings/public-settings')
     const settings = response.data?.data || response.data || {}
     const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
@@ -17,7 +18,6 @@ const getAuthComponent = async () => {
       ? () => import('@/views/UnifiedAuth.vue')
       : () => import('@/views/Login.vue')
   } catch (error) {
-    // 默认使用传统页面
     return () => import('@/views/Login.vue')
   }
 }
@@ -29,7 +29,7 @@ const routes = [
     name: 'Login', 
     component: async () => {
       try {
-        const { api } = await import('@/utils/api')
+        const api = useApi()
         const response = await api.get('/settings/public-settings')
         const settings = response.data?.data || response.data || {}
         const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
@@ -47,7 +47,7 @@ const routes = [
     name: 'Register', 
     component: async () => {
       try {
-        const { api } = await import('@/utils/api')
+        const api = useApi()
         const response = await api.get('/settings/public-settings')
         const settings = response.data?.data || response.data || {}
         const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
@@ -65,7 +65,7 @@ const routes = [
     name: 'ForgotPassword', 
     component: async () => {
       try {
-        const { api } = await import('@/utils/api')
+        const api = useApi()
         const response = await api.get('/settings/public-settings')
         const settings = response.data?.data || response.data || {}
         const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
