@@ -523,6 +523,15 @@
             跳转到支付宝支付
           </el-button>
           <el-button 
+            @click="checkPaymentStatus" 
+            :loading="isCheckingPayment"
+            type="primary"
+            size="large"
+            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
+          >
+            检查支付状态
+          </el-button>
+          <el-button 
             @click="closePaymentQR"
             size="large"
             :style="isMobile ? 'width: 100%;' : ''"
@@ -1407,20 +1416,7 @@ export default {
       selectedOrder.value = null
     }
     
-    const cancelOrderLoading = ref(false)
-    
     const cancelOrder = async (order) => {
-      // 安全检查：只有待支付状态的订单才能取消
-      if (order.status !== 'pending' && order.status !== 'unpaid') {
-        ElMessage.warning('只有待支付状态的订单才能取消')
-        return
-      }
-      
-      // 防抖：如果正在处理中，直接返回
-      if (cancelOrderLoading.value) {
-        return
-      }
-      
       try {
         await ElMessageBox.confirm(
           '确定要取消这个订单吗？取消后无法恢复。',
@@ -1432,22 +1428,14 @@ export default {
           }
         )
         
-        cancelOrderLoading.value = true
-        
-        try {
-          await api.post(`/orders/${order.order_no}/cancel`)
-          ElMessage.success('订单已取消')
-          await loadOrders()
-        } finally {
-          cancelOrderLoading.value = false
-        }
+        await api.post(`/orders/${order.order_no}/cancel`)
+        ElMessage.success('订单已取消')
+        loadOrders()
         
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.response?.data?.detail || '取消订单失败'
-          ElMessage.error(errorMsg)
-        }
-        cancelOrderLoading.value = false
+          ElMessage.error('取消订单失败')
+          }
       }
     }
     
@@ -1688,7 +1676,6 @@ export default {
       onImageLoad,
       onImageError,
       cancelOrder,
-      cancelOrderLoading,
       payRecharge,
       cancelRecharge,
       viewOrderDetail,

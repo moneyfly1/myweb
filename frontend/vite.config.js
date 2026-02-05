@@ -50,20 +50,6 @@ export default defineConfig({
         entryFileNames: 'assets/[name].[hash].js',
         chunkFileNames: 'assets/[name].[hash].js',
         assetFileNames: 'assets/[name].[hash].[ext]',
-        // manualChunks: (id) => {
-        //   if (id.includes('node_modules')) {
-        //     if (id.includes('vue') || id.includes('pinia') || id.includes('router')) {
-        //       return 'vendor-core'
-        //     }
-        //     if (id.includes('element-plus')) {
-        //       return 'vendor-ui'
-        //     }
-        //     if (id.includes('chart.js')) {
-        //       return 'vendor-chart'
-        //     }
-        //     return 'vendor-libs'
-        //   }
-        // },
       },
     },
     chunkSizeWarningLimit: 2000,
