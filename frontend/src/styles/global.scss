@@ -1167,23 +1167,15 @@ $breakpoints: (
   }
   
   .el-input, .el-select {
-    .el-input__wrapper {
+    .el-input__inner {
       border-radius: var(--border-radius);
       border: 1px solid var(--theme-border);
       transition: all 0.3s ease;
       
-      &:focus,
-      &.is-focus {
+      &:focus {
         border-color: var(--theme-primary);
         box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
       }
-    }
-    
-    .el-input__inner {
-      border: none !important;
-      border-radius: 0 !important;
-      background: transparent !important;
-      box-shadow: none !important;
     }
   }
 }
