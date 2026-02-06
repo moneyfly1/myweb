@@ -205,7 +205,7 @@ export default {
           status: status,
           is_admin: Boolean(user.is_admin),
           is_verified: Boolean(user.is_verified),
-          note: user.note || '',
+          note: user.notes || '',
           // 编辑模式下不显示这些字段，但为了防止验证错误，保持原值或默认值
           password: '',
           device_limit: 5,
@@ -229,7 +229,8 @@ export default {
             email: userForm.email,
             is_active: isActive,
             is_verified: isVerified,
-            is_admin: userForm.is_admin
+            is_admin: userForm.is_admin,
+            notes: userForm.note || null
           }
           await adminAPI.updateUser(props.editingUser.id, userData)
           ElMessage.success('用户更新成功')
@@ -242,7 +243,8 @@ export default {
             is_admin: false,
             is_verified: false,
             device_limit: userForm.device_limit || 5,
-            expire_time: userForm.expire_time || getDefaultExpireTime()
+            expire_time: userForm.expire_time || getDefaultExpireTime(),
+            notes: userForm.note || ''
           }
           const response = await adminAPI.createUser(userData)
           if (response.data && response.data.success === false) {

@@ -18,7 +18,7 @@
           <div class="search-input-wrapper">
             <el-input
               v-model="searchForm.keyword"
-              placeholder="输入邮箱或用户名搜索"
+              placeholder="搜索邮箱、用户名或备注"
               class="mobile-search-input"
               clearable
               @keyup.enter="searchUsers"
@@ -95,7 +95,7 @@
         <el-form-item label="搜索">
           <el-input 
             v-model="searchForm.keyword" 
-            placeholder="输入用户邮箱或用户名进行搜索"
+            placeholder="搜索邮箱、用户名或备注"
             style="width: 300px;"
             clearable
             @keyup.enter="searchUsers"
@@ -164,12 +164,16 @@
 
       <div class="table-wrapper desktop-only">
         <el-table 
+          ref="tableRef"
           :data="users" 
           style="width: 100%" 
           v-loading="loading"
           @selection-change="handleSelectionChange"
+          @sort-change="handleSortChange"
           stripe
           table-layout="auto"
+          border
+          :default-sort="defaultSort"
         >
           <el-table-column type="selection" width="50" />
           <el-table-column prop="id" label="ID" width="70" />
@@ -201,7 +205,15 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="balance" label="余额" width="100" sortable="custom" align="right">
+          <el-table-column 
+            prop="balance" 
+            label="余额" 
+            width="100" 
+            sortable="custom" 
+            align="right"
+            :sort-orders="['ascending', 'descending', null]"
+            @sort-change="handleSortChange"
+          >
             <template #default="scope">
               <el-button type="text" class="balance-link" @click="viewUserBalance(scope.row.id)">
                 ¥{{ (scope.row.balance || 0).toFixed(2) }}
@@ -253,14 +265,34 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="created_at" label="注册时间" width="160" show-overflow-tooltip>
+          <el-table-column prop="created_at" label="注册时间" width="160" show-overflow-tooltip sortable="custom" :sort-orders="['ascending', 'descending', null]">
             <template #default="scope">
               {{ formatDate(scope.row.created_at) }}
             </template>
           </el-table-column>
-          <el-table-column prop="last_login" label="最后登录" width="160" show-overflow-tooltip>
+          <el-table-column prop="notes" label="备注" min-width="200" class-name="notes-column">
             <template #default="scope">
-              {{ formatDate(scope.row.last_login) || '从未登录' }}
+              <div class="notes-input-wrapper">
+                <el-input
+                  v-model="scope.row.notes"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="点击输入备注，自动保存"
+                  class="notes-input"
+                  @blur="saveNotes(scope.row)"
+                  @input="debounceSaveNotes(scope.row)"
+                  :maxlength="500"
+                  show-word-limit
+                />
+                <div v-if="scope.row.savingNotes" class="saving-indicator">
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  <span>保存中...</span>
+                </div>
+                <div v-else-if="scope.row.notesSaved" class="saved-indicator">
+                  <el-icon><CircleCheck /></el-icon>
+                  <span>已保存</span>
+                </div>
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="到期时间" width="160" show-overflow-tooltip>
@@ -353,6 +385,30 @@
             <span class="label">注册时间</span>
             <span class="value">{{ formatDate(user.created_at) }}</span>
           </div>
+          <div class="card-row notes-row">
+            <span class="label">备注</span>
+            <div class="notes-input-wrapper-mobile">
+              <el-input
+                v-model="user.notes"
+                type="textarea"
+                :rows="2"
+                placeholder="点击输入备注，自动保存"
+                class="notes-input-mobile"
+                @blur="saveNotes(user)"
+                @input="debounceSaveNotes(user)"
+                :maxlength="500"
+                show-word-limit
+              />
+              <div v-if="user.savingNotes" class="saving-indicator-mobile">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                <span>保存中...</span>
+              </div>
+              <div v-else-if="user.notesSaved" class="saved-indicator-mobile">
+                <el-icon><CircleCheck /></el-icon>
+                <span>已保存</span>
+              </div>
+            </div>
+          </div>
           <div class="card-actions">
             <div class="action-buttons-row">
               <el-button type="primary" @click="editUser(user)" class="mobile-action-btn">
@@ -425,12 +481,12 @@ import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
-  Connection, Monitor, Unlock, Check, Message, Bell
+  Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
-import UserFormDialog from '@/components/admin/users/UserFormDialog.vue'
-import UserDetailDialog from '@/components/admin/users/UserDetailDialog.vue'
+import UserFormDialog from './components/UserFormDialog.vue'
+import UserDetailDialog from './components/UserDetailDialog.vue'
 
 const STATUS_MAP = {
   active: { type: 'success', text: '活跃' },
@@ -477,13 +533,17 @@ export default {
     const selectedUser = ref(null)
     const activeBalanceTab = ref('recharge')
     const isMobile = ref(window.innerWidth <= 768)
+    const defaultSort = ref({ prop: 'created_at', order: 'descending' })
+    const tableRef = ref(null)
 
     const searchForm = reactive({
       keyword: '',
       status: '',
       date_range: '',
       start_date: '',
-      end_date: ''
+      end_date: '',
+      sort: '',
+      order: ''
     })
 
     const getStatusType = (status) => STATUS_MAP[status]?.type || 'info'
@@ -528,6 +588,12 @@ export default {
         params.end_date = searchForm.date_range[1]
       } else if (searchForm.date_range) {
         params.date_range = searchForm.date_range
+      }
+      
+      // 添加排序参数
+      if (searchForm.sort) {
+        params.sort = searchForm.sort
+        params.order = searchForm.order || 'asc'
       }
       
       return params
@@ -603,6 +669,23 @@ export default {
       }
       searchUsers()
     }
+
+    const handleSortChange = ({ prop, order }) => {
+      if (prop && order) {
+        // 将 Element Plus 的排序值转换为后端需要的格式
+        searchForm.sort = prop
+        searchForm.order = order === 'ascending' ? 'asc' : 'desc'
+        // 更新默认排序
+        defaultSort.value = { prop, order }
+      } else {
+        // 清除排序，恢复默认
+        searchForm.sort = ''
+        searchForm.order = ''
+        defaultSort.value = { prop: 'created_at', order: 'descending' }
+      }
+      currentPage.value = 1
+      loadUsers()
+    }
     
     watch(() => searchForm.date_range, (newVal) => {
       if (Array.isArray(newVal) && newVal.length === 2) {
@@ -629,6 +712,83 @@ export default {
       editingUser.value = null
       loadUsers()
     }
+
+    // 备注自动保存相关
+    const saveTimers = new Map()
+    const originalNotes = new Map()
+
+    const saveNotes = async (user) => {
+      if (!user || !user.id) return
+      
+      const currentNotes = user.notes || ''
+      const originalNote = originalNotes.get(user.id) || ''
+      
+      // 如果没有变化，不保存
+      if (currentNotes === originalNote) {
+        user.savingNotes = false
+        return
+      }
+
+      // 清除防抖定时器
+      if (saveTimers.has(user.id)) {
+        clearTimeout(saveTimers.get(user.id))
+        saveTimers.delete(user.id)
+      }
+
+      user.savingNotes = true
+      user.notesSaved = false
+
+      try {
+        await adminAPI.updateUser(user.id, { notes: currentNotes || null })
+        originalNotes.set(user.id, currentNotes)
+        user.notesSaved = true
+        setTimeout(() => {
+          user.notesSaved = false
+        }, 2000)
+      } catch (error) {
+        ElMessage.error(`保存备注失败: ${error.response?.data?.message || error.message}`)
+        // 恢复原始值
+        user.notes = originalNote
+      } finally {
+        user.savingNotes = false
+      }
+    }
+
+    const debounceSaveNotes = (user) => {
+      if (!user || !user.id) return
+
+      // 保存原始值（第一次）
+      if (!originalNotes.has(user.id)) {
+        originalNotes.set(user.id, user.notes || '')
+      }
+
+      // 清除之前的定时器
+      if (saveTimers.has(user.id)) {
+        clearTimeout(saveTimers.get(user.id))
+      }
+
+      // 设置新的定时器（1秒后保存）
+      const timer = setTimeout(() => {
+        saveNotes(user)
+        saveTimers.delete(user.id)
+      }, 1000)
+      
+      saveTimers.set(user.id, timer)
+    }
+
+    // 初始化用户数据时保存原始备注值
+    watch(users, (newUsers) => {
+      newUsers.forEach(user => {
+        if (user.id && !originalNotes.has(user.id)) {
+          originalNotes.set(user.id, user.notes || '')
+        }
+        // 初始化保存状态
+        if (!user.hasOwnProperty('savingNotes')) {
+          user.savingNotes = false
+          user.notesSaved = false
+        }
+      })
+    }, { deep: true })
 
     const editUser = (user) => {
       editingUser.value = user
@@ -864,6 +1024,7 @@ export default {
       )
     }
 
+
     onMounted(() => {
       loadUsers()
       window.addEventListener('resize', handleResize)
@@ -873,6 +1034,10 @@ export default {
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('subscription-device-limit-updated', loadUsers)
+      // 清理所有防抖定时器
+      saveTimers.forEach(timer => clearTimeout(timer))
+      saveTimers.clear()
+      originalNotes.clear()
     })
 
     return {
@@ -896,6 +1061,7 @@ export default {
       handleStatusFilter,
       getStatusFilterText,
       handleDateRangeChange,
+      handleSortChange,
       handleSizeChange,
       handleCurrentChange,
       viewUserDetails,
@@ -920,7 +1086,11 @@ export default {
       batchSendSubEmail,
       batchSendExpireReminder,
       isDeviceOverlimit,
-      handleUserSaved
+      handleUserSaved,
+      saveNotes,
+      debounceSaveNotes,
+      Loading,
+      CircleCheck
     }
   }
 }
@@ -1324,6 +1494,7 @@ export default {
   }
 }
 
+
 @media (max-width: 768px) {
   .admin-users {
     padding: 12px;
@@ -1406,5 +1577,161 @@ export default {
   &:hover {
     text-decoration: underline;
   }
+}
+
+/* 备注输入框样式 */
+:deep(.notes-column) {
+  background-color: #fafafa !important;
+}
+
+:deep(.notes-column .cell) {
+  padding: 8px !important;
+  background-color: #fafafa !important;
+}
+
+.notes-input-wrapper {
+  position: relative;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.notes-input {
+  width: 100%;
+}
+
+.notes-input :deep(.el-textarea__inner) {
+  border: 2px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  transition: all 0.3s;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.notes-input :deep(.el-textarea__inner:hover) {
+  border-color: #c0c4cc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.notes-input :deep(.el-textarea__inner:focus) {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  outline: none;
+}
+
+.notes-input :deep(.el-input__count) {
+  background-color: transparent;
+  color: #909399;
+  font-size: 12px;
+}
+
+.saving-indicator,
+.saved-indicator {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #909399;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.saving-indicator {
+  color: #409eff;
+}
+
+.saved-indicator {
+  color: #67c23a;
+  animation: fadeInOut 2s ease-in-out;
+}
+
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0; }
+  10%, 90% { opacity: 1; }
+}
+
+.saving-indicator .el-icon,
+.saved-indicator .el-icon {
+  font-size: 14px;
+}
+
+/* 移动端备注样式 */
+.notes-row {
+  margin-top: 12px;
+}
+
+.notes-input-wrapper-mobile {
+  position: relative;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.notes-input-mobile {
+  width: 100%;
+}
+
+.notes-input-mobile :deep(.el-textarea__inner) {
+  border: 2px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  transition: all 0.3s;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  min-height: 60px;
+}
+
+.notes-input-mobile :deep(.el-textarea__inner:hover) {
+  border-color: #c0c4cc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.notes-input-mobile :deep(.el-textarea__inner:focus) {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  outline: none;
+}
+
+.notes-input-mobile :deep(.el-input__count) {
+  background-color: transparent;
+  color: #909399;
+  font-size: 12px;
+}
+
+.saving-indicator-mobile,
+.saved-indicator-mobile {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #909399;
+  pointer-events: none;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.saving-indicator-mobile {
+  color: #409eff;
+}
+
+.saved-indicator-mobile {
+  color: #67c23a;
+  animation: fadeInOut 2s ease-in-out;
+}
+
+.saving-indicator-mobile .el-icon,
+.saved-indicator-mobile .el-icon {
+  font-size: 14px;
 }
 </style>

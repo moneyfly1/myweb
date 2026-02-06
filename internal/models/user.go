@@ -50,6 +50,8 @@ type User struct {
 	SpecialNodeSubscriptionType string       `gorm:"type:varchar(20);default:both" json:"special_node_subscription_type"` // both, special_only
 	SpecialNodeExpiresAt        sql.NullTime `json:"special_node_expires_at,omitempty"`
 
+	Notes sql.NullString `gorm:"type:text" json:"notes,omitempty"` // 备注字段
+
 	Subscriptions            []Subscription       `gorm:"foreignKey:UserID" json:"-"`
 	Orders                   []Order              `gorm:"foreignKey:UserID" json:"-"`
 	Devices                  []Device             `gorm:"foreignKey:UserID" json:"-"`
