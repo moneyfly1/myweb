@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -221,8 +222,10 @@ func GetUsers(c *gin.Context) {
 	page := pagination.Page
 	size := pagination.Size
 	if kw := c.Query("keyword"); kw != "" {
-		sk := "%" + utils.SanitizeSearchKeyword(kw) + "%"
-		query = query.Where("username LIKE ? OR email LIKE ?", sk, sk)
+		escapedKw := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(kw))
+		searchPattern := "%" + escapedKw + "%"
+		// 使用 COALESCE 处理 NULL 值，确保备注搜索能正常工作
+		query = query.Where("username LIKE ? OR email LIKE ? OR COALESCE(notes, '') LIKE ?", searchPattern, searchPattern, searchPattern)
 	}
 	if st := c.Query("status"); st != "" {
 		switch st {
@@ -234,10 +237,36 @@ func GetUsers(c *gin.Context) {
 			query = query.Where("is_admin = ?", true)
 		}
 	}
+	// 处理排序
+	sortField := strings.TrimSpace(c.Query("sort"))
+	sortOrder := strings.TrimSpace(c.Query("order"))
+	orderBy := "created_at DESC" // 默认排序
+
+	if sortField != "" {
+		// 验证排序字段，防止 SQL 注入
+		allowedSortFields := map[string]string{
+			"balance":    "balance",
+			"created_at": "created_at",
+			"username":   "username",
+			"email":      "email",
+		}
+
+		if dbField, ok := allowedSortFields[sortField]; ok {
+			if sortOrder == "asc" {
+				orderBy = dbField + " ASC"
+			} else if sortOrder == "desc" {
+				orderBy = dbField + " DESC"
+			} else {
+				// 如果没有指定排序方向，默认降序
+				orderBy = dbField + " DESC"
+			}
+		}
+	}
+
 	var total int64
 	query.Count(&total)
 	var users []models.User
-	query.Offset(pagination.GetOffset()).Limit(pagination.Size).Order("created_at DESC").Find(&users)
+	query.Offset(pagination.GetOffset()).Limit(pagination.Size).Order(orderBy).Find(&users)
 
 	userIDs := make([]uint, len(users))
 	for i, u := range users {
@@ -336,6 +365,10 @@ func GetUsers(c *gin.Context) {
 			lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
 		}
 
+		notes := ""
+		if u.Notes.Valid {
+			notes = u.Notes.String
+		}
 		list = append(list, gin.H{
 			"id":        u.ID,
 			"username":  u.Username,
@@ -353,6 +386,7 @@ func GetUsers(c *gin.Context) {
 			"created_at":     u.CreatedAt.Format("2006-01-02 15:04:05"),
 			"last_login":     lastLogin,
 			"subscription":   subscriptionInfo,
+			"notes":          notes,
 		})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": list, "total": total, "page": page, "size": size})
@@ -686,6 +720,7 @@ func CreateUser(c *gin.Context) {
 		Balance     float64 `json:"balance"`
 		DeviceLimit int     `json:"device_limit"` // 设备限制
 		ExpireTime  string  `json:"expire_time"`  // 到期时间，格式：YYYY-MM-DDTHH:mm:ss
+		Notes       string  `json:"notes"`        // 备注
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -722,6 +757,9 @@ func CreateUser(c *gin.Context) {
 		IsVerified: req.IsVerified,
 		IsAdmin:    req.IsAdmin,
 		Balance:    req.Balance,
+	}
+	if req.Notes != "" {
+		user.Notes = database.NullString(req.Notes)
 	}
 
 	if err := db.Create(&user).Error; err != nil {
@@ -863,6 +901,7 @@ func UpdateUser(c *gin.Context) {
 		IsAdmin    *bool    `json:"is_admin"`
 		Balance    *float64 `json:"balance"`
 		Password   string   `json:"password"`
+		Notes      *string  `json:"notes"` // 备注
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -925,6 +964,13 @@ func UpdateUser(c *gin.Context) {
 			return
 		}
 		user.Password = hashedPassword
+	}
+	if req.Notes != nil {
+		if *req.Notes == "" {
+			user.Notes = sql.NullString{Valid: false}
+		} else {
+			user.Notes = database.NullString(*req.Notes)
+		}
 	}
 
 	if err := db.Save(&user).Error; err != nil {

@@ -215,13 +215,15 @@
       <!-- 桌面端表格 -->
       <div class="table-wrapper">
         <el-table 
+          ref="tableRef"
           :data="subscriptions" 
           style="width: 100%" 
           v-loading="loading"
           @selection-change="handleSelectionChange"
+          @sort-change="handleSortChange"
           row-key="id"
           stripe
-          :default-sort="{prop: 'created_at', order: 'descending'}"
+          border
         >
         <!-- 选择列 -->
         <el-table-column type="selection" width="55" />
@@ -256,7 +258,6 @@
           prop="expire_time"
           sortable="custom"
           :sort-orders="['descending', 'ascending', null]"
-          @sort-change="handleExpireTimeSort"
         >
           <template #default="scope">
             <div 
@@ -352,6 +353,9 @@
           v-if="visibleColumns.includes('created_at')" 
           label="添加时间" 
           width="160"
+          prop="created_at"
+          sortable="custom"
+          :sort-orders="['descending', 'ascending', null]"
         >
           <template #default="scope">
             <div class="created-time">
@@ -366,6 +370,9 @@
           label="通用订阅次数" 
           width="110" 
           align="center"
+          prop="apple_count"
+          sortable="custom"
+          :sort-orders="['descending', 'ascending', null]"
         >
           <template #default="scope">
             <el-tooltip content="订阅通用订阅的次数" placement="top">
@@ -380,6 +387,9 @@
           label="猫咪订阅次数" 
           width="110" 
           align="center"
+          prop="clash_count"
+          sortable="custom"
+          :sort-orders="['descending', 'ascending', null]"
         >
           <template #default="scope">
             <el-tooltip content="订阅猫咪订阅的次数" placement="top">
@@ -394,6 +404,9 @@
           label="在线" 
           width="70" 
           align="center"
+          prop="online_devices"
+          sortable="custom"
+          :sort-orders="['descending', 'ascending', null]"
         >
           <template #default="scope">
             <el-tooltip content="当前在线设备数" placement="top">
@@ -410,7 +423,6 @@
           prop="device_limit"
           sortable="custom"
           :sort-orders="['descending', 'ascending', null]"
-          @sort-change="handleDeviceLimitSort"
         >
           <template #default="scope">
             <div 
@@ -1270,6 +1282,7 @@ export default {
     }
     
     const visibleColumns = ref(loadColumnSettings())
+    const tableRef = ref(null)
 
     const userDevices = ref([])
     const loadingDevices = ref(false)
@@ -1313,9 +1326,7 @@ export default {
           params.status = searchForm.status
         }
         
-        console.log('loadSubscriptions params:', params)
         const response = await adminAPI.getSubscriptions(params)
-        console.log('loadSubscriptions response:', response)
         if (response.data?.success !== false) {
           const subscriptionList = response.data?.data?.subscriptions || []
           // 确保 is_active 是布尔值
@@ -1402,8 +1413,6 @@ export default {
           expire_time: subscription.expire_time
         })
         ElMessage.success('到期时间更新成功')
-        // 不重新加载整个列表，只更新当前项
-        // loadSubscriptions()
       } catch (error) {
         ElMessage.error('更新到期时间失败: ' + (error.response?.data?.message || error.message))
         // 如果失败，尝试重新加载列表以恢复原始值
@@ -1462,8 +1471,6 @@ export default {
         window.dispatchEvent(new CustomEvent('subscription-device-limit-updated', {
           detail: { subscriptionId: subscription.id, deviceLimit: subscription.device_limit }
         }))
-        // 不重新加载整个列表，只更新当前项
-        // loadSubscriptions()
       } catch (error) {
         ElMessage.error('更新设备限制失败: ' + (error.response?.data?.message || error.message))
         // 如果失败，尝试重新加载列表以恢复原始值
@@ -2232,8 +2239,6 @@ export default {
       ElMessage.info('在线设备统计功能待实现')
     }
 
-    // 移除设备
-
     const truncateText = (text, maxLength) => {
       if (!text) return ''
       return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
@@ -2483,35 +2488,21 @@ export default {
       currentSort.value = 'add_time_desc'
       loadSubscriptions()
     }
-
-    const handleDeviceLimitSort = ({ column, prop, order }) => {
-      console.log('handleDeviceLimitSort called:', { column, prop, order })
-      if (!order || order === null) {
-        // 取消排序，恢复默认
+    
+    // 统一处理表格排序
+    const handleSortChange = ({ column, prop, order }) => {
+      if (!order) {
+        // 默认排序
         currentSort.value = 'add_time_desc'
-      } else if (order === 'descending') {
-        currentSort.value = 'device_limit_desc'
-      } else if (order === 'ascending') {
-        currentSort.value = 'device_limit_asc'
+      } else {
+        const direction = order === 'descending' ? 'desc' : 'asc'
+        // 映射前端字段名到后端排序字段
+        let sortField = prop
+        if (prop === 'created_at') sortField = 'add_time'
+        
+        currentSort.value = `${sortField}_${direction}`
       }
-      console.log('currentSort set to:', currentSort.value)
-      currentPage.value = 1 // 重置到第一页
-      loadSubscriptions()
-    }
-
-    // 处理结束时间排序
-    const handleExpireTimeSort = ({ column, prop, order }) => {
-      console.log('handleExpireTimeSort called:', { column, prop, order })
-      if (!order || order === null) {
-        // 取消排序，恢复默认
-        currentSort.value = 'add_time_desc'
-      } else if (order === 'descending') {
-        currentSort.value = 'expire_time_desc'
-      } else if (order === 'ascending') {
-        currentSort.value = 'expire_time_asc'
-      }
-      console.log('currentSort set to:', currentSort.value)
-      currentPage.value = 1 // 重置到第一页
+      currentPage.value = 1
       loadSubscriptions()
     }
 
@@ -2545,11 +2536,6 @@ export default {
       return window.innerWidth <= 768
     })
 
-    // 监听窗口大小变化
-    const handleResize = () => {
-      // 触发响应式更新
-    }
-
     // 组件挂载时加载数据
     onMounted(() => {
       // 检查 URL 参数中是否有搜索关键词
@@ -2562,11 +2548,6 @@ export default {
         }
       }
       loadSubscriptions()
-      window.addEventListener('resize', handleResize)
-    })
-
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
     })
 
     return {
@@ -2647,8 +2628,7 @@ export default {
       sortByApple,
       sortByOnline,
       sortByCreatedTime,
-      handleDeviceLimitSort,
-      handleExpireTimeSort,
+      handleSortChange,
       truncateUserAgent,
       formatTime,
       formatLocation,
