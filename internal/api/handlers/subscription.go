@@ -380,6 +380,8 @@ func GetAdminSubscriptions(c *gin.Context) {
 		"device_limit_asc":    "device_limit ASC",
 		"apple_count_desc":    "universal_count DESC",
 		"apple_count_asc":     "universal_count ASC",
+		"clash_count_desc":    "clash_count DESC",
+		"clash_count_asc":     "clash_count ASC",
 		"online_devices_desc": "(SELECT COUNT(*) FROM devices WHERE devices.subscription_id = subscriptions.id AND devices.is_active = 1) DESC",
 		"online_devices_asc":  "(SELECT COUNT(*) FROM devices WHERE devices.subscription_id = subscriptions.id AND devices.is_active = 1) ASC",
 	}

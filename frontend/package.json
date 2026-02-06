@@ -20,6 +20,7 @@
     "element-plus": "^2.4.4",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.4",
+    "sortablejs": "^1.15.6",
     "vue": "^3.3.8",
     "vue-router": "^4.2.5"
   },
