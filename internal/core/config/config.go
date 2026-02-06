@@ -52,10 +52,6 @@ type Config struct {
 	BaseURL                    string
 	DisableScheduleTasks       bool
 	OptimizeForLowEnd          bool
-	AliyunAccessKeyID          string
-	AliyunAccessKeySecret      string
-	AliyunSMSSignName          string
-	AliyunSMSTemplateCode      string
 	DeviceUpgradePricePerMonth float64 // 设备升级价格（每月）
 }
 
@@ -127,10 +123,6 @@ func LoadConfig() (*Config, error) {
 		BaseURL:                    getString("BASE_URL", ""),
 		DisableScheduleTasks:       getBool("DISABLE_SCHEDULE_TASKS", false),
 		OptimizeForLowEnd:          getBool("OPTIMIZE_FOR_LOW_END", true),
-		AliyunAccessKeyID:          getString("ALIYUN_ACCESS_KEY_ID", ""),
-		AliyunAccessKeySecret:      getString("ALIYUN_ACCESS_KEY_SECRET", ""),
-		AliyunSMSSignName:          getString("ALIYUN_SMS_SIGN_NAME", ""),
-		AliyunSMSTemplateCode:      getString("ALIYUN_SMS_TEMPLATE_CODE", ""),
 		DeviceUpgradePricePerMonth: getFloat64("DEVICE_UPGRADE_PRICE_PER_MONTH", 10.0),
 	}
 

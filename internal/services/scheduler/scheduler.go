@@ -16,7 +16,7 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/email"
-	"cboard-go/internal/services/gitee"
+	"cboard-go/internal/services/git"
 	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
@@ -47,6 +47,9 @@ func (s *Scheduler) Start() {
 
 	s.running = true
 	log.Println("定时任务调度器已启动")
+	utils.CreateSchedulerLog("scheduler", "started", "定时任务调度器已启动", map[string]interface{}{
+		"status": "started",
+	})
 
 	go s.processEmailQueue()
 	go s.checkExpiringSubscriptions()
@@ -64,12 +67,18 @@ func (s *Scheduler) Stop() {
 	s.running = false
 	close(s.stopChan)
 	log.Println("定时任务调度器已停止")
+	utils.CreateSchedulerLog("scheduler", "stopped", "定时任务调度器已停止", map[string]interface{}{
+		"status": "stopped",
+	})
 }
 
 func (s *Scheduler) processEmailQueue() {
 	emailService := email.NewEmailService() // 每次重新创建，确保使用最新配置
 	if err := emailService.ProcessEmailQueue(); err != nil {
 		utils.LogErrorMsg("处理邮件队列失败: %v", err)
+		utils.CreateSchedulerLog("email_queue", "error", fmt.Sprintf("处理邮件队列失败: %v", err), map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	ticker := time.NewTicker(1 * time.Minute)
@@ -83,6 +92,9 @@ func (s *Scheduler) processEmailQueue() {
 			emailService := email.NewEmailService()
 			if err := emailService.ProcessEmailQueue(); err != nil {
 				utils.LogErrorMsg("处理邮件队列失败: %v", err)
+				utils.CreateSchedulerLog("email_queue", "error", fmt.Sprintf("处理邮件队列失败: %v", err), map[string]interface{}{
+					"error": err.Error(),
+				})
 			}
 		}
 	}
@@ -134,15 +146,27 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 
 	if err := query.Preload("User").Preload("Package").Find(&subscriptions).Error; err != nil {
 		utils.LogErrorMsg("查询到期订阅失败: %v", err)
+		utils.CreateSchedulerLog("expiring_subscriptions", "error", fmt.Sprintf("查询到期订阅失败: %v", err), map[string]interface{}{
+			"error": err.Error(),
+		})
 		return
 	}
 
-	utils.LogInfo("发现 %d 个%s的订阅", len(subscriptions), func() string {
+	count := len(subscriptions)
+	statusText := func() string {
 		if isExpired {
 			return "已过期"
 		}
 		return fmt.Sprintf("%d天后到期", remainingDays)
-	}())
+	}()
+	utils.LogInfo("发现 %d 个%s的订阅", count, statusText)
+	if count > 0 {
+		utils.CreateSchedulerLog("expiring_subscriptions", "info", fmt.Sprintf("发现 %d 个%s的订阅", count, statusText), map[string]interface{}{
+			"count":          count,
+			"remaining_days": remainingDays,
+			"is_expired":     isExpired,
+		})
+	}
 
 	emailService := email.NewEmailService()
 	templateBuilder := email.NewEmailTemplateBuilder()
@@ -410,8 +434,12 @@ func (s *Scheduler) checkNodeHealthNow() {
 
 	if err := healthService.CheckAllNodes(); err != nil {
 		utils.LogErrorMsg("节点健康检查失败: %v", err)
+		utils.CreateSchedulerLog("node_health_check", "error", fmt.Sprintf("节点健康检查失败: %v", err), map[string]interface{}{
+			"error": err.Error(),
+		})
 	} else {
 		utils.LogInfo("节点健康检查完成")
+		utils.CreateSchedulerLog("node_health_check", "success", "节点健康检查完成", nil)
 	}
 }
 
@@ -564,10 +592,15 @@ func (s *Scheduler) checkAndRunAutoBackup() {
 
 	// 执行备份
 	utils.LogInfo("开始执行自动备份任务")
+	utils.CreateSchedulerLog("auto_backup", "started", "开始执行自动备份任务", nil)
 	if err := s.runAutoBackup(); err != nil {
 		utils.LogErrorMsg("自动备份失败: %v", err)
+		utils.CreateSchedulerLog("auto_backup", "error", fmt.Sprintf("自动备份失败: %v", err), map[string]interface{}{
+			"error": err.Error(),
+		})
 	} else {
 		utils.LogInfo("自动备份任务执行成功")
+		utils.CreateSchedulerLog("auto_backup", "success", "自动备份任务执行成功", nil)
 		// 更新最后备份时间
 		now := utils.GetBeijingTime()
 		lastBackupTime := now.Format("2006-01-02T15:04:05")
@@ -690,40 +723,82 @@ func (s *Scheduler) runAutoBackup() error {
 		}
 	}
 
+	// 获取备份目标配置（gitee 或 github）
+	var targetConfig models.SystemConfig
+	backupTarget := "gitee" // 默认使用gitee
+	if err := s.db.Where("key = ? AND category = ?", "backup_target", "backup").First(&targetConfig).Error; err == nil {
+		if targetConfig.Value == "github" {
+			backupTarget = "github"
+		}
+	}
+
+	// 检查是否启用了远程备份
+	var enabledKey string
+	if backupTarget == "github" {
+		enabledKey = "backup_github_enabled"
+	} else {
+		enabledKey = "backup_gitee_enabled"
+	}
+
 	var backupConfig models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "backup_gitee_enabled", "backup").First(&backupConfig).Error; err == nil {
+	if err := s.db.Where("key = ? AND category = ?", enabledKey, "backup").First(&backupConfig).Error; err == nil {
 		if backupConfig.Value == "true" {
 			var tokenConfig models.SystemConfig
-			if err := s.db.Where("key = ? AND category = ?", "backup_gitee_token", "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
+			var tokenKey string
+			if backupTarget == "github" {
+				tokenKey = "backup_github_token"
+			} else {
+				tokenKey = "backup_gitee_token"
+			}
+
+			if err := s.db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
 				var ownerConfig models.SystemConfig
 				var repoConfig models.SystemConfig
-				owner := "moneyfly"
+				var ownerKey, repoKey string
+
+				if backupTarget == "github" {
+					ownerKey = "backup_github_owner"
+					repoKey = "backup_github_repo"
+				} else {
+					ownerKey = "backup_gitee_owner"
+					repoKey = "backup_gitee_repo"
+				}
+
+				owner := "moneyfly1"
 				repo := "backup"
-				if err := s.db.Where("key = ? AND category = ?", "backup_gitee_owner", "backup").First(&ownerConfig).Error; err == nil {
+				if backupTarget == "github" {
+					owner = "moneyfly1"
+					repo = "backup"
+				} else {
+					owner = "moneyfly"
+					repo = "backup"
+				}
+
+				if err := s.db.Where("key = ? AND category = ?", ownerKey, "backup").First(&ownerConfig).Error; err == nil {
 					owner = ownerConfig.Value
 				}
-				if err := s.db.Where("key = ? AND category = ?", "backup_gitee_repo", "backup").First(&repoConfig).Error; err == nil {
+				if err := s.db.Where("key = ? AND category = ?", repoKey, "backup").First(&repoConfig).Error; err == nil {
 					repo = repoConfig.Value
 				}
 
-				// 创建只包含数据库的临时备份文件用于上传到Gitee
-				giteeBackupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
-				giteeBackupPath := filepath.Join(backupDir, giteeBackupFileName)
-				giteeBackupPath = filepath.Clean(giteeBackupPath)
+				// 创建只包含数据库的临时备份文件
+				backupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
+				backupFilePath := filepath.Join(backupDir, backupFileName)
+				backupFilePath = filepath.Clean(backupFilePath)
 
-				if strings.HasPrefix(giteeBackupPath, backupDir) {
-					giteeZipFile, err := os.Create(giteeBackupPath)
+				if strings.HasPrefix(backupFilePath, backupDir) {
+					zipFile, err := os.Create(backupFilePath)
 					if err == nil {
-						giteeZipWriter := zip.NewWriter(giteeZipFile)
+						zipWriter := zip.NewWriter(zipFile)
 
-						// 只添加数据库文件到Gitee备份
+						// 只添加数据库文件
 						dbPath := filepath.Join(wd, "cboard.db")
 						dbPath = filepath.Clean(dbPath)
 						if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
 							if _, err := os.Stat(dbPath); err == nil {
 								dbFile, err := os.Open(dbPath)
 								if err == nil {
-									writer, err := giteeZipWriter.Create("cboard.db")
+									writer, err := zipWriter.Create("cboard.db")
 									if err == nil {
 										io.Copy(writer, dbFile)
 									}
@@ -732,19 +807,29 @@ func (s *Scheduler) runAutoBackup() error {
 							}
 						}
 
-						giteeZipWriter.Close()
-						giteeZipFile.Close()
+						zipWriter.Close()
+						zipFile.Close()
 
-						// 上传只包含数据库的备份到Gitee
-						client := gitee.NewGiteeClient(tokenConfig.Value, owner, repo)
-						if err := client.UploadBackup(giteeBackupPath); err != nil {
-							utils.LogErrorMsg("上传备份到 Gitee 失败: %v", err)
+						// 根据目标选择平台类型并上传
+						var platformType git.PlatformType
+						var platformName string
+						if backupTarget == "github" {
+							platformType = git.PlatformGitHub
+							platformName = "GitHub"
 						} else {
-							utils.LogInfo("数据库备份文件已成功上传到 Gitee（仅数据库文件）")
+							platformType = git.PlatformGitee
+							platformName = "Gitee"
 						}
 
-						// 删除临时的Gitee备份文件
-						os.Remove(giteeBackupPath)
+						client := git.NewClient(platformType, tokenConfig.Value, owner, repo)
+						if err := client.UploadBackup(backupFilePath); err != nil {
+							utils.LogErrorMsg(fmt.Sprintf("上传备份到 %s 失败: %v", platformName, err))
+						} else {
+							utils.LogInfo(fmt.Sprintf("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName))
+						}
+
+						// 删除临时的备份文件
+						os.Remove(backupFilePath)
 					}
 				}
 			}

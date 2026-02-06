@@ -1,6 +1,176 @@
 import axios from 'axios'
-import { secureStorage } from '@/utils/secureStorage'
-import { onPageVisible, isVisible } from '@/utils/pageVisibility'
+
+// ==========================================
+// 安全存储工具（从 helpers.js 合并）
+// ==========================================
+
+const SECURE_STORAGE_KEY = 'cboard_secure_'
+const MAX_STORAGE_AGE = 24 * 60 * 60 * 1000
+
+function isSecureContext() {
+  return typeof window !== 'undefined' && window.isSecureContext
+}
+
+function getStorageKey(key) {
+  return `${SECURE_STORAGE_KEY}${key}`
+}
+
+function getStorageItem(key) {
+  try {
+    const storageKey = getStorageKey(key)
+    const item = sessionStorage.getItem(storageKey) || localStorage.getItem(storageKey)
+    if (!item) return null
+    const data = JSON.parse(item)
+    if (data.expiry && Date.now() > data.expiry) {
+      removeStorageItem(key)
+      return null
+    }
+    return data.value
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('读取存储失败:', error)
+    }
+    return null
+  }
+}
+
+function setStorageItem(key, value, useSession = true, maxAge = MAX_STORAGE_AGE) {
+  try {
+    const storageKey = getStorageKey(key)
+    const data = {
+      value,
+      expiry: Date.now() + maxAge,
+      timestamp: Date.now()
+    }
+    const storage = useSession ? sessionStorage : localStorage
+    storage.setItem(storageKey, JSON.stringify(data))
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('写入存储失败:', error)
+    }
+  }
+}
+
+function removeStorageItem(key) {
+  try {
+    const storageKey = getStorageKey(key)
+    sessionStorage.removeItem(storageKey)
+    localStorage.removeItem(storageKey)
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('删除存储失败:', error)
+    }
+  }
+}
+
+function clearSecureStorage() {
+  try {
+    const keysToRemove = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)
+      if (key && key.startsWith(SECURE_STORAGE_KEY)) {
+        keysToRemove.push(key)
+      }
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(SECURE_STORAGE_KEY)) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach(key => {
+      sessionStorage.removeItem(key)
+      localStorage.removeItem(key)
+    })
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('清理存储失败:', error)
+    }
+  }
+}
+
+export const secureStorage = {
+  get: getStorageItem,
+  set: setStorageItem,
+  remove: removeStorageItem,
+  clear: clearSecureStorage,
+  isSecureContext
+}
+
+// ==========================================
+// 页面可见性管理（从 pageVisibility.js 合并）
+// ==========================================
+
+let visibilityHandlers = []
+let isPageVisible = true
+
+// 初始化页面可见性监听
+if (typeof document !== 'undefined') {
+  // 监听页面可见性变化
+  document.addEventListener('visibilitychange', () => {
+    const wasVisible = isPageVisible
+    isPageVisible = !document.hidden
+    
+    if (wasVisible && !isPageVisible) {
+      // 页面变为隐藏
+      console.debug('页面已隐藏')
+    } else if (!wasVisible && isPageVisible) {
+      // 页面重新可见
+      console.debug('页面重新可见，触发刷新')
+      triggerVisibilityHandlers()
+    }
+  })
+  
+  // 监听窗口焦点变化（作为备用）
+  window.addEventListener('focus', () => {
+    if (isPageVisible) {
+      console.debug('窗口获得焦点，触发刷新')
+      triggerVisibilityHandlers()
+    }
+  })
+}
+
+/**
+ * 触发所有可见性处理器
+ */
+function triggerVisibilityHandlers() {
+  visibilityHandlers.forEach(handler => {
+    try {
+      handler()
+    } catch (error) {
+      console.error('页面可见性处理器执行失败:', error)
+    }
+  })
+}
+
+/**
+ * 注册页面可见性处理器
+ * @param {Function} handler - 当页面重新可见时调用的函数
+ * @returns {Function} 取消注册的函数
+ */
+function onPageVisible(handler) {
+  if (typeof handler !== 'function') {
+    console.warn('onPageVisible: handler 必须是函数')
+    return () => {}
+  }
+  
+  visibilityHandlers.push(handler)
+  
+  // 返回取消注册的函数
+  return () => {
+    const index = visibilityHandlers.indexOf(handler)
+    if (index > -1) {
+      visibilityHandlers.splice(index, 1)
+    }
+  }
+}
+
+/**
+ * 检查页面是否可见
+ */
+function isVisible() {
+  return isPageVisible
+}
 
 
 let _router = null
@@ -484,7 +654,15 @@ export const adminAPI = {
   updateSecuritySettings: (data) => api.put('/admin/security-settings', data),
   getSystemLogs: (params) => api.get('/admin/system-logs', { params }),
   getLogsStats: () => api.get('/admin/logs-stats'),
-  exportLogs: (params) => api.get('/admin/export-logs', { params, responseType: 'blob' }),
+  exportLogs: (params) => api.get('/admin/export-logs', { params, responseType: 'blob' }),
+  
+  // 日志管理
+  getRegistrationLogs: (params) => api.get('/admin/logs/registration', { params }),
+  getSubscriptionLogs: (params) => api.get('/admin/logs/subscription', { params }),
+  getBalanceLogs: (params) => api.get('/admin/logs/balance', { params }),
+  getCommissionLogs: (params) => api.get('/admin/logs/commission', { params }),
+  getSubscriptionResetLogs: (params) => api.get('/admin/logs/subscription-reset', { params }),
+  getEmailLogs: (params) => api.get('/admin/logs/email', { params }),
   clearLogs: () => api.post('/admin/clear-logs'),
   getUserDevices: (id) => api.get(`/admin/users/${id}/devices`),
   getSubscriptionDevices: (id) => api.get(`/admin/subscriptions/${id}/devices`),

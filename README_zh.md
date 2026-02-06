@@ -265,7 +265,7 @@ cd /opt/cboard
 export ADMIN_USERNAME="admin"
 export ADMIN_EMAIL="your-email@example.com"
 export ADMIN_PASSWORD="your-new-password"
-go run scripts/create_admin.go
+go run scripts/admin_tool.go
 ```
 
 ### 注意事项
@@ -485,7 +485,7 @@ export ADMIN_EMAIL="admin@example.com"
 export ADMIN_PASSWORD="YourStrongPassword123!"
 
 # 运行创建脚本
-go run scripts/create_admin.go
+go run scripts/admin_tool.go
 ```
 
 **说明**：
@@ -500,7 +500,7 @@ go run scripts/create_admin.go
 cd /www/wwwroot/example.com
 
 # 直接运行脚本（会使用默认值或提示输入）
-go run scripts/create_admin.go
+go run scripts/admin_tool.go
 ```
 
 ### 修改管理员密码
@@ -512,10 +512,10 @@ go run scripts/create_admin.go
 cd /www/wwwroot/example.com
 
 # 运行密码修改脚本（替换为您的实际密码）
-go run scripts/update_admin_password.go YourNewPassword123!
+go run scripts/admin_tool.go YourNewPassword123!
 
 # 示例
-go run scripts/update_admin_password.go Sikeming001@
+go run scripts/admin_tool.go Sikeming001@
 ```
 
 **说明**：
@@ -592,7 +592,7 @@ go run scripts/unlock_user.go user@example.com
 ### 常见问题
 
 **Q: 忘记管理员密码怎么办？**
-A: 使用 `go run scripts/update_admin_password.go <新密码>` 重置密码。
+A: 使用 `go run scripts/admin_tool.go <新密码>` 重置密码。
 
 **Q: 管理员账户被锁定了怎么办？**
 A: 使用 `go run scripts/unlock_user.go admin` 解锁账户。
@@ -601,7 +601,7 @@ A: 使用 `go run scripts/unlock_user.go admin` 解锁账户。
 A: 目前系统只支持一个管理员账户。如果需要多个管理员，可以创建普通用户并赋予相应权限（需要修改代码）。
 
 **Q: 安装时没有创建管理员账户怎么办？**
-A: 运行 `go run scripts/create_admin.go` 创建管理员账户。
+A: 运行 `go run scripts/admin_tool.go` 创建管理员账户。
 
 **Q: 如何验证管理员账户是否创建成功？**
 A: 尝试登录管理员后台，或检查数据库中的 `users` 表，查看 `is_admin` 字段为 `true` 的记录。
@@ -1024,7 +1024,7 @@ goweb/
 │   │   └── store/              # 状态管理
 │   └── dist/                   # 构建后的文件
 ├── scripts/                    # 工具脚本
-│   ├── create_admin.go         # 创建管理员账号
+│   ├── admin_tool.go           # 创建/更新管理员账号和密码
 │   └── unlock_user.go          # 解锁用户账号（支持管理员和普通用户）
 ├── .env                        # 环境变量
 ├── install.sh                  # 宝塔面板安装脚本

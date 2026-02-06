@@ -130,7 +130,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { ElMessage } from 'element-plus'
-import { secureStorage } from '@/utils/secureStorage'
+import { secureStorage } from '@/utils/api'
 import { ticketAPI } from '@/utils/api'
 
 const router = useRouter()

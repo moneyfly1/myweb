@@ -1158,11 +1158,30 @@ func UpgradeDevices(c *gin.Context) {
 
 	if finalAmount <= 0.01 {
 		if balanceUsed > 0 {
+			oldBalance := user.Balance
 			user.Balance -= balanceUsed
 			if err := db.Save(&user).Error; err != nil {
 				utils.ErrorResponse(c, http.StatusInternalServerError, "扣除余额失败", err)
 				return
 			}
+
+			// 记录余额日志
+			go func() {
+				orderID := uint(order.ID)
+				utils.CreateBalanceLog(
+					user.ID,
+					"consume",
+					-balanceUsed,
+					oldBalance,
+					user.Balance,
+					&orderID,
+					nil,
+					fmt.Sprintf("订单支付扣除余额，订单号: %s", order.OrderNo),
+					"system",
+					nil,
+					utils.GetRealClientIP(c),
+				)
+			}()
 		}
 		order.Status = "paid"
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())

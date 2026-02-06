@@ -194,7 +194,7 @@ func main() {
 	fmt.Println("   1. 确认账户状态: IsActive=true, IsVerified=true")
 	fmt.Println("   2. 确认密码正确")
 	if user.IsAdmin {
-		fmt.Println("   3. 如果是管理员，可以使用: go run scripts/update_admin_password.go <新密码> 重置密码")
+		fmt.Println("   3. 如果是管理员，可以使用: go run scripts/admin_tool.go <新密码> 重置密码")
 	}
 	fmt.Println("   4. 如果 IP 被锁定，等待 15 分钟或更换 IP")
 	fmt.Println("   5. 清除浏览器缓存和 Cookie 后重试登录")

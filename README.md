@@ -264,7 +264,7 @@ cd /opt/cboard
 export ADMIN_USERNAME="admin"
 export ADMIN_EMAIL="your-email@example.com"
 export ADMIN_PASSWORD="your-new-password"
-go run scripts/create_admin.go
+go run scripts/admin_tool.go
 ```
 
 ### Important Notes
@@ -484,7 +484,7 @@ export ADMIN_EMAIL="admin@example.com"
 export ADMIN_PASSWORD="YourStrongPassword123!"
 
 # Run creation script
-go run scripts/create_admin.go
+go run scripts/admin_tool.go
 ```
 
 **Notes**:
@@ -499,7 +499,7 @@ go run scripts/create_admin.go
 cd /www/wwwroot/example.com
 
 # Run script directly (will use defaults or prompt for input)
-go run scripts/create_admin.go
+go run scripts/admin_tool.go
 ```
 
 ### Update Administrator Password
@@ -511,10 +511,10 @@ If you forget the admin password, you can reset it using:
 cd /www/wwwroot/example.com
 
 # Run password update script (replace with your actual password)
-go run scripts/update_admin_password.go YourNewPassword123!
+go run scripts/admin_tool.go YourNewPassword123!
 
 # Example
-go run scripts/update_admin_password.go Sikeming001@
+go run scripts/admin_tool.go Sikeming001@
 ```
 
 **Notes**:
@@ -591,7 +591,7 @@ Administrators have full access to:
 ### Frequently Asked Questions
 
 **Q: What if I forget the admin password?**
-A: Use `go run scripts/update_admin_password.go <new-password>` to reset password.
+A: Use `go run scripts/admin_tool.go <new-password>` to reset password.
 
 **Q: What if admin account is locked?**
 A: Use `go run scripts/unlock_user.go admin` to unlock account.
@@ -600,7 +600,7 @@ A: Use `go run scripts/unlock_user.go admin` to unlock account.
 A: Currently system only supports one admin account. If multiple admins are needed, create regular users and assign permissions (requires code modification).
 
 **Q: What if admin account was not created during installation?**
-A: Run `go run scripts/create_admin.go` to create admin account.
+A: Run `go run scripts/admin_tool.go` to create admin account.
 
 **Q: How to verify admin account was created successfully?**
 A: Try logging into admin backend, or check `users` table in database for records with `is_admin` field set to `true`.
@@ -1022,7 +1022,7 @@ goweb/
 │   │   └── store/              # State management
 │   └── dist/                   # Built files
 ├── scripts/                    # Utility scripts
-│   ├── create_admin.go         # Create admin account
+│   ├── admin_tool.go           # Create/update admin account and password
 │   ├── check_admin.go          # Check admin account
 │   └── unlock_admin.go        # Unlock admin account
 ├── .env                        # Environment variables

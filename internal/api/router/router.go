@@ -453,6 +453,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/backup", handlers.CreateBackup)
 			admin.GET("/backups", handlers.ListBackups)
 			admin.POST("/backup/test-gitee", handlers.TestGiteeConnection)
+			admin.POST("/backup/test-github", handlers.TestGitHubConnection)
+			admin.GET("/backup/upload-status/:taskId", handlers.GetUploadStatus)
 
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)
@@ -460,6 +462,14 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/logs-stats", handlers.GetLogsStats)
 			admin.GET("/export-logs", handlers.ExportLogs)
 			admin.POST("/clear-logs", handlers.ClearLogs)
+
+			// 日志管理
+			admin.GET("/logs/registration", handlers.GetRegistrationLogs)
+			admin.GET("/logs/subscription", handlers.GetSubscriptionLogs)
+			admin.GET("/logs/balance", handlers.GetBalanceLogs)
+			admin.GET("/logs/commission", handlers.GetCommissionLogs)
+			admin.GET("/logs/subscription-reset", handlers.GetSubscriptionResetLogs)
+			admin.GET("/logs/email", handlers.GetEmailLogs)
 		}
 	}
 

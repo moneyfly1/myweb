@@ -196,6 +196,18 @@ manage_admin() {
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
     log "创建/重置管理员账户..."
     
+    # 检查 Go 环境
+    if ! command -v go &> /dev/null; then
+        error "未找到 Go 命令，请先安装 Go"
+        return 1
+    fi
+    
+    # 检查脚本文件是否存在
+    if [[ ! -f "scripts/admin_tool.go" ]]; then
+        error "脚本文件不存在: scripts/admin_tool.go"
+        return 1
+    fi
+    
     # 输入用户名
     read -r -p "请输入管理员用户名 (留空使用默认: admin): " admin_username
     if [[ -z "$admin_username" ]]; then
@@ -234,48 +246,114 @@ manage_admin() {
     export ADMIN_EMAIL="$admin_email"
     export ADMIN_PASSWORD="$admin_pass"
     
-    if go run scripts/create_admin.go; then
+    log "正在执行创建管理员账户脚本..."
+    if go run scripts/admin_tool.go 2>&1; then
         log "✅ 管理员账户已创建/重置"
         log "用户名: $admin_username"
         log "邮箱: $admin_email"
     else
-        error "管理员账户创建/重置失败"
+        error "管理员账户创建/重置失败，请检查错误信息"
         return 1
     fi
 }
 
 force_kill() {
     log "强制停止所有相关进程..."
-    pkill -9 server
-    pkill -9 node
+    pkill -9 server 2>/dev/null
+    pkill -9 node 2>/dev/null
     systemctl stop cboard 2>/dev/null
-    log "进程已全部清理。"
+    
+    # 等待进程完全停止
+    sleep 2
+    
+    # 检查是否还有残留进程
+    if pgrep -f "server|node" > /dev/null 2>&1; then
+        warn "仍有残留进程，再次清理..."
+        pkill -9 -f "server|node" 2>/dev/null
+        sleep 1
+    fi
+    
+    log "✅ 进程已全部清理"
 }
 
 deep_clean() {
     log "正在清理深度缓存..."
-    rm -rf "$PROJECT_DIR/frontend/dist"
-    rm -rf "$PROJECT_DIR/logs/*"
-    find "$PROJECT_DIR" -name "*.tmp" -delete
-    log "缓存清理完毕。"
+    
+    # 清理前端构建文件
+    if [[ -d "$PROJECT_DIR/frontend/dist" ]]; then
+        rm -rf "$PROJECT_DIR/frontend/dist"
+        log "已清理前端构建文件"
+    else
+        log "前端构建目录不存在，跳过"
+    fi
+    
+    # 清理日志文件
+    if [[ -d "$PROJECT_DIR/logs" ]]; then
+        rm -rf "$PROJECT_DIR/logs"/* 2>/dev/null
+        log "已清理日志文件"
+    else
+        log "日志目录不存在，跳过"
+    fi
+    
+    # 清理临时文件
+    local tmp_count=$(find "$PROJECT_DIR" -name "*.tmp" 2>/dev/null | wc -l)
+    if [[ $tmp_count -gt 0 ]]; then
+        find "$PROJECT_DIR" -name "*.tmp" -delete 2>/dev/null
+        log "已清理 $tmp_count 个临时文件"
+    else
+        log "未找到临时文件"
+    fi
+    
+    # 清理 Go 构建缓存
+    if [[ -f "$PROJECT_DIR/server" ]]; then
+        rm -f "$PROJECT_DIR/server"
+        log "已清理 Go 可执行文件"
+    fi
+    
+    log "✅ 缓存清理完毕"
 }
 
 unlock_user() {
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
     log "解锁用户账户（支持管理员和普通用户）..."
+    
+    # 检查 Go 环境
+    if ! command -v go &> /dev/null; then
+        error "未找到 Go 命令，请先安装 Go"
+        return 1
+    fi
+    
+    # 检查脚本文件是否存在
+    if [[ ! -f "scripts/unlock_user.go" ]]; then
+        error "脚本文件不存在: scripts/unlock_user.go"
+        return 1
+    fi
+    
     read -r -p "请输入要解锁的用户名或邮箱: " identifier
     if [[ -z "$identifier" ]]; then
         error "用户名或邮箱不能为空"
         return 1
     fi
-    if go run scripts/unlock_user.go "$identifier"; then
+    
+    log "正在解锁账户: $identifier"
+    if go run scripts/unlock_user.go "$identifier" 2>&1; then
         log "✅ 账户 $identifier 已解锁"
     else
-        error "解锁失败，请检查用户名或邮箱是否正确"
+        error "解锁失败，请检查："
+        error "  1. 用户名或邮箱是否正确"
+        error "  2. 数据库连接是否正常"
+        error "  3. 查看上方错误信息"
+        return 1
     fi
 }
 
 show_logs() {
+    # 检查服务是否存在
+    if ! systemctl list-unit-files | grep -q "cboard.service"; then
+        error "服务 cboard 不存在，请先部署"
+        return 1
+    fi
+    
     log "展示最近 50 行日志 (Ctrl+C 退出):"
     journalctl -u cboard -n 50 -f
 }
@@ -309,13 +387,57 @@ main() {
         case $choice in
             1) full_deploy ;;
             2) manage_admin ;;
-            3) force_kill; systemctl start cboard; log "服务已重启" ;;
+            3) 
+                force_kill
+                sleep 1
+                if systemctl start cboard; then
+                    sleep 2
+                    if systemctl is-active --quiet cboard; then
+                        log "✅ 服务已成功重启"
+                    else
+                        error "服务启动失败，请查看日志: journalctl -u cboard -n 50"
+                    fi
+                else
+                    error "服务启动失败"
+                fi
+                ;;
             4) deep_clean ;;
             5) unlock_user ;;
-            6) systemctl status cboard --no-pager ;;
+            6) 
+                if systemctl list-unit-files | grep -q "cboard.service"; then
+                    systemctl status cboard --no-pager
+                else
+                    error "服务 cboard 不存在，请先部署"
+                fi
+                ;;
             7) show_logs ;;
-            8) systemctl restart cboard; log "服务已重启" ;;
-            9) systemctl stop cboard; log "服务已停止" ;;
+            8) 
+                if systemctl list-unit-files | grep -q "cboard.service"; then
+                    if systemctl restart cboard; then
+                        sleep 2
+                        if systemctl is-active --quiet cboard; then
+                            log "✅ 服务已成功重启"
+                        else
+                            error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
+                        fi
+                    else
+                        error "服务重启失败"
+                    fi
+                else
+                    error "服务 cboard 不存在，请先部署"
+                fi
+                ;;
+            9) 
+                if systemctl list-unit-files | grep -q "cboard.service"; then
+                    if systemctl stop cboard; then
+                        log "✅ 服务已停止"
+                    else
+                        error "服务停止失败"
+                    fi
+                else
+                    error "服务 cboard 不存在"
+                fi
+                ;;
             0) exit 0 ;;
             *) error "无效选择，请重新输入" ;;
         esac

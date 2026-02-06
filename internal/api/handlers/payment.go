@@ -424,6 +424,22 @@ func PaymentNotify(c *gin.Context) {
 				}
 				utils.LogInfo("PaymentNotify: 充值成功 - order_no=%s, user_id=%d, amount=%.2f, old_balance=%.2f, new_balance=%.2f",
 					orderNo, user.ID, recharge.Amount, oldBalance, user.Balance)
+
+				// 记录余额日志
+				rechargeID := uint(recharge.ID)
+				utils.CreateBalanceLog(
+					user.ID,
+					"recharge",
+					recharge.Amount,
+					oldBalance,
+					user.Balance,
+					nil,
+					&rechargeID,
+					fmt.Sprintf("充值成功，订单号: %s", orderNo),
+					"system",
+					nil,
+					"",
+				)
 			}
 			return nil
 		})
@@ -601,6 +617,7 @@ func PaymentNotify(c *gin.Context) {
 		var user models.User
 		if err := db.First(&user, order.UserID).Error; err == nil {
 			if user.Balance >= balanceUsed {
+				oldBalance := user.Balance
 				user.Balance -= balanceUsed
 				if err := db.Save(&user).Error; err != nil {
 					utils.LogError("PaymentNotify: failed to deduct balance", err, map[string]interface{}{
@@ -608,11 +625,26 @@ func PaymentNotify(c *gin.Context) {
 						"balance_used": balanceUsed,
 					})
 				} else {
-					utils.LogError("PaymentNotify: balance deducted", nil, map[string]interface{}{
-						"order_id":     order.ID,
-						"balance_used": balanceUsed,
-						"user_id":      user.ID,
-					})
+					utils.LogInfo("PaymentNotify: balance deducted - order_no=%s, user_id=%d, balance_used=%.2f, old_balance=%.2f, new_balance=%.2f",
+						orderNo, user.ID, balanceUsed, oldBalance, user.Balance)
+
+					// 记录余额日志
+					go func() {
+						orderID := uint(order.ID)
+						utils.CreateBalanceLog(
+							user.ID,
+							"consume",
+							-balanceUsed,
+							oldBalance,
+							user.Balance,
+							&orderID,
+							nil,
+							fmt.Sprintf("订单支付扣除余额，订单号: %s", orderNo),
+							"system",
+							nil,
+							"",
+						)
+					}()
 				}
 			} else {
 				utils.LogError("PaymentNotify: insufficient balance", nil, map[string]interface{}{

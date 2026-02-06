@@ -329,3 +329,77 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		}
 	}()
 }
+
+// ==========================================
+// 系统日志记录
+// ==========================================
+
+// CreateSystemLog 创建系统级别的日志（定时任务、系统状态等）
+func CreateSystemLog(actionType, description string, level string, data map[string]interface{}) error {
+	db := database.GetDB()
+	if db == nil {
+		if AppLogger != nil {
+			AppLogger.Info("[系统日志] %s: %s", actionType, description)
+		}
+		return fmt.Errorf("数据库未初始化")
+	}
+
+	var dataJSON sql.NullString
+	if data != nil {
+		if dataBytes, err := json.Marshal(data); err == nil {
+			dataJSON = sql.NullString{String: string(dataBytes), Valid: true}
+		}
+	}
+
+	// 根据级别设置响应状态码
+	var responseStatus sql.NullInt64
+	switch level {
+	case "error", "ERROR":
+		responseStatus = sql.NullInt64{Int64: 500, Valid: true}
+	case "warning", "WARNING":
+		responseStatus = sql.NullInt64{Int64: 300, Valid: true}
+	default:
+		responseStatus = sql.NullInt64{Int64: 200, Valid: true}
+	}
+
+	auditLog := models.AuditLog{
+		UserID:            sql.NullInt64{Valid: false}, // 系统日志没有用户ID
+		ActionType:        actionType,
+		ResourceType:      sql.NullString{String: "system", Valid: true},
+		ResourceID:        sql.NullInt64{Valid: false},
+		ActionDescription: sql.NullString{String: description, Valid: true},
+		IPAddress:         sql.NullString{Valid: false},
+		UserAgent:         sql.NullString{Valid: false},
+		Location:          sql.NullString{Valid: false},
+		RequestMethod:     sql.NullString{Valid: false},
+		RequestPath:       sql.NullString{Valid: false},
+		ResponseStatus:    responseStatus,
+		BeforeData:        dataJSON,
+		AfterData:         sql.NullString{Valid: false},
+	}
+
+	go func() {
+		if err := db.Create(&auditLog).Error; err != nil {
+			if AppLogger != nil {
+				AppLogger.Error("[系统日志保存失败] %s: %s, 错误: %v", actionType, description, err)
+			}
+		}
+	}()
+
+	return nil
+}
+
+// CreateSchedulerLog 创建定时任务日志
+func CreateSchedulerLog(taskName, status, message string, data map[string]interface{}) error {
+	actionType := fmt.Sprintf("scheduler_%s", taskName)
+	description := fmt.Sprintf("[定时任务] %s: %s", taskName, message)
+
+	level := "info"
+	if status == "error" || status == "failed" {
+		level = "error"
+	} else if status == "warning" {
+		level = "warning"
+	}
+
+	return CreateSystemLog(actionType, description, level, data)
+}
