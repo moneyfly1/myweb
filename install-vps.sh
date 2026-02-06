@@ -911,7 +911,7 @@ create_admin_account() {
     local retry_count=0
     local max_retries=3
     while [ $retry_count -lt $max_retries ]; do
-        if go run scripts/create_admin.go 2>&1; then
+        if go run scripts/admin_tool.go 2>&1; then
             log "✅ 管理员账户创建成功"
             log "  用户名: $ADMIN_USERNAME"
             log "  邮箱: $ADMIN_EMAIL"
@@ -923,7 +923,7 @@ create_admin_account() {
                 sleep 2
             else
                 warn "管理员账户创建失败，您可以稍后手动创建"
-                warn "运行命令: cd $PROJECT_DIR && go run scripts/create_admin.go"
+                warn "运行命令: cd $PROJECT_DIR && go run scripts/admin_tool.go"
                 return 1
             fi
         fi

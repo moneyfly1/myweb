@@ -158,7 +158,7 @@ import { authAPI, inviteAPI } from '@/utils/api'
 import { useSettingsStore } from '@/store/settings'
 import { useAuthStore } from '@/store/auth'
 import { settingsAPI, resetRefreshFailed } from '@/utils/api'
-import { secureStorage } from '@/utils/secureStorage'
+import { secureStorage } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 
 const router = useRouter()

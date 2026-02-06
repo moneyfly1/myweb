@@ -490,7 +490,7 @@ create_admin() {
     export ADMIN_EMAIL="$admin_email"
     export ADMIN_PASSWORD="$admin_pass"
     
-    if go run scripts/create_admin.go; then
+    if go run scripts/admin_tool.go; then
         log "✅ 管理员账户已创建/重置"
         log "用户名: $admin_username"
         log "邮箱: $admin_email"

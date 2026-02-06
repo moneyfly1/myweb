@@ -34,6 +34,60 @@ func main() {
 
 	db := database.GetDB()
 
+	// 如果提供了密码参数，则只更新密码
+	if len(os.Args) >= 2 {
+		updatePassword(db, os.Args[1])
+		return
+	}
+
+	// 否则创建/更新管理员账户
+	createOrUpdateAdmin(db)
+}
+
+// updatePassword 更新管理员密码
+func updatePassword(db *gorm.DB, newPassword string) {
+	if len(newPassword) < 6 {
+		fmt.Println("❌ 错误: 密码长度至少6位")
+		os.Exit(1)
+	}
+
+	var user models.User
+	err := db.Where("username = ? OR email = ?", "admin", "admin@example.com").First(&user).Error
+	if err != nil {
+		log.Fatalf("未找到管理员账号: %v\n请先创建管理员账号", err)
+	}
+
+	hashed, err := auth.HashPassword(newPassword)
+	if err != nil {
+		log.Fatalf("生成密码哈希失败: %v", err)
+	}
+
+	if err := db.Model(&user).Update("password", hashed).Error; err != nil {
+		log.Fatalf("更新密码失败: %v", err)
+	}
+
+	updates := map[string]interface{}{
+		"is_admin":    true,
+		"is_verified": true,
+		"is_active":   true,
+	}
+	if err := db.Model(&user).Updates(updates).Error; err != nil {
+		log.Fatalf("更新管理员属性失败: %v", err)
+	}
+
+	fmt.Println("========================================")
+	fmt.Println("✅ 管理员密码已更新成功！")
+	fmt.Println("========================================")
+	fmt.Printf("用户名: %s\n", user.Username)
+	fmt.Printf("邮箱:   %s\n", user.Email)
+	fmt.Printf("新密码: %s\n", newPassword)
+	fmt.Println("========================================")
+	fmt.Println("💡 请使用新密码登录管理员后台")
+	fmt.Println("========================================")
+}
+
+// createOrUpdateAdmin 创建或更新管理员账户
+func createOrUpdateAdmin(db *gorm.DB) {
 	username := os.Getenv("ADMIN_USERNAME")
 	if username == "" {
 		username = "admin"
@@ -142,6 +196,6 @@ func main() {
 	fmt.Println("  1. 访问管理员登录页面: /admin/login")
 	fmt.Println("  2. 可以使用用户名或邮箱登录")
 	fmt.Println("  3. 如果无法登录，可以:")
-	fmt.Println("     - 修改密码: go run scripts/update_admin_password.go <新密码>")
+	fmt.Println("     - 修改密码: go run scripts/admin_tool.go <新密码>")
 	fmt.Println("     - 解锁账户: go run scripts/unlock_user.go admin")
 }

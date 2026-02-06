@@ -422,7 +422,7 @@ import { useAuthStore } from '@/store/auth'
 import { useSettingsStore } from '@/store/settings'
 import { authAPI, inviteAPI, settingsAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
-import { secureStorage } from '@/utils/secureStorage'
+import { secureStorage } from '@/utils/api'
 import { resetRefreshFailed } from '@/utils/api'
 
 const router = useRouter()

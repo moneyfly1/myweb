@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api, resetRefreshFailed } from '@/utils/api'
-import { secureStorage } from '@/utils/secureStorage'
+import { secureStorage } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 
 export const useAuthStore = defineStore('auth', () => {

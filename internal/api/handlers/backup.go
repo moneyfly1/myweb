@@ -13,10 +13,11 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/services/gitee"
+	"cboard-go/internal/services/git"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func CreateBackup(c *gin.Context) {
@@ -128,43 +129,87 @@ func CreateBackup(c *gin.Context) {
 
 	uploadResult := gin.H{
 		"uploaded": false,
+		"async":    false,
 	}
 
 	db := database.GetDB()
+
+	// 获取备份目标配置（gitee 或 github）
+	var targetConfig models.SystemConfig
+	backupTarget := "gitee" // 默认使用gitee
+	if err := db.Where("key = ? AND category = ?", "backup_target", "backup").First(&targetConfig).Error; err == nil {
+		if targetConfig.Value == "github" {
+			backupTarget = "github"
+		}
+	}
+
+	// 检查是否启用了远程备份
+	var enabledKey string
+	if backupTarget == "github" {
+		enabledKey = "backup_github_enabled"
+	} else {
+		enabledKey = "backup_gitee_enabled"
+	}
+
 	var backupConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "backup_gitee_enabled", "backup").First(&backupConfig).Error; err == nil {
+	if err := db.Where("key = ? AND category = ?", enabledKey, "backup").First(&backupConfig).Error; err == nil {
 		if backupConfig.Value == "true" {
 			var tokenConfig models.SystemConfig
-			if err := db.Where("key = ? AND category = ?", "backup_gitee_token", "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
+			var tokenKey string
+			if backupTarget == "github" {
+				tokenKey = "backup_github_token"
+			} else {
+				tokenKey = "backup_gitee_token"
+			}
+
+			if err := db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
 				var ownerConfig models.SystemConfig
 				var repoConfig models.SystemConfig
-				owner := "moneyfly"
+				var ownerKey, repoKey string
+
+				if backupTarget == "github" {
+					ownerKey = "backup_github_owner"
+					repoKey = "backup_github_repo"
+				} else {
+					ownerKey = "backup_gitee_owner"
+					repoKey = "backup_gitee_repo"
+				}
+
+				owner := "moneyfly1"
 				repo := "backup"
-				if err := db.Where("key = ? AND category = ?", "backup_gitee_owner", "backup").First(&ownerConfig).Error; err == nil {
+				if backupTarget == "github" {
+					owner = "moneyfly1"
+					repo = "backup"
+				} else {
+					owner = "moneyfly"
+					repo = "backup"
+				}
+
+				if err := db.Where("key = ? AND category = ?", ownerKey, "backup").First(&ownerConfig).Error; err == nil {
 					owner = ownerConfig.Value
 				}
-				if err := db.Where("key = ? AND category = ?", "backup_gitee_repo", "backup").First(&repoConfig).Error; err == nil {
+				if err := db.Where("key = ? AND category = ?", repoKey, "backup").First(&repoConfig).Error; err == nil {
 					repo = repoConfig.Value
 				}
 
-				// 创建只包含数据库的临时备份文件用于上传到Gitee
-				giteeBackupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
-				giteeBackupPath := filepath.Join(backupDir, giteeBackupFileName)
-				giteeBackupPath = filepath.Clean(giteeBackupPath)
+				// 创建只包含数据库的临时备份文件
+				backupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
+				backupFilePath := filepath.Join(backupDir, backupFileName)
+				backupFilePath = filepath.Clean(backupFilePath)
 
-				if strings.HasPrefix(giteeBackupPath, backupDir) {
-					giteeZipFile, err := os.Create(giteeBackupPath)
+				if strings.HasPrefix(backupFilePath, backupDir) {
+					zipFile, err := os.Create(backupFilePath)
 					if err == nil {
-						giteeZipWriter := zip.NewWriter(giteeZipFile)
+						zipWriter := zip.NewWriter(zipFile)
 
-						// 只添加数据库文件到Gitee备份
+						// 只添加数据库文件
 						dbPath := filepath.Join(wd, "cboard.db")
 						dbPath = filepath.Clean(dbPath)
 						if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
 							if _, err := os.Stat(dbPath); err == nil {
 								dbFile, err := os.Open(dbPath)
 								if err == nil {
-									writer, err := giteeZipWriter.Create("cboard.db")
+									writer, err := zipWriter.Create("cboard.db")
 									if err == nil {
 										io.Copy(writer, dbFile)
 									}
@@ -173,21 +218,64 @@ func CreateBackup(c *gin.Context) {
 							}
 						}
 
-						giteeZipWriter.Close()
-						giteeZipFile.Close()
+						zipWriter.Close()
+						zipFile.Close()
 
-						// 上传只包含数据库的备份到Gitee
-						client := gitee.NewGiteeClient(tokenConfig.Value, owner, repo)
-						if err := client.UploadBackup(giteeBackupPath); err != nil {
-							utils.LogError("上传备份到 Gitee 失败", err, nil)
-							uploadResult["error"] = err.Error()
-						} else {
-							uploadResult["uploaded"] = true
-							uploadResult["message"] = "已成功上传数据库备份到 Gitee（仅数据库文件）"
+						// 获取文件大小
+						var fileSize int64
+						if fileInfo, err := os.Stat(backupFilePath); err == nil {
+							fileSize = fileInfo.Size()
 						}
 
-						// 删除临时的Gitee备份文件
-						os.Remove(giteeBackupPath)
+						// 生成任务ID
+						taskID := uuid.New().String()
+
+						// 确定平台类型
+						var platformType git.PlatformType
+						var platformName string
+						if backupTarget == "github" {
+							platformType = git.PlatformGitHub
+							platformName = "GitHub"
+						} else {
+							platformType = git.PlatformGitee
+							platformName = "Gitee"
+						}
+
+						// 使用统一的状态管理器
+						statusManager := git.GetUploadStatusManager()
+						status := &git.UploadStatus{
+							Status:    "uploading",
+							Progress:  0,
+							Message:   "正在准备上传...",
+							StartTime: time.Now(),
+							FileName:  backupFileName,
+							FileSize:  fileSize,
+						}
+						statusManager.SetStatus(taskID, status)
+
+						// 异步上传（使用统一的Git客户端）
+						go func() {
+							client := git.NewClient(platformType, tokenConfig.Value, owner, repo)
+
+							progressCallback := func(progress int, message string) {
+								statusManager.UpdateStatus(taskID, "uploading", message, progress)
+							}
+
+							if err := client.UploadBackupWithProgress(backupFilePath, progressCallback); err != nil {
+								utils.LogError(fmt.Sprintf("上传备份到 %s 失败", platformName), err, nil)
+								statusManager.UpdateError(taskID, err)
+							} else {
+								statusManager.UpdateStatus(taskID, "success", fmt.Sprintf("已成功上传数据库备份到 %s（仅数据库文件）", platformName), 100)
+								utils.LogInfo(fmt.Sprintf("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName))
+							}
+
+							os.Remove(backupFilePath)
+						}()
+
+						uploadResult["async"] = true
+						uploadResult["task_id"] = taskID
+						uploadResult["target"] = backupTarget
+						uploadResult["message"] = fmt.Sprintf("备份文件已创建，正在后台上传到%s...", platformName)
 					}
 				}
 			}
@@ -199,12 +287,20 @@ func CreateBackup(c *gin.Context) {
 		fileSize = getFileSize(backupPath)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "备份创建成功", gin.H{
+	response := gin.H{
 		"filename": backupFileName,
 		"path":     backupPath,
 		"size":     fileSize,
-		"gitee":    uploadResult,
-	})
+	}
+
+	// 根据目标平台设置响应字段
+	if backupTarget == "github" {
+		response["github"] = uploadResult
+	} else {
+		response["gitee"] = uploadResult
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "备份创建成功", response)
 }
 
 func ListBackups(c *gin.Context) {
@@ -304,7 +400,7 @@ func TestGiteeConnection(c *gin.Context) {
 		req.Repo = "backup"
 	}
 
-	client := gitee.NewGiteeClient(req.Token, req.Owner, req.Repo)
+	client := git.NewClient(git.PlatformGitee, req.Token, req.Owner, req.Repo)
 	if err := client.TestConnection(); err != nil {
 		utils.LogError("测试 Gitee 连接失败", err, nil)
 		utils.ErrorResponse(c, http.StatusBadRequest, "Gitee 连接测试失败: "+err.Error(), err)
@@ -316,4 +412,81 @@ func TestGiteeConnection(c *gin.Context) {
 		"repo":    req.Repo,
 		"message": "连接正常，可以正常上传文件",
 	})
+}
+
+func TestGitHubConnection(c *gin.Context) {
+	var req struct {
+		Token string `json:"token"`
+		Owner string `json:"owner"`
+		Repo  string `json:"repo"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		db := database.GetDB()
+		var tokenConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "backup_github_token", "backup").First(&tokenConfig).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未配置 GitHub Token，请在请求中提供token或先保存设置", nil)
+			return
+		}
+		req.Token = tokenConfig.Value
+
+		var ownerConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "backup_github_owner", "backup").First(&ownerConfig).Error; err == nil {
+			req.Owner = ownerConfig.Value
+		} else {
+			req.Owner = "moneyfly1"
+		}
+
+		var repoConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "backup_github_repo", "backup").First(&repoConfig).Error; err == nil {
+			req.Repo = repoConfig.Value
+		} else {
+			req.Repo = "backup"
+		}
+	}
+
+	if req.Token == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Token不能为空", nil)
+		return
+	}
+
+	if req.Owner == "" {
+		req.Owner = "moneyfly1"
+	}
+	if req.Repo == "" {
+		req.Repo = "backup"
+	}
+
+	client := git.NewClient(git.PlatformGitHub, req.Token, req.Owner, req.Repo)
+	if err := client.TestConnection(); err != nil {
+		utils.LogError("测试 GitHub 连接失败", err, nil)
+		utils.ErrorResponse(c, http.StatusBadRequest, "GitHub 连接测试失败: "+err.Error(), err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "GitHub 连接测试成功", gin.H{
+		"owner":   req.Owner,
+		"repo":    req.Repo,
+		"message": "连接正常，可以正常上传文件",
+	})
+}
+
+// GetUploadStatus 获取上传状态
+func GetUploadStatus(c *gin.Context) {
+	taskID := c.Param("taskId")
+	if taskID == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "任务ID不能为空", nil)
+		return
+	}
+
+	// 使用统一的状态管理器
+	statusManager := git.GetUploadStatusManager()
+	status, exists := statusManager.GetStatus(taskID)
+
+	if !exists {
+		utils.ErrorResponse(c, http.StatusNotFound, "未找到该上传任务", nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", status)
 }

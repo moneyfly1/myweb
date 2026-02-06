@@ -347,7 +347,7 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
-import { formatLocation } from '@/utils/location'
+import { formatLocation } from '@/utils/date'
 import dayjs from 'dayjs'
 
 export default {

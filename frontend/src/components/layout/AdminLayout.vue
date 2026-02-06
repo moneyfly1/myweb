@@ -153,7 +153,6 @@ const statConfig = {
 const adminMenuOptions = [
   { label: '个人资料', icon: 'el-icon-user', command: 'profile' },
   { label: '系统设置', icon: 'el-icon-setting', command: 'settings' },
-  { label: '系统日志', icon: 'el-icon-document', command: 'logs' },
   { label: '退出登录', icon: 'el-icon-switch-button', command: 'logout', divided: true }
 ]
 
@@ -205,6 +204,13 @@ const menuSections = computed(() => {
         { path: '/admin/payment-config', title: '支付配置', icon: 'el-icon-wallet' },
         { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' },
         { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' }
+      ]
+    },
+    {
+      title: '日志与分析',
+      items: [
+        { path: '/admin/logs', title: '日志管理', icon: 'el-icon-document' },
+        { path: '/admin/system-logs', title: '系统日志', icon: 'el-icon-tickets' }
       ]
     },
     {
@@ -264,7 +270,7 @@ const handleThemeChange = async (themeName) => {
 }
 
 const handleAdminCommand = (command) => {
-  const routes = { profile: '/admin/profile', settings: '/admin/settings', logs: '/admin/system-logs' }
+  const routes = { profile: '/admin/profile', settings: '/admin/settings' }
   if (command === 'logout') {
     authStore.logout()
     router.push('/admin/login')

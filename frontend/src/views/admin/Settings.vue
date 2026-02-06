@@ -301,8 +301,18 @@
 
         <!-- 备份设置 -->
         <el-tab-pane label="备份设置" name="backup">
-          <el-alert title="数据库自动备份" description="配置数据库自动备份到 Gitee。" type="info" :closable="false" class="mb-20" />
+          <el-alert title="数据库自动备份" description="配置数据库自动备份到 Gitee 或 GitHub。" type="info" :closable="false" class="mb-20" />
           <el-form :model="backupSettings" v-bind="formLayout" class="settings-form">
+            <el-divider content-position="left">备份目标选择</el-divider>
+            <el-form-item label="备份目标">
+              <el-radio-group v-model="backupSettings.backup_target">
+                <el-radio label="gitee">Gitee</el-radio>
+                <el-radio label="github">GitHub</el-radio>
+              </el-radio-group>
+              <div class="form-tip">选择备份上传的目标平台。</div>
+            </el-form-item>
+
+            <!-- Gitee 配置 -->
             <el-divider content-position="left">Gitee 配置</el-divider>
             <el-form-item label="启用 Gitee 备份">
               <el-switch v-model="backupSettings.backup_gitee_enabled" />
@@ -333,6 +343,37 @@
               </el-form-item>
             </template>
 
+            <!-- GitHub 配置 -->
+            <el-divider content-position="left">GitHub 配置</el-divider>
+            <el-form-item label="启用 GitHub 备份">
+              <el-switch v-model="backupSettings.backup_github_enabled" />
+              <div class="form-tip">备份自动上传到 GitHub 仓库。</div>
+            </el-form-item>
+            <template v-if="backupSettings.backup_github_enabled">
+              <el-form-item label="Access Token">
+                <el-input v-model="backupSettings.backup_github_token" type="password" show-password placeholder="GitHub Personal Access Token" style="width: 100%; max-width: 400px;" />
+                <div class="form-tip">需要 "repo" 权限。</div>
+              </el-form-item>
+              <el-form-item label="仓库所有者">
+                <el-input v-model="backupSettings.backup_github_owner" placeholder="例如：moneyfly1" style="width: 100%; max-width: 400px;" />
+              </el-form-item>
+              <el-form-item label="仓库名称">
+                <el-input v-model="backupSettings.backup_github_repo" placeholder="例如：backup" style="width: 100%; max-width: 400px;" />
+                <div class="form-tip">格式：YYYY-MM-DD/backup.zip</div>
+              </el-form-item>
+              <el-form-item>
+                <el-button 
+                  type="primary" 
+                  @click="testGitHubConnection" 
+                  :loading="testingStates.github"
+                  :disabled="!backupSettings.backup_github_token"
+                  :class="{ 'full-width': isMobile }"
+                >
+                  测试连接
+                </el-button>
+              </el-form-item>
+            </template>
+
             <el-divider content-position="left">自动备份设置</el-divider>
             <el-form-item label="启用自动备份">
               <el-switch v-model="backupSettings.backup_auto_enabled" />
@@ -347,7 +388,38 @@
               <el-button type="success" @click="createManualBackup" :loading="creatingBackup" :class="{ 'full-width': isMobile }">
                 立即备份
               </el-button>
-              <div class="form-tip" style="margin-top: 10px;">立即创建备份并上传（如已启用 Gitee）。</div>
+              <div class="form-tip" style="margin-top: 10px;">立即创建备份并上传（如已启用远程备份）。</div>
+            </el-form-item>
+            <!-- 上传状态显示 -->
+            <el-form-item v-if="uploadStatus || uploadTaskId">
+              <el-alert 
+                :title="uploadStatus?.status === 'uploading' ? (uploadTarget === 'github' ? '正在上传到GitHub...' : '正在上传到Gitee...') : uploadStatus?.status === 'success' ? '上传成功' : uploadStatus?.status === 'failed' ? '上传失败' : '准备上传...'"
+                :type="uploadStatus?.status === 'uploading' ? 'info' : uploadStatus?.status === 'success' ? 'success' : uploadStatus?.status === 'failed' ? 'error' : 'info'"
+                :closable="uploadStatus?.status !== 'uploading'"
+                @close="stopStatusPolling"
+                show-icon
+              >
+                <template #default>
+                  <div v-if="uploadStatus?.status === 'uploading' || !uploadStatus">
+                    <el-progress 
+                      :percentage="uploadStatus?.progress || 0" 
+                      :status="uploadStatus?.status === 'uploading' ? null : uploadStatus?.status === 'success' ? 'success' : 'exception'"
+                      :stroke-width="8"
+                    />
+                    <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+                      {{ uploadStatus?.message || '正在准备上传...' }}
+                      <span v-if="uploadStatus?.file_size"> | 文件大小: {{ (uploadStatus.file_size / 1024 / 1024).toFixed(2) }} MB</span>
+                    </div>
+                  </div>
+                  <div v-else>
+                    <div>{{ uploadStatus.message }}</div>
+                    <div v-if="uploadStatus.error" style="margin-top: 4px; font-size: 12px; color: #f56c6c;">错误: {{ uploadStatus.error }}</div>
+                    <div v-if="uploadStatus.finish_time" style="margin-top: 4px; font-size: 12px; color: #909399;">
+                      完成时间: {{ new Date(uploadStatus.finish_time).toLocaleString() }}
+                    </div>
+                  </div>
+                </template>
+              </el-alert>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveBackupSettings" :class="{ 'full-width': isMobile }">保存备份设置</el-button>
@@ -397,11 +469,16 @@ export default {
       email: false,
       telegram: false,
       bark: false,
-      gitee: false
+      gitee: false,
+      github: false
     })
     const creatingBackup = ref(false)
     const geoipStatus = ref(null)
     const geoipUpdating = ref(false)
+    const uploadStatus = ref(null)
+    const uploadTaskId = ref(null)
+    const uploadTarget = ref('gitee')
+    const uploadStatusInterval = ref(null)
 
     // 表单布局计算属性
     const formLayout = computed(() => ({
@@ -455,8 +532,11 @@ export default {
     })
 
     const backupSettings = reactive({
+      backup_target: 'gitee',
       backup_gitee_enabled: false, backup_gitee_token: '',
       backup_gitee_owner: 'moneyfly', backup_gitee_repo: 'backup',
+      backup_github_enabled: false, backup_github_token: '',
+      backup_github_owner: 'moneyfly1', backup_github_repo: 'backup',
       backup_auto_enabled: false, backup_auto_interval: 24
     })
 
@@ -529,7 +609,9 @@ export default {
 
         if (data.backup) {
           Object.assign(backupSettings, data.backup)
+          backupSettings.backup_target = backupSettings.backup_target || 'gitee'
           backupSettings.backup_gitee_enabled = toBool(backupSettings.backup_gitee_enabled)
+          backupSettings.backup_github_enabled = toBool(backupSettings.backup_github_enabled)
           backupSettings.backup_auto_enabled = toBool(backupSettings.backup_auto_enabled)
           backupSettings.backup_auto_interval = parseInt(backupSettings.backup_auto_interval) || 24
         }
@@ -640,22 +722,122 @@ export default {
       }
     }
 
+    const testGitHubConnection = async () => {
+      const { backup_github_token: token, backup_github_owner: owner, backup_github_repo: repo } = backupSettings
+      if (!token || !owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
+
+      testingStates.github = true
+      try {
+        await api.put('/admin/settings/backup', backupSettings) // 先保存
+        const res = await api.post('/admin/backup/test-github', { token, owner, repo })
+        if (res.data?.success !== false) ElMessage.success('连接成功！' + (res.data?.data?.message || ''))
+        else ElMessage.error(res.data?.message || '测试失败')
+      } catch (e) {
+        ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        testingStates.github = false
+      }
+    }
+
+    // 查询上传状态
+    const checkUploadStatus = async (taskId, target) => {
+      try {
+        const res = await api.get(`/admin/backup/upload-status/${taskId}?target=${target || 'gitee'}`)
+        const status = res.data?.data || res.data
+        if (status) {
+          uploadStatus.value = status
+          if (status.status === 'success' || status.status === 'failed') {
+            // 上传完成，停止轮询
+            if (uploadStatusInterval.value) {
+              clearInterval(uploadStatusInterval.value)
+              uploadStatusInterval.value = null
+            }
+            if (status.status === 'success') {
+              ElMessage.success(status.message || '上传成功')
+            } else {
+              ElMessage.error(status.message || status.error || '上传失败')
+            }
+          }
+        }
+      } catch (e) {
+        console.error('查询上传状态失败:', e)
+      }
+    }
+
+    // 开始状态轮询
+    const startStatusPolling = (taskId, target) => {
+      if (uploadStatusInterval.value) {
+        clearInterval(uploadStatusInterval.value)
+      }
+      // 立即查询一次
+      checkUploadStatus(taskId, target)
+      // 每2秒轮询一次
+      uploadStatusInterval.value = setInterval(() => {
+        checkUploadStatus(taskId, target)
+      }, 2000)
+    }
+
+    // 停止状态轮询
+    const stopStatusPolling = () => {
+      if (uploadStatusInterval.value) {
+        clearInterval(uploadStatusInterval.value)
+        uploadStatusInterval.value = null
+      }
+      uploadStatus.value = null
+      uploadTaskId.value = null
+    }
+
     const createManualBackup = async () => {
       creatingBackup.value = true
+      uploadStatus.value = null
+      uploadTaskId.value = null
       try {
-        const res = await api.post('/admin/backup', {}, { timeout: 300000 })
+        const res = await api.post('/admin/backup', {}, { timeout: 60000 })
         if (res.data?.success !== false) {
           const d = res.data.data || res.data
-          let msg = '备份成功！'
+          let msg = '备份文件创建成功！'
           if (d.filename) msg += ` 文件: ${d.filename}`
           if (d.size) msg += ` (${(d.size/1024/1024).toFixed(2)} MB)`
-          if (d.gitee?.uploaded) msg += ' | 已上传 Gitee'
-          else if (d.gitee?.error) msg += ` | Gitee 失败: ${d.gitee.error}`
-          ElMessage.success(msg)
-        } else ElMessage.error(res.data?.message || '备份失败')
+          
+          // 如果是异步上传，开始轮询状态
+          const uploadInfo = d.github || d.gitee || {}
+          if (uploadInfo.async && uploadInfo.task_id) {
+            uploadTaskId.value = uploadInfo.task_id
+            uploadTarget.value = uploadInfo.target || (d.github ? 'github' : 'gitee')
+            // 立即初始化上传状态，显示进度条
+            uploadStatus.value = {
+              status: 'uploading',
+              progress: 0,
+              message: '正在准备上传...',
+              start_time: new Date().toISOString(),
+              file_name: d.filename || '',
+              file_size: d.size || 0
+            }
+            const platformName = uploadTarget.value === 'github' ? 'GitHub' : 'Gitee'
+            msg += ' | ' + (uploadInfo.message || `正在后台上传到${platformName}...`)
+            ElMessage.success(msg)
+            startStatusPolling(uploadInfo.task_id, uploadTarget.value)
+          } else if (d.github?.uploaded || d.gitee?.uploaded) {
+            const platformName = d.github ? 'GitHub' : 'Gitee'
+            msg += ` | 已上传 ${platformName}`
+            ElMessage.success(msg)
+          } else if (d.github?.error || d.gitee?.error) {
+            const platformName = d.github ? 'GitHub' : 'Gitee'
+            const error = d.github?.error || d.gitee?.error
+            msg += ` | ${platformName} 失败: ${error}`
+            ElMessage.warning(msg)
+          } else {
+            ElMessage.success(msg)
+          }
+        } else {
+          ElMessage.error(res.data?.message || '备份失败')
+        }
       } catch (e) {
-        if (e.message?.includes('timeout')) ElMessage.warning('请求超时，备份可能仍在后台进行')
-        else ElMessage.error('备份失败: ' + (e.response?.data?.message || e.message))
+        if (e.message?.includes('timeout')) {
+          ElMessage.warning('请求超时，备份可能仍在后台进行')
+        } else {
+          ElMessage.error('备份失败: ' + (e.response?.data?.message || e.message))
+        }
       } finally {
         creatingBackup.value = false
       }
@@ -682,7 +864,10 @@ export default {
       loadGeoIPStatus()
       window.addEventListener('resize', handleResize)
     })
-    onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', handleResize)
+      stopStatusPolling()
+    })
 
     return {
       activeTab, isMobile, formLayout,
@@ -692,10 +877,11 @@ export default {
       nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS,
       testingStates, geoipStatus, geoipUpdating, creatingBackup,
+      uploadStatus, uploadTaskId, stopStatusPolling,
       saveGeneralSettings, saveRegistrationSettings, saveNotificationSettings,
       saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings,
-      testNotification, testGiteeConnection, createManualBackup,
+      testNotification, testGiteeConnection, testGitHubConnection, createManualBackup,
       updateGeoIPDatabase, handleLogoSuccess, beforeLogoUpload, formatFileSize
     }
   }
