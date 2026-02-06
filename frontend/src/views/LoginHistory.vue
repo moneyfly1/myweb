@@ -163,7 +163,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { userAPI } from '@/utils/api'
 import dayjs from 'dayjs'
-import { formatLocation } from '@/utils/location'
+import { formatLocation } from '@/utils/date'
 
 export default {
   name: 'LoginHistory',

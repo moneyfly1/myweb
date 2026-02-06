@@ -71,25 +71,18 @@
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <el-form-item label="模块">
-                <el-select v-model="filterForm.module" placeholder="选择模块" clearable>
+              <el-form-item label="任务类型">
+                <el-select v-model="filterForm.task_type" placeholder="选择任务类型" clearable>
                   <el-option label="全部" value="" />
-                  <el-option label="用户管理" value="user" />
-                  <el-option label="订单管理" value="order" />
-                  <el-option label="支付系统" value="payment" />
-                  <el-option label="邮件系统" value="email" />
-                  <el-option label="系统配置" value="config" />
-                  <el-option label="认证系统" value="auth" />
+                  <el-option label="定时任务调度器" value="scheduler" />
+                  <el-option label="邮件队列" value="email_queue" />
+                  <el-option label="自动备份" value="auto_backup" />
+                  <el-option label="节点更新" value="auto_node_update" />
+                  <el-option label="节点健康检查" value="node_health_check" />
+                  <el-option label="订阅到期检查" value="expiring_subscriptions" />
+                  <el-option label="账户删除" value="account_deletion" />
+                  <el-option label="系统错误" value="system_error" />
                 </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="用户">
-                <el-input
-                  v-model="filterForm.username"
-                  placeholder="输入用户名"
-                  clearable
-                />
               </el-form-item>
             </el-col>
           </el-row>
@@ -266,7 +259,13 @@
               </template>
             </el-table-column>
             
-            <el-table-column prop="module" label="模块" width="120" />
+            <el-table-column prop="action_type" label="任务类型" width="150">
+              <template #default="{ row }">
+                <el-tag v-if="row.action_type" size="small" type="info">
+                  {{ getTaskTypeName(row.action_type) }}
+                </el-tag>
+              </template>
+            </el-table-column>
             
             <el-table-column prop="message" label="日志内容" min-width="300">
               <template #default="{ row }">
@@ -286,8 +285,6 @@
                 </div>
               </template>
             </el-table-column>
-            
-            <el-table-column prop="username" label="用户" width="120" />
             
             <el-table-column prop="ip_address" label="IP地址" width="140">
               <template #default="{ row }">

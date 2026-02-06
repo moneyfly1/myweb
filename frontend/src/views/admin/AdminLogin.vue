@@ -79,7 +79,7 @@ export default {
       try {
         // 清除可能存在的旧缓存（双重保障）
         if (typeof window !== 'undefined') {
-          const { secureStorage } = await import('@/utils/secureStorage')
+          const { secureStorage } = await import('@/utils/api')
           secureStorage.clear()
         }
         
