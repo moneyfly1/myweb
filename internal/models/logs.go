@@ -41,6 +41,7 @@ type SubscriptionLog struct {
 	AfterData      sql.NullString `gorm:"type:json" json:"after_data,omitempty"`
 	Description    sql.NullString `gorm:"type:text" json:"description,omitempty"`
 	IPAddress      sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
+	Location       sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"` // 地理位置信息（JSON格式）
 	CreatedAt      time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
 
 	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"-"`
@@ -66,6 +67,7 @@ type BalanceLog struct {
 	Operator        sql.NullString `gorm:"type:varchar(50)" json:"operator,omitempty"` // 操作人（admin username 或 system）
 	OperatorUserID  sql.NullInt64  `gorm:"index" json:"operator_user_id,omitempty"`
 	IPAddress       sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
+	Location        sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"` // 地理位置信息（JSON格式）
 	CreatedAt       time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
 
 	User         User   `gorm:"foreignKey:UserID" json:"-"`

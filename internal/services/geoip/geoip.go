@@ -83,17 +83,37 @@ func GetLocation(ipAddress string) (*LocationInfo, error) {
 		return nil, fmt.Errorf("GeoIP 未启用")
 	}
 
+	// 处理 IPv4-mapped IPv6 地址 (::ffff:192.168.1.1)
 	if len(ipAddress) > 7 && ipAddress[:7] == "::ffff:" {
 		ipAddress = ipAddress[7:]
 	}
 
+	// 处理本地地址
 	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
 		return nil, fmt.Errorf("本地地址，跳过解析")
 	}
 
+	// 解析 IP 地址（支持 IPv4 和 IPv6）
 	parsedIP := net.ParseIP(ipAddress)
 	if parsedIP == nil {
 		return nil, fmt.Errorf("无效的IP地址格式: %s", ipAddress)
+	}
+
+	// 检查是否为内网地址（IPv4 和 IPv6）
+	if parsedIP.To4() != nil {
+		// IPv4 地址
+		if parsedIP.IsLoopback() || parsedIP.IsPrivate() || parsedIP.IsLinkLocalUnicast() {
+			return nil, fmt.Errorf("内网地址，跳过解析")
+		}
+	} else {
+		// IPv6 地址
+		if parsedIP.IsLoopback() || parsedIP.IsLinkLocalUnicast() || parsedIP.IsLinkLocalMulticast() {
+			return nil, fmt.Errorf("内网地址，跳过解析")
+		}
+		// 检查 IPv6 私有地址范围
+		if parsedIP[0] == 0xfc || parsedIP[0] == 0xfd {
+			return nil, fmt.Errorf("IPv6 私有地址，跳过解析")
+		}
 	}
 
 	geoipDBLock.RLock()
@@ -460,27 +480,40 @@ func GetLocationFromPing0(ipAddress string) (*LocationInfo, error) {
 	return nil, fmt.Errorf("未能从API解析到地理位置信息")
 }
 
+// GetLocationWithFallback 使用多种方式尝试获取地理位置信息
+// 优先级：1. GeoIP 数据库 2. Ping0 API 3. IPW API (仅 IPv6)
+// 支持 IPv4 和 IPv6
 func GetLocationWithFallback(ipAddress string) (*LocationInfo, error) {
-	location, err := GetLocation(ipAddress)
+	// 处理 IPv4-mapped IPv6 地址
+	originalIP := ipAddress
+	if len(ipAddress) > 7 && ipAddress[:7] == "::ffff:" {
+		ipAddress = ipAddress[7:]
+	}
+
+	// 1. 优先使用本地 GeoIP 数据库（支持 IPv4 和 IPv6）
+	location, err := GetLocation(originalIP)
 	if err == nil && location != nil && location.Country != "" {
 		return location, nil
 	}
 
-	ping0Location, err := GetLocationFromPing0(ipAddress)
+	// 2. 尝试使用 Ping0 API（支持 IPv4 和 IPv6）
+	ping0Location, err := GetLocationFromPing0(originalIP)
 	if err == nil && ping0Location != nil && ping0Location.Country != "" {
 		return ping0Location, nil
 	}
 
-	parsedIP := net.ParseIP(ipAddress)
+	// 3. 如果是 IPv6，尝试使用 IPW API
+	parsedIP := net.ParseIP(originalIP)
 	if parsedIP != nil && parsedIP.To4() == nil {
-		ipwLocation, err := GetLocationFromIPW(ipAddress)
-		if err == nil && ipwLocation != nil {
+		ipwLocation, err := GetLocationFromIPW(originalIP)
+		if err == nil && ipwLocation != nil && ipwLocation.Country != "" {
 			return ipwLocation, nil
 		}
 	}
 
+	// 所有方法都失败
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("无法解析地理位置信息: %w", err)
 	}
-	return nil, fmt.Errorf("无法解析地理位置信息")
+	return nil, fmt.Errorf("无法解析地理位置信息: 所有方法都失败")
 }

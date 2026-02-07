@@ -282,7 +282,7 @@ func CreateOrder(c *gin.Context) {
 	}
 
 	req.UserAgent = c.GetHeader("User-Agent")
-	req.ClientIP = c.ClientIP()
+	req.ClientIP = utils.GetRealClientIP(c)
 
 	svc := orderServicePkg.NewOrderService()
 	order, paymentURL, err := svc.CreateOrder(user.ID, req)

@@ -199,12 +199,15 @@
                   <el-input
                     v-model="registerForm.email"
                     type="email"
-                    placeholder="推荐使用 Gmail / Outlook"
+                    placeholder="推荐使用 QQ 邮箱"
                     size="large"
                     prefix-icon="Message"
                     clearable
                     autocomplete="email"
                   />
+                  <div class="email-tip" style="margin-top: 8px; font-size: 12px; color: #909399;">
+                    <i class="ph-fill ph-info"></i> 推荐使用 QQ 邮箱注册，接收验证码更稳定
+                  </div>
                 </el-form-item>
 
                 <!-- 验证码模块 -->

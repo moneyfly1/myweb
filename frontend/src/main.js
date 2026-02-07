@@ -15,6 +15,10 @@ import { initApi } from './utils/api'
 // 导入全局样式
 import './styles/global.scss'
 import './styles/mobile-buttons.scss'
+import './styles/text-selection.css'
+
+// 导入并初始化文本选择功能
+import { initTextSelection } from './utils/textSelection'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -46,6 +50,11 @@ app.config.globalProperties.$settings = null
 
 // 立即挂载应用
 app.mount('#app')
+
+// 初始化全局文本选择功能（移动端长按复制、桌面端右键菜单）
+setTimeout(() => {
+  initTextSelection()
+}, 200)
 
 // 页面加载时主动获取 CSRF Token
 if (typeof window !== 'undefined') {
