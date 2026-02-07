@@ -158,7 +158,7 @@ func getSubscriptionByID(db *gorm.DB, id string, userID uint) (*models.Subscript
 	return &sub, nil
 }
 
-func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, reason string, resetBy *string, ipAddress string) error {
+func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, reason string, resetBy *string, resetByUserID *uint, ipAddress string) error {
 	oldURL := sub.SubscriptionURL
 	var deviceCountBefore int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
@@ -195,13 +195,23 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 		"subscription_url": newURL,
 		"device_count":     0,
 	}
-	actionBy := "system"
-	if resetBy != nil {
+	actionBy := "user"
+	var actionByUserID *uint
+	if resetBy != nil && resetByUserID != nil {
+		// 管理员重置
 		actionBy = "admin"
+		actionByUserID = resetByUserID
+	} else if resetBy != nil {
+		// 用户自己重置（通过用户名）
+		actionBy = "user"
+		actionByUserID = &sub.UserID
+	} else {
+		// 系统重置
+		actionBy = "system"
 	}
 
 	// 使用传入的 IP 地址记录日志
-	asyncSubscriptionLog(sub.ID, sub.UserID, "reset", actionBy, nil, ipAddress, beforeData, afterData, reason)
+	asyncSubscriptionLog(sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
 
 	return db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error
 }
@@ -353,8 +363,8 @@ func GetAdminSubscriptions(c *gin.Context) {
 	if keyword := utils.SanitizeSearchKeyword(c.DefaultQuery("search", c.Query("keyword"))); keyword != "" {
 		likeKey := "%" + keyword + "%"
 		query = query.Where(
-			"subscription_url LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ?) OR user_id IN (SELECT DISTINCT user_id FROM subscription_resets WHERE old_subscription_url LIKE ?)",
-			likeKey, likeKey, likeKey, likeKey)
+			"subscription_url LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ? OR notes LIKE ?) OR user_id IN (SELECT DISTINCT user_id FROM subscription_resets WHERE old_subscription_url LIKE ?)",
+			likeKey, likeKey, likeKey, likeKey, likeKey)
 	}
 
 	if status := c.Query("status"); status != "" {
@@ -640,9 +650,17 @@ func UpdateSubscription(c *gin.Context) {
 	}
 	actionBy := "user"
 	var actionByUserID *uint
-	if adminUser, ok := middleware.GetCurrentUser(c); ok && adminUser != nil && adminUser.IsAdmin {
-		actionBy = "admin"
-		actionByUserID = &adminUser.ID
+	currentUser, ok := middleware.GetCurrentUser(c)
+	if ok && currentUser != nil {
+		if currentUser.IsAdmin {
+			// 管理员更新
+			actionBy = "admin"
+			actionByUserID = &currentUser.ID
+		} else {
+			// 用户自己更新
+			actionBy = "user"
+			actionByUserID = &currentUser.ID
+		}
 	}
 	afterData := map[string]interface{}{
 		"device_limit": sub.DeviceLimit,
@@ -664,7 +682,12 @@ func ResetSubscription(c *gin.Context) {
 	}
 
 	ipAddress := utils.GetRealClientIP(c)
-	if err := performSubscriptionReset(db, sub, "admin_reset", "管理员重置订阅地址", getCurrentAdminUsername(c), ipAddress); err != nil {
+	adminUser, _ := middleware.GetCurrentUser(c)
+	var adminUserID *uint
+	if adminUser != nil {
+		adminUserID = &adminUser.ID
+	}
+	if err := performSubscriptionReset(db, sub, "admin_reset", "管理员重置订阅地址", getCurrentAdminUsername(c), adminUserID, ipAddress); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置失败", err)
 		return
 	}
@@ -717,11 +740,16 @@ func ResetUserSubscription(c *gin.Context) {
 	var subs []models.Subscription
 	db.Where("user_id = ?", userID).Find(&subs)
 	adminName := getCurrentAdminUsername(c)
+	adminUser, _ := middleware.GetCurrentUser(c)
+	var adminUserID *uint
+	if adminUser != nil {
+		adminUserID = &adminUser.ID
+	}
 
 	ipAddress := utils.GetRealClientIP(c)
 	for _, sub := range subs {
 		subCopy := sub
-		_ = performSubscriptionReset(db, &subCopy, "admin_reset", "管理员重置用户订阅地址", adminName, ipAddress)
+		_ = performSubscriptionReset(db, &subCopy, "admin_reset", "管理员重置用户订阅地址", adminName, adminUserID, ipAddress)
 	}
 	utils.SuccessResponse(c, http.StatusOK, "用户订阅已重置", nil)
 }
@@ -771,7 +799,8 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 
 	reason := "用户主动重置订阅地址"
 	ipAddress := utils.GetRealClientIP(c)
-	if err := performSubscriptionReset(db, &sub, "user_reset", reason, &user.Username, ipAddress); err != nil {
+	userID := user.ID
+	if err := performSubscriptionReset(db, &sub, "user_reset", reason, &user.Username, &userID, ipAddress); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置失败", err)
 		return
 	}
@@ -826,6 +855,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 
 	// 记录余额日志
 	ipAddress := utils.GetRealClientIP(c)
+	userID := user.ID
 	go func() {
 		utils.CreateBalanceLog(
 			user.ID,
@@ -836,8 +866,8 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 			nil,
 			nil,
 			fmt.Sprintf("订阅转换为余额，订阅ID: %d", sub.ID),
-			"system",
-			nil,
+			"user",
+			&userID,
 			ipAddress,
 		)
 	}()
@@ -1064,9 +1094,14 @@ func BatchResetSubscriptions(c *gin.Context) {
 	adminUsername := getCurrentAdminUsername(c)
 
 	ipAddress := utils.GetRealClientIP(c)
+	adminUser, _ := middleware.GetCurrentUser(c)
+	var adminUserID *uint
+	if adminUser != nil {
+		adminUserID = &adminUser.ID
+	}
 	for _, sub := range subscriptions {
 		subCopy := sub
-		if err := performSubscriptionReset(db, &subCopy, "admin_batch_reset", "管理员批量重置订阅地址", adminUsername, ipAddress); err != nil {
+		if err := performSubscriptionReset(db, &subCopy, "admin_batch_reset", "管理员批量重置订阅地址", adminUsername, adminUserID, ipAddress); err != nil {
 			failCount++
 			continue
 		}
