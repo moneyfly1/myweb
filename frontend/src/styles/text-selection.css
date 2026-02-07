@@ -1,9 +1,11 @@
 /**
  * 全局文本选择样式
- * 确保移动端和桌面端都可以选择和复制文本
+ * 使用浏览器原生菜单（复制、粘贴、全选等）
+ * 移动端：完全依赖浏览器原生菜单
+ * 桌面端：文本选择 + 自定义右键菜单
  */
 
-/* 允许文本选择 */
+/* 允许文本选择和原生菜单 */
 .selectable-text,
 .copyable-text,
 .el-table td,
@@ -18,11 +20,12 @@
   cursor: text;
 }
 
-/* 输入框允许长按粘贴 */
+/* 输入框允许原生菜单（复制、粘贴、全选等） */
 input[type="text"],
 input[type="search"],
 input[type="email"],
 input[type="number"],
+input[type="password"],
 textarea,
 .el-input__inner,
 .el-textarea__inner {
@@ -31,16 +34,16 @@ textarea,
   -webkit-touch-callout: default !important;
 }
 
-/* 移动端特殊处理 */
+/* 移动端：完全使用原生菜单，不添加任何自定义样式 */
 @media (max-width: 767px) {
-  /* 确保移动端可以长按选择文本 */
+  /* 确保移动端可以长按选择文本并使用原生菜单 */
   body {
     -webkit-touch-callout: default;
     -webkit-user-select: text;
     user-select: text;
   }
 
-  /* 移动端卡片文本可选中 */
+  /* 移动端卡片文本可选中，使用原生菜单 */
   .mobile-card * {
     -webkit-user-select: text;
     user-select: text;
@@ -56,6 +59,14 @@ textarea,
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
+  }
+  
+  /* 表格单元格使用原生菜单 */
+  .el-table td,
+  .el-table th {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
 }
 
