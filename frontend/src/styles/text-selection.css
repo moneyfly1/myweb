@@ -1,0 +1,92 @@
+/**
+ * 全局文本选择样式
+ * 确保移动端和桌面端都可以选择和复制文本
+ */
+
+/* 允许文本选择 */
+.selectable-text,
+.copyable-text,
+.el-table td,
+.el-table th,
+.mobile-card .value,
+.mobile-card .label,
+.mobile-card span:not(.el-button):not(.el-tag),
+.mobile-card div:not(.action-buttons-grid):not(.el-button-group) {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+  cursor: text;
+}
+
+/* 输入框允许长按粘贴 */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="number"],
+textarea,
+.el-input__inner,
+.el-textarea__inner {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* 移动端特殊处理 */
+@media (max-width: 767px) {
+  /* 确保移动端可以长按选择文本 */
+  body {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* 移动端卡片文本可选中 */
+  .mobile-card * {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  /* 但按钮和交互元素除外 */
+  .mobile-card button,
+  .mobile-card .el-button,
+  .mobile-card .el-tag,
+  .mobile-card .action-buttons-grid,
+  .mobile-card .card-actions {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/* 桌面端右键菜单样式 */
+.custom-context-menu {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.custom-context-menu div {
+  transition: background-color 0.2s;
+}
+
+.custom-context-menu div:hover {
+  background-color: #f5f7fa !important;
+}
+
+/* 表格单元格右键菜单支持 */
+.el-table td {
+  position: relative;
+}
+
+/* 确保链接可以右键打开新标签页 */
+a[href] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 文本区域允许选择 */
+.el-descriptions__label,
+.el-descriptions__content {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
