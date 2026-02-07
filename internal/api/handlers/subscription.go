@@ -158,7 +158,7 @@ func getSubscriptionByID(db *gorm.DB, id string, userID uint) (*models.Subscript
 	return &sub, nil
 }
 
-func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, reason string, resetBy *string) error {
+func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, reason string, resetBy *string, ipAddress string) error {
 	oldURL := sub.SubscriptionURL
 	var deviceCountBefore int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
@@ -200,8 +200,8 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 		actionBy = "admin"
 	}
 
-	// 这里无法获取IP，传空字符串或默认值
-	asyncSubscriptionLog(sub.ID, sub.UserID, "reset", actionBy, nil, "", beforeData, afterData, reason)
+	// 使用传入的 IP 地址记录日志
+	asyncSubscriptionLog(sub.ID, sub.UserID, "reset", actionBy, nil, ipAddress, beforeData, afterData, reason)
 
 	return db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error
 }
@@ -663,7 +663,8 @@ func ResetSubscription(c *gin.Context) {
 		return
 	}
 
-	if err := performSubscriptionReset(db, sub, "admin_reset", "管理员重置订阅地址", getCurrentAdminUsername(c)); err != nil {
+	ipAddress := utils.GetRealClientIP(c)
+	if err := performSubscriptionReset(db, sub, "admin_reset", "管理员重置订阅地址", getCurrentAdminUsername(c), ipAddress); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置失败", err)
 		return
 	}
@@ -717,9 +718,10 @@ func ResetUserSubscription(c *gin.Context) {
 	db.Where("user_id = ?", userID).Find(&subs)
 	adminName := getCurrentAdminUsername(c)
 
+	ipAddress := utils.GetRealClientIP(c)
 	for _, sub := range subs {
 		subCopy := sub
-		_ = performSubscriptionReset(db, &subCopy, "admin_reset", "管理员重置用户订阅地址", adminName)
+		_ = performSubscriptionReset(db, &subCopy, "admin_reset", "管理员重置用户订阅地址", adminName, ipAddress)
 	}
 	utils.SuccessResponse(c, http.StatusOK, "用户订阅已重置", nil)
 }
@@ -768,7 +770,8 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 	}
 
 	reason := "用户主动重置订阅地址"
-	if err := performSubscriptionReset(db, &sub, "user_reset", reason, &user.Username); err != nil {
+	ipAddress := utils.GetRealClientIP(c)
+	if err := performSubscriptionReset(db, &sub, "user_reset", reason, &user.Username, ipAddress); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置失败", err)
 		return
 	}
@@ -1060,9 +1063,10 @@ func BatchResetSubscriptions(c *gin.Context) {
 	successCount, failCount := 0, 0
 	adminUsername := getCurrentAdminUsername(c)
 
+	ipAddress := utils.GetRealClientIP(c)
 	for _, sub := range subscriptions {
 		subCopy := sub
-		if err := performSubscriptionReset(db, &subCopy, "admin_batch_reset", "管理员批量重置订阅地址", adminUsername); err != nil {
+		if err := performSubscriptionReset(db, &subCopy, "admin_batch_reset", "管理员批量重置订阅地址", adminUsername, ipAddress); err != nil {
 			failCount++
 			continue
 		}

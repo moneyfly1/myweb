@@ -96,12 +96,19 @@ func CreateSubscriptionLog(subscriptionID, userID uint, actionType, actionBy str
 		}
 	}
 
+	// 获取地理位置信息（如果 GeoIP 已启用）
+	var location sql.NullString
+	if ipAddress != "" && geoip.IsEnabled() {
+		location = geoip.GetLocationString(ipAddress)
+	}
+
 	log := models.SubscriptionLog{
 		SubscriptionID: subscriptionID,
 		UserID:         userID,
 		ActionType:     actionType,
 		ActionBy:       database.NullString(actionBy),
 		IPAddress:      database.NullString(ipAddress),
+		Location:       location, // 保存地理位置信息
 		BeforeData:     beforeDataJSON,
 		AfterData:      afterDataJSON,
 		Description:    database.NullString(description),
@@ -125,6 +132,12 @@ func CreateBalanceLog(userID uint, changeType string, amount, balanceBefore, bal
 		return fmt.Errorf("数据库未初始化")
 	}
 
+	// 获取地理位置信息（如果 GeoIP 已启用）
+	var location sql.NullString
+	if ipAddress != "" && geoip.IsEnabled() {
+		location = geoip.GetLocationString(ipAddress)
+	}
+
 	log := models.BalanceLog{
 		UserID:        userID,
 		ChangeType:    changeType,
@@ -134,6 +147,7 @@ func CreateBalanceLog(userID uint, changeType string, amount, balanceBefore, bal
 		Description:   database.NullString(description),
 		Operator:      database.NullString(operator),
 		IPAddress:     database.NullString(ipAddress),
+		Location:      location, // 保存地理位置信息
 	}
 
 	if relatedOrderID != nil {

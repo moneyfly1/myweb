@@ -427,6 +427,7 @@ func PaymentNotify(c *gin.Context) {
 
 				// 记录余额日志
 				rechargeID := uint(recharge.ID)
+				ipAddress := utils.GetRealClientIP(c)
 				utils.CreateBalanceLog(
 					user.ID,
 					"recharge",
@@ -438,7 +439,7 @@ func PaymentNotify(c *gin.Context) {
 					fmt.Sprintf("充值成功，订单号: %s", orderNo),
 					"system",
 					nil,
-					"",
+					ipAddress,
 				)
 			}
 			return nil
@@ -631,6 +632,7 @@ func PaymentNotify(c *gin.Context) {
 					// 记录余额日志
 					go func() {
 						orderID := uint(order.ID)
+						ipAddress := utils.GetRealClientIP(c)
 						utils.CreateBalanceLog(
 							user.ID,
 							"consume",
@@ -642,7 +644,7 @@ func PaymentNotify(c *gin.Context) {
 							fmt.Sprintf("订单支付扣除余额，订单号: %s", orderNo),
 							"system",
 							nil,
-							"",
+							ipAddress,
 						)
 					}()
 				}

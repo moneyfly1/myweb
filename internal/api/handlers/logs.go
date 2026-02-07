@@ -591,19 +591,28 @@ func GetRegistrationLogs(c *gin.Context) {
 	var logList []gin.H
 	for _, log := range logs {
 		locDisplay, _ := getLocationDisplay(log.Location, log.IPAddress)
+
+		// 获取邀请人名称
+		inviterName := ""
+		if log.Inviter != nil && log.Inviter.ID > 0 {
+			inviterName = log.Inviter.Username
+		}
+
 		logList = append(logList, gin.H{
-			"id":          log.ID,
-			"user_id":     log.UserID,
-			"username":    log.Username,
-			"email":       log.Email,
-			"ip_address":  getNullableString(log.IPAddress),
-			"location":    locDisplay,
-			"user_agent":  getNullableString(log.UserAgent),
-			"status":      log.Status,
-			"reason":      getNullableString(log.FailureReason),
-			"invite_code": getNullableString(log.InviteCode),
-			"inviter_id":  getNullableInt64(log.InviterID),
-			"created_at":  log.CreatedAt,
+			"id":              log.ID,
+			"user_id":         log.UserID,
+			"username":        log.Username,
+			"email":           log.Email,
+			"ip_address":      getNullableString(log.IPAddress),
+			"location":        locDisplay,
+			"user_agent":      getNullableString(log.UserAgent),
+			"status":          log.Status,
+			"reason":          getNullableString(log.FailureReason),
+			"invite_code":     getNullableString(log.InviteCode),
+			"inviter_id":      getNullableInt64(log.InviterID),
+			"inviter_name":    inviterName, // 添加邀请人名称
+			"register_source": getNullableString(log.RegisterSource),
+			"created_at":      formatTime(log.CreatedAt), // 格式化时间
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
@@ -669,25 +678,64 @@ func GetSubscriptionLogs(c *gin.Context) {
 			json.Unmarshal([]byte(log.AfterData.String), &after)
 		}
 
+		// 获取操作人信息（操作人和执行账号）
+		actionByUser := ""
+		actionByEmail := ""
+		if log.ActionByUser != nil && log.ActionByUser.ID > 0 {
+			actionByUser = log.ActionByUser.Username
+			actionByEmail = log.ActionByUser.Email
+		}
+
+		// 获取 IP 地址和地理位置（用户信息）
+		ipAddress := getNullableString(log.IPAddress)
+		// 优先使用数据库中保存的地理位置信息，如果没有则实时解析
+		locationDisplay, _ := getLocationDisplay(log.Location, log.IPAddress)
+		ipWithLocation := ipAddress
+		if locationDisplay != "" {
+			ipWithLocation = fmt.Sprintf("%s (%s)", ipAddress, locationDisplay)
+		}
+
+		// 生成描述：判断是通用订阅还是 Clash 订阅
+		description := getNullableString(log.Description)
+		if log.Subscription.ID > 0 {
+			// 判断订阅类型（根据使用情况）
+			subscriptionType := ""
+			hasUniversal := log.Subscription.UniversalCount > 0
+			hasClash := log.Subscription.ClashCount > 0
+
+			if hasUniversal && hasClash {
+				subscriptionType = "通用订阅 + Clash 订阅"
+			} else if hasUniversal {
+				subscriptionType = "通用订阅"
+			} else if hasClash {
+				subscriptionType = "Clash 订阅"
+			} else {
+				// 如果都没有使用记录，默认显示支持两种类型
+				subscriptionType = "通用订阅 + Clash 订阅"
+			}
+
+			if description != "" {
+				description = fmt.Sprintf("%s [%s]", description, subscriptionType)
+			} else {
+				description = subscriptionType
+			}
+		}
+
 		logList = append(logList, gin.H{
 			"id":              log.ID,
 			"subscription_id": log.SubscriptionID,
 			"user_id":         log.UserID,
 			"username":        getCommonUserName(&log.User),
+			"user_email":      log.User.Email, // 添加用户邮箱
 			"action_type":     log.ActionType,
 			"action_by":       getNullableString(log.ActionBy), // 操作类型：user, admin, system
-			"action_by_user": func() string {
-				// 如果有操作人用户对象，返回用户名；否则返回空字符串
-				if log.ActionByUser != nil && log.ActionByUser.ID > 0 {
-					return log.ActionByUser.Username
-				}
-				return "" // 没有操作人用户时返回空字符串，而不是返回 action_by 的值
-			}(),
-			"before_data": before,
-			"after_data":  after,
-			"description": getNullableString(log.Description),
-			"ip_address":  getNullableString(log.IPAddress),
-			"created_at":  formatTime(log.CreatedAt),
+			"action_by_user":  actionByUser,                    // 操作人用户名
+			"action_by_email": actionByEmail,                   // 操作人邮箱
+			"before_data":     before,
+			"after_data":      after,
+			"description":     description,
+			"ip_address":      ipWithLocation, // IP 地址 + 地区
+			"created_at":      formatTime(log.CreatedAt),
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
@@ -731,6 +779,14 @@ func GetBalanceLogs(c *gin.Context) {
 
 	var logList []gin.H
 	for _, log := range logs {
+		// 获取 IP 地址和地理位置（优先使用数据库中保存的地理位置信息）
+		ipAddress := getNullableString(log.IPAddress)
+		locationDisplay, _ := getLocationDisplay(log.Location, log.IPAddress)
+		ipWithLocation := ipAddress
+		if locationDisplay != "" {
+			ipWithLocation = fmt.Sprintf("%s (%s)", ipAddress, locationDisplay)
+		}
+
 		logList = append(logList, gin.H{
 			"id":               log.ID,
 			"user_id":          log.UserID,
@@ -754,7 +810,7 @@ func GetBalanceLogs(c *gin.Context) {
 				}
 				return getNullableString(log.Operator)
 			}(),
-			"ip_address": getNullableString(log.IPAddress),
+			"ip_address": ipWithLocation, // IP 地址 + 地区
 			"created_at": formatTime(log.CreatedAt),
 		})
 	}
@@ -880,11 +936,18 @@ func GetSubscriptionResetLogs(c *gin.Context) {
 
 	var logList []gin.H
 	for _, log := range logs {
+		// 获取用户邮箱（替代订阅 ID）
+		userEmail := ""
+		if log.User.ID > 0 {
+			userEmail = log.User.Email
+		}
+
 		logList = append(logList, gin.H{
 			"id":                   log.ID,
 			"user_id":              log.UserID,
 			"username":             getCommonUserName(&log.User),
-			"subscription_id":      log.SubscriptionID,
+			"user_email":           userEmail,          // 用户邮箱（替代订阅 ID）
+			"subscription_id":      log.SubscriptionID, // 保留原字段以兼容
 			"reset_type":           log.ResetType,
 			"reason":               log.Reason,
 			"old_subscription_url": getNullableStringPtr(log.OldSubscriptionURL),

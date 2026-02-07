@@ -115,10 +115,7 @@ func Register(c *gin.Context) {
 
 	db.Where("id = ?", user.ID).First(&user)
 
-	ipAddress := c.ClientIP()
-	if ipAddress == "" {
-		ipAddress = c.RemoteIP()
-	}
+	ipAddress := utils.GetRealClientIP(c)
 
 	atk, err := utils.CreateAccessToken(user.ID, user.Email, user.IsAdmin)
 	if err != nil {
@@ -629,6 +626,8 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 		}
 
 		// 记录余额日志和佣金日志
+		// 注意：这里是在异步 goroutine 中，无法获取 gin.Context，所以 IP 为空
+		// 这是系统内部操作（邀请奖励），不是用户直接操作，所以 IP 为空是合理的
 		go func() {
 			// 余额日志
 			utils.CreateBalanceLog(
@@ -642,7 +641,7 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 				fmt.Sprintf("邀请奖励: %s", map[bool]string{true: "邀请人奖励", false: "被邀请人奖励"}[isInviter]),
 				"system",
 				nil,
-				"",
+				"", // 系统内部操作，无客户端 IP
 			)
 
 			// 佣金日志

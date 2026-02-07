@@ -815,7 +815,7 @@ export default {
             }
             const platformName = uploadTarget.value === 'github' ? 'GitHub' : 'Gitee'
             msg += ' | ' + (uploadInfo.message || `正在后台上传到${platformName}...`)
-            ElMessage.success(msg)
+          ElMessage.success(msg)
             startStatusPolling(uploadInfo.task_id, uploadTarget.value)
           } else if (d.github?.uploaded || d.gitee?.uploaded) {
             const platformName = d.github ? 'GitHub' : 'Gitee'
