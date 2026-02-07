@@ -1168,6 +1168,7 @@ func UpgradeDevices(c *gin.Context) {
 			// 记录余额日志
 			go func() {
 				orderID := uint(order.ID)
+				userID := user.ID
 				utils.CreateBalanceLog(
 					user.ID,
 					"consume",
@@ -1177,8 +1178,8 @@ func UpgradeDevices(c *gin.Context) {
 					&orderID,
 					nil,
 					fmt.Sprintf("订单支付扣除余额，订单号: %s", order.OrderNo),
-					"system",
-					nil,
+					"user",
+					&userID,
 					utils.GetRealClientIP(c),
 				)
 			}()
