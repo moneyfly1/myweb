@@ -560,11 +560,11 @@ export default {
                 iframe.style.height = Math.min(scrollHeight + 40, 1200) + 'px'
               }
             } catch (e) {
-              console.debug('无法计算 iframe 高度:', e)
+              // Cannot calculate iframe height
             }
           }, 200)
         } catch (e) {
-          console.debug('无法访问 iframe 内容:', e)
+          // Cannot access iframe content
         }
       }, 50)
     }
@@ -903,7 +903,7 @@ export default {
   border-radius: 4px;
   max-height: 800px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: clip;
   background-color: #f4f4f4;
   padding: 0;
   position: relative;
@@ -918,7 +918,7 @@ export default {
   border-radius: 4px;
   display: block;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: clip;
   -webkit-overflow-scrolling: touch;
 }
 

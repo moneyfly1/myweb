@@ -46,14 +46,14 @@ func GetDevices(c *gin.Context) {
 			return ""
 		}
 
-		lastSeen := d.LastAccess.Format("2006-01-02 15:04:05")
+		lastSeen := utils.FormatBeijingTime(d.LastAccess)
 		if d.LastSeen != nil {
-			lastSeen = d.LastSeen.Format("2006-01-02 15:04:05")
+			lastSeen = utils.FormatBeijingTime(*d.LastSeen)
 		}
 
 		firstSeen := ""
 		if d.FirstSeen != nil {
-			firstSeen = d.FirstSeen.Format("2006-01-02 15:04:05")
+			firstSeen = utils.FormatBeijingTime(*d.FirstSeen)
 		}
 
 		formatIP := func(ip string) string {
@@ -99,10 +99,10 @@ func GetDevices(c *gin.Context) {
 			"is_active":          d.IsActive,
 			"is_allowed":         d.IsAllowed,
 			"first_seen":         firstSeen,
-			"last_access":        d.LastAccess.Format("2006-01-02 15:04:05"),
+			"last_access":        utils.FormatBeijingTime(d.LastAccess),
 			"last_seen":          lastSeen,
 			"access_count":       d.AccessCount,
-			"created_at":         d.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":         utils.FormatBeijingTime(d.CreatedAt),
 		})
 	}
 

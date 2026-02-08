@@ -214,7 +214,7 @@ func (s *ConfigUpdateService) ClearLogs() error {
 }
 
 func (s *ConfigUpdateService) log(level, message string) {
-	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+	now := utils.FormatBeijingTime(utils.GetBeijingTime())
 	logEntry := map[string]interface{}{
 		"time":    now,
 		"level":   level,
@@ -1205,7 +1205,7 @@ func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, pro
 func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *SubscriptionContext) []*ProxyNode {
 	expireTimeStr := "无限期"
 	if !ctx.Subscription.ExpireTime.IsZero() {
-		expireTimeStr = ctx.Subscription.ExpireTime.Format("2006-01-02")
+		expireTimeStr = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
 	}
 
 	infoNodes := []*ProxyNode{
@@ -1227,7 +1227,7 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 	switch status {
 	case StatusExpired:
 		reason = "订阅已过期"
-		solution = fmt.Sprintf("请前往官网续费 (过期时间: %s)", ctx.Subscription.ExpireTime.Format("2006-01-02"))
+		solution = fmt.Sprintf("请前往官网续费 (过期时间: %s)", utils.FormatBeijingDate(ctx.Subscription.ExpireTime))
 	case StatusInactive:
 		reason = "订阅已失效"
 		solution = "请联系管理员检查订阅状态"

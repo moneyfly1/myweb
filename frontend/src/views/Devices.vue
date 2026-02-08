@@ -296,7 +296,6 @@ export default {
       loading.value = true
       try {
         const response = await subscriptionAPI.getDevices()
-        console.log('设备列表API响应:', response)
         
         // 检查响应结构
         if (response && response.data) {
@@ -958,7 +957,7 @@ export default {
   height: 20px;
   background: #f0f0f0;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: clip;
   
   @media (max-width: 768px) {
     width: calc(100% - 50px); /* 减去计数的宽度 */

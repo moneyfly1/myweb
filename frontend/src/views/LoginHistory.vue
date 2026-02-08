@@ -372,7 +372,7 @@ export default {
 .user-agent-text {
   display: inline-block;
   max-width: 200px;
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

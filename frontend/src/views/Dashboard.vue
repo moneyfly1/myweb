@@ -533,14 +533,13 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, useApi } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import DOMPurify from 'dompurify'
 
 const router = useRouter()
 const api = useApi()
 
-// HTML内容清理函数，防止XSS攻击
 const sanitizeHtml = (html) => {
   if (!html) return ''
   return DOMPurify.sanitize(html, {
@@ -550,7 +549,6 @@ const sanitizeHtml = (html) => {
   })
 }
 
-// 响应式数据
 const userInfo = ref({
   username: '用户',
   email: '',
@@ -577,8 +575,6 @@ const subscriptionInfo = ref({
   status: 'inactive'
 })
 
-
-// 充值相关
 const rechargeDialogVisible = ref(false)
 const rechargeForm = ref({
   amount: 20
@@ -623,31 +619,23 @@ const loadRechargePaymentMethods = async () => {
 const handleRechargePaymentMethodChange = (value) => {
 }
 const softwareConfig = ref({
-  // Windows软件
   clash_windows_url: '',
   v2rayn_url: '',
   mihomo_windows_url: '',
   sparkle_windows_url: '',
   hiddify_windows_url: '',
   flash_windows_url: '',
-  
-  // Android软件
   clash_android_url: '',
   v2rayng_url: '',
   hiddify_android_url: '',
-  
-  // macOS软件
   flash_macos_url: '',
   mihomo_macos_url: '',
   sparkle_macos_url: '',
-  
-  // iOS软件
   shadowrocket_url: ''
 })
 const activePlatform = ref('Windows')
 const showQRCode = ref(false)
 
-// 平台配置
 const platforms = ref([
   {
     name: 'Windows',
@@ -763,13 +751,10 @@ const platforms = ref([
   }
 ])
 
-// 计算属性
 const qrCodeUrl = computed(() => {
   if (userInfo.value.qrcodeUrl) {
-    // 使用后台提供的二维码URL
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(userInfo.value.qrcodeUrl)}&ecc=M&margin=10`
   } else if (userInfo.value.universalUrl) {
-    // 降级方案：使用通用订阅地址生成二维码
     const subscriptionUrl = userInfo.value.universalUrl
     const encodedUrl = btoa(unescape(encodeURIComponent(subscriptionUrl)))
     let expiryDisplayName = '订阅'
@@ -792,7 +777,6 @@ const qrCodeUrl = computed(() => {
   return ''
 })
 
-// 计算设备是否超过限制
 const isDeviceOverlimit = computed(() => {
   const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
@@ -805,7 +789,6 @@ const isDeviceWarning = computed(() => {
   return deviceLimit > 0 && onlineDevices >= deviceLimit * 0.8 && onlineDevices <= deviceLimit
 })
 
-// 方法
 const formatDate = (dateString) => {
   if (!dateString) return '未知'
   const date = new Date(dateString)
@@ -814,7 +797,6 @@ const formatDate = (dateString) => {
 
 const loadUserInfo = async () => {
   try {
-    // 使用聚合接口，一次获取所有数据
     const dashboardResponse = await userAPI.getUserInfo()
     if (dashboardResponse.data && dashboardResponse.data.success) {
       const dashboardData = dashboardResponse.data.data
@@ -839,7 +821,6 @@ const loadUserInfo = async () => {
         status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
       
-      // 处理公告信息（如果接口返回了）
       if (dashboardData.notice) {
         handleAnnouncement(dashboardData.notice)
       }
@@ -847,7 +828,6 @@ const loadUserInfo = async () => {
       throw new Error('用户信息加载失败')
     }
   } catch (error) {
-    // 降级方案：尝试从订阅API获取订阅地址
     try {
       const subscriptionResponse = await subscriptionAPI.getUserSubscription()
       if (subscriptionResponse.data && subscriptionResponse.data.success) {
@@ -878,7 +858,6 @@ const loadUserInfo = async () => {
   }
 }
 
-// 处理公告信息（提取为独立函数）
 const handleAnnouncement = (notice) => {
   if (!notice || !notice.enabled || !notice.content) {
     return
@@ -889,7 +868,6 @@ const handleAnnouncement = (notice) => {
     return
   }
   
-  // 使用DOMPurify清理HTML，移除所有标签只保留纯文本，防止XSS
   const sanitizedContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
   
   ElNotification({
@@ -898,19 +876,17 @@ const handleAnnouncement = (notice) => {
     type: 'info',
     position: 'bottom-right',
     duration: 0,
-    dangerouslyUseHTMLString: false, // 禁用HTML渲染，防止XSS
+    dangerouslyUseHTMLString: false,
     showClose: true
   })
 }
 
-// 获取订阅信息
 const loadSubscriptionInfo = async () => {
   try {
     const response = await subscriptionAPI.getUserSubscription()
     if (response.data && response.data.success) {
       subscriptionInfo.value = response.data.data
       } else {
-      // 用户可能没有订阅，设置默认值
       subscriptionInfo.value = {
         currentDevices: 0,
         maxDevices: 0,
@@ -920,7 +896,6 @@ const loadSubscriptionInfo = async () => {
       }
     }
   } catch (error) {
-    // 用户可能没有订阅，设置默认值
     subscriptionInfo.value = {
       currentDevices: 0,
       maxDevices: 0,
@@ -931,8 +906,6 @@ const loadSubscriptionInfo = async () => {
   }
 }
 
-
-// 充值相关方法
 const showRechargeDialog = () => {
   rechargeDialogVisible.value = true
   rechargeForm.value.amount = 20
@@ -946,30 +919,23 @@ const showRechargeDialog = () => {
   }
 }
 
-// 跳转到支付宝App进行充值支付（参考购买套餐的方式）
 const openAlipayAppForRecharge = () => {
   if (!rechargePaymentUrl.value) {
     ElMessage.error('支付链接不存在')
     return
   }
   
-  // 生成支付宝App跳转链接
-  // 支付宝App的URL Scheme格式：alipays://platformapi/startapp?saId=10000007&qrcode=支付URL
   const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(rechargePaymentUrl.value)}`
   
   try {
-    // 添加页面可见性监听，当用户从支付宝返回时立即检查支付状态
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
-        // 用户返回页面，立即检查支付状态
         await checkRechargeStatus()
-        // 移除监听器
         document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
-    // 添加页面焦点监听，当用户切换回页面时检查支付状态
     const handleFocus = async () => {
       if (rechargeDialogVisible.value) {
         await checkRechargeStatus()
@@ -978,10 +944,8 @@ const openAlipayAppForRecharge = () => {
     }
     window.addEventListener('focus', handleFocus)
     
-    // 尝试打开支付宝App
     window.location.href = alipayAppUrl
     
-    // 如果3秒后还在当前页面，说明可能没有安装支付宝App，提示用户
     setTimeout(() => {
       ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
     }, 3000)
@@ -994,7 +958,6 @@ const selectQuickAmount = (amount) => {
   rechargeForm.value.amount = amount
 }
 
-// 获取充值支付方式名称
 const getRechargePaymentMethodName = () => {
   const method = rechargePaymentMethods.value.find(m => m.key === rechargePaymentMethod.value)
   return method ? method.name : '支付'
@@ -1018,13 +981,11 @@ const createRecharge = async () => {
     if (response.data && response.data.success !== false) {
       const data = response.data.data
       
-      // 检查是否有支付错误
       if (data.payment_error) {
         ElMessage.warning(data.payment_error || '支付链接生成失败')
         return
       }
       
-      // 获取支付URL（后端返回的是 payment_url）
       const paymentUrl = data.payment_url || data.payment_qr_code
       
       if (!paymentUrl) {
@@ -1032,7 +993,6 @@ const createRecharge = async () => {
         return
       }
       
-      // 验证充值订单信息是否存在
       const rechargeId = data.id || data.recharge_id
       const rechargeOrderNo = data.order_no
       if (!rechargeId || !rechargeOrderNo) {
@@ -1041,7 +1001,6 @@ const createRecharge = async () => {
         return
       }
       
-      // 判断是否是易支付，如果是则跳转到新页面
       const isYipay = rechargePaymentMethod.value && (
         rechargePaymentMethod.value.includes('yipay') || 
         rechargePaymentMethod.value.includes('易支付')
@@ -1055,7 +1014,6 @@ const createRecharge = async () => {
           ElMessage.error('支付链接不存在')
         }
       } else {
-        // 原始支付宝等，在当前页面显示二维码
         rechargePaymentUrl.value = paymentUrl
         currentRechargeOrderNo.value = rechargeOrderNo
         
@@ -1093,26 +1051,20 @@ const createRecharge = async () => {
 let rechargeStatusInterval = null
 const currentRechargeOrderNo = ref(null)
 
-// 开始检查充值支付状态（参考购买套餐的方式）
 const startRechargeStatusCheck = () => {
-  // 清除之前的检查
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
   }
   
-  // 立即检查一次支付状态
   checkRechargeStatus()
   
-  // 每2秒检查一次支付状态（提高检查频率，与购买套餐一致）
   rechargeStatusInterval = setInterval(async () => {
     await checkRechargeStatus()
   }, 2000)
   
-  // 添加页面可见性监听，当用户从其他应用返回时立即检查
   const handleVisibilityChange = async () => {
     if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
-      // 用户返回页面，立即检查支付状态
       await checkRechargeStatus()
     }
   }
@@ -1214,14 +1166,10 @@ const checkRechargeStatus = async () => {
   } catch (error) {
     // 如果是 404 错误，说明订单不存在，停止轮询
     if (error.response?.status === 404) {
-      console.warn('充值订单不存在，停止检查支付状态')
       if (rechargeStatusInterval) {
         clearInterval(rechargeStatusInterval)
         rechargeStatusInterval = null
       }
-    } else {
-      // 其他错误只记录，不停止轮询
-      console.warn('检查充值状态失败:', error)
     }
   }
 }
@@ -1709,7 +1657,7 @@ const checkAndShowAnnouncement = async () => {
       })
     }
   } catch (error) {
-    console.warn('获取公告失败:', error)
+    // Failed to load announcements
   }
 }
 
@@ -1738,14 +1686,12 @@ onMounted(() => {
   
   // 监听订阅更新事件
   const handleSubscriptionUpdate = async () => {
-    console.log('收到订阅更新事件，刷新订阅信息...')
     await loadSubscriptionInfo()
     await loadUserInfo()
   }
   
   // 监听用户信息更新事件
   const handleUserInfoUpdate = async () => {
-    console.log('收到用户信息更新事件，刷新用户信息...')
     await loadUserInfo()
   }
   
@@ -1790,7 +1736,7 @@ onUnmounted(() => {
   margin-bottom: 30px;
   color: white;
   position: relative;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .welcome-banner::before {
@@ -1855,7 +1801,7 @@ onUnmounted(() => {
   &.level-card {
     border-width: 2px;
     position: relative;
-    overflow: hidden;
+    overflow: clip;
     padding: 24px;
     
     &::before {
@@ -1938,7 +1884,7 @@ onUnmounted(() => {
       font-size: 32px;
       transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
       position: relative;
-      overflow: hidden;
+      overflow: clip;
       
       &::before {
         content: '';
@@ -1995,7 +1941,7 @@ onUnmounted(() => {
         height: 10px;
         background-color: #f0f0f0;
         border-radius: 5px;
-        overflow: hidden;
+        overflow: clip;
         margin-bottom: 8px;
         
         .progress-fill {
@@ -2040,7 +1986,7 @@ onUnmounted(() => {
       text-align: center;
       box-shadow: 0 4px 16px rgba(253, 160, 133, 0.4);
       position: relative;
-      overflow: hidden;
+      overflow: clip;
       
       &::before {
         content: '';
@@ -2274,7 +2220,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  overflow: hidden;
+  overflow: clip;
   
   .stat-content {
     display: flex;
@@ -2290,7 +2236,7 @@ onUnmounted(() => {
   .remaining-time-main {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
+    overflow: clip;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -3006,7 +2952,7 @@ onUnmounted(() => {
   transition: all 0.2s ease;
   font-size: 11px !important;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: clip;
   box-sizing: border-box;
   
   &:hover {
@@ -3535,7 +3481,7 @@ onUnmounted(() => {
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       white-space: nowrap;
-      overflow: hidden;
+      overflow: clip;
       text-overflow: ellipsis;
       
       &:active {

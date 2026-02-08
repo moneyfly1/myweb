@@ -110,7 +110,7 @@ export default {
           return recent?.order_no || res.data.data.orders[0]?.order_no
         }
       } catch (e) {
-        console.warn('Fetch recent order failed:', e)
+        // Failed to fetch recent order
       }
       return null
     }
@@ -133,7 +133,7 @@ export default {
           window.dispatchEvent(new CustomEvent('subscription-updated'))
         }
       } catch (e) {
-        console.warn('Refresh user state failed:', e)
+        // Failed to refresh user state
       }
     }
 
@@ -167,7 +167,7 @@ export default {
         const res = await api.get(`/orders/${no}/status`, { timeout: 10000 }) // 保持原有的10s超时
         return res.data.data || res.data
       } catch (e) {
-        console.warn('Fetch order status failed:', e)
+        // Failed to fetch order status
         return null
       }
     }

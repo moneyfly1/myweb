@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cboard-go/internal/utils"
 )
 
 // PlatformType 平台类型
@@ -348,7 +350,7 @@ func (c *GitClient) UploadBackup(filePath string) error {
 // UploadBackupWithProgress 上传备份文件（带进度回调）
 func (c *GitClient) UploadBackupWithProgress(filePath string, progressCallback ProgressCallback) error {
 	now := time.Now()
-	dateFolder := now.Format("2006-01-02")
+	dateFolder := utils.FormatBeijingDate(now)
 	fileName := filepath.Base(filePath)
 	remotePath := fmt.Sprintf("%s/%s", dateFolder, fileName)
 

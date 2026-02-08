@@ -378,7 +378,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   width: 100px;
   height: 100px;
   display: flex;

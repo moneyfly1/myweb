@@ -813,7 +813,9 @@ export default {
       batchTest, batchDelete, parseNodeLink, batchImportLinks, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
       handleUserSearch, handleUnassign, getStatusType, getStatusText, formatExpire, isExpired,
-      isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll
+      isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
+      Delete, Edit, Link, Refresh, Connection, User,
+      editingNode
     }
   }
 }
@@ -944,7 +946,7 @@ export default {
   font-weight: 600;
   font-size: 15px;
   flex: 1;
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

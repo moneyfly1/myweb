@@ -355,7 +355,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   display: flex;
   height: 100vh;
   background-color: var(--theme-background);
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .header {

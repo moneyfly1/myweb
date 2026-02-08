@@ -774,7 +774,7 @@ export default {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 }
 
@@ -1442,7 +1442,7 @@ export default {
       width: 100% !important;
       max-width: 100% !important;
       box-sizing: border-box;
-      overflow-x: hidden;
+      overflow-x: clip;
     }
     
     :deep(.el-card__header) {

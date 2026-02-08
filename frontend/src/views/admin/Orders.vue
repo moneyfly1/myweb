@@ -1236,7 +1236,7 @@ export default {
     @media (max-width: 768px) {
       margin: 5vh auto !important;
       border-radius: 16px;
-      overflow: hidden;
+      overflow: clip;
     }
   }
   
@@ -1485,7 +1485,7 @@ export default {
           transition: all 0.2s ease !important;
           box-sizing: border-box !important;
           white-space: nowrap !important;
-          overflow: hidden !important;
+          overflow: clip !important;
           text-overflow: ellipsis !important;
           
           &:hover {

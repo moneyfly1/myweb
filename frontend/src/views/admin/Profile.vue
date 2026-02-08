@@ -546,7 +546,6 @@ export default {
       loginHistoryLoading.value = true
       try {
         const response = await adminAPI.getLoginHistory()
-        console.log('[管理员个人资料] 登录历史响应:', response)
         let data = null
         
         // 处理不同的响应格式
@@ -564,8 +563,6 @@ export default {
           data = response
         }
         
-        console.log('[管理员个人资料] 解析后的数据:', data)
-        
         if (Array.isArray(data)) {
           loginHistory.value = data.map(item => ({
             login_time: item.login_time || '',
@@ -576,11 +573,9 @@ export default {
             user_agent: item.user_agent || '',
             login_status: item.login_status || item.status || 'success'
           }))
-          console.log('[管理员个人资料] 处理后的登录历史:', loginHistory.value)
         } else if (data && data.login_history && Array.isArray(data.login_history)) {
           loginHistory.value = data.login_history
         } else {
-          console.log('[管理员个人资料] 数据格式不正确，设置为空数组')
           loginHistory.value = []
         }
       } catch (error) {

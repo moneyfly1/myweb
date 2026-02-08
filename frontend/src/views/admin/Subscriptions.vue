@@ -497,260 +497,117 @@
         <div 
           v-for="subscription in subscriptions" 
           :key="subscription.id"
-          class="mobile-card"
+          class="mobile-card sub-card"
         >
-          <div class="card-row">
-            <span class="label">用户信息</span>
-            <span class="value">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <el-avatar :size="32" :src="subscription.user?.avatar">
-                  {{ subscription.user?.username?.charAt(0)?.toUpperCase() || 'U' }}
-                </el-avatar>
-                <div>
-                  <div style="font-weight: 600; color: #303133;">
-                    {{ subscription.user?.email || subscription.user?.username || subscription.email || subscription.username || '未知用户' }}
-                  </div>
-                  <div style="font-size: 0.85rem; color: #999;">
-                    ID: #{{ subscription.user?.id || subscription.user_id || subscription.id }}
-                    <el-tag v-if="subscription.user?.deleted" type="danger" size="small" style="margin-left: 8px;">用户已删除</el-tag>
-                  </div>
+          <!-- 用户信息头部 -->
+          <div class="sub-card-header">
+            <div class="sub-user-info">
+              <el-avatar :size="36" :src="subscription.user?.avatar">
+                {{ subscription.user?.username?.charAt(0)?.toUpperCase() || 'U' }}
+              </el-avatar>
+              <div class="sub-user-meta">
+                <div class="sub-user-email">
+                  {{ subscription.user?.email || subscription.user?.username || '未知用户' }}
+                </div>
+                <div class="sub-user-id">
+                  ID: {{ subscription.user?.id || subscription.user_id || subscription.id }} · 
+                  <el-tag :type="getSubscriptionStatusType(subscription.status)" size="small" effect="plain" style="border: none; padding: 0 4px;">
+                    {{ getSubscriptionStatusText(subscription.status) }}
+                  </el-tag>
+                  <el-tag v-if="subscription.user?.deleted" type="danger" size="small" style="margin-left: 4px;">已删除</el-tag>
                 </div>
               </div>
-            </span>
+            </div>
+            <el-button size="small" type="success" plain @click="goToUserBackend(subscription)" class="sub-goto-btn">
+              进入后台
+            </el-button>
           </div>
-          <div class="card-row">
-            <span class="label">订阅状态</span>
-            <span class="value">
-              <el-tag :type="getSubscriptionStatusType(subscription.status)" size="small">
-                {{ getSubscriptionStatusText(subscription.status) }}
-              </el-tag>
-            </span>
-          </div>
-          <div 
-            class="card-row"
-            :class="{ 'expire-time-expired': isExpired(subscription) }"
-          >
-            <span class="label">到期时间</span>
-            <span class="value">
-              <div class="expire-time-section">
-                <el-date-picker
-                  v-model="subscription.expire_time"
-                  type="date"
-                  placeholder="选择日期"
-                  format="YYYY-MM-DD"
-                  value-format="YYYY-MM-DD"
-                  size="small"
-                  style="width: 100%; margin-bottom: 8px;"
-                  @change="updateExpireTime(subscription)"
-                  clearable
-                  teleported
-                  popper-class="mobile-subscription-date-picker-popper"
-                />
-                <div class="quick-time-buttons">
-                  <el-button 
-                    size="small" 
-                    @click="addTime(subscription, 30)"
-                    plain
-                  >
-                    +1个月
-                  </el-button>
-                  <el-button 
-                    size="small" 
-                    @click="addTime(subscription, 180)"
-                    plain
-                  >
-                    +半年
-                  </el-button>
-                  <el-button 
-                    size="small" 
-                    @click="addTime(subscription, 365)"
-                    plain
-                  >
-                    +1年
-                  </el-button>
-                </div>
-              </div>
-            </span>
-          </div>
-          <div 
-            class="card-row"
-            :class="{ 'device-limit-overlimit': isDeviceOverlimit(subscription) }"
-          >
-            <span class="label">设备使用</span>
-            <span class="value">
-              <el-tooltip content="当前在线设备数" placement="top">
-                <el-tag type="success" size="small">{{ subscription.online_devices || 0 }}</el-tag>
-              </el-tooltip>
-              <span style="margin: 0 4px;">/</span>
-              <el-input-number
-                v-model="subscription.device_limit"
-                :min="0"
-                :max="999"
+
+          <!-- 到期时间区域 -->
+          <div class="sub-section" :class="{ 'expire-time-expired': isExpired(subscription) }">
+            <div class="sub-section-row">
+              <span class="sub-section-icon"><el-icon><Clock /></el-icon></span>
+              <span class="sub-section-label">到期时间</span>
+              <span class="sub-section-value">{{ formatDate(subscription.expire_time) || '未设置' }}</span>
+            </div>
+            <div class="sub-btn-row">
+              <el-button size="small" plain @click="addTime(subscription, 30)">+1月</el-button>
+              <el-button size="small" plain @click="addTime(subscription, 90)">+3月</el-button>
+              <el-button size="small" plain @click="addTime(subscription, 180)">+半年</el-button>
+              <el-button size="small" plain @click="addTime(subscription, 365)">+1年</el-button>
+            </div>
+            <div class="sub-date-picker-row">
+              <el-date-picker
+                v-model="subscription.expire_time"
+                type="date"
+                placeholder="选择日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
                 size="small"
-                style="width: 100px; flex-shrink: 0;"
-                @change="updateDeviceLimit(subscription)"
-                controls-position="right"
+                @change="updateExpireTime(subscription)"
+                clearable
+                teleported
+                popper-class="mobile-subscription-date-picker-popper"
               />
-              <div class="quick-device-buttons-mobile">
-                <el-button size="small" @click="addDeviceLimit(subscription, 5)">+5</el-button>
-                <el-button size="small" @click="addDeviceLimit(subscription, 10)">+10</el-button>
-                <el-button size="small" @click="addDeviceLimit(subscription, 15)">+15</el-button>
-              </div>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">设备统计</span>
-            <span class="value">
-              <el-tooltip content="订阅通用订阅的次数" placement="top">
-                <el-tag type="info" size="small" style="margin-right: 4px;">
-                  通用订阅: {{ subscription.apple_count || 0 }}
-                </el-tag>
-              </el-tooltip>
-              <el-tooltip content="订阅猫咪订阅的次数" placement="top">
-                <el-tag type="warning" size="small" style="margin-right: 4px;">
-                  猫咪订阅: {{ subscription.clash_count || 0 }}
-                </el-tag>
-              </el-tooltip>
-            </span>
-          </div>
-          <!-- 订阅二维码区域 - 移动端显示 -->
-          <div class="subscription-qrcode-section" v-if="subscription.subscription_url || subscription.universal_url">
-            <div class="qrcode-card">
-              <div class="qrcode-header">
-                <el-icon style="color: #409eff; margin-right: 6px; font-size: 18px;"><Link /></el-icon>
-                <span class="qrcode-title">Shadowrocket 订阅二维码</span>
-              </div>
-              <div class="qrcode-content">
-                <div class="qrcode-wrapper">
-                  <img 
-                    :src="generateQRCode(subscription)" 
-                    alt="订阅二维码" 
-                    class="qrcode-image"
-                  />
-                </div>
-                <div class="qrcode-info" v-if="subscription.expire_time">
-                  <div class="expiry-info">
-                    <el-icon style="color: #f56c6c; margin-right: 4px;"><Clock /></el-icon>
-                    <span class="expiry-label">失效日期：</span>
-                    <span class="expiry-date">{{ formatExpireDate(subscription.expire_time) }}</span>
-                  </div>
-                </div>
-                <div class="qrcode-actions">
-                  <el-button 
-                    type="primary" 
-                    size="default"
-                    @click="importToShadowrocket(subscription)"
-                    class="import-btn"
-                  >
-                    <el-icon style="margin-right: 6px;"><Download /></el-icon>
-                    一键导入 Shadowrocket
-                  </el-button>
-                  <el-button 
-                    type="default" 
-                    size="default"
-                    @click="showQRCode(subscription)"
-                    class="view-btn"
-                  >
-                    <el-icon style="margin-right: 6px;"><View /></el-icon>
-                    查看大图
-                  </el-button>
-                </div>
-              </div>
             </div>
           </div>
-          
-          <!-- 订阅地址区域 - 独立卡片样式 -->
-          <div class="subscription-urls-section" v-if="subscription.universal_url || subscription.clash_url">
-            <div class="subscription-url-card" v-if="subscription.universal_url">
-              <div class="url-header">
-                <el-icon style="color: #409eff; margin-right: 6px;"><Link /></el-icon>
-                <span class="url-type">通用订阅</span>
-              </div>
-              <div class="url-content">
-                <div class="url-text" :title="subscription.universal_url">
-                  {{ truncateUrl(subscription.universal_url) }}
-                </div>
-                <el-button 
-                  type="primary" 
-                  size="small"
-                  @click="copyToClipboard(subscription.universal_url)"
-                  class="copy-url-btn"
-                >
-                  <el-icon><DocumentCopy /></el-icon>
-                  复制
-                </el-button>
-              </div>
+
+          <!-- 设备限制区域 -->
+          <div class="sub-section" :class="{ 'device-limit-overlimit': isDeviceOverlimit(subscription) }">
+            <div class="sub-section-row">
+              <span class="sub-section-icon"><el-icon><Monitor /></el-icon></span>
+              <span class="sub-section-label">设备限制</span>
+              <span class="sub-section-value">{{ subscription.online_devices || 0 }} / {{ subscription.device_limit || 0 }}</span>
             </div>
-            <div class="subscription-url-card" v-if="subscription.clash_url">
-              <div class="url-header">
-                <el-icon style="color: #f56c6c; margin-right: 6px;"><Link /></el-icon>
-                <span class="url-type">猫咪订阅</span>
-              </div>
-              <div class="url-content">
-                <div class="url-text" :title="subscription.clash_url">
-                  {{ truncateUrl(subscription.clash_url) }}
-                </div>
-                <el-button 
-                  type="danger" 
-                  size="small"
-                  @click="copyToClipboard(subscription.clash_url)"
-                  class="copy-url-btn"
-                >
-                  <el-icon><DocumentCopy /></el-icon>
-                  复制
-                </el-button>
-              </div>
+            <div class="sub-btn-row device-limit-btn-row">
+              <el-button size="small" type="danger" plain @click="clearUserDevices(subscription)">清理在线</el-button>
+              <el-button size="small" plain @click="addDeviceLimit(subscription, 1)">+1</el-button>
+              <el-button size="small" plain @click="addDeviceLimit(subscription, 5)">+5</el-button>
+              <el-button size="small" plain @click="addDeviceLimit(subscription, 10)">+10</el-button>
+              <el-button size="small" plain @click="showUserDetails(subscription)"><el-icon><Edit /></el-icon></el-button>
             </div>
           </div>
-          <div class="card-actions">
-            <el-button 
-              size="small" 
-              type="success" 
-              @click="showUserDetails(subscription)"
-            >
-              <el-icon><View /></el-icon>
-              详情
-            </el-button>
-            <el-button 
-              size="small" 
-              type="primary" 
-              @click="goToUserBackend(subscription)"
-            >
-              <el-icon><User /></el-icon>
-              后台
-            </el-button>
-            <el-button 
-              size="small" 
-              type="warning" 
-              @click="resetSubscription(subscription)"
-            >
-              <el-icon><Refresh /></el-icon>
-              重置
-            </el-button>
-            <el-button 
-              size="small" 
-              :type="subscription.is_active ? 'danger' : 'success'"
-              @click="toggleSubscriptionStatus(subscription)"
-            >
-              <el-icon><Switch /></el-icon>
-              {{ subscription.is_active ? '禁用' : '启用' }}
-            </el-button>
-            <el-button 
-              size="small" 
-              type="info" 
-              @click="sendSubscriptionEmail(subscription)"
-            >
-              <el-icon><Message /></el-icon>
-              邮件
-            </el-button>
-            <el-button 
-              size="small" 
-              type="danger" 
-              @click="clearUserDevices(subscription)"
-            >
-              <el-icon><Delete /></el-icon>
-              清理
-            </el-button>
+
+          <!-- 操作按钮网格 - 第一行：订阅操作 -->
+          <div class="sub-action-grid">
+            <div class="sub-action-item" @click="copyToClipboard(subscription.universal_url)">
+              <div class="sub-action-icon" style="background: #ecf5ff; color: #409eff;"><el-icon><DocumentCopy /></el-icon></div>
+              <span class="sub-action-text">复制通用</span>
+            </div>
+            <div class="sub-action-item" @click="copyToClipboard(subscription.clash_url)">
+              <div class="sub-action-icon" style="background: #fdf6ec; color: #e6a23c;"><el-icon><Link /></el-icon></div>
+              <span class="sub-action-text">复制Clash</span>
+            </div>
+            <div class="sub-action-item" @click="importToShadowrocket(subscription)">
+              <div class="sub-action-icon" style="background: #f0f9eb; color: #67c23a;"><el-icon><Download /></el-icon></div>
+              <span class="sub-action-text">导入小火箭</span>
+            </div>
+            <div class="sub-action-item" @click="showQRCode(subscription)">
+              <div class="sub-action-icon" style="background: #f4f4f5; color: #909399;"><el-icon><View /></el-icon></div>
+              <span class="sub-action-text">二维码</span>
+            </div>
+          </div>
+
+          <!-- 操作按钮网格 - 第二行：管理操作 -->
+          <div class="sub-action-grid">
+            <div class="sub-action-item" @click="resetSubscription(subscription)">
+              <div class="sub-action-icon" style="background: #ecf5ff; color: #409eff;"><el-icon><Refresh /></el-icon></div>
+              <span class="sub-action-text">重置订阅</span>
+            </div>
+            <div class="sub-action-item" @click="toggleSubscriptionStatus(subscription)">
+              <div class="sub-action-icon" :style="subscription.is_active ? 'background: #fef0f0; color: #f56c6c;' : 'background: #f0f9eb; color: #67c23a;'">
+                <el-icon><Switch /></el-icon>
+              </div>
+              <span class="sub-action-text">{{ subscription.is_active ? '禁用' : '启用' }}</span>
+            </div>
+            <div class="sub-action-item" @click="sendSubscriptionEmail(subscription)">
+              <div class="sub-action-icon" style="background: #f0f9eb; color: #67c23a;"><el-icon><Message /></el-icon></div>
+              <span class="sub-action-text">发邮件</span>
+            </div>
+            <div class="sub-action-item" @click="deleteUser(subscription)">
+              <div class="sub-action-icon" style="background: #fef0f0; color: #f56c6c;"><el-icon><Delete /></el-icon></div>
+              <span class="sub-action-text">删除用户</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1235,7 +1092,6 @@ export default {
     const searchQuery = ref('')
     const currentSort = ref('add_time_desc')
     
-    // 搜索表单（与其他列表保持一致）
     const searchForm = reactive({
       keyword: '',
       status: ''
@@ -1246,17 +1102,14 @@ export default {
     const selectedUser = ref(null)
     const currentQRCode = ref('')
     
-    // 列设置的 localStorage key
     const COLUMN_SETTINGS_KEY = 'admin_subscriptions_visible_columns'
     
-    // 默认列设置
     const defaultVisibleColumns = [
       'qq', 'expire_time', 'qr_code', 'universal_url', 'clash_url', 
       'created_at', 'apple_count', 'clash_count', 'online_devices', 
       'device_limit', 'actions'
     ]
     
-    // 从 localStorage 读取列设置
     const loadColumnSettings = () => {
       try {
         const saved = localStorage.getItem(COLUMN_SETTINGS_KEY)
@@ -1268,7 +1121,7 @@ export default {
           }
         }
       } catch (error) {
-        console.warn('读取列设置失败:', error)
+        // Failed to load column settings
       }
       return defaultVisibleColumns
     }
@@ -1277,7 +1130,7 @@ export default {
       try {
         localStorage.setItem(COLUMN_SETTINGS_KEY, JSON.stringify(columns))
       } catch (error) {
-        console.warn('保存列设置失败:', error)
+        // Failed to save column settings
       }
     }
     
@@ -1321,7 +1174,6 @@ export default {
           sort: currentSort.value
         }
         
-        // 添加状态筛选
         if (searchForm.status) {
           params.status = searchForm.status
         }
@@ -1329,11 +1181,9 @@ export default {
         const response = await adminAPI.getSubscriptions(params)
         if (response.data?.success !== false) {
           const subscriptionList = response.data?.data?.subscriptions || []
-          // 确保 is_active 是布尔值
           subscriptions.value = subscriptionList.map(sub => ({
             ...sub,
             is_active: sub.is_active === true || sub.is_active === 1 || sub.is_active === '1',
-            // 确保排序字段格式正确
             device_limit: Number(sub.device_limit) || 0,
             expire_time: sub.expire_time || ''
           }))
@@ -1348,14 +1198,12 @@ export default {
       }
     }
 
-    // 搜索订阅
     const searchSubscriptions = () => {
       searchQuery.value = searchForm.keyword
       currentPage.value = 1
       loadSubscriptions()
     }
     
-    // 重置搜索
     const resetSearch = () => {
       searchForm.keyword = ''
       searchForm.status = ''
@@ -1420,7 +1268,6 @@ export default {
       }
     }
 
-    // 添加时间 - 立即生效
     const addTime = async (subscription, days) => {
       if (!subscription || !subscription.id) return
       
@@ -1431,14 +1278,11 @@ export default {
         if (subscription.expire_time) {
           const currentExpire = dayjs(subscription.expire_time).tz('Asia/Shanghai')
           if (currentExpire.isAfter(now)) {
-            // 如果还未到期，在原到期时间基础上增加
             baseDate = currentExpire
           } else {
-            // 如果已到期，从当前时间开始增加
             baseDate = now
           }
         } else {
-          // 如果没有到期时间，从当前时间开始增加
           baseDate = now
         }
         
@@ -3250,33 +3094,193 @@ export default {
   
   // 移动端卡片中的日期选择器和数字输入框样式
   .mobile-card-list {
-    .mobile-card {
-      // 移动端卡片操作按钮样式 - 三个一排，分两排
-      .card-actions {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-        width: 100%;
-        margin-top: 12px;
+    .mobile-card.sub-card {
+      padding: 0 !important;
+      border-radius: 14px;
+      
+      .sub-card-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 14px 16px;
+        border-bottom: 1px solid #f0f0f0;
         
-        .el-button {
-          width: 100% !important;
-          height: 40px !important;
-          font-size: 14px !important;
-          font-weight: 500 !important;
-          margin: 0 !important;
-          padding: 0 8px !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
+        .sub-user-info {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          flex: 1;
+          min-width: 0;
+        }
+        
+        .el-avatar {
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        
+        .sub-user-meta {
+          flex: 1;
+          min-width: 0;
+        }
+        
+        .sub-user-email {
+          font-weight: 600;
+          font-size: 14px;
+          color: #303133;
+          word-break: break-all;
+          line-height: 1.4;
+        }
+        
+        .sub-user-id {
+          font-size: 12px;
+          color: #999;
+          margin-top: 3px;
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 2px;
+        }
+        
+        .sub-goto-btn {
+          flex-shrink: 0;
+          align-self: center;
+          border-radius: 20px;
+          font-size: 12px;
+          padding: 6px 14px !important;
+          height: auto !important;
+          min-height: 0 !important;
+        }
+      }
+      
+      .sub-section {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f5f5f5;
+        border-radius: 0;
+        transition: background 0.3s;
+        
+        &.expire-time-expired {
+          background: #fef0f0;
+        }
+        
+        &.device-limit-overlimit {
+          background: #fef0f0;
+        }
+        
+        .sub-section-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+        
+        .sub-section-icon {
+          color: #909399;
+          font-size: 16px;
+          display: flex;
+          align-items: center;
+        }
+        
+        .sub-section-label {
+          font-size: 13px;
+          color: #909399;
+          flex-shrink: 0;
+        }
+        
+        .sub-section-value {
+          margin-left: auto;
+          font-size: 14px;
+          font-weight: 600;
+          color: #303133;
+        }
+        
+        .sub-btn-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
+          margin-bottom: 8px;
           
-          :deep(.el-icon) {
-            margin-right: 4px;
-            font-size: 14px;
+          .el-button {
+            margin: 0 !important;
+            padding: 0 4px !important;
+            font-size: 12px !important;
+            height: 32px !important;
+            min-height: 0 !important;
+            border-radius: 6px !important;
+            width: 100% !important;
+          }
+          
+          &.device-limit-btn-row {
+            grid-template-columns: repeat(5, 1fr);
+          }
+        }
+        
+        .sub-date-picker-row {
+          width: 100%;
+          
+          :deep(.el-date-editor) {
+            width: 100% !important;
+            height: 32px !important;
+            
+            .el-input__wrapper {
+              padding: 0 8px !important;
+            }
+            
+            .el-input__inner {
+              font-size: 12px !important;
+              height: 30px !important;
+              min-height: 0 !important;
+            }
           }
         }
       }
       
+      .sub-action-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        padding: 12px 8px;
+        border-bottom: 1px solid #f5f5f5;
+        
+        &:last-child {
+          border-bottom: none;
+        }
+        
+        .sub-action-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 4px;
+          cursor: pointer;
+          border-radius: 8px;
+          transition: background 0.2s;
+          
+          &:active {
+            background: #f5f7fa;
+          }
+          
+          .sub-action-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: transform 0.2s;
+          }
+          
+          .sub-action-text {
+            font-size: 11px;
+            color: #606266;
+            text-align: center;
+            line-height: 1.3;
+          }
+        }
+      }
+    }
+    
+    .mobile-card {
       .card-row {
         padding: 12px;
         border-radius: 8px;

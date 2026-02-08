@@ -45,7 +45,14 @@ func (rl *RateLimiter) cleanup() {
 		rl.mu.Lock()
 		now := time.Now()
 		for key, visitor := range rl.visitors {
-			if !visitor.Locked && now.After(visitor.ResetAt.Add(rl.window)) {
+			if visitor.Locked {
+				if now.After(visitor.LockedAt.Add(15 * time.Minute)) {
+					delete(rl.visitors, key)
+				}
+				continue
+			}
+
+			if now.After(visitor.ResetAt.Add(rl.window)) {
 				delete(rl.visitors, key)
 			}
 		}
@@ -197,7 +204,7 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 						"ip":        key,
 						"reason":    "登录失败次数过多",
 						"lock_time": "15分钟",
-						"reset_at":  resetAt.Format("2006-01-02 15:04:05"),
+						"reset_at":  utils.FormatBeijingTime(resetAt),
 					})
 			} else {
 				utils.CreateSecurityLog(c, "login_rate_limit", "MEDIUM",
@@ -205,7 +212,7 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 					map[string]interface{}{
 						"ip":       key,
 						"reason":   "登录失败次数过多",
-						"reset_at": resetAt.Format("2006-01-02 15:04:05"),
+						"reset_at": utils.FormatBeijingTime(resetAt),
 					})
 			}
 

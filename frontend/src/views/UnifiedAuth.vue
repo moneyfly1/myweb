@@ -1089,7 +1089,7 @@ onUnmounted(() => {
 .unified-auth-container {
   min-height: 100vh;
   width: 100%;
-  overflow: hidden;
+  overflow: clip;
   background-color: #f3f4f6;
 }
 
@@ -1116,7 +1116,7 @@ onUnmounted(() => {
     display: flex;
     width: 50%;
     position: relative;
-    overflow: hidden;
+    overflow: clip;
     background: linear-gradient(135deg, rgba(10, 10, 30, 0.92) 0%, rgba(37, 99, 235, 0.85) 100%);
     
     &::before {
@@ -1558,8 +1558,8 @@ onUnmounted(() => {
   
   /* 手机端验证码输入框文字颜色和输入修复 */
   :deep(.verification-code-input) {
-    -webkit-user-select: text !important;
-    user-select: text !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
     pointer-events: auto !important;
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
@@ -1579,8 +1579,8 @@ onUnmounted(() => {
     font-size: 16px !important; /* 防止iOS自动缩放 */
     opacity: 1 !important;
     caret-color: #1677ff !important;
-    -webkit-user-select: text !important;
-    user-select: text !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
     pointer-events: auto !important;
     touch-action: manipulation !important;
     -webkit-appearance: none !important;
@@ -1624,8 +1624,8 @@ onUnmounted(() => {
     font-size: 16px !important;
     opacity: 1 !important;
     caret-color: #1677ff !important;
-    -webkit-user-select: text !important;
-    user-select: text !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
     pointer-events: auto !important;
     touch-action: manipulation !important;
     -webkit-appearance: none !important;

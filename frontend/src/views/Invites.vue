@@ -693,7 +693,7 @@ onMounted(async () => {
     border: 1px solid #e4e7ed;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     position: relative;
-    overflow: hidden;
+    overflow: clip;
     
     &::before {
       content: '';
@@ -865,7 +865,7 @@ onMounted(async () => {
   .desktop-only {
     :deep(.el-table) {
       border-radius: 8px;
-      overflow: hidden;
+      overflow: clip;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
       
       .el-table__header {

@@ -22,6 +22,54 @@ var (
 	geoipEnabled bool
 )
 
+type ping0CacheEntry struct {
+	location  *LocationInfo
+	expiresAt time.Time
+	ok        bool
+}
+
+var ping0Cache = struct {
+	mu      sync.RWMutex
+	entries map[string]ping0CacheEntry
+}{
+	entries: make(map[string]ping0CacheEntry),
+}
+
+const (
+	ping0CacheSuccessTTL = 24 * time.Hour
+	ping0CacheFailureTTL = 10 * time.Minute
+)
+
+func getPing0Cache(ip string) (ping0CacheEntry, bool) {
+	ping0Cache.mu.RLock()
+	entry, ok := ping0Cache.entries[ip]
+	ping0Cache.mu.RUnlock()
+	if !ok {
+		return ping0CacheEntry{}, false
+	}
+	if time.Now().After(entry.expiresAt) {
+		ping0Cache.mu.Lock()
+		delete(ping0Cache.entries, ip)
+		ping0Cache.mu.Unlock()
+		return ping0CacheEntry{}, false
+	}
+	return entry, true
+}
+
+func setPing0Cache(ip string, location *LocationInfo, ok bool) {
+	ttl := ping0CacheFailureTTL
+	if ok {
+		ttl = ping0CacheSuccessTTL
+	}
+	ping0Cache.mu.Lock()
+	ping0Cache.entries[ip] = ping0CacheEntry{
+		location:  location,
+		expiresAt: time.Now().Add(ttl),
+		ok:        ok,
+	}
+	ping0Cache.mu.Unlock()
+}
+
 type LocationInfo struct {
 	Country     string  `json:"country"`
 	CountryCode string  `json:"country_code"`
@@ -403,6 +451,13 @@ func GetLocationFromPing0(ipAddress string) (*LocationInfo, error) {
 		return nil, fmt.Errorf("无效的IP地址格式: %s", ipAddress)
 	}
 
+	if entry, ok := getPing0Cache(ipAddress); ok {
+		if entry.ok && entry.location != nil && entry.location.Country != "" {
+			return entry.location, nil
+		}
+		return nil, fmt.Errorf("Ping0缓存未命中")
+	}
+
 	url := fmt.Sprintf("https://ping0.cc/geo?ip=%s", ipAddress)
 
 	client := &http.Client{
@@ -418,26 +473,31 @@ func GetLocationFromPing0(ipAddress string) (*LocationInfo, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		setPing0Cache(ipAddress, nil, false)
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		setPing0Cache(ipAddress, nil, false)
 		return nil, fmt.Errorf("请求失败，状态码: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		setPing0Cache(ipAddress, nil, false)
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
 	if len(lines) < 2 {
+		setPing0Cache(ipAddress, nil, false)
 		return nil, fmt.Errorf("响应格式不正确")
 	}
 
 	locationStr := strings.TrimSpace(lines[1])
 	if locationStr == "" {
+		setPing0Cache(ipAddress, nil, false)
 		return nil, fmt.Errorf("位置信息为空")
 	}
 
@@ -474,9 +534,11 @@ func GetLocationFromPing0(ipAddress string) (*LocationInfo, error) {
 	}
 
 	if location.Country != "" {
+		setPing0Cache(ipAddress, location, true)
 		return location, nil
 	}
 
+	setPing0Cache(ipAddress, nil, false)
 	return nil, fmt.Errorf("未能从API解析到地理位置信息")
 }
 

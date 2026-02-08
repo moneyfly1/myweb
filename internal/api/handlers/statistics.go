@@ -10,12 +10,31 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
+const statsCacheTTL = 30 * time.Second
+
+var statsCache = struct {
+	mu        sync.RWMutex
+	expiresAt time.Time
+	payload   gin.H
+}{}
+
 func GetStatistics(c *gin.Context) {
+	now := utils.GetBeijingTime()
+	statsCache.mu.RLock()
+	if now.Before(statsCache.expiresAt) && statsCache.payload != nil {
+		payload := statsCache.payload
+		statsCache.mu.RUnlock()
+		utils.SuccessResponse(c, http.StatusOK, "", payload)
+		return
+	}
+	statsCache.mu.RUnlock()
+
 	db := database.GetDB()
 
 	var stats struct {
@@ -38,12 +57,11 @@ func GetStatistics(c *gin.Context) {
 
 	stats.TotalRevenue = utils.CalculateTotalRevenue(db, "paid")
 
-	today := time.Now().Format("2006-01-02")
-	db.Model(&models.Order{}).Where("status = ? AND DATE(created_at) = ?", "paid", today).Count(&stats.TodayOrders)
+	dayStart, dayEnd := utils.GetDayRange(now)
+	db.Model(&models.Order{}).Where("status = ? AND created_at >= ? AND created_at < ?", "paid", dayStart, dayEnd).Count(&stats.TodayOrders)
 	stats.TodayRevenue = utils.CalculateTodayRevenue(db, "paid")
 
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
-	now := time.Now()
 	db.Model(&models.Subscription{}).
 		Where("is_active = ?", true).
 		Where("(status = ? OR status = '' OR status IS NULL)", "active").
@@ -174,11 +192,11 @@ func GetStatistics(c *gin.Context) {
 			"description": fmt.Sprintf("订单 %s - 用户 %s", order.OrderNo, order.User.Username),
 			"amount":      amount,
 			"status":      order.Status,
-			"time":        order.CreatedAt.Format("2006-01-02 15:04:05"),
+			"time":        utils.FormatBeijingTime(order.CreatedAt),
 		})
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+	payload := gin.H{
 		"total_users":          stats.TotalUsers,
 		"active_users":         stats.ActiveUsers,
 		"total_orders":         stats.TotalOrders,
@@ -197,7 +215,14 @@ func GetStatistics(c *gin.Context) {
 		"userStats":         userStatsList,
 		"subscriptionStats": subscriptionStatsList,
 		"recentActivities":  recentActivitiesList,
-	})
+	}
+
+	statsCache.mu.Lock()
+	statsCache.payload = payload
+	statsCache.expiresAt = now.Add(statsCacheTTL)
+	statsCache.mu.Unlock()
+
+	utils.SuccessResponse(c, http.StatusOK, "", payload)
 }
 
 func GetRevenueChart(c *gin.Context) {
@@ -217,6 +242,7 @@ func GetRevenueChart(c *gin.Context) {
 	db := database.GetDB()
 	var rows *sql.Rows
 	var err error
+	startTime := utils.GetBeijingTime().AddDate(0, 0, -days)
 	rows, err = db.Raw(`
 		SELECT DATE(created_at) as date, COALESCE(SUM(
 			CASE 
@@ -225,10 +251,10 @@ func GetRevenueChart(c *gin.Context) {
 			END
 		), 0) as revenue
 		FROM orders 
-		WHERE status = ? AND created_at >= datetime('now', '-' || ? || ' days')
+		WHERE status = ? AND created_at >= ?
 		GROUP BY DATE(created_at)
 		ORDER BY date ASC
-	`, "paid", days).Rows()
+	`, "paid", startTime).Rows()
 
 	if err == nil {
 		defer rows.Close()
@@ -268,21 +294,20 @@ func GetUserStatistics(c *gin.Context) {
 	db.Model(&models.User{}).Where("is_verified = ?", true).Count(&stats.VerifiedUsers)
 	db.Model(&models.User{}).Where("is_verified = ?", false).Count(&stats.UnverifiedUsers)
 
-	today := time.Now().Format("2006-01-02")
-	db.Model(&models.User{}).Where("DATE(created_at) = ?", today).Count(&stats.NewUsersToday)
+	now := utils.GetBeijingTime()
+	dayStart, dayEnd := utils.GetDayRange(now)
+	db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", dayStart, dayEnd).Count(&stats.NewUsersToday)
 
-	now := time.Now()
 	weekday := int(now.Weekday())
 	if weekday == 0 {
 		weekday = 7
 	}
 	weekStart := now.AddDate(0, 0, -weekday+1)
-	weekStartStr := weekStart.Format("2006-01-02")
-	db.Model(&models.User{}).Where("DATE(created_at) >= ?", weekStartStr).Count(&stats.NewUsersThisWeek)
+	weekStart = time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, weekStart.Location())
+	db.Model(&models.User{}).Where("created_at >= ?", weekStart).Count(&stats.NewUsersThisWeek)
 
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	monthStartStr := monthStart.Format("2006-01-02")
-	db.Model(&models.User{}).Where("DATE(created_at) >= ?", monthStartStr).Count(&stats.NewUsersThisMonth)
+	db.Model(&models.User{}).Where("created_at >= ?", monthStart).Count(&stats.NewUsersThisMonth)
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
@@ -380,7 +405,7 @@ func GetRegionStats(c *gin.Context) {
 				currentLastLogin, _ = time.Parse("2006-01-02 15:04:05", stat.LastLogin)
 			}
 			if createdAt.After(currentLastLogin) {
-				stat.LastLogin = createdAt.Format("2006-01-02 15:04:05")
+				stat.LastLogin = utils.FormatBeijingTime(createdAt)
 			}
 		}
 
