@@ -743,7 +743,7 @@ export default {
   font-size: 15px;
   flex: 1;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
 }
 
@@ -841,7 +841,7 @@ export default {
   font-family: monospace;
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -398,14 +398,7 @@ export default {
     // 调试：打印 user 对象结构（开发环境）
     if (process.env.NODE_ENV === 'development') {
       watch(() => props.user, (newUser) => {
-        if (newUser) {
-          console.log('UserDetailDialog - user object:', newUser)
-          console.log('UserDetailDialog - user object keys:', Object.keys(newUser))
-          console.log('UserDetailDialog - recharge_records:', newUser.recharge_records, 'type:', typeof newUser.recharge_records, 'isArray:', Array.isArray(newUser.recharge_records))
-          console.log('UserDetailDialog - orders:', newUser.orders, 'type:', typeof newUser.orders, 'isArray:', Array.isArray(newUser.orders))
-          console.log('UserDetailDialog - computed rechargeRecords:', rechargeRecords.value, 'length:', rechargeRecords.value.length)
-          console.log('UserDetailDialog - computed orderRecords:', orderRecords.value, 'length:', orderRecords.value.length)
-        }
+        // User data is watched for changes
       }, { immediate: true, deep: true })
     }
 

@@ -1089,6 +1089,7 @@ export default {
       handleUserSaved,
       saveNotes,
       debounceSaveNotes,
+      defaultSort,
       Loading,
       CircleCheck
     }
@@ -1341,7 +1342,7 @@ export default {
 
 .email, .username {
   white-space: nowrap;
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
 }
 

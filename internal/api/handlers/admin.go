@@ -57,7 +57,7 @@ func GetAdminInvites(c *gin.Context) {
 		}
 		var expiresAt interface{}
 		if code.ExpiresAt.Valid {
-			expiresAt = code.ExpiresAt.Time.Format("2006-01-02 15:04:05")
+			expiresAt = utils.FormatBeijingTime(code.ExpiresAt.Time)
 		}
 
 		username, email := "", ""
@@ -84,7 +84,7 @@ func GetAdminInvites(c *gin.Context) {
 			"inviter_reward": code.InviterReward,
 			"invitee_reward": code.InviteeReward,
 			"is_active":      code.IsActive,
-			"created_at":     code.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(code.CreatedAt),
 		})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"invite_codes": result, "total": total, "page": page, "size": size})
@@ -158,7 +158,7 @@ func GetAdminInviteRelations(c *gin.Context) {
 			"invitee_reward_amount":     relation.InviteeRewardAmount,
 			"invitee_reward_given":      relation.InviteeRewardGiven,
 			"invitee_total_consumption": relation.InviteeTotalConsumption,
-			"created_at":                relation.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":                utils.FormatBeijingTime(relation.CreatedAt),
 		})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"relations": result, "total": total, "page": page, "size": size})
@@ -247,8 +247,8 @@ func GetAdminTickets(c *gin.Context) {
 			"unread_replies": unreadRepliesCount,
 			"has_unread":     hasUnread,
 			"has_new_ticket": hasNewTicket,
-			"created_at":     ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":     ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(ticket.CreatedAt),
+			"updated_at":     utils.FormatBeijingTime(ticket.UpdatedAt),
 		})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"tickets": ticketList, "total": total, "page": page, "size": size})
@@ -303,7 +303,7 @@ func GetAdminTicket(c *gin.Context) {
 			"user_id":    reply.UserID,
 			"content":    reply.Content,
 			"is_admin":   reply.IsAdmin,
-			"created_at": reply.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(reply.CreatedAt),
 		}
 		if reply.IsAdmin != "true" {
 			isUnread := !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != adminUserID)
@@ -341,7 +341,7 @@ func GetAdminTicket(c *gin.Context) {
 			"file_name":   attachment.FileName,
 			"file_path":   attachment.FilePath,
 			"uploaded_by": attachment.UploadedBy,
-			"created_at":  attachment.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":  utils.FormatBeijingTime(attachment.CreatedAt),
 		}
 		if attachment.ReplyID != nil {
 			att["reply_id"] = *attachment.ReplyID
@@ -371,8 +371,8 @@ func GetAdminTicket(c *gin.Context) {
 		"replies":       replies,
 		"replies_count": repliesCount,
 		"attachments":   attachments,
-		"created_at":    ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at":    ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":    utils.FormatBeijingTime(ticket.CreatedAt),
+		"updated_at":    utils.FormatBeijingTime(ticket.UpdatedAt),
 	}
 	if ticket.Rating != nil {
 		ticketData["rating"] = *ticket.Rating
@@ -381,10 +381,10 @@ func GetAdminTicket(c *gin.Context) {
 		ticketData["rating_comment"] = *ticket.RatingComment
 	}
 	if ticket.ResolvedAt != nil {
-		ticketData["resolved_at"] = ticket.ResolvedAt.Format("2006-01-02 15:04:05")
+		ticketData["resolved_at"] = utils.FormatBeijingTime(*ticket.ResolvedAt)
 	}
 	if ticket.ClosedAt != nil {
-		ticketData["closed_at"] = ticket.ClosedAt.Format("2006-01-02 15:04:05")
+		ticketData["closed_at"] = utils.FormatBeijingTime(*ticket.ClosedAt)
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"ticket": ticketData})
@@ -582,7 +582,7 @@ func GetUserSubscription(c *gin.Context) {
 	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL)
 	expiryDate := "未设置"
 	if !subscription.ExpireTime.IsZero() {
-		expiryDate = subscription.ExpireTime.Format("2006-01-02 15:04:05")
+		expiryDate = utils.FormatBeijingTime(subscription.ExpireTime)
 	}
 	encodedURL := base64.StdEncoding.EncodeToString([]byte(universalURL))
 	expiryDisplay := expiryDate
@@ -618,7 +618,7 @@ func GetUserSubscription(c *gin.Context) {
 		"expiryDate":       expiryDate,
 		"remaining_days":   remainingDays,
 		"is_expired":       isExpired,
-		"created_at":       subscription.CreatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":       utils.FormatBeijingTime(subscription.CreatedAt),
 	})
 }
 
@@ -889,8 +889,8 @@ func GetPaymentConfig(c *gin.Context) {
 			ReturnURL:            safeNullString(config.ReturnURL),
 			NotifyURL:            safeNullString(config.NotifyURL),
 			SortOrder:            config.SortOrder,
-			CreatedAt:            config.CreatedAt.Format("2006-01-02 15:04:05"),
-			UpdatedAt:            config.UpdatedAt.Format("2006-01-02 15:04:05"),
+			CreatedAt:            utils.FormatBeijingTime(config.CreatedAt),
+			UpdatedAt:            utils.FormatBeijingTime(config.UpdatedAt),
 		}
 		if config.ConfigJSON.Valid {
 			var jsonData map[string]interface{}
@@ -913,14 +913,14 @@ func GetUserTrend(c *gin.Context) {
 		UserCount int64  `json:"user_count"`
 	}
 	var trends []UserTrend
-	rows, err := db.Raw(`SELECT DATE(created_at) as date, COUNT(*) as user_count FROM users WHERE created_at >= DATE('now', '-' || ? || ' days') GROUP BY DATE(created_at) ORDER BY date ASC`, days).Rows()
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var trend UserTrend
-			rows.Scan(&trend.Date, &trend.UserCount)
-			trends = append(trends, trend)
-		}
+	startTime := utils.GetBeijingTime().AddDate(0, 0, -days)
+	if err := db.Model(&models.User{}).
+		Select("DATE(created_at) as date, COUNT(*) as user_count").
+		Where("created_at >= ?", startTime).
+		Group("DATE(created_at)").
+		Order("date ASC").
+		Scan(&trends).Error; err != nil {
+		utils.LogError("GetUserTrend: query trend", err, nil)
 	}
 	labels := make([]string, 0)
 	data := make([]int64, 0)
@@ -1214,8 +1214,8 @@ func UpdatePaymentConfig(c *gin.Context) {
 		"return_url":             safeNullString(paymentConfig.ReturnURL),
 		"notify_url":             safeNullString(paymentConfig.NotifyURL),
 		"sort_order":             paymentConfig.SortOrder,
-		"created_at":             paymentConfig.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at":             paymentConfig.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":             utils.FormatBeijingTime(paymentConfig.CreatedAt),
+		"updated_at":             utils.FormatBeijingTime(paymentConfig.UpdatedAt),
 	}
 	if paymentConfig.ConfigJSON.Valid {
 		var jsonData map[string]interface{}

@@ -716,6 +716,20 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       return textMap[level] || level
     }
 
+    const getTaskTypeName = (type) => {
+      const nameMap = {
+        'scheduler': '定时任务调度器',
+        'email_queue': '邮件队列',
+        'auto_backup': '自动备份',
+        'auto_node_update': '节点更新',
+        'node_health_check': '节点健康检查',
+        'expiring_subscriptions': '订阅到期检查',
+        'account_deletion': '账户删除',
+        'system_error': '系统错误'
+      }
+      return nameMap[type] || type
+    }
+
     const truncateText = (text, length) => {
       if (!text) return ''
       return text.length > length ? text.substring(0, length) + '...' : text
@@ -753,6 +767,7 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       formatDate,
       getLogLevelTagType,
       getLogLevelText,
+      getTaskTypeName,
       truncateText
     }
   }
@@ -858,7 +873,7 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
 .user-agent-text {
   display: inline-block;
   max-width: 200px;
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

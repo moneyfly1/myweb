@@ -897,7 +897,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   transition: var(--el-transition-duration-fast);
 }
 .avatar-uploader .el-upload:hover { border-color: var(--el-color-primary); }

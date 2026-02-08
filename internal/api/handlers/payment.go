@@ -716,7 +716,7 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 		return
 	}
 
-	paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+	paymentTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 	paidAmount := latestOrder.Amount
 	if latestOrder.FinalAmount.Valid {
 		paidAmount = latestOrder.FinalAmount.Float64
@@ -760,7 +760,7 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 				expireTime := "未设置"
 				remainingDays := 0
 				if !subscriptionInfo.ExpireTime.IsZero() {
-					expireTime = subscriptionInfo.ExpireTime.Format("2006-01-02 15:04:05")
+					expireTime = utils.FormatBeijingTime(subscriptionInfo.ExpireTime)
 					diff := subscriptionInfo.ExpireTime.Sub(utils.GetBeijingTime())
 					if diff > 0 {
 						remainingDays = int(diff.Hours() / 24)

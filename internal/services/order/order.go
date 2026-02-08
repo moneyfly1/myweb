@@ -274,7 +274,7 @@ func extractYipayType(payType string) string {
 func (s *OrderService) sendPaymentSuccessEmail(user *models.User, order *models.Order, pkg *models.Package, amount float64, paymentMethod string) {
 	emailService := email.NewEmailService()
 	templateBuilder := email.NewEmailTemplateBuilder()
-	paymentTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+	paymentTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 
 	content := templateBuilder.GetPaymentSuccessTemplate(
 		user.Username,
@@ -364,12 +364,12 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 		}
 		if utils.AppLogger != nil {
 			utils.AppLogger.Info("ProcessPaidOrder: ✅ 创建新订阅成功 - user_id=%d, package_id=%d, device_limit=%d, duration_months=%d, duration_days=%d, expire_time=%s",
-				user.ID, pkg.ID, pkg.DeviceLimit, durationMonths, totalDurationDays, expireTime.Format("2006-01-02 15:04:05"))
+				user.ID, pkg.ID, pkg.DeviceLimit, durationMonths, totalDurationDays, utils.FormatBeijingTime(expireTime))
 		}
 
 		go func() {
 			notificationService := notification.NewNotificationService()
-			createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+			createTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 			_ = notificationService.SendAdminNotification("subscription_created", map[string]interface{}{
 				"username":        user.Username,
 				"email":           user.Email,
@@ -377,7 +377,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 				"device_limit":    pkg.DeviceLimit,
 				"duration_months": durationMonths,
 				"duration_days":   totalDurationDays,
-				"expire_time":     expireTime.Format("2006-01-02 15:04:05"),
+				"expire_time":     utils.FormatBeijingTime(expireTime),
 				"create_time":     createTime,
 			})
 		}()
@@ -400,7 +400,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 		}
 		if utils.AppLogger != nil {
 			utils.AppLogger.Info("ProcessPaidOrder: ✅ 更新订阅成功 - user_id=%d, package_id=%d, device_limit: %d->%d, duration_months=%d, duration_days=%d, expire_time: %s->%s",
-				user.ID, pkg.ID, oldDeviceLimit, pkg.DeviceLimit, durationMonths, totalDurationDays, oldExpireTime.Format("2006-01-02 15:04:05"), subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+				user.ID, pkg.ID, oldDeviceLimit, pkg.DeviceLimit, durationMonths, totalDurationDays, utils.FormatBeijingTime(oldExpireTime), utils.FormatBeijingTime(subscription.ExpireTime))
 		}
 	}
 
@@ -449,7 +449,7 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 
 	if utils.AppLogger != nil {
 		utils.AppLogger.Info("ProcessPaidOrder: ✅ 设备升级成功 - user_id=%d, additional_devices=%d, additional_days=%d, device_limit=%d, expire_time=%s",
-			user.ID, additionalDevices, additionalDays, subscription.DeviceLimit, subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+			user.ID, additionalDevices, additionalDays, subscription.DeviceLimit, utils.FormatBeijingTime(subscription.ExpireTime))
 	}
 
 	return &subscription, nil
@@ -704,7 +704,7 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 	}
 
 	utils.LogInfo("ProcessRefundOrder: 回退套餐订单成功 - user_id=%d, package_id=%d, duration_days=%d, expire_time=%s",
-		user.ID, pkg.ID, totalDurationDays, subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+		user.ID, pkg.ID, totalDurationDays, utils.FormatBeijingTime(subscription.ExpireTime))
 	return nil
 }
 
@@ -757,7 +757,7 @@ func (s *OrderService) rollbackDeviceUpgradeOrder(order *models.Order, user *mod
 	}
 
 	utils.LogInfo("ProcessRefundOrder: 回退设备升级成功 - user_id=%d, additional_devices=%d, additional_days=%d, device_limit=%d, expire_time=%s",
-		user.ID, additionalDevices, additionalDays, subscription.DeviceLimit, subscription.ExpireTime.Format("2006-01-02 15:04:05"))
+		user.ID, additionalDevices, additionalDays, subscription.DeviceLimit, utils.FormatBeijingTime(subscription.ExpireTime))
 	return nil
 }
 

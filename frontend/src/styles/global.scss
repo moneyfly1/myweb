@@ -471,6 +471,7 @@
 
 html, body {
   height: 100%;
+  overflow-x: clip;
   font-family: var(--font-family);
   font-size: var(--font-size-base);
   color: var(--theme-text);
@@ -1183,7 +1184,7 @@ $breakpoints: (
 // 表格样式优化
 .el-table {
   border-radius: var(--border-radius);
-  overflow: hidden;
+  overflow: clip;
   
   :is(th) {
     background-color: #fafafa;

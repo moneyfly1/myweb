@@ -832,8 +832,8 @@ onUnmounted(() => {
     
     /* 确保输入框在手机端可以正常聚焦和输入 */
     :deep(.verification-code-input) {
-      -webkit-user-select: text !important;
-      user-select: text !important;
+      -webkit-user-select: auto !important;
+      user-select: auto !important;
       pointer-events: auto !important;
     }
     
@@ -843,8 +843,8 @@ onUnmounted(() => {
     
     :deep(.verification-code-input .el-input__inner) {
       pointer-events: auto !important;
-      -webkit-user-select: text !important;
-      user-select: text !important;
+      -webkit-user-select: auto !important;
+      user-select: auto !important;
     }
   }
 }
@@ -946,8 +946,8 @@ onUnmounted(() => {
   
   /* 手机端验证码输入框文字颜色和输入修复 */
   :deep(.verification-code-input) {
-    -webkit-user-select: text !important;
-    user-select: text !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
     pointer-events: auto !important;
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
@@ -966,8 +966,8 @@ onUnmounted(() => {
     font-size: 16px !important; /* 防止iOS自动缩放 */
     opacity: 1 !important;
     caret-color: #1677ff !important;
-    -webkit-user-select: text !important;
-    user-select: text !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
     pointer-events: auto !important;
     touch-action: manipulation !important;
     -webkit-appearance: none !important;
@@ -1010,8 +1010,8 @@ onUnmounted(() => {
     font-size: 16px !important;
     opacity: 1 !important;
     caret-color: #1677ff !important;
-    -webkit-user-select: text !important;
-    user-select: text !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
     pointer-events: auto !important;
     touch-action: manipulation !important;
     -webkit-appearance: none !important;

@@ -565,7 +565,7 @@ func sendTestNotification(logTag string) {
 	go func() {
 		testData := map[string]interface{}{
 			"type":      "test",
-			"test_time": utils.GetBeijingTime().Format("2006-01-02 15:04:05"),
+			"test_time": utils.FormatBeijingTime(utils.GetBeijingTime()),
 		}
 		_ = notification.NewNotificationService().SendAdminNotification("test", testData)
 	}()
@@ -644,7 +644,7 @@ func GetGeoIPStatus(c *gin.Context) {
 	if info, err := os.Stat(geoipPath); err == nil {
 		status["db_exists"] = true
 		status["db_size"] = info.Size()
-		status["db_modified"] = info.ModTime().Format("2006-01-02 15:04:05")
+		status["db_modified"] = utils.FormatBeijingTime(info.ModTime())
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", status)

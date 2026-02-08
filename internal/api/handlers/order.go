@@ -86,7 +86,7 @@ func formatOrderData(db *gorm.DB, order models.Order) gin.H {
 
 	paymentTime := ""
 	if order.PaymentTime.Valid {
-		paymentTime = order.PaymentTime.Time.Format("2006-01-02 15:04:05")
+		paymentTime = utils.FormatBeijingTime(order.PaymentTime.Time)
 	}
 
 	userInfo := resolveUserInfo(db, order.UserID, order.User)
@@ -108,8 +108,8 @@ func formatOrderData(db *gorm.DB, order models.Order) gin.H {
 		"payment_time":           paymentTime,
 		"payment_transaction_id": utils.GetNullStringValue(order.PaymentTransactionID),
 		"status":                 order.Status,
-		"created_at":             order.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at":             order.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":             utils.FormatBeijingTime(order.CreatedAt),
+		"updated_at":             utils.FormatBeijingTime(order.UpdatedAt),
 		"expire_time":            utils.GetNullTimeValue(order.ExpireTime),
 		"coupon_id":              utils.GetNullInt64Value(order.CouponID),
 	}
@@ -302,7 +302,7 @@ func CreateOrder(c *gin.Context) {
 		"status":              order.Status,
 		"payment_method":      utils.GetNullStringValue(order.PaymentMethodName),
 		"payment_method_name": utils.GetNullStringValue(order.PaymentMethodName),
-		"created_at":          order.CreatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":          utils.FormatBeijingTime(order.CreatedAt),
 	}
 
 	if order.PaymentMethodName.Valid {
@@ -342,7 +342,7 @@ func GetOrders(c *gin.Context) {
 	var orders []models.Order
 	var total int64
 
-	query := db.Model(&models.Order{}).Preload("Package").Preload("Coupon")
+	query := db.Model(&models.Order{}).Preload("User").Preload("Package").Preload("Coupon")
 
 	if !admin {
 		query = query.Where("user_id = ?", user.ID)
@@ -369,11 +369,28 @@ func GetOrders(c *gin.Context) {
 	if paymentMethod != "" && paymentMethod != "all" {
 		query = query.Where("payment_method_name = ?", paymentMethod)
 	}
+	var startParsed time.Time
 	if startDate != "" {
-		query = query.Where("DATE(created_at) >= ?", startDate)
+		parsed, err := time.ParseInLocation("2006-01-02", startDate, time.Local)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "start_date格式错误，应为YYYY-MM-DD", err)
+			return
+		}
+		startParsed = parsed
+		query = query.Where("created_at >= ?", startParsed)
 	}
 	if endDate != "" {
-		query = query.Where("DATE(created_at) <= ?", endDate)
+		parsed, err := time.ParseInLocation("2006-01-02", endDate, time.Local)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "end_date格式错误，应为YYYY-MM-DD", err)
+			return
+		}
+		if !startParsed.IsZero() && parsed.Before(startParsed) {
+			utils.ErrorResponse(c, http.StatusBadRequest, "end_date不能早于start_date", nil)
+			return
+		}
+		endTime := parsed.Add(24 * time.Hour)
+		query = query.Where("created_at < ?", endTime)
 	}
 
 	query.Count(&total)
@@ -558,7 +575,7 @@ func GetAdminOrders(c *gin.Context) {
 					"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
 					"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
 					"paid_at":                utils.GetNullTimeValue(record.PaidAt),
-					"created_at":             record.CreatedAt.Format("2006-01-02 15:04:05"),
+					"created_at":             utils.FormatBeijingTime(record.CreatedAt),
 				}
 				allRecords = append(allRecords, gin.H{
 					"record_type": "recharge",
@@ -951,13 +968,13 @@ func ExportOrders(c *gin.Context) {
 			formatted["amount"],
 			formatted["payment_method"],
 			statusText,
-			order.CreatedAt.Format("2006-01-02 15:04:05"),
+			utils.FormatBeijingTime(order.CreatedAt),
 			formatted["payment_time"],
-			order.UpdatedAt.Format("2006-01-02 15:04:05"),
+			utils.FormatBeijingTime(order.UpdatedAt),
 		))
 	}
 
-	filename := fmt.Sprintf("orders_export_%s.csv", time.Now().Format("20060102_150405"))
+	filename := fmt.Sprintf("orders_export_%s.csv", utils.GetBeijingTime().Format("20060102_150405"))
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", filename))
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csvContent.String()))

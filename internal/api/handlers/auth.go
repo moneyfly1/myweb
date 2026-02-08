@@ -389,7 +389,7 @@ func verifyRegisterCode(db *gorm.DB, emailStr, code string) error {
 func handleRegisterNotification(user models.User) {
 	go func() {
 		notificationService := notification.NewNotificationService()
-		registerTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		registerTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 		_ = notificationService.SendAdminNotification("user_registered", map[string]interface{}{
 			"username":      user.Username,
 			"email":         user.Email,
@@ -723,7 +723,7 @@ func ChangePassword(c *gin.Context) {
 		templateBuilder := email.NewEmailTemplateBuilder()
 		baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 		loginURL := fmt.Sprintf("%s/login", baseURL)
-		changeTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		changeTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 		content := templateBuilder.GetPasswordChangedTemplate(user.Username, changeTime, loginURL)
 		subject := "密码修改成功"
 		_ = emailService.QueueEmail(user.Email, subject, content, "password_changed")
@@ -776,7 +776,7 @@ func ResetPassword(c *gin.Context) {
 
 	go func() {
 		notificationService := notification.NewNotificationService()
-		resetTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		resetTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 		_ = notificationService.SendAdminNotification("password_reset", map[string]interface{}{
 			"username":   user.Username,
 			"email":      user.Email,
@@ -969,7 +969,7 @@ func ResetPasswordByCode(c *gin.Context) {
 
 	go func() {
 		notificationService := notification.NewNotificationService()
-		resetTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		resetTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 		_ = notificationService.SendAdminNotification("password_reset", map[string]interface{}{
 			"username":   user.Username,
 			"email":      user.Email,

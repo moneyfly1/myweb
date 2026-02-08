@@ -18,10 +18,7 @@ func GetCurrentUserXBoardCompat(c *gin.Context) {
 		return
 	}
 
-	lastLoginStr := ""
-	if user.LastLogin.Valid {
-		lastLoginStr = user.LastLogin.Time.Format("2006-01-02 15:04:05")
-	}
+	lastLoginStr := utils.FormatNullTimeBeijing(user.LastLogin)
 
 	responseData := gin.H{
 		"id":          user.ID,
@@ -31,7 +28,7 @@ func GetCurrentUserXBoardCompat(c *gin.Context) {
 		"is_verified": user.IsVerified,
 		"is_admin":    user.IsAdmin,
 		"balance":     user.Balance,
-		"created_at":  user.CreatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":  utils.FormatBeijingTime(user.CreatedAt),
 		"last_login":  lastLoginStr,
 	}
 
@@ -66,7 +63,7 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 
 	expiryDate := ""
 	if !subscription.ExpireTime.IsZero() {
-		expiryDate = subscription.ExpireTime.Format("2006-01-02T15:04:05Z")
+		expiryDate = utils.FormatBeijingRFC3339(subscription.ExpireTime)
 	}
 
 	remainingDays := 0

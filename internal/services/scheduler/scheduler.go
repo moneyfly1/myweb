@@ -186,7 +186,7 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 
 		expireDate := "未设置"
 		if !sub.ExpireTime.IsZero() {
-			expireDate = sub.ExpireTime.Format("2006-01-02 15:04:05")
+			expireDate = utils.FormatBeijingTime(sub.ExpireTime)
 		}
 
 		content := templateBuilder.GetExpirationReminderTemplate(
@@ -218,14 +218,14 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 				notificationService := notification.NewNotificationService()
 				expireTime := "未设置"
 				if !sub.ExpireTime.IsZero() {
-					expireTime = sub.ExpireTime.Format("2006-01-02 15:04:05")
+					expireTime = utils.FormatBeijingTime(sub.ExpireTime)
 				}
 				_ = notificationService.SendAdminNotification("subscription_expired", map[string]interface{}{
 					"username":     sub.User.Username,
 					"email":        sub.User.Email,
 					"package_name": packageName,
 					"expire_time":  expireTime,
-					"expired_time": utils.GetBeijingTime().Format("2006-01-02 15:04:05"),
+					"expired_time": utils.FormatBeijingTime(utils.GetBeijingTime()),
 				})
 			}(sub)
 		}
@@ -312,7 +312,7 @@ func (s *Scheduler) checkUsersForDeletionWarning(now time.Time) {
 
 		lastLogin := "从未登录"
 		if currentUser.LastLogin.Valid {
-			lastLogin = currentUser.LastLogin.Time.Format("2006-01-02 15:04:05")
+			lastLogin = utils.FormatBeijingTime(currentUser.LastLogin.Time)
 		}
 
 		content := templateBuilder.GetAccountDeletionWarningTemplate(
@@ -378,7 +378,7 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 			continue
 		}
 
-		deletionDate := now.Format("2006-01-02 15:04:05")
+		deletionDate := utils.FormatBeijingTime(now)
 		reason := "30天未登录且无有效套餐，警告后7天内未登录"
 		dataRetentionPeriod := "30天"
 		content := templateBuilder.GetAccountDeletionTemplate(user.Username, deletionDate, reason, dataRetentionPeriod)
@@ -541,10 +541,10 @@ func (s *Scheduler) shouldRunNodeUpdate(intervalSeconds int) (string, bool) {
 	interval := time.Duration(intervalSeconds) * time.Second
 
 	if elapsed >= interval {
-		return lastUpdateTime.Format("2006-01-02 15:04:05"), true
+		return utils.FormatBeijingTime(lastUpdateTime), true
 	}
 
-	return lastUpdateTime.Format("2006-01-02 15:04:05"), false
+	return utils.FormatBeijingTime(lastUpdateTime), false
 }
 
 func (s *Scheduler) autoBackup() {
@@ -782,7 +782,7 @@ func (s *Scheduler) runAutoBackup() error {
 				}
 
 				// 创建只包含数据库的临时备份文件
-				backupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
+				backupFileName := fmt.Sprintf("backup_db_%s.zip", utils.GetBeijingTime().Format("20060102_150405"))
 				backupFilePath := filepath.Join(backupDir, backupFileName)
 				backupFilePath = filepath.Clean(backupFilePath)
 

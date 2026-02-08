@@ -360,7 +360,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Wallet, DocumentCopy, InfoFilled } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
-import { subscriptionAPI, userAPI, orderAPI, userLevelAPI, useApi } from '@/utils/api'
+import { subscriptionAPI, userAPI, orderAPI, userLevelAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { useRouter } from 'vue-router'
 import { formatDateTime, formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
 import dayjs from 'dayjs'
@@ -392,7 +392,6 @@ export default {
       additionalDays: 0
     })
     
-    // 配置项
     const deviceOptions = ref([5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
     const monthOptions = ref([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
     
@@ -405,50 +404,18 @@ export default {
     const loadUpgradePaymentMethods = async () => {
       try {
         const response = await api.get('/payment-methods/active')
-        console.log('支付方式API完整响应:', response)
-        console.log('响应数据类型:', typeof response)
-        console.log('响应数据:', response?.data)
+        const methods = parsePaymentMethods(response)
         
-        let methods = []
-        if (response && response.data) {
-          if (response.data.success !== false && response.data.data) {
-            methods = Array.isArray(response.data.data) ? response.data.data : []
-            console.log('从 response.data.data 解析:', methods)
-          } else if (Array.isArray(response.data)) {
-            methods = response.data
-            console.log('从 response.data 解析（数组）:', methods)
-          } else if (response.data.data && Array.isArray(response.data.data)) {
-            methods = response.data.data
-            console.log('从 response.data.data 解析（二次检查）:', methods)
-          }
-          
-          if (methods.length === 0 && response.data && typeof response.data === 'object') {
-            if (Array.isArray(response.data)) {
-              methods = response.data
-              console.log('从 response.data 解析（对象检查）:', methods)
-            }
-          }
-        }
-        
-        console.log('最终解析的支付方式列表:', methods)
-        console.log('支付方式数量:', methods.length)
-        
-        availableUpgradePaymentMethods.value = methods.length > 0 ? methods : []
-        
-        console.log('设置后的 availableUpgradePaymentMethods:', availableUpgradePaymentMethods.value)
-        console.log('availableUpgradePaymentMethods 长度:', availableUpgradePaymentMethods.value.length)
+        availableUpgradePaymentMethods.value = methods
         
         if (methods.length > 0) {
           const firstMethod = methods.find(m => m.key && m.key !== 'balance' && m.key !== 'mixed') || methods[0]
           if (firstMethod && firstMethod.key) {
             paymentMethod.value = firstMethod.key
-            console.log('设置默认支付方式:', paymentMethod.value)
           }
         }
       } catch (error) {
-        console.error('加载支付方式失败:', error)
-        console.error('错误响应:', error.response)
-        console.error('错误详情:', error.response?.data)
+        ElMessage.error('加载支付方式失败')
         availableUpgradePaymentMethods.value = []
       }
     }
@@ -459,7 +426,6 @@ export default {
     const paymentStatusCheckTimer = ref(null)
     const isMobile = ref(window.innerWidth <= 768)
 
-    // 监听窗口大小变化
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
     }
@@ -469,23 +435,18 @@ export default {
       fetchSubscription()
       fetchUserInfo()
       
-      // 监听订阅更新事件
       const handleSubscriptionUpdate = async () => {
-        console.log('收到订阅更新事件，刷新订阅信息...')
         await fetchSubscription()
         await fetchUserInfo()
       }
       
-      // 监听用户信息更新事件
       const handleUserInfoUpdate = async () => {
-        console.log('收到用户信息更新事件，刷新用户信息...')
         await fetchUserInfo()
       }
       
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
       
-      // 清理事件监听器
       onUnmounted(() => {
         window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
         window.removeEventListener('user-info-updated', handleUserInfoUpdate)
@@ -505,7 +466,6 @@ export default {
       }
     })
 
-    // 获取订阅信息
     const fetchSubscription = async () => {
       try {
         let subscriptionResponse
@@ -841,7 +801,6 @@ export default {
                 ElMessage.error('支付链接不存在')
               }
             } else {
-              // 原始支付宝等，在当前页面显示二维码
               upgradeOrder.value = {
                 ...data,
                 additional_devices: upgradeForm.value.additionalDevices,
@@ -889,7 +848,7 @@ export default {
           width: isMobile.value ? 200 : 256, // 手机端使用较小的尺寸
           margin: 2,
           color: { dark: '#000000', light: '#FFFFFF' },
-          errorCorrectionLevel: 'M' // 使用中等纠错级别，避免二维码过于复杂
+          errorCorrectionLevel: 'M'
         }
         paymentQRCode.value = await QRCode.toDataURL(url, qrOptions)
         paymentQRVisible.value = true
@@ -920,21 +879,17 @@ export default {
           paymentQRVisible.value = false
           ElMessage.success('支付成功，设备已升级！')
           
-          // 立即刷新订阅和用户信息
           await Promise.all([fetchSubscription(), fetchUserInfo()])
           
-          // 触发全局事件，通知其他页面刷新
           window.dispatchEvent(new CustomEvent('subscription-updated'))
           window.dispatchEvent(new CustomEvent('user-info-updated'))
           
-          // 延迟再次刷新，确保数据完全同步
           setTimeout(async () => {
             await Promise.all([fetchSubscription(), fetchUserInfo()])
             window.dispatchEvent(new CustomEvent('subscription-updated'))
             window.dispatchEvent(new CustomEvent('user-info-updated'))
           }, 500)
           
-          // 重置状态
           upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
           upgradeCost.value = 0
           finalAmount.value = 0

@@ -439,25 +439,21 @@ export default {
     const themeStore = useThemeStore()
     const activeSetting = ref('profile')
     
-    // 移动端检测
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     const isMobile = computed(() => {
       return windowWidth.value <= 768
     })
     
-    // 监听窗口大小变化
     const handleResize = () => {
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
       }
     }
     
-    // 表单引用
     const profileFormRef = ref()
     const securityFormRef = ref()
     const emailChangeFormRef = ref()
     
-    // 加载状态
     const profileSaving = ref(false)
     const passwordChanging = ref(false)
     const notificationSaving = ref(false)
@@ -465,10 +461,8 @@ export default {
     const emailChanging = ref(false)
     const codeSending = ref(false)
     
-    // 对话框状态
     const emailChangeDialogVisible = ref(false)
     
-    // 表单数据
     const profileForm = reactive({
       username: '',
       email: '',
@@ -497,7 +491,6 @@ export default {
       verificationCode: ''
     })
     
-    // 表单验证规则
     const profileRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -542,15 +535,12 @@ export default {
       ]
     }
     
-    // 处理设置选择
     const handleSettingSelect = (key) => {
       activeSetting.value = key
     }
     
-    // 加载用户信息
     const loadUserInfo = async () => {
       try {
-        // 从API获取最新用户信息
         const response = await api.get('/users/me')
         if (response.data && response.data.success && response.data.data) {
           const userData = response.data.data
@@ -569,7 +559,6 @@ export default {
           }
         }
       } catch (error) {
-        // 如果API失败，从authStore获取
         const user = authStore.user
         if (user) {
           profileForm.username = user.username || ''
@@ -579,44 +568,35 @@ export default {
         }
       }
       
-      // 加载通知设置
       try {
         const notificationResponse = await api.get('/users/notification-settings')
-        // 支持多种响应格式：response.data.data 或 response.data
         const settings = notificationResponse.data?.data || notificationResponse.data || {}
         
-        // 处理邮件通知开关 - 明确处理 undefined、null、布尔值和字符串
         if (settings.email_notifications !== undefined && settings.email_notifications !== null) {
           notificationForm.emailNotifications = settings.email_notifications === true || settings.email_notifications === 'true'
         } else if (settings.email_enabled !== undefined && settings.email_enabled !== null) {
           notificationForm.emailNotifications = settings.email_enabled === true || settings.email_enabled === 'true'
         } else {
-          // 如果都没有，使用默认值 true
           notificationForm.emailNotifications = true
         }
         
-        // 解析 notification_types（可能是JSON字符串或数组）
         if (settings.notification_types !== undefined && settings.notification_types !== null) {
           if (typeof settings.notification_types === 'string' && settings.notification_types.trim() !== '') {
             try {
               const parsed = JSON.parse(settings.notification_types)
               notificationForm.notificationTypes = Array.isArray(parsed) ? parsed : ['subscription', 'payment', 'system', 'marketing']
             } catch (e) {
-              console.warn('解析通知类型失败:', e, '原始值:', settings.notification_types)
               notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
             }
           } else if (Array.isArray(settings.notification_types) && settings.notification_types.length > 0) {
             notificationForm.notificationTypes = settings.notification_types
           } else {
-            // 空数组或无效值，使用默认值
             notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
           }
         } else {
-          // 如果没有设置，使用默认值
           notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
         }
       } catch (error) {
-        // 使用默认值，记录详细错误日志
         console.error('加载通知设置失败:', {
           error: error.message,
           response: error.response?.data,
@@ -627,10 +607,8 @@ export default {
         notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
       }
       
-      // 加载偏好设置（从用户信息中获取）
       try {
         const userResponse = await api.get('/users/me')
-        // 支持多种响应格式
         const userData = userResponse.data?.data || userResponse.data || {}
         if (userData && typeof userData === 'object') {
           if (userData.theme && typeof userData.theme === 'string') {
@@ -641,10 +619,10 @@ export default {
           }
         }
       } catch (error) {
-        // 使用默认值，记录错误日志
-        console.warn('加载偏好设置失败:', {
+        console.error('加载用户设置失败:', {
           error: error.message,
           response: error.response?.data,
+          status: error.response?.status,
           url: '/users/me'
         })
       }
@@ -675,7 +653,6 @@ export default {
           ElMessage.error(response.data?.message || '保存失败')
         }
       } catch (error) {
-        // 记录详细错误日志
         console.error('保存个人资料失败:', {
           error: error.message,
           response: error.response?.data,
@@ -693,13 +670,11 @@ export default {
       }
     }
     
-    // 修改密码
     const changePassword = async () => {
       try {
         await securityFormRef.value.validate()
         passwordChanging.value = true
         
-        // 调用API修改密码
         const response = await api.post('/users/change-password', {
           current_password: securityForm.currentPassword || '',
           new_password: securityForm.newPassword || ''
@@ -710,7 +685,6 @@ export default {
           securityForm.currentPassword = ''
           securityForm.newPassword = ''
           securityForm.confirmPassword = ''
-          // 重置表单验证状态
           if (securityFormRef.value) {
             securityFormRef.value.resetFields()
           }
@@ -724,7 +698,6 @@ export default {
           response: error.response?.data,
           status: error.response?.status,
           url: '/users/change-password'
-          // 注意：不记录密码内容
         })
         const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '密码修改失败'
         ElMessage.error(errorMsg)
@@ -733,12 +706,10 @@ export default {
       }
     }
     
-    // 保存通知设置
     const saveNotificationSettings = async () => {
       try {
         notificationSaving.value = true
         
-        // 调用API保存通知设置
         const response = await api.put('/users/notification-settings', {
           email_notifications: notificationForm.emailNotifications,
           notification_types: notificationForm.notificationTypes
@@ -750,7 +721,6 @@ export default {
           ElMessage.error(response.data?.message || '通知设置保存失败')
         }
       } catch (error) {
-        // 记录详细错误日志
         console.error('保存通知设置失败:', {
           error: error.message,
           response: error.response?.data,
@@ -767,34 +737,27 @@ export default {
       }
     }
     
-    // 保存偏好设置
     const savePreferenceSettings = async () => {
       try {
         preferenceSaving.value = true
         
-        // 检查主题是否发生变化
         const themeChanged = themeStore && themeStore.currentTheme !== preferenceForm.theme
         
-        // 保存主题设置（如果主题发生变化，会立即应用到界面，并保存到后端）
         let themeSaved = false
         let themeLocalApplied = false
         if (themeChanged && themeStore && themeStore.setTheme) {
           const themeResult = await themeStore.setTheme(preferenceForm.theme)
           themeSaved = themeResult.success
           themeLocalApplied = themeResult.localApplied || false
-          // 如果主题保存失败且未本地应用，则终止保存
           if (!themeResult.success && !themeResult.localApplied) {
             ElMessage.error(themeResult.message || '主题保存失败')
             return
           }
         }
         
-        // 保存时区设置（主题已通过 themeStore.setTheme 保存，避免重复调用）
-        // 只保存时区，不包含主题，避免重复保存
         try {
           const response = await api.put('/users/preferences', {
             timezone: preferenceForm.timezone
-            // 注意：不包含 theme，因为主题已通过 themeStore.setTheme 保存
           })
           
           if (response.data && response.data.success !== false) {
@@ -817,21 +780,13 @@ export default {
             }
           }
         } catch (timezoneError) {
-          // 时区保存失败不影响主题，只记录警告
-          console.warn('保存时区失败:', {
-            error: timezoneError.message,
-            response: timezoneError.response?.data,
-            status: timezoneError.response?.status
-          })
           if (themeChanged && (themeSaved || themeLocalApplied)) {
             ElMessage.warning('时区保存失败，但主题已保存')
           } else {
-            // 如果主题没有变化，时区保存失败需要提示错误
             throw timezoneError
           }
         }
       } catch (error) {
-        // 记录详细错误日志
         console.error('保存偏好设置失败:', {
           error: error.message,
           response: error.response?.data,
@@ -848,14 +803,12 @@ export default {
       }
     }
     
-    // 显示修改邮箱对话框
     const showEmailChangeDialog = () => {
       emailChangeForm.newEmail = ''
       emailChangeForm.verificationCode = ''
       emailChangeDialogVisible.value = true
     }
     
-    // 发送验证码
     const sendVerificationCode = async () => {
       try {
         if (!emailChangeForm.newEmail) {
@@ -865,9 +818,6 @@ export default {
         
         codeSending.value = true
         
-        // 这里调用API发送验证码
-        // await api.sendEmailVerificationCode(emailChangeForm.newEmail)
-        
         ElMessage.success('验证码已发送到您的邮箱')
       } catch (error) {
         ElMessage.error('发送验证码失败：' + error.message)
@@ -876,14 +826,10 @@ export default {
       }
     }
     
-    // 确认修改邮箱
     const confirmEmailChange = async () => {
       try {
         await emailChangeFormRef.value.validate()
         emailChanging.value = true
-        
-        // 这里调用API修改邮箱
-        // await api.changeEmail(emailChangeForm.newEmail, emailChangeForm.verificationCode)
         
         ElMessage.success('邮箱修改成功')
         emailChangeDialogVisible.value = false
@@ -1061,7 +1007,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   position: relative;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .avatar-uploader .el-upload:hover {

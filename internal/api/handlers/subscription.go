@@ -912,7 +912,7 @@ func ExportSubscriptions(c *gin.Context) {
 			s.DeviceLimit, s.CurrentDevices, s.ExpireTime.Format(TimeLayout), s.CreatedAt.Format(TimeLayout)))
 	}
 	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=subscriptions_%s.csv", time.Now().Format("20060102")))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=subscriptions_%s.csv", utils.GetBeijingTime().Format("20060102")))
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csv.String()))
 }
 

@@ -466,7 +466,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion } from '@element-plus/icons-vue'
-import { useApi, couponAPI, userAPI, userLevelAPI } from '@/utils/api'
+import { useApi, couponAPI, userAPI, userLevelAPI, parsePaymentMethods } from '@/utils/api'
 
 export default {
   name: 'Packages',
@@ -483,7 +483,6 @@ export default {
     const router = useRouter()
     const api = useApi()
     
-    // 响应式数据
     const packages = ref([])
     const isLoading = ref(false)
     const errorMessage = ref('')
@@ -495,13 +494,11 @@ export default {
     const selectedQuantity = ref(1)
     const currentOrder = ref(null)
     const paymentQRCode = ref('')
-    const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App或iframe嵌入
+    const paymentUrl = ref('')
     
-    // 判断是否是支付页面URL（需要使用iframe嵌入）
     const isPaymentPageUrl = computed(() => {
       if (!paymentUrl.value) return false
       const url = String(paymentUrl.value).toLowerCase()
-      // 如果是易支付的支付页面URL，使用iframe嵌入
       return url.includes('payapi/pay/payment') || 
              url.includes('submit.php') ||
              (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
@@ -509,35 +506,29 @@ export default {
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
     
-    // 优惠券相关
     const couponCode = ref('')
     const validatingCoupon = ref(false)
     const couponInfo = ref(null)
     
-    // 支付方式相关
     const paymentMethod = ref('alipay')
     const availablePaymentMethods = ref([])
     const userBalance = ref(0)
     
-    // 用户等级相关
     const userLevel = ref(null)
-    const levelDiscountRate = ref(1.0)  // 等级折扣率，默认无折扣
+    const levelDiscountRate = ref(1.0)
     
-    // 确保 isMobile 在初始化时就有值
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     
     const isMobile = computed(() => {
       return windowWidth.value <= 768
     })
     
-    // 监听窗口大小变化
     const handleResize = () => {
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
       }
     }
     
-    // 优惠券输入处理函数
     const handleCouponInput = (value) => {
       couponCode.value = value
     }
@@ -545,7 +536,6 @@ export default {
     const handleCouponFocus = () => {
     }
     
-    // 验证优惠券
     const validateCoupon = async () => {
       if (!couponCode.value || !couponCode.value.trim()) {
         ElMessage.warning('请输入优惠券码')
@@ -599,7 +589,6 @@ export default {
       couponInfo.value = null
     }
     
-    // 获取支付方式显示名称
     const getPaymentMethodDisplayName = (method) => {
       if (!method) return '支付宝'
       const methodStr = String(method).toLowerCase()
@@ -630,12 +619,10 @@ export default {
       return price * (1 - levelDiscountRate.value)
     }
     
-    // 识别套餐类型
     const packageType = computed(() => {
       if (!selectedPackage.value) return null
       const days = selectedPackage.value.duration_days || 30
       
-      // 判断套餐类型（允许一定的误差范围）
       if (days >= 28 && days <= 32) {
         return { type: 'monthly', unit: '个月', days: 30, max: 12 }
       } else if (days >= 88 && days <= 92) {
@@ -647,12 +634,10 @@ export default {
       } else if (days >= 720 && days <= 730) {
         return { type: 'two_yearly', unit: '个两年', days: 730, max: 3 }
       } else {
-        // 其他情况，使用实际天数作为单位
         return { type: 'custom', unit: '个周期', days: days, max: 12 }
       }
     })
     
-    // 生成时长选项
     const durationOptions = computed(() => {
       if (!packageType.value) return []
       const type = packageType.value
@@ -685,7 +670,6 @@ export default {
       return options
     })
     
-    // 时长选择占位符
     const durationPlaceholder = computed(() => {
       if (!packageType.value) return '请选择购买时长'
       const type = packageType.value
@@ -697,7 +681,6 @@ export default {
       return '请选择购买数量'
     })
     
-    // 时长选择提示
     const durationHint = computed(() => {
       if (!packageType.value) return '选择购买数量，价格将按比例计算'
       const type = packageType.value
@@ -709,7 +692,6 @@ export default {
       return '选择购买数量，价格将按比例计算'
     })
     
-    // 时长显示文本
     const durationDisplayText = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value || !packageType.value) return ''
       const type = packageType.value
@@ -730,45 +712,36 @@ export default {
       }
     })
     
-    // 计算总原价（根据选择的数量）
     const totalOriginalPrice = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value) return 0
       const singlePrice = parseFloat(selectedPackage.value.price) || 0
       return singlePrice * selectedQuantity.value
     })
     
-    // 计算总天数
     const totalDurationDays = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value || !packageType.value) return 0
       return packageType.value.days * selectedQuantity.value
     })
     
-    // 计算最终金额（总原价 - 等级折扣 - 优惠券折扣）
     const finalAmount = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value) return 0
       const totalPrice = totalOriginalPrice.value
       
-      // 先应用等级折扣
       const levelDiscount = calculateLevelDiscount(totalPrice)
       
-      // 再应用优惠券折扣（基于等级折扣后的价格）
       const couponDiscount = (couponInfo.value && couponInfo.value.valid && couponInfo.value.discount_amount) 
         ? couponInfo.value.discount_amount 
         : 0
       
-      // 最终金额 = 总原价 - 等级折扣 - 优惠券折扣
       return Math.max(0, totalPrice - levelDiscount - couponDiscount)
     })
     
-    // 处理数量变化
     const handleQuantityChange = () => {
-      // 当数量变化时，重新验证优惠券（如果需要）
       if (couponCode.value && couponInfo.value && couponInfo.value.valid) {
         validateCoupon()
       }
     }
     
-    // 获取套餐列表
     const loadPackages = async () => {
       try {
         isLoading.value = true
@@ -776,10 +749,8 @@ export default {
         
         const response = await api.get('/packages/')
         
-        // 处理响应数据结构：ResponseBase { success: true, data: { packages: [...] }, message: "..." }
         let packagesList = []
         if (response && response.data) {
-          // axios 响应结构：response.data 是后端返回的 JSON
           const responseData = response.data
           
           if (responseData.data && responseData.data.packages && Array.isArray(responseData.data.packages)) {
@@ -806,16 +777,13 @@ export default {
               '7×24小时技术支持',
               '高速稳定节点'
             ],
-            // 使用后端返回的 is_recommended 字段，而不是根据 sort_order 判断
             is_recommended: pkg.is_recommended === true || pkg.is_recommended === 1 || pkg.is_recommended === '1' || pkg.is_recommended === 'true',
-            // 保留 is_popular 的判断（如果后端有 is_popular 字段，也应该使用后端字段）
             is_popular: pkg.is_popular === true || pkg.is_popular === 1 || pkg.is_popular === '1' || pkg.is_popular === 'true' || pkg.sort_order === 2
           }))
-          errorMessage.value = '' // 清除错误信息
+          errorMessage.value = ''
         } else {
-          // 套餐列表为空，显示空状态而不是错误
           packages.value = []
-          errorMessage.value = '' // 不显示错误，而是显示空状态
+          errorMessage.value = ''
         }
       } catch (error) {
         if (error.response?.status === 404) {
@@ -834,14 +802,12 @@ export default {
       }
     }
     
-    // 获取用户余额和等级信息
     const loadUserBalance = async () => {
       try {
         const response = await userAPI.getUserInfo()
         if (response.data && response.data.success && response.data.data) {
           userBalance.value = parseFloat(response.data.data.balance || 0)
           
-          // 获取用户等级信息
           if (response.data.data.user_level) {
             userLevel.value = response.data.data.user_level
             levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
@@ -866,23 +832,10 @@ export default {
       }
     }
     
-    // 获取可用的支付方式列表
     const loadPaymentMethods = async () => {
       try {
         const response = await api.get('/payment-methods/active')
-        if (response && response.data) {
-          // 处理不同的响应格式
-          let methods = []
-          if (response.data.success && response.data.data) {
-            methods = Array.isArray(response.data.data) ? response.data.data : []
-          } else if (Array.isArray(response.data)) {
-            methods = response.data
-          } else if (response.data.data && Array.isArray(response.data.data)) {
-            methods = response.data.data
-          }
-          
-          availablePaymentMethods.value = methods
-        }
+        availablePaymentMethods.value = parsePaymentMethods(response)
       } catch (error) {
         availablePaymentMethods.value = [
           { key: 'alipay', name: '支付宝' },
@@ -891,11 +844,9 @@ export default {
       }
     }
     
-    // 支付方式变更处理
     const handlePaymentMethodChange = (value) => {
     }
     
-    // 选择套餐
     const selectPackage = async (pkg) => {
       try {
         if (!pkg) {
@@ -911,19 +862,13 @@ export default {
         selectedPackage.value = pkg
         selectedQuantity.value = 1
         
-        // 加载用户余额
         await loadUserBalance()
-        
-        // 加载支付方式列表
         await loadPaymentMethods()
         
-        // 根据余额自动选择支付方式
         const finalPrice = finalAmount.value
         if (userBalance.value >= finalPrice && userBalance.value > 0) {
-          // 余额充足，默认选择余额支付
           paymentMethod.value = 'balance'
         } else if (userBalance.value > 0 && userBalance.value < finalPrice) {
-          // 余额不足但大于0，默认选择混合支付
           paymentMethod.value = 'mixed'
         } else {
           paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
@@ -935,9 +880,7 @@ export default {
       }
     }
     
-    // 确认购买
     const confirmPurchase = async () => {
-      // 安全检查：余额检查
       if (paymentMethod.value === 'balance' && userBalance.value < finalAmount.value) {
         ElMessage.error(`余额不足，当前余额：¥${userBalance.value.toFixed(2)}，需要：¥${finalAmount.value.toFixed(2)}`)
         return
@@ -1014,11 +957,9 @@ export default {
         
         // 处理响应数据结构：ResponseBase { data: {...}, message: "...", success: true/false }
         let order = null
-        console.log('订单创建响应:', response.data)
         
         if (response.data) {
           if (response.data.success !== false) {
-            // success 为 true 或 undefined，尝试获取 data
             order = response.data.data || response.data
           } else {
             throw new Error(response.data.message || '创建订单失败')
@@ -1030,8 +971,6 @@ export default {
         if (!order) {
           throw new Error('订单创建失败：未返回订单数据')
         }
-        
-        console.log('解析后的订单数据:', order)
         
         // 设置订单信息（确保订单号正确设置）
         orderInfo.orderNo = order.order_no || order.orderNo || order.order_id || ''
@@ -1082,9 +1021,6 @@ export default {
           if (isYipay) {
             const paymentUrl = order.payment_url || order.payment_qr_code
             if (paymentUrl) {
-              console.log('易支付链接类型:', paymentUrl)
-              console.log('当前UserAgent:', navigator.userAgent)
-              
               // 检测是否在微信内
               const isInWeChat = /MicroMessenger/i.test(navigator.userAgent)
               const isWxpayMethod = paymentMethodName && (
@@ -1092,30 +1028,21 @@ export default {
                 paymentMethodName.includes('微信')
               )
               
-              console.log('环境检测:', { isInWeChat, isWxpayMethod, paymentMethodName })
-              
               // 如果是微信内 + 微信支付 + HTTP链接，直接跳转（易支付的微信支付页面）
               if (isInWeChat && isWxpayMethod && (paymentUrl.startsWith('http://') || paymentUrl.startsWith('https://'))) {
-                console.log('检测到微信内+微信支付+HTTP链接，直接跳转到支付页面:', paymentUrl)
                 ElMessage.info('正在跳转到微信支付页面...')
-                
-                // 直接跳转到支付页面
                 window.location.href = paymentUrl
-                
-                // 不需要监听返回，因为支付完成后会自动跳转到return_url
                 return
               }
               
               // 检查是否是微信URLScheme（以weixin://或wxp://开头）
               if (paymentUrl.startsWith('weixin://') || paymentUrl.startsWith('wxp://')) {
-                console.log('检测到微信URLScheme，直接跳转:', paymentUrl)
                 ElMessage.info('正在唤起微信支付...')
                 window.location.href = paymentUrl
                 
                 // 添加页面可见性监听
                 const handleVisibilityChange = async () => {
                   if (document.visibilityState === 'visible') {
-                    console.log('用户从微信返回，检查支付状态')
                     await checkPaymentStatus()
                     document.removeEventListener('visibilitychange', handleVisibilityChange)
                   }
@@ -1307,8 +1234,6 @@ export default {
         // 尝试多种方式获取支付URL
         const url = order.payment_url || order.payment_qr_code || orderInfo.paymentUrl
         
-        console.log('showPaymentQRCode 开始:', { url, order })
-        
         if (!url) {
           ElMessage.error('支付链接生成失败，请重试或前往订单页面重新生成')
           return
@@ -1327,14 +1252,6 @@ export default {
           payment_method: orderPaymentMethod
         }
         
-        // 调试日志
-        console.log('显示支付二维码:', {
-          orderPaymentMethod,
-          order: order.payment_method_name || order.payment_method,
-          selected: paymentMethod.value,
-          displayName: getPaymentMethodDisplayName(orderPaymentMethod),
-          url: url
-        })
         
         // 使用qrcode库将支付URL生成为二维码图片
         const paymentMethodForQR = orderPaymentMethod
@@ -1370,7 +1287,6 @@ export default {
         
         if (isYipayPaymentPage) {
           // 如果是支付页面URL，使用iframe嵌入，不生成二维码
-          console.log('检测到支付页面URL，使用iframe嵌入:', urlString)
           paymentQRCode.value = '' // 清空二维码，使用iframe
           // paymentUrl已经设置，iframe会自动加载
         } else {
@@ -1404,14 +1320,12 @@ export default {
     
     // iframe加载完成处理
     const onIframeLoad = (event) => {
-      console.log('支付页面iframe加载完成')
       const iframe = event.target
       
       // 监听iframe的URL变化，如果跳转到支付成功页面，立即检测
       try {
         // 尝试获取iframe的URL（可能因为跨域无法访问）
         const iframeUrl = iframe.contentWindow?.location?.href || iframe.src
-        console.log('iframe当前URL:', iframeUrl)
         
         // 检查URL中是否包含支付成功的标识
         if (iframeUrl && (
@@ -1422,7 +1336,6 @@ export default {
           iframeUrl.includes('callback') ||
           iframeUrl.includes('return')
         )) {
-          console.log('检测到iframe跳转到支付成功页面，立即检测支付状态')
           // 立即检测支付状态（延迟一点确保后端已处理回调）
           setTimeout(() => {
             checkPaymentStatus()
@@ -1430,7 +1343,6 @@ export default {
         }
       } catch (e) {
         // 跨域限制，无法访问iframe内容，这是正常的
-        console.log('无法访问iframe内容（跨域限制），使用轮询检测:', e.message)
       }
       
       // 设置定时器，定期检查iframe URL变化（如果可能）
@@ -1446,7 +1358,6 @@ export default {
               currentUrl.includes('callback') ||
               currentUrl.includes('return')
             )) {
-              console.log('检测到iframe URL变化，跳转到支付成功页面')
               clearInterval(iframeCheckInterval)
               // 立即检测支付状态
               setTimeout(() => {
@@ -1594,7 +1505,6 @@ export default {
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
-            console.log('✅ 已停止支付状态检测')
           }
           
           // 清理事件监听器
@@ -1783,12 +1693,10 @@ export default {
     
     // 事件处理函数（需要在 onMounted 和 onUnmounted 中共享）
     const handleSubscriptionUpdate = async (event) => {
-      console.log('收到订阅更新事件，刷新用户信息...', event.detail)
       await loadUserBalance()
     }
     
     const handleUserInfoUpdate = async () => {
-      console.log('收到用户信息更新事件，刷新用户信息...')
       await loadUserBalance()
     }
     
@@ -2829,8 +2737,8 @@ export default {
   cursor: text !important;
   position: relative;
   z-index: 10 !important;
-  -webkit-user-select: text !important;
-  user-select: text !important;
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
   -webkit-tap-highlight-color: transparent !important;
 }
 
@@ -2846,8 +2754,8 @@ export default {
 .coupon-section :deep(.el-input:not(.is-disabled) .el-input__inner) {
   pointer-events: auto !important;
   cursor: text !important;
-  -webkit-user-select: text !important;
-  user-select: text !important;
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
 }
 
 .coupon-section :deep(.el-input.is-disabled) {
@@ -2978,7 +2886,7 @@ export default {
       min-height: 600px;
       border: 1px solid #e4e7ed;
       border-radius: 8px;
-      overflow: hidden;
+      overflow: clip;
       background: #fff;
       
       iframe {
