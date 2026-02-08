@@ -848,4 +848,35 @@ export const userLevelAPI = {
   upgradeUsers: (id, userIds) => api.post(`/admin/user-levels/${id}/upgrade-users`, userIds)
 }
 
+/**
+ * 解析支付方式API响应
+ * 统一处理不同的响应格式
+ * @param {Object} response - API响应对象
+ * @returns {Array} 支付方式数组
+ */
+export function parsePaymentMethods(response) {
+  if (!response || !response.data) {
+    return []
+  }
+  
+  const { data } = response
+  
+  // 优先检查 response.data.data（标准格式）
+  if (data.success !== false && data.data && Array.isArray(data.data)) {
+    return data.data
+  }
+  
+  // 检查 response.data 是否为数组
+  if (Array.isArray(data)) {
+    return data
+  }
+  
+  // 最后检查 response.data.data（非标准格式）
+  if (data.data && Array.isArray(data.data)) {
+    return data.data
+  }
+  
+  return []
+}
+
 export default api

@@ -236,7 +236,7 @@ const getThemeDescription = (themeName) => {
     .theme-item {
       border: 2px solid var(--theme-border);
       border-radius: 8px;
-      overflow: hidden;
+      overflow: clip;
       cursor: pointer;
       transition: all 0.3s ease;
       &:hover {
@@ -252,7 +252,7 @@ const getThemeDescription = (themeName) => {
         height: 80px;
         background: var(--preview-background);
         position: relative;
-        overflow: hidden;
+        overflow: clip;
         .preview-header {
           height: 20px;
           background: var(--preview-primary);

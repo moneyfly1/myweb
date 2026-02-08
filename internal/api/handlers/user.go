@@ -108,10 +108,7 @@ func GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	lastLoginStr := ""
-	if user.LastLogin.Valid {
-		lastLoginStr = user.LastLogin.Time.Format("2006-01-02 15:04:05")
-	}
+	lastLoginStr := utils.FormatNullTimeBeijing(user.LastLogin)
 
 	responseData := gin.H{
 		"id":                  user.ID,
@@ -120,7 +117,7 @@ func GetCurrentUser(c *gin.Context) {
 		"is_active":           user.IsActive,
 		"is_verified":         user.IsVerified,
 		"is_admin":            user.IsAdmin,
-		"created_at":          user.CreatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":          utils.FormatBeijingTime(user.CreatedAt),
 		"last_login":          lastLoginStr,
 		"theme":               user.Theme,
 		"language":            user.Language,
@@ -352,7 +349,7 @@ func GetUsers(c *gin.Context) {
 				"is_active":         sub.IsActive,
 				"device_limit":      deviceLimit,
 				"current_devices":   currentDevices,
-				"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+				"expire_time":       utils.FormatBeijingTime(sub.ExpireTime),
 				"days_until_expire": daysUntilExpire,
 				"is_expired":        isExpired,
 			}
@@ -362,7 +359,7 @@ func GetUsers(c *gin.Context) {
 
 		lastLogin := ""
 		if u.LastLogin.Valid {
-			lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
+			lastLogin = utils.FormatBeijingTime(u.LastLogin.Time)
 		}
 
 		notes := ""
@@ -383,7 +380,7 @@ func GetUsers(c *gin.Context) {
 				return "active"
 			}(),
 			"online_devices": online,
-			"created_at":     u.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(u.CreatedAt),
 			"last_login":     lastLogin,
 			"subscription":   subscriptionInfo,
 			"notes":          notes,
@@ -412,7 +409,7 @@ func GetUserDetails(c *gin.Context) {
 
 	lastLogin := ""
 	if u.LastLogin.Valid {
-		lastLogin = u.LastLogin.Time.Format("2006-01-02 15:04:05")
+		lastLogin = utils.FormatBeijingTime(u.LastLogin.Time)
 	}
 
 	userInfo := gin.H{
@@ -423,7 +420,7 @@ func GetUserDetails(c *gin.Context) {
 		"is_active":   u.IsActive,
 		"is_verified": u.IsVerified,
 		"is_admin":    u.IsAdmin,
-		"created_at":  u.CreatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":  utils.FormatBeijingTime(u.CreatedAt),
 		"last_login":  lastLogin,
 		"theme":       u.Theme,
 		"language":    u.Language,
@@ -469,10 +466,10 @@ func GetUserDetails(c *gin.Context) {
 			"device_limit":      sub.DeviceLimit,
 			"current_devices":   sub.CurrentDevices,
 			"online_devices":    online,
-			"expire_time":       sub.ExpireTime.Format("2006-01-02 15:04:05"),
+			"expire_time":       utils.FormatBeijingTime(sub.ExpireTime),
 			"days_until_expire": daysUntilExpire,
 			"is_expired":        isExpired,
-			"created_at":        sub.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":        utils.FormatBeijingTime(sub.CreatedAt),
 			"apple_count":       universalCount,
 			"clash_count":       clashCount,
 		})
@@ -490,8 +487,8 @@ func GetUserDetails(c *gin.Context) {
 			"package_id": order.PackageID,
 			"amount":     order.Amount,
 			"status":     order.Status,
-			"created_at": order.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at": order.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(order.CreatedAt),
+			"updated_at": utils.FormatBeijingTime(order.UpdatedAt),
 		}
 
 		if order.PaymentMethodName.Valid {
@@ -503,7 +500,7 @@ func GetUserDetails(c *gin.Context) {
 		}
 
 		if order.PaymentTime.Valid {
-			formattedOrder["payment_time"] = order.PaymentTime.Time.Format("2006-01-02 15:04:05")
+			formattedOrder["payment_time"] = utils.FormatBeijingTime(order.PaymentTime.Time)
 		} else {
 			formattedOrder["payment_time"] = nil
 		}
@@ -511,7 +508,7 @@ func GetUserDetails(c *gin.Context) {
 		formattedOrder["payment_transaction_id"] = utils.GetNullStringValue(order.PaymentTransactionID)
 
 		if order.ExpireTime.Valid {
-			formattedOrder["expire_time"] = order.ExpireTime.Time.Format("2006-01-02 15:04:05")
+			formattedOrder["expire_time"] = utils.FormatBeijingTime(order.ExpireTime.Time)
 		} else {
 			formattedOrder["expire_time"] = nil
 		}
@@ -583,12 +580,12 @@ func GetUserDetails(c *gin.Context) {
 			"user_agent":             utils.GetNullStringValue(record.UserAgent),
 			"paid_at": func() interface{} {
 				if record.PaidAt.Valid {
-					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+					return utils.FormatBeijingTime(record.PaidAt.Time)
 				}
 				return nil
 			}(),
-			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(record.CreatedAt),
+			"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
 		})
 	}
 
@@ -621,7 +618,7 @@ func GetUserDetails(c *gin.Context) {
 			"device_count_before":  reset.DeviceCountBefore,
 			"device_count_after":   reset.DeviceCountAfter,
 			"reset_by":             getStringPtr(reset.ResetBy),
-			"created_at":           reset.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":           utils.FormatBeijingTime(reset.CreatedAt),
 		})
 	}
 
@@ -685,8 +682,8 @@ func GetUserDetails(c *gin.Context) {
 				"device_name":  getString(d.DeviceName),
 				"ip_address":   ipAddress,
 				"location":     location,
-				"created_at":   d.CreatedAt.Format("2006-01-02 15:04:05"),
-				"last_access":  d.LastAccess.Format("2006-01-02 15:04:05"),
+				"created_at":   utils.FormatBeijingTime(d.CreatedAt),
+				"last_access":  utils.FormatBeijingTime(d.LastAccess),
 				"access_count": d.AccessCount,
 			})
 		}
@@ -825,7 +822,7 @@ func CreateUser(c *gin.Context) {
 			afterData := map[string]interface{}{
 				"subscription_id": subscription.ID,
 				"device_limit":    subscription.DeviceLimit,
-				"expire_time":     subscription.ExpireTime.Format("2006-01-02 15:04:05"),
+				"expire_time":     utils.FormatBeijingTime(subscription.ExpireTime),
 				"status":          subscription.Status,
 			}
 			utils.CreateSubscriptionLog(subscription.ID, user.ID, "create", actionBy, actionByUserID, ipAddress, nil, afterData, "管理员创建用户时自动创建订阅")
@@ -842,11 +839,11 @@ func CreateUser(c *gin.Context) {
 		if adminUser != nil {
 			createdBy = adminUser.Username
 		}
-		createTime := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		createTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 
 		expireTimeStr := "未设置"
 		if !expireTime.IsZero() {
-			expireTimeStr = expireTime.Format("2006-01-02 15:04:05")
+			expireTimeStr = utils.FormatBeijingTime(expireTime)
 		}
 
 		plainPassword := req.Password
@@ -872,7 +869,7 @@ func CreateUser(c *gin.Context) {
 
 		expireTimeStr := "未设置"
 		if !expireTime.IsZero() {
-			expireTimeStr = expireTime.Format("2006-01-02 15:04:05")
+			expireTimeStr = utils.FormatBeijingTime(expireTime)
 		}
 
 		content := templateBuilder.GetUserCreatedTemplate(
@@ -1225,7 +1222,7 @@ func DeleteUser(c *gin.Context) {
 	go func() {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
-		deletionDate := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
+		deletionDate := utils.FormatBeijingTime(utils.GetBeijingTime())
 		reason := "管理员删除"
 		dataRetentionPeriod := "30天"
 		content := templateBuilder.GetAccountDeletionTemplate(user.Username, deletionDate, reason, dataRetentionPeriod)
@@ -1675,7 +1672,7 @@ func BatchSendExpireReminder(c *gin.Context) {
 		content := templateBuilder.GetExpirationReminderTemplate(
 			user.Username,
 			pkgName,
-			sub.ExpireTime.Format("2006-01-02"),
+			utils.FormatBeijingDate(sub.ExpireTime),
 			daysUntilExpire,
 			sub.DeviceLimit,
 			sub.CurrentDevices,
@@ -1925,7 +1922,7 @@ func GetLoginHistory(c *gin.Context) {
 
 		ipAddr := utils.GetNullStringValue(h.IPAddress)
 		userAgent := utils.GetNullStringValue(h.UserAgent)
-		loginTime := h.LoginTime.Format("2006-01-02 15:04:05")
+		loginTime := utils.FormatBeijingTime(h.LoginTime)
 
 		historyList = append(historyList, gin.H{
 			"id":           h.ID,
@@ -2086,7 +2083,7 @@ func GetUserActivities(c *gin.Context) {
 			"activity_type": act.ActivityType,
 			"description":   act.Description.String,
 			"ip_address":    act.IPAddress.String,
-			"created_at":    act.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":    utils.FormatBeijingTime(act.CreatedAt),
 		})
 	}
 
@@ -2112,7 +2109,7 @@ func GetSubscriptionResets(c *gin.Context) {
 			"reason":              reset.Reason,
 			"device_count_before": reset.DeviceCountBefore,
 			"device_count_after":  reset.DeviceCountAfter,
-			"created_at":          reset.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":          utils.FormatBeijingTime(reset.CreatedAt),
 		})
 	}
 
@@ -2138,8 +2135,8 @@ func GetUserDevices(c *gin.Context) {
 			"device_type":     utils.GetStringValue(device.DeviceType),
 			"ip_address":      utils.GetStringValue(device.IPAddress),
 			"is_active":       device.IsActive,
-			"last_access":     device.LastAccess.Format("2006-01-02 15:04:05"),
-			"created_at":      device.CreatedAt.Format("2006-01-02 15:04:05"),
+			"last_access":     utils.FormatBeijingTime(device.LastAccess),
+			"created_at":      utils.FormatBeijingTime(device.CreatedAt),
 		})
 	}
 

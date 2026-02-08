@@ -188,7 +188,7 @@
   border-radius: var(--border-radius);
   box-shadow: var(--card-shadow);
   margin-bottom: 0.75rem; // 进一步减少底部间距
-  overflow: hidden;
+  overflow: clip;
   box-sizing: border-box;
   
   @media (max-width: 768px) {
@@ -315,9 +315,8 @@
       box-shadow: 0 4px 12px rgba(102, 126, 234, 0.12);
     }
     
-    // 悬停效果
+    // 悬停效果（移除 transform 以免干扰移动端长按选择/粘贴）
     &:active {
-      transform: scale(0.98);
       box-shadow: 0 2px 8px rgba(66, 165, 245, 0.15);
     }
     
@@ -419,7 +418,7 @@
         justify-content: center;
         flex-direction: row;
         white-space: nowrap;
-        overflow: hidden;
+        overflow: clip;
         text-overflow: ellipsis;
         
         &:active {
@@ -436,7 +435,7 @@
         // 如果按钮文字太长，隐藏部分文字
         &.action-btn {
           :is(span) {
-            overflow: hidden;
+            overflow: clip;
             text-overflow: ellipsis;
             white-space: nowrap;
           }
@@ -842,7 +841,7 @@
           transition: all 0.2s ease !important;
           box-sizing: border-box !important;
           white-space: nowrap !important;
-          overflow: hidden !important;
+          overflow: clip !important;
           text-overflow: ellipsis !important;
           
           &:hover {
@@ -1139,7 +1138,7 @@
       
       .el-breadcrumb__item {
         max-width: 150px;
-        overflow: hidden;
+        overflow: clip;
         text-overflow: ellipsis;
         
         &:last-child {

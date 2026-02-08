@@ -609,7 +609,6 @@ const loadInviteCodes = async () => {
     }
     
     const response = await inviteAPI.getAllInviteCodes(params)
-    console.log('管理员邀请码列表响应:', response)
     
     // 处理多种可能的响应格式
     if (response && response.data) {
@@ -619,13 +618,11 @@ const loadInviteCodes = async () => {
       if (responseData.success !== false && responseData.data) {
         codeList = responseData.data.invite_codes || []
         codeTotal.value = responseData.data.total || 0
-        console.log('✅ 成功加载邀请码:', codeList.length, '个，总计:', codeTotal.value)
       } 
       // 直接包含 invite_codes
       else if (responseData.invite_codes) {
         codeList = Array.isArray(responseData.invite_codes) ? responseData.invite_codes : []
         codeTotal.value = responseData.total || codeList.length
-        console.log('✅ 成功加载邀请码（直接格式）:', codeList.length, '个')
       }
       // 如果 success 为 false，显示错误信息
       else if (responseData.success === false) {
@@ -635,7 +632,6 @@ const loadInviteCodes = async () => {
         codeTotal.value = 0
       }
       else {
-        console.warn('⚠️ 未识别的响应格式:', responseData)
         codeList = []
         codeTotal.value = 0
       }
@@ -656,7 +652,6 @@ const loadInviteCodes = async () => {
         };
       })
     } else {
-      console.warn('⚠️ 响应数据为空')
       inviteCodes.value = []
       codeTotal.value = 0
     }
@@ -686,17 +681,6 @@ const loadInviteRelations = async () => {
     }
     
     const response = await inviteAPI.getInviteRelations(params)
-    console.log('管理员邀请关系列表完整响应:', response)
-    console.log('响应数据结构:', {
-      hasResponse: !!response,
-      hasData: !!response?.data,
-      responseDataType: typeof response?.data,
-      responseDataKeys: response?.data ? Object.keys(response.data) : [],
-      responseDataSuccess: response?.data?.success,
-      responseDataMessage: response?.data?.message,
-      hasNestedData: !!response?.data?.data,
-      nestedDataKeys: response?.data?.data ? Object.keys(response.data.data) : []
-    })
     
     // 处理多种可能的响应格式
     if (response && response.data) {
@@ -720,9 +704,7 @@ const loadInviteRelations = async () => {
             invitee_reward_given: relation.invitee_reward_given || false
           }))
           relationTotal.value = responseData.data.total || 0
-          console.log('✅ 成功加载邀请关系（标准格式）:', inviteRelations.value.length, '条，总计:', relationTotal.value)
         } else {
-          console.warn('⚠️ data存在但没有relations字段:', responseData.data)
           inviteRelations.value = []
           relationTotal.value = 0
         }
@@ -743,31 +725,19 @@ const loadInviteRelations = async () => {
           invitee_reward_given: relation.invitee_reward_given || false
         }))
         relationTotal.value = responseData.total || inviteRelations.value.length
-        console.log('✅ 成功加载邀请关系（直接格式）:', inviteRelations.value.length, '条')
       }
       // 如果 success 为 false，显示错误信息
       else if (responseData.success === false) {
         const errorMsg = responseData.message || '获取邀请关系列表失败'
-        console.error('❌ API返回失败:', errorMsg)
         ElMessage.error(errorMsg)
         inviteRelations.value = []
         relationTotal.value = 0
       }
       else {
-        console.warn('⚠️ 未识别的响应格式:', {
-          responseData,
-          hasData: !!responseData.data,
-          dataType: typeof responseData.data,
-          dataKeys: responseData.data ? Object.keys(responseData.data) : []
-        })
         inviteRelations.value = []
         relationTotal.value = 0
       }
     } else {
-      console.warn('⚠️ 响应数据为空或格式异常:', {
-        hasResponse: !!response,
-        hasData: !!response?.data
-      })
       inviteRelations.value = []
       relationTotal.value = 0
     }
@@ -1011,7 +981,7 @@ onUnmounted(() => {
   padding: 20px;
   width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* 卡片头部样式 */
@@ -1263,7 +1233,7 @@ onUnmounted(() => {
     padding: 8px 5px;
     width: 100%;
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
   
   /* 卡片优化 */
@@ -1281,7 +1251,7 @@ onUnmounted(() => {
       padding: 12px 10px;
       width: 100%;
       box-sizing: border-box;
-      overflow-x: hidden;
+      overflow-x: clip;
     }
   }
   
@@ -1364,7 +1334,7 @@ onUnmounted(() => {
   :deep(.el-tabs) {
     width: 100%;
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow-x: clip;
     
     .el-tabs__header {
       margin: 0;
@@ -1388,7 +1358,7 @@ onUnmounted(() => {
     .el-tabs__content {
       width: 100%;
       box-sizing: border-box;
-      overflow-x: hidden;
+      overflow-x: clip;
     }
   }
   
@@ -1433,7 +1403,7 @@ onUnmounted(() => {
         padding: 15px;
         flex: 1;
         overflow-y: auto;
-        overflow-x: hidden;
+        overflow-x: clip;
         -webkit-overflow-scrolling: touch;
         min-height: 0;
       }
@@ -1449,7 +1419,7 @@ onUnmounted(() => {
   .settings-dialog-content {
     width: 100%;
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
   
   /* 邀请设置表单移动端优化 */
@@ -1457,7 +1427,7 @@ onUnmounted(() => {
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
-    overflow-x: hidden;
+    overflow-x: clip;
     padding: 0;
     margin: 0;
     
@@ -1552,7 +1522,7 @@ onUnmounted(() => {
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
-    overflow-x: hidden;
+    overflow-x: clip;
     
     :deep(.el-alert__title) {
       font-size: 14px;
@@ -1567,7 +1537,7 @@ onUnmounted(() => {
       width: 100% !important;
       max-width: 100% !important;
       box-sizing: border-box !important;
-      overflow-x: hidden;
+      overflow-x: clip;
     }
   }
   
@@ -1826,7 +1796,7 @@ onUnmounted(() => {
     padding: 5px 3px;
     width: 100%;
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   :deep(.el-card) {

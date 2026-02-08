@@ -161,7 +161,7 @@ func GetInviteCodes(c *gin.Context) {
 
 		var expiresAt interface{} = nil
 		if code.ExpiresAt.Valid {
-			expiresAt = code.ExpiresAt.Time.Format("2006-01-02 15:04:05")
+			expiresAt = utils.FormatBeijingTime(code.ExpiresAt.Time)
 		}
 
 		isValid := code.IsActive
@@ -184,7 +184,7 @@ func GetInviteCodes(c *gin.Context) {
 			"invitee_reward": code.InviteeReward,
 			"is_active":      code.IsActive,
 			"is_valid":       isValid,
-			"created_at":     code.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(code.CreatedAt),
 		})
 	}
 

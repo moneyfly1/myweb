@@ -582,11 +582,9 @@ const addReply = async () => {
     return
   }
   
-  console.log('[前端] 开始回复工单:', currentTicket.value.id, replyContent.value)
   replying.value = true
   try {
     const response = await ticketAPI.addReply(currentTicket.value.id, { content: replyContent.value })
-    console.log('[前端] 回复响应:', response)
     if (response.data && response.data.success) {
       ElMessage.success('回复成功')
       replyContent.value = ''
@@ -1111,7 +1109,7 @@ onUnmounted(() => {
         -webkit-line-clamp: 2;
         line-clamp: 2;
         -webkit-box-orient: vertical;
-        overflow: hidden;
+        overflow: clip;
       }
       
       .ticket-card-info {

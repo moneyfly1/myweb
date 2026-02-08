@@ -372,11 +372,7 @@ export default {
 
     const loadStats = async () => {
       try {
-        console.log('开始加载仪表盘数据...')
         const response = await adminAPI.getDashboard()
-        console.log('Dashboard API Response:', response)
-        console.log('Response data:', response?.data)
-        console.log('Response data.data:', response?.data?.data)
         
         if (response && response.data) {
           // 检查响应格式
@@ -393,14 +389,12 @@ export default {
           }
           
           if (data) {
-            console.log('解析后的数据:', data)
             stats.value = {
               totalUsers: Number(data.totalUsers) || 0,
               activeSubscriptions: Number(data.activeSubscriptions) || 0,
               totalOrders: Number(data.totalOrders) || 0,
               totalRevenue: Number(data.totalRevenue) || 0
             }
-            console.log('更新后的统计数据:', stats.value)
           } else {
             console.error('无法解析数据，响应格式:', response.data)
             ElMessage.warning('数据格式异常，请查看控制台')
@@ -444,7 +438,6 @@ export default {
     const loadRecentUsers = async () => {
       try {
         const response = await api.get('/admin/users/recent')
-        console.log('Recent Users Response:', response)
         if (response && response.data) {
           if (response.data.success !== false) {
             recentUsers.value = response.data.data || []
@@ -463,7 +456,6 @@ export default {
     const loadRecentOrders = async () => {
       try {
         const response = await api.get('/admin/orders/recent')
-        console.log('Recent Orders Response:', response)
         if (response && response.data) {
           if (response.data.success !== false) {
             recentOrders.value = response.data.data || []
@@ -482,7 +474,6 @@ export default {
     const loadAbnormalUsers = async () => {
       try {
         const response = await api.get('/admin/users/abnormal')
-        console.log('Abnormal Users Response:', response)
         if (response && response.data) {
           if (response.data.success !== false) {
             const data = response.data.data || []
@@ -622,7 +613,6 @@ export default {
           params.filter = expiringFilter.value
         }
         const response = await adminAPI.getExpiringSubscriptions(params)
-        console.log('Expiring Subscriptions Response:', response)
         if (response && response.data) {
           if (response.data.success !== false) {
             expiringSubscriptions.value = response.data.data || []
@@ -992,7 +982,7 @@ export default {
 /* 表格容器 */
 .table-container {
   flex: 1;
-  overflow: hidden;
+  overflow: clip;
   padding: 16px;
 }
 

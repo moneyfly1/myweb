@@ -54,7 +54,7 @@ func GetUserDashboard(c *gin.Context) {
 		} else {
 			remainingDays = 0
 		}
-		expiryDate = beijingTime.Format("2006-01-02 15:04:05")
+		expiryDate = utils.FormatBeijingTime(beijingTime)
 	}
 
 	var deviceCount int64
@@ -213,7 +213,7 @@ func GetRecentUsers(c *gin.Context) {
 			"is_active":   user.IsActive,
 			"is_verified": user.IsVerified,
 			"status":      status,
-			"created_at":  user.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":  utils.FormatBeijingTime(user.CreatedAt),
 		})
 	}
 
@@ -238,7 +238,7 @@ func GetRecentOrders(c *gin.Context) {
 			"username":   order.User.Username,
 			"amount":     amount,
 			"status":     order.Status,
-			"created_at": order.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(order.CreatedAt),
 		})
 	}
 
@@ -310,9 +310,8 @@ func GetAbnormalUsers(c *gin.Context) {
 		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR id IN (?) OR id IN (?)",
 			false, oneMonthAgo, subscriptionSubQuery, resetSubQuery)
 
-	if len(dateRange) == 2 {
-		query = query.Where("created_at BETWEEN ? AND ?", startTime, endTime)
-	}
+	// 注意：日期范围只用于统计订阅/重置次数的时间范围，不用于限制用户的创建时间
+	// 因为一个用户可能在上个月创建，但在本月有异常行为，应该被识别为异常用户
 
 	var users []models.User
 	query.Order("created_at DESC").Limit(200).Find(&users)
@@ -357,7 +356,7 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 	for _, user := range users {
 		lastLogin := "从未登录"
 		if user.LastLogin.Valid {
-			lastLogin = user.LastLogin.Time.Format("2006-01-02 15:04:05")
+			lastLogin = utils.FormatBeijingTime(user.LastLogin.Time)
 		}
 
 		status := "inactive"
@@ -404,9 +403,9 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 		var lastActivity string
 		var lastActivityRecord models.UserActivity
 		if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastActivityRecord).Error; err != nil {
-			lastActivity = user.CreatedAt.Format("2006-01-02 15:04:05")
+			lastActivity = utils.FormatBeijingTime(user.CreatedAt)
 		} else {
-			lastActivity = lastActivityRecord.CreatedAt.Format("2006-01-02 15:04:05")
+			lastActivity = utils.FormatBeijingTime(lastActivityRecord.CreatedAt)
 		}
 
 		userList = append(userList, gin.H{
@@ -418,7 +417,7 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 			"is_verified":        user.IsVerified,
 			"status":             status,
 			"last_login":         lastLogin,
-			"created_at":         user.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":         utils.FormatBeijingTime(user.CreatedAt),
 			"abnormal_type":      abnormalType,
 			"abnormal_count":     abnormalCount,
 			"reset_count":        resetCount,

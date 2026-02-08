@@ -10,7 +10,7 @@ import (
 )
 
 func SetupRouter() *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
 
 	r.SetTrustedProxies(nil)
 

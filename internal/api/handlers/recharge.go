@@ -207,12 +207,12 @@ func GetRechargeRecords(c *gin.Context) {
 			"user_agent":             utils.GetNullStringValue(record.UserAgent),
 			"paid_at": func() interface{} {
 				if record.PaidAt.Valid {
-					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+					return utils.FormatBeijingTime(record.PaidAt.Time)
 				}
 				return nil
 			}(),
-			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(record.CreatedAt),
+			"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
 		})
 	}
 
@@ -275,12 +275,12 @@ func GetRechargeRecord(c *gin.Context) {
 		"user_agent":             utils.GetNullStringValue(record.UserAgent),
 		"paid_at": func() interface{} {
 			if record.PaidAt.Valid {
-				return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+				return utils.FormatBeijingTime(record.PaidAt.Time)
 			}
 			return nil
 		}(),
-		"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"created_at": utils.FormatBeijingTime(record.CreatedAt),
+		"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", formattedRecord)
@@ -370,11 +370,11 @@ func GetRechargeStatusByNo(c *gin.Context) {
 		"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
 		"paid_at": func() interface{} {
 			if record.PaidAt.Valid {
-				return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+				return utils.FormatBeijingTime(record.PaidAt.Time)
 			}
 			return nil
 		}(),
-		"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
+		"created_at": utils.FormatBeijingTime(record.CreatedAt),
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", formattedRecord)
@@ -533,12 +533,12 @@ func GetAdminRechargeRecords(c *gin.Context) {
 			"user_agent":             utils.GetNullStringValue(record.UserAgent),
 			"paid_at": func() interface{} {
 				if record.PaidAt.Valid {
-					return record.PaidAt.Time.Format("2006-01-02 15:04:05")
+					return utils.FormatBeijingTime(record.PaidAt.Time)
 				}
 				return nil
 			}(),
-			"created_at": record.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at": record.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(record.CreatedAt),
+			"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
 		})
 	}
 

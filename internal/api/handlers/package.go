@@ -34,8 +34,8 @@ func GetPackages(c *gin.Context) {
 			"sort_order":     pkg.SortOrder,
 			"is_active":      pkg.IsActive,
 			"is_recommended": pkg.IsRecommended,
-			"created_at":     pkg.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(pkg.CreatedAt),
+			"updated_at":     utils.FormatBeijingTime(pkg.UpdatedAt),
 		})
 	}
 
@@ -191,8 +191,8 @@ func UpdatePackage(c *gin.Context) {
 		"sort_order":     pkg.SortOrder,
 		"is_active":      pkg.IsActive,
 		"is_recommended": pkg.IsRecommended,
-		"created_at":     pkg.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"created_at":     utils.FormatBeijingTime(pkg.CreatedAt),
+		"updated_at":     utils.FormatBeijingTime(pkg.UpdatedAt),
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", responseData)
@@ -268,8 +268,8 @@ func GetAdminPackages(c *gin.Context) {
 			"sort_order":     pkg.SortOrder,
 			"is_active":      pkg.IsActive,
 			"is_recommended": pkg.IsRecommended,
-			"created_at":     pkg.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":     pkg.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(pkg.CreatedAt),
+			"updated_at":     utils.FormatBeijingTime(pkg.UpdatedAt),
 		})
 	}
 

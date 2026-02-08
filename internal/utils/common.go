@@ -180,7 +180,13 @@ const (
 
 // ========== 时区相关 ==========
 
-var BeijingTZ = time.FixedZone("CST", 8*3600)
+var BeijingTZ = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.FixedZone("CST", 8*3600)
+	}
+	return loc
+}()
 
 func GetBeijingTime() time.Time {
 	return time.Now().In(BeijingTZ)
@@ -188,6 +194,55 @@ func GetBeijingTime() time.Time {
 
 func ToBeijingTime(t time.Time) time.Time {
 	return t.In(BeijingTZ)
+}
+
+func GetDayRange(t time.Time) (time.Time, time.Time) {
+	loc := t.Location()
+	start := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+	return start, start.Add(24 * time.Hour)
+}
+
+func FormatBeijingTime(t time.Time) string {
+	return t.In(BeijingTZ).Format("2006-01-02 15:04:05")
+}
+
+func FormatBeijingDate(t time.Time) string {
+	return t.In(BeijingTZ).Format("2006-01-02")
+}
+
+func FormatBeijingRFC3339(t time.Time) string {
+	return t.In(BeijingTZ).Format(time.RFC3339)
+}
+
+func FormatNullTimeBeijing(nt sql.NullTime) string {
+	if !nt.Valid {
+		return ""
+	}
+	return FormatBeijingTime(nt.Time)
+}
+
+func ResolveTimezone(timezone string) *time.Location {
+	tz := strings.TrimSpace(timezone)
+	if tz == "" {
+		return BeijingTZ
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return BeijingTZ
+	}
+	return loc
+}
+
+func FormatTimeInTimezone(t time.Time, timezone string) string {
+	loc := ResolveTimezone(timezone)
+	return t.In(loc).Format("2006-01-02 15:04:05")
+}
+
+func FormatNullTimeInTimezone(nt sql.NullTime, timezone string) string {
+	if !nt.Valid {
+		return ""
+	}
+	return FormatTimeInTimezone(nt.Time, timezone)
 }
 
 // ========== Token哈希 ==========
@@ -241,7 +296,7 @@ func GetNullFloat64Value(nf sql.NullFloat64) interface{} {
 
 func GetNullTimeValue(nt sql.NullTime) interface{} {
 	if nt.Valid {
-		return nt.Time.Format("2006-01-02 15:04:05")
+		return FormatBeijingTime(nt.Time)
 	}
 	return nil
 }
@@ -461,8 +516,8 @@ func VerifyToken(tokenString string) (*JWTClaims, error) {
 
 func CalculateTodayRevenue(db *gorm.DB, status string) float64 {
 	var total float64
-	today := time.Now().Format("2006-01-02")
-	query := db.Table("orders").Where("DATE(created_at) = ?", today)
+	start, end := GetDayRange(GetBeijingTime())
+	query := db.Table("orders").Where("created_at >= ? AND created_at < ?", start, end)
 
 	if status != "" {
 		query = query.Where("status = ?", status)

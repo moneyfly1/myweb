@@ -1351,13 +1351,9 @@ export default {
           const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
           try {
             const downloadUrl = await getClientDownloadUrl(client.githubKey)
-            console.log('获取到下载链接:', downloadUrl)
             
             // 检查是否是加速链接
             const isAccelerated = downloadUrl.includes('ghproxy.com') || downloadUrl.includes('ghproxy.net')
-            if (isAccelerated) {
-              console.log('使用加速下载:', downloadUrl)
-            }
             
             // 对于移动端，直接打开链接让浏览器处理下载
             // 对于桌面端，尝试触发下载
@@ -1617,7 +1613,7 @@ export default {
     font-size: 0.875rem;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
-    overflow: hidden;
+    overflow: clip;
     text-overflow: ellipsis;
     
     @media (max-width: 768px) {
@@ -1871,7 +1867,7 @@ export default {
       border-radius: 8px;
       font-weight: 500;
       white-space: nowrap;
-      overflow: hidden;
+      overflow: clip;
       text-overflow: ellipsis;
       margin: 0; /* 移除按钮默认边距 */
       
@@ -1980,7 +1976,7 @@ export default {
       -webkit-line-clamp: 2; /* 限制描述行数 */
       line-clamp: 2;
       -webkit-box-orient: vertical;
-      overflow: hidden;
+      overflow: clip;
     }
   }
   

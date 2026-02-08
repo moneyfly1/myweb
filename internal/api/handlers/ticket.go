@@ -238,8 +238,8 @@ func GetTickets(c *gin.Context) {
 			"type":           ticket.Type,
 			"status":         ticket.Status,
 			"priority":       ticket.Priority,
-			"created_at":     ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updated_at":     ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":     utils.FormatBeijingTime(ticket.CreatedAt),
+			"updated_at":     utils.FormatBeijingTime(ticket.UpdatedAt),
 			"replies_count":  totalRepliesCount,
 			"unread_replies": unreadRepliesCount, // 未读回复数量
 			"has_unread":     hasUnread,          // 是否有未读回复或新工单
@@ -301,8 +301,8 @@ func GetTicket(c *gin.Context) {
 		"type":       ticket.Type,
 		"status":     ticket.Status,
 		"priority":   ticket.Priority,
-		"created_at": ticket.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at": ticket.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"created_at": utils.FormatBeijingTime(ticket.CreatedAt),
+		"updated_at": utils.FormatBeijingTime(ticket.UpdatedAt),
 	}
 
 	if ticket.AssignedTo != nil {
@@ -318,10 +318,10 @@ func GetTicket(c *gin.Context) {
 		responseData["rating_comment"] = *ticket.RatingComment
 	}
 	if ticket.ResolvedAt != nil {
-		responseData["resolved_at"] = ticket.ResolvedAt.Format("2006-01-02 15:04:05")
+		responseData["resolved_at"] = utils.FormatBeijingTime(*ticket.ResolvedAt)
 	}
 	if ticket.ClosedAt != nil {
-		responseData["closed_at"] = ticket.ClosedAt.Format("2006-01-02 15:04:05")
+		responseData["closed_at"] = utils.FormatBeijingTime(*ticket.ClosedAt)
 	}
 
 	replies := make([]gin.H, 0)
@@ -332,7 +332,7 @@ func GetTicket(c *gin.Context) {
 			"user_id":    reply.UserID,
 			"content":    reply.Content,
 			"is_admin":   reply.IsAdmin,
-			"created_at": reply.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at": utils.FormatBeijingTime(reply.CreatedAt),
 		}
 		if reply.IsAdmin == "true" {
 			replyData["is_admin_reply"] = true
@@ -358,7 +358,7 @@ func GetTicket(c *gin.Context) {
 			"file_name":   attachment.FileName,
 			"file_path":   attachment.FilePath,
 			"uploaded_by": attachment.UploadedBy,
-			"created_at":  attachment.CreatedAt.Format("2006-01-02 15:04:05"),
+			"created_at":  utils.FormatBeijingTime(attachment.CreatedAt),
 		}
 		if attachment.ReplyID != nil {
 			att["reply_id"] = *attachment.ReplyID

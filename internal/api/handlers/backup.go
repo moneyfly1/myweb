@@ -52,7 +52,7 @@ func CreateBackup(c *gin.Context) {
 	if isAutoBackup {
 		backupFileName = "backup_auto.zip"
 	} else {
-		backupFileName = fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405"))
+		backupFileName = fmt.Sprintf("backup_%s.zip", utils.GetBeijingTime().Format("20060102_150405"))
 	}
 
 	if strings.Contains(backupFileName, "..") || strings.Contains(backupFileName, "/") ||
@@ -193,7 +193,7 @@ func CreateBackup(c *gin.Context) {
 				}
 
 				// 创建只包含数据库的临时备份文件
-				backupFileName := fmt.Sprintf("backup_db_%s.zip", time.Now().Format("20060102_150405"))
+				backupFileName := fmt.Sprintf("backup_db_%s.zip", utils.GetBeijingTime().Format("20060102_150405"))
 				backupFilePath := filepath.Join(backupDir, backupFileName)
 				backupFilePath = filepath.Clean(backupFilePath)
 
@@ -340,7 +340,7 @@ func ListBackups(c *gin.Context) {
 				backups = append(backups, map[string]interface{}{
 					"filename":   fileName,
 					"size":       info.Size(),
-					"created_at": info.ModTime().Format("2006-01-02 15:04:05"),
+					"created_at": utils.FormatBeijingTime(info.ModTime()),
 				})
 			}
 		}

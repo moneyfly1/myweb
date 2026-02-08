@@ -524,7 +524,7 @@ func ExportLogs(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=system_logs_%s.csv", time.Now().Format("20060102")))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=system_logs_%s.csv", utils.GetBeijingTime().Format("20060102")))
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csvContent.String()))
 }
 

@@ -411,17 +411,14 @@ const createTicket = async () => {
 const viewTicket = async (ticketId) => {
   try {
     const response = await ticketAPI.getTicket(ticketId)
-    console.log('[用户前端] 获取工单详情响应:', response)
     if (response.data && response.data.success) {
       // 后端返回的数据结构是 { data: { ticket: {...} } }
       const ticketData = response.data.data?.ticket || response.data.data
       if (!ticketData || !ticketData.id) {
-        console.error('[用户前端] 工单数据格式错误:', response.data)
         ElMessage.error('工单数据格式错误，请刷新后重试')
         return
       }
       currentTicket.value = ticketData
-      console.log('[用户前端] 当前工单:', currentTicket.value, '工单ID:', currentTicket.value.id)
       showDetailDialog.value = true
       
       // 用户查看工单后，刷新工单列表和未读数量
@@ -451,10 +448,8 @@ const addReply = async () => {
     ElMessage.error('工单信息不完整，请刷新后重试')
     return
   }
-  console.log('[用户前端] 开始回复工单:', currentTicket.value.id, replyContent.value)
   try {
     const response = await ticketAPI.addReply(currentTicket.value.id, { content: replyContent.value })
-    console.log('[用户前端] 回复响应:', response)
     if (response.data && response.data.success) {
       ElMessage.success('回复成功')
       replyContent.value = ''
