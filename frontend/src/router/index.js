@@ -3,11 +3,8 @@ import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
 import { useApi } from '@/utils/api'
-
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
-
-// 动态获取认证页面组件
 const getAuthComponent = async () => {
   try {
     const api = useApi()
@@ -21,7 +18,6 @@ const getAuthComponent = async () => {
     return () => import('@/views/Login.vue')
   }
 }
-
 const routes = [
   { path: '/', redirect: '/dashboard' },
   { 
@@ -132,10 +128,7 @@ const routes = [
   },
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFound.vue') }
 ]
-
 const router = createRouter({ history: createWebHistory(), routes })
-
-// 辅助函数：统一处理管理员信息保存
 const saveAdminAuth = (adminToken, adminUser) => {
   try {
     const adminData = typeof adminUser === 'string' ? JSON.parse(adminUser) : adminUser
@@ -145,17 +138,14 @@ const saveAdminAuth = (adminToken, adminUser) => {
     }
   } catch (e) {
     if (process.env.NODE_ENV === 'development') {
-      console.warn('解析管理员信息失败:', e)
     }
   }
 }
-
 router.beforeEach(async (to, from, next) => {
   if (to.meta.title) document.title = `${to.meta.title} - CBoard`
   try {
     const authStore = useAuthStore()
     const { sessionKey, token, user } = to.query
-    // 1. 处理 SessionKey 登录逻辑
     if (sessionKey) {
       const loginData = JSON.parse(sessionStorage.getItem(sessionKey) || 'null')
       if (loginData) {
@@ -186,7 +176,6 @@ router.beforeEach(async (to, from, next) => {
       useThemeStore().loadUserTheme().catch(() => {})
       return next({ path: to.path, query: { ...to.query, token: undefined, user: undefined }, replace: true })
     }
-    // 3. 恢复身份状态
     const isAdminPath = to.path.startsWith('/admin')
     const storedToken = secureStorage.get(isAdminPath ? 'admin_token' : 'user_token')
     const storedUser = secureStorage.get(isAdminPath ? 'admin_user' : 'user_data')
@@ -199,7 +188,6 @@ router.beforeEach(async (to, from, next) => {
         }
       }
     }
-    // 4. 路由权限守卫
     if (to.meta.requiresAuth && !authStore.isAuthenticated) return next(isAdminPath ? '/admin/login' : '/login')
     if (to.meta.requiresAdmin && !authStore.isAdmin) return next(authStore.isAuthenticated ? '/dashboard' : '/admin/login')
     if (to.meta.requiresGuest && authStore.isAuthenticated) {
@@ -216,5 +204,4 @@ router.beforeEach(async (to, from, next) => {
     next()
   }
 })
-
 export default router

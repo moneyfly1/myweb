@@ -23,11 +23,9 @@
         </el-button>
       </div>
     </div>
-
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="10" animated />
     </div>
-
     <div v-else-if="emailDetail" class="email-detail-content">
       <el-card class="detail-card">
         <template #header>
@@ -38,7 +36,6 @@
             </el-tag>
           </div>
         </template>
-        
         <el-descriptions :column="2" border>
           <el-descriptions-item label="邮件ID">{{ emailDetail.id }}</el-descriptions-item>
           <el-descriptions-item label="收件人">{{ emailDetail.to_email }}</el-descriptions-item>
@@ -67,7 +64,6 @@
         <template #header>
           <span>模板数据</span>
         </template>
-        
         <div class="template-data">
           <el-input
             v-model="formattedTemplateData"
@@ -92,7 +88,6 @@
         <template #header>
           <span>错误信息</span>
         </template>
-        
         <el-alert
           :title="emailDetail.error_message"
           type="error"
@@ -101,7 +96,6 @@
           :closable="false"
           class="error-alert"
         />
-        
         <div v-if="emailDetail.error_details" class="error-details">
           <h4>详细错误信息：</h4>
           <el-input
@@ -116,7 +110,6 @@
         <template #header>
           <span>SMTP响应</span>
         </template>
-        
         <div class="smtp-response">
           <el-input
             v-model="emailDetail.smtp_response"
@@ -131,7 +124,6 @@
         <template #header>
           <span>邮件内容</span>
         </template>
-        
         <div class="email-content-preview">
           <el-tabs v-model="contentViewMode">
             <el-tab-pane label="HTML预览" name="preview">
@@ -156,7 +148,6 @@
         <template #header>
           <span>发送历史</span>
         </template>
-        
         <el-timeline>
           <el-timeline-item
             :timestamp="formatDate(emailDetail.created_at)"
@@ -166,7 +157,6 @@
             <h4>邮件创建</h4>
             <p>邮件已添加到发送队列</p>
           </el-timeline-item>
-          
           <el-timeline-item
             v-if="emailDetail.status === 'sending'"
             :timestamp="formatDate(emailDetail.updated_at)"
@@ -176,7 +166,6 @@
             <h4>发送中</h4>
             <p>正在尝试发送邮件</p>
           </el-timeline-item>
-          
           <el-timeline-item
             v-if="emailDetail.status === 'sent'"
             :timestamp="formatDate(emailDetail.sent_at)"
@@ -186,7 +175,6 @@
             <h4>发送成功</h4>
             <p>邮件已成功发送到收件人</p>
           </el-timeline-item>
-          
           <el-timeline-item
             v-if="emailDetail.status === 'failed'"
             :timestamp="formatDate(emailDetail.updated_at)"
@@ -196,7 +184,6 @@
             <h4>发送失败</h4>
             <p>邮件发送失败，错误：{{ emailDetail.error_message }}</p>
           </el-timeline-item>
-          
           <el-timeline-item
             v-if="emailDetail.retry_count > 0"
             :timestamp="formatDate(emailDetail.updated_at)"
@@ -209,7 +196,6 @@
         </el-timeline>
       </el-card>
     </div>
-
     <div v-else class="error-container">
       <el-empty description="邮件不存在或已被删除">
         <el-button type="primary" @click="$router.go(-1)">返回</el-button>
@@ -217,7 +203,6 @@
     </div>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -225,7 +210,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, Delete, CopyDocument, Download } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import DOMPurify from 'dompurify'
-
 export default {
   name: 'EmailDetail',
   components: {
@@ -234,20 +218,16 @@ export default {
   setup() {
     const route = useRoute()
     const router = useRouter()
-    
     const loading = ref(false)
     const retryLoading = ref(false)
     const emailDetail = ref(null)
     const contentViewMode = ref('preview')
-    
-    // 获取邮件详情
     const fetchEmailDetail = async () => {
       const emailId = route.params.id
       if (!emailId) {
         ElMessage.error('邮件ID不能为空')
         return
       }
-      
       loading.value = true
       try {
         const response = await adminAPI.getEmailDetail(emailId)
@@ -264,20 +244,16 @@ export default {
     }
     const retryEmail = async () => {
       if (!emailDetail.value) return
-      
       try {
         await ElMessageBox.confirm(
           `确定要重试发送邮件到 ${emailDetail.value.to_email} 吗？`,
           '确认重试',
           { type: 'warning' }
         )
-        
         retryLoading.value = true
         const response = await adminAPI.retryEmail(emailDetail.value.id)
-        
         if (response.success) {
           ElMessage.success('邮件重试成功')
-          // 重新获取邮件详情
           await fetchEmailDetail()
         } else {
           ElMessage.error('邮件重试失败')
@@ -292,16 +268,13 @@ export default {
     }
     const deleteEmail = async () => {
       if (!emailDetail.value) return
-      
       try {
         await ElMessageBox.confirm(
           `确定要删除发送到 ${emailDetail.value.to_email} 的邮件吗？`,
           '确认删除',
           { type: 'warning' }
         )
-        
         const response = await adminAPI.deleteEmailFromQueue(emailDetail.value.id)
-        
         if (response.success) {
           ElMessage.success('邮件删除成功')
           router.go(-1)
@@ -314,8 +287,6 @@ export default {
         }
       }
     }
-    
-    // 复制模板数据
     const copyTemplateData = async () => {
       try {
         await navigator.clipboard.writeText(formattedTemplateData.value)
@@ -334,8 +305,6 @@ export default {
       window.URL.revokeObjectURL(url)
       ElMessage.success('模板数据下载成功')
     }
-    
-    // HTML内容清理函数，防止XSS攻击
     const sanitizeHtml = (html) => {
       if (!html) return ''
       try {
@@ -349,14 +318,10 @@ export default {
         return html
       }
     }
-    
-    // 清理后的邮件内容（计算属性）
     const sanitizedEmailContent = computed(() => {
       if (!emailDetail.value?.content) return ''
       return sanitizeHtml(emailDetail.value.content)
     })
-    
-    // 格式化模板数据
     const formattedTemplateData = computed(() => {
       if (!emailDetail.value?.template_data) return ''
       try {
@@ -378,8 +343,6 @@ export default {
       }
       return statusMap[status] || 'info'
     }
-    
-    // 状态文本
     const getStatusText = (status) => {
       const statusMap = {
         pending: '待发送',
@@ -390,8 +353,6 @@ export default {
       }
       return statusMap[status] || status
     }
-    
-    // 优先级标签类型
     const getPriorityTagType = (priority) => {
       const priorityMap = {
         high: 'danger',
@@ -400,8 +361,6 @@ export default {
       }
       return priorityMap[priority] || 'info'
     }
-    
-    // 优先级文本
     const getPriorityText = (priority) => {
       const priorityMap = {
         high: '高',
@@ -410,17 +369,13 @@ export default {
       }
       return priorityMap[priority] || priority
     }
-    
-    // 格式化日期
     const formatDate = (dateString) => {
       if (!dateString) return '-'
       return new Date(dateString).toLocaleString('zh-CN')
     }
-    
     onMounted(() => {
       fetchEmailDetail()
     })
-    
     return {
       loading,
       retryLoading,
@@ -442,150 +397,121 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .email-detail-admin {
   padding: 20px;
 }
-
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .header-left {
   display: flex;
   align-items: center;
   gap: 15px;
 }
-
 .header-left h1 {
   margin: 0;
   color: #333;
   font-size: 1.8rem;
 }
-
 .header-actions {
   display: flex;
   gap: 10px;
 }
-
 .loading-container {
   padding: 40px;
 }
-
 .email-detail-content {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
-
 .detail-card {
   margin-bottom: 20px;
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .template-data {
   position: relative;
 }
-
 .template-data-input {
   margin-bottom: 15px;
 }
-
 .template-data-actions {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
 }
-
 .error-alert {
   margin-bottom: 20px;
 }
-
 .error-details :is(h4) {
   margin: 20px 0 10px 0;
   color: #333;
   font-size: 1rem;
 }
-
 .smtp-response {
   padding: 10px 0;
 }
-
 .text-danger {
   color: #f56c6c;
 }
-
 .error-container {
   padding: 60px 20px;
   text-align: center;
 }
-
 @media (max-width: 768px) {
   .email-detail-admin {
     padding: 10px;
   }
-  
   .page-header {
     flex-direction: column;
     gap: 15px;
     align-items: flex-start;
   }
-  
   .header-actions {
     width: 100%;
     justify-content: space-between;
   }
-  
   .template-data-actions {
     flex-direction: column;
   }
 }
-
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
 .email-content-preview {
   margin-top: 10px;
 }
-
 .email-html-preview {
   min-height: 400px;
   padding: 20px;
@@ -594,17 +520,14 @@ export default {
   border-radius: 4px;
   overflow: auto;
 }
-
 .email-html-preview :deep(img) {
   max-width: 100%;
   height: auto;
 }
-
 .email-html-preview :deep(table) {
   width: 100%;
   border-collapse: collapse;
 }
-
 .email-html-preview :deep(.btn) {
   display: inline-block;
   padding: 12px 30px;
@@ -615,7 +538,6 @@ export default {
   font-weight: 500;
   margin: 20px 0;
 }
-
 .email-source-code {
   font-family: 'Courier New', monospace;
   font-size: 12px;

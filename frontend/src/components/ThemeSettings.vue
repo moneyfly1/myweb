@@ -106,11 +106,9 @@
     </el-drawer>
   </div>
 </template>
-
 <script setup>
 import { ref, computed } from 'vue'
 import { useThemeStore } from '@/store/theme'
-
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -212,7 +210,6 @@ const getThemeDescription = (themeName) => {
   return descriptions[themeName] || '自定义主题'
 }
 </script>
-
 <style scoped lang="scss">
 .theme-settings {
   .settings-content {

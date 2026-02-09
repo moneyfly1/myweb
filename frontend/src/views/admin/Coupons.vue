@@ -321,7 +321,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -331,7 +330,6 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import { formatTime as formatTimeUtil } from '@/utils/date'
 dayjs.extend(timezone)
-
 const loading = ref(false)
 const saving = ref(false)
 const coupons = ref([])
@@ -340,19 +338,16 @@ const showFilterDrawer = ref(false)
 const editingCoupon = ref(null)
 const couponFormRef = ref(null)
 const isMobile = ref(window.innerWidth <= 768)
-
 const filters = reactive({
   keyword: '',
   status: '',
   type: ''
 })
-
 const pagination = reactive({
   page: 1,
   size: 20,
   total: 0
 })
-
 const couponForm = reactive({
   code: '',
   name: '',
@@ -367,7 +362,6 @@ const couponForm = reactive({
   max_uses_per_user: 1,
   applicable_packages: []
 })
-
 const couponRules = {
   name: [{ required: true, message: '请输入优惠券名称', trigger: 'blur' }],
   type: [{ required: true, message: '请选择类型', trigger: 'change' }],
@@ -375,7 +369,6 @@ const couponRules = {
   valid_from: [{ required: true, message: '请选择生效时间', trigger: 'change' }],
   valid_until: [{ required: true, message: '请选择失效时间', trigger: 'change' }]
 }
-
 const loadCoupons = async () => {
   loading.value = true
   try {
@@ -386,7 +379,6 @@ const loadCoupons = async () => {
     if (filters.keyword && filters.keyword.trim()) params.keyword = filters.keyword.trim()
     if (filters.status && filters.status.trim()) params.status = filters.status.trim()
     if (filters.type && filters.type.trim()) params.type = filters.type.trim()
-    
     const response = await couponAPI.getAllCoupons(params)
     if (response.data && response.data.success) {
       coupons.value = response.data.data?.coupons || []
@@ -401,7 +393,6 @@ const loadCoupons = async () => {
     loading.value = false
   }
 }
-
 const saveCoupon = async () => {
   if (!couponFormRef.value) return
   await couponFormRef.value.validate(async (valid) => {
@@ -409,15 +400,12 @@ const saveCoupon = async () => {
       saving.value = true
       try {
         const formData = { ...couponForm }
-        // 转换日期格式（使用北京时间）
         if (formData.valid_from) {
           formData.valid_from = dayjs(formData.valid_from).tz('Asia/Shanghai').format('YYYY-MM-DDTHH:mm:ss')
         }
         if (formData.valid_until) {
           formData.valid_until = dayjs(formData.valid_until).tz('Asia/Shanghai').format('YYYY-MM-DDTHH:mm:ss')
         }
-        
-        // 清理空值字段
         if (!formData.code || formData.code.trim() === '') {
           delete formData.code // 让后端自动生成
         }
@@ -433,7 +421,6 @@ const saveCoupon = async () => {
         if (!formData.max_uses_per_user || formData.max_uses_per_user === 0) {
           formData.max_uses_per_user = 1 // 默认值
         }
-        // 处理 applicable_packages：如果是数组，转换为字符串；如果为空，设置为空字符串
         if (formData.applicable_packages) {
           if (Array.isArray(formData.applicable_packages)) {
             formData.applicable_packages = formData.applicable_packages.join(',')
@@ -441,14 +428,12 @@ const saveCoupon = async () => {
         } else {
           formData.applicable_packages = ''
         }
-        
         let response
         if (editingCoupon.value) {
           response = await couponAPI.updateCoupon(editingCoupon.value.id, formData)
         } else {
           response = await couponAPI.createCoupon(formData)
         }
-        
         if (response?.data?.success) {
           ElMessage.success(editingCoupon.value ? '优惠券更新成功' : '优惠券创建成功')
           showCreateDialog.value = false
@@ -467,7 +452,6 @@ const saveCoupon = async () => {
     }
   })
 }
-
 const editCoupon = (coupon) => {
   editingCoupon.value = coupon
   Object.assign(couponForm, {
@@ -485,7 +469,6 @@ const editCoupon = (coupon) => {
   })
   showCreateDialog.value = true
 }
-
 const deleteCoupon = async (couponId) => {
   try {
     await ElMessageBox.confirm('确定要删除此优惠券吗？', '提示', {
@@ -502,7 +485,6 @@ const deleteCoupon = async (couponId) => {
     }
   }
 }
-
 const resetForm = () => {
   editingCoupon.value = null
   Object.assign(couponForm, {
@@ -520,7 +502,6 @@ const resetForm = () => {
     applicable_packages: []
   })
 }
-
 const formatDiscountValue = (row) => {
   if (row.type === 'discount') {
     return `${row.discount_value}%`
@@ -530,7 +511,6 @@ const formatDiscountValue = (row) => {
     return `${row.discount_value}天`
   }
 }
-
 const getTypeText = (type) => {
   const map = {
     discount: '折扣',
@@ -539,7 +519,6 @@ const getTypeText = (type) => {
   }
   return map[type] || type
 }
-
 const getStatusText = (status) => {
   const map = {
     active: '有效',
@@ -548,7 +527,6 @@ const getStatusText = (status) => {
   }
   return map[status] || status
 }
-
 const getStatusTagType = (status) => {
   const map = {
     active: 'success',
@@ -557,12 +535,9 @@ const getStatusTagType = (status) => {
   }
   return map[status] || ''
 }
-
 const formatTime = (timeStr) => {
-  // 使用统一的北京时间格式化函数
   return formatTimeUtil(timeStr) || '-'
 }
-
 const resetFilters = () => {
   filters.keyword = ''
   filters.status = ''
@@ -570,44 +545,36 @@ const resetFilters = () => {
   showFilterDrawer.value = false
   loadCoupons()
 }
-
 const applyFilters = () => {
   showFilterDrawer.value = false
   loadCoupons()
 }
-
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
-
 onMounted(() => {
   loadCoupons()
   window.addEventListener('resize', handleResize)
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 </script>
-
 <style scoped lang="scss">
 .coupons-container {
   padding: 20px;
 }
-
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .filter-bar {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
 }
-
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -615,7 +582,6 @@ onUnmounted(() => {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -623,44 +589,36 @@ onUnmounted(() => {
   background-color: transparent !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper.is-focus:hover) {
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper > *) {
   background-color: transparent !important;
   background: transparent !important;
 }
-
 :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-textarea__inner:focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -668,11 +626,9 @@ onUnmounted(() => {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input-number) {
   width: 100%;
 }
-
 :deep(.el-input-number .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -680,11 +636,9 @@ onUnmounted(() => {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-date-editor) {
   width: 100%;
 }
-
 :deep(.el-date-editor .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -692,53 +646,40 @@ onUnmounted(() => {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
-/* 移动端样式 */
 @media (max-width: 768px) {
   .coupons-container {
     padding: 12px;
   }
-
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 16px;
-    
     :is(h1) {
       font-size: 20px;
       margin: 0;
     }
-    
     .create-btn {
       width: 100%;
       height: 44px;
     }
   }
-
-  // mobile-action-bar 样式已统一在 list-common.scss 中定义
-  // 这里不再重复定义，使用统一样式
-
   .filter-bar.desktop-only {
     display: none;
   }
-
   .mobile-coupons-list {
     margin-top: 16px;
-    
     .mobile-coupon-card {
       background: #fff;
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 12px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      
       .coupon-card-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
-        
         .coupon-code {
           font-weight: bold;
           font-size: 16px;
@@ -746,7 +687,6 @@ onUnmounted(() => {
           font-family: 'Courier New', monospace;
         }
       }
-      
       .coupon-card-name {
         font-size: 15px;
         font-weight: 500;
@@ -754,25 +694,20 @@ onUnmounted(() => {
         margin-bottom: 12px;
         line-height: 1.4;
       }
-      
       .coupon-card-info {
         margin-bottom: 12px;
-        
         .info-row {
           display: flex;
           align-items: center;
           margin-bottom: 8px;
           font-size: 14px;
-          
           .info-label {
             color: #666;
             min-width: 80px;
           }
-          
           .info-value {
             color: #333;
             flex: 1;
-            
             &.highlight {
               color: #f56c6c;
               font-weight: 600;
@@ -781,43 +716,36 @@ onUnmounted(() => {
           }
         }
       }
-      
       .coupon-card-actions {
         display: flex;
         gap: 8px;
         padding-top: 12px;
         border-top: 1px solid #f0f0f0;
-        
         .mobile-action-btn {
           flex: 1;
           height: 40px;
         }
       }
     }
-    
     .empty-state {
       padding: 40px 20px;
       text-align: center;
     }
   }
-
   .filter-drawer-content {
     padding: 20px 0;
-    
     .filter-drawer-actions {
       display: flex;
       gap: 12px;
       margin-top: 24px;
       padding-top: 20px;
       border-top: 1px solid #f0f0f0;
-      
       .mobile-action-btn {
         flex: 1;
         height: 44px;
       }
     }
   }
-
   .coupon-form-dialog {
     &.mobile-dialog {
       :deep(.el-dialog) {
@@ -828,29 +756,24 @@ onUnmounted(() => {
         display: flex;
         flex-direction: column;
       }
-      
       :deep(.el-dialog__header) {
         padding: 15px 15px 10px;
         flex-shrink: 0;
         border-bottom: 1px solid #ebeef5;
-        
         .el-dialog__title {
           font-size: 18px;
           font-weight: 600;
         }
-        
         .el-dialog__headerbtn {
           top: 8px;
           right: 8px;
           width: 32px;
           height: 32px;
-          
           .el-dialog__close {
             font-size: 18px;
           }
         }
       }
-      
       :deep(.el-dialog__body) {
         padding: 15px !important;
         flex: 1;
@@ -858,14 +781,12 @@ onUnmounted(() => {
         -webkit-overflow-scrolling: touch;
         max-height: calc(96vh - 140px);
       }
-      
       :deep(.el-dialog__footer) {
         padding: 10px 15px 15px;
         flex-shrink: 0;
         border-top: 1px solid #ebeef5;
       }
     }
-    
     :deep(.el-dialog) {
       width: 95% !important;
       margin: 1vh auto !important;
@@ -874,17 +795,14 @@ onUnmounted(() => {
       display: flex;
       flex-direction: column;
     }
-    
     :deep(.el-dialog__header) {
       padding: 16px 16px 12px;
       flex-shrink: 0;
       border-bottom: 1px solid #ebeef5;
-      
       .el-dialog__title {
         font-size: 18px;
         font-weight: 600;
       }
-      
       .el-dialog__headerbtn {
         top: 12px;
         right: 12px;
@@ -892,7 +810,6 @@ onUnmounted(() => {
         height: 36px;
       }
     }
-    
     :deep(.el-dialog__body) {
       padding: 16px !important;
       flex: 1;
@@ -900,7 +817,6 @@ onUnmounted(() => {
       -webkit-overflow-scrolling: touch;
       max-height: calc(98vh - 140px);
     }
-    
     :deep(.el-dialog__footer) {
       padding: 12px 16px 16px;
       flex-shrink: 0;
@@ -909,43 +825,35 @@ onUnmounted(() => {
       flex-direction: column;
       gap: 10px;
     }
-    
     :deep(.el-form-item) {
       margin-bottom: 18px;
-      
       .el-form-item__label {
         display: none; /* 移动端隐藏默认标签 */
       }
-      
       .el-form-item__content {
         margin-left: 0 !important;
         width: 100%;
       }
     }
-    
     .mobile-label {
       font-size: 14px;
       font-weight: 600;
       color: #606266;
       margin-bottom: 8px;
       display: block;
-      
       .required {
         color: #f56c6c;
         margin-left: 2px;
       }
     }
-    
     .discount-value-wrapper {
       display: flex;
       align-items: center;
       gap: 8px;
       width: 100%;
-      
       .el-input-number {
         flex: 1;
       }
-      
       .discount-unit {
         font-size: 14px;
         color: #909399;
@@ -953,49 +861,41 @@ onUnmounted(() => {
         flex-shrink: 0;
       }
     }
-    
     :deep(.el-input),
     :deep(.el-select),
     :deep(.el-textarea),
     :deep(.el-input-number) {
       width: 100%;
-      
       .el-input__wrapper,
       .el-textarea__inner {
         min-height: 40px;
         font-size: 16px; /* 防止iOS自动缩放 */
       }
-      
       .el-input__inner {
         font-size: 16px !important; /* 防止iOS自动缩放 */
         min-height: 40px;
         padding: 0 12px;
       }
     }
-    
     :deep(.el-textarea .el-textarea__inner) {
       min-height: 100px;
       padding: 12px;
       line-height: 1.6;
       font-size: 16px; /* 防止iOS自动缩放 */
     }
-    
     :deep(.el-input-number) {
       .el-input__wrapper {
         min-height: 40px;
       }
     }
   }
-
   .dialog-footer-buttons {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    
     &.mobile-footer {
       flex-direction: column;
       gap: 10px;
-      
       .mobile-action-btn {
         width: 100%;
         min-height: 48px;
@@ -1006,7 +906,6 @@ onUnmounted(() => {
         -webkit-tap-highlight-color: rgba(0,0,0,0.1);
       }
     }
-    
     .mobile-action-btn {
       width: 100%;
       min-height: 48px;
@@ -1017,24 +916,19 @@ onUnmounted(() => {
       -webkit-tap-highlight-color: rgba(0,0,0,0.1);
     }
   }
-  
-  /* 移动端日期选择器优化 */
   :deep(.mobile-date-picker-popper) {
     .el-picker-panel {
       width: 95vw;
       max-width: 400px;
     }
-    
     .el-date-picker__header {
       padding: 12px 16px;
     }
-    
     .el-picker-panel__content {
       padding: 8px;
     }
   }
 }
-
 .mobile-action-btn {
   width: 100%;
   height: 44px;
@@ -1043,13 +937,11 @@ onUnmounted(() => {
   border-radius: 6px;
   font-weight: 500;
 }
-
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
   }
 }
-
 @media (min-width: 769px) {
   .mobile-action-bar,
   .mobile-coupons-list {
@@ -1057,4 +949,3 @@ onUnmounted(() => {
   }
 }
 </style>
-

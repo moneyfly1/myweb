@@ -7,8 +7,6 @@
             <span class="title-text">专线节点管理</span>
             <el-tag v-if="pagination.total" type="info" round size="small" class="count-tag">{{ pagination.total }}</el-tag>
           </div>
-
-          <!-- 桌面端操作按钮 -->
           <div class="header-actions" v-if="!isMobile">
             <el-button type="primary" @click="showAddDialog = true">
               <el-icon><Plus /></el-icon>创建节点
@@ -17,8 +15,6 @@
               <el-icon><Refresh /></el-icon>刷新
             </el-button>
           </div>
-
-          <!-- 移动端精简操作按钮 -->
           <div class="header-actions mobile" v-else>
             <el-button type="primary" circle @click="showAddDialog = true" size="small">
               <el-icon><Plus /></el-icon>
@@ -39,8 +35,6 @@
           </div>
         </div>
       </template>
-
-      <!-- 统一的响应式筛选栏 -->
       <div class="filter-wrapper">
         <div class="filter-grid">
           <el-select v-model="filters.status" placeholder="状态" clearable @change="handleFilterChange">
@@ -66,8 +60,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 批量操作提示栏 (桌面端显示，移动端集成在Dropdown) -->
       <div v-if="selectedNodes.length > 0 && !isMobile" class="batch-actions-bar">
         <span class="batch-tip">已选择 {{ selectedNodes.length }} 个节点</span>
         <div class="batch-btns">
@@ -78,10 +70,7 @@
           <el-button type="danger" link @click="batchDelete" :loading="batchDeleting">批量删除</el-button>
         </div>
       </div>
-
-      <!-- 内容展示区 -->
       <div class="content-view" v-loading="loading">
-        <!-- 桌面端：表格视图 -->
         <el-table
           v-if="!isMobile"
           :data="customNodes"
@@ -138,10 +127,7 @@
             </template>
           </el-table-column>
         </el-table>
-
-        <!-- 移动端：卡片列表视图 -->
         <div v-else class="mobile-list">
-          <!-- 全选控制栏 -->
           <div class="mobile-selection-bar" v-if="customNodes.length > 0">
             <el-checkbox 
               v-model="isAllSelected" 
@@ -149,7 +135,6 @@
               @change="toggleMobileSelectAll"
             >全选 ({{ selectedNodes.length }})</el-checkbox>
           </div>
-
           <div v-for="node in customNodes" :key="node.id" class="node-card">
             <div class="card-header-row">
               <el-checkbox 
@@ -160,7 +145,6 @@
               <div class="node-title">{{ node.name }}</div>
               <el-tag size="small" :type="getStatusType(node.status)" effect="light">{{ getStatusText(node.status) }}</el-tag>
             </div>
-            
             <div class="card-info-grid">
               <div class="info-item">
                 <span class="label">协议</span>
@@ -175,7 +159,6 @@
                 <span class="value">{{ formatExpire(node) }}</span>
               </div>
             </div>
-
             <div class="card-actions-row">
               <div class="left-actions">
                 <el-switch 
@@ -190,8 +173,6 @@
               <div class="right-buttons">
                 <el-button size="small" text bg @click="testNode(node)" :loading="node.testing">测试</el-button>
                 <el-button size="small" text bg type="warning" @click="assignSingleNode(node)">分配</el-button>
-                
-                <!-- 更多操作折叠 -->
                 <el-dropdown trigger="click">
                   <el-button size="small" text bg>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                   <template #dropdown>
@@ -208,8 +189,6 @@
           <el-empty v-if="customNodes.length === 0" description="暂无专线节点" />
         </div>
       </div>
-
-      <!-- 分页器 -->
       <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -223,8 +202,6 @@
         />
       </div>
     </el-card>
-
-    <!-- 添加/编辑节点弹窗 -->
     <el-dialog
       v-model="showAddDialog"
       :title="editingNode ? '编辑专线节点' : '添加专线节点'"
@@ -254,10 +231,8 @@
             </div>
           </el-tab-pane>
           <el-tab-pane label="手动填写" name="manual">
-            <!-- 占位，内容在下方共用表单 -->
           </el-tab-pane>
         </el-tabs>
-
         <el-form 
           v-if="editingNode || addNodeTab === 'manual'" 
           :model="nodeForm" 
@@ -273,8 +248,6 @@
           <el-form-item label="显示名称" prop="display_name">
             <el-input v-model="nodeForm.display_name" placeholder="客户端显示的名称 (可选)" />
           </el-form-item>
-          
-          <!-- 仅在新建时显示协议和配置，编辑时通常不改协议 -->
           <template v-if="!editingNode">
             <el-form-item label="协议类型" prop="protocol">
               <el-select v-model="nodeForm.protocol" placeholder="选择协议" style="width: 100%">
@@ -291,7 +264,6 @@
               />
             </el-form-item>
           </template>
-
           <el-form-item label="到期时间" prop="expire_time">
              <el-date-picker
                 v-model="nodeForm.expire_time"
@@ -308,7 +280,6 @@
           </el-form-item>
         </el-form>
       </div>
-
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showAddDialog = false">取消</el-button>
@@ -320,8 +291,6 @@
         </div>
       </template>
     </el-dialog>
-
-    <!-- 链接查看弹窗 -->
     <el-dialog
       v-model="showLinkDialog"
       title="节点链接"
@@ -343,8 +312,6 @@
         </div>
       </div>
     </el-dialog>
-
-    <!-- 分配用户弹窗 (复用优化) -->
     <el-dialog
       v-model="showAssignDialog"
       :title="assignMode === 'single' ? '分配节点' : '批量分配'"
@@ -354,10 +321,8 @@
       append-to-body
     >
       <div class="dialog-scroll-content">
-        <!-- 仅单节点分配时显示已分配列表 -->
         <div v-if="assignMode === 'single'" class="assigned-section">
           <div class="section-header">已分配用户</div>
-          
           <el-table 
             v-if="!isMobile" 
             :data="assignedUsers" 
@@ -380,8 +345,6 @@
               </template>
             </el-table-column>
           </el-table>
-
-          <!-- 移动端已分配列表 -->
           <div v-else class="mobile-assigned-list">
              <div v-for="u in assignedUsers" :key="u.id" class="mini-user-card">
                <div class="u-info">
@@ -395,7 +358,6 @@
              <el-empty v-if="!assignedUsers.length" description="暂无分配" :image-size="60" />
           </div>
         </div>
-
         <div class="assign-form">
           <div class="section-header">新增分配</div>
           <div class="search-user-row">
@@ -410,7 +372,6 @@
               </template>
             </el-input>
           </div>
-          
           <el-select
             v-model="selectedUserIds"
             multiple
@@ -425,7 +386,6 @@
               :value="user.id"
             />
           </el-select>
-
           <el-form label-position="top" size="small">
              <el-form-item label="订阅模式">
                <el-radio-group v-model="assignExtraData.subscription_type">
@@ -454,7 +414,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -464,7 +423,6 @@ import {
   ArrowDown, Close
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-
 export default {
   name: 'AdminCustomNodes',
   components: { 
@@ -478,14 +436,10 @@ export default {
     const parsing = ref(false)
     const customNodes = ref([])
     const selectedNodes = ref([])
-    
-    // UI状态
     const showAddDialog = ref(false)
     const showLinkDialog = ref(false)
     const showAssignDialog = ref(false)
     const addNodeTab = ref('link')
-    
-    // 表单与搜索
     const searchKeyword = ref('')
     const filters = reactive({ status: '', is_active: '' })
     const pagination = reactive({ page: 1, size: 20, total: 0 })
@@ -494,14 +448,10 @@ export default {
       name: '', display_name: '', protocol: 'vmess', config: '', 
       expire_time: null, follow_user_expire: false
     })
-    
-    // 导入/链接
     const nodeLinkInput = ref('')
     const parsedNode = ref(null)
     const nodeLink = ref(null)
     const testingFromLink = ref(false)
-
-    // 分配相关
     const assignMode = ref('single') // single | batch
     const assigningNode = ref(null)
     const assignedUsers = ref([])
@@ -511,20 +461,14 @@ export default {
     const loadingUsers = ref(false)
     const batchAssigning = ref(false)
     const assignExtraData = reactive({ subscription_type: 'both', expires_at: null })
-
-    // 批量操作状态
     const batchTesting = ref(false)
     const batchDeleting = ref(false)
-
     const rules = {
       name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
       protocol: [{ required: true, message: '请选择协议', trigger: 'change' }],
       config: [{ required: true, message: '请输入配置', trigger: 'blur' }]
     }
-
     const checkMobile = () => { isMobile.value = window.innerWidth <= 768 }
-
-    // --- 加载数据 ---
     const loadCustomNodes = async () => {
       loading.value = true
       try {
@@ -532,13 +476,10 @@ export default {
           page: pagination.page, size: pagination.size,
           ...filters, search: searchKeyword.value
         }
-        // 清理空值
         for (const key in params) { if (!params[key]) delete params[key] }
-
         const res = await adminAPI.getCustomNodes(params)
         if (res.data?.success !== false) {
           const raw = res.data.data
-          // 兼容多种返回格式
           const list = Array.isArray(raw) ? raw : (raw.data || [])
           customNodes.value = list.map(n => ({...n, testing: false}))
           pagination.total = raw.total || list.length
@@ -551,13 +492,10 @@ export default {
         loading.value = false
       }
     }
-
     const handleFilterChange = () => {
       pagination.page = 1
       loadCustomNodes()
     }
-
-    // --- 移动端选择 ---
     const handleMobileSelect = (node, checked) => {
       if (checked) {
         if (!selectedNodes.value.find(n => n.id === node.id)) selectedNodes.value.push(node)
@@ -573,8 +511,6 @@ export default {
     const isIndeterminate = computed(() => selectedNodes.value.length > 0 && selectedNodes.value.length < customNodes.value.length)
     const toggleMobileSelectAll = (val) => selectedNodes.value = val ? [...customNodes.value] : []
     const handleSelectionChange = (val) => selectedNodes.value = val
-
-    // --- 节点操作 ---
     const editingNode = ref(null)
     const editNode = (node) => {
       editingNode.value = node
@@ -588,7 +524,6 @@ export default {
       })
       showAddDialog.value = true
     }
-
     const saveNode = async () => {
       if (!nodeFormRef.value) return
       await nodeFormRef.value.validate(async (valid) => {
@@ -597,7 +532,6 @@ export default {
         try {
           const payload = { ...nodeForm }
           if (editingNode.value) {
-             // 编辑模式只发必要字段，避免覆盖协议
              delete payload.protocol 
              delete payload.config
              await adminAPI.updateCustomNode(editingNode.value.id, payload)
@@ -614,7 +548,6 @@ export default {
         }
       })
     }
-
     const deleteNode = async (node) => {
       try {
         await ElMessageBox.confirm(`确认删除 "${node.name}"?`, '提示', { type: 'warning' })
@@ -623,7 +556,6 @@ export default {
         loadCustomNodes()
       } catch {}
     }
-
     const toggleNodeStatus = async (node) => {
       try {
         await adminAPI.updateCustomNode(node.id, { is_active: node.is_active })
@@ -633,15 +565,12 @@ export default {
         ElMessage.error('操作失败')
       }
     }
-
-    // --- 批量操作 ---
     const handleCommand = (cmd) => {
       if (cmd === 'refresh') loadCustomNodes()
       if (cmd === 'batch_test') batchTest()
       if (cmd === 'batch_assign') handleBatchAssignClick()
       if (cmd === 'batch_delete') batchDelete()
     }
-
     const batchTest = async () => {
       if (!selectedNodes.value.length) return
       batchTesting.value = true
@@ -652,7 +581,6 @@ export default {
       } catch { ElMessage.error('测试请求失败') }
       finally { batchTesting.value = false }
     }
-
     const batchDelete = async () => {
       if (!selectedNodes.value.length) return
       try {
@@ -664,8 +592,6 @@ export default {
         loadCustomNodes()
       } catch {} finally { batchDeleting.value = false }
     }
-
-    // --- 链接相关 ---
     const parseNodeLink = async () => {
       const link = nodeLinkInput.value.split('\n')[0].trim()
       if (!link) return
@@ -682,7 +608,6 @@ export default {
         }
       } finally { parsing.value = false }
     }
-
     const batchImportLinks = async () => {
       const links = nodeLinkInput.value.split('\n').map(l=>l.trim()).filter(Boolean)
       if (!links.length) return
@@ -695,7 +620,6 @@ export default {
       } catch { ElMessage.error('导入失败') }
       finally { saving.value = false }
     }
-
     const viewLink = async (node) => {
       try {
         const res = await adminAPI.getCustomNodeLink(node.id)
@@ -705,15 +629,12 @@ export default {
         }
       } catch { ElMessage.error('获取链接失败') }
     }
-
     const copyLink = () => {
       if (nodeLink.value?.link) {
         navigator.clipboard.writeText(nodeLink.value.link)
         ElMessage.success('已复制')
       }
     }
-
-    // --- 分配相关 ---
     const assignSingleNode = (node) => {
       assignMode.value = 'single'
       assigningNode.value = node
@@ -732,7 +653,6 @@ export default {
       searchedUsers.value = []
       showAssignDialog.value = true
     }
-
     const handleUserSearch = async () => {
       if (!userSearchKeyword.value) return
       loadingUsers.value = true
@@ -741,7 +661,6 @@ export default {
         searchedUsers.value = res.data.data?.users || []
       } finally { loadingUsers.value = false }
     }
-
     const handleAssign = async () => {
       batchAssigning.value = true
       try {
@@ -753,14 +672,12 @@ export default {
       } catch (e) { ElMessage.error('分配失败: ' + e.message) }
       finally { batchAssigning.value = false }
     }
-
     const loadAssignedUsers = async (nodeId) => {
       try {
         const res = await adminAPI.getCustomNodeUsers(nodeId)
         assignedUsers.value = res.data.data || []
       } catch {}
     }
-
     const handleUnassign = async (user) => {
       try {
         await adminAPI.unassignCustomNodeFromUser(user.id, assigningNode.value.id)
@@ -768,14 +685,10 @@ export default {
         loadAssignedUsers(assigningNode.value.id)
       } catch {}
     }
-
-    // --- 辅助 ---
     const getStatusType = (s) => ({ active: 'success', inactive: 'info', error: 'danger' }[s] || 'info')
     const getStatusText = (s) => ({ active: '活跃', inactive: '非活跃', error: '错误' }[s] || s)
     const formatExpire = (row) => row.follow_user_expire ? '跟随用户' : (row.expire_time ? new Date(row.expire_time).toLocaleString() : '永久')
     const isExpired = (t) => t && new Date(t) < new Date()
-    
-    // Test Placeholder
     const testNode = async (node) => {
        node.testing = true
        try {
@@ -785,22 +698,18 @@ export default {
        } catch { ElMessage.error('测试失败') }
        finally { node.testing = false }
     }
-    
     const testNodeFromLink = async () => {
        testingFromLink.value = true
        try {
-         // Mock logic as ID might be missing in link object
          ElMessage.success('测试连接通过') 
        } finally { testingFromLink.value = false }
     }
-
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       loadCustomNodes()
     })
     onUnmounted(() => window.removeEventListener('resize', checkMobile))
-
     return {
       isMobile, loading, saving, parsing, customNodes, selectedNodes,
       showAddDialog, showLinkDialog, showAssignDialog, addNodeTab,
@@ -820,66 +729,53 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-custom-nodes {
   max-width: 1400px;
   margin: 0 auto;
   padding: 16px;
 }
-
 @media (max-width: 768px) {
   .admin-custom-nodes {
     padding: 8px;
   }
 }
-
 .list-card {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
-
-/* 头部样式 */
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .title-text {
   font-size: 16px;
   font-weight: 600;
   margin-right: 8px;
 }
-
 .header-actions {
   display: flex;
   gap: 8px;
 }
-
-/* 筛选区 */
 .filter-wrapper {
   background: var(--el-fill-color-light);
   padding: 16px;
   border-radius: 6px;
   margin-bottom: 16px;
 }
-
 .filter-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
-
 .filter-grid .el-select {
   width: 140px;
 }
-
 .search-box {
   flex: 1;
   min-width: 200px;
 }
-
 @media (max-width: 768px) {
   .filter-wrapper {
     padding: 12px;
@@ -896,8 +792,6 @@ export default {
     grid-column: 1 / -1;
   }
 }
-
-/* 批量操作条 */
 .batch-actions-bar {
   display: flex;
   align-items: center;
@@ -906,25 +800,20 @@ export default {
   border-radius: 4px;
   margin-bottom: 16px;
 }
-
 .batch-tip {
   font-size: 13px;
   color: var(--el-color-primary);
   margin-right: auto;
 }
-
-/* 移动端列表 */
 .mobile-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
 .mobile-selection-bar {
   padding: 0 4px;
   margin-bottom: 4px;
 }
-
 .node-card {
   background: #fff;
   border: 1px solid var(--el-border-color-light);
@@ -932,7 +821,6 @@ export default {
   padding: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }
-
 .card-header-row {
   display: flex;
   align-items: center;
@@ -941,7 +829,6 @@ export default {
   padding-bottom: 8px;
   border-bottom: 1px dashed var(--el-border-color-lighter);
 }
-
 .node-title {
   font-weight: 600;
   font-size: 15px;
@@ -950,16 +837,13 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .card-checkbox { margin-right: 0; }
-
 .card-info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-bottom: 12px;
 }
-
 .info-item {
   display: flex;
   flex-direction: column;
@@ -967,22 +851,18 @@ export default {
   padding: 6px;
   border-radius: 4px;
 }
-
 .info-item.full-width {
   grid-column: 1 / -1;
 }
-
 .info-item .label {
   font-size: 11px;
   color: var(--el-text-color-secondary);
 }
-
 .info-item .value {
   font-size: 13px;
   font-weight: 500;
   word-break: break-all;
 }
-
 .card-actions-row {
   display: flex;
   justify-content: space-between;
@@ -990,28 +870,22 @@ export default {
   border-top: 1px solid var(--el-border-color-lighter);
   padding-top: 8px;
 }
-
 .right-buttons {
   display: flex;
   gap: 4px;
 }
-
-/* 链接查看框 */
 .code-input :deep(.el-textarea__inner) {
   font-family: monospace;
   font-size: 12px;
   background-color: var(--el-fill-color-darker);
   color: var(--el-text-color-primary);
 }
-
 .link-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 10px;
 }
-
-/* 移动端已分配列表 */
 .mini-user-card {
   display: flex;
   justify-content: space-between;
@@ -1021,24 +895,19 @@ export default {
   border-radius: 6px;
   margin-bottom: 8px;
 }
-
 .u-name { font-weight: 500; font-size: 14px; }
 .u-time { font-size: 12px; color: var(--el-text-color-secondary); }
 .text-danger { color: var(--el-color-danger); }
 .text-secondary { color: var(--el-text-color-secondary); font-size: 12px; }
 .text-xs { font-size: 12px; }
-
-/* 弹窗内容滚动 */
 .dialog-scroll-content {
   max-height: 70vh;
   overflow-y: auto;
   padding-right: 4px;
 }
-
 .responsive-dialog :deep(.el-dialog__body) {
   padding: 15px 20px;
 }
-
 @media (max-width: 768px) {
   .responsive-dialog :deep(.el-dialog__body) {
     padding: 12px;
@@ -1050,7 +919,6 @@ export default {
     width: 100%;
   }
 }
-
 .pagination-wrapper {
   margin-top: 20px;
   display: flex;

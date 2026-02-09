@@ -1,6 +1,4 @@
-// 主题配置
 export const themeConfig = {
-  // 浅色主题（默认）
   light: {
     name: 'light',
     primary: '#409EFF',
@@ -12,8 +10,6 @@ export const themeConfig = {
     text: '#303133',
     border: '#DCDFE6'
   },
-  
-  // 深色主题
   dark: {
     name: 'dark',
     primary: '#409EFF',
@@ -25,8 +21,6 @@ export const themeConfig = {
     text: '#ffffff',
     border: '#4c4c4c'
   },
-  
-  // 蓝色主题
   blue: {
     name: 'blue',
     primary: '#1890ff',
@@ -38,8 +32,6 @@ export const themeConfig = {
     text: '#262626',
     border: '#d9d9d9'
   },
-  
-  // 绿色主题
   green: {
     name: 'green',
     primary: '#52c41a',
@@ -51,8 +43,6 @@ export const themeConfig = {
     text: '#262626',
     border: '#b7eb8f'
   },
-  
-  // 紫色主题
   purple: {
     name: 'purple',
     primary: '#722ed1',
@@ -64,8 +54,6 @@ export const themeConfig = {
     text: '#262626',
     border: '#d3adf7'
   },
-  
-  // 橙色主题
   orange: {
     name: 'orange',
     primary: '#fa8c16',
@@ -77,8 +65,6 @@ export const themeConfig = {
     text: '#262626',
     border: '#ffd591'
   },
-  
-  // 红色主题
   red: {
     name: 'red',
     primary: '#f5222d',
@@ -90,8 +76,6 @@ export const themeConfig = {
     text: '#262626',
     border: '#ffccc7'
   },
-  
-  // 青色主题
   cyan: {
     name: 'cyan',
     primary: '#13c2c2',
@@ -103,8 +87,6 @@ export const themeConfig = {
     text: '#262626',
     border: '#87e8de'
   },
-  
-  // Luck主题 - 金色幸运主题
   luck: {
     name: 'luck',
     primary: '#FFD700',
@@ -116,8 +98,6 @@ export const themeConfig = {
     text: '#2C2416',
     border: '#FFD700'
   },
-  
-  // Aurora主题 - 极光梦幻主题
   aurora: {
     name: 'aurora',
     primary: '#7B68EE',
@@ -129,7 +109,6 @@ export const themeConfig = {
     text: '#E6E6FA',
     border: '#4B0082'
   },
-  
   default: {
     name: 'default',
     primary: '#409EFF',
@@ -142,7 +121,6 @@ export const themeConfig = {
     border: '#DCDFE6'
   }
 }
-
 export class ThemeManager {
   constructor() {
     if (typeof window !== 'undefined') {
@@ -152,28 +130,21 @@ export class ThemeManager {
       this.currentTheme = 'default'
     }
   }
-  
-  // 获取当前主题
   getCurrentTheme() {
     return this.currentTheme
   }
-  
-  // 获取主题配置
   getThemeConfig(themeName = null) {
     const theme = themeName || this.currentTheme
     return themeConfig[theme] || themeConfig.default
   }
-  
   applyTheme(themeName) {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const config = this.getThemeConfig(themeName)
     if (!config) return
-
     this.currentTheme = themeName
     if (typeof window !== 'undefined') {
       localStorage.setItem('theme', themeName)
     }
-
     const root = document.documentElement
     Object.keys(config).forEach(key => {
       if (key !== 'name') {
@@ -181,20 +152,15 @@ export class ThemeManager {
         root.style.setProperty(`--theme-${key}`, config[key])
       }
     })
-
     root.className = root.className.replace(/theme-\w+/g, '')
     root.classList.add(`theme-${themeName}`)
   }
-  
-  // 切换主题
   toggleTheme() {
     const themes = Object.keys(themeConfig)
     const currentIndex = themes.indexOf(this.currentTheme)
     const nextIndex = (currentIndex + 1) % themes.length
     this.applyTheme(themes[nextIndex])
   }
-  
-  // 获取所有主题
   getAllThemes() {
     return Object.keys(themeConfig).map(key => ({
       name: key,
@@ -202,8 +168,6 @@ export class ThemeManager {
       config: themeConfig[key]
     }))
   }
-  
-  // 获取主题标签
   getThemeLabel(themeName) {
     const labels = {
       light: '浅色主题',
@@ -222,6 +186,4 @@ export class ThemeManager {
     return labels[themeName] || themeName
   }
 }
-
-// 创建全局主题管理器实例
 export const themeManager = new ThemeManager() 

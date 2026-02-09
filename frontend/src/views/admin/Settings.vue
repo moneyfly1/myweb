@@ -4,9 +4,7 @@
       <template #header>
         <span>系统设置</span>
       </template>
-
       <el-tabs v-model="activeTab" type="border-card">
-        <!-- 基本设置 -->
         <el-tab-pane label="基本设置" name="general">
           <el-form :model="generalSettings" :rules="generalRules" ref="generalFormRef" v-bind="formLayout" class="settings-form">
             <el-form-item label="网站名称" prop="site_name">
@@ -55,7 +53,6 @@
             <el-form-item>
               <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
             </el-form-item>
-            
             <el-divider content-position="left">GeoIP 数据库管理</el-divider>
             <el-form-item label="数据库状态">
               <div v-if="geoipStatus">
@@ -78,8 +75,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <!-- 注册设置 -->
         <el-tab-pane label="注册设置" name="registration">
           <el-form :model="registrationSettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="开放注册">
@@ -108,8 +103,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <!-- 通知设置 -->
         <el-tab-pane label="通知设置" name="notification">
           <el-tabs type="border-card" class="notification-tabs">
             <el-tab-pane label="客户通知" name="customer">
@@ -125,15 +118,11 @@
                 </el-form-item>
               </el-form>
             </el-tab-pane>
-
             <el-tab-pane label="管理员通知" name="admin">
               <el-alert title="管理员通知设置" description="支持邮件、Telegram 和 Bark 三种方式。" type="info" :closable="false" class="mb-20" />
               <el-form :model="adminNotificationSettings" v-bind="formLayout" class="settings-form">
                 <el-form-item label="启用管理员通知"><el-switch v-model="adminNotificationSettings.admin_notification_enabled" /></el-form-item>
-
                 <el-divider content-position="left">通知方式</el-divider>
-                
-                <!-- 邮件 -->
                 <el-form-item label="邮件通知"><el-switch v-model="adminNotificationSettings.admin_email_notification" /></el-form-item>
                 <template v-if="adminNotificationSettings.admin_email_notification">
                   <el-form-item label="管理员邮箱">
@@ -143,8 +132,6 @@
                     <el-button type="primary" @click="testNotification('email')" :loading="testingStates.email" :class="{ 'full-width': isMobile }">测试邮件通知</el-button>
                   </el-form-item>
                 </template>
-
-                <!-- Telegram -->
                 <el-form-item label="Telegram 通知"><el-switch v-model="adminNotificationSettings.admin_telegram_notification" /></el-form-item>
                 <template v-if="adminNotificationSettings.admin_telegram_notification">
                   <el-form-item label="Bot Token">
@@ -159,8 +146,6 @@
                     <el-button type="primary" @click="testNotification('telegram')" :loading="testingStates.telegram" :class="{ 'full-width': isMobile }">测试 Telegram 通知</el-button>
                   </el-form-item>
                 </template>
-
-                <!-- Bark -->
                 <el-form-item label="Bark 通知"><el-switch v-model="adminNotificationSettings.admin_bark_notification" /></el-form-item>
                 <template v-if="adminNotificationSettings.admin_bark_notification">
                   <el-form-item label="服务器地址">
@@ -173,7 +158,6 @@
                     <el-button type="primary" @click="testNotification('bark')" :loading="testingStates.bark" :class="{ 'full-width': isMobile }">测试 Bark 通知</el-button>
                   </el-form-item>
                 </template>
-
                 <el-divider content-position="left">通知事件开关</el-divider>
                 <div class="notification-events-grid">
                    <el-form-item label="订单支付成功"><el-switch v-model="adminNotificationSettings.admin_notify_order_paid" /></el-form-item>
@@ -185,7 +169,6 @@
                    <el-form-item label="管理员创建用户"><el-switch v-model="adminNotificationSettings.admin_notify_user_created" /></el-form-item>
                    <el-form-item label="订阅创建"><el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" /></el-form-item>
                 </div>
-
                 <el-form-item>
                   <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">保存管理员通知设置</el-button>
                 </el-form-item>
@@ -193,8 +176,6 @@
             </el-tab-pane>
           </el-tabs>
         </el-tab-pane>
-
-        <!-- 公告管理 -->
         <el-tab-pane label="公告管理" name="announcement">
           <el-form :model="announcementSettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="启用公告">
@@ -209,8 +190,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <!-- 主题设置 -->
         <el-tab-pane label="主题设置" name="theme">
           <el-form :model="themeSettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="默认主题" prop="default_theme">
@@ -244,8 +223,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <!-- 节点健康检查 -->
         <el-tab-pane label="节点健康检查" name="node-health">
           <el-alert title="节点健康检查设置" description="配置自动健康检查参数。默认使用TCP连接测试。" type="info" :closable="false" class="mb-20" />
           <el-form :model="nodeHealthSettings" v-bind="formLayout" class="settings-form">
@@ -274,8 +251,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <!-- 安全设置 -->
         <el-tab-pane label="安全设置" name="security">
           <el-form :model="securitySettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="登录失败限制" prop="login_fail_limit">
@@ -298,8 +273,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <!-- 备份设置 -->
         <el-tab-pane label="备份设置" name="backup">
           <el-alert title="数据库自动备份" description="配置数据库自动备份到 Gitee 或 GitHub。" type="info" :closable="false" class="mb-20" />
           <el-form :model="backupSettings" v-bind="formLayout" class="settings-form">
@@ -311,8 +284,6 @@
               </el-radio-group>
               <div class="form-tip">选择备份上传的目标平台。</div>
             </el-form-item>
-
-            <!-- Gitee 配置 -->
             <el-divider content-position="left">Gitee 配置</el-divider>
             <el-form-item label="启用 Gitee 备份">
               <el-switch v-model="backupSettings.backup_gitee_enabled" />
@@ -342,8 +313,6 @@
                 </el-button>
               </el-form-item>
             </template>
-
-            <!-- GitHub 配置 -->
             <el-divider content-position="left">GitHub 配置</el-divider>
             <el-form-item label="启用 GitHub 备份">
               <el-switch v-model="backupSettings.backup_github_enabled" />
@@ -373,7 +342,6 @@
                 </el-button>
               </el-form-item>
             </template>
-
             <el-divider content-position="left">自动备份设置</el-divider>
             <el-form-item label="启用自动备份">
               <el-switch v-model="backupSettings.backup_auto_enabled" />
@@ -382,7 +350,6 @@
               <el-input v-model.number="backupSettings.backup_auto_interval" type="number" :min="1" class="short-input" />
               <div class="form-tip">建议12-24小时。</div>
             </el-form-item>
-
             <el-divider content-position="left">手动备份</el-divider>
             <el-form-item>
               <el-button type="success" @click="createManualBackup" :loading="creatingBackup" :class="{ 'full-width': isMobile }">
@@ -390,7 +357,6 @@
               </el-button>
               <div class="form-tip" style="margin-top: 10px;">立即创建备份并上传（如已启用远程备份）。</div>
             </el-form-item>
-            <!-- 上传状态显示 -->
             <el-form-item v-if="uploadStatus || uploadTaskId">
               <el-alert 
                 :title="uploadStatus?.status === 'uploading' ? (uploadTarget === 'github' ? '正在上传到GitHub...' : '正在上传到Gitee...') : uploadStatus?.status === 'success' ? '上传成功' : uploadStatus?.status === 'failed' ? '上传失败' : '准备上传...'"
@@ -430,15 +396,12 @@
     </el-card>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
-
-// 主题常量配置
 const THEME_OPTIONS = [
   { label: '浅色主题', value: 'light', color: '#409EFF' },
   { label: '深色主题', value: 'dark', color: '#1a1a1a' },
@@ -452,7 +415,6 @@ const THEME_OPTIONS = [
   { label: 'Aurora主题', value: 'aurora', color: '#7B68EE' },
   { label: '跟随系统', value: 'auto', color: '#909399' }
 ]
-
 export default {
   name: 'AdminSettings',
   components: { Plus },
@@ -463,8 +425,6 @@ export default {
     const activeTab = ref('general')
     const generalFormRef = ref()
     const uploadUrl = '/api/v1/admin/upload'
-    
-    // 响应式状态
     const testingStates = reactive({
       email: false,
       telegram: false,
@@ -479,58 +439,45 @@ export default {
     const uploadTaskId = ref(null)
     const uploadTarget = ref('gitee')
     const uploadStatusInterval = ref(null)
-
-    // 表单布局计算属性
     const formLayout = computed(() => ({
       labelWidth: isMobile.value ? '0' : '120px',
       labelPosition: isMobile.value ? 'top' : 'right'
     }))
-
-    // --- 设置对象 ---
     const generalSettings = reactive({
       site_name: '', site_description: '', domain_name: '', site_logo: '',
       default_theme: 'default', support_qq: '', support_email: '', unified_auth_enabled: false
     })
-
     const registrationSettings = reactive({
       registration_enabled: true, email_verification_required: true,
       min_password_length: 8, invite_code_required: false,
       default_subscription_device_limit: 3, default_subscription_duration_months: 1
     })
-
     const notificationSettings = reactive({
       system_notifications: true, email_notifications: true,
       subscription_expiry_notifications: true, new_user_notifications: true, new_order_notifications: true
     })
-
     const securitySettings = reactive({
       login_fail_limit: 5, login_lock_time: 30, session_timeout: 120,
       ip_whitelist_enabled: false, ip_whitelist: ''
     })
-
     const themeSettings = reactive({
       default_theme: 'light', allow_user_theme: true,
       available_themes: THEME_OPTIONS.map(t => t.value)
     })
-
     const adminNotificationSettings = reactive({
       admin_notification_enabled: false,
       admin_email_notification: false, admin_notification_email: '',
       admin_telegram_notification: false, admin_telegram_bot_token: '', admin_telegram_chat_id: '',
       admin_bark_notification: false, admin_bark_server_url: 'https://api.day.app', admin_bark_device_key: '',
-      // 开关类
       admin_notify_order_paid: false, admin_notify_user_registered: false,
       admin_notify_password_reset: false, admin_notify_subscription_sent: false,
       admin_notify_subscription_reset: false, admin_notify_subscription_expired: false,
       admin_notify_user_created: false, admin_notify_subscription_created: false
     })
-
     const announcementSettings = reactive({ announcement_enabled: false, announcement_content: '' })
-
     const nodeHealthSettings = reactive({
       check_interval: 30, max_latency: 3000, test_timeout: 5, test_url: 'https://ping.pe'
     })
-
     const backupSettings = reactive({
       backup_target: 'gitee',
       backup_gitee_enabled: false, backup_gitee_token: '',
@@ -539,12 +486,9 @@ export default {
       backup_github_owner: 'moneyfly1', backup_github_repo: 'backup',
       backup_auto_enabled: false, backup_auto_interval: 24
     })
-
     const generalRules = {
       site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }]
     }
-
-    // --- 辅助函数 ---
     const formatFileSize = (bytes) => {
       if (!bytes) return '0 B'
       const k = 1024
@@ -552,45 +496,33 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k))
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
     }
-    
-    // 统一处理布尔值转换
     const toBool = (val) => val === true || val === 'true'
-
-    // --- 加载逻辑 ---
     const loadGeoIPStatus = async () => {
       try {
         const res = await api.get('/admin/settings/geoip/status')
         geoipStatus.value = res.data?.data || res.data || {}
       } catch (e) { console.error('GeoIP Status Error', e) }
     }
-
     const loadSettings = async () => {
       try {
         const { data: res } = await api.get('/admin/settings')
         const data = res?.data || res || {}
-        
-        // 映射配置数据
         if (data.general) {
           Object.assign(generalSettings, data.general)
           generalSettings.unified_auth_enabled = toBool(data.general.unified_auth_enabled)
-          
-          // 兼容节点健康设置在general中的旧数据
           if (data.general.node_health_check_interval) nodeHealthSettings.check_interval = +data.general.node_health_check_interval
           if (data.general.node_max_latency) nodeHealthSettings.max_latency = +data.general.node_max_latency
           if (data.general.node_test_timeout) nodeHealthSettings.test_timeout = +data.general.node_test_timeout
           if (data.general.test_url) nodeHealthSettings.test_url = data.general.test_url
         }
-
         if (data.node_health) {
           Object.assign(nodeHealthSettings, data.node_health)
           if (data.node_health.test_url) nodeHealthSettings.test_url = data.node_health.test_url
         }
-
         if (data.registration) Object.assign(registrationSettings, data.registration)
         if (data.notification) Object.assign(notificationSettings, data.notification)
         if (data.security) Object.assign(securitySettings, data.security)
         if (data.announcement) Object.assign(announcementSettings, data.announcement)
-
         if (data.theme) {
           Object.assign(themeSettings, data.theme)
           if (typeof themeSettings.available_themes === 'string') {
@@ -598,7 +530,6 @@ export default {
             catch { themeSettings.available_themes = THEME_OPTIONS.map(t => t.value) }
           }
         }
-
         if (data.admin_notification) {
           const stringFields = ['admin_telegram_chat_id', 'admin_telegram_bot_token', 'admin_bark_device_key', 'admin_notification_email', 'admin_bark_server_url']
           Object.keys(data.admin_notification).forEach(key => {
@@ -606,7 +537,6 @@ export default {
             else adminNotificationSettings[key] = toBool(data.admin_notification[key])
           })
         }
-
         if (data.backup) {
           Object.assign(backupSettings, data.backup)
           backupSettings.backup_target = backupSettings.backup_target || 'gitee'
@@ -619,8 +549,6 @@ export default {
         ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message))
       }
     }
-
-    // --- 通用保存逻辑 ---
     const handleSave = async (apiCall, successMsg, validationRef = null) => {
       try {
         if (validationRef) await validationRef.validate()
@@ -636,8 +564,6 @@ export default {
         return false
       }
     }
-
-    // 具体保存方法
     const saveGeneralSettings = async () => {
       const data = { ...generalSettings, unified_auth_enabled: generalSettings.unified_auth_enabled }
       const success = await handleSave(
@@ -647,18 +573,15 @@ export default {
       )
       if (success) await loadSettings()
     }
-
     const saveRegistrationSettings = () => handleSave(() => api.put('/admin/settings/registration', registrationSettings), '注册设置保存成功')
     const saveNotificationSettings = () => handleSave(() => api.put('/admin/settings/notification', notificationSettings), '通知设置保存成功')
     const saveSecuritySettings = () => handleSave(() => api.put('/admin/settings/security', securitySettings), '安全设置保存成功')
     const saveAnnouncementSettings = () => handleSave(() => api.put('/admin/settings/announcement', announcementSettings), '公告设置保存成功')
     const saveBackupSettings = () => handleSave(() => api.put('/admin/settings/backup', backupSettings), '备份设置保存成功')
-    
     const saveThemeSettings = async () => {
       const success = await handleSave(() => api.put('/admin/settings/theme', themeSettings), '主题设置保存成功')
       if (success && themeSettings.default_theme) await themeStore.setTheme(themeSettings.default_theme)
     }
-
     const saveNodeHealthSettings = () => {
       const data = {
         node_health_check_interval: String(nodeHealthSettings.check_interval),
@@ -668,7 +591,6 @@ export default {
       }
       return handleSave(() => api.put('/admin/settings/node_health', data), '节点健康检查设置保存成功')
     }
-
     const saveAdminNotificationSettings = () => {
       const data = {}
       for (const [key, val] of Object.entries(adminNotificationSettings)) {
@@ -676,15 +598,12 @@ export default {
       }
       return handleSave(() => adminAPI.updateAdminNotificationSettings(data), '管理员通知设置保存成功')
     }
-
-    // --- 其它操作 ---
     const updateGeoIPDatabase = async () => {
       geoipUpdating.value = true
       await handleSave(() => api.post('/admin/settings/geoip/update'), 'GeoIP 数据库更新成功')
       await loadGeoIPStatus()
       geoipUpdating.value = false
     }
-
     const testNotification = async (type) => {
       const apiMap = {
         email: { api: adminAPI.testAdminEmailNotification, msg: '邮件测试消息已发送' },
@@ -692,7 +611,6 @@ export default {
         bark: { api: adminAPI.testAdminBarkNotification, msg: 'Bark 测试消息已发送' }
       }
       if (!apiMap[type]) return
-
       testingStates[type] = true
       try {
         const res = await apiMap[type].api()
@@ -704,11 +622,9 @@ export default {
         testingStates[type] = false
       }
     }
-
     const testGiteeConnection = async () => {
       const { backup_gitee_token: token, backup_gitee_owner: owner, backup_gitee_repo: repo } = backupSettings
       if (!token || !owner || !repo) return ElMessage.error('请填写完整的 Gitee 配置')
-
       testingStates.gitee = true
       try {
         await api.put('/admin/settings/backup', backupSettings) // 先保存
@@ -721,11 +637,9 @@ export default {
         testingStates.gitee = false
       }
     }
-
     const testGitHubConnection = async () => {
       const { backup_github_token: token, backup_github_owner: owner, backup_github_repo: repo } = backupSettings
       if (!token || !owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
-
       testingStates.github = true
       try {
         await api.put('/admin/settings/backup', backupSettings) // 先保存
@@ -738,8 +652,6 @@ export default {
         testingStates.github = false
       }
     }
-
-    // 查询上传状态
     const checkUploadStatus = async (taskId, target) => {
       try {
         const res = await api.get(`/admin/backup/upload-status/${taskId}?target=${target || 'gitee'}`)
@@ -747,7 +659,6 @@ export default {
         if (status) {
           uploadStatus.value = status
           if (status.status === 'success' || status.status === 'failed') {
-            // 上传完成，停止轮询
             if (uploadStatusInterval.value) {
               clearInterval(uploadStatusInterval.value)
               uploadStatusInterval.value = null
@@ -763,21 +674,15 @@ export default {
         console.error('查询上传状态失败:', e)
       }
     }
-
-    // 开始状态轮询
     const startStatusPolling = (taskId, target) => {
       if (uploadStatusInterval.value) {
         clearInterval(uploadStatusInterval.value)
       }
-      // 立即查询一次
       checkUploadStatus(taskId, target)
-      // 每2秒轮询一次
       uploadStatusInterval.value = setInterval(() => {
         checkUploadStatus(taskId, target)
       }, 2000)
     }
-
-    // 停止状态轮询
     const stopStatusPolling = () => {
       if (uploadStatusInterval.value) {
         clearInterval(uploadStatusInterval.value)
@@ -786,7 +691,6 @@ export default {
       uploadStatus.value = null
       uploadTaskId.value = null
     }
-
     const createManualBackup = async () => {
       creatingBackup.value = true
       uploadStatus.value = null
@@ -798,13 +702,10 @@ export default {
           let msg = '备份文件创建成功！'
           if (d.filename) msg += ` 文件: ${d.filename}`
           if (d.size) msg += ` (${(d.size/1024/1024).toFixed(2)} MB)`
-          
-          // 如果是异步上传，开始轮询状态
           const uploadInfo = d.github || d.gitee || {}
           if (uploadInfo.async && uploadInfo.task_id) {
             uploadTaskId.value = uploadInfo.task_id
             uploadTarget.value = uploadInfo.target || (d.github ? 'github' : 'gitee')
-            // 立即初始化上传状态，显示进度条
             uploadStatus.value = {
               status: 'uploading',
               progress: 0,
@@ -842,8 +743,6 @@ export default {
         creatingBackup.value = false
       }
     }
-
-    // Logo 处理
     const handleLogoSuccess = (res) => {
       const url = res?.data?.url || res?.url
       if (res?.success || url) {
@@ -856,9 +755,7 @@ export default {
       if (file.size / 1024 / 1024 >= 2) return ElMessage.error('大小不能超过 2MB!') && false
       return true
     }
-
     const handleResize = () => isMobile.value = window.innerWidth <= 768
-    
     onMounted(() => {
       loadSettings()
       loadGeoIPStatus()
@@ -868,7 +765,6 @@ export default {
       window.removeEventListener('resize', handleResize)
       stopStatusPolling()
     })
-
     return {
       activeTab, isMobile, formLayout,
       generalSettings, generalRules, generalFormRef,
@@ -887,7 +783,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-settings { padding: 20px; }
 .avatar-uploader { text-align: center; }
@@ -902,56 +797,40 @@ export default {
 }
 .avatar-uploader .el-upload:hover { border-color: var(--el-color-primary); }
 .avatar-uploader-icon { font-size: 28px; color: #8c939d; width: 100px; height: 100px; text-align: center; line-height: 100px; }
-
-/* 样式复用 */
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.5; }
 .mb-20 { margin-bottom: 20px; }
 .short-input { width: 200px; }
 .theme-color-block { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 8px; }
 .theme-color-block-sm { display: inline-block; width: 14px; height: 14px; border-radius: 2px; }
 .flex-align-center { display: inline-flex; align-items: center; gap: 6px; }
-
 .theme-checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; }
 .theme-checkbox-group :deep(.el-checkbox) { min-width: 120px; margin-right: 0; }
-
 .notification-events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-
-/* 覆盖 Element 样式 */
 :deep(.el-input__wrapper), :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
 }
-
-/* 修复内部输入框显示问题 */
 :deep(.el-input__inner) {
   border: none !important;
   box-shadow: none !important;
   background: transparent !important;
   height: 100%;
 }
-
 :deep(.el-input__wrapper:hover), :deep(.el-input__wrapper.is-focus),
 :deep(.el-textarea__inner:hover), :deep(.el-textarea__inner:focus) {
   border-color: var(--el-color-primary) !important;
 }
-
 .settings-form :deep(.el-form-item) { margin-bottom: 18px; }
 .settings-form :deep(.el-form-item__label) { font-weight: 500; }
-
-/* 移动端适配 */
 @media (max-width: 768px) {
   .admin-settings { padding: 10px; }
   .short-input { width: 100%; }
-  
   .settings-form :deep(.el-form-item) { margin-bottom: 20px; }
   .settings-form :deep(.el-form-item__label) { margin-bottom: 8px; }
   .full-width { width: 100%; }
-
   .theme-checkbox-group.mobile { flex-direction: column; gap: 12px; }
   .theme-checkbox-group.mobile :deep(.el-checkbox) { width: 100%; }
-
-  /* 移动端特定组件重置 */
   .admin-settings :deep(.el-card) { border-radius: 0; box-shadow: none; border: none; }
   .admin-settings :deep(.el-card__header), .admin-settings :deep(.el-card__body) { padding: 15px; }
   .admin-settings :deep(.el-tabs__nav-wrap) { overflow-x: auto; }

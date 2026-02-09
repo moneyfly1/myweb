@@ -1,9 +1,6 @@
 import { ElMessage } from 'element-plus'
-
 const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-
 export const isMobile = () => isMobileDevice
-
 export const copyToClipboard = async (text, successMessage = '已复制到剪贴板') => {
   if (!text) {
     ElMessage.warning('没有可复制的内容')
@@ -44,15 +41,11 @@ export const copyToClipboard = async (text, successMessage = '已复制到剪贴
     return false
   }
 }
-
 let initialized = false
-
 export function initTextSelection() {
   if (initialized) return
   initialized = true
-
   if (isMobileDevice) return
-
   let timer = null
   const scan = () => {
     document.querySelectorAll('.el-table td .cell').forEach(cell => {
@@ -69,9 +62,7 @@ export function initTextSelection() {
       })
     })
   }
-
   scan()
-
   const ob = new MutationObserver(() => {
     if (timer) clearTimeout(timer)
     timer = setTimeout(scan, 500)
@@ -79,28 +70,22 @@ export function initTextSelection() {
   ob.observe(document.body, { childList: true, subtree: true })
   window.addEventListener('popstate', scan)
 }
-
 function showMenu(e, text, cell) {
   let old = document.getElementById('_ctx')
   if (old) old.remove()
-
   const items = []
   items.push({ label: '📋 复制内容', fn: () => copyToClipboard(text) })
-
   if (text.length < 50) {
     items.push({ label: '🔍 Google 搜索', fn: () => window.open('https://www.google.com/search?q=' + encodeURIComponent(text), '_blank') })
   }
-
   const link = cell.querySelector('a[href]')
   const href = link ? link.getAttribute('href') : null
   if (href) {
     items.push({ label: '🔗 新标签页打开', fn: () => window.open(href, '_blank') })
   }
-
   const menu = document.createElement('div')
   menu.id = '_ctx'
   menu.style.cssText = 'position:fixed;background:#fff;border:1px solid #e4e7ed;box-shadow:0 2px 12px rgba(0,0,0,.1);border-radius:4px;z-index:99999;padding:5px 0;min-width:140px;font-size:13px;user-select:none'
-
   items.forEach(it => {
     const d = document.createElement('div')
     d.textContent = it.label
@@ -110,9 +95,7 @@ function showMenu(e, text, cell) {
     d.onclick = (ev) => { ev.stopPropagation(); it.fn(); menu.remove() }
     menu.appendChild(d)
   })
-
   document.body.appendChild(menu)
-
   requestAnimationFrame(() => {
     let x = e.clientX, y = e.clientY
     if (x + menu.offsetWidth > window.innerWidth) x = window.innerWidth - menu.offsetWidth - 5
@@ -120,7 +103,6 @@ function showMenu(e, text, cell) {
     menu.style.left = x + 'px'
     menu.style.top = y + 'px'
   })
-
   const close = (ev) => {
     if (!menu.contains(ev.target)) {
       menu.remove()
@@ -133,11 +115,9 @@ function showMenu(e, text, cell) {
     document.addEventListener('contextmenu', close)
   }, 10)
 }
-
 export function cleanupTextSelection() {
   initialized = false
 }
-
 export function useTextSelection() {
   return { copyToClipboard }
 }

@@ -62,7 +62,6 @@
           </el-button>
         </div>
       </template>
-      
       <el-form :model="config" :label-width="isMobile ? '0' : '120px'" class="config-form">
         <el-form-item label="节点源URL" :label-width="isMobile ? '0' : undefined">
           <div class="form-item-content">
@@ -88,33 +87,6 @@
             </el-button>
           </div>
         </el-form-item>
-        
-        <el-form-item label="目标目录" :label-width="isMobile ? '0' : undefined">
-          <el-input 
-            v-model="config.target_dir" 
-            placeholder="配置文件保存目录"
-            class="config-input"
-          />
-        </el-form-item>
-        
-        <div class="form-row-group">
-          <el-form-item label="v2ray文件名" :label-width="isMobile ? '0' : '120px'">
-            <el-input 
-              v-model="config.v2ray_file" 
-              placeholder="v2ray配置文件名称"
-              class="config-input"
-            />
-          </el-form-item>
-          
-          <el-form-item label="clash文件名" :label-width="isMobile ? '0' : '120px'">
-            <el-input 
-              v-model="config.clash_file" 
-              placeholder="clash配置文件名称"
-              class="config-input"
-            />
-          </el-form-item>
-        </div>
-        
         <el-form-item label="更新间隔" :label-width="isMobile ? '0' : undefined">
           <div class="interval-selector">
             <el-select 
@@ -139,7 +111,6 @@
             </div>
           </div>
         </el-form-item>
-        
         <el-form-item label="启用定时任务" :label-width="isMobile ? '0' : undefined">
           <div class="schedule-switch-container">
             <el-switch 
@@ -151,7 +122,6 @@
             </span>
           </div>
         </el-form-item>
-        
         <el-form-item label="过滤关键词" :label-width="isMobile ? '0' : undefined">
           <div class="form-item-content">
             <div class="filter-keywords-tip">
@@ -195,65 +165,6 @@
         </el-form-item>
       </el-form>
     </el-card>
-    <el-card style="margin-bottom: 20px;" class="files-card" shadow="never">
-      <template #header>
-        <span>生成的文件</span>
-      </template>
-      <div class="desktop-only">
-        <el-table :data="fileList" style="width: 100%" class="files-table">
-          <el-table-column prop="name" label="文件名" width="200" />
-          <el-table-column prop="path" label="路径" />
-          <el-table-column prop="size" label="大小" width="120">
-            <template #default="scope">
-              {{ formatFileSize(scope.row.size) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="modified" label="修改时间" width="180">
-            <template #default="scope">
-              {{ formatTime(scope.row.modified) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="exists" label="状态" width="100">
-            <template #default="scope">
-              <el-tag :type="scope.row.exists ? 'success' : 'danger'">
-                {{ scope.row.exists ? '存在' : '不存在' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div class="mobile-files-list" v-if="isMobile">
-        <div 
-          v-for="file in fileList" 
-          :key="file.name"
-          class="mobile-file-card"
-        >
-          <div class="file-header">
-            <div class="file-name">{{ file.name }}</div>
-            <el-tag :type="file.exists ? 'success' : 'danger'" size="small">
-              {{ file.exists ? '存在' : '不存在' }}
-            </el-tag>
-          </div>
-          <div class="file-info">
-            <div class="file-row">
-              <span class="file-label">路径：</span>
-              <span class="file-value">{{ file.path || '-' }}</span>
-            </div>
-            <div class="file-row">
-              <span class="file-label">大小：</span>
-              <span class="file-value">{{ formatFileSize(file.size) }}</span>
-            </div>
-            <div class="file-row">
-              <span class="file-label">修改时间：</span>
-              <span class="file-value">{{ formatTime(file.modified) }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="fileList.length === 0" class="empty-files">
-          <el-empty description="暂无文件信息" :image-size="80" />
-        </div>
-      </div>
-    </el-card>
     <el-card class="logs-card" shadow="never">
       <template #header>
         <div class="card-header">
@@ -280,7 +191,6 @@
           </div>
         </div>
       </template>
-      
       <div class="log-container">
         <div 
           v-for="(log, index) in logs" 
@@ -288,7 +198,7 @@
           class="log-item"
           :class="log.level"
         >
-          <span class="log-time">{{ formatTime(log.timestamp) }}</span>
+          <span class="log-time">{{ formatTime(log.timestamp || log.time) }}</span>
           <span class="log-level">{{ log.level.toUpperCase() }}</span>
           <span class="log-message">{{ log.message }}</span>
         </div>
@@ -297,10 +207,8 @@
         </div>
       </div>
     </el-card>
-
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -310,7 +218,6 @@ import {
 } from '@element-plus/icons-vue'
 import { configUpdateAPI } from '@/utils/api'
 import api from '@/utils/api'
-
 export default {
   name: 'ConfigUpdate',
   components: {
@@ -325,24 +232,17 @@ export default {
       next_update: null,
       config_exists: false
     })
-    
     const config = reactive({
       urls: [''],
-      target_dir: './uploads/config',
-      v2ray_file: 'xr',
-      clash_file: 'clash.yaml',
       update_interval: 3600,
       enable_schedule: false,
       filter_keywords: []
     })
     const intervalUnit = ref('hour')
     const intervalValue = ref(1)
-    
-    const fileList = ref([])
     const logs = ref([])
     const isLogPolling = ref(false)
     const newLogCount = ref(0)
-    
     const loading = reactive({
       start: false,
       stop: false,
@@ -361,7 +261,6 @@ export default {
       if (statusPollingInterval) {
         clearInterval(statusPollingInterval)
       }
-      
       statusPollingInterval = setInterval(async () => {
         await getStatus()
         if (!status.value.is_running) {
@@ -381,7 +280,6 @@ export default {
       if (refreshInterval) {
         clearInterval(refreshInterval)
       }
-      
       refreshInterval = setInterval(() => {
         if (!loading.refresh && status.value.is_running) {
           getStatus()
@@ -398,7 +296,6 @@ export default {
       if (logPollingInterval) {
         clearInterval(logPollingInterval)
       }
-      
       isLogPolling.value = true
       logPollingInterval = setInterval(async () => {
         try {
@@ -491,33 +388,6 @@ export default {
         ElMessage.info('定时任务已禁用')
       }
     }
-    const getFiles = async () => {
-      try {
-        const response = await configUpdateAPI.getFiles()
-        if (response.data.success) {
-          const files = response.data.data
-          fileList.value = [
-            {
-              name: 'v2ray配置',
-              path: files.v2ray?.path || '',
-              size: files.v2ray?.size || 0,
-              modified: files.v2ray?.modified || null,
-              exists: files.v2ray?.exists || false
-            },
-            {
-              name: 'clash配置',
-              path: files.clash?.path || '',
-              size: files.clash?.size || 0,
-              modified: files.clash?.modified || null,
-              exists: files.clash?.exists || false
-            }
-          ]
-        } else {
-          }
-      } catch (error) {
-        ElMessage.error('获取文件列表失败: ' + (error.response?.data?.message || error.message))
-      }
-    }
     const getLogs = async () => {
       try {
         const response = await configUpdateAPI.getLogs()
@@ -546,7 +416,6 @@ export default {
       loading.start = true
       try {
         const response = await configUpdateAPI.startUpdate()
-        
         if (response.data.success) {
           ElMessage.success('更新任务已启动')
           startStatusPolling()
@@ -566,7 +435,6 @@ export default {
       loading.stop = true
       try {
         const response = await configUpdateAPI.stopUpdate()
-        
         if (response.data.success) {
           ElMessage.success('更新任务已停止')
           stopStatusPolling()
@@ -586,7 +454,6 @@ export default {
       loading.test = true
       try {
         const response = await configUpdateAPI.testUpdate()
-        
         if (response.data.success) {
           ElMessage.success('测试任务已启动')
           startStatusPolling()
@@ -605,7 +472,7 @@ export default {
     const refreshStatus = async () => {
       loading.refresh = true
       try {
-        await Promise.all([getStatus(), getFiles(), getLogs()])
+        await Promise.all([getStatus(), getLogs()])
         ElMessage.success('状态已刷新')
       } catch (error) {
         ElMessage.error('刷新失败')
@@ -627,9 +494,7 @@ export default {
           loading.save = false
           return
         }
-        
         const response = await configUpdateAPI.updateConfig(configToSave)
-        
         if (response.data.success) {
           ElMessage.success('配置已保存')
           if (config.enable_schedule) {
@@ -657,9 +522,7 @@ export default {
           cancelButtonText: '取消',
           type: 'warning'
         })
-        
         const response = await configUpdateAPI.clearLogs()
-        
         if (response.data.success) {
           ElMessage.success('日志已清理')
           await getLogs()
@@ -706,22 +569,14 @@ export default {
         return timeStr
       }
     }
-    const formatFileSize = (bytes) => {
-      if (!bytes) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-    }
     onMounted(async () => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
-      await Promise.all([getStatus(), getConfig(), getFiles(), getLogs()])
+      await Promise.all([getStatus(), getConfig(), getLogs()])
       if (status.value.is_running) {
         startLogPolling()
       }
     })
-    
     onBeforeUnmount(() => {
       window.removeEventListener('resize', checkMobile)
     })
@@ -730,11 +585,9 @@ export default {
       stopRefreshInterval()
       stopLogPolling()
     })
-    
     return {
       status,
       config,
-      fileList,
       logs,
       loading,
       isLogPolling,
@@ -754,7 +607,6 @@ export default {
       addKeyword,
       removeKeyword,
       formatTime,
-      formatFileSize,
       updateInterval,
       formatInterval,
       handleScheduleChange
@@ -762,13 +614,11 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
 .config-update {
   padding: 20px;
   max-width: 100%;
   box-sizing: border-box;
-  
   @media (max-width: 768px) {
     padding: 12px;
     width: 100% !important;
@@ -777,43 +627,35 @@ export default {
     overflow-x: clip;
   }
 }
-
-
 .action-card {
   @media (max-width: 768px) {
     margin-bottom: 16px !important;
   }
 }
-
 .action-buttons {
   display: flex;
   flex-direction: column;
   gap: 12px;
   width: 100%;
-  
   .action-buttons-row {
     display: flex;
     gap: 12px;
     width: 100%;
-    
     @media (max-width: 768px) {
       flex-direction: column;
       gap: 12px;
       align-items: center;
     }
-    
     .action-btn {
       flex: 1;
       height: 44px;
       font-size: 16px;
       font-weight: 500;
       margin: 0;
-      
       :deep(.el-icon) {
         margin-right: 6px;
         font-size: 16px;
       }
-      
       @media (max-width: 768px) {
         width: 100% !important;
         max-width: 100% !important;
@@ -825,30 +667,25 @@ export default {
     }
   }
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
-  
   .save-config-btn {
     height: 44px;
     padding: 0 24px;
     font-size: 16px;
     font-weight: 500;
     min-width: 160px;
-    
     :deep(.el-icon) {
       margin-right: 6px;
       font-size: 16px;
     }
-    
     @media (max-width: 768px) {
       width: 100% !important;
       min-width: 100% !important;
@@ -859,7 +696,6 @@ export default {
     }
   }
 }
-
 .log-header-left {
   display: flex;
   align-items: center;
@@ -868,25 +704,21 @@ export default {
 .log-header-buttons {
   display: flex;
   gap: 10px;
-  
   @media (min-width: 769px) {
     flex-direction: row;
     align-items: center;
   }
-  
   @media (max-width: 768px) {
     flex-direction: column;
     width: 100%;
     gap: 12px;
     align-items: center;
   }
-  
   .log-btn {
     @media (min-width: 769px) {
       min-width: 100px;
       height: 32px;
     }
-    
     @media (max-width: 768px) {
       width: 100% !important;
       max-width: 100% !important;
@@ -898,15 +730,12 @@ export default {
     }
   }
 }
-
 .live-indicator {
   animation: pulse 2s infinite;
 }
-
 .new-log-indicator {
   animation: bounce 1s ease-in-out;
 }
-
 @keyframes pulse {
   0% {
     opacity: 1;
@@ -918,7 +747,6 @@ export default {
     opacity: 1;
   }
 }
-
 @keyframes bounce {
   0%, 20%, 50%, 80%, 100% {
     transform: translateY(0);
@@ -930,21 +758,18 @@ export default {
     transform: translateY(-2px);
   }
 }
-
 .config-form {
   @media (max-width: 768px) {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    
     :deep(.el-form-item) {
       margin-bottom: 20px;
       width: 100% !important;
       max-width: 100% !important;
       display: flex;
       flex-direction: column;
-      
       .el-form-item__label {
         width: 100% !important;
         max-width: 100% !important;
@@ -955,7 +780,6 @@ export default {
         color: #1e293b;
         font-size: 0.95rem;
       }
-      
       .el-form-item__content {
         width: 100% !important;
         max-width: 100% !important;
@@ -964,14 +788,12 @@ export default {
     }
   }
 }
-
 .form-item-content {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   position: relative;
   z-index: 1;
-  
   .add-btn {
     width: 100%;
     height: 44px;
@@ -983,12 +805,10 @@ export default {
     z-index: 10;
     pointer-events: auto;
     cursor: pointer;
-    
     :deep(.el-icon) {
       margin-right: 6px;
       font-size: 16px;
     }
-    
     @media (max-width: 768px) {
       width: 100% !important;
       max-width: 100% !important;
@@ -998,7 +818,6 @@ export default {
       margin: 8px auto 0 auto !important;
     }
   }
-  
   @media (max-width: 768px) {
     width: 100% !important;
     max-width: 100% !important;
@@ -1006,30 +825,24 @@ export default {
     margin: 0 !important;
   }
 }
-
-/* 表单行组 - 并排显示 */
 .form-row-group {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   width: 100%;
   margin-bottom: 20px;
-  
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
     gap: 0;
     margin-bottom: 0;
   }
-  
   :deep(.el-form-item) {
     margin-bottom: 0;
-    
     @media (max-width: 768px) {
       margin-bottom: 20px;
     }
   }
 }
-
 .url-item, .keyword-item {
   display: flex;
   gap: 12px;
@@ -1039,12 +852,10 @@ export default {
   box-sizing: border-box;
   position: relative;
   z-index: 1;
-  
   .config-input {
     flex: 1;
     min-width: 0;
   }
-  
   .delete-btn {
     flex-shrink: 0;
     min-width: 100px;
@@ -1055,12 +866,10 @@ export default {
     z-index: 10;
     pointer-events: auto;
     cursor: pointer;
-    
     :deep(.el-icon) {
       margin-right: 6px;
       font-size: 16px;
     }
-    
     @media (max-width: 768px) {
       width: 100% !important;
       min-width: 100% !important;
@@ -1070,7 +879,6 @@ export default {
       margin: 0 !important;
     }
   }
-  
   @media (max-width: 768px) {
     flex-direction: column;
     gap: 12px;
@@ -1080,7 +888,6 @@ export default {
     border: 1.5px solid rgba(66, 165, 245, 0.2);
     border-radius: 10px;
     align-items: center;
-    
     .config-input {
       width: 100% !important;
       max-width: 100% !important;
@@ -1089,23 +896,19 @@ export default {
 }
 .config-input {
   width: 100%;
-  
   :deep(.el-input__wrapper) {
     min-height: 44px;
   }
-  
   :deep(.el-input__inner) {
     font-size: 15px;
     padding: 12px 14px;
   }
-  
   @media (max-width: 768px) {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 100% !important;
     box-sizing: border-box;
     margin: 0 auto !important;
-    
     :deep(.el-input__wrapper) {
       width: 100% !important;
       max-width: 100% !important;
@@ -1116,18 +919,15 @@ export default {
       background: rgba(255, 255, 255, 0.95);
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
       transition: all 0.3s ease;
-      
       &:hover {
         border-color: rgba(66, 165, 245, 0.4);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
       }
-      
       &.is-focus {
         border-color: #409eff;
         box-shadow: 0 4px 16px rgba(66, 165, 245, 0.2);
       }
     }
-    
     :deep(.el-input__inner) {
       font-size: 16px !important;
       padding: 12px 14px;
@@ -1137,24 +937,20 @@ export default {
     }
   }
 }
-
 .config-input-number {
   :deep(.el-input__wrapper) {
     min-height: 44px;
   }
-  
   :deep(.el-input__inner) {
     font-size: 15px;
     padding: 12px 14px;
   }
-  
   @media (max-width: 768px) {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 100% !important;
     box-sizing: border-box;
     margin: 0 auto !important;
-    
     :deep(.el-input__wrapper) {
       width: 100% !important;
       max-width: 100% !important;
@@ -1165,13 +961,11 @@ export default {
       background: rgba(255, 255, 255, 0.95);
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     }
-    
     :deep(.el-input__inner) {
       font-size: 16px !important;
     }
   }
 }
-
 .log-container {
   max-height: 400px;
   overflow-y: auto;
@@ -1182,7 +976,6 @@ export default {
   background-color: #f5f7fa;
   width: 100%;
   box-sizing: border-box;
-  
   @media (max-width: 768px) {
     width: 100% !important;
     max-width: 100% !important;
@@ -1192,7 +985,6 @@ export default {
     overflow-wrap: break-word;
   }
 }
-
 .log-item {
   display: flex;
   gap: 10px;
@@ -1204,7 +996,6 @@ export default {
   width: 100%;
   box-sizing: border-box;
   align-items: flex-start;
-  
   @media (max-width: 768px) {
     flex-wrap: wrap;
     gap: 6px;
@@ -1212,28 +1003,22 @@ export default {
     font-size: 11px;
   }
 }
-
 .log-item.info {
   background-color: #e1f3d8;
 }
-
 .log-item.warning {
   background-color: #fdf6ec;
 }
-
 .log-item.error {
   background-color: #fef0f0;
 }
-
 .log-item.success {
   background-color: #e1f3d8;
 }
-
 .log-time {
   color: #666;
   min-width: 150px;
   flex-shrink: 0;
-  
   @media (max-width: 768px) {
     min-width: auto;
     width: 100%;
@@ -1241,151 +1026,123 @@ export default {
     font-size: 10px;
   }
 }
-
 .log-level {
   font-weight: bold;
   min-width: 60px;
   flex-shrink: 0;
-  
   @media (max-width: 768px) {
     min-width: auto;
     width: auto;
     margin-right: 8px;
   }
 }
-
 .log-message {
   flex: 1;
   word-wrap: break-word;
   word-break: break-all;
   overflow-wrap: break-word;
-  
   @media (max-width: 768px) {
     width: 100%;
     flex: none;
   }
 }
-
 .no-logs {
   text-align: center;
   color: #999;
   padding: 20px;
 }
-
 .form-tip {
   color: #999;
   font-size: 12px;
   margin-top: 5px;
 }
-
 .dialog-footer {
   text-align: right;
 }
-
-/* 确保按钮可以点击 */
 :deep(.el-button) {
   pointer-events: auto !important;
   cursor: pointer !important;
   position: relative;
   z-index: 10;
 }
-
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
 .interval-selector {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  
   .interval-unit-select {
     width: 140px;
     flex-shrink: 0;
-    
     :deep(.el-input__wrapper) {
       min-height: 44px;
     }
   }
-  
   .interval-number {
     flex: 1;
     min-width: 0;
     max-width: 200px;
-    
     :deep(.el-input__wrapper) {
       min-height: 44px;
     }
   }
-  
   .interval-tip {
     flex-shrink: 0;
     color: #606266;
     font-size: 14px;
     white-space: nowrap;
-    
     @media (min-width: 769px) {
       display: none;
     }
   }
-  
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: center;
     gap: 12px;
     width: 100% !important;
-    
     .interval-unit-select {
       width: 100% !important;
       max-width: 100% !important;
       min-width: 100% !important;
-      
       :deep(.el-input__wrapper) {
         width: 100% !important;
         min-height: 44px !important;
       }
     }
-    
     .interval-number {
       width: 100% !important;
       max-width: 100% !important;
       min-width: 100% !important;
-      
       :deep(.el-input__wrapper) {
         width: 100% !important;
         min-height: 44px !important;
       }
     }
-    
     .interval-tip {
       width: 100% !important;
       margin-top: 8px;
@@ -1399,24 +1156,20 @@ export default {
     }
   }
 }
-
 .schedule-switch-container {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
   }
-  
   .schedule-tip {
     color: #67c23a;
     font-size: 0.9rem;
     margin-left: 8px;
-    
     @media (max-width: 768px) {
       margin-left: 0;
       padding: 8px 12px;
@@ -1426,9 +1179,7 @@ export default {
     }
   }
 }
-
 .config-card,
-.files-card,
 .logs-card {
   @media (max-width: 768px) {
     width: 100% !important;
@@ -1436,7 +1187,6 @@ export default {
     margin-left: 0 !important;
     margin-right: 0 !important;
     box-sizing: border-box;
-    
     :deep(.el-card__body) {
       padding: 12px !important;
       width: 100% !important;
@@ -1444,28 +1194,11 @@ export default {
       box-sizing: border-box;
       overflow-x: clip;
     }
-    
     :deep(.el-card__header) {
       padding: 12px !important;
       width: 100% !important;
       max-width: 100% !important;
       box-sizing: border-box;
-    }
-  }
-}
-
-.files-table {
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    
-    :deep(table) {
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-    
-    :deep(.el-table__body-wrapper) {
-      overflow-x: auto;
     }
   }
 }

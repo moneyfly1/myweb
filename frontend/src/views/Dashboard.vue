@@ -1,6 +1,5 @@
 <template>
   <div class="list-container dashboard-container">
-    <!-- 欢迎横幅 -->
     <div class="welcome-banner">
       <div class="banner-content">
         <div class="welcome-text">
@@ -12,8 +11,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 统计卡片 -->
     <div class="stats-grid">
       <div class="stat-card level-card" :style="{ 
         borderColor: userInfo.user_level?.color || '#409eff',
@@ -88,9 +85,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 设备使用卡片已删除 -->
-
       <div class="stat-card balance-card">
         <div class="stat-icon">
           <i class="fas fa-wallet"></i>
@@ -110,7 +104,6 @@
           </el-button>
         </div>
       </div>
-
       <div 
         class="stat-card device-card"
         :class="{ 
@@ -144,7 +137,6 @@
           </div>
         </div>
       </div>
-
       <div class="stat-card remaining-time-card">
         <div class="stat-icon">
           <i class="fas fa-clock"></i>
@@ -168,12 +160,8 @@
         </div>
       </div>
     </div>
-
-    <!-- 主要内容区域 -->
     <div class="main-content">
-      <!-- 左侧内容 -->
       <div class="left-content">
-        <!-- 订阅地址卡片 -->
         <div class="card subscription-card">
           <div class="card-header">
             <h3 class="card-title">
@@ -182,7 +170,6 @@
             </h3>
           </div>
           <div class="card-body">
-            <!-- Clash系列软件 -->
             <div class="software-category">
               <h4 class="category-title">
                 <i class="fas fa-bolt"></i>
@@ -204,7 +191,6 @@
                     </template>
                   </el-dropdown>
                 </div>
-
                 <div class="subscription-group">
                   <el-dropdown @command="handleFlashCommand" trigger="click">
                     <el-button type="primary" class="flash-btn">
@@ -220,7 +206,6 @@
                     </template>
                   </el-dropdown>
                 </div>
-
                 <div class="subscription-group">
                   <el-dropdown @command="handleMohomoCommand" trigger="click">
                     <el-button type="primary" class="mohomo-btn">
@@ -236,26 +221,23 @@
                     </template>
                   </el-dropdown>
                 </div>
-
                 <div class="subscription-group">
-                  <el-dropdown @command="handleSparkleCommand" trigger="click">
-                    <el-button type="primary" class="sparkle-btn">
-                      <i class="fas fa-sparkles"></i>
-                      Sparkle
+                  <el-dropdown @command="handleClashVergeCommand" trigger="click">
+                    <el-button type="primary" class="clash-verge-btn">
+                      <i class="fas fa-bolt"></i>
+                      Clash Verge
                       <i class="fas fa-chevron-down"></i>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="copy-sparkle">复制订阅</el-dropdown-item>
-                        <el-dropdown-item command="import-sparkle">一键导入</el-dropdown-item>
+                        <el-dropdown-item command="copy-clash-verge">复制订阅</el-dropdown-item>
+                        <el-dropdown-item command="import-clash-verge">一键导入</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
                 </div>
               </div>
             </div>
-
-            <!-- V2Ray系列软件 -->
             <div class="software-category">
               <h4 class="category-title">
                 <i class="fas fa-shield-alt"></i>
@@ -268,7 +250,6 @@
                     复制通用订阅
                   </el-button>
                 </div>
-
                 <div class="subscription-group">
                   <el-button type="info" class="hiddify-btn" @click="copyHiddifySubscription">
                     <i class="fas fa-eye"></i>
@@ -277,8 +258,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- Shadowrocket -->
             <div class="software-category">
               <h4 class="category-title">
                 <i class="fas fa-rocket"></i>
@@ -302,8 +281,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- 订阅地址显示区域 -->
             <div class="subscription-urls-section">
               <h4 class="section-title">
                 <i class="fas fa-link"></i>
@@ -350,8 +327,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- 二维码区域 -->
             <div class="qr-code-section">
               <h4 class="section-title">
                 <i class="fas fa-qrcode"></i>
@@ -371,10 +346,7 @@
           </div>
         </div>
       </div>
-
-      <!-- 右侧内容 -->
       <div class="right-content">
-        <!-- 使用教程卡片 -->
         <div class="card tutorial-card">
           <div class="card-header">
             <h3 class="card-title">
@@ -395,7 +367,6 @@
                 <span>{{ platform.name }}</span>
               </div>
             </div>
-            
             <div class="tutorial-content">
               <div 
                 v-for="platform in platforms" 
@@ -429,9 +400,6 @@
         </div>
       </div>
     </div>
-
-
-    <!-- 充值对话框 -->
     <el-dialog
       v-model="rechargeDialogVisible"
       title="账户充值"
@@ -471,7 +439,6 @@
             </div>
           </div>
         </el-form-item>
-        
         <el-form-item label="支付方式" v-if="!isMobile || rechargePaymentMethods.length > 0">
           <template v-if="isMobile">
             <div class="mobile-label">支付方式</div>
@@ -488,16 +455,12 @@
           </el-radio-group>
         </el-form-item>
       </el-form>
-      
-      <!-- 支付二维码 -->
       <div v-if="rechargeQRCode" class="recharge-qr-section">
         <h4>请使用{{ getRechargePaymentMethodName() }}扫描二维码完成支付</h4>
         <div class="qr-code-wrapper">
           <img :src="rechargeQRCode" alt="支付二维码" class="qr-code-img" />
         </div>
         <p class="qr-tip">支付完成后，余额将自动到账</p>
-        
-        <!-- 手机端跳转按钮 -->
         <div v-if="isMobile && rechargePaymentUrl && (rechargePaymentUrl.includes('alipay') || rechargePaymentUrl.includes('alipays'))" class="recharge-payment-actions" style="margin-top: 15px;">
           <el-button 
             type="success"
@@ -510,7 +473,6 @@
           </el-button>
         </div>
       </div>
-      
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="rechargeDialogVisible = false">取消</el-button>
@@ -527,7 +489,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
@@ -536,10 +497,8 @@ import { useRouter } from 'vue-router'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import DOMPurify from 'dompurify'
-
 const router = useRouter()
 const api = useApi()
-
 const sanitizeHtml = (html) => {
   if (!html) return ''
   return DOMPurify.sanitize(html, {
@@ -548,7 +507,6 @@ const sanitizeHtml = (html) => {
     ALLOW_DATA_ATTR: false
   })
 }
-
 const userInfo = ref({
   username: '用户',
   email: '',
@@ -566,7 +524,6 @@ const userInfo = ref({
   universalUrl: '',
   qrcodeUrl: ''
 })
-
 const subscriptionInfo = ref({
   currentDevices: 0,
   maxDevices: 0,
@@ -574,7 +531,6 @@ const subscriptionInfo = ref({
   expiryDate: '未设置',
   status: 'inactive'
 })
-
 const rechargeDialogVisible = ref(false)
 const rechargeForm = ref({
   amount: 20
@@ -593,7 +549,6 @@ const rechargePaymentMethod = ref('alipay')
 const rechargePaymentMethods = ref([])
 const isMobile = ref(window.innerWidth <= 768)
 const quickAmounts = [20, 50, 100, 200, 500, 1000]
-
 const loadRechargePaymentMethods = async () => {
   try {
     const response = await api.get('/payment-methods/active')
@@ -615,13 +570,13 @@ const loadRechargePaymentMethods = async () => {
     rechargePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
   }
 }
-
 const handleRechargePaymentMethodChange = (value) => {
 }
 const softwareConfig = ref({
   clash_windows_url: '',
   v2rayn_url: '',
   mihomo_windows_url: '',
+  clash_verge_windows_url: '',
   sparkle_windows_url: '',
   hiddify_windows_url: '',
   flash_windows_url: '',
@@ -630,12 +585,13 @@ const softwareConfig = ref({
   hiddify_android_url: '',
   flash_macos_url: '',
   mihomo_macos_url: '',
+  clash_verge_macos_url: '',
+  clash_verge_macos_url: '',
   sparkle_macos_url: '',
   shadowrocket_url: ''
 })
 const activePlatform = ref('Windows')
 const showQRCode = ref(false)
-
 const platforms = ref([
   {
     name: 'Windows',
@@ -662,11 +618,11 @@ const platforms = ref([
         githubKey: 'clash-party'
       },
       {
-        name: 'Sparkle',
+        name: 'Clash Verge',
         version: 'Latest',
-        downloadKey: 'sparkle_windows_url',
-        tutorialUrl: '/help#sparkle',
-        githubKey: 'sparkle'
+        downloadKey: 'clash_verge_windows_url',
+        tutorialUrl: '/help#clash-verge',
+        githubKey: 'clash-verge'
       },
       {
         name: 'Hiddify',
@@ -729,11 +685,11 @@ const platforms = ref([
         githubKey: 'clash-party'
       },
       {
-        name: 'Sparkle',
+        name: 'Clash Verge',
         version: 'Latest',
-        downloadKey: 'sparkle_macos_url',
-        tutorialUrl: '/help#sparkle',
-        githubKey: 'sparkle'
+        downloadKey: 'clash_verge_macos_url',
+        tutorialUrl: '/help#clash-verge',
+        githubKey: 'clash-verge'
       }
     ]
   },
@@ -750,7 +706,6 @@ const platforms = ref([
     ]
   }
 ])
-
 const qrCodeUrl = computed(() => {
   if (userInfo.value.qrcodeUrl) {
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(userInfo.value.qrcodeUrl)}&ecc=M&margin=10`
@@ -776,25 +731,21 @@ const qrCodeUrl = computed(() => {
   }
   return ''
 })
-
 const isDeviceOverlimit = computed(() => {
   const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
   return deviceLimit > 0 && onlineDevices > deviceLimit
 })
-
 const isDeviceWarning = computed(() => {
   const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
   return deviceLimit > 0 && onlineDevices >= deviceLimit * 0.8 && onlineDevices <= deviceLimit
 })
-
 const formatDate = (dateString) => {
   if (!dateString) return '未知'
   const date = new Date(dateString)
   return date.toLocaleString('zh-CN')
 }
-
 const loadUserInfo = async () => {
   try {
     const dashboardResponse = await userAPI.getUserInfo()
@@ -812,7 +763,6 @@ const loadUserInfo = async () => {
         subscription_status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
       const calculatedRemainingDays = dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0
-      
       subscriptionInfo.value = {
         currentDevices: dashboardData.subscription?.currentDevices || 0,
         maxDevices: dashboardData.subscription?.maxDevices || 0,
@@ -820,7 +770,6 @@ const loadUserInfo = async () => {
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
         status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
-      
       if (dashboardData.notice) {
         handleAnnouncement(dashboardData.notice)
       }
@@ -857,19 +806,15 @@ const loadUserInfo = async () => {
     }
   }
 }
-
 const handleAnnouncement = (notice) => {
   if (!notice || !notice.enabled || !notice.content) {
     return
   }
-  
   const content = String(notice.content).trim()
   if (!content) {
     return
   }
-  
   const sanitizedContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
-  
   ElNotification({
     title: '系统公告',
     message: sanitizedContent,
@@ -880,7 +825,6 @@ const handleAnnouncement = (notice) => {
     showClose: true
   })
 }
-
 const loadSubscriptionInfo = async () => {
   try {
     const response = await subscriptionAPI.getUserSubscription()
@@ -905,7 +849,6 @@ const loadSubscriptionInfo = async () => {
     }
   }
 }
-
 const showRechargeDialog = () => {
   rechargeDialogVisible.value = true
   rechargeForm.value.amount = 20
@@ -918,15 +861,12 @@ const showRechargeDialog = () => {
     rechargeStatusInterval = null
   }
 }
-
 const openAlipayAppForRecharge = () => {
   if (!rechargePaymentUrl.value) {
     ElMessage.error('支付链接不存在')
     return
   }
-  
   const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(rechargePaymentUrl.value)}`
-  
   try {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
@@ -935,7 +875,6 @@ const openAlipayAppForRecharge = () => {
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    
     const handleFocus = async () => {
       if (rechargeDialogVisible.value) {
         await checkRechargeStatus()
@@ -943,9 +882,7 @@ const openAlipayAppForRecharge = () => {
       }
     }
     window.addEventListener('focus', handleFocus)
-    
     window.location.href = alipayAppUrl
-    
     setTimeout(() => {
       ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
     }, 3000)
@@ -953,46 +890,36 @@ const openAlipayAppForRecharge = () => {
     ElMessage.error('跳转失败，请使用支付宝扫描二维码完成支付')
   }
 }
-
 const selectQuickAmount = (amount) => {
   rechargeForm.value.amount = amount
 }
-
 const getRechargePaymentMethodName = () => {
   const method = rechargePaymentMethods.value.find(m => m.key === rechargePaymentMethod.value)
   return method ? method.name : '支付'
 }
-
 const createRecharge = async () => {
   try {
     await rechargeFormRef.value.validate()
-    
     if (rechargeForm.value.amount <= 0) {
       ElMessage.error('充值金额必须大于0')
       return
     }
-    
     rechargeLoading.value = true
     const response = await rechargeAPI.createRecharge({
       amount: rechargeForm.value.amount,
       payment_method: rechargePaymentMethod.value
     })
-    
     if (response.data && response.data.success !== false) {
       const data = response.data.data
-      
       if (data.payment_error) {
         ElMessage.warning(data.payment_error || '支付链接生成失败')
         return
       }
-      
       const paymentUrl = data.payment_url || data.payment_qr_code
-      
       if (!paymentUrl) {
         ElMessage.error('支付链接生成失败，请稍后重试')
         return
       }
-      
       const rechargeId = data.id || data.recharge_id
       const rechargeOrderNo = data.order_no
       if (!rechargeId || !rechargeOrderNo) {
@@ -1000,12 +927,10 @@ const createRecharge = async () => {
         ElMessage.error('充值订单创建失败，订单信息缺失')
         return
       }
-      
       const isYipay = rechargePaymentMethod.value && (
         rechargePaymentMethod.value.includes('yipay') || 
         rechargePaymentMethod.value.includes('易支付')
       )
-      
       if (isYipay) {
         if (paymentUrl) {
           ElMessage.info('正在跳转到支付页面...')
@@ -1016,7 +941,6 @@ const createRecharge = async () => {
       } else {
         rechargePaymentUrl.value = paymentUrl
         currentRechargeOrderNo.value = rechargeOrderNo
-        
         try {
           const QRCode = await import('qrcode')
           const qrOptions = {
@@ -1047,38 +971,29 @@ const createRecharge = async () => {
     rechargeLoading.value = false
   }
 }
-
 let rechargeStatusInterval = null
 const currentRechargeOrderNo = ref(null)
-
 const startRechargeStatusCheck = () => {
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
   }
-  
   checkRechargeStatus()
-  
   rechargeStatusInterval = setInterval(async () => {
     await checkRechargeStatus()
   }, 2000)
-  
   const handleVisibilityChange = async () => {
     if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
       await checkRechargeStatus()
     }
   }
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  
-  // 添加页面焦点监听
   const handleFocus = async () => {
     if (rechargeDialogVisible.value) {
       await checkRechargeStatus()
     }
   }
   window.addEventListener('focus', handleFocus)
-  
-  // 30分钟后停止检查
   setTimeout(() => {
     if (rechargeStatusInterval) {
       clearInterval(rechargeStatusInterval)
@@ -1088,10 +1003,7 @@ const startRechargeStatusCheck = () => {
     window.removeEventListener('focus', handleFocus)
   }, 30 * 60 * 1000)
 }
-
-// 关闭充值对话框
 const closeRechargeDialog = () => {
-  // 清除支付状态检查定时器
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
@@ -1101,70 +1013,48 @@ const closeRechargeDialog = () => {
   rechargePaymentUrl.value = ''
   currentRechargeOrderNo.value = null
 }
-
-// 检查充值支付状态（使用订单号，支持主动查询支付状态）
 const checkRechargeStatus = async () => {
   if (!currentRechargeOrderNo.value) {
     return
   }
-  
   try {
     const response = await rechargeAPI.getRechargeStatus(currentRechargeOrderNo.value)
-    
     if (!response || !response.data) {
       return
     }
-
     if (response.data.success === false) {
       return
     }
-    
     const rechargeData = response.data.data
     if (!rechargeData) {
       return
     }
-    
     if (rechargeData.status === 'paid') {
-      // 支付成功
       if (rechargeStatusInterval) {
         clearInterval(rechargeStatusInterval)
         rechargeStatusInterval = null
       }
-      
       ElMessage.success('充值成功！余额已到账')
-      
-      // 立即刷新用户信息，确保余额更新
       await loadUserInfo()
-      
-      // 触发全局事件，通知其他页面刷新用户信息
       window.dispatchEvent(new CustomEvent('user-info-updated'))
-      
-      // 延迟再次刷新，确保余额显示正确（防止缓存问题）
       setTimeout(async () => {
         await loadUserInfo()
         window.dispatchEvent(new CustomEvent('user-info-updated'))
       }, 300)
-      
-      // 再延迟一次刷新，确保余额完全同步
       setTimeout(async () => {
         await loadUserInfo()
         window.dispatchEvent(new CustomEvent('user-info-updated'))
       }, 1000)
-      
-      // 关闭对话框
       closeRechargeDialog()
     } else if (rechargeData.status === 'cancelled' || rechargeData.status === 'failed') {
-      // 充值已取消或失败
       if (rechargeStatusInterval) {
         clearInterval(rechargeStatusInterval)
         rechargeStatusInterval = null
       }
-      
       closeRechargeDialog()
       ElMessage.warning('充值订单已取消或失败')
     }
   } catch (error) {
-    // 如果是 404 错误，说明订单不存在，停止轮询
     if (error.response?.status === 404) {
       if (rechargeStatusInterval) {
         clearInterval(rechargeStatusInterval)
@@ -1173,26 +1063,23 @@ const checkRechargeStatus = async () => {
     }
   }
 }
-
-
 const loadSoftwareConfig = async () => {
   try {
     const response = await softwareConfigAPI.getSoftwareConfig()
     if (response.data && response.data.success) {
-      // 后端返回的是ResponseBase格式，数据在response.data.data中
       softwareConfig.value = response.data.data
     }
   } catch (error) {
     }
 }
-
 const downloadApp = async (appName) => {
-  // 客户端映射到 GitHub 仓库标识
   const clientKeyMap = {
     'clash_windows_url': null, // Clash for Windows 使用配置的链接
     'v2rayn_url': 'v2rayn',
     'mihomo_windows_url': 'clash-party',
     'mihomo_macos_url': 'clash-party',
+    'clash_verge_windows_url': 'clash-verge',
+    'clash_verge_macos_url': 'clash-verge',
     'sparkle_windows_url': 'sparkle',
     'sparkle_macos_url': 'sparkle',
     'hiddify_windows_url': 'hiddify',
@@ -1203,23 +1090,16 @@ const downloadApp = async (appName) => {
     'v2rayng_url': 'v2rayng',
     'shadowrocket_url': null // Shadowrocket 使用 App Store 链接
   }
-  
   const clientKey = clientKeyMap[appName]
-  
-  // 如果配置中有链接，优先使用配置的链接
   const configUrl = softwareConfig.value[appName]
   if (configUrl) {
     window.open(configUrl, '_blank')
     return
   }
-  
-  // 如果是 Shadowrocket，使用 App Store 链接
   if (appName === 'shadowrocket_url') {
     window.open('https://apps.apple.com/app/shadowrocket/id932747118', '_blank')
     return
   }
-  
-  // 如果有 GitHub 仓库，使用自动获取
   if (clientKey) {
     try {
       ElMessage.info('正在获取最新下载链接...')
@@ -1229,7 +1109,6 @@ const downloadApp = async (appName) => {
       ElMessage.success('已打开下载页面')
     } catch (error) {
       console.error('获取下载链接失败:', error)
-      // 备用：打开 releases 页面
       try {
         const { getClientReleasesUrl } = await import('@/utils/githubDownload')
         const releasesUrl = getClientReleasesUrl(clientKey)
@@ -1247,17 +1126,12 @@ const downloadApp = async (appName) => {
     ElMessage.error('下载链接未配置，请联系管理员')
   }
 }
-
 const openTutorial = (url) => {
-  // 跳转到软件教程页面
   router.push('/help')
 }
-
-// 跳转到套餐页面
 const goToPackages = () => {
   router.push('/packages')
 }
-
 const loadDevices = async () => {
   try {
     const response = await userAPI.getUserDevices()
@@ -1265,7 +1139,6 @@ const loadDevices = async () => {
   } catch (error) {
     }
 }
-
 const handleClashCommand = (command) => {
   if (command === 'copy-clash') {
     copyClashSubscription()
@@ -1273,7 +1146,6 @@ const handleClashCommand = (command) => {
     importClashSubscription()
   }
 }
-
 const handleFlashCommand = (command) => {
   if (command === 'copy-flash') {
     copyFlashSubscription()
@@ -1281,7 +1153,6 @@ const handleFlashCommand = (command) => {
     importFlashSubscription()
   }
 }
-
 const handleMohomoCommand = (command) => {
   if (command === 'copy-mohomo') {
     copyMohomoSubscription()
@@ -1289,15 +1160,13 @@ const handleMohomoCommand = (command) => {
     importMohomoSubscription()
   }
 }
-
-const handleSparkleCommand = (command) => {
-  if (command === 'copy-sparkle') {
-    copySparkleSubscription()
-  } else if (command === 'import-sparkle') {
-    importSparkleSubscription()
+const handleClashVergeCommand = (command) => {
+  if (command === 'copy-clash-verge') {
+    copyClashVergeSubscription()
+  } else if (command === 'import-clash-verge') {
+    importClashVergeSubscription()
   }
 }
-
 const handleShadowrocketCommand = (command) => {
   if (command === 'copy-shadowrocket') {
     copyShadowrocketSubscription()
@@ -1305,68 +1174,54 @@ const handleShadowrocketCommand = (command) => {
     importShadowrocketSubscription()
   }
 }
-
 const copyClashSubscription = () => {
   if (!userInfo.value.clashUrl) {
     ElMessage.error('Clash 订阅地址不可用，请刷新页面重试')
     return
   }
-  
   try {
     copyToClipboard(userInfo.value.clashUrl, 'Clash 订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
 }
-
 const copyShadowrocketSubscription = () => {
   if (!userInfo.value || !userInfo.value.universalUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
 }
-
 const copyUniversalSubscription = () => {
   if (!userInfo.value || !userInfo.value.universalUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐')
     return
   }
-  
   copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
 }
-
-
-// Flash相关方法
 const copyFlashSubscription = () => {
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     copyToClipboard(userInfo.value.clashUrl, 'Flash 订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
 }
-
 const importFlashSubscription = () => {
-  // 安全检查：确保订阅地址存在
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     let url = userInfo.value.clashUrl
     let name = ''
-    
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
       const expiryDate = new Date(userInfo.value.expiryDate)
       if (!isNaN(expiryDate.getTime())) {
@@ -1376,38 +1231,31 @@ const importFlashSubscription = () => {
         name = `到期时间${year}-${month}-${day}_到期`
       }
     }
-    
     oneclickImport('flash', url, name)
     ElMessage.success('正在打开 Flash 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-
-// Clash Part相关方法
 const copyMohomoSubscription = () => {
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     copyToClipboard(userInfo.value.clashUrl, 'Clash Part 订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
 }
-
 const importMohomoSubscription = () => {
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     let url = userInfo.value.clashUrl
     let name = ''
-    
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
       const expiryDate = new Date(userInfo.value.expiryDate)
       if (!isNaN(expiryDate.getTime())) {
@@ -1417,38 +1265,31 @@ const importMohomoSubscription = () => {
         name = `到期时间${year}-${month}-${day}_到期`
       }
     }
-    
     oneclickImport('mohomo', url, name)
     ElMessage.success('正在打开 Clash Part 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-
-// Sparkle相关方法
-const copySparkleSubscription = () => {
+const copyClashVergeSubscription = () => {
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
-    copyToClipboard(userInfo.value.clashUrl, 'Sparkle 订阅地址已复制到剪贴板')
+    copyToClipboard(userInfo.value.clashUrl, 'Clash Verge 订阅地址已复制到剪贴板')
   } catch (error) {
     ElMessage.error('复制失败，请手动复制订阅地址')
   }
 }
-
-const importSparkleSubscription = () => {
+const importClashVergeSubscription = () => {
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     let url = userInfo.value.clashUrl
     let name = ''
-    
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
       const expiryDate = new Date(userInfo.value.expiryDate)
       if (!isNaN(expiryDate.getTime())) {
@@ -1458,30 +1299,24 @@ const importSparkleSubscription = () => {
         name = `到期时间${year}-${month}-${day}_到期`
       }
     }
-    
-    oneclickImport('sparkle', url, name)
-    ElMessage.success('正在打开 Sparkle 客户端...')
+    oneclickImport('clash-verge', url, name)
+    ElMessage.success('正在打开 Clash Verge 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-
-// Hiddify Next相关方法
 const copyHiddifySubscription = () => {
   if (!userInfo.value.universalUrl) {
     ElMessage.error('通用订阅地址不可用')
     return
   }
-  
   copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
 }
-
 const copyToClipboard = async (text, message) => {
   try {
     await navigator.clipboard.writeText(text)
     ElMessage.success(message)
   } catch (error) {
-    // 降级方案
     const textArea = document.createElement('textarea')
     textArea.value = text
     document.body.appendChild(textArea)
@@ -1491,17 +1326,14 @@ const copyToClipboard = async (text, message) => {
     ElMessage.success(message)
   }
 }
-
 const importClashSubscription = () => {
   if (!userInfo.value || !userInfo.value.clashUrl) {
     ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
     return
   }
-  
   try {
     let url = userInfo.value.clashUrl
     let name = ''
-    
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
       const expiryDate = new Date(userInfo.value.expiryDate)
       if (!isNaN(expiryDate.getTime())) {
@@ -1511,46 +1343,37 @@ const importClashSubscription = () => {
         name = `到期时间${year}-${month}-${day}_到期`
       }
     }
-    
     oneclickImport('clashx', url, name)
     ElMessage.success('正在打开 Clash 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-
 const importShadowrocketSubscription = () => {
   if (!userInfo.value.universalUrl) {
     ElMessage.error('通用订阅地址不可用，请刷新页面重试')
     return
   }
-  
   try {
     let url = userInfo.value.universalUrl
     let expiryName = ''
-    
     if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      // 格式化到期时间作为订阅名称：到期时间 YYYY-MM-DD
       const expiryDate = new Date(userInfo.value.expiryDate)
       const year = expiryDate.getFullYear()
       const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
       const day = String(expiryDate.getDate()).padStart(2, '0')
       expiryName = `到期时间${year}-${month}-${day}`
     }
-    
     oneclickImport('shadowrocket', url, expiryName)
     ElMessage.success('正在打开 Shadowrocket 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-
-
 const refreshDevices = () => {
   loadDevices()
   ElMessage.success('设备列表已刷新')
 }
-
 const getDeviceIcon = (osName) => {
   const iconMap = {
     'Windows': 'fab fa-windows',
@@ -1561,15 +1384,11 @@ const getDeviceIcon = (osName) => {
   }
   return iconMap[osName] || 'fas fa-mobile-alt'
 }
-
-// 一键导入功能实现（参考原有实现）
 const oneclickImport = (client, url, name = '') => {
   try {
     switch (client) {
       case 'clashx':
       case 'clash':
-        // Clash for Windows/macOS/Android
-        // 参考格式：clash://install-config?url=...&name=到期时间_到期
         if (name) {
           window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
         } else {
@@ -1577,7 +1396,6 @@ const oneclickImport = (client, url, name = '') => {
         }
         break
       case 'flash':
-        // Flash (Clash系列)
         if (name) {
           window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
         } else {
@@ -1585,7 +1403,6 @@ const oneclickImport = (client, url, name = '') => {
         }
         break
       case 'mohomo':
-        // Clash Part (Clash系列)
         if (name) {
           window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
         } else {
@@ -1593,7 +1410,13 @@ const oneclickImport = (client, url, name = '') => {
         }
         break
       case 'sparkle':
-        // Sparkle (Clash系列)
+        if (name) {
+          window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
+        } else {
+          window.open(`clash://install-config?url=${encodeURIComponent(url)}`, '_blank')
+        }
+        break
+      case 'clash-verge':
         if (name) {
           window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
         } else {
@@ -1601,55 +1424,41 @@ const oneclickImport = (client, url, name = '') => {
         }
         break
       case 'shadowrocket':
-        // Shadowrocket (iOS)
-        // Shadowrocket URL 格式: shadowrocket://add/sub://<base64_url>#<name>
-        // name 部分会显示为订阅名称，可以包含有效期信息
         let shadowrocketUrl = `shadowrocket://add/sub://${btoa(url)}`
         if (name) {
-          // 如果有名称（有效期），添加到 URL 的 hash 部分
           shadowrocketUrl += `#${encodeURIComponent(name)}`
         }
         window.open(shadowrocketUrl, '_blank')
         break
       case 'ssr':
-        // SSR客户端
         window.open(`ssr://${btoa(url)}`, '_blank')
         break
       case 'quantumult':
-        // Quantumult
         window.open(`quantumult://resource?url=${encodeURIComponent(url)}`, '_blank')
         break
       case 'quantumult_v2':
-        // Quantumult X
         window.open(`quantumult-x://resource?url=${encodeURIComponent(url)}`, '_blank')
         break
       case 'v2rayng':
-        // V2rayNG
         window.open(`v2rayng://install-config?url=${encodeURIComponent(url)}`, '_blank')
         break
       case 'hiddify':
-        // Hiddify Next (Android)
         window.open(`hiddify://install-config?url=${encodeURIComponent(url)}`, '_blank')
         break
       default:
-        // 尝试通用方式
         window.open(url, '_blank')
     }
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-
-// 检查并显示公告（保留作为降级方案，如果聚合接口没有返回公告）
 const checkAndShowAnnouncement = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
     const settings = response.data?.data || response.data || {}
-    
     const isEnabled = settings.announcement_enabled === true || 
                       settings.announcement_enabled === 'true' || 
                       String(settings.announcement_enabled).toLowerCase() === 'true'
-    
     if (isEnabled && settings.announcement_content && String(settings.announcement_content).trim()) {
       handleAnnouncement({
         enabled: isEnabled,
@@ -1657,48 +1466,32 @@ const checkAndShowAnnouncement = async () => {
       })
     }
   } catch (error) {
-    // Failed to load announcements
   }
 }
-
-// 生命周期
-// 监听窗口大小变化
 const handleResize = () => {
   if (typeof window !== 'undefined') {
     isMobile.value = window.innerWidth <= 768
   }
 }
-
 onMounted(() => {
-  // 初始化窗口大小
   if (typeof window !== 'undefined') {
     isMobile.value = window.innerWidth <= 768
     window.addEventListener('resize', handleResize)
   }
-  // 使用聚合接口，减少请求数量
   loadUserInfo() // 这个接口现在返回所有数据（包括订阅和公告）
-  // loadSubscriptionInfo() // 不再需要单独调用，因为loadUserInfo已经包含订阅信息
   loadSoftwareConfig()
-  // 延迟一下再检查公告（作为降级方案，如果聚合接口没有返回）
   setTimeout(() => {
     checkAndShowAnnouncement()
   }, 1000)
-  
-  // 监听订阅更新事件
   const handleSubscriptionUpdate = async () => {
     await loadSubscriptionInfo()
     await loadUserInfo()
   }
-  
-  // 监听用户信息更新事件
   const handleUserInfoUpdate = async () => {
     await loadUserInfo()
   }
-  
   window.addEventListener('subscription-updated', handleSubscriptionUpdate)
   window.addEventListener('user-info-updated', handleUserInfoUpdate)
-  
-  // 清理事件监听器
   onUnmounted(() => {
     window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
     window.removeEventListener('user-info-updated', handleUserInfoUpdate)
@@ -1707,19 +1500,16 @@ onMounted(() => {
     }
   })
 })
-
 onUnmounted(() => {
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
   }
-  // 移除窗口大小监听
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', handleResize)
   }
 })
 </script>
-
 <style scoped>
 .dashboard-container {
   padding: 0;
@@ -1727,8 +1517,6 @@ onUnmounted(() => {
   margin: 0;
   width: 100%;
 }
-
-/* 欢迎横幅 */
 .welcome-banner {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 16px;
@@ -1738,7 +1526,6 @@ onUnmounted(() => {
   position: relative;
   overflow: clip;
 }
-
 .welcome-banner::before {
   content: '';
   position: absolute;
@@ -1749,12 +1536,10 @@ onUnmounted(() => {
   background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
   animation: float 6s ease-in-out infinite;
 }
-
 @keyframes float {
   0%, 100% { transform: translateY(0px) rotate(0deg); }
   50% { transform: translateY(-20px) rotate(180deg); }
 }
-
 .banner-content {
   display: flex;
   justify-content: space-between;
@@ -1762,32 +1547,26 @@ onUnmounted(() => {
   position: relative;
   z-index: 1;
 }
-
 .welcome-title {
   font-size: 2.5rem;
   font-weight: 700;
   margin: 0 0 10px 0;
 }
-
 .welcome-subtitle {
   font-size: 1.1rem;
   opacity: 0.9;
   margin: 0;
 }
-
 .welcome-icon {
   font-size: 4rem;
   opacity: 0.3;
 }
-
-/* 统计卡片 */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 20px;
   margin-bottom: 30px;
 }
-
 .stat-card {
   background: white;
   border-radius: 12px;
@@ -1797,13 +1576,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  
   &.level-card {
     border-width: 2px;
     position: relative;
     overflow: clip;
     padding: 24px;
-    
     &::before {
       content: '';
       position: absolute;
@@ -1815,34 +1592,28 @@ onUnmounted(() => {
       opacity: 0;
       transition: opacity 0.5s ease;
     }
-    
     &:hover::before {
       opacity: 1;
     }
-    
     .level-card-inner {
       display: flex;
       align-items: flex-start;
       gap: 20px;
       width: 100%;
     }
-    
     .level-left {
       flex-shrink: 0;
     }
-    
     .level-content {
       flex: 1;
       min-width: 0;
     }
-    
     .level-header {
       display: flex;
       align-items: center;
       gap: 12px;
       margin-bottom: 12px;
       flex-wrap: wrap;
-      
       .level-name {
         margin: 0;
         font-size: 2rem;
@@ -1850,18 +1621,15 @@ onUnmounted(() => {
         letter-spacing: 1px;
         line-height: 1.2;
       }
-      
       .level-discount-tag {
         flex-shrink: 0;
         transition: all 0.3s ease;
-        
         &:hover {
           transform: scale(1.05);
           box-shadow: 0 6px 20px rgba(64, 158, 255, 0.4) !important;
         }
       }
     }
-    
     .level-expiry {
       font-size: 0.95rem;
       color: #6b7280;
@@ -1870,13 +1638,11 @@ onUnmounted(() => {
       align-items: center;
       gap: 6px;
       font-weight: 500;
-      
       :is(i) {
         font-size: 14px;
         opacity: 0.7;
       }
     }
-    
     .level-icon {
       width: 80px;
       height: 80px;
@@ -1885,7 +1651,6 @@ onUnmounted(() => {
       transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
       position: relative;
       overflow: clip;
-      
       &::before {
         content: '';
         position: absolute;
@@ -1897,45 +1662,37 @@ onUnmounted(() => {
         opacity: 0;
         transition: opacity 0.3s ease;
       }
-      
       &:hover {
         transform: scale(1.1) rotate(10deg);
-        
         &::before {
           opacity: 1;
           animation: rotate 2s linear infinite;
         }
       }
     }
-    
     @keyframes rotate {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
-    
     .upgrade-progress {
       margin-top: 12px;
       width: 100%;
-      
       .progress-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 6px;
-        
         .progress-label {
           font-size: 12px;
           color: #666;
           font-weight: 500;
         }
-        
         .progress-percentage {
           font-size: 14px;
           color: #409eff;
           font-weight: 600;
         }
       }
-      
       .progress-bar {
         width: 100%;
         height: 10px;
@@ -1943,7 +1700,6 @@ onUnmounted(() => {
         border-radius: 5px;
         overflow: clip;
         margin-bottom: 8px;
-        
         .progress-fill {
           height: 100%;
           background: linear-gradient(90deg, #67c23a 0%, #85ce61 100%);
@@ -1951,19 +1707,16 @@ onUnmounted(() => {
           transition: width 0.3s ease;
         }
       }
-      
       .progress-text {
         font-size: 12px;
         color: #666;
         margin: 0 0 4px 0;
         line-height: 1.5;
-        
         :is(i) {
           margin-right: 4px;
           color: #67c23a;
         }
       }
-      
       .progress-tip {
         font-size: 11px;
         color: #909399;
@@ -1974,7 +1727,6 @@ onUnmounted(() => {
         line-height: 1.4;
       }
     }
-    
     .max-level-tip {
       margin-top: 16px;
       padding: 14px 20px;
@@ -1987,7 +1739,6 @@ onUnmounted(() => {
       box-shadow: 0 4px 16px rgba(253, 160, 133, 0.4);
       position: relative;
       overflow: clip;
-      
       &::before {
         content: '';
         position: absolute;
@@ -1998,7 +1749,6 @@ onUnmounted(() => {
         background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
         animation: shimmer 3s ease-in-out infinite;
       }
-      
       :is(i) {
         margin-right: 8px;
         color: #ffd700;
@@ -2006,19 +1756,16 @@ onUnmounted(() => {
         filter: drop-shadow(0 2px 4px rgba(255, 215, 0, 0.5));
       }
     }
-    
     @keyframes shimmer {
       0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
       50% { transform: translate(-50%, -50%) rotate(180deg); }
     }
   }
 }
-
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
 }
-
 .stat-icon {
   width: 60px;
   height: 60px;
@@ -2030,65 +1777,53 @@ onUnmounted(() => {
   font-size: 24px;
   color: white;
 }
-
 .stat-card:nth-child(1) .stat-icon { background: linear-gradient(135deg, #667eea, #764ba2); }
 .stat-card:nth-child(2) .stat-icon { background: linear-gradient(135deg, #4facfe, #00f2fe); }
 .stat-card:nth-child(3) .stat-icon { background: linear-gradient(135deg, #43e97b, #38f9d7); }
 .stat-card:nth-child(4) .stat-icon { background: linear-gradient(135deg, #f093fb, #f5576c); }
-
 .stat-title {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0 0 4px 0;
   color: #1f2937;
 }
-
 .stat-subtitle {
   font-size: 0.875rem;
   color: #6b7280;
   margin: 0;
   margin-top: 4px;
 }
-
-/* 设备卡片样式 */
 .device-card {
   position: relative;
-  
   .device-count-wrapper {
     display: flex;
     align-items: center;
     gap: 4px;
     margin-bottom: 4px;
   }
-  
   .device-count {
     font-size: 1.5rem;
     font-weight: 700;
     color: #1f2937;
     transition: color 0.3s ease;
   }
-  
   .device-separator {
     font-size: 1.2rem;
     color: #9ca3af;
     margin: 0 2px;
   }
-  
   .device-limit {
     font-size: 1.5rem;
     font-weight: 700;
     color: #6b7280;
   }
-  
   .device-overlimit-count {
     color: #ef4444 !important;
     animation: blink 1s infinite;
   }
-  
   .device-warning-count {
     color: #f59e0b !important;
   }
-  
   .device-alert {
     margin-top: 8px;
     padding: 6px 10px;
@@ -2101,25 +1836,21 @@ onUnmounted(() => {
     align-items: center;
     gap: 6px;
     animation: blink 1s infinite;
-    
     :is(i) {
       font-size: 0.875rem;
     }
   }
-  
   &.device-overlimit {
     border-color: #ef4444 !important;
     background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
     animation: blink-border 1s infinite;
   }
-  
   &.device-warning {
     border-color: #f59e0b !important;
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
   }
 }
-
 @keyframes blink {
   0%, 100% {
     opacity: 1;
@@ -2128,7 +1859,6 @@ onUnmounted(() => {
     opacity: 0.5;
   }
 }
-
 @keyframes blink-border {
   0%, 100% {
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
@@ -2137,28 +1867,22 @@ onUnmounted(() => {
     box-shadow: 0 4px 20px rgba(239, 68, 68, 0.6);
   }
 }
-
 .expiry-subtitle {
   word-break: break-word;
   line-height: 1.4;
-  
   @media (max-width: 768px) {
     font-size: 0.75rem;
     line-height: 1.3;
   }
-  
   @media (max-width: 480px) {
     font-size: 0.6875rem;
     line-height: 1.4;
   }
 }
-
-/* 余额卡片样式 */
 .balance-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  
   .stat-content {
     display: flex;
     align-items: center;
@@ -2168,12 +1892,10 @@ onUnmounted(() => {
     min-width: 0;
     gap: 12px;
   }
-  
   .balance-main {
     flex: 1;
     min-width: 0;
   }
-  
   .recharge-btn {
     margin-left: 12px;
     padding: 8px 16px;
@@ -2185,28 +1907,23 @@ onUnmounted(() => {
     box-sizing: border-box;
     max-width: fit-content;
     height: auto;
-    
     :is(i) {
       margin-right: 4px;
       font-size: 12px;
     }
-    
     @media (max-width: 768px) {
       padding: 6px 12px;
       font-size: 0.75rem;
       margin-left: 0;
-      
       :is(i) {
         margin-right: 3px;
         font-size: 11px;
       }
     }
-    
     @media (max-width: 480px) {
       padding: 8px 16px;
       font-size: 0.8125rem;
       border-radius: 8px;
-      
       :is(i) {
         margin-right: 4px;
         font-size: 12px;
@@ -2214,14 +1931,11 @@ onUnmounted(() => {
     }
   }
 }
-
-/* 剩余时间卡片样式 */
 .remaining-time-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   overflow: clip;
-  
   .stat-content {
     display: flex;
     align-items: center;
@@ -2232,7 +1946,6 @@ onUnmounted(() => {
     gap: 12px;
     box-sizing: border-box;
   }
-  
   .remaining-time-main {
     flex: 1;
     min-width: 0;
@@ -2241,14 +1954,12 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 4px;
   }
-  
   .remaining-time-value {
     display: flex;
     align-items: baseline;
     gap: 4px;
     margin: 0 0 4px 0;
   }
-  
   .time-number {
     font-size: 1.5rem;
     font-weight: 700;
@@ -2256,13 +1967,11 @@ onUnmounted(() => {
     line-height: 1.3;
     margin: 0;
   }
-  
   .time-unit {
     font-size: 1rem;
     font-weight: 600;
     color: #6b7280;
   }
-  
   .remaining-time-card .stat-subtitle {
     margin: 0;
     font-size: 0.875rem;
@@ -2270,7 +1979,6 @@ onUnmounted(() => {
     line-height: 1.4;
     word-break: break-word;
   }
-  
   .renew-btn {
     margin-left: 12px;
     padding: 8px 16px;
@@ -2282,65 +1990,53 @@ onUnmounted(() => {
     box-sizing: border-box;
     max-width: fit-content;
     height: auto;
-    
     :is(i) {
       margin-right: 4px;
       font-size: 12px;
     }
-    
     @media (max-width: 768px) {
       padding: 6px 12px;
       font-size: 0.75rem;
       margin-left: 0;
-      
       :is(i) {
         margin-right: 3px;
         font-size: 11px;
       }
     }
-    
     @media (max-width: 480px) {
       padding: 8px 16px;
       font-size: 0.8125rem;
       border-radius: 8px;
-      
       :is(i) {
         margin-right: 4px;
         font-size: 12px;
       }
     }
   }
-  
   @media (max-width: 768px) {
     padding: 16px 12px;
-    
     .stat-content {
       flex-direction: row;
       align-items: center;
       gap: 12px;
     }
-    
     .remaining-time-title {
       font-size: 0.75rem;
       margin-bottom: 6px;
       line-height: 1.2;
     }
-    
     .time-number {
       font-size: 1.75rem;
     }
-    
     .time-unit {
       font-size: 0.875rem;
     }
-    
     .expiry-date {
       font-size: 0.75rem;
       margin-top: 6px;
       line-height: 1.3;
       word-break: break-word;
     }
-    
     .renew-btn {
       margin-left: 0;
       padding: 6px 12px;
@@ -2349,45 +2045,36 @@ onUnmounted(() => {
       box-sizing: border-box;
       max-width: fit-content;
       height: auto;
-      
       :is(i) {
         margin-right: 3px;
         font-size: 11px;
       }
     }
   }
-  
   @media (max-width: 480px) {
     padding: 14px 12px;
-    
     .stat-content {
       flex-direction: column;
       align-items: center;
       gap: 10px;
     }
-    
     .remaining-time-main {
       width: 100%;
       text-align: center;
     }
-    
     .remaining-time-title {
       font-size: 0.8125rem;
       margin-bottom: 8px;
     }
-    
     .remaining-time-value {
       justify-content: center;
     }
-    
     .time-number {
       font-size: 2rem;
     }
-    
     .time-unit {
       font-size: 1rem;
     }
-    
     .expiry-date {
       font-size: 0.6875rem;
       margin-top: 8px;
@@ -2396,7 +2083,6 @@ onUnmounted(() => {
       color: #6b7280;
       text-align: center;
     }
-    
     .renew-btn {
       margin-left: 0;
       width: auto;
@@ -2406,7 +2092,6 @@ onUnmounted(() => {
       box-sizing: border-box;
       max-width: fit-content;
       align-self: center;
-      
       :is(i) {
         margin-right: 4px;
         font-size: 12px;
@@ -2414,50 +2099,40 @@ onUnmounted(() => {
     }
   }
 }
-
-/* 充值对话框样式 */
 .recharge-dialog {
   :deep(.el-dialog__body) {
     padding: 20px;
-    
     @media (max-width: 768px) {
       padding: 16px;
     }
   }
-  
   :deep(.el-dialog) {
     @media (max-width: 768px) {
       width: 90% !important;
       margin: 5vh auto !important;
       max-width: 400px;
     }
-    
     @media (max-width: 480px) {
       width: 95% !important;
       margin: 2vh auto !important;
     }
   }
-  
   :deep(.el-dialog__header) {
     @media (max-width: 768px) {
       padding: 16px 16px 12px;
     }
   }
-  
   :deep(.el-dialog__title) {
     @media (max-width: 768px) {
       font-size: 18px;
     }
   }
-  
   :deep(.el-form-item) {
     margin-bottom: 20px;
-    
     @media (max-width: 768px) {
       margin-bottom: 16px;
     }
   }
-  
   :deep(.el-form-item__label) {
     @media (max-width: 768px) {
       font-size: 14px;
@@ -2468,38 +2143,31 @@ onUnmounted(() => {
       display: none; /* 移动端隐藏默认标签 */
     }
   }
-  
   .mobile-label {
     font-size: 14px;
     font-weight: 500;
     color: #606266;
     margin-bottom: 8px;
     display: block;
-    
     @media (min-width: 769px) {
       display: none;
     }
   }
-  
   :deep(.el-form-item__content) {
     @media (max-width: 768px) {
       margin-left: 0 !important;
     }
   }
-  
   :deep(.el-input-number) {
     width: 100%;
-    
     @media (max-width: 768px) {
       width: 100%;
     }
-    
     :deep(.el-input__wrapper) {
       @media (max-width: 768px) {
         padding: 8px 12px;
       }
     }
-    
     :deep(.el-input__inner) {
       @media (max-width: 768px) {
         font-size: 16px; /* 防止iOS自动缩放 */
@@ -2507,38 +2175,31 @@ onUnmounted(() => {
       }
     }
   }
-  
   .amount-tips {
     margin-top: 12px;
     font-size: 12px;
     color: #909399;
-    
     @media (max-width: 768px) {
       margin-top: 12px;
       font-size: 12px;
     }
-    
     :is(p) {
       margin-bottom: 12px;
       line-height: 1.5;
-      
       @media (max-width: 768px) {
         margin-bottom: 10px;
         font-size: 12px;
       }
     }
-    
     .quick-amounts {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       margin-top: 10px;
-      
       @media (max-width: 768px) {
         gap: 8px;
         margin-top: 12px;
       }
-      
       .quick-amount-btn {
         margin: 0;
         flex: 1 1 calc(33.333% - 6px);
@@ -2547,7 +2208,6 @@ onUnmounted(() => {
         padding: 10px 8px;
         font-size: 13px;
         border-radius: 6px;
-        
         @media (max-width: 480px) {
           flex: 1 1 calc(50% - 4px);
           min-width: calc(50% - 4px);
@@ -2558,44 +2218,37 @@ onUnmounted(() => {
       }
     }
   }
-  
   .recharge-qr-section {
     margin-top: 20px;
     text-align: center;
     padding: 20px;
     background: #f5f7fa;
     border-radius: 8px;
-    
     @media (max-width: 768px) {
       margin-top: 16px;
       padding: 16px;
       border-radius: 8px;
     }
-    
     :is(h4) {
       margin-bottom: 15px;
       color: #303133;
       font-size: 16px;
       font-weight: 600;
       line-height: 1.4;
-      
       @media (max-width: 768px) {
         font-size: 15px;
         margin-bottom: 12px;
         padding: 0 8px;
       }
     }
-    
     .qr-code-wrapper {
       display: flex;
       justify-content: center;
       align-items: center;
       margin: 20px 0;
-      
       @media (max-width: 768px) {
         margin: 16px 0;
       }
-      
       .qr-code-img {
         max-width: 250px;
         max-height: 250px;
@@ -2606,13 +2259,11 @@ onUnmounted(() => {
         padding: 10px;
         background: white;
         box-sizing: border-box;
-        
         @media (max-width: 768px) {
           max-width: 220px;
           max-height: 220px;
           padding: 10px;
         }
-        
         @media (max-width: 480px) {
           max-width: 200px;
           max-height: 200px;
@@ -2620,34 +2271,28 @@ onUnmounted(() => {
         }
       }
     }
-    
     .qr-tip {
       color: #909399;
       font-size: 12px;
       margin-top: 12px;
       line-height: 1.5;
       padding: 0 8px;
-      
       @media (max-width: 768px) {
         font-size: 12px;
         margin-top: 10px;
       }
     }
-    
     .recharge-payment-actions {
       margin-top: 15px;
-      
       @media (max-width: 768px) {
         margin-top: 12px;
       }
-      
       .el-button {
         width: 100%;
         padding: 12px 20px;
         font-size: 15px;
         border-radius: 8px;
         font-weight: 600;
-        
         @media (max-width: 480px) {
           padding: 14px 20px;
           font-size: 16px;
@@ -2655,29 +2300,24 @@ onUnmounted(() => {
       }
     }
   }
-  
   :deep(.el-dialog__footer) {
     padding: 16px 20px;
     border-top: 1px solid #e5e7eb;
-    
     @media (max-width: 768px) {
       padding: 12px 16px;
       display: flex;
       gap: 10px;
     }
-    
     .dialog-footer {
       display: flex;
       justify-content: flex-end;
       gap: 10px;
       width: 100%;
-      
       @media (max-width: 768px) {
         flex-direction: row;
         gap: 10px;
       }
     }
-    
     .el-button {
       @media (max-width: 768px) {
         flex: 1;
@@ -2686,7 +2326,6 @@ onUnmounted(() => {
         font-size: 14px;
         border-radius: 6px;
       }
-      
       @media (max-width: 480px) {
         padding: 12px 16px;
         font-size: 15px;
@@ -2694,15 +2333,11 @@ onUnmounted(() => {
     }
   }
 }
-
-/* 主要内容区域 */
 .main-content {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 30px;
 }
-
-/* 卡片通用样式 */
 .card {
   background: white;
   border-radius: 12px;
@@ -2710,14 +2345,12 @@ onUnmounted(() => {
   border: 1px solid #e5e7eb;
   margin-bottom: 20px;
 }
-
 .card-header {
   padding: 20px 24px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .card-title {
   font-size: 1.25rem;
   font-weight: 600;
@@ -2727,20 +2360,15 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
 }
-
 .card-body {
   padding: 20px 24px 24px;
 }
-
-
-/* 教程卡片 */
 .tutorial-tabs {
   display: flex;
   gap: 8px;
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
-
 .tutorial-tab {
   display: flex;
   align-items: center;
@@ -2753,18 +2381,15 @@ onUnmounted(() => {
   font-size: 0.875rem;
   font-weight: 500;
 }
-
 .tutorial-tab:hover {
   border-color: #3b82f6;
   background-color: #f8fafc;
 }
-
 .tutorial-tab.active {
   border-color: #3b82f6;
   background-color: #3b82f6;
   color: white;
 }
-
 .tutorial-app {
   display: flex;
   justify-content: space-between;
@@ -2774,97 +2399,78 @@ onUnmounted(() => {
   border-radius: 8px;
   margin-bottom: 12px;
 }
-
 .app-info {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .app-name {
   font-size: 1rem;
   font-weight: 600;
   margin: 0 0 4px 0;
   color: #1f2937;
 }
-
 .app-version {
   font-size: 0.875rem;
   color: #6b7280;
   margin: 0;
 }
-
 .app-actions {
   display: flex;
   gap: 8px;
 }
-
-/* 订阅卡片 */
 .subscription-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 20px;
-  
   @media (max-width: 768px) {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-bottom: 16px;
   }
-  
   @media (max-width: 480px) {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
 }
-
 .subscription-group {
   display: flex;
-  
   @media (max-width: 768px) {
     width: 100%;
   }
 }
-
 .clash-btn {
   background: linear-gradient(135deg, #667eea, #764ba2);
   border: none;
   width: 100%;
 }
-
 .shadowrocket-btn {
   background: linear-gradient(135deg, #f093fb, #f5576c);
   border: none;
   width: 100%;
 }
-
 .v2ray-btn {
   background: linear-gradient(135deg, #4facfe, #00f2fe);
   border: none;
   width: 100%;
 }
-
 .universal-btn {
   background: linear-gradient(135deg, #43e97b, #38f9d7);
   border: none;
   width: 100%;
 }
-
 .qr-code-section {
   text-align: center;
   padding-top: 20px;
   border-top: 1px solid #e5e7eb;
 }
-
 .qr-code-container {
   margin-top: 16px;
 }
-
-/* 软件分类标题 */
 .software-category {
   margin-bottom: 24px;
 }
-
 .category-title {
   display: flex;
   align-items: center;
@@ -2876,16 +2482,12 @@ onUnmounted(() => {
   padding-bottom: 8px;
   border-bottom: 2px solid #f0f0f0;
 }
-
 .category-title :is(i) {
   color: #667eea;
 }
-
-/* 订阅地址显示区域 */
 .subscription-urls-section {
   margin-bottom: 24px;
 }
-
 .section-title {
   display: flex;
   align-items: center;
@@ -2897,30 +2499,25 @@ onUnmounted(() => {
   padding-bottom: 8px;
   border-bottom: 2px solid #f0f0f0;
 }
-
 .section-title :is(i) {
   color: #667eea;
 }
-
 .url-display {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-
 .url-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-
 .url-item :is(label) {
   font-weight: 500;
   color: #606266;
   font-size: 13px;
   margin-bottom: 4px;
 }
-
 .url-input-wrapper {
   display: flex;
   align-items: center;
@@ -2928,13 +2525,10 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
 }
-
 .url-input {
   flex: 1;
   min-width: 0; /* 防止flex子元素溢出 */
 }
-
-/* 复制按钮样式 */
 .copy-btn {
   min-width: 48px !important;
   max-width: 48px !important;
@@ -2954,23 +2548,19 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: clip;
   box-sizing: border-box;
-  
   &:hover {
     background-color: #f5f7fa !important;
     border-color: #c0c4cc !important;
     color: #000000 !important;
   }
-  
   &:active {
     background-color: #ebedf0 !important;
   }
-  
   :is(i) {
     font-size: 11px !important;
     color: #000000 !important;
     flex-shrink: 0;
   }
-  
   :is(span) {
     font-size: 11px !important;
     color: #000000 !important;
@@ -2979,12 +2569,9 @@ onUnmounted(() => {
     flex-shrink: 0;
   }
 }
-
-/* 二维码区域 */
 .qr-code-section {
   margin-bottom: 24px;
 }
-
 .qr-code-container {
   display: flex;
   flex-direction: column;
@@ -2995,7 +2582,6 @@ onUnmounted(() => {
   border-radius: 12px;
   border: 2px dashed #e0e0e0;
 }
-
 .qr-code {
   width: 200px;
   height: 200px;
@@ -3006,14 +2592,12 @@ onUnmounted(() => {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
-
 .qr-code img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   border-radius: 8px;
 }
-
 .qr-placeholder {
   display: flex;
   flex-direction: column;
@@ -3021,19 +2605,15 @@ onUnmounted(() => {
   gap: 8px;
   color: #999;
 }
-
 .qr-placeholder :is(i) {
   font-size: 48px;
 }
-
 .qr-tip {
   font-size: 14px;
   color: #666;
   text-align: center;
   margin: 0;
 }
-
-/* 新按钮样式 */
 .flash-btn {
   background: linear-gradient(135deg, #ff6b6b, #ee5a24);
   border: none;
@@ -3042,19 +2622,16 @@ onUnmounted(() => {
   padding: 14px 20px;
   font-weight: 600;
   transition: all 0.3s ease;
-  
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
     border-radius: 16px;
     box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
-    
     &:active {
       transform: scale(0.98);
     }
   }
 }
-
 .mohomo-btn {
   background: linear-gradient(135deg, #4834d4, #686de0);
   border: none;
@@ -3063,20 +2640,17 @@ onUnmounted(() => {
   padding: 14px 20px;
   font-weight: 600;
   transition: all 0.3s ease;
-  
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
     border-radius: 16px;
     box-shadow: 0 4px 12px rgba(72, 52, 212, 0.3);
-    
     &:active {
       transform: scale(0.98);
     }
   }
 }
-
-.sparkle-btn {
+.clash-verge-btn {
   background: linear-gradient(135deg, #feca57, #ff9ff3);
   border: none;
   width: 100%;
@@ -3084,19 +2658,16 @@ onUnmounted(() => {
   padding: 14px 20px;
   font-weight: 600;
   transition: all 0.3s ease;
-  
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
     border-radius: 16px;
     box-shadow: 0 4px 12px rgba(254, 202, 87, 0.3);
-    
     &:active {
       transform: scale(0.98);
     }
   }
 }
-
 .hiddify-btn {
   background: linear-gradient(135deg, #a8edea, #fed6e3);
   border: none;
@@ -3106,38 +2677,31 @@ onUnmounted(() => {
   padding: 14px 20px;
   font-weight: 600;
   transition: all 0.3s ease;
-  
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
     border-radius: 16px;
     box-shadow: 0 4px 12px rgba(168, 237, 234, 0.3);
-    
     &:active {
       transform: scale(0.98);
     }
   }
 }
-
 .qr-code img {
   width: 200px;
   height: 200px;
   border-radius: 8px;
 }
-
 .qr-tip {
   font-size: 0.875rem;
   color: #6b7280;
   margin: 12px 0 0 0;
 }
-
-/* 设备卡片 */
 .device-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
 .device-item {
   display: flex;
   justify-content: space-between;
@@ -3147,13 +2711,11 @@ onUnmounted(() => {
   border-radius: 8px;
   margin-bottom: 12px;
 }
-
 .device-info {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .device-icon {
   width: 40px;
   height: 40px;
@@ -3165,91 +2727,73 @@ onUnmounted(() => {
   color: white;
   font-size: 18px;
 }
-
 .device-name {
   font-size: 1rem;
   font-weight: 600;
   margin: 0 0 4px 0;
   color: #1f2937;
 }
-
 .device-os, .device-ip {
   font-size: 0.875rem;
   color: #6b7280;
   margin: 0;
 }
-
 .no-devices {
   text-align: center;
   padding: 40px 20px;
   color: #9ca3af;
 }
-
 .no-devices :is(i) {
   font-size: 3rem;
   margin-bottom: 16px;
   display: block;
 }
-
-
-/* 响应式设计 */
 @media (max-width: 768px) {
   .dashboard-container {
     padding: 0;
   }
-  
   .welcome-banner {
     margin: 0 -12px 12px -12px;
     border-radius: 0;
     padding: 16px 12px;
-    
     .banner-content {
       flex-direction: column;
       text-align: center;
       gap: 8px;
-      
       .welcome-text {
         .welcome-title {
           font-size: 1.25rem;
           margin-bottom: 4px;
         }
-        
         .welcome-subtitle {
           font-size: 0.8125rem;
         }
       }
-      
       .welcome-icon {
         font-size: 1.5rem;
         opacity: 0.2;
       }
     }
   }
-  
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
     margin-bottom: 16px;
-
     @media (max-width: 480px) {
       grid-template-columns: 1fr;
       gap: 12px;
     }
-    
-    /* 移动端禁用不必要的装饰动画以省电 */
     &.level-card::before,
     &.max-level-tip::before,
     .level-icon::before {
       animation: none !important;
       display: none;
     }
-    
     .stat-card {
       padding: 16px;
       display: flex;
       align-items: flex-start;
       gap: 12px;
-      
       .stat-icon {
         width: 48px;
         height: 48px;
@@ -3258,14 +2802,12 @@ onUnmounted(() => {
         flex-shrink: 0;
         border-radius: 10px;
       }
-      
       .stat-content {
         flex: 1;
         min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 6px;
-        
         .stat-title {
           font-size: 1.25rem;
           margin: 0;
@@ -3273,7 +2815,6 @@ onUnmounted(() => {
           line-height: 1.3;
           font-weight: 700;
         }
-        
         .stat-subtitle {
           font-size: 0.8125rem;
           line-height: 1.4;
@@ -3283,58 +2824,46 @@ onUnmounted(() => {
         }
       }
     }
-    
-    /* 等级卡片在移动端的优化 */
     .level-card {
       padding: 16px;
-      
       .level-card-inner {
         gap: 14px;
       }
-      
       .level-icon {
         width: 56px;
         height: 56px;
         font-size: 26px;
         border-radius: 12px;
       }
-      
       .level-content {
         .level-header {
           margin-bottom: 10px;
           gap: 8px;
-          
           .level-name {
             font-size: 1.5rem;
             line-height: 1.2;
           }
-          
           .level-discount-tag {
             font-size: 12px;
             padding: 4px 10px;
           }
         }
-        
         .level-expiry {
           font-size: 0.8125rem;
           margin-bottom: 12px;
         }
       }
     }
-    
-    /* 余额卡片在移动端的优化 */
     .balance-card {
       .stat-content {
         flex-direction: row;
         align-items: center;
         gap: 12px;
       }
-      
       .balance-main {
         flex: 1;
         min-width: 0;
       }
-      
       .recharge-btn {
         padding: 6px 12px;
         font-size: 0.75rem;
@@ -3342,64 +2871,49 @@ onUnmounted(() => {
         white-space: nowrap;
       }
     }
-    
-    /* 设备卡片在移动端的优化 */
     .device-card {
       .stat-content {
         width: 100%;
       }
-      
       .device-count-wrapper {
         margin-bottom: 6px;
-        
         .device-count {
           font-size: 1.5rem;
         }
-        
         .device-separator {
           font-size: 1.1rem;
         }
-        
         .device-limit {
           font-size: 1.5rem;
         }
       }
-      
       .stat-subtitle {
         margin-top: 4px;
       }
     }
-    
-    /* 剩余时间卡片在移动端的特殊处理 */
     .remaining-time-card {
       grid-column: 1 / -1; /* 占据整行 */
       padding: 16px;
-      
       .stat-content {
         flex-direction: row;
         align-items: center;
         gap: 12px;
         width: 100%;
       }
-      
       .remaining-time-main {
         flex: 1;
         min-width: 0;
       }
-      
       .time-number {
         font-size: 1.25rem;
       }
-      
       .time-unit {
         font-size: 0.875rem;
       }
-      
       .stat-subtitle {
         font-size: 0.75rem;
         line-height: 1.3;
       }
-      
       .renew-btn {
         padding: 6px 12px;
         font-size: 0.75rem;
@@ -3408,71 +2922,55 @@ onUnmounted(() => {
       }
     }
   }
-  
   .main-content {
     grid-template-columns: 1fr;
     gap: 12px;
-    
     .left-content,
     .right-content {
       width: 100%;
     }
   }
-  
   .card {
     margin-bottom: 12px;
-    
     .card-header {
       padding: 12px 16px;
-      
       .card-title {
         font-size: 1rem;
-        
         :is(i) {
           font-size: 16px;
           margin-right: 6px;
         }
       }
     }
-    
     .card-body {
       padding: 16px;
     }
   }
-  
-  
   .tutorial-tabs {
     gap: 8px;
     margin-bottom: 16px;
-    /* 优化：移动端改为横向滚动，避免换行占用过多纵向空间 */
     display: flex;
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 4px; /* 预留滚动条空间 */
-    
-    /* 隐藏滚动条 */
     &::-webkit-scrollbar {
       display: none;
     }
-    
     .tutorial-tab {
       padding: 10px 16px;
       font-size: 0.8125rem;
       flex: 0 0 auto; /* 防止压缩 */
       white-space: nowrap;
-      
       :is(i) {
         font-size: 14px;
       }
     }
   }
-  
   .subscription-buttons {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-bottom: 20px;
-    
     .el-button {
       padding: 14px 12px;
       font-size: 14px;
@@ -3483,49 +2981,40 @@ onUnmounted(() => {
       white-space: nowrap;
       overflow: clip;
       text-overflow: ellipsis;
-      
       &:active {
         transform: scale(0.98);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
-      
       :is(i) {
         font-size: 14px;
         margin-right: 4px;
       }
     }
   }
-  
   .software-category {
     margin-bottom: 24px;
-    
     .category-title {
       font-size: 15px;
       margin-bottom: 14px;
       padding-bottom: 10px;
     }
   }
-  
   .url-item {
     gap: 6px;
-    
     :is(label) {
       font-size: 12px;
       margin-bottom: 2px;
     }
   }
-  
   .url-input-wrapper {
     flex-direction: row !important;
     align-items: center !important;
     gap: 6px !important;
     width: 100% !important;
-    
     .url-input {
       flex: 1 !important;
       min-width: 0 !important;
     }
-    
     .copy-btn {
       min-width: 48px !important;
       max-width: 48px !important;
@@ -3534,48 +3023,38 @@ onUnmounted(() => {
       font-size: 11px !important;
       flex-shrink: 0 !important;
       gap: 3px !important;
-      
       :is(i) {
         font-size: 11px !important;
       }
-      
       :is(span) {
         font-size: 11px !important;
       }
     }
   }
-  
   .qr-code-container {
     padding: 16px;
-    
     .qr-code {
       width: 160px;
       height: 160px;
     }
-    
     .qr-tip {
       font-size: 0.8125rem;
       margin-top: 12px;
     }
   }
-  
   .device-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
     padding: 14px;
-    
     .device-info {
       width: 100%;
     }
-    
     .device-actions {
       width: 100%;
-      
       .el-button {
         width: 100%;
         margin-bottom: 8px;
-        
         &:last-child {
           margin-bottom: 0;
         }
@@ -3583,55 +3062,44 @@ onUnmounted(() => {
     }
   }
 }
-
 @media (max-width: 480px) {
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  
   .welcome-title {
     font-size: 1.25rem;
   }
-  
   .welcome-subtitle {
     font-size: 0.8125rem;
   }
-  
   .stat-card {
     padding: 16px;
     gap: 12px;
-    
     .stat-icon {
       width: 48px;
       height: 48px;
       font-size: 22px;
       border-radius: 10px;
     }
-    
     .stat-content {
       gap: 6px;
-      
       .stat-title {
         font-size: 1.25rem;
         line-height: 1.3;
       }
-      
       .stat-subtitle {
         font-size: 0.8125rem;
         line-height: 1.4;
       }
     }
   }
-  
-  /* 等级卡片在小屏幕的优化 */
   .level-card {
     .level-icon {
       width: 56px;
       height: 56px;
       font-size: 26px;
     }
-    
     .level-content {
       .level-header {
         .level-name {
@@ -3640,20 +3108,16 @@ onUnmounted(() => {
       }
     }
   }
-  
-  /* 余额卡片在小屏幕的优化 */
   .balance-card {
     .stat-content {
       flex-direction: row;
       align-items: center;
       gap: 12px;
     }
-    
     .balance-main {
       flex: 1;
       min-width: 0;
     }
-    
     .recharge-btn {
       padding: 8px 16px;
       font-size: 0.8125rem;
@@ -3661,8 +3125,6 @@ onUnmounted(() => {
       white-space: nowrap;
     }
   }
-  
-  /* 设备卡片在小屏幕的优化 */
   .device-card {
     .device-count-wrapper {
       .device-count,
@@ -3671,35 +3133,28 @@ onUnmounted(() => {
       }
     }
   }
-  
-  /* 剩余时间卡片在小屏幕的优化 */
   .remaining-time-card {
     .stat-content {
       flex-direction: row;
       align-items: center;
       gap: 12px;
     }
-    
     .remaining-time-main {
       flex: 1;
       min-width: 0;
       gap: 4px;
     }
-    
     .time-number {
       font-size: 1.25rem;
     }
-    
     .time-unit {
       font-size: 0.875rem;
     }
-    
     .stat-subtitle {
       font-size: 0.75rem;
       line-height: 1.3;
       text-align: left;
     }
-    
     .renew-btn {
       padding: 8px 16px;
       font-size: 0.8125rem;
@@ -3707,31 +3162,24 @@ onUnmounted(() => {
       white-space: nowrap;
     }
   }
-  
   .card-body {
     padding: 12px;
   }
-  
-  
   .subscription-buttons {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
-    
     .el-button {
       padding: 12px 10px;
       font-size: 13px;
       border-radius: 14px;
-      
       :is(i) {
         font-size: 12px;
         margin-right: 3px;
       }
     }
   }
-  
   .url-input-wrapper {
     gap: 6px !important;
-    
     .copy-btn {
       min-width: 46px !important;
       max-width: 46px !important;
@@ -3739,17 +3187,14 @@ onUnmounted(() => {
       padding: 4px 5px !important;
       font-size: 10px !important;
       gap: 2px !important;
-      
       :is(i) {
         font-size: 10px !important;
       }
-      
       :is(span) {
         font-size: 10px !important;
       }
     }
   }
-  
   .qr-code-container {
     .qr-code {
       width: 140px;

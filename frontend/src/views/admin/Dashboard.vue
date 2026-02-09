@@ -34,7 +34,6 @@
         </el-card>
       </el-col>
     </el-row>
-
     <el-row :gutter="20" style="margin-top: 20px;">
       <el-col :span="8">
         <el-card class="dashboard-card">
@@ -82,7 +81,6 @@
           </div>
         </el-card>
       </el-col>
-      
       <el-col :span="8">
         <el-card class="dashboard-card">
           <template #header>
@@ -129,7 +127,6 @@
           </div>
         </el-card>
       </el-col>
-      
       <el-col :span="8">
         <el-card class="dashboard-card">
           <template #header>
@@ -149,7 +146,6 @@
               :data="abnormalUsers.slice(0, 10)" 
               style="width: 100%"
               :show-header="false"
-
               size="small"
               @row-click="handleAbnormalUserClick"
             >
@@ -184,8 +180,6 @@
         </el-card>
       </el-col>
     </el-row>
-
-    <!-- 七天内即将到期客户 -->
     <el-row :gutter="20" style="margin-top: 20px;">
       <el-col :span="24">
         <el-card class="dashboard-card expiring-card">
@@ -217,7 +211,6 @@
               </div>
             </div>
           </template>
-          <!-- 桌面端：表格显示 -->
           <div class="table-container expiring-table-container desktop-only">
             <el-table 
               :data="expiringSubscriptions" 
@@ -271,7 +264,6 @@
               暂无即将到期的客户
             </div>
           </div>
-          <!-- 移动端：卡片列表显示 -->
           <div class="mobile-expiring-list mobile-only">
             <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" class="empty-state-mobile">
               暂无即将到期的客户
@@ -337,7 +329,6 @@
     </el-row>
   </div>
 </template>
-
 <script>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -345,7 +336,6 @@ import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
 import { ArrowRight, ShoppingCart, Warning } from '@element-plus/icons-vue'
-
 export default {
   name: 'AdminDashboard',
   components: {
@@ -369,25 +359,18 @@ export default {
     const selectedExpiring = ref([])
     const expiringFilter = ref('all')
     const sendingExpireReminder = ref(false)
-
     const loadStats = async () => {
       try {
         const response = await adminAPI.getDashboard()
-        
         if (response && response.data) {
-          // 检查响应格式
           let data = null
           if (response.data.success === true && response.data.data) {
-            // 标准格式：{ success: true, data: {...} }
             data = response.data.data
           } else if (response.data.totalUsers !== undefined) {
-            // 直接数据格式：{ totalUsers: ..., ... }
             data = response.data
           } else if (response.data.data && typeof response.data.data === 'object') {
-            // 嵌套数据格式
             data = response.data.data
           }
-          
           if (data) {
             stats.value = {
               totalUsers: Number(data.totalUsers) || 0,
@@ -398,7 +381,6 @@ export default {
           } else {
             console.error('无法解析数据，响应格式:', response.data)
             ElMessage.warning('数据格式异常，请查看控制台')
-            // 即使数据格式异常，也设置默认值避免空白
             stats.value = {
               totalUsers: 0,
               activeSubscriptions: 0,
@@ -425,7 +407,6 @@ export default {
           statusText: error.response?.statusText
         })
         ElMessage.error('获取统计数据失败: ' + (error.response?.data?.message || error.message || '未知错误'))
-        // 设置默认值避免空白
         stats.value = {
           totalUsers: 0,
           activeSubscriptions: 0,
@@ -434,7 +415,6 @@ export default {
         }
       }
     }
-
     const loadRecentUsers = async () => {
       try {
         const response = await api.get('/admin/users/recent')
@@ -452,7 +432,6 @@ export default {
         recentUsers.value = []
       }
     }
-
     const loadRecentOrders = async () => {
       try {
         const response = await api.get('/admin/orders/recent')
@@ -470,14 +449,12 @@ export default {
         recentOrders.value = []
       }
     }
-
     const loadAbnormalUsers = async () => {
       try {
         const response = await api.get('/admin/users/abnormal')
         if (response && response.data) {
           if (response.data.success !== false) {
             const data = response.data.data || []
-            // 只显示前5个异常用户
             abnormalUsers.value = Array.isArray(data) ? data.slice(0, 5) : []
           } else {
             abnormalUsers.value = []
@@ -490,7 +467,6 @@ export default {
         abnormalUsers.value = []
       }
     }
-
     const getOrderStatusType = (status) => {
       const statusMap = {
         'pending': 'warning',
@@ -500,7 +476,6 @@ export default {
       }
       return statusMap[status] || 'info'
     }
-
     const getOrderStatusText = (status) => {
       const statusMap = {
         'pending': '待支付',
@@ -510,7 +485,6 @@ export default {
       }
       return statusMap[status] || status
     }
-
     const getAbnormalTypeTag = (type) => {
       const typeMap = {
         'frequent_reset': 'warning',
@@ -519,7 +493,6 @@ export default {
       }
       return typeMap[type] || 'info'
     }
-
     const getAbnormalTypeText = (type) => {
       const typeMap = {
         'frequent_reset': '频繁重置',
@@ -528,14 +501,10 @@ export default {
       }
       return typeMap[type] || type
     }
-
     const goToAbnormalUsers = () => {
       router.push('/admin/abnormal-users')
     }
-
-    // 处理异常用户点击事件
     const handleAbnormalUserClick = (row) => {
-      // 显示操作菜单：查看订阅列表或查看异常详情
       ElMessageBox.confirm(
         `选择操作：`,
         `用户 ${row.username || row.email}`,
@@ -547,17 +516,13 @@ export default {
           showClose: false
         }
       ).then(() => {
-        // 确认：跳转到订阅列表
         goToUserSubscription(row)
       }).catch((action) => {
         if (action === 'cancel') {
-          // 取消：跳转到异常用户列表并查看详情
           viewAbnormalUserDetails(row)
         }
       })
     }
-
-    // 查看异常用户详情
     const viewAbnormalUserDetails = (row) => {
       const userId = row.user_id || row.id
       if (userId) {
@@ -569,10 +534,7 @@ export default {
         ElMessage.warning('无法获取用户ID')
       }
     }
-
-    // 跳转到用户订阅管理页面
     const goToUserSubscription = (row) => {
-      // 优先使用邮箱进行搜索，邮箱搜索更准确
       const searchParam = row.email || row.username || row.id || row.user_id
       if (searchParam) {
         router.push({
@@ -583,10 +545,7 @@ export default {
         ElMessage.warning('该用户信息不完整')
       }
     }
-
-    // 跳转到订单管理页面并搜索该订单
     const goToOrderUserSubscription = (row) => {
-      // 使用订单号进行搜索
       const orderNo = row.order_no || row.orderNo
       if (orderNo) {
         router.push({
@@ -597,15 +556,12 @@ export default {
         ElMessage.warning('该订单号不存在')
       }
     }
-
     const formatMoney = (value) => {
       if (value === null || value === undefined || value === '') return '0.00'
       const num = typeof value === 'string' ? parseFloat(value) : value
       if (isNaN(num)) return '0.00'
       return num.toFixed(2)
     }
-
-    // 加载即将到期的订阅
     const loadExpiringSubscriptions = async () => {
       try {
         const params = { days: 7 }
@@ -627,13 +583,9 @@ export default {
         expiringSubscriptions.value = []
       }
     }
-
-    // 处理选择变化
     const handleExpiringSelectionChange = (selection) => {
       selectedExpiring.value = selection.map(item => item.user_id || item.id)
     }
-
-    // 移动端切换选择
     const toggleExpiringSelection = (item) => {
       const id = item.user_id || item.id
       const index = selectedExpiring.value.indexOf(id)
@@ -643,24 +595,18 @@ export default {
         selectedExpiring.value.push(id)
       }
     }
-
-    // 获取到期标签类型
     const getExpireTagType = (days) => {
       if (days <= 0) return 'danger'
       if (days <= 1) return 'warning'
       if (days <= 3) return 'warning'
       return 'info'
     }
-
-    // 获取到期颜色
     const getExpireColor = (days) => {
       if (days <= 0) return '#f56c6c'
       if (days <= 1) return '#e6a23c'
       if (days <= 3) return '#e6a23c'
       return '#409eff'
     }
-
-    // 打开QQ聊天
     const openQQChat = (row) => {
       if (!row.qq) {
         ElMessage.warning('该用户未设置QQ号码')
@@ -670,8 +616,6 @@ export default {
       const qqUrl = `tencent://message/?uin=${row.qq}&Menu=yes&Message=${encodeURIComponent(message)}`
       window.open(qqUrl, '_blank')
     }
-
-    // 发送到期提醒
     const sendExpireReminder = async (ids) => {
       try {
         sendingExpireReminder.value = true
@@ -688,8 +632,6 @@ export default {
         sendingExpireReminder.value = false
       }
     }
-
-    // 批量发送到期提醒
     const batchSendExpireReminder = () => {
       if (selectedExpiring.value.length === 0) {
         ElMessage.warning('请先选择要发送提醒的客户')
@@ -697,10 +639,8 @@ export default {
       }
       sendExpireReminder(selectedExpiring.value)
     }
-
     onMounted(async () => {
       try {
-        // 使用 Promise.all 并行加载，但捕获所有错误
         await Promise.allSettled([
           loadStats(),
           loadRecentUsers(),
@@ -712,7 +652,6 @@ export default {
         console.error('加载仪表盘数据时发生错误:', error)
       }
     })
-
     return {
       stats,
       recentUsers,
@@ -744,43 +683,33 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-dashboard {
   padding: 20px;
 }
-
 .stat-card {
   text-align: center;
 }
-
 .stat-content {
   padding: 20px;
 }
-
 .stat-number {
   font-size: 2em;
   font-weight: bold;
   color: #409EFF;
 }
-
 .stat-label {
   margin-top: 10px;
   color: #666;
 }
-
-/* 移动端优化 */
 @media (max-width: 768px) {
   .admin-dashboard {
     padding: 0;
   }
-  
-  /* 统计卡片垂直排列 */
   .admin-dashboard :deep(.el-row) {
     margin-left: 0 !important;
     margin-right: 0 !important;
     margin-top: 0 !important;
-    
     .el-col {
       width: 100% !important;
       max-width: 100% !important;
@@ -789,48 +718,37 @@ export default {
       padding-right: 0 !important;
       margin-bottom: 12px !important;
     }
-    
     &[style*="margin-top"] {
       margin-top: 0 !important;
     }
   }
-  
   .stat-card {
     margin-bottom: 0;
-    
     :deep(.el-card__body) {
       padding: 16px 12px !important;
     }
-    
     .stat-content {
       padding: 12px;
     }
-    
     .stat-number {
       font-size: 1.75em;
     }
-    
     .stat-label {
       font-size: 0.875rem;
       margin-top: 8px;
     }
   }
-  
   .dashboard-card {
     height: auto !important;
     min-height: 300px;
     margin-bottom: 16px;
-    
     :deep(.el-card__header) {
       padding: 12px 16px;
-      
       .card-header {
         padding: 0;
-        
         .card-title {
           font-size: 0.9375rem;
         }
-        
         .item-count {
           :deep(.el-badge__content) {
             font-size: 11px;
@@ -840,7 +758,6 @@ export default {
             padding: 0 5px;
           }
         }
-        
         .header-actions {
           .view-all-btn {
             font-size: 0.75rem;
@@ -849,81 +766,64 @@ export default {
         }
       }
     }
-    
     .table-container {
       padding: 12px;
       max-height: 250px;
-      
       :deep(.el-table) {
         font-size: 0.8125rem;
-        
         .el-table__body-wrapper {
           max-height: 200px;
         }
-        
         .el-table__cell {
           padding: 8px 4px;
         }
       }
     }
   }
-  
   .user-info,
   .order-info,
   .abnormal-info {
     padding-left: 6px;
-    
     .user-name,
     .order-no,
     .abnormal-user {
       font-size: 0.8125rem;
     }
-    
     .user-email,
     .order-amount,
     .abnormal-email {
       font-size: 0.75rem;
     }
   }
-  
-  /* 确保所有el-col在移动端都是100%宽度 */
   :deep(.el-col) {
     flex: 0 0 100% !important;
     max-width: 100% !important;
     width: 100% !important;
   }
 }
-
 @media (max-width: 480px) {
   .admin-dashboard {
     padding: 8px;
   }
-  
   .stat-card {
     .stat-content {
       padding: 10px;
     }
-    
     .stat-number {
       font-size: 1.5em;
     }
-    
     .stat-label {
       font-size: 0.8125rem;
     }
   }
-  
   .dashboard-card {
     :deep(.el-card__header) {
       padding: 10px 12px;
     }
-    
     .table-container {
       padding: 10px;
-      
       :deep(.el-table) {
         font-size: 0.75rem;
-        
         .el-table__cell {
           padding: 6px 2px;
         }
@@ -931,97 +831,77 @@ export default {
     }
   }
 }
-
-/* 仪表盘卡片样式 */
 .dashboard-card {
   height: 400px;
   display: flex;
   flex-direction: column;
 }
-
 .dashboard-card .el-card__body {
   flex: 1;
   padding: 0;
   display: flex;
   flex-direction: column;
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 4px;
 }
-
 .card-title {
   font-weight: 600;
   color: #303133;
   font-size: 16px;
 }
-
 .header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .item-count {
   margin-right: 8px;
 }
-
 .view-all-btn {
   padding: 4px 8px;
   font-size: 12px;
   color: #409eff;
 }
-
 .view-all-btn:hover {
   color: #66b1ff;
 }
-
-/* 表格容器 */
 .table-container {
   flex: 1;
   overflow: clip;
   padding: 16px;
 }
-
 .table-container .el-table {
   height: 100%;
 }
-
 .table-container .el-table__body-wrapper {
   max-height: 300px;
   overflow-y: auto;
 }
-
-/* 用户信息样式 */
 .user-avatar {
   background-color: #409eff;
   color: white;
   font-size: 12px;
   font-weight: 600;
 }
-
 .user-info {
   padding-left: 8px;
 }
-
 .user-name {
   font-weight: 500;
   color: #303133;
   font-size: 14px;
   line-height: 1.2;
 }
-
 .user-email {
   color: #909399;
   font-size: 12px;
   line-height: 1.2;
   margin-top: 2px;
 }
-
-/* 订单信息样式 */
 .order-icon {
   width: 24px;
   height: 24px;
@@ -1033,18 +913,15 @@ export default {
   color: white;
   font-size: 12px;
 }
-
 .order-info {
   padding-left: 8px;
 }
-
 .order-no {
   font-weight: 500;
   color: #303133;
   font-size: 14px;
   line-height: 1.2;
 }
-
 .order-amount {
   color: #e6a23c;
   font-size: 12px;
@@ -1052,8 +929,6 @@ export default {
   margin-top: 2px;
   font-weight: 600;
 }
-
-/* 异常用户信息样式 */
 .abnormal-icon {
   width: 24px;
   height: 24px;
@@ -1065,41 +940,31 @@ export default {
   color: white;
   font-size: 12px;
 }
-
 .abnormal-info {
   padding-left: 8px;
 }
-
 .abnormal-user {
   font-weight: 500;
   color: #303133;
   font-size: 14px;
   line-height: 1.2;
 }
-
 .abnormal-email {
   color: #909399;
   font-size: 12px;
   line-height: 1.2;
   margin-top: 2px;
 }
-
-/* 表格行样式 */
 .table-container .el-table__row {
   height: 48px;
   cursor: pointer;
 }
-
 .table-container .el-table__row:hover {
   background-color: #f0f9ff;
 }
-
-/* 可点击行样式 */
 .clickable-row {
   cursor: pointer;
 }
-
-/* 标签样式优化 */
 .table-container .el-tag {
   border-radius: 12px;
   font-size: 11px;
@@ -1107,103 +972,80 @@ export default {
   height: 20px;
   line-height: 16px;
 }
-
-/* 滚动条样式 */
 .table-container .el-table__body-wrapper::-webkit-scrollbar {
   width: 4px;
 }
-
 .table-container .el-table__body-wrapper::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 2px;
 }
-
 .table-container .el-table__body-wrapper::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 2px;
 }
-
 .table-container .el-table__body-wrapper::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
-
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
-/* 七天内到期客户样式优化 */
 .expiring-card {
   min-height: auto !important;
 }
-
 .expiring-header {
   flex-wrap: wrap;
   gap: 12px;
 }
-
 .expiring-actions {
   flex-wrap: wrap;
   gap: 8px;
 }
-
 .expiring-filter-select {
   min-width: 100px;
 }
-
 .batch-send-btn {
   white-space: nowrap;
 }
-
 .batch-send-text {
   font-size: 13px;
 }
-
 .empty-state {
   text-align: center;
   padding: 40px;
   color: #999;
 }
-
-/* 移动端到期客户卡片列表 */
 .mobile-expiring-list {
   padding: 12px;
 }
-
 .empty-state-mobile {
   text-align: center;
   padding: 60px 20px;
   color: #999;
   font-size: 14px;
 }
-
 .expiring-item-card {
   background: #f8f9fa;
   border-radius: 8px;
@@ -1211,23 +1053,19 @@ export default {
   margin-bottom: 12px;
   border: 1px solid #e9ecef;
 }
-
 .expiring-item-header {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   margin-bottom: 12px;
 }
-
 .expiring-checkbox {
   margin-top: 4px;
 }
-
 .expiring-user-info {
   flex: 1;
   min-width: 0;
 }
-
 .expiring-username {
   font-weight: 600;
   color: #303133;
@@ -1236,166 +1074,131 @@ export default {
   margin-bottom: 4px;
   word-break: break-all;
 }
-
 .expiring-email {
   color: #909399;
   font-size: 13px;
   line-height: 1.4;
   word-break: break-all;
 }
-
 .expiring-days-tag {
   flex-shrink: 0;
   margin-top: 2px;
 }
-
 .expiring-item-body {
   padding: 10px 0;
   border-top: 1px solid #e9ecef;
   border-bottom: 1px solid #e9ecef;
   margin-bottom: 10px;
 }
-
 .expiring-item-row {
   display: flex;
   align-items: center;
   margin-bottom: 8px;
   font-size: 13px;
 }
-
 .expiring-item-row:last-child {
   margin-bottom: 0;
 }
-
 .expiring-label {
   color: #909399;
   min-width: 70px;
   flex-shrink: 0;
 }
-
 .expiring-value {
   color: #303133;
   flex: 1;
   word-break: break-all;
 }
-
 .expiring-item-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
-
 .expiring-item-actions .action-btn {
   flex: 1;
   min-width: 100px;
 }
-
-/* 移动端响应式优化 */
 @media (max-width: 768px) {
   .expiring-card {
     margin-bottom: 16px;
   }
-
   .expiring-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-
   .expiring-actions {
     width: 100%;
     flex-direction: column;
   }
-
   .expiring-filter-select {
     width: 100%;
     margin-bottom: 0;
   }
-
   .batch-send-btn {
     width: 100%;
   }
-
   .batch-send-text {
     font-size: 14px;
   }
-
   .expiring-table-container {
     display: none !important;
   }
-
   .mobile-expiring-list {
     display: block !important;
   }
-
   .expiring-item-card {
     padding: 14px;
   }
-
   .expiring-username {
     font-size: 16px;
   }
-
   .expiring-email {
     font-size: 14px;
   }
-
   .expiring-item-row {
     font-size: 14px;
   }
-
   .expiring-label {
     min-width: 80px;
   }
 }
-
 @media (min-width: 769px) {
   .mobile-expiring-list {
     display: none !important;
   }
-
   .expiring-table-container {
     display: block !important;
   }
 }
-
 @media (max-width: 480px) {
   .expiring-item-card {
     padding: 12px;
   }
-
   .expiring-username {
     font-size: 15px;
   }
-
   .expiring-email {
     font-size: 13px;
   }
-
   .expiring-item-actions {
     flex-direction: column;
   }
-
   .expiring-item-actions .action-btn {
     width: 100%;
     min-width: auto;
   }
 }
-
-/* 桌面端和移动端显示控制 */
 .desktop-only {
   display: block;
 }
-
 .mobile-only {
   display: none;
 }
-
 @media (max-width: 768px) {
   .desktop-only {
     display: none !important;
   }
-
   .mobile-only {
     display: block !important;
   }

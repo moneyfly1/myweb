@@ -7,8 +7,6 @@
             <span class="title-text">节点管理</span>
             <el-tag v-if="pagination.total" type="info" round size="small" class="count-tag">{{ pagination.total }}</el-tag>
           </div>
-          
-          <!-- 桌面端操作按钮 -->
           <div class="header-actions" v-if="!isMobile">
             <el-button type="primary" @click="handleAdd">
               <el-icon><Plus /></el-icon>添加节点
@@ -23,8 +21,6 @@
               <el-icon><Refresh /></el-icon>刷新
             </el-button>
           </div>
-
-          <!-- 移动端精简操作按钮 -->
           <div class="header-actions mobile" v-else>
             <el-button type="primary" circle @click="handleAdd" size="small">
               <el-icon><Plus /></el-icon>
@@ -44,8 +40,6 @@
           </div>
         </div>
       </template>
-
-      <!-- 筛选栏：响应式网格布局 -->
       <div class="filter-wrapper">
         <div class="filter-grid">
           <el-select v-model="filters.status" placeholder="状态" clearable @change="loadNodes">
@@ -79,10 +73,7 @@
           </div>
         </div>
       </div>
-
-      <!-- 内容展示区 -->
       <div class="content-view" v-loading="loading">
-        <!-- 桌面端：表格视图 -->
         <el-table
           v-if="!isMobile"
           :data="nodes"
@@ -125,10 +116,7 @@
             </template>
           </el-table-column>
         </el-table>
-
-        <!-- 移动端：卡片列表视图 -->
         <div v-else class="mobile-list">
-          <!-- 全选控制栏 -->
           <div class="mobile-selection-bar" v-if="nodes.length > 0">
             <el-checkbox 
               v-model="isAllSelected" 
@@ -136,7 +124,6 @@
               @change="toggleMobileSelectAll"
             >全选 ({{ selectedNodes.length }})</el-checkbox>
           </div>
-
           <div v-for="node in nodes" :key="node.id" class="node-card">
             <div class="card-header-row">
               <el-checkbox 
@@ -147,7 +134,6 @@
               <div class="node-title">{{ node.name }}</div>
               <el-tag size="small" :type="getStatusType(node.status)" effect="light">{{ getStatusText(node.status) }}</el-tag>
             </div>
-            
             <div class="card-info-grid">
               <div class="info-item">
                 <span class="label">地区</span>
@@ -162,7 +148,6 @@
                 <span class="value" :class="getLatencyClass(node.latency)">{{ formatLatency(node.latency) }}</span>
               </div>
             </div>
-
             <div class="card-actions-row">
               <div class="left-actions">
                 <el-switch 
@@ -184,8 +169,6 @@
           <el-empty v-if="nodes.length === 0" description="暂无数据" />
         </div>
       </div>
-
-      <!-- 分页器 -->
       <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -199,8 +182,6 @@
         />
       </div>
     </el-card>
-
-    <!-- 添加/编辑节点弹窗 -->
     <el-dialog
       v-model="showAddDialog"
       :title="editingNode ? '编辑节点' : '添加节点'"
@@ -211,7 +192,6 @@
       append-to-body
     >
       <div class="dialog-scroll-content">
-        <!-- 模式切换 Tabs (仅添加模式显示) -->
         <el-tabs v-model="addNodeTab" v-if="!editingNode" class="compact-tabs">
           <el-tab-pane label="链接导入" name="link">
             <div class="import-section">
@@ -231,14 +211,10 @@
             </div>
           </el-tab-pane>
           <el-tab-pane label="手动填写" name="manual">
-            <!-- 手动表单内容 -->
             <div class="form-container">
-               <!-- 下方复用 form-content -->
             </div>
           </el-tab-pane>
         </el-tabs>
-
-        <!-- 编辑模式/手动模式表单 -->
         <el-form 
           v-if="editingNode || addNodeTab === 'manual'" 
           :model="nodeForm" 
@@ -289,8 +265,6 @@
               </el-form-item>
             </el-col>
           </el-row>
-
-          <!-- 链接生成/复制区域 -->
           <div v-if="editingNode && nodeLink" class="link-generator">
             <div class="link-label">节点链接</div>
             <div class="link-box">
@@ -302,7 +276,6 @@
           </div>
         </el-form>
       </div>
-
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showAddDialog = false">取消</el-button>
@@ -316,7 +289,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -325,7 +297,6 @@ import {
   DocumentCopy, Edit, MoreFilled 
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-
 export default {
   name: 'AdminNodes',
   components: { 
@@ -333,14 +304,12 @@ export default {
     DocumentCopy, Edit, MoreFilled 
   },
   setup() {
-    // 状态定义
     const isMobile = ref(false)
     const loading = ref(false)
     const testing = ref(false)
     const deleting = ref(false)
     const saving = ref(false)
     const parsing = ref(false)
-    
     const nodes = ref([])
     const selectedNodes = ref([])
     const showAddDialog = ref(false)
@@ -348,28 +317,18 @@ export default {
     const searchKeyword = ref('')
     const regions = ref([])
     const types = ref([])
-    
-    // 弹窗相关
     const addNodeTab = ref('link')
     const nodeLinkInput = ref('')
     const parsedNode = ref(null)
-
     const filters = reactive({ status: '', is_active: '', region: '', type: '' })
     const pagination = reactive({ page: 1, size: 20, total: 0 })
-    
-    // 表单数据
     const nodeForm = reactive({
       name: '', region: '', type: 'vmess', config: '',
       description: '', is_recommended: false, is_active: true
     })
-
-    // 响应式检测
     const checkMobile = () => {
       isMobile.value = window.innerWidth <= 768
     }
-
-    // --- 核心逻辑 ---
-
     const loadNodes = async () => {
       loading.value = true
       try {
@@ -379,19 +338,13 @@ export default {
           ...filters,
           search: searchKeyword.value
         }
-        // 清理空参数
         Object.keys(params).forEach(k => !params[k] && delete params[k])
-
         const res = await adminAPI.getAdminNodes(params)
         if (res.data?.success) {
-          // 兼容后端不同格式返回
           const raw = res.data.data
           const list = Array.isArray(raw) ? raw : (raw.nodes || raw.data || [])
-          
           nodes.value = list.map(n => ({ ...n, testing: false }))
           pagination.total = raw.total || list.length
-          
-          // 提取筛选选项
           const rSet = new Set(), tSet = new Set()
           list.forEach(n => { if(n.region) rSet.add(n.region); if(n.type) tSet.add(n.type) })
           regions.value = Array.from(rSet).sort()
@@ -403,8 +356,6 @@ export default {
         loading.value = false
       }
     }
-
-    // 移动端选择逻辑
     const handleMobileSelect = (node, checked) => {
       if (checked) {
         if (!selectedNodes.value.find(n => n.id === node.id)) {
@@ -415,34 +366,25 @@ export default {
       }
     }
     const isSelected = (node) => selectedNodes.value.some(n => n.id === node.id)
-    
     const isAllSelected = computed({
       get: () => nodes.value.length > 0 && selectedNodes.value.length === nodes.value.length,
       set: (val) => toggleMobileSelectAll(val)
     })
-    
     const isIndeterminate = computed(() => {
       return selectedNodes.value.length > 0 && selectedNodes.value.length < nodes.value.length
     })
-
     const toggleMobileSelectAll = (val) => {
       selectedNodes.value = val ? [...nodes.value] : []
     }
-
-    // 桌面端选择
     const handleSelectionChange = (val) => selectedNodes.value = val
-
-    // 增删改查操作
     const handleAdd = () => {
       resetForm()
       showAddDialog.value = true
     }
-
     const handleCommand = (cmd) => {
       const actions = { refresh: loadNodes, test: batchTest, delete: batchDelete }
       actions[cmd] && actions[cmd]()
     }
-
     const editNode = (node) => {
       editingNode.value = node
       Object.assign(nodeForm, {
@@ -456,7 +398,6 @@ export default {
       })
       showAddDialog.value = true
     }
-
     const saveNode = async () => {
       if (!nodeForm.name || !nodeForm.region) return ElMessage.warning('请填写必填项')
       saving.value = true
@@ -465,7 +406,6 @@ export default {
         const res = editingNode.value 
           ? await adminAPI.updateNode(editingNode.value.id, payload)
           : await adminAPI.createNode(payload)
-          
         if (res.data.success) {
           ElMessage.success('保存成功')
           showAddDialog.value = false
@@ -477,7 +417,6 @@ export default {
         saving.value = false
       }
     }
-
     const deleteNode = async (node) => {
       try {
         await ElMessageBox.confirm(`确认删除节点 "${node.name}"?`, '警告', { type: 'warning' })
@@ -486,7 +425,6 @@ export default {
         loadNodes()
       } catch {}
     }
-
     const batchTest = async () => {
       testing.value = true
       try {
@@ -499,7 +437,6 @@ export default {
         testing.value = false
       }
     }
-
     const batchDelete = async () => {
       try {
         await ElMessageBox.confirm(`确认删除选中的 ${selectedNodes.value.length} 个节点?`, '警告', { type: 'error' })
@@ -512,7 +449,6 @@ export default {
         deleting.value = false
       }
     }
-
     const testNode = async (node) => {
       node.testing = true
       try {
@@ -528,7 +464,6 @@ export default {
         node.testing = false
       }
     }
-
     const toggleNodeStatus = async (node) => {
       try {
         await adminAPI.updateNode(node.id, { is_active: node.is_active })
@@ -538,8 +473,6 @@ export default {
         ElMessage.error('状态更新失败')
       }
     }
-
-    // 链接导入相关
     const parseNodeLink = async () => {
       const link = nodeLinkInput.value.split('\n')[0].trim()
       if (!link) return ElMessage.warning('请输入链接')
@@ -549,7 +482,6 @@ export default {
         if (res.data.success) parsedNode.value = res.data.data
       } finally { parsing.value = false }
     }
-
     const batchImportLinks = async () => {
       const links = nodeLinkInput.value.split('\n').map(l => l.trim()).filter(Boolean)
       if (!links.length) return
@@ -563,39 +495,30 @@ export default {
         ElMessage.error('导入出错') 
       } finally { saving.value = false }
     }
-
     const resetForm = () => {
       editingNode.value = null
       Object.assign(nodeForm, { name: '', region: '', type: 'vmess', config: '', is_active: true })
       nodeLinkInput.value = ''
       parsedNode.value = null
     }
-
-    // 辅助函数
     const getStatusType = (s) => ({ online: 'success', offline: 'danger', timeout: 'warning' }[s] || 'info')
     const getStatusText = (s) => ({ online: '在线', offline: '离线', timeout: '超时' }[s] || '未知')
     const formatLatency = (l) => l > 0 ? `${l}ms` : '-'
     const getLatencyClass = (l) => l <= 0 ? '' : l < 200 ? 'text-green' : l < 500 ? 'text-orange' : 'text-red'
-
     const nodeLink = computed(() => {
       if (!editingNode.value || !nodeForm.config) return ''
-      // 简化处理：实际应包含完整的协议生成逻辑
       return `vmess://(预览链接)` 
     })
-
     const copyNodeLink = () => {
       navigator.clipboard.writeText(nodeLink.value)
       ElMessage.success('复制成功')
     }
-
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       loadNodes()
     })
-
     onUnmounted(() => window.removeEventListener('resize', checkMobile))
-
     return {
       isMobile, loading, testing, deleting, saving, parsing,
       nodes, selectedNodes, showAddDialog, editingNode,
@@ -612,110 +535,85 @@ export default {
   }
 }
 </script>
-
 <style scoped>
-/* 基础容器 */
 .admin-nodes {
   max-width: 1400px;
   margin: 0 auto;
   padding: 16px;
 }
-
 @media (max-width: 768px) {
   .admin-nodes {
     padding: 8px;
   }
 }
-
 .list-card {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
-
-/* 头部样式 */
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .title-text {
   font-size: 16px;
   font-weight: 600;
   margin-right: 8px;
 }
-
 .header-actions {
   display: flex;
   gap: 8px;
 }
-
-/* 筛选区域优化 */
 .filter-wrapper {
   background: var(--el-fill-color-light);
   padding: 16px;
   border-radius: 6px;
   margin-bottom: 16px;
 }
-
 .filter-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
-
 .filter-grid .el-select {
   width: 140px;
 }
-
 .search-box {
   flex: 1;
   min-width: 200px;
 }
-
-/* 移动端筛选样式调整 */
 @media (max-width: 768px) {
   .filter-wrapper {
     padding: 12px;
   }
-  
   .filter-grid {
     display: grid;
     grid-template-columns: 1fr 1fr; /* 两列布局 */
     gap: 8px;
   }
-
   .filter-grid .el-select {
     width: 100%;
   }
-
   .search-box {
     grid-column: 1 / -1; /* 搜索框独占一行 */
     width: 100%;
   }
 }
-
-/* 桌面端表格微调 */
 .desktop-table .status-badge {
   margin-top: 4px;
 }
-
 .text-green { color: var(--el-color-success); font-weight: 500; }
 .text-orange { color: var(--el-color-warning); }
 .text-red { color: var(--el-color-danger); }
-
-/* --- 移动端卡片列表视图的核心样式 --- */
 .mobile-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
 .mobile-selection-bar {
   padding: 0 4px;
   margin-bottom: 4px;
 }
-
 .node-card {
   background: #fff;
   border: 1px solid var(--el-border-color-light);
@@ -724,11 +622,9 @@ export default {
   box-shadow: 0 1px 3px rgba(0,0,0,0.02);
   transition: all 0.2s;
 }
-
 .node-card:active {
   background: var(--el-fill-color-lighter);
 }
-
 .card-header-row {
   display: flex;
   align-items: center;
@@ -737,7 +633,6 @@ export default {
   padding-bottom: 8px;
   border-bottom: 1px dashed var(--el-border-color-lighter);
 }
-
 .node-title {
   font-weight: 600;
   font-size: 15px;
@@ -746,19 +641,16 @@ export default {
   overflow: clip;
   text-overflow: ellipsis;
 }
-
 .card-checkbox {
   margin-right: 0;
   height: auto;
 }
-
 .card-info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
   margin-bottom: 12px;
 }
-
 .info-item {
   display: flex;
   flex-direction: column;
@@ -767,47 +659,37 @@ export default {
   padding: 6px;
   border-radius: 4px;
 }
-
 .info-item .label {
   font-size: 11px;
   color: var(--el-text-color-secondary);
   margin-bottom: 2px;
 }
-
 .info-item .value {
   font-size: 13px;
   font-weight: 500;
 }
-
 .card-actions-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .right-buttons {
   display: flex;
   gap: 4px;
 }
-
-/* 分页适配 */
 .pagination-wrapper {
   margin-top: 20px;
   display: flex;
   justify-content: center;
 }
-
-/* 弹窗适配 */
 .responsive-dialog :deep(.el-dialog__body) {
   padding: 10px 20px;
 }
-
 .dialog-scroll-content {
   max-height: 70vh;
   overflow-y: auto;
   padding-right: 4px;
 }
-
 @media (max-width: 768px) {
   .responsive-dialog :deep(.el-dialog__body) {
     padding: 12px;
@@ -819,14 +701,12 @@ export default {
     margin-top: 10px;
   }
 }
-
 .link-generator {
   background: var(--el-fill-color-light);
   padding: 10px;
   border-radius: 4px;
   margin-top: 10px;
 }
-
 .link-box {
   display: flex;
   align-items: center;
@@ -835,7 +715,6 @@ export default {
   border-radius: 4px;
   padding: 4px 8px;
 }
-
 .link-text {
   flex: 1;
   font-family: monospace;
@@ -845,8 +724,6 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* 强制覆盖输入框样式（为了解决可能的样式污染） */
 :deep(.el-input__wrapper) {
   box-shadow: 0 0 0 1px var(--el-border-color) inset !important;
 }

@@ -7,7 +7,6 @@
           <p>管理您的账户信息和密码</p>
         </div>
       </template>
-
       <el-tabs v-model="activeTab" type="border-card">
         <el-tab-pane label="基本信息" name="basic">
           <el-form
@@ -21,16 +20,13 @@
               <el-input v-model="basicForm.username" disabled />
               <small class="form-tip">用户名不可修改</small>
             </el-form-item>
-            
             <el-form-item label="邮箱地址">
               <el-input v-model="basicForm.email" disabled />
               <small class="form-tip">邮箱地址不可修改</small>
             </el-form-item>
-            
             <el-form-item label="显示名称" prop="display_name">
               <el-input v-model="basicForm.display_name" placeholder="请输入显示名称" />
             </el-form-item>
-            
             <el-form-item label="头像">
               <el-upload
                 class="avatar-uploader"
@@ -46,11 +42,9 @@
               </el-upload>
               <small class="form-tip">支持 JPG、PNG 格式，文件大小不超过 2MB</small>
             </el-form-item>
-            
             <el-form-item label="手机号码" prop="phone">
               <el-input v-model="basicForm.phone" placeholder="请输入手机号码" />
             </el-form-item>
-            
             <el-form-item label="个人简介" prop="bio">
               <el-input
                 v-model="basicForm.bio"
@@ -59,7 +53,6 @@
                 placeholder="请输入个人简介"
               />
             </el-form-item>
-            
             <el-form-item>
               <el-button type="primary" @click="saveBasicInfo" :loading="basicLoading">
                 保存基本信息
@@ -84,7 +77,6 @@
                 show-password
               />
             </el-form-item>
-            
             <el-form-item label="新密码" prop="new_password">
               <el-input
                 v-model="passwordForm.new_password"
@@ -94,7 +86,6 @@
               />
               <small class="form-tip">密码长度至少8位，包含字母和数字</small>
             </el-form-item>
-            
             <el-form-item label="确认新密码" prop="confirm_password">
               <el-input
                 v-model="passwordForm.confirm_password"
@@ -103,7 +94,6 @@
                 show-password
               />
             </el-form-item>
-            
             <el-form-item>
               <el-button type="primary" @click="changePassword" :loading="passwordLoading">
                 修改密码
@@ -115,13 +105,11 @@
         <el-tab-pane label="安全设置" name="security">
           <div class="security-section">
             <h3>账户安全</h3>
-            
             <el-form label-width="120px" class="profile-form">
                 <el-form-item label="登录通知">
                 <el-switch v-model="securityForm.login_notification" @change="toggleLoginNotification" />
                 <small class="form-tip">在新设备登录时发送邮件通知</small>
               </el-form-item>
-              
               <el-form-item label="通知邮箱" v-if="securityForm.login_notification">
                 <el-input 
                   v-model="securityForm.notification_email" 
@@ -130,7 +118,6 @@
                 />
                 <small class="form-tip">登录通知将发送到此邮箱</small>
               </el-form-item>
-              
               <el-form-item v-if="securityForm.login_notification">
                 <el-button 
                   type="primary" 
@@ -141,7 +128,6 @@
                   保存通知邮箱
                 </el-button>
               </el-form-item>
-              
               <el-form-item label="会话超时">
                 <el-select v-model="securityForm.session_timeout" @change="updateSessionTimeout">
                   <el-option label="30分钟" value="30" />
@@ -154,7 +140,6 @@
               </el-form-item>
             </el-form>
           </div>
-
           <div class="security-section">
             <h3>登录历史</h3>
             <el-table :data="loginHistory" style="width: 100%" v-loading="loginHistoryLoading">
@@ -201,7 +186,6 @@
     </el-card>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -211,15 +195,12 @@ import { adminAPI } from '@/utils/api'
 import { formatLocation } from '@/utils/date'
 import router from '@/router'
 import { secureStorage } from '@/utils/api'
-
-// 获取Cookie的工具函数
 function getCookie(name) {
   const value = `; ${document.cookie}`
   const parts = value.split(`; ${name}=`)
   if (parts.length === 2) return parts.pop().split(';').shift()
   return null
 }
-
 export default {
   name: 'AdminProfile',
   components: {
@@ -229,16 +210,11 @@ export default {
     const activeTab = ref('basic')
     const basicFormRef = ref()
     const passwordFormRef = ref()
-    
     const basicLoading = ref(false)
     const passwordLoading = ref(false)
     const securityLoading = ref(false)
-    
     const uploadUrl = '/api/v1/admin/upload'
-    
     const authStore = useAuthStore()
-    
-    // 上传请求头
     const uploadHeaders = computed(() => {
       const headers = {}
       const token = secureStorage.get('admin_token')
@@ -251,7 +227,6 @@ export default {
       }
       return headers
     })
-
     const basicForm = reactive({
       username: '',
       email: '',
@@ -284,7 +259,6 @@ export default {
         { max: 200, message: '个人简介不能超过200个字符', trigger: 'blur' }
       ]
     }
-
     const passwordRules = {
       current_password: [
         { required: true, message: '请输入当前密码', trigger: 'blur' }
@@ -321,7 +295,6 @@ export default {
         } else if (response) {
           data = response
         }
-        
         if (data) {
           Object.assign(basicForm, {
             username: data.username || '',
@@ -342,16 +315,13 @@ export default {
       try {
         await basicFormRef.value.validate()
         basicLoading.value = true
-        
         const response = await adminAPI.updateProfile(basicForm)
         let success = false
         let message = '保存失败'
-        
         if (response && response.data) {
           if (response.data.success !== false) {
             success = true
             message = response.data.message || '基本信息保存成功'
-            // 更新表单数据
             if (response.data.data) {
               Object.assign(basicForm, {
                 display_name: response.data.data.display_name || basicForm.display_name,
@@ -371,10 +341,8 @@ export default {
             message = response.message || '保存失败'
           }
         }
-        
         if (success) {
           ElMessage.success(message)
-          // 重新加载基本信息以确保数据同步
           await loadBasicInfo()
           if (authStore && authStore.updateUser) {
             authStore.updateUser(basicForm)
@@ -399,15 +367,12 @@ export default {
       try {
         await passwordFormRef.value.validate()
         passwordLoading.value = true
-        
         const response = await adminAPI.changePassword({
           current_password: passwordForm.current_password,
           new_password: passwordForm.new_password
         })
-        
         let success = false
         let message = '密码修改失败'
-        
         if (response && response.data) {
           success = response.data.success !== false
           message = response.data.message || (success ? '密码修改成功' : '密码修改失败')
@@ -415,7 +380,6 @@ export default {
           success = response.success !== false
           message = response.message || (success ? '密码修改成功' : '密码修改失败')
         }
-        
         if (success) {
           ElMessage.success('密码修改成功，请重新登录')
           Object.assign(passwordForm, {
@@ -450,7 +414,6 @@ export default {
       if (response && response.success) {
         basicForm.avatar_url = response.data?.url || response.url || response.data?.avatar_url || ''
         ElMessage.success('头像上传成功')
-        // 自动保存头像
         saveBasicInfo()
       } else if (response && response.data) {
         if (response.data.url) {
@@ -472,7 +435,6 @@ export default {
       const isJPG = file.type === 'image/jpeg'
       const isPNG = file.type === 'image/png'
       const isLt2M = file.size / 1024 / 1024 < 2
-
       if (!isJPG && !isPNG) {
         ElMessage.error('头像只能是 JPG 或 PNG 格式!')
         return false
@@ -500,14 +462,11 @@ export default {
         ElMessage.warning('请先输入通知邮箱地址')
         return
       }
-      
-      // 验证邮箱格式
       const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (securityForm.notification_email && !emailPattern.test(securityForm.notification_email)) {
         ElMessage.warning('请输入正确的邮箱地址')
         return
       }
-      
       securityLoading.value = true
       try {
         const response = await adminAPI.updateSecuritySettings({
@@ -516,7 +475,6 @@ export default {
         })
         const success = response.success !== false && (response.data?.success !== false)
         const message = response.message || response.data?.message || '通知邮箱已保存'
-        
         if (success) {
           ElMessage.success('通知邮箱已保存')
         } else {
@@ -547,8 +505,6 @@ export default {
       try {
         const response = await adminAPI.getLoginHistory()
         let data = null
-        
-        // 处理不同的响应格式
         if (response && response.data) {
           if (response.data.success !== false) {
             if (Array.isArray(response.data.data)) {
@@ -562,7 +518,6 @@ export default {
         } else if (response && Array.isArray(response)) {
           data = response
         }
-        
         if (Array.isArray(data)) {
           loginHistory.value = data.map(item => ({
             login_time: item.login_time || '',
@@ -587,8 +542,6 @@ export default {
         loginHistoryLoading.value = false
       }
     }
-
-    // 加载安全设置
     const loadSecuritySettings = async () => {
       try {
         const response = await adminAPI.getSecuritySettings()
@@ -615,26 +568,20 @@ export default {
         second: '2-digit'
       })
     }
-
-    // 获取位置文本
     const getLocationText = (location, ipAddress) => {
       if (location) {
         return formatLocation(location)
       }
-      // 如果没有location，检查是否为本地IP或内网IP
       if (ipAddress) {
         if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress === 'localhost') {
           return '本地'
         }
-        // 检查是否为内网IP（简单判断）
         if (ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.')) {
           return '内网'
         }
       }
       return ''
     }
-    
-    // 获取设备信息（简化显示）
     const getDeviceInfo = (userAgent) => {
       if (!userAgent) return '未知设备'
       const ua = userAgent.toLowerCase()
@@ -655,7 +602,6 @@ export default {
       loadSecuritySettings()
       loadLoginHistory()
     })
-
     return {
       activeTab,
       basicFormRef,
@@ -688,53 +634,44 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-profile-container {
   padding: 20px;
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .card-header h2 {
   margin: 0;
   color: #333;
   font-size: 1.5rem;
 }
-
 .card-header :is(p) {
   margin: 0;
   color: #666;
   font-size: 0.9rem;
 }
-
 .profile-form {
   max-width: 600px;
   margin-top: 20px;
 }
-
 .form-tip {
   color: #999;
   font-size: 12px;
   margin-top: 4px;
   display: block;
 }
-
 .avatar-uploader {
   text-align: center;
 }
-
 .avatar-uploader .avatar {
   width: 100px;
   height: 100px;
   border-radius: 50%;
   object-fit: cover;
 }
-
 .avatar-uploader .avatar-uploader-icon {
   font-size: 28px;
   color: #8c939d;
@@ -745,11 +682,9 @@ export default {
   border: 1px dashed #d9d9d9;
   border-radius: 50%;
 }
-
 .security-section {
   margin-bottom: 30px;
 }
-
 .security-section h3 {
   color: #333;
   margin-bottom: 20px;
@@ -757,23 +692,19 @@ export default {
   border-bottom: 1px solid #eee;
   padding-bottom: 10px;
 }
-
 @media (max-width: 768px) {
   .admin-profile-container {
     padding: 10px;
   }
-  
   .card-header {
     flex-direction: column;
     gap: 10px;
     align-items: flex-start;
   }
-  
   .profile-form {
     max-width: 100%;
   }
 }
-
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -781,7 +712,6 @@ export default {
   background-color: #ffffff !important;
   padding: 0 !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -789,7 +719,6 @@ export default {
   background-color: #ffffff !important;
   padding: 0 !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -797,23 +726,19 @@ export default {
   background-color: transparent !important;
   padding: 0 11px !important;
 }
-
 :deep(.el-input__prefix),
 :deep(.el-input__suffix) {
   background-color: transparent !important;
   border: none !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;

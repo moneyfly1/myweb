@@ -8,7 +8,6 @@
     :close-on-click-modal="false"
   >
     <div v-if="user" class="user-detail-content">
-      <!-- 用户基本信息 -->
       <el-descriptions :column="isMobile ? 1 : 2" border>
         <el-descriptions-item label="用户ID">{{ user.user_info?.id || user.id }}</el-descriptions-item>
         <el-descriptions-item label="邮箱">{{ user.user_info?.email || user.email }}</el-descriptions-item>
@@ -25,8 +24,6 @@
         <el-descriptions-item label="最后登录">{{ formatDate(user.user_info?.last_login || user.last_login) || '从未登录' }}</el-descriptions-item>
         <el-descriptions-item label="订阅数量">{{ user.statistics?.total_subscriptions || user.subscription_count || 0 }}</el-descriptions-item>
       </el-descriptions>
-      
-      <!-- 统计信息 -->
       <div class="user-stats" v-if="user.statistics">
         <h4>统计信息</h4>
         <el-row :gutter="20">
@@ -44,8 +41,6 @@
           </el-col>
         </el-row>
       </div>
-      
-      <!-- 用户订阅列表 -->
       <div class="user-subscriptions" v-if="user.subscriptions && user.subscriptions.length">
         <h4 class="section-title">
           <el-icon><Connection /></el-icon>
@@ -68,17 +63,12 @@
           </el-table>
         </div>
       </div>
-      
-      <!-- 余额变动记录（充值记录 + 消费记录） -->
       <div class="balance-records-section" id="balance-records-section">
         <h4 class="section-title">
           <el-icon><Wallet /></el-icon>
           余额变动记录
         </h4>
-        
-        <!-- 使用标签页区分充值和消费 -->
         <el-tabs v-model="activeBalanceTab" class="balance-tabs">
-          <!-- 充值记录 -->
           <el-tab-pane label="充值记录" name="recharge">
             <div class="records-list" v-if="rechargeRecords && rechargeRecords.length > 0" :key="'recharge-' + rechargeRecords.length">
               <div 
@@ -134,8 +124,6 @@
             </div>
             <el-empty v-else description="暂无充值记录" :image-size="100" />
           </el-tab-pane>
-          
-          <!-- 消费记录（订单） -->
           <el-tab-pane label="消费记录" name="consumption">
             <div class="records-list" v-if="orderRecords && orderRecords.length > 0" :key="'orders-' + orderRecords.length">
               <div 
@@ -189,8 +177,6 @@
           </el-tab-pane>
         </el-tabs>
       </div>
-      
-      <!-- 专线节点分配 -->
       <div class="custom-nodes-section">
         <h4 class="section-title">
           <el-icon><Connection /></el-icon>
@@ -232,8 +218,6 @@
         </div>
         <el-empty v-else description="该用户暂无分配的专线节点" :image-size="100" />
       </div>
-      
-      <!-- 最近活动 -->
       <div class="user-activities" v-if="user.recent_activities && user.recent_activities.length">
         <h4 class="section-title">
           <el-icon><Clock /></el-icon>
@@ -249,8 +233,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 分配专线节点对话框 -->
     <el-dialog
       v-model="showAssignDialog"
       title="分配专线节点"
@@ -258,7 +240,6 @@
     >
       <el-form label-width="120px">
         <el-form-item label="搜索并选择节点">
-          <!-- 节点搜索区域 -->
           <div class="node-search-section">
             <div class="search-input-group">
               <el-input
@@ -283,8 +264,6 @@
                 搜索
               </el-button>
             </div>
-            
-            <!-- 搜索结果提示 -->
             <div v-if="nodeSearchKeyword && searchedNodes.length > 0" class="search-result-tip">
               找到 {{ searchedNodes.length }} 个匹配的节点
             </div>
@@ -292,8 +271,6 @@
               未找到匹配的节点，请检查输入的节点名称或域名
             </div>
           </div>
-          
-          <!-- 节点选择器 -->
           <el-select
             v-model="selectedNodeId"
             placeholder="请先搜索节点，然后从搜索结果中选择"
@@ -308,7 +285,6 @@
               :value="node.id"
             />
           </el-select>
-          
           <div class="form-tip">
             <div v-if="selectedNodeId">
               已选择节点，点击"确定"完成分配
@@ -326,14 +302,12 @@
     </el-dialog>
   </el-dialog>
 </template>
-
 <script>
 import { ref, watch, onMounted, computed } from 'vue'
 import { Wallet, ShoppingCart, Clock, Connection, Plus, Search } from '@element-plus/icons-vue'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import { ElMessage } from 'element-plus'
 import { adminAPI } from '@/utils/api'
-
 export default {
   name: 'UserDetailDialog',
   components: {
@@ -359,49 +333,30 @@ export default {
     const selectedNodeId = ref(null)
     const assigning = ref(false)
     const loadingNodes = ref(false)
-    
-    // 从 user 对象中提取充值记录和订单记录
     const rechargeRecords = computed(() => {
       if (!props.user) {
         return []
       }
-      
-      // 后端返回的数据结构：{ user_info, subscriptions, orders, recharge_records, ... }
       const records = props.user.recharge_records
-      
-      // 确保返回数组，即使为空也要返回，这样模板可以正确显示空状态
       if (Array.isArray(records)) {
         return records
       }
-      
-      // 如果数据不存在或不是数组，返回空数组
       return []
     })
-    
     const orderRecords = computed(() => {
       if (!props.user) {
         return []
       }
-      
-      // 后端返回的数据结构：{ user_info, subscriptions, orders, recharge_records, ... }
       const orders = props.user.orders
-      
-      // 确保返回数组，即使为空也要返回，这样模板可以正确显示空状态
       if (Array.isArray(orders)) {
         return orders
       }
-      
-      // 如果数据不存在或不是数组，返回空数组
       return []
     })
-    
-    // 调试：打印 user 对象结构（开发环境）
     if (process.env.NODE_ENV === 'development') {
       watch(() => props.user, (newUser) => {
-        // User data is watched for changes
       }, { immediate: true, deep: true })
     }
-
     const loadUserCustomNodes = async (userId) => {
       try {
         const response = await adminAPI.getUserCustomNodes(userId)
@@ -413,27 +368,20 @@ export default {
         customNodes.value = []
       }
     }
-
     const loadAvailableNodes = async () => {
-      // 不再自动加载，需要用户主动搜索
       searchedNodes.value = []
       nodeSearchKeyword.value = ''
     }
-
-    // 处理节点搜索
     const handleNodeSearch = async () => {
       const keyword = nodeSearchKeyword.value?.trim()
-      
       if (!keyword) {
         ElMessage.warning('请输入节点名称或域名进行搜索')
         return
       }
-
       if (keyword.length < 2) {
         ElMessage.warning('搜索关键词至少需要2个字符')
         return
       }
-
       loadingNodes.value = true
       try {
         const params = { 
@@ -448,7 +396,6 @@ export default {
           const assignedIds = customNodes.value.map(n => n.id)
           const filteredNodes = allNodes.filter(n => !assignedIds.includes(n.id))
           searchedNodes.value = filteredNodes
-          
           if (filteredNodes.length === 0) {
             ElMessage.info('未找到匹配的节点，请检查输入的节点名称或域名')
           } else {
@@ -466,18 +413,14 @@ export default {
         loadingNodes.value = false
       }
     }
-
-    // 清除搜索结果
     const handleNodeSearchClear = () => {
       nodeSearchKeyword.value = ''
       searchedNodes.value = []
       selectedNodeId.value = null
     }
-
     watch(() => props.initialTab, (newVal) => {
       if (newVal) activeBalanceTab.value = newVal
     }, { immediate: true })
-
     watch(() => props.user, async (newUser) => {
       if (newUser && newUser.user_info?.id) {
         await loadUserCustomNodes(newUser.user_info.id)
@@ -485,33 +428,27 @@ export default {
         await loadUserCustomNodes(newUser.id)
       }
     }, { immediate: true })
-
     watch(() => props.visible, async (visible) => {
       if (visible) {
         await loadAvailableNodes()
       }
     })
-
     watch(() => showAssignDialog.value, async (visible) => {
       if (visible) {
-        // 打开分配对话框时，重置搜索状态
         await loadAvailableNodes()
         selectedNodeId.value = null
       }
     })
-
     const assignNode = async () => {
       if (!selectedNodeId.value) {
         ElMessage.warning('请选择要分配的节点')
         return
       }
-
       const userId = props.user?.user_info?.id || props.user?.id
       if (!userId) {
         ElMessage.error('用户ID不存在')
         return
       }
-
       assigning.value = true
       try {
         const response = await adminAPI.assignCustomNodeToUser(userId, selectedNodeId.value)
@@ -530,14 +467,12 @@ export default {
         assigning.value = false
       }
     }
-
     const unassignNode = async (nodeId) => {
       const userId = props.user?.user_info?.id || props.user?.id
       if (!userId) {
         ElMessage.error('用户ID不存在')
         return
       }
-
       try {
         const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
         if (response.data && response.data.success) {
@@ -551,14 +486,10 @@ export default {
         ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
       }
     }
-
     const formatDate = (date) => formatDateUtil(date) || ''
-    
     const formatDateTime = (dateTime) => {
       if (!dateTime) return '未知'
-      // 如果已经是格式化好的字符串，直接返回
       if (typeof dateTime === 'string') {
-        // 检查是否是 ISO 格式或时间戳格式
         if (dateTime.includes('T') || dateTime.includes('+')) {
           try {
             const date = new Date(dateTime)
@@ -573,17 +504,14 @@ export default {
               }).replace(/\//g, '-')
             }
           } catch (e) {
-            // 如果解析失败，尝试使用 formatDateUtil
             return formatDateUtil(dateTime) || dateTime
           }
         }
-        // 如果已经是正确格式的字符串，直接返回
         if (dateTime.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
           return dateTime
         }
         return formatDateUtil(dateTime) || dateTime
       }
-      // 如果是 Date 对象
       if (dateTime instanceof Date) {
         return dateTime.toLocaleString('zh-CN', {
           year: 'numeric',
@@ -596,7 +524,6 @@ export default {
       }
       return formatDateUtil(dateTime) || '未知'
     }
-
     const getStatusType = (status) => {
       const statusMap = {
         'active': 'success',
@@ -605,7 +532,6 @@ export default {
       }
       return statusMap[status] || 'info'
     }
-
     const getStatusText = (status) => {
       const statusMap = {
         'active': '活跃',
@@ -614,9 +540,7 @@ export default {
       }
       return statusMap[status] || status
     }
-
     const getPaymentMethodText = (method) => {
-      // 处理可能的对象格式（如 {"String": "alipay", "Valid": true}）
       let methodStr = method
       if (method && typeof method === 'object') {
         if (method.String) {
@@ -624,7 +548,6 @@ export default {
         } else if (method.payment_method) {
           methodStr = method.payment_method
         } else {
-          // 尝试从对象中提取字符串值
           const values = Object.values(method).filter(v => typeof v === 'string' && v.length > 0)
           if (values.length > 0) {
             methodStr = values[0]
@@ -633,7 +556,6 @@ export default {
           }
         }
       }
-      
       const methodMap = {
         alipay: '支付宝',
         wechat: '微信支付',
@@ -642,7 +564,6 @@ export default {
       }
       return methodMap[methodStr] || methodStr || '未知'
     }
-
     return {
       activeBalanceTab,
       customNodes,
@@ -669,52 +590,43 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
-// 提取自 Users.vue
 .user-detail-dialog {
   :deep(.el-dialog__body) {
     max-height: 80vh;
     overflow-y: auto;
     padding: 20px;
   }
-  
   @media (max-width: 768px) {
     :deep(.el-dialog) {
       width: 95% !important;
       margin: 5vh auto !important;
     }
-    
     :deep(.el-dialog__body) {
       padding: 15px;
     }
   }
 }
-
 .user-stats {
   margin: 20px 0;
   padding: 20px;
   background: #f8f9fa;
   border-radius: 8px;
-  
   :is(h4) {
     margin-bottom: 15px;
     color: #606266;
   }
-  
   @media (max-width: 768px) {
     :deep(.el-col) {
       margin-bottom: 15px;
     }
   }
 }
-
 .user-subscriptions,
 .user-orders,
 .user-activities {
   margin-top: 20px;
 }
-
 .section-title {
   display: flex;
   align-items: center;
@@ -725,63 +637,51 @@ export default {
   font-weight: 600;
   border-bottom: 2px solid #409eff;
   padding-bottom: 8px;
-  
   .el-icon {
     font-size: 18px;
     color: #409eff;
   }
 }
-
 .balance-highlight {
   font-size: 16px;
   font-weight: 700;
   color: #409eff;
 }
-
 .balance-records-section {
   margin-top: 20px;
 }
-
 .balance-tabs {
   margin-top: 15px;
-  
   :deep(.el-tabs__header) {
     margin-bottom: 15px;
   }
-  
   :deep(.el-tabs__item) {
     font-size: 14px;
     padding: 0 20px;
   }
 }
-
 .records-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
 .record-item {
   background: #fff;
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   padding: 16px;
   transition: all 0.3s;
-  
   &:hover {
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
     border-color: #409eff;
   }
-  
   &.recharge-item {
     border-left: 4px solid #67c23a;
   }
-  
   &.consumption-item {
     border-left: 4px solid #f56c6c;
   }
 }
-
 .record-header {
   display: flex;
   justify-content: space-between;
@@ -790,116 +690,93 @@ export default {
   padding-bottom: 12px;
   border-bottom: 1px solid #f0f0f0;
 }
-
 .record-type {
   display: flex;
   align-items: center;
   gap: 8px;
-  
   .type-icon {
     font-size: 18px;
-    
     &.recharge-icon {
       color: #67c23a;
     }
-    
     &.consumption-icon {
       color: #f56c6c;
     }
   }
-  
   .type-text {
     font-size: 14px;
     font-weight: 600;
     color: #303133;
   }
 }
-
 .record-amount {
   font-size: 18px;
   font-weight: 700;
-  
   &.positive {
     color: #67c23a;
   }
-  
   &.negative {
     color: #f56c6c;
   }
 }
-
 .record-body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 10px;
-  
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
 }
-
 .record-info-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   font-size: 13px;
-  
   .info-label {
     color: #909399;
     font-weight: 500;
     white-space: nowrap;
     min-width: 80px;
   }
-  
   .info-value {
     color: #303133;
     word-break: break-all;
     flex: 1;
   }
 }
-
 .table-responsive {
   width: 100%;
   overflow-x: auto;
-  
   @media (max-width: 768px) {
     .el-table {
       font-size: 12px;
     }
   }
 }
-
 .custom-nodes-section {
   margin-top: 20px;
 }
-
 .custom-nodes-actions {
   margin-bottom: 15px;
 }
-
-/* 节点搜索区域样式 */
 .node-search-section {
   margin-bottom: 10px;
 }
-
 .search-input-group {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
 }
-
 .search-result-tip {
   font-size: 12px;
   color: #909399;
   margin-top: 5px;
   padding: 5px 0;
-  
   &.empty {
     color: #f56c6c;
   }
 }
-
 .form-tip {
   font-size: 12px;
   color: #909399;
@@ -907,4 +784,3 @@ export default {
   line-height: 1.5;
 }
 </style>
-

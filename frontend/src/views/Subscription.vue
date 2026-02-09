@@ -7,7 +7,6 @@
           <p>管理您的订阅信息和订阅地址</p>
         </div>
       </template>
-
       <div class="subscription-status" v-if="subscription">
         <el-row :gutter="20">
           <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
@@ -44,7 +43,6 @@
           </el-col>
         </el-row>
       </div>
-
       <div class="subscription-urls" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
         <h3>订阅地址</h3>
         <div class="url-list">
@@ -65,7 +63,6 @@
               </el-input>
             </div>
           </div>
-          
           <div class="url-item">
             <div class="url-label">通用订阅地址：</div>
             <div class="url-content">
@@ -84,7 +81,6 @@
             </div>
           </div>
         </div>
-
         <div class="qr-code-section">
           <h4>订阅二维码（Shadowrocket扫码）</h4>
           <div class="qr-codes">
@@ -98,7 +94,6 @@
           </div>
         </div>
       </div>
-
       <div class="no-subscription" v-else>
         <el-empty description="您还没有订阅">
           <el-button type="primary" @click="$router.push('/packages')">
@@ -106,7 +101,6 @@
           </el-button>
         </el-empty>
       </div>
-
       <div class="subscription-actions" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
         <el-button
           type="primary"
@@ -116,7 +110,6 @@
         >
           重置订阅地址
         </el-button>
-        
         <el-button
           type="success"
           class="action-btn email-btn"
@@ -125,7 +118,6 @@
         >
           发送到邮箱
         </el-button>
-        
         <el-button
           type="warning"
           class="action-btn renew-btn"
@@ -134,7 +126,6 @@
         >
           续费订阅
         </el-button>
-        
         <el-button
           type="primary"
           class="action-btn upgrade-btn"
@@ -144,7 +135,6 @@
           升级设备数量
         </el-button>
       </div>
-
       <el-dialog
         v-model="showUpgradeDialog"
         title="升级设备数量"
@@ -162,10 +152,8 @@
               <el-descriptions-item label="剩余天数">{{ getRemainingDays(subscription) }} 天</el-descriptions-item>
             </el-descriptions>
           </div>
-
           <div class="upgrade-options">
             <h4>升级选项</h4>
-            
             <el-form-item label="增加设备数量">
               <el-select
                 v-model="upgradeForm.additionalDevices"
@@ -182,7 +170,6 @@
               </el-select>
               <div class="form-hint">将增加 {{ upgradeForm.additionalDevices || 0 }} 个设备（只能按5个递增）</div>
             </el-form-item>
-
             <el-form-item label="延长到期时间（可选）">
               <el-select
                 v-model="upgradeForm.additionalDays"
@@ -201,7 +188,6 @@
               <div class="form-hint">将延长 {{ upgradeForm.additionalDays || 0 }} 天（只能按月递增，1个月=30天）</div>
             </el-form-item>
           </div>
-
           <div class="cost-calculation" v-if="upgradeCost > 0">
             <h4>费用明细</h4>
             <el-descriptions :column="1" border size="small">
@@ -214,7 +200,6 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-
           <div class="payment-method" v-if="finalAmount > 0 || upgradeForm.additionalDevices >= 5">
             <h4>支付方式</h4>
             <div class="balance-info">
@@ -251,7 +236,6 @@
             </div>
           </div>
         </div>
-
         <template #footer>
           <div class="dialog-footer">
             <el-button @click="showUpgradeDialog = false">取消</el-button>
@@ -266,7 +250,6 @@
           </div>
         </template>
       </el-dialog>
-
       <div class="renewal-prompt" v-if="subscription && !isSubscriptionActive(subscription)">
         <el-alert
           title="订阅已过期"
@@ -285,7 +268,6 @@
         </el-alert>
       </div>
     </el-card>
-
     <el-dialog
       v-model="paymentQRVisible"
       title="扫码支付"
@@ -308,7 +290,6 @@
             </el-descriptions-item>
           </el-descriptions>
         </div>
-        
         <div class="qr-code-wrapper">
           <div v-if="paymentQRCode" class="qr-code">
             <img 
@@ -324,11 +305,9 @@
             <p>正在生成二维码...</p>
           </div>
         </div>
-        
         <div class="payment-tips">
           <p class="tip-text"><el-icon><InfoFilled /></el-icon> 请使用支付宝扫码支付</p>
         </div>
-        
         <div class="payment-actions-container">
           <el-button 
             v-if="isMobile && paymentUrl"
@@ -340,8 +319,6 @@
             <el-icon class="btn-icon"><Wallet /></el-icon>
             跳转支付宝App支付
           </el-button>
-          
-
           <el-button 
             size="large"
             class="payment-btn cancel-btn"
@@ -354,7 +331,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -367,7 +343,6 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
 import '@/styles/list-common.scss'
-
 export default {
   name: 'Subscription',
   components: {
@@ -391,23 +366,18 @@ export default {
       additionalDevices: 5,
       additionalDays: 0
     })
-    
     const deviceOptions = ref([5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
     const monthOptions = ref([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
-    
     const upgradeCost = ref(0)
     const levelDiscount = ref(0)
     const finalAmount = ref(0)
     const paymentMethod = ref('alipay')
     const availableUpgradePaymentMethods = ref([])
-    
     const loadUpgradePaymentMethods = async () => {
       try {
         const response = await api.get('/payment-methods/active')
         const methods = parsePaymentMethods(response)
-        
         availableUpgradePaymentMethods.value = methods
-        
         if (methods.length > 0) {
           const firstMethod = methods.find(m => m.key && m.key !== 'balance' && m.key !== 'mixed') || methods[0]
           if (firstMethod && firstMethod.key) {
@@ -425,28 +395,22 @@ export default {
     const paymentUrl = ref('')
     const paymentStatusCheckTimer = ref(null)
     const isMobile = ref(window.innerWidth <= 768)
-
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
     }
-
     onMounted(() => {
       window.addEventListener('resize', handleResize)
       fetchSubscription()
       fetchUserInfo()
-      
       const handleSubscriptionUpdate = async () => {
         await fetchSubscription()
         await fetchUserInfo()
       }
-      
       const handleUserInfoUpdate = async () => {
         await fetchUserInfo()
       }
-      
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
-      
       onUnmounted(() => {
         window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
         window.removeEventListener('user-info-updated', handleUserInfoUpdate)
@@ -457,7 +421,6 @@ export default {
         }
       })
     })
-
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
       if (paymentStatusCheckTimer.value) {
@@ -465,7 +428,6 @@ export default {
         paymentStatusCheckTimer.value = null
       }
     })
-
     const fetchSubscription = async () => {
       try {
         let subscriptionResponse
@@ -474,23 +436,18 @@ export default {
         } catch (subscriptionError) {
           subscriptionResponse = null
         }
-        
         let userResponse
         try {
           userResponse = await userAPI.getUserInfo()
         } catch (userError) {
           userResponse = null
         }
-        
         if (subscriptionResponse && subscriptionResponse.data && subscriptionResponse.data.success) {
           const subscriptionData = subscriptionResponse.data.data
-          // 计算在线设备数（优先使用 current_devices，如果没有则从设备列表计算）
           let onlineDevices = subscriptionData.current_devices || subscriptionData.currentDevices || 0
-          // 如果后端没有返回在线设备数，尝试从设备列表计算
           if (onlineDevices === 0 && subscriptionData.devices && Array.isArray(subscriptionData.devices)) {
             onlineDevices = subscriptionData.devices.filter(d => d.is_active !== false).length
           }
-          
           subscription.value = {
             subscription_id: subscriptionData.subscription_id || subscriptionData.subscription_url,
             expire_time: subscriptionData.expire_time || subscriptionData.expiryDate,
@@ -503,7 +460,6 @@ export default {
             universal_url: subscriptionData.universal_url || '',
             qrcode_url: subscriptionData.qrcode_url || subscriptionData.qrcodeUrl || ''
           }
-          
           if (userResponse && userResponse.data && userResponse.data.success) {
             const userData = userResponse.data.data
             if (userData.clashUrl) subscription.value.clash_url = userData.clashUrl
@@ -527,17 +483,13 @@ export default {
           ElMessage.error('获取订阅信息失败：无法连接到服务器')
           return
         }
-        
         setTimeout(() => {
           generateQRCodes()
         }, 100)
-        
       } catch (error) {
         ElMessage.error(`获取订阅信息失败: ${error.message || '未知错误'}`)
       }
     }
-
-    // 生成二维码
     const generateQRCodes = async () => {
       if (!subscription.value) return
       try {
@@ -548,7 +500,6 @@ export default {
             ? subscription.value.universal_url 
             : `${baseUrl}${subscription.value.universal_url}`
           const encodedUrl = btoa(unescape(encodeURIComponent(subscriptionUrl)))
-          
           let expiryDisplayName = '订阅'
           if (subscription.value.expire_time && subscription.value.expire_time !== '未设置') {
             try {
@@ -562,7 +513,6 @@ export default {
           }
           qrData = `sub://${encodedUrl}#${encodeURIComponent(expiryDisplayName)}`
         }
-        
         const qrElement = document.getElementById('subscription-qrcode')
         if (qrElement && qrData) {
           await QRCode.toCanvas(qrElement, qrData, {
@@ -576,7 +526,6 @@ export default {
         console.error('生成二维码失败:', error)
       }
     }
-
     const copyUrl = async (url) => {
       if (!url) {
         ElMessage.warning('没有可复制的内容')
@@ -586,7 +535,6 @@ export default {
         await navigator.clipboard.writeText(url)
         ElMessage.success('链接已复制到剪贴板')
       } catch (error) {
-        // 降级方案：使用传统的复制方法
         try {
           const textArea = document.createElement('textarea')
           textArea.value = url
@@ -602,7 +550,6 @@ export default {
         }
       }
     }
-
     const resetSubscription = async () => {
       try {
         await ElMessageBox.confirm(
@@ -630,7 +577,6 @@ export default {
         resetLoading.value = false
       }
     }
-
     const sendSubscriptionToEmail = async () => {
       if (sendEmailRequesting.value) return
       try {
@@ -651,15 +597,11 @@ export default {
         }, 2000)
       }
     }
-
-    // 辅助函数
     const formatDate = (dateString) => formatDateUtil(dateString, 'YYYY-MM-DD HH:mm') || '未设置'
-    
     const getRemainingDays = (subscription) => {
       if (!subscription || !subscription.expire_time) return 0
       return getRemainingDaysUtil(subscription.expire_time)
     }
-
     const getStatusType = (subscription) => {
       if (!subscription) return 'info'
       if (subscription.expire_time) {
@@ -667,7 +609,6 @@ export default {
       }
       return subscription.status === 'active' ? 'success' : (subscription.status === 'expired' ? 'danger' : 'info')
     }
-
     const getStatusText = (subscription) => {
       if (!subscription) return '未激活'
       if (subscription.expire_time) {
@@ -675,14 +616,12 @@ export default {
       }
       return subscription.status === 'active' ? '正常' : (subscription.status === 'expired' ? '已过期' : '未激活')
     }
-
     const isSubscriptionActive = (subscription) => {
       if (!subscription) return false
       if (subscription.status) return subscription.status === 'active'
       if (!subscription.expire_time) return false
       return !isExpiredUtil(subscription.expire_time)
     }
-
     const fetchUserInfo = async () => {
       try {
         const userResponse = await userAPI.getUserInfo()
@@ -694,25 +633,23 @@ export default {
           if (levelResponse?.data?.success && levelResponse.data.data?.discount_rate) {
             levelDiscountRate.value = parseFloat(levelResponse.data.data.discount_rate || 1.0)
           }
-        } catch (e) {}
+        } catch (e) {
+          // 用户等级信息加载失败，使用默认折扣率
+        }
       } catch (error) {
         console.error('获取用户信息失败:', error)
       }
     }
-
-    // 升级对话框逻辑
     const handleUpgradeDialogOpen = async () => {
       upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
       upgradeCost.value = 0
       levelDiscount.value = 0
       finalAmount.value = 0
       paymentMethod.value = ''
-      
       await Promise.all([
         loadUpgradePaymentMethods(),
         fetchUserInfo()
       ])
-      
       setTimeout(() => {
         calculateUpgradeCost()
         setTimeout(() => {
@@ -728,7 +665,6 @@ export default {
         }, 300)
       }, 500)
     }
-
     const calculateUpgradeCost = async () => {
       if (!subscription.value || !upgradeForm.value.additionalDevices) {
         upgradeCost.value = 0
@@ -752,11 +688,9 @@ export default {
         console.error('计算升级费用失败:', error)
       }
     }
-
     const handlePaymentMethodChange = () => {
       if (finalAmount.value > 0) calculateUpgradeCost()
     }
-
     const confirmUpgrade = async () => {
       if (!upgradeForm.value.additionalDevices || upgradeForm.value.additionalDevices < 5) {
         ElMessage.warning('请选择要增加的设备数量（至少5个）')
@@ -785,14 +719,11 @@ export default {
               ElMessage.error('支付链接生成失败，请稍后重试')
               return
             }
-            
-            // 判断是否是易支付，如果是则跳转到新页面
             const paymentMethodName = data.payment_method_name || data.payment_method || paymentMethod.value
             const isYipay = paymentMethodName && (
               paymentMethodName.includes('yipay') || 
               paymentMethodName.includes('易支付')
             )
-            
             if (isYipay) {
               if (paymentUrlVal) {
                 ElMessage.info('正在跳转到支付页面...')
@@ -819,15 +750,12 @@ export default {
         upgradeLoading.value = false
       }
     }
-
-    // 支付相关逻辑
     const openAlipayApp = () => {
       if (!paymentUrl.value) {
         ElMessage.error('支付链接不存在')
         return
       }
       const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
-      
       const checkStatus = async () => {
         if (document.visibilityState === 'visible' && paymentQRVisible.value && upgradeOrder.value?.order_no) {
           await checkUpgradeOrderStatus()
@@ -838,12 +766,10 @@ export default {
       window.location.href = alipayAppUrl
       setTimeout(() => ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付'), 3000)
     }
-    
     const showPaymentQRCode = async (order) => {
       const url = order.payment_url || order.payment_qr_code
       paymentUrl.value = url
       try {
-        // 根据设备类型调整二维码参数
         const qrOptions = {
           width: isMobile.value ? 200 : 256, // 手机端使用较小的尺寸
           margin: 2,
@@ -857,10 +783,8 @@ export default {
         ElMessage.error('生成二维码失败')
       }
     }
-
     const startPaymentStatusCheck = () => {
       if (paymentStatusCheckTimer.value) clearInterval(paymentStatusCheckTimer.value)
-      
       paymentStatusCheckTimer.value = setInterval(async () => {
         if (!upgradeOrder.value?.order_no) {
           clearInterval(paymentStatusCheckTimer.value)
@@ -869,7 +793,6 @@ export default {
         await checkUpgradeOrderStatus(true)
       }, 2000)
     }
-
     const checkUpgradeOrderStatus = async (isAutoCheck = false) => {
       if (!upgradeOrder.value?.order_no) return
       try {
@@ -878,18 +801,14 @@ export default {
           if (paymentStatusCheckTimer.value) clearInterval(paymentStatusCheckTimer.value)
           paymentQRVisible.value = false
           ElMessage.success('支付成功，设备已升级！')
-          
           await Promise.all([fetchSubscription(), fetchUserInfo()])
-          
           window.dispatchEvent(new CustomEvent('subscription-updated'))
           window.dispatchEvent(new CustomEvent('user-info-updated'))
-          
           setTimeout(async () => {
             await Promise.all([fetchSubscription(), fetchUserInfo()])
             window.dispatchEvent(new CustomEvent('subscription-updated'))
             window.dispatchEvent(new CustomEvent('user-info-updated'))
           }, 500)
-          
           upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
           upgradeCost.value = 0
           finalAmount.value = 0
@@ -902,10 +821,8 @@ export default {
         if (!isAutoCheck) ElMessage.error('检查订单状态失败')
       }
     }
-
     const onImageError = () => ElMessage.error('二维码加载失败')
     const onImageLoad = () => {}
-
     return {
       subscription,
       resetLoading,
@@ -946,7 +863,6 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
 .subscription-container {
   padding: 0;
@@ -954,36 +870,30 @@ export default {
   margin: 0;
   width: 100%;
 }
-
 .subscription-card {
   margin-bottom: 20px;
 }
-
 .card-header {
   display: flex;
   align-items: center;
   gap: 15px;
-  
   :is(h2) {
     margin: 0;
     color: #333;
     font-size: 1.5rem;
   }
-  
   :is(p) {
     margin: 0;
     color: #666;
     font-size: 0.9rem;
   }
 }
-
 .subscription-status {
   margin-bottom: 30px;
   padding: 20px;
   background: #f8f9fa;
   border-radius: 8px;
 }
-
 .status-item {
   text-align: left;
   .status-label {
@@ -997,53 +907,43 @@ export default {
     font-weight: 600;
   }
 }
-
 .subscription-urls {
   margin-bottom: 30px;
-  
   :is(h3) {
     color: #333;
     margin-bottom: 20px;
     font-size: 1.2rem;
   }
 }
-
 .url-list {
   margin-bottom: 30px;
 }
-
 .url-item {
   display: flex;
   align-items: center;
   margin-bottom: 15px;
   gap: 15px;
-  
   .url-label {
     min-width: 120px;
     color: #666;
     font-weight: 500;
   }
-  
   .url-content {
     flex: 1;
   }
 }
-
 .qr-code-section {
   text-align: center;
-  
   :is(h4) {
     color: #333;
     margin-bottom: 20px;
     font-size: 1.1rem;
   }
-  
   .qr-codes {
     display: flex;
     justify-content: center;
     gap: 40px;
   }
-  
   .qr-item {
     text-align: center;
     :is(p) {
@@ -1053,14 +953,12 @@ export default {
     }
   }
 }
-
 .subscription-actions {
   display: flex;
   gap: 12px;
   justify-content: center;
   margin-bottom: 20px;
   flex-wrap: wrap;
-  
   .action-btn {
     padding: 12px 24px;
     font-weight: 600;
@@ -1069,24 +967,19 @@ export default {
     white-space: nowrap;
     min-width: 120px;
     box-sizing: border-box;
-    
     .el-icon {
       margin-right: 6px;
     }
   }
 }
-
 .no-subscription {
   text-align: center;
   padding: 40px 20px;
 }
-
-/* 支付二维码对话框样式 */
 .payment-qr-dialog {
   .payment-qr-container {
     padding: 10px 0;
   }
-
   .order-info {
     margin-bottom: 20px;
     .amount {
@@ -1095,18 +988,15 @@ export default {
       font-size: 1.1em;
     }
   }
-
   .qr-code-wrapper {
     text-align: center;
     margin: 20px 0;
-    
     .qr-code {
       display: inline-block;
       padding: 15px;
       background: #fff;
       border: 1px solid #e4e7ed;
       border-radius: 8px;
-      
       :is(img) {
         max-width: 256px;
         width: 100%;
@@ -1114,7 +1004,6 @@ export default {
         display: block;
       }
     }
-    
     .qr-loading {
       padding: 40px;
       color: #909399;
@@ -1124,7 +1013,6 @@ export default {
       }
     }
   }
-
   .payment-tips {
     text-align: center;
     margin-bottom: 20px;
@@ -1137,8 +1025,6 @@ export default {
       gap: 5px;
     }
   }
-
-  /* 支付按钮区域样式 - 优化核心 */
   .payment-actions-container {
     display: flex;
     justify-content: center;
@@ -1146,23 +1032,18 @@ export default {
     gap: 16px;
     margin-top: 24px;
     padding: 0 10px;
-    
     .payment-btn {
       min-width: 120px;
-      
       .btn-icon {
         margin-right: 5px;
       }
     }
   }
 }
-
-/* 升级设备数量对话框样式 */
 .upgrade-dialog {
   .upgrade-content {
     padding: 10px 0;
   }
-
   .current-subscription-info,
   .upgrade-options,
   .cost-calculation,
@@ -1175,19 +1056,16 @@ export default {
       font-weight: 600;
     }
   }
-
   .form-hint {
     color: #909399;
     font-size: 0.875rem;
     margin-top: 8px;
   }
-
   .final-amount {
     color: #f56c6c;
     font-size: 1.2rem;
     font-weight: 600;
   }
-
   .balance-info {
     padding: 12px;
     background: #f5f7fa;
@@ -1196,13 +1074,11 @@ export default {
     color: #606266;
     font-weight: 500;
   }
-
   .payment-amount {
     margin-top: 12px;
     padding: 12px;
     background: #f0f9ff;
     border-radius: 4px;
-    
     :is(p) {
       margin: 8px 0;
       color: #606266;
@@ -1210,20 +1086,16 @@ export default {
       &:last-child { color: #409eff; font-weight: 500; }
     }
   }
-
   .dialog-footer {
     display: flex;
     justify-content: center;
     gap: 16px;
     padding: 0 10px;
-    
     .el-button {
       min-width: 120px;
     }
   }
 }
-
-/* 响应式适配 */
 @media (max-width: 768px) {
   .subscription-card {
     border-radius: 0;
@@ -1231,7 +1103,6 @@ export default {
     box-shadow: none;
     border-left: none;
     border-right: none;
-    
     :deep(.el-card__header) {
       padding: 16px;
       .card-header {
@@ -1241,30 +1112,24 @@ export default {
       }
     }
   }
-
   .subscription-actions {
     flex-direction: column;
     gap: 12px;
-    
     .action-btn {
       width: 100%;
       margin: 0;
       min-width: auto;
     }
   }
-
-  /* 支付弹窗移动端适配 - 强制对齐修正 */
   .payment-qr-dialog {
     :deep(.el-dialog) {
       margin: 5vh auto !important;
       border-radius: 12px;
       max-width: 95% !important;
     }
-    
     :deep(.el-dialog__body) {
       padding: 20px 15px;
     }
-
     .qr-code-wrapper .qr-code {
       padding: 10px;
       :is(img) {
@@ -1272,14 +1137,11 @@ export default {
         height: 180px;
       }
     }
-
-    /* 移动端支付按钮堆叠显示 */
     .payment-actions-container {
       flex-direction: column; /* 垂直排列 */
       width: 100%;
       padding: 0; /* 移除容器内边距 */
       gap: 12px;
-      
       .payment-btn {
         width: 100%; /* 强制占满宽度 */
         height: 46px; /* 统一高度，更易点击 */
@@ -1287,8 +1149,6 @@ export default {
         margin: 0 !important; /* 强制移除 Element Plus 默认的 margin-left */
         border-radius: 8px; /* 统一圆角 */
       }
-      
-      /* 将最主要的操作（跳转支付）放在最上面 */
       .alipay-btn {
         order: 1;
       }
@@ -1300,8 +1160,6 @@ export default {
       }
     }
   }
-
-  /* 升级弹窗移动端适配 */
   .upgrade-dialog {
     :deep(.el-dialog) {
       width: 95% !important;
@@ -1310,19 +1168,15 @@ export default {
       display: flex;
       flex-direction: column;
     }
-
     :deep(.el-dialog__body) {
       overflow-y: auto; /* 内容区可滚动 */
       flex: 1;
       padding: 10px 15px;
     }
-
-    /* 支付按钮区域 */
     .dialog-footer {
       flex-direction: column;
       gap: 12px;
       padding-top: 10px; /* 增加底部内边距 */
-      
       .el-button {
         width: 100%;
         height: 44px;
