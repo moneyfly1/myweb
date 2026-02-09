@@ -7,8 +7,6 @@
           <p>查看和管理各类系统日志</p>
         </div>
       </template>
-
-      <!-- 日志分类标签页 -->
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="注册日志" name="registration">
           <RegistrationLogs />
@@ -32,7 +30,6 @@
     </el-card>
   </div>
 </template>
-
 <script setup>
 import { ref } from 'vue'
 import RegistrationLogs from './logs/RegistrationLogs.vue'
@@ -41,24 +38,19 @@ import BalanceLogs from './logs/BalanceLogs.vue'
 import CommissionLogs from './logs/CommissionLogs.vue'
 import SubscriptionResetLogs from './logs/SubscriptionResetLogs.vue'
 import EmailLogs from './logs/EmailLogs.vue'
-
 const activeTab = ref('registration')
-
 const handleTabChange = (tabName) => {
   activeTab.value = tabName
 }
 </script>
-
 <style scoped>
 .logs-container {
   padding: 20px;
 }
-
 .card-header h2 {
   margin: 0;
   color: #333;
 }
-
 .card-header p {
   margin: 5px 0 0 0;
   color: #666;

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1376,14 +1377,49 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 生成 Clash 配置
-	config, err := config_update.NewConfigUpdateService().GenerateClashConfig(clashURL, clientIP, userAgent)
+	configService := config_update.NewConfigUpdateService()
+	config, err := configService.GenerateClashConfig(clashURL, clientIP, userAgent)
 	if err != nil {
 		c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
 		return
 	}
 
+	// 生成订阅名称（用于 HTTP 响应头）
+	ctx := configService.GetSubscriptionContext(clashURL, clientIP, userAgent)
+	subscriptionName := configService.GenerateSubscriptionName(ctx)
+
+	// 生成文件名（格式：到期时间2026-02-XX 或 无限期订阅）
+	fileName := subscriptionName
+	if strings.HasPrefix(subscriptionName, "到期: ") {
+		// 将 "到期: 2026-02-XX" 转换为 "到期时间2026-02-XX"
+		fileName = "到期时间" + strings.TrimPrefix(subscriptionName, "到期: ")
+	} else if subscriptionName == "无限期订阅" {
+		fileName = "无限期订阅"
+	}
+
+	// URL 编码文件名（用于 Content-Disposition 头部）
+	encodedName := url.QueryEscape(fileName)
+
 	// 返回 YAML 格式的 Clash 配置
 	c.Header("Content-Type", "text/yaml; charset=utf-8")
+
+	// 1. 标准头部 (告诉浏览器和客户端这是个文件，且指定文件名)
+	// 注意：filename*=UTF-8'' 这种格式能最好地兼容中文
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s.yaml", encodedName))
+
+	// 2. 兼容性头部 (部分客户端读取此字段)
+	c.Header("Subscription-Title", subscriptionName)
+	c.Header("Profile-Title", subscriptionName)
+
+	// 3. 订阅信息头部（某些客户端可能使用）
+	if !subscription.ExpireTime.IsZero() {
+		expireUnix := subscription.ExpireTime.Unix()
+		c.Header("Subscription-Userinfo", fmt.Sprintf("expire=%d", expireUnix))
+	}
+
+	// 4. 更新间隔头部（部分客户端可能使用）
+	c.Header("Profile-Update-Interval", "24")
+
 	c.String(200, config)
 }
 
@@ -1559,9 +1595,6 @@ func GetConfigUpdateConfig(c *gin.Context) {
 	configMap := make(map[string]interface{})
 	defaultConfig := map[string]interface{}{
 		"urls":              []string{},
-		"target_dir":        "./uploads/config",
-		"v2ray_file":        "xr",
-		"clash_file":        "clash.yaml",
 		"filter_keywords":   []string{},
 		"enable_schedule":   false,
 		"schedule_interval": 3600,

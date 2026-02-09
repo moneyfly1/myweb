@@ -1,6 +1,5 @@
 <template>
   <div class="unified-auth-container">
-    <!-- 全局消息提示 -->
     <transition name="fade">
       <el-alert
         v-if="notification.show"
@@ -12,9 +11,7 @@
         show-icon
       />
     </transition>
-
     <div class="auth-wrapper">
-      <!-- 左侧：品牌/视觉区域 (桌面端显示) -->
       <div class="auth-brand-section">
         <div class="brand-content">
           <div class="brand-header">
@@ -26,7 +23,6 @@
               <span class="brand-name">{{ settings.siteName || 'TurboCloud' }}</span>
             </div>
           </div>
-
           <div class="brand-body">
             <div class="brand-badge">
               <span class="badge-dot"></span>
@@ -47,7 +43,6 @@
                 <span>全平台客户端支持</span>
               </div>
             </div>
-            
             <div class="brand-stats">
               <div class="stat-item">
                 <span class="stat-value">80+</span>
@@ -60,17 +55,13 @@
               </div>
             </div>
           </div>
-
           <div class="brand-footer">
             <span>&copy; 2026 {{ settings.siteName || 'TurboCloud' }} Network.</span>
             <a href="#" class="footer-link">服务条款</a>
           </div>
         </div>
       </div>
-
-      <!-- 右侧：表单交互区域 -->
       <div class="auth-form-section">
-        <!-- 移动端头部 -->
         <div class="mobile-header">
           <div class="mobile-logo">
             <img v-if="settings.siteLogo" :src="settings.siteLogo" :alt="settings.siteName" class="logo-img-small" />
@@ -84,16 +75,13 @@
             下载APP
           </a>
         </div>
-
         <div class="form-container">
           <transition name="fade" mode="out-in">
-            <!-- 1. 登录表单 -->
             <div v-if="currentView === 'login'" key="login" class="auth-form">
               <div class="form-header">
                 <h1 class="form-title">登录控制台</h1>
                 <p class="form-subtitle">欢迎回来，连接从未如此简单。</p>
               </div>
-
               <el-form
                 ref="loginFormRef"
                 :model="loginForm"
@@ -111,7 +99,6 @@
                     autocomplete="username"
                   />
                 </el-form-item>
-
                 <el-form-item prop="password">
                   <el-input
                     v-model="loginForm.password"
@@ -125,7 +112,6 @@
                     @keyup.enter="handleLogin"
                   />
                 </el-form-item>
-
                 <el-form-item>
                   <div class="form-options">
                     <el-checkbox v-model="rememberMe">记住我</el-checkbox>
@@ -134,7 +120,6 @@
                     </el-link>
                   </div>
                 </el-form-item>
-
                 <el-form-item>
                   <el-button
                     type="primary"
@@ -147,7 +132,6 @@
                   </el-button>
                 </el-form-item>
               </el-form>
-
               <div class="form-footer">
                 <span class="footer-text">新用户？</span>
                 <el-link type="primary" @click="switchView('register')" :underline="false">
@@ -155,14 +139,10 @@
                 </el-link>
               </div>
             </div>
-
-            <!-- 2. 注册表单 -->
             <div v-else-if="currentView === 'register'" key="register" class="auth-form">
               <div class="form-header">
                 <h1 class="form-title">注册账号</h1>
               </div>
-
-              <!-- 注册已禁用提示 -->
               <el-alert
                 v-if="!registrationEnabled"
                 title="注册功能已禁用"
@@ -175,7 +155,6 @@
                   <p>系统管理员已关闭用户注册功能，请联系管理员获取账户。</p>
                 </template>
               </el-alert>
-
               <el-form
                 v-if="registrationEnabled"
                 ref="registerFormRef"
@@ -194,7 +173,6 @@
                     autocomplete="username"
                   />
                 </el-form-item>
-
                 <el-form-item prop="email">
                   <el-input
                     v-model="registerForm.email"
@@ -209,8 +187,6 @@
                     <i class="ph-fill ph-info"></i> 推荐使用 QQ 邮箱注册，接收验证码更稳定
                   </div>
                 </el-form-item>
-
-                <!-- 验证码模块 -->
                 <el-form-item prop="verificationCode" :required="emailVerificationRequired">
                   <div class="verification-code-group">
                     <el-input
@@ -235,7 +211,6 @@
                     </el-button>
                   </div>
                 </el-form-item>
-
                 <el-form-item prop="inviteCode" :required="inviteCodeRequired">
                   <el-input
                     v-model="registerForm.inviteCode"
@@ -253,7 +228,6 @@
                     </span>
                   </div>
                 </el-form-item>
-
                 <el-form-item prop="password">
                   <el-input
                     v-model="registerForm.password"
@@ -266,7 +240,6 @@
                     autocomplete="new-password"
                   />
                 </el-form-item>
-
                 <el-form-item prop="confirmPassword">
                   <el-input
                     v-model="registerForm.confirmPassword"
@@ -280,7 +253,6 @@
                     @keyup.enter="handleRegister"
                   />
                 </el-form-item>
-
                 <el-form-item>
                   <el-button
                     type="primary"
@@ -293,7 +265,6 @@
                   </el-button>
                 </el-form-item>
               </el-form>
-
               <div class="form-footer">
                 <span class="footer-text">已有账号？</span>
                 <el-link type="primary" @click="switchView('login')" :underline="false">
@@ -301,8 +272,6 @@
                 </el-link>
               </div>
             </div>
-
-            <!-- 3. 找回密码表单 -->
             <div v-else-if="currentView === 'forgot'" key="forgot" class="auth-form">
               <el-button
                 text
@@ -312,7 +281,6 @@
                 <i class="ph-bold ph-arrow-left"></i>
                 返回登录
               </el-button>
-
               <div class="form-header">
                 <div class="forgot-icon">
                   <i class="ph-fill ph-lock-key-open"></i>
@@ -320,7 +288,6 @@
                 <h1 class="form-title">重置密码</h1>
                 <p class="form-subtitle">验证邮箱后即可设置新密码。</p>
               </div>
-
               <el-form
                 ref="forgotFormRef"
                 :model="forgotForm"
@@ -339,8 +306,6 @@
                     autocomplete="email"
                   />
                 </el-form-item>
-
-                  <!-- 验证码模块 -->
                   <el-form-item prop="verificationCode" required>
                     <div class="verification-code-group">
                       <el-input
@@ -365,7 +330,6 @@
                     </el-button>
                   </div>
                 </el-form-item>
-
                 <el-form-item prop="newPassword">
                   <el-input
                     v-model="forgotForm.newPassword"
@@ -378,7 +342,6 @@
                     autocomplete="new-password"
                   />
                 </el-form-item>
-
                 <el-form-item prop="confirmPassword">
                   <el-input
                     v-model="forgotForm.confirmPassword"
@@ -392,7 +355,6 @@
                     @keyup.enter="handleReset"
                   />
                 </el-form-item>
-
                 <el-form-item>
                   <el-button
                     type="primary"
@@ -408,7 +370,6 @@
             </div>
           </transition>
         </div>
-
         <div class="mobile-footer">
           <span>&copy; 2026 {{ settings.siteName || 'TurboCloud' }} Network.</span>
         </div>
@@ -416,7 +377,6 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -427,13 +387,10 @@ import { authAPI, inviteAPI, settingsAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
 import { resetRefreshFailed } from '@/utils/api'
-
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
-
-// 响应式数据
 const currentView = ref('login')
 const isLoading = ref(false)
 const sendingCode = ref(false)
@@ -444,20 +401,14 @@ const inviteCodeRequired = ref(false)
 const emailVerificationRequired = ref(true)
 const minPasswordLength = ref(8)
 const inviteCodeInfo = ref(null)
-
 let countdownTimer = null
-
-// 表单引用
 const loginFormRef = ref()
 const registerFormRef = ref()
 const forgotFormRef = ref()
-
-// 表单数据
 const loginForm = reactive({
   username: '',
   password: ''
 })
-
 const registerForm = reactive({
   username: '',
   email: '',
@@ -466,24 +417,18 @@ const registerForm = reactive({
   verificationCode: '',
   inviteCode: ''
 })
-
 const forgotForm = reactive({
   email: '',
   verificationCode: '',
   newPassword: '',
   confirmPassword: ''
 })
-
-// 通知
 const notification = reactive({
   show: false,
   message: '',
   type: 'success'
 })
-
 const settings = computed(() => settingsStore)
-
-// 显示通知
 const showNotification = (message, type = 'success') => {
   notification.message = message
   notification.type = type
@@ -492,11 +437,8 @@ const showNotification = (message, type = 'success') => {
     notification.show = false
   }, 3000)
 }
-
-// 切换视图
 const switchView = (view) => {
   currentView.value = view
-  // 重置表单
   if (view === 'login') {
     loginForm.password = ''
   } else if (view === 'register') {
@@ -510,8 +452,6 @@ const switchView = (view) => {
   }
   notification.show = false
 }
-
-// 表单验证规则
 const loginRules = {
   username: [
     { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
@@ -521,7 +461,6 @@ const loginRules = {
     { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
   ]
 }
-
 const registerRules = computed(() => ({
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -599,7 +538,6 @@ const registerRules = computed(() => ({
     { required: true, message: '请输入邀请码', trigger: 'blur' }
   ] : []
 }))
-
 const forgotRules = computed(() => ({
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
@@ -669,38 +607,27 @@ const forgotRules = computed(() => ({
     }
   ]
 }))
-
-// 发送验证码
 const sendVerificationCode = async (type) => {
   const email = type === 'register' ? registerForm.email : forgotForm.email
-  
   if (!email) {
     ElMessage.warning('请先输入邮箱地址')
     return
   }
-  
   if (!email.includes('@')) {
     ElMessage.warning('请输入有效的邮箱地址')
     return
   }
-  
   sendingCode.value = true
-  
   try {
     if (type === 'register') {
-      // 注册验证码
       await authAPI.sendVerificationCode({
         email: email,
         type: 'email'
       })
     } else {
-      // 忘记密码验证码 - 使用忘记密码接口
       await authAPI.forgotPassword({ email: email })
     }
-    
     ElMessage.success('验证码已发送，请查收邮箱')
-    
-    // 开始倒计时（60秒）
     codeTimer.value = 60
     if (countdownTimer) {
       clearInterval(countdownTimer)
@@ -712,7 +639,6 @@ const sendVerificationCode = async (type) => {
         countdownTimer = null
       }
     }, 1000)
-    
   } catch (error) {
     if (error.response?.data?.detail) {
       ElMessage.error(error.response.data.detail)
@@ -725,25 +651,19 @@ const sendVerificationCode = async (type) => {
     sendingCode.value = false
   }
 }
-
-// 登录处理
 const handleLogin = async () => {
   if (!loginFormRef.value) return
-  
   try {
     await loginFormRef.value.validate()
   } catch (error) {
     return
   }
-  
   isLoading.value = true
-  
   try {
     const result = await authStore.login({
       username: loginForm.username,
       password: loginForm.password
     })
-    
     if (result.success) {
       ElMessage.success('登录成功')
       await router.push('/dashboard')
@@ -755,10 +675,7 @@ const handleLogin = async () => {
                       error.response?.data?.message || 
                       error.message || 
                       '登录失败，请重试'
-    
-    // 处理不同状态码的错误
     if (error.response?.status === 403) {
-      // 403 禁止访问 - 可能是账户被禁用或 CSRF 验证失败
       if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
         ElMessage({
           message: '账户已被禁用，无法使用服务。如有疑问，请联系管理员。',
@@ -773,7 +690,6 @@ const handleLogin = async () => {
           duration: 5000,
           showClose: true
         })
-        // 刷新页面以获取新的 CSRF token
         setTimeout(() => {
           window.location.reload()
         }, 2000)
@@ -786,7 +702,6 @@ const handleLogin = async () => {
         })
       }
     } else if (error.response?.status === 429) {
-      // 请求过于频繁或账户被锁定
       if (errorMessage.includes('锁定') || errorMessage.includes('锁定15分钟')) {
         errorMessage = '登录失败次数过多，账户已被临时锁定15分钟，请稍后再试'
         ElMessage({
@@ -800,7 +715,6 @@ const handleLogin = async () => {
         ElMessage.error(errorMessage)
       }
     } else if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
-      // 账户被禁用（即使不是 403 状态码）
       ElMessage({
         message: '账户已被禁用，无法使用服务。如有疑问，请联系管理员。',
         type: 'error',
@@ -808,7 +722,6 @@ const handleLogin = async () => {
         showClose: true
       })
     } else if (errorMessage.includes('系统维护')) {
-      // 系统维护中
       ElMessage({
         message: '系统维护中，请稍后再试',
         type: 'warning',
@@ -822,24 +735,18 @@ const handleLogin = async () => {
     isLoading.value = false
   }
 }
-
-// 注册处理
 const handleRegister = async () => {
   if (!registerFormRef.value) return
-  
   try {
     await registerFormRef.value.validate()
   } catch (error) {
     return
   }
-  
   if (registerForm.password !== registerForm.confirmPassword) {
     ElMessage.error('两次输入的密码不一致，请重新输入')
     return
   }
-  
   isLoading.value = true
-  
   try {
     const registerData = {
       email: registerForm.email,
@@ -847,27 +754,20 @@ const handleRegister = async () => {
       password: registerForm.password,
       invite_code: registerForm.inviteCode || null
     }
-    
     if (emailVerificationRequired.value && registerForm.verificationCode) {
       registerData.verification_code = registerForm.verificationCode
     }
-    
     const response = await authAPI.register(registerData)
-    
     if (response.data) {
       const responseData = response.data?.data || response.data
-      
       if (responseData.access_token && responseData.user) {
         const { access_token, refresh_token, user: userData } = responseData
-        
         if (userData.is_admin) {
           ElMessage.warning('管理员账户请使用管理员登录页面登录')
           router.push('/login')
           return
         }
-        
         const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000
-        
         const safeUserData = {
           id: userData.id,
           username: userData.username,
@@ -878,22 +778,16 @@ const handleRegister = async () => {
           theme: userData.theme,
           language: userData.language
         }
-        
         authStore.setAuth(access_token, safeUserData, true)
-        
         if (refresh_token) {
           secureStorage.set('user_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
         }
-        
         resetRefreshFailed()
-        
         setTimeout(() => {
           const themeStore = useThemeStore()
           themeStore.loadUserTheme().catch(() => {})
         }, 500)
-        
         ElMessage.success('注册成功！正在跳转到用户中心...')
-        
         setTimeout(() => {
           router.push('/dashboard')
         }, 500)
@@ -917,24 +811,18 @@ const handleRegister = async () => {
     isLoading.value = false
   }
 }
-
-// 重置密码处理
 const handleReset = async () => {
   if (!forgotFormRef.value) return
-  
   try {
     await forgotFormRef.value.validate()
   } catch (error) {
     return
   }
-  
   if (forgotForm.newPassword !== forgotForm.confirmPassword) {
     ElMessage.error('两次输入的密码不一致，请重新输入')
     return
   }
-  
   isLoading.value = true
-  
   try {
     const { api } = await import('@/utils/api')
     await api.post('/auth/reset-password', {
@@ -942,9 +830,7 @@ const handleReset = async () => {
       verification_code: forgotForm.verificationCode,
       new_password: forgotForm.newPassword
     })
-    
     ElMessage.success('密码重置成功！')
-    
     setTimeout(() => {
       switchView('login')
     }, 1500)
@@ -958,15 +844,11 @@ const handleReset = async () => {
     isLoading.value = false
   }
 }
-
-
-// 验证邀请码
 const validateInviteCode = async (code) => {
   if (!code || code.trim() === '') {
     inviteCodeInfo.value = null
     return
   }
-  
   try {
     const response = await inviteAPI.validateInviteCode(code.trim().toUpperCase())
     inviteCodeInfo.value = response.data || response
@@ -977,14 +859,11 @@ const validateInviteCode = async (code) => {
     }
   }
 }
-
-// 监听邀请码变化
 let validateTimeout = null
 watch(() => registerForm.inviteCode, (newCode) => {
   if (validateTimeout) {
     clearTimeout(validateTimeout)
   }
-  
   if (newCode && newCode.trim()) {
     validateTimeout = setTimeout(() => {
       validateInviteCode(newCode)
@@ -993,30 +872,22 @@ watch(() => registerForm.inviteCode, (newCode) => {
     inviteCodeInfo.value = null
   }
 })
-
-// 检查注册设置
 const checkRegistrationSettings = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
     const settings = response.data?.data || response.data || {}
-    
-    // 支持多种字段名格式：registration_enabled 或 allowRegistration
     const registrationValue = settings.registration_enabled !== undefined 
                             ? settings.registration_enabled
                             : (settings.allowRegistration !== undefined 
                                ? settings.allowRegistration 
                                : true)
     registrationEnabled.value = registrationValue === true || registrationValue === "true"
-    
-    // 支持多种字段名格式：invite_code_required 或 inviteCodeRequired
     const inviteCodeValue = settings.invite_code_required !== undefined 
                            ? settings.invite_code_required
                            : (settings.inviteCodeRequired !== undefined 
                               ? settings.inviteCodeRequired 
                               : false)
     inviteCodeRequired.value = inviteCodeValue === true || inviteCodeValue === "true"
-    
-    // 支持多种字段名格式：email_verification_required 或 emailVerificationRequired
     const emailVerificationValue = settings.email_verification_required !== undefined 
                                    ? settings.email_verification_required
                                    : (settings.emailVerificationRequired !== undefined 
@@ -1025,15 +896,12 @@ const checkRegistrationSettings = async () => {
                                          ? settings.require_email_verification 
                                          : true))
     emailVerificationRequired.value = emailVerificationValue === true || emailVerificationValue === "true"
-    
-    // 支持多种字段名格式：min_password_length 或 minPasswordLength
     const minPasswordValue = settings.min_password_length !== undefined 
                             ? settings.min_password_length
                             : (settings.minPasswordLength !== undefined 
                                ? settings.minPasswordLength 
                                : 8)
     minPasswordLength.value = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
-    
     if (!registrationEnabled.value) {
       ElMessage.warning('注册功能已禁用，请联系管理员')
     }
@@ -1044,27 +912,19 @@ const checkRegistrationSettings = async () => {
     minPasswordLength.value = 8
   }
 }
-
-// 从URL参数中获取信息
 onMounted(async () => {
   await checkRegistrationSettings()
   await settingsStore.loadSettings()
-  
-  // 从URL参数中获取用户名（注册成功后跳转）
   if (route.query.username) {
     loginForm.username = route.query.username
     if (route.query.registered === 'true') {
       ElMessage.success('注册成功！请输入密码登录')
     }
   }
-  
-  // 从URL参数中获取邀请码
   if (route.query.invite) {
     registerForm.inviteCode = route.query.invite
     await validateInviteCode(route.query.invite)
   }
-  
-  // 根据路由路径设置当前视图
   if (route.path === '/register') {
     currentView.value = 'register'
   } else if (route.path === '/forgot-password') {
@@ -1073,7 +933,6 @@ onMounted(async () => {
     currentView.value = 'login'
   }
 })
-
 onUnmounted(() => {
   if (countdownTimer) {
     clearInterval(countdownTimer)
@@ -1084,7 +943,6 @@ onUnmounted(() => {
   }
 })
 </script>
-
 <style scoped lang="scss">
 .unified-auth-container {
   min-height: 100vh;
@@ -1092,7 +950,6 @@ onUnmounted(() => {
   overflow: clip;
   background-color: #f3f4f6;
 }
-
 .notification-alert {
   position: fixed;
   top: 20px;
@@ -1102,23 +959,19 @@ onUnmounted(() => {
   max-width: 500px;
   width: 90%;
 }
-
 .auth-wrapper {
   display: flex;
   min-height: 100vh;
   width: 100%;
 }
-
 .auth-brand-section {
   display: none;
-  
   @media (min-width: 1024px) {
     display: flex;
     width: 50%;
     position: relative;
     overflow: clip;
     background: linear-gradient(135deg, rgba(10, 10, 30, 0.92) 0%, rgba(37, 99, 235, 0.85) 100%);
-    
     &::before {
       content: '';
       position: absolute;
@@ -1131,7 +984,6 @@ onUnmounted(() => {
     }
   }
 }
-
 .brand-content {
   position: relative;
   z-index: 1;
@@ -1142,20 +994,17 @@ onUnmounted(() => {
   width: 100%;
   color: white;
 }
-
 .brand-header {
   .brand-logo {
     display: flex;
     align-items: center;
     gap: 12px;
     margin-bottom: 32px;
-    
     .logo-img {
       width: 40px;
       height: 40px;
       border-radius: 12px;
     }
-    
     .logo-placeholder {
       width: 40px;
       height: 40px;
@@ -1167,7 +1016,6 @@ onUnmounted(() => {
       color: white;
       font-size: 20px;
     }
-    
     .brand-name {
       font-size: 20px;
       font-weight: 600;
@@ -1175,14 +1023,12 @@ onUnmounted(() => {
     }
   }
 }
-
 .brand-body {
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
-
 .brand-badge {
   display: inline-flex;
   align-items: center;
@@ -1193,7 +1039,6 @@ onUnmounted(() => {
   font-size: 14px;
   margin-bottom: 24px;
   width: fit-content;
-  
   .badge-dot {
     width: 8px;
     height: 8px;
@@ -1202,7 +1047,6 @@ onUnmounted(() => {
     animation: pulse 2s infinite;
   }
 }
-
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -1211,7 +1055,6 @@ onUnmounted(() => {
     opacity: 0.5;
   }
 }
-
 .brand-title {
   font-size: 36px;
   font-weight: 700;
@@ -1219,46 +1062,38 @@ onUnmounted(() => {
   margin-bottom: 32px;
   color: white;
 }
-
 .brand-features {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  
   .feature-item {
     display: flex;
     align-items: center;
     gap: 12px;
     font-size: 16px;
     color: rgba(255, 255, 255, 0.9);
-    
     i {
       font-size: 20px;
       color: #10b981;
     }
   }
 }
-
 .brand-footer {
   margin-top: auto;
   padding-top: 32px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  
   .brand-stats {
     display: flex;
     gap: 32px;
     margin-bottom: 24px;
-    
     .stat-item {
       display: flex;
       flex-direction: column;
-      
       .stat-value {
         font-size: 24px;
         font-weight: 700;
         color: white;
       }
-      
       .stat-label {
         font-size: 14px;
         color: rgba(255, 255, 255, 0.7);
@@ -1266,53 +1101,44 @@ onUnmounted(() => {
       }
     }
   }
-  
   .footer-link {
     color: rgba(255, 255, 255, 0.7);
     text-decoration: none;
     font-size: 14px;
     transition: color 0.3s;
-    
     &:hover {
       color: white;
     }
   }
 }
-
 .auth-form-section {
   flex: 1;
   display: flex;
   flex-direction: column;
   background: white;
   overflow-y: auto;
-  
   @media (min-width: 1024px) {
     width: 50%;
   }
 }
-
 .mobile-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
   border-bottom: 1px solid #e5e7eb;
-  
   @media (min-width: 1024px) {
     display: none;
   }
-  
   .mobile-logo {
     display: flex;
     align-items: center;
     gap: 12px;
-    
     .logo-img-small {
       width: 32px;
       height: 32px;
       border-radius: 8px;
     }
-    
     .logo-placeholder-small {
       width: 32px;
       height: 32px;
@@ -1324,14 +1150,12 @@ onUnmounted(() => {
       color: white;
       font-size: 16px;
     }
-    
     .mobile-brand-name {
       font-size: 18px;
       font-weight: 600;
       color: #1f2937;
     }
   }
-  
   .download-app-btn {
     display: flex;
     align-items: center;
@@ -1343,99 +1167,81 @@ onUnmounted(() => {
     text-decoration: none;
     font-size: 14px;
     transition: all 0.3s;
-    
     &:hover {
       background: #e5e7eb;
       color: #1f2937;
     }
   }
 }
-
 .form-container {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  
   @media (min-width: 1024px) {
     padding: 48px;
   }
 }
-
 .auth-form {
   width: 100%;
   max-width: 400px;
 }
-
 .form-header {
   text-align: center;
   margin-bottom: 32px;
-  
   .form-title {
     font-size: 28px;
     font-weight: 700;
     color: #1f2937;
     margin-bottom: 8px;
   }
-  
   .form-subtitle {
     font-size: 14px;
     color: #6b7280;
   }
 }
-
 .form-options {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
 }
-
 .submit-button {
   width: 100%;
   height: 44px;
   font-size: 16px;
   font-weight: 600;
 }
-
 .form-footer {
   text-align: center;
   margin-top: 24px;
   font-size: 14px;
   color: #6b7280;
-  
   .footer-text {
     margin-right: 8px;
   }
 }
-
 .verification-code-group {
   display: flex;
   gap: 12px;
-  
   .verification-code-input {
     flex: 1;
   }
-  
   .send-code-button {
     white-space: nowrap;
   }
 }
-
 .invite-code-tip {
   margin-top: 8px;
   font-size: 12px;
-  
   .tip-success {
     color: #10b981;
   }
-  
   .tip-error {
     color: #ef4444;
   }
 }
-
 .back-button {
   display: inline-flex;
   align-items: center;
@@ -1445,12 +1251,10 @@ onUnmounted(() => {
   font-size: 14px;
   margin-bottom: 24px;
   transition: color 0.3s;
-  
   &:hover {
     color: #1f2937;
   }
 }
-
 .forgot-icon {
   width: 64px;
   height: 64px;
@@ -1463,18 +1267,14 @@ onUnmounted(() => {
   color: #f59e0b;
   font-size: 32px;
 }
-
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s;
 }
-
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
-
-// 去掉输入框内部嵌套效果，使用完全扁平样式
 :deep(.el-input) {
   .el-input__wrapper {
     box-shadow: none !important;
@@ -1483,18 +1283,15 @@ onUnmounted(() => {
     background-color: #ffffff !important;
     padding: 0 15px !important;
     min-height: 44px !important;
-    
     &:hover {
       box-shadow: none !important;
       border-color: #c0c4cc !important;
     }
-    
     &.is-focus {
       box-shadow: none !important;
       border-color: #409eff !important;
     }
   }
-  
   .el-input__inner {
     border: none !important;
     box-shadow: none !important;
@@ -1504,48 +1301,36 @@ onUnmounted(() => {
     line-height: 42px !important;
     font-size: 14px !important;
   }
-  
   .el-input__prefix {
     left: 15px !important;
   }
-  
   .el-input__suffix {
     right: 15px !important;
   }
 }
-
-// 去掉表单项的额外间距和嵌套
 :deep(.el-form-item) {
   margin-bottom: 20px;
-  
   .el-form-item__content {
     line-height: normal;
   }
 }
-
-// 确保输入框大小一致
 :deep(.el-input--large) {
   .el-input__wrapper {
     min-height: 44px !important;
   }
-  
   .el-input__inner {
     height: 42px !important;
     line-height: 42px !important;
   }
 }
-
-// 手机端验证码输入框优化
 @media (max-width: 768px) {
   .verification-code-group {
     gap: 8px;
     flex-wrap: nowrap;
-    
     .verification-code-input {
       flex: 1;
       min-width: 0; /* 允许缩小 */
     }
-    
     .send-code-button {
       min-width: 90px;
       max-width: 120px;
@@ -1555,8 +1340,6 @@ onUnmounted(() => {
       padding: 0 12px;
     }
   }
-  
-  /* 手机端验证码输入框文字颜色和输入修复 */
   :deep(.verification-code-input) {
     -webkit-user-select: auto !important;
     user-select: auto !important;
@@ -1564,7 +1347,6 @@ onUnmounted(() => {
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
-  
   :deep(.verification-code-input .el-input__wrapper) {
     pointer-events: auto !important;
     touch-action: manipulation !important;
@@ -1572,7 +1354,6 @@ onUnmounted(() => {
     background-color: #ffffff !important;
     min-height: 48px !important; /* 手机端增大高度，防止iOS自动缩放 */
   }
-  
   :deep(.verification-code-input .el-input__inner) {
     color: #303133 !important;
     -webkit-text-fill-color: #303133 !important;
@@ -1589,7 +1370,6 @@ onUnmounted(() => {
     height: 46px !important;
     line-height: 46px !important;
   }
-  
   :deep(.verification-code-input .el-input__wrapper .el-input__inner) {
     color: #303133 !important;
     -webkit-text-fill-color: #303133 !important;
@@ -1599,7 +1379,6 @@ onUnmounted(() => {
     appearance: none !important;
     background-color: transparent !important;
   }
-  
   :deep(.verification-code-input .el-input__wrapper.is-focus .el-input__inner) {
     color: #303133 !important;
     -webkit-text-fill-color: #303133 !important;
@@ -1609,15 +1388,12 @@ onUnmounted(() => {
     appearance: none !important;
     background-color: transparent !important;
   }
-  
   :deep(.verification-code-input .el-input__wrapper:hover .el-input__inner) {
     color: #303133 !important;
     -webkit-text-fill-color: #303133 !important;
     font-size: 16px !important;
     opacity: 1 !important;
   }
-  
-  /* 确保输入框在所有状态下都可以正常输入 */
   :deep(.verification-code-input input) {
     color: #303133 !important;
     -webkit-text-fill-color: #303133 !important;
@@ -1632,17 +1408,13 @@ onUnmounted(() => {
     appearance: none !important;
   }
 }
-
-// 小屏幕手机端进一步优化
 @media (max-width: 480px) {
   .verification-code-group {
     gap: 6px;
-    
     .verification-code-input {
       flex: 2; /* 增加输入框占比，让它更长 */
       min-width: 0;
     }
-    
     .send-code-button {
       min-width: 80px;
       max-width: 100px;

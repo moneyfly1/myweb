@@ -2,14 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { fileURLToPath, URL } from 'node:url'
-
-// 获取当前文件所在目录
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
-
 export default defineConfig({
-  // 显式指定项目根目录（确保 Vite 能找到 index.html）
   root: resolve(__dirname),
-  // 显式指定公共资源目录
   publicDir: resolve(__dirname, 'public'),
   plugins: [vue()],
   resolve: {
@@ -46,7 +41,6 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // 文件名包含 hash，确保更新后浏览器能获取新文件
         entryFileNames: 'assets/[name].[hash].js',
         chunkFileNames: 'assets/[name].[hash].js',
         assetFileNames: 'assets/[name].[hash].[ext]',

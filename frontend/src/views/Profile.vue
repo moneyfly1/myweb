@@ -1,13 +1,10 @@
 <template>
   <div class="profile-container">
-    <!-- 页面头部 -->
     <div class="page-header">
       <h1>个人资料</h1>
       <p>管理您的账户信息</p>
     </div>
-
     <div class="profile-content">
-      <!-- 基本信息 -->
       <el-card class="profile-card">
         <template #header>
           <div class="card-header">
@@ -15,7 +12,6 @@
             基本信息
           </div>
         </template>
-
         <el-form
           ref="profileFormRef"
           :model="profileForm"
@@ -40,7 +36,6 @@
             </el-input>
             <div class="form-tip">用户名不可修改</div>
           </el-form-item>
-
           <el-form-item prop="email" :label="!isMobile ? '邮箱' : ''">
             <template v-if="isMobile">
               <div class="mobile-label">
@@ -58,7 +53,6 @@
             </el-input>
             <div class="form-tip">邮箱不可修改</div>
           </el-form-item>
-
           <el-form-item :label="!isMobile ? '注册时间' : ''">
             <template v-if="isMobile">
               <div class="mobile-label">
@@ -74,7 +68,6 @@
               </template>
             </el-input>
           </el-form-item>
-
           <el-form-item :label="!isMobile ? '最后登录' : ''">
             <template v-if="isMobile">
               <div class="mobile-label">
@@ -90,7 +83,6 @@
               </template>
             </el-input>
           </el-form-item>
-
           <el-form-item :label="!isMobile ? '账户状态' : ''">
             <template v-if="isMobile">
               <div class="mobile-label">
@@ -103,8 +95,6 @@
           </el-form-item>
         </el-form>
       </el-card>
-
-      <!-- 修改密码 -->
       <el-card class="password-card">
         <template #header>
           <div class="card-header">
@@ -112,7 +102,6 @@
             修改密码
           </div>
         </template>
-
         <el-form
           ref="passwordFormRef"
           :model="passwordForm"
@@ -140,7 +129,6 @@
               </template>
             </el-input>
           </el-form-item>
-
           <el-form-item prop="newPassword" :label="!isMobile ? '新密码' : ''">
             <template v-if="isMobile">
               <div class="mobile-label">
@@ -162,7 +150,6 @@
             </el-input>
             <div class="form-tip">密码长度不能少于6位</div>
           </el-form-item>
-
           <el-form-item prop="confirmPassword" :label="!isMobile ? '确认密码' : ''">
             <template v-if="isMobile">
               <div class="mobile-label">
@@ -183,7 +170,6 @@
               </template>
             </el-input>
           </el-form-item>
-
           <el-form-item>
             <el-button 
               type="primary" 
@@ -195,8 +181,6 @@
           </el-form-item>
         </el-form>
       </el-card>
-
-      <!-- 账户安全 -->
       <el-card class="security-card">
         <template #header>
           <div class="card-header">
@@ -204,7 +188,6 @@
             账户安全
           </div>
         </template>
-
         <div class="security-items">
           <div class="security-item">
             <div class="security-info">
@@ -228,8 +211,6 @@
           </div>
         </div>
       </el-card>
-
-      <!-- 订阅信息 -->
       <el-card class="subscription-card" v-if="subscriptionInfo">
         <template #header>
           <div class="card-header">
@@ -237,7 +218,6 @@
             订阅信息
           </div>
         </template>
-
         <div class="subscription-info">
           <div class="info-item">
             <span class="label">剩余时长：</span>
@@ -260,7 +240,6 @@
             </span>
           </div>
         </div>
-
         <div class="subscription-actions">
           <el-button type="primary" @click="$router.push('/subscription')">
             管理订阅
@@ -271,8 +250,6 @@
         </div>
       </el-card>
     </div>
-
-    <!-- 登录历史对话框 -->
     <el-dialog
       v-model="loginHistoryDialogVisible"
       title="登录历史"
@@ -283,7 +260,6 @@
       <div v-if="loginHistoryLoading" class="loading-container">
         <el-skeleton :rows="5" animated />
       </div>
-
       <el-table 
         v-else-if="loginHistory.length > 0"
         :data="loginHistory" 
@@ -296,7 +272,6 @@
             {{ formatTime(scope.row.login_time) }}
           </template>
         </el-table-column>
-        
         <el-table-column prop="ip_address" label="IP地址/地区" width="180">
           <template #default="scope">
             <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -311,7 +286,6 @@
             </div>
           </template>
         </el-table-column>
-        
         <el-table-column prop="user_agent" label="设备信息" min-width="150">
           <template #default="scope">
             <el-tooltip :content="scope.row.user_agent" placement="top">
@@ -321,7 +295,6 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        
         <el-table-column prop="login_status" label="状态" width="80">
           <template #default="scope">
             <el-tag :type="scope.row.login_status === 'success' ? 'success' : 'danger'" size="small">
@@ -330,17 +303,13 @@
           </template>
         </el-table-column>
       </el-table>
-
       <el-empty v-else description="暂无登录记录" />
-
       <template #footer>
         <el-button @click="loginHistoryDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
-
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -349,25 +318,19 @@ import { useAuthStore } from '@/store/auth'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
 import { formatLocation } from '@/utils/date'
 import dayjs from 'dayjs'
-
 export default {
   name: 'Profile',
   setup() {
     const router = useRouter()
     const authStore = useAuthStore()
-    
-    // 检测移动端
     const windowWidth = ref(window.innerWidth)
     const isMobile = computed(() => windowWidth.value <= 768)
-    
     const handleResize = () => {
       windowWidth.value = window.innerWidth
     }
-    
     onMounted(() => {
       window.addEventListener('resize', handleResize)
     })
-    
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
     })
@@ -378,7 +341,6 @@ export default {
     const loginHistoryDialogVisible = ref(false)
     const loginHistoryLoading = ref(false)
     const loginHistory = ref([])
-    
     const userInfo = ref({
       username: '',
       email: '',
@@ -388,19 +350,15 @@ export default {
       status: 'active'
     })
     const subscriptionInfo = ref(null)
-
     const profileForm = reactive({
       username: '',
       email: ''
     })
-
     const passwordForm = reactive({
       oldPassword: '',
       newPassword: '',
       confirmPassword: ''
     })
-    
-    // 初始化时尝试从authStore获取基本信息
     const initUserInfo = () => {
       const authUser = authStore.user
       if (authUser) {
@@ -410,8 +368,6 @@ export default {
         profileForm.email = userInfo.value.email
         }
     }
-
-    // 表单验证规则
     const profileRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' }
@@ -421,7 +377,6 @@ export default {
         { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
       ]
     }
-
     const passwordRules = {
       oldPassword: [
         { required: true, message: '请输入当前密码', trigger: 'blur' }
@@ -431,7 +386,6 @@ export default {
         { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
         {
           validator: (rule, value, callback) => {
-            // 安全检查：新密码不能等于旧密码
             if (value && passwordForm.oldPassword && value === passwordForm.oldPassword) {
               callback(new Error('新密码不能与当前密码相同'))
             } else {
@@ -455,14 +409,9 @@ export default {
         }
       ]
     }
-
-    // 获取用户信息
     const fetchUserInfo = async () => {
       try {
-        // 使用 /users/me 端点获取用户信息
         const response = await api.get('/users/me')
-        
-        // 检查响应结构
         let data = null
         if (response && response.data) {
           if (response.data.success && response.data.data) {
@@ -473,9 +422,7 @@ export default {
             data = response.data
           }
         }
-        
         if (data) {
-          // 更新用户信息 - 使用后端返回的字段名
           userInfo.value = {
             username: data.username || '',
             email: data.email || '',
@@ -484,12 +431,9 @@ export default {
             created_at: data.created_at || data.createdAt || null,
             status: data.is_active !== undefined ? (data.is_active ? 'active' : 'inactive') : 'active'
           }
-          
-          // 更新表单数据
           profileForm.username = userInfo.value.username || ''
           profileForm.email = userInfo.value.email || ''
         } else {
-          // 尝试从authStore获取基本信息
           const authUser = authStore.user
           if (authUser) {
             userInfo.value.username = authUser.username || ''
@@ -501,7 +445,6 @@ export default {
           }
         }
       } catch (error) {
-        // 尝试从authStore获取基本信息
         const authUser = authStore.user
         if (authUser) {
           userInfo.value.username = authUser.username || ''
@@ -513,14 +456,11 @@ export default {
         }
       }
     }
-
-    // 获取订阅信息
     const fetchSubscriptionInfo = async () => {
       try {
         const response = await subscriptionAPI.getUserSubscription()
         if (response.data && response.data.success) {
           const data = response.data.data
-          // 确保字段名正确映射
           subscriptionInfo.value = {
             remainingDays: data.remainingDays || data.remaining_days || 0,
             expiryDate: data.expiryDate || data.expiry_date || '未设置',
@@ -530,7 +470,6 @@ export default {
             status: data.status || 'expired'
           }
           } else {
-          // 用户可能没有订阅，设置为默认值
           subscriptionInfo.value = {
             remainingDays: 0,
             expiryDate: '未订阅',
@@ -541,7 +480,6 @@ export default {
           }
         }
       } catch (error) {
-        // 用户可能没有订阅，设置为默认值
         subscriptionInfo.value = {
           remainingDays: 0,
           expiryDate: '未订阅',
@@ -552,55 +490,41 @@ export default {
         }
       }
     }
-
-    // 修改密码
     const changePassword = async () => {
       if (!passwordFormRef.value) {
         ElMessage.error('表单引用未初始化')
         return
       }
-      
-      // 安全检查：新密码不能等于旧密码
       if (passwordForm.newPassword && passwordForm.oldPassword && 
           passwordForm.newPassword === passwordForm.oldPassword) {
         ElMessage.error('新密码不能与当前密码相同')
         return
       }
-      
       try {
         await passwordFormRef.value.validate()
       } catch (error) {
         return
       }
-      
-      // 防抖：如果正在加载中，直接返回
       if (passwordLoading.value) {
         return
       }
-      
       passwordLoading.value = true
       try {
-        // 使用正确的API端点
         const response = await userAPI.changePassword({
           current_password: passwordForm.oldPassword,
           new_password: passwordForm.newPassword
         })
         if (response.data && response.data.success) {
           ElMessage.success(response.data.message || '密码修改成功')
-          
-          // 清空表单
           passwordForm.oldPassword = ''
           passwordForm.newPassword = ''
           passwordForm.confirmPassword = ''
-          
-          // 重置表单验证状态
           if (passwordFormRef.value) {
             passwordFormRef.value.resetFields()
           }
         } else {
           ElMessage.error(response.data?.message || '密码修改失败：响应格式错误')
         }
-        
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
         ElMessage.error(`密码修改失败: ${errorMsg}`)
@@ -608,8 +532,6 @@ export default {
         passwordLoading.value = false
       }
     }
-
-    // 获取登录历史
     const fetchLoginHistory = async () => {
       loginHistoryLoading.value = true
       try {
@@ -648,8 +570,6 @@ export default {
         loginHistoryLoading.value = false
       }
     }
-
-    // 获取设备信息
     const getDeviceInfo = (userAgent) => {
       if (!userAgent) return '未知设备'
       if (userAgent.includes('Mobile')) {
@@ -664,15 +584,10 @@ export default {
         return '其他设备'
       }
     }
-
-    // 查看登录历史
     const viewLoginHistory = () => {
       loginHistoryDialogVisible.value = true
       fetchLoginHistory()
     }
-
-
-    // 获取位置文本
     const getLocationText = (location, ipAddress) => {
       if (location) {
         return formatLocation(location)
@@ -682,19 +597,15 @@ export default {
       }
       return ''
     }
-
-    // 格式化时间
     const formatTime = (time) => {
       if (!time || time === 'null' || time === 'None' || time === null || time === undefined) {
         return '未知'
       }
       try {
-        // 尝试使用dayjs解析
         const date = dayjs(time)
         if (date.isValid()) {
           return date.format('YYYY-MM-DD HH:mm:ss')
         }
-        // 如果dayjs解析失败，尝试直接返回字符串
         if (typeof time === 'string' && time.trim() !== '') {
           return time
         }
@@ -703,11 +614,8 @@ export default {
         return '未知'
       }
     }
-
-    // 获取账户状态类型
     const getAccountStatusType = (userInfo) => {
       if (!userInfo || !userInfo.status) return 'info'
-      
       switch (userInfo.status) {
         case 'active':
           return 'success'
@@ -720,11 +628,8 @@ export default {
           return 'info'
       }
     }
-
-    // 获取账户状态文本
     const getAccountStatusText = (userInfo) => {
       if (!userInfo || !userInfo.status) return '未知'
-      
       switch (userInfo.status) {
         case 'active':
           return '正常'
@@ -737,15 +642,11 @@ export default {
           return '未知'
       }
     }
-
     onMounted(() => {
-      // 先初始化基本信息
       initUserInfo()
-      // 然后获取完整信息
       fetchUserInfo()
       fetchSubscriptionInfo()
     })
-
     return {
       userInfo,
       subscriptionInfo,
@@ -773,7 +674,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .profile-container {
   padding: 0;
@@ -781,97 +681,79 @@ export default {
   margin: 0;
   width: 100%;
 }
-
 .page-header {
   margin-bottom: 1rem;
   text-align: center;
-  
   @media (max-width: 768px) {
     margin-bottom: 0.75rem;
   }
 }
-
 .page-header h1 {
   color: #1677ff;
   font-size: 1.5rem;
   margin-bottom: 0.25rem;
-  
   @media (max-width: 768px) {
     font-size: 1.25rem;
   }
 }
-
 .page-header :is(p) {
   color: #666;
   font-size: 0.875rem;
-  
   @media (max-width: 768px) {
     font-size: 0.8125rem;
   }
 }
-
 .profile-content {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  
   @media (max-width: 768px) {
     gap: 0.75rem;
   }
 }
-
 .profile-card,
 .password-card,
 .security-card,
 .subscription-card {
   border-radius: 8px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
-  
   :deep(.el-card__header) {
     padding: 12px 16px;
     font-size: 0.9375rem;
   }
-  
   :deep(.el-card__body) {
     padding: 12px 16px;
   }
-  
   @media (max-width: 768px) {
     :deep(.el-card__header) {
       padding: 10px 12px;
       font-size: 0.875rem;
     }
-    
     :deep(.el-card__body) {
       padding: 10px 12px;
     }
   }
 }
-
 .card-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
   font-size: 0.9375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.875rem;
     gap: 0.375rem;
   }
 }
-
 .form-tip {
   font-size: 0.8125rem;
   color: #666;
   margin-top: 0.375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.75rem;
     margin-top: 0.25rem;
   }
 }
-
 .mobile-label {
   display: block;
   width: 100%;
@@ -881,17 +763,14 @@ export default {
   margin-bottom: 8px;
   padding: 0;
 }
-
 .security-items {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  
   @media (max-width: 768px) {
     gap: 0.5rem;
   }
 }
-
 .security-item {
   display: flex;
   justify-content: space-between;
@@ -899,16 +778,13 @@ export default {
   padding: 0.75rem;
   background: #f8f9fa;
   border-radius: 6px;
-  
   @media (max-width: 768px) {
     padding: 0.625rem;
   }
 }
-
 .security-info {
   flex: 1;
 }
-
 .security-title {
   display: flex;
   align-items: center;
@@ -917,94 +793,76 @@ export default {
   color: #333;
   margin-bottom: 0.25rem;
   font-size: 0.9375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.875rem;
   }
 }
-
 .security-desc {
   color: #666;
   font-size: 0.8125rem;
-  
   @media (max-width: 768px) {
     font-size: 0.75rem;
   }
 }
-
 .security-action {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  
   @media (max-width: 768px) {
     gap: 0.5rem;
   }
 }
-
 .subscription-info {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.75rem;
   margin-bottom: 1rem;
-  
   @media (max-width: 768px) {
     gap: 0.5rem;
     margin-bottom: 0.75rem;
   }
 }
-
 .info-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0.375rem 0;
-  
   @media (max-width: 768px) {
     padding: 0.25rem 0;
   }
 }
-
 .info-item .label {
   color: #666;
   font-weight: 500;
   font-size: 0.875rem;
-  
   @media (max-width: 768px) {
     font-size: 0.8125rem;
   }
 }
-
 .info-item .value {
   color: #333;
   font-weight: 600;
   font-size: 0.9375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.875rem;
   }
 }
-
 .subscription-actions {
   display: flex;
   gap: 0.75rem;
   justify-content: center;
-  
   @media (max-width: 768px) {
     gap: 0.5rem;
   }
 }
-
 @media (max-width: 768px) {
   .profile-container {
     padding: 0;
   }
-  
   .page-header {
     margin-bottom: 0.75rem;
     padding: 0 12px;
   }
-  
   .profile-card,
   .password-card,
   .security-card,
@@ -1015,15 +873,12 @@ export default {
     border-left: none;
     border-right: none;
   }
-  
   .profile-card:first-child {
     margin-top: 0;
   }
-  
   .el-form {
     .el-form-item {
       margin-bottom: 18px;
-      
       .el-form-item__label {
         font-size: 14px;
         margin-bottom: 8px;
@@ -1034,30 +889,24 @@ export default {
         font-weight: 600;
         color: #333;
       }
-      
       .el-form-item__content {
         width: 100%;
-        
         .el-input,
         .el-select {
           width: 100%;
-          
           :deep(.el-input__wrapper) {
             height: 48px;
             border-radius: 12px;
             border: 1px solid #dcdfe6;
             transition: all 0.3s ease;
           }
-          
           :deep(.el-input__wrapper:hover) {
             border-color: #c0c4cc;
           }
-          
           :deep(.el-input__wrapper.is-focus) {
             border-color: var(--theme-primary, #409EFF);
             box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
           }
-          
           :deep(.el-input__inner) {
             font-size: 15px;
             height: 48px;
@@ -1068,7 +917,6 @@ export default {
       }
     }
   }
-  
   .mobile-label {
     font-size: 14px;
     font-weight: 600;
@@ -1076,14 +924,12 @@ export default {
     margin-bottom: 10px;
     display: block;
   }
-  
   .form-tip {
     font-size: 13px;
     margin-top: 8px;
     color: #999;
     padding-left: 4px;
   }
-  
   .profile-form,
   .password-form {
     :deep(.el-form-item) {
@@ -1092,14 +938,12 @@ export default {
         margin-bottom: 10px;
         padding: 0;
       }
-      
       .el-form-item__content {
         width: 100%;
         margin-left: 0 !important;
       }
     }
   }
-  
   @media (max-width: 768px) {
     .profile-form,
     .password-form {
@@ -1107,7 +951,6 @@ export default {
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        
         .el-form-item__label {
           order: 1;
           width: 100% !important;
@@ -1115,7 +958,6 @@ export default {
           padding: 0;
           text-align: left;
         }
-        
         .el-form-item__content {
           order: 2;
           width: 100% !important;
@@ -1124,7 +966,6 @@ export default {
         }
       }
     }
-    
     .mobile-label {
       display: block;
       width: 100%;
@@ -1134,7 +975,6 @@ export default {
       color: #333;
     }
   }
-  
   .el-button {
     border-radius: 16px;
     padding: 14px 24px;
@@ -1142,83 +982,67 @@ export default {
     font-size: 15px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    
     &:active {
       transform: scale(0.98);
     }
   }
-  
   .security-items {
     gap: 0.5rem;
   }
-  
   .security-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
     padding: 0.625rem;
-    
     .security-info {
       width: 100%;
-      
       .security-title {
         font-size: 0.875rem;
         margin-bottom: 4px;
       }
-      
       .security-desc {
         font-size: 0.75rem;
       }
     }
-    
       .security-action {
         width: 100%;
         justify-content: flex-start;
         flex-wrap: wrap;
         gap: 6px;
-      
       .el-tag {
         margin-right: 0;
       }
-      
       .el-button {
         width: 100%;
         margin: 0;
       }
     }
   }
-  
   .subscription-info {
     grid-template-columns: 1fr;
     gap: 0.5rem;
     margin-bottom: 0.75rem;
-    
     .info-item {
       padding: 0.625rem;
       border-bottom: 1px solid #f0f0f0;
-      
       &:last-child {
         border-bottom: none;
       }
-      
       .label {
         font-size: 0.8125rem;
         display: block;
         margin-bottom: 3px;
       }
-      
       .value {
         font-size: 0.875rem;
         display: block;
       }
     }
   }
-  
   .subscription-actions {
     flex-direction: column;
     gap: 0.5rem;
     margin-top: 0;
-    
     .el-button {
       width: 100%;
       margin: 0;
@@ -1228,7 +1052,6 @@ export default {
       font-weight: 600;
     }
   }
-  
   .submit-btn {
     width: 100%;
     height: 44px;
@@ -1237,31 +1060,25 @@ export default {
     font-weight: 600;
     background: linear-gradient(135deg, var(--theme-primary, #409EFF) 0%, var(--theme-primary, #409EFF) 100%);
     box-shadow: 0 3px 10px rgba(64, 158, 255, 0.25);
-    
     &:active {
       transform: scale(0.98);
       box-shadow: 0 2px 6px rgba(64, 158, 255, 0.2);
     }
   }
-  
   .login-history-dialog {
     :deep(.el-dialog) {
       border-radius: 16px;
     }
-    
     :deep(.el-dialog__header) {
       padding: 20px 20px 10px;
       border-bottom: 1px solid #f0f0f0;
     }
-    
     :deep(.el-dialog__body) {
       padding: 20px;
     }
-    
     .loading-container {
       padding: 20px;
     }
-    
     .user-agent-text {
       display: inline-block;
       max-width: 150px;
@@ -1270,7 +1087,6 @@ export default {
       white-space: nowrap;
     }
   }
-  
   @media (max-width: 768px) {
     .login-history-dialog {
       :deep(.el-dialog) {
@@ -1278,17 +1094,14 @@ export default {
         margin: 5vh auto !important;
         max-height: 90vh;
       }
-      
       :deep(.el-dialog__body) {
         padding: 16px;
         max-height: calc(90vh - 120px);
         overflow-y: auto;
       }
-      
       :deep(.el-table) {
         font-size: 13px;
       }
-      
       :deep(.el-table th),
       :deep(.el-table td) {
         padding: 8px 4px;
@@ -1296,7 +1109,6 @@ export default {
     }
   }
 }
-
 @media (max-width: 480px) {
   .profile-card,
   .password-card,
@@ -1305,14 +1117,11 @@ export default {
     :deep(.el-card__header) {
       padding: 8px 10px;
     }
-    
     :deep(.el-card__body) {
       padding: 8px 10px;
     }
   }
 }
-
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形，只保留外部边框 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -1320,7 +1129,6 @@ export default {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -1328,7 +1136,6 @@ export default {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -1336,71 +1143,52 @@ export default {
   background-color: transparent !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
-/* 确保密码输入框可编辑 */
 :deep(.el-input__wrapper.is-disabled) {
   pointer-events: none !important;
 }
-
 :deep(.el-input.is-disabled .el-input__inner) {
   pointer-events: none !important;
 }
-
-/* 密码输入框特殊样式 - 确保可以输入和显示 */
 :deep(.password-input) {
   pointer-events: auto !important;
 }
-
 :deep(.password-input .el-input__wrapper) {
   pointer-events: auto !important;
   cursor: text !important;
 }
-
 :deep(.password-input .el-input__inner) {
   pointer-events: auto !important;
   cursor: text !important;
   color: #606266 !important;
 }
-
 :deep(.password-input .el-input__wrapper:not(.is-disabled)) {
   pointer-events: auto !important;
 }
-
 :deep(.password-input .el-input__wrapper:not(.is-disabled) .el-input__inner) {
   pointer-events: auto !important;
   color: #606266 !important;
 }
-
-/* 确保密码输入框的显示/隐藏按钮可用 */
 :deep(.password-input .el-input__suffix) {
   pointer-events: auto !important;
 }
-
 :deep(.password-input .el-input__suffix .el-input__password) {
   pointer-events: auto !important;
   cursor: pointer !important;
 }
-
-/* 确保密码输入框在聚焦时可以正常输入 */
 :deep(.password-input.is-focus .el-input__wrapper) {
   pointer-events: auto !important;
 }
-
 :deep(.password-input.is-focus .el-input__inner) {
   pointer-events: auto !important;
 }
-
-/* 移除 prepend 和 append 的边框，只保留外部边框 */
 :deep(.el-input-group__prepend),
 :deep(.el-input-group__append) {
   border-radius: 0 !important;
@@ -1408,11 +1196,9 @@ export default {
   background-color: #f5f7fa !important;
   pointer-events: none !important;
 }
-
 :deep(.el-input-group__prepend) {
   border-right: 1px solid #dcdfe6 !important;
 }
-
 :deep(.el-input-group__append) {
   border-left: 1px solid #dcdfe6 !important;
 }

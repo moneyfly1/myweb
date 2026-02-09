@@ -3,7 +3,6 @@ package config_update
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -216,12 +215,18 @@ func (s *ConfigUpdateService) ClearLogs() error {
 func (s *ConfigUpdateService) log(level, message string) {
 	now := utils.FormatBeijingTime(utils.GetBeijingTime())
 	logEntry := map[string]interface{}{
-		"time":    now,
-		"level":   level,
-		"message": message,
+		"timestamp": now, // 使用 timestamp 字段名，与前端保持一致
+		"time":      now, // 保留 time 字段以兼容旧代码
+		"level":     level,
+		"message":   message,
 	}
 
-	go s.saveLogToDB(logEntry)
+	// 对于 SUCCESS 和 ERROR 级别的日志，同步保存以确保不会丢失
+	if level == "SUCCESS" || level == "ERROR" {
+		s.saveLogToDB(logEntry)
+	} else {
+		go s.saveLogToDB(logEntry)
+	}
 
 	if utils.AppLogger != nil {
 		if level == "ERROR" {
@@ -332,10 +337,26 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	s.logUpdateStats(stats, len(nodesWithOrder))
 
-	importedCount := s.importNodesToDatabaseWithOrder(nodesWithOrder)
+	// 在导入新节点之前，删除所有自动导入的节点（IsManual = false），保留手动添加的节点（IsManual = true，包括专线节点）
+	deletedCount := s.deleteAutoImportedNodes()
+	s.log("INFO", fmt.Sprintf("已删除 %d 个自动导入的旧节点（保留手动添加的节点）", deletedCount))
+
+	importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
 	s.updateLastUpdateTime()
 
-	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，成功入库/更新 %d 个", len(nodesWithOrder), importedCount))
+	// 输出详细的统计信息
+	s.log("INFO", fmt.Sprintf("节点导入统计: 新增 %d 个，更新 %d 个，跳过 %d 个（与手动节点同名）",
+		importStats.Created, importStats.Updated, importStats.Skipped))
+
+	// 等待日志保存完成，确保最终日志能够保存
+	time.Sleep(100 * time.Millisecond)
+
+	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，删除 %d 个旧节点，新增 %d 个节点，更新 %d 个节点，跳过 %d 个节点",
+		len(nodesWithOrder), deletedCount, importStats.Created, importStats.Updated, importStats.Skipped))
+
+	// 再次等待，确保最终日志保存完成
+	time.Sleep(200 * time.Millisecond)
+
 	return nil
 }
 
@@ -501,9 +522,6 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
 		"urls":              []string{},
-		"target_dir":        "./uploads/config",
-		"v2ray_file":        "xr",
-		"clash_file":        "clash.yaml",
 		"filter_keywords":   []string{},
 		"enable_schedule":   false,
 		"schedule_interval": 3600,
@@ -793,8 +811,43 @@ func (s *ConfigUpdateService) resolveRegion(name, server string) string {
 // 数据库存储与节点导入
 // ==========================================
 
-func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []nodeWithOrder) int {
-	importedCount := 0
+// deleteAutoImportedNodes 删除所有自动导入的节点（IsManual = false），保留手动添加的节点（IsManual = true）
+func (s *ConfigUpdateService) deleteAutoImportedNodes() int64 {
+	result := s.db.Where("is_manual = ?", false).Delete(&models.Node{})
+	if result.Error != nil {
+		s.log("ERROR", fmt.Sprintf("删除自动导入节点失败: %v", result.Error))
+		return 0
+	}
+	return result.RowsAffected
+}
+
+type importStats struct {
+	Created int // 新增节点数
+	Updated int // 更新节点数
+	Skipped int // 跳过节点数（与手动节点同名）
+}
+
+// generateNodeKey 生成节点的唯一键，与节点管理页面的去重逻辑保持一致
+func (s *ConfigUpdateService) generateNodeKey(nodeType string, name string, config *string) string {
+	if config == nil || *config == "" {
+		return fmt.Sprintf("%s:%s", nodeType, name)
+	}
+	var p ProxyNode
+	if err := json.Unmarshal([]byte(*config), &p); err == nil {
+		key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port)
+		if p.UUID != "" {
+			return key + ":" + p.UUID
+		} else if p.Password != "" {
+			return key + ":" + p.Password
+		}
+		return key
+	}
+	return fmt.Sprintf("%s:%s", nodeType, name)
+}
+
+func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []nodeWithOrder) importStats {
+	stats := importStats{}
+	seenKeys := make(map[string]bool) // 用于在本次导入中检测重复节点
 
 	for _, item := range nodesWithOrder {
 		node := item.node
@@ -802,23 +855,57 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 		configStr := string(configJSON)
 		region := s.resolveRegion(node.Name, node.Server)
 
-		// 尝试更新或创建
-		// 使用 Assign 配合 FirstOrInit 可以简化逻辑，但为了保持 status 逻辑不变，手动判断
-		var existingNode models.Node
-		err := s.db.Where("type = ? AND name = ?", node.Type, node.Name).First(&existingNode).Error
+		// 使用与节点管理页面相同的去重逻辑：基于 config 生成唯一键
+		nodeKey := s.generateNodeKey(node.Type, node.Name, &configStr)
 
-		if err == nil {
-			// Update
+		// 检查本次导入中是否已经有相同的节点（基于 config 的唯一键）
+		if seenKeys[nodeKey] {
+			stats.Skipped++
+			s.log("DEBUG", fmt.Sprintf("跳过重复节点 %s（本次导入中已存在相同配置的节点）", node.Name))
+			continue
+		}
+		seenKeys[nodeKey] = true
+
+		// 查找数据库中是否已存在相同配置的节点（基于 config 的唯一键）
+		// 注意：由于我们已经删除了所有自动导入的节点，这里主要是处理本次导入中的重复节点
+		// 但为了安全起见，仍然检查数据库中是否有相同配置的节点
+		var allNodes []models.Node
+		s.db.Where("is_manual = ?", false).Find(&allNodes)
+
+		var existingNode *models.Node
+		for i := range allNodes {
+			existingKey := s.generateNodeKey(allNodes[i].Type, allNodes[i].Name, allNodes[i].Config)
+			if existingKey == nodeKey {
+				existingNode = &allNodes[i]
+				break
+			}
+		}
+
+		if existingNode != nil {
+			// 如果找到相同配置的节点，更新它
 			existingNode.Config = &configStr
 			existingNode.Status = "online"
 			existingNode.IsActive = true
+			existingNode.IsManual = false
 			existingNode.OrderIndex = item.orderIndex
 			existingNode.Region = region
-			if s.db.Save(&existingNode).Error == nil {
-				importedCount++
+			existingNode.Name = node.Name // 更新名称（可能不同）
+			if s.db.Save(existingNode).Error == nil {
+				stats.Updated++
+			} else {
+				s.log("ERROR", fmt.Sprintf("更新节点失败 (%s): %v", node.Name, s.db.Error))
 			}
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Create
+		} else {
+			// 检查是否存在同名的手动节点（IsManual = true），如果存在则跳过
+			var manualNode models.Node
+			err := s.db.Where("type = ? AND name = ? AND is_manual = ?", node.Type, node.Name, true).First(&manualNode).Error
+			if err == nil {
+				stats.Skipped++
+				s.log("DEBUG", fmt.Sprintf("跳过节点 %s（手动添加的节点，不覆盖）", node.Name))
+				continue
+			}
+
+			// Create 新节点
 			newNode := models.Node{
 				Name:       node.Name,
 				Type:       node.Type,
@@ -830,20 +917,20 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 				OrderIndex: item.orderIndex,
 			}
 			if s.db.Create(&newNode).Error == nil {
-				importedCount++
+				stats.Created++
+			} else {
+				s.log("ERROR", fmt.Sprintf("创建节点失败 (%s): %v", node.Name, s.db.Error))
 			}
-		} else {
-			s.log("ERROR", fmt.Sprintf("数据库错误 (%s): %v", node.Name, err))
 		}
 	}
-	return importedCount
+	return stats
 }
 
 // ==========================================
 // 订阅内容生成
 // ==========================================
 
-func (s *ConfigUpdateService) getSubscriptionContext(token string, clientIP string, userAgent string) *SubscriptionContext {
+func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP string, userAgent string) *SubscriptionContext {
 	ctx := &SubscriptionContext{Status: StatusNotFound}
 	var sub models.Subscription
 
@@ -1018,7 +1105,8 @@ func (s *ConfigUpdateService) GenerateClashConfig(token string, clientIP string,
 	if err != nil {
 		return "", err
 	}
-	return s.generateClashYAML(nodes), nil
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	return s.generateClashYAML(nodes, ctx), nil
 }
 
 func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP string, userAgent string, format string) (string, error) {
@@ -1045,7 +1133,7 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP str
 
 func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent string) ([]*ProxyNode, error) {
 	s.refreshSystemConfig()
-	ctx := s.getSubscriptionContext(token, clientIP, userAgent)
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
 
 	if ctx.Status != StatusNormal {
 		return s.generateErrorNodes(ctx.Status, ctx), nil
@@ -1057,7 +1145,7 @@ func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent stri
 // Clash YAML 生成逻辑
 // ==========================================
 
-func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
+func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *SubscriptionContext) string {
 	filteredProxies := make([]*ProxyNode, 0)
 	for _, proxy := range proxies {
 		if supportedClashTypes[proxy.Type] {
@@ -1081,17 +1169,23 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 		proxyNames = append(proxyNames, proxy.Name)
 	}
 
+	// 生成订阅名称（用于 Clash Verge、Flash 等所有 Clash 客户端显示）
+	subscriptionName := s.GenerateSubscriptionName(ctx)
+
 	// 尝试加载模板
 	templatePath := filepath.Join("uploads", "config", "temp.yaml")
 	templateData, err := os.ReadFile(templatePath)
 	if err != nil {
-		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames, subscriptionName)
 	}
 
 	var templateConfig map[string]interface{}
 	if err := yaml.Unmarshal(templateData, &templateConfig); err != nil {
-		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames, subscriptionName)
 	}
+
+	// 设置订阅名称（Clash Verge、Flash 等所有 Clash 客户端会使用这个字段作为订阅显示名称）
+	templateConfig["name"] = subscriptionName
 
 	// 注入节点
 	proxyList := make([]map[string]interface{}, 0)
@@ -1108,7 +1202,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode) string {
 
 	output, err := yaml.Marshal(templateConfig)
 	if err != nil {
-		return s.generateDefaultClashYAML(filteredProxies, proxyNames)
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames, subscriptionName)
 	}
 
 	return unescapeUnicode(string(output))
@@ -1155,9 +1249,35 @@ func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames
 	}
 }
 
-func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string) string {
+// GenerateSubscriptionName 生成订阅名称，用于 Clash Verge、Flash 等所有 Clash 客户端显示
+func (s *ConfigUpdateService) GenerateSubscriptionName(ctx *SubscriptionContext) string {
+	if ctx.Status != StatusNormal {
+		switch ctx.Status {
+		case StatusExpired:
+			return "订阅已过期"
+		case StatusInactive:
+			return "订阅已失效"
+		case StatusAccountAbnormal:
+			return "账户异常"
+		case StatusDeviceOverLimit:
+			return "设备超限"
+		default:
+			return "订阅异常"
+		}
+	}
+
+	expireTimeStr := "无限期"
+	if !ctx.Subscription.ExpireTime.IsZero() {
+		expireTimeStr = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
+	}
+	return fmt.Sprintf("到期: %s", expireTimeStr)
+}
+
+func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string, subscriptionName string) string {
 	var builder strings.Builder
 
+	// 添加订阅名称（Clash Verge、Flash 等所有 Clash 客户端会使用这个字段作为订阅显示名称）
+	builder.WriteString(fmt.Sprintf("name: %s\n", s.escapeYAMLString(subscriptionName)))
 	builder.WriteString("port: 7890\n")
 	builder.WriteString("socks-port: 7891\n")
 	builder.WriteString("allow-lan: true\n")

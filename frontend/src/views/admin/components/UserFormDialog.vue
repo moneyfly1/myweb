@@ -106,7 +106,6 @@
     </template>
   </el-dialog>
 </template>
-
 <script>
 import { ref, reactive, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -114,7 +113,6 @@ import { adminAPI } from '@/utils/api'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
-
 export default {
   name: 'UserFormDialog',
   props: {
@@ -127,14 +125,11 @@ export default {
     const userFormRef = ref()
     const saving = ref(false)
     const defaultTime = ref(new Date(2000, 1, 1, 23, 59, 59))
-
-    // 计算默认到期时间（一年后，使用北京时间）
     const getDefaultExpireTime = () => {
       const now = dayjs().tz('Asia/Shanghai')
       const oneYearLater = now.add(1, 'year')
       return oneYearLater.format('YYYY-MM-DDTHH:mm:ss')
     }
-
     const userForm = reactive({
       email: '',
       username: '',
@@ -146,7 +141,6 @@ export default {
       is_verified: false,
       note: ''
     })
-
     const userRules = {
       email: [
         { required: true, message: '请输入邮箱', trigger: 'blur' },
@@ -171,7 +165,6 @@ export default {
         { required: true, message: '请选择到期时间', trigger: 'change' }
       ]
     }
-
     const resetUserForm = () => {
       Object.assign(userForm, {
         email: '',
@@ -188,8 +181,6 @@ export default {
         userFormRef.value.resetFields()
       }
     }
-
-    // 监听编辑用户变化
     watch(() => props.editingUser, (user) => {
       if (user) {
         let status = user.status
@@ -198,7 +189,6 @@ export default {
         } else if (status === 'disabled') {
           status = user.is_active ? 'active' : 'inactive'
         }
-        
         Object.assign(userForm, {
           email: user.email,
           username: user.username,
@@ -206,7 +196,6 @@ export default {
           is_admin: Boolean(user.is_admin),
           is_verified: Boolean(user.is_verified),
           note: user.notes || '',
-          // 编辑模式下不显示这些字段，但为了防止验证错误，保持原值或默认值
           password: '',
           device_limit: 5,
           expire_time: getDefaultExpireTime()
@@ -215,12 +204,10 @@ export default {
         resetUserForm()
       }
     }, { immediate: true })
-
     const saveUser = async () => {
       try {
         await userFormRef.value.validate()
         saving.value = true
-        
         if (props.editingUser) {
           const isActive = userForm.status === 'active'
           const isVerified = Boolean(userForm.is_verified)
@@ -254,7 +241,6 @@ export default {
           }
           ElMessage.success('用户创建成功')
         }
-        
         emit('success')
         emit('update:visible', false)
       } catch (error) {
@@ -278,7 +264,6 @@ export default {
         saving.value = false
       }
     }
-
     return {
       userForm,
       userRules,
@@ -290,25 +275,20 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
-/* 最高优先级：覆盖全局样式 .el-form .el-input .el-input__inner */
 .user-form-dialog {
   * {
     box-sizing: border-box;
   }
-  
   :deep(.el-dialog__body) {
     padding: 16px;
     max-height: calc(100vh - 200px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
-  
   :deep(.el-form-item) {
     margin-bottom: 20px;
   }
-  
   :deep(.el-input__wrapper) {
     border: 1px solid #dcdfe6 !important;
     border-radius: 0 !important;
@@ -317,15 +297,12 @@ export default {
     padding: 0 !important;
     gap: 0 !important;
     min-height: 32px;
-    
     &::before,
     &::after {
       display: none !important;
       border: none !important;
       background: none !important;
     }
-    
-    /* 确保 wrapper 内部所有元素都没有边框 */
     * {
       border: none !important;
       border-width: 0 !important;
@@ -333,7 +310,6 @@ export default {
       box-shadow: none !important;
     }
   }
-  
   :deep(.el-select .el-input__wrapper),
   :deep(.el-date-editor .el-input__wrapper) {
     border: 1px solid #dcdfe6 !important;
@@ -343,7 +319,6 @@ export default {
     padding: 0 !important;
     gap: 0 !important;
     min-height: 32px;
-    
     &::before,
     &::after {
       display: none !important;
@@ -351,8 +326,6 @@ export default {
       background: none !important;
     }
   }
-  
-  /* 最高优先级：覆盖全局样式 .el-form .el-input .el-input__inner (global.scss:1169) */
   :deep(.el-form .el-input .el-input__inner),
   :deep(.el-form .el-select .el-input__inner),
   :deep(.el-form-item .el-input .el-input__inner),
@@ -392,7 +365,6 @@ export default {
     -webkit-appearance: none !important;
     -moz-appearance: none !important;
     appearance: none !important;
-    
     &::before,
     &::after {
       display: none !important;
@@ -400,7 +372,6 @@ export default {
       background: none !important;
     }
   }
-  
   :deep(.el-input__wrapper input),
   :deep(.el-input__wrapper textarea),
   :deep(.el-input input),
@@ -431,7 +402,6 @@ export default {
     -webkit-appearance: none !important;
     -moz-appearance: none !important;
     appearance: none !important;
-    
     &::before,
     &::after {
       display: none !important;
@@ -439,58 +409,44 @@ export default {
       background: none !important;
     }
   }
-  
-  /* 移除数字输入框的上下箭头 */
   :deep(.el-input__inner::-webkit-inner-spin-button),
   :deep(.el-input__inner::-webkit-outer-spin-button) {
     -webkit-appearance: none;
     margin: 0;
   }
-  
   :deep(.el-input__inner[type="number"]) {
     -moz-appearance: textfield;
     appearance: textfield;
   }
-  
-  /* 移除前缀和后缀的背景和边框，让它们完全透明 */
   :deep(.el-input__prefix),
   :deep(.el-input__suffix) {
     background-color: transparent !important;
     background: transparent !important;
     border: none !important;
-    /* 确保前缀后缀不影响布局 */
     padding: 0 !important;
     margin: 0 !important;
   }
-  
-  /* 移除前缀和后缀内部元素的边框 */
   :deep(.el-input__prefix *),
   :deep(.el-input__suffix *) {
     border: none !important;
     background: transparent !important;
   }
-  
-  /* 文本域样式 - 这是参考样式，所有输入框都要像这样 */
   :deep(.el-textarea__inner) {
     border-radius: 0 !important;
     border: 1px solid #dcdfe6 !important;
     box-shadow: none !important;
     outline: none !important;
   }
-  
-  /* 悬停和聚焦状态 - 与 textarea 保持一致 */
   :deep(.el-input__wrapper:hover),
   :deep(.el-textarea__inner:hover) {
     border-color: #c0c4cc !important;
     box-shadow: none !important;
   }
-  
   :deep(.el-input__wrapper.is-focus),
   :deep(.el-textarea__inner:focus) {
     border-color: #1677ff !important;
     box-shadow: none !important;
   }
-  
   :deep(.el-input__wrapper > *),
   :deep(.el-input__wrapper > *::before),
   :deep(.el-input__wrapper > *::after) {
@@ -500,7 +456,6 @@ export default {
     background-image: none !important;
     box-shadow: none !important;
   }
-  
   :deep(.el-input__wrapper .el-input__inner),
   :deep(.el-input__wrapper input),
   :deep(.el-input__wrapper textarea),
@@ -528,8 +483,6 @@ export default {
     -moz-appearance: none !important;
     appearance: none !important;
   }
-  
-  // 手机端优化
   &.mobile-dialog {
     :deep(.el-dialog) {
       width: 95% !important;
@@ -539,29 +492,24 @@ export default {
       display: flex;
       flex-direction: column;
     }
-    
     :deep(.el-dialog__header) {
       padding: 15px 15px 10px;
       flex-shrink: 0;
       border-bottom: 1px solid #ebeef5;
-      
       .el-dialog__title {
         font-size: 18px;
         font-weight: 600;
       }
-      
       .el-dialog__headerbtn {
         top: 8px;
         right: 8px;
         width: 32px;
         height: 32px;
-        
         .el-dialog__close {
           font-size: 18px;
         }
       }
     }
-    
     :deep(.el-dialog__body) {
       padding: 15px !important;
       flex: 1;
@@ -569,52 +517,43 @@ export default {
       -webkit-overflow-scrolling: touch;
       max-height: calc(96vh - 140px);
     }
-    
     :deep(.el-dialog__footer) {
       padding: 10px 15px 15px;
       flex-shrink: 0;
       border-top: 1px solid #ebeef5;
     }
   }
-  
   @media (max-width: 768px) {
     :deep(.el-dialog__body) {
       padding: 15px !important;
       max-height: calc(96vh - 140px);
     }
-    
     :deep(.el-form-item) {
       margin-bottom: 18px;
     }
-    
     :deep(.el-form-item__label) {
       display: none;
     }
-    
     :deep(.el-form-item__content) {
       margin-left: 0 !important;
     }
-    
     .mobile-label {
       font-size: 14px;
       font-weight: 600;
       color: #606266;
       margin-bottom: 8px;
       display: block;
-      
       .required {
         color: #f56c6c;
         margin-left: 2px;
       }
     }
-    
     :deep(.el-input),
     :deep(.el-select),
     :deep(.el-date-editor),
     :deep(.el-input-number) {
       width: 100%;
     }
-    
     :deep(.el-input__wrapper),
     :deep(.el-textarea__inner) {
       min-height: 40px;
@@ -622,7 +561,6 @@ export default {
       border: 1px solid #dcdfe6 !important;
       box-shadow: none !important;
       background-color: #ffffff !important;
-      
       &::before,
       &::after {
         display: none !important;
@@ -630,7 +568,6 @@ export default {
         background: none !important;
       }
     }
-    
     :deep(.el-input__inner),
     :deep(.el-input .el-input__inner),
     :deep(.el-select .el-input__inner),
@@ -654,7 +591,6 @@ export default {
       -webkit-appearance: none !important;
       -moz-appearance: none !important;
       appearance: none !important;
-      
       &::before,
       &::after {
         display: none !important;
@@ -664,44 +600,35 @@ export default {
     }
   }
 }
-
 .form-item-hint {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
-  
   @media (max-width: 768px) {
     font-size: 11px;
     margin-top: 3px;
   }
 }
-
-// 手机端日期选择器优化
 :deep(.mobile-date-picker-popper) {
   .el-picker-panel {
     width: 95vw;
     max-width: 400px;
   }
-  
   .el-date-picker__header {
     padding: 12px 16px;
   }
-  
   .el-picker-panel__content {
     padding: 8px;
   }
 }
-
 .dialog-footer-buttons {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  
   &.mobile-footer {
     flex-direction: column;
     gap: 10px;
-    
     .mobile-action-btn {
       width: 100%;
       min-height: 48px;
@@ -712,7 +639,6 @@ export default {
       -webkit-tap-highlight-color: rgba(0,0,0,0.1);
     }
   }
-  
   @media (max-width: 768px) {
     .mobile-action-btn {
       width: 100%;
@@ -726,4 +652,3 @@ export default {
   }
 }
 </style>
-

@@ -9,8 +9,6 @@
         </el-button>
       </div>
     </div>
-
-    <!-- 移动端筛选栏 -->
     <div class="mobile-action-bar" v-if="isMobile">
       <div class="mobile-search-section">
         <div class="search-input-wrapper">
@@ -47,8 +45,6 @@
         </el-button>
       </div>
     </div>
-
-    <!-- 桌面端筛选栏 -->
     <div class="filter-bar desktop-only">
       <el-input
         v-model="filters.keyword"
@@ -77,8 +73,6 @@
       </el-select>
       <el-button type="primary" @click="loadTickets">搜索</el-button>
     </div>
-
-    <!-- 移动端筛选抽屉 -->
     <el-drawer
       v-model="showFilterDrawer"
       title="筛选条件"
@@ -118,8 +112,6 @@
         </div>
       </div>
     </el-drawer>
-
-    <!-- 统计卡片 -->
     <div class="stats-cards" v-if="statistics">
       <el-card class="stat-card">
         <div class="stat-item">
@@ -146,8 +138,6 @@
         </div>
       </el-card>
     </div>
-
-    <!-- 桌面端工单列表 -->
     <el-table :data="tickets" v-loading="loading" class="desktop-only" style="width: 100%; margin-top: 20px">
       <el-table-column prop="ticket_no" label="工单编号" width="180" />
       <el-table-column prop="title" label="标题" min-width="200">
@@ -197,8 +187,6 @@
         </template>
       </el-table-column>
     </el-table>
-
-    <!-- 移动端工单卡片列表 -->
     <div class="mobile-tickets-list" v-if="isMobile" v-loading="loading">
       <div
         v-for="ticket in tickets"
@@ -245,8 +233,6 @@
         <el-empty description="暂无工单数据" />
       </div>
     </div>
-
-    <!-- 分页 -->
     <el-pagination
       v-model:current-page="pagination.page"
       v-model:page-size="pagination.size"
@@ -257,8 +243,6 @@
       @current-change="loadTickets"
       style="margin-top: 20px; justify-content: center"
     />
-
-    <!-- 工单详情对话框 -->
     <el-dialog
       v-model="showDetailDialog"
       :title="currentTicket ? `工单详情 - ${currentTicket.ticket_no}` : '工单详情'"
@@ -269,7 +253,6 @@
       :close-on-click-modal="!isMobile"
     >
       <div v-if="currentTicket" class="ticket-detail">
-        <!-- 移动端顶部状态栏 -->
         <div class="mobile-ticket-header" v-if="isMobile">
           <div class="mobile-ticket-badges">
             <el-tag :type="getStatusTagType(currentTicket.status)" size="small">{{ getStatusText(currentTicket.status) }}</el-tag>
@@ -278,8 +261,6 @@
           </div>
           <div class="mobile-ticket-title">{{ currentTicket.title }}</div>
         </div>
-
-        <!-- 工单基本信息 -->
         <el-card class="ticket-info-card" shadow="never">
           <template #header>
             <div class="card-header">
@@ -307,24 +288,18 @@
             </el-descriptions-item>
           </el-descriptions>
         </el-card>
-
-        <!-- 工单内容 -->
         <el-card class="ticket-content-card" shadow="never" :class="{ 'mobile-card': isMobile }">
           <template #header>
             <span>工单内容</span>
           </template>
           <div class="ticket-content-text">{{ currentTicket.content }}</div>
         </el-card>
-
-        <!-- 管理员备注 -->
         <el-card class="ticket-notes-card" shadow="never" :class="{ 'mobile-card': isMobile }" v-if="currentTicket.admin_notes">
           <template #header>
             <span>管理员备注</span>
           </template>
           <div class="admin-notes-text">{{ currentTicket.admin_notes }}</div>
         </el-card>
-
-        <!-- 回复记录 -->
         <el-card class="ticket-replies-card" shadow="never" :class="{ 'mobile-card': isMobile }">
           <template #header>
             <div class="card-header">
@@ -370,8 +345,6 @@
             </div>
           </div>
         </el-card>
-
-        <!-- 操作区域 -->
         <div class="ticket-actions" :class="{ 'mobile-card': isMobile }">
           <el-card shadow="never" v-if="!isMobile">
             <template #header>
@@ -405,8 +378,6 @@
             </el-button>
           </div>
         </div>
-
-        <!-- 回复区域 -->
         <div class="ticket-reply-form" :class="{ 'mobile-card': isMobile }">
           <el-card shadow="never">
             <template #header>
@@ -433,8 +404,6 @@
         </div>
       </div>
     </el-dialog>
-
-    <!-- 更新状态对话框 -->
     <el-dialog v-model="showStatusDialog" title="更新工单状态" :width="isMobile ? '90%' : '400px'">
       <el-select v-model="newStatus" placeholder="选择新状态" style="width: 100%">
         <el-option label="待处理" value="pending" />
@@ -449,8 +418,6 @@
         </div>
       </template>
     </el-dialog>
-
-    <!-- 分配工单对话框 -->
     <el-dialog v-model="showAssignDialog" title="分配工单" :width="isMobile ? '90%' : '400px'">
       <el-input-number v-model="assignToUserId" placeholder="输入管理员用户ID" style="width: 100%" />
       <template #footer>
@@ -460,8 +427,6 @@
         </div>
       </template>
     </el-dialog>
-
-    <!-- 添加备注对话框 -->
     <el-dialog v-model="showNotesDialog" title="添加管理员备注" :width="isMobile ? '90%' : '500px'">
       <el-input
         v-model="adminNotes"
@@ -478,13 +443,11 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search, Filter, User, ChatLineRound, Clock } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
-
 const loading = ref(false)
 const replying = ref(false)
 const tickets = ref([])
@@ -500,20 +463,17 @@ const assignToUserId = ref(null)
 const adminNotes = ref('')
 const statistics = ref(null)
 const isMobile = ref(window.innerWidth <= 768)
-
 const filters = reactive({
   keyword: '',
   status: '',
   type: '',
   priority: ''
 })
-
 const pagination = reactive({
   page: 1,
   size: 20,
   total: 0
 })
-
 const loadTickets = async () => {
   loading.value = true
   try {
@@ -525,7 +485,6 @@ const loadTickets = async () => {
     if (filters.status && filters.status.trim()) params.status = filters.status.trim()
     if (filters.type && filters.type.trim()) params.type = filters.type.trim()
     if (filters.priority && filters.priority.trim()) params.priority = filters.priority.trim()
-    
     const response = await ticketAPI.getAllTickets(params)
     if (response.data && response.data.success) {
       tickets.value = response.data.data?.tickets || []
@@ -540,7 +499,6 @@ const loadTickets = async () => {
     loading.value = false
   }
 }
-
 const loadStatistics = async () => {
   try {
     const response = await ticketAPI.getTicketStatistics()
@@ -550,19 +508,14 @@ const loadStatistics = async () => {
   } catch (error) {
     }
 }
-
 const viewTicket = async (ticketId) => {
   try {
-    // 使用管理端API获取工单详情（需要管理员权限）
     const response = await ticketAPI.getAdminTicket(ticketId)
     if (response.data.success) {
-      // 修复：后端返回的数据结构是 { ticket: {...} }，需要取 ticket 字段
       currentTicket.value = response.data.data?.ticket || response.data.data
       showDetailDialog.value = true
-      // 查看工单后刷新列表，清除未读提醒
       setTimeout(async () => {
         await loadTickets()
-        // 触发未读数量刷新
         window.dispatchEvent(new CustomEvent('ticket-viewed'))
       }, 500)
     }
@@ -570,7 +523,6 @@ const viewTicket = async (ticketId) => {
     ElMessage.error('加载工单详情失败: ' + (error.response?.data?.message || error.message))
   }
 }
-
 const addReply = async () => {
   if (!replyContent.value.trim()) {
     ElMessage.warning('请输入回复内容')
@@ -581,7 +533,6 @@ const addReply = async () => {
     ElMessage.error('工单信息不完整，请刷新后重试')
     return
   }
-  
   replying.value = true
   try {
     const response = await ticketAPI.addReply(currentTicket.value.id, { content: replyContent.value })
@@ -601,10 +552,8 @@ const addReply = async () => {
     replying.value = false
   }
 }
-
 const updateStatus = async () => {
   if (!currentTicket.value || !newStatus.value) return
-  
   try {
     const response = await ticketAPI.updateTicket(currentTicket.value.id, { status: newStatus.value })
     if (response.data.success) {
@@ -618,19 +567,16 @@ const updateStatus = async () => {
     ElMessage.error('更新状态失败')
   }
 }
-
 const assignTicket = (ticket) => {
   currentTicket.value = ticket
   assignToUserId.value = null
   showAssignDialog.value = true
 }
-
 const assignTicketConfirm = async () => {
   if (!currentTicket.value || !assignToUserId.value) {
     ElMessage.warning('请输入管理员用户ID')
     return
   }
-  
   try {
     const response = await ticketAPI.updateTicket(currentTicket.value.id, { assigned_to: assignToUserId.value })
     if (response.data.success) {
@@ -644,10 +590,8 @@ const assignTicketConfirm = async () => {
     ElMessage.error('分配失败')
   }
 }
-
 const updateNotes = async () => {
   if (!currentTicket.value) return
-  
   try {
     const response = await ticketAPI.updateTicket(currentTicket.value.id, { admin_notes: adminNotes.value })
     if (response.data.success) {
@@ -660,7 +604,6 @@ const updateNotes = async () => {
     ElMessage.error('添加备注失败')
   }
 }
-
 const closeDetailDialog = () => {
   currentTicket.value = null
   replyContent.value = ''
@@ -668,12 +611,10 @@ const closeDetailDialog = () => {
   assignToUserId.value = null
   adminNotes.value = ''
 }
-
 const formatTime = (timeStr) => {
   if (!timeStr) return '-'
   return new Date(timeStr).toLocaleString('zh-CN')
 }
-
 const getStatusText = (status) => {
   const map = {
     pending: '待处理',
@@ -684,7 +625,6 @@ const getStatusText = (status) => {
   }
   return map[status] || status
 }
-
 const getStatusTagType = (status) => {
   if (!status) return 'info'
   const map = {
@@ -696,7 +636,6 @@ const getStatusTagType = (status) => {
   }
   return map[status] || 'info'
 }
-
 const getTypeText = (type) => {
   const map = {
     technical: '技术问题',
@@ -706,12 +645,10 @@ const getTypeText = (type) => {
   }
   return map[type] || type
 }
-
 const getTypeTagType = (type) => {
   if (!type) return 'info'
   return 'info'
 }
-
 const getPriorityText = (priority) => {
   const map = {
     low: '低',
@@ -721,7 +658,6 @@ const getPriorityText = (priority) => {
   }
   return map[priority] || priority
 }
-
 const getPriorityTagType = (priority) => {
   if (!priority) return 'info'
   const map = {
@@ -732,7 +668,6 @@ const getPriorityTagType = (priority) => {
   }
   return map[priority] || 'info'
 }
-
 const resetFilters = () => {
   filters.keyword = ''
   filters.status = ''
@@ -741,45 +676,37 @@ const resetFilters = () => {
   showFilterDrawer.value = false
   loadTickets()
 }
-
 const applyFilters = () => {
   showFilterDrawer.value = false
   loadTickets()
 }
-
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
-
 onMounted(() => {
   loadTickets()
   loadStatistics()
   window.addEventListener('resize', handleResize)
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 </script>
-
 <style scoped lang="scss">
 .admin-tickets-container {
   padding: 20px;
 }
-
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .filter-bar {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
 }
-
 .stats-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -790,11 +717,9 @@ onUnmounted(() => {
     gap: 12px;
   }
 }
-
 .stat-card {
   text-align: center;
 }
-
 .stat-item {
   .stat-value {
     font-size: 32px;
@@ -815,7 +740,6 @@ onUnmounted(() => {
     color: #666;
   }
 }
-
 .ticket-detail {
   .ticket-info-card,
   .ticket-content-card,
@@ -823,26 +747,22 @@ onUnmounted(() => {
   .ticket-replies-card {
     margin-bottom: 20px;
   }
-  
   .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  
   .ticket-status-badges {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
   }
-  
   .ticket-content-text,
   .admin-notes-text {
     white-space: pre-wrap;
     line-height: 1.6;
     word-break: break-word;
   }
-  
   .replies-list {
     .reply-item {
       &.unread-reply {
@@ -851,18 +771,15 @@ onUnmounted(() => {
         box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
         animation: highlightUnreadReply 0.5s ease;
       }
-      
       &.user-reply.unread-reply {
         background: linear-gradient(135deg, #fff7e6 0%, #ffecc7 100%);
         border-left: 4px solid #faad14;
       }
-      
       .unread-content {
         font-weight: 500;
         color: #1a1a1a;
       }
     }
-    
     @keyframes highlightUnreadReply {
       0% {
         transform: scale(1);
@@ -877,77 +794,64 @@ onUnmounted(() => {
         box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
       }
     }
-    
     .reply-item {
       padding: 15px;
       margin-bottom: 15px;
       background: #f5f5f5;
       border-radius: 4px;
-      
       &.admin-reply {
         background: #e8f4fd;
       }
-      
       .reply-header {
         display: flex;
         justify-content: space-between;
         margin-bottom: 10px;
         flex-wrap: wrap;
         gap: 8px;
-        
         .reply-author {
           display: flex;
           align-items: center;
           gap: 10px;
           flex-wrap: wrap;
         }
-        
         .reply-time {
           color: #999;
           font-size: 12px;
         }
       }
-      
       .reply-content {
         white-space: pre-wrap;
         line-height: 1.6;
         word-break: break-word;
       }
     }
-    
     .empty-replies {
       padding: 20px;
       text-align: center;
     }
   }
-  
   .action-buttons {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
   }
-  
   .mobile-label {
     font-weight: 500;
     color: #666;
     margin-right: 8px;
   }
 }
-
-/* 移动端详情页样式 */
 .mobile-ticket-header {
   padding: 16px;
   background: #f8f9fa;
   border-radius: 8px;
   margin-bottom: 16px;
-  
   .mobile-ticket-badges {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
     margin-bottom: 12px;
   }
-  
   .mobile-ticket-title {
     font-size: 18px;
     font-weight: 600;
@@ -955,22 +859,18 @@ onUnmounted(() => {
     line-height: 1.4;
   }
 }
-
 .mobile-card {
   margin-top: 16px !important;
   margin-bottom: 16px !important;
-  
   :deep(.el-card__header) {
     padding: 12px 16px;
     font-size: 14px;
     font-weight: 600;
   }
-  
   :deep(.el-card__body) {
     padding: 16px;
   }
 }
-
 .mobile-action-buttons {
   display: flex;
   flex-direction: column;
@@ -978,7 +878,6 @@ onUnmounted(() => {
   gap: 12px;
   width: 100%;
   box-sizing: border-box;
-  
   .mobile-action-btn,
   .el-button {
     width: 100%;
@@ -989,84 +888,64 @@ onUnmounted(() => {
     font-weight: 500;
   }
 }
-
 .mobile-reply {
   padding: 12px !important;
   margin-bottom: 12px !important;
-  
   .reply-header {
     margin-bottom: 8px !important;
-    
     .reply-author {
       gap: 6px !important;
     }
-    
     .reply-time {
       font-size: 11px !important;
       width: 100%;
       margin-top: 4px;
     }
   }
-  
   .reply-content {
     font-size: 14px;
     line-height: 1.5;
   }
 }
-
 .mobile-only {
   display: none;
 }
-
 @media (max-width: 768px) {
   .mobile-only {
     display: inline;
   }
-  
   .mobile-hidden {
     display: none !important;
   }
 }
-
-/* 移动端样式 */
 @media (max-width: 768px) {
   .admin-tickets-container {
     padding: 12px;
   }
-
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 16px;
-    
     :is(h1) {
       font-size: 20px;
       margin: 0;
     }
-    
     .header-actions {
       width: 100%;
       display: flex;
       justify-content: flex-end;
     }
-    
     .refresh-btn {
       width: auto;
       padding: 8px 12px;
     }
   }
-
-  // mobile-action-bar 样式已统一在 list-common.scss 中定义
-  // 这里不再重复定义，使用统一样式
-
   .filter-bar.desktop-only {
     display: none;
   }
-
   .mobile-tickets-list {
     margin-top: 16px;
-    
     .mobile-ticket-card {
       background: #fff;
       border-radius: 8px;
@@ -1075,30 +954,25 @@ onUnmounted(() => {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       cursor: pointer;
       transition: all 0.3s;
-      
       &:active {
         transform: scale(0.98);
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
       }
-      
       .ticket-card-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
-        
         .ticket-no {
           font-weight: bold;
           font-size: 14px;
           color: #333;
         }
-        
         .ticket-badges {
           display: flex;
           gap: 6px;
         }
       }
-      
       .ticket-card-title {
         font-size: 16px;
         font-weight: 500;
@@ -1111,7 +985,6 @@ onUnmounted(() => {
         -webkit-box-orient: vertical;
         overflow: clip;
       }
-      
       .ticket-card-info {
         display: flex;
         flex-wrap: wrap;
@@ -1119,35 +992,29 @@ onUnmounted(() => {
         margin-bottom: 12px;
         font-size: 12px;
         color: #666;
-        
         .info-item {
           display: flex;
           align-items: center;
           gap: 4px;
         }
       }
-      
       .ticket-card-actions {
         display: flex;
         gap: 8px;
         padding-top: 12px;
         border-top: 1px solid #f0f0f0;
-        
         .el-button {
           flex: 1;
         }
       }
     }
-    
     .empty-state {
       padding: 40px 20px;
       text-align: center;
     }
   }
-
   .filter-drawer-content {
     padding: 20px 0;
-    
     .filter-drawer-actions {
       display: flex;
       gap: 12px;
@@ -1156,7 +1023,6 @@ onUnmounted(() => {
       border-top: 1px solid #f0f0f0;
     }
   }
-
   .ticket-detail-dialog {
     :deep(.el-dialog) {
       margin: 0;
@@ -1164,7 +1030,6 @@ onUnmounted(() => {
       display: flex;
       flex-direction: column;
     }
-    
     :deep(.el-dialog__header) {
       padding: 16px;
       border-bottom: 1px solid #f0f0f0;
@@ -1173,36 +1038,29 @@ onUnmounted(() => {
       background: #fff;
       z-index: 10;
     }
-    
     :deep(.el-dialog__title) {
       font-size: 16px;
       font-weight: 600;
     }
-    
     :deep(.el-dialog__body) {
       padding: 16px;
       flex: 1;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
     }
-    
     :deep(.el-dialog__close) {
       font-size: 20px;
     }
-    
     .ticket-detail {
       padding-bottom: 20px;
     }
   }
-
   .stat-card {
     padding: 12px;
-    
     .stat-item {
       .stat-value {
         font-size: 24px;
       }
-      
       .stat-label {
         font-size: 12px;
         margin-top: 4px;
@@ -1210,15 +1068,11 @@ onUnmounted(() => {
     }
   }
 }
-
-/* 桌面端隐藏移动端元素 */
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
   }
 }
-
-/* 移动端隐藏桌面端元素 */
 @media (min-width: 769px) {
   .mobile-action-bar,
   .mobile-tickets-list {
@@ -1226,5 +1080,3 @@ onUnmounted(() => {
   }
 }
 </style>
-
-

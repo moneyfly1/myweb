@@ -1,20 +1,12 @@
 import axios from 'axios'
-
-// ==========================================
-// 安全存储工具（从 helpers.js 合并）
-// ==========================================
-
 const SECURE_STORAGE_KEY = 'cboard_secure_'
 const MAX_STORAGE_AGE = 24 * 60 * 60 * 1000
-
 function isSecureContext() {
   return typeof window !== 'undefined' && window.isSecureContext
 }
-
 function getStorageKey(key) {
   return `${SECURE_STORAGE_KEY}${key}`
 }
-
 function getStorageItem(key) {
   try {
     const storageKey = getStorageKey(key)
@@ -33,7 +25,6 @@ function getStorageItem(key) {
     return null
   }
 }
-
 function setStorageItem(key, value, useSession = true, maxAge = MAX_STORAGE_AGE) {
   try {
     const storageKey = getStorageKey(key)
@@ -50,7 +41,6 @@ function setStorageItem(key, value, useSession = true, maxAge = MAX_STORAGE_AGE)
     }
   }
 }
-
 function removeStorageItem(key) {
   try {
     const storageKey = getStorageKey(key)
@@ -62,7 +52,6 @@ function removeStorageItem(key) {
     }
   }
 }
-
 function clearSecureStorage() {
   try {
     const keysToRemove = []
@@ -88,7 +77,6 @@ function clearSecureStorage() {
     }
   }
 }
-
 export const secureStorage = {
   get: getStorageItem,
   set: setStorageItem,
@@ -96,43 +84,23 @@ export const secureStorage = {
   clear: clearSecureStorage,
   isSecureContext
 }
-
-// ==========================================
-// 页面可见性管理（从 pageVisibility.js 合并）
-// ==========================================
-
 let visibilityHandlers = []
 let isPageVisible = true
-
-// 初始化页面可见性监听
 if (typeof document !== 'undefined') {
-  // 监听页面可见性变化
   document.addEventListener('visibilitychange', () => {
     const wasVisible = isPageVisible
     isPageVisible = !document.hidden
-    
     if (wasVisible && !isPageVisible) {
-      // 页面变为隐藏
-      console.debug('页面已隐藏')
     } else if (!wasVisible && isPageVisible) {
-      // 页面重新可见
-      console.debug('页面重新可见，触发刷新')
       triggerVisibilityHandlers()
     }
   })
-  
-  // 监听窗口焦点变化（作为备用）
   window.addEventListener('focus', () => {
     if (isPageVisible) {
-      console.debug('窗口获得焦点，触发刷新')
       triggerVisibilityHandlers()
     }
   })
 }
-
-/**
- * 触发所有可见性处理器
- */
 function triggerVisibilityHandlers() {
   visibilityHandlers.forEach(handler => {
     try {
@@ -142,21 +110,11 @@ function triggerVisibilityHandlers() {
     }
   })
 }
-
-/**
- * 注册页面可见性处理器
- * @param {Function} handler - 当页面重新可见时调用的函数
- * @returns {Function} 取消注册的函数
- */
 function onPageVisible(handler) {
   if (typeof handler !== 'function') {
-    console.warn('onPageVisible: handler 必须是函数')
     return () => {}
   }
-  
   visibilityHandlers.push(handler)
-  
-  // 返回取消注册的函数
   return () => {
     const index = visibilityHandlers.indexOf(handler)
     if (index > -1) {
@@ -164,31 +122,19 @@ function onPageVisible(handler) {
     }
   }
 }
-
-/**
- * 检查页面是否可见
- */
 function isVisible() {
   return isPageVisible
 }
-
-
 let _router = null
 let _useAuthStore = null
 let reconnectTimer = null
 let csrfTokenCache = null
-
-// Token 刷新状态管理
 let isRefreshing = { admin: false, user: false }
 let failedQueue = []
 let refreshFailed = { admin: false, user: false }
-
-// 常量定义
 const BASE_URL = '/api/v1'
 const TIMEOUT = 60000 // 60秒
 const TEST_CONNECTION_TIMEOUT = 10000 // 10秒
-
-// 公开 API 列表（不需要认证）
 const PUBLIC_APIS = [
   '/settings/public-settings',
   '/auth/login',
@@ -198,8 +144,6 @@ const PUBLIC_APIS = [
   '/auth/forgot-password',
   '/auth/reset-password'
 ]
-
-// 管理员 API 路径特征
 const ADMIN_PATHS = [
   '/admin',
   '/payment-config',
@@ -208,27 +152,21 @@ const ADMIN_PATHS = [
   '/tickets/admin',
   '/coupons/admin'
 ]
-
-
 export const initApi = (router, useAuthStore) => {
   _router = router
   _useAuthStore = useAuthStore
 }
-
 export const api = axios.create({
   baseURL: BASE_URL,
   timeout: TIMEOUT,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true
 })
-
 export const useApi = () => api
 export const resetRefreshFailed = () => {
   refreshFailed.admin = false
   refreshFailed.user = false
 }
-
-// 页面可见性处理
 onPageVisible(() => {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
@@ -236,7 +174,6 @@ onPageVisible(() => {
   }
   testConnection()
 })
-
 async function testConnection() {
   try {
     await axios.get(`${BASE_URL}/settings/public-settings`, {
@@ -246,31 +183,26 @@ async function testConnection() {
   } catch (error) {
     if (error.code !== 'ECONNABORTED') {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('连接测试失败，可能需要刷新页面:', error.message)
       }
     }
   }
 }
-
 function getCookie(name) {
   const value = `; ${document.cookie}`
   const parts = value.split(`; ${name}=`)
   if (parts.length === 2) return parts.pop().split(';').shift()
   return null
 }
-
 const clearRoleTokens = (isAdmin) => {
   const prefix = isAdmin ? 'admin' : 'user'
   secureStorage.remove(`${prefix}_token`)
   secureStorage.remove(`${prefix}_${isAdmin ? 'user' : 'data'}`)
   secureStorage.remove(`${prefix}_refresh_token`)
 }
-
 const shouldHandleLogout = (isAdminAPI) => {
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
   return (isAdminAPI && currentPath.startsWith('/admin')) || (!isAdminAPI && !currentPath.startsWith('/admin'))
 }
-
 const handleLogout = () => {
   if (_useAuthStore) _useAuthStore().logout()
   if (_router) {
@@ -282,48 +214,31 @@ const handleLogout = () => {
     }
   }
 }
-
 const processQueue = (error, token = null, isAdmin = null) => {
   const queueToProcess = isAdmin !== null ? failedQueue.filter(prom => prom.isAdmin === isAdmin) : failedQueue
   queueToProcess.forEach(prom => error ? prom.reject(error) : prom.resolve(token))
   failedQueue = isAdmin !== null ? failedQueue.filter(prom => prom.isAdmin !== isAdmin) : []
 }
-
-// =========================================================================================
-// Request Interceptor
-// =========================================================================================
-
 api.interceptors.request.use(
   config => {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
     const isInAdminPanel = currentPath.startsWith('/admin')
-    
-    // 1. 判断是否为公开 API
     if (config.url && PUBLIC_APIS.some(api => config.url.startsWith(api))) {
       return config
     }
-
-    // 2. 判断是否为管理员 API
     const isAdminAPI = config.url && (
       config.url.startsWith('/admin') || 
       config.url.includes('/admin/') ||
       ADMIN_PATHS.some(path => config.url.startsWith(path)) ||
       (isInAdminPanel && (config.url.startsWith('/users/') || config.url.startsWith('/tickets/')))
     )
-
-    // 3. 获取并注入 Token
     let token = isAdminAPI ? secureStorage.get('admin_token') : secureStorage.get('user_token')
-    
-    // 如果是用户端 API 但没有用户 token，尝试使用管理员 token（允许管理员查看用户端内容）
     if (!token && !isAdminAPI) {
       token = secureStorage.get('admin_token')
     }
-    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
-
-    // 4. CSRF Token 处理
     let csrfToken = csrfTokenCache || getCookie('csrf_token')
     if (!['get', 'head', 'options'].includes(config.method)) {
       if (!csrfToken) {
@@ -332,19 +247,12 @@ api.interceptors.request.use(
       }
       if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken
     }
-    
     return config
   },
   error => Promise.reject(error)
 )
-
-// =========================================================================================
-// Response Interceptor
-// =========================================================================================
-
 api.interceptors.response.use(
   response => {
-    // 缓存 CSRF Token
     const csrfToken = response.headers['x-csrf-token'] || response.headers['X-CSRF-Token']
     if (csrfToken) {
       csrfTokenCache = csrfToken
@@ -355,17 +263,14 @@ api.interceptors.response.use(
     return response
   },
   async error => {
-    // 1. 网络错误与超时处理
     if (!error.response) {
       if ((error.code === 'ECONNABORTED' || error.message?.includes('timeout')) && error.config && !error.config._retry) {
         error.config._retry = true
         if (process.env.NODE_ENV === 'development') {
-          console.warn('请求超时，正在重试...', error.config.url)
         }
         return api.request(error.config)
       } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('网络连接错误，请检查网络连接')
         }
         if (isVisible() && !reconnectTimer) {
           reconnectTimer = setTimeout(() => { testConnection(); reconnectTimer = null }, 2000)
@@ -373,23 +278,19 @@ api.interceptors.response.use(
       }
       return Promise.reject(error)
     }
-
-    // Blob 错误转 JSON
     if (error.config?.responseType === 'blob' && error.response?.data instanceof Blob) {
-      try {
-        const text = await error.response.data.text()
-        error.response.data = JSON.parse(text)
-      } catch (e) {}
+      try {
+        const text = await error.response.data.text()
+        error.response.data = JSON.parse(text)
+      } catch (e) {
+        // Blob 解析失败，保持原错误对象
+      }
     }
-
-    // 2. 维护模式 (503)
     if (error.response?.status === 503 && error.response?.data?.maintenance_mode) {
       const { ElMessage } = await import('element-plus')
       ElMessage.error(error.response.data.message || '系统维护中，请稍后再试')
       return Promise.reject(error)
     }
-
-    // 3. CSRF 验证失败 (403)
     if (error.response?.status === 403 && (error.response?.data?.message?.includes('CSRF') || error.response?.data?.csrf_token)) {
       const newCsrfToken = error.response?.data?.csrf_token || error.response?.headers?.['x-csrf-token'] || error.response?.headers?.['X-CSRF-Token']
       if (newCsrfToken && error.config && !error.config._csrfRetry) {
@@ -398,7 +299,6 @@ api.interceptors.response.use(
           error.config._csrfRetry = true
           error.config.headers['X-CSRF-Token'] = newCsrfToken
           if (process.env.NODE_ENV === 'development') {
-            console.log('[API] CSRF验证失败，使用新token自动重试')
           }
           return api.request(error.config)
         }
@@ -409,8 +309,6 @@ api.interceptors.response.use(
       }
       return Promise.reject(error)
     }
-
-    // 4. Token 过期处理 (401)
     if (error.response?.status === 401) {
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
       const isInAdminPanel = currentPath.startsWith('/admin')
@@ -421,19 +319,16 @@ api.interceptors.response.use(
         (isInAdminPanel && (error.config.url.startsWith('/users/') || error.config.url.startsWith('/tickets/')))
       )
       const refreshKey = isAdminAPI ? 'admin' : 'user'
-
       if (refreshFailed[refreshKey] || error.config?.url?.includes('/auth/login')) {
         if (shouldHandleLogout(isAdminAPI)) handleLogout()
         return Promise.reject(error)
       }
-      
       if (error.config?.url?.includes('/auth/refresh')) {
         refreshFailed[refreshKey] = true
         clearRoleTokens(isAdminAPI)
         if (shouldHandleLogout(isAdminAPI)) handleLogout()
         return Promise.reject(error)
       }
-
       if (error.config && !error.config._retry) {
         if (isRefreshing[refreshKey]) {
           return new Promise((resolve, reject) => failedQueue.push({ resolve, reject, isAdmin: isAdminAPI }))
@@ -443,10 +338,8 @@ api.interceptors.response.use(
             })
             .catch(err => Promise.reject(err))
         }
-
         error.config._retry = true
         isRefreshing[refreshKey] = true
-
         try {
           const refreshToken = secureStorage.get(isAdminAPI ? 'admin_refresh_token' : 'user_refresh_token')
           const refreshResponse = await axios.post('/api/v1/auth/refresh', {}, {
@@ -454,18 +347,14 @@ api.interceptors.response.use(
             timeout: 5000,
             headers: refreshToken ? { Authorization: `Bearer ${refreshToken}` } : {}
           })
-          
           const { access_token, refresh_token } = refreshResponse.data || {}
           if (access_token) {
             const TOKEN_TTL = 86400000 // 24h
             const REFRESH_TTL = 604800000 // 7d
             const prefix = isAdminAPI ? 'admin' : 'user'
-            
             secureStorage.set(`${prefix}_token`, access_token, !isAdminAPI, TOKEN_TTL)
             if (refresh_token) secureStorage.set(`${prefix}_refresh_token`, refresh_token, !isAdminAPI, REFRESH_TTL)
-            
             if (_useAuthStore && shouldHandleLogout(isAdminAPI)) _useAuthStore().setToken(access_token)
-
             error.config.headers.Authorization = `Bearer ${access_token}`
             processQueue(null, access_token, isAdminAPI)
             isRefreshing[refreshKey] = false
@@ -490,11 +379,6 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
-
-// =========================================================================================
-// API 模块导出
-// =========================================================================================
-
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
@@ -504,7 +388,6 @@ export const authAPI = {
   resetPassword: (data) => api.post('/auth/reset-password', data),
   refreshToken: () => api.post('/auth/refresh-token')
 }
-
 export const userAPI = {
   getProfile: () => api.get('/users/me'),
   updateProfile: (data) => api.put('/users/me', data),
@@ -518,12 +401,10 @@ export const userAPI = {
   getUserDevices: () => api.get('/users/devices'),
   getMyLevel: () => api.get('/users/my-level'),
   getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
-  // 设备相关
   getDeviceList: () => api.get('/devices'),
   addDevice: (data) => api.post('/devices', data),
   deleteDevice: (id) => api.delete(`/devices/${id}`)
 }
-
 export const rechargeAPI = {
   createRecharge: (data) => api.post('/recharge', data), // 通用创建充值（兼容）
   createRechargeWithMethod: (amount, method = 'alipay') => api.post('/recharge/', { amount, payment_method: method }),
@@ -533,7 +414,6 @@ export const rechargeAPI = {
   getRechargeStatus: (orderNo) => api.get(`/recharge/status/${orderNo}`),
   cancelRecharge: (id) => api.post(`/recharge/${id}/cancel`)
 }
-
 export const subscriptionAPI = {
   getUserSubscription: () => api.get('/subscriptions/user-subscription'),
   resetSubscription: () => api.post('/subscriptions/reset-subscription'),
@@ -544,7 +424,6 @@ export const subscriptionAPI = {
   getClashSubscription: (key) => api.get(`/subscriptions/clash/${key}`),
   convertToBalance: () => api.post('/subscriptions/convert-to-balance')
 }
-
 export const packageAPI = {
   getPackages: (params) => api.get('/packages/', { params }),
   getPackage: (id) => api.get(`/packages/${id}`),
@@ -552,7 +431,6 @@ export const packageAPI = {
   updatePackage: (id, data) => api.put(`/packages/${id}`, data),
   deletePackage: (id) => api.delete(`/packages/${id}`)
 }
-
 export const orderAPI = {
   upgradeDevices: (data) => api.post('/orders/upgrade-devices', data),
   createOrder: (data) => api.post('/orders/', data),
@@ -563,7 +441,6 @@ export const orderAPI = {
   cancelOrder: (orderNo) => api.post(`/orders/${orderNo}/cancel`),
   getPackages: () => api.get('/packages/')
 }
-
 export const nodeAPI = {
   getNodes: () => api.get('/nodes/'),
   getNode: (id) => api.get(`/nodes/${id}`),
@@ -581,7 +458,6 @@ export const nodeAPI = {
   batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
   batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds })
 }
-
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
   getStats: () => api.get('/admin/stats'),
@@ -655,8 +531,6 @@ export const adminAPI = {
   getSystemLogs: (params) => api.get('/admin/system-logs', { params }),
   getLogsStats: () => api.get('/admin/logs-stats'),
   exportLogs: (params) => api.get('/admin/export-logs', { params, responseType: 'blob' }),
-  
-  // 日志管理
   getRegistrationLogs: (params) => api.get('/admin/logs/registration', { params }),
   getSubscriptionLogs: (params) => api.get('/admin/logs/subscription', { params }),
   getBalanceLogs: (params) => api.get('/admin/logs/balance', { params }),
@@ -681,7 +555,6 @@ export const adminAPI = {
   batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
   batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds }),
   getNodesStats: () => api.get('/admin/nodes/stats'),
-  // 专线节点管理
   getCustomNodes: (params) => api.get('/admin/custom-nodes', { params }),
   createCustomNode: (data) => api.post('/admin/custom-nodes', data),
   importCustomNodeLinks: (links) => api.post('/admin/custom-nodes/import-links', { links }),
@@ -693,23 +566,18 @@ export const adminAPI = {
   testCustomNode: (id) => api.post(`/admin/custom-nodes/${id}/test`),
   batchTestCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-test', { node_ids: nodeIds }),
   getCustomNodeLink: (id) => api.get(`/admin/custom-nodes/${id}/link`),
-  // 用户专线节点分配
   getUserCustomNodes: (userId) => api.get(`/admin/users/${userId}/custom-nodes`),
   assignCustomNodeToUser: (userId, customNodeId, extraData = {}) => api.post(`/admin/users/${userId}/custom-nodes`, { custom_node_id: customNodeId, ...extraData }),
   unassignCustomNodeFromUser: (userId, nodeId) => api.delete(`/admin/users/${userId}/custom-nodes/${nodeId}`),
-  // 管理员通知设置
   updateAdminNotificationSettings: (data) => api.put('/admin/settings/admin-notification', data),
   testAdminEmailNotification: () => api.post('/admin/settings/admin-notification/test/email'),
   testAdminTelegramNotification: () => api.post('/admin/settings/admin-notification/test/telegram'),
   testAdminBarkNotification: () => api.post('/admin/settings/admin-notification/test/bark'),
 }
-
-
 export const configAPI = {
   getEmailConfig: () => api.get('/admin/email-config'),
   saveEmailConfig: (data) => api.post('/admin/email-config', data)
 }
-
 export const statisticsAPI = {
   getStatistics: () => api.get('/admin/statistics'),
   getUserTrend: () => api.get('/admin/statistics/user-trend'),
@@ -721,7 +589,6 @@ export const statisticsAPI = {
   exportStatistics: (type, format) => api.get('/admin/statistics/export', { params: { type, format } }),
   getRegionStats: () => api.get('/admin/statistics/regions')
 }
-
 export const paymentAPI = {
   getPaymentMethods: () => api.get('/payment-methods/active'),
   createPayment: (data) => api.post('/payment/', data),
@@ -750,7 +617,6 @@ export const paymentAPI = {
   stopConfigUpdateSchedule: () => api.post('/admin/config-update/schedule/stop'),
   clearConfigUpdateLogs: () => api.post('/admin/config-update/logs/clear')
 }
-
 export const settingsAPI = {
   getPublicSettings: () => api.get('/settings/public-settings'),
   getSystemSettings: () => api.get('/admin/settings'),
@@ -771,12 +637,10 @@ export const settingsAPI = {
   updateThemeConfig: (id, data) => api.put(`/admin/themes/${id}`, data),
   deleteThemeConfig: (id) => api.delete(`/admin/themes/${id}`)
 }
-
 export const softwareConfigAPI = {
   getSoftwareConfig: () => api.get('/software-config/'),
   updateSoftwareConfig: (data) => api.put('/software-config/', data)
 }
-
 export const configUpdateAPI = {
   getStatus: () => api.get('/admin/config-update/status'),
   startUpdate: () => api.post('/admin/config-update/start'),
@@ -792,7 +656,6 @@ export const configUpdateAPI = {
   getFilterKeywords: () => api.get('/admin/config-update/filter-keywords'),
   updateFilterKeywords: (data) => api.put('/admin/config-update/filter-keywords', data)
 }
-
 export const ticketAPI = {
   createTicket: (data) => api.post('/tickets/', data),
   getUserTickets: (params) => api.get('/tickets/', { params }),
@@ -805,7 +668,6 @@ export const ticketAPI = {
   getTicketStatistics: () => api.get('/tickets/admin/statistics'),
   getUnreadCount: () => api.get('/tickets/unread-count') // 获取未读回复数量
 }
-
 export const couponAPI = {
   getAvailableCoupons: () => api.get('/coupons/available'),
   validateCoupon: (data) => api.post('/coupons/validate', data),
@@ -816,7 +678,6 @@ export const couponAPI = {
   deleteCoupon: (id) => api.delete(`/coupons/admin/${id}`),
   getCouponStatistics: () => api.get('/coupons/admin/statistics')
 }
-
 export const inviteAPI = {
   generateInviteCode: (data) => api.post('/invites', data),
   getMyInviteCodes: () => api.get('/invites/my-codes'),
@@ -831,7 +692,6 @@ export const inviteAPI = {
   batchDeleteInviteCodes: (ids) => api.post('/admin/invites/batch-delete', ids),
   batchDeleteInviteRelations: (ids) => api.post('/admin/invite-relations/batch-delete', ids)
 }
-
 export const userLevelAPI = {
   getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
   getMyLevel: () => api.get('/users/my-level'),
@@ -847,36 +707,20 @@ export const userLevelAPI = {
   deleteLevel: (id) => api.delete(`/admin/user-levels/${id}`),
   upgradeUsers: (id, userIds) => api.post(`/admin/user-levels/${id}/upgrade-users`, userIds)
 }
-
-/**
- * 解析支付方式API响应
- * 统一处理不同的响应格式
- * @param {Object} response - API响应对象
- * @returns {Array} 支付方式数组
- */
 export function parsePaymentMethods(response) {
   if (!response || !response.data) {
     return []
   }
-  
   const { data } = response
-  
-  // 优先检查 response.data.data（标准格式）
   if (data.success !== false && data.data && Array.isArray(data.data)) {
     return data.data
   }
-  
-  // 检查 response.data 是否为数组
   if (Array.isArray(data)) {
     return data
   }
-  
-  // 最后检查 response.data.data（非标准格式）
   if (data.data && Array.isArray(data.data)) {
     return data.data
   }
-  
   return []
 }
-
 export default api

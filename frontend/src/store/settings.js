@@ -1,13 +1,11 @@
 import { defineStore } from 'pinia'
 import { settingsAPI } from '@/utils/api'
-
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
 const PASSWORD_PATTERNS = {
   letter: /[a-zA-Z]/,
   digit: /\d/,
   special: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/
 }
-
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
     siteName: 'CBoard',
@@ -31,7 +29,6 @@ export const useSettingsStore = defineStore('settings', {
     loading: false,
     error: null
   }),
-
   getters: {
     siteTitle: (state) => state.siteName,
     currentTheme: (state) => {
@@ -47,7 +44,6 @@ export const useSettingsStore = defineStore('settings', {
     paymentEnabled: (state) => state.enablePayment,
     announcementEnabled: (state) => state.enableAnnouncement
   },
-
   actions: {
     async loadSettings() {
       this.loading = true
@@ -60,26 +56,19 @@ export const useSettingsStore = defineStore('settings', {
         this.siteKeywords = settings.site_keywords || '面板,管理,系统'
         this.siteLogo = settings.site_logo || ''
         this.siteFavicon = settings.site_favicon || ''
-        
-        // 支持多种字段名格式：registration_enabled 或 allowRegistration
         const registrationValue = settings.registration_enabled !== undefined 
                                 ? settings.registration_enabled
                                 : (settings.allowRegistration !== undefined 
                                    ? settings.allowRegistration 
                                    : true)
         this.allowRegistration = registrationValue === true || registrationValue === "true"
-        
-        // 支持多种字段名格式：email_verification_required 或 require_email_verification
         const emailVerificationValue = settings.email_verification_required !== undefined 
                                      ? settings.email_verification_required
                                      : (settings.require_email_verification !== undefined 
                                         ? settings.require_email_verification 
                                         : true)
         this.requireEmailVerification = emailVerificationValue === true || emailVerificationValue === "true"
-        
         this.allowQqEmailOnly = settings.allow_qq_email_only !== false
-        
-        // 支持多种字段名格式：min_password_length 或 minPasswordLength
         const minPasswordValue = settings.min_password_length !== undefined 
                                ? settings.min_password_length
                                : (settings.minPasswordLength !== undefined 

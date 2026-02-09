@@ -34,7 +34,6 @@
         </el-card>
       </el-col>
     </el-row>
-    
     <div class="mobile-action-bar">
       <div class="mobile-search-section">
         <div class="search-input-wrapper">
@@ -78,7 +77,6 @@
         </el-button>
       </div>
     </div>
-    
     <el-card class="filter-section desktop-only">
       <el-form :inline="true" :model="filterForm" class="filter-form">
         <el-form-item label="状态">
@@ -102,7 +100,6 @@
         </el-form-item>
       </el-form>
     </el-card>
-    
     <el-card class="list-card queue-list">
       <template #header>
         <div class="card-header">
@@ -128,7 +125,6 @@
           </div>
         </div>
       </template>
-      
       <div class="table-wrapper desktop-only">
         <el-table :data="emailList" v-loading="loading" stripe empty-text="暂无数据">
           <el-table-column prop="id" label="ID" width="80" />
@@ -183,7 +179,6 @@
           </el-table-column>
         </el-table>
       </div>
-      
       <div class="mobile-card-list mobile-only" v-if="emailList.length > 0">
         <div 
           v-for="email in emailList" 
@@ -234,14 +229,12 @@
           </div>
         </div>
       </div>
-      
       <div class="mobile-card-list mobile-only" v-if="emailList.length === 0 && !loading">
         <div class="empty-state">
           <i class="el-icon-message"></i>
           <p>暂无邮件数据</p>
         </div>
       </div>
-      
       <div class="pagination">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -254,7 +247,6 @@
         />
       </div>
     </el-card>
-    
     <el-dialog
       v-model="detailDialogVisible" 
       title="邮件详情" 
@@ -285,7 +277,6 @@
             {{ emailDetail.processing_time }}ms
           </el-descriptions-item>
         </el-descriptions>
-        
         <div class="mobile-detail-info mobile-only">
           <div class="detail-info-row"><span class="detail-label">邮件ID</span><span class="detail-value">#{{ emailDetail.id }}</span></div>
           <div class="detail-info-row"><span class="detail-label">收件人</span><span class="detail-value">{{ emailDetail.to_email }}</span></div>
@@ -305,7 +296,6 @@
           <div class="detail-info-row" v-if="emailDetail.sent_at"><span class="detail-label">发送时间</span><span class="detail-value">{{ formatDate(emailDetail.sent_at) }}</span></div>
           <div class="detail-info-row" v-if="emailDetail.processing_time"><span class="detail-label">处理时间</span><span class="detail-value">{{ emailDetail.processing_time }}ms</span></div>
         </div>
-        
         <div class="detail-section">
           <h4>邮件内容</h4>
           <div v-if="emailDetail.content_type === 'html'" class="email-content-html">
@@ -332,7 +322,6 @@
             />
           </div>
         </div>
-        
         <div class="detail-section" v-if="emailDetail.template_data">
           <h4>模板数据</h4>
           <el-input
@@ -343,7 +332,6 @@
             class="template-data-content"
           />
         </div>
-        
         <div class="detail-section" v-if="emailDetail.error_message">
           <h4>错误信息</h4>
           <el-alert
@@ -355,7 +343,6 @@
             class="error-alert"
           />
         </div>
-        
         <div class="detail-section" v-if="emailDetail.smtp_response">
           <h4>SMTP响应</h4>
           <el-input
@@ -367,7 +354,6 @@
           />
         </div>
       </div>
-
       <template #footer>
         <div class="dialog-footer-buttons">
           <el-button @click="detailDialogVisible = false" class="mobile-action-btn">关闭</el-button>
@@ -384,7 +370,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, computed, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -392,8 +377,6 @@ import { Refresh, Search, View, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
 import DOMPurify from 'dompurify'
-
-// 状态映射常量，避免重复定义
 const STATUS_MAP = {
   pending: { tag: 'warning', text: '待发送' },
   sending: { tag: 'info', text: '发送中' },
@@ -401,13 +384,10 @@ const STATUS_MAP = {
   failed: { tag: 'danger', text: '发送失败' },
   cancelled: { tag: 'info', text: '已取消' }
 }
-
-// 统一处理 API 响应的函数
 const handleResponse = (response, defaultErrorMsg) => {
   if (!response) {
     return { success: false, message: defaultErrorMsg || '请求失败' }
   }
-  
   const data = response.data || response
   if (data?.success || (response && response.status >= 200 && response.status < 300)) {
     return { success: true, data: data?.data || data }
@@ -418,7 +398,6 @@ const handleResponse = (response, defaultErrorMsg) => {
     }
   }
 }
-
 export default {
   name: 'EmailQueue',
   components: {
@@ -430,57 +409,40 @@ export default {
     const emailDetail = ref(null)
     const isMobile = ref(false)
     const detailLoading = ref(false)
-    
-    // 检查是否为移动设备
     const checkMobile = () => {
       isMobile.value = window.innerWidth <= 768
     }
-    
-    // 筛选表单
     const filterForm = reactive({
       status: '',
       email: ''
     })
-    
-    // 分页信息
     const pagination = reactive({
       page: 1,
       size: 20,
       total: 0,
       pages: 0
     })
-    
     const emailList = ref([])
-    
-    // 统计数据
     const statistics = reactive({
       total: 0,
       pending: 0,
       sent: 0,
       failed: 0
     })
-
-    // HTML内容清理缓存
     const sanitizeCache = new Map()
     let iframeLoadTimeout = null
-
-    // 检查是否是完整的 HTML 文档
     const isFullHtmlDocument = (html) => {
       if (!html) return false
       const htmlLower = html.toLowerCase().trim()
       return htmlLower.includes('<!doctype html>') || 
              (htmlLower.includes('<html') && htmlLower.includes('<head') && htmlLower.includes('<body'))
     }
-
-    // HTML内容清理函数，防止XSS攻击
     const sanitizeHtml = (html) => {
       if (!html || typeof html !== 'string') return String(html || '')
-      
       const cacheKey = html.substring(0, 100) + html.length
       if (sanitizeCache.has(cacheKey) && sanitizeCache.get(cacheKey).original === html) {
         return sanitizeCache.get(cacheKey).sanitized
       }
-      
       try {
         const sanitized = DOMPurify.sanitize(html, {
           ALLOWED_TAGS: null, 
@@ -495,45 +457,33 @@ export default {
           RETURN_DOM_FRAGMENT: false,
           USE_PROFILES: { html: true }
         })
-        
         if (!sanitized || sanitized.trim() === '') return html
-        
         if (sanitizeCache.size > 10) {
           sanitizeCache.delete(sanitizeCache.keys().next().value)
         }
         sanitizeCache.set(cacheKey, { original: html, sanitized })
-        
         return sanitized
       } catch (error) {
         console.error('sanitizeHtml 错误:', error)
         return html
       }
     }
-    
-    // 使用 computed 缓存邮件内容
     const sanitizedEmailContent = computed(() => {
       return sanitizeHtml(emailDetail.value?.content)
     })
-    
     const isEmailFullHtml = computed(() => {
       return isFullHtmlDocument(emailDetail.value?.content)
     })
-    
-    // iframe 加载完成后处理
     const onIframeLoad = (event) => {
       if (iframeLoadTimeout) clearTimeout(iframeLoadTimeout)
-      
       iframeLoadTimeout = setTimeout(() => {
         try {
           const iframe = event.target
           if (!iframe || !iframe.contentDocument) return
-          
           const doc = iframe.contentDocument
           const body = doc.body
           const html = doc.documentElement
-          
           if (html && !html.style.backgroundColor) html.style.backgroundColor = '#f4f4f4'
-          
           if (body) {
             if (!body.style.display) {
               body.style.display = 'flex'
@@ -546,7 +496,6 @@ export default {
             body.style.minHeight = '100vh'
             body.style.boxSizing = 'border-box'
           }
-          
           setTimeout(() => {
             try {
               const scrollHeight = Math.max(
@@ -560,23 +509,18 @@ export default {
                 iframe.style.height = Math.min(scrollHeight + 40, 1200) + 'px'
               }
             } catch (e) {
-              // Cannot calculate iframe height
             }
           }, 200)
         } catch (e) {
-          // Cannot access iframe content
         }
       }, 50)
     }
-
-    // 获取邮件队列列表
     const fetchEmailQueue = async () => {
       loading.value = true
       try {
         const params = { page: pagination.page, size: pagination.size, ...filterForm }
         const response = await adminAPI.getEmailQueue(params)
         const result = handleResponse(response, '获取邮件队列失败')
-        
         if (result.success) {
           emailList.value = result.data.emails
           pagination.total = result.data.total
@@ -590,13 +534,10 @@ export default {
         loading.value = false
       }
     }
-    
-    // 获取统计数据
     const fetchStatistics = async () => {
       try {
         const response = await adminAPI.getEmailQueueStatistics()
         const result = handleResponse(response)
-        
         if (result.success) {
           Object.assign(statistics, result.data)
         }
@@ -604,39 +545,33 @@ export default {
         console.error('获取统计数据失败:', error)
       }
     }
-    
     const refreshQueue = () => {
       fetchEmailQueue()
       fetchStatistics()
     }
-    
     const applyFilter = () => {
       pagination.page = 1
       fetchEmailQueue()
       fetchStatistics() // 筛选时也更新统计数据
     }
-    
     const resetFilter = () => {
       Object.assign(filterForm, { status: '', email: '' })
       pagination.page = 1
       fetchEmailQueue()
       fetchStatistics() // 重置时也更新统计数据
     }
-    
     const filterByStatus = (status) => {
       filterForm.status = status
       pagination.page = 1
       fetchEmailQueue()
       fetchStatistics() // 按状态筛选时也更新统计数据
     }
-    
     const viewEmailDetail = async (row) => {
       detailLoading.value = true
       emailDetail.value = null // 清空旧数据
       try {
         const response = await adminAPI.getEmailDetail(row.id)
         const result = handleResponse(response, '获取邮件详情失败')
-        
         if (result.success) {
           emailDetail.value = result.data
           await nextTick()
@@ -650,14 +585,11 @@ export default {
         detailLoading.value = false
       }
     }
-    
     const retryEmail = async (row) => {
       try {
         await ElMessageBox.confirm(`确定要重试发送邮件到 ${row.to_email} 吗？`, '确认重试', { type: 'warning' })
-        
         const response = await adminAPI.retryEmail(row.id)
         const result = handleResponse(response, '邮件重试失败')
-        
         if (result.success) {
           ElMessage.success('邮件重试成功')
           refreshQueue()
@@ -668,21 +600,17 @@ export default {
         if (error !== 'cancel') ElMessage.error('邮件重试失败')
       }
     }
-    
     const retryEmailFromDetail = async () => {
       if (emailDetail.value) {
         await retryEmail(emailDetail.value)
         detailDialogVisible.value = false
       }
     }
-    
     const deleteEmail = async (row) => {
       try {
         await ElMessageBox.confirm(`确定要删除发送到 ${row.to_email} 的邮件吗？`, '确认删除', { type: 'warning' })
-        
         const response = await adminAPI.deleteEmailFromQueue(row.id)
         const result = handleResponse(response, '邮件删除失败')
-        
         if (result.success) {
           ElMessage.success('邮件删除成功')
           refreshQueue()
@@ -693,15 +621,11 @@ export default {
         if (error !== 'cancel') ElMessage.error('邮件删除失败')
       }
     }
-    
-    // 清空邮件队列的通用函数
     const clearEmails = async (status, title, confirmText, type) => {
       try {
         await ElMessageBox.confirm(confirmText, title, { type })
-        
         const response = await adminAPI.clearEmailQueue(status)
         const result = handleResponse(response, `${title}失败`)
-        
         if (result.success) {
           ElMessage.success(`${title}成功`)
           refreshQueue()
@@ -715,52 +639,39 @@ export default {
         }
       }
     }
-
     const clearFailedEmails = () => {
       clearEmails('failed', '确认清空失败邮件', '确定要清空所有失败的邮件吗？', 'warning')
     }
-    
     const clearAllEmails = () => {
       clearEmails('', '确认清空所有邮件', '确定要清空所有邮件吗？此操作不可恢复！', 'error')
     }
-    
     const handleSizeChange = (size) => {
       pagination.size = size
       pagination.page = 1
       fetchEmailQueue()
     }
-
     const handleCurrentChange = (page) => {
       pagination.page = page
       fetchEmailQueue()
     }
-    
-    // 根据状态获取 Tag 类型
     const getStatusTagType = (status) => {
       return STATUS_MAP[status]?.tag || 'info'
     }
-
-    // 根据状态获取中文文本
     const getStatusText = (status) => {
       return STATUS_MAP[status]?.text || status
     }
-
-    // 格式化日期
     const formatDate = (dateString) => {
       if (!dateString) return '-'
       return formatDateTime(dateString, 'YYYY-MM-DD HH:mm:ss')
     }
-
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       refreshQueue()
     })
-
     onUnmounted(() => {
       window.removeEventListener('resize', checkMobile)
     })
-
     return {
       loading,
       detailDialogVisible,
@@ -793,32 +704,26 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
 @use '@/styles/list-common.scss';
-
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
   color: #999;
-  
   :is(i) {
     font-size: 3rem;
     margin-bottom: 1rem;
     display: block;
   }
-  
   :is(p) {
     font-size: 0.9rem;
     margin: 0;
     line-height: 1.5;
   }
 }
-
 .stats-overview {
   margin-bottom: 20px;
 }
-
 .stat-card.clickable {
   cursor: pointer;
   transition: all 0.3s ease;
@@ -827,11 +732,9 @@ export default {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 }
-
 .stat-content {
   padding: 20px;
 }
-
 .stat-number {
   font-size: 2rem;
   font-weight: bold;
@@ -841,63 +744,51 @@ export default {
   &.warning { color: #e6a23c; }
   &.danger { color: #f56c6c; }
 }
-
 .stat-label {
   color: #666;
   font-size: 0.9rem;
 }
-
 .filter-section {
   margin-bottom: 20px;
 }
-
 .filter-form {
   display: flex;
   flex-wrap: wrap;
   gap: 15px;
 }
-
 .queue-list {
   margin-bottom: 20px;
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
 }
-
 .header-info {
   color: #666;
   font-size: 0.9rem;
 }
-
 .header-actions {
   display: flex;
   gap: 10px;
 }
-
 .email-detail {
   max-height: 60vh;
   overflow-y: auto;
 }
-
 .detail-section {
   margin-top: 20px;
-  
   :is(h4) {
     margin-bottom: 10px;
     color: #333;
     font-size: 1rem;
   }
 }
-
 .email-content-html {
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -908,7 +799,6 @@ export default {
   padding: 0;
   position: relative;
 }
-
 .email-html-iframe {
   width: 100%;
   min-height: 400px;
@@ -921,7 +811,6 @@ export default {
   overflow-x: clip;
   -webkit-overflow-scrolling: touch;
 }
-
 .email-html-content {
   width: 100%;
   min-height: 200px;
@@ -930,7 +819,6 @@ export default {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  
   :deep(html), :deep(body) {
     margin: 0 !important;
     padding: 0 !important;
@@ -938,14 +826,12 @@ export default {
     height: auto !important;
     background-color: #f4f4f4 !important;
   }
-  
   :deep(body) {
     display: flex !important;
     justify-content: center !important;
     align-items: flex-start !important;
     min-height: 100vh !important;
   }
-  
   :deep(.email-container) {
     max-width: 600px !important;
     width: 100% !important;
@@ -954,37 +840,29 @@ export default {
     box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
     flex-shrink: 0 !important;
   }
-  
   :deep(style) {
     display: block !important;
   }
 }
-
 .email-text-content,
 .template-data-content,
 .smtp-response-content {
   width: 100%;
 }
-
 .email-content-empty {
   padding: 40px;
   text-align: center;
   color: #909399;
 }
-
 .text-danger {
   color: #f56c6c;
 }
-
-/* 桌面端/移动端显示控制 */
 .desktop-only {
   @media (max-width: 768px) { display: none !important; }
 }
-
 .mobile-only {
   display: none;
   @media (max-width: 768px) { display: block; }
-  
   &.mobile-card-list {
     @media (max-width: 768px) {
       display: flex;
@@ -993,24 +871,19 @@ export default {
     }
   }
 }
-
-/* 移动端详情信息 */
 .mobile-detail-info {
   display: none;
   @media (max-width: 768px) {
     display: block;
     margin-bottom: 20px;
   }
-  
   .detail-info-row {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     padding: 12px 0;
     border-bottom: 1px solid #f0f0f0;
-    
     &:last-child { border-bottom: none; }
-    
     .detail-label {
       font-weight: 600;
       color: #606266;
@@ -1018,7 +891,6 @@ export default {
       min-width: 100px;
       flex-shrink: 0;
     }
-    
     .detail-value {
       flex: 1;
       text-align: right;
@@ -1028,8 +900,6 @@ export default {
     }
   }
 }
-
-/* 移动端卡片列表样式 */
 .mobile-card-list {
   .mobile-card {
     background: #fff;
@@ -1038,7 +908,6 @@ export default {
     padding: 16px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
-  
   .card-row {
     display: flex;
     justify-content: space-between;
@@ -1046,7 +915,6 @@ export default {
     padding: 10px 0;
     border-bottom: 1px solid #f0f0f0;
     &:last-of-type { border-bottom: none; }
-    
     .label {
       font-weight: 600;
       color: #606266;
@@ -1054,7 +922,6 @@ export default {
       min-width: 100px;
       flex-shrink: 0;
     }
-    
     .value {
       flex: 1;
       text-align: right;
@@ -1063,7 +930,6 @@ export default {
       word-break: break-all;
     }
   }
-  
   .card-actions {
     display: flex;
     flex-direction: column;
@@ -1072,19 +938,14 @@ export default {
     margin-top: 12px;
   }
 }
-
-/* 移动端全局优化 */
 @media (max-width: 768px) {
   .email-queue-admin { padding: 10px; }
-  
   .header-actions, .action-buttons, .dialog-footer-buttons {
     display: flex;
     flex-direction: column;
     gap: 12px;
     width: 100%;
   }
-
-  /* 统一所有移动端按钮样式 */
   .email-queue-admin .el-button:not(.search-button-inside) {
     width: 100% !important;
     min-width: 100% !important;
@@ -1095,25 +956,20 @@ export default {
     margin: 0 !important;
     border-radius: 6px !important;
     padding: 0 16px !important;
-    
     :deep(.el-icon) {
       margin-right: 6px;
       font-size: 16px;
     }
   }
-  
   .filter-form {
     flex-direction: column;
     align-items: stretch;
     .el-form-item {
       margin-bottom: 10px;
       width: 100% !important;
-      
       .el-button + .el-button { margin-top: 12px !important; }
     }
   }
-  
-  /* 移动端对话框优化 */
   .mobile-dialog {
     :deep(.el-dialog) {
       width: 95% !important;
@@ -1128,8 +984,6 @@ export default {
     }
   }
 }
-
-/* 移除所有输入框的圆角和阴影效果 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -1138,14 +992,12 @@ export default {
   &:hover { border-color: #c0c4cc !important; }
   &.is-focus { border-color: #1677ff !important; }
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;

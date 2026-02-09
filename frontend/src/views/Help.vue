@@ -1,13 +1,10 @@
 <template>
   <div class="list-container help-container">
-    <!-- 页面头部 -->
     <div class="page-header">
       <h1>帮助文档</h1>
       <p>使用指南和常见问题解答</p>
     </div>
-
     <div class="help-content">
-      <!-- 快速导航 -->
       <el-card class="nav-card">
         <template #header>
           <div class="card-header">
@@ -15,7 +12,6 @@
             快速导航
           </div>
         </template>
-        
         <div class="nav-links">
           <el-button 
             v-for="section in sections" 
@@ -28,8 +24,6 @@
           </el-button>
         </div>
       </el-card>
-
-      <!-- 使用指南 -->
       <el-card class="guide-card" id="guide">
         <template #header>
           <div class="card-header">
@@ -37,7 +31,6 @@
             使用指南
           </div>
         </template>
-
         <el-collapse v-model="activeNames">
           <el-collapse-item 
             v-for="guide in guides" 
@@ -49,8 +42,6 @@
           </el-collapse-item>
         </el-collapse>
       </el-card>
-
-      <!-- 常见问题 -->
       <el-card class="faq-card" id="faq">
         <template #header>
           <div class="card-header">
@@ -58,7 +49,6 @@
             常见问题
           </div>
         </template>
-
         <el-collapse v-model="activeFAQ">
           <el-collapse-item 
             v-for="faq in faqs" 
@@ -70,8 +60,6 @@
           </el-collapse-item>
         </el-collapse>
       </el-card>
-
-      <!-- 客户端下载 -->
       <el-card class="clients-card" id="clients">
         <template #header>
           <div class="card-header">
@@ -79,7 +67,6 @@
             客户端下载
           </div>
         </template>
-
         <div class="clients-grid">
           <div 
             v-for="client in clients" 
@@ -122,8 +109,6 @@
           </div>
         </div>
       </el-card>
-
-      <!-- 客户端教程对话框 -->
       <el-dialog
         v-model="showGuideDialog"
         :title="currentGuideClient?.name + ' 使用教程'"
@@ -139,8 +124,6 @@
           </el-button>
         </template>
       </el-dialog>
-
-      <!-- 联系我们 -->
       <el-card class="contact-card" id="contact">
         <template #header>
           <div class="card-header">
@@ -148,7 +131,6 @@
             联系我们
           </div>
         </template>
-
         <div class="contact-info">
           <div class="contact-item" v-if="contactEmail">
             <i class="el-icon-message"></i>
@@ -157,7 +139,6 @@
               <p>{{ contactEmail }}</p>
             </div>
           </div>
-          
           <div class="contact-item" v-if="contactQQ">
             <i class="el-icon-chat-dot-round"></i>
             <div class="contact-details">
@@ -165,7 +146,6 @@
               <p>{{ contactQQ }}</p>
             </div>
           </div>
-          
           <div class="contact-item">
             <i class="el-icon-time"></i>
             <div class="contact-details">
@@ -178,16 +158,13 @@
     </div>
   </div>
 </template>
-
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import DOMPurify from 'dompurify'
-
 export default {
   name: 'Help',
   setup() {
-    // HTML内容清理函数，防止XSS攻击
     const sanitizeHtml = (html) => {
       if (!html) return ''
       return DOMPurify.sanitize(html, {
@@ -201,36 +178,26 @@ export default {
     const showGuideDialog = ref(false)
     const currentGuideClient = ref(null)
     const currentGuideContent = ref('')
-    
-    // 动态获取联系信息
     const contactEmail = ref('')
     const contactQQ = ref('')
-    
-    // 从API获取联系信息
     const loadContactInfo = async () => {
       try {
         const api = (await import('@/utils/api')).default
         const response = await api.get('/settings/public-settings')
         if (response && response.data) {
-          // 处理不同的响应格式
           let settings = null
           if (response.data.success !== false) {
-            // 如果响应有 data 字段，使用 data；否则直接使用 response.data
             settings = response.data.data || response.data
           } else {
             settings = response.data
           }
-          
           if (settings) {
-            // 处理售后邮箱
             if (settings.support_email !== undefined && settings.support_email !== null) {
               const email = String(settings.support_email).trim()
               if (email !== '') {
                 contactEmail.value = email
               }
             }
-            
-            // 处理售后QQ
             if (settings.support_qq !== undefined && settings.support_qq !== null) {
               const qq = String(settings.support_qq).trim()
               if (qq !== '') {
@@ -241,22 +208,17 @@ export default {
         }
       } catch (error) {
         console.error('获取联系信息失败:', error)
-        // 不设置默认值，如果获取失败则为空
       }
     }
-    
-    // 组件挂载时加载联系信息
     onMounted(() => {
       loadContactInfo()
     })
-
     const sections = [
       { id: 'guide', title: '使用指南' },
       { id: 'faq', title: '常见问题' },
       { id: 'clients', title: '客户端下载' },
       { id: 'contact', title: '联系我们' }
     ]
-
     const guides = [
       {
         id: 'guide-1',
@@ -488,7 +450,6 @@ export default {
           <div style="line-height: 1.8;">
             <p><strong>套餐折算说明：</strong></p>
             <p>当您已有套餐，想要购买不同类型的套餐时，系统会将当前套餐的剩余时间折算成余额，返还到您的账户。</p>
-            
             <p><strong>折算规则：</strong></p>
             <ul style="margin: 10px 0 0 20px;">
               <li>系统会根据您当前套餐的剩余天数和价值计算折算金额</li>
@@ -496,7 +457,6 @@ export default {
               <li>折算后的金额会返还到您的账户余额</li>
               <li>折算后，当前套餐的设备和时间都会清零</li>
             </ul>
-            
             <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>📐 折算公式详解：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -514,7 +474,6 @@ export default {
                 折算金额 = 20 × ¥3.33 = ¥66.60
               </p>
             </p>
-            
             <p><strong>折算步骤：</strong></p>
             <ol>
               <li>登录账户后，进入"套餐订阅"页面</li>
@@ -532,7 +491,6 @@ export default {
               <li>系统会将剩余时间折算成余额返还到您的账户</li>
               <li>折算完成后，可以继续购买新套餐</li>
             </ol>
-            
             <p style="margin-top: 15px; padding: 10px; background: #fff1f0; border-left: 3px solid #ff4d4f; border-radius: 4px;">
               <strong>⚠️ 重要提示：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -542,7 +500,6 @@ export default {
                 <li>建议在折算前记录当前使用的设备列表</li>
               </ul>
             </p>
-            
             <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 何时需要折算：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -556,7 +513,6 @@ export default {
         `
       }
     ]
-
     const faqs = [
       {
         id: 'faq-1',
@@ -630,7 +586,7 @@ export default {
                 <ul style="margin: 5px 0 0 20px;">
                   <li>Clash Party（推荐，基于Mihomo内核，功能强大）</li>
                   <li>Clash Verge Rev（界面现代化）</li>
-                  <li>Sparkle（轻量级，性能优异）</li>
+                  <li>Clash Verge（轻量级，性能优异）</li>
                   <li>Hiddify（跨平台支持）</li>
                   <li>FlClash（Flutter开发）</li>
                   <li>V2rayN（轻量级）</li>
@@ -640,7 +596,7 @@ export default {
                 <ul style="margin: 5px 0 0 20px;">
                   <li>Clash Party（推荐，基于Mihomo内核）</li>
                   <li>Clash Verge Rev（界面现代化）</li>
-                  <li>Sparkle（轻量级）</li>
+                  <li>Clash Verge（轻量级）</li>
                   <li>Hiddify（跨平台支持）</li>
                   <li>FlClash（Flutter开发）</li>
                 </ul>
@@ -818,7 +774,6 @@ export default {
         `
       }
     ]
-
     const clients = [
       {
         id: 1,
@@ -840,7 +795,6 @@ export default {
               <li>Linux：下载 .deb 文件，使用包管理器安装（如：sudo dpkg -i *.deb）</li>
               <li>安装完成后，在应用列表中找到 Clash Party</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 Clash Party 软件</li>
@@ -851,7 +805,6 @@ export default {
               <li>点击"确定"或"保存"</li>
               <li>等待配置下载完成</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用主界面可以看到所有可用节点</li>
@@ -859,7 +812,6 @@ export default {
               <li>开启系统代理或TUN模式</li>
               <li>连接成功后，状态会显示为已连接</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
             <ol>
               <li>在应用中可以切换代理模式：
@@ -870,14 +822,12 @@ export default {
                 </ul>
               </li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
             <ol>
               <li>在订阅设置中，点击"更新"按钮</li>
               <li>等待更新完成，新的节点会自动同步</li>
               <li>建议定期更新订阅以获取最新节点</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -910,7 +860,6 @@ export default {
               <li>Linux：下载 .deb 或 .rpm 文件，使用包管理器安装</li>
               <li>首次运行可能需要授予权限，按照系统提示操作</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 Clash Verge Rev 应用</li>
@@ -921,7 +870,6 @@ export default {
               <li>点击"确定"或"保存"</li>
               <li>等待配置下载完成</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用主界面可以看到所有可用节点</li>
@@ -929,7 +877,6 @@ export default {
               <li>开启系统代理或TUN模式</li>
               <li>连接成功后，状态会显示为已连接</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
             <ol>
               <li>在应用中可以切换代理模式：
@@ -940,14 +887,12 @@ export default {
                 </ul>
               </li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
             <ol>
               <li>在订阅设置中，点击"更新"按钮</li>
               <li>等待更新完成，新的节点会自动同步</li>
               <li>建议定期更新订阅以获取最新节点</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -961,27 +906,26 @@ export default {
       },
       {
         id: 3,
-        name: 'Sparkle',
+        name: 'Clash Verge',
         description: 'Windows/Mac平台轻量级代理客户端，性能优异',
         icon: 'el-icon-monitor',
         platforms: ['Windows', 'Mac'],
-        githubKey: 'sparkle',
+        githubKey: 'clash-verge',
         downloadUrl: '',
         guideUrl: '#',
         guide: `
           <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Sparkle 使用教程</h3>
+            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Verge 使用教程</h3>
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
             <ol>
               <li>点击下载按钮，根据您的系统（Windows/Mac）和芯片架构自动下载对应版本</li>
               <li>Windows：下载 .exe 安装包，双击运行安装</li>
-              <li>Mac：下载 .dmg 文件，双击打开后将 Sparkle 拖拽到"应用程序"文件夹</li>
+              <li>Mac：下载 .dmg 文件，双击打开后将 Clash Verge 拖拽到"应用程序"文件夹</li>
               <li>首次运行可能需要授予权限，按照系统提示操作</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
-              <li>打开 Sparkle 应用</li>
+              <li>打开 Clash Verge 应用</li>
               <li>在设置中找到"订阅"或"配置"选项</li>
               <li>点击"添加订阅"或"从URL导入"</li>
               <li>粘贴您的订阅地址</li>
@@ -989,7 +933,6 @@ export default {
               <li>点击"确定"或"保存"</li>
               <li>等待配置下载完成</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用主界面可以看到所有可用节点</li>
@@ -997,7 +940,6 @@ export default {
               <li>开启系统代理或TUN模式</li>
               <li>连接成功后，状态会显示为已连接</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
             <ol>
               <li>在应用中可以切换代理模式：
@@ -1008,21 +950,19 @@ export default {
                 </ul>
               </li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
             <ol>
               <li>在订阅设置中，点击"更新"按钮</li>
               <li>等待更新完成，新的节点会自动同步</li>
               <li>建议定期更新订阅以获取最新节点</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
                 <li>建议开启"开机自启"功能</li>
                 <li>可以使用"延迟测试"功能选择最快的节点</li>
                 <li>定期更新订阅以获取最新节点</li>
-                <li>Sparkle 是轻量级客户端，资源占用低</li>
+                <li>Clash Verge 是轻量级客户端，资源占用低</li>
               </ul>
             </p>
           </div>
@@ -1048,7 +988,6 @@ export default {
               <li>Android：下载 .apk 文件，在手机上安装（需要允许安装未知来源应用）</li>
               <li>首次运行可能需要授予权限，按照系统提示操作</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 Hiddify 应用</li>
@@ -1059,7 +998,6 @@ export default {
               <li>点击"确定"或"保存"</li>
               <li>等待配置下载完成</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用主界面可以看到所有可用节点</li>
@@ -1067,7 +1005,6 @@ export default {
               <li>开启系统代理或VPN模式（Android需要授予VPN权限）</li>
               <li>连接成功后，状态会显示为已连接</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
             <ol>
               <li>在应用中可以切换代理模式：
@@ -1078,14 +1015,12 @@ export default {
                 </ul>
               </li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
             <ol>
               <li>在订阅设置中，点击"更新"按钮</li>
               <li>等待更新完成，新的节点会自动同步</li>
               <li>建议定期更新订阅以获取最新节点</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -1118,7 +1053,6 @@ export default {
               <li>Android：下载 .apk 文件，在手机上安装（需要允许安装未知来源应用）</li>
               <li>首次运行可能需要授予权限，按照系统提示操作</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 FlClash 应用</li>
@@ -1129,7 +1063,6 @@ export default {
               <li>点击"确定"或"保存"</li>
               <li>等待配置下载完成</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用主界面可以看到所有可用节点</li>
@@ -1137,7 +1070,6 @@ export default {
               <li>开启系统代理或TUN模式</li>
               <li>连接成功后，状态会显示为已连接</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -1168,7 +1100,6 @@ export default {
               <li>解压后找到 v2rayN.exe 文件，双击运行</li>
               <li>首次运行会提示选择语言，选择"中文"</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 V2rayN 软件</li>
@@ -1180,7 +1111,6 @@ export default {
               <li>返回主界面，点击"订阅" → "更新订阅"</li>
               <li>等待更新完成，节点会自动出现在服务器列表中</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在服务器列表中，可以看到所有可用的节点</li>
@@ -1191,14 +1121,12 @@ export default {
               <li>或者选择"系统代理" → "自动配置系统代理"</li>
               <li>连接成功后，系统托盘图标会显示为绿色</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、更新订阅</h4>
             <ol>
               <li>点击顶部菜单栏的"订阅" → "更新订阅"</li>
               <li>或者右键点击系统托盘图标，选择"更新订阅"</li>
               <li>等待更新完成，新的节点会自动同步</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -1230,7 +1158,6 @@ export default {
               <li>点击 APK 文件开始安装</li>
               <li>安装完成后，在应用列表中找到 V2rayNG</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 V2rayNG 应用</li>
@@ -1242,7 +1169,6 @@ export default {
               <li>点击"确定"保存</li>
               <li>返回主界面，点击"更新订阅"</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在主界面可以看到所有可用节点</li>
@@ -1252,7 +1178,6 @@ export default {
               <li>授予VPN权限（这是Android系统要求）</li>
               <li>连接成功后，开关会显示为绿色</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -1284,7 +1209,6 @@ export default {
               <li>下载完成后，在主屏幕找到 Shadowrocket 图标</li>
               <li>首次打开需要授予VPN权限</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
               <li>打开 Shadowrocket 应用</li>
@@ -1296,7 +1220,6 @@ export default {
               <li>应用会自动下载订阅配置</li>
               <li>下载完成后，节点列表会自动出现在"首页"</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用首页，可以看到所有可用的节点</li>
@@ -1307,14 +1230,12 @@ export default {
               <li>输入设备密码或使用Face ID/Touch ID确认</li>
               <li>连接成功后，开关会显示为绿色，状态栏会显示VPN图标</li>
             </ol>
-            
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、更新订阅</h4>
             <ol>
               <li>在"首页"，向下拉刷新订阅</li>
               <li>或者在"订阅"页面，点击订阅右侧的刷新图标</li>
               <li>等待更新完成，新的节点会自动同步</li>
             </ol>
-            
             <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
               <strong>💡 使用技巧：</strong>
               <ul style="margin: 10px 0 0 20px;">
@@ -1327,44 +1248,29 @@ export default {
         `
       }
     ]
-
-    // 滚动到指定区域
     const scrollToSection = (sectionId) => {
       const element = document.getElementById(sectionId)
       if (element) {
         element.scrollIntoView({ behavior: 'smooth' })
       }
     }
-
-    // 下载客户端
     const downloadClient = async (client) => {
       try {
-        // 如果是 Shadowrocket，直接打开 App Store
         if (client.name === 'Shadowrocket') {
           window.open('https://apps.apple.com/app/shadowrocket/id932747118', '_blank')
           return
         }
-        
-        // 如果有 GitHub Key，使用自动获取
         if (client.githubKey) {
           ElMessage.info('正在获取最新下载链接...')
           const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
           try {
             const downloadUrl = await getClientDownloadUrl(client.githubKey)
-            
-            // 检查是否是加速链接
             const isAccelerated = downloadUrl.includes('ghproxy.com') || downloadUrl.includes('ghproxy.net')
-            
-            // 对于移动端，直接打开链接让浏览器处理下载
-            // 对于桌面端，尝试触发下载
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-            
             if (isMobile) {
-              // 移动端直接打开链接
               window.open(downloadUrl, '_blank')
               ElMessage.success(isAccelerated ? '已打开下载页面（已启用加速）' : '已打开下载页面')
             } else {
-              // 桌面端创建下载链接
               const link = document.createElement('a')
               link.href = downloadUrl
               link.download = '' // 让浏览器自动识别文件名
@@ -1373,25 +1279,20 @@ export default {
               link.style.display = 'none'
               document.body.appendChild(link)
               link.click()
-              
-              // 延迟移除，确保下载已开始
               setTimeout(() => {
                 if (document.body.contains(link)) {
                   document.body.removeChild(link)
                 }
               }, 200)
-              
               ElMessage.success(isAccelerated ? '开始下载（已启用加速）...' : '开始下载...')
             }
           } catch (error) {
             console.error('获取下载链接失败:', error)
             ElMessage.error('获取下载链接失败: ' + (error.message || '未知错误'))
-            // 备用：打开 releases 页面
             try {
               const { getClientReleasesUrl } = await import('@/utils/githubDownload')
               const releasesUrl = getClientReleasesUrl(client.githubKey)
               if (releasesUrl) {
-                // 延迟一下再打开，避免消息被覆盖
                 setTimeout(() => {
                   window.open(releasesUrl, '_blank')
                   ElMessage.warning('已打开发布页面，请手动选择下载')
@@ -1405,9 +1306,7 @@ export default {
             }
           }
         } else if (client.downloadUrl) {
-          // 如果有直接配置的下载链接
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-          
           if (isMobile) {
             window.open(client.downloadUrl, '_blank')
             ElMessage.success('已打开下载页面')
@@ -1435,8 +1334,6 @@ export default {
         ElMessage.error('下载失败: ' + (error.message || '请稍后重试'))
       }
     }
-
-    // 查看客户端教程
     const viewClientGuide = (client) => {
       if (client && client.guide) {
         currentGuideClient.value = client
@@ -1446,22 +1343,18 @@ export default {
         window.open(client.guideUrl, '_blank')
       }
     }
-
-    // 创建清理后的computed属性
     const sanitizedGuides = computed(() => {
       return guides.map(guide => ({
         ...guide,
         content: sanitizeHtml(guide.content)
       }))
     })
-
     const sanitizedFaqs = computed(() => {
       return faqs.map(faq => ({
         ...faq,
         answer: sanitizeHtml(faq.answer)
       }))
     })
-
     return {
       activeNames,
       activeFAQ,
@@ -1482,72 +1375,55 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
-/* 覆盖 list-container 的 padding，移除顶部空隙 */
 :deep(.list-container) {
   @media (max-width: 768px) {
     padding-top: 0 !important;
     margin-top: 0 !important;
   }
 }
-
 .help-container {
-  /* 使用 list-common.scss 的统一样式 */
-  /* padding, max-width, margin 由 list-common.scss 统一管理 */
   padding: 0;
   max-width: none;
   margin: 0;
   width: 100%;
-  
-  /* 移动端：移除顶部padding，让内容紧贴导航栏 */
   @media (max-width: 768px) {
     padding-top: 0 !important;
     margin-top: 0 !important;
   }
 }
-
 .page-header {
   margin-bottom: 1rem;
   text-align: left;
-  
-  /* 移动端：移除上边距，让内容紧贴导航栏 */
   @media (max-width: 768px) {
     margin-top: 0 !important;
     padding-top: 0 !important;
     margin-bottom: 0.75rem;
   }
 }
-
 .page-header :is(h1) {
   color: #1677ff;
   font-size: 1.5rem;
   margin-bottom: 0.25rem;
-  
   @media (max-width: 768px) {
     font-size: 1.25rem;
   }
 }
-
 .page-header :is(p) {
   color: #666;
   font-size: 0.875rem;
-  
   @media (max-width: 768px) {
     font-size: 0.8125rem;
   }
 }
-
 .help-content {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  
   @media (max-width: 768px) {
     gap: 0.75rem;
   }
 }
-
 .nav-card,
 .guide-card,
 .faq-card,
@@ -1555,56 +1431,46 @@ export default {
 .contact-card {
   border-radius: 8px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
-  
   :deep(.el-card__header) {
     padding: 12px 16px;
     font-size: 0.9375rem;
   }
-  
   :deep(.el-card__body) {
     padding: 12px 16px;
   }
-  
   @media (max-width: 768px) {
     :deep(.el-card__header) {
       padding: 10px 12px;
       font-size: 0.875rem;
     }
-    
     :deep(.el-card__body) {
       padding: 10px 12px;
     }
   }
 }
-
 .card-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
   font-size: 0.9375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.875rem;
     gap: 0.375rem;
   }
 }
-
 .nav-links {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  
   @media (max-width: 768px) {
     grid-template-columns: repeat(2, 1fr);
     gap: 6px;
   }
-  
   @media (max-width: 480px) {
     grid-template-columns: repeat(2, 1fr);
     gap: 6px;
   }
-  
   :deep(.el-button) {
     width: 100%;
     padding: 10px 16px;
@@ -1615,19 +1481,16 @@ export default {
     white-space: nowrap;
     overflow: clip;
     text-overflow: ellipsis;
-    
     @media (max-width: 768px) {
       padding: 10px 12px;
       font-size: 0.8125rem;
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-      
       &:active {
         transform: scale(0.98);
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
       }
     }
-    
     @media (max-width: 480px) {
       padding: 8px 10px;
       font-size: 0.75rem;
@@ -1635,42 +1498,35 @@ export default {
     }
   }
 }
-
 .guide-content,
 .faq-content {
   line-height: 1.6;
   color: #333;
 }
-
 .guide-content :is(ol),
 .faq-content :is(ol) {
   padding-left: 1.25rem;
   margin: 0.5rem 0;
 }
-
 .guide-content :is(ul),
 .faq-content :is(ul) {
   padding-left: 1.25rem;
   margin: 0.5rem 0;
 }
-
 .guide-content :is(li),
 .faq-content :is(li) {
   margin-bottom: 0.375rem;
   font-size: 0.875rem;
   line-height: 1.5;
 }
-
 .clients-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 0.75rem;
-  
   @media (max-width: 768px) {
     gap: 0.5rem;
   }
 }
-
 .client-item {
   display: flex;
   align-items: center;
@@ -1679,79 +1535,64 @@ export default {
   background: #f8f9fa;
   border-radius: 6px;
   transition: all 0.3s ease;
-  
   @media (max-width: 768px) {
     padding: 0.625rem;
     gap: 0.5rem;
   }
 }
-
 .client-item:hover {
   background: #e3f2fd;
   transform: translateY(-2px);
 }
-
 .client-icon {
   font-size: 1.5rem;
   color: #1677ff;
   width: 40px;
   text-align: center;
-  
   @media (max-width: 768px) {
     font-size: 1.25rem;
     width: 35px;
   }
 }
-
 .client-info {
   flex: 1;
 }
-
 .client-info h4 {
   margin: 0 0 0.25rem 0;
   color: #333;
   font-weight: 600;
   font-size: 0.9375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.875rem;
   }
 }
-
 .client-info :is(p) {
   margin: 0 0 0.25rem 0;
   color: #666;
   font-size: 0.8125rem;
-  
   @media (max-width: 768px) {
     font-size: 0.75rem;
   }
 }
-
 .client-platforms {
   margin-top: 0.25rem;
 }
-
 .client-actions {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
-  
   @media (max-width: 768px) {
     gap: 0.25rem;
   }
 }
-
 .contact-info {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.75rem;
-  
   @media (max-width: 768px) {
     gap: 0.5rem;
   }
 }
-
 .contact-item {
   display: flex;
   align-items: center;
@@ -1759,70 +1600,57 @@ export default {
   padding: 0.75rem;
   background: #f8f9fa;
   border-radius: 6px;
-  
   @media (max-width: 768px) {
     padding: 0.625rem;
     gap: 0.5rem;
   }
 }
-
 .contact-item :is(i) {
   font-size: 1.5rem;
   color: #1677ff;
   width: 40px;
   text-align: center;
-  
   @media (max-width: 768px) {
     font-size: 1.25rem;
     width: 35px;
   }
 }
-
 .contact-details h4 {
   margin: 0 0 0.25rem 0;
   color: #333;
   font-weight: 600;
   font-size: 0.9375rem;
-  
   @media (max-width: 768px) {
     font-size: 0.875rem;
   }
 }
-
 .contact-details :is(p) {
   margin: 0;
   color: #666;
   font-size: 0.8125rem;
-  
   @media (max-width: 768px) {
     font-size: 0.75rem;
   }
 }
-
 @media (max-width: 768px) {
   .help-container {
     padding: 12px;
   }
-  
   .page-header {
     margin-bottom: 1rem;
     padding: 0 4px;
-    
     :is(h1) {
       font-size: 1.5rem;
       margin-bottom: 0.5rem;
     }
-    
     :is(p) {
       font-size: 0.875rem;
       line-height: 1.5;
     }
   }
-  
   .help-content {
     gap: 1rem;
   }
-  
   .nav-card,
   .guide-card,
   .faq-card,
@@ -1831,35 +1659,28 @@ export default {
     margin-bottom: 0.75rem;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    
     :deep(.el-card__header) {
       padding: 14px 16px;
       font-size: 0.9375rem;
       border-bottom: 1px solid #f0f0f0;
     }
-    
     :deep(.el-card__body) {
       padding: 16px;
     }
   }
-  
   .card-header {
     font-size: 0.9375rem;
     font-weight: 600;
-    
     :is(i) {
       font-size: 1.1rem;
     }
   }
-  
   .nav-links {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
-    
     @media (max-width: 480px) {
       grid-template-columns: 1fr; /* 极小屏幕单列 */
     }
-    
     :deep(.el-button) {
       width: 100%;
       padding: 12px 16px;
@@ -1870,40 +1691,32 @@ export default {
       overflow: clip;
       text-overflow: ellipsis;
       margin: 0; /* 移除按钮默认边距 */
-      
       &:active {
         transform: scale(0.97);
       }
     }
   }
-  
   .guide-content,
   .faq-content {
     font-size: 0.875rem;
     line-height: 1.7;
-    
     :is(ol), :is(ul) {
       padding-left: 1.25rem;
       margin: 0.75rem 0;
     }
-    
     :is(li) {
       margin-bottom: 0.5rem;
       line-height: 1.6;
     }
-    
     :is(p) {
       margin: 0.75rem 0;
       line-height: 1.7;
     }
-    
     h3, h4 {
       font-size: 1rem;
       margin-top: 1rem;
       margin-bottom: 0.75rem;
     }
-    
-    /* 代码块样式优化 */
     :is(pre) {
       background: #f5f7fa;
       padding: 10px;
@@ -1914,7 +1727,6 @@ export default {
       border: 1px solid #ebeef5;
       margin: 0.75rem 0;
     }
-    
     :is(code) {
       background: #f0f2f5;
       padding: 2px 4px;
@@ -1923,12 +1735,10 @@ export default {
       font-family: monospace;
     }
   }
-  
   .clients-grid {
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  
   .client-item {
     flex-direction: row; /* 改回行布局，图标在左侧 */
     align-items: flex-start;
@@ -1937,13 +1747,11 @@ export default {
     border-radius: 12px;
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    
     &:active {
       transform: scale(0.98);
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     }
   }
-  
   .client-icon {
     font-size: 1.75rem;
     width: 40px;
@@ -1955,18 +1763,15 @@ export default {
     align-items: center;
     height: 40px; /* 保持图标区域正方形 */
   }
-  
   .client-info {
     width: auto;
     flex: 1;
     margin-bottom: 0;
-    
     :is(h4) {
       font-size: 1rem;
       margin-bottom: 4px;
       font-weight: 600;
     }
-    
     :is(p) {
       font-size: 0.8125rem;
       line-height: 1.4;
@@ -1979,14 +1784,12 @@ export default {
       overflow: clip;
     }
   }
-  
   .client-platforms {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-start; /* 左对齐 */
     gap: 6px;
     margin-top: 4px;
-    
     :deep(.el-tag) {
       font-size: 0.75rem;
       padding: 0 6px;
@@ -1995,7 +1798,6 @@ export default {
       border-radius: 4px;
     }
   }
-  
   .client-actions {
     flex-direction: column; /* 按钮垂直排列 */
     justify-content: center;
@@ -2004,7 +1806,6 @@ export default {
     margin-top: 0;
     margin-left: 8px;
     flex-shrink: 0;
-    
     :deep(.el-button) {
       flex: none;
       width: 70px;
@@ -2013,18 +1814,15 @@ export default {
       border-radius: 6px;
       margin: 0;
       height: 28px;
-      
       &:active {
         transform: scale(0.95);
       }
     }
   }
-  
   .contact-info {
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  
   .contact-item {
     flex-direction: column;
     text-align: center;
@@ -2032,58 +1830,46 @@ export default {
     border-radius: 12px;
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    
     :is(i) {
       font-size: 2rem;
       width: auto;
       margin-bottom: 12px;
     }
   }
-  
   .contact-details {
     width: 100%;
-    
     :is(h4) {
       font-size: 1rem;
       margin-bottom: 8px;
       font-weight: 600;
     }
-    
     :is(p) {
       font-size: 0.875rem;
       line-height: 1.5;
       color: #666;
     }
   }
-  
-  // 折叠面板优化
   :deep(.el-collapse) {
     border: none;
-    
     .el-collapse-item {
       border-bottom: 1px solid #f0f0f0;
       margin-bottom: 8px;
-      
       &:last-child {
         border-bottom: none;
         margin-bottom: 0;
       }
     }
-    
     .el-collapse-item__header {
       padding: 12px 0;
       font-size: 0.9375rem;
       font-weight: 500;
       color: #333;
     }
-    
     .el-collapse-item__content {
       padding: 12px 0 16px 0;
     }
   }
 }
-
-// 客户端教程对话框样式
 :deep(.client-guide-dialog) {
   @media (max-width: 768px) {
     .el-dialog {
@@ -2091,46 +1877,38 @@ export default {
       margin: 5vh auto !important;
       max-height: 90vh;
     }
-    
     .el-dialog__header {
       padding: 16px;
       border-bottom: 1px solid #f0f0f0;
-      
       .el-dialog__title {
         font-size: 1.125rem;
         font-weight: 600;
       }
     }
-    
     .el-dialog__body {
       max-height: calc(90vh - 120px);
       overflow-y: auto;
       padding: 16px;
       -webkit-overflow-scrolling: touch;
     }
-    
     .el-dialog__footer {
       padding: 12px 16px;
       border-top: 1px solid #f0f0f0;
-      
       .el-button {
         padding: 10px 20px;
         font-size: 0.875rem;
       }
     }
   }
-  
   .guide-dialog-content {
     line-height: 1.8;
     color: #333;
-    
     :is(h3) {
       color: #1677ff;
       margin-bottom: 15px;
       font-size: 1.25rem;
       font-weight: 600;
     }
-    
     :is(h4) {
       color: #333;
       margin-top: 20px;
@@ -2138,46 +1916,37 @@ export default {
       font-size: 1.1rem;
       font-weight: 600;
     }
-    
     :is(ol), :is(ul) {
       padding-left: 1.5rem;
       margin: 10px 0;
-      
       :is(li) {
         margin-bottom: 8px;
         line-height: 1.6;
       }
     }
-    
     :is(p) {
       margin: 10px 0;
     }
-    
     @media (max-width: 768px) {
       font-size: 0.875rem;
       line-height: 1.7;
-      
       :is(h3) {
         font-size: 1.125rem;
         margin-bottom: 12px;
       }
-      
       :is(h4) {
         font-size: 1rem;
         margin-top: 16px;
         margin-bottom: 8px;
       }
-      
       :is(ol), :is(ul) {
         padding-left: 1.5rem;
         margin: 8px 0;
-        
         :is(li) {
           margin-bottom: 6px;
           line-height: 1.6;
         }
       }
-      
       :is(p) {
         margin: 8px 0;
         line-height: 1.7;

@@ -4,10 +4,7 @@
       <h1>用户设置</h1>
       <p>管理您的账户设置和偏好</p>
     </div>
-
-    <!-- 桌面端布局 -->
     <el-row :gutter="20" class="settings-desktop">
-      <!-- 左侧设置菜单 -->
       <el-col :span="6">
         <el-card class="settings-menu">
           <template #header>
@@ -16,7 +13,6 @@
               设置分类
             </div>
           </template>
-          
           <el-menu
             :default-active="activeSetting"
             @select="handleSettingSelect"
@@ -41,10 +37,7 @@
           </el-menu>
         </el-card>
       </el-col>
-
-      <!-- 右侧设置内容 -->
       <el-col :span="18">
-        <!-- 个人资料设置 -->
         <el-card v-if="activeSetting === 'profile'" class="setting-content">
           <template #header>
             <div class="card-header">
@@ -52,12 +45,10 @@
               个人资料
             </div>
           </template>
-          
           <el-form :model="profileForm" :rules="profileRules" ref="profileFormRef" label-width="100px">
             <el-form-item label="用户名" prop="username">
               <el-input v-model="profileForm.username" placeholder="请输入用户名"></el-input>
             </el-form-item>
-            
             <el-form-item label="邮箱" prop="email">
               <el-input v-model="profileForm.email" placeholder="请输入邮箱" disabled>
                 <template #append>
@@ -65,11 +56,9 @@
                 </template>
               </el-input>
             </el-form-item>
-            
             <el-form-item label="昵称" prop="nickname">
               <el-input v-model="profileForm.nickname" placeholder="请输入昵称"></el-input>
             </el-form-item>
-            
             <el-form-item label="头像">
               <el-upload
                 class="avatar-uploader"
@@ -81,7 +70,6 @@
                 <i v-else class="el-icon-plus avatar-uploader-icon"></i>
               </el-upload>
             </el-form-item>
-            
             <el-form-item>
               <el-button type="primary" @click="saveProfile" :loading="profileSaving">
                 保存修改
@@ -89,8 +77,6 @@
             </el-form-item>
           </el-form>
         </el-card>
-
-        <!-- 安全设置 -->
         <el-card v-if="activeSetting === 'security'" class="setting-content">
           <template #header>
             <div class="card-header">
@@ -98,30 +84,23 @@
               安全设置
             </div>
           </template>
-          
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" label-width="100px">
             <el-form-item label="当前密码" prop="currentPassword">
               <el-input v-model="securityForm.currentPassword" type="password" placeholder="请输入当前密码"></el-input>
             </el-form-item>
-            
             <el-form-item label="新密码" prop="newPassword">
               <el-input v-model="securityForm.newPassword" type="password" placeholder="请输入新密码"></el-input>
             </el-form-item>
-            
             <el-form-item label="确认密码" prop="confirmPassword">
               <el-input v-model="securityForm.confirmPassword" type="password" placeholder="请再次输入新密码"></el-input>
             </el-form-item>
-            
             <el-form-item>
               <el-button type="primary" @click="changePassword" :loading="passwordChanging">
                 修改密码
               </el-button>
             </el-form-item>
           </el-form>
-          
         </el-card>
-
-        <!-- 通知设置 -->
         <el-card v-if="activeSetting === 'notifications'" class="setting-content">
           <template #header>
             <div class="card-header">
@@ -129,7 +108,6 @@
               通知设置
             </div>
           </template>
-          
           <div class="notification-settings">
             <h4>邮件通知</h4>
             <el-switch
@@ -137,9 +115,7 @@
               active-text="启用邮件通知"
               inactive-text="禁用邮件通知"
             ></el-switch>
-            
             <el-divider></el-divider>
-            
             <h4>通知类型</h4>
             <el-checkbox-group v-model="notificationForm.notificationTypes">
               <el-checkbox label="subscription">订阅相关通知</el-checkbox>
@@ -147,16 +123,12 @@
               <el-checkbox label="system">系统通知</el-checkbox>
               <el-checkbox label="marketing">营销通知</el-checkbox>
             </el-checkbox-group>
-            
             <el-divider></el-divider>
-            
             <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving">
               保存设置
             </el-button>
           </div>
         </el-card>
-
-        <!-- 偏好设置 -->
         <el-card v-if="activeSetting === 'preferences'" class="setting-content">
           <template #header>
             <div class="card-header">
@@ -164,7 +136,6 @@
               偏好设置
             </div>
           </template>
-          
           <div class="preference-settings">
             <h4>界面设置</h4>
             <el-form label-width="120px">
@@ -183,7 +154,6 @@
                   <el-radio label="auto">跟随系统</el-radio>
                 </el-radio-group>
               </el-form-item>
-              
               <el-form-item label="时区">
                 <el-select v-model="preferenceForm.timezone" placeholder="选择时区">
                   <el-option label="UTC+8 (北京时间)" value="Asia/Shanghai"></el-option>
@@ -191,9 +161,7 @@
                 </el-select>
               </el-form-item>
             </el-form>
-            
             <el-divider></el-divider>
-            
             <el-button type="primary" @click="savePreferenceSettings" :loading="preferenceSaving">
               保存设置
             </el-button>
@@ -201,10 +169,7 @@
         </el-card>
       </el-col>
     </el-row>
-
-    <!-- 手机端布局 -->
     <div class="settings-mobile">
-      <!-- 手机端标签页选择 -->
       <el-card class="mobile-tabs-card">
         <el-tabs v-model="activeSetting" class="mobile-settings-tabs">
           <el-tab-pane label="个人资料" name="profile">
@@ -229,10 +194,7 @@
           </el-tab-pane>
         </el-tabs>
       </el-card>
-
-      <!-- 手机端设置内容 -->
       <div class="mobile-settings-content">
-        <!-- 个人资料设置 -->
         <el-card v-if="activeSetting === 'profile'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
@@ -240,12 +202,10 @@
               个人资料
             </div>
           </template>
-          
           <el-form :model="profileForm" :rules="profileRules" ref="profileFormRef" class="mobile-form">
             <el-form-item label="用户名" prop="username">
               <el-input v-model="profileForm.username" placeholder="请输入用户名"></el-input>
             </el-form-item>
-            
             <el-form-item label="邮箱" prop="email">
               <el-input v-model="profileForm.email" placeholder="请输入邮箱" disabled>
                 <template #append>
@@ -253,11 +213,9 @@
                 </template>
               </el-input>
             </el-form-item>
-            
             <el-form-item label="昵称" prop="nickname">
               <el-input v-model="profileForm.nickname" placeholder="请输入昵称"></el-input>
             </el-form-item>
-            
             <el-form-item label="头像">
               <el-upload
                 class="avatar-uploader"
@@ -269,7 +227,6 @@
                 <i v-else class="el-icon-plus avatar-uploader-icon"></i>
               </el-upload>
             </el-form-item>
-            
             <el-form-item>
               <el-button type="primary" @click="saveProfile" :loading="profileSaving" style="width: 100%">
                 保存修改
@@ -277,8 +234,6 @@
             </el-form-item>
           </el-form>
         </el-card>
-
-        <!-- 安全设置 -->
         <el-card v-if="activeSetting === 'security'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
@@ -286,30 +241,23 @@
               安全设置
             </div>
           </template>
-          
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" class="mobile-form">
             <el-form-item label="当前密码" prop="currentPassword">
               <el-input v-model="securityForm.currentPassword" type="password" placeholder="请输入当前密码"></el-input>
             </el-form-item>
-            
             <el-form-item label="新密码" prop="newPassword">
               <el-input v-model="securityForm.newPassword" type="password" placeholder="请输入新密码"></el-input>
             </el-form-item>
-            
             <el-form-item label="确认密码" prop="confirmPassword">
               <el-input v-model="securityForm.confirmPassword" type="password" placeholder="请再次输入新密码"></el-input>
             </el-form-item>
-            
             <el-form-item>
               <el-button type="primary" @click="changePassword" :loading="passwordChanging" style="width: 100%">
                 修改密码
               </el-button>
             </el-form-item>
           </el-form>
-          
         </el-card>
-
-        <!-- 通知设置 -->
         <el-card v-if="activeSetting === 'notifications'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
@@ -317,7 +265,6 @@
               通知设置
             </div>
           </template>
-          
           <div class="notification-settings">
             <h4>邮件通知</h4>
             <el-switch
@@ -325,9 +272,7 @@
               active-text="启用邮件通知"
               inactive-text="禁用邮件通知"
             ></el-switch>
-            
             <el-divider></el-divider>
-            
             <h4>通知类型</h4>
             <el-checkbox-group v-model="notificationForm.notificationTypes" class="mobile-checkbox-group">
               <el-checkbox label="subscription">订阅相关通知</el-checkbox>
@@ -335,16 +280,12 @@
               <el-checkbox label="system">系统通知</el-checkbox>
               <el-checkbox label="marketing">营销通知</el-checkbox>
             </el-checkbox-group>
-            
             <el-divider></el-divider>
-            
             <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving" style="width: 100%">
               保存设置
             </el-button>
           </div>
         </el-card>
-
-        <!-- 偏好设置 -->
         <el-card v-if="activeSetting === 'preferences'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
@@ -352,7 +293,6 @@
               偏好设置
             </div>
           </template>
-          
           <div class="preference-settings">
             <h4>界面设置</h4>
             <el-form class="mobile-form">
@@ -371,7 +311,6 @@
                   <el-radio label="auto">跟随系统</el-radio>
                 </el-radio-group>
               </el-form-item>
-              
               <el-form-item label="时区">
                 <el-select v-model="preferenceForm.timezone" placeholder="选择时区" style="width: 100%">
                   <el-option label="UTC+8 (北京时间)" value="Asia/Shanghai"></el-option>
@@ -379,9 +318,7 @@
                 </el-select>
               </el-form-item>
             </el-form>
-            
             <el-divider></el-divider>
-            
             <el-button type="primary" @click="savePreferenceSettings" :loading="preferenceSaving" style="width: 100%">
               保存设置
             </el-button>
@@ -389,8 +326,6 @@
         </el-card>
       </div>
     </div>
-
-    <!-- 修改邮箱对话框 -->
     <el-dialog
       v-model="emailChangeDialogVisible"
       title="修改邮箱"
@@ -401,7 +336,6 @@
         <el-form-item label="新邮箱" prop="newEmail">
           <el-input v-model="emailChangeForm.newEmail" placeholder="请输入新邮箱"></el-input>
         </el-form-item>
-        
         <el-form-item label="验证码" prop="verificationCode">
           <el-input v-model="emailChangeForm.verificationCode" placeholder="请输入验证码">
             <template #append>
@@ -412,7 +346,6 @@
           </el-input>
         </el-form-item>
       </el-form>
-      
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="emailChangeDialogVisible = false">取消</el-button>
@@ -424,73 +357,60 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { api } from '@/utils/api'
-
 export default {
   name: 'UserSettings',
   setup() {
     const authStore = useAuthStore()
     const themeStore = useThemeStore()
     const activeSetting = ref('profile')
-    
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     const isMobile = computed(() => {
       return windowWidth.value <= 768
     })
-    
     const handleResize = () => {
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
       }
     }
-    
     const profileFormRef = ref()
     const securityFormRef = ref()
     const emailChangeFormRef = ref()
-    
     const profileSaving = ref(false)
     const passwordChanging = ref(false)
     const notificationSaving = ref(false)
     const preferenceSaving = ref(false)
     const emailChanging = ref(false)
     const codeSending = ref(false)
-    
     const emailChangeDialogVisible = ref(false)
-    
     const profileForm = reactive({
       username: '',
       email: '',
       nickname: '',
       avatar: ''
     })
-    
     const securityForm = reactive({
       currentPassword: '',
       newPassword: '',
       confirmPassword: ''
     })
-    
     const notificationForm = reactive({
       emailNotifications: true,
       notificationTypes: ['subscription', 'payment', 'system', 'marketing']  // 默认所有类型都开启
     })
-    
     const preferenceForm = reactive({
       theme: themeStore.currentTheme,
       timezone: 'Asia/Shanghai'
     })
-    
     const emailChangeForm = reactive({
       newEmail: '',
       verificationCode: ''
     })
-    
     const profileRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -500,7 +420,6 @@ export default {
         { max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }
       ]
     }
-    
     const securityRules = {
       currentPassword: [
         { required: true, message: '请输入当前密码', trigger: 'blur' }
@@ -523,7 +442,6 @@ export default {
         }
       ]
     }
-    
     const emailChangeRules = {
       newEmail: [
         { required: true, message: '请输入新邮箱', trigger: 'blur' },
@@ -534,11 +452,9 @@ export default {
         { len: 6, message: '验证码长度应为 6 位', trigger: 'blur' }
       ]
     }
-    
     const handleSettingSelect = (key) => {
       activeSetting.value = key
     }
-    
     const loadUserInfo = async () => {
       try {
         const response = await api.get('/users/me')
@@ -549,7 +465,6 @@ export default {
           profileForm.nickname = userData.nickname || ''
           profileForm.avatar = userData.avatar || userData.avatar_url || ''
         } else {
-          // 如果API失败，从authStore获取
           const user = authStore.user
           if (user) {
             profileForm.username = user.username || ''
@@ -567,11 +482,9 @@ export default {
           profileForm.avatar = user.avatar || ''
         }
       }
-      
       try {
         const notificationResponse = await api.get('/users/notification-settings')
         const settings = notificationResponse.data?.data || notificationResponse.data || {}
-        
         if (settings.email_notifications !== undefined && settings.email_notifications !== null) {
           notificationForm.emailNotifications = settings.email_notifications === true || settings.email_notifications === 'true'
         } else if (settings.email_enabled !== undefined && settings.email_enabled !== null) {
@@ -579,7 +492,6 @@ export default {
         } else {
           notificationForm.emailNotifications = true
         }
-        
         if (settings.notification_types !== undefined && settings.notification_types !== null) {
           if (typeof settings.notification_types === 'string' && settings.notification_types.trim() !== '') {
             try {
@@ -606,7 +518,6 @@ export default {
         notificationForm.emailNotifications = true
         notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
       }
-      
       try {
         const userResponse = await api.get('/users/me')
         const userData = userResponse.data?.data || userResponse.data || {}
@@ -627,24 +538,17 @@ export default {
         })
       }
     }
-    
-    // 保存个人资料
     const saveProfile = async () => {
       try {
         await profileFormRef.value.validate()
         profileSaving.value = true
-        
-        // 调用API保存个人资料
         const response = await api.put('/users/me', {
           username: profileForm.username || '',
           nickname: profileForm.nickname || '',
           avatar: profileForm.avatar || ''
         })
-        
         if (response.data && response.data.success !== false) {
-          // 重新加载用户信息以确保数据同步
           await loadUserInfo()
-          // 更新本地用户信息
           if (authStore && authStore.updateUser) {
             authStore.updateUser(profileForm)
           }
@@ -669,17 +573,14 @@ export default {
         profileSaving.value = false
       }
     }
-    
     const changePassword = async () => {
       try {
         await securityFormRef.value.validate()
         passwordChanging.value = true
-        
         const response = await api.post('/users/change-password', {
           current_password: securityForm.currentPassword || '',
           new_password: securityForm.newPassword || ''
         })
-        
         if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '密码修改成功')
           securityForm.currentPassword = ''
@@ -692,7 +593,6 @@ export default {
           ElMessage.error(response.data?.message || '密码修改失败')
         }
       } catch (error) {
-        // 记录详细错误日志（不记录密码内容）
         console.error('修改密码失败:', {
           error: error.message,
           response: error.response?.data,
@@ -705,16 +605,13 @@ export default {
         passwordChanging.value = false
       }
     }
-    
     const saveNotificationSettings = async () => {
       try {
         notificationSaving.value = true
-        
         const response = await api.put('/users/notification-settings', {
           email_notifications: notificationForm.emailNotifications,
           notification_types: notificationForm.notificationTypes
         })
-        
         if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '通知设置保存成功')
         } else {
@@ -736,13 +633,10 @@ export default {
         notificationSaving.value = false
       }
     }
-    
     const savePreferenceSettings = async () => {
       try {
         preferenceSaving.value = true
-        
         const themeChanged = themeStore && themeStore.currentTheme !== preferenceForm.theme
-        
         let themeSaved = false
         let themeLocalApplied = false
         if (themeChanged && themeStore && themeStore.setTheme) {
@@ -754,12 +648,10 @@ export default {
             return
           }
         }
-        
         try {
           const response = await api.put('/users/preferences', {
             timezone: preferenceForm.timezone
           })
-          
           if (response.data && response.data.success !== false) {
             if (themeChanged) {
               if (themeSaved) {
@@ -802,22 +694,18 @@ export default {
         preferenceSaving.value = false
       }
     }
-    
     const showEmailChangeDialog = () => {
       emailChangeForm.newEmail = ''
       emailChangeForm.verificationCode = ''
       emailChangeDialogVisible.value = true
     }
-    
     const sendVerificationCode = async () => {
       try {
         if (!emailChangeForm.newEmail) {
           ElMessage.warning('请先输入新邮箱')
           return
         }
-        
         codeSending.value = true
-        
         ElMessage.success('验证码已发送到您的邮箱')
       } catch (error) {
         ElMessage.error('发送验证码失败：' + error.message)
@@ -825,12 +713,10 @@ export default {
         codeSending.value = false
       }
     }
-    
     const confirmEmailChange = async () => {
       try {
         await emailChangeFormRef.value.validate()
         emailChanging.value = true
-        
         ElMessage.success('邮箱修改成功')
         emailChangeDialogVisible.value = false
         profileForm.email = emailChangeForm.newEmail
@@ -840,12 +726,9 @@ export default {
         emailChanging.value = false
       }
     }
-    
-    // 头像上传前的处理
     const beforeAvatarUpload = (file) => {
       const isJPG = file.type === 'image/jpeg' || file.type === 'image/png'
       const isLt2M = file.size / 1024 / 1024 < 2
-
       if (!isJPG) {
         ElMessage.error('上传头像图片只能是 JPG/PNG 格式!')
       }
@@ -854,27 +737,20 @@ export default {
       }
       return isJPG && isLt2M
     }
-    
     onMounted(() => {
       loadUserInfo()
-      // 初始化主题
       themeStore.initTheme()
-      // 加载用户主题设置
       themeStore.loadUserTheme()
-      // 初始化窗口大小
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
         window.addEventListener('resize', handleResize)
       }
     })
-    
     onUnmounted(() => {
-      // 清理窗口大小监听
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)
       }
     })
-    
     return {
       isMobile,
       windowWidth,
@@ -910,52 +786,42 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .user-settings-container {
   padding: 20px;
   max-width: 1200px;
   margin: 0 auto;
 }
-
 .page-header {
   margin-bottom: 20px;
 }
-
 .page-header h1 {
   margin: 0 0 10px 0;
   color: #333;
 }
-
 .page-header :is(p) {
   margin: 0;
   color: #666;
 }
-
 .settings-menu {
   position: sticky;
   top: 20px;
 }
-
 .settings-menu-list {
   border-right: none;
 }
-
 .setting-content {
   margin-bottom: 20px;
 }
-
 .card-header {
   display: flex;
   align-items: center;
   font-weight: bold;
 }
-
 .card-header :is(i) {
   margin-right: 8px;
   color: #409eff;
 }
-
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -963,7 +829,6 @@ export default {
   background-color: #ffffff !important;
   padding: 0 !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -971,37 +836,30 @@ export default {
   background-color: transparent !important;
   padding: 0 11px !important;
 }
-
 :deep(.el-input__prefix),
 :deep(.el-input__suffix) {
   background-color: transparent !important;
   border: none !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #409eff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
 }
-
 :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
 }
-
 .avatar-uploader {
   text-align: center;
 }
-
 .avatar-uploader .el-upload {
   border: 1px dashed #d9d9d9;
   border-radius: 6px;
@@ -1009,11 +867,9 @@ export default {
   position: relative;
   overflow: clip;
 }
-
 .avatar-uploader .el-upload:hover {
   border-color: #409eff;
 }
-
 .avatar-uploader-icon {
   font-size: 28px;
   color: #8c939d;
@@ -1022,134 +878,103 @@ export default {
   line-height: 100px;
   text-align: center;
 }
-
 .avatar {
   width: 100px;
   height: 100px;
   display: block;
 }
-
 .security-options,
 .notification-settings,
 .preference-settings {
   margin-top: 20px;
 }
-
 .security-options h4,
 .notification-settings h4,
 .preference-settings h4 {
   margin: 0 0 15px 0;
   color: #333;
 }
-
 .security-tip {
   margin: 10px 0 0 0;
   color: #666;
   font-size: 14px;
 }
-
 .el-divider {
   margin: 20px 0;
 }
-
 .dialog-footer {
   text-align: right;
 }
-
-/* 手机端布局 */
 .settings-mobile {
   display: none;
 }
-
 @media (max-width: 768px) {
   .settings-desktop {
     display: none;
   }
-  
   .settings-mobile {
     display: block;
   }
-  
   .user-settings-container {
     padding: 10px;
   }
-  
   .page-header {
     margin-bottom: 16px;
-    
     :is(h1) {
       font-size: 1.5rem;
       margin-bottom: 8px;
     }
-    
     :is(p) {
       font-size: 0.875rem;
     }
   }
-  
-  /* 手机端标签页 */
   .mobile-tabs-card {
     margin-bottom: 12px;
-    
     :deep(.el-card__body) {
       padding: 12px;
     }
   }
-  
   .mobile-settings-tabs {
     :deep(.el-tabs__header) {
       margin: 0;
     }
-    
     :deep(.el-tabs__nav-wrap) {
       &::after {
         display: none;
       }
     }
-    
     :deep(.el-tabs__item) {
       padding: 8px 12px;
       font-size: 0.875rem;
       height: auto;
       line-height: 1.5;
-      
       :is(i) {
         font-size: 14px;
         margin-right: 4px;
       }
     }
-    
     :deep(.el-tabs__content) {
       display: none;
     }
   }
-  
-  /* 手机端设置卡片 */
   .mobile-setting-card {
     margin-bottom: 12px;
-    
     :deep(.el-card__header) {
       padding: 12px 16px;
-      
       .card-header {
         font-size: 1rem;
-        
         :is(i) {
           font-size: 16px;
         }
       }
     }
-    
     :deep(.el-card__body) {
       padding: 16px;
     }
   }
-  
-  /* 手机端表单 */
   .mobile-form {
     :deep(.el-form-item) {
       margin-bottom: 18px;
-      
       .el-form-item__label {
         width: 100% !important;
         text-align: left;
@@ -1159,10 +984,8 @@ export default {
         font-weight: 500;
         line-height: 1.5;
       }
-      
       .el-form-item__content {
         width: 100%;
-        
         .el-input,
         .el-select,
         .el-textarea {
@@ -1170,7 +993,6 @@ export default {
         }
       }
     }
-    
     :deep(.el-input__wrapper) {
       border-radius: 0 !important;
       box-shadow: none !important;
@@ -1178,7 +1000,6 @@ export default {
       background-color: #ffffff !important;
       padding: 0 !important;
     }
-    
     :deep(.el-input__inner) {
       border-radius: 0 !important;
       border: none !important;
@@ -1186,59 +1007,47 @@ export default {
       background-color: transparent !important;
       padding: 0 11px !important;
     }
-    
     :deep(.el-input__prefix),
     :deep(.el-input__suffix) {
       background-color: transparent !important;
       border: none !important;
     }
-    
     :deep(.el-input__wrapper:hover) {
       border-color: #c0c4cc !important;
       box-shadow: none !important;
     }
-    
     :deep(.el-input__wrapper.is-focus) {
       border-color: #409eff !important;
       box-shadow: none !important;
     }
-    
     :deep(.el-select .el-input__wrapper) {
       border-radius: 0 !important;
     }
-    
     :deep(.el-textarea__inner) {
       border-radius: 0 !important;
       border: 1px solid #dcdfe6 !important;
       box-shadow: none !important;
     }
   }
-  
-  /* 手机端头像上传 */
   .avatar-uploader {
     width: 100%;
     text-align: center;
-    
     .el-upload {
       width: 100px;
       height: 100px;
       margin: 0 auto;
     }
-    
     .avatar,
     .avatar-uploader-icon {
       width: 100px;
       height: 100px;
     }
   }
-  
-  /* 手机端单选组 */
   .mobile-radio-group {
     width: 100%;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    
     :deep(.el-radio) {
       margin: 0;
       width: 100%;
@@ -1246,55 +1055,44 @@ export default {
       border: 1px solid #e5e7eb;
       border-radius: 6px;
       transition: all 0.2s;
-      
       &:hover {
         border-color: #409eff;
         background-color: #f0f9ff;
       }
-      
       &.is-checked {
         border-color: #409eff;
         background-color: #ecf5ff;
       }
-      
       .el-radio__label {
         padding-left: 8px;
         font-size: 14px;
       }
     }
   }
-  
-  /* 手机端复选框组 */
   .mobile-checkbox-group {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    
     :deep(.el-checkbox) {
       margin: 0;
       padding: 12px;
       border: 1px solid #e5e7eb;
       border-radius: 6px;
       transition: all 0.2s;
-      
       &:hover {
         border-color: #409eff;
         background-color: #f0f9ff;
       }
-      
       &.is-checked {
         border-color: #409eff;
         background-color: #ecf5ff;
       }
-      
       .el-checkbox__label {
         padding-left: 8px;
         font-size: 14px;
       }
     }
   }
-  
-  /* 手机端开关 */
   :deep(.el-switch) {
     width: 100%;
     display: flex;
@@ -1304,14 +1102,11 @@ export default {
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     margin-bottom: 12px;
-    
     .el-switch__label {
       font-size: 14px;
       flex: 1;
     }
   }
-  
-  /* 手机端按钮 */
   .mobile-setting-card {
     :deep(.el-button) {
       width: 100%;
@@ -1320,8 +1115,6 @@ export default {
       margin: 0;
     }
   }
-  
-  /* 手机端标题 */
   .security-options h4,
   .notification-settings h4,
   .preference-settings h4 {
@@ -1330,47 +1123,36 @@ export default {
     color: #333;
     font-weight: 600;
   }
-  
-  /* 手机端提示文字 */
   .security-tip {
     font-size: 0.8125rem;
     color: #666;
     line-height: 1.6;
     margin-top: 8px;
   }
-  
-  /* 手机端分割线 */
   :deep(.el-divider) {
     margin: 16px 0;
   }
-  
-  /* 手机端对话框 */
   :deep(.el-dialog) {
     width: 90% !important;
     margin: 5vh auto !important;
     max-height: 90vh;
     overflow-y: auto;
   }
-  
   :deep(.el-dialog__body) {
     padding: 15px !important;
     max-height: calc(90vh - 120px);
     overflow-y: auto;
   }
-  
   :deep(.el-dialog__header) {
     padding: 15px !important;
   }
-  
   :deep(.el-dialog__footer) {
     padding: 15px !important;
-    
     .el-button {
       width: 100%;
       margin: 0 0 10px 0 !important;
       min-height: 44px;
       font-size: 16px;
-      
       &:last-child {
         margin-bottom: 0;
       }
