@@ -12,7 +12,6 @@
           </div>
         </div>
       </template>
-
       <div class="mobile-action-bar">
         <div class="mobile-search-section">
           <div class="search-input-wrapper">
@@ -28,7 +27,6 @@
             </el-button>
           </div>
         </div>
-
         <div class="mobile-filter-buttons">
           <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start">
             <el-button size="small" :type="searchForm.status ? 'primary' : 'default'" plain>
@@ -52,7 +50,6 @@
             重置
           </el-button>
         </div>
-        
         <div class="mobile-date-picker-section">
           <div class="date-picker-row">
             <el-date-picker
@@ -82,7 +79,6 @@
             />
           </div>
         </div>
-
         <div class="mobile-action-buttons">
           <el-button type="primary" @click="showAddUserDialog = true" class="mobile-action-btn">
             <el-icon><Plus /></el-icon>
@@ -90,7 +86,6 @@
           </el-button>
         </div>
       </div>
-
       <el-form :inline="true" :model="searchForm" class="search-form desktop-only">
         <el-form-item label="搜索">
           <el-input 
@@ -129,7 +124,6 @@
           </el-button>
         </el-form-item>
       </el-form>
-
       <div class="batch-actions" v-if="selectedUsers.length > 0">
         <div class="batch-info">
           <span>已选择 {{ selectedUsers.length }} 个用户</span>
@@ -161,7 +155,6 @@
           </el-button>
         </div>
       </div>
-
       <div class="table-wrapper desktop-only">
         <el-table 
           ref="tableRef"
@@ -344,7 +337,6 @@
           </el-table-column>
         </el-table>
       </div>
-
       <div class="mobile-card-list" v-if="users.length > 0 && isMobile">
         <div v-for="user in users" :key="user.id" class="mobile-card">
           <div class="card-row">
@@ -439,14 +431,12 @@
           </div>
         </div>
       </div>
-
       <div class="mobile-card-list" v-if="users.length === 0 && !loading && isMobile">
         <div class="empty-state">
           <i class="el-icon-user"></i>
           <p>暂无用户数据</p>
         </div>
       </div>
-
       <div class="pagination">
         <el-pagination
           v-model:current-page="currentPage"
@@ -459,14 +449,12 @@
         />
       </div>
     </el-card>
-
     <UserFormDialog
       v-model:visible="showAddUserDialog"
       :editingUser="editingUser"
       :isMobile="isMobile"
       @success="handleUserSaved"
     />
-
     <UserDetailDialog
       v-model:visible="showUserDialog"
       :user="selectedUser"
@@ -475,7 +463,6 @@
     />
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -487,19 +474,16 @@ import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import UserFormDialog from './components/UserFormDialog.vue'
 import UserDetailDialog from './components/UserDetailDialog.vue'
-
 const STATUS_MAP = {
   active: { type: 'success', text: '活跃' },
   inactive: { type: 'warning', text: '待激活' },
   disabled: { type: 'danger', text: '禁用' }
 }
-
 const SUBSCRIPTION_STATUS_MAP = {
   active: { type: 'success', text: '活跃' },
   inactive: { type: 'info', text: '未激活' },
   expired: { type: 'danger', text: '已过期' }
 }
-
 const STATUS_FILTER_MAP = {
   '': '状态筛选',
   'active': '活跃',
@@ -507,9 +491,7 @@ const STATUS_FILTER_MAP = {
   'disabled': '禁用',
   'device_overlimit': '⚠️ 设备超限'
 }
-
 const normalizeBoolean = (val) => val === true || val === 1 || val === '1'
-
 export default {
   name: 'AdminUsers',
   components: {
@@ -535,7 +517,6 @@ export default {
     const isMobile = ref(window.innerWidth <= 768)
     const defaultSort = ref({ prop: 'created_at', order: 'descending' })
     const tableRef = ref(null)
-
     const searchForm = reactive({
       keyword: '',
       status: '',
@@ -545,33 +526,27 @@ export default {
       sort: '',
       order: ''
     })
-
     const getStatusType = (status) => STATUS_MAP[status]?.type || 'info'
     const getStatusText = (status) => STATUS_MAP[status]?.text || status
     const getSubscriptionStatusType = (status) => SUBSCRIPTION_STATUS_MAP[status]?.type || 'info'
     const getSubscriptionStatusText = (status) => SUBSCRIPTION_STATUS_MAP[status]?.text || '未知'
     const getStatusFilterText = () => STATUS_FILTER_MAP[searchForm.status] || '状态筛选'
     const formatDate = (date) => formatDateUtil(date) || ''
-    
     const isDeviceOverlimit = (user) => {
       const onlineDevices = user.online_devices || 0
       const deviceLimit = user.subscription?.device_limit || 0
       return deviceLimit > 0 && onlineDevices >= deviceLimit
     }
-
     const getExpireTextType = (subscription) => {
       if (subscription.is_expired) return 'danger'
       return subscription.days_until_expire <= 7 ? 'warning' : 'success'
     }
-
     const getExpireText = (subscription) => {
       return subscription.is_expired ? '已过期' : `${subscription.days_until_expire}天后到期`
     }
-
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
     }
-
     const buildSearchParams = () => {
       const params = {
         page: currentPage.value,
@@ -579,7 +554,6 @@ export default {
         keyword: searchForm.keyword,
         status: searchForm.status
       }
-      
       if (searchForm.start_date && searchForm.end_date) {
         params.start_date = searchForm.start_date
         params.end_date = searchForm.end_date
@@ -589,16 +563,12 @@ export default {
       } else if (searchForm.date_range) {
         params.date_range = searchForm.date_range
       }
-      
-      // 添加排序参数
       if (searchForm.sort) {
         params.sort = searchForm.sort
         params.order = searchForm.order || 'asc'
       }
-      
       return params
     }
-
     const normalizeUserData = (userList) => {
       return userList.map(user => ({
         ...user,
@@ -607,21 +577,17 @@ export default {
         is_admin: normalizeBoolean(user.is_admin)
       }))
     }
-
     const loadUsers = async () => {
       loading.value = true
       try {
         const params = buildSearchParams()
         const response = await adminAPI.getUsers(params)
-        
         if (response.data?.success && response.data?.data) {
           const responseData = response.data.data
           let userList = normalizeUserData(responseData.users || [])
-          
           if (searchForm.status === 'device_overlimit') {
             userList = userList.filter(user => isDeviceOverlimit(user))
           }
-          
           users.value = userList
           total.value = searchForm.status === 'device_overlimit' ? userList.length : (responseData.total || 0)
         } else {
@@ -639,12 +605,10 @@ export default {
         loading.value = false
       }
     }
-
     const searchUsers = () => {
       currentPage.value = 1
       loadUsers()
     }
-
     const resetSearch = () => {
       Object.assign(searchForm, { 
         keyword: '', 
@@ -655,12 +619,10 @@ export default {
       })
       searchUsers()
     }
-
     const handleStatusFilter = (command) => {
       searchForm.status = command
       searchUsers()
     }
-    
     const handleDateRangeChange = () => {
       if (searchForm.start_date && searchForm.end_date) {
         searchForm.date_range = [searchForm.start_date, searchForm.end_date]
@@ -669,16 +631,12 @@ export default {
       }
       searchUsers()
     }
-
     const handleSortChange = ({ prop, order }) => {
       if (prop && order) {
-        // 将 Element Plus 的排序值转换为后端需要的格式
         searchForm.sort = prop
         searchForm.order = order === 'ascending' ? 'asc' : 'desc'
-        // 更新默认排序
         defaultSort.value = { prop, order }
       } else {
-        // 清除排序，恢复默认
         searchForm.sort = ''
         searchForm.order = ''
         defaultSort.value = { prop: 'created_at', order: 'descending' }
@@ -686,7 +644,6 @@ export default {
       currentPage.value = 1
       loadUsers()
     }
-    
     watch(() => searchForm.date_range, (newVal) => {
       if (Array.isArray(newVal) && newVal.length === 2) {
         searchForm.start_date = newVal[0]
@@ -696,48 +653,35 @@ export default {
         searchForm.end_date = ''
       }
     }, { immediate: true })
-
     const handleSizeChange = (val) => {
       pageSize.value = val
       loadUsers()
     }
-
     const handleCurrentChange = (val) => {
       currentPage.value = val
       loadUsers()
     }
-
     const handleUserSaved = () => {
       showAddUserDialog.value = false
       editingUser.value = null
       loadUsers()
     }
-
-    // 备注自动保存相关
     const saveTimers = new Map()
     const originalNotes = new Map()
-
     const saveNotes = async (user) => {
       if (!user || !user.id) return
-      
       const currentNotes = user.notes || ''
       const originalNote = originalNotes.get(user.id) || ''
-      
-      // 如果没有变化，不保存
       if (currentNotes === originalNote) {
         user.savingNotes = false
         return
       }
-
-      // 清除防抖定时器
       if (saveTimers.has(user.id)) {
         clearTimeout(saveTimers.get(user.id))
         saveTimers.delete(user.id)
       }
-
       user.savingNotes = true
       user.notesSaved = false
-
       try {
         await adminAPI.updateUser(user.id, { notes: currentNotes || null })
         originalNotes.set(user.id, currentNotes)
@@ -747,59 +691,44 @@ export default {
         }, 2000)
       } catch (error) {
         ElMessage.error(`保存备注失败: ${error.response?.data?.message || error.message}`)
-        // 恢复原始值
         user.notes = originalNote
       } finally {
         user.savingNotes = false
       }
     }
-
     const debounceSaveNotes = (user) => {
       if (!user || !user.id) return
-
-      // 保存原始值（第一次）
       if (!originalNotes.has(user.id)) {
         originalNotes.set(user.id, user.notes || '')
       }
-
-      // 清除之前的定时器
       if (saveTimers.has(user.id)) {
         clearTimeout(saveTimers.get(user.id))
       }
-
-      // 设置新的定时器（1秒后保存）
       const timer = setTimeout(() => {
         saveNotes(user)
         saveTimers.delete(user.id)
       }, 1000)
-      
       saveTimers.set(user.id, timer)
     }
-
-    // 初始化用户数据时保存原始备注值
     watch(users, (newUsers) => {
       newUsers.forEach(user => {
         if (user.id && !originalNotes.has(user.id)) {
           originalNotes.set(user.id, user.notes || '')
         }
-        // 初始化保存状态
         if (!user.hasOwnProperty('savingNotes')) {
           user.savingNotes = false
           user.notesSaved = false
         }
       })
     }, { deep: true })
-
     const editUser = (user) => {
       editingUser.value = user
       showAddUserDialog.value = true
     }
-
     const viewUserDetails = async (userId) => {
       try {
         const response = await adminAPI.getUserDetails(userId)
         const userData = response?.data?.success ? response.data.data : (response?.success ? response.data : null)
-        
         if (userData) {
           selectedUser.value = userData
           showUserDialog.value = true
@@ -811,12 +740,10 @@ export default {
         ElMessage.error('获取用户详情失败: ' + (error.response?.data?.message || error.message))
       }
     }
-    
     const viewUserBalance = async (userId) => {
       activeBalanceTab.value = 'recharge'
       await viewUserDetails(userId)
     }
-
     const handleConfirmAction = async (message, title, type = 'warning') => {
       try {
         await ElMessageBox.confirm(message, title, { type })
@@ -825,19 +752,16 @@ export default {
         return false
       }
     }
-
     const deleteUser = async (user) => {
       if (!user?.id) {
         ElMessage.warning('无效的用户ID，无法删除')
         return
       }
-
       const confirmed = await handleConfirmAction(
         `确定要删除用户 "${user.username || user.email || '未知用户'}" 吗？此操作不可恢复。`,
         '确认删除'
       )
       if (!confirmed) return
-
       try {
         await adminAPI.deleteUser(user.id)
         ElMessage.success('用户删除成功')
@@ -846,17 +770,14 @@ export default {
         ElMessage.error(`删除失败: ${error.response?.data?.message || error.message || '删除失败'}`)
       }
     }
-
     const toggleUserStatus = async (user) => {
       const newStatus = user.status === 'active' ? 'disabled' : 'active'
       const action = newStatus === 'active' ? '启用' : '禁用'
-      
       const confirmed = await handleConfirmAction(
         `确定要${action}用户 "${user.username}" 吗？`,
         `确认${action}`
       )
       if (!confirmed) return
-
       try {
         await adminAPI.updateUserStatus(user.id, newStatus)
         ElMessage.success(`用户${action}成功`)
@@ -865,7 +786,6 @@ export default {
         ElMessage.error(`状态更新失败: ${error.response?.data?.message || error.message}`)
       }
     }
-
     const resetUserPassword = async (user) => {
       try {
         const { value: newPassword } = await ElMessageBox.prompt(
@@ -883,7 +803,6 @@ export default {
             }
           }
         )
-
         await adminAPI.resetUserPassword(user.id, newPassword)
         ElMessage.success('密码重置成功')
       } catch (error) {
@@ -892,14 +811,12 @@ export default {
         }
       }
     }
-
     const unlockUserLogin = async (user) => {
       const confirmed = await handleConfirmAction(
         `确定要解除用户 "${user.username}" 的登录限制吗？这将清除该用户的所有登录失败记录。`,
         '解除登录限制'
       )
       if (!confirmed) return
-
       try {
         const result = await adminAPI.unlockUserLogin(user.id)
         ElMessage.success(result.message || '登录限制已解除')
@@ -907,26 +824,21 @@ export default {
         ElMessage.error(`解除限制失败: ${error.response?.data?.message || error.message}`)
       }
     }
-
     const handleSelectionChange = (selection) => {
       selectedUsers.value = selection
     }
-
     const clearSelection = () => {
       selectedUsers.value = []
     }
-
     const executeBatchOperation = async (operation, successMessage) => {
       if (selectedUsers.value.length === 0) {
         ElMessage.warning('请先选择用户')
         return
       }
-
       try {
         batchOperating.value = true
         const userIds = selectedUsers.value.map(user => user.id)
         const response = await operation(userIds)
-        
         if (response.data?.success !== false) {
           const data = response.data?.data || {}
           const successCount = data.success_count || selectedUsers.value.length
@@ -944,7 +856,6 @@ export default {
         batchOperating.value = false
       }
     }
-
     const checkAdminUsers = (action) => {
       const adminUsers = selectedUsers.value.filter(user => user.is_admin)
       if (adminUsers.length > 0) {
@@ -953,22 +864,18 @@ export default {
       }
       return true
     }
-
     const batchDeleteUsers = async () => {
       if (selectedUsers.value.length === 0) {
         ElMessage.warning('请先选择要删除的用户')
         return
       }
-
       if (!checkAdminUsers('删除')) return
-
       const confirmed = await handleConfirmAction(
         `确定要删除选中的 ${selectedUsers.value.length} 个用户吗？此操作将清空这些用户的所有数据（订阅、设备、日志等），且不可恢复。`,
         '确认批量删除',
         'warning'
       )
       if (!confirmed) return
-
       try {
         batchDeleting.value = true
         const userIds = selectedUsers.value.map(user => user.id)
@@ -982,64 +889,52 @@ export default {
         batchDeleting.value = false
       }
     }
-
     const batchEnableUsers = () => {
       executeBatchOperation(
         (userIds) => adminAPI.batchEnableUsers(userIds),
         `成功启用 ${selectedUsers.value.length} 个用户`
       )
     }
-
     const batchDisableUsers = async () => {
       if (selectedUsers.value.length === 0) {
         ElMessage.warning('请先选择要禁用的用户')
         return
       }
-
       if (!checkAdminUsers('禁用')) return
-
       const confirmed = await handleConfirmAction(
         `确定要禁用选中的 ${selectedUsers.value.length} 个用户吗？`,
         '确认批量禁用'
       )
       if (!confirmed) return
-
       await executeBatchOperation(
         (userIds) => adminAPI.batchDisableUsers(userIds),
         `成功禁用 ${selectedUsers.value.length} 个用户`
       )
     }
-
     const batchSendSubEmail = () => {
       executeBatchOperation(
         (userIds) => adminAPI.batchSendSubEmail(userIds),
         `成功发送 ${selectedUsers.value.length} 封邮件`
       )
     }
-
     const batchSendExpireReminder = () => {
       executeBatchOperation(
         (userIds) => adminAPI.batchSendExpireReminder(userIds),
         `成功发送 ${selectedUsers.value.length} 封提醒邮件`
       )
     }
-
-
     onMounted(() => {
       loadUsers()
       window.addEventListener('resize', handleResize)
       window.addEventListener('subscription-device-limit-updated', loadUsers)
     })
-
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('subscription-device-limit-updated', loadUsers)
-      // 清理所有防抖定时器
       saveTimers.forEach(timer => clearTimeout(timer))
       saveTimers.clear()
       originalNotes.clear()
     })
-
     return {
       isMobile,
       loading,
@@ -1096,10 +991,8 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
 @use '@/styles/list-common.scss';
-
 .admin-users {
   @media (max-width: 768px) {
     width: 100% !important;
@@ -1108,42 +1001,35 @@ export default {
     padding: 0 12px !important;
   }
 }
-
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
   color: #999;
-  
   :is(i) {
     font-size: 3rem;
     margin-bottom: 1rem;
     display: block;
   }
-  
   :is(p) {
     font-size: 0.9rem;
     margin: 0;
     line-height: 1.5;
   }
 }
-
 .header-actions {
   display: flex;
   gap: 10px;
 }
-
 .search-form {
   margin-bottom: 20px;
   padding: 20px;
   background: #f5f7fa;
   border-radius: 8px;
-  
   &.desktop-only {
     @media (max-width: 768px) {
       display: none !important;
     }
   }
-  
   :deep(.el-form-item) {
     .el-select, .el-date-editor, .el-input {
       .el-input__wrapper {
@@ -1151,7 +1037,6 @@ export default {
         box-shadow: none;
         padding: 0 11px;
       }
-      
       .el-input__inner {
         border: none !important;
         background: transparent !important;
@@ -1161,28 +1046,23 @@ export default {
     }
   }
 }
-
 @media (max-width: 768px) {
   .mobile-action-bar {
     padding: 16px !important;
     box-sizing: border-box !important;
-    
     .mobile-search-section {
       margin-bottom: 12px !important;
       width: 100% !important;
       box-sizing: border-box !important;
-      
       .search-input-wrapper {
         position: relative !important;
         display: flex !important;
         align-items: center !important;
         width: 100% !important;
         box-sizing: border-box !important;
-        
         .mobile-search-input {
           flex: 1 !important;
           width: 100% !important;
-          
           :deep(.el-input__wrapper) {
             border: 1px solid #dcdfe6 !important;
             border-radius: 10px !important;
@@ -1190,7 +1070,6 @@ export default {
             min-height: 48px !important;
             box-shadow: none !important;
             background: #fff !important;
-            
             .el-input__inner {
               border: none !important;
               box-shadow: none !important;
@@ -1198,7 +1077,6 @@ export default {
             }
           }
         }
-        
         .search-button-inside {
           position: absolute !important;
           right: 4px !important;
@@ -1214,17 +1092,14 @@ export default {
         }
       }
     }
-    
     .mobile-filter-buttons {
       display: flex !important;
       gap: 10px !important;
       width: 100% !important;
-      
       .el-dropdown, .el-button {
         flex: 1 !important;
         width: 100% !important;
       }
-      
       .el-button {
         height: 44px !important;
         border-radius: 10px !important;
@@ -1232,21 +1107,17 @@ export default {
     }
   }
 }
-
 .mobile-date-picker-section {
   margin-bottom: 14px;
   width: 100%;
-  
   .date-picker-row {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    
     .mobile-date-picker-item {
       flex: 1;
       min-width: 0;
-      
       :deep(.el-input__wrapper) {
         border: 1px solid #dcdfe6;
         box-shadow: none;
@@ -1254,7 +1125,6 @@ export default {
         border-radius: 10px;
         width: 100%;
         background: #fff;
-        
         .el-input__inner {
           border: none;
           box-shadow: none;
@@ -1262,7 +1132,6 @@ export default {
         }
       }
     }
-    
     .date-separator {
       flex-shrink: 0;
       padding: 0 6px;
@@ -1271,13 +1140,11 @@ export default {
     }
   }
 }
-
 .mobile-action-buttons {
   display: flex;
   flex-direction: column;
   gap: 12px;
   width: 100%;
-  
   .mobile-action-btn {
     width: 100%;
     height: 44px;
@@ -1285,7 +1152,6 @@ export default {
     border-radius: 6px;
   }
 }
-
 .batch-actions {
   margin: 20px 0;
   padding: 15px;
@@ -1295,79 +1161,65 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  
   @media (max-width: 768px) {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
 }
-
 .batch-info {
   font-weight: 600;
   color: #303133;
   font-size: 14px;
-  
   @media (max-width: 768px) {
     text-align: center;
     font-size: 13px;
   }
 }
-
 .batch-buttons {
   display: flex;
   gap: 10px;
-  
   @media (max-width: 768px) {
     width: 100%;
-    
     .el-button {
       flex: 1;
     }
   }
 }
-
 .user-email {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .email-info {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
 }
-
 .email, .username {
   white-space: nowrap;
   overflow: clip;
   text-overflow: ellipsis;
 }
-
 .user-info-mobile {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .user-email-mobile {
   font-weight: 600;
 }
-
 .user-name-mobile {
   font-size: 0.85rem;
   color: #999;
 }
-
 .device-info {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
 }
-
 .device-stats {
   display: flex;
   align-items: center;
@@ -1376,14 +1228,12 @@ export default {
   background: #f5f7fa;
   border-radius: 6px;
   transition: all 0.3s;
-  
   &.device-overlimit-alert {
     background: #fef0f0;
     border: 1px solid #f56c6c;
     animation: pulse-alert 2s ease-in-out infinite;
   }
 }
-
 @keyframes pulse-alert {
   0%, 100% {
     box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4);
@@ -1392,92 +1242,75 @@ export default {
     box-shadow: 0 0 0 4px rgba(245, 108, 108, 0);
   }
 }
-
 .device-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
 }
-
 .device-icon {
   font-size: 16px;
-  
   &.online-icon {
     color: #67c23a;
   }
-  
   &.total-icon {
     color: #409eff;
   }
 }
-
 .device-separator {
   color: #909399;
   font-weight: 600;
   padding: 0 4px;
 }
-
 .device-count {
   font-weight: 600;
   font-size: 14px;
-  
   &.device-overlimit-count {
     color: #f56c6c;
     font-weight: 700;
   }
 }
-
 .subscription-info {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
 }
-
 .subscription-status {
   margin-bottom: 4px;
 }
-
 .expire-info {
   font-size: 12px;
   margin-top: 4px;
 }
-
 .no-subscription, .no-expire {
   text-align: center;
   color: #909399;
   font-size: 12px;
 }
-
 .expire-time-info {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
 }
-
 .expire-date {
   font-size: 13px;
   color: #303133;
   font-weight: 500;
 }
-
 .expire-countdown {
   font-size: 12px;
   margin-top: 2px;
 }
-
 .action-buttons {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  
   .button-row {
     display: flex;
     gap: 4px;
     justify-content: center;
-    
     .el-button {
       flex: 1;
       padding: 5px 8px;
@@ -1485,61 +1318,49 @@ export default {
     }
   }
 }
-
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
-  
   :deep(.el-table) {
     min-width: 1400px;
   }
 }
-
-
 @media (max-width: 768px) {
   .admin-users {
     padding: 12px;
   }
-  
   .table-wrapper.desktop-only {
     display: none;
   }
-  
   .mobile-card-list {
     margin-top: 16px;
-    
     .mobile-card {
       background: #fff;
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 12px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      
       .card-row {
         display: flex;
         align-items: center;
         margin-bottom: 12px;
         padding-bottom: 12px;
         border-bottom: 1px solid #f0f0f0;
-        
         &:last-of-type {
           border-bottom: none;
           margin-bottom: 0;
           padding-bottom: 0;
         }
-        
         .label {
           flex: 0 0 90px;
           color: #666;
         }
-        
         .value {
           flex: 1;
           color: #333;
           word-break: break-word;
         }
       }
-      
       .card-actions {
         margin-top: 12px;
         padding-top: 12px;
@@ -1547,12 +1368,10 @@ export default {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        
         .action-buttons-row {
           display: flex;
           gap: 8px;
           width: 100%;
-          
           .mobile-action-btn {
             flex: 1;
             height: 44px;
@@ -1562,44 +1381,35 @@ export default {
         }
       }
     }
-    
     .empty-state {
       padding: 40px 20px;
       text-align: center;
     }
   }
 }
-
 .balance-link, .clickable-text {
   color: #409eff;
   cursor: pointer;
   font-weight: 600;
-  
   &:hover {
     text-decoration: underline;
   }
 }
-
-/* 备注输入框样式 */
 :deep(.notes-column) {
   background-color: #fafafa !important;
 }
-
 :deep(.notes-column .cell) {
   padding: 8px !important;
   background-color: #fafafa !important;
 }
-
 .notes-input-wrapper {
   position: relative;
   width: 100%;
   padding: 4px 0;
 }
-
 .notes-input {
   width: 100%;
 }
-
 .notes-input :deep(.el-textarea__inner) {
   border: 2px solid #e4e7ed;
   border-radius: 6px;
@@ -1610,24 +1420,20 @@ export default {
   background-color: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
-
 .notes-input :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
-
 .notes-input :deep(.el-textarea__inner:focus) {
   border-color: #409eff;
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
   outline: none;
 }
-
 .notes-input :deep(.el-input__count) {
   background-color: transparent;
   color: #909399;
   font-size: 12px;
 }
-
 .saving-indicator,
 .saved-indicator {
   position: absolute;
@@ -1641,41 +1447,32 @@ export default {
   pointer-events: none;
   z-index: 10;
 }
-
 .saving-indicator {
   color: #409eff;
 }
-
 .saved-indicator {
   color: #67c23a;
   animation: fadeInOut 2s ease-in-out;
 }
-
 @keyframes fadeInOut {
   0%, 100% { opacity: 0; }
   10%, 90% { opacity: 1; }
 }
-
 .saving-indicator .el-icon,
 .saved-indicator .el-icon {
   font-size: 14px;
 }
-
-/* 移动端备注样式 */
 .notes-row {
   margin-top: 12px;
 }
-
 .notes-input-wrapper-mobile {
   position: relative;
   width: 100%;
   margin-top: 8px;
 }
-
 .notes-input-mobile {
   width: 100%;
 }
-
 .notes-input-mobile :deep(.el-textarea__inner) {
   border: 2px solid #e4e7ed;
   border-radius: 8px;
@@ -1687,24 +1484,20 @@ export default {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   min-height: 60px;
 }
-
 .notes-input-mobile :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
-
 .notes-input-mobile :deep(.el-textarea__inner:focus) {
   border-color: #409eff;
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
   outline: none;
 }
-
 .notes-input-mobile :deep(.el-input__count) {
   background-color: transparent;
   color: #909399;
   font-size: 12px;
 }
-
 .saving-indicator-mobile,
 .saved-indicator-mobile {
   position: absolute;
@@ -1721,16 +1514,13 @@ export default {
   padding: 2px 6px;
   border-radius: 4px;
 }
-
 .saving-indicator-mobile {
   color: #409eff;
 }
-
 .saved-indicator-mobile {
   color: #67c23a;
   animation: fadeInOut 2s ease-in-out;
 }
-
 .saving-indicator-mobile .el-icon,
 .saved-indicator-mobile .el-icon {
   font-size: 14px;

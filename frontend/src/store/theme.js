@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/utils/api'
-
 export const useThemeStore = defineStore('theme', () => {
   const getStoredTheme = () => {
     if (typeof window === 'undefined') return 'light'
@@ -22,7 +21,6 @@ export const useThemeStore = defineStore('theme', () => {
     { value: 'auto', label: '跟随系统', icon: 'monitor', color: '#909399' }
   ])
   const loading = ref(false)
-
   const isDarkMode = computed(() => {
     if (typeof window === 'undefined') return false
     if (currentTheme.value === 'auto') {
@@ -30,7 +28,6 @@ export const useThemeStore = defineStore('theme', () => {
     }
     return currentTheme.value === 'dark'
   })
-
   const applyThemeLocally = (theme) => {
     currentTheme.value = theme
     if (typeof window !== 'undefined') {
@@ -38,7 +35,6 @@ export const useThemeStore = defineStore('theme', () => {
     }
     applyTheme(theme)
   }
-
   const setTheme = async (theme) => {
     try {
       loading.value = true
@@ -75,7 +71,6 @@ export const useThemeStore = defineStore('theme', () => {
       loading.value = false
     }
   }
-
   const themeConfigs = {
     light: {
       primary: '#409EFF',
@@ -238,7 +233,6 @@ export const useThemeStore = defineStore('theme', () => {
       sidebarActive: '#7B68EE'
     }
   }
-
   const applyTheme = (theme) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const root = document.documentElement
@@ -299,7 +293,6 @@ export const useThemeStore = defineStore('theme', () => {
     document.body.style.backgroundColor = config.bg
     document.body.style.color = config.text
   }
-
   const loadUserTheme = async () => {
     try {
       const response = await api.get('/users/theme')
@@ -314,7 +307,6 @@ export const useThemeStore = defineStore('theme', () => {
       applyTheme(currentTheme.value)
     }
   }
-
   const initTheme = () => {
     if (typeof window === 'undefined') return
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -325,7 +317,6 @@ export const useThemeStore = defineStore('theme', () => {
     })
     applyTheme(currentTheme.value)
   }
-
   return {
     currentTheme,
     availableThemes,

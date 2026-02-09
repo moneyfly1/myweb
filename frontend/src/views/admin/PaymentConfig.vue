@@ -36,7 +36,6 @@
           </div>
         </div>
       </template>
-      
       <div class="batch-actions" v-if="selectedConfigs.length > 0">
         <div class="batch-info">
           <span>已选择 {{ selectedConfigs.length }} 个配置</span>
@@ -60,7 +59,6 @@
           </el-button>
         </div>
       </div>
-
       <div class="table-wrapper desktop-only">
         <el-table 
           ref="tableRef"
@@ -114,7 +112,6 @@
           </el-table-column>
         </el-table>
       </div>
-
       <div class="mobile-card-list mobile-only" v-if="paymentConfigs.length > 0">
         <div v-for="config in paymentConfigs" :key="config.id" class="mobile-card">
           <div class="card-row">
@@ -167,14 +164,12 @@
           </div>
         </div>
       </div>
-
       <div class="mobile-card-list mobile-only" v-if="paymentConfigs.length === 0 && !loading">
         <div class="empty-state">
           <el-empty description="暂无支付配置，请点击右上角【添加】按钮添加" :image-size="80" />
         </div>
       </div>
     </el-card>
-
     <el-dialog
       v-model="showAddDialog"
       :title="editingConfig ? '编辑支付配置' : '添加支付配置'"
@@ -203,7 +198,6 @@
             </el-option-group>
           </el-select>
         </el-form-item>
-
         <template v-if="['alipay', 'wechat'].includes(configForm.pay_type)">
           <el-form-item label="应用ID">
             <template v-if="isMobile"><div class="mobile-label">应用ID</div></template>
@@ -214,14 +208,12 @@
             </div>
           </el-form-item>
         </template>
-
         <template v-if="configForm.pay_type.startsWith('yipay')">
           <el-form-item label="商户ID">
             <template v-if="isMobile"><div class="mobile-label">商户ID</div></template>
             <el-input v-model="configForm.app_id" placeholder="请输入易支付商户ID (pid)" style="width: 100%" />
           </el-form-item>
         </template>
-
         <template v-if="['yipay', 'yipay_alipay', 'yipay_wxpay', 'yipay_qqpay'].includes(configForm.pay_type)">
            <el-form-item label="商户密钥">
              <template v-if="isMobile"><div class="mobile-label">商户密钥</div></template>
@@ -234,14 +226,12 @@
              />
            </el-form-item>
         </template>
-
         <template v-if="configForm.pay_type === 'yipay'">
           <el-form-item label="网关地址">
             <template v-if="isMobile"><div class="mobile-label">网关地址</div></template>
             <el-input v-model="configForm.yipay_gateway_url" placeholder="请输入易支付网关地址" style="width: 100%" />
             <div class="form-tip">填写官网地址，系统自动拼接 API 路径。</div>
           </el-form-item>
-          
           <el-form-item label="签名方式">
             <template v-if="isMobile"><div class="mobile-label">签名方式</div></template>
             <el-select v-model="configForm.yipay_sign_type" style="width: 100%" :teleported="!isMobile">
@@ -250,7 +240,6 @@
               <el-option label="MD5+RSA签名" value="MD5+RSA" />
             </el-select>
           </el-form-item>
-
           <template v-if="['RSA', 'MD5+RSA'].includes(configForm.yipay_sign_type)">
             <el-form-item label="平台公钥">
               <template v-if="isMobile"><div class="mobile-label">平台公钥</div></template>
@@ -261,7 +250,6 @@
               <el-input v-model="configForm.yipay_merchant_private_key" type="textarea" :rows="4" placeholder="您生成的商户RSA私钥" />
             </el-form-item>
           </template>
-
           <el-form-item label="支持支付方式">
             <template v-if="isMobile"><div class="mobile-label">支持支付方式</div></template>
             <el-checkbox-group v-model="configForm.yipay_supported_types">
@@ -271,21 +259,17 @@
             </el-checkbox-group>
           </el-form-item>
         </template>
-
         <template v-if="['yipay_alipay', 'yipay_wxpay'].includes(configForm.pay_type)">
           <el-alert title="建议使用“易支付（统一配置）”以获得更好的兼容性" type="warning" :closable="false" style="margin-bottom: 20px;" />
-          
           <el-form-item label="商户ID">
             <el-input v-model="configForm.yipay_pid" placeholder="请输入易支付商户ID" />
           </el-form-item>
-          
           <el-form-item label="签名类型">
              <el-select v-model="configForm.yipay_sign_type" style="width: 100%" :teleported="!isMobile">
                <el-option label="RSA签名" value="RSA" />
                <el-option label="MD5签名" value="MD5" />
              </el-select>
           </el-form-item>
-
           <template v-if="configForm.yipay_sign_type === 'RSA'">
             <el-form-item label="商户私钥">
               <el-input v-model="configForm.yipay_private_key" type="textarea" :rows="4" placeholder="易支付商户私钥" />
@@ -294,18 +278,15 @@
               <el-input v-model="configForm.yipay_public_key" type="textarea" :rows="4" placeholder="易支付平台公钥" />
             </el-form-item>
           </template>
-
           <template v-if="configForm.yipay_sign_type === 'MD5'">
             <el-form-item label="MD5密钥">
               <el-input v-model="configForm.yipay_md5_key" type="password" show-password />
             </el-form-item>
           </template>
-
           <el-form-item label="网关地址">
             <el-input v-model="configForm.yipay_gateway_url" placeholder="例如：https://pay.example.com" />
           </el-form-item>
         </template>
-
         <template v-if="configForm.pay_type === 'alipay'">
           <el-form-item label="支付宝公钥">
             <template v-if="isMobile"><div class="mobile-label">支付宝公钥</div></template>
@@ -320,7 +301,6 @@
              <el-input v-model="configForm.alipay_gateway" placeholder="默认: https://openapi.alipay.com/gateway.do" />
           </el-form-item>
         </template>
-
         <template v-if="configForm.pay_type === 'wechat'">
           <el-form-item label="商户号">
             <el-input v-model="configForm.wechat_mch_id" />
@@ -329,13 +309,11 @@
             <el-input v-model="configForm.wechat_api_key" />
           </el-form-item>
         </template>
-
         <el-form-item label="同步回调地址">
           <template v-if="isMobile"><div class="mobile-label">同步回调地址</div></template>
           <el-input v-model="configForm.return_url" placeholder="支付完成后跳转的地址" />
           <div class="form-tip">例如：{{ baseUrl }}/api/v1/payment/success</div>
         </el-form-item>
-
         <el-form-item label="异步回调地址">
           <template v-if="isMobile"><div class="mobile-label">异步回调地址</div></template>
           <el-input v-model="configForm.notify_url" placeholder="支付状态通知地址" />
@@ -343,7 +321,6 @@
             例如：{{ baseUrl }}/api/v1/payment/notify/{{ configForm.pay_type === 'alipay' ? 'alipay' : 'yipay' }}
           </div>
         </el-form-item>
-
         <el-form-item label="状态">
           <template v-if="isMobile"><div class="mobile-label">状态</div></template>
           <el-select v-model="configForm.status" style="width: 100%" :teleported="!isMobile">
@@ -361,7 +338,6 @@
         </div>
       </template>
     </el-dialog>
-
     <el-dialog
       v-model="showBulkOperationsDialog"
       title="批量操作"
@@ -391,7 +367,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -400,7 +375,6 @@ import { paymentAPI } from '@/utils/api'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
-
 const PAYMENT_TYPES = {
   'alipay': { label: '支付宝', tag: 'success' },
   'wechat': { label: '微信支付', tag: 'primary' },
@@ -409,7 +383,6 @@ const PAYMENT_TYPES = {
   'yipay_wxpay': { label: '易支付-微信', tag: 'warning' },
   'yipay_qqpay': { label: '易支付-QQ钱包', tag: 'warning' }
 }
-
 const DEFAULT_FORM_STATE = {
   pay_type: '',
   app_id: '',
@@ -433,7 +406,6 @@ const DEFAULT_FORM_STATE = {
   status: 1,
   sort_order: 0
 }
-
 const utils = {
   formatValue: (value) => {
     if (value === null || value === undefined) return ''
@@ -459,7 +431,6 @@ const utils = {
     ElMessage.error(msg)
   }
 }
-
 export default {
   name: 'AdminPaymentConfig',
   components: { Operation, Plus, Edit, Delete, Check, Close, Loading },
@@ -475,19 +446,14 @@ export default {
     const batchOperating = ref(false)
     const tableRef = ref(null)
     const configForm = reactive({ ...DEFAULT_FORM_STATE })
-
     const baseUrl = computed(() => typeof window !== 'undefined' ? window.location.origin : '')
-
     const checkMobile = () => isMobile.value = window.innerWidth <= 768
-
     const getPaymentTypeConfig = (type) => PAYMENT_TYPES[type] || { label: type, tag: 'info' }
-
     const loadPaymentConfigs = async () => {
       loading.value = true
       try {
         const response = await paymentAPI.getPaymentConfigs({ page: 1, size: 100 })
         const rawItems = response?.data?.data?.items || response?.data?.items || response?.data || []
-        
         paymentConfigs.value = (Array.isArray(rawItems) ? rawItems : []).map(config => ({
           ...config,
           status: [1, true, '1'].includes(config.status) ? 1 : 0,
@@ -507,7 +473,6 @@ export default {
         loading.value = false
       }
     }
-
     const buildRequestData = () => {
       const data = {
         pay_type: configForm.pay_type,
@@ -516,7 +481,6 @@ export default {
         notify_url: configForm.notify_url || '',
         sort_order: configForm.sort_order || 0
       }
-
       if (configForm.pay_type === 'alipay') {
         Object.assign(data, {
           app_id: configForm.app_id || '',
@@ -537,14 +501,12 @@ export default {
       } else if (configForm.pay_type === 'yipay') {
         const gatewayUrl = (configForm.yipay_gateway_url || '').trim().replace(/\/$/, '')
         data.app_id = configForm.app_id || ''
-        
         if (configForm.yipay_sign_type === 'MD5') {
           data.merchant_private_key = configForm.merchant_private_key || ''
         } else {
           data.merchant_private_key = configForm.merchant_private_key || ''
           data.alipay_public_key = configForm.yipay_platform_public_key || ''
         }
-
         data.config_json = {
           gateway_url: gatewayUrl,
           api_url: `${gatewayUrl}/mapi.php`,
@@ -566,16 +528,13 @@ export default {
       }
       return data
     }
-
     const saveConfig = async () => {
       saving.value = true
       try {
         if (configForm.pay_type === 'yipay' && !configForm.yipay_gateway_url) {
           throw new Error('请填写易支付网关地址')
         }
-        
         const requestData = buildRequestData()
-        
         if (editingConfig.value) {
           await paymentAPI.updatePaymentConfig(editingConfig.value.id, requestData)
           ElMessage.success('更新成功')
@@ -583,7 +542,6 @@ export default {
           await paymentAPI.createPaymentConfig(requestData)
           ElMessage.success('创建成功')
         }
-        
         showAddDialog.value = false
         resetConfigForm()
         loadPaymentConfigs()
@@ -593,14 +551,10 @@ export default {
         saving.value = false
       }
     }
-
     const editConfig = (config) => {
       editingConfig.value = config
       const json = config.config_json || {}
-      
-      // Reset form then overlay data
       Object.assign(configForm, DEFAULT_FORM_STATE)
-      
       const commonData = {
         pay_type: config.pay_type,
         app_id: config.app_id || json.app_id || '',
@@ -610,7 +564,6 @@ export default {
         status: config.status,
         sort_order: config.sort_order || 0
       }
-
       const specificData = {}
       if (config.pay_type === 'alipay') {
         specificData.alipay_public_key = config.alipay_public_key || json.alipay_public_key
@@ -633,11 +586,9 @@ export default {
         specificData.yipay_md5_key = json.yipay_md5_key
         specificData.yipay_sign_type = json.yipay_sign_type || 'RSA'
       }
-
       Object.assign(configForm, commonData, specificData)
       showAddDialog.value = true
     }
-
     const deleteConfig = async (config) => {
       try {
         await ElMessageBox.confirm(`确定要删除 ${getPaymentTypeConfig(config.pay_type).label} 配置吗？`, '确认删除', { type: 'warning' })
@@ -648,7 +599,6 @@ export default {
         if (error !== 'cancel') utils.handleApiError(error, '删除失败')
       }
     }
-
     const toggleStatus = async (config, newValue) => {
       const originalStatus = config.status
       const targetStatus = newValue !== undefined ? newValue : config.status
@@ -661,16 +611,13 @@ export default {
         utils.handleApiError(error, '状态更新失败')
       }
     }
-
     const handleBatchAction = async (action) => {
       if (!selectedConfigs.value.length) return
-      
       const actionMap = {
         'enable': { title: '批量启用', api: paymentAPI.bulkEnablePaymentConfigs },
         'disable': { title: '批量禁用', api: paymentAPI.bulkDisablePaymentConfigs },
         'delete': { title: '批量删除', api: paymentAPI.bulkDeletePaymentConfigs, type: 'error' }
       }
-      
       const conf = actionMap[action]
       try {
         await ElMessageBox.confirm(
@@ -690,34 +637,27 @@ export default {
         batchOperating.value = false
       }
     }
-
     const resetConfigForm = () => {
       Object.assign(configForm, DEFAULT_FORM_STATE)
       editingConfig.value = null
     }
-
     const openAddDialog = () => {
       resetConfigForm()
       showAddDialog.value = true
     }
-    
     const openBulkDialog = () => showBulkOperationsDialog.value = true
-
     const handleSelectionChange = (selection) => selectedConfigs.value = selection
     const clearSelection = () => {
       selectedConfigs.value = []
       tableRef.value?.clearSelection()
     }
     const handleMobileAction = (cmd) => { if (cmd === 'bulk') openBulkDialog() }
-
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       loadPaymentConfigs()
     })
-
     onUnmounted(() => window.removeEventListener('resize', checkMobile))
-
     return {
       baseUrl,
       loading,
@@ -746,7 +686,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-payment-config { padding: 20px; }
 .header-content { display: flex; justify-content: space-between; align-items: center; }
@@ -757,28 +696,23 @@ export default {
 .desktop-only { @media (max-width: 768px) { display: none !important; } }
 .mobile-only { display: none; @media (max-width: 768px) { display: block; } }
 .bulk-btn { width: 100%; margin-bottom: 10px; margin-left: 0 !important; }
-
-/* 样式复用与清理 */
 :deep(.el-input__wrapper), :deep(.el-textarea__inner) {
   border-radius: 0; box-shadow: none; border: 1px solid #dcdfe6; background-color: #fff;
 }
 :deep(.el-input__wrapper:hover), :deep(.el-input__wrapper.is-focus) {
   border-color: #409EFF;
 }
-
 @media (max-width: 768px) {
   .admin-payment-config { padding: 10px; }
   .header-content { flex-direction: column; gap: 12px; }
   .header-actions { width: 100%; }
   .header-actions .el-button { flex: 1; }
-  
   .mobile-card-list { display: flex; flex-direction: column; gap: 12px; }
   .mobile-card { background: #fff; border: 1px solid #e4e7ed; border-radius: 8px; padding: 16px; }
   .card-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
   .card-row:last-of-type { border-bottom: none; }
   .card-actions { display: flex; gap: 12px; margin-top: 12px; border-top: 1px solid #f0f0f0; padding-top: 12px; }
   .card-actions .el-button { flex: 1; }
-  
   .mobile-dialog :deep(.el-dialog__body) { padding: 15px !important; }
   .mobile-label { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #606266; }
   .mobile-footer { flex-direction: column; }

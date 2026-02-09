@@ -20,8 +20,6 @@
           </div>
         </div>
       </template>
-      
-      <!-- 移动端操作栏 -->
       <div class="mobile-action-bar">
         <div class="mobile-filter-buttons">
           <el-button
@@ -49,8 +47,6 @@
           </el-button>
         </div>
       </div>
-      
-      <!-- 移动端状态筛选抽屉 -->
       <el-drawer
         v-model="showStatusFilterDrawer"
         title="状态筛选"
@@ -79,8 +75,6 @@
           </div>
         </div>
       </el-drawer>
-
-      <!-- 等级列表 -->
       <el-table 
         :data="levels" 
         v-loading="loading"
@@ -116,7 +110,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <!-- 已删除设备限制列 -->
         <el-table-column prop="user_count" label="用户数" width="100" align="center" />
         <el-table-column prop="is_active" label="状态" width="80" align="center">
           <template #default="scope">
@@ -133,8 +126,6 @@
         </el-table-column>
       </el-table>
     </el-card>
-
-    <!-- 使用说明卡片 - 放在底部 -->
     <el-card class="usage-guide-card" style="margin-top: 20px;">
       <template #header>
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -185,8 +176,6 @@
         </div>
       </div>
     </el-card>
-
-    <!-- 添加/编辑对话框 -->
     <el-dialog
       v-model="showDialog"
       :title="editingLevel ? '编辑等级' : '添加等级'"
@@ -248,7 +237,6 @@
           />
           <div class="form-tip">0.9表示9折，1.0表示无折扣</div>
         </el-form-item>
-        <!-- 已删除设备限制功能，等级仅用于折扣优惠 -->
         <el-form-item label="等级颜色" prop="color">
           <template v-if="isMobile">
             <div class="mobile-label">等级颜色</div>
@@ -290,13 +278,11 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, InfoFilled, Filter, Refresh } from '@element-plus/icons-vue'
 import { userLevelAPI } from '@/utils/api'
-
 const loading = ref(false)
 const saving = ref(false)
 const levels = ref([])
@@ -306,49 +292,38 @@ const levelFormRef = ref(null)
 const statusFilter = ref('all')
 const isMobile = ref(window.innerWidth <= 768)
 const showStatusFilterDrawer = ref(false)
-
 const levelForm = reactive({
   level_name: '',
   level_order: 1,
   min_consumption: 0,
   discount_rate: 1.0,
-  // device_limit 已删除，等级仅用于折扣优惠
   color: '#409eff',
   icon_url: '',
   benefits: '',
   is_active: true
 })
-
 const loadLevels = async () => {
   loading.value = true
   try {
-    // 传递状态筛选参数（如果是 'all'，传递 undefined）
     const filterValue = (statusFilter.value === 'all' || statusFilter.value === undefined || statusFilter.value === null || statusFilter.value === '') ? undefined : statusFilter.value
     const response = await userLevelAPI.getAllLevels(undefined, filterValue)
     if (process.env.NODE_ENV === 'development') {
-      console.log('等级列表API响应:', response)
     }
-    // 处理多种可能的响应格式
     let levelList = []
     if (response?.data) {
-      // 标准格式：{ success: true, data: { levels: [...] } }
       if (response.data.data && response.data.data.levels) {
         levelList = response.data.data.levels
       } 
-      // 格式：{ success: true, data: [...] } (后端实际返回的格式)
       else if (response.data.success && Array.isArray(response.data.data)) {
         levelList = response.data.data
       }
-      // 直接返回数组格式
       else if (Array.isArray(response.data)) {
         levelList = response.data
       }
-      // 其他格式
       else if (response.data.levels) {
         levelList = response.data.levels
       }
     }
-    // 确保 is_active 是布尔值
     levels.value = levelList.map(level => ({
       ...level,
       is_active: level.is_active === true || level.is_active === 1 || level.is_active === '1'
@@ -364,16 +339,13 @@ const loadLevels = async () => {
     loading.value = false
   }
 }
-
 const showAddDialog = () => {
   editingLevel.value = null
   resetForm()
   showDialog.value = true
 }
-
 const editLevel = (level) => {
   editingLevel.value = level
-  // 确保 is_active 是布尔值（处理可能的 0/1 或字符串格式）
   let isActiveValue = level.is_active
   if (typeof isActiveValue === 'number') {
     isActiveValue = isActiveValue !== 0
@@ -382,8 +354,6 @@ const editLevel = (level) => {
   } else if (isActiveValue === null || isActiveValue === undefined) {
     isActiveValue = true // 默认启用
   }
-  
-  // 处理 icon_url 和 benefits，确保它们是字符串
   let iconUrl = ''
   if (level.icon_url) {
     if (typeof level.icon_url === 'string') {
@@ -392,7 +362,6 @@ const editLevel = (level) => {
       iconUrl = level.icon_url.String || level.icon_url.string || ''
     }
   }
-  
   let benefits = ''
   if (level.benefits) {
     if (typeof level.benefits === 'string') {
@@ -401,13 +370,11 @@ const editLevel = (level) => {
       benefits = level.benefits.String || level.benefits.string || ''
     }
   }
-  
   Object.assign(levelForm, {
     level_name: level.level_name,
     level_order: level.level_order,
     min_consumption: level.min_consumption,
     discount_rate: level.discount_rate,
-    // device_limit 已删除
     color: level.color || '#409eff',
     icon_url: iconUrl,
     benefits: benefits,
@@ -415,14 +382,12 @@ const editLevel = (level) => {
   })
   showDialog.value = true
 }
-
 const resetForm = () => {
   Object.assign(levelForm, {
     level_name: '',
     level_order: 1,
     min_consumption: 0,
     discount_rate: 1.0,
-    // device_limit 已删除，等级仅用于折扣优惠
     color: '#409eff',
     icon_url: '',
     benefits: '',
@@ -432,38 +397,26 @@ const resetForm = () => {
     levelFormRef.value.clearValidate()
   }
 }
-
 const saveLevel = async () => {
   if (!levelFormRef.value) return
-  
   try {
     await levelFormRef.value.validate()
     saving.value = true
-    
-    // 确保 is_active 是布尔值
     const isActiveValue = Boolean(levelForm.is_active)
-    
-    // 确保 icon_url 和 benefits 是字符串（空字符串用于清空字段）
     const iconUrl = typeof levelForm.icon_url === 'string' ? levelForm.icon_url : ''
     const benefits = typeof levelForm.benefits === 'string' ? levelForm.benefits : ''
-    
     const data = {
       level_name: levelForm.level_name,
       level_order: levelForm.level_order,
       min_consumption: levelForm.min_consumption,
       discount_rate: levelForm.discount_rate,
-      // device_limit 已删除
       color: levelForm.color,
       icon_url: iconUrl,  // 传递空字符串以清空字段，传递字符串以更新字段
       benefits: benefits, // 传递空字符串以清空字段，传递字符串以更新字段
       is_active: isActiveValue
     }
-    
     if (process.env.NODE_ENV === 'development') {
-      console.log('保存等级数据:', data)
-      console.log('is_active 值:', isActiveValue, '类型:', typeof isActiveValue)
     }
-
     let response
     if (editingLevel.value) {
       response = await userLevelAPI.updateLevel(editingLevel.value.id, data)
@@ -480,7 +433,6 @@ const saveLevel = async () => {
         throw new Error(response?.data?.message || '创建失败')
       }
     }
-    
     showDialog.value = false
     await loadLevels()
   } catch (error) {
@@ -495,7 +447,6 @@ const saveLevel = async () => {
     saving.value = false
   }
 }
-
 const deleteLevel = async (level) => {
   try {
     await ElMessageBox.confirm(
@@ -503,7 +454,6 @@ const deleteLevel = async (level) => {
       '确认删除',
       { type: 'warning' }
     )
-    
     await userLevelAPI.deleteLevel(level.id)
     ElMessage.success('删除成功')
     await loadLevels()
@@ -516,50 +466,40 @@ const deleteLevel = async (level) => {
     }
   }
 }
-
 const getStatusFilterText = () => {
   if (statusFilter.value === true) return '启用'
   if (statusFilter.value === false) return '禁用'
   return '状态'
 }
-
 const resetStatusFilter = () => {
   statusFilter.value = 'all'
   showStatusFilterDrawer.value = false
   loadLevels()
 }
-
 const applyStatusFilter = () => {
   showStatusFilterDrawer.value = false
   loadLevels()
 }
-
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
-
 onMounted(() => {
   loadLevels()
   window.addEventListener('resize', handleResize)
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 </script>
-
 <style scoped>
 .user-levels-admin {
   padding: 20px;
 }
-
 .form-tip {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
 }
-
-/* 去掉输入框内部的叠加输入框，只保留外部方形框 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
@@ -567,16 +507,13 @@ onUnmounted(() => {
   background: transparent !important;
   padding: 0 !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #409eff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -586,27 +523,22 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-
 :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
   background: transparent !important;
 }
-
 :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-textarea__inner:focus) {
   border-color: #409eff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input-number) {
   border-radius: 0 !important;
 }
-
 :deep(.el-input-number .el-input__wrapper) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
@@ -614,16 +546,13 @@ onUnmounted(() => {
   background: transparent !important;
   padding: 0 !important;
 }
-
 :deep(.el-input-number .el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-input-number .el-input__wrapper.is-focus) {
   border-color: #409eff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input-number .el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -633,7 +562,6 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
@@ -641,16 +569,13 @@ onUnmounted(() => {
   background: transparent !important;
   padding: 0 !important;
 }
-
 :deep(.el-select .el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-select .el-input__wrapper.is-focus) {
   border-color: #409eff !important;
   box-shadow: none !important;
 }
-
 :deep(.el-select .el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -660,8 +585,6 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-
-/* 确保对话框中的所有输入框都去掉内部叠加框，只保留外部方形框 */
 :deep(.el-dialog .el-input__wrapper) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
@@ -669,7 +592,6 @@ onUnmounted(() => {
   background: transparent !important;
   padding: 0 !important;
 }
-
 :deep(.el-dialog .el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -679,14 +601,12 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-
 :deep(.el-dialog .el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
   background: transparent !important;
 }
-
 :deep(.el-dialog .el-input-number .el-input__wrapper) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
@@ -694,7 +614,6 @@ onUnmounted(() => {
   background: transparent !important;
   padding: 0 !important;
 }
-
 :deep(.el-dialog .el-input-number .el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -704,7 +623,6 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-
 :deep(.el-dialog .el-select .el-input__wrapper) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
@@ -712,7 +630,6 @@ onUnmounted(() => {
   background: transparent !important;
   padding: 0 !important;
 }
-
 :deep(.el-dialog .el-select .el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -722,34 +639,26 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-
-/* 卡片头部样式 */
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
 }
-
 .card-title {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
 }
-
 .add-button {
   flex-shrink: 0;
 }
-
-/* 使用说明卡片样式 */
 .usage-guide-card {
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
-
 .usage-guide-content {
   line-height: 1.8;
 }
-
 .guide-section {
   margin-bottom: 20px;
   padding: 15px;
@@ -757,54 +666,44 @@ onUnmounted(() => {
   border-radius: 8px;
   border-left: 4px solid #409eff;
 }
-
 .guide-section h4 {
   margin: 0 0 12px 0;
   color: #303133;
   font-size: 16px;
   font-weight: 600;
 }
-
 .guide-section ul {
   margin: 0;
   padding-left: 20px;
 }
-
 .guide-section li {
   margin-bottom: 8px;
   color: #606266;
   font-size: 14px;
 }
-
 .guide-section li strong {
   color: #303133;
 }
-
 .example-box {
   background: #f5f7fa;
   padding: 15px;
   border-radius: 6px;
   margin-top: 10px;
 }
-
 .example-box p {
   margin: 0 0 10px 0;
   color: #303133;
   font-size: 14px;
 }
-
 .example-box ul {
   margin: 0;
   padding-left: 20px;
 }
-
 .example-box li {
   margin-bottom: 6px;
   color: #606266;
   font-size: 13px;
 }
-
-/* 移动端操作栏样式 */
 .mobile-action-bar {
   display: none;
   padding: 16px;
@@ -813,7 +712,6 @@ onUnmounted(() => {
   border-radius: 8px;
   margin-bottom: 16px;
 }
-
 .mobile-filter-buttons {
   display: flex;
   flex-direction: row;
@@ -824,18 +722,15 @@ onUnmounted(() => {
   flex-wrap: nowrap;
   margin-bottom: 12px;
 }
-
 .mobile-filter-buttons .el-button {
   flex: 1;
   height: 40px;
   font-size: 14px;
   border-radius: 6px;
 }
-
 .mobile-action-buttons {
   width: 100%;
 }
-
 .mobile-action-btn {
   width: 100%;
   height: 44px;
@@ -844,11 +739,9 @@ onUnmounted(() => {
   border-radius: 6px;
   font-weight: 500;
 }
-
 .filter-drawer-content {
   padding: 20px 0;
 }
-
 .filter-drawer-actions {
   display: flex;
   gap: 12px;
@@ -856,76 +749,57 @@ onUnmounted(() => {
   padding-top: 20px;
   border-top: 1px solid #f0f0f0;
 }
-
 .filter-drawer-actions .mobile-action-btn {
   flex: 1;
   height: 44px;
 }
-
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
   }
 }
-
-/* 手机端响应式样式 */
 @media (max-width: 768px) {
   .user-levels-admin {
     padding: 10px;
   }
-  
   .mobile-action-bar {
     display: block !important;
   }
-
-  /* 使用说明卡片优化 */
   .usage-guide-card {
     :deep(.el-card__body) {
       padding: 15px;
     }
   }
-
   .guide-section {
     padding: 12px;
     margin-bottom: 15px;
-    
     :is(h4) {
       font-size: 14px;
       margin-bottom: 10px;
     }
-    
     :is(ul) {
       padding-left: 18px;
     }
-    
     :is(li) {
       font-size: 13px;
       margin-bottom: 6px;
     }
   }
-
-  /* 表格优化 */
   :deep(.el-table) {
     font-size: 12px;
-    
     .el-table__cell {
       padding: 8px 4px;
       word-break: break-word;
     }
-
     .el-table__header th {
       padding: 8px 4px;
       font-size: 12px;
       font-weight: 600;
     }
-    
-    /* 隐藏部分列在手机端 */
     .el-table__body-wrapper {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
     }
-    
-    /* 调整列宽 */
     .el-table__cell:nth-child(1) { min-width: 100px; } /* 等级名称 */
     .el-table__cell:nth-child(2) { min-width: 60px; }  /* 排序 */
     .el-table__cell:nth-child(3) { min-width: 90px; }  /* 最低消费 */
@@ -934,18 +808,13 @@ onUnmounted(() => {
     .el-table__cell:nth-child(6) { min-width: 60px; }  /* 状态 */
     .el-table__cell:nth-child(7) { min-width: 120px; } /* 操作 */
   }
-
-  /* 操作按钮优化 */
   :deep(.el-button) {
     padding: 6px 10px;
     font-size: 12px;
-    
     & + .el-button {
       margin-left: 5px;
     }
   }
-
-  /* 对话框优化 */
   .level-form-dialog {
     &.mobile-dialog {
       :deep(.el-dialog) {
@@ -956,29 +825,24 @@ onUnmounted(() => {
         display: flex;
         flex-direction: column;
       }
-      
       :deep(.el-dialog__header) {
         padding: 15px 15px 10px;
         flex-shrink: 0;
         border-bottom: 1px solid #ebeef5;
-        
         .el-dialog__title {
           font-size: 18px;
           font-weight: 600;
         }
-        
         .el-dialog__headerbtn {
           top: 8px;
           right: 8px;
           width: 32px;
           height: 32px;
-          
           .el-dialog__close {
             font-size: 18px;
           }
         }
       }
-      
       :deep(.el-dialog__body) {
         padding: 15px !important;
         flex: 1;
@@ -986,18 +850,15 @@ onUnmounted(() => {
         -webkit-overflow-scrolling: touch;
         max-height: calc(96vh - 140px);
       }
-      
       :deep(.el-dialog__footer) {
         padding: 10px 15px 15px;
         flex-shrink: 0;
         border-top: 1px solid #ebeef5;
       }
     }
-    
     :deep(.el-dialog) {
       width: 95% !important;
       margin: 5vh auto !important;
-      
       .el-dialog__body {
         padding: 15px;
         max-height: 70vh;
@@ -1005,54 +866,44 @@ onUnmounted(() => {
       }
     }
   }
-
-  /* 表单优化 */
   .level-form-dialog {
     :deep(.el-form) {
       .el-form-item {
         margin-bottom: 18px;
-        
         .el-form-item__label {
           display: none; /* 移动端隐藏默认标签 */
         }
-        
         .el-form-item__content {
           margin-left: 0 !important;
           width: 100%;
         }
       }
-      
       .mobile-label {
         font-size: 14px;
         font-weight: 600;
         color: #606266;
         margin-bottom: 8px;
         display: block;
-        
         .required {
           color: #f56c6c;
           margin-left: 2px;
         }
       }
-      
       .el-input,
       .el-input-number,
       .el-select,
       .el-textarea {
         width: 100% !important;
       }
-      
       .el-input__wrapper,
       .el-textarea__inner {
         min-height: 40px;
         font-size: 16px; /* 防止iOS自动缩放 */
       }
-      
       .el-input__inner {
         font-size: 16px !important; /* 防止iOS自动缩放 */
         min-height: 40px;
       }
-      
       .form-tip {
         font-size: 12px;
         margin-top: 5px;
@@ -1060,16 +911,13 @@ onUnmounted(() => {
         line-height: 1.4;
       }
     }
-    
     .dialog-footer-buttons {
       display: flex;
       justify-content: flex-end;
       gap: 10px;
-      
       &.mobile-footer {
         flex-direction: column;
         gap: 10px;
-        
         .mobile-action-btn {
           width: 100%;
           min-height: 48px;
@@ -1080,7 +928,6 @@ onUnmounted(() => {
           -webkit-tap-highlight-color: rgba(0,0,0,0.1);
         }
       }
-      
       .mobile-action-btn {
         width: 100%;
         min-height: 48px;
@@ -1092,122 +939,92 @@ onUnmounted(() => {
       }
     }
   }
-
-  /* 卡片头部优化 */
   .card-header {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
-
   .card-title {
     font-size: 15px;
     font-weight: 600;
     text-align: center;
   }
-  
   .mobile-action-bar {
     padding: 12px;
   }
-  
   .mobile-filter-buttons {
     margin-bottom: 10px;
   }
-  
   .mobile-filter-buttons .el-button {
     height: 38px;
     font-size: 13px;
   }
-
   :deep(.el-card__header) {
     padding: 15px;
     font-size: 14px;
   }
 }
-
 @media (max-width: 480px) {
   .user-levels-admin {
     padding: 5px;
   }
-
-  /* 卡片头部进一步优化 */
   .card-header {
     gap: 10px;
   }
-
   .card-title {
     font-size: 14px;
   }
-  
   .mobile-action-bar {
     padding: 10px;
   }
-  
   .mobile-filter-buttons .el-button {
     height: 36px;
     font-size: 12px;
   }
-  
   .mobile-action-btn {
     height: 42px;
     font-size: 15px;
   }
-
-  /* 使用说明卡片进一步优化 */
   .usage-guide-card {
     :deep(.el-card__body) {
       padding: 12px;
     }
   }
-
   .guide-section {
     padding: 10px;
     margin-bottom: 12px;
-    
     :is(h4) {
       font-size: 13px;
     }
-    
     :is(li) {
       font-size: 12px;
     }
   }
-
-  /* 表格进一步优化 */
   :deep(.el-table) {
     font-size: 11px;
-    
     .el-table__cell {
       padding: 6px 2px;
     }
-
     .el-table__header th {
       padding: 6px 2px;
       font-size: 11px;
     }
   }
-
-  /* 操作按钮进一步优化 */
   :deep(.el-button) {
     padding: 5px 8px;
     font-size: 11px;
   }
-
-  /* 对话框进一步优化 */
   :deep(.el-dialog) {
     width: 98% !important;
     margin: 2vh auto !important;
-    
     .el-dialog__body {
       padding: 12px;
     }
   }
 }
-
 @media (min-width: 769px) {
   .mobile-action-bar {
     display: none !important;
   }
 }
 </style>
-

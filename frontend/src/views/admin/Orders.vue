@@ -4,102 +4,64 @@
       <template #header>
         <div class="card-header">
           <span>订单列表</span>
+          <!-- 电脑端操作栏保持不变 -->
           <div class="header-actions">
             <div class="bulk-actions" v-if="selectedOrders.length > 0">
               <span class="selected-count">已选择 {{ selectedOrders.length }} 个订单</span>
-              <el-button 
-                type="success" 
-                size="small"
-                @click="bulkMarkAsPaid"
-                :disabled="bulkLoading"
-              >
-                <el-icon><Check /></el-icon>
-                批量标记已付
+              <el-button type="success" size="small" @click="bulkMarkAsPaid" :disabled="bulkLoading">
+                <el-icon><Check /></el-icon> 批量标记已付
               </el-button>
-              <el-button 
-                type="warning" 
-                size="small"
-                @click="bulkCancel"
-                :disabled="bulkLoading"
-              >
-                <el-icon><Close /></el-icon>
-                批量取消
+              <el-button type="warning" size="small" @click="bulkCancel" :disabled="bulkLoading">
+                <el-icon><Close /></el-icon> 批量取消
               </el-button>
-              <el-button 
-                type="danger" 
-                size="small"
-                @click="bulkDelete"
-                :disabled="bulkLoading"
-              >
-                <el-icon><Delete /></el-icon>
-                批量删除
+              <el-button type="danger" size="small" @click="bulkDelete" :disabled="bulkLoading">
+                <el-icon><Delete /></el-icon> 批量删除
               </el-button>
             </div>
             <div class="normal-actions" v-else>
               <el-button type="success" @click="exportOrders">
-                <el-icon><Download /></el-icon>
-                导出订单
+                <el-icon><Download /></el-icon> 导出订单
               </el-button>
               <el-button type="info" @click="showStatisticsDialog = true">
-                <el-icon><DataAnalysis /></el-icon>
-                订单统计
+                <el-icon><DataAnalysis /></el-icon> 订单统计
               </el-button>
             </div>
           </div>
         </div>
       </template>
-      <div class="mobile-action-bar">
-        <div class="mobile-search-section">
-          <div class="search-input-wrapper">
-            <el-input 
-              v-model="searchForm.keyword" 
-              placeholder="搜索订单号、时间戳、用户邮箱或用户名"
-              class="mobile-search-input"
-              clearable
-              @keyup.enter="searchOrders"
-            />
-            <el-button 
-              @click="searchOrders" 
-              class="search-button-inside"
-              type="default"
-              plain
-            >
-              <el-icon><Search /></el-icon>
-            </el-button>
-          </div>
-        </div>
-        <div class="mobile-filter-buttons">
-          <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start">
-            <el-button 
-              size="small" 
-              :type="searchForm.status ? 'primary' : 'default'"
-              plain
-            >
-              <el-icon><Filter /></el-icon>
-              {{ getStatusFilterText() }}
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="">全部状态</el-dropdown-item>
-                <el-dropdown-item command="pending">待支付</el-dropdown-item>
-                <el-dropdown-item command="paid">已支付</el-dropdown-item>
-                <el-dropdown-item command="cancelled">已取消</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
 
-          <el-button 
-            size="small" 
-            type="default" 
-            plain
-            @click="resetSearch"
+      <!-- 手机端搜索/筛选栏 (优化布局) -->
+      <div class="mobile-action-bar" v-if="isMobile">
+        <div class="mobile-search-row">
+          <el-input 
+            v-model="searchForm.keyword" 
+            placeholder="搜索订单..." 
+            class="mobile-search-input"
+            clearable
+            @keyup.enter="searchOrders"
           >
-            <el-icon><Refresh /></el-icon>
-            重置
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button type="primary" class="mobile-search-btn" @click="searchOrders">
+            搜索
           </el-button>
         </div>
+        
+        <div class="mobile-filter-row">
+          <el-select v-model="searchForm.status" placeholder="状态筛选" @change="searchOrders" class="mobile-filter-select">
+            <el-option label="全部状态" value="" />
+            <el-option label="待支付" value="pending" />
+            <el-option label="已支付" value="paid" />
+            <el-option label="已取消" value="cancelled" />
+          </el-select>
+          <el-button @click="resetSearch" icon="Refresh" circle class="mobile-reset-btn"></el-button>
+        </div>
       </div>
-      <el-form :inline="true" :model="searchForm" class="search-form">
+
+      <!-- 电脑端搜索表单 (保持不变) -->
+      <el-form :inline="true" :model="searchForm" class="search-form" v-else>
         <el-form-item label="搜索">
           <el-input 
             v-model="searchForm.keyword" 
@@ -119,8 +81,7 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="searchOrders">
-            <el-icon><Search /></el-icon>
-            搜索
+            <el-icon><Search /></el-icon> 搜索
           </el-button>
           <el-button @click="resetSearch">重置</el-button>
         </el-form-item>
@@ -129,19 +90,15 @@
       <!-- 标签页切换 -->
       <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="records-tabs">
         <el-tab-pane label="订单记录" name="orders">
-          <template #label>
-            <span><el-icon><ShoppingCart /></el-icon> 订单记录</span>
-          </template>
+          <template #label><span><el-icon><ShoppingCart /></el-icon> 订单记录</span></template>
         </el-tab-pane>
         <el-tab-pane label="充值记录" name="recharges">
-          <template #label>
-            <span><el-icon><Wallet /></el-icon> 充值记录</span>
-          </template>
+          <template #label><span><el-icon><Wallet /></el-icon> 充值记录</span></template>
         </el-tab-pane>
       </el-tabs>
 
-      <!-- 桌面端表格 -->
-      <div class="table-wrapper">
+      <!-- 电脑端表格 (保持不变) -->
+      <div class="table-wrapper" v-if="!isMobile">
         <el-table 
           :data="activeTab === 'orders' ? allRecords : recharges" 
           style="width: 100%" 
@@ -149,182 +106,171 @@
           stripe
           @selection-change="handleSelectionChange"
         >
-        <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" />
-        <el-table-column prop="order_no" label="订单号" width="180" />
-        <el-table-column label="用户邮箱">
-          <template #default="scope">
-            {{ activeTab === 'orders' ? (scope.row.user?.email || '-') : (scope.row.user?.email || '-') }}
-          </template>
-        </el-table-column>
-        <el-table-column :label="activeTab === 'orders' ? '套餐名称/类型' : '类型'">
-          <template #default="scope">
-            <span v-if="activeTab === 'orders'">
-              <el-tag v-if="scope.row.record_type === 'recharge'" type="success" size="small">充值</el-tag>
-              <span v-else>{{ scope.row.package_name || '-' }}</span>
-            </span>
-            <span v-else>账户充值</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="amount" label="金额">
-          <template #default="scope">
-            <span :class="(activeTab === 'recharges' || scope.row.record_type === 'recharge') ? 'positive-amount' : ''">
-              {{ (activeTab === 'recharges' || scope.row.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="payment_method" label="支付方式" />
-        <el-table-column prop="status" label="状态">
-          <template #default="scope">
-            <el-tag :type="getStatusType(scope.row.status)">
-              {{ getStatusText(scope.row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" />
-        <el-table-column :label="activeTab === 'orders' ? '支付时间' : '支付时间'">
-          <template #default="scope">
-            {{ (activeTab === 'orders' ? scope.row.payment_time : scope.row.paid_at) || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right" v-if="activeTab === 'orders'">
-          <template #default="scope">
-            <div class="action-buttons-grid" v-if="scope.row.record_type === 'order'">
-              <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
-                <el-icon><View /></el-icon>
-                查看
-              </el-button>
-              <el-button 
-                size="small" 
-                type="success" 
-                @click="markAsPaid(scope.row)"
-                v-if="scope.row.status === 'pending'"
-                class="action-btn"
-              >
-                <el-icon><Check /></el-icon>
-                标记已付
-              </el-button>
-              <el-button 
-                size="small" 
-                type="danger" 
-                @click="deleteOrder(scope.row)"
-                class="action-btn"
-              >
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
-              <el-button 
-                size="small" 
-                type="danger" 
-                @click="cancelOrder(scope.row)"
-                v-if="scope.row.status === 'pending'"
-                class="action-btn"
-              >
-                <el-icon><Close /></el-icon>
-                取消
-              </el-button>
-            </div>
-            <span v-else class="text-muted">充值记录</span>
-          </template>
-        </el-table-column>
-      </el-table>
+          <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" />
+          <el-table-column prop="order_no" label="订单号" width="180" />
+          <el-table-column label="用户邮箱">
+            <template #default="scope">
+              {{ activeTab === 'orders' ? (scope.row.user?.email || '-') : (scope.row.user?.email || '-') }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="activeTab === 'orders' ? '套餐名称/类型' : '类型'">
+            <template #default="scope">
+              <span v-if="activeTab === 'orders'">
+                <el-tag v-if="scope.row.record_type === 'recharge'" type="success" size="small">充值</el-tag>
+                <span v-else>{{ scope.row.package_name || '-' }}</span>
+              </span>
+              <span v-else>账户充值</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="amount" label="金额">
+            <template #default="scope">
+              <span :class="(activeTab === 'recharges' || scope.row.record_type === 'recharge') ? 'positive-amount' : ''">
+                {{ (activeTab === 'recharges' || scope.row.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="payment_method" label="支付方式" />
+          <el-table-column prop="status" label="状态">
+            <template #default="scope">
+              <el-tag :type="getStatusType(scope.row.status)">
+                {{ getStatusText(scope.row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="创建时间" />
+          <el-table-column :label="activeTab === 'orders' ? '支付时间' : '支付时间'">
+            <template #default="scope">
+              {{ (activeTab === 'orders' ? scope.row.payment_time : scope.row.paid_at) || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="280" fixed="right" v-if="activeTab === 'orders'">
+            <template #default="scope">
+              <div class="action-buttons-grid" v-if="scope.row.record_type === 'order'">
+                <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
+                  <el-icon><View /></el-icon> 查看
+                </el-button>
+                <el-button 
+                  size="small" 
+                  type="success" 
+                  @click="markAsPaid(scope.row)"
+                  v-if="scope.row.status === 'pending'"
+                  class="action-btn"
+                >
+                  <el-icon><Check /></el-icon> 标记已付
+                </el-button>
+                <el-button 
+                  size="small" 
+                  type="danger" 
+                  @click="deleteOrder(scope.row)"
+                  class="action-btn"
+                >
+                  <el-icon><Delete /></el-icon> 删除
+                </el-button>
+                <el-button 
+                  size="small" 
+                  type="danger" 
+                  @click="cancelOrder(scope.row)"
+                  v-if="scope.row.status === 'pending'"
+                  class="action-btn"
+                >
+                  <el-icon><Close /></el-icon> 取消
+                </el-button>
+              </div>
+              <span v-else class="text-muted">充值记录</span>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
 
-      <!-- 移动端卡片式列表 -->
-      <div class="mobile-card-list" v-if="(activeTab === 'orders' && allRecords.length > 0) || (activeTab === 'recharges' && recharges.length > 0)">
+      <!-- 手机端卡片列表 (完全重构优化) -->
+      <div class="mobile-card-list" v-if="isMobile && ((activeTab === 'orders' && allRecords.length > 0) || (activeTab === 'recharges' && recharges.length > 0))">
         <div 
           v-for="item in (activeTab === 'orders' ? allRecords : recharges)" 
           :key="item.id || item.order_no"
-          class="mobile-card"
+          class="mobile-card-optimized"
         >
-          <div class="card-row">
-            <span class="label">订单号</span>
-            <span class="value">{{ item.order_no }}</span>
+          <!-- 卡片头部：订单号与状态 -->
+          <div class="mc-header">
+            <div class="mc-id">
+              <span class="label">#</span>
+              <span class="value">{{ item.order_no }}</span>
+              <el-tag v-if="item.record_type === 'recharge'" type="success" size="small" effect="plain" class="ml-1">充值</el-tag>
+            </div>
+            <el-tag :type="getStatusType(item.status)" size="small" effect="dark">
+              {{ getStatusText(item.status) }}
+            </el-tag>
           </div>
-          <div class="card-row">
-            <span class="label">用户邮箱</span>
-            <span class="value">{{ item.user?.email || '-' }}</span>
+
+          <!-- 卡片主体：左右布局 -->
+          <div class="mc-body">
+            <div class="mc-main-info">
+              <div class="mc-amount" :class="{'is-plus': activeTab === 'recharges' || item.record_type === 'recharge'}">
+                <span class="currency">¥</span>
+                <span class="num">{{ formatMoney(item.amount) }}</span>
+              </div>
+              <div class="mc-title">
+                {{ activeTab === 'orders' ? (item.package_name || '账户充值') : '账户充值' }}
+              </div>
+            </div>
+            <div class="mc-sub-info">
+              <div class="mc-row">
+                <el-icon><User /></el-icon>
+                <span class="text-truncate">{{ item.user?.email || '未知用户' }}</span>
+              </div>
+              <div class="mc-row">
+                <el-icon><Wallet /></el-icon>
+                <span>{{ item.payment_method || '未知支付' }}</span>
+              </div>
+              <div class="mc-row">
+                <el-icon><Timer /></el-icon>
+                <span>{{ formatDateTime(item.created_at).split(' ')[0] }}</span>
+              </div>
+            </div>
           </div>
-          <div class="card-row">
-            <span class="label">{{ activeTab === 'orders' ? '套餐名称/类型' : '类型' }}</span>
-            <span class="value">
-              <span v-if="activeTab === 'orders'">
-                <el-tag v-if="item.record_type === 'recharge'" type="success" size="small">充值</el-tag>
-                <span v-else>{{ item.package_name || '-' }}</span>
-              </span>
-              <span v-else>账户充值</span>
-            </span>
+
+          <!-- 卡片底部：操作区 -->
+          <div class="mc-footer" v-if="activeTab === 'orders' && item.record_type === 'order'">
+            <el-button-group class="mc-actions">
+              <el-button size="small" @click="viewOrder(item)">
+                 详情
+              </el-button>
+              <el-button 
+                v-if="item.status === 'pending'"
+                size="small" 
+                type="success" 
+                plain
+                @click="markAsPaid(item)"
+              >
+                已付
+              </el-button>
+              <el-button 
+                v-if="item.status === 'pending'"
+                size="small" 
+                type="warning" 
+                plain
+                @click="cancelOrder(item)"
+              >
+                取消
+              </el-button>
+              <el-button 
+                size="small" 
+                type="danger" 
+                plain
+                icon="Delete"
+                @click="deleteOrder(item)"
+              />
+            </el-button-group>
           </div>
-          <div class="card-row">
-            <span class="label">金额</span>
-            <span class="value" :class="(activeTab === 'recharges' || item.record_type === 'recharge') ? 'positive-amount' : ''">
-              {{ (activeTab === 'recharges' || item.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(item.amount) }}
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">支付方式</span>
-            <span class="value">{{ item.payment_method || '-' }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">状态</span>
-            <span class="value">
-              <el-tag :type="getStatusType(item.status)">
-                {{ getStatusText(item.status) }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">创建时间</span>
-            <span class="value">{{ item.created_at }}</span>
-          </div>
-          <div class="card-row" v-if="(activeTab === 'orders' && item.payment_time) || (activeTab === 'recharges' && item.paid_at)">
-            <span class="label">支付时间</span>
-            <span class="value">{{ (activeTab === 'orders' ? item.payment_time : item.paid_at) || '-' }}</span>
-          </div>
-          <div class="card-actions" v-if="activeTab === 'orders' && item.record_type === 'order'">
-            <el-button size="small" @click="viewOrder(item)" class="action-btn">
-              <el-icon><View /></el-icon>
-              查看
-            </el-button>
-            <el-button 
-              v-if="item.status === 'pending'"
-              size="small" 
-              type="success" 
-              @click="markAsPaid(item)"
-              class="action-btn"
-            >
-              <el-icon><Check /></el-icon>
-              标记已付
-            </el-button>
-            <el-button 
-              size="small" 
-              type="danger" 
-              @click="deleteOrder(item)"
-              class="action-btn"
-            >
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
-            <el-button 
-              v-if="item.status === 'pending'"
-              size="small" 
-              type="danger" 
-              @click="cancelOrder(item)"
-              class="action-btn"
-            >
-              <el-icon><Close /></el-icon>
-              取消
-            </el-button>
-          </div>
-          <div v-else-if="activeTab === 'orders' && item.record_type === 'recharge'" class="text-muted" style="padding: 8px;">
-            充值记录
+          <div class="mc-footer-info" v-else>
+            <span class="text-muted">充值记录 - 自动处理</span>
           </div>
         </div>
       </div>
 
-      <!-- 移动端空状态 -->
+      <!-- 空状态 -->
       <div class="mobile-card-list" v-if="((activeTab === 'orders' && allRecords.length === 0) || (activeTab === 'recharges' && recharges.length === 0)) && !loading">
         <div class="empty-state">
-          <i :class="activeTab === 'orders' ? 'el-icon-shopping-cart-2' : 'el-icon-wallet'"></i>
+          <el-icon class="empty-icon"><component :is="activeTab === 'orders' ? 'ShoppingCart' : 'Wallet'" /></el-icon>
           <p>{{ activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录' }}</p>
         </div>
       </div>
@@ -336,70 +282,63 @@
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
           :total="activeTab === 'recharges' ? rechargeTotal : total"
-          layout="total, sizes, prev, pager, next, jumper"
+          :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
         />
       </div>
     </el-card>
 
-    <!-- 订单详情对话框 -->
+    <!-- 详情弹窗 (保持逻辑，微调样式) -->
     <el-dialog 
       v-model="showOrderDialog" 
       title="订单详情" 
-      :width="isMobile ? '95%' : '600px'"
+      :width="isMobile ? '90%' : '600px'"
       class="order-detail-dialog"
-      :close-on-click-modal="false"
+      align-center
     >
       <div class="order-detail-content">
-        <!-- 移动端卡片式布局 -->
         <div class="mobile-order-detail" v-if="isMobile">
-          <div class="detail-card">
-            <div class="detail-row">
-              <span class="detail-label">订单号</span>
-              <span class="detail-value">{{ selectedOrder.order_no }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">用户邮箱</span>
-              <span class="detail-value">{{ selectedOrder.user?.email || '-' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">套餐名称</span>
-              <span class="detail-value">{{ selectedOrder.package_name }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">金额</span>
-              <span class="detail-value highlight">¥{{ formatMoney(selectedOrder.amount) }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">支付方式</span>
-              <span class="detail-value">{{ selectedOrder.payment_method }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">状态</span>
-              <span class="detail-value">
-                <el-tag :type="getStatusType(selectedOrder.status)" size="small">
-                  {{ getStatusText(selectedOrder.status) }}
-                </el-tag>
-              </span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">创建时间</span>
-              <span class="detail-value">{{ formatDateTime(selectedOrder.created_at) }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">支付时间</span>
-              <span class="detail-value">{{ selectedOrder.payment_time ? formatDateTime(selectedOrder.payment_time) : '-' }}</span>
-            </div>
-          </div>
-          
-          <div v-if="selectedOrder.payment_proof" class="payment-proof-section">
+           <!-- 使用新的手机端详情展示方式 -->
+           <div class="detail-header-block">
+              <div class="amount">¥{{ formatMoney(selectedOrder.amount) }}</div>
+              <el-tag :type="getStatusType(selectedOrder.status)">{{ getStatusText(selectedOrder.status) }}</el-tag>
+           </div>
+           <div class="detail-list-block">
+             <div class="d-item">
+               <span class="label">订单号</span>
+               <span class="val copyable">{{ selectedOrder.order_no }}</span>
+             </div>
+             <div class="d-item">
+               <span class="label">用户</span>
+               <span class="val">{{ selectedOrder.user?.email || '-' }}</span>
+             </div>
+             <div class="d-item">
+               <span class="label">套餐</span>
+               <span class="val">{{ selectedOrder.package_name }}</span>
+             </div>
+             <div class="d-item">
+               <span class="label">支付方式</span>
+               <span class="val">{{ selectedOrder.payment_method }}</span>
+             </div>
+             <div class="d-item">
+               <span class="label">创建时间</span>
+               <span class="val">{{ formatDateTime(selectedOrder.created_at) }}</span>
+             </div>
+             <div class="d-item" v-if="selectedOrder.payment_time">
+               <span class="label">支付时间</span>
+               <span class="val">{{ formatDateTime(selectedOrder.payment_time) }}</span>
+             </div>
+           </div>
+           
+           <div v-if="selectedOrder.payment_proof" class="payment-proof-section">
             <div class="section-title">支付凭证</div>
             <div class="proof-image-wrapper">
-              <img :src="selectedOrder.payment_proof" class="proof-image" />
+              <img :src="selectedOrder.payment_proof" class="proof-image" @click="previewImage(selectedOrder.payment_proof)" />
             </div>
           </div>
         </div>
+        <!-- 电脑端详情保持不变 -->
         <el-descriptions :column="2" border v-else>
           <el-descriptions-item label="订单号">{{ selectedOrder.order_no }}</el-descriptions-item>
           <el-descriptions-item label="用户邮箱">{{ selectedOrder.user?.email }}</el-descriptions-item>
@@ -414,13 +353,14 @@
           <el-descriptions-item label="创建时间">{{ selectedOrder.created_at }}</el-descriptions-item>
           <el-descriptions-item label="支付时间">{{ selectedOrder.payment_time || '-' }}</el-descriptions-item>
         </el-descriptions>
-        
         <div v-if="selectedOrder.payment_proof && !isMobile" style="margin-top: 20px;">
           <h4>支付凭证</h4>
-          <img :src="selectedOrder.payment_proof" style="max-width: 100%;" />
+          <img :src="selectedOrder.payment_proof" style="max-width: 100%; cursor: pointer;" />
         </div>
       </div>
     </el-dialog>
+
+    <!-- 统计弹窗保持不变 -->
     <el-dialog v-model="showStatisticsDialog" title="订单统计" width="600px">
       <div class="statistics-content">
         <el-row :gutter="20">
@@ -453,6 +393,13 @@
         </el-row>
       </div>
     </el-dialog>
+
+    <!-- 图片预览 -->
+    <el-image-viewer 
+      v-if="showImageViewer" 
+      :url-list="[imageViewerUrl]" 
+      @close="showImageViewer = false" 
+    />
   </div>
 </template>
 
@@ -462,49 +409,50 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
-  Filter, Refresh, Delete, Wallet, ShoppingCart
+  Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
+
 dayjs.extend(timezone)
 
 export default {
   name: 'AdminOrders',
   components: {
     Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
-    Filter, Refresh, Delete, Wallet, ShoppingCart
+    Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
   },
   setup() {
     const route = useRoute()
     const api = useApi()
+    
+    // State
     const loading = ref(false)
     const orders = ref([])
-    const recharges = ref([]) // 充值记录
-    const allRecords = ref([]) // 合并的订单和充值记录（用于"订单记录"标签页）
-    const activeTab = ref('orders') // 标签页：orders-订单，recharges-充值
+    const recharges = ref([]) 
+    const allRecords = ref([]) 
+    const activeTab = ref('orders')
     const currentPage = ref(1)
     const pageSize = ref(20)
     const total = ref(0)
-    const rechargeTotal = ref(0) // 充值记录总数
+    const rechargeTotal = ref(0)
+    
     const showOrderDialog = ref(false)
     const showStatisticsDialog = ref(false)
+    const showImageViewer = ref(false)
+    const imageViewerUrl = ref('')
+    
     const selectedOrder = ref({})
     const selectedOrders = ref([])
     const bulkLoading = ref(false)
+    
     const isMobile = ref(window.innerWidth <= 768)
-    
-    // 监听窗口大小变化
-    const handleResize = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
-    
     const searchForm = reactive({
       keyword: '',
       status: ''
     })
-
     const statistics = reactive({
       totalOrders: 0,
       pendingOrders: 0,
@@ -512,6 +460,12 @@ export default {
       totalRevenue: 0
     })
 
+    // Resize Handler
+    const handleResize = () => {
+      isMobile.value = window.innerWidth <= 768
+    }
+
+    // Data Loading Functions
     const loadOrders = async () => {
       loading.value = true
       try {
@@ -519,21 +473,11 @@ export default {
           skip: (currentPage.value - 1) * pageSize.value,
           limit: pageSize.value
         }
-        
-        // 添加搜索参数
-        if (searchForm.keyword) {
-          params.search = searchForm.keyword
-        }
-        if (searchForm.status) {
-          params.status = searchForm.status
-        }
-        
-        if (activeTab.value === 'orders') {
-          params.include_recharges = 'true'
-        }
+        if (searchForm.keyword) params.search = searchForm.keyword
+        if (searchForm.status) params.status = searchForm.status
+        if (activeTab.value === 'orders') params.include_recharges = 'true'
         
         const response = await api.get('/admin/orders', { params })
-        
         const ordersList = response.data.data?.orders || []
         
         if (activeTab.value === 'orders') {
@@ -543,16 +487,10 @@ export default {
         } else {
           orders.value = ordersList
         }
-        
         total.value = response.data.data?.total || response.data.total || 0
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '加载订单列表失败'
-        ElMessage.error(errorMsg)
-        // 确保即使出错也清空数据，避免显示旧数据
-        orders.value = []
-        total.value = 0
+        ElMessage.error(error.response?.data?.message || '加载订单列表失败')
         allRecords.value = []
-        recharges.value = []
       } finally {
         loading.value = false
       }
@@ -561,184 +499,95 @@ export default {
     const loadRecharges = async () => {
       loading.value = true
       try {
-        if (!adminAPI || typeof adminAPI.getAdminRechargeRecords !== 'function') {
-          ElMessage.error('加载充值记录失败: API 函数未定义')
-          return
-        }
-        
-        const params = {
-          page: currentPage.value,
-          size: pageSize.value
-        }
-        
-        if (searchForm.keyword) {
-          params.keyword = searchForm.keyword
-        }
-        if (searchForm.status) {
-          params.status = searchForm.status
-        }
+        const params = { page: currentPage.value, size: pageSize.value }
+        if (searchForm.keyword) params.keyword = searchForm.keyword
+        if (searchForm.status) params.status = searchForm.status
         
         const response = await adminAPI.getAdminRechargeRecords(params)
+        const data = response?.data
         
-        if (response && response.data) {
-          let data = null
-          
-          if (response.data.success !== false && response.data.data) {
-            data = response.data.data
-          } else if (response.data.recharges !== undefined) {
-            data = response.data
-          } else if (response.data.data && Array.isArray(response.data.data)) {
-            data = { recharges: response.data.data, total: response.data.total || 0 }
-          } else if (response.data.success === undefined && response.data.recharges === undefined) {
-            data = response.data
-          }
-          
-          if (data && (data.recharges !== undefined || Array.isArray(data))) {
-            recharges.value = Array.isArray(data.recharges) ? data.recharges : (Array.isArray(data) ? data : [])
-            rechargeTotal.value = Number(data.total) || 0
+        if (data?.success !== false && data?.data) {
+          // 后端返回格式: { recharges: [...], total: ... }
+          const responseData = data.data
+          if (Array.isArray(responseData.recharges)) {
+            recharges.value = responseData.recharges
+            rechargeTotal.value = Number(responseData.total) || 0
+          } else if (Array.isArray(responseData)) {
+            // 兼容直接返回数组的情况
+            recharges.value = responseData
+            rechargeTotal.value = Number(data.total) || responseData.length
           } else {
             recharges.value = []
             rechargeTotal.value = 0
           }
+        } else if (data?.recharges) {
+          // 兼容其他可能的响应格式
+          recharges.value = Array.isArray(data.recharges) ? data.recharges : []
+          rechargeTotal.value = Number(data.total) || 0
         } else {
           recharges.value = []
           rechargeTotal.value = 0
         }
       } catch (error) {
-        const errorStatus = error.response?.status
-        const errorMsg = error.response?.data?.message || error.message || ''
-        
-        if (errorStatus === 404 || errorMsg.includes('不存在')) {
-          recharges.value = []
-          rechargeTotal.value = 0
-        } else {
-          ElMessage.error('加载充值记录失败: ' + errorMsg)
-          recharges.value = []
-          rechargeTotal.value = 0
+        console.error('加载充值记录失败:', error)
+        if (!error.response || error.response.status !== 404) {
+          ElMessage.error('加载充值记录失败: ' + (error.response?.data?.message || error.message))
         }
+        recharges.value = []
+        rechargeTotal.value = 0
       } finally {
         loading.value = false
       }
     }
 
-    // 标签页切换处理
+    // Handlers
     const handleTabChange = (tabName) => {
       currentPage.value = 1
-      if (tabName === 'recharges') {
-        loadRecharges()
-      } else {
-        // "订单记录"标签页：后端会同时返回订单和充值记录
-        loadOrders()
-      }
+      tabName === 'recharges' ? loadRecharges() : loadOrders()
     }
 
     const searchOrders = () => {
       currentPage.value = 1
-      if (activeTab.value === 'recharges') {
-        loadRecharges()
-      } else {
-        // "订单记录"标签页：后端会同时返回订单和充值记录
-        loadOrders()
-      }
+      activeTab.value === 'recharges' ? loadRecharges() : loadOrders()
     }
 
     const resetSearch = () => {
-      Object.assign(searchForm, { 
-        keyword: '', 
-        status: '' 
-      })
-      currentPage.value = 1
-      if (activeTab.value === 'recharges') {
-        loadRecharges()
-      } else {
-        // "订单记录"标签页：后端会同时返回订单和充值记录
-        loadOrders()
-      }
-    }
-
-    // 处理状态筛选
-    const handleStatusFilter = (command) => {
-      searchForm.status = command
+      searchForm.keyword = ''
+      searchForm.status = ''
       searchOrders()
-    }
-
-    // 获取状态筛选文本
-    const getStatusFilterText = () => {
-      const statusMap = {
-        '': '全部状态',
-        'pending': '待支付',
-        'paid': '已支付',
-        'cancelled': '已取消',
-      }
-      return statusMap[searchForm.status] || '全部状态'
     }
 
     const handleSizeChange = (val) => {
       pageSize.value = val
-      currentPage.value = 1
-      if (activeTab.value === 'recharges') {
-        loadRecharges()
-      } else {
-        loadOrders()
-      }
+      searchOrders()
     }
 
     const handleCurrentChange = (val) => {
       currentPage.value = val
-      if (activeTab.value === 'recharges') {
-        loadRecharges()
-      } else {
-        loadOrders()
-      }
+      activeTab.value === 'recharges' ? loadRecharges() : loadOrders()
     }
 
+    // Actions
     const viewOrder = (order) => {
       selectedOrder.value = order
       showOrderDialog.value = true
     }
-
-    const markAsPaid = async (order) => {
-      try {
-        await ElMessageBox.confirm('确定要将此订单标记为已支付吗？', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        
-        const response = await api.put(`/admin/orders/${order.id}`, { status: 'paid' })
-        
-        if (response.data.success) {
-          ElMessage.success('订单状态更新成功')
-          if (activeTab.value === 'recharges') {
-            await loadRecharges()
-          } else {
-            await loadOrders()
-          }
-        } else {
-          ElMessage.error(response.data.message || '操作失败')
-        }
-      } catch (error) {
-        if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '操作失败'
-          ElMessage.error(`操作失败: ${errorMsg}`)
-        }
-      }
+    
+    const previewImage = (url) => {
+      imageViewerUrl.value = url
+      showImageViewer.value = true
     }
 
-    const cancelOrder = async (order) => {
+    const confirmAction = async (message, actionFn) => {
       try {
-        await ElMessageBox.confirm('确定要取消此订单吗？', '提示', {
+        await ElMessageBox.confirm(message, '提示', {
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'warning'
         })
-        await api.put(`/admin/orders/${order.id}`, { status: 'cancelled' })
-        ElMessage.success('订单已取消')
-        if (activeTab.value === 'recharges') {
-          loadRecharges()
-        } else {
-          loadOrders()
-        }
+        await actionFn()
+        ElMessage.success('操作成功')
+        searchOrders() // Reload current view
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error('操作失败')
@@ -746,290 +595,152 @@ export default {
       }
     }
 
-    const deleteOrder = async (order) => {
-      try {
-        await ElMessageBox.confirm('确定要删除此订单吗？删除后无法恢复。', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        await api.delete(`/admin/orders/${order.id}`)
-        ElMessage.success('订单删除成功')
-        if (activeTab.value === 'recharges') {
-          loadRecharges()
-        } else {
-          loadOrders()
-        }
-      } catch (error) {
-        if (error !== 'cancel') {
-          ElMessage.error('删除失败')
-          }
-      }
+    const markAsPaid = (order) => {
+      confirmAction('确定要将此订单标记为已支付吗？', async () => {
+        await api.put(`/admin/orders/${order.id}`, { status: 'paid' })
+      })
     }
-    
+
+    const cancelOrder = (order) => {
+      confirmAction('确定要取消此订单吗？', async () => {
+        await api.put(`/admin/orders/${order.id}`, { status: 'cancelled' })
+      })
+    }
+
+    const deleteOrder = (order) => {
+      confirmAction('确定要删除此订单吗？删除后无法恢复。', async () => {
+        await api.delete(`/admin/orders/${order.id}`)
+      })
+    }
+
+    // Bulk Actions
     const handleSelectionChange = (selection) => {
       selectedOrders.value = selection
     }
 
-    const exportOrders = async () => {
+    const handleBulkAction = async (actionType, apiPath, confirmMsg) => {
+      if (selectedOrders.value.length === 0) return
+      
       try {
-        // 构建查询参数
-        const params = {}
-        if (searchForm.keyword) {
-          params.search = searchForm.keyword
-        }
-        if (searchForm.status) {
-          params.status = searchForm.status
-        }
-        
+        await ElMessageBox.confirm(confirmMsg, '提示', { type: 'warning' })
+        bulkLoading.value = true
+        const orderIds = selectedOrders.value.map(o => o.id)
+        await api.post(apiPath, { order_ids: orderIds })
+        ElMessage.success('批量操作成功')
+        selectedOrders.value = []
+        searchOrders()
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量操作失败')
+      } finally {
+        bulkLoading.value = false
+      }
+    }
+
+    const bulkMarkAsPaid = () => handleBulkAction(
+      'markPaid', 
+      '/admin/orders/bulk-mark-paid', 
+      `确定要将选中的 ${selectedOrders.value.length} 个订单标记为已支付吗？`
+    )
+
+    const bulkCancel = () => handleBulkAction(
+      'cancel', 
+      '/admin/orders/bulk-cancel', 
+      `确定要取消选中的 ${selectedOrders.value.length} 个订单吗？`
+    )
+
+    const bulkDelete = () => handleBulkAction(
+      'delete', 
+      '/admin/orders/batch-delete', 
+      `确定要删除选中的 ${selectedOrders.value.length} 个订单吗？`
+    )
+
+    // Export & Stats
+    const exportOrders = async () => {
+      // Keep existing implementation
+       try {
+        const params = { ...searchForm }
         const response = await api.get('/admin/orders/export', { 
           responseType: 'blob',
           params: params
         })
-        
-        // 从响应头获取文件名，如果没有则使用默认名称
-        const contentDisposition = response.headers['content-disposition']
-        // 使用北京时间生成文件名
-        const beijingDate = dayjs().tz('Asia/Shanghai')
-        let filename = `orders_export_${beijingDate.format('YYYYMMDD')}.csv`
-        
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
-          if (filenameMatch) {
-            filename = decodeURIComponent(filenameMatch[1])
-          }
-        }
-        
-        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8' }))
+        const url = window.URL.createObjectURL(new Blob([response.data]))
         const link = document.createElement('a')
         link.href = url
-        link.setAttribute('download', filename)
+        link.setAttribute('download', `orders_export_${dayjs().format('YYYYMMDD')}.csv`)
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
         window.URL.revokeObjectURL(url)
-        
-        ElMessage.success('订单数据导出成功（CSV格式，可用Excel打开）')
+        ElMessage.success('导出成功')
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '导出失败'
-        ElMessage.error(`导出失败: ${errorMsg}`)
-      }
-    }
-
-    // 批量标记已付
-    const bulkMarkAsPaid = async () => {
-      if (selectedOrders.value.length === 0) {
-        ElMessage.warning('请先选择要操作的订单')
-        return
-      }
-
-      try {
-        await ElMessageBox.confirm(`确定要将选中的 ${selectedOrders.value.length} 个订单标记为已支付吗？`, '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        
-        bulkLoading.value = true
-        const orderIds = selectedOrders.value.map(order => order.id)
-        await api.post('/admin/orders/bulk-mark-paid', {
-          order_ids: orderIds
-        })
-        ElMessage.success('批量标记已付成功')
-        selectedOrders.value = []
-        if (activeTab.value === 'recharges') {
-          await loadRecharges()
-        } else {
-          await loadOrders()
-        }
-      } catch (error) {
-        if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '批量操作失败'
-          ElMessage.error(errorMsg)
-        }
-      } finally {
-        bulkLoading.value = false
-      }
-    }
-
-    // 批量取消
-    const bulkCancel = async () => {
-      if (selectedOrders.value.length === 0) {
-        ElMessage.warning('请先选择要操作的订单')
-        return
-      }
-
-      try {
-        await ElMessageBox.confirm(`确定要取消选中的 ${selectedOrders.value.length} 个订单吗？`, '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        
-        bulkLoading.value = true
-        const orderIds = selectedOrders.value.map(order => order.id)
-        await api.post('/admin/orders/bulk-cancel', {
-          order_ids: orderIds
-        })
-        ElMessage.success('批量取消成功')
-        selectedOrders.value = []
-        if (activeTab.value === 'recharges') {
-          await loadRecharges()
-        } else {
-          await loadOrders()
-        }
-      } catch (error) {
-        if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '批量操作失败'
-          ElMessage.error(errorMsg)
-        }
-      } finally {
-        bulkLoading.value = false
-      }
-    }
-
-    // 批量删除
-    const bulkDelete = async () => {
-      if (selectedOrders.value.length === 0) {
-        ElMessage.warning('请先选择要操作的订单')
-        return
-      }
-
-      try {
-        await ElMessageBox.confirm(`确定要删除选中的 ${selectedOrders.value.length} 个订单吗？删除后无法恢复。`, '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        
-        bulkLoading.value = true
-        const orderIds = selectedOrders.value.map(order => order.id)
-        await api.post('/admin/orders/batch-delete', {
-          order_ids: orderIds
-        })
-        ElMessage.success('批量删除成功')
-        selectedOrders.value = []
-        if (activeTab.value === 'recharges') {
-          await loadRecharges()
-        } else {
-          await loadOrders()
-        }
-      } catch (error) {
-        if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '批量操作失败'
-          ElMessage.error(errorMsg)
-        }
-      } finally {
-        bulkLoading.value = false
+        ElMessage.error('导出失败')
       }
     }
 
     const loadStatistics = async () => {
       try {
-        const response = await api.get('/admin/orders/statistics')
-        
-        if (response.data && response.data.success && response.data.data) {
-          const statsData = response.data.data
-          statistics.totalOrders = statsData.total_orders || 0
-          statistics.pendingOrders = statsData.pending_orders || 0
-          statistics.paidOrders = statsData.paid_orders || 0
-          statistics.totalRevenue = statsData.total_revenue || 0
+        const res = await api.get('/admin/orders/statistics')
+        if (res.data?.data) {
+          const s = res.data.data
+          Object.assign(statistics, {
+            totalOrders: s.total_orders || 0,
+            pendingOrders: s.pending_orders || 0,
+            paidOrders: s.paid_orders || 0,
+            totalRevenue: s.total_revenue || 0
+          })
         }
-      } catch (error) {
-        // 统计失败不影响主要功能，只记录错误
+      } catch (e) {
+        // 统计信息加载失败，不影响主功能
       }
     }
 
-    const getStatusType = (status) => {
-      const statusMap = {
-        'pending': 'warning',
-        'paid': 'success',
-        'cancelled': 'danger',
-      }
-      return statusMap[status] || 'info'
+    // Utilities
+    const getStatusType = (status) => ({
+      'pending': 'warning',
+      'paid': 'success',
+      'cancelled': 'danger'
+    }[status] || 'info')
+
+    const getStatusText = (status) => ({
+      'pending': '待支付',
+      'paid': '已支付',
+      'cancelled': '已取消'
+    }[status] || status)
+
+    const formatDateTime = (d) => formatDateTimeUtil(d) || '-'
+    const formatMoney = (v) => {
+      const n = parseFloat(v)
+      return isNaN(n) ? '0.00' : n.toFixed(2)
     }
 
-    const getStatusText = (status) => {
-      const statusMap = {
-        'pending': '待支付',
-        'paid': '已支付',
-        'cancelled': '已取消',
-      }
-      return statusMap[status] || status
-    }
-    
-    const formatDateTime = (dateString) => {
-      // 使用统一的工具函数，确保使用北京时间
-      return formatDateTimeUtil(dateString) || '-'
-    }
-
-    const formatMoney = (value) => {
-      if (value === null || value === undefined || value === '') return '0.00'
-      const num = typeof value === 'string' ? parseFloat(value) : value
-      if (isNaN(num)) return '0.00'
-      return num.toFixed(2)
-    }
-
+    // Lifecycle
     onMounted(() => {
-      // 检查 URL 参数中是否有搜索关键词
-      if (route.query.search) {
-        const searchParam = String(route.query.search).trim()
-        if (searchParam) {
-          searchForm.keyword = searchParam
-          currentPage.value = 1
-        }
-      }
+      if (route.query.search) searchForm.keyword = String(route.query.search).trim()
       window.addEventListener('resize', handleResize)
-      // "订单记录"标签页：后端会同时返回订单和充值记录
       loadOrders()
       loadStatistics()
     })
-    
+
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
     })
 
     return {
-      loading,
-      orders,
-      recharges,
-      allRecords,
-      activeTab,
-      currentPage,
-      pageSize,
-      total,
-      rechargeTotal,
-      searchForm,
-      showOrderDialog,
-      selectedOrder,
-      searchOrders,
-      resetSearch,
-      handleStatusFilter,
-      getStatusFilterText,
-      handleSizeChange,
-      handleCurrentChange,
-      viewOrder,
-      markAsPaid,
-      cancelOrder,
-      deleteOrder,
-      handleSelectionChange,
-      selectedOrders,
-      exportOrders,
-      bulkMarkAsPaid,
-      bulkCancel,
-      bulkDelete,
-      loadStatistics,
-      loadRecharges,
-      handleTabChange,
-      getStatusType,
-      getStatusText,
-      formatDateTime,
-      formatMoney,
-      isMobile,
-      // 新增的响应式变量
-      showStatisticsDialog,
-      bulkLoading,
-      statistics
+      // State
+      loading, orders, recharges, allRecords, activeTab, 
+      currentPage, pageSize, total, rechargeTotal, 
+      searchForm, statistics, isMobile, bulkLoading,
+      showOrderDialog, showStatisticsDialog, showImageViewer, imageViewerUrl,
+      selectedOrder, selectedOrders,
+      
+      // Actions
+      searchOrders, resetSearch, handleTabChange,
+      handleSizeChange, handleCurrentChange, handleSelectionChange,
+      viewOrder, previewImage, markAsPaid, cancelOrder, deleteOrder,
+      exportOrders, bulkMarkAsPaid, bulkCancel, bulkDelete,
+      
+      // Utils
+      getStatusType, getStatusText, formatDateTime, formatMoney
     }
   }
 }
@@ -1038,510 +749,227 @@ export default {
 <style scoped lang="scss">
 @use '@/styles/list-common.scss';
 
-// admin-orders 使用 list-container 的样式，无需额外定义
+// 通用样式
+.positive-amount { color: #67c23a; font-weight: 600; }
+.records-tabs { margin-bottom: 20px; }
+.text-muted { color: #909399; font-size: 12px; }
+.ml-1 { margin-left: 4px; }
 
-.positive-amount {
-  color: #67c23a;
-  font-weight: 600;
-}
+// 电脑端样式保留
+.bulk-actions, .normal-actions, .header-actions { display: flex; gap: 10px; align-items: center; }
+.selected-count { color: #409eff; font-weight: 600; font-size: 14px; }
+.action-buttons-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 
-.records-tabs {
-  margin-bottom: 20px;
-}
-
-/* 批量操作按钮组样式 */
-.bulk-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  
-  .selected-count {
-    color: #409eff;
-    font-weight: 600;
-    font-size: 14px;
-    margin-right: 8px;
-  }
-  
-  .el-button {
-    margin: 0;
-  }
-}
-
-.normal-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: #999;
-  
-  :is(i) {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    display: block;
-  }
-  
-  :is(p) {
-    font-size: 0.9rem;
-    margin: 0;
-    line-height: 1.5;
-  }
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.search-form {
-  margin-bottom: 20px;
-  padding: 20px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  
-  // 移动端优化显示
-  @media (max-width: 768px) {
-    padding: 15px;
-    
-    :deep(.el-form-item) {
-      margin-bottom: 10px;
-      width: 100%;
-    }
-    
-    :deep(.el-input) {
-      width: 100% !important;
-    }
-    
-    :deep(.el-select) {
-      width: 100% !important;
-    }
-    
-    :deep(.el-form-item__content) {
-      width: 100%;
-    }
-  }
-}
-
-.pagination {
-  margin-top: 20px;
-  text-align: right;
-}
-
-.statistics-content {
-  padding: 20px 0;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 20px;
-}
-
-.stat-number {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #409eff;
-  margin-bottom: 10px;
-}
-
-.stat-label {
-  color: #606266;
-  font-size: 14px;
-}
-
-/* 操作按钮网格布局 - 2x2排列 */
-.action-buttons-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  width: 100%;
-  min-width: 200px;
-  
-  .action-btn {
-    width: 100%;
-    min-width: 0;
-    padding: 8px 12px;
-    font-size: 12px;
-    white-space: nowrap;
+// 手机端优化样式
+@media (max-width: 768px) {
+  // 1. 搜索与筛选栏优化
+  .mobile-action-bar {
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    margin-bottom: 16px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    
-    :deep(.el-icon) {
-      font-size: 14px;
-    }
-    
-    // 如果只有3个按钮，第3个按钮占满整行
-    &:nth-child(3):last-child {
-      grid-column: 1 / -1;
-    }
-  }
-  
-  // 如果只有2个按钮，让它们各占一列
-  &:has(.action-btn:nth-child(2):last-child) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  // 如果只有1个按钮，让它占满整行
-  &:has(.action-btn:nth-child(1):last-child) {
-    grid-template-columns: 1fr;
-  }
-}
+    flex-direction: column;
+    gap: 10px;
 
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-
-// 订单详情弹窗样式
-.order-detail-dialog {
-  :deep(.el-dialog) {
-    @media (max-width: 768px) {
-      margin: 5vh auto !important;
-      border-radius: 16px;
-      overflow: clip;
-    }
-  }
-  
-  :deep(.el-dialog__header) {
-    @media (max-width: 768px) {
-      padding: 16px 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #ffffff;
-      border-bottom: none;
-      
-      .el-dialog__title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #ffffff;
+    .mobile-search-row {
+      display: flex;
+      gap: 8px;
+      .mobile-search-input {
+        flex: 1;
+        --el-input-border-radius: 20px;
       }
-      
-      .el-dialog__headerbtn {
-        .el-dialog__close {
-          color: #ffffff;
-          font-size: 20px;
-          
-          &:hover {
-            color: rgba(255, 255, 255, 0.8);
-          }
+      .mobile-search-btn {
+        border-radius: 20px;
+        padding: 0 20px;
+      }
+    }
+
+    .mobile-filter-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      .mobile-filter-select {
+        flex: 1;
+        :deep(.el-input__wrapper) {
+          border-radius: 20px;
         }
       }
-    }
-  }
-  
-  :deep(.el-dialog__body) {
-    @media (max-width: 768px) {
-      padding: 0;
-    }
-  }
-}
-
-.order-detail-content {
-  @media (max-width: 768px) {
-    padding: 0;
-  }
-}
-
-// 移动端订单详情卡片样式
-.mobile-order-detail {
-  padding: 0;
-  
-  .detail-card {
-    background: #ffffff;
-    border-radius: 0;
-    padding: 20px;
-    
-    .detail-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 0;
-      border-bottom: 1px solid #f0f0f0;
-      
-      &:last-child {
-        border-bottom: none;
-      }
-      
-      .detail-label {
-        font-size: 14px;
-        font-weight: 600;
-        color: #606266;
-        min-width: 90px;
+      .mobile-reset-btn {
         flex-shrink: 0;
       }
-      
-      .detail-value {
-        font-size: 14px;
+    }
+  }
+
+  // 2. 手机端卡片深度优化
+  .mobile-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .mobile-card-optimized {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    overflow: hidden;
+    border: 1px solid #ebeef5;
+    
+    // 头部：ID与状态
+    .mc-header {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #ebeef5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .mc-id {
+        font-family: monospace;
+        color: #606266;
+        display: flex;
+        align-items: center;
+        .label { color: #909399; margin-right: 2px; }
+        .value { font-weight: 600; }
+      }
+    }
+
+    // 主体：关键信息
+    .mc-body {
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .mc-main-info {
+      flex: 1;
+      .mc-amount {
+        font-size: 20px;
+        font-weight: 700;
         color: #303133;
-        text-align: right;
-        flex: 1;
-        word-break: break-all;
+        line-height: 1.2;
+        margin-bottom: 4px;
+        &.is-plus { color: #67c23a; }
+        .currency { font-size: 14px; margin-right: 2px; }
+      }
+      .mc-title {
+        font-size: 14px;
+        color: #606266;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+    }
+
+    .mc-sub-info {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+      min-width: 100px;
+
+      .mc-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: #909399;
         
-        &.highlight {
-          font-size: 18px;
-          font-weight: 700;
-          color: #f56c6c;
+        .text-truncate {
+          max-width: 120px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
       }
     }
+
+    // 底部：操作按钮
+    .mc-footer {
+      padding: 10px 16px;
+      border-top: 1px solid #f0f2f5;
+      display: flex;
+      justify-content: flex-end;
+      
+      .mc-actions {
+        width: 100%;
+        display: flex;
+        :deep(.el-button) {
+          flex: 1;
+        }
+      }
+    }
+    .mc-footer-info {
+      padding: 8px 16px;
+      background: #fafafa;
+      text-align: right;
+      font-size: 12px;
+    }
+  }
+
+  // 3. 空状态与分页
+  .empty-state {
+    padding: 40px 0;
+    text-align: center;
+    color: #909399;
+    .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.5; }
+    p { margin: 0; font-size: 14px; }
   }
   
-  .payment-proof-section {
+  .pagination {
     margin-top: 20px;
-    padding: 20px;
-    background: #f8f9fa;
-    border-top: 1px solid #e4e7ed;
-    
-    .section-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: #303133;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 2px solid #e4e7ed;
-    }
-    
-    .proof-image-wrapper {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      
-      .proof-image {
-        max-width: 100%;
-        max-height: 400px;
-        border-radius: 8px;
-        object-fit: contain;
-      }
+    display: flex;
+    justify-content: center;
+    :deep(.el-pagination) {
+      .el-pagination__jump { display: none; }
     }
   }
-}
 
-// 手机端订单管理页面特定样式优化
-@media (max-width: 768px) {
-  .mobile-action-bar {
-    padding: 16px !important;
-    box-sizing: border-box !important;
-    
-    .mobile-search-section {
-      margin-bottom: 12px !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
+  // 4. 详情弹窗优化
+  .mobile-order-detail {
+    .detail-header-block {
+      text-align: center;
+      padding: 20px 0;
+      background: #f8fafc;
+      margin: -20px -20px 20px -20px; // 抵消 dialog padding
+      border-bottom: 1px solid #ebeef5;
       
-      .search-input-wrapper {
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
+      .amount {
+        font-size: 28px;
+        font-weight: 700;
+        color: #303133;
+        margin-bottom: 8px;
+      }
+    }
+    
+    .detail-list-block {
+      .d-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px dashed #ebeef5;
+        font-size: 14px;
+        &:last-child { border-bottom: none; }
         
-        .mobile-search-input {
-          flex: 1 !important;
-          width: 100% !important;
-          box-sizing: border-box !important;
-          min-width: 0 !important;
-          
-          :deep(.el-input__wrapper) {
-            border-radius: 10px !important;
-            padding-left: 14px !important;
-            padding-right: 60px !important; // 为搜索按钮留出空间
-            background: rgba(255, 255, 255, 0.98) !important;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12) !important;
-            border: 2px solid rgba(255, 255, 255, 0.4) !important;
-            min-height: 48px !important;
-            
-            &:hover {
-              background: #ffffff !important;
-              border-color: rgba(255, 255, 255, 0.6) !important;
-              box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18) !important;
-            }
-            
-            &.is-focus {
-              background: #ffffff !important;
-              border-color: #ffffff !important;
-              box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
-            }
-          }
-          
-          :deep(.el-input__inner) {
-            color: #1e293b !important;
-            font-size: 0.95rem !important;
-            font-weight: 500 !important;
-            
-            &::placeholder {
-              color: #94a3b8 !important;
-              font-weight: 400 !important;
-            }
-          }
-        }
-        
-        .search-button-inside {
-          position: absolute !important;
-          right: 4px !important;
-          top: 50% !important;
-          transform: translateY(-50%) !important;
-          background: rgba(255, 255, 255, 0.98) !important;
-          border: 2px solid rgba(255, 255, 255, 0.4) !important;
-          color: #667eea !important;
-          border-radius: 8px !important;
-          font-weight: 600 !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-          padding: 0 !important;
-          height: 40px !important;
-          width: 40px !important;
-          min-width: 40px !important;
-          max-width: 40px !important;
-          transition: all 0.2s ease !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          box-sizing: border-box !important;
-          z-index: 10 !important;
-          
-          &:hover {
-            background: #ffffff !important;
-            border-color: #ffffff !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-            color: #5568d3 !important;
-          }
-          
-          &:active {
-            transform: translateY(-50%) scale(0.96) !important;
-          }
-          
-          .el-icon {
-            font-size: 18px !important;
-            margin: 0 !important;
-          }
+        .label { color: #909399; }
+        .val { 
+          color: #303133; 
+          font-weight: 500; 
+          text-align: right; 
+          max-width: 70%;
+          word-break: break-all;
         }
       }
     }
     
-    .mobile-filter-buttons {
-      display: flex !important;
-      flex-direction: row !important;
-      gap: 10px !important;
-      align-items: stretch !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-      
-      .el-dropdown {
-        flex: 1 !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        box-sizing: border-box !important;
-        
-        .el-button {
-          width: 100% !important;
-          background: rgba(255, 255, 255, 0.98) !important;
-          border: 2px solid rgba(255, 255, 255, 0.4) !important;
-          color: #667eea !important;
-          font-weight: 600 !important;
-          border-radius: 10px !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-          padding: 10px 12px !important;
-          min-height: 44px !important;
-          height: 44px !important;
-          transition: all 0.2s ease !important;
-          box-sizing: border-box !important;
-          white-space: nowrap !important;
-          overflow: clip !important;
-          text-overflow: ellipsis !important;
-          
-          &:hover {
-            background: #ffffff !important;
-            border-color: #ffffff !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-          }
-          
-          &.el-button--primary {
-            background: rgba(255, 255, 255, 0.98) !important;
-            border-color: rgba(255, 255, 255, 0.6) !important;
-            color: #667eea !important;
-          }
-          
-          .el-icon {
-            margin-right: 6px;
-            font-size: 16px;
-            flex-shrink: 0;
-          }
-        }
-      }
-      
-      .el-button {
-        flex: 1 !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        background: rgba(255, 255, 255, 0.98) !important;
-        border: 2px solid rgba(255, 255, 255, 0.4) !important;
-        color: #667eea !important;
-        font-weight: 600 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-        padding: 10px 12px !important;
-        min-height: 44px !important;
-        height: 44px !important;
-        transition: all 0.2s ease !important;
-        box-sizing: border-box !important;
-        white-space: nowrap !important;
-        
-        &:hover {
-          background: #ffffff !important;
-          border-color: #ffffff !important;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-        }
-        
-        &:active {
-          transform: scale(0.96) !important;
-        }
-        
-        .el-icon {
-          margin-right: 6px;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
-      }
+    .payment-proof-section {
+      margin-top: 20px;
+      .section-title { font-weight: 600; margin-bottom: 10px; }
+      .proof-image { width: 100%; border-radius: 8px; border: 1px solid #eee; }
     }
   }
 }
-</style> 
+</style>

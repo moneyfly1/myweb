@@ -147,14 +147,12 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleCheckFilled, CircleCloseFilled, Loading } from '@element-plus/icons-vue'
 import { useApi } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
-
 export default {
   name: 'PaymentForm',
   components: {
@@ -186,7 +184,6 @@ export default {
       error_message: ''
     })
     let statusCheckTimer = null
-    
     const onPaymentMethodChange = (method) => {
       selectedPaymentMethod.value = method
     }
@@ -313,7 +310,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .payment-form {
   max-width: 800px;

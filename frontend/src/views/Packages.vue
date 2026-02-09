@@ -1,11 +1,9 @@
 <template>
   <div class="list-container packages-container">
-
     <div v-if="isLoading" class="loading-container">
       <el-icon class="is-loading"><Loading /></el-icon>
       <p>正在加载套餐列表...</p>
     </div>
-
     <div v-else-if="errorMessage" class="error-container">
       <el-alert
         :title="errorMessage"
@@ -17,7 +15,6 @@
         重试加载
       </el-button>
     </div>
-
     <div v-else-if="packages.length > 0" class="packages-grid">
       <el-card 
         v-for="pkg in packages" 
@@ -30,7 +27,6 @@
           <div v-if="pkg.is_popular" class="popular-badge">热门</div>
           <div v-if="pkg.is_recommended" class="recommended-badge">推荐</div>
         </div>
-        
         <div class="package-price">
           <div v-if="userLevel && levelDiscountRate < 1.0" style="display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; align-items: baseline; gap: 4px;">
@@ -49,8 +45,6 @@
             <span class="period">/{{ pkg.duration_days }}天</span>
           </div>
         </div>
-        
-        <!-- 如果管理员输入了描述，优先显示描述；否则显示自动生成的特征列表 -->
         <div v-if="pkg.description && pkg.description.trim()" class="package-description">
           <p>{{ pkg.description }}</p>
         </div>
@@ -62,7 +56,6 @@
             </li>
           </ul>
         </div>
-        
         <div class="package-actions">
           <el-button 
             type="primary" 
@@ -77,11 +70,9 @@
         </div>
       </el-card>
     </div>
-
     <div v-else class="empty-container">
       <el-empty description="暂无可用套餐" />
     </div>
-
     <el-dialog
       v-model="purchaseDialogVisible"
       title="确认购买"
@@ -103,7 +94,6 @@
               <el-descriptions-item label="设备限制">{{ selectedPackage?.device_limit }}个</el-descriptions-item>
             </el-descriptions>
           </div>
-
           <div class="duration-selection" style="margin-top: 12px;">
             <h4>购买时长</h4>
             <el-select
@@ -124,7 +114,6 @@
               {{ durationHint }}
             </div>
           </div>
-
           <div class="coupon-section" style="margin-top: 12px; padding: 12px; background: #f5f7fa; border-radius: 4px">
             <h4 style="margin-bottom: 8px; font-size: 14px;">优惠券（可选）</h4>
             <div class="coupon-input-group">
@@ -170,7 +159,6 @@
             </div>
           </div>
         </div>
-
         <div class="purchase-right">
           <div class="price-summary">
             <h4>费用明细</h4>
@@ -213,7 +201,6 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-
           <div v-if="userLevel && levelDiscountRate < 1.0" class="level-discount-tip" style="margin-top: 12px;">
             <div class="tip-header">
               <el-icon class="tip-icon"><StarFilled /></el-icon>
@@ -225,7 +212,6 @@
               💡 本次购买可节省 ¥{{ calculateLevelDiscount(totalOriginalPrice).toFixed(2) }}，累计消费达到更高等级可享受更多优惠！
             </div>
           </div>
-          
           <div v-else-if="!userLevel || levelDiscountRate >= 1.0" class="level-upgrade-tip" style="margin-top: 12px;">
             <div class="tip-header">
               <el-icon class="tip-icon upgrade-icon"><Promotion /></el-icon>
@@ -237,17 +223,14 @@
               💡 累计消费达到一定金额即可升级会员等级，享受专属折扣优惠。立即购买即可开始累计消费！
             </div>
           </div>
-
           <div class="payment-method-section" style="margin-top: 12px;">
           <h4 class="payment-section-title">支付方式</h4>
-          
           <div class="balance-info">
             <div class="balance-row">
               <span class="balance-label">账户余额：</span>
               <span class="balance-amount">¥{{ userBalance.toFixed(2) }}</span>
             </div>
           </div>
-
           <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" style="width: 100%">
             <el-radio 
               label="balance" 
@@ -307,7 +290,6 @@
               </div>
             </el-radio>
           </el-radio-group>
-
           <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 8px; padding: 8px; background: #e1f3d8; border-radius: 4px">
             <el-alert
               title="将使用余额全额支付"
@@ -327,7 +309,6 @@
             />
           </div>
         </div>
-        
           <div class="purchase-actions" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e4e7ed;">
             <el-button @click="purchaseDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
             <el-button type="primary" @click="confirmPurchase" :loading="isProcessing" :size="isMobile ? 'large' : 'default'">
@@ -337,7 +318,6 @@
         </div>
       </div>
     </el-dialog>
-
     <el-dialog
       v-model="paymentQRVisible"
       title="扫码支付"
@@ -360,9 +340,7 @@
             </el-descriptions-item>
           </el-descriptions>
         </div>
-        
         <div class="qr-code-wrapper">
-          <!-- 如果是支付页面URL，使用iframe嵌入，让浏览器自动处理跳转 -->
           <div v-if="isPaymentPageUrl && paymentUrl" class="payment-page-iframe">
             <iframe 
               ref="paymentIframe"
@@ -373,7 +351,6 @@
               @load="onIframeLoad"
             ></iframe>
           </div>
-          <!-- 如果是二维码图片，直接显示 -->
           <div v-else-if="paymentQRCode" class="qr-code">
             <img 
               :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())" 
@@ -388,7 +365,6 @@
             <p>正在生成二维码...</p>
           </div>
         </div>
-        
         <div class="payment-tips">
           <el-alert
             v-if="isPaymentPageUrl"
@@ -418,7 +394,6 @@
             </template>
           </el-alert>
         </div>
-        
         <div class="payment-actions" :class="{ 'mobile-layout': isMobile }">
           <el-button 
             v-if="isMobile && paymentUrl && (currentOrder?.payment_method_name === 'alipay' || currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))"
@@ -430,7 +405,6 @@
             <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
             跳转到支付宝支付
           </el-button>
-          
           <el-button 
             @click="paymentQRVisible = false"
             size="large"
@@ -441,7 +415,6 @@
         </div>
         </div>
     </el-dialog>
-
     <el-dialog
       v-model="successDialogVisible"
       title="购买成功"
@@ -460,14 +433,12 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion } from '@element-plus/icons-vue'
 import { useApi, couponAPI, userAPI, userLevelAPI, parsePaymentMethods } from '@/utils/api'
-
 export default {
   name: 'Packages',
   components: {
@@ -482,7 +453,6 @@ export default {
   setup() {
     const router = useRouter()
     const api = useApi()
-    
     const packages = ref([])
     const isLoading = ref(false)
     const errorMessage = ref('')
@@ -495,7 +465,6 @@ export default {
     const currentOrder = ref(null)
     const paymentQRCode = ref('')
     const paymentUrl = ref('')
-    
     const isPaymentPageUrl = computed(() => {
       if (!paymentUrl.value) return false
       const url = String(paymentUrl.value).toLowerCase()
@@ -505,59 +474,46 @@ export default {
     })
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
-    
     const couponCode = ref('')
     const validatingCoupon = ref(false)
     const couponInfo = ref(null)
-    
     const paymentMethod = ref('alipay')
     const availablePaymentMethods = ref([])
     const userBalance = ref(0)
-    
     const userLevel = ref(null)
     const levelDiscountRate = ref(1.0)
-    
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
-    
     const isMobile = computed(() => {
       return windowWidth.value <= 768
     })
-    
     const handleResize = () => {
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
       }
     }
-    
     const handleCouponInput = (value) => {
       couponCode.value = value
     }
-    
     const handleCouponFocus = () => {
     }
-    
     const validateCoupon = async () => {
       if (!couponCode.value || !couponCode.value.trim()) {
         ElMessage.warning('请输入优惠券码')
         return
       }
-      
       if (!selectedPackage.value) {
         ElMessage.warning('请先选择套餐')
         return
       }
-      
       validatingCoupon.value = true
       try {
         const totalPrice = totalOriginalPrice.value
         const levelDiscountedPrice = totalPrice * levelDiscountRate.value
-
         const response = await couponAPI.validateCoupon({
           code: couponCode.value.trim(),
           package_id: selectedPackage.value.id,
           amount: levelDiscountedPrice
         })
-        
         if (response.data && response.data.success) {
           couponInfo.value = {
             valid: true,
@@ -583,12 +539,10 @@ export default {
         validatingCoupon.value = false
       }
     }
-    
     const clearCoupon = () => {
       couponCode.value = ''
       couponInfo.value = null
     }
-    
     const getPaymentMethodDisplayName = (method) => {
       if (!method) return '支付宝'
       const methodStr = String(method).toLowerCase()
@@ -605,7 +559,6 @@ export default {
       }
       return '支付宝'
     }
-    
     const orderInfo = reactive({
       orderNo: '',
       packageName: '',
@@ -613,16 +566,13 @@ export default {
       duration: 0,
       paymentUrl: ''
     })
-    
     const calculateLevelDiscount = (price) => {
       if (!price || levelDiscountRate.value >= 1.0) return 0
       return price * (1 - levelDiscountRate.value)
     }
-    
     const packageType = computed(() => {
       if (!selectedPackage.value) return null
       const days = selectedPackage.value.duration_days || 30
-      
       if (days >= 28 && days <= 32) {
         return { type: 'monthly', unit: '个月', days: 30, max: 12 }
       } else if (days >= 88 && days <= 92) {
@@ -637,16 +587,13 @@ export default {
         return { type: 'custom', unit: '个周期', days: days, max: 12 }
       }
     })
-    
     const durationOptions = computed(() => {
       if (!packageType.value) return []
       const type = packageType.value
       const options = []
-      
       for (let i = 1; i <= type.max; i++) {
         const totalDays = type.days * i
         let label = ''
-        
         if (type.type === 'monthly') {
           label = `${i} 个月（${totalDays} 天）`
         } else if (type.type === 'quarterly') {
@@ -660,16 +607,13 @@ export default {
         } else {
           label = `${i} 个周期（${totalDays} 天）`
         }
-        
         options.push({
           value: i,
           label: label
         })
       }
-      
       return options
     })
-    
     const durationPlaceholder = computed(() => {
       if (!packageType.value) return '请选择购买时长'
       const type = packageType.value
@@ -680,7 +624,6 @@ export default {
       if (type.type === 'two_yearly') return '请选择购买两年数'
       return '请选择购买数量'
     })
-    
     const durationHint = computed(() => {
       if (!packageType.value) return '选择购买数量，价格将按比例计算'
       const type = packageType.value
@@ -691,12 +634,10 @@ export default {
       if (type.type === 'two_yearly') return '选择购买两年数，价格将按比例计算'
       return '选择购买数量，价格将按比例计算'
     })
-    
     const durationDisplayText = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value || !packageType.value) return ''
       const type = packageType.value
       const totalDays = type.days * selectedQuantity.value
-      
       if (type.type === 'monthly') {
         return `${selectedQuantity.value} 个月（${totalDays} 天）`
       } else if (type.type === 'quarterly') {
@@ -711,48 +652,37 @@ export default {
         return `${selectedQuantity.value} 个周期（${totalDays} 天）`
       }
     })
-    
     const totalOriginalPrice = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value) return 0
       const singlePrice = parseFloat(selectedPackage.value.price) || 0
       return singlePrice * selectedQuantity.value
     })
-    
     const totalDurationDays = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value || !packageType.value) return 0
       return packageType.value.days * selectedQuantity.value
     })
-    
     const finalAmount = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value) return 0
       const totalPrice = totalOriginalPrice.value
-      
       const levelDiscount = calculateLevelDiscount(totalPrice)
-      
       const couponDiscount = (couponInfo.value && couponInfo.value.valid && couponInfo.value.discount_amount) 
         ? couponInfo.value.discount_amount 
         : 0
-      
       return Math.max(0, totalPrice - levelDiscount - couponDiscount)
     })
-    
     const handleQuantityChange = () => {
       if (couponCode.value && couponInfo.value && couponInfo.value.valid) {
         validateCoupon()
       }
     }
-    
     const loadPackages = async () => {
       try {
         isLoading.value = true
         errorMessage.value = ''
-        
         const response = await api.get('/packages/')
-        
         let packagesList = []
         if (response && response.data) {
           const responseData = response.data
-          
           if (responseData.data && responseData.data.packages && Array.isArray(responseData.data.packages)) {
             packagesList = responseData.data.packages
           } else if (Array.isArray(responseData.data)) {
@@ -767,7 +697,6 @@ export default {
             }
           }
         }
-        
         if (packagesList && Array.isArray(packagesList) && packagesList.length > 0) {
           packages.value = packagesList.map(pkg => ({
             ...pkg,
@@ -801,13 +730,11 @@ export default {
         isLoading.value = false
       }
     }
-    
     const loadUserBalance = async () => {
       try {
         const response = await userAPI.getUserInfo()
         if (response.data && response.data.success && response.data.data) {
           userBalance.value = parseFloat(response.data.data.balance || 0)
-          
           if (response.data.data.user_level) {
             userLevel.value = response.data.data.user_level
             levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
@@ -819,9 +746,7 @@ export default {
                 levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
               }
             } catch (e) {
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('获取用户等级失败:', e)
-              }
+              // 用户等级信息加载失败，使用默认折扣率
             }
           }
         }
@@ -831,7 +756,6 @@ export default {
         levelDiscountRate.value = 1.0
       }
     }
-    
     const loadPaymentMethods = async () => {
       try {
         const response = await api.get('/payment-methods/active')
@@ -843,28 +767,22 @@ export default {
         ]
       }
     }
-    
     const handlePaymentMethodChange = (value) => {
     }
-    
     const selectPackage = async (pkg) => {
       try {
         if (!pkg) {
           ElMessage.error('套餐信息错误，请刷新页面重试')
           return
         }
-        
         if (!pkg.id) {
           ElMessage.error('套餐ID缺失，请刷新页面重试')
           return
         }
-        
         selectedPackage.value = pkg
         selectedQuantity.value = 1
-        
         await loadUserBalance()
         await loadPaymentMethods()
-        
         const finalPrice = finalAmount.value
         if (userBalance.value >= finalPrice && userBalance.value > 0) {
           paymentMethod.value = 'balance'
@@ -873,34 +791,25 @@ export default {
         } else {
           paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
         }
-        
         purchaseDialogVisible.value = true
       } catch (error) {
         ElMessage.error('选择套餐失败: ' + error.message)
       }
     }
-    
     const confirmPurchase = async () => {
       if (paymentMethod.value === 'balance' && userBalance.value < finalAmount.value) {
         ElMessage.error(`余额不足，当前余额：¥${userBalance.value.toFixed(2)}，需要：¥${finalAmount.value.toFixed(2)}`)
         return
       }
-      
-      // 安全检查：混合支付时，余额必须大于0
       if (paymentMethod.value === 'mixed' && userBalance.value <= 0) {
         ElMessage.error('余额不足，无法使用混合支付，请选择其他支付方式')
         return
       }
-      
       try {
-        // 防抖：如果正在处理中，直接返回
         if (isProcessing.value) {
           return
         }
-        
         isProcessing.value = true
-        
-        // 创建订单
         const orderData = {
           package_id: selectedPackage.value.id,
           payment_method: paymentMethod.value === 'balance' ? 'balance' : paymentMethod.value,
@@ -908,12 +817,9 @@ export default {
           currency: 'CNY',
           duration_months: selectedQuantity.value
         }
-        
         if (couponInfo.value && couponInfo.value.valid && couponCode.value) {
           orderData.coupon_code = couponCode.value.trim()
         }
-        
-        // 处理余额支付
         if (paymentMethod.value === 'balance') {
           orderData.use_balance = true
           orderData.balance_amount = finalAmount.value
@@ -922,24 +828,17 @@ export default {
           orderData.balance_amount = userBalance.value
           orderData.amount = finalAmount.value - userBalance.value
         }
-        
-        // 创建订单可能需要较长时间（支付链接生成），优化超时设置
-        // 减少超时时间，快速反馈给用户
         const response = await api.post('/orders/', orderData, {
           timeout: 25000  // 25秒超时，与后端20秒读取超时+5秒缓冲匹配
         }).catch(error => {
           if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
             throw new Error('请求超时，支付宝服务响应较慢，请稍后重试或前往订单页面查看')
           } else if (error.response) {
-            // 服务器返回了错误响应
             const errorMsg = error.response.data?.message || error.response.data?.detail || '创建订单失败'
-            
-            // axios会将响应头转换为小写，所以需要检查小写格式
             const headers = error.response.headers || {}
             const requiresConversion = headers['x-requires-conversion'] === 'true'
             const remainingDays = headers['x-remaining-days'] || '0'
             const remainingValue = headers['x-remaining-value'] || '0'
-
             if (requiresConversion) {
               const conversionError = new Error(errorMsg)
               conversionError.requiresConversion = true
@@ -947,17 +846,12 @@ export default {
               conversionError.remainingValue = remainingValue ? parseFloat(remainingValue) : 0
               throw conversionError
             }
-            
             throw new Error(errorMsg)
           } else {
-            // 网络错误或其他错误
             throw new Error('网络连接失败，请检查网络连接后重试')
           }
         })
-        
-        // 处理响应数据结构：ResponseBase { data: {...}, message: "...", success: true/false }
         let order = null
-        
         if (response.data) {
           if (response.data.success !== false) {
             order = response.data.data || response.data
@@ -967,80 +861,56 @@ export default {
         } else {
           throw new Error('订单创建响应格式错误')
         }
-        
         if (!order) {
           throw new Error('订单创建失败：未返回订单数据')
         }
-        
-        // 设置订单信息（确保订单号正确设置）
         orderInfo.orderNo = order.order_no || order.orderNo || order.order_id || ''
         orderInfo.packageName = selectedPackage.value.name
         orderInfo.amount = order.amount
         orderInfo.duration = selectedPackage.value.duration_days
-        
-        // 保存订单的支付方式信息
         const orderPaymentMethod = order.payment_method_name || paymentMethod.value
         order.payment_method_name = orderPaymentMethod
         order.payment_method = orderPaymentMethod
-        
         if (order.status === 'paid') {
           purchaseDialogVisible.value = false
           ElMessage.success('购买成功！订单已支付')
-          
           if (order.remaining_balance !== undefined) {
             userBalance.value = order.remaining_balance
           }
-          
-          // 显示成功对话框
           successDialogVisible.value = true
-          
           await loadPackages()
         } else if (order.payment_url || order.payment_qr_code) {
           purchaseDialogVisible.value = false
-          
-          // 设置订单信息用于显示
           orderInfo.orderNo = order.order_no || order.orderNo
           orderInfo.packageName = selectedPackage.value.name
           orderInfo.amount = order.amount
           orderInfo.duration = selectedPackage.value.duration_days
           orderInfo.paymentUrl = order.payment_url || order.payment_qr_code
-          
-          // 确保订单包含支付方式信息
           if (!order.payment_method_name && !order.payment_method) {
             order.payment_method_name = paymentMethod.value
             order.payment_method = paymentMethod.value
           }
-          
-           // 判断是否是易支付，如果是则跳转到新页面
           const paymentMethodName = order.payment_method_name || order.payment_method || paymentMethod.value
           const isYipay = paymentMethodName && (
             paymentMethodName.includes('yipay') || 
             paymentMethodName.includes('易支付')
           )
-          
           if (isYipay) {
             const paymentUrl = order.payment_url || order.payment_qr_code
             if (paymentUrl) {
-              // 检测是否在微信内
               const isInWeChat = /MicroMessenger/i.test(navigator.userAgent)
               const isWxpayMethod = paymentMethodName && (
                 paymentMethodName.includes('wxpay') || 
                 paymentMethodName.includes('微信')
               )
-              
-              // 如果是微信内 + 微信支付 + HTTP链接，直接跳转（易支付的微信支付页面）
               if (isInWeChat && isWxpayMethod && (paymentUrl.startsWith('http://') || paymentUrl.startsWith('https://'))) {
                 ElMessage.info('正在跳转到微信支付页面...')
                 window.location.href = paymentUrl
                 return
               }
-              
-              // 检查是否是微信URLScheme（以weixin://或wxp://开头）
               if (paymentUrl.startsWith('weixin://') || paymentUrl.startsWith('wxp://')) {
                 ElMessage.info('正在唤起微信支付...')
                 window.location.href = paymentUrl
-                
-                // 添加页面可见性监听
                 const handleVisibilityChange = async () => {
                   if (document.visibilityState === 'visible') {
                     await checkPaymentStatus()
@@ -1048,10 +918,8 @@ export default {
                   }
                 }
                 document.addEventListener('visibilitychange', handleVisibilityChange)
-                
                 startPaymentStatusCheck()
               } else {
-                // 其他链接类型，跳转到支付页面
                 ElMessage.info('正在跳转到支付页面...')
                 window.location.href = paymentUrl
               }
@@ -1059,7 +927,6 @@ export default {
               ElMessage.error('支付链接不存在')
             }
           } else {
-            // 原始支付宝等，在当前页面显示二维码
             try {
               await showPaymentQRCode(order)
             } catch (error) {
@@ -1068,11 +935,8 @@ export default {
             }
           }
         } else {
-          // 支付URL生成失败，显示提示信息并提供重试选项
           const errorMsg = order.payment_error || order.note || '支付链接生成失败，可能是网络问题或支付宝配置问题'
           const orderNo = order.order_no || order.orderNo || '未知'
-          
-          // 显示错误提示，并提供跳转到订单页面的选项
           ElMessageBox.confirm(
             `${errorMsg}。订单已创建成功（订单号：${orderNo}），您可以：\n\n1. 前往订单页面重新生成支付链接\n2. 稍后重试`,
             '支付链接生成失败',
@@ -1083,23 +947,16 @@ export default {
               distinguishCancelAndClose: true
             }
           ).then(() => {
-            // 用户点击"前往订单页面"
             router.push('/orders')
           }).catch(() => {
-            // 用户点击"稍后重试"或关闭对话框
           })
-          
           purchaseDialogVisible.value = false
         }
-        
       } catch (error) {
-        // 检查是否需要折算套餐
         if (error.requiresConversion) {
           const remainingDays = error.remainingDays || 0
           const remainingValue = error.remainingValue || 0
           const errorMessage = error.message || '您当前有高级套餐，无法购买低等级套餐'
-          
-          // 显示折算提示对话框（包含详细公式说明）
           const conversionMessage = `${errorMessage}\n\n` +
             `📊 折算详情：\n` +
             `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -1110,7 +967,6 @@ export default {
             `⚠️ 重要提示：\n` +
             `折算后，您的设备和时间都将清零，然后可以购买新套餐。\n` +
             `折算操作不可撤销，请谨慎操作。`
-          
           ElMessageBox.confirm(
             conversionMessage,
             '需要折算套餐',
@@ -1122,20 +978,16 @@ export default {
               dangerouslyUseHTMLString: false
             }
           ).then(async () => {
-            // 用户确认折算
             try {
               isProcessing.value = true
               const { subscriptionAPI } = await import('@/utils/api')
               const response = await subscriptionAPI.convertToBalance()
-              
               if (response.data && response.data.success) {
                 const data = response.data.data || {}
                 const convertedAmount = data.converted_amount || data.balance_added || remainingValue
                 const dailyPrice = data.daily_price || 0
                 const originalPackagePrice = data.original_package_price || 0
                 const originalPackageDays = data.original_package_days || 0
-                
-                // 显示详细的折算成功信息
                 let successMessage = `套餐折算成功！\n\n`
                 successMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
                 successMessage += `已返还金额：¥${convertedAmount.toFixed(2)}\n`
@@ -1147,14 +999,9 @@ export default {
                   successMessage += `折算金额：¥${convertedAmount.toFixed(2)}\n`
                 }
                 successMessage += `当前余额：¥${data.new_balance?.toFixed(2) || '0.00'}\n`
-                
                 ElMessage.success(successMessage)
-                
                 await loadUserBalance()
-                
                 purchaseDialogVisible.value = false
-                
-                // 提示用户可以重新购买
                 ElMessageBox.alert(
                   '套餐已折算成余额，您现在可以购买新套餐了。',
                   '折算成功',
@@ -1173,7 +1020,6 @@ export default {
               isProcessing.value = false
             }
           }).catch(() => {
-            // 用户取消折算
           })
         } else {
           const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || '创建订单失败，请重试'
@@ -1183,31 +1029,20 @@ export default {
         isProcessing.value = false
       }
     }
-    
-    // 跳转到支付宝App
     const openAlipayApp = () => {
       if (!paymentUrl.value) {
         ElMessage.error('支付链接不存在')
         return
       }
-      
-      // 生成支付宝App跳转链接
-      // 支付宝App的URL Scheme格式：alipays://platformapi/startapp?saId=10000007&qrcode=支付URL
       const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
-      
       try {
-        // 添加页面可见性监听，当用户从支付宝返回时立即检查支付状态
         const handleVisibilityChange = async () => {
           if (document.visibilityState === 'visible' && paymentQRVisible.value) {
-            // 用户返回页面，立即检查支付状态
             await checkPaymentStatus()
-            // 移除监听器
             document.removeEventListener('visibilitychange', handleVisibilityChange)
           }
         }
         document.addEventListener('visibilitychange', handleVisibilityChange)
-        
-        // 添加页面焦点监听，当用户切换回页面时检查支付状态
         const handleFocus = async () => {
           if (paymentQRVisible.value) {
             await checkPaymentStatus()
@@ -1215,11 +1050,7 @@ export default {
           }
         }
         window.addEventListener('focus', handleFocus)
-        
-        // 尝试打开支付宝App
         window.location.href = alipayAppUrl
-        
-        // 如果3秒后还在当前页面，说明可能没有安装支付宝App，提示用户
         setTimeout(() => {
           ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
         }, 3000)
@@ -1227,22 +1058,14 @@ export default {
         ElMessage.error('跳转失败，请使用支付宝扫描二维码完成支付')
       }
     }
-    
-    // 显示支付二维码
     const showPaymentQRCode = async (order) => {
       try {
-        // 尝试多种方式获取支付URL
         const url = order.payment_url || order.payment_qr_code || orderInfo.paymentUrl
-        
         if (!url) {
           ElMessage.error('支付链接生成失败，请重试或前往订单页面重新生成')
           return
         }
-        
-        // 保存原始支付URL，用于跳转支付宝App
         paymentUrl.value = url
-        
-        // 设置当前订单信息，优先使用订单中的支付方式，其次使用当前选择的支付方式
         const orderPaymentMethod = order.payment_method_name || order.payment_method || paymentMethod.value
         currentOrder.value = {
           order_no: order.order_no || orderInfo.orderNo,
@@ -1251,16 +1074,9 @@ export default {
           payment_method_name: orderPaymentMethod,
           payment_method: orderPaymentMethod
         }
-        
-        
-        // 使用qrcode库将支付URL生成为二维码图片
         const paymentMethodForQR = orderPaymentMethod
-      
       try {
-        // 动态导入qrcode库
         const QRCode = await import('qrcode')
-        
-        // 根据设备类型调整二维码参数
         const isMobileDevice = window.innerWidth <= 768
         const qrOptions = {
           width: isMobileDevice ? 200 : 256,
@@ -1271,26 +1087,17 @@ export default {
           },
           errorCorrectionLevel: 'M'
         }
-        
         if (!url || url.trim() === '') {
           ElMessage.error('支付链接为空，请联系管理员检查配置')
           return
         }
-        
-        // 确保URL是字符串格式
         const urlString = String(url).trim()
-        
-        // 检查是否是支付页面URL（需要使用iframe嵌入）
         const isYipayPaymentPage = urlString.includes('payApi/pay/payment') || 
                                    urlString.includes('payapi/pay/payment') ||
                                    urlString.includes('submit.php')
-        
         if (isYipayPaymentPage) {
-          // 如果是支付页面URL，使用iframe嵌入，不生成二维码
           paymentQRCode.value = '' // 清空二维码，使用iframe
-          // paymentUrl已经设置，iframe会自动加载
         } else {
-          // 如果是二维码URL，生成二维码图片
           const qrCodeDataURL = await QRCode.toDataURL(urlString, qrOptions)
           paymentQRCode.value = qrCodeDataURL
         }
@@ -1299,14 +1106,8 @@ export default {
         ElMessage.error('生成二维码失败: ' + (error.message || '未知错误') + '，请刷新页面重试')
         return
       }
-      
-        // 显示二维码对话框
         paymentQRVisible.value = true
-        
-        // 等待一下确保对话框已渲染
         await new Promise(resolve => setTimeout(resolve, 100))
-        
-        // 开始检查支付状态
         startPaymentStatusCheck()
       } catch (error) {
         console.error('showPaymentQRCode 错误:', error)
@@ -1314,20 +1115,11 @@ export default {
         throw error
       }
     }
-    
-    // iframe引用
     const paymentIframe = ref(null)
-    
-    // iframe加载完成处理
     const onIframeLoad = (event) => {
       const iframe = event.target
-      
-      // 监听iframe的URL变化，如果跳转到支付成功页面，立即检测
       try {
-        // 尝试获取iframe的URL（可能因为跨域无法访问）
         const iframeUrl = iframe.contentWindow?.location?.href || iframe.src
-        
-        // 检查URL中是否包含支付成功的标识
         if (iframeUrl && (
           iframeUrl.includes('success') || 
           iframeUrl.includes('paid') || 
@@ -1336,16 +1128,13 @@ export default {
           iframeUrl.includes('callback') ||
           iframeUrl.includes('return')
         )) {
-          // 立即检测支付状态（延迟一点确保后端已处理回调）
           setTimeout(() => {
             checkPaymentStatus()
           }, 1000)
         }
       } catch (e) {
-        // 跨域限制，无法访问iframe内容，这是正常的
+        // 页面可见性变化处理失败，不影响主功能
       }
-      
-      // 设置定时器，定期检查iframe URL变化（如果可能）
       const iframeCheckInterval = setInterval(() => {
         try {
           if (iframe && iframe.contentWindow) {
@@ -1359,72 +1148,49 @@ export default {
               currentUrl.includes('return')
             )) {
               clearInterval(iframeCheckInterval)
-              // 立即检测支付状态
               setTimeout(() => {
                 checkPaymentStatus()
               }, 1000)
             }
           }
         } catch (e) {
-          // 跨域限制，无法访问
+          // iframe 检查失败，不影响主功能
         }
       }, 2000)
-      
-      // 10秒后停止检查iframe URL（避免无限检查）
       setTimeout(() => {
         clearInterval(iframeCheckInterval)
       }, 10000)
-      
-      // iframe加载完成后，开始检查支付状态
       startPaymentStatusCheck()
     }
-    
-    // 存储事件监听器引用，以便清理
     let visibilityChangeHandler = null
     let focusHandler = null
-    
-    // 开始检查支付状态
     const startPaymentStatusCheck = () => {
-      // 清除之前的检查
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
         paymentStatusCheckInterval = null
       }
-      
-      // 清理之前的事件监听器
       if (visibilityChangeHandler) {
         document.removeEventListener('visibilitychange', visibilityChangeHandler)
       }
       if (focusHandler) {
         window.removeEventListener('focus', focusHandler)
       }
-      
-      // 立即检查一次支付状态
       checkPaymentStatus()
-      
-      // 每1秒检查一次支付状态（提高检查频率，快速响应支付成功）
       paymentStatusCheckInterval = setInterval(async () => {
         await checkPaymentStatus()
       }, 1000)
-      
-      // 添加页面可见性监听，当用户从其他应用返回时立即检查
       visibilityChangeHandler = async () => {
         if (document.visibilityState === 'visible' && paymentQRVisible.value) {
-          // 用户返回页面，立即检查支付状态
           await checkPaymentStatus()
         }
       }
       document.addEventListener('visibilitychange', visibilityChangeHandler)
-      
-      // 添加页面焦点监听
       focusHandler = async () => {
         if (paymentQRVisible.value) {
           await checkPaymentStatus()
         }
       }
       window.addEventListener('focus', focusHandler)
-      
-      // 30分钟后停止检查
       setTimeout(() => {
         if (paymentStatusCheckInterval) {
           clearInterval(paymentStatusCheckInterval)
@@ -1440,74 +1206,40 @@ export default {
         }
       }, 30 * 60 * 1000)
     }
-    
-    // 检查支付状态
     const checkPaymentStatus = async () => {
       if (!currentOrder.value || !currentOrder.value.order_no) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('检查支付状态：订单信息不存在', currentOrder.value)
-        }
         return
       }
-      
-      // 如果已经检测到支付成功，不再继续检测
       if (!paymentQRVisible.value) {
         return
       }
-      
       try {
         isCheckingPayment.value = true
-        
         const response = await api.get(`/orders/${currentOrder.value.order_no}/status`, {
           timeout: 10000
         })
-        
         if (process.env.NODE_ENV === 'development') {
-          console.log('支付状态检查响应:', {
+          console.log('订单状态检查:', {
             order_no: currentOrder.value.order_no,
             response: response.data,
             status: response.data?.data?.status
           })
         }
-
         if (!response || !response.data) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('支付状态检查：响应格式错误', response)
-          }
           return
         }
-
         if (response.data.success === false) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('支付状态检查：API返回失败', response.data.message)
-          }
           return
         }
-        
         const orderData = response.data.data
         if (!orderData) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('支付状态检查：订单数据不存在', response.data)
-          }
           return
         }
-
-        if (process.env.NODE_ENV === 'development') {
-          console.log('当前订单状态:', orderData.status, '订单号:', orderData.order_no)
-        }
-        
         if (orderData.status === 'paid') {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('✅ 支付成功，开始处理...')
-          }
-
-          // 立即停止所有检测
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
           }
-          
-          // 清理事件监听器
           if (visibilityChangeHandler) {
             document.removeEventListener('visibilitychange', visibilityChangeHandler)
             visibilityChangeHandler = null
@@ -1516,25 +1248,14 @@ export default {
             window.removeEventListener('focus', focusHandler)
             focusHandler = null
           }
-
-          // 立即关闭支付对话框，防止继续检测
           paymentQRVisible.value = false
           successDialogVisible.value = true
           ElMessage.success('支付成功！您的订阅已激活')
-          
-          // 设置标志，防止重复处理
           isCheckingPayment.value = false
-
           const refreshUserInfo = async () => {
             try {
-              if (process.env.NODE_ENV === 'development') {
-                console.log('刷新用户信息...')
-              }
               const userResponse = await userAPI.getUserInfo()
               if (userResponse?.data?.success) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('✅ 用户信息已刷新')
-                }
                 userBalance.value = parseFloat(userResponse.data.data.balance || 0)
               }
             } catch (refreshError) {
@@ -1543,19 +1264,11 @@ export default {
               }
             }
           }
-
           const refreshSubscription = async () => {
             try {
-              if (process.env.NODE_ENV === 'development') {
-                console.log('刷新订阅信息...')
-              }
               const { subscriptionAPI } = await import('@/utils/api')
               const subscriptionResponse = await subscriptionAPI.getUserSubscription()
               if (subscriptionResponse?.data?.success) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('✅ 订阅信息已刷新', subscriptionResponse.data.data)
-                }
-                // 触发全局事件，通知其他页面刷新订阅信息
                 window.dispatchEvent(new CustomEvent('subscription-updated', {
                   detail: subscriptionResponse.data.data
                 }))
@@ -1566,42 +1279,28 @@ export default {
               }
             }
           }
-
-          // 立即刷新用户信息和订阅信息（异步执行，不阻塞）
           Promise.all([refreshUserInfo(), refreshSubscription()]).then(() => {
-            // 延迟再次刷新，确保数据完全同步
             setTimeout(async () => {
               await Promise.all([refreshUserInfo(), refreshSubscription()])
             }, 500)
           })
-
           setTimeout(() => {
             successDialogVisible.value = false
             loadPackages()
-            // 再次刷新确保数据最新
             Promise.all([refreshUserInfo(), refreshSubscription()])
-            // 如果当前在订阅页面，刷新整个页面以确保显示最新数据
             if (router.currentRoute.value.path === '/subscription') {
               router.go(0)
             }
-            // 如果当前在仪表板页面，也刷新
             if (router.currentRoute.value.path === '/dashboard') {
               router.go(0)
             }
           }, 3000)
-          
-          // 立即返回，不再执行后续检测逻辑
           return
         } else if (orderData.status === 'cancelled') {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('订单已取消')
-          }
           if (paymentStatusCheckInterval) {
             clearInterval(paymentStatusCheckInterval)
             paymentStatusCheckInterval = null
           }
-          
-          // 清理事件监听器
           if (visibilityChangeHandler) {
             document.removeEventListener('visibilitychange', visibilityChangeHandler)
             visibilityChangeHandler = null
@@ -1610,15 +1309,9 @@ export default {
             window.removeEventListener('focus', focusHandler)
             focusHandler = null
           }
-          
           paymentQRVisible.value = false
           ElMessage.info('订单已取消')
-        } else {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('订单状态:', orderData.status, '继续等待...')
-          }
         }
-
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
           console.error('检查支付状态出错:', {
@@ -1628,29 +1321,16 @@ export default {
             order_no: currentOrder.value?.order_no
           })
         }
-
-        if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('支付状态检查超时，继续轮询...')
-          }
-        } else {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('支付状态检查出错，继续轮询:', error.message)
-          }
-        }
+        // 超时错误已在上面的 catch 中处理
       } finally {
         isCheckingPayment.value = false
       }
     }
-    
     const onImageLoad = () => {
     }
-    
     const onImageError = async (event) => {
       if (paymentQRCode.value && paymentQRCode.value.startsWith('data:')) {
         ElMessage.warning('二维码显示异常，正在重新生成...')
-        
-        // 从订单信息中重新获取支付URL并生成二维码
         const paymentUrl = orderInfo.paymentUrl || currentOrder.value?.payment_url
         if (paymentUrl) {
           try {
@@ -1676,62 +1356,43 @@ export default {
         ElMessage.error('二维码加载失败，请刷新页面重试')
       }
     }
-    
-    // 跳转到订阅页面
     const goToSubscription = () => {
       successDialogVisible.value = false
       router.push('/subscription')
     }
-
     const onPaymentSuccess = () => {
     }
     const onPaymentCancel = () => {
     }
-
     const onPaymentError = (error) => {
     }
-    
-    // 事件处理函数（需要在 onMounted 和 onUnmounted 中共享）
     const handleSubscriptionUpdate = async (event) => {
       await loadUserBalance()
     }
-    
     const handleUserInfoUpdate = async () => {
       await loadUserBalance()
     }
-    
-    // 生命周期
     onMounted(async () => {
-      // 先加载用户等级信息（用于显示折扣价格）
       await loadUserBalance()
-      // 再加载套餐列表
       await loadPackages()
-      // 初始化窗口大小
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
         window.addEventListener('resize', handleResize)
       }
-      
-      // 监听订阅更新事件（从其他页面触发）
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
     })
-    
     onUnmounted(() => {
-      // 清理定时器
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
         paymentStatusCheckInterval = null
       }
-      // 清理窗口大小监听
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)
       }
-      // 清理事件监听器
       window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
       window.removeEventListener('user-info-updated', handleUserInfoUpdate)
     })
-    
     return {
       packages,
       isLoading,
@@ -1760,30 +1421,25 @@ export default {
       onPaymentCancel,
       onPaymentError,
       goToSubscription,
-      // 优惠券相关
       couponCode,
       validatingCoupon,
       couponInfo,
       finalAmount,
       handleCouponInput,
       handleCouponFocus,
-      // 支付方式相关
       paymentMethod,
       availablePaymentMethods,
       loadPaymentMethods,
       userBalance,
       handlePaymentMethodChange,
       loadUserBalance,
-      // 移动端检测
       isMobile,
       validateCoupon,
       clearCoupon,
       getPaymentMethodDisplayName,
-      // 用户等级相关
       userLevel,
       levelDiscountRate,
       calculateLevelDiscount,
-      // 时长选择相关
       selectedQuantity,
       packageType,
       durationOptions,
@@ -1797,51 +1453,40 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
 @use '@/styles/list-common.scss';
-
-// 页面头部已移除，统一风格
-
 .packages-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 30px;
   margin-top: 20px;
 }
-
 .package-card {
   position: relative;
   text-align: center;
   transition: all 0.3s ease;
   border: 2px solid transparent;
 }
-
 .package-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
 }
-
 .package-card.popular {
   border-color: #409EFF;
 }
-
 .package-card.recommended {
   border-color: #67C23A;
 }
-
 .package-header {
   position: relative;
   margin-bottom: 20px;
 }
-
 .package-name {
   margin: 0;
   color: #303133;
   font-size: 20px;
   font-weight: bold;
 }
-
 .popular-badge,
 .recommended-badge {
   position: absolute;
@@ -1853,77 +1498,62 @@ export default {
   font-weight: bold;
   color: white;
 }
-
 .popular-badge {
   background: #409EFF;
 }
-
 .recommended-badge {
   background: #67C23A;
 }
-
 .package-price {
   margin-bottom: 30px;
 }
-
 .currency {
   font-size: 18px;
   color: #909399;
   vertical-align: top;
 }
-
 .amount {
   font-size: 36px;
   font-weight: bold;
   color: #409EFF;
   margin: 0 5px;
 }
-
 .period {
   font-size: 16px;
   color: #909399;
 }
-
 .package-features {
   margin-bottom: 30px;
   text-align: left;
 }
-
 .package-features :is(ul) {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-
 .package-features :is(li) {
   padding: 8px 0;
   color: #606266;
   display: flex;
   align-items: center;
 }
-
 .package-features :is(li) :is(i) {
   color: #67C23A;
   margin-right: 10px;
   font-size: 16px;
 }
-
 .package-actions {
   margin-bottom: 20px;
 }
-
 .package-actions .el-button {
   cursor: pointer;
   position: relative;
   z-index: 1;
 }
-
 .package-actions .el-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
-
-/* 购买确认对话框 */
 .purchase-confirm-horizontal {
   display: flex;
   gap: 16px;
@@ -1931,22 +1561,17 @@ export default {
   max-height: calc(80vh - 120px);
   overflow-y: auto;
 }
-
 .purchase-left {
   flex: 1;
   min-width: 0;
 }
-
 .purchase-right {
   flex: 1;
   min-width: 0;
 }
-
 .purchase-confirm {
   padding: 10px 0;
 }
-
-
 .package-summary :is(h4),
 .duration-selection :is(h4),
 .price-summary :is(h4),
@@ -1957,12 +1582,10 @@ export default {
   font-size: 14px;
   font-weight: 600;
 }
-
 .amount {
   color: #f56c6c;
   font-weight: bold;
 }
-
 .purchase-actions {
   text-align: center;
   margin-top: 12px;
@@ -1970,43 +1593,33 @@ export default {
   gap: 12px;
   justify-content: flex-end;
 }
-
 .purchase-actions .el-button {
   margin: 0;
   min-width: 100px;
 }
-
-/* 成功提示对话框 */
 .success-message {
   text-align: center;
   padding: 20px 0;
 }
-
 .success-icon {
   font-size: 48px;
   color: #67C23A;
   margin-bottom: 15px;
 }
-
 .success-message h3 {
   margin: 15px 0;
   color: #303133;
 }
-
 .success-message :is(p) {
   margin-bottom: 20px;
   color: #606266;
 }
-
 .success-actions {
   margin-top: 20px;
 }
-
 .success-actions .el-button {
   margin: 0 10px;
 }
-
-/* 套餐描述样式 */
 .package-description {
   margin: 15px 0;
   padding: 10px;
@@ -2014,30 +1627,24 @@ export default {
   border-radius: 6px;
   border-left: 3px solid #409EFF;
 }
-
 .package-description :is(p) {
   margin: 0;
   color: #606266;
   font-size: 14px;
   line-height: 1.5;
 }
-
-/* 手机端对话框优化 */
 .purchase-dialog {
   :deep(.el-dialog) {
     margin: 3vh auto !important;
     max-height: 92vh;
     overflow-y: auto;
   }
-  
   :deep(.el-dialog__body) {
     padding: 12px 20px !important;
     max-height: calc(92vh - 100px);
     overflow-y: auto;
   }
 }
-
-/* 用户等级提示样式 */
 .level-discount-tip {
   margin-top: 0;
   padding: 10px;
@@ -2045,38 +1652,32 @@ export default {
   border-radius: 4px;
   border-left: 3px solid #4caf50;
 }
-
 .level-discount-tip .tip-header {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
 }
-
 .level-discount-tip .tip-icon {
   color: #4caf50;
   font-size: 16px;
   flex-shrink: 0;
 }
-
 .level-discount-tip .tip-title {
   font-weight: 600;
   color: #2e7d32;
   font-size: 13px;
   line-height: 1.4;
 }
-
 .level-discount-tip .level-name-highlight {
   font-weight: bold;
 }
-
 .level-discount-tip .tip-content {
   font-size: 12px;
   color: #388e3c;
   line-height: 1.5;
   margin-top: 4px;
 }
-
 .level-upgrade-tip {
   margin-top: 0;
   padding: 10px;
@@ -2084,64 +1685,52 @@ export default {
   border-radius: 4px;
   border-left: 3px solid #ff9800;
 }
-
 .level-upgrade-tip .tip-header {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
 }
-
 .level-upgrade-tip .upgrade-icon {
   color: #ff9800;
   font-size: 16px;
   flex-shrink: 0;
 }
-
 .level-upgrade-tip .upgrade-title {
   font-weight: 600;
   color: #e65100;
   font-size: 13px;
   line-height: 1.4;
 }
-
 .level-upgrade-tip .upgrade-content {
   font-size: 12px;
   color: #f57c00;
   line-height: 1.5;
   margin-top: 4px;
 }
-
-/* 价格汇总样式 */
 .price-summary {
   margin-top: 0;
   padding: 0;
   background: transparent;
   border-radius: 4px;
 }
-
 .price-summary .discount-item {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .price-summary .discount-amount {
   color: #67c23a;
   font-weight: bold;
 }
-
 .price-summary .level-tag {
   flex-shrink: 0;
 }
-
 .price-summary .final-amount {
   font-size: 18px;
   color: #f56c6c;
   font-weight: bold;
 }
-
-/* 支付方式选择样式 */
 .payment-method-section {
   margin-top: 0;
   padding: 0;
@@ -2149,7 +1738,6 @@ export default {
   border-radius: 4px;
   border: 1px solid #e4e7ed;
 }
-
 .payment-option {
   width: 100%;
   margin-bottom: 10px;
@@ -2157,17 +1745,14 @@ export default {
   border: 1px solid #e4e7ed;
   border-radius: 6px;
   transition: all 0.3s;
-  
   &:hover {
     border-color: #409eff;
     background-color: #f0f9ff;
   }
-  
   &:last-child {
     margin-bottom: 0;
   }
 }
-
 .payment-option-content {
   display: flex;
   justify-content: space-between;
@@ -2177,40 +1762,32 @@ export default {
   flex-wrap: wrap;
   gap: 4px;
 }
-
 .payment-option-label {
   display: flex;
   align-items: center;
   font-weight: 500;
 }
-
 .payment-icon {
   margin-right: 6px;
   font-size: 16px;
 }
-
 .payment-status {
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
-  
   &.success {
     color: #67c23a;
   }
-  
   &.error {
     color: #f56c6c;
   }
-  
   &.disabled {
     color: #909399;
   }
-  
   &.info {
     color: #409eff;
   }
 }
-
 .payment-method-section .payment-section-title {
   margin-bottom: 15px;
   margin-top: 0;
@@ -2218,92 +1795,72 @@ export default {
   font-size: 16px;
   font-weight: 600;
 }
-
-/* 账户余额显示样式 */
 .balance-info {
   margin-bottom: 10px;
   padding: 8px;
   background: #f5f7fa;
   border-radius: 4px;
 }
-
 .balance-info .balance-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .balance-info .balance-label {
   font-weight: 600;
   color: #606266;
   font-size: 13px;
 }
-
 .balance-info .balance-amount {
   font-size: 16px;
   color: #409eff;
   font-weight: 700;
 }
-
-/* 优惠券输入组布局优化 */
 .coupon-input-group {
   display: flex;
   gap: 10px;
   align-items: flex-start;
   flex-wrap: nowrap;
 }
-
 .coupon-input {
   flex: 1;
   min-width: 0;
 }
-
 .coupon-buttons {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
 }
-
-/* 响应式设计 */
 @media (max-width: 768px) {
-  /* 手机端对话框 */
   .purchase-dialog {
     :deep(.el-dialog) {
       width: 95% !important;
       margin: 2vh auto !important;
       max-height: 96vh;
     }
-    
     :deep(.el-dialog__header) {
       padding: 15px 15px 10px 15px;
     }
-    
     :deep(.el-dialog__title) {
       font-size: 16px;
       font-weight: 600;
     }
-    
     :deep(.el-dialog__body) {
       padding: 10px 15px 15px 15px !important;
       max-height: calc(96vh - 80px);
       overflow-y: auto;
     }
   }
-  
-  /* 手机端布局优化 */
   .purchase-confirm-horizontal {
     flex-direction: column;
     gap: 16px;
     padding: 5px 0;
     max-height: calc(96vh - 120px);
   }
-  
   .purchase-left,
   .purchase-right {
     width: 100%;
   }
-  
-  /* 手机端标题优化 */
   .package-summary :is(h4),
   .duration-selection :is(h4),
   .price-summary :is(h4),
@@ -2311,152 +1868,119 @@ export default {
     font-size: 15px;
     margin-bottom: 10px;
   }
-  
-  /* 手机端描述列表优化 */
   .purchase-confirm-horizontal :deep(.el-descriptions) {
     font-size: 13px;
   }
-  
   .purchase-confirm-horizontal :deep(.el-descriptions__label) {
     width: 32% !important;
     font-size: 13px;
     padding: 10px 8px !important;
     font-weight: 500;
   }
-  
   .purchase-confirm-horizontal :deep(.el-descriptions__content) {
     width: 68% !important;
     font-size: 13px;
     padding: 10px 8px !important;
   }
-  
   .purchase-confirm-horizontal :deep(.el-descriptions__table) {
     width: 100%;
   }
-  
-  /* 手机端优惠券输入布局 */
   .coupon-section {
     padding: 12px !important;
   }
-  
   .coupon-input-group {
     flex-direction: column;
     gap: 10px;
   }
-  
   .coupon-input {
     width: 100%;
   }
-  
   .coupon-buttons {
     width: 100%;
     display: flex;
     gap: 8px;
   }
-  
   .coupon-buttons .el-button {
     flex: 1;
     min-height: 44px;
     font-size: 15px;
   }
-  
-  /* 手机端购买时长选择优化 */
   .duration-selection {
     :deep(.el-select) {
       .el-input__wrapper {
         min-height: 44px;
       }
-      
       .el-input__inner {
         font-size: 15px;
       }
     }
   }
-  
   .form-hint {
     font-size: 12px !important;
     margin-top: 6px !important;
   }
-  
-  /* 手机端支付方式优化 */
   .payment-method-section {
     border: none;
     padding: 0;
-    
     :deep(.el-radio-group) {
       width: 100%;
     }
   }
-  
   .payment-option {
     padding: 14px;
     margin-bottom: 12px;
     min-height: 56px;
     border: 1.5px solid #e4e7ed;
-    
     &:active {
       background-color: #f0f9ff;
       border-color: #409eff;
     }
   }
-  
   .payment-option-content {
     font-size: 15px;
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
   }
-  
   .payment-option-label {
     font-size: 15px;
     font-weight: 600;
     width: 100%;
   }
-  
   .payment-icon {
     font-size: 18px;
     margin-right: 8px;
   }
-  
   .payment-status {
     font-size: 13px;
     width: 100%;
     text-align: left;
     line-height: 1.4;
   }
-  
   .balance-info {
     padding: 10px;
     margin-bottom: 12px;
-    
     .balance-label {
       font-size: 14px;
     }
-    
     .balance-amount {
       font-size: 18px;
     }
   }
-  
-  /* 手机端提示框优化 */
   .level-discount-tip,
   .level-upgrade-tip {
     padding: 12px;
     margin-top: 12px;
-    
     .tip-title {
       font-size: 13px;
       line-height: 1.5;
     }
-    
     .tip-content {
       font-size: 12px;
       line-height: 1.5;
       margin-top: 6px;
     }
   }
-  
-  /* 手机端购买按钮优化 */
   .purchase-actions {
     display: flex;
     flex-direction: column;
@@ -2464,7 +1988,6 @@ export default {
     margin-top: 12px;
     padding-top: 12px;
   }
-  
   .purchase-actions .el-button {
     width: 100%;
     min-height: 48px;
@@ -2472,66 +1995,50 @@ export default {
     font-weight: 600;
     margin: 0 !important;
   }
-  
-  /* 手机端价格显示优化 */
   .price-summary {
     .final-amount {
       font-size: 20px;
     }
-    
     .discount-amount {
       font-size: 14px;
     }
   }
-  
-  /* 手机端套餐卡片优化 */
   .packages-grid {
     grid-template-columns: 1fr;
     gap: 16px;
     padding: 12px;
     margin-top: 12px;
   }
-  
   .package-card {
     margin: 0;
     border-radius: 12px;
-    
     :deep(.el-card__body) {
       padding: 16px;
     }
-    
     .package-header {
       margin-bottom: 16px;
-      
       .package-name {
         font-size: 18px;
         font-weight: 600;
       }
     }
-    
     .package-price {
       margin-bottom: 16px;
-      
       .amount {
         font-size: 28px;
       }
-      
       .currency {
         font-size: 18px;
       }
-      
       .period {
         font-size: 14px;
       }
     }
-    
     .package-features {
       margin-bottom: 16px;
       text-align: left;
-      
       ul {
         padding-left: 20px;
-        
         li {
           font-size: 14px;
           line-height: 1.8;
@@ -2539,7 +2046,6 @@ export default {
         }
       }
     }
-    
     .package-actions {
       .el-button {
         min-height: 48px;
@@ -2548,80 +2054,63 @@ export default {
       }
     }
   }
-  
   .popular-badge,
   .recommended-badge {
     font-size: 12px;
     padding: 4px 10px;
   }
-  
   .purchase-confirm :deep(.el-descriptions) {
     font-size: 13px;
   }
-  
   .purchase-confirm :deep(.el-descriptions__label) {
     width: 35% !important;
   }
-  
   .purchase-confirm :deep(.el-descriptions__content) {
     width: 65% !important;
   }
-  
   .packages-grid {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  
   .package-card {
     margin: 0;
     border-radius: 12px;
-    
     :deep(.el-card__body) {
       padding: 20px 16px;
     }
-    
     .package-header {
       flex-direction: column;
       align-items: flex-start;
       gap: 12px;
       margin-bottom: 16px;
-      
       .package-name {
         font-size: 1.25rem;
         margin: 0;
       }
-      
       .popular-badge,
       .recommended-badge {
         font-size: 0.75rem;
         padding: 4px 10px;
       }
     }
-    
     .package-price {
       margin-bottom: 20px;
-      
       .currency {
         font-size: 1.25rem;
       }
-      
       .amount {
         font-size: 2rem;
       }
-      
       .period {
         font-size: 1rem;
       }
     }
-    
     .package-features {
       margin-bottom: 20px;
-      
       :is(ul) {
         :is(li) {
           padding: 8px 0;
           font-size: 0.875rem;
-          
           :is(i) {
             font-size: 14px;
             margin-right: 8px;
@@ -2629,16 +2118,13 @@ export default {
         }
       }
     }
-    
     .package-description {
       margin-bottom: 20px;
-      
       :is(p) {
         font-size: 0.875rem;
         line-height: 1.6;
       }
     }
-    
     .package-button {
       width: 100%;
       padding: 14px;
@@ -2646,7 +2132,6 @@ export default {
     }
   }
 }
-
 @media (max-width: 480px) {
   .package-card {
     .package-price {
@@ -2656,8 +2141,6 @@ export default {
     }
   }
 }
-
-/* 修复输入框嵌套问题 - 移除内部边框和嵌套效果 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -2665,7 +2148,6 @@ export default {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -2673,65 +2155,51 @@ export default {
   background-color: transparent !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper.is-focus:hover) {
   background-color: #ffffff !important;
 }
-
-/* 确保输入框内部所有子元素背景透明 */
 :deep(.el-input__wrapper > *) {
   background-color: transparent !important;
   background: transparent !important;
 }
-
-/* 移除 textarea 的嵌套边框 */
 :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-textarea__inner:focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
-/* 专门修复优惠券输入框 - 确保可以正常输入 */
 .coupon-section {
   position: relative;
   z-index: 1;
 }
-
 .coupon-section :deep(.el-input) {
   pointer-events: auto !important;
   position: relative;
   z-index: 10 !important;
 }
-
 .coupon-section :deep(.el-input__wrapper) {
   pointer-events: auto !important;
   cursor: text !important;
   position: relative;
   z-index: 10 !important;
 }
-
 .coupon-section :deep(.el-input__inner) {
   pointer-events: auto !important;
   cursor: text !important;
@@ -2741,95 +2209,72 @@ export default {
   user-select: auto !important;
   -webkit-tap-highlight-color: transparent !important;
 }
-
 .coupon-section :deep(.el-input:not(.is-disabled)) {
   pointer-events: auto !important;
 }
-
 .coupon-section :deep(.el-input:not(.is-disabled) .el-input__wrapper) {
   pointer-events: auto !important;
   cursor: text !important;
 }
-
 .coupon-section :deep(.el-input:not(.is-disabled) .el-input__inner) {
   pointer-events: auto !important;
   cursor: text !important;
   -webkit-user-select: auto !important;
   user-select: auto !important;
 }
-
 .coupon-section :deep(.el-input.is-disabled) {
   pointer-events: none !important;
 }
-
 .coupon-section :deep(.el-input.is-disabled .el-input__wrapper) {
   pointer-events: none !important;
   cursor: not-allowed !important;
 }
-
 .coupon-section :deep(.el-input.is-disabled .el-input__inner) {
   pointer-events: none !important;
   cursor: not-allowed !important;
 }
-
-/* 确保优惠券输入框在对话框中的层级正确 */
 .purchase-confirm .coupon-section {
   position: relative;
   z-index: 1;
 }
-
 .purchase-confirm .coupon-section .el-input {
   position: relative;
   z-index: 2;
 }
-
-/* 移除可能阻止输入的事件 */
 .coupon-input {
   pointer-events: auto !important;
 }
-
 .coupon-input :deep(*) {
   pointer-events: auto !important;
 }
-
 .coupon-input :deep(.el-input__wrapper) {
   pointer-events: auto !important;
 }
-
 .coupon-input :deep(.el-input__inner) {
   pointer-events: auto !important;
 }
-
-/* -----------------------------
-   支付二维码弹窗样式优化
-   ----------------------------- */
 .payment-qr-dialog {
   .el-dialog__body {
     padding: 20px;
   }
 }
-
 .payment-qr-container {
   .order-info {
     margin-bottom: 20px;
-    
     h3 {
       margin: 0 0 15px 0;
       font-size: 18px;
       font-weight: 600;
       color: #303133;
     }
-    
     .el-descriptions {
       :deep(.el-descriptions__label) {
         font-weight: 500;
         color: #606266;
       }
-      
       :deep(.el-descriptions__content) {
         color: #303133;
       }
-      
       .amount {
         font-size: 18px;
         font-weight: 600;
@@ -2837,7 +2282,6 @@ export default {
       }
     }
   }
-  
   .qr-code-wrapper {
     display: flex;
     justify-content: center;
@@ -2847,12 +2291,10 @@ export default {
     background: #f5f7fa;
     border-radius: 8px;
     min-height: 280px;
-    
     .qr-code {
       display: flex;
       justify-content: center;
       align-items: center;
-      
       img {
         max-width: 100%;
         height: auto;
@@ -2862,25 +2304,21 @@ export default {
         padding: 10px;
       }
     }
-    
     .qr-loading {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       color: #909399;
-      
       .el-icon {
         font-size: 32px;
         margin-bottom: 10px;
       }
-      
       p {
         margin: 0;
         font-size: 14px;
       }
     }
-    
     .payment-page-iframe {
       width: 100%;
       min-height: 600px;
@@ -2888,7 +2326,6 @@ export default {
       border-radius: 8px;
       overflow: clip;
       background: #fff;
-      
       iframe {
         width: 100%;
         min-height: 600px;
@@ -2897,22 +2334,18 @@ export default {
       }
     }
   }
-  
   .payment-tips {
     margin: 20px 0;
-    
     :deep(.el-alert) {
       .el-alert__content {
         .el-alert__title {
           font-weight: 600;
           margin-bottom: 8px;
         }
-        
         p {
           margin: 6px 0;
           font-size: 14px;
           line-height: 1.6;
-          
           strong {
             color: #e6a23c;
           }
@@ -2920,29 +2353,23 @@ export default {
       }
     }
   }
-  
   .payment-actions {
     margin-top: 20px;
     display: flex;
     justify-content: center;
     gap: 15px;
-    
     .el-button {
       margin: 0;
     }
-    
     &.mobile-layout {
       flex-direction: column;
       gap: 10px;
-      
       .el-button {
         width: 100%;
       }
     }
   }
 }
-
-/* 手机端优化 */
 @media (max-width: 768px) {
   .payment-qr-dialog {
     :deep(.el-dialog) {
@@ -2950,21 +2377,17 @@ export default {
       max-height: 90vh;
       overflow-y: auto;
     }
-    
     .el-dialog__body {
       padding: 15px;
     }
   }
-  
   .payment-qr-container {
     .order-info {
       margin-bottom: 15px;
-      
       h3 {
         font-size: 16px;
         margin-bottom: 12px;
       }
-      
       .el-descriptions {
         :deep(.el-descriptions__table) {
           .el-descriptions__label,
@@ -2975,26 +2398,21 @@ export default {
         }
       }
     }
-    
     .qr-code-wrapper {
       margin: 20px 0;
       padding: 15px;
       min-height: 240px;
-      
       .qr-code img {
         max-width: 90%;
       }
     }
-    
     .payment-tips {
       margin: 15px 0;
-      
       :deep(.el-alert) {
         .el-alert__content {
           .el-alert__title {
             font-size: 14px;
           }
-          
           p {
             font-size: 13px;
             margin: 5px 0;
@@ -3004,13 +2422,11 @@ export default {
     }
   }
 }
-
 @media (max-width: 480px) {
   .payment-qr-container {
     .qr-code-wrapper {
       min-height: 200px;
       padding: 10px;
-      
       .qr-code img {
         max-width: 85%;
       }

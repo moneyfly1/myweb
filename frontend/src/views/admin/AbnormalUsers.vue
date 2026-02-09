@@ -265,14 +265,12 @@
     </el-dialog>
   </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-
 const abnormalTypeMap = {
   disabled: { tag: 'danger', text: '账户禁用' },
   frequent_reset: { tag: 'warning', text: '频繁重置' },
@@ -282,7 +280,6 @@ const abnormalTypeMap = {
   unverified: { tag: 'warning', text: '未验证邮箱' },
   unknown: { tag: 'info', text: '未知异常' }
 }
-
 export default {
   name: 'AbnormalUsers',
   components: {
@@ -295,8 +292,6 @@ export default {
     const showUserDetailsDialog = ref(false)
     const userDetails = ref(null)
     const isMobile = ref(window.innerWidth <= 768)
-    
-    // 设置默认日期范围：本月1号到今天
     const getDefaultDateRange = () => {
       const now = new Date()
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -306,7 +301,6 @@ export default {
         today.toISOString().split('T')[0]
       ]
     }
-    
     const filters = reactive({
       dateRange: getDefaultDateRange(),  // 默认：本月1号到今天
       subscriptionCount: 10,  // 默认：订阅次数>=10次
@@ -319,15 +313,12 @@ export default {
       loading.value = true
       try {
         const params = {}
-        // 日期范围：如果有值就传递，后端会使用默认值（本月1号到今天）
         if (filters.dateRange && filters.dateRange.length === 2) {
           params['date_range[]'] = filters.dateRange
         }
-        // 订阅次数：如果有值就传递，后端默认值是10
         if (filters.subscriptionCount !== null && filters.subscriptionCount !== undefined && filters.subscriptionCount > 0) {
           params.subscription_count = filters.subscriptionCount.toString()
         }
-        // 重置次数：如果有值就传递，后端默认值是3
         if (filters.resetCount !== null && filters.resetCount !== undefined && filters.resetCount > 0) {
           params.reset_count = filters.resetCount.toString()
         }
@@ -360,7 +351,6 @@ export default {
       filters.dateRange = getDefaultDateRange()  // 重置为默认日期范围
       filters.subscriptionCount = 10  // 重置为默认值
       filters.resetCount = 3  // 重置为默认值
-      // 重置后自动查询
       loadAbnormalUsers()
     }
     const viewUserDetails = async (userId) => {
@@ -410,14 +400,10 @@ export default {
     }
     onMounted(() => {
       window.addEventListener('resize', handleResize)
-      // 页面加载时自动查询（使用默认筛选条件：本月1号到今天，订阅次数>=10，重置次数>=3）
       loadAbnormalUsers()
-      
-      // 检查URL参数中是否有user_id，如果有则自动查看该用户详情
       const route = useRoute()
       const userId = route.query.user_id
       if (userId) {
-        // 等待数据加载完成后再查看详情
         setTimeout(() => {
           viewUserDetails(Number(userId))
         }, 500)
@@ -444,7 +430,6 @@ export default {
   }
 }
 </script>
-
 <style scoped lang="scss">
 .abnormal-users {
   padding: 20px;

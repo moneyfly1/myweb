@@ -5,7 +5,6 @@
         <h1>CBoard Modern</h1>
         <p>管理员登录</p>
       </div>
-      
       <form class="admin-login-form" @submit.prevent="handleLogin">
         <div class="form-item">
           <input
@@ -19,7 +18,6 @@
             required
           />
         </div>
-        
         <div class="form-item">
           <input
             v-model="loginForm.password"
@@ -33,7 +31,6 @@
             @keyup.enter="handleLogin"
           />
         </div>
-        
         <div class="form-item">
           <button
             type="submit"
@@ -44,7 +41,6 @@
           </button>
         </div>
       </form>
-      
       <div class="admin-login-actions">
         <el-link type="primary" @click="$router.push('/login')">
           返回用户登录
@@ -53,47 +49,35 @@
     </div>
   </div>
 </template>
-
 <script>
 import { ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
-
 export default {
   name: 'AdminLogin',
   setup() {
     const router = useRouter()
     const authStore = useAuthStore()
-    
     const loginForm = reactive({
       username: '',
       password: ''
     })
-    
     const loading = ref(false)
-    
     const handleLogin = async () => {
       loading.value = true
-
       try {
-        // 清除可能存在的旧缓存（双重保障）
         if (typeof window !== 'undefined') {
           const { secureStorage } = await import('@/utils/api')
           secureStorage.clear()
         }
-        
-        // 使用管理员登录方法（强制使用管理员路径）
         const result = await authStore.adminLogin(loginForm)
-
         if (result.success) {
-          // 验证是否为管理员
           if (!authStore.isAdmin) {
             ElMessage.error('该账户不是管理员，请使用用户登录页面')
             authStore.logout()
             return
           }
-          
           ElMessage.success('管理员登录成功')
           await nextTick()
           await router.push('/admin/dashboard')
@@ -106,7 +90,6 @@ export default {
         loading.value = false
       }
     }
-    
     return {
       loginForm,
       loading,
@@ -115,7 +98,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-login-container {
   min-height: 100vh;
@@ -125,7 +107,6 @@ export default {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   padding: 20px;
 }
-
 .admin-login-box {
   background: white;
   border-radius: 12px;
@@ -134,33 +115,27 @@ export default {
   width: 100%;
   max-width: 400px;
 }
-
 .admin-login-header {
   text-align: center;
   margin-bottom: 30px;
 }
-
 .admin-login-header h1 {
   color: #f5576c;
   font-size: 28px;
   margin-bottom: 8px;
   font-weight: 600;
 }
-
 .admin-login-header p {
   color: #666;
   font-size: 14px;
   margin: 0;
 }
-
 .admin-login-form {
   margin-top: 20px;
 }
-
 .form-item {
   margin-bottom: 20px;
 }
-
 .login-input {
   width: 100%;
   height: 44px;
@@ -173,17 +148,14 @@ export default {
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 .login-input:focus {
   border-color: #f5576c;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 .login-input::placeholder {
   color: #a8abb2;
 }
-
 .login-button {
   width: 100%;
   height: 44px;
@@ -196,24 +168,19 @@ export default {
   cursor: pointer;
   transition: background-color 0.3s;
 }
-
 .login-button:hover:not(:disabled) {
   background: #e0455a;
 }
-
 .login-button:disabled {
   background: #a8abb2;
   cursor: not-allowed;
 }
-
 .admin-login-actions {
   display: flex;
   justify-content: center;
   margin-top: 20px;
   font-size: 14px;
 }
-
-/* 手机端优化 */
 @media (max-width: 768px) {
   .admin-login-container {
     padding: 10px;
@@ -221,42 +188,34 @@ export default {
     align-items: flex-start;
     padding-top: 20px;
   }
-  
   .admin-login-box {
     padding: 24px 16px;
     max-width: 100%;
     border-radius: 8px;
   }
-  
   .admin-login-header {
     margin-bottom: 24px;
-    
     :is(h1) {
       font-size: 22px;
       margin-bottom: 6px;
     }
-    
     :is(p) {
       font-size: 13px;
     }
   }
-  
   .login-input {
     height: 48px; /* 手机端增大高度，防止iOS自动缩放 */
     font-size: 16px; /* 16px防止iOS自动缩放 */
     padding: 0 14px;
   }
-  
   .login-button {
     height: 48px; /* 手机端增大高度 */
     font-size: 16px;
     font-weight: 500;
     min-height: 48px; /* 确保最小高度 */
   }
-  
   .admin-login-actions {
     margin-top: 16px;
-    
     .el-link {
       font-size: 14px;
       padding: 8px 0;
@@ -268,4 +227,3 @@ export default {
   }
 }
 </style>
-

@@ -11,7 +11,6 @@
           <span class="logo-text" v-show="!sidebarCollapsed">CBoard 管理后台</span>
         </div>
       </div>
-      
       <div class="header-center">
         <div class="quick-stats">
           <div v-for="(val, key) in statConfig" :key="key" class="stat-item">
@@ -21,7 +20,6 @@
           </div>
         </div>
       </div>
-      
       <div class="header-right">
         <el-dropdown @command="handleThemeChange" class="theme-dropdown">
           <el-button type="text" class="theme-btn">
@@ -39,7 +37,6 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        
         <el-dropdown @command="handleAdminCommand" class="admin-dropdown">
           <div class="admin-info">
             <el-avatar :size="32" :src="adminAvatar">{{ adminInitials }}</el-avatar>
@@ -56,7 +53,6 @@
         </el-dropdown>
       </div>
     </header>
-
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="mobile-menu-header" v-if="isMobile">
         <span class="menu-title">菜单</span>
@@ -81,7 +77,6 @@
         </div>
       </nav>
     </aside>
-
     <main class="main-content">
       <div class="content-wrapper">
         <div class="mobile-nav-bar" v-if="isMobile">
@@ -107,23 +102,19 @@
             </div>
           </transition>
         </div>
-        
         <div class="breadcrumb" v-if="showBreadcrumb && !isMobile">
           <el-breadcrumb separator="/">
             <el-breadcrumb-item v-for="item in breadcrumbItems" :key="item.path" :to="item.path">{{ item.title }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>
-        
         <div class="page-content">
           <router-view />
         </div>
       </div>
     </main>
-
     <div v-if="isMobile && !sidebarCollapsed" class="mobile-overlay" @click.stop="sidebarCollapsed = true" />
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -131,35 +122,26 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { adminAPI, ticketAPI } from '@/utils/api'
-
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
-
-// --- 状态定义 ---
 const isMobile = ref(false)
 const sidebarCollapsed = ref(true)
 const mobileNavExpanded = ref(false)
 const stats = ref({ users: 0, subscriptions: 0, revenue: 0 })
-
-// --- 配置常量 ---
 const statConfig = {
   users: { label: '用户', icon: 'el-icon-user', prefix: '' },
   subscriptions: { label: '订阅', icon: 'el-icon-connection', prefix: '' },
   revenue: { label: '收入', icon: 'el-icon-money', prefix: '¥' }
 }
-
 const adminMenuOptions = [
   { label: '个人资料', icon: 'el-icon-user', command: 'profile' },
   { label: '系统设置', icon: 'el-icon-setting', command: 'settings' },
   { label: '退出登录', icon: 'el-icon-switch-button', command: 'logout', divided: true }
 ]
-
 const unreadTicketCount = ref(0)
 let unreadCheckInterval = null
-
-// 获取未读工单数量
 const loadUnreadTicketCount = async () => {
   try {
     const response = await ticketAPI.getUnreadCount()
@@ -167,10 +149,9 @@ const loadUnreadTicketCount = async () => {
       unreadTicketCount.value = response.data.data?.count || 0
     }
   } catch (error) {
-    console.warn('获取未读工单数量失败:', error)
+    // 未读消息数加载失败，不影响主功能
   }
 }
-
 const menuSections = computed(() => {
   const baseSections = [
     { title: '概览', items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }] },
@@ -230,8 +211,6 @@ const menuSections = computed(() => {
   ]
   return baseSections
 })
-
-// --- 计算属性 ---
 const currentTheme = computed(() => themeStore.currentTheme)
 const themes = computed(() => themeStore.availableThemes)
 const admin = computed(() => authStore.user)
@@ -239,36 +218,28 @@ const adminAvatar = computed(() => admin.value?.avatar || '')
 const adminInitials = computed(() => admin.value?.username?.substring(0, 2).toUpperCase() || '')
 const showBreadcrumb = computed(() => route.meta.showBreadcrumb !== false)
 const breadcrumbItems = computed(() => route.meta.breadcrumb || [])
-
 const currentPageTitle = computed(() => {
   if (route.meta.title) return route.meta.title
   const allItems = menuSections.flatMap(s => s.items)
   return allItems.find(i => i.path === route.path)?.title || '管理后台'
 })
-
-// --- 方法 ---
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
   if (!isMobile.value) localStorage.setItem('sidebarCollapsed', sidebarCollapsed.value)
 }
-
 const isRouteActive = (path) => route.path === path || (path !== '/admin/dashboard' && route.path.startsWith(path))
-
 const navigateTo = (path) => {
   router.push(path)
   mobileNavExpanded.value = false
   if (isMobile.value) sidebarCollapsed.value = true
 }
-
 const handleNavClick = () => {
   if (isMobile.value) sidebarCollapsed.value = true
 }
-
 const handleThemeChange = async (themeName) => {
   const result = await themeStore.setTheme(themeName)
   result.success ? ElMessage.success('主题已保存') : ElMessage.warning(result.message || '保存失败')
 }
-
 const handleAdminCommand = (command) => {
   const routes = { profile: '/admin/profile', settings: '/admin/settings' }
   if (command === 'logout') {
@@ -278,9 +249,7 @@ const handleAdminCommand = (command) => {
     router.push(routes[command])
   }
 }
-
 const formatMoney = (val) => isNaN(parseFloat(val)) ? '0.00' : parseFloat(val).toFixed(2)
-
 const loadStats = async () => {
   if (!authStore.isAuthenticated) return
   try {
@@ -296,7 +265,6 @@ const loadStats = async () => {
     console.error('Stats load error:', e)
   }
 }
-
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768
   if (isMobile.value) {
@@ -306,35 +274,27 @@ const checkMobile = () => {
     sidebarCollapsed.value = saved === 'true'
   }
 }
-
-// --- 生命周期 & 监听 ---
 watch(() => route.path, () => {
   if (isMobile.value) {
     mobileNavExpanded.value = false
     sidebarCollapsed.value = true
   }
 })
-
 onMounted(() => {
   checkMobile()
   loadStats()
   window.addEventListener('resize', checkMobile)
-  // 加载未读工单数量
   loadUnreadTicketCount()
-  // 每30秒刷新一次未读数量
   unreadCheckInterval = setInterval(() => {
     loadUnreadTicketCount()
   }, 30000)
-  // 监听工单查看事件
   window.addEventListener('ticket-viewed', loadUnreadTicketCount)
-  // 监听路由变化，当进入工单页面时刷新未读数量
   watch(() => route.path, (newPath) => {
     if (newPath === '/admin/tickets') {
       loadUnreadTicketCount()
     }
   })
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   window.removeEventListener('ticket-viewed', loadUnreadTicketCount)
@@ -343,21 +303,17 @@ onUnmounted(() => {
     unreadCheckInterval = null
   }
 })
-
 const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentTheme.value)?.label || '主题'
 const getCurrentThemeColor = () => themes.value.find(t => t.value === currentTheme.value)?.color || '#409EFF'
 </script>
-
 <style scoped lang="scss">
 @use '@/styles/global.scss' as *;
-
 .admin-layout {
   display: flex;
   height: 100vh;
   background-color: var(--theme-background);
   overflow-x: clip;
 }
-
 .header {
   position: fixed;
   top: 0; left: 0; right: 0;
@@ -370,20 +326,16 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   padding: 0 20px;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-
   @include respond-to(sm) { height: 50px; padding: 0 12px; }
-
   .header-left {
     display: flex; align-items: center; gap: 16px;
     .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; }
     .logo-text { font-size: 18px; font-weight: 600; color: var(--theme-primary); }
-    
     .menu-toggle {
       display: none; border: 1px solid var(--theme-border); background: none; padding: 8px 12px; border-radius: 6px;
       @include respond-to(sm) { display: flex; align-items: center; gap: 6px; }
     }
   }
-
   .header-center {
     @include respond-to(sm) { display: none; }
     .quick-stats { display: flex; gap: 24px; }
@@ -395,7 +347,6 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     }
   }
 }
-
 .sidebar {
   position: fixed;
   top: var(--header-height);
@@ -407,9 +358,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   transition: all 0.3s ease;
   z-index: 999;
   overflow-y: auto;
-
   &.collapsed { width: var(--sidebar-collapsed-width); }
-
   @include respond-to(sm) {
     top: 50px; 
     width: 280px; 
@@ -424,12 +373,10 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     &:not(.collapsed) { 
       transform: translateX(0); 
       box-shadow: 2px 0 16px rgba(0,0,0,0.15);
-      /* 确保菜单清晰可见 */
       opacity: 1;
       visibility: visible;
     }
   }
-
   .nav-section {
     margin-bottom: 24px;
     .nav-section-title { padding: 12px 20px 8px; font-size: 12px; font-weight: 600; color: #909399; }
@@ -441,19 +388,15 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       text-decoration: none;
       transition: 0.3s;
       position: relative;
-      /* 确保菜单项可以点击 */
       pointer-events: auto;
       z-index: 1;
-      
       :is(i) { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
-      
       .nav-badge {
         position: absolute;
         right: 8px;
         top: 50%;
         transform: translateY(-50%);
       }
-      
       &:hover { background: var(--sidebar-hover-bg, #f5f7fa); color: var(--theme-primary); }
       &.active { background: var(--theme-primary); color: white; }
       @include respond-to(sm) { 
@@ -465,8 +408,6 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       }
     }
   }
-  
-  /* 手机端菜单头部 */
   .mobile-menu-header {
     display: flex;
     justify-content: space-between;
@@ -477,13 +418,11 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     position: sticky;
     top: 0;
     z-index: 10;
-    
     .menu-title {
       font-size: 16px;
       font-weight: 600;
       color: var(--theme-text);
     }
-    
     .menu-close-btn {
       background: none;
       border: none;
@@ -497,18 +436,14 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       min-width: 40px;
       min-height: 40px;
       -webkit-tap-highlight-color: rgba(0,0,0,0.1);
-      
       &:hover {
         background: var(--sidebar-hover-bg, #f5f7fa);
         border-radius: 4px;
       }
     }
   }
-  
-  /* 手机端导航区域 */
   .sidebar-nav {
     @include respond-to(sm) {
-      /* 确保导航区域可以滚动和点击 */
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       height: calc(100% - 60px);
@@ -516,44 +451,36 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     }
   }
 }
-
 .main-content {
   flex: 1;
   margin-left: var(--sidebar-width);
   margin-top: var(--header-height);
   width: calc(100% - var(--sidebar-width));
   transition: 0.3s;
-
   .sidebar-collapsed & { 
     margin-left: var(--sidebar-collapsed-width); 
     width: calc(100% - var(--sidebar-collapsed-width));
   }
-
   @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; }
-
   .content-wrapper { 
     padding: var(--content-padding);
     @include respond-to(sm) { padding: 12px; }
   }
 }
-
 .mobile-nav-bar {
   margin-bottom: 12px; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
   .mobile-nav-header { display: flex; justify-content: space-between; padding: 14px 16px; align-items: center; }
   .nav-expand-icon.expanded { transform: rotate(180deg); }
   .mobile-nav-menu { border-top: 1px solid #e4e7ed; max-height: 60vh; overflow-y: auto; }
 }
-
 .mobile-overlay {
   position: fixed; 
   inset: 50px 0 0 0; 
   background: rgba(0,0,0,0.5); 
   z-index: 1001; 
   backdrop-filter: blur(2px);
-  /* 确保遮罩层不会阻止菜单点击 */
   pointer-events: auto;
 }
-
 .slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s ease; }
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; max-height: 0; transform: translateY(-10px); }
 </style>

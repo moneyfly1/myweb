@@ -1,6 +1,5 @@
 <template>
     <div class="statistics-admin-container">
-      <!-- 统计卡片 -->
       <el-row :gutter="20" class="stats-cards">
         <el-col :xs="24" :sm="12" :md="6">
           <el-card class="stat-card">
@@ -15,7 +14,6 @@
             </div>
           </el-card>
         </el-col>
-        
         <el-col :xs="24" :sm="12" :md="6">
           <el-card class="stat-card">
             <div class="stat-content">
@@ -29,7 +27,6 @@
             </div>
           </el-card>
         </el-col>
-        
         <el-col :xs="24" :sm="12" :md="6">
           <el-card class="stat-card">
             <div class="stat-content">
@@ -43,7 +40,6 @@
             </div>
           </el-card>
         </el-col>
-        
         <el-col :xs="24" :sm="12" :md="6">
           <el-card class="stat-card">
             <div class="stat-content">
@@ -58,11 +54,8 @@
           </el-card>
         </el-col>
       </el-row>
-  
-      <!-- 标签页：用户统计、地区分析 -->
       <el-tabs v-model="activeTab" type="border-card" class="statistics-tabs" style="margin-top: 20px;">
         <el-tab-pane label="用户统计" name="users">
-          <!-- 图表区域 -->
           <el-row :gutter="20" class="charts-section">
         <el-col :xs="24" :sm="24" :md="12">
           <el-card>
@@ -76,7 +69,6 @@
             </div>
           </el-card>
         </el-col>
-        
         <el-col :xs="24" :sm="24" :md="12">
           <el-card>
             <template #header>
@@ -90,8 +82,6 @@
           </el-card>
         </el-col>
       </el-row>
-  
-      <!-- 详细统计 -->
       <el-row :gutter="20" class="detailed-stats">
         <el-col :xs="24" :sm="24" :md="12">
           <el-card>
@@ -100,8 +90,6 @@
                 <h3>用户统计</h3>
               </div>
             </template>
-            
-            <!-- 桌面端表格 -->
             <div class="desktop-only">
               <el-table :data="userStats" style="width: 100%" v-if="userStats.length > 0">
                 <el-table-column prop="label" label="统计项" />
@@ -119,8 +107,6 @@
               </el-table>
               <el-empty v-else description="暂无数据" />
             </div>
-            
-            <!-- 移动端卡片列表 -->
             <div class="mobile-stats-list mobile-only">
               <div 
                 v-for="stat in userStats" 
@@ -145,7 +131,6 @@
             </div>
           </el-card>
         </el-col>
-        
         <el-col :xs="24" :sm="24" :md="12">
           <el-card>
             <template #header>
@@ -153,8 +138,6 @@
                 <h3>订阅统计</h3>
               </div>
             </template>
-            
-            <!-- 桌面端表格 -->
             <div class="desktop-only">
               <el-table :data="subscriptionStats" style="width: 100%" v-if="subscriptionStats.length > 0">
                 <el-table-column prop="label" label="统计项" />
@@ -172,8 +155,6 @@
               </el-table>
               <el-empty v-else description="暂无数据" />
             </div>
-            
-            <!-- 移动端卡片列表 -->
             <div class="mobile-stats-list mobile-only">
               <div 
                 v-for="stat in subscriptionStats" 
@@ -199,15 +180,12 @@
           </el-card>
         </el-col>
       </el-row>
-  
-      <!-- 最近活动 -->
       <el-card class="recent-activities">
         <template #header>
           <div class="card-header">
             <h3>最近活动</h3>
           </div>
         </template>
-        
         <el-timeline v-if="recentActivities.length > 0">
           <el-timeline-item
             v-for="activity in recentActivities"
@@ -224,8 +202,6 @@
         <el-empty v-else description="暂无活动记录" />
       </el-card>
         </el-tab-pane>
-
-        <!-- 地区分析 -->
         <el-tab-pane label="地区分析" name="regions">
           <el-card style="margin-bottom: 20px;">
             <template #header>
@@ -237,12 +213,10 @@
                 </el-button>
               </div>
             </template>
-            
             <div v-if="loadingRegions" style="text-align: center; padding: 40px;">
               <el-icon class="is-loading" style="font-size: 32px; color: #409eff;"><Loading /></el-icon>
               <p style="margin-top: 10px; color: #909399;">正在加载地区数据...</p>
             </div>
-            
             <div v-else>
               <el-row :gutter="20">
 						<el-col :xs="24" :sm="24" :md="12">
@@ -298,7 +272,6 @@
 									</el-table>
 								</div>
 							</div>
-
 							<div class="mobile-only">
 								<div class="region-stats-list">
 									<h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133; font-weight: 600;">地区统计列表</h4>
@@ -341,15 +314,12 @@
 	</el-tabs>
 </div>
 </template>
-
 <script>
 import { ref, reactive, onMounted, nextTick, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { Refresh, Loading, DataAnalysis } from '@element-plus/icons-vue'
 import { statisticsAPI } from '@/utils/api'
-
 Chart.register(...registerables)
-
 export default {
 	name: 'AdminStatistics',
 	components: {
@@ -363,19 +333,16 @@ export default {
 		const regionChart = ref(null)
 		const activeTab = ref('users')
 		const loadingRegions = ref(false)
-
 		const statistics = reactive({
 			totalUsers: 0,
 			activeSubscriptions: 0,
 			totalOrders: 0,
 			totalRevenue: 0
 		})
-
 		const userStats = ref([])
 		const subscriptionStats = ref([])
 		const recentActivities = ref([])
 		const regionStats = ref([])
-
 		const fetchStatistics = async () => {
 			try {
 				const response = await statisticsAPI.getStatistics()
@@ -389,7 +356,6 @@ export default {
 						statistics.totalOrders = Number(data.total_orders || data.totalOrders) || 0
 						statistics.totalRevenue = Number(data.total_revenue || data.totalRevenue) || 0
 					}
-
 					if (data.userStats && Array.isArray(data.userStats)) {
 						userStats.value = data.userStats.map(stat => ({
 							label: stat.name || stat.label,
@@ -400,7 +366,6 @@ export default {
 					} else {
 						userStats.value = []
 					}
-
 					if (data.subscriptionStats && Array.isArray(data.subscriptionStats)) {
 						subscriptionStats.value = data.subscriptionStats.map(stat => ({
 							label: stat.name || stat.label,
@@ -411,7 +376,6 @@ export default {
 					} else {
 						subscriptionStats.value = []
 					}
-
 					if (data.recentActivities && Array.isArray(data.recentActivities)) {
 						recentActivities.value = data.recentActivities.map(activity => ({
 							id: activity.id,
@@ -430,20 +394,16 @@ export default {
 				console.error(error)
 			}
 		}
-
 		const initUserChart = async () => {
 			try {
 				const response = await statisticsAPI.getUserTrend()
 				if (!response.data || !response.data.success || !response.data.data) {
 					return
 				}
-
 				const chartData = response.data.data
 				const labels = chartData.labels || []
 				const data = chartData.data || []
-
 				const ctx = userChart.value.getContext('2d')
-
 				new Chart(ctx, {
 					type: 'line',
 					data: {
@@ -475,20 +435,16 @@ export default {
 				console.error(error)
 			}
 		}
-
 		const initRevenueChart = async () => {
 			try {
 				const response = await statisticsAPI.getRevenueTrend()
 				if (!response.data || !response.data.success || !response.data.data) {
 					return
 				}
-
 				const chartData = response.data.data
 				const labels = chartData.labels || []
 				const data = chartData.data || []
-
 				const ctx = revenueChart.value.getContext('2d')
-
 				new Chart(ctx, {
 					type: 'bar',
 					data: {
@@ -520,14 +476,12 @@ export default {
 				console.error(error)
 			}
 		}
-
 		const formatMoney = (value) => {
 			if (value === null || value === undefined || value === '') return '0.00'
 			const num = typeof value === 'string' ? parseFloat(value) : value
 			if (isNaN(num)) return '0.00'
 			return num.toFixed(2)
 		}
-
 		const loadRegionStats = async () => {
 			try {
 				loadingRegions.value = true
@@ -535,10 +489,7 @@ export default {
 				if (response.data && response.data.success && response.data.data) {
 					const data = response.data.data
 					regionStats.value = data.regions || []
-
 					await nextTick()
-					
-					// 尝试初始化图表，如果DOM未就绪则重试
 					let attempts = 0
 					const tryInit = () => {
 						if (regionChart.value && regionStats.value.length > 0) {
@@ -558,21 +509,17 @@ export default {
 				loadingRegions.value = false
 			}
 		}
-
 		let regionChartInstance = null
 		const initRegionChart = () => {
 			if (!regionChart.value || regionStats.value.length === 0) return
-
 			try {
 				if (regionChartInstance) {
 					regionChartInstance.destroy()
 					regionChartInstance = null
 				}
-
 				const ctx = regionChart.value.getContext('2d')
 				if (ctx) {
 					const isMobile = window.innerWidth <= 768
-
 					regionChartInstance = new Chart(ctx, {
 						type: 'doughnut',
 						data: {
@@ -632,13 +579,11 @@ export default {
 				console.error(error)
 			}
 		}
-
 		watch(activeTab, (newTab) => {
 			if (newTab === 'regions' && regionStats.value.length === 0 && !loadingRegions.value) {
 				loadRegionStats()
 			}
 		})
-
 		onMounted(() => {
 			fetchStatistics()
 			initUserChart()
@@ -647,7 +592,6 @@ export default {
 				loadRegionStats()
 			}
 		})
-
 		return {
 			userChart,
 			revenueChart,
@@ -665,26 +609,21 @@ export default {
 	}
 }
 </script>
-  
   <style scoped>
   .statistics-admin-container {
     padding: 20px;
   }
-  
   .stats-cards {
     margin-bottom: 20px;
   }
-  
   .stat-card {
     height: 120px;
   }
-  
   .stat-content {
     display: flex;
     align-items: center;
     height: 100%;
   }
-  
   .stat-icon {
     width: 60px;
     height: 60px;
@@ -694,78 +633,63 @@ export default {
     justify-content: center;
     margin-right: 20px;
   }
-  
   .stat-icon :is(i) {
     font-size: 24px;
     color: white;
   }
-  
   .stat-icon.users {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   }
-  
   .stat-icon.subscriptions {
     background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   }
-  
   .stat-icon.orders {
     background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   }
-  
   .stat-icon.revenue {
     background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
   }
-  
   .stat-info {
     flex: 1;
   }
-  
   .stat-number {
     font-size: 2rem;
     font-weight: 700;
     color: #333;
     margin-bottom: 5px;
   }
-  
   .stat-label {
     color: #666;
     font-size: 0.9rem;
   }
-  
   .charts-section {
     margin-bottom: 20px;
   }
-  
   .chart-container {
     height: 300px;
     position: relative;
   }
-  
   .region-chart-wrapper {
     min-height: 300px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  
   .region-chart-container {
     width: 100%;
     height: 350px;
     position: relative;
     padding: 20px;
   }
-  
   @media (max-width: 768px) {
     .region-chart-container {
       height: 300px;
       padding: 10px;
     }
   }
-  
   .region-stats-table {
     padding: 10px 0;
   }
-  
   .region-stats-table h4 {
     font-weight: 600;
     color: #303133;
@@ -773,18 +697,14 @@ export default {
     border-bottom: 1px solid #ebeef5;
     margin-bottom: 15px;
   }
-  
-  /* 移动端地区统计卡片 */
   .region-stats-list {
     padding: 10px 0;
   }
-  
   .region-card-list {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
-  
   .region-card-item {
     padding: 14px;
     background: #f8f9fa;
@@ -792,12 +712,10 @@ export default {
     border: 1px solid #e9ecef;
     transition: all 0.3s ease;
   }
-  
   .region-card-item:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     transform: translateY(-2px);
   }
-  
   .region-card-header {
     display: flex;
     justify-content: space-between;
@@ -806,37 +724,30 @@ export default {
     flex-wrap: wrap;
     gap: 8px;
   }
-  
   .region-card-body {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
-  
   .region-card-stat {
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 14px;
   }
-  
   .region-card-stat .stat-label {
     color: #606266;
     font-weight: 500;
   }
-  
   .region-card-stat .stat-value {
     color: #303133;
     font-weight: 600;
   }
-  
-  /* 移动端地区详细统计卡片 */
   .region-details-list {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
-  
   .region-detail-card {
     padding: 14px;
     background: #ffffff;
@@ -844,274 +755,219 @@ export default {
     border: 1px solid #e9ecef;
     transition: all 0.3s ease;
   }
-  
   .region-detail-card:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     transform: translateY(-2px);
   }
-  
   .detail-card-header {
     margin-bottom: 12px;
     padding-bottom: 10px;
     border-bottom: 1px solid #f0f0f0;
   }
-  
   .detail-location {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
   }
-  
   .detail-city {
     color: #303133;
     font-size: 14px;
     font-weight: 500;
   }
-  
   .detail-card-body {
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  
   .detail-stat-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 14px;
   }
-  
   .detail-label {
     color: #606266;
     font-weight: 500;
   }
-  
   .detail-value {
     color: #303133;
     font-weight: 600;
   }
-  
   .detail-time {
     color: #909399;
     font-size: 13px;
   }
-  
   .card-header h3 {
     margin: 0;
     color: #333;
     font-size: 1.2rem;
   }
-  
   .detailed-stats {
     margin-bottom: 20px;
   }
-  
   .recent-activities {
     margin-bottom: 20px;
   }
-  
   .activity-content {
     padding: 10px 0;
   }
-  
   .activity-title {
     font-weight: 600;
     color: #333;
     margin-bottom: 5px;
   }
-  
   .activity-description {
     color: #666;
     font-size: 0.9rem;
   }
-  
-  /* 桌面端/移动端显示控制 */
   .desktop-only {
     @media (max-width: 768px) {
       display: none !important;
     }
   }
-
   .mobile-only {
     display: none;
-    
     @media (max-width: 768px) {
       display: block;
     }
   }
-
   @media (max-width: 768px) {
     .statistics-admin-container {
       padding: 10px;
     }
-    
     .stats-cards {
       margin-bottom: 16px;
-      
       .el-col {
         margin-bottom: 12px;
       }
     }
-    
     .stat-card {
       height: auto;
       min-height: 100px;
     }
-    
     .stat-content {
       padding: 12px;
       flex-direction: row;
       align-items: center;
     }
-    
     .stat-icon {
       width: 50px;
       height: 50px;
       margin-right: 16px;
       flex-shrink: 0;
-      
       :is(i) {
         font-size: 20px;
       }
     }
-    
     .stat-info {
       flex: 1;
       min-width: 0;
     }
-    
     .stat-number {
       font-size: 1.8rem;
       font-weight: 700;
       margin-bottom: 4px;
       word-break: break-all;
     }
-    
     .stat-label {
       font-size: 14px;
       color: #666;
     }
-    
     .charts-section {
       margin-bottom: 16px;
-      
       .el-col {
         margin-bottom: 16px;
       }
     }
-    
     .chart-container {
       height: 280px;
       padding: 8px;
     }
-    
     .region-chart-wrapper {
       min-height: 250px;
       margin-bottom: 16px;
     }
-    
     .region-chart-container {
       height: 280px;
       padding: 10px;
     }
-    
     .card-header {
       padding: 12px 0;
-      
       :is(h3) {
         font-size: 16px;
         font-weight: 600;
         margin: 0;
       }
     }
-    
     .region-stats-list h4 {
       font-size: 15px;
       margin-bottom: 12px;
       padding-bottom: 8px;
       border-bottom: 1px solid #ebeef5;
     }
-    
     .region-card-item {
       padding: 12px;
     }
-    
     .region-card-header {
       margin-bottom: 10px;
     }
-    
     .region-card-stat {
       font-size: 13px;
     }
-    
     .region-detail-card {
       padding: 12px;
     }
-    
     .detail-card-header {
       margin-bottom: 10px;
       padding-bottom: 8px;
     }
-    
     .detail-stat-row {
       font-size: 13px;
     }
-    
     .detail-time {
       font-size: 12px;
     }
-    
     .detailed-stats {
       margin-bottom: 16px;
-      
       .el-col {
         margin-bottom: 16px;
       }
     }
-    
-    /* 移动端统计列表 */
     .mobile-stats-list {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    
     .mobile-stat-item {
       padding: 12px;
       background: #f8f9fa;
       border-radius: 8px;
       border: 1px solid #e9ecef;
     }
-    
     .stat-item-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 10px;
-      
       .stat-item-label {
         font-weight: 600;
         color: #606266;
         font-size: 14px;
       }
-      
       .stat-item-value {
         font-weight: 700;
         color: #303133;
         font-size: 16px;
       }
     }
-    
     .stat-item-progress {
       display: flex;
       align-items: center;
       gap: 10px;
-      
       .el-progress {
         flex: 1;
       }
-      
       .stat-item-percentage {
         font-size: 14px;
         color: #606266;
@@ -1119,66 +975,53 @@ export default {
         text-align: right;
       }
     }
-    
     .recent-activities {
       margin-bottom: 16px;
     }
-    
     .activity-content {
       padding: 8px 0;
     }
-    
     .activity-title {
       font-size: 14px;
       font-weight: 600;
       margin-bottom: 6px;
     }
-    
     .activity-description {
       font-size: 13px;
       color: #666;
       line-height: 1.5;
     }
-    
-    /* 时间线优化 */
     :deep(.el-timeline-item) {
       padding-bottom: 16px;
     }
-    
     :deep(.el-timeline-item__timestamp) {
       font-size: 12px;
       color: #909399;
       margin-bottom: 8px;
     }
   }
-  
-/* 移除所有输入框的圆角和阴影效果，设置为简单长方形 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;

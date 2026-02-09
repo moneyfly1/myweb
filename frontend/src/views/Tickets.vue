@@ -7,8 +7,6 @@
         创建工单
       </el-button>
     </div>
-
-    <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-select v-model="filters.status" placeholder="状态筛选" clearable style="width: 150px" @change="handleFilterChange">
         <el-option label="待处理" value="pending" />
@@ -24,8 +22,6 @@
       </el-select>
       <el-button @click="loadTickets">刷新</el-button>
     </div>
-
-    <!-- 工单列表 -->
     <el-table :data="tickets" v-loading="loading" style="width: 100%">
       <el-table-column prop="ticket_no" label="工单编号" width="180" />
       <el-table-column prop="title" label="标题">
@@ -72,8 +68,6 @@
         </template>
       </el-table-column>
     </el-table>
-
-    <!-- 手机端卡片式列表 -->
     <div class="mobile-ticket-list" v-loading="loading">
       <div 
         v-for="ticket in tickets" 
@@ -135,8 +129,6 @@
         <p>暂无工单</p>
       </div>
     </div>
-
-    <!-- 分页 -->
     <el-pagination
       v-model:current-page="pagination.page"
       v-model:page-size="pagination.size"
@@ -147,8 +139,6 @@
       @current-change="loadTickets"
       style="margin-top: 20px; justify-content: center"
     />
-
-    <!-- 创建工单对话框 -->
     <el-dialog 
       v-model="showCreateDialog" 
       title="创建工单" 
@@ -238,8 +228,6 @@
         </div>
       </template>
     </el-dialog>
-
-    <!-- 工单详情对话框 -->
     <el-dialog v-model="showDetailDialog" title="工单详情" width="800px">
       <div v-if="currentTicket">
         <div class="ticket-detail-header">
@@ -302,29 +290,22 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
-
-// 检测是否为移动端
 const isMobile = ref(window.innerWidth <= 768)
-
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
-
 onMounted(() => {
   window.addEventListener('resize', handleResize)
   loadTickets()
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
-
 const loading = ref(false)
 const creating = ref(false)
 const tickets = ref([])
@@ -333,31 +314,26 @@ const showDetailDialog = ref(false)
 const currentTicket = ref(null)
 const replyContent = ref('')
 const ticketFormRef = ref(null)
-
 const filters = reactive({
   status: '',
   type: ''
 })
-
 const pagination = reactive({
   page: 1,
   size: 20,
   total: 0
 })
-
 const ticketForm = reactive({
   title: '',
   content: '',
   type: 'other',
   priority: 'normal'
 })
-
 const ticketRules = {
   title: [{ required: true, message: '请输入工单标题', trigger: 'blur' }],
   content: [{ required: true, message: '请输入工单内容', trigger: 'blur' }],
   type: [{ required: true, message: '请选择工单类型', trigger: 'change' }]
 }
-
 const loadTickets = async () => {
   loading.value = true
   try {
@@ -367,7 +343,6 @@ const loadTickets = async () => {
     }
     if (filters.status) params.status = filters.status
     if (filters.type) params.type = filters.type
-    
     const response = await ticketAPI.getUserTickets(params)
     if (response.data && response.data.success) {
       tickets.value = response.data.data?.tickets || []
@@ -382,7 +357,6 @@ const loadTickets = async () => {
     loading.value = false
   }
 }
-
 const createTicket = async () => {
   if (!ticketFormRef.value) return
   await ticketFormRef.value.validate(async (valid) => {
@@ -407,12 +381,10 @@ const createTicket = async () => {
     }
   })
 }
-
 const viewTicket = async (ticketId) => {
   try {
     const response = await ticketAPI.getTicket(ticketId)
     if (response.data && response.data.success) {
-      // 后端返回的数据结构是 { data: { ticket: {...} } }
       const ticketData = response.data.data?.ticket || response.data.data
       if (!ticketData || !ticketData.id) {
         ElMessage.error('工单数据格式错误，请刷新后重试')
@@ -420,12 +392,8 @@ const viewTicket = async (ticketId) => {
       }
       currentTicket.value = ticketData
       showDetailDialog.value = true
-      
-      // 用户查看工单后，刷新工单列表和未读数量
-      // 延迟一下，确保后端已记录已读状态
       setTimeout(async () => {
         await loadTickets()
-        // 触发父组件刷新未读数量（通过 window 事件）
         window.dispatchEvent(new CustomEvent('ticket-viewed'))
       }, 500)
     } else {
@@ -437,7 +405,6 @@ const viewTicket = async (ticketId) => {
     ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载工单详情失败')
   }
 }
-
 const addReply = async () => {
   if (!replyContent.value.trim()) {
     ElMessage.warning('请输入回复内容')
@@ -453,9 +420,7 @@ const addReply = async () => {
     if (response.data && response.data.success) {
       ElMessage.success('回复成功')
       replyContent.value = ''
-      // 重新加载工单详情以显示新回复
       await viewTicket(currentTicket.value.id)
-      // 刷新工单列表以更新未读状态
       await loadTickets()
     } else {
       console.error('[用户前端] 回复失败，响应数据:', response.data)
@@ -467,7 +432,6 @@ const addReply = async () => {
     ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '回复失败')
   }
 }
-
 const getStatusText = (status) => {
   const map = {
     pending: '待处理',
@@ -478,7 +442,6 @@ const getStatusText = (status) => {
   }
   return map[status] || status
 }
-
 const getStatusTagType = (status) => {
   const map = {
     pending: 'warning',
@@ -487,10 +450,8 @@ const getStatusTagType = (status) => {
     closed: 'info',
     cancelled: 'danger'
   }
-  // 确保返回有效的类型值，如果找不到则返回 'info' 作为默认值
   return map[status] || 'info'
 }
-
 const getTypeText = (type) => {
   const map = {
     technical: '技术问题',
@@ -500,9 +461,7 @@ const getTypeText = (type) => {
   }
   return map[type] || type
 }
-
 const getTypeTagType = (type) => {
-  // 根据类型返回不同的标签类型
   const map = {
     technical: 'primary',
     billing: 'warning',
@@ -511,7 +470,6 @@ const getTypeTagType = (type) => {
   }
   return map[type] || 'info'
 }
-
 const getPriorityText = (priority) => {
   const map = {
     low: '低',
@@ -521,7 +479,6 @@ const getPriorityText = (priority) => {
   }
   return map[priority] || priority
 }
-
 const getPriorityTagType = (priority) => {
   const map = {
     low: 'info',
@@ -529,72 +486,60 @@ const getPriorityTagType = (priority) => {
     high: 'warning',
     urgent: 'danger'
   }
-  // 确保返回有效的类型值，如果找不到则返回 'info' 作为默认值
   return map[priority] || 'info'
 }
-
 const handleFilterChange = () => {
   pagination.page = 1 // 重置到第一页
   loadTickets()
 }
 </script>
-
 <style scoped lang="scss">
 .tickets-container {
   padding: 20px;
 }
-
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .filter-bar {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
 }
-
 .ticket-detail-header {
   margin-bottom: 20px;
   :is(h3) {
     margin: 0 0 10px 0;
   }
 }
-
 .ticket-meta {
   display: flex;
   gap: 10px;
   align-items: center;
 }
-
 .ticket-content {
   margin: 20px 0;
   padding: 15px;
   background: #f5f5f5;
   border-radius: 4px;
 }
-
 .ticket-replies {
   margin: 20px 0;
   :is(h4) {
     margin-bottom: 15px;
   }
 }
-
 .reply-item {
   margin-bottom: 15px;
   padding: 15px;
   border-radius: 8px;
   transition: all 0.3s ease;
-  
   &.user-reply {
     background: #f5f5f5;
     border-left: 3px solid #909399;
   }
-  
   &.admin-reply {
     background: linear-gradient(135deg, #e8f4fd 0%, #d4edff 100%);
     border-left: 4px solid #409eff;
@@ -602,7 +547,6 @@ const handleFilterChange = () => {
     animation: highlightAdminReply 0.5s ease;
   }
 }
-
 @keyframes highlightAdminReply {
   0% {
     transform: scale(1);
@@ -617,48 +561,39 @@ const handleFilterChange = () => {
     box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
   }
 }
-
 .reply-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
   font-size: 12px;
-  
   .reply-author-info {
     display: flex;
     align-items: center;
     gap: 8px;
-    
     .admin-icon {
       color: #409eff;
       font-size: 16px;
     }
   }
-  
   .reply-time {
     color: #666;
     font-size: 12px;
   }
 }
-
 .reply-content {
   color: #333;
   line-height: 1.6;
   font-size: 14px;
-  
   &.admin-content {
     color: #1a1a1a;
     font-weight: 500;
     font-size: 15px;
   }
 }
-
 .ticket-reply-form {
   margin-top: 20px;
 }
-
-/* 修复输入框嵌套问题 - 移除内部边框和嵌套效果 */
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -666,7 +601,6 @@ const handleFilterChange = () => {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__inner) {
   border-radius: 0 !important;
   border: none !important;
@@ -674,47 +608,36 @@ const handleFilterChange = () => {
   background-color: transparent !important;
   pointer-events: auto !important;
 }
-
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-input__wrapper.is-focus:hover) {
   background-color: #ffffff !important;
 }
-
-/* 确保输入框内部所有子元素背景透明 */
 :deep(.el-input__wrapper > *) {
   background-color: transparent !important;
   background: transparent !important;
 }
-
-/* 移除 textarea 的嵌套边框 */
 :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-
 :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc !important;
 }
-
 :deep(.el-textarea__inner:focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
 }
-
-/* 修复 select 下拉框的嵌套问题 */
 :deep(.el-select .el-input__wrapper) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -722,8 +645,6 @@ const handleFilterChange = () => {
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-
-/* 创建工单对话框样式 */
 .create-ticket-dialog {
   :deep(.el-dialog) {
     .el-dialog__body {
@@ -731,10 +652,7 @@ const handleFilterChange = () => {
     }
   }
 }
-
-/* 手机端优化 */
 @media (max-width: 768px) {
-  /* 创建工单对话框全屏显示 */
   .create-ticket-dialog {
     :deep(.el-dialog) {
       margin: 0 !important;
@@ -746,36 +664,30 @@ const handleFilterChange = () => {
       display: flex;
       flex-direction: column;
     }
-    
     :deep(.el-dialog__header) {
       flex-shrink: 0;
       padding: 16px !important;
       border-bottom: 1px solid #e5e7eb;
-      
       .el-dialog__title {
         font-size: 18px;
         font-weight: 600;
       }
-      
       .el-dialog__headerbtn {
         top: 16px;
         right: 16px;
         width: 32px;
         height: 32px;
-        
         .el-dialog__close {
           font-size: 20px;
         }
       }
     }
-    
     :deep(.el-dialog__body) {
       flex: 1;
       overflow-y: auto;
       padding: 16px !important;
       -webkit-overflow-scrolling: touch;
     }
-    
     :deep(.el-dialog__footer) {
       flex-shrink: 0;
       padding: 12px 16px 16px 16px !important;
@@ -785,72 +697,56 @@ const handleFilterChange = () => {
   .tickets-container {
     padding: 10px;
   }
-  
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 16px;
-    
     :is(h1) {
       font-size: 1.5rem;
       margin: 0;
     }
-    
     .el-button {
       width: 100%;
       min-height: 44px;
       font-size: 16px;
     }
   }
-  
   .filter-bar {
     flex-direction: column;
     gap: 10px;
     margin-bottom: 16px;
-    
     .el-select {
       width: 100% !important;
     }
-    
     .el-button {
       width: 100%;
       min-height: 44px;
       font-size: 16px;
     }
   }
-  
-  /* 表格在手机端隐藏，使用卡片式布局 */
   :deep(.el-table) {
     display: none;
   }
-  
-  /* 手机端卡片式列表 */
   .mobile-ticket-list {
     display: block;
   }
-  
-  /* 分页优化 */
   :deep(.el-pagination) {
     flex-wrap: wrap;
     justify-content: center;
-    
     .el-pagination__sizes,
     .el-pagination__jump {
       display: none;
     }
-    
     .el-pagination__total {
       display: none;
     }
-    
     .btn-prev,
     .btn-next {
       padding: 8px 12px;
       min-width: 40px;
       min-height: 40px;
     }
-    
     .number {
       min-width: 36px;
       height: 36px;
@@ -858,8 +754,6 @@ const handleFilterChange = () => {
       font-size: 14px;
     }
   }
-  
-  /* 对话框优化（非创建工单对话框） */
   :deep(.el-dialog:not(.create-ticket-dialog .el-dialog)) {
     width: 95% !important;
     margin: 2vh auto !important;
@@ -867,12 +761,9 @@ const handleFilterChange = () => {
     overflow-y: auto;
     border-radius: 8px;
   }
-  
-  /* 表单优化 */
   .ticket-form {
     :deep(.el-form-item) {
       margin-bottom: 20px;
-      
       .el-form-item__label {
         width: 100% !important;
         text-align: left;
@@ -884,22 +775,18 @@ const handleFilterChange = () => {
         line-height: 1.5;
         display: block;
       }
-      
       .el-form-item__content {
         width: 100%;
         margin-left: 0 !important;
-        
         .el-input,
         .el-select {
           width: 100% !important;
         }
-        
         .el-textarea {
           width: 100% !important;
         }
       }
     }
-    
     .form-label {
       display: block;
       font-size: 14px;
@@ -909,14 +796,11 @@ const handleFilterChange = () => {
       line-height: 1.5;
     }
   }
-  
-  /* 对话框底部按钮优化 */
   .dialog-footer-buttons {
     display: flex;
     flex-direction: column;
     gap: 10px;
     width: 100%;
-    
     .el-button {
       width: 100%;
       margin: 0 !important;
@@ -925,51 +809,42 @@ const handleFilterChange = () => {
       border-radius: 6px;
     }
   }
-  
   .ticket-detail-header {
     :is(h3) {
       font-size: 1.25rem;
       margin-bottom: 12px;
     }
   }
-  
   .ticket-meta {
     flex-wrap: wrap;
     gap: 8px;
     font-size: 0.875rem;
   }
-  
   .ticket-content {
     padding: 12px;
     font-size: 0.875rem;
     line-height: 1.6;
   }
-  
   .ticket-replies {
     :is(h4) {
       font-size: 1rem;
       margin-bottom: 12px;
     }
   }
-  
   .reply-item {
     padding: 12px;
     margin-bottom: 12px;
   }
-  
   .reply-header {
     font-size: 0.75rem;
     margin-bottom: 8px;
   }
-  
   .reply-content {
     font-size: 0.875rem;
     line-height: 1.6;
   }
-  
   .ticket-reply-form {
     margin-top: 16px;
-    
     .el-button {
       width: 100%;
       margin-top: 12px;
@@ -978,19 +853,14 @@ const handleFilterChange = () => {
     }
   }
 }
-
-/* 桌面端隐藏手机端列表 */
 .mobile-ticket-list {
   display: none;
 }
-
 @media (min-width: 769px) {
   .mobile-ticket-list {
     display: none;
   }
 }
-
-/* 手机端卡片样式 */
 .mobile-ticket-card {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -999,13 +869,11 @@ const handleFilterChange = () => {
   margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
-
 .ticket-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 12px;
-  
   :is(h4) {
     margin: 0;
     font-size: 1rem;
@@ -1015,49 +883,39 @@ const handleFilterChange = () => {
     padding-right: 12px;
   }
 }
-
 .ticket-card-body {
   margin-bottom: 12px;
 }
-
 .ticket-card-row {
   display: flex;
   margin-bottom: 8px;
   font-size: 0.875rem;
-  
   &:last-child {
     margin-bottom: 0;
   }
-  
   .label {
     color: #666;
     min-width: 80px;
     font-weight: 500;
   }
-  
   .value {
     color: #333;
     flex: 1;
     word-break: break-word;
   }
 }
-
 .ticket-card-actions {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid #e5e7eb;
 }
-
 .empty-state {
   text-align: center;
   padding: 40px 20px;
   color: #999;
-  
   :is(p) {
     margin: 0;
     font-size: 0.9rem;
   }
 }
 </style>
-
-
