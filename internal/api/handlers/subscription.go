@@ -1412,10 +1412,17 @@ func GetSubscriptionConfig(c *gin.Context) {
 	c.Header("Profile-Title", subscriptionName)
 
 	// 3. 订阅信息头部（某些客户端可能使用）
+	// 设置流量为无限（0 表示无限制）
+	userinfoParts := []string{
+		"upload=0",
+		"download=0",
+		"total=0",
+	}
 	if !subscription.ExpireTime.IsZero() {
 		expireUnix := subscription.ExpireTime.Unix()
-		c.Header("Subscription-Userinfo", fmt.Sprintf("expire=%d", expireUnix))
+		userinfoParts = append(userinfoParts, fmt.Sprintf("expire=%d", expireUnix))
 	}
+	c.Header("Subscription-Userinfo", strings.Join(userinfoParts, "; "))
 
 	// 4. 更新间隔头部（部分客户端可能使用）
 	c.Header("Profile-Update-Interval", "24")
