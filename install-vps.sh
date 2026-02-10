@@ -51,6 +51,8 @@ GO_VERSION="1.21.5"
 NODE_VERSION="18"
 BACKEND_PORT="8000"
 LOG_FILE="/tmp/cboard_install_$(date +%Y%m%d_%H%M%S).log"
+# 是否国内 IP（1 = 中国大陆，0 = 海外），后续用于决定是否启用国内加速镜像
+IS_CHINA_IP=0
 
 # 记录日志
 exec > >(tee -a "$LOG_FILE")
@@ -133,17 +135,47 @@ check_network() {
     fi
 }
 
-setup_go_proxy() {
-    step "配置 Go 代理（国内加速）..."
+detect_server_region() {
+    step "检测服务器所在区域..."
     
-    # 设置 Go 代理
+    local country
+    country="$(curl -s --max-time 3 https://ipinfo.io/country 2>/dev/null || echo "")"
+    if [ -z "$country" ]; then
+        country="$(curl -s --max-time 3 https://ifconfig.co/country-iso 2>/dev/null || echo "")"
+    fi
+    country="$(echo "$country" | tr -d ' \r\n')"
+    
+    if [ "$country" = "CN" ]; then
+        IS_CHINA_IP=1
+        log "检测到服务器位于中国大陆 (country=CN)，将启用国内加速镜像。"
+    elif [ -n "$country" ]; then
+        IS_CHINA_IP=0
+        log "检测到服务器国家代码: $country，视为海外环境，不启用国内加速镜像。"
+    else
+        IS_CHINA_IP=0
+        warn "无法根据 IP 检测服务器所在国家，将按海外环境处理（不强制使用国内镜像）。"
+    fi
+}
+
+setup_go_proxy() {
+    step "配置 Go 代理（按地域选择）..."
+    
+    # 海外环境：使用官方默认代理，避免走国内镜像反而变慢
+    if [ "$IS_CHINA_IP" -ne 1 ]; then
+        export GOPROXY=https://proxy.golang.org,direct
+        export GOSUMDB=sum.golang.org
+        log "检测为海外环境，使用官方 Go 代理: $GOPROXY"
+        return 0
+    fi
+    
+    # 国内环境：使用国内镜像加速
     export GOPROXY=https://goproxy.cn,direct
     export GOSUMDB=sum.golang.google.cn
     
-    # 持久化配置
+    # 持久化配置（仅在国内环境写入）
     if ! grep -q "GOPROXY" /etc/profile; then
         cat >> /etc/profile << 'EOF'
-# Go 代理配置
+# Go 代理配置（国内环境）
 export GOPROXY=https://goproxy.cn,direct
 export GOSUMDB=sum.golang.google.cn
 EOF
@@ -151,7 +183,7 @@ EOF
     
     # 如果 goproxy.cn 不可用，尝试其他镜像
     if ! curl -s --max-time 3 https://goproxy.cn > /dev/null 2>&1; then
-        warn "goproxy.cn 不可用，尝试使用其他镜像..."
+        warn "goproxy.cn 不可用，尝试使用阿里云镜像..."
         export GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
     fi
     
@@ -159,7 +191,13 @@ EOF
 }
 
 setup_npm_mirror() {
-    step "配置 npm 镜像（国内加速）..."
+    step "配置 npm 镜像（按地域选择）..."
+    
+    # 海外环境：保持 npm 默认源（registry.npmjs.org），不强制改为国内镜像
+    if [ "$IS_CHINA_IP" -ne 1 ]; then
+        log "检测为海外环境，保留 npm 默认源（registry.npmjs.org），不使用国内镜像。"
+        return 0
+    fi
     
     # 尝试多个镜像源
     local mirrors=(
@@ -1272,6 +1310,7 @@ main() {
     detect_os
     check_aliyun_aegis
     check_network
+    detect_server_region
     
     # 显示系统资源信息
     log "系统资源信息："
