@@ -953,6 +953,7 @@ func UpdateEmailConfig(c *gin.Context) {
 	for key, value := range req {
 		if err := upsertSystemConfig(db, "email", key, fmt.Sprintf("%v", value)); err != nil {
 			utils.LogError("UpdateEmailConfig", err, map[string]interface{}{"key": key})
+			utils.CreateBusinessLog(c, "email_config_save_failed", "邮件配置保存失败", "error", map[string]interface{}{"key": key, "reason": err.Error()})
 			utils.ErrorResponse(c, http.StatusInternalServerError, "更新配置失败，请稍后重试", err)
 			return
 		}
@@ -1186,6 +1187,9 @@ func UpdatePaymentConfig(c *gin.Context) {
 		utils.LogError("UpdatePaymentConfig: 数据库保存失败", err, map[string]interface{}{
 			"id":                 id,
 			"config_json_length": len(paymentConfig.ConfigJSON.String),
+		})
+		utils.CreateBusinessLog(c, "payment_config_save_failed", "支付配置保存失败", "error", map[string]interface{}{
+			"config_id": paymentConfig.ID, "pay_type": paymentConfig.PayType, "reason": err.Error(),
 		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新支付配置失败", err)
 		return

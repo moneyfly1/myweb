@@ -882,6 +882,9 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 
 	if err := db.Delete(&sub).Error; err != nil {
 		utils.LogError("ConvertSubscriptionToBalance: failed to delete subscription", err, map[string]interface{}{"user_id": user.ID, "sub_id": sub.ID})
+		utils.CreateBusinessLog(c, "subscription_convert_failed", "订阅转余额: 删除订阅记录失败", "error", map[string]interface{}{
+			"user_id": user.ID, "subscription_id": sub.ID, "reason": err.Error(),
+		})
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{
@@ -1273,9 +1276,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 	// 通过 subscription_url 查找订阅
 	if err := db.Where("subscription_url = ?", clashURL).First(&subscription).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			utils.CreateBusinessLog(c, "subscription_pull_not_found", "订阅拉取: token 无效或订阅不存在", "warning", nil)
 			c.String(200, generateErrorConfigBase64("错误", "订阅不存在", baseURL))
 			return
 		}
+		utils.CreateBusinessLog(c, "subscription_pull_query_failed", "订阅拉取: 查询订阅失败", "error", map[string]interface{}{"reason": err.Error()})
 		c.String(200, generateErrorConfigBase64("错误", "查询订阅失败", baseURL))
 		return
 	}
@@ -1452,6 +1457,9 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 
 	message, deviceCount, deviceLimit, isValid := validateSubscription(&subscription, user, db, clientIP, userAgent)
 	if !isValid {
+		utils.CreateBusinessLog(c, "subscription_validation_failed", "订阅校验未通过: "+message, "warning", map[string]interface{}{
+			"user_id": user.ID, "subscription_id": subscription.ID, "reason": message,
+		})
 		utils.ErrorResponse(c, http.StatusBadRequest, message, nil)
 		return
 	}

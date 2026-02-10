@@ -78,6 +78,7 @@
           v-if="!isMobile"
           :data="nodes"
           stripe
+          border
           @selection-change="handleSelectionChange"
           class="desktop-table"
         >

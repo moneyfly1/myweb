@@ -104,6 +104,7 @@
           style="width: 100%" 
           v-loading="loading" 
           stripe
+          border
           @selection-change="handleSelectionChange"
         >
           <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" />

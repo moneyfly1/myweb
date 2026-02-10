@@ -215,13 +215,31 @@ func getLogLevel(log models.AuditLog, useCN bool) string {
 		return ret("错误", "error")
 	}
 
+	if strings.HasPrefix(actionType, "business_") {
+		if log.ResponseStatus.Valid && log.ResponseStatus.Int64 >= 500 {
+			return ret("错误", "error")
+		}
+		if log.ResponseStatus.Valid && log.ResponseStatus.Int64 >= 400 {
+			return ret("警告", "warning")
+		}
+		return ret("信息", "info")
+	}
+
 	if strings.HasPrefix(actionType, "security_") {
 		switch actionType {
-		case "security_login_success", "security_login_attempt":
+		case "security_login_success", "security_login_attempt", "security_admin_login_success",
+			"security_register_success", "security_user_unlock", "security_user_enabled",
+			"security_password_reset_requested":
 			return ret("信息", "info")
-		case "security_login_failed", "security_login_blocked", "security_ip_blocked":
+		case "security_login_failed", "security_login_blocked", "security_ip_blocked",
+			"security_register_ip_blocked":
 			return ret("错误", "error")
-		case "security_login_rate_limit":
+		case "security_login_rate_limit", "security_register_rate_limit", "security_verify_code_rate_limit",
+			"security_admin_login_as", "security_user_disabled",
+			"security_password_change_failed", "security_reset_code_failed",
+			"security_auth_token_invalid", "security_auth_token_blacklisted", "security_admin_forbidden",
+			"security_csrf_validation_failed", "security_refresh_token_invalid", "security_verification_code_failed",
+			"security_admin_reset_password":
 			return ret("警告", "warning")
 		default:
 			if log.ActionDescription.Valid {
@@ -283,10 +301,13 @@ func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
 				failureReason = r
 			}
 			if log.ActionType == "security_login_failed" {
-				if email, ok := data["email"].(string); ok {
+				if id, ok := data["identifier"].(string); ok && id != "" {
+					failureReason += fmt.Sprintf(" (账号: %s)", id)
+				}
+				if email, ok := data["email"].(string); ok && email != "" {
 					failureReason += fmt.Sprintf(" (邮箱: %s)", email)
 				}
-				if uName, ok := data["username"].(string); ok {
+				if uName, ok := data["username"].(string); ok && uName != "" {
 					failureReason += fmt.Sprintf(" (用户名: %s)", uName)
 				}
 				if locked, ok := data["locked"].(bool); ok && locked {
@@ -431,10 +452,10 @@ func GetSystemLogs(c *gin.Context) {
 	p := parsePagination(c)
 	db := database.GetDB()
 
-	// 基础查询：系统级别日志
+	// 基础查询：系统级别 + 安全/异常 + 业务操作日志（支付回调失败、订阅拒绝、Token 无效等）
 	query := db.Model(&models.AuditLog{}).
-		Where("action_type = ? OR action_type LIKE ? OR action_type LIKE ? OR resource_type = ?",
-			"system_error", "scheduler_%", "system_%", "system")
+		Where("action_type = ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR resource_type = ? OR resource_type = ?",
+			"system_error", "scheduler_%", "system_%", "security_%", "business_%", "system", "security")
 
 	// 筛选条件 (Log Level)
 	if logLevel := strings.TrimSpace(c.Query("log_level")); logLevel != "" {
@@ -495,11 +516,14 @@ func GetLogsStats(c *gin.Context) {
 		Info    int64 `json:"info"`
 	}
 
-	// 这里的查询可以并发执行优化，但简单起见保持顺序执行
-	db.Model(&models.AuditLog{}).Count(&stats.Total)
-	db.Model(&models.AuditLog{}).Where("response_status >= ?", 400).Count(&stats.Error)
-	db.Model(&models.AuditLog{}).Where("response_status >= ? AND response_status < ?", 300, 400).Count(&stats.Warning)
-	db.Model(&models.AuditLog{}).Where("response_status < ? OR response_status IS NULL", 300).Count(&stats.Info)
+	// 与 GetSystemLogs 一致：系统 + 安全 + 业务日志
+	baseWhere := "action_type = ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR resource_type = ? OR resource_type = ?"
+	baseArgs := []interface{}{"system_error", "scheduler_%", "system_%", "security_%", "business_%", "system", "security"}
+
+	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Count(&stats.Total)
+	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Where("response_status >= ?", 400).Count(&stats.Error)
+	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Where("response_status >= ? AND response_status < ?", 300, 400).Count(&stats.Warning)
+	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Where("response_status < ? OR response_status IS NULL", 300).Count(&stats.Info)
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }

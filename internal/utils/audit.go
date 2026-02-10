@@ -139,14 +139,30 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 
 	var responseStatus sql.NullInt64
 	switch eventType {
-	case "login_success":
+	case "login_success", "admin_login_success", "register_success", "user_unlock", "user_enabled":
 		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
 	case "login_attempt":
 		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
-	case "login_failed", "login_blocked", "ip_blocked":
+	case "login_failed", "login_blocked", "ip_blocked", "password_change_failed", "reset_code_failed":
 		responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
-	case "login_rate_limit":
+	case "login_rate_limit", "register_rate_limit", "verify_code_rate_limit":
 		responseStatus = sql.NullInt64{Int64: http.StatusTooManyRequests, Valid: true}
+	case "register_ip_blocked":
+		responseStatus = sql.NullInt64{Int64: http.StatusTooManyRequests, Valid: true}
+	case "admin_login_as", "user_disabled":
+		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true} // 管理员操作 200
+	case "auth_token_invalid", "auth_token_blacklisted", "admin_forbidden":
+		responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
+	case "csrf_validation_failed":
+		responseStatus = sql.NullInt64{Int64: http.StatusForbidden, Valid: true}
+	case "refresh_token_invalid":
+		responseStatus = sql.NullInt64{Int64: http.StatusUnauthorized, Valid: true}
+	case "verification_code_failed":
+		responseStatus = sql.NullInt64{Int64: http.StatusBadRequest, Valid: true}
+	case "password_reset_requested":
+		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
+	case "admin_reset_password":
+		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
 	default:
 		switch severity {
 		case "CRITICAL", "HIGH":
@@ -200,6 +216,78 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 					AppLogger.Info(logMsg)
 				}
 			}
+		}
+	}()
+}
+
+// CreateBusinessLog 记录业务/操作类日志（支付回调失败、订阅拒绝、Token 无效等），便于在系统日志中排查问题
+// c 可为 nil（如定时任务内调用），此时不记录 IP/Path
+func CreateBusinessLog(c *gin.Context, actionType, description, level string, data map[string]interface{}) {
+	db := database.GetDB()
+	if db == nil {
+		if AppLogger != nil {
+			AppLogger.Warn("[业务日志] %s: %s", actionType, description)
+		}
+		return
+	}
+
+	var ipAddress, userAgent, method, path string
+	var location sql.NullString
+	var userID sql.NullInt64
+	if c != nil {
+		ipAddress = GetRealClientIP(c)
+		if ipAddress == "" {
+			ipAddress = c.ClientIP()
+		}
+		userAgent = c.GetHeader("User-Agent")
+		method = c.Request.Method
+		path = c.Request.URL.Path
+		if ipAddress != "" {
+			location = geoip.GetLocationString(ipAddress)
+		}
+		if uid, exists := c.Get("user_id"); exists {
+			if u, ok := uid.(uint); ok {
+				userID = sql.NullInt64{Int64: int64(u), Valid: true}
+			}
+		}
+	}
+
+	var dataJSON sql.NullString
+	if data != nil && len(data) > 0 {
+		if b, err := json.Marshal(data); err == nil {
+			dataJSON = sql.NullString{String: string(b), Valid: true}
+		}
+	}
+
+	var responseStatus sql.NullInt64
+	switch level {
+	case "error":
+		responseStatus = sql.NullInt64{Int64: http.StatusInternalServerError, Valid: true}
+	case "warning":
+		responseStatus = sql.NullInt64{Int64: http.StatusBadRequest, Valid: true}
+	default:
+		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
+	}
+
+	auditLog := models.AuditLog{
+		UserID:            userID,
+		ActionType:        "business_" + actionType,
+		ResourceType:      sql.NullString{String: "system", Valid: true},
+		ResourceID:        sql.NullInt64{Valid: false},
+		ActionDescription: sql.NullString{String: description, Valid: true},
+		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
+		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
+		Location:          location,
+		RequestMethod:     sql.NullString{String: method, Valid: method != ""},
+		RequestPath:       sql.NullString{String: path, Valid: path != ""},
+		ResponseStatus:    responseStatus,
+		BeforeData:        dataJSON,
+		AfterData:         sql.NullString{Valid: false},
+	}
+
+	go func() {
+		if err := db.Create(&auditLog).Error; err != nil && AppLogger != nil {
+			AppLogger.Error("[业务日志保存失败] %s: %s, 错误: %v", actionType, description, err)
 		}
 	}()
 }
