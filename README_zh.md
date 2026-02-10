@@ -15,7 +15,7 @@
 - 🔒 **安全可靠**: JWT 认证、密码加密、SQL 注入防护
 - 📦 **功能完整**: 包含所有核心业务功能
 - 🎨 **现代化前端**: Vue 3 + Element Plus，响应式设计
-- 🐳 **易于部署**: 支持宝塔面板一键安装，单一可执行文件
+- 🐳 **易于部署**: 支持无宝塔 VPS 一键脚本（install-vps.sh）与宝塔面板脚本（install.sh）
 - 💳 **多支付方式**: 支持支付宝、微信支付、PayPal、Apple Pay、易支付
 - 👥 **用户管理**: 完整的用户系统，包含等级、邀请、奖励
 - 📊 **数据分析**: 全面的统计和监控功能
@@ -53,39 +53,43 @@
 
 ### 软件要求
 - **Go**: 1.21+（安装脚本会自动安装）
-- **Node.js**: 16+（用于前端构建）
-- **Nginx**: （宝塔面板自带）
+- **Node.js**: 16+（用于前端构建，安装脚本会自动安装）
+- **Nginx**：宝塔环境由面板提供；无宝塔时由 `install-vps.sh` 自动安装
 - **数据库**: SQLite（默认，无需安装）或 MySQL/PostgreSQL
 
 ---
 
 ## 🚀 安装指南
 
-### 快速开始 - VPS 一键安装（推荐）
+### 安装方式选择
 
-最简单的方式是直接在 VPS 上运行一键安装脚本：
+本系统提供两套安装方式，请根据您的服务器环境选择：
 
-```bash
-# 1. 下载安装脚本
-wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
+| 环境 | 使用脚本 | 项目目录（常见） | 说明 |
+|------|----------|------------------|------|
+| **无宝塔面板**（纯 VPS） | `install-vps.sh` | `/opt/cboard` | 全自动安装 Go、Node.js、Nginx、Certbot，从 GitHub 拉代码并部署。**适合新 VPS 或未安装宝塔的服务器。** |
+| **有宝塔面板** | `install.sh` | `/www/wwwroot/你的域名` | 在宝塔已创建的网站目录下部署，依赖宝塔的 Nginx 与站点。需先在宝塔中「添加站点」，再在该目录放入代码并运行脚本。 |
 
-# 2. 添加执行权限
-chmod +x install-vps.sh
-
-# 3. 运行安装脚本（需要 root 权限）
-#    脚本会自动下载代码、安装所有依赖、配置环境
-sudo bash install-vps.sh
-```
-
-**GitHub 仓库地址**: https://github.com/moneyfly1/myweb
-
-**一键安装脚本**: `install-vps.sh` - 全自动安装，自动处理所有环境问题
+- **无宝塔**：详见下方 [无宝塔面板安装（纯 VPS）](#无宝塔面板安装纯-vps)，或直接查看 **[VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md)**。
+- **有宝塔**：详见下方 [宝塔面板安装](#宝塔面板安装)。
 
 ---
 
-## 🚀 VPS 一键安装（非宝塔面板）
+## 一、无宝塔面板安装（纯 VPS）
 
-### 前置条件
+适用于**未安装宝塔面板**的 VPS（Ubuntu / Debian / CentOS）。脚本会自动安装 Nginx、Go、Node.js、Certbot 并完成部署。
+
+### 快速开始（无宝塔）
+
+```bash
+# 下载并运行安装脚本（需 root）
+curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
+sudo bash install-vps.sh
+```
+
+按提示输入**域名**、**项目目录**（默认 `/opt/cboard`）、**管理员账号**即可。若 GitHub 克隆失败（如国内网络），请先手动将代码放到安装目录再重新运行脚本，在「是否删除并重新下载」时选 **n**。详见：[VPS 部署教程 - 克隆失败时如何继续](./docs/VPS部署教程-无宝塔.md#克隆失败时如何继续代码下载失败)。
+
+### 前置条件（无宝塔）
 
 - ✅ 服务器系统：Ubuntu 18.04+ / Debian 10+ / CentOS 7+
 - ✅ 服务器配置：至少 1 核心 CPU + 512 MB 内存 + 10 GB 磁盘
@@ -97,27 +101,16 @@ sudo bash install-vps.sh
 
 #### 步骤 1：下载并运行安装脚本
 
-通过 SSH 连接到您的 VPS 服务器，然后执行：
+通过 SSH 连接到 VPS 后执行（或使用上方「快速开始」中的命令）：
 
 ```bash
-# 下载安装脚本
-wget https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh
-
-# 添加执行权限
-chmod +x install-vps.sh
-
-# 直接运行安装脚本（脚本会自动下载代码）
+curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
 sudo bash install-vps.sh
 ```
 
-**重要说明**：
-- 脚本会自动从 GitHub 下载项目代码，无需手动克隆仓库
-- 脚本会自动安装所有依赖（Go、Node.js、Nginx、Certbot 等）
-- 脚本会自动配置网络代理和镜像源
-- 脚本会自动处理防火墙、端口、域名解析等问题
-- 只需按提示输入域名和管理员信息即可
+**说明**：脚本会从 GitHub 下载代码并安装 Go、Node.js、Nginx、Certbot 等；若克隆失败，请按 [克隆失败时如何继续](./docs/VPS部署教程-无宝塔.md#克隆失败时如何继续代码下载失败) 操作后再重新运行脚本。
 
-#### 步骤 3：按提示输入信息
+#### 步骤 2：按提示输入信息
 
 安装脚本会依次提示您输入以下信息：
 
@@ -141,7 +134,7 @@ sudo bash install-vps.sh
    - 密码长度至少 6 位
    - 需要输入两次确认
 
-#### 步骤 4：自动安装过程
+#### 步骤 3：自动安装过程
 
 确认信息后，脚本会自动完成以下操作：
 
@@ -159,7 +152,7 @@ sudo bash install-vps.sh
 - ✅ 创建 systemd 服务
 - ✅ 启动服务
 
-#### 步骤 5：验证安装
+#### 步骤 4：验证安装
 
 安装完成后，访问您的域名：
 
@@ -168,7 +161,9 @@ sudo bash install-vps.sh
 - **健康检查**: `https://yourdomain.com/health`
 - **API 接口**: `https://yourdomain.com/api/v1/...`
 
-### 安装后管理
+### 安装后管理（无宝塔）
+
+以下路径以默认安装目录 `/opt/cboard` 为例；若安装时修改过目录，请替换为实际路径。
 
 #### 常用命令
 
@@ -268,7 +263,7 @@ export ADMIN_PASSWORD="your-new-password"
 go run scripts/admin_tool.go
 ```
 
-### 注意事项
+### 注意事项（无宝塔）
 
 1. **首次安装**：
    - 确保服务器有足够的磁盘空间（至少 2GB）
@@ -288,9 +283,11 @@ go run scripts/admin_tool.go
 
 ---
 
-## 🚀 宝塔面板一键安装
+## 二、宝塔面板安装
 
-### 前置条件
+适用于**已安装宝塔面板**的服务器。需先在宝塔中「添加站点」，在网站根目录放入代码，再运行 `install.sh` 完成编译与 Nginx 配置。
+
+### 前置条件（宝塔）
 
 - ✅ 已安装宝塔面板（建议版本 7.0+）
 - ✅ 服务器系统：Ubuntu 18.04+ / Debian 10+ / CentOS 7+
@@ -418,7 +415,7 @@ sudo ./install.sh
 - ✅ 创建 systemd 服务
 - ✅ 启动服务
 
-#### 步骤 6：验证安装
+#### 步骤 6：验证安装（宝塔）
 
 安装完成后，访问您的域名：
 
@@ -427,7 +424,7 @@ sudo ./install.sh
 - **健康检查**: `https://yourdomain.com/health`
 - **API 接口**: `https://yourdomain.com/api/v1/...`
 
-### 安装后配置
+### 安装后配置（宝塔）
 
 #### 配置 Nginx（如果需要）
 
@@ -452,6 +449,10 @@ sudo ./install.sh
 ---
 
 ## 👤 管理员账户管理
+
+以下命令中的**项目目录**请按实际部署方式替换：
+- **无宝塔安装**：一般为 `/opt/cboard`
+- **宝塔安装**：一般为 `/www/wwwroot/你的域名`（如 `/www/wwwroot/example.com`）
 
 ### 创建管理员账户
 
@@ -779,51 +780,28 @@ DEBUG=false
 
 ### Nginx 配置
 
-安装脚本会自动配置 Nginx。如需手动调整：
-
-1. 登录宝塔面板
-2. **网站** → 找到您的网站 → **设置** → **配置文件**
-3. 修改配置 → **保存** → **重载配置**
+- **宝塔**：安装脚本会自动写入站点 Nginx 配置；手动调整请登录宝塔 → **网站** → 对应站点 → **设置** → **配置文件** → 修改后保存并重载。
+- **无宝塔**：脚本会生成 `/etc/nginx/sites-available/cboard`（或 CentOS 下 `/etc/nginx/conf.d/cboard.conf`）；修改后执行 `nginx -t` 与 `systemctl reload nginx`。
 
 ---
 
 ## 🛠️ 管理脚本使用说明
 
-### 常用操作
+### 宝塔环境：使用 install.sh 菜单
 
-#### 创建/重置管理员账号
-```bash
-sudo ./install.sh
-# 选择选项 2
-```
+在**宝塔安装**的服务器上，可在项目目录下运行 `./install.sh`，通过菜单操作：
 
-#### 重启服务
-```bash
-sudo ./install.sh
-# 选择选项 8（标准重启）或 3（强制重启）
-```
+| 操作 | 步骤 |
+|------|------|
+| 创建/重置管理员账号 | 运行 `sudo ./install.sh` → 选择 **2** |
+| 重启服务 | 运行 `sudo ./install.sh` → 选择 **8**（标准）或 **3**（强制） |
+| 查看服务状态 | 运行 `sudo ./install.sh` → 选择 **6** |
+| 查看实时日志 | 运行 `sudo ./install.sh` → 选择 **7** |
+| 停止服务 | 运行 `sudo ./install.sh` → 选择 **9** |
 
-#### 查看服务状态
-```bash
-sudo ./install.sh
-# 选择选项 6
-```
+### 无宝塔环境：使用 systemd（推荐）
 
-#### 查看实时日志
-```bash
-sudo ./install.sh
-# 选择选项 7
-```
-
-#### 停止服务
-```bash
-sudo ./install.sh
-# 选择选项 9
-```
-
-### 手动管理命令
-
-如果不想使用管理脚本，也可以直接使用 systemd 命令：
+**无宝塔**安装后没有 `install.sh` 的交互菜单，请直接使用 systemd。以下命令**两种部署方式均可使用**：
 
 ```bash
 # 启动服务
@@ -874,29 +852,29 @@ systemctl enable cboard
 
 ## 📝 数据库备份
 
-### 自动备份（推荐）
+### 自动备份（宝塔）
 
-在宝塔面板中配置定时任务：
+在**宝塔面板**中配置定时任务：
 
 1. **计划任务** → **添加计划任务**
 2. **任务类型**：Shell 脚本
 3. **任务名称**：CBoard 数据库备份
 4. **执行周期**：每天 0 点 2 分
-5. **脚本内容**：
+5. **脚本内容**（请将 `PROJECT_DIR` 改为实际路径：宝塔一般为 `/www/wwwroot/你的域名`，无宝塔一般为 `/opt/cboard`）：
 ```bash
 #!/bin/bash
-cd /www/wwwroot/cboard
+PROJECT_DIR="/www/wwwroot/你的域名"   # 或 /opt/cboard
 BACKUP_DIR="/www/backup/cboard"
 mkdir -p $BACKUP_DIR
-cp cboard.db $BACKUP_DIR/cboard_$(date +%Y%m%d_%H%M%S).db
-# 保留最近 7 天的备份
+cp "$PROJECT_DIR/cboard.db" "$BACKUP_DIR/cboard_$(date +%Y%m%d_%H%M%S).db"
 find $BACKUP_DIR -name "cboard_*.db" -mtime +7 -delete
 ```
 
 ### 手动备份
 
 ```bash
-cd /www/wwwroot/cboard
+# 进入项目目录（宝塔示例：/www/wwwroot/example.com，无宝塔示例：/opt/cboard）
+cd /opt/cboard
 cp cboard.db cboard.db.backup.$(date +%Y%m%d_%H%M%S)
 ```
 
@@ -916,14 +894,14 @@ cp cboard.db cboard.db.backup.$(date +%Y%m%d_%H%M%S)
 # 查看服务日志
 journalctl -u cboard -f
 
-# 查看应用日志
-tail -f /www/wwwroot/cboard/uploads/logs/app.log
+# 查看应用日志（无宝塔示例：/opt/cboard，宝塔示例：/www/wwwroot/你的域名）
+tail -f /opt/cboard/server.log
 ```
 
 **常见原因**：
 - 端口被占用：检查 8000 端口是否被其他程序占用
 - 权限问题：确保项目目录权限正确
-- 配置文件错误：检查 `.env` 文件配置
+- 配置文件错误：检查项目目录下的 `.env` 文件
 
 ### 2. 502 Bad Gateway
 
@@ -940,9 +918,10 @@ tail -f /www/wwwroot/cboard/uploads/logs/app.log
 ### 4. 数据库权限错误
 
 ```bash
-cd /www/wwwroot/cboard
+# 进入项目目录（宝塔：/www/wwwroot/你的域名，无宝塔：/opt/cboard）
+cd /opt/cboard
 chmod 666 cboard.db
-chown www:www cboard.db
+# 宝塔下若以 www 运行，可执行：chown www:www cboard.db
 ```
 
 ### 5. 前端无法访问后端 API
@@ -1027,7 +1006,8 @@ goweb/
 │   ├── admin_tool.go           # 创建/更新管理员账号和密码
 │   └── unlock_user.go          # 解锁用户账号（支持管理员和普通用户）
 ├── .env                        # 环境变量
-├── install.sh                  # 宝塔面板安装脚本
+├── install.sh                  # 宝塔面板安装脚本（有宝塔时使用）
+├── install-vps.sh              # 无宝塔 VPS 一键安装脚本（纯 VPS 使用）
 ├── cboard.db                   # SQLite 数据库
 ├── README.md                   # 英文版本文档
 └── README_zh.md                # 中文版本文档（本文件）
@@ -1155,9 +1135,8 @@ goweb/
 
 如遇到问题：
 
-1. **查看日志文件**：
-   - 应用日志：`/www/wwwroot/cboard/uploads/logs/app.log`
-   - 错误日志：`/www/wwwroot/cboard/uploads/logs/error.log`
+1. **查看日志文件**（项目目录：宝塔一般为 `/www/wwwroot/你的域名`，无宝塔一般为 `/opt/cboard`）：
+   - 应用日志：`项目目录/server.log` 或 `项目目录/uploads/logs/app.log`
    - 服务日志：`journalctl -u cboard -f`
 
 2. **检查系统状态**：
