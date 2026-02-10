@@ -250,10 +250,16 @@ func RefreshToken(c *gin.Context) {
 
 	claims, err := utils.VerifyToken(req.RefreshToken)
 	if err != nil {
+		utils.CreateSecurityLog(c, "refresh_token_invalid", "MEDIUM",
+			"刷新令牌无效或已过期",
+			map[string]interface{}{"path": c.Request.URL.Path, "reason": err.Error()})
 		utils.ErrorResponse(c, http.StatusUnauthorized, "无效的刷新令牌", err)
 		return
 	}
 	if claims.Type != "refresh" {
+		utils.CreateSecurityLog(c, "refresh_token_invalid", "MEDIUM",
+			"刷新令牌类型错误（非 refresh 类型）",
+			map[string]interface{}{"path": c.Request.URL.Path})
 		utils.ErrorResponse(c, http.StatusUnauthorized, "令牌类型错误", nil)
 		return
 	}
@@ -529,6 +535,11 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 	utils.CreateSecurityLog(c, "login_success", "INFO",
 		fmt.Sprintf("登录成功: 用户 %s (IP: %s)", user.Username, ipAddress),
 		map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
+	if user.IsAdmin {
+		utils.CreateSecurityLog(c, "admin_login_success", "INFO",
+			fmt.Sprintf("管理员登录: %s (IP: %s)", user.Username, ipAddress),
+			map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
+	}
 	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
@@ -693,6 +704,9 @@ func ChangePassword(c *gin.Context) {
 	db := database.GetDB()
 
 	if !auth.VerifyPassword(req.CurrentPassword, user.Password) {
+		utils.CreateSecurityLog(c, "password_change_failed", "MEDIUM",
+			fmt.Sprintf("修改密码失败: 原密码错误 (用户: %s)", user.Username),
+			map[string]interface{}{"user_id": user.ID, "username": user.Username, "reason": "原密码错误"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "原密码错误", nil)
 		return
 	}
@@ -771,6 +785,9 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
+	utils.CreateSecurityLog(c, "admin_reset_password", "MEDIUM",
+		fmt.Sprintf("管理员重置用户密码: %s (ID: %s)", user.Username, userID),
+		map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
 	utils.CreateAuditLogSimple(c, "reset_password", "user", user.ID,
 		fmt.Sprintf("管理员重置用户密码: %s (%s)", user.Username, user.Email))
 
@@ -814,11 +831,15 @@ func ForgotPassword(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+	ipAddress := utils.GetRealClientIP(c)
 	var user models.User
 	if err := db.Where("email = ?", req.Email).First(&user).Error; err != nil {
 		utils.SuccessResponse(c, http.StatusOK, "如果该邮箱存在，验证码已发送", nil)
 		return
 	}
+	utils.CreateSecurityLog(c, "password_reset_requested", "INFO",
+		"用户请求密码重置验证码",
+		map[string]interface{}{"email": req.Email, "ip": ipAddress})
 
 	b := make([]byte, 4)
 	rand.Read(b)
@@ -907,6 +928,9 @@ func ResetPasswordByCode(c *gin.Context) {
 	db := database.GetDB()
 	var user models.User
 	if err := db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
+			"重置密码失败: 该邮箱未注册（可能撞库/探测）",
+			map[string]interface{}{"email": req.Email, "reason": "该邮箱未注册"})
 		utils.ErrorResponse(c, http.StatusNotFound, "该邮箱未注册，请检查邮箱地址是否正确", nil)
 		return
 	}
@@ -919,23 +943,35 @@ func ResetPasswordByCode(c *gin.Context) {
 	var codeCount int64
 	db.Model(&models.VerificationCode{}).Where("email = ? AND purpose = ?", req.Email, "reset_password").Count(&codeCount)
 	if codeCount == 0 {
+		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
+			"重置密码失败: 未找到该邮箱的验证码",
+			map[string]interface{}{"email": req.Email, "reason": "未找到验证码"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "未找到该邮箱的验证码，请先获取验证码", nil)
 		return
 	}
 
 	var usedCode models.VerificationCode
 	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 1, "reset_password").First(&usedCode).Error; err == nil {
+		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
+			"重置密码失败: 验证码已使用",
+			map[string]interface{}{"email": req.Email, "reason": "验证码已使用"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已使用，请重新获取验证码", nil)
 		return
 	}
 
 	var verificationCode models.VerificationCode
 	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "reset_password").Order("created_at DESC").First(&verificationCode).Error; err != nil {
+		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
+			"重置密码失败: 验证码错误",
+			map[string]interface{}{"email": req.Email, "reason": "验证码错误"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误，请检查后重新输入", nil)
 		return
 	}
 
 	if verificationCode.IsExpired() {
+		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
+			"重置密码失败: 验证码已过期",
+			map[string]interface{}{"email": req.Email, "reason": "验证码已过期"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取验证码", nil)
 		return
 	}
@@ -1064,7 +1100,7 @@ func VerifyCode(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-
+	ipAddress := utils.GetRealClientIP(c)
 	identifier := req.Email
 
 	fiveMinutesAgo := utils.GetBeijingTime().Add(-5 * time.Minute)
@@ -1074,11 +1110,12 @@ func VerifyCode(c *gin.Context) {
 		Count(&failedAttempts)
 
 	if failedAttempts >= 5 {
+		utils.CreateSecurityLog(c, "verify_code_rate_limit", "MEDIUM",
+			"验证码尝试次数过多（5分钟内失败≥5次）",
+			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": "register"})
 		utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码尝试次数过多，请5分钟后再试", nil)
 		return
 	}
-
-	ipAddress := utils.GetRealClientIP(c)
 
 	var verificationCode models.VerificationCode
 	if err := db.Where("email = ? AND code = ? AND used = ?", identifier, req.Code, 0).Order("created_at DESC").First(&verificationCode).Error; err != nil {
@@ -1089,7 +1126,9 @@ func VerifyCode(c *gin.Context) {
 			Purpose:   "register",
 		}
 		db.Create(&attempt)
-
+		utils.CreateSecurityLog(c, "verification_code_failed", "MEDIUM",
+			"验证码校验失败: 验证码错误或已使用",
+			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": "register"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误或已使用", err)
 		return
 	}
@@ -1102,7 +1141,9 @@ func VerifyCode(c *gin.Context) {
 			Purpose:   "register",
 		}
 		db.Create(&attempt)
-
+		utils.CreateSecurityLog(c, "verification_code_failed", "MEDIUM",
+			"验证码校验失败: 验证码已过期",
+			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": "register"})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期", nil)
 		return
 	}

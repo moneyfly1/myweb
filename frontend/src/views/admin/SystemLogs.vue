@@ -230,6 +230,8 @@
             :data="logsList"
             v-loading="loading"
             style="width: 100%"
+            stripe
+            border
             :default-sort="{ prop: 'timestamp', order: 'descending' }"
           >
             <el-table-column prop="timestamp" label="时间" width="180" sortable>
@@ -650,7 +652,48 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
         'node_health_check': '节点健康检查',
         'expiring_subscriptions': '订阅到期检查',
         'account_deletion': '账户删除',
-        'system_error': '系统错误'
+        'system_error': '系统错误',
+        'security_login_success': '用户登录成功',
+        'security_admin_login_success': '管理员登录',
+        'security_login_attempt': '登录尝试',
+        'security_login_failed': '登录失败',
+        'security_login_blocked': '登录被阻止',
+        'security_ip_blocked': 'IP封禁',
+        'security_login_rate_limit': '登录限流',
+        'security_register_success': '注册成功',
+        'security_register_rate_limit': '注册限流',
+        'security_register_ip_blocked': '注册IP封禁',
+        'security_verify_code_rate_limit': '验证码限流',
+        'security_user_unlock': '解禁用户',
+        'security_user_enabled': '启用用户',
+        'security_user_disabled': '禁用用户',
+        'security_admin_login_as': '管理员代登',
+        'security_password_change_failed': '修改密码失败',
+        'security_reset_code_failed': '重置密码/验证码失败',
+        'security_auth_token_invalid': 'Token无效/过期',
+        'security_auth_token_blacklisted': 'Token已失效',
+        'security_admin_forbidden': '非管理员访问管理端',
+        'security_csrf_validation_failed': 'CSRF验证失败',
+        'security_password_reset_requested': '请求密码重置',
+        'security_admin_reset_password': '管理员重置密码',
+        'security_refresh_token_invalid': '刷新令牌无效',
+        'security_verification_code_failed': '验证码校验失败',
+        'business_payment_callback_signature_failed': '支付回调签名失败',
+        'business_payment_callback_order_not_found': '支付回调订单不存在',
+        'business_payment_callback_amount_mismatch': '支付回调金额不一致',
+        'business_payment_callback_process_failed': '支付回调处理失败',
+        'business_subscription_validation_failed': '订阅校验未通过',
+        'business_subscription_pull_not_found': '订阅拉取Token无效',
+        'business_subscription_pull_query_failed': '订阅拉取查询失败',
+        'business_order_payment_url_failed': '订单支付链接生成失败',
+        'business_recharge_payment_url_failed': '充值支付链接生成失败',
+        'business_refund_failed': '管理员退款失败',
+        'business_refund_process_failed': '退款回退处理失败',
+        'business_delete_user_failed': '删除用户失败',
+        'business_subscription_convert_failed': '订阅转余额失败',
+        'business_email_config_save_failed': '邮件配置保存失败',
+        'business_payment_config_save_failed': '支付配置保存失败',
+        'business_invite_reward_failed': '邀请奖励发放失败'
       }
       return nameMap[type] || type
     }

@@ -553,6 +553,9 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 					"inviter_id": inviter.ID,
 					"amount":     inviteRelation.InviterRewardAmount,
 				})
+				utils.CreateBusinessLog(nil, "invite_reward_failed", "邀请奖励发放失败: 邀请人余额更新失败", "error", map[string]interface{}{
+					"inviter_id": inviter.ID, "order_id": order.ID, "amount": inviteRelation.InviterRewardAmount, "reason": err.Error(),
+				})
 			}
 		}
 	}
@@ -572,6 +575,9 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 					"invitee_id": invitee.ID,
 					"amount":     inviteRelation.InviteeRewardAmount,
 				})
+				utils.CreateBusinessLog(nil, "invite_reward_failed", "邀请奖励发放失败: 被邀请人余额更新失败", "error", map[string]interface{}{
+					"invitee_id": invitee.ID, "order_id": order.ID, "amount": inviteRelation.InviteeRewardAmount, "reason": err.Error(),
+				})
 			}
 		}
 	}
@@ -579,6 +585,9 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 	if err := s.db.Save(&inviteRelation).Error; err != nil {
 		utils.LogError("processInviteRewards: failed to save invite relation", err, map[string]interface{}{
 			"invite_relation_id": inviteRelation.ID,
+		})
+		utils.CreateBusinessLog(nil, "invite_reward_failed", "邀请奖励发放失败: 保存邀请关系失败", "error", map[string]interface{}{
+			"invite_relation_id": inviteRelation.ID, "order_id": order.ID, "reason": err.Error(),
 		})
 	}
 }

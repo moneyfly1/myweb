@@ -287,6 +287,11 @@ func CreateOrder(c *gin.Context) {
 	svc := orderServicePkg.NewOrderService()
 	order, paymentURL, err := svc.CreateOrder(user.ID, req)
 	if err != nil {
+		if strings.Contains(err.Error(), "生成支付链接失败") {
+			utils.CreateBusinessLog(c, "order_payment_url_failed", "创建订单生成支付链接失败", "error", map[string]interface{}{
+				"user_id": user.ID, "order_no": order.OrderNo, "reason": err.Error(),
+			})
+		}
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
@@ -783,6 +788,9 @@ func RefundAdminOrder(c *gin.Context) {
 			"trade_no":      tradeNo,
 			"refund_amount": refundAmount,
 		})
+		utils.CreateBusinessLog(c, "refund_failed", "管理员退款失败（易支付接口）", "error", map[string]interface{}{
+			"order_id": order.ID, "order_no": order.OrderNo, "trade_no": tradeNo, "refund_amount": refundAmount, "reason": err.Error(),
+		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "退款失败: "+err.Error(), nil)
 		return
 	}
@@ -792,6 +800,9 @@ func RefundAdminOrder(c *gin.Context) {
 	if err := orderService.ProcessRefundOrder(&order); err != nil {
 		utils.LogError("RefundAdminOrder: 处理退款订单失败", err, map[string]interface{}{
 			"order_id": order.ID,
+		})
+		utils.CreateBusinessLog(c, "refund_process_failed", "管理员退款后订单回退处理失败", "error", map[string]interface{}{
+			"order_id": order.ID, "order_no": order.OrderNo, "reason": err.Error(),
 		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "处理退款订单失败: "+err.Error(), nil)
 		return

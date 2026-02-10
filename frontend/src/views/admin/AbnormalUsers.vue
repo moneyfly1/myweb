@@ -73,6 +73,8 @@
           :data="abnormalUsers"
           style="width: 100%"
           v-loading="loading"
+          stripe
+          border
           :empty-text="abnormalUsers.length === 0 && !loading ? '暂无数据，请设置筛选条件后点击查询按钮' : ''"
         >
           <el-table-column prop="username" label="用户名" width="120">
@@ -233,7 +235,7 @@
           <template #header>
             <span>订阅重置记录</span>
           </template>
-          <el-table :data="userDetails.subscription_resets" style="width: 100%" :max-height="300">
+          <el-table :data="userDetails.subscription_resets" style="width: 100%" :max-height="300" stripe border>
             <el-table-column prop="reset_type" label="重置类型" width="120" />
             <el-table-column prop="reason" label="重置原因" />
             <el-table-column prop="device_count_before" label="重置前设备数" width="120" />
@@ -250,7 +252,7 @@
           <template #header>
             <span>最近活动</span>
           </template>
-          <el-table :data="userDetails.recent_activities" style="width: 100%" :max-height="300">
+          <el-table :data="userDetails.recent_activities" style="width: 100%" :max-height="300" stripe border>
             <el-table-column prop="activity_type" label="活动类型" width="120" />
             <el-table-column prop="description" label="描述" />
             <el-table-column prop="ip_address" label="IP地址" width="150" />
