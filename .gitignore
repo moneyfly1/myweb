@@ -28,7 +28,8 @@ go.work
 .env
 .env.local
 
-# Database
+# Database（不提交到仓库，首次运行或安装脚本会自动创建）
+*.db
 *.db-shm
 *.db-wal
 *.sqlite
