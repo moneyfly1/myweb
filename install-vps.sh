@@ -1075,27 +1075,73 @@ EOF
     # 等待 Nginx 启动
     sleep 2
     
-    # 申请 SSL 证书
+    # ---------- SSL 证书：申请 + 若已有证书则同样启用 HTTPS ----------
     step "申请 SSL 证书..."
-    
-    # 检查域名解析
     check_domain_resolution
     
-    # 检查端口 80 是否可访问
-    if ! check_port 80; then
-        warn "端口 80 被占用，SSL 证书申请可能失败"
-    fi
+    mkdir -p "${PROJECT_DIR}/.well-known/acme-challenge"
+    chmod -R 755 "${PROJECT_DIR}/.well-known"
     
-    # 尝试申请证书
-    if certbot --nginx -d "$DOMAIN" \
+    # 尝试申请（可能因 CAA/限速等失败；也可能证书已存在且未到期而跳过）
+    certbot certonly --webroot -w "${PROJECT_DIR}" -d "$DOMAIN" \
         --non-interactive \
         --agree-tos \
         --email "$ADMIN_EMAIL" \
-        --quiet 2>&1; then
-        log "✅ SSL 证书申请成功"
+        2>&1 || true
+    
+    local ssl_cert="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+    local ssl_key="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+    
+    # 只要证书文件存在就为 Nginx 启用 HTTPS（含：本次申请成功、或之前已手动申请过）
+    if [ -f "$ssl_cert" ] && [ -f "$ssl_key" ]; then
+        log "✅ 使用证书: $ssl_cert"
+        step "为 Nginx 配置 HTTPS..."
+        cat > "$nginx_conf" << NGINXSSL
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name ${DOMAIN};
+    ssl_certificate ${ssl_cert};
+    ssl_certificate_key ${ssl_key};
+    root ${PROJECT_DIR}/frontend/dist;
+    client_max_body_size 10M;
+    location /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        allow all;
+    }
+    location /api/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    location / {
+        try_files \$uri \$uri/ /index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)\$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+NGINXSSL
+        if nginx -t 2>&1; then
+            systemctl reload nginx 2>/dev/null || systemctl restart nginx
+            log "✅ HTTPS 已启用，可通过 https://${DOMAIN} 访问"
+        else
+            warn "Nginx 配置测试未通过，请检查: $nginx_conf"
+        fi
     else
-        warn "SSL 证书申请失败，将使用 HTTP"
-        warn "您可以稍后手动申请: certbot --nginx -d $DOMAIN"
+        warn "未检测到有效 SSL 证书，当前仅支持 HTTP 访问"
+        warn "若 Certbot 报错含 \"CAA record ... prevents issuance\"，请在域名 DNS 中为该域名添加 CAA 允许 Let's Encrypt，或删除 CAA 记录后重试。"
+        warn "手动申请证书: certbot certonly --webroot -w ${PROJECT_DIR} -d $DOMAIN --agree-tos -m $ADMIN_EMAIL"
+        warn "申请成功后，在 Nginx 站点配置中增加 listen 443 ssl 及 ssl_certificate/ssl_certificate_key 后执行: nginx -t && systemctl reload nginx"
     fi
 }
 
@@ -1288,6 +1334,7 @@ main() {
     log "  重启服务: systemctl restart cboard"
     log "  停止服务: systemctl stop cboard"
     echo ""
+    log "若无法访问网站，请检查云服务器安全组/防火墙是否放行 80、443 端口。"
     log "安装日志已保存到: $LOG_FILE"
     echo ""
 }
