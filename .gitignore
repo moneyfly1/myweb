@@ -40,6 +40,8 @@ GeoLite2-City.mmdb
 # Logs
 *.log
 logs/
+# 管理后台日志管理子组件（需纳入版本控制）
+!frontend/src/views/admin/logs/
 
 # Uploads
 uploads/
