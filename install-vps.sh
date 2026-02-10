@@ -79,6 +79,47 @@ detect_os() {
     fi
 }
 
+# --- 检测阿里云盾（安骑士/aegis），若有则提示卸载后退出 ---
+check_aliyun_aegis() {
+    step "检测阿里云盾（安骑士）..."
+    local found=0
+    # 1. 云盾安装目录
+    if [ -d /usr/local/aegis ]; then
+        found=1
+    fi
+    # 2. aegis 相关服务
+    if systemctl list-units --type=service --all 2>/dev/null | grep -qiE 'aegis|aliyundun|aliyun\.service'; then
+        found=1
+    fi
+    if [ -f /etc/init.d/aegis ] && [ -x /etc/init.d/aegis ]; then
+        found=1
+    fi
+    # 3. 云盾相关进程（排除 grep 自身）
+    if ps aux 2>/dev/null | grep -v grep | grep -qE 'aegis|AliYunDun|aliyun-service|aliyundun'; then
+        found=1
+    fi
+    if [ "$found" -eq 1 ]; then
+        echo ""
+        error "检测到当前环境已安装「阿里云盾」（安骑士 / aegis）。"
+        error "云盾会占用资源并可能干扰本脚本安装，建议先卸载后再运行本脚本。"
+        echo ""
+        echo -e "${YELLOW}卸载步骤（任选其一）：${NC}"
+        echo "  方式一（推荐，使用官方卸载脚本）："
+        echo "    wget \"http://update2.aegis.aliyun.com/download/uninstall.sh\" -O /tmp/aegis_uninstall.sh"
+        echo "    chmod +x /tmp/aegis_uninstall.sh && /tmp/aegis_uninstall.sh"
+        echo ""
+        echo "  方式二（手动停止并删除）："
+        echo "    service aegis stop 2>/dev/null; systemctl stop aegis 2>/dev/null"
+        echo "    chkconfig --del aegis 2>/dev/null"
+        echo "    rm -rf /usr/local/aegis /etc/init.d/aegis"
+        echo ""
+        echo -e "${CYAN}卸载并确认无相关进程后，请重新运行本脚本。${NC}"
+        echo ""
+        exit 1
+    fi
+    log "未检测到阿里云盾，跳过。"
+}
+
 # --- 网络检测和代理设置 ---
 check_network() {
     step "检测网络连接..."
@@ -651,9 +692,9 @@ setup_swap() {
     total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     local total_mem_gb=$((total_mem_kb / 1024 / 1024))
     
-    # 如果内存小于 1GB，创建 swap
-    if [ "$total_mem_gb" -lt 1 ]; then
-        step "检测到低内存环境 (${total_mem_gb}GB)，创建 Swap 空间..."
+    # 如果内存小于 3GB（含 1G/2G 小内存 VPS），创建 swap，避免构建时卡死
+    if [ "$total_mem_gb" -lt 3 ]; then
+        step "检测到低内存环境 (${total_mem_gb}GB)，创建 Swap 空间以保障构建..."
         
         # 检查是否已有 swap
         if swapon --show 2>/dev/null | grep -q "swapfile"; then
@@ -694,6 +735,11 @@ setup_swap() {
     fi
 }
 
+# 获取物理内存 MB（用于低内存时限制并发）
+get_total_mem_mb() {
+    grep MemTotal /proc/meminfo | awk '{print $2}' | awk '{print int($1/1024)}'
+}
+
 # --- 构建项目 ---
 build_project() {
     step "构建项目..."
@@ -720,8 +766,9 @@ build_project() {
     # 配置 Go 代理
     setup_go_proxy
     
-    # 设置 Go 编译优化选项（减少内存占用）
-    export GOGC=100  # 降低 GC 频率
+    # 设置 Go 编译优化选项（减少内存占用，避免 2G 机子构建时 CPU 100% 卡死）
+    export GOGC=100   # 降低 GC 频率
+    export GOMAXPROCS=1  # 单核编译，降低内存与 CPU 峰值
     # 必须启用 CGO：项目使用 go-sqlite3，禁用会导致运行时 "Binary was compiled with CGO_ENABLED=0" 错误
     export CGO_ENABLED=1
     
@@ -803,6 +850,14 @@ build_project() {
     
     # 配置 npm 镜像
     setup_npm_mirror
+    
+    # 小内存 VPS：限制 Node 内存，避免 npm install / npm run build 时 OOM 卡死
+    local mem_mb
+    mem_mb=$(get_total_mem_mb 2>/dev/null || echo "2048")
+    if [ "$mem_mb" -lt 3072 ]; then
+        export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1024"
+        log "低内存模式: 限制 Node 堆内存为 1024MB (总内存 ${mem_mb}MB)"
+    fi
     
     # 安装依赖（重试机制）
     if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
@@ -1151,6 +1206,7 @@ main() {
     # 1. 基础检查
     check_root
     detect_os
+    check_aliyun_aegis
     check_network
     
     # 显示系统资源信息
