@@ -192,11 +192,11 @@ install_system_deps() {
             warn "apt-get update 失败，尝试继续..."
         }
         
-        # 安装基础工具
+        # 安装基础工具（包含 tar，后续解压 Go / Node 等必须）
         log "安装基础工具..."
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             curl wget git build-essential sqlite3 libsqlite3-dev \
-            ca-certificates gnupg lsb-release || {
+            ca-certificates gnupg lsb-release tar || {
             error "基础工具安装失败"
             exit 1
         }
@@ -231,10 +231,10 @@ install_system_deps() {
             warn "包列表更新失败，尝试继续..."
         }
         
-        # 安装基础工具
+        # 安装基础工具（包含 tar，后续解压 Go / Node 等必须）
         log "安装基础工具..."
         yum install -y curl wget git gcc gcc-c++ make sqlite sqlite-devel \
-            ca-certificates || {
+            ca-certificates tar || {
             error "基础工具安装失败"
             exit 1
         }
@@ -256,12 +256,30 @@ install_system_deps() {
             log "✅ Nginx 已安装"
         fi
         
-        # 检查并安装 Certbot
+        # 检查并安装 Certbot（不同发行版/源上包名可能不同，逐个尝试）
         if ! command -v certbot &> /dev/null; then
             log "安装 Certbot..."
-            yum install -y certbot python3-certbot-nginx || {
-                warn "Certbot 安装失败，SSL 证书申请可能失败"
-            }
+            # 尝试启用 EPEL（CentOS 7/8 常见）
+            if ! rpm -qa 2>/dev/null | grep -qi "epel-release"; then
+                (command -v dnf &>/dev/null && dnf install -y epel-release || yum install -y epel-release) 2>/dev/null || true
+            fi
+            local certbot_installed=0
+            if command -v dnf &> /dev/null; then
+                dnf install -y certbot python3-certbot-nginx 2>/dev/null && certbot_installed=1 || true
+                if [ "$certbot_installed" -eq 0 ]; then
+                    dnf install -y certbot certbot-nginx 2>/dev/null && certbot_installed=1 || true
+                fi
+            else
+                yum install -y certbot python3-certbot-nginx 2>/dev/null && certbot_installed=1 || true
+                if [ "$certbot_installed" -eq 0 ]; then
+                    yum install -y certbot certbot-nginx 2>/dev/null && certbot_installed=1 || true
+                fi
+            fi
+            if [ "$certbot_installed" -eq 1 ] && command -v certbot &> /dev/null; then
+                log "✅ Certbot 安装成功"
+            else
+                warn "Certbot 安装失败，当前环境将仅自动配置 HTTP，SSL 证书需要后续手动安装"
+            fi
         else
             log "✅ Certbot 已安装"
         fi
