@@ -185,9 +185,9 @@ install_system_deps() {
         fi
         
     elif [[ "$OS" == "centos" ]] || [[ "$OS" == "rhel" ]] || [[ "$OS" == "rocky" ]]; then
-        log "更新 yum 包列表..."
-        yum makecache fast -q || {
-            warn "yum makecache 失败，尝试继续..."
+        log "更新包列表..."
+        (command -v dnf &>/dev/null && dnf makecache -q || yum makecache -q) || {
+            warn "包列表更新失败，尝试继续..."
         }
         
         # 安装基础工具
@@ -375,25 +375,21 @@ install_nodejs() {
             DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs || {
                 warn "NodeSource 安装失败，尝试二进制安装..."
                 install_nodejs_binary
-                return 0
             }
         else
             warn "NodeSource 脚本执行失败，尝试二进制安装..."
             install_nodejs_binary
-            return 0
         fi
     elif [[ "$OS" == "centos" ]] || [[ "$OS" == "rhel" ]] || [[ "$OS" == "rocky" ]]; then
         # 尝试使用 NodeSource 安装
         if curl -fsSL https://rpm.nodesource.com/setup_${NODE_VERSION}.x | bash -; then
-            yum install -y nodejs || {
+            (command -v dnf &>/dev/null && dnf install -y nodejs || yum install -y nodejs) || {
                 warn "NodeSource 安装失败，尝试二进制安装..."
                 install_nodejs_binary
-                return 0
             }
         else
             warn "NodeSource 脚本执行失败，尝试二进制安装..."
             install_nodejs_binary
-            return 0
         fi
     fi
     
@@ -701,6 +697,14 @@ build_project() {
     step "构建项目..."
     
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+    
+    # 检查后端入口文件是否存在（必须存在才能编译）
+    if [ ! -f "cmd/server/main.go" ]; then
+        error "未找到后端入口文件: cmd/server/main.go"
+        error "请确认仓库已包含主程序（cmd/server/main.go），或从完整源码部署。"
+        error "当前目录: $(pwd)"
+        exit 1
+    fi
     
     # 检查并创建 Swap（低内存优化）
     setup_swap
