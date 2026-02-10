@@ -154,7 +154,7 @@ install_system_deps() {
         # 安装基础工具
         log "安装基础工具..."
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            curl wget git build-essential sqlite3 \
+            curl wget git build-essential sqlite3 libsqlite3-dev \
             ca-certificates gnupg lsb-release || {
             error "基础工具安装失败"
             exit 1
@@ -192,7 +192,7 @@ install_system_deps() {
         
         # 安装基础工具
         log "安装基础工具..."
-        yum install -y curl wget git gcc gcc-c++ make sqlite \
+        yum install -y curl wget git gcc gcc-c++ make sqlite sqlite-devel \
             ca-certificates || {
             error "基础工具安装失败"
             exit 1
@@ -722,7 +722,8 @@ build_project() {
     
     # 设置 Go 编译优化选项（减少内存占用）
     export GOGC=100  # 降低 GC 频率
-    export CGO_ENABLED=0  # 禁用 CGO，减少依赖
+    # 必须启用 CGO：项目使用 go-sqlite3，禁用会导致运行时 "Binary was compiled with CGO_ENABLED=0" 错误
+    export CGO_ENABLED=1
     
     # 下载依赖（带超时和重试机制）
     log "下载 Go 依赖..."
