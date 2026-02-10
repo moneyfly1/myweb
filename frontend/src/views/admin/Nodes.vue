@@ -538,13 +538,11 @@ export default {
 </script>
 <style scoped>
 .admin-nodes {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 16px;
+  padding: 12px;
 }
 @media (max-width: 768px) {
   .admin-nodes {
-    padding: 8px;
+    padding: 10px;
   }
 }
 .list-card {
