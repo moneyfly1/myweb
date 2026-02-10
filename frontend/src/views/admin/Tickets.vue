@@ -138,7 +138,7 @@
         </div>
       </el-card>
     </div>
-    <el-table :data="tickets" v-loading="loading" class="desktop-only" style="width: 100%; margin-top: 20px">
+    <el-table :data="tickets" v-loading="loading" class="desktop-only" style="width: 100%; margin-top: 20px" stripe border>
       <el-table-column prop="ticket_no" label="工单编号" width="180" />
       <el-table-column prop="title" label="标题" min-width="200">
         <template #default="{ row }">

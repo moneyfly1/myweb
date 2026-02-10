@@ -1061,6 +1061,9 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete subscriptions failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
+		utils.CreateBusinessLog(c, "delete_user_failed", "删除用户失败: 删除用户订阅失败", "error", map[string]interface{}{
+			"target_user_id": user.ID, "step": "subscriptions", "reason": err.Error(),
+		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅失败", err)
 		return
 	}
@@ -1204,6 +1207,9 @@ func DeleteUser(c *gin.Context) {
 		utils.LogError("DeleteUser: delete user failed", err, map[string]interface{}{
 			"user_id": user.ID,
 		})
+		utils.CreateBusinessLog(c, "delete_user_failed", "删除用户失败: 删除用户记录失败", "error", map[string]interface{}{
+			"target_user_id": user.ID, "step": "delete_user", "reason": err.Error(),
+		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户失败", err)
 		return
 	}
@@ -1211,6 +1217,9 @@ func DeleteUser(c *gin.Context) {
 	if err := tx.Commit().Error; err != nil {
 		utils.LogError("DeleteUser: commit transaction failed", err, map[string]interface{}{
 			"user_id": user.ID,
+		})
+		utils.CreateBusinessLog(c, "delete_user_failed", "删除用户失败: 提交事务失败", "error", map[string]interface{}{
+			"target_user_id": user.ID, "step": "commit", "reason": err.Error(),
 		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
@@ -1255,6 +1264,10 @@ func LoginAsUser(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
+
+	utils.CreateSecurityLog(c, "admin_login_as", "MEDIUM",
+		fmt.Sprintf("管理员以用户身份登录: %s (ID: %d)", targetUser.Username, targetUser.ID),
+		map[string]interface{}{"target_user_id": targetUser.ID, "target_username": targetUser.Username})
 
 	utils.SuccessResponse(c, http.StatusOK, "登录成功", gin.H{
 		"access_token":  accessToken,
@@ -1312,6 +1325,29 @@ func UpdateUserStatus(c *gin.Context) {
 	if err := db.Save(&user).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户状态失败", err)
 		return
+	}
+
+	// 记录启用/禁用操作到系统日志
+	if req.IsActive != nil {
+		if *req.IsActive {
+			utils.CreateSecurityLog(c, "user_enabled", "INFO",
+				fmt.Sprintf("管理员启用用户: %s (ID: %d)", user.Username, user.ID),
+				map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
+		} else {
+			utils.CreateSecurityLog(c, "user_disabled", "MEDIUM",
+				fmt.Sprintf("管理员禁用用户: %s (ID: %d)", user.Username, user.ID),
+				map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
+		}
+	} else if req.Status != "" {
+		if req.Status == "active" {
+			utils.CreateSecurityLog(c, "user_enabled", "INFO",
+				fmt.Sprintf("管理员启用用户: %s (ID: %d)", user.Username, user.ID),
+				map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
+		} else if req.Status == "inactive" || req.Status == "disabled" {
+			utils.CreateSecurityLog(c, "user_disabled", "MEDIUM",
+				fmt.Sprintf("管理员禁用用户: %s (ID: %d)", user.Username, user.ID),
+				map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
+		}
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "用户状态已更新", user)
@@ -1373,6 +1409,10 @@ func UnlockUserLogin(c *gin.Context) {
 	if ipCount > 0 {
 		message += fmt.Sprintf("，已清除 %d 个IP地址的速率限制", ipCount)
 	}
+
+	utils.CreateSecurityLog(c, "user_unlock", "INFO",
+		fmt.Sprintf("管理员解禁用户: %s (ID: %d)，清除 %d 条失败记录，%d 个IP限流", user.Username, user.ID, result.RowsAffected, ipCount),
+		map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username, "cleared_attempts": result.RowsAffected, "ips_reset": ipCount})
 
 	utils.SuccessResponse(c, http.StatusOK, message, nil)
 }

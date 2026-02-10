@@ -32,6 +32,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		db := database.GetDB()
 		tokenHash := utils.HashToken(token)
 		if models.IsTokenBlacklisted(db, tokenHash) {
+			utils.CreateSecurityLog(c, "auth_token_blacklisted", "LOW",
+				"访问被拒绝: 令牌已失效（已登出或已加入黑名单）",
+				map[string]interface{}{"path": c.Request.URL.Path})
 			utils.ErrorResponse(c, http.StatusUnauthorized, "令牌已失效，请重新登录", nil)
 			c.Abort()
 			return
@@ -39,12 +42,18 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		claims, err := utils.VerifyToken(token)
 		if err != nil {
+			utils.CreateSecurityLog(c, "auth_token_invalid", "MEDIUM",
+				"访问被拒绝: 无效或过期的访问令牌",
+				map[string]interface{}{"path": c.Request.URL.Path, "reason": err.Error()})
 			utils.ErrorResponse(c, http.StatusUnauthorized, "无效或过期的令牌", err)
 			c.Abort()
 			return
 		}
 
 		if claims.Type != "access" {
+			utils.CreateSecurityLog(c, "auth_token_invalid", "MEDIUM",
+				"访问被拒绝: 刷新令牌不能用于访问",
+				map[string]interface{}{"path": c.Request.URL.Path})
 			utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌不能用于访问", nil)
 			c.Abort()
 			return
@@ -52,12 +61,18 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		var user models.User
 		if err := db.First(&user, claims.UserID).Error; err != nil {
+			utils.CreateSecurityLog(c, "auth_token_invalid", "MEDIUM",
+				"访问被拒绝: 令牌对应用户不存在",
+				map[string]interface{}{"path": c.Request.URL.Path, "user_id": claims.UserID})
 			utils.ErrorResponse(c, http.StatusUnauthorized, "用户不存在", err)
 			c.Abort()
 			return
 		}
 
 		if !user.IsActive {
+			utils.CreateSecurityLog(c, "auth_token_invalid", "MEDIUM",
+				"访问被拒绝: 账户已被禁用",
+				map[string]interface{}{"path": c.Request.URL.Path, "user_id": user.ID})
 			utils.ErrorResponse(c, http.StatusForbidden, "账户已被禁用，无法使用服务。如有疑问，请联系管理员。", nil)
 			c.Abort()
 			return
@@ -82,6 +97,9 @@ func AdminMiddleware() gin.HandlerFunc {
 
 		admin, ok := isAdmin.(bool)
 		if !ok || !admin {
+			utils.CreateSecurityLog(c, "admin_forbidden", "MEDIUM",
+				"非管理员尝试访问管理接口",
+				map[string]interface{}{"path": c.Request.URL.Path})
 			utils.ErrorResponse(c, http.StatusForbidden, "权限不足，需要管理员权限", nil)
 			c.Abort()
 			return

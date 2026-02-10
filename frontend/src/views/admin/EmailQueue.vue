@@ -126,7 +126,7 @@
         </div>
       </template>
       <div class="table-wrapper desktop-only">
-        <el-table :data="emailList" v-loading="loading" stripe empty-text="暂无数据">
+        <el-table :data="emailList" v-loading="loading" stripe border empty-text="暂无数据">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="to_email" label="收件人" min-width="200" />
           <el-table-column prop="subject" label="主题" min-width="250" />

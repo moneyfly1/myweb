@@ -154,6 +154,9 @@ func CSRFMiddleware() gin.HandlerFunc {
 			referer := c.GetHeader("Referer")
 			host := c.Request.Host
 			if (origin != "" && !isValidOrigin(origin, host)) || (referer != "" && !isValidReferer(referer, host)) {
+				utils.CreateSecurityLog(c, "csrf_validation_failed", "MEDIUM",
+					"CSRF验证失败：无效的请求来源",
+					map[string]interface{}{"path": path, "origin": origin, "referer": referer, "reason": "invalid_origin_or_referer"})
 				utils.ErrorResponse(c, http.StatusForbidden, "CSRF验证失败：无效的请求来源", nil)
 				c.Abort()
 				return
@@ -163,6 +166,9 @@ func CSRFMiddleware() gin.HandlerFunc {
 			isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 			c.SetCookie("csrf_token", newToken, 86400, "/", "", isSecure, false)
 			c.Header("X-CSRF-Token", newToken)
+			utils.CreateSecurityLog(c, "csrf_validation_failed", "MEDIUM",
+				"CSRF验证失败：Token 无效或缺失",
+				map[string]interface{}{"path": path, "reason": "invalid_or_missing_token"})
 			utils.ErrorResponse(c, http.StatusForbidden, "CSRF验证失败，请刷新页面后重试", nil)
 			c.Abort()
 			return

@@ -92,7 +92,7 @@
         </div>
       </div>
     </el-drawer>
-    <el-table :data="coupons" v-loading="loading" class="desktop-only" style="width: 100%">
+    <el-table :data="coupons" v-loading="loading" class="desktop-only" style="width: 100%" stripe border>
       <el-table-column prop="code" label="优惠券码" width="150" />
       <el-table-column prop="name" label="名称" />
       <el-table-column prop="type" label="类型" width="100">

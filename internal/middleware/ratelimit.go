@@ -260,8 +260,14 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
+				utils.CreateSecurityLog(c, "register_ip_blocked", "HIGH",
+					fmt.Sprintf("注册IP被封禁: %s (请求过于频繁，已临时锁定)", key),
+					map[string]interface{}{"ip": key, "reason": "注册请求过于频繁", "reset_at": utils.FormatBeijingTime(resetAt)})
 				utils.ErrorResponse(c, http.StatusTooManyRequests, "注册请求过于频繁，账户已被临时锁定，请稍后再试", nil)
 			} else {
+				utils.CreateSecurityLog(c, "register_rate_limit", "MEDIUM",
+					fmt.Sprintf("注册速率限制: IP %s 接近限制", key),
+					map[string]interface{}{"ip": key, "reset_at": utils.FormatBeijingTime(resetAt)})
 				c.Header("X-RateLimit-Limit", "3")
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
@@ -289,8 +295,14 @@ func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			if locked {
+				utils.CreateSecurityLog(c, "verify_code_rate_limit", "MEDIUM",
+					fmt.Sprintf("验证码发送IP被限流/锁定: %s (请求过于频繁)", key),
+					map[string]interface{}{"ip": key, "reason": "验证码发送过于频繁", "reset_at": utils.FormatBeijingTime(resetAt), "locked": true})
 				utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码发送过于频繁，已被临时锁定，请稍后再试", nil)
 			} else {
+				utils.CreateSecurityLog(c, "verify_code_rate_limit", "MEDIUM",
+					fmt.Sprintf("验证码发送速率限制: IP %s 接近限制", key),
+					map[string]interface{}{"ip": key, "reset_at": utils.FormatBeijingTime(resetAt)})
 				c.Header("X-RateLimit-Limit", "5")
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))

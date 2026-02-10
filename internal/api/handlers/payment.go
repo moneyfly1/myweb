@@ -261,6 +261,10 @@ func PaymentNotify(c *gin.Context) {
 			"order_no":     params["out_trade_no"],
 			"params_count": len(params),
 		})
+		utils.CreateBusinessLog(c, "payment_callback_signature_failed", "支付回调签名验证失败（疑似伪造或篡改）", "error", map[string]interface{}{
+			"payment_type": paymentType,
+			"order_no":     params["out_trade_no"],
+		})
 		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
 			c.String(http.StatusOK, "fail")
 		} else {
@@ -357,6 +361,9 @@ func PaymentNotify(c *gin.Context) {
 			utils.LogError("PaymentNotify: order or recharge not found", err, map[string]interface{}{
 				"order_no": orderNo,
 			})
+			utils.CreateBusinessLog(c, "payment_callback_order_not_found", "支付回调订单或充值记录不存在", "error", map[string]interface{}{
+				"order_no": orderNo, "payment_type": paymentType,
+			})
 			if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
 				c.String(http.StatusOK, "success")
 			} else {
@@ -383,6 +390,9 @@ func PaymentNotify(c *gin.Context) {
 						"order_no":        orderNo,
 						"expected_amount": recharge.Amount,
 						"callback_amount": callbackAmount,
+					})
+					utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调充值金额与订单不一致", "error", map[string]interface{}{
+						"order_no": orderNo, "expected": recharge.Amount, "callback_amount": callbackAmount,
 					})
 					c.String(http.StatusBadRequest, "充值金额不匹配")
 					return
@@ -490,6 +500,9 @@ func PaymentNotify(c *gin.Context) {
 						"balance_used":          balanceUsedInOrder,
 						"total_expected_amount": expectedAmount,
 					})
+					utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致（混合支付）", "error", map[string]interface{}{
+						"order_no": orderNo, "expected": expectedCallbackAmount, "callback_amount": callbackAmount,
+					})
 					c.String(http.StatusBadRequest, "订单金额不匹配")
 					return
 				}
@@ -499,6 +512,9 @@ func PaymentNotify(c *gin.Context) {
 						"order_no":        orderNo,
 						"expected_amount": expectedAmount,
 						"callback_amount": callbackAmount,
+					})
+					utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致", "error", map[string]interface{}{
+						"order_no": orderNo, "expected": expectedAmount, "callback_amount": callbackAmount,
 					})
 					c.String(http.StatusBadRequest, "订单金额不匹配")
 					return
@@ -594,6 +610,9 @@ func PaymentNotify(c *gin.Context) {
 	if err != nil {
 		utils.LogError("PaymentNotify: failed to process payment transaction", err, map[string]interface{}{
 			"order_no": orderNo,
+		})
+		utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（更新订单/事务失败）", "error", map[string]interface{}{
+			"order_no": orderNo, "payment_type": paymentType, "reason": err.Error(),
 		})
 		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
 			c.String(http.StatusOK, "fail")

@@ -123,6 +123,9 @@ func CreateRecharge(c *gin.Context) {
 				"payment_method": paymentMethod,
 				"order_no":       recharge.OrderNo,
 			})
+			utils.CreateBusinessLog(c, "recharge_payment_url_failed", "充值生成支付链接失败", "error", map[string]interface{}{
+				"user_id": user.ID, "order_no": recharge.OrderNo, "payment_method": paymentMethod, "reason": paymentError.Error(),
+			})
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败: "+paymentError.Error(), nil)
 			return
 		}

@@ -83,6 +83,7 @@
           v-loading="loading"
           style="width: 100%"
           stripe
+          border
         >
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="套餐名称" />
