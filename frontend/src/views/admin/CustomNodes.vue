@@ -731,13 +731,11 @@ export default {
 </script>
 <style scoped>
 .admin-custom-nodes {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 16px;
+  padding: 12px;
 }
 @media (max-width: 768px) {
   .admin-custom-nodes {
-    padding: 8px;
+    padding: 10px;
   }
 }
 .list-card {
