@@ -110,10 +110,56 @@ sudo systemctl restart cboard
 
 ## 五、常见问题
 
+### 克隆失败时如何继续（代码下载失败）
+
+若脚本在「下载项目代码」一步报错（例如 GitHub 直连超时、ghproxy 重定向等），可以**先手动把代码放到安装目录，再重新运行脚本**，在「是否删除并重新下载」时选 **n** 使用现有目录即可。
+
+**在 VPS 上依次尝试下面任一方式，成功一种即可：**
+
+```bash
+# 确保安装目录父目录存在
+sudo mkdir -p /opt
+cd /opt
+
+# 方式 1：gitclone 镜像（国内常用）
+sudo git clone --depth 1 https://gitclone.com/github.com/moneyfly1/myweb.git cboard
+
+# 若方式 1 失败，尝试方式 2：mirror.ghproxy
+# sudo rm -rf /opt/cboard
+# sudo git clone --depth 1 https://mirror.ghproxy.com/https://github.com/moneyfly1/myweb.git cboard
+```
+
+若上述镜像在你这台机器上仍不可用，可在**能访问 GitHub 的电脑**上克隆后上传到 VPS：
+
+```bash
+# 在你本机（能打开 GitHub 的电脑）执行
+git clone --depth 1 https://github.com/moneyfly1/myweb.git myweb
+tar czf myweb.tar.gz -C myweb .
+
+# 上传到 VPS（把 YOUR_VPS_IP 换成实际 IP）
+scp myweb.tar.gz root@YOUR_VPS_IP:/tmp/
+
+# 在 VPS 上解压到安装目录
+# ssh 登录 VPS 后执行：
+sudo mkdir -p /opt/cboard
+sudo tar xzf /tmp/myweb.tar.gz -C /opt/cboard
+sudo chown -R root:root /opt/cboard
+```
+
+**代码已在 /opt/cboard 后，重新运行安装脚本：**
+
+```bash
+sudo bash install-vps.sh
+```
+
+按提示输入域名（如 `board.moneyfly.top`）、项目目录 **`/opt/cboard`**、管理员信息。当提示「项目目录已存在，是否删除并重新下载？」时选 **n**，脚本会使用现有代码继续完成构建、Nginx、systemd 等步骤。
+
+---
+
 | 情况 | 处理 |
 |------|------|
 | 脚本报错 | 查看安装日志：`tail -100 /tmp/cboard_install_*.log` |
-| GitHub 克隆失败 | 脚本会自动尝试 GitHub 镜像；若仍失败，可用方式 B 在本地或代理环境克隆后上传到 VPS 再运行脚本 |
+| GitHub 克隆失败 | 按上面「克隆失败时如何继续」先手动放代码到 `/opt/cboard`，再重新运行脚本并选 n |
 | 域名打不开 | 检查 DNS 是否解析到本机：`ping board.moneyfly.top`；检查 Nginx：`sudo nginx -t`、`sudo systemctl status nginx` |
 | 想用其他域名 | 重新运行脚本时输入新域名，或手动改 Nginx 配置与 `.env` 中的域名后重载 Nginx、重启 cboard |
 

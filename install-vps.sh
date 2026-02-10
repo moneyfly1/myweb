@@ -616,9 +616,11 @@ download_code() {
     mkdir -p "$(dirname "$PROJECT_DIR")"
     cd "$(dirname "$PROJECT_DIR")" || exit 1
     
-    # 尝试多个 GitHub 镜像
+    # 尝试多个 GitHub 镜像（直连 + 国内镜像，超时 120 秒）
     local github_urls=(
         "https://github.com/moneyfly1/myweb.git"
+        "https://gitclone.com/github.com/moneyfly1/myweb.git"
+        "https://mirror.ghproxy.com/https://github.com/moneyfly1/myweb.git"
         "https://ghproxy.com/https://github.com/moneyfly1/myweb.git"
         "https://ghproxy.net/https://github.com/moneyfly1/myweb.git"
     )
@@ -626,7 +628,7 @@ download_code() {
     local clone_success=false
     for url in "${github_urls[@]}"; do
         log "尝试从 $url 克隆..."
-        if timeout 60 git clone "$url" "$(basename "$PROJECT_DIR")" 2>&1; then
+        if timeout 120 git clone --depth 1 "$url" "$(basename "$PROJECT_DIR")" 2>&1; then
             clone_success=true
             break
         else
