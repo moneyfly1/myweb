@@ -8,6 +8,28 @@
 
 **CBoard** is a modern, high-performance subscription management system designed for VPN/proxy service providers. Built with Go language, it offers **70-90% memory reduction** compared to Python-based solutions while maintaining full feature parity.
 
+### 💡 Project Origin
+
+This project was initially created to solve a practical need: **securely sharing subscription resources from multiple proxy services with friends while preventing resource abuse**.
+
+**Core Scenario:**
+- You have multiple proxy service subscriptions with unused traffic, and want to share them with friends (e.g., for international trade)
+- The purchased proxy service packages typically don't limit device count, but you need to control the sharing scope
+- Use device count limits to prevent friends from sharing subscriptions with others
+- However, there's a problem: friends might download node information and use it separately, losing control
+
+**Solution:**
+- The system supports periodic subscription address resets (recommended daily or every two days)
+- Automatically collects and aggregates subscription addresses from multiple proxy services
+- Generates new aggregated subscription links to share with friends
+- Effectively prevents resource abuse through device limits and periodic subscription address updates
+
+**Use Cases:**
+- Personal Sharing: Share proxy resources with a small group of friends while controlling usage scope
+- Small-scale Commercialization: If you have many friends, you can also operate on a small commercial scale
+
+This design ensures effective resource utilization while preventing resource abuse and leakage through technical means.
+
 ### 🎯 Key Features
 
 - 🚀 **High Performance**: Memory usage only 35-95 MB (vs 300-850 MB in Python version)
