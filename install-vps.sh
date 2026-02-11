@@ -81,45 +81,94 @@ detect_os() {
     fi
 }
 
-# --- 检测阿里云盾（安骑士/aegis），若有则提示卸载后退出 ---
+# --- 检测是否安装阿里云盾（安骑士/aegis）---
+is_aliyun_aegis_installed() {
+    [ -d /usr/local/aegis ] && return 0
+    systemctl list-units --type=service --all 2>/dev/null | grep -qiE 'aegis|aliyundun|aliyun\.service' && return 0
+    [ -f /etc/init.d/aegis ] && [ -x /etc/init.d/aegis ] && return 0
+    ps aux 2>/dev/null | grep -v grep | grep -qE 'aegis|AliYunDun|aliyun-service|aliyundun' && return 0
+    return 1
+}
+
+# --- 全自动卸载阿里云盾（参考 https://gist.github.com/zhouyanyu/3ec73fe8f0b77ffd6d56a4cc2aa18c32 ）---
+uninstall_aliyun_aegis() {
+    step "开始全自动卸载阿里云盾（安骑士）..."
+    
+    # 1. 官方卸载脚本
+    local uninstall_sh="/tmp/aegis_uninstall.sh"
+    local quartz_sh="/tmp/quartz_uninstall.sh"
+    
+    for url in "http://update.aegis.aliyun.com/download/uninstall.sh" "http://update2.aegis.aliyun.com/download/uninstall.sh"; do
+        if wget -q -O "$uninstall_sh" "$url" 2>/dev/null && [ -s "$uninstall_sh" ]; then
+            chmod +x "$uninstall_sh"
+            log "执行官方卸载脚本..."
+            "$uninstall_sh" 2>/dev/null || true
+            break
+        fi
+    done
+    
+    for url in "http://update.aegis.aliyun.com/download/quartz_uninstall.sh" "http://update2.aegis.aliyun.com/download/quartz_uninstall.sh"; do
+        if wget -q -O "$quartz_sh" "$url" 2>/dev/null && [ -s "$quartz_sh" ]; then
+            chmod +x "$quartz_sh"
+            log "执行 quartz 卸载脚本..."
+            "$quartz_sh" 2>/dev/null || true
+            break
+        fi
+    done
+    
+    # 2. 删除残留文件与进程
+    log "清理云盾进程与残留文件..."
+    pkill -9 aliyun-service 2>/dev/null || true
+    service aegis stop 2>/dev/null || true
+    systemctl stop aegis 2>/dev/null || true
+    sleep 1
+    rm -f /etc/init.d/agentwatch /usr/sbin/aliyun-service
+    rm -rf /usr/local/aegis*
+    chkconfig --del aegis 2>/dev/null || true
+    
+    # 3. 屏蔽云盾 IP（防止自动重装）
+    if command -v iptables &> /dev/null; then
+        log "屏蔽阿里云盾 IP..."
+        for rule in \
+            "140.205.201.0/28" "140.205.201.16/29" "140.205.201.32/28" \
+            "140.205.225.192/29" "140.205.225.200/30" "140.205.225.184/29" \
+            "140.205.225.183/32" "140.205.225.206/32" "140.205.225.205/32" \
+            "140.205.225.195/32" "140.205.225.204/32"; do
+            iptables -I INPUT -s "$rule" -j DROP 2>/dev/null || true
+        done
+    fi
+    
+    rm -f "$uninstall_sh" "$quartz_sh"
+    
+    if is_aliyun_aegis_installed; then
+        warn "卸载执行完毕，但仍有云盾相关进程或文件，请手动检查: ps aux | grep -E 'aliyun|AliYunDun'"
+    else
+        log "✅ 阿里云盾已卸载并清理完毕"
+    fi
+}
+
+# --- 安装流程中：若检测到云盾则让用户选择（卸载 / 继续 / 退出）---
 check_aliyun_aegis() {
     step "检测阿里云盾（安骑士）..."
-    local found=0
-    # 1. 云盾安装目录
-    if [ -d /usr/local/aegis ]; then
-        found=1
+    if ! is_aliyun_aegis_installed; then
+        log "未检测到阿里云盾，跳过。"
+        return 0
     fi
-    # 2. aegis 相关服务
-    if systemctl list-units --type=service --all 2>/dev/null | grep -qiE 'aegis|aliyundun|aliyun\.service'; then
-        found=1
-    fi
-    if [ -f /etc/init.d/aegis ] && [ -x /etc/init.d/aegis ]; then
-        found=1
-    fi
-    # 3. 云盾相关进程（排除 grep 自身）
-    if ps aux 2>/dev/null | grep -v grep | grep -qE 'aegis|AliYunDun|aliyun-service|aliyundun'; then
-        found=1
-    fi
-    if [ "$found" -eq 1 ]; then
-        echo ""
-        error "检测到当前环境已安装「阿里云盾」（安骑士 / aegis）。"
-        error "云盾会占用资源并可能干扰本脚本安装，建议先卸载后再运行本脚本。"
-        echo ""
-        echo -e "${YELLOW}卸载步骤（任选其一）：${NC}"
-        echo "  方式一（推荐，使用官方卸载脚本）："
-        echo "    wget \"http://update2.aegis.aliyun.com/download/uninstall.sh\" -O /tmp/aegis_uninstall.sh"
-        echo "    chmod +x /tmp/aegis_uninstall.sh && /tmp/aegis_uninstall.sh"
-        echo ""
-        echo "  方式二（手动停止并删除）："
-        echo "    service aegis stop 2>/dev/null; systemctl stop aegis 2>/dev/null"
-        echo "    chkconfig --del aegis 2>/dev/null"
-        echo "    rm -rf /usr/local/aegis /etc/init.d/aegis"
-        echo ""
-        echo -e "${CYAN}卸载并确认无相关进程后，请重新运行本脚本。${NC}"
-        echo ""
-        exit 1
-    fi
-    log "未检测到阿里云盾，跳过。"
+    echo ""
+    warn "检测到当前环境已安装「阿里云盾」（安骑士 / aegis），可能占用资源并干扰安装。"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} 先自动卸载云盾，再继续安装"
+    echo -e "  ${YELLOW}2)${NC} 不卸载，直接继续安装（不推荐）"
+    echo -e "  ${RED}3)${NC} 退出"
+    echo ""
+    read -p "请选择 [1/2/3]: " aegis_choice
+    case "$aegis_choice" in
+        1) uninstall_aliyun_aegis ;;
+        2) warn "将不卸载云盾继续安装。" ;;
+        3) log "已退出"; exit 0 ;;
+        *) warn "无效选择，将不卸载继续安装。" ;;
+    esac
+    echo ""
 }
 
 # --- 网络检测和代理设置 ---
@@ -911,8 +960,13 @@ build_project() {
     local mem_mb
     mem_mb=$(get_total_mem_mb 2>/dev/null || echo "2048")
     if [ "$mem_mb" -lt 3072 ]; then
-        export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1024"
-        log "低内存模式: 限制 Node 堆内存为 1024MB (总内存 ${mem_mb}MB)"
+        local node_heap
+        if   [ "$mem_mb" -le 512 ];  then node_heap=256   # 极小内存机器（512M 及以下）
+        elif [ "$mem_mb" -le 1024 ]; then node_heap=512   # 1G 以内
+        else                           node_heap=1024  # 1G~3G 之间
+        fi
+        export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${node_heap}"
+        log "低内存模式: 限制 Node 堆内存为 ${node_heap}MB (总内存 ${mem_mb}MB)"
     fi
     
     # 安装依赖（重试机制）
@@ -1292,12 +1346,12 @@ start_service() {
     exit 1
 }
 
-# --- 主安装流程 ---
-main() {
+# --- 一键安装流程（菜单选项 1 调用）---
+run_full_install() {
     clear
     echo -e "${GREEN}"
     echo "=========================================="
-    echo "    CBoard Go VPS 一键安装脚本"
+    echo "    CBoard Go VPS 一键安装"
     echo "    全自动安装，自动处理所有问题"
     echo "=========================================="
     echo -e "${NC}"
@@ -1394,6 +1448,68 @@ main() {
     log "若无法访问网站，请检查云服务器安全组/防火墙是否放行 80、443 端口。"
     log "安装日志已保存到: $LOG_FILE"
     echo ""
+}
+
+# --- 交互式主菜单（参考 install.sh）---
+show_menu() {
+    clear
+    echo -e "${BLUE}=========================================="
+    echo -e "       CBoard Go VPS 安装/管理脚本"
+    echo -e "==========================================${NC}"
+    echo -e "  ${GREEN}1.${NC} 一键安装 CBoard（VPS 全自动部署）"
+    echo -e "  ${GREEN}2.${NC} 卸载阿里云盾（安骑士）"
+    echo -e "  ${CYAN}3.${NC} 重启 Nginx"
+    echo -e "  ${CYAN}4.${NC} 重启 CBoard 服务"
+    echo -e "  ${CYAN}5.${NC} 查看 CBoard 服务状态"
+    echo -e "  ${RED}0.${NC} 退出"
+    echo -e "${BLUE}==========================================${NC}"
+    read -r -p "请选择操作 [0-5]: " choice
+}
+
+main() {
+    check_root || exit 1
+    while true; do
+        show_menu
+        case "$choice" in
+            1) run_full_install ;;
+            2)
+                if is_aliyun_aegis_installed; then
+                    uninstall_aliyun_aegis
+                else
+                    log "未检测到阿里云盾，无需卸载。"
+                fi
+                ;;
+            3)
+                if systemctl restart nginx 2>/dev/null; then
+                    log "✅ Nginx 已重启"
+                else
+                    (command -v nginx &>/dev/null && nginx -s reload) || warn "Nginx 重启失败或未安装"
+                fi
+                ;;
+            4)
+                if systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
+                    if systemctl restart cboard; then
+                        log "✅ CBoard 服务已重启"
+                    else
+                        error "CBoard 重启失败，请查看: journalctl -u cboard -n 30"
+                    fi
+                else
+                    warn "未找到 cboard 服务，请先执行一键安装"
+                fi
+                ;;
+            5)
+                if systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
+                    systemctl status cboard --no-pager -l
+                else
+                    warn "未找到 cboard 服务，请先执行一键安装"
+                fi
+                ;;
+            0) log "已退出"; exit 0 ;;
+            *) warn "无效选择，请重新输入" ;;
+        esac
+        echo ""
+        read -r -p "按回车键返回菜单..." temp
+    done
 }
 
 # 运行主函数
