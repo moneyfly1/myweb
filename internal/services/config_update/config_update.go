@@ -1335,7 +1335,7 @@ func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *Subscripti
 	}
 
 	if s.supportQQ != "" {
-		infoNodes = append(infoNodes, s.createMessageNode(fmt.Sprintf("💬 客服QQ: %s", s.supportQQ)))
+		infoNodes = append(infoNodes, s.createMessageNode(fmt.Sprintf("💬 客服: %s", s.supportQQ)))
 	}
 
 	return append(infoNodes, proxies...)
@@ -1374,9 +1374,9 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 		s.createMessageNode(fmt.Sprintf("💡 解决: %s", solution), "error"),
 	}
 
-	qqMsg := "💬 客服QQ: 请在系统设置中配置"
+	qqMsg := "💬 客服: 请在系统设置中配置"
 	if s.supportQQ != "" {
-		qqMsg = fmt.Sprintf("💬 客服QQ: %s", s.supportQQ)
+		qqMsg = fmt.Sprintf("💬 客服: %s", s.supportQQ)
 	}
 	infoNodes = append(infoNodes, s.createMessageNode(qqMsg, "error"))
 

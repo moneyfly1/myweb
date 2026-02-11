@@ -1,6 +1,6 @@
 # 无宝塔 VPS 部署教程（使用 install-vps.sh）
 
-适用于**新 VPS**，已绑定域名（如 `board.moneyfly.top`），**未安装宝塔面板**，通过 GitHub 代码 + 一键脚本完成部署。
+适用于**新 VPS**，已绑定域名（如 `your-domain.com`），**未安装宝塔面板**，通过 GitHub 代码 + 一键脚本完成部署。
 
 ---
 
@@ -8,8 +8,8 @@
 
 1. **VPS**：Ubuntu 18.04+ / Debian 10+ / CentOS 7+，建议 1GB 内存以上。
 2. **域名**：已购买并解析到本机：
-   - 在域名服务商处添加 **A 记录**：`board.moneyfly.top` → 你的 VPS 公网 IP。
-   - 等待 DNS 生效（可用 `ping board.moneyfly.top` 检查）。
+   - 在域名服务商处添加 **A 记录**：`your-domain.com` → 你的 VPS 公网 IP。
+   - 等待 DNS 生效（可用 `ping your-domain.com` 检查）。
 3. **SSH**：能使用 root 或 sudo 登录 VPS。
 
 ---
@@ -30,7 +30,7 @@ sudo bash install-vps.sh
 
 按提示输入：
 
-- **域名**：`board.moneyfly.top`
+- **域名**：`your-domain.com`
 - **项目安装目录**：直接回车即用默认 `/opt/cboard`
 - **管理员用户名 / 邮箱 / 密码**：按需填写
 
@@ -61,7 +61,7 @@ sudo bash install-vps.sh
 
 按提示输入：
 
-- **域名**：`board.moneyfly.top`
+- **域名**：`your-domain.com`
 - **项目安装目录**：输入 `/opt/cboard`（与上面克隆路径一致）
 - 若提示「项目目录已存在，是否删除并重新下载？」选 **n**，使用当前已克隆的代码
 - **管理员用户名 / 邮箱 / 密码**：按需填写
@@ -88,8 +88,8 @@ sudo bash install-vps.sh
 
 ## 四、安装完成后
 
-- **访问地址**：`https://board.moneyfly.top` 或 `http://board.moneyfly.top`（若未配置 HTTPS）
-- **管理后台**：`https://board.moneyfly.top/admin/login`，使用安装时设置的管理员账号登录。
+- **访问地址**：`https://your-domain.com` 或 `http://your-domain.com`（若未配置 HTTPS）
+- **管理后台**：`https://your-domain.com/admin/login`，使用安装时设置的管理员账号登录。
 
 常用命令：
 
@@ -152,7 +152,7 @@ sudo chown -R root:root /opt/cboard
 sudo bash install-vps.sh
 ```
 
-按提示输入域名（如 `board.moneyfly.top`）、项目目录 **`/opt/cboard`**、管理员信息。当提示「项目目录已存在，是否删除并重新下载？」时选 **n**，脚本会使用现有代码继续完成构建、Nginx、systemd 等步骤。
+按提示输入域名（如 `your-domain.com`）、项目目录 **`/opt/cboard`**、管理员信息。当提示「项目目录已存在，是否删除并重新下载？」时选 **n**，脚本会使用现有代码继续完成构建、Nginx、systemd 等步骤。
 
 ---
 
@@ -160,7 +160,7 @@ sudo bash install-vps.sh
 |------|------|
 | 脚本报错 | 查看安装日志：`tail -100 /tmp/cboard_install_*.log` |
 | GitHub 克隆失败 | 按上面「克隆失败时如何继续」先手动放代码到 `/opt/cboard`，再重新运行脚本并选 n |
-| 域名打不开 | 检查 DNS 是否解析到本机：`ping board.moneyfly.top`；检查 Nginx：`sudo nginx -t`、`sudo systemctl status nginx` |
+| 域名打不开 | 检查 DNS 是否解析到本机：`ping your-domain.com`；检查 Nginx：`sudo nginx -t`、`sudo systemctl status nginx` |
 | 想用其他域名 | 重新运行脚本时输入新域名，或手动改 Nginx 配置与 `.env` 中的域名后重载 Nginx、重启 cboard |
 
 ---
@@ -169,7 +169,7 @@ sudo bash install-vps.sh
 
 1. 域名 A 记录指向 VPS IP。
 2. SSH 登录 VPS，执行 **方式 A** 或 **方式 B**。
-3. 按提示输入域名 `board.moneyfly.top`、安装目录、管理员信息。
-4. 安装结束后访问 `https://board.moneyfly.top` 与 `/admin/login`。
+3. 按提示输入域名 `your-domain.com`、安装目录、管理员信息。
+4. 安装结束后访问 `https://your-domain.com` 与 `/admin/login`。
 
 无需安装宝塔，一条脚本即可完成从 GitHub 到线上运行的部署。
