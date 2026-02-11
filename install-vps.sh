@@ -381,7 +381,7 @@ run_install() {
     echo "              安装完成"
     echo "=========================================="
     echo "  前端地址:     https://$DOMAIN"
-    echo "  管理员/登录:  https://$DOMAIN"
+    echo "  管理员后台:   https://$DOMAIN/admin"
     echo "  管理员账号:   $A_USER"
     echo "  邮箱:         $A_EMAIL"
     echo "  密码:         $A_PASS"
