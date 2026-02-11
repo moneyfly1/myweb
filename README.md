@@ -15,8 +15,8 @@
 - 🔒 **Secure**: JWT authentication, password encryption, SQL injection protection
 - 📦 **Feature Complete**: All core business functions included
 - 🎨 **Modern Frontend**: Vue 3 + Element Plus, responsive design
-- 🐳 **Easy Deployment**: One-click installation via BT Panel, single executable file
-- 💳 **Multi-Payment**: Supports Alipay, WeChat Pay, PayPal, Apple Pay
+- 🐳 **Easy Deployment**: One-click VPS script (`install-vps.sh`) or BT Panel script (`install.sh`)
+- 💳 **Multi-Payment**: Alipay, WeChat Pay, PayPal, Apple Pay, Yipay
 - 👥 **User Management**: Complete user system with levels, invites, and rewards
 - 📊 **Analytics**: Comprehensive statistics and monitoring
 - 🎫 **Ticket System**: Built-in customer support system
@@ -512,15 +512,12 @@ cd /www/wwwroot/example.com
 
 # Run password update script (replace with your actual password)
 go run scripts/admin_tool.go YourNewPassword123!
-
-# Example
-go run scripts/admin_tool.go Sikeming001@
 ```
 
 **Notes**:
 - Password must be at least 6 characters
-- Script automatically finds admin account (username or email is `admin` or `admin@example.com`)
-- If admin account is not found, please create account first
+- Script automatically finds admin account (username or email as configured)
+- If admin account is not found, create it first
 
 ### Unlock User Account
 
@@ -629,6 +626,7 @@ A: Try logging into admin backend, or check `users` table in database for record
 - [x] Subscription reset
 - [x] Multiple subscription types
 - [x] Subscription URL generation (Clash/V2Ray format)
+- [x] Clash config template (proxy groups and rules)
 - [x] Device management (add, remove, view)
 - [x] Online device tracking
 - [x] Device fingerprinting and UA detection
@@ -764,12 +762,12 @@ SECRET_KEY=your-secret-key-here-change-in-production-min-32-chars
 # CORS Configuration (replace with your domain)
 BACKEND_CORS_ORIGINS=https://yourdomain.com,http://yourdomain.com
 
-# Email Configuration (Optional)
-SMTP_HOST=smtp.qq.com
+# Email Configuration (Optional, use your SMTP provider)
+SMTP_HOST=
 SMTP_PORT=587
-SMTP_USERNAME=your-email@qq.com
-SMTP_PASSWORD=your-smtp-password
-SMTP_FROM_EMAIL=your-email@qq.com
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
 
 # Debug Mode
 DEBUG=false
@@ -951,8 +949,7 @@ chown www:www cboard.db
 ### 6. Admin Login Issues
 
 - Reset admin password using installation script (option 2)
-- Check admin account status: `go run scripts/check_admin.go`
-- Unlock admin account: `go run scripts/unlock_admin.go`
+- Unlock account: `go run scripts/unlock_user.go <username-or-email>`
 
 ---
 
@@ -1023,10 +1020,10 @@ goweb/
 │   └── dist/                   # Built files
 ├── scripts/                    # Utility scripts
 │   ├── admin_tool.go           # Create/update admin account and password
-│   ├── check_admin.go          # Check admin account
-│   └── unlock_admin.go        # Unlock admin account
+│   └── unlock_user.go         # Unlock user account (admin or regular)
 ├── .env                        # Environment variables
 ├── install.sh                  # BT Panel installation script
+├── install-vps.sh              # VPS one-click install (no BT Panel)
 ├── cboard.db                   # SQLite database
 ├── README.md                   # This file (English)
 └── README_zh.md                # Chinese version
@@ -1066,46 +1063,46 @@ goweb/
 
 ## 📚 Documentation
 
-The system provides comprehensive documentation for all features:
+### Deployment & Troubleshooting
 
-### 📋 List Function Documentation
+| Document | Description |
+|----------|-------------|
+| [Docs Index](./docs/README.md) | Full doc index (features, config, deploy) |
+| [VPS Deployment (No BT Panel)](./docs/VPS部署教程-无宝塔.md) | One-click VPS deployment |
+| [Installation Troubleshooting](./docs/故障排查/安装问题排查指南.md) | Common installation issues and solutions |
 
-- **[List Functions Index](./docs/list_functions_index.md)** - Index and quick reference for all list functions
+### Feature Documentation
 
-#### Admin List Functions
+| Document | Description |
+|----------|-------------|
+| [List Functions Index](./docs/功能/列表功能索引.md) | Index of all list functions |
+| User, Subscription, Order, Node, Ticket, Device, Login history, Abnormal users, Data analysis | See [Docs Index](./docs/README.md) for links |
 
-- **[User List Management](./docs/user_list_management.md)** - User information management, search, filtering, batch operations
-- **[Subscription List Management](./docs/subscription_list_management.md)** - Subscription management, device limit principles
-- **[Node List Management](./docs/node_management.md)** - Node collection, import, management, region identification
-- **[Order List Management](./docs/order_management.md)** - Order processing, payment management, order statistics
-- **[Ticket List Management](./docs/ticket_management.md)** - Ticket processing, replies, status management
-- **[Abnormal Users Management](./docs/abnormal_users_management.md)** - Abnormal user identification and handling
-- **[Statistics Analysis](./docs/statistics_analysis.md)** - Data statistics, region analysis, trend analysis
+### Backend & Configuration
 
-#### User List Functions
+#### Payment Configuration
+- [Alipay configuration](./docs/配置/支付宝配置说明.md) - Alipay backend and panel config
+- [Yipay guide](./docs/配置/易支付配置指南.md) - Yipay setup and usage
 
-- **[Device Management](./docs/device_management.md)** - Device viewing, deletion, device limit principles
-- **[Login History Management](./docs/login_history_management.md)** - Login records, region information, security monitoring
+#### Notification Configuration
+- [SMTP / Email](./docs/配置/邮件服务器配置说明.md) - Configure mail server
+- [Telegram notifications](./docs/配置/Telegram通知配置说明.md) - Telegram Bot notification setup
+- [Bark notifications](./docs/配置/Bark通知配置说明.md) - Bark iOS push notification setup
+- [Customer notifications](./docs/配置/客户通知设置说明.md) - Customer email notification settings
 
-### 🔧 Technical Documentation
+#### System Settings
+- [Basic settings](./docs/配置/基本设置说明.md) - Site info, logo, domain, GeoIP
+- [Registration settings](./docs/配置/注册设置说明.md) - Registration flow, password requirements
+- [Security & limits](./docs/配置/安全设置与限制说明.md) - Login fail limit, lock, IP whitelist, unlock
+- [Theme settings](./docs/配置/主题设置说明.md) - Default theme, user customization
+- [Announcement management](./docs/配置/公告管理说明.md) - Login announcement popup
 
-- **[Custom Node Implementation](./docs/custom_node_implementation.md)** - Complete implementation guide for custom node system
-- **[GeoIP Integration Guide](./docs/GeoIP集成说明.md)** - GeoIP database integration and usage
-
-### 📖 Core Function Principles
-
-#### Device Limit Principles
-
-Device limit is a core feature of subscription management. For detailed principles, see:
-
-- **[Subscription List Management - Device Limit Principles](./docs/subscription_list_management.md#设备数量限制原理)**
-- **[Device Management - Device Limit Principles](./docs/device_management.md#设备数量限制原理)**
-
-**Key Concepts:**
-- Device Identification: Generate device hash based on User-Agent and IP address
-- Device Roaming: Automatic identification of the same device in different network environments
-- Limit Mechanism: Different handling strategies for devices under limit/at limit/over limit
-- Priority Strategy: "Most Recently Used First" strategy, automatically eliminates unused devices
+#### Node & Backup
+- [Node collection URLs](./docs/配置/采集地址配置说明.md) - Configure node collection addresses
+- [Node health check](./docs/配置/节点健康检查设置说明.md) - Auto check interval, latency threshold
+- [Backup settings](./docs/配置/备份设置说明.md) - Auto backup, Gitee/GitHub backup
+- [GitHub configuration](./docs/配置/GitHub配置说明.md) - Detailed GitHub backup setup
+- [Gitee configuration](./docs/配置/Gitee配置说明.md) - Detailed Gitee backup setup
 
 ---
 
@@ -1113,12 +1110,16 @@ Device limit is a core feature of subscription management. For detailed principl
 
 If you encounter issues:
 
-1. Check log files: `/www/wwwroot/cboard/uploads/logs/app.log`
-2. Check service logs: `journalctl -u cboard -f`
-3. Check system resources: `htop` or `free -h`
-4. Check network connection: `curl http://127.0.0.1:8000/health`
-5. Review this README and troubleshooting section
-6. Refer to [Documentation](#-documentation) for detailed feature descriptions
+1. **Logs** (project dir: BT usually `/www/wwwroot/your-domain`, non-BT `/opt/cboard`):
+   - App log: `project_dir/server.log` or `project_dir/uploads/logs/app.log`
+   - Service log: `journalctl -u cboard -f`
+
+2. **System check**:
+   - Resources: `htop` or `free -h`
+   - Health: `curl http://127.0.0.1:8000/health`
+   - Service: `systemctl status cboard`
+
+3. **Docs**: [Installation Troubleshooting](./docs/故障排查/安装问题排查指南.md)
 
 ---
 
@@ -1128,6 +1129,6 @@ This project is licensed under the MIT License.
 
 ---
 
-**Last Updated**: 2024-12-22  
-**Version**: v1.0.0  
+**Last Updated**: 2026-02-10  
+**Version**: v1.1.0  
 **Status**: ✅ Production Ready

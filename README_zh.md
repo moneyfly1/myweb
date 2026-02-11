@@ -258,7 +258,7 @@ systemctl reload nginx
 ```bash
 cd /opt/cboard
 export ADMIN_USERNAME="admin"
-export ADMIN_EMAIL="your-email@example.com"
+export ADMIN_EMAIL="admin@your-domain.com"
 export ADMIN_PASSWORD="your-new-password"
 go run scripts/admin_tool.go
 ```
@@ -380,7 +380,7 @@ sudo ./install.sh
 - **项目目录**：默认会检测当前目录，直接按回车确认即可
 - **域名**：输入您的域名（如：`example.com`）
 - **管理员用户名**：输入管理员用户名（默认：`admin`）
-- **管理员邮箱**：输入管理员邮箱（如：`admin@example.com`）
+- **管理员邮箱**：输入管理员邮箱（如：`admin@your-domain.com`）
 - **管理员密码**：设置管理员密码（建议使用强密码）
 
 #### 步骤 5：选择安装选项
@@ -482,7 +482,7 @@ cd /www/wwwroot/example.com
 
 # 设置环境变量并运行脚本
 export ADMIN_USERNAME="admin"
-export ADMIN_EMAIL="admin@example.com"
+export ADMIN_EMAIL="admin@your-domain.com"
 export ADMIN_PASSWORD="YourStrongPassword123!"
 
 # 运行创建脚本
@@ -490,7 +490,7 @@ go run scripts/admin_tool.go
 ```
 
 **说明**：
-- 如果未设置环境变量，脚本会使用默认值（用户名：`admin`，邮箱：`admin@example.com`，密码：`admin123`）
+- 如果未设置环境变量，脚本会使用默认值（用户名：`admin`，邮箱：`admin@your-domain.com`，密码：`admin123`）
 - 如果管理员账户已存在，脚本会更新该账户的信息
 - 生产环境建议通过环境变量设置强密码
 
@@ -521,7 +521,7 @@ go run scripts/admin_tool.go Sikeming001@
 
 **说明**：
 - 密码长度至少 6 位
-- 脚本会自动查找管理员账户（用户名或邮箱为 `admin` 或 `admin@example.com`）
+- 脚本会自动查找管理员账户（用户名或邮箱为 `admin` 或配置的邮箱）
 - 如果找不到管理员账户，请先创建账户
 
 ### 解锁用户账户
@@ -536,10 +536,10 @@ cd /www/wwwroot/example.com
 go run scripts/unlock_user.go admin
 
 # 或使用邮箱解锁
-go run scripts/unlock_user.go admin@example.com
+go run scripts/unlock_user.go admin@your-domain.com
 
 # 解锁普通用户账户
-go run scripts/unlock_user.go user@example.com
+go run scripts/unlock_user.go user@your-domain.com
 ```
 
 **说明**：
@@ -767,12 +767,12 @@ SECRET_KEY=your-secret-key-here-change-in-production-min-32-chars
 # CORS 配置（替换为您的域名）
 BACKEND_CORS_ORIGINS=https://yourdomain.com,http://yourdomain.com
 
-# 邮件配置（可选）
-SMTP_HOST=smtp.qq.com
+# 邮件配置（可选，请按实际 SMTP 服务填写）
+SMTP_HOST=
 SMTP_PORT=587
-SMTP_USERNAME=your-email@qq.com
-SMTP_PASSWORD=your-smtp-password
-SMTP_FROM_EMAIL=your-email@qq.com
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
 
 # 调试模式
 DEBUG=false
@@ -1045,89 +1045,48 @@ goweb/
 
 ---
 
-## 📚 功能文档
+## 📚 文档
 
-系统提供了详细的功能说明文档，帮助您更好地理解和使用各项功能。所有文档已按功能分类整理，便于查找。
+### 部署与故障排查
 
-### 📖 文档总索引
+| 文档 | 说明 |
+|------|------|
+| [文档目录](./docs/README.md) | 完整文档索引（功能 + 配置 + 部署） |
+| [VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
+| [安装问题排查指南](./docs/故障排查/安装问题排查指南.md) | 常见安装问题与解决方法 |
 
-- **[文档目录总览](./docs/README.md)** - 完整的文档索引和快速导航
+### 功能说明
 
-### 📋 功能说明文档
+| 文档 | 说明 |
+|------|------|
+| [列表功能索引](./docs/功能/列表功能索引.md) | 所有列表功能索引与导航 |
+| [文档目录](./docs/README.md#中文) | 用户/订阅/订单/节点/工单/设备/登录历史/异常用户/数据分析等说明 |
 
-#### 列表功能
+### 后台与配置说明
 
-- **[列表功能索引](./docs/功能/列表功能索引.md)** - 所有列表功能的索引和快速查找
+#### 支付配置
+- [支付宝配置说明](./docs/配置/支付宝配置说明.md) - 支付宝开放平台与系统后台配置
+- [易支付配置指南](./docs/配置/易支付配置指南.md) - 易支付配置与使用
 
-#### 管理员端功能
+#### 通知配置
+- [邮件服务器配置说明](./docs/配置/邮件服务器配置说明.md) - SMTP 邮件服务器配置
+- [Telegram 通知配置说明](./docs/配置/Telegram通知配置说明.md) - Telegram Bot 通知配置
+- [Bark 通知配置说明](./docs/配置/Bark通知配置说明.md) - Bark iOS 推送通知配置
+- [客户通知设置说明](./docs/配置/客户通知设置说明.md) - 客户邮件通知开关配置
 
-- **[用户列表管理](./docs/功能/用户列表管理功能说明.md)** - 用户信息管理、搜索、筛选、批量操作
-- **[异常用户管理](./docs/功能/异常用户管理功能说明.md)** - 异常用户识别和处理
-- **[订阅管理](./docs/功能/订阅管理功能说明.md)** - 订阅管理、设备数量限制原理详解
-- **[订单管理](./docs/功能/订单管理功能说明.md)** - 订单处理、支付管理、订单统计
-- **[节点管理](./docs/功能/节点管理功能说明.md)** - 节点采集、导入、管理、地区识别
-- **[工单管理](./docs/功能/工单管理功能说明.md)** - 工单处理、回复、状态管理
-- **[数据分析](./docs/功能/数据分析功能说明.md)** - 数据统计、地区分析、趋势分析
+#### 系统设置
+- [基本设置说明](./docs/配置/基本设置说明.md) - 网站信息、Logo、域名、GeoIP 等
+- [注册设置说明](./docs/配置/注册设置说明.md) - 注册流程、密码要求、新用户默认订阅
+- [安全设置与限制说明](./docs/配置/安全设置与限制说明.md) - 登录失败限制、锁定、IP 白名单、解锁方法
+- [主题设置说明](./docs/配置/主题设置说明.md) - 默认主题、用户自定义权限、可用主题
+- [公告管理说明](./docs/配置/公告管理说明.md) - 登录公告弹窗配置
 
-#### 用户端功能
-
-- **[设备管理](./docs/功能/设备管理功能说明.md)** - 设备查看、删除、设备数量限制原理
-- **[登录历史管理](./docs/功能/登录历史管理功能说明.md)** - 登录记录、地区信息、安全监控
-
-### ⚙️ 配置指南
-
-- **[CDN配置指南](./docs/配置/CDN配置指南.md)** - CDN 加速配置详细说明
-- **[GeoIP集成说明](./docs/配置/GeoIP集成说明.md)** - GeoIP 数据库集成和使用说明
-- **[易支付配置指南](./docs/配置/易支付配置指南.md)** - 易支付完整配置说明
-- **[Clash配置模板说明](./docs/配置/Clash配置模板说明.md)** - Clash 订阅配置模板详细说明
-- **[Clash配置相关文档](./docs/配置/Clash配置相关/)** - Clash 配置更新说明、验证报告、部署指南等
-
-### 🔧 技术文档
-
-- **[自定义节点实现说明](./docs/技术/自定义节点实现说明.md)** - 专线节点系统的完整实现说明
-- **[XBoard兼容性说明](./docs/技术/XBoard兼容性说明.md)** - XBoard 兼容层说明
-- **[兼容性安全说明](./docs/技术/兼容性安全说明.md)** - 兼容代码安全性说明
-
-### 🔒 安全与优化
-
-- **[API安全分析报告](./docs/安全优化/API安全分析报告.md)** - API 安全分析
-- **[暴力破解防护说明](./docs/安全优化/暴力破解防护说明.md)** - 防护措施详解
-- **[数据库优化说明](./docs/安全优化/数据库优化说明.md)** - 数据库性能优化
-
-### 📊 分析报告
-
-- **[代码质量分析报告](./docs/报告/代码质量分析报告.md)** - 代码质量全面分析
-- **[项目改进建议](./docs/报告/项目改进建议.md)** - 项目改进建议和优化方向
-- **[通知功能检查报告](./docs/报告/通知功能检查报告.md)** - 通知功能完整检查报告
-
-### 🔍 故障排查
-
-- **[安装问题排查指南](./docs/故障排查/安装问题排查指南.md)** - 常见安装问题和解决方法
-
-### 📖 核心功能原理
-
-#### 设备数量限制原理
-
-设备数量限制是订阅管理的核心功能，详细原理请参考：
-
-- **[订阅管理 - 设备数量限制原理](./docs/功能/订阅管理功能说明.md#设备数量限制原理)**
-- **[设备管理 - 设备数量限制原理](./docs/功能/设备管理功能说明.md#设备数量限制原理)**
-
-**关键概念：**
-- 设备识别：基于 User-Agent 和 IP 地址生成设备哈希
-- 设备漫游：同一设备在不同网络环境下自动识别
-- 限制机制：设备未超限/达到限制/超过限制的不同处理策略
-- 优先级策略：采用"最近使用优先"策略，长时间未使用的设备自动淘汰
-
-#### Clash 配置系统
-
-系统使用模板驱动的方式生成 Clash 订阅配置：
-
-- **配置模板**: `uploads/config/temp.yaml` - 包含 16 个代理组和 3376 条分流规则
-- **自动生成**: 系统自动将实际节点注入到配置模板中
-- **规则保留**: 所有自定义分流规则完整保留
-- **Emoji 支持**: 自动处理 Emoji 字符显示
-- **详细文档**: [Clash配置模板说明](./docs/配置/Clash配置模板说明.md)
+#### 节点与备份
+- [采集地址配置说明](./docs/配置/采集地址配置说明.md) - 节点采集地址（订阅 URL）配置
+- [节点健康检查设置说明](./docs/配置/节点健康检查设置说明.md) - 节点自动检查间隔、延迟阈值等
+- [备份设置说明](./docs/配置/备份设置说明.md) - 自动备份、Gitee/GitHub 备份配置
+- [GitHub 配置说明](./docs/配置/GitHub配置说明.md) - 备份到 GitHub 的详细配置
+- [Gitee 配置说明](./docs/配置/Gitee配置说明.md) - 备份到 Gitee 的详细配置
 
 ---
 
@@ -1135,24 +1094,16 @@ goweb/
 
 如遇到问题：
 
-1. **查看日志文件**（项目目录：宝塔一般为 `/www/wwwroot/你的域名`，无宝塔一般为 `/opt/cboard`）：
+1. **查看日志**（项目目录：宝塔一般为 `/www/wwwroot/你的域名`，无宝塔一般为 `/opt/cboard`）：
    - 应用日志：`项目目录/server.log` 或 `项目目录/uploads/logs/app.log`
    - 服务日志：`journalctl -u cboard -f`
 
 2. **检查系统状态**：
    - 系统资源：`htop` 或 `free -h`
-   - 网络连接：`curl http://127.0.0.1:8000/health`
+   - 健康检查：`curl http://127.0.0.1:8000/health`
    - 服务状态：`systemctl status cboard`
 
-3. **参考文档**：
-   - [安装问题排查指南](./docs/故障排查/安装问题排查指南.md) - 常见安装问题
-   - [功能文档](#-功能文档) - 详细功能说明
-   - [文档总索引](./docs/README.md) - 完整文档目录
-
-4. **Clash 配置问题**：
-   - [Clash配置模板说明](./docs/配置/Clash配置模板说明.md) - 配置说明
-   - [问题修复说明](./docs/配置/Clash配置相关/问题修复说明.md) - 已知问题修复
-   - [部署清单](./docs/配置/Clash配置相关/部署清单.md) - 部署指南
+3. **参考文档**：[安装问题排查指南](./docs/故障排查/安装问题排查指南.md)
 
 ---
 
@@ -1166,19 +1117,9 @@ goweb/
 
 ## 🆕 最新更新
 
-### Clash 配置系统优化（2026-02-02）
-
-- ✨ **16 个代理组**: 节点选择、自动选择、故障转移、负载均衡、AI服务、流媒体等
-- ✨ **3376 条分流规则**: 完整的规则库，包括广告拦截、流媒体分流、AI服务优化等
-- ✨ **优化的 DNS 配置**: fake-ip 模式，智能 DNS 分流
-- ✨ **Emoji 支持**: 自动处理 Emoji 字符显示
-- ✨ **模板驱动**: 使用模板文件生成配置，便于自定义
-
-详细说明请查看：[Clash配置模板说明](./docs/配置/Clash配置模板说明.md)
-
 ---
 
-**最后更新**: 2026-02-02  
+**最后更新**: 2026-02-10  
 **版本**: v1.1.0  
 **状态**: ✅ 生产就绪
 

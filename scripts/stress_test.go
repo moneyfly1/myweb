@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,8 +34,11 @@ var (
 )
 
 func main() {
-	baseURL := "https://dy.moneyfly.top"
-	
+	baseURL := os.Getenv("STRESS_TEST_BASE_URL")
+	if baseURL == "" {
+		fmt.Println("请设置环境变量 STRESS_TEST_BASE_URL，例如: export STRESS_TEST_BASE_URL=https://your-domain.com")
+		os.Exit(1)
+	}
 	fmt.Println("=========================================")
 	fmt.Println("网站压力测试工具")
 	fmt.Println("目标网站:", baseURL)

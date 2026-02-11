@@ -320,7 +320,7 @@ func handleValidationError(c *gin.Context, err error) {
 			switch fieldErr.Field() {
 			case "Email":
 				if fieldErr.Tag() == "email" {
-					utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址（例如：user@example.com）", nil)
+					utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确，请输入有效的邮箱地址", nil)
 				} else {
 					utils.ErrorResponse(c, http.StatusBadRequest, "邮箱不能为空，请输入您的邮箱地址", nil)
 				}

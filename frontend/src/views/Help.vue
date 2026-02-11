@@ -142,7 +142,7 @@
           <div class="contact-item" v-if="contactQQ">
             <i class="el-icon-chat-dot-round"></i>
             <div class="contact-details">
-              <h4>售后QQ</h4>
+              <h4>售后联系方式</h4>
               <p>{{ contactQQ }}</p>
             </div>
           </div>

@@ -261,9 +261,9 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"backup": {
 			"backup_target":        "gitee",
-			"backup_gitee_enabled": "false", "backup_gitee_token": "", "backup_gitee_owner": "moneyfly",
+			"backup_gitee_enabled": "false", "backup_gitee_token": "", "backup_gitee_owner": "",
 			"backup_gitee_repo":     "backup",
-			"backup_github_enabled": "false", "backup_github_token": "", "backup_github_owner": "moneyfly1",
+			"backup_github_enabled": "false", "backup_github_token": "", "backup_github_owner": "",
 			"backup_github_repo":  "backup",
 			"backup_auto_enabled": "false", "backup_auto_interval": "24",
 		},
