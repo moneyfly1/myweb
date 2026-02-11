@@ -158,6 +158,8 @@ install_base_deps() {
         (command -v dnf &>/dev/null && dnf makecache -q || yum makecache -q)
         yum install -y $pkgs_common gcc gcc-c++ make sqlite-devel certbot python3-certbot-nginx
     fi
+    # 启用 certbot 自动续期定时任务（续期后通过 renewal-hooks/deploy 重载 Nginx）
+    systemctl enable certbot.timer 2>/dev/null && systemctl start certbot.timer 2>/dev/null && log "已启用证书自动续期定时任务" || true
     
     # 防火墙
     if command -v firewall-cmd &>/dev/null; then
@@ -351,6 +353,40 @@ EOF
         sed -i "/listen 80;/a \    listen 443 ssl;\n    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;\n    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;" "$conf"
         systemctl reload nginx
         log "SSL 配置成功: https://$DOMAIN"
+        setup_cert_auto_renew_hook
+    fi
+}
+
+# 配置证书续期后自动重载 Nginx（供 certbot 自动续期时调用）
+setup_cert_auto_renew_hook() {
+    local hook_dir="/etc/letsencrypt/renewal-hooks/deploy"
+    local hook_file="$hook_dir/reload-nginx.sh"
+    mkdir -p "$hook_dir"
+    if [ ! -x "$hook_file" ]; then
+        cat > "$hook_file" <<'HOOK'
+#!/bin/bash
+# certbot 续期成功后自动执行，重载 Nginx 以加载新证书
+systemctl reload nginx 2>/dev/null || true
+HOOK
+        chmod +x "$hook_file"
+        log "已配置证书自动续期钩子: 续期后将自动重载 Nginx"
+    fi
+}
+
+# 手动证书续期（菜单项）
+menu_renew_cert() {
+    step "证书续期（Let's Encrypt）..."
+    if ! command -v certbot &>/dev/null; then
+        error "未安装 certbot，请先执行「一键安装」"
+        return 1
+    fi
+    # 确保续期后重载 Nginx
+    setup_cert_auto_renew_hook
+    if certbot renew --quiet --deploy-hook "systemctl reload nginx"; then
+        log "证书续期检查完成（未到期则不会更新）；若已续期，Nginx 已重载"
+    else
+        warn "certbot renew 执行异常，请检查: certbot certificates"
+        certbot renew --no-quiet 2>&1 | tail -20
     fi
 }
 
@@ -559,7 +595,10 @@ show_menu() {
     echo "13. 仅构建前端（改前端后选此项）"
     echo "14. 仅构建后端（改 Go 后选此项）"
     echo "15. 构建前后端并重启"
+    echo "16. 证书续期（手动续期，自动续期见下方说明）"
     echo "0. 退出"
+    echo ""
+    echo "说明: 选 16 可手动续期；自动续期由 certbot 定时任务完成，续期后会自动重载 Nginx。"
     read -p "请选择: " choice
 }
 
@@ -584,6 +623,7 @@ main() {
             13) menu_build_frontend ;;
             14) menu_build_backend ;;
             15) menu_build_all ;;
+            16) menu_renew_cert ;;
             0) exit 0 ;;
             *) warn "无效选项" ;;
         esac

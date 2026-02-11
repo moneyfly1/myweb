@@ -148,6 +148,7 @@ server {
 }
 EOF
         log "✅ HTTPS 配置已生成"
+        setup_cert_auto_renew_hook
     else
         warn "SSL 证书未找到，使用 HTTP 配置"
         cat > "$bt_path" << EOF
@@ -313,6 +314,37 @@ deep_clean() {
     log "✅ 缓存清理完毕"
 }
 
+# 配置证书续期后自动重载 Nginx（供 certbot 自动续期时调用）
+setup_cert_auto_renew_hook() {
+    local hook_dir="/etc/letsencrypt/renewal-hooks/deploy"
+    local hook_file="$hook_dir/reload-nginx.sh"
+    mkdir -p "$hook_dir"
+    if [[ ! -x "$hook_file" ]]; then
+        cat > "$hook_file" <<'HOOK'
+#!/bin/bash
+# certbot 续期成功后自动执行，重载 Nginx 以加载新证书
+systemctl reload nginx 2>/dev/null || /etc/init.d/nginx reload 2>/dev/null || true
+HOOK
+        chmod +x "$hook_file"
+        log "已配置证书自动续期钩子: 续期后将自动重载 Nginx"
+    fi
+}
+
+renew_cert() {
+    log "证书续期（Let's Encrypt）..."
+    if ! command -v certbot &>/dev/null; then
+        error "未安装 certbot，请先执行「一键全自动部署」或安装 certbot"
+        return 1
+    fi
+    setup_cert_auto_renew_hook
+    if certbot renew --quiet --deploy-hook "systemctl reload nginx 2>/dev/null || /etc/init.d/nginx reload 2>/dev/null"; then
+        log "证书续期检查完成（未到期则不会更新）；若已续期，Nginx 已重载"
+    else
+        warn "certbot renew 执行异常，请检查: certbot certificates"
+        certbot renew --no-quiet 2>&1 | tail -20
+    fi
+}
+
 unlock_user() {
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
     log "解锁用户账户（支持管理员和普通用户）..."
@@ -375,9 +407,10 @@ show_menu() {
     echo -e "  ${CYAN}7.${NC} 查看实时服务日志"
     echo -e "  ${CYAN}8.${NC} 标准重启服务 (Systemd)"
     echo -e "  ${CYAN}9.${NC} 停止服务"
+    echo -e "  ${CYAN}10.${NC} 证书续期（手动续期，自动续期由 certbot 定时任务完成）"
     echo -e "  ${RED}0.${NC} 退出脚本"
     echo -e "${BLUE}==========================================${NC}"
-    read -r -p "请选择操作 [0-9]: " choice
+    read -r -p "请选择操作 [0-10]: " choice
 }
 
 # --- 主程序循环 ---
@@ -438,6 +471,7 @@ main() {
                     error "服务 cboard 不存在"
                 fi
                 ;;
+            10) renew_cert ;;
             0) exit 0 ;;
             *) error "无效选择，请重新输入" ;;
         esac
