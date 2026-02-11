@@ -332,7 +332,7 @@
   </div>
 </template>
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Wallet, DocumentCopy, InfoFilled } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
@@ -483,10 +483,12 @@ export default {
           ElMessage.error('获取订阅信息失败：无法连接到服务器')
           return
         }
+        await nextTick()
         setTimeout(() => {
           generateQRCodes()
-        }, 100)
+        }, 200)
       } catch (error) {
+        console.error('获取订阅信息失败:', error)
         ElMessage.error(`获取订阅信息失败: ${error.message || '未知错误'}`)
       }
     }
@@ -513,6 +515,7 @@ export default {
           }
           qrData = `sub://${encodedUrl}#${encodeURIComponent(expiryDisplayName)}`
         }
+        await nextTick()
         const qrElement = document.getElementById('subscription-qrcode')
         if (qrElement && qrData) {
           await QRCode.toCanvas(qrElement, qrData, {
@@ -1097,19 +1100,87 @@ export default {
   }
 }
 @media (max-width: 768px) {
+  .subscription-container {
+    padding: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
   .subscription-card {
-    border-radius: 0;
-    margin: 0 -12px;
-    box-shadow: none;
-    border-left: none;
-    border-right: none;
+    border-radius: 8px;
+    margin: 0;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    width: 100%;
+    box-sizing: border-box;
     :deep(.el-card__header) {
       padding: 16px;
       .card-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
+        :is(h2) {
+          font-size: 1.25rem;
+        }
+        :is(p) {
+          font-size: 0.875rem;
+        }
       }
+    }
+    :deep(.el-card__body) {
+      padding: 16px;
+    }
+  }
+  .subscription-status {
+    padding: 16px;
+    margin-bottom: 20px;
+    .status-item {
+      margin-bottom: 16px;
+      .status-label {
+        font-size: 0.875rem;
+        margin-bottom: 6px;
+      }
+      .status-value {
+        font-size: 1rem;
+      }
+    }
+  }
+  .subscription-urls {
+    :is(h3) {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+    }
+  }
+  .url-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 20px;
+    .url-label {
+      min-width: auto;
+      width: 100%;
+      font-size: 0.875rem;
+    }
+    .url-content {
+      width: 100%;
+      :deep(.el-input) {
+        width: 100%;
+      }
+      :deep(.el-input__wrapper) {
+        font-size: 14px;
+      }
+      :deep(.el-button) {
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+    }
+  }
+  .qr-code-section {
+    :is(h4) {
+      font-size: 1rem;
+      margin-bottom: 16px;
+    }
+    .qr-codes {
+      flex-direction: column;
+      gap: 20px;
     }
   }
   .subscription-actions {

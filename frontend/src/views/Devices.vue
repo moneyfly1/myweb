@@ -38,12 +38,15 @@
       </template>
       <div class="table-wrapper">
         <el-table 
+          ref="deviceTableRef"
           :data="devices" 
           v-loading="loading"
           style="width: 100%"
           stripe
+          border
+          @header-dragend="handleDeviceColumnResize"
         >
-        <el-table-column prop="device_name" label="设备名称" min-width="200">
+          <el-table-column prop="device_name" label="设备名称" :min-width="columnWidths.device_name" resizable>
           <template #default="{ row }">
             <div class="device-name">
               <i :class="getDeviceIcon(row.device_type)"></i>
@@ -63,14 +66,14 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="device_type" label="设备类型" width="120">
+        <el-table-column prop="device_type" label="设备类型" :width="columnWidths.device_type" resizable>
           <template #default="{ row }">
             <el-tag :type="getDeviceTypeColor(row.device_type)">
               {{ getDeviceTypeName(row.device_type) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="os_name" label="操作系统" width="180">
+        <el-table-column prop="os_name" label="操作系统" :width="columnWidths.os_name" resizable>
           <template #default="{ row }">
             <div class="os-info">
               <div class="os-name">{{ row.os_name || '-' }}</div>
@@ -82,7 +85,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="ip_address" label="IP地址" width="280">
+        <el-table-column prop="ip_address" label="IP地址" :width="columnWidths.ip_address" resizable>
           <template #default="{ row }">
             <div class="ip-location-cell">
               <span class="ip-address">{{ row.ip_address || '-' }}</span>
@@ -94,19 +97,19 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="last_access" label="最后访问" width="180">
+        <el-table-column prop="last_access" label="最后访问" :width="columnWidths.last_access" resizable>
           <template #default="{ row }">
             <span>{{ formatTime(row.last_access) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="user_agent" label="User Agent" min-width="200">
+        <el-table-column prop="user_agent" label="User Agent" :min-width="columnWidths.user_agent" :width="columnWidths.user_agent" resizable>
           <template #default="{ row }">
             <el-tooltip :content="row.user_agent" placement="top">
               <span class="user-agent">{{ truncateUserAgent(row.user_agent) }}</span>
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
           <template #default="{ row }">
             <div class="action-buttons">
               <el-button 
@@ -253,6 +256,49 @@ export default {
   setup() {
     const loading = ref(false)
     const devices = ref([])
+    const deviceTableRef = ref(null)
+    const DEVICES_TABLE_STORAGE_KEY = 'user_devices_table_settings'
+    const columnWidths = reactive({
+      device_name: 220,
+      device_type: 120,
+      os_name: 180,
+      ip_address: 280,
+      last_access: 180,
+      user_agent: 200,
+      actions: 120
+    })
+    const loadDeviceTableSettings = () => {
+      try {
+        const saved = localStorage.getItem(DEVICES_TABLE_STORAGE_KEY)
+        if (saved) {
+          const s = JSON.parse(saved)
+          if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
+        }
+      } catch (e) {
+        console.warn('加载设备表设置失败:', e)
+      }
+    }
+    const saveDeviceTableSettings = () => {
+      try {
+        localStorage.setItem(DEVICES_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
+      } catch (e) {
+        console.warn('保存设备表设置失败:', e)
+      }
+    }
+    const DEVICE_COLUMN_KEYS = ['device_name', 'device_type', 'os_name', 'ip_address', 'last_access', 'user_agent', 'actions']
+    let deviceResizeTimer = null
+    const handleDeviceColumnResize = () => {
+      if (deviceResizeTimer) clearTimeout(deviceResizeTimer)
+      deviceResizeTimer = setTimeout(() => {
+        if (deviceTableRef.value && deviceTableRef.value.$el) {
+          const cells = deviceTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+          cells.forEach((cell, index) => {
+            if (DEVICE_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[DEVICE_COLUMN_KEYS[index]] = cell.offsetWidth
+          })
+          saveDeviceTableSettings()
+        }
+      }, 300)
+    }
     const deviceStats = reactive({
       total: 0,
       online: 0,
@@ -390,6 +436,7 @@ export default {
       return Math.round((count / deviceStats.total) * 100)
     }
     onMounted(() => {
+      loadDeviceTableSettings()
       fetchDevices()
     })
     return {
@@ -406,7 +453,10 @@ export default {
       formatTime,
       truncateUserAgent,
       getPercentage,
-      formatLocation
+      formatLocation,
+      deviceTableRef,
+      columnWidths,
+      handleDeviceColumnResize
     }
   }
 }

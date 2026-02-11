@@ -5,6 +5,32 @@
         <div class="header-content">
           <span>支付配置管理</span>
           <div class="header-actions desktop-only">
+            <el-radio-group v-model="viewMode" size="small" class="view-mode-group">
+              <el-radio-button label="table">表格</el-radio-button>
+              <el-radio-button label="grid">方格</el-radio-button>
+            </el-radio-group>
+            <template v-if="viewMode === 'grid'">
+              <el-radio-group v-model="gridOrientation" size="small" class="grid-orientation-group">
+                <el-radio-button label="horizontal">横向</el-radio-button>
+                <el-radio-button label="vertical">纵向</el-radio-button>
+              </el-radio-group>
+              <template v-if="gridOrientation === 'horizontal'">
+                <el-select v-model="gridColumns" size="small" style="width: 90px; margin-right: 8px;" class="grid-columns-select">
+                  <el-option label="2列" :value="2" />
+                  <el-option label="3列" :value="3" />
+                  <el-option label="4列" :value="4" />
+                  <el-option label="5列" :value="5" />
+                  <el-option label="6列" :value="6" />
+                </el-select>
+              </template>
+              <template v-else>
+                <el-radio-group v-model="gridSize" size="small" class="grid-size-group">
+                  <el-radio-button label="small">窄</el-radio-button>
+                  <el-radio-button label="medium">中</el-radio-button>
+                  <el-radio-button label="large">宽</el-radio-button>
+                </el-radio-group>
+              </template>
+            </template>
             <el-button type="warning" @click="openBulkDialog">
               <el-icon><Operation /></el-icon>
               批量操作
@@ -59,25 +85,28 @@
           </el-button>
         </div>
       </div>
-      <div class="table-wrapper desktop-only">
+      <div class="table-wrapper desktop-only" v-if="viewMode === 'table'">
         <el-table 
           ref="tableRef"
           :data="paymentConfigs" 
           style="width: 100%" 
           v-loading="loading" 
+          stripe
+          border
           :empty-text="paymentConfigs.length === 0 ? '暂无支付配置' : '暂无数据'"
           @selection-change="handleSelectionChange"
+          @header-dragend="handleColumnResize"
         >
-          <el-table-column type="selection" width="50" />
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column prop="pay_type" label="支付类型" width="120">
+          <el-table-column type="selection" :width="columnWidths.selection" resizable />
+          <el-table-column prop="id" label="ID" :width="columnWidths.id" resizable />
+          <el-table-column prop="pay_type" label="支付类型" :width="columnWidths.pay_type" resizable>
             <template #default="scope">
               <el-tag :type="getPaymentTypeConfig(scope.row.pay_type).tag">
                 {{ getPaymentTypeConfig(scope.row.pay_type).label }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="app_id" label="应用ID/商户ID" min-width="200">
+          <el-table-column prop="app_id" label="应用ID/商户ID" :min-width="columnWidths.app_id" :width="columnWidths.app_id" resizable show-overflow-tooltip>
             <template #default="scope">
               <span v-if="scope.row.app_id">{{ scope.row.app_id }}</span>
               <span v-else-if="scope.row.config_json?.yipay_pid">
@@ -86,7 +115,7 @@
               <span v-else class="text-muted">未配置</span>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="120" align="center">
+          <el-table-column prop="status" label="状态" :width="columnWidths.status" resizable align="center">
             <template #default="scope">
               <el-switch
                 v-model="scope.row.status"
@@ -99,8 +128,8 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180" />
-          <el-table-column label="操作" width="180" align="center">
+          <el-table-column prop="created_at" label="创建时间" :width="columnWidths.created_at" resizable />
+          <el-table-column label="操作" :width="columnWidths.actions" resizable align="center">
             <template #default="scope">
               <el-button size="small" type="primary" @click="editConfig(scope.row)">
                 编辑
@@ -111,6 +140,65 @@
             </template>
           </el-table-column>
         </el-table>
+      </div>
+      <div v-if="viewMode === 'grid' && !isMobile" class="desktop-grid-view" :class="[
+        gridOrientation === 'horizontal' ? 'grid-horizontal' : 'grid-vertical',
+        gridOrientation === 'vertical' ? 'grid-size-' + gridSize : '',
+        'grid-cols-' + gridColumns
+      ]" v-loading="loading">
+        <template v-if="paymentConfigs.length === 0">
+          <el-empty description="暂无支付配置" class="grid-empty" />
+        </template>
+        <template v-else>
+          <div
+            v-for="config in paymentConfigs"
+            :key="config.id"
+            class="grid-config-card"
+            :class="{ 'is-selected': isSelected(config) }"
+          >
+            <div class="gcc-header">
+              <el-checkbox
+                :model-value="isSelected(config)"
+                @change="(val) => handleGridSelect(config, val)"
+                class="gcc-checkbox"
+              />
+              <span class="gcc-title">#{{ config.id }}</span>
+              <el-tag :type="getPaymentTypeConfig(config.pay_type).tag" size="small" effect="dark">
+                {{ getPaymentTypeConfig(config.pay_type).label }}
+              </el-tag>
+            </div>
+            <div class="gcc-body">
+              <div class="gcc-row">
+                <span class="label">应用ID/商户ID</span>
+                <span class="value">
+                  <span v-if="config.app_id">{{ config.app_id }}</span>
+                  <span v-else-if="config.config_json?.yipay_pid">{{ config.config_json.yipay_pid }}</span>
+                  <span v-else class="text-muted">未配置</span>
+                </span>
+              </div>
+              <div class="gcc-row">
+                <span class="label">创建时间</span>
+                <span class="value text-xs">{{ config.created_at || '-' }}</span>
+              </div>
+            </div>
+            <div class="gcc-footer">
+              <el-switch
+                v-model="config.status"
+                :active-value="1"
+                :inactive-value="0"
+                @change="(val) => toggleStatus(config, val)"
+                size="small"
+                inline-prompt
+                active-text="启用"
+                inactive-text="禁用"
+              />
+              <div class="gcc-actions">
+                <el-button size="small" type="primary" @click="editConfig(config)">编辑</el-button>
+                <el-button size="small" type="danger" @click="deleteConfig(config)">删除</el-button>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
       <div class="mobile-card-list mobile-only" v-if="paymentConfigs.length > 0">
         <div v-for="config in paymentConfigs" :key="config.id" class="mobile-card">
@@ -368,7 +456,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Operation, Plus, Edit, Delete, Check, Close, Loading } from '@element-plus/icons-vue'
 import { paymentAPI } from '@/utils/api'
@@ -442,10 +530,93 @@ export default {
     const showBulkOperationsDialog = ref(false)
     const editingConfig = ref(null)
     const isMobile = ref(false)
+    const viewMode = ref('table') // 'table' | 'grid'
+    const gridOrientation = ref('horizontal') // 'horizontal' | 'vertical'
+    const gridColumns = ref(3) // 2-6 columns for horizontal
+    const gridSize = ref('medium') // 'small' | 'medium' | 'large' for vertical
     const selectedConfigs = ref([])
     const batchOperating = ref(false)
     const tableRef = ref(null)
     const configForm = reactive({ ...DEFAULT_FORM_STATE })
+    
+    // 列宽状态（动态绑定）
+    const columnWidths = reactive({
+      selection: 50,
+      id: 80,
+      pay_type: 120,
+      app_id: 200,
+      status: 120,
+      created_at: 180,
+      actions: 180
+    })
+    
+    // 从 localStorage 加载设置
+    const STORAGE_KEY = 'paymentConfig_table_settings'
+    const loadSettings = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) {
+          const settings = JSON.parse(saved)
+          if (settings.viewMode) viewMode.value = settings.viewMode
+          if (settings.gridOrientation) gridOrientation.value = settings.gridOrientation
+          if (settings.gridColumns) gridColumns.value = settings.gridColumns
+          if (settings.gridSize) gridSize.value = settings.gridSize
+          if (settings.columnWidths) {
+            Object.assign(columnWidths, settings.columnWidths)
+          }
+        }
+      } catch (e) {
+        console.warn('加载设置失败:', e)
+      }
+    }
+    
+    // 保存设置到 localStorage
+    const saveSettings = () => {
+      try {
+        const settings = {
+          viewMode: viewMode.value,
+          gridOrientation: gridOrientation.value,
+          gridColumns: gridColumns.value,
+          gridSize: gridSize.value,
+          columnWidths: { ...columnWidths }
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+      } catch (e) {
+        console.warn('保存设置失败:', e)
+      }
+    }
+    
+    // 列宽调整事件处理（延迟保存，避免频繁触发）
+    let resizeTimer = null
+    const handleColumnResize = (newWidth, oldWidth, column, event) => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        // 获取所有列的当前宽度
+        if (tableRef.value && tableRef.value.$el) {
+          const headerCells = tableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+          const keys = ['selection', 'id', 'pay_type', 'app_id', 'status', 'created_at', 'actions']
+          headerCells.forEach((cell, index) => {
+            if (keys[index] && cell.offsetWidth > 0) {
+              columnWidths[keys[index]] = cell.offsetWidth
+            }
+          })
+          saveSettings()
+        }
+      }, 300)
+    }
+    
+    // 网格视图选择处理
+    const handleGridSelect = (config, checked) => {
+      if (checked) {
+        if (!selectedConfigs.value.find(c => c.id === config.id)) {
+          selectedConfigs.value.push(config)
+        }
+      } else {
+        selectedConfigs.value = selectedConfigs.value.filter(c => c.id !== config.id)
+      }
+    }
+    
+    const isSelected = (config) => selectedConfigs.value.some(c => c.id === config.id)
     const baseUrl = computed(() => typeof window !== 'undefined' ? window.location.origin : '')
     const checkMobile = () => isMobile.value = window.innerWidth <= 768
     const getPaymentTypeConfig = (type) => PAYMENT_TYPES[type] || { label: type, tag: 'info' }
@@ -652,9 +823,16 @@ export default {
       tableRef.value?.clearSelection()
     }
     const handleMobileAction = (cmd) => { if (cmd === 'bulk') openBulkDialog() }
+    
+    // 监听视图模式和网格设置变化，自动保存
+    watch([viewMode, gridOrientation, gridColumns, gridSize], () => {
+      saveSettings()
+    })
+    
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
+      loadSettings() // 先加载保存的设置
       loadPaymentConfigs()
     })
     onUnmounted(() => window.removeEventListener('resize', checkMobile))
@@ -670,6 +848,11 @@ export default {
       selectedConfigs,
       batchOperating,
       isMobile,
+      viewMode,
+      gridOrientation,
+      gridColumns,
+      gridSize,
+      columnWidths,
       tableRef,
       saveConfig,
       editConfig,
@@ -678,6 +861,9 @@ export default {
       getPaymentTypeConfig,
       handleMobileAction,
       handleSelectionChange,
+      handleGridSelect,
+      isSelected,
+      handleColumnResize,
       clearSelection,
       handleBatchAction,
       openAddDialog,
@@ -689,13 +875,131 @@ export default {
 <style scoped>
 .admin-payment-config { padding: 20px; }
 .header-content { display: flex; justify-content: space-between; align-items: center; }
-.header-actions { display: flex; gap: 10px; }
+.header-actions { display: flex; gap: 10px; align-items: center; }
+.view-mode-group { margin-right: 8px; }
+.grid-orientation-group { margin-right: 8px; }
+.grid-size-group { margin-right: 8px; }
+.grid-columns-select { margin-right: 8px; }
 .text-muted { color: #909399; font-style: italic; }
 .status-text { margin-left: 8px; font-size: 12px; color: #909399; }
 .form-tip { font-size: 12px; color: #909399; margin-top: 4px; line-height: 1.5; }
 .desktop-only { @media (max-width: 768px) { display: none !important; } }
 .mobile-only { display: none; @media (max-width: 768px) { display: block; } }
 .bulk-btn { width: 100%; margin-bottom: 10px; margin-left: 0 !important; }
+
+/* 桌面端方格视图（可调大小和方向） */
+.desktop-grid-view {
+  display: grid;
+  gap: 16px;
+  min-height: 120px;
+}
+/* 横向布局：固定列数 */
+.desktop-grid-view.grid-horizontal.grid-cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-6 {
+  grid-template-columns: repeat(6, 1fr);
+}
+/* 纵向布局：单列，可调宽度 */
+.desktop-grid-view.grid-vertical {
+  grid-template-columns: 1fr;
+  max-width: 100%;
+}
+.desktop-grid-view.grid-vertical.grid-size-small {
+  max-width: 400px;
+  margin: 0 auto;
+}
+.desktop-grid-view.grid-vertical.grid-size-medium {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.desktop-grid-view.grid-vertical.grid-size-large {
+  max-width: 800px;
+  margin: 0 auto;
+}
+.grid-empty {
+  grid-column: 1 / -1;
+  padding: 40px 0;
+}
+.grid-config-card {
+  background: #fff;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.grid-config-card:hover {
+  border-color: var(--el-border-color);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+.grid-config-card.is-selected {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 1px var(--el-color-primary);
+}
+.grid-config-card .gcc-header {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grid-config-card .gcc-checkbox { margin-right: 0; flex-shrink: 0; }
+.grid-config-card .gcc-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+.grid-config-card .gcc-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.grid-config-card .gcc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+.grid-config-card .gcc-row .label {
+  color: var(--el-text-color-secondary);
+  margin-right: 8px;
+}
+.grid-config-card .gcc-row .value {
+  font-weight: 500;
+  word-break: break-all;
+  text-align: right;
+}
+.grid-config-card .gcc-footer {
+  padding: 10px 16px;
+  border-top: 1px solid #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.grid-config-card .gcc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
 :deep(.el-input__wrapper), :deep(.el-textarea__inner) {
   border-radius: 0; box-shadow: none; border: 1px solid #dcdfe6; background-color: #fff;
 }

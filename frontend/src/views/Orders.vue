@@ -142,13 +142,16 @@
       </el-tabs>
       <div class="table-wrapper">
         <el-table 
+          ref="orderTableRef"
           :data="displayRecords" 
           style="width: 100%"
           v-loading="isLoading || isLoadingRecharges"
           :empty-text="emptyText"
           stripe
+          border
+          @header-dragend="handleOrderColumnResize"
         >
-          <el-table-column prop="record_type" label="类型" width="80">
+          <el-table-column prop="record_type" label="类型" :width="orderColumnWidths.record_type" resizable>
             <template #default="scope">
               <el-tag 
                 :type="scope.row.record_type === 'recharge' ? 'success' : 'primary'"
@@ -158,17 +161,17 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="display_no" label="订单号" width="180">
+          <el-table-column prop="display_no" label="订单号" :width="orderColumnWidths.display_no" resizable>
             <template #default="scope">
               <el-tag size="small" type="info">{{ scope.row.display_no }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="package_name" label="套餐名称/类型">
+          <el-table-column prop="package_name" label="套餐名称/类型" :min-width="orderColumnWidths.package_name" resizable>
             <template #default="scope">
               {{ scope.row.package_name || (scope.row.record_type === 'recharge' ? '账户充值' : '-') }}
             </template>
           </el-table-column>
-          <el-table-column prop="display_amount" label="金额" width="120">
+          <el-table-column prop="display_amount" label="金额" :width="orderColumnWidths.display_amount" resizable>
             <template #default="scope">
               <span 
                 class="amount" 
@@ -178,7 +181,7 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="payment_method" label="支付方式" width="120">
+          <el-table-column prop="payment_method" label="支付方式" :width="orderColumnWidths.payment_method" resizable>
             <template #default="scope">
               <el-tag 
                 :type="getPaymentMethodType(scope.row.payment_method)"
@@ -188,7 +191,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="120">
+          <el-table-column prop="status" label="状态" :width="orderColumnWidths.status" resizable>
             <template #default="scope">
               <el-tag 
                 :type="getOrderStatusType(scope.row.status)"
@@ -198,17 +201,17 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180">
+          <el-table-column prop="created_at" label="创建时间" :width="orderColumnWidths.created_at" resizable>
             <template #default="scope">
               {{ formatDateTime(scope.row.created_at) }}
             </template>
           </el-table-column>
-          <el-table-column prop="paid_at" label="支付时间" width="180">
+          <el-table-column prop="paid_at" label="支付时间" :width="orderColumnWidths.paid_at" resizable>
             <template #default="scope">
               {{ (scope.row.paid_at || scope.row.payment_time) ? formatDateTime(scope.row.paid_at || scope.row.payment_time) : '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" :width="orderColumnWidths.actions" fixed="right" resizable>
             <template #default="scope">
               <div class="action-buttons" v-if="scope.row.record_type === 'order'">
                 <el-button 
@@ -551,6 +554,51 @@ export default {
     const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
+    const orderTableRef = ref(null)
+    const ORDER_TABLE_STORAGE_KEY = 'user_orders_table_settings'
+    const orderColumnWidths = reactive({
+      record_type: 80,
+      display_no: 180,
+      package_name: 160,
+      display_amount: 120,
+      payment_method: 120,
+      status: 120,
+      created_at: 180,
+      paid_at: 180,
+      actions: 200
+    })
+    const loadOrderTableSettings = () => {
+      try {
+        const saved = localStorage.getItem(ORDER_TABLE_STORAGE_KEY)
+        if (saved) {
+          const s = JSON.parse(saved)
+          if (s.columnWidths) Object.assign(orderColumnWidths, s.columnWidths)
+        }
+      } catch (e) {
+        console.warn('加载订单表设置失败:', e)
+      }
+    }
+    const saveOrderTableSettings = () => {
+      try {
+        localStorage.setItem(ORDER_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...orderColumnWidths } }))
+      } catch (e) {
+        console.warn('保存订单表设置失败:', e)
+      }
+    }
+    const ORDER_COLUMN_KEYS = ['record_type', 'display_no', 'package_name', 'display_amount', 'payment_method', 'status', 'created_at', 'paid_at', 'actions']
+    let orderResizeTimer = null
+    const handleOrderColumnResize = () => {
+      if (orderResizeTimer) clearTimeout(orderResizeTimer)
+      orderResizeTimer = setTimeout(() => {
+        if (orderTableRef.value && orderTableRef.value.$el) {
+          const cells = orderTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+          cells.forEach((cell, index) => {
+            if (ORDER_COLUMN_KEYS[index] && cell.offsetWidth > 0) orderColumnWidths[ORDER_COLUMN_KEYS[index]] = cell.offsetWidth
+          })
+          saveOrderTableSettings()
+        }
+      }, 300)
+    }
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     const isMobile = computed(() => {
       return windowWidth.value <= 768
@@ -1361,6 +1409,7 @@ export default {
       return num.toFixed(2)
     }
     onMounted(async () => {
+      loadOrderTableSettings()
       await loadOrderStats()
       await loadOrders()
       if (activeTab.value === 'all') {
@@ -1423,7 +1472,10 @@ export default {
       formatAmount,
       getPaymentMethodName,
       formatDateTime,
-      isMobile
+      isMobile,
+      orderTableRef,
+      orderColumnWidths,
+      handleOrderColumnResize
     }
   }
 }
