@@ -14,19 +14,22 @@
       <div v-if="loading" class="loading-container">
         <el-skeleton :rows="5" animated />
       </div>
-      <div class="desktop-only">
+      <div class="desktop-only table-wrapper">
         <el-table 
+          ref="historyTableRef"
           v-if="loginHistory.length > 0"
           :data="loginHistory" 
           stripe
+          border
           style="width: 100%"
+          @header-dragend="handleHistoryColumnResize"
         >
-          <el-table-column prop="login_time" label="登录时间" width="180">
+          <el-table-column prop="login_time" label="登录时间" :width="columnWidths.login_time" resizable>
             <template #default="scope">
               {{ formatTime(scope.row.login_time) }}
             </template>
           </el-table-column>
-          <el-table-column prop="ip_address" label="IP地址/地区" width="200">
+          <el-table-column prop="ip_address" label="IP地址/地区" :width="columnWidths.ip_address" resizable>
             <template #default="scope">
               <div style="display: flex; flex-direction: column; gap: 4px;">
                 <el-tag type="info" size="small">{{ scope.row.ip_address || '未知' }}</el-tag>
@@ -40,7 +43,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="user_agent" label="设备信息" min-width="200">
+          <el-table-column prop="user_agent" label="设备信息" :min-width="columnWidths.user_agent" resizable>
             <template #default="scope">
               <el-tooltip :content="scope.row.user_agent" placement="top">
                 <span class="user-agent-text">
@@ -49,7 +52,7 @@
               </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="100">
+          <el-table-column prop="status" label="状态" :width="columnWidths.status" resizable>
             <template #default="scope">
               <el-tag :type="scope.row.status === 'success' ? 'success' : 'danger'">
                 {{ scope.row.status === 'success' ? '成功' : '失败' }}
@@ -151,6 +154,46 @@ export default {
   setup() {
     const loading = ref(false)
     const loginHistory = ref([])
+    const historyTableRef = ref(null)
+    const LOGIN_HISTORY_TABLE_STORAGE_KEY = 'user_login_history_table_settings'
+    const columnWidths = reactive({
+      login_time: 180,
+      ip_address: 200,
+      user_agent: 200,
+      status: 100
+    })
+    const loadHistoryTableSettings = () => {
+      try {
+        const saved = localStorage.getItem(LOGIN_HISTORY_TABLE_STORAGE_KEY)
+        if (saved) {
+          const s = JSON.parse(saved)
+          if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
+        }
+      } catch (e) {
+        console.warn('加载登录历史表设置失败:', e)
+      }
+    }
+    const saveHistoryTableSettings = () => {
+      try {
+        localStorage.setItem(LOGIN_HISTORY_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
+      } catch (e) {
+        console.warn('保存登录历史表设置失败:', e)
+      }
+    }
+    const HISTORY_COLUMN_KEYS = ['login_time', 'ip_address', 'user_agent', 'status']
+    let historyResizeTimer = null
+    const handleHistoryColumnResize = () => {
+      if (historyResizeTimer) clearTimeout(historyResizeTimer)
+      historyResizeTimer = setTimeout(() => {
+        if (historyTableRef.value && historyTableRef.value.$el) {
+          const cells = historyTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+          cells.forEach((cell, index) => {
+            if (HISTORY_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[HISTORY_COLUMN_KEYS[index]] = cell.offsetWidth
+          })
+          saveHistoryTableSettings()
+        }
+      }, 300)
+    }
     const currentPage = ref(1)
     const pageSize = ref(20)
     const total = ref(0)
@@ -258,6 +301,7 @@ export default {
       return ''
     }
     onMounted(() => {
+      loadHistoryTableSettings()
       fetchLoginHistory()
     })
     return {
@@ -266,6 +310,9 @@ export default {
       currentPage,
       pageSize,
       total,
+      historyTableRef,
+      columnWidths,
+      handleHistoryColumnResize,
       fetchLoginHistory,
       formatTime,
       getDeviceInfo,

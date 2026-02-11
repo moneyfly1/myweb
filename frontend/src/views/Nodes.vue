@@ -54,47 +54,51 @@
       </template>
       <div class="table-wrapper">
         <el-table 
+          ref="nodeTableRef"
           :data="paginatedNodes" 
           v-loading="loading"
           style="width: 100%"
           class="desktop-table"
+          border
+          stripe
+          @header-dragend="handleNodeColumnResize"
         >
-        <el-table-column prop="name" label="节点名称" min-width="150">
-          <template #default="{ row }">
-            <div class="node-name">
-              <i :class="getNodeIcon(row.type)"></i>
-              <span>{{ row.name }}</span>
-              <el-tag 
-                v-if="row.is_recommended" 
-                type="success" 
-                size="small"
-              >
-                推荐
+          <el-table-column prop="name" label="节点名称" :min-width="columnWidths.name" resizable>
+            <template #default="{ row }">
+              <div class="node-name">
+                <i :class="getNodeIcon(row.type)"></i>
+                <span>{{ row.name }}</span>
+                <el-tag 
+                  v-if="row.is_recommended" 
+                  type="success" 
+                  size="small"
+                >
+                  推荐
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="region" label="地区" :width="columnWidths.region" resizable>
+            <template #default="{ row }">
+              <el-tag :type="getRegionColor(row.region)">
+                {{ row.region || '未知' }}
               </el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="region" label="地区" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getRegionColor(row.region)">
-              {{ row.region || '未知' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="type" label="类型" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getTypeColor(row.type)">
-              {{ row.type || '未知' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
+            </template>
+          </el-table-column>
+          <el-table-column prop="type" label="类型" :width="columnWidths.type" resizable>
+            <template #default="{ row }">
+              <el-tag :type="getTypeColor(row.type)">
+                {{ row.type || '未知' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" :width="columnWidths.status" resizable>
+            <template #default="{ row }">
+              <el-tag :type="getStatusType(row.status)" size="small">
+                {{ getStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
         </el-table>
         <div class="pagination-wrapper" v-if="filteredNodes.length > 0">
           <el-pagination
@@ -182,11 +186,51 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { nodeAPI } from '@/utils/api'
 import '@/styles/list-common.scss'
+const NODES_TABLE_STORAGE_KEY = 'user_nodes_table_settings'
 export default {
   name: 'Nodes',
   setup() {
     const loading = ref(false)
     const nodes = ref([])
+    const nodeTableRef = ref(null)
+    const columnWidths = reactive({
+      name: 200,
+      region: 120,
+      type: 120,
+      status: 120
+    })
+    const loadNodeTableSettings = () => {
+      try {
+        const saved = localStorage.getItem(NODES_TABLE_STORAGE_KEY)
+        if (saved) {
+          const s = JSON.parse(saved)
+          if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
+        }
+      } catch (e) {
+        console.warn('加载节点表设置失败:', e)
+      }
+    }
+    const saveNodeTableSettings = () => {
+      try {
+        localStorage.setItem(NODES_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
+      } catch (e) {
+        console.warn('保存节点表设置失败:', e)
+      }
+    }
+    const NODE_COLUMN_KEYS = ['name', 'region', 'type', 'status']
+    let nodeResizeTimer = null
+    const handleNodeColumnResize = () => {
+      if (nodeResizeTimer) clearTimeout(nodeResizeTimer)
+      nodeResizeTimer = setTimeout(() => {
+        if (nodeTableRef.value && nodeTableRef.value.$el) {
+          const cells = nodeTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+          cells.forEach((cell, index) => {
+            if (NODE_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[NODE_COLUMN_KEYS[index]] = cell.offsetWidth
+          })
+          saveNodeTableSettings()
+        }
+      }, 300)
+    }
     const filterRegion = ref('')
     const filterType = ref('')
     const isMobile = ref(window.innerWidth <= 768)
@@ -367,6 +411,7 @@ export default {
       }
     }
     onMounted(() => {
+      loadNodeTableSettings()
       fetchNodes()
       if (typeof window !== 'undefined') {
         window.addEventListener('resize', handleResize)
@@ -397,7 +442,10 @@ export default {
       getTypeColor,
       getStatusType,
       getStatusText,
-      isMobile
+      isMobile,
+      nodeTableRef,
+      columnWidths,
+      handleNodeColumnResize
     }
   }
 }

@@ -1,267 +1,215 @@
 <template>
-  <div class="invites-container">
-    <el-card>
-      <template #header>
-        <div class="header-content">
-          <span>我的邀请</span>
+  <div class="list-container invites-container">
+    <div class="stats-row" style="margin-top: 0;">
+      <div class="stat-card">
+        <div class="stat-number">{{ stats.total_invites || 0 }}</div>
+        <div class="stat-label">总邀请人数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ stats.registered_invites || 0 }}</div>
+        <div class="stat-label">已注册人数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ stats.purchased_invites || 0 }}</div>
+        <div class="stat-label">已购买人数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">¥{{ (stats.total_reward || 0).toFixed(2) }}</div>
+        <div class="stat-label">累计奖励</div>
+      </div>
+    </div>
+    <el-alert
+      v-if="inviteRewardSettings.inviter_reward > 0 || inviteRewardSettings.invitee_reward > 0"
+      title="邀请奖励说明"
+      type="info"
+      :closable="false"
+      class="reward-alert"
+      style="margin-bottom: 12px;"
+    >
+      <template #default>
+        <div style="line-height: 1.8;">
+          <p v-if="inviteRewardSettings.inviter_reward > 0">
+            <strong>邀请人奖励：</strong>当被邀请人首次购买套餐后，您将获得 <span style="color: #67c23a; font-weight: bold;">¥{{ inviteRewardSettings.inviter_reward.toFixed(2) }}</span> 的奖励
+          </p>
+          <p v-if="inviteRewardSettings.invitee_reward > 0">
+            <strong>被邀请人奖励：</strong>新用户使用您的邀请码注册后，将立即获得 <span style="color: #409eff; font-weight: bold;">¥{{ inviteRewardSettings.invitee_reward.toFixed(2) }}</span> 的奖励
+          </p>
         </div>
       </template>
-      <div class="stats-section">
-        <el-row :gutter="20">
-          <el-col :xs="12" :sm="6">
-            <div class="stat-card">
-              <div class="stat-value">{{ stats.total_invites || 0 }}</div>
-              <div class="stat-label">总邀请人数</div>
-            </div>
-          </el-col>
-          <el-col :xs="12" :sm="6">
-            <div class="stat-card">
-              <div class="stat-value">{{ stats.registered_invites || 0 }}</div>
-              <div class="stat-label">已注册人数</div>
-            </div>
-          </el-col>
-          <el-col :xs="12" :sm="6">
-            <div class="stat-card">
-              <div class="stat-value">{{ stats.purchased_invites || 0 }}</div>
-              <div class="stat-label">已购买人数</div>
-            </div>
-          </el-col>
-          <el-col :xs="12" :sm="6">
-            <div class="stat-card highlight">
-              <div class="stat-value">¥{{ (stats.total_reward || 0).toFixed(2) }}</div>
-              <div class="stat-label">累计奖励</div>
-            </div>
-          </el-col>
-        </el-row>
-        <el-alert
-          v-if="inviteRewardSettings.inviter_reward > 0 || inviteRewardSettings.invitee_reward > 0"
-          title="邀请奖励说明"
-          type="info"
-          :closable="false"
-          class="reward-alert"
-        >
-          <template #default>
-            <div style="line-height: 1.8;">
-              <p v-if="inviteRewardSettings.inviter_reward > 0">
-                <strong>邀请人奖励：</strong>当被邀请人首次购买套餐后，您将获得 <span style="color: #67c23a; font-weight: bold;">¥{{ inviteRewardSettings.inviter_reward.toFixed(2) }}</span> 的奖励
-              </p>
-              <p v-if="inviteRewardSettings.invitee_reward > 0">
-                <strong>被邀请人奖励：</strong>新用户使用您的邀请码注册后，将立即获得 <span style="color: #409eff; font-weight: bold;">¥{{ inviteRewardSettings.invitee_reward.toFixed(2) }}</span> 的奖励
-              </p>
-            </div>
-          </template>
-        </el-alert>
-      </div>
-      <div class="generate-section">
-        <el-button type="primary" @click="showGenerateDialog = true" :icon="Plus">
+    </el-alert>
+    <el-card class="list-card">
+      <template #header>
+        <div class="card-header">
+          <span>我的邀请码</span>
+          <div class="header-actions">
+            <el-button type="primary" @click="showGenerateDialog = true" :icon="Plus">
+              生成新邀请码
+            </el-button>
+          </div>
+        </div>
+      </template>
+      <div class="mobile-only" style="margin-bottom: 12px;">
+        <el-button type="primary" @click="showGenerateDialog = true" :icon="Plus" style="width: 100%;">
           生成新邀请码
         </el-button>
       </div>
-      <div class="invite-codes-section">
-        <h3>我的邀请码</h3>
-        <div class="desktop-only">
-          <el-table 
-            :data="inviteCodes" 
-            v-loading="loading"
-            :empty-text="inviteCodes.length === 0 ? '暂无邀请码，点击上方按钮生成' : '暂无数据'"
-            border
-            stripe
-          >
-            <el-table-column prop="code" label="邀请码" min-width="100">
-              <template #default="scope">
-                <el-tag>{{ scope.row.code }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="invite_link" label="邀请链接" min-width="200" class-name="link-column">
-              <template #default="scope">
-                <div class="link-cell">
-                  <el-input 
-                    :value="scope.row.invite_link" 
-                    readonly
-                    size="small"
-                  >
-                    <template #append>
-                      <el-button @click="copyLink(scope.row.invite_link)" :icon="DocumentCopy" />
-                    </template>
-                  </el-input>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="used_count" label="已使用" width="100" align="center">
-              <template #default="scope">
-                <span>{{ scope.row.used_count || 0 }} / {{ getMaxUses(scope.row.max_uses) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="expires_at" label="过期时间" width="180" class-name="expires-column">
-              <template #default="scope">
-                <span v-if="scope.row.expires_at && scope.row.expires_at !== 'null'">{{ formatDate(scope.row.expires_at) }}</span>
-                <span v-else style="color: #909399;">永不过期</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="is_valid" label="状态" width="100" align="center">
-              <template #default="scope">
-                <el-tag :type="getIsValid(scope.row) ? 'success' : 'danger'">
-                  {{ getIsValid(scope.row) ? '有效' : '无效' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="150" align="center" class-name="action-column">
-              <template #default="scope">
-                <el-button 
-                  type="primary" 
-                  link 
-                  size="small"
-                  @click="copyLink(scope.row.invite_link)"
-                  :icon="DocumentCopy"
-                >
-                  复制链接
-                </el-button>
-                <el-button 
-                  type="danger" 
-                  link 
-                  size="small"
-                  @click="deleteCode(scope.row)"
-                  :icon="Delete"
-                >
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-        <div class="mobile-only">
-          <div v-loading="loading" class="mobile-invite-list">
-            <div 
-              v-for="code in inviteCodes" 
-              :key="code.id"
-              class="mobile-invite-card"
-            >
-              <div class="invite-card-header">
-                <el-tag :type="getIsValid(code) ? 'success' : 'danger'" size="small">
-                  {{ getIsValid(code) ? '有效' : '无效' }}
-                </el-tag>
-                <span class="invite-code">{{ code.code }}</span>
-              </div>
-              <div class="invite-card-body">
-                <div class="invite-card-row">
-                  <span class="invite-label">邀请链接：</span>
-                  <div class="invite-link-wrapper">
-                    <el-input 
-                      :value="code.invite_link" 
-                      readonly
-                      size="small"
-                      class="invite-link-input"
-                    >
-                      <template #append>
-                        <el-button @click="copyLink(code.invite_link)" size="small" :icon="DocumentCopy" />
-                      </template>
-                    </el-input>
-                  </div>
-                </div>
-                <div class="invite-card-row">
-                  <span class="invite-label">已使用：</span>
-                  <span class="invite-value">{{ code.used_count || 0 }} / {{ getMaxUses(code.max_uses) }}</span>
-                </div>
-                <div class="invite-card-row" v-if="code.expires_at && code.expires_at !== 'null'">
-                  <span class="invite-label">过期时间：</span>
-                  <span class="invite-value">{{ formatDate(code.expires_at) }}</span>
-                </div>
-                <div class="invite-card-row" v-else>
-                  <span class="invite-label">过期时间：</span>
-                  <span class="invite-value" style="color: #909399;">永不过期</span>
-                </div>
-              </div>
-              <div class="invite-card-footer">
-                <el-button 
-                  type="primary" 
-                  size="small"
-                  @click="copyLink(code.invite_link)"
-                  :icon="DocumentCopy"
-                  class="mobile-action-btn"
-                >
-                  复制链接
-                </el-button>
-                <el-button 
-                  type="danger" 
-                  size="small"
-                  @click="deleteCode(code)"
-                  :icon="Delete"
-                  class="mobile-action-btn"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-            <el-empty v-if="inviteCodes.length === 0 && !loading" description="暂无邀请码，点击上方按钮生成" />
-          </div>
-        </div>
-      </div>
-      <div class="recent-invites-section" v-if="stats.recent_invites && stats.recent_invites.length > 0">
-        <h3>最近邀请记录</h3>
-        <div class="desktop-only">
-          <el-table :data="stats.recent_invites" size="small">
-            <el-table-column prop="invitee_username" label="被邀请人" width="120" />
-            <el-table-column prop="invitee_email" label="邮箱" min-width="180" />
-            <el-table-column prop="created_at" label="注册时间" width="180">
-              <template #default="scope">
-                {{ formatDate(scope.row.created_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="has_purchased" label="已购买" width="100" align="center">
+      <div class="table-wrapper">
+        <el-table
+          ref="inviteTableRef"
+          :data="inviteCodes"
+          v-loading="loading"
+          :empty-text="inviteCodes.length === 0 ? '暂无邀请码，点击上方按钮生成' : '暂无数据'"
+          border
+          stripe
+          style="width: 100%"
+          @header-dragend="handleInviteColumnResize"
+        >
+          <el-table-column prop="code" label="邀请码" :min-width="columnWidths.code" :width="columnWidths.code" resizable>
             <template #default="scope">
-              <el-tag :type="scope.row.has_purchased ? 'success' : 'info'">
-                {{ scope.row.has_purchased ? '是' : '否' }}
+              <el-tag>{{ scope.row.code }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="invite_link" label="邀请链接" :min-width="columnWidths.invite_link" resizable class-name="link-column">
+            <template #default="scope">
+              <div class="link-cell">
+                <el-input :value="scope.row.invite_link" readonly size="small">
+                  <template #append>
+                    <el-button @click="copyLink(scope.row.invite_link)" :icon="DocumentCopy" />
+                  </template>
+                </el-input>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="used_count" label="已使用" :width="columnWidths.used_count" resizable align="center">
+            <template #default="scope">
+              <span>{{ scope.row.used_count || 0 }} / {{ getMaxUses(scope.row.max_uses) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="expires_at" label="过期时间" :width="columnWidths.expires_at" resizable>
+            <template #default="scope">
+              <span v-if="scope.row.expires_at && scope.row.expires_at !== 'null'">{{ formatDate(scope.row.expires_at) }}</span>
+              <span v-else class="text-muted">永不过期</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="is_valid" label="状态" :width="columnWidths.status" resizable align="center">
+            <template #default="scope">
+              <el-tag :type="getIsValid(scope.row) ? 'success' : 'danger'">
+                {{ getIsValid(scope.row) ? '有效' : '无效' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="total_consumption" label="累计消费" width="120" align="right">
+          <el-table-column label="操作" :width="columnWidths.actions" resizable align="center">
             <template #default="scope">
-              ¥{{ scope.row.total_consumption.toFixed(2) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="reward_given" label="奖励状态" width="100" align="center">
-            <template #default="scope">
-              <el-tag :type="scope.row.reward_given ? 'success' : 'warning'">
-                {{ scope.row.reward_given ? '已发放' : '未发放' }}
-              </el-tag>
+              <el-button type="primary" link size="small" @click="copyLink(scope.row.invite_link)" :icon="DocumentCopy">复制链接</el-button>
+              <el-button type="danger" link size="small" @click="deleteCode(scope.row)" :icon="Delete">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
+      </div>
+      <div class="mobile-card-list" v-if="inviteCodes.length > 0 || !loading">
+        <div v-for="code in inviteCodes" :key="code.id" class="mobile-card">
+          <div class="card-row">
+            <span class="label">状态</span>
+            <span class="value">
+              <el-tag :type="getIsValid(code) ? 'success' : 'danger'" size="small">{{ getIsValid(code) ? '有效' : '无效' }}</el-tag>
+            </span>
+          </div>
+          <div class="card-row">
+            <span class="label">邀请码</span>
+            <span class="value">{{ code.code }}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">已使用</span>
+            <span class="value">{{ code.used_count || 0 }} / {{ getMaxUses(code.max_uses) }}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">过期时间</span>
+            <span class="value">
+              <span v-if="code.expires_at && code.expires_at !== 'null'">{{ formatDate(code.expires_at) }}</span>
+              <span v-else class="text-muted">永不过期</span>
+            </span>
+          </div>
+          <div class="card-row link-row">
+            <span class="label">邀请链接</span>
+            <span class="value">
+              <el-input :value="code.invite_link" readonly size="small">
+                <template #append>
+                  <el-button @click="copyLink(code.invite_link)" :icon="DocumentCopy" />
+                </template>
+              </el-input>
+            </span>
+          </div>
+          <div class="card-actions">
+            <el-button type="primary" size="small" @click="copyLink(code.invite_link)" :icon="DocumentCopy">复制链接</el-button>
+            <el-button type="danger" size="small" @click="deleteCode(code)" :icon="Delete">删除</el-button>
+          </div>
         </div>
-        <div class="mobile-only">
-          <div class="mobile-recent-list">
-            <div 
-              v-for="(invite, index) in stats.recent_invites" 
-              :key="index"
-              class="mobile-recent-card"
-            >
-              <div class="recent-card-header">
-                <el-tag :type="invite.has_purchased ? 'success' : 'info'" size="small">
-                  {{ invite.has_purchased ? '已购买' : '未购买' }}
-                </el-tag>
-                <span class="recent-time">{{ formatDate(invite.created_at) }}</span>
-              </div>
-              <div class="recent-card-body">
-                <div class="recent-card-row">
-                  <span class="recent-label">被邀请人：</span>
-                  <span class="recent-value">{{ invite.invitee_username || '-' }}</span>
-                </div>
-                <div class="recent-card-row">
-                  <span class="recent-label">邮箱：</span>
-                  <span class="recent-value">{{ invite.invitee_email || '-' }}</span>
-                </div>
-                <div class="recent-card-row" v-if="invite.total_consumption !== undefined">
-                  <span class="recent-label">累计消费：</span>
-                  <span class="recent-value">¥{{ invite.total_consumption.toFixed(2) }}</span>
-                </div>
-                <div class="recent-card-row" v-if="invite.reward_given !== undefined">
-                  <span class="recent-label">奖励状态：</span>
-                  <el-tag :type="invite.reward_given ? 'success' : 'warning'" size="small">
-                    {{ invite.reward_given ? '已发放' : '未发放' }}
-                  </el-tag>
-                </div>
-              </div>
-            </div>
+        <el-empty v-if="inviteCodes.length === 0 && !loading" description="暂无邀请码，点击上方按钮生成" />
+      </div>
+    </el-card>
+    <el-card v-if="stats.recent_invites && stats.recent_invites.length > 0" class="list-card">
+      <template #header>
+        <div class="card-header">
+          <span>最近邀请记录</span>
+        </div>
+      </template>
+      <div class="table-wrapper">
+        <el-table
+          ref="recentTableRef"
+          :data="stats.recent_invites"
+          border
+          stripe
+          size="small"
+          style="width: 100%"
+          @header-dragend="handleRecentColumnResize"
+        >
+          <el-table-column prop="invitee_username" label="被邀请人" :width="recentColumnWidths.invitee_username" resizable />
+          <el-table-column prop="invitee_email" label="邮箱" :min-width="recentColumnWidths.invitee_email" resizable />
+          <el-table-column prop="created_at" label="注册时间" :width="recentColumnWidths.created_at" resizable>
+            <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column prop="has_purchased" label="已购买" :width="recentColumnWidths.has_purchased" resizable align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.has_purchased ? 'success' : 'info'" size="small">{{ scope.row.has_purchased ? '是' : '否' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="total_consumption" label="累计消费" :width="recentColumnWidths.total_consumption" resizable align="right">
+            <template #default="scope">¥{{ (scope.row.total_consumption || 0).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column prop="reward_given" label="奖励状态" :width="recentColumnWidths.reward_given" resizable align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.reward_given ? 'success' : 'warning'" size="small">{{ scope.row.reward_given ? '已发放' : '未发放' }}</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <div class="mobile-card-list">
+        <div v-for="(invite, index) in stats.recent_invites" :key="index" class="mobile-card">
+          <div class="card-row">
+            <span class="label">状态</span>
+            <span class="value">
+              <el-tag :type="invite.has_purchased ? 'success' : 'info'" size="small">{{ invite.has_purchased ? '已购买' : '未购买' }}</el-tag>
+            </span>
+          </div>
+          <div class="card-row">
+            <span class="label">被邀请人</span>
+            <span class="value">{{ invite.invitee_username || '-' }}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">邮箱</span>
+            <span class="value">{{ invite.invitee_email || '-' }}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">注册时间</span>
+            <span class="value">{{ formatDate(invite.created_at) }}</span>
+          </div>
+          <div class="card-row" v-if="invite.total_consumption !== undefined">
+            <span class="label">累计消费</span>
+            <span class="value">¥{{ invite.total_consumption.toFixed(2) }}</span>
+          </div>
+          <div class="card-row" v-if="invite.reward_given !== undefined">
+            <span class="label">奖励状态</span>
+            <el-tag :type="invite.reward_given ? 'success' : 'warning'" size="small">{{ invite.reward_given ? '已发放' : '未发放' }}</el-tag>
           </div>
         </div>
       </div>
@@ -343,12 +291,104 @@ const generating = ref(false)
 const showGenerateDialog = ref(false)
 const inviteCodes = ref([])
 const isMobile = ref(window.innerWidth <= 768)
+const inviteTableRef = ref(null)
+const recentTableRef = ref(null)
+
+const INVITE_STORAGE_KEY = 'invites_table_settings'
+const RECENT_STORAGE_KEY = 'invites_recent_table_settings'
+
+const columnWidths = reactive({
+  code: 120,
+  invite_link: 240,
+  used_count: 100,
+  expires_at: 180,
+  status: 100,
+  actions: 150
+})
+const recentColumnWidths = reactive({
+  invitee_username: 120,
+  invitee_email: 180,
+  created_at: 180,
+  has_purchased: 100,
+  total_consumption: 120,
+  reward_given: 100
+})
+
+const loadInviteSettings = () => {
+  try {
+    const saved = localStorage.getItem(INVITE_STORAGE_KEY)
+    if (saved) {
+      const s = JSON.parse(saved)
+      if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
+    }
+  } catch (e) {
+    console.warn('加载邀请码表设置失败:', e)
+  }
+}
+const loadRecentSettings = () => {
+  try {
+    const saved = localStorage.getItem(RECENT_STORAGE_KEY)
+    if (saved) {
+      const s = JSON.parse(saved)
+      if (s.columnWidths) Object.assign(recentColumnWidths, s.columnWidths)
+    }
+  } catch (e) {
+    console.warn('加载最近邀请表设置失败:', e)
+  }
+}
+const saveInviteSettings = () => {
+  try {
+    localStorage.setItem(INVITE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
+  } catch (e) {
+    console.warn('保存邀请码表设置失败:', e)
+  }
+}
+const saveRecentSettings = () => {
+  try {
+    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify({ columnWidths: { ...recentColumnWidths } }))
+  } catch (e) {
+    console.warn('保存最近邀请表设置失败:', e)
+  }
+}
+
+const INVITE_COLUMN_KEYS = ['code', 'invite_link', 'used_count', 'expires_at', 'status', 'actions']
+const RECENT_COLUMN_KEYS = ['invitee_username', 'invitee_email', 'created_at', 'has_purchased', 'total_consumption', 'reward_given']
+
+let inviteResizeTimer = null
+const handleInviteColumnResize = () => {
+  if (inviteResizeTimer) clearTimeout(inviteResizeTimer)
+  inviteResizeTimer = setTimeout(() => {
+    if (inviteTableRef.value?.$el) {
+      const cells = inviteTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+      cells.forEach((cell, index) => {
+        if (INVITE_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[INVITE_COLUMN_KEYS[index]] = cell.offsetWidth
+      })
+      saveInviteSettings()
+    }
+  }, 300)
+}
+let recentResizeTimer = null
+const handleRecentColumnResize = () => {
+  if (recentResizeTimer) clearTimeout(recentResizeTimer)
+  recentResizeTimer = setTimeout(() => {
+    if (recentTableRef.value?.$el) {
+      const cells = recentTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+      cells.forEach((cell, index) => {
+        if (RECENT_COLUMN_KEYS[index] && cell.offsetWidth > 0) recentColumnWidths[RECENT_COLUMN_KEYS[index]] = cell.offsetWidth
+      })
+      saveRecentSettings()
+    }
+  }, 300)
+}
+
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
   handleResize()
+  loadInviteSettings()
+  loadRecentSettings()
   await loadInviteRewardSettings()
   await loadInviteCodes()
   await loadStats()
@@ -573,292 +613,18 @@ const getIsValid = (row) => {
   }
   return true
 }
-onMounted(async () => {
-  await loadInviteRewardSettings()
-  await loadInviteCodes()
-  await loadStats()
-})
 </script>
 <style scoped lang="scss">
-.invites-container {
-  padding: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
-  :deep(.el-card) {
-    border-radius: 12px;
-    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e4e7ed;
-    .el-card__header {
-      background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-      border-bottom: 2px solid #e4e7ed;
-      padding: 20px 24px;
-      border-radius: 12px 12px 0 0;
-      .header-content {
-        font-size: 20px;
-        font-weight: 600;
-        color: #303133;
-      }
-    }
-    .el-card__body {
-      padding: 24px;
-    }
-  }
-}
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.stats-section {
-  margin-bottom: 30px;
-  .stat-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-    transition: all 0.3s ease;
-    border: 1px solid #e4e7ed;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    position: relative;
-    overflow: clip;
-    &::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-    &:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
-      border-color: #c0c4cc;
-      &::before {
-        opacity: 1;
-      }
-    }
-    &.highlight {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
-      &::before {
-        opacity: 0;
-      }
-      &:hover {
-        box-shadow: 0 8px 28px rgba(102, 126, 234, 0.4);
-        transform: translateY(-4px) scale(1.02);
-      }
-      .stat-value {
-        color: #ffffff;
-      }
-      .stat-label {
-        color: rgba(255, 255, 255, 0.95);
-      }
-    }
-    .stat-value {
-      font-size: 32px;
-      font-weight: 700;
-      color: #303133;
-      margin-bottom: 10px;
-      letter-spacing: -0.5px;
-    }
-    .stat-label {
-      font-size: 15px;
-      color: #606266;
-      font-weight: 500;
-    }
-  }
-}
-.generate-section {
-  margin-bottom: 30px;
-  .el-button {
-    padding: 12px 24px;
-    font-size: 15px;
-    font-weight: 500;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
-    transition: all 0.3s ease;
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-    }
-    &:active {
-      transform: translateY(0);
-    }
-  }
-}
-.invite-codes-section,
-.recent-invites-section {
-  margin-top: 30px;
-  :is(h3) {
-    margin-bottom: 24px;
-    font-size: 20px;
-    font-weight: 600;
-    color: #303133;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #e4e7ed;
-    position: relative;
-    &::after {
-      content: '';
-      position: absolute;
-      bottom: -2px;
-      left: 0;
-      width: 60px;
-      height: 2px;
-      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    }
-  }
-}
-.link-cell {
-  .el-input {
-    width: 100%;
-    :deep(.el-input__wrapper) {
-      border-radius: 6px;
-      transition: all 0.3s ease;
-      &:hover {
-        border-color: #c0c4cc;
-        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-      }
-      &.is-focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
-      }
-    }
-  }
-  :deep(.el-input-group__append) {
-    .el-button {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      border: none;
-      color: #ffffff;
-      border-radius: 0 6px 6px 0;
-      transition: all 0.3s ease;
-      &:hover {
-        background: linear-gradient(135deg, #5568d3, #6a3f8f);
-        transform: scale(1.05);
-      }
-      &:active {
-        transform: scale(0.98);
-      }
-    }
-  }
-}
-.form-tip {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
-  line-height: 1.5;
-}
+@use '@/styles/list-common.scss';
+
 .mobile-only {
   display: none !important;
   @media (max-width: 768px) {
     display: block !important;
   }
 }
-@media (min-width: 769px) {
-  .desktop-only {
-    :deep(.el-table) {
-      border-radius: 8px;
-      overflow: clip;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-      .el-table__header {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        :is(th) {
-          background: transparent;
-          color: #303133;
-          font-weight: 600;
-          font-size: 14px;
-          padding: 16px 12px;
-          border-bottom: 2px solid #e4e7ed;
-        }
-      }
-      .el-table__body {
-        :is(tr) {
-          transition: all 0.2s ease;
-          &:hover {
-            background: #f5f7fa;
-            transform: scale(1.001);
-          }
-          :is(td) {
-            padding: 16px 12px;
-            font-size: 14px;
-            border-bottom: 1px solid #f0f2f5;
-          }
-        }
-        tr.el-table__row--striped {
-          background: #fafbfc;
-          &:hover {
-            background: #f0f2f5;
-          }
-        }
-      }
-      .el-tag {
-        border-radius: 6px;
-        padding: 4px 12px;
-        font-weight: 500;
-        font-size: 13px;
-      }
-      .action-column {
-        .el-button {
-          margin: 0 4px;
-          padding: 6px 12px;
-          border-radius: 6px;
-          font-weight: 500;
-          transition: all 0.2s ease;
-          &.el-button--primary {
-            &:hover {
-              background: linear-gradient(135deg, #667eea, #764ba2);
-              transform: translateY(-1px);
-              box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-            }
-          }
-          &.el-button--danger {
-            &:hover {
-              transform: translateY(-1px);
-              box-shadow: 0 2px 8px rgba(245, 108, 108, 0.3);
-            }
-          }
-        }
-      }
-    }
-  }
-  .invites-container {
-    :deep(.el-card) {
-      .el-card__header {
-        .header-content {
-          font-size: 20px;
-        }
-      }
-    }
-  }
-  .stats-section {
-    .stat-card {
-      .stat-value {
-        font-size: 32px;
-      }
-      .stat-label {
-        font-size: 15px;
-      }
-    }
-  }
-  .invite-codes-section,
-  .recent-invites-section {
-    :is(h3) {
-      font-size: 20px;
-    }
-  }
-  .generate-section {
-    .el-button {
-      padding: 12px 24px;
-      font-size: 15px;
-    }
-  }
-}
 .reward-alert {
-  margin-top: 24px;
+  margin-bottom: 12px;
   border-radius: 8px;
   border-left: 4px solid #409eff;
   :deep(.el-alert__content) {
@@ -880,6 +646,30 @@ onMounted(async () => {
       }
     }
   }
+}
+.text-muted {
+  color: #909399;
+}
+.link-cell {
+  :deep(.el-input-group__append) {
+    padding: 0 2px;
+  }
+}
+.mobile-card-list .link-row .value {
+  flex: 1;
+  min-width: 0;
+  :deep(.el-input) {
+    width: 100%;
+  }
+  :deep(.el-input__wrapper) {
+    padding-right: 36px;
+  }
+}
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.5;
 }
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
@@ -949,67 +739,6 @@ onMounted(async () => {
     }
     .link-column {
       min-width: 150px;
-    }
-  }
-  .stats-section {
-    margin-bottom: 15px;
-    .el-row {
-      margin: 0 -5px;
-    }
-    .el-col {
-      padding: 0 5px;
-      margin-bottom: 10px;
-    }
-    .stat-card {
-      padding: 16px;
-      text-align: center;
-      background: #f8f9fa;
-      border-radius: 8px;
-      transition: all 0.3s ease;
-      &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      }
-      &.highlight {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #ffffff;
-        .stat-value,
-        .stat-label {
-          color: #ffffff;
-        }
-      }
-      .stat-value {
-        font-size: 24px;
-        font-weight: 700;
-        color: #303133;
-        margin-bottom: 8px;
-        word-break: break-all;
-      }
-      .stat-label {
-        font-size: 13px;
-        color: #909399;
-        line-height: 1.4;
-      }
-    }
-  }
-  .generate-section {
-    margin-bottom: 15px;
-    .el-button {
-      width: 100%;
-      padding: 12px;
-      min-height: 44px;
-      font-size: 16px;
-      font-weight: 500;
-    }
-  }
-  .invite-codes-section,
-  .recent-invites-section {
-    margin-bottom: 20px;
-    :is(h3) {
-      font-size: 16px;
-      margin-bottom: 12px;
-      font-weight: 600;
-      color: #303133;
     }
   }
   :deep(.el-table__body-wrapper) {
@@ -1144,20 +873,6 @@ onMounted(async () => {
   }
 }
 @media (max-width: 480px) {
-  .invites-container {
-    padding: 5px;
-  }
-  .stats-section {
-    .stat-card {
-      padding: 12px;
-      .stat-value {
-        font-size: 18px;
-      }
-      .stat-label {
-        font-size: 11px;
-      }
-    }
-  }
   :deep(.el-card__body) {
     padding: 10px;
   }

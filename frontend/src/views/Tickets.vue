@@ -1,59 +1,77 @@
 <template>
-  <div class="tickets-container">
-    <div class="page-header">
-      <h1>工单中心</h1>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>
-        创建工单
-      </el-button>
-    </div>
-    <div class="filter-bar">
-      <el-select v-model="filters.status" placeholder="状态筛选" clearable style="width: 150px" @change="handleFilterChange">
-        <el-option label="待处理" value="pending" />
-        <el-option label="处理中" value="processing" />
-        <el-option label="已解决" value="resolved" />
-        <el-option label="已关闭" value="closed" />
-      </el-select>
-      <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 150px" @change="handleFilterChange">
-        <el-option label="技术问题" value="technical" />
-        <el-option label="账单问题" value="billing" />
-        <el-option label="账户问题" value="account" />
-        <el-option label="其他" value="other" />
-      </el-select>
-      <el-button @click="loadTickets">刷新</el-button>
-    </div>
-    <el-table :data="tickets" v-loading="loading" style="width: 100%">
-      <el-table-column prop="ticket_no" label="工单编号" width="180" />
-      <el-table-column prop="title" label="标题">
-        <template #default="{ row }">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span>{{ row.title }}</span>
-            <el-badge 
-              v-if="row.has_unread && row.unread_replies > 0" 
-              :value="row.unread_replies" 
-              :max="99"
-              type="danger"
-            />
+  <div class="list-container tickets-container">
+    <el-card class="list-card">
+      <template #header>
+        <div class="card-header">
+          <span>工单中心</span>
+          <div class="header-actions">
+            <el-select v-model="filters.status" placeholder="状态筛选" clearable size="small" style="width: 120px" @change="handleFilterChange">
+              <el-option label="待处理" value="pending" />
+              <el-option label="处理中" value="processing" />
+              <el-option label="已解决" value="resolved" />
+              <el-option label="已关闭" value="closed" />
+            </el-select>
+            <el-select v-model="filters.type" placeholder="类型筛选" clearable size="small" style="width: 120px" @change="handleFilterChange">
+              <el-option label="技术问题" value="technical" />
+              <el-option label="账单问题" value="billing" />
+              <el-option label="账户问题" value="account" />
+              <el-option label="其他" value="other" />
+            </el-select>
+            <el-button size="small" @click="loadTickets">刷新</el-button>
+            <el-button type="primary" @click="showCreateDialog = true">
+              <el-icon><Plus /></el-icon>
+              创建工单
+            </el-button>
           </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="type" label="类型" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getTypeTagType(row.type)">{{ getTypeText(row.type) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getStatusTagType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="priority" label="优先级" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getPriorityTagType(row.priority)">{{ getPriorityText(row.priority) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="created_at" label="创建时间" width="180" />
-      <el-table-column label="操作" width="150">
+        </div>
+      </template>
+      <div class="mobile-only" style="margin-bottom: 12px;">
+        <el-button type="primary" @click="showCreateDialog = true" style="width: 100%;">
+          <el-icon><Plus /></el-icon>
+          创建工单
+        </el-button>
+      </div>
+      <div class="table-wrapper">
+        <el-table 
+          ref="ticketTableRef"
+          :data="tickets" 
+          v-loading="loading" 
+          style="width: 100%"
+          border
+          stripe
+          @header-dragend="handleTicketColumnResize"
+        >
+          <el-table-column prop="ticket_no" label="工单编号" :width="columnWidths.ticket_no" resizable />
+          <el-table-column prop="title" label="标题" :min-width="columnWidths.title" resizable>
+            <template #default="{ row }">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>{{ row.title }}</span>
+                <el-badge 
+                  v-if="row.has_unread && row.unread_replies > 0" 
+                  :value="row.unread_replies" 
+                  :max="99"
+                  type="danger"
+                />
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="type" label="类型" :width="columnWidths.type" resizable>
+            <template #default="{ row }">
+              <el-tag :type="getTypeTagType(row.type)">{{ getTypeText(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" :width="columnWidths.status" resizable>
+            <template #default="{ row }">
+              <el-tag :type="getStatusTagType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="priority" label="优先级" :width="columnWidths.priority" resizable>
+            <template #default="{ row }">
+              <el-tag :type="getPriorityTagType(row.priority)">{{ getPriorityText(row.priority) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="创建时间" :width="columnWidths.created_at" resizable />
+          <el-table-column label="操作" :width="columnWidths.actions" resizable>
         <template #default="{ row }">
           <el-button size="small" @click="viewTicket(row.id)">
             查看
@@ -66,9 +84,10 @@
             />
           </el-button>
         </template>
-      </el-table-column>
-    </el-table>
-    <div class="mobile-ticket-list" v-loading="loading">
+          </el-table-column>
+        </el-table>
+      </div>
+      <div class="mobile-ticket-list" v-loading="loading">
       <div 
         v-for="ticket in tickets" 
         :key="ticket.id"
@@ -129,16 +148,18 @@
         <p>暂无工单</p>
       </div>
     </div>
-    <el-pagination
-      v-model:current-page="pagination.page"
-      v-model:page-size="pagination.size"
-      :total="pagination.total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      @size-change="loadTickets"
-      @current-change="loadTickets"
-      style="margin-top: 20px; justify-content: center"
-    />
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.size"
+        :total="pagination.total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="loadTickets"
+        @current-change="loadTickets"
+      />
+    </div>
+    </el-card>
     <el-dialog 
       v-model="showCreateDialog" 
       title="创建工单" 
@@ -295,12 +316,59 @@ import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
+import '@/styles/list-common.scss'
+
+const TICKETS_TABLE_STORAGE_KEY = 'user_tickets_table_settings'
+const ticketTableRef = ref(null)
+const columnWidths = reactive({
+  ticket_no: 180,
+  title: 200,
+  type: 100,
+  status: 100,
+  priority: 100,
+  created_at: 180,
+  actions: 150
+})
+const loadTicketTableSettings = () => {
+  try {
+    const saved = localStorage.getItem(TICKETS_TABLE_STORAGE_KEY)
+    if (saved) {
+      const s = JSON.parse(saved)
+      if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
+    }
+  } catch (e) {
+    console.warn('加载工单表设置失败:', e)
+  }
+}
+const saveTicketTableSettings = () => {
+  try {
+    localStorage.setItem(TICKETS_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
+  } catch (e) {
+    console.warn('保存工单表设置失败:', e)
+  }
+}
+const TICKET_COLUMN_KEYS = ['ticket_no', 'title', 'type', 'status', 'priority', 'created_at', 'actions']
+let ticketResizeTimer = null
+const handleTicketColumnResize = () => {
+  if (ticketResizeTimer) clearTimeout(ticketResizeTimer)
+  ticketResizeTimer = setTimeout(() => {
+    if (ticketTableRef.value && ticketTableRef.value.$el) {
+      const cells = ticketTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+      cells.forEach((cell, index) => {
+        if (TICKET_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[TICKET_COLUMN_KEYS[index]] = cell.offsetWidth
+      })
+      saveTicketTableSettings()
+    }
+  }, 300)
+}
+
 const isMobile = ref(window.innerWidth <= 768)
 const handleResize = () => {
   isMobile.value = window.innerWidth <= 768
 }
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  loadTicketTableSettings()
   loadTickets()
 })
 onUnmounted(() => {
@@ -494,19 +562,14 @@ const handleFilterChange = () => {
 }
 </script>
 <style scoped lang="scss">
+.mobile-only {
+  display: none !important;
+  @media (max-width: 768px) {
+    display: block !important;
+  }
+}
 .tickets-container {
-  padding: 20px;
-}
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-.filter-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  padding: 0;
 }
 .ticket-detail-header {
   margin-bottom: 20px;

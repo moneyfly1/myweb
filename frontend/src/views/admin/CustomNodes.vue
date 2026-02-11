@@ -8,6 +8,32 @@
             <el-tag v-if="pagination.total" type="info" round size="small" class="count-tag">{{ pagination.total }}</el-tag>
           </div>
           <div class="header-actions" v-if="!isMobile">
+            <el-radio-group v-model="viewMode" size="small" class="view-mode-group">
+              <el-radio-button label="table">表格</el-radio-button>
+              <el-radio-button label="grid">方格</el-radio-button>
+            </el-radio-group>
+            <template v-if="viewMode === 'grid'">
+              <el-radio-group v-model="gridOrientation" size="small" class="grid-orientation-group">
+                <el-radio-button label="horizontal">横向</el-radio-button>
+                <el-radio-button label="vertical">纵向</el-radio-button>
+              </el-radio-group>
+              <template v-if="gridOrientation === 'horizontal'">
+                <el-select v-model="gridColumns" size="small" style="width: 90px; margin-right: 8px;" class="grid-columns-select">
+                  <el-option label="2列" :value="2" />
+                  <el-option label="3列" :value="3" />
+                  <el-option label="4列" :value="4" />
+                  <el-option label="5列" :value="5" />
+                  <el-option label="6列" :value="6" />
+                </el-select>
+              </template>
+              <template v-else>
+                <el-radio-group v-model="gridSize" size="small" class="grid-size-group">
+                  <el-radio-button label="small">窄</el-radio-button>
+                  <el-radio-button label="medium">中</el-radio-button>
+                  <el-radio-button label="large">宽</el-radio-button>
+                </el-radio-group>
+              </template>
+            </template>
             <el-button type="primary" @click="showAddDialog = true">
               <el-icon><Plus /></el-icon>创建节点
             </el-button>
@@ -72,62 +98,120 @@
       </div>
       <div class="content-view" v-loading="loading">
         <el-table
-          v-if="!isMobile"
+          v-if="!isMobile && viewMode === 'table'"
           :data="customNodes"
           stripe
+          border
           @selection-change="handleSelectionChange"
+          @header-dragend="handleColumnResize"
           row-key="id"
           class="desktop-table"
+          ref="tableRef"
         >
-          <el-table-column type="selection" width="50" />
-          <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="display_name" label="显示名称" min-width="120" show-overflow-tooltip>
+          <el-table-column type="selection" :width="columnWidths.selection" resizable />
+          <el-table-column prop="name" label="名称" :min-width="columnWidths.name" :width="columnWidths.name" resizable show-overflow-tooltip />
+          <el-table-column prop="display_name" label="显示名称" :min-width="columnWidths.display_name" :width="columnWidths.display_name" resizable show-overflow-tooltip>
             <template #default="{ row }">
-              <span class="text-secondary">{{ row.display_name || '-' }}</span>
+              <span :class="row.display_name ? '' : 'text-secondary'">
+                {{ row.display_name || row.name || '-' }}
+              </span>
             </template>
           </el-table-column>
-          <el-table-column prop="protocol" label="协议" width="100">
+          <el-table-column prop="protocol" label="协议" :width="columnWidths.protocol" resizable>
             <template #default="{ row }">
               <el-tag size="small" effect="plain">{{ row.protocol }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100">
+          <el-table-column label="状态" :width="columnWidths.status" resizable>
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)" size="small" effect="light">
                 {{ getStatusText(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="激活" width="80">
+          <el-table-column label="激活" :width="columnWidths.is_active" resizable>
             <template #default="{ row }">
               <el-switch v-model="row.is_active" @change="toggleNodeStatus(row)" size="small" />
             </template>
           </el-table-column>
-          <el-table-column label="到期" width="150">
+          <el-table-column label="到期" :width="columnWidths.expire_time" resizable>
             <template #default="{ row }">
               <span class="text-xs">{{ formatExpire(row) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right">
+          <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button size="small" @click="testNode(row)" :loading="row.testing">测试</el-button>
                 <el-button size="small" type="success" plain @click="viewLink(row)">链接</el-button>
                 <el-button size="small" type="warning" plain @click="assignSingleNode(row)">分配</el-button>
-                <el-dropdown trigger="click" style="margin-left: 8px">
-                  <el-button size="small" icon="MoreFilled" circle />
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item @click="editNode(row)" :icon="Edit">编辑</el-dropdown-item>
-                      <el-dropdown-item @click="deleteNode(row)" :icon="Delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+                <el-button size="small" type="primary" plain @click="editNode(row)" :icon="Edit">编辑</el-button>
+                <el-button size="small" type="danger" plain @click="deleteNode(row)" :icon="Delete">删除</el-button>
               </div>
             </template>
           </el-table-column>
         </el-table>
-        <div v-else class="mobile-list">
+        <div v-if="!isMobile && viewMode === 'grid'" class="desktop-grid-view" :class="[
+          gridOrientation === 'horizontal' ? 'grid-horizontal' : 'grid-vertical',
+          gridOrientation === 'vertical' ? 'grid-size-' + gridSize : '',
+          'grid-cols-' + gridColumns
+        ]">
+          <template v-if="customNodes.length === 0">
+            <el-empty description="暂无专线节点" class="grid-empty" />
+          </template>
+          <template v-else>
+            <div
+              v-for="node in customNodes"
+              :key="node.id"
+              class="grid-node-card"
+              :class="{ 'is-selected': isSelected(node) }"
+            >
+              <div class="gnc-header">
+                <el-checkbox
+                  :model-value="isSelected(node)"
+                  @change="(val) => handleGridSelect(node, val)"
+                  class="gnc-checkbox"
+                />
+                <span class="gnc-title" :title="node.name">{{ node.name }}</span>
+                <el-tag :type="getStatusType(node.status)" size="small" effect="dark">
+                  {{ getStatusText(node.status) }}
+                </el-tag>
+              </div>
+              <div class="gnc-body">
+                <div class="gnc-row">
+                  <span class="label">协议</span>
+                  <span class="value">{{ node.protocol }}</span>
+                </div>
+                <div class="gnc-row">
+                  <span class="label">端口</span>
+                  <span class="value">{{ node.port || '-' }}</span>
+                </div>
+                <div class="gnc-row">
+                  <span class="label">到期</span>
+                  <span class="value text-xs">{{ formatExpire(node) }}</span>
+                </div>
+              </div>
+              <div class="gnc-footer">
+                <el-switch
+                  v-model="node.is_active"
+                  @change="toggleNodeStatus(node)"
+                  size="small"
+                  inline-prompt
+                  active-text="开"
+                  inactive-text="关"
+                />
+                <div class="gnc-actions">
+                  <el-button size="small" @click="testNode(node)" :loading="node.testing">测试</el-button>
+                  <el-button size="small" type="success" plain @click="viewLink(node)">链接</el-button>
+                  <el-button size="small" type="warning" plain @click="assignSingleNode(node)">分配</el-button>
+                  <el-button size="small" type="primary" plain @click="editNode(node)" :icon="Edit">编辑</el-button>
+                  <el-button size="small" type="danger" plain @click="deleteNode(node)" :icon="Delete">删除</el-button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div v-if="isMobile" class="mobile-list">
           <div class="mobile-selection-bar" v-if="customNodes.length > 0">
             <el-checkbox 
               v-model="isAllSelected" 
@@ -415,7 +499,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
@@ -431,7 +515,79 @@ export default {
   },
   setup() {
     const isMobile = ref(false)
+    const viewMode = ref('table') // 'table' | 'grid'
+    const gridOrientation = ref('horizontal') // 'horizontal' | 'vertical'
+    const gridColumns = ref(3) // 2-6 columns for horizontal
+    const gridSize = ref('medium') // 'small' | 'medium' | 'large' for vertical
+    const tableRef = ref(null)
     const loading = ref(false)
+    
+    // 列宽状态（动态绑定）
+    const columnWidths = reactive({
+      selection: 50,
+      name: 140,
+      display_name: 120,
+      protocol: 100,
+      status: 100,
+      is_active: 80,
+      expire_time: 150,
+      actions: 380  // 增加操作列宽度以容纳更多按钮
+    })
+    
+    // 从 localStorage 加载设置
+    const STORAGE_KEY = 'customNodes_table_settings'
+    const loadSettings = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) {
+          const settings = JSON.parse(saved)
+          if (settings.viewMode) viewMode.value = settings.viewMode
+          if (settings.gridOrientation) gridOrientation.value = settings.gridOrientation
+          if (settings.gridColumns) gridColumns.value = settings.gridColumns
+          if (settings.gridSize) gridSize.value = settings.gridSize
+          if (settings.columnWidths) {
+            Object.assign(columnWidths, settings.columnWidths)
+          }
+        }
+      } catch (e) {
+        console.warn('加载设置失败:', e)
+      }
+    }
+    
+    // 保存设置到 localStorage
+    const saveSettings = () => {
+      try {
+        const settings = {
+          viewMode: viewMode.value,
+          gridOrientation: gridOrientation.value,
+          gridColumns: gridColumns.value,
+          gridSize: gridSize.value,
+          columnWidths: { ...columnWidths }
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+      } catch (e) {
+        console.warn('保存设置失败:', e)
+      }
+    }
+    
+    // 列宽调整事件处理（延迟保存，避免频繁触发）
+    let resizeTimer = null
+    const handleColumnResize = (newWidth, oldWidth, column, event) => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        // 获取所有列的当前宽度
+        if (tableRef.value && tableRef.value.$el) {
+          const headerCells = tableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
+          const keys = ['selection', 'name', 'display_name', 'protocol', 'status', 'is_active', 'expire_time', 'actions']
+          headerCells.forEach((cell, index) => {
+            if (keys[index] && cell.offsetWidth > 0) {
+              columnWidths[keys[index]] = cell.offsetWidth
+            }
+          })
+          saveSettings()
+        }
+      }, 300)
+    }
     const saving = ref(false)
     const parsing = ref(false)
     const customNodes = ref([])
@@ -502,6 +658,9 @@ export default {
       } else {
         selectedNodes.value = selectedNodes.value.filter(n => n.id !== node.id)
       }
+    }
+    const handleGridSelect = (node, checked) => {
+      handleMobileSelect(node, checked)
     }
     const isSelected = (node) => selectedNodes.value.some(n => n.id === node.id)
     const isAllSelected = computed({
@@ -704,20 +863,27 @@ export default {
          ElMessage.success('测试连接通过') 
        } finally { testingFromLink.value = false }
     }
+    // 监听视图模式和网格设置变化，自动保存
+    watch([viewMode, gridOrientation, gridColumns, gridSize], () => {
+      saveSettings()
+    })
+    
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
+      loadSettings() // 先加载保存的设置
       loadCustomNodes()
     })
     onUnmounted(() => window.removeEventListener('resize', checkMobile))
     return {
-      isMobile, loading, saving, parsing, customNodes, selectedNodes,
+      isMobile, viewMode, gridOrientation, gridColumns, gridSize, tableRef, columnWidths, loading, saving, parsing, customNodes, selectedNodes,
+      handleColumnResize,
       showAddDialog, showLinkDialog, showAssignDialog, addNodeTab,
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
       nodeLinkInput, parsedNode, nodeLink, testingFromLink,
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
       loadingUsers, batchAssigning, assignExtraData, batchTesting, batchDeleting,
-      loadCustomNodes, handleFilterChange, handleSelectionChange, handleMobileSelect,
+      loadCustomNodes, handleFilterChange, handleSelectionChange, handleMobileSelect, handleGridSelect,
       handleCommand, editNode, saveNode, deleteNode, toggleNodeStatus,
       batchTest, batchDelete, parseNodeLink, batchImportLinks, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
@@ -790,6 +956,10 @@ export default {
     grid-column: 1 / -1;
   }
 }
+.view-mode-group { margin-right: 8px; }
+.grid-orientation-group { margin-right: 8px; }
+.grid-size-group { margin-right: 8px; }
+.grid-columns-select { margin-right: 8px; }
 .batch-actions-bar {
   display: flex;
   align-items: center;
@@ -802,6 +972,127 @@ export default {
   font-size: 13px;
   color: var(--el-color-primary);
   margin-right: auto;
+}
+/* 桌面端方格视图（可调大小和方向） */
+.desktop-grid-view {
+  display: grid;
+  gap: 16px;
+  min-height: 120px;
+}
+/* 横向布局：固定列数 */
+.desktop-grid-view.grid-horizontal.grid-cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+.desktop-grid-view.grid-horizontal.grid-cols-6 {
+  grid-template-columns: repeat(6, 1fr);
+}
+/* 纵向布局：单列，可调宽度 */
+.desktop-grid-view.grid-vertical {
+  grid-template-columns: 1fr;
+  max-width: 100%;
+}
+.desktop-grid-view.grid-vertical.grid-size-small {
+  max-width: 400px;
+  margin: 0 auto;
+}
+.desktop-grid-view.grid-vertical.grid-size-medium {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.desktop-grid-view.grid-vertical.grid-size-large {
+  max-width: 800px;
+  margin: 0 auto;
+}
+.grid-empty {
+  grid-column: 1 / -1;
+  padding: 40px 0;
+}
+.grid-node-card {
+  background: #fff;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.grid-node-card:hover {
+  border-color: var(--el-border-color);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+.grid-node-card.is-selected {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 1px var(--el-color-primary);
+}
+.grid-node-card .gnc-header {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grid-node-card .gnc-checkbox { margin-right: 0; flex-shrink: 0; }
+.grid-node-card .gnc-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-node-card .gnc-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.grid-node-card .gnc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+.grid-node-card .gnc-row .label {
+  color: var(--el-text-color-secondary);
+  margin-right: 8px;
+}
+.grid-node-card .gnc-row .value {
+  font-weight: 500;
+  word-break: break-all;
+  text-align: right;
+}
+.grid-node-card .gnc-footer {
+  padding: 10px 16px;
+  border-top: 1px solid #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.grid-node-card .gnc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 .mobile-list {
   display: flex;
