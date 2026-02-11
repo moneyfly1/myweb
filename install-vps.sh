@@ -378,6 +378,71 @@ force_restart() {
     log "服务已强重启动"
 }
 
+# --- 仅构建前端（改前端代码后使用，无需整机重装）---
+menu_build_frontend() {
+    local pd=$(get_dir)
+    [ ! -d "$pd" ] && { error "项目目录不存在，请先执行一键安装"; return 1; }
+    [ ! -d "$pd/frontend" ] && { error "frontend 目录不存在"; return 1; }
+    step "仅构建前端..."
+    rm -rf "$pd/frontend/dist"
+    export PATH="${PATH}:/usr/local/go/bin:/usr/local/nodejs/bin"
+    local mem_limit=""
+    [ $(getconf _PHYS_PAGES 2>/dev/null) -lt 262144 ] && mem_limit="--max-old-space-size=512"
+    export NODE_OPTIONS="$mem_limit" PUPPETEER_SKIP_DOWNLOAD=true
+    cd "$pd/frontend" || return 1
+    if npm run build 2>&1; then
+        log "前端构建成功"
+        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null && log "已重载 Nginx，新前端已生效"
+    else
+        error "前端构建失败"
+        return 1
+    fi
+}
+
+# --- 仅构建后端（改 Go 代码后使用）---
+menu_build_backend() {
+    local pd=$(get_dir)
+    [ ! -d "$pd" ] && { error "项目目录不存在，请先执行一键安装"; return 1; }
+    [ ! -f "$pd/cmd/server/main.go" ] && { error "后端入口不存在"; return 1; }
+    step "仅构建后端..."
+    export PATH="${PATH}:/usr/local/go/bin"
+    export CGO_ENABLED=1 GOGC=100 GOMAXPROCS=1
+    cd "$pd" || return 1
+    if go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go 2>&1; then
+        log "后端构建成功"
+        systemctl restart cboard 2>/dev/null && log "已重启 CBoard 服务"
+    else
+        error "后端构建失败"
+        return 1
+    fi
+}
+
+# --- 构建前后端并重启（改多处代码后使用）---
+menu_build_all() {
+    local pd=$(get_dir)
+    [ ! -d "$pd" ] && { error "项目目录不存在，请先执行一键安装"; return 1; }
+    step "构建后端..."
+    export PATH="${PATH}:/usr/local/go/bin:/usr/local/nodejs/bin"
+    export CGO_ENABLED=1 GOGC=100 GOMAXPROCS=1
+    cd "$pd" || return 1
+    if ! go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go 2>&1; then
+        error "后端构建失败"; return 1
+    fi
+    log "后端构建成功"
+    step "构建前端..."
+    rm -rf "$pd/frontend/dist"
+    local mem_limit=""
+    [ $(getconf _PHYS_PAGES 2>/dev/null) -lt 262144 ] && mem_limit="--max-old-space-size=512"
+    export NODE_OPTIONS="$mem_limit" PUPPETEER_SKIP_DOWNLOAD=true
+    cd "$pd/frontend" || return 1
+    if ! npm run build 2>&1; then
+        error "前端构建失败"; return 1
+    fi
+    log "前端构建成功"
+    systemctl restart cboard 2>/dev/null && systemctl reload nginx 2>/dev/null
+    log "已重启 CBoard 并重载 Nginx"
+}
+
 # --- 卸载项目（可选是否保留环境）---
 menu_uninstall() {
     local pd
@@ -451,6 +516,10 @@ show_menu() {
     echo "10. 查看日志"
     echo "11. 停止服务"
     echo "12. 卸载项目（可选保留环境）"
+    echo "--- 仅更新代码（不跑完整安装）---"
+    echo "13. 仅构建前端（改前端后选此项）"
+    echo "14. 仅构建后端（改 Go 后选此项）"
+    echo "15. 构建前后端并重启"
     echo "0. 退出"
     read -p "请选择: " choice
 }
@@ -473,6 +542,9 @@ main() {
             10) journalctl -u cboard -n 50 -f ;;
             11) systemctl stop cboard && log "服务已停止" ;;
             12) menu_uninstall ;;
+            13) menu_build_frontend ;;
+            14) menu_build_backend ;;
+            15) menu_build_all ;;
             0) exit 0 ;;
             *) warn "无效选项" ;;
         esac
