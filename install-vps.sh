@@ -376,9 +376,16 @@ run_install() {
     setup_service
     setup_nginx
     
-    echo "=== 安装完成 ==="
-    echo "地址: https://$DOMAIN"
-    echo "账号: $A_USER / $A_EMAIL"
+    echo ""
+    echo "=========================================="
+    echo "              安装完成"
+    echo "=========================================="
+    echo "  前端地址:     https://$DOMAIN"
+    echo "  管理员/登录:  https://$DOMAIN"
+    echo "  管理员账号:   $A_USER"
+    echo "  邮箱:         $A_EMAIL"
+    echo "  密码:         $A_PASS"
+    echo "=========================================="
 }
 
 # --- 菜单功能 ---

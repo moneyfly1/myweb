@@ -443,8 +443,20 @@ full_deploy() {
     manage_service start
     
     log "部署完成！"
+    echo ""
+    echo -e "${GREEN}========== 访问信息 ==========${NC}"
+    echo -e "  前端地址:     https://${DOMAIN}"
+    echo -e "  管理员/登录:  https://${DOMAIN}"
+    echo -e "${GREEN}======================================${NC}"
     log "服务状态: systemctl status cboard"
     log "查看日志: journalctl -u cboard -f"
+    read -r -p "是否现在创建管理员账号？(Y/n): " do_admin
+    do_admin=${do_admin:-Y}
+    if [[ "${do_admin^^}" == "Y" || "${do_admin^^}" == "YES" ]]; then
+        create_admin
+    else
+        log "请使用菜单 2 创建/重置管理员账号"
+    fi
 }
 
 # --- 其他功能 ---
@@ -492,8 +504,14 @@ create_admin() {
     
     if go run scripts/admin_tool.go; then
         log "✅ 管理员账户已创建/重置"
-        log "用户名: $admin_username"
-        log "邮箱: $admin_email"
+        echo ""
+        echo -e "${GREEN}========== 管理员登录信息（请妥善保存）==========${NC}"
+        echo -e "  前端地址:     https://${DOMAIN:-<部署时填写的域名>}"
+        echo -e "  管理员/登录:  https://${DOMAIN:-<部署时填写的域名>}"
+        echo -e "  管理员账号:   ${admin_username}"
+        echo -e "  邮箱:         ${admin_email}"
+        echo -e "  密码:         ${admin_pass}"
+        echo -e "${GREEN}====================================================${NC}"
     else
         error "管理员账户创建/重置失败"
         return 1
