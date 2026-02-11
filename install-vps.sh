@@ -26,6 +26,40 @@ warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; }
 error() { echo -e "\033[0;31m[ERROR] $1\033[0m"; }
 step() { echo -e "\033[0;34m[STEP] $1\033[0m"; }
 
+# 带进度条执行命令（估算时间仅用于进度条动画，不影响实际执行）
+run_with_progress() {
+    local label="$1" est_sec="${2:-60}" tmpout tmpexit pid start elapsed pct filled empty bar i
+    shift 2
+    [ $# -eq 0 ] && return 1
+    tmpout=$(mktemp) tmpexit=$(mktemp)
+    echo 1 > "$tmpexit"
+    ( "$@" > "$tmpout" 2>&1; echo $? > "$tmpexit" ) &
+    pid=$!
+    start=$(date +%s)
+    while kill -0 "$pid" 2>/dev/null; do
+        elapsed=$(($(date +%s) - start))
+        [ "$est_sec" -gt 0 ] && pct=$((elapsed * 90 / est_sec)) || pct=$((elapsed / 2))
+        [ "$pct" -gt 90 ] && pct=90
+        filled=$((pct / 3)); [ "$filled" -gt 30 ] && filled=30
+        empty=$((30 - filled))
+        bar=""; for ((i=0;i<filled;i++)); do bar="${bar}#"; done; for ((i=0;i<empty;i++)); do bar="${bar} "; done
+        printf "\r\033[0;34m[STEP] %s [%s] %d%%\033[0m" "$label" "$bar" "$pct"
+        sleep 1
+    done
+    wait "$pid" 2>/dev/null
+    bar=""; for ((i=0;i<30;i++)); do bar="${bar}#"; done
+    printf "\r\033[0;34m[STEP] %s [%s] 100%%\033[0m\n" "$label" "$bar"
+    local exitcode; exitcode=$(cat "$tmpexit")
+    rm -f "$tmpexit"
+    if [ "$exitcode" -ne 0 ]; then
+        [ -s "$tmpout" ] && tail -n 30 "$tmpout"
+        rm -f "$tmpout"
+        return "$exitcode"
+    fi
+    rm -f "$tmpout"
+    return 0
+}
+
 handle_error() {
     local line=$1 cmd=$2
     error "脚本执行出错! 位置: 第 $line 行 | 命令: $cmd"
@@ -224,20 +258,18 @@ deploy_project() {
     check_swap
     
     # 2. 编译后端
-    step "编译后端..."
     export CGO_ENABLED=1 GOGC=100 GOMAXPROCS=1
     go mod download || { go env -w GOPROXY=https://goproxy.cn,direct && go mod download; }
-    timeout 1800 go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go || { error "后端编译失败"; exit 1; }
+    run_with_progress "编译后端..." 120 timeout 1800 go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go || { error "后端编译失败"; exit 1; }
     
     # 3. 编译前端
-    step "编译前端..."
     cd frontend || exit 1
     local mem_limit=""
     [ $(getconf _PHYS_PAGES) -lt 262144 ] && mem_limit="--max-old-space-size=512" # <1GB 内存限制
     export NODE_OPTIONS="$mem_limit" PUPPETEER_SKIP_DOWNLOAD=true
     
     npm install --legacy-peer-deps || { npm config set registry https://registry.npmjs.org/ && npm install --legacy-peer-deps; }
-    npm run build || { error "前端编译失败"; exit 1; }
+    run_with_progress "编译前端..." 180 npm run build || { error "前端编译失败"; exit 1; }
     cd ..
     
     # 4. 配置环境
@@ -390,7 +422,7 @@ menu_build_frontend() {
     [ $(getconf _PHYS_PAGES 2>/dev/null) -lt 262144 ] && mem_limit="--max-old-space-size=512"
     export NODE_OPTIONS="$mem_limit" PUPPETEER_SKIP_DOWNLOAD=true
     cd "$pd/frontend" || return 1
-    if npm run build 2>&1; then
+    if run_with_progress "构建前端..." 180 npm run build; then
         log "前端构建成功"
         nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null && log "已重载 Nginx，新前端已生效"
     else
@@ -408,7 +440,7 @@ menu_build_backend() {
     export PATH="${PATH}:/usr/local/go/bin"
     export CGO_ENABLED=1 GOGC=100 GOMAXPROCS=1
     cd "$pd" || return 1
-    if go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go 2>&1; then
+    if run_with_progress "构建后端..." 120 go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go; then
         log "后端构建成功"
         systemctl restart cboard 2>/dev/null && log "已重启 CBoard 服务"
     else
@@ -425,7 +457,7 @@ menu_build_all() {
     export PATH="${PATH}:/usr/local/go/bin:/usr/local/nodejs/bin"
     export CGO_ENABLED=1 GOGC=100 GOMAXPROCS=1
     cd "$pd" || return 1
-    if ! go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go 2>&1; then
+    if ! run_with_progress "构建后端..." 120 go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go; then
         error "后端构建失败"; return 1
     fi
     log "后端构建成功"
@@ -435,7 +467,7 @@ menu_build_all() {
     [ $(getconf _PHYS_PAGES 2>/dev/null) -lt 262144 ] && mem_limit="--max-old-space-size=512"
     export NODE_OPTIONS="$mem_limit" PUPPETEER_SKIP_DOWNLOAD=true
     cd "$pd/frontend" || return 1
-    if ! npm run build 2>&1; then
+    if ! run_with_progress "构建前端..." 180 npm run build; then
         error "前端构建失败"; return 1
     fi
     log "前端构建成功"
