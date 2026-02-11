@@ -472,10 +472,10 @@ create_admin() {
     fi
     
     # 输入邮箱
-    read -r -p "请输入管理员邮箱 (留空使用默认: admin@example.com): " admin_email
+    read -r -p "请输入管理员邮箱 (留空使用默认: admin@your-domain.com): " admin_email
     if [[ -z "$admin_email" ]]; then
-        admin_email="admin@example.com"
-        log "使用默认邮箱: admin@example.com"
+        admin_email="admin@your-domain.com"
+        log "使用默认邮箱: admin@your-domain.com"
     fi
     
     # 验证邮箱格式

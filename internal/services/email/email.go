@@ -79,7 +79,7 @@ func NewEmailService() *EmailService {
 	}
 
 	return &EmailService{
-		host:       getStringFromConfig(emailConfig, "smtp_host", "smtp.qq.com"),
+		host:       getStringFromConfig(emailConfig, "smtp_host", ""),
 		port:       port,
 		username:   getStringFromConfig(emailConfig, "smtp_username", getStringFromConfig(emailConfig, "email_username", "")),
 		password:   getStringFromConfig(emailConfig, "smtp_password", getStringFromConfig(emailConfig, "email_password", "")),
