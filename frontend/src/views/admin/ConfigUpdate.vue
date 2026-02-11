@@ -1,248 +1,297 @@
 <template>
-  <div class="config-update">
-    <el-card class="action-card" shadow="never">
+  <div class="list-container config-update-page">
+    <!-- 1. 操作控制卡片 -->
+    <el-card class="list-card control-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <span>操作控制</span>
+          <span class="header-title">系统操作</span>
+          <div class="header-status desktop-only">
+             <el-tag :type="status.is_running ? 'success' : 'info'" effect="dark">
+                {{ status.is_running ? '正在更新' : '等待指令' }}
+             </el-tag>
+          </div>
         </div>
       </template>
-      <div class="action-buttons">
-        <div class="action-buttons-row">
+      
+      <div class="control-panel">
+        <!-- 移动端状态展示 -->
+        <div class="mobile-status-bar mobile-only" v-if="isMobile">
+           <span class="label">当前状态:</span>
+           <el-tag :type="status.is_running ? 'success' : 'info'" size="small" effect="dark">
+              {{ status.is_running ? '运行中' : '已停止' }}
+           </el-tag>
+        </div>
+
+        <div class="action-grid">
           <el-button 
             type="primary" 
             :loading="loading.start"
             @click="startUpdate"
             :disabled="status.is_running"
-            class="action-btn"
+            class="grid-btn start-btn"
+            size="default"
           >
-            <el-icon><VideoPlay /></el-icon>
-            开始更新
+            <div class="btn-content">
+              <el-icon :size="16"><VideoPlay /></el-icon>
+              <span>开始更新</span>
+            </div>
           </el-button>
+          
           <el-button 
             type="warning" 
             :loading="loading.stop"
             @click="stopUpdate"
             :disabled="!status.is_running"
-            class="action-btn"
+            class="grid-btn stop-btn"
+            size="default"
           >
-            <el-icon><VideoPause /></el-icon>
-            停止更新
+            <div class="btn-content">
+              <el-icon :size="16"><VideoPause /></el-icon>
+              <span>停止更新</span>
+            </div>
           </el-button>
-        </div>
-        <div class="action-buttons-row">
+
           <el-button 
             type="info" 
             :loading="loading.test"
             @click="testUpdate"
             :disabled="status.is_running"
-            class="action-btn"
+            class="grid-btn"
+            plain
+            size="default"
           >
-            <el-icon><View /></el-icon>
-            测试更新
+            <div class="btn-content">
+              <el-icon :size="16"><View /></el-icon>
+              <span>测试运行</span>
+            </div>
           </el-button>
+          
           <el-button 
             type="success" 
             :loading="loading.refresh"
             @click="refreshStatus"
-            class="action-btn"
+            class="grid-btn"
+            plain
+            size="default"
           >
-            <el-icon><Refresh /></el-icon>
-            刷新状态
+            <div class="btn-content">
+              <el-icon :size="16"><Refresh /></el-icon>
+              <span>刷新状态</span>
+            </div>
           </el-button>
         </div>
       </div>
     </el-card>
-    <el-card style="margin-bottom: 20px;" class="config-card" shadow="never">
+
+    <!-- 2. 配置设置卡片 -->
+    <el-card class="list-card config-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <span>配置设置</span>
-          <el-button type="primary" @click="saveConfig" :loading="loading.save" class="save-config-btn">
-            <el-icon><Check /></el-icon>
-            保存配置
-          </el-button>
+          <span class="header-title">参数配置</span>
+          <div class="header-actions">
+            <el-button type="primary" @click="saveConfig" :loading="loading.save">
+              <el-icon><Check /></el-icon>
+              <span class="desktop-only">保存配置</span>
+              <span class="mobile-only">保存</span>
+            </el-button>
+          </div>
         </div>
       </template>
-      <el-form :model="config" :label-width="isMobile ? '0' : '120px'" class="config-form">
-        <el-form-item label="节点源URL" :label-width="isMobile ? '0' : undefined">
-          <div class="form-item-content">
-            <div v-for="(url, index) in config.urls" :key="index" class="url-item">
-              <el-input 
-                v-model="config.urls[index]" 
-                placeholder="请输入节点源URL"
-                class="config-input"
-              />
-              <el-button 
-                type="danger" 
-                @click="removeUrl(index)"
-                :disabled="config.urls.length <= 1"
-                class="delete-btn"
-              >
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
+
+      <el-form :model="config" label-position="top" class="config-form">
+        
+        <!-- 节点源 URL 配置 -->
+        <div class="form-section">
+          <div class="section-title">
+            <el-icon><Connection /></el-icon> 节点源列表
+          </div>
+          <div class="url-list">
+            <div v-for="(url, index) in config.urls" :key="index" class="list-item-wrapper">
+              <div class="input-with-action">
+                <el-input 
+                  v-model="config.urls[index]" 
+                  placeholder="请输入订阅/节点源 URL"
+                  class="styled-input"
+                >
+                  <template #prefix v-if="!isMobile">
+                    <span class="index-badge">{{ index + 1 }}</span>
+                  </template>
+                </el-input>
+                <el-button 
+                  type="danger" 
+                  plain 
+                  @click="removeUrl(index)"
+                  :disabled="config.urls.length <= 1"
+                  class="action-btn-side"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
             </div>
-            <el-button type="primary" @click="addUrl" class="add-btn">
-              <el-icon><Plus /></el-icon>
-              添加URL
+            <el-button type="primary" plain @click="addUrl" class="add-item-btn">
+              <el-icon><Plus /></el-icon> 添加订阅源
             </el-button>
           </div>
-        </el-form-item>
-        <el-form-item label="更新间隔" :label-width="isMobile ? '0' : undefined">
-          <div class="interval-selector">
-            <el-select 
-              v-model="intervalUnit" 
-              placeholder="选择单位"
-              class="interval-unit-select"
-            >
-              <el-option label="分钟" value="minute" />
-              <el-option label="小时" value="hour" />
-              <el-option label="天" value="day" />
-            </el-select>
-            <el-input-number 
-              v-model="intervalValue" 
-              :min="1" 
-              :max="intervalUnit === 'minute' ? 1440 : intervalUnit === 'hour' ? 24 : 30"
-              placeholder="间隔数值"
-              class="config-input-number interval-number"
-              @change="updateInterval"
-            />
-            <div class="interval-tip">
-              <span>当前间隔: {{ formatInterval(config.update_interval) }}</span>
+        </div>
+
+        <el-divider border-style="dashed" />
+
+        <!-- 定时任务配置：自动更新开关 + 更新间隔（统一高度） -->
+        <div class="form-section schedule-section">
+          <div class="schedule-row">
+            <div class="schedule-item switch-item">
+              <span class="schedule-label">自动更新</span>
+              <el-switch v-model="config.enable_schedule" @change="handleScheduleChange" size="default" class="schedule-switch" />
+            </div>
+            <div class="schedule-divider" />
+            <div class="schedule-item interval-item">
+              <span class="schedule-label">更新间隔</span>
+              <div class="interval-inputs">
+                <el-select v-model="intervalUnit" class="unit-select" placeholder="单位">
+                  <el-option label="分钟" value="minute" />
+                  <el-option label="小时" value="hour" />
+                  <el-option label="天" value="day" />
+                </el-select>
+                <el-input-number 
+                  v-model="intervalValue" 
+                  :min="1" 
+                  :max="intervalUnit === 'minute' ? 1440 : intervalUnit === 'hour' ? 24 : 30"
+                  class="value-input"
+                  controls-position="right"
+                  @change="updateInterval"
+                />
+              </div>
             </div>
           </div>
-        </el-form-item>
-        <el-form-item label="启用定时任务" :label-width="isMobile ? '0' : undefined">
-          <div class="schedule-switch-container">
-            <el-switch 
-              v-model="config.enable_schedule" 
-              @change="handleScheduleChange"
-            />
-            <span class="schedule-tip" v-if="config.enable_schedule && config.update_interval">
-              将每 {{ formatInterval(config.update_interval) }} 自动更新
-            </span>
+          <div class="desc-text" v-if="config.enable_schedule">
+            每 {{ formatInterval(config.update_interval) }} 执行一次
           </div>
-        </el-form-item>
-        <el-form-item label="过滤关键词" :label-width="isMobile ? '0' : undefined">
-          <div class="form-item-content">
-            <div class="filter-keywords-tip">
-              <el-alert
-                type="info"
-                :closable="false"
-                show-icon
-                style="margin-bottom: 12px;"
-              >
-                <template #default>
-                  <div style="font-size: 13px;">
-                    <p style="margin: 0 0 4px 0;"><strong>过滤说明：</strong></p>
-                    <p style="margin: 0;">• 过滤针对从所有订阅源获取的节点</p>
-                    <p style="margin: 0;">• 如果节点名称或服务器地址包含任何关键词，该节点将被过滤掉，不会导入数据库</p>
-                    <p style="margin: 0;">• 关键词匹配不区分大小写</p>
-                    <p style="margin: 0;">• 支持多个关键词，每个关键词独立过滤</p>
-                  </div>
-                </template>
-              </el-alert>
+        </div>
+
+        <el-divider border-style="dashed" />
+
+        <!-- 过滤关键词配置 -->
+        <div class="form-section">
+          <div class="section-title">
+            <el-icon><Filter /></el-icon> 过滤关键词
+            <el-tooltip content="包含这些关键词的节点将被自动丢弃" placement="top">
+               <el-icon class="info-icon"><Warning /></el-icon>
+            </el-tooltip>
+          </div>
+          
+          <el-alert
+            v-if="!config.filter_keywords.length"
+            title="暂无过滤规则，所有节点都将被保留"
+            type="info"
+            :closable="false"
+            show-icon
+            class="mini-alert"
+          />
+
+          <div class="keyword-list">
+            <div v-for="(keyword, index) in config.filter_keywords" :key="index" class="list-item-wrapper">
+              <div class="input-with-action">
+                <el-input 
+                  v-model="config.filter_keywords[index]" 
+                  placeholder="输入需过滤的关键词 (如: 轮子, 到期)"
+                  class="styled-input"
+                />
+                <el-button 
+                  type="danger" 
+                  plain 
+                  @click="removeKeyword(index)"
+                  class="action-btn-side"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
             </div>
-            <div v-for="(keyword, index) in config.filter_keywords" :key="index" class="keyword-item">
-              <el-input 
-                v-model="config.filter_keywords[index]" 
-                placeholder="输入关键词（将过滤包含此关键词的节点）"
-                class="config-input"
-              />
-              <el-button 
-                type="danger" 
-                @click="removeKeyword(index)"
-                class="delete-btn"
-              >
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
-            </div>
-            <el-button type="primary" @click="addKeyword" class="add-btn">
-              <el-icon><Plus /></el-icon>
-              添加关键词
+             <el-button type="primary" plain @click="addKeyword" class="add-item-btn">
+              <el-icon><Plus /></el-icon> 添加关键词
             </el-button>
           </div>
-        </el-form-item>
+        </div>
+
       </el-form>
     </el-card>
-    <el-card class="logs-card" shadow="never">
+
+    <!-- 3. 日志卡片 -->
+    <el-card class="list-card log-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <div class="log-header-left">
-            <span>更新日志</span>
-            <el-tag v-if="isLogPolling" type="success" size="small" class="live-indicator">
-              <el-icon><VideoPlay /></el-icon>
-              实时更新中
-            </el-tag>
-            <el-tag v-if="newLogCount > 0" type="info" size="small" class="new-log-indicator">
-              <el-icon><Bell /></el-icon>
-              {{ newLogCount }} 条新日志
-            </el-tag>
+          <div class="header-left">
+             <span class="header-title">运行日志</span>
+             <el-tag v-if="isLogPolling" type="success" size="small" class="status-badge pulse">实时</el-tag>
           </div>
-          <div class="log-header-buttons">
-            <el-button type="primary" size="small" @click="refreshLogs" class="log-btn">
+          <div class="header-actions compact">
+            <el-button size="small" @click="refreshLogs" :loading="loading.refresh" circle>
               <el-icon><Refresh /></el-icon>
-              刷新日志
             </el-button>
-            <el-button type="warning" size="small" @click="clearLogs" class="log-btn">
+            <el-button size="small" type="danger" plain @click="clearLogs" circle>
               <el-icon><Delete /></el-icon>
-              清理日志
             </el-button>
           </div>
         </div>
       </template>
-      <div class="log-container">
+      
+      <div class="log-viewer">
+        <div v-if="logs.length === 0" class="empty-logs">
+           <el-icon><Document /></el-icon>
+           <span>暂无日志记录</span>
+        </div>
         <div 
+          v-else
           v-for="(log, index) in logs" 
           :key="index" 
-          class="log-item"
-          :class="log.level"
+          class="log-line"
+          :class="(log && log.level) || 'info'"
         >
-          <span class="log-time">{{ formatTime(log.timestamp || log.time) }}</span>
-          <span class="log-level">{{ log.level.toUpperCase() }}</span>
-          <span class="log-message">{{ log.message }}</span>
-        </div>
-        <div v-if="logs.length === 0" class="no-logs">
-          暂无日志
+          <span class="log-ts">[{{ formatLogTime(log && (log.timestamp || log.time)) }}]</span>
+          <span class="log-lvl" :class="(log && log.level) || 'info'">{{ ((log && log.level) || 'info').toUpperCase() }}</span>
+          <span class="log-msg">{{ (log && log.message) || '' }}</span>
         </div>
       </div>
     </el-card>
+
   </div>
 </template>
+
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  VideoPlay, VideoPause, Timer, Document, Clock, Refresh, 
-  Check, Delete, Plus, View, Bell
+  VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus, 
+  Connection, Filter, Warning, Document
 } from '@element-plus/icons-vue'
 import { configUpdateAPI } from '@/utils/api'
-import api from '@/utils/api'
+
 export default {
   name: 'ConfigUpdate',
   components: {
-    VideoPlay, VideoPause, Timer, Document, Clock, Refresh,
-    Check, Delete, Plus, View, Bell
+    VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
+    Connection, Filter, Warning, Document
   },
   setup() {
+    // 状态定义
     const status = ref({
       is_running: false,
       scheduled_enabled: false,
-      last_update: null,
-      next_update: null,
-      config_exists: false
+      last_update: null
     })
+    
     const config = reactive({
       urls: [''],
       update_interval: 3600,
       enable_schedule: false,
       filter_keywords: []
     })
+    
     const intervalUnit = ref('hour')
     const intervalValue = ref(1)
     const logs = ref([])
     const isLogPolling = ref(false)
-    const newLogCount = ref(0)
+    const isMobile = ref(false)
+    
     const loading = reactive({
       start: false,
       stop: false,
@@ -250,95 +299,31 @@ export default {
       refresh: false,
       save: false,
     })
-    const isMobile = ref(false)
-    const checkMobile = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
+
     let statusPollingInterval = null
     let refreshInterval = null
     let logPollingInterval = null
-    const startStatusPolling = () => {
-      if (statusPollingInterval) {
-        clearInterval(statusPollingInterval)
-      }
-      statusPollingInterval = setInterval(async () => {
-        await getStatus()
-        if (!status.value.is_running) {
-          stopStatusPolling()
-          stopRefreshInterval()
-          stopLogPolling()
-        }
-      }, 1000)
+
+    // 辅助函数
+    const checkMobile = () => {
+      isMobile.value = window.innerWidth <= 768
     }
-    const stopStatusPolling = () => {
-      if (statusPollingInterval) {
-        clearInterval(statusPollingInterval)
-        statusPollingInterval = null
-      }
+
+    const formatLogTime = (timeStr) => {
+      if (!timeStr) return ''
+      const date = new Date(timeStr)
+      return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
     }
-    const startRefreshInterval = () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval)
-      }
-      refreshInterval = setInterval(() => {
-        if (!loading.refresh && status.value.is_running) {
-          getStatus()
-        }
-      }, 10000)
+
+    const formatInterval = (seconds) => {
+      if (!seconds) return '未设置'
+      if (seconds < 60) return `${seconds}秒`
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时`
+      return `${Math.floor(seconds / 86400)}天`
     }
-    const stopRefreshInterval = () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval)
-        refreshInterval = null
-      }
-    }
-    const startLogPolling = () => {
-      if (logPollingInterval) {
-        clearInterval(logPollingInterval)
-      }
-      isLogPolling.value = true
-      logPollingInterval = setInterval(async () => {
-        try {
-          if (!loading.refresh && status.value.is_running) {
-            await getLogs()
-          } else if (!status.value.is_running) {
-            stopLogPolling()
-          }
-        } catch (error) {
-          stopLogPolling()
-        }
-      }, 2000)
-    }
-    const stopLogPolling = () => {
-      if (logPollingInterval) {
-        clearInterval(logPollingInterval)
-        logPollingInterval = null
-      }
-      isLogPolling.value = false
-    }
-    const getStatus = async () => {
-      try {
-        const response = await configUpdateAPI.getStatus()
-        if (response.data.success) {
-          status.value = response.data.data
-        } else {
-          }
-      } catch (error) {
-        ElMessage.error('获取状态失败: ' + (error.response?.data?.message || error.message))
-      }
-    }
-    const getConfig = async () => {
-      try {
-        const response = await configUpdateAPI.getConfig()
-        if (response.data.success) {
-          Object.assign(config, response.data.data)
-          initIntervalSelector()
-        } else {
-          }
-      } catch (error) {
-        ElMessage.error('获取配置失败: ' + (error.response?.data?.message || error.message))
-      }
-    }
+
+    // 逻辑控制
     const initIntervalSelector = () => {
       const seconds = config.update_interval || 3600
       if (seconds < 3600) {
@@ -352,157 +337,83 @@ export default {
         intervalValue.value = Math.floor(seconds / 86400)
       }
     }
+
     const updateInterval = () => {
       let seconds = 0
-      if (intervalUnit.value === 'minute') {
-        seconds = (intervalValue.value || 1) * 60
-      } else if (intervalUnit.value === 'hour') {
-        seconds = (intervalValue.value || 1) * 3600
-      } else if (intervalUnit.value === 'day') {
-        seconds = (intervalValue.value || 1) * 86400
-      }
+      if (intervalUnit.value === 'minute') seconds = (intervalValue.value || 1) * 60
+      else if (intervalUnit.value === 'hour') seconds = (intervalValue.value || 1) * 3600
+      else if (intervalUnit.value === 'day') seconds = (intervalValue.value || 1) * 86400
       config.update_interval = seconds
     }
-    const formatInterval = (seconds) => {
-      if (!seconds) return '未设置'
-      if (seconds < 60) {
-        return `${seconds}秒`
-      } else if (seconds < 3600) {
-        return `${Math.floor(seconds / 60)}分钟`
-      } else if (seconds < 86400) {
-        return `${Math.floor(seconds / 3600)}小时`
-      } else {
-        return `${Math.floor(seconds / 86400)}天`
-      }
-    }
-    const handleScheduleChange = async (value) => {
-      if (value) {
-        if (!config.update_interval || config.update_interval < 60) {
-          ElMessage.warning('请先设置更新间隔（至少1分钟）')
-          config.enable_schedule = false
-          return
+
+    // API 调用（防御性处理，避免 response.data.data 为 undefined 导致页面报错空白）
+    const getStatus = async () => {
+      try {
+        const response = await configUpdateAPI.getStatus()
+        const data = response?.data?.data
+        if (response?.data?.success && data && typeof data === 'object') {
+          status.value = { ...status.value, ...data }
         }
-        await saveConfig()
-        ElMessage.success(`定时任务已启用，将每 ${formatInterval(config.update_interval)} 自动更新`)
-      } else {
-        ElMessage.info('定时任务已禁用')
+      } catch (error) {
+        console.error('状态获取失败', error)
       }
     }
+
+    const getConfig = async () => {
+      try {
+        const response = await configUpdateAPI.getConfig()
+        const data = response?.data?.data
+        if (response?.data?.success && data && typeof data === 'object') {
+          // 后端返回 schedule_interval，前端使用 update_interval
+          const interval = data.update_interval ?? data.schedule_interval ?? 3600
+          config.urls = Array.isArray(data.urls) ? (data.urls.length ? data.urls : ['']) : ['']
+          config.filter_keywords = Array.isArray(data.filter_keywords) ? data.filter_keywords : []
+          config.enable_schedule = !!data.enable_schedule
+          config.update_interval = typeof interval === 'number' ? interval : 3600
+          initIntervalSelector()
+        }
+      } catch (error) {
+        ElMessage.error('获取配置失败')
+      }
+    }
+
     const getLogs = async () => {
       try {
         const response = await configUpdateAPI.getLogs()
-        if (response.data.success) {
-          const oldLogCount = logs.value.length
-          logs.value = response.data.data
-          if (logs.value.length > oldLogCount) {
-            newLogCount.value = logs.value.length - oldLogCount
-            setTimeout(() => {
-              const logContainer = document.querySelector('.log-container')
-              if (logContainer) {
-                logContainer.scrollTop = logContainer.scrollHeight
-              }
-              setTimeout(() => {
-                newLogCount.value = 0
-              }, 3000)
-            }, 100)
-          }
-        } else {
-          }
-      } catch (error) {
-        ElMessage.error('获取日志失败: ' + (error.response?.data?.message || error.message))
-      }
-    }
-    const startUpdate = async () => {
-      loading.start = true
-      try {
-        const response = await configUpdateAPI.startUpdate()
-        if (response.data.success) {
-          ElMessage.success('更新任务已启动')
-          startStatusPolling()
-          startRefreshInterval()
-          startLogPolling()
-          await Promise.all([getStatus(), getLogs()])
-        } else {
-          ElMessage.error(response.data.message || '启动失败')
+        const data = response?.data?.data
+        if (response?.data?.success && Array.isArray(data)) {
+          logs.value = data
         }
       } catch (error) {
-        ElMessage.error('启动失败: ' + (error.response?.data?.message || error.message))
-      } finally {
-        loading.start = false
+        console.error('日志获取失败', error)
       }
     }
-    const stopUpdate = async () => {
-      loading.stop = true
-      try {
-        const response = await configUpdateAPI.stopUpdate()
-        if (response.data.success) {
-          ElMessage.success('更新任务已停止')
-          stopStatusPolling()
-          stopRefreshInterval()
-          stopLogPolling()
-          await getStatus()
-        } else {
-          ElMessage.error(response.data.message || '停止失败')
-        }
-      } catch (error) {
-        ElMessage.error('停止失败: ' + (error.response?.data?.message || error.message))
-      } finally {
-        loading.stop = false
-      }
-    }
-    const testUpdate = async () => {
-      loading.test = true
-      try {
-        const response = await configUpdateAPI.testUpdate()
-        if (response.data.success) {
-          ElMessage.success('测试任务已启动')
-          startStatusPolling()
-          startRefreshInterval()
-          startLogPolling()
-          await Promise.all([getStatus(), getLogs()])
-        } else {
-          ElMessage.error(response.data.message || '启动测试失败')
-        }
-      } catch (error) {
-        ElMessage.error('启动测试失败: ' + (error.response?.data?.message || error.message))
-      } finally {
-        loading.test = false
-      }
-    }
-    const refreshStatus = async () => {
-      loading.refresh = true
-      try {
-        await Promise.all([getStatus(), getLogs()])
-        ElMessage.success('状态已刷新')
-      } catch (error) {
-        ElMessage.error('刷新失败')
-      } finally {
-        loading.refresh = false
-      }
-    }
+
+    const refreshLogs = () => getLogs()
+
     const saveConfig = async () => {
       loading.save = true
       try {
         updateInterval()
-        const configToSave = {
-          ...config,
-          urls: (config.urls || []).filter(url => url && url.trim()),
-          filter_keywords: (config.filter_keywords || []).filter(keyword => keyword && keyword.trim())
-        }
-        if (!configToSave.urls || configToSave.urls.length === 0) {
-          ElMessage.error('至少需要配置一个节点源URL')
+        const urls = (config.urls || []).filter(url => url && String(url).trim())
+        const filter_keywords = (config.filter_keywords || []).filter(keyword => keyword && String(keyword).trim())
+        if (!urls.length) {
+          ElMessage.warning('至少需要配置一个节点源URL')
           loading.save = false
           return
         }
+        // 后端使用 schedule_interval 键名
+        const configToSave = {
+          urls,
+          filter_keywords,
+          enable_schedule: config.enable_schedule,
+          schedule_interval: config.update_interval
+        }
+
         const response = await configUpdateAPI.updateConfig(configToSave)
         if (response.data.success) {
           ElMessage.success('配置已保存')
-          if (config.enable_schedule) {
-            await getStatus()
-            if (!status.value.scheduled_enabled) {
-              ElMessage.info('定时任务将在下一个间隔时间自动启动')
-            }
-          }
+          if (config.enable_schedule) await getStatus()
         } else {
           ElMessage.error(response.data.message || '保存失败')
         }
@@ -512,694 +423,622 @@ export default {
         loading.save = false
       }
     }
-    const refreshLogs = async () => {
-      await getLogs()
+
+    // 轮询控制
+    const startStatusPolling = () => {
+      if (statusPollingInterval) clearInterval(statusPollingInterval)
+      statusPollingInterval = setInterval(async () => {
+        await getStatus()
+        if (!status.value.is_running) {
+          stopAllPolling()
+        }
+      }, 1000)
     }
-    const clearLogs = async () => {
+
+    const stopAllPolling = () => {
+      if (statusPollingInterval) { clearInterval(statusPollingInterval); statusPollingInterval = null; }
+      if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+      if (logPollingInterval) { clearInterval(logPollingInterval); logPollingInterval = null; }
+      isLogPolling.value = false
+    }
+    
+    const startLogPolling = () => {
+      if (logPollingInterval) clearInterval(logPollingInterval)
+      isLogPolling.value = true
+      logPollingInterval = setInterval(async () => {
+        if (status.value.is_running) await getLogs()
+        else stopAllPolling()
+      }, 2000)
+    }
+
+    // 按钮操作
+    const startUpdate = async () => {
+      loading.start = true
       try {
-        await ElMessageBox.confirm('确定要清理所有日志吗？', '确认清理', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-        const response = await configUpdateAPI.clearLogs()
+        const response = await configUpdateAPI.startUpdate()
         if (response.data.success) {
-          ElMessage.success('日志已清理')
-          await getLogs()
+          ElMessage.success('更新任务已启动')
+          startStatusPolling()
+          startLogPolling()
         } else {
-          ElMessage.error(response.data.message || '清理失败')
+          ElMessage.error(response.data.message || '启动失败')
         }
       } catch (error) {
-        if (error !== 'cancel') {
-          ElMessage.error('清理失败: ' + (error.response?.data?.message || error.message))
-        }
+        ElMessage.error('启动失败: ' + (error.message))
+      } finally {
+        loading.start = false
       }
     }
-    const addUrl = () => {
-      if (!config.urls) {
-        config.urls = ['']
-      } else {
-        config.urls.push('')
+
+    const stopUpdate = async () => {
+      loading.stop = true
+      try {
+        const response = await configUpdateAPI.stopUpdate()
+        if (response.data.success) {
+          ElMessage.success('已发送停止指令')
+          stopAllPolling()
+          await getStatus()
+        }
+      } catch (error) {
+        ElMessage.error('停止失败')
+      } finally {
+        loading.stop = false
       }
+    }
+
+    const testUpdate = async () => {
+      loading.test = true
+      try {
+        const response = await configUpdateAPI.testUpdate()
+        if (response.data.success) {
+          ElMessage.success('测试运行已启动')
+          startStatusPolling()
+          startLogPolling()
+        }
+      } catch (error) {
+        ElMessage.error('启动测试失败')
+      } finally {
+        loading.test = false
+      }
+    }
+
+    const refreshStatus = async () => {
+      loading.refresh = true
+      try {
+        await Promise.all([getStatus(), getLogs()])
+        ElMessage.success('状态已刷新')
+      } finally {
+        loading.refresh = false
+      }
+    }
+
+    const clearLogs = async () => {
+      try {
+        await ElMessageBox.confirm('确定清空日志吗？', '提示', { type: 'warning' })
+        const response = await configUpdateAPI.clearLogs()
+        if (response.data.success) {
+          logs.value = []
+          ElMessage.success('日志已清空')
+        }
+      } catch (e) {}
+    }
+
+    // 列表操作
+    const addUrl = () => {
+      if (!config.urls) config.urls = []
+      config.urls.push('')
     }
     const removeUrl = (index) => {
-      if (config.urls && config.urls.length > 1) {
-        config.urls.splice(index, 1)
-      } else if (config.urls && config.urls.length === 1) {
-        ElMessage.warning('至少需要保留一个节点源URL')
-      }
+      if (config.urls.length > 1) config.urls.splice(index, 1)
+      else ElMessage.warning('至少保留一个URL')
     }
     const addKeyword = () => {
-      if (!config.filter_keywords) {
-        config.filter_keywords = ['']
-      } else {
-        config.filter_keywords.push('')
+      if (!config.filter_keywords) config.filter_keywords = []
+      config.filter_keywords.push('')
+    }
+    const removeKeyword = (index) => config.filter_keywords.splice(index, 1)
+    const handleScheduleChange = (val) => {
+      if (val && (!config.update_interval || config.update_interval < 60)) {
+        ElMessage.warning('间隔不能小于1分钟')
+        config.enable_schedule = false
       }
     }
-    const removeKeyword = (index) => {
-      if (config.filter_keywords && config.filter_keywords.length > index) {
-        config.filter_keywords.splice(index, 1)
-      }
-    }
-    const formatTime = (timeStr) => {
-      if (!timeStr) return '从未'
-      try {
-        return new Date(timeStr).toLocaleString()
-      } catch {
-        return timeStr
-      }
-    }
+
+    // 生命周期
     onMounted(async () => {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       await Promise.all([getStatus(), getConfig(), getLogs()])
       if (status.value.is_running) {
+        startStatusPolling()
         startLogPolling()
       }
     })
-    onBeforeUnmount(() => {
-      window.removeEventListener('resize', checkMobile)
-    })
-    onUnmounted(() => {
-      stopStatusPolling()
-      stopRefreshInterval()
-      stopLogPolling()
-    })
+
+    onUnmounted(() => stopAllPolling())
+    onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
+
     return {
-      status,
-      config,
-      logs,
-      loading,
-      isLogPolling,
-      newLogCount,
-      isMobile,
-      intervalUnit,
-      intervalValue,
-      startUpdate,
-      stopUpdate,
-      testUpdate,
-      refreshStatus,
-      saveConfig,
-      refreshLogs,
-      clearLogs,
-      addUrl,
-      removeUrl,
-      addKeyword,
-      removeKeyword,
-      formatTime,
-      updateInterval,
-      formatInterval,
-      handleScheduleChange
+      status, config, logs, loading, isLogPolling, isMobile,
+      intervalUnit, intervalValue,
+      startUpdate, stopUpdate, testUpdate, refreshStatus, saveConfig,
+      refreshLogs, clearLogs, addUrl, removeUrl, addKeyword, removeKeyword,
+      updateInterval, formatInterval, handleScheduleChange, formatLogTime
     }
   }
 }
 </script>
+
 <style scoped lang="scss">
-.config-update {
+// 引入 Users.vue 的设计变量（模拟）
+$mobile-break: 768px;
+$bg-color: #f5f7fa;
+$card-border-radius: 8px;
+$primary-color: #409eff;
+
+.list-container {
   padding: 20px;
   max-width: 100%;
   box-sizing: border-box;
-  @media (max-width: 768px) {
+  
+  @media (max-width: $mobile-break) {
     padding: 12px;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    overflow-x: clip;
+    background-color: $bg-color; // 保持移动端背景一致
+    min-height: 100vh;
   }
 }
-.action-card {
-  @media (max-width: 768px) {
-    margin-bottom: 16px !important;
-  }
-}
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-  .action-buttons-row {
-    display: flex;
-    gap: 12px;
-    width: 100%;
-    @media (max-width: 768px) {
-      flex-direction: column;
-      gap: 12px;
-      align-items: center;
+
+.list-card {
+  margin-bottom: 20px;
+  border-radius: $card-border-radius;
+  overflow: visible; // 允许 dropdown 等溢出
+  
+  // 覆盖 Element 卡片默认样式，使其更紧凑
+  :deep(.el-card__header) {
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f2f5;
+    background: #fff;
+    
+    @media (max-width: $mobile-break) {
+      padding: 12px 16px;
     }
-    .action-btn {
-      flex: 1;
-      height: 44px;
-      font-size: 16px;
-      font-weight: 500;
-      margin: 0;
-      :deep(.el-icon) {
-        margin-right: 6px;
-        font-size: 16px;
-      }
-      @media (max-width: 768px) {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 100% !important;
-        height: 44px !important;
-        font-size: 16px !important;
-        margin: 0 !important;
-      }
+  }
+  
+  :deep(.el-card__body) {
+    padding: 20px;
+    @media (max-width: $mobile-break) {
+      padding: 16px;
     }
   }
 }
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  @media (max-width: 768px) {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-  .save-config-btn {
-    height: 44px;
-    padding: 0 24px;
+  
+  .header-title {
     font-size: 16px;
-    font-weight: 500;
-    min-width: 160px;
-    :deep(.el-icon) {
-      margin-right: 6px;
-      font-size: 16px;
-    }
-    @media (max-width: 768px) {
-      width: 100% !important;
-      min-width: 100% !important;
-      max-width: 100% !important;
-      height: 44px !important;
-      font-size: 16px !important;
-      margin: 0 auto !important;
-    }
-  }
-}
-.log-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.log-header-buttons {
-  display: flex;
-  gap: 10px;
-  @media (min-width: 769px) {
-    flex-direction: row;
-    align-items: center;
-  }
-  @media (max-width: 768px) {
-    flex-direction: column;
-    width: 100%;
-    gap: 12px;
-    align-items: center;
-  }
-  .log-btn {
-    @media (min-width: 769px) {
-      min-width: 100px;
-      height: 32px;
-    }
-    @media (max-width: 768px) {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 100% !important;
-      height: 44px !important;
-      font-size: 16px !important;
-      font-weight: 500 !important;
-      margin: 0 auto !important;
-    }
-  }
-}
-.live-indicator {
-  animation: pulse 2s infinite;
-}
-.new-log-indicator {
-  animation: bounce 1s ease-in-out;
-}
-@keyframes pulse {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-@keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {
-    transform: translateY(0);
-  }
-  40% {
-    transform: translateY(-3px);
-  }
-  60% {
-    transform: translateY(-2px);
-  }
-}
-.config-form {
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    :deep(.el-form-item) {
-      margin-bottom: 20px;
-      width: 100% !important;
-      max-width: 100% !important;
-      display: flex;
-      flex-direction: column;
-      .el-form-item__label {
-        width: 100% !important;
-        max-width: 100% !important;
-        text-align: left;
-        margin-bottom: 8px;
-        padding: 0;
-        font-weight: 600;
-        color: #1e293b;
-        font-size: 0.95rem;
-      }
-      .el-form-item__content {
-        width: 100% !important;
-        max-width: 100% !important;
-        margin-left: 0 !important;
-      }
-    }
-  }
-}
-.form-item-content {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 1;
-  .add-btn {
-    width: 100%;
-    height: 44px;
-    font-size: 16px;
-    font-weight: 500;
-    box-sizing: border-box;
-    margin-top: 8px;
+    font-weight: 600;
+    color: #1f2f3d;
     position: relative;
-    z-index: 10;
-    pointer-events: auto;
-    cursor: pointer;
-    :deep(.el-icon) {
-      margin-right: 6px;
-      font-size: 16px;
-    }
-    @media (max-width: 768px) {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 100% !important;
-      height: 44px !important;
-      font-size: 16px !important;
-      margin: 8px auto 0 auto !important;
+    padding-left: 12px;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 16px;
+      background-color: $primary-color;
+      border-radius: 2px;
     }
   }
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-}
-.form-row-group {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  width: 100%;
-  margin-bottom: 20px;
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-    gap: 0;
-    margin-bottom: 0;
-  }
-  :deep(.el-form-item) {
-    margin-bottom: 0;
-    @media (max-width: 768px) {
-      margin-bottom: 20px;
-    }
-  }
-}
-.url-item, .keyword-item {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 1;
-  .config-input {
-    flex: 1;
-    min-width: 0;
-  }
-  .delete-btn {
-    flex-shrink: 0;
-    min-width: 100px;
-    height: 44px;
-    font-size: 16px;
-    font-weight: 500;
-    position: relative;
-    z-index: 10;
-    pointer-events: auto;
-    cursor: pointer;
-    :deep(.el-icon) {
-      margin-right: 6px;
-      font-size: 16px;
-    }
-    @media (max-width: 768px) {
-      width: 100% !important;
-      min-width: 100% !important;
-      max-width: 100% !important;
-      height: 44px !important;
-      font-size: 16px !important;
-      margin: 0 !important;
-    }
-  }
-  @media (max-width: 768px) {
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 16px;
-    padding: 12px;
-    background: linear-gradient(135deg, rgba(66, 165, 245, 0.05) 0%, rgba(102, 126, 234, 0.05) 100%);
-    border: 1.5px solid rgba(66, 165, 245, 0.2);
-    border-radius: 10px;
+
+  .header-left {
+    display: flex;
     align-items: center;
-    .config-input {
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-  }
-}
-.config-input {
-  width: 100%;
-  :deep(.el-input__wrapper) {
-    min-height: 44px;
-  }
-  :deep(.el-input__inner) {
-    font-size: 15px;
-    padding: 12px 14px;
-  }
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    box-sizing: border-box;
-    margin: 0 auto !important;
-    :deep(.el-input__wrapper) {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 100% !important;
-      min-height: 44px !important;
-      border-radius: 8px;
-      border: 2px solid rgba(66, 165, 245, 0.2);
-      background: rgba(255, 255, 255, 0.95);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-      transition: all 0.3s ease;
-      &:hover {
-        border-color: rgba(66, 165, 245, 0.4);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-      }
-      &.is-focus {
-        border-color: #409eff;
-        box-shadow: 0 4px 16px rgba(66, 165, 245, 0.2);
-      }
-    }
-    :deep(.el-input__inner) {
-      font-size: 16px !important;
-      padding: 12px 14px;
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box;
-    }
-  }
-}
-.config-input-number {
-  :deep(.el-input__wrapper) {
-    min-height: 44px;
-  }
-  :deep(.el-input__inner) {
-    font-size: 15px;
-    padding: 12px 14px;
-  }
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    box-sizing: border-box;
-    margin: 0 auto !important;
-    :deep(.el-input__wrapper) {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 100% !important;
-      min-height: 44px !important;
-      border-radius: 8px;
-      border: 2px solid rgba(66, 165, 245, 0.2);
-      background: rgba(255, 255, 255, 0.95);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-    }
-    :deep(.el-input__inner) {
-      font-size: 16px !important;
-    }
-  }
-}
-.log-container {
-  max-height: 400px;
-  overflow-y: auto;
-  overflow-x: auto;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 10px;
-  background-color: #f5f7fa;
-  width: 100%;
-  box-sizing: border-box;
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    padding: 12px;
-    word-wrap: break-word;
-    word-break: break-all;
-    overflow-wrap: break-word;
-  }
-}
-.log-item {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 5px;
-  padding: 5px;
-  border-radius: 3px;
-  font-family: monospace;
-  font-size: 12px;
-  width: 100%;
-  box-sizing: border-box;
-  align-items: flex-start;
-  @media (max-width: 768px) {
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px;
-    font-size: 11px;
-  }
-}
-.log-item.info {
-  background-color: #e1f3d8;
-}
-.log-item.warning {
-  background-color: #fdf6ec;
-}
-.log-item.error {
-  background-color: #fef0f0;
-}
-.log-item.success {
-  background-color: #e1f3d8;
-}
-.log-time {
-  color: #666;
-  min-width: 150px;
-  flex-shrink: 0;
-  @media (max-width: 768px) {
-    min-width: auto;
-    width: 100%;
-    margin-bottom: 4px;
-    font-size: 10px;
-  }
-}
-.log-level {
-  font-weight: bold;
-  min-width: 60px;
-  flex-shrink: 0;
-  @media (max-width: 768px) {
-    min-width: auto;
-    width: auto;
-    margin-right: 8px;
-  }
-}
-.log-message {
-  flex: 1;
-  word-wrap: break-word;
-  word-break: break-all;
-  overflow-wrap: break-word;
-  @media (max-width: 768px) {
-    width: 100%;
-    flex: none;
-  }
-}
-.no-logs {
-  text-align: center;
-  color: #999;
-  padding: 20px;
-}
-.form-tip {
-  color: #999;
-  font-size: 12px;
-  margin-top: 5px;
-}
-.dialog-footer {
-  text-align: right;
-}
-:deep(.el-button) {
-  pointer-events: auto !important;
-  cursor: pointer !important;
-  position: relative;
-  z-index: 10;
-}
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-.interval-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  .interval-unit-select {
-    width: 140px;
-    flex-shrink: 0;
-    :deep(.el-input__wrapper) {
-      min-height: 44px;
-    }
-  }
-  .interval-number {
-    flex: 1;
-    min-width: 0;
-    max-width: 200px;
-    :deep(.el-input__wrapper) {
-      min-height: 44px;
-    }
-  }
-  .interval-tip {
-    flex-shrink: 0;
-    color: #606266;
-    font-size: 14px;
-    white-space: nowrap;
-    @media (min-width: 769px) {
-      display: none;
-    }
-  }
-  @media (max-width: 768px) {
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    width: 100% !important;
-    .interval-unit-select {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 100% !important;
-      :deep(.el-input__wrapper) {
-        width: 100% !important;
-        min-height: 44px !important;
-      }
-    }
-    .interval-number {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 100% !important;
-      :deep(.el-input__wrapper) {
-        width: 100% !important;
-        min-height: 44px !important;
-      }
-    }
-    .interval-tip {
-      width: 100% !important;
-      margin-top: 8px;
-      padding: 8px 12px;
-      background: rgba(66, 165, 245, 0.1);
-      border-radius: 6px;
-      font-size: 14px;
-      color: #409eff;
-      text-align: center;
-      white-space: normal;
-    }
-  }
-}
-.schedule-switch-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  @media (max-width: 768px) {
-    flex-direction: column;
-    align-items: flex-start;
     gap: 10px;
   }
-  .schedule-tip {
-    color: #67c23a;
-    font-size: 0.9rem;
-    margin-left: 8px;
-    @media (max-width: 768px) {
-      margin-left: 0;
-      padding: 8px 12px;
-      background: rgba(103, 194, 58, 0.1);
-      border-radius: 6px;
-      width: 100%;
+  
+  .header-actions {
+    display: flex;
+    gap: 10px;
+    
+    &.compact {
+      gap: 6px;
     }
   }
 }
-.config-card,
-.logs-card {
-  @media (max-width: 768px) {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    box-sizing: border-box;
-    :deep(.el-card__body) {
-      padding: 12px !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box;
-      overflow-x: clip;
+
+// 1. 操作控制面板样式
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  .mobile-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f0f9eb;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #e1f3d8;
+    .label {
+      font-size: 14px;
+      color: #606266;
     }
-    :deep(.el-card__header) {
-      padding: 12px !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box;
+  }
+  
+  .action-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    
+    @media (max-width: $mobile-break) {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
     }
+
+    .grid-btn {
+      height: auto;
+      padding: 10px 8px;
+      width: 100%;
+      border-radius: 6px;
+      transition: all 0.2s;
+      
+      .btn-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        
+        span {
+          font-size: 12px;
+          font-weight: 500;
+        }
+      }
+      
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+      
+      @media (max-width: $mobile-break) {
+        padding: 8px 6px;
+        margin: 0;
+        
+        .btn-content span { font-size: 11px; }
+      }
+    }
+  }
+}
+
+// 2. 配置表单样式
+.config-form {
+  .form-section {
+    margin-bottom: 24px;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      
+      .info-icon {
+        color: #e6a23c;
+        cursor: help;
+      }
+    }
+  }
+
+  // 只保留外层输入框，内部输入无边框
+  .list-item-wrapper {
+    margin-bottom: 12px;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    
+    &:focus-within { border-color: $primary-color; }
+    
+    .input-with-action {
+      display: flex;
+      gap: 0;
+      align-items: stretch;
+      
+      .styled-input {
+        flex: 1;
+        min-width: 0;
+        
+        :deep(.el-input__wrapper),
+        :deep(.el-input__inner) {
+          box-shadow: none !important;
+          border: none !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+        }
+        :deep(.el-input__wrapper) {
+          padding: 8px 12px;
+          &.is-focus { box-shadow: none !important; }
+        }
+        
+        .index-badge {
+          color: #909399;
+          font-size: 12px;
+          margin-right: 4px;
+          font-weight: 600;
+        }
+      }
+      
+      .action-btn-side {
+        width: 44px;
+        flex-shrink: 0;
+        border-radius: 0;
+        border-left: 1px solid #dcdfe6;
+      }
+    }
+
+    @media (max-width: $mobile-break) {
+      background: #fff;
+    }
+  }
+  
+  .add-item-btn {
+    width: 100%;
+    border-style: dashed;
+    margin-top: 4px;
+    height: 40px;
+  }
+  
+  // 定时任务：自动更新 + 更新间隔（三块统一尺寸）
+  .schedule-section {
+    .schedule-row {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      background: #fff;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    
+    .schedule-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      min-height: 40px;
+      
+      .schedule-label {
+        font-size: 14px;
+        color: #606266;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+    }
+    
+    .switch-item {
+      flex: 0 0 auto;
+      border-right: 1px solid #dcdfe6;
+    }
+    
+    .schedule-divider {
+      width: 1px;
+      background: #dcdfe6;
+      flex-shrink: 0;
+    }
+    
+    .interval-item {
+      flex: 1;
+      min-width: 0;
+      padding-right: 0;
+      border-right: none;
+      
+      .schedule-label {
+        flex-shrink: 0;
+      }
+    }
+    
+    .interval-inputs {
+      flex: 1;
+      display: flex;
+      min-width: 0;
+      
+      .unit-select,
+      .value-input {
+        flex: 1;
+        min-width: 0;
+      }
+      
+      .unit-select {
+        :deep(.el-input),
+        :deep(.el-input__wrapper) {
+          height: 36px !important;
+          min-height: 36px !important;
+        }
+        :deep(.el-input__wrapper) {
+          border: none !important;
+          border-radius: 0 !important;
+          border-right: 1px solid #ebeef5;
+          box-shadow: none !important;
+          background: transparent !important;
+        }
+        :deep(.el-input__inner) {
+          border: none !important;
+          box-shadow: none !important;
+        }
+      }
+      
+      .value-input {
+        :deep(.el-input-number),
+        :deep(.el-input),
+        :deep(.el-input__wrapper) {
+          height: 36px !important;
+          min-height: 36px !important;
+        }
+        :deep(.el-input__wrapper) {
+          border: none !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          background: transparent !important;
+        }
+        :deep(.el-input__inner) {
+          height: 34px;
+          line-height: 34px;
+          border: none !important;
+          box-shadow: none !important;
+        }
+        /* 去掉增减按钮的弧形圆角，内镶弧框去除 */
+        :deep(.el-input-number__decrease),
+        :deep(.el-input-number__increase) {
+          border-radius: 0 !important;
+        }
+      }
+    }
+    
+    .desc-text {
+      font-size: 12px;
+      color: #909399;
+      margin-top: 8px;
+      padding-left: 2px;
+    }
+    
+    @media (max-width: $mobile-break) {
+      .schedule-row {
+        flex-direction: column;
+        border-radius: 6px;
+      }
+      
+      .schedule-item {
+        border-right: none;
+        border-bottom: 1px solid #dcdfe6;
+        min-height: 44px;
+        padding: 0 14px;
+        
+        &:last-child { border-bottom: none; }
+      }
+      
+      .switch-item {
+        justify-content: space-between;
+      }
+      
+      .schedule-divider { display: none; }
+      
+      .interval-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 12px 14px;
+        
+        .schedule-label { margin-bottom: 0; }
+      }
+      
+      .interval-inputs {
+        .unit-select,
+        .value-input {
+          :deep(.el-input__wrapper) {
+            height: 40px !important;
+            min-height: 40px !important;
+          }
+        }
+        .value-input {
+          :deep(.el-input__inner) {
+            height: 38px;
+            line-height: 38px;
+          }
+          :deep(.el-input-number__decrease),
+          :deep(.el-input-number__increase) {
+            border-radius: 0 !important;
+          }
+        }
+      }
+    }
+  }
+  
+  .mini-alert {
+    margin-bottom: 12px;
+    padding: 8px 16px;
+  }
+}
+
+// 3. 日志样式 (Terminal 风格)
+.log-viewer {
+  background: #1e1e1e;
+  border-radius: 6px;
+  padding: 12px;
+  height: 350px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  
+  .empty-logs {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #5c6370;
+    gap: 8px;
+    font-size: 14px;
+  }
+  
+  .log-line {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+    word-break: break-all;
+    
+    .log-ts {
+      color: #61afef;
+      flex-shrink: 0;
+      min-width: 70px;
+    }
+    
+    .log-lvl {
+      flex-shrink: 0;
+      font-weight: bold;
+      
+      &.info { color: #98c379; }
+      &.warn, &.warning { color: #e5c07b; }
+      &.err, &.error { color: #e06c75; }
+    }
+    
+    .log-msg {
+      color: #abb2bf;
+    }
+  }
+}
+
+.status-badge.pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+.desktop-only {
+  @media (max-width: $mobile-break) {
+    display: none !important;
+  }
+}
+.mobile-only {
+  @media (min-width: 769px) {
+    display: none !important;
   }
 }
 </style>

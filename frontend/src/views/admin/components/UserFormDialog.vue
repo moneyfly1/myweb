@@ -15,66 +15,78 @@
       :label-width="isMobile ? '0' : '100px'"
       :label-position="isMobile ? 'top' : 'right'"
     >
-      <el-form-item label="邮箱" prop="email">
+      <el-form-item :label="isMobile ? '' : '邮箱'" prop="email">
         <template v-if="isMobile">
           <div class="mobile-label">邮箱 <span class="required">*</span></div>
         </template>
-        <el-input v-model="userForm.email" placeholder="请输入邮箱" />
+        <div class="input-wrapper">
+          <el-input v-model="userForm.email" placeholder="请输入邮箱" class="styled-input" />
+        </div>
       </el-form-item>
-      <el-form-item label="用户名" prop="username">
+      <el-form-item :label="isMobile ? '' : '用户名'" prop="username">
         <template v-if="isMobile">
           <div class="mobile-label">用户名 <span class="required">*</span></div>
         </template>
-        <el-input v-model="userForm.username" placeholder="请输入用户名" />
+        <div class="input-wrapper">
+          <el-input v-model="userForm.username" placeholder="请输入用户名" class="styled-input" />
+        </div>
       </el-form-item>
-      <el-form-item label="密码" prop="password" v-if="!editingUser">
+      <el-form-item :label="isMobile ? '' : '密码'" prop="password" v-if="!editingUser">
         <template v-if="isMobile">
           <div class="mobile-label">密码 <span class="required">*</span></div>
         </template>
-        <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password />
+        <div class="input-wrapper">
+          <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password class="styled-input" />
+        </div>
       </el-form-item>
-      <el-form-item label="状态" prop="status">
+      <el-form-item :label="isMobile ? '' : '状态'" prop="status">
         <template v-if="isMobile">
           <div class="mobile-label">状态 <span class="required">*</span></div>
         </template>
-        <el-select v-model="userForm.status" placeholder="选择状态" style="width: 100%">
-          <el-option label="活跃" value="active" />
-          <el-option label="待激活" value="inactive" />
-          <el-option label="禁用" value="disabled" />
-        </el-select>
+        <div class="input-wrapper">
+          <el-select v-model="userForm.status" placeholder="选择状态" class="styled-select">
+            <el-option label="活跃" value="active" />
+            <el-option label="待激活" value="inactive" />
+            <el-option label="禁用" value="disabled" />
+          </el-select>
+        </div>
       </el-form-item>
-      <el-form-item label="最大设备数" prop="device_limit" v-if="!editingUser">
+      <el-form-item :label="isMobile ? '' : '最大设备数'" prop="device_limit" v-if="!editingUser">
         <template v-if="isMobile">
           <div class="mobile-label">最大设备数 <span class="required">*</span></div>
         </template>
-        <el-input 
-          v-model.number="userForm.device_limit" 
-          type="number"
-          :min="0" 
-          :max="100" 
-          placeholder="请输入最大设备数量"
-          style="width: 100%"
-        />
+        <div class="input-wrapper">
+          <el-input-number 
+            v-model="userForm.device_limit" 
+            :min="0" 
+            :max="100" 
+            placeholder="请输入最大设备数量"
+            controls-position="right"
+            class="styled-input-number"
+          />
+        </div>
         <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
       </el-form-item>
-      <el-form-item label="到期时间" prop="expire_time" v-if="!editingUser">
+      <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="!editingUser">
         <template v-if="isMobile">
           <div class="mobile-label">到期时间 <span class="required">*</span></div>
         </template>
-        <el-date-picker
-          v-model="userForm.expire_time"
-          type="datetime"
-          placeholder="选择到期时间"
-          format="YYYY-MM-DD HH:mm:ss"
-          value-format="YYYY-MM-DDTHH:mm:ss"
-          style="width: 100%"
-          :teleported="isMobile"
-          :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
-          :default-time="defaultTime"
-        />
+        <div class="input-wrapper">
+          <el-date-picker
+            v-model="userForm.expire_time"
+            type="datetime"
+            placeholder="选择到期时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            class="styled-date-picker"
+            :teleported="isMobile"
+            :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
+            :default-time="defaultTime"
+          />
+        </div>
         <div class="form-item-hint">订阅的到期时间，到期后用户将无法使用服务</div>
       </el-form-item>
-      <el-form-item label="管理员权限" v-if="editingUser">
+      <el-form-item :label="isMobile ? '' : '管理员权限'" v-if="editingUser">
         <template v-if="isMobile">
           <div class="mobile-label">管理员权限</div>
         </template>
@@ -84,16 +96,19 @@
           inactive-text="普通用户"
         />
       </el-form-item>
-      <el-form-item label="备注" prop="note">
+      <el-form-item :label="isMobile ? '' : '备注'" prop="note">
         <template v-if="isMobile">
           <div class="mobile-label">备注</div>
         </template>
-        <el-input 
-          v-model="userForm.note" 
-          type="textarea" 
-          :rows="3"
-          placeholder="请输入备注信息"
-        />
+        <div class="input-wrapper textarea-wrapper">
+          <el-input 
+            v-model="userForm.note" 
+            type="textarea" 
+            :rows="isMobile ? 2 : 3"
+            placeholder="请输入备注信息"
+            class="styled-textarea"
+          />
+        </div>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -277,213 +292,107 @@ export default {
 </script>
 <style scoped lang="scss">
 .user-form-dialog {
-  * {
-    box-sizing: border-box;
-  }
+  * { box-sizing: border-box; }
   :deep(.el-dialog__body) {
     padding: 16px;
     max-height: calc(100vh - 200px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
-  :deep(.el-form-item) {
-    margin-bottom: 20px;
-  }
-  :deep(.el-input__wrapper) {
-    border: 1px solid #dcdfe6 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    background-color: #ffffff !important;
-    padding: 0 !important;
-    gap: 0 !important;
+  :deep(.el-form-item) { margin-bottom: 20px; }
+
+  /* 参考 ConfigUpdate：只保留外层输入框，内部输入无边框。保持原有宽度与统一高度 */
+  .input-wrapper {
+    width: 100%;
     min-height: 32px;
-    &::before,
-    &::after {
-      display: none !important;
-      border: none !important;
-      background: none !important;
-    }
-    * {
-      border: none !important;
-      border-width: 0 !important;
-      border-style: none !important;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    &:focus-within { border-color: #409eff; }
+  }
+  .textarea-wrapper {
+    min-height: auto;
+  }
+
+  .styled-input,
+  .styled-select,
+  .styled-input-number,
+  .styled-date-picker,
+  .styled-textarea {
+    width: 100% !important;
+  }
+
+  /* 单行输入：统一高度 32px */
+  .styled-input,
+  .styled-select,
+  .styled-input-number,
+  .styled-date-picker {
+    :deep(.el-input__wrapper),
+    :deep(.el-input__inner) {
       box-shadow: none !important;
+      border: none !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+    }
+    :deep(.el-input__wrapper) {
+      padding: 0 11px;
+      min-height: 32px;
+      &.is-focus { box-shadow: none !important; }
+    }
+    :deep(.el-input-number),
+    :deep(.el-input) {
+      width: 100%;
     }
   }
-  :deep(.el-select .el-input__wrapper),
-  :deep(.el-date-editor .el-input__wrapper) {
-    border: 1px solid #dcdfe6 !important;
-    border-radius: 0 !important;
+
+  /* 到期时间日期选择器：强制去除内层框，仅保留外层 input-wrapper */
+  .input-wrapper :deep(.el-date-editor.styled-date-picker),
+  .input-wrapper :deep(.el-date-editor) {
+    width: 100% !important;
+  }
+  .input-wrapper :deep(.el-date-editor .el-input__wrapper),
+  .input-wrapper :deep(.el-date-editor .el-input__inner) {
     box-shadow: none !important;
-    background-color: #ffffff !important;
-    padding: 0 !important;
-    gap: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .input-wrapper :deep(.el-date-editor .el-input__wrapper) {
+    padding: 0 11px;
     min-height: 32px;
-    &::before,
-    &::after {
-      display: none !important;
-      border: none !important;
-      background: none !important;
+  }
+  .input-wrapper :deep(.el-date-editor .el-input__wrapper.is-focus),
+  .input-wrapper :deep(.el-date-editor .el-input__wrapper:hover) {
+    box-shadow: none !important;
+  }
+
+  .styled-input-number {
+    :deep(.el-input-number__decrease),
+    :deep(.el-input-number__increase) {
+      border-radius: 0 !important;
     }
   }
-  :deep(.el-form .el-input .el-input__inner),
-  :deep(.el-form .el-select .el-input__inner),
-  :deep(.el-form-item .el-input .el-input__inner),
-  :deep(.el-form-item .el-select .el-input__inner),
-  :deep(.el-input__inner),
-  :deep(.el-input .el-input__inner),
-  :deep(.el-select .el-input__inner),
-  :deep(.el-date-editor .el-input__inner),
-  :deep(.el-input__wrapper .el-input__inner),
-  :deep(.el-input__wrapper > .el-input__inner),
-  :deep(.user-form-dialog .el-input__inner),
-  :deep(.user-form-dialog .el-input .el-input__inner),
-  :deep(.user-form-dialog .el-select .el-input__inner),
-  :deep(.user-form-dialog .el-date-editor .el-input__inner),
-  :deep(.user-form-dialog .el-form .el-input .el-input__inner),
-  :deep(.user-form-dialog .el-form .el-select .el-input__inner),
-  :deep(.user-form-dialog .el-form-item .el-input .el-input__inner),
-  :deep(.user-form-dialog .el-form-item .el-select .el-input__inner),
-  :deep(.user-form-dialog .el-form .el-input .el-input__wrapper .el-input__inner),
-  :deep(.user-form-dialog .el-form .el-select .el-input__wrapper .el-input__inner) {
-    border: none !important;
-    border-width: 0 !important;
-    border-style: none !important;
-    border-top: none !important;
-    border-right: none !important;
-    border-bottom: none !important;
-    border-left: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    background-image: none !important;
-    padding: 0 11px !important;
-    height: 100% !important;
-    line-height: 32px !important;
-    border-radius: 0 !important;
-    -webkit-appearance: none !important;
-    -moz-appearance: none !important;
-    appearance: none !important;
-    &::before,
-    &::after {
-      display: none !important;
+
+  .styled-textarea {
+    :deep(.el-textarea__inner) {
+      box-shadow: none !important;
       border: none !important;
-      background: none !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      padding: 8px 11px;
     }
-  }
-  :deep(.el-input__wrapper input),
-  :deep(.el-input__wrapper textarea),
-  :deep(.el-input input),
-  :deep(.el-input textarea),
-  :deep(.el-select input),
-  :deep(.el-date-editor input),
-  :deep(.el-input__inner input),
-  :deep(.el-input__inner textarea),
-  :deep(.user-form-dialog input),
-  :deep(.user-form-dialog textarea),
-  :deep(.user-form-dialog .el-input input),
-  :deep(.user-form-dialog .el-select input),
-  :deep(.user-form-dialog .el-date-editor input) {
-    border: none !important;
-    border-width: 0 !important;
-    border-style: none !important;
-    border-top: none !important;
-    border-right: none !important;
-    border-bottom: none !important;
-    border-left: none !important;
-    outline: none !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    background-image: none !important;
-    box-shadow: none !important;
-    padding: 0 11px !important;
-    -webkit-appearance: none !important;
-    -moz-appearance: none !important;
-    appearance: none !important;
-    &::before,
-    &::after {
-      display: none !important;
-      border: none !important;
-      background: none !important;
-    }
-  }
-  :deep(.el-input__inner::-webkit-inner-spin-button),
-  :deep(.el-input__inner::-webkit-outer-spin-button) {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  :deep(.el-input__inner[type="number"]) {
-    -moz-appearance: textfield;
-    appearance: textfield;
-  }
-  :deep(.el-input__prefix),
-  :deep(.el-input__suffix) {
-    background-color: transparent !important;
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-  :deep(.el-input__prefix *),
-  :deep(.el-input__suffix *) {
-    border: none !important;
-    background: transparent !important;
-  }
-  :deep(.el-textarea__inner) {
-    border-radius: 0 !important;
-    border: 1px solid #dcdfe6 !important;
-    box-shadow: none !important;
-    outline: none !important;
-  }
-  :deep(.el-input__wrapper:hover),
-  :deep(.el-textarea__inner:hover) {
-    border-color: #c0c4cc !important;
-    box-shadow: none !important;
-  }
-  :deep(.el-input__wrapper.is-focus),
-  :deep(.el-textarea__inner:focus) {
-    border-color: #1677ff !important;
-    box-shadow: none !important;
-  }
-  :deep(.el-input__wrapper > *),
-  :deep(.el-input__wrapper > *::before),
-  :deep(.el-input__wrapper > *::after) {
-    border: none !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    background-image: none !important;
-    box-shadow: none !important;
-  }
-  :deep(.el-input__wrapper .el-input__inner),
-  :deep(.el-input__wrapper input),
-  :deep(.el-input__wrapper textarea),
-  :deep(.el-input__wrapper.is-focus .el-input__inner),
-  :deep(.el-input__wrapper.is-focus input),
-  :deep(.el-input__wrapper:hover .el-input__inner),
-  :deep(.el-input__wrapper:hover input),
-  :deep(.el-input__wrapper.is-focus .el-input__inner::before),
-  :deep(.el-input__wrapper.is-focus .el-input__inner::after),
-  :deep(.el-input__wrapper:hover .el-input__inner::before),
-  :deep(.el-input__wrapper:hover .el-input__inner::after) {
-    border: none !important;
-    border-width: 0 !important;
-    border-style: none !important;
-    border-top: none !important;
-    border-right: none !important;
-    border-bottom: none !important;
-    border-left: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    background-image: none !important;
-    outline: none !important;
-    -webkit-appearance: none !important;
-    -moz-appearance: none !important;
-    appearance: none !important;
   }
   &.mobile-dialog {
+    :deep(.el-form-item__label) {
+      display: none !important;
+    }
+    :deep(.el-form-item__content) {
+      display: flex;
+      flex-direction: column;
+      margin-left: 0 !important;
+      align-items: stretch;
+    }
     :deep(.el-dialog) {
       width: 95% !important;
       margin: 2vh auto !important;
@@ -493,16 +402,16 @@ export default {
       flex-direction: column;
     }
     :deep(.el-dialog__header) {
-      padding: 15px 15px 10px;
+      padding: 12px 12px 10px;
       flex-shrink: 0;
       border-bottom: 1px solid #ebeef5;
       .el-dialog__title {
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 600;
       }
       .el-dialog__headerbtn {
-        top: 8px;
-        right: 8px;
+        top: 6px;
+        right: 6px;
         width: 32px;
         height: 32px;
         .el-dialog__close {
@@ -511,92 +420,68 @@ export default {
       }
     }
     :deep(.el-dialog__body) {
-      padding: 15px !important;
+      padding: 12px 12px 16px !important;
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
-      max-height: calc(96vh - 140px);
+      max-height: calc(96vh - 120px);
+      overscroll-behavior: contain;
     }
     :deep(.el-dialog__footer) {
-      padding: 10px 15px 15px;
+      padding: 10px 12px 12px;
       flex-shrink: 0;
       border-top: 1px solid #ebeef5;
     }
   }
   @media (max-width: 768px) {
     :deep(.el-dialog__body) {
-      padding: 15px !important;
-      max-height: calc(96vh - 140px);
+      padding: 12px !important;
+      max-height: calc(96vh - 120px);
     }
     :deep(.el-form-item) {
-      margin-bottom: 18px;
+      margin-bottom: 12px;
+    }
+    :deep(.el-form-item:last-child) {
+      margin-bottom: 4px;
     }
     :deep(.el-form-item__label) {
-      display: none;
+      display: none !important;
     }
     :deep(.el-form-item__content) {
       margin-left: 0 !important;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
     }
     .mobile-label {
       font-size: 14px;
-      font-weight: 600;
-      color: #606266;
-      margin-bottom: 8px;
+      font-weight: 500;
+      color: #303133;
+      margin-bottom: 6px;
       display: block;
+      line-height: 1.4;
       .required {
         color: #f56c6c;
         margin-left: 2px;
       }
     }
-    :deep(.el-input),
-    :deep(.el-select),
-    :deep(.el-date-editor),
-    :deep(.el-input-number) {
-      width: 100%;
-    }
-    :deep(.el-input__wrapper),
-    :deep(.el-textarea__inner) {
+    .input-wrapper {
       min-height: 40px;
-      font-size: 16px;
-      border: 1px solid #dcdfe6 !important;
-      box-shadow: none !important;
-      background-color: #ffffff !important;
-      &::before,
-      &::after {
-        display: none !important;
-        border: none !important;
-        background: none !important;
-      }
     }
-    :deep(.el-input__inner),
-    :deep(.el-input .el-input__inner),
-    :deep(.el-select .el-input__inner),
-    :deep(.el-date-editor .el-input__inner),
-    :deep(.el-input__wrapper .el-input__inner),
-    :deep(.el-input__wrapper input),
-    :deep(.el-input__wrapper textarea) {
+    .styled-input :deep(.el-input__wrapper),
+    .styled-select :deep(.el-input__wrapper),
+    .styled-input-number :deep(.el-input__wrapper),
+    .styled-date-picker :deep(.el-input__wrapper),
+    .input-wrapper :deep(.el-date-editor .el-input__wrapper) {
+      min-height: 40px;
+      padding: 0 11px;
       font-size: 16px;
-      border: none !important;
-      border-width: 0 !important;
-      border-style: none !important;
-      border-top: none !important;
-      border-right: none !important;
-      border-bottom: none !important;
-      border-left: none !important;
-      background: transparent !important;
-      background-color: transparent !important;
-      background-image: none !important;
-      box-shadow: none !important;
-      outline: none !important;
-      -webkit-appearance: none !important;
-      -moz-appearance: none !important;
-      appearance: none !important;
-      &::before,
-      &::after {
-        display: none !important;
-        border: none !important;
-        background: none !important;
-      }
+    }
+    .styled-textarea :deep(.el-textarea__inner) {
+      min-height: 64px;
+      padding: 8px 11px;
+      font-size: 16px;
     }
   }
 }
@@ -607,7 +492,8 @@ export default {
   line-height: 1.4;
   @media (max-width: 768px) {
     font-size: 11px;
-    margin-top: 3px;
+    margin-top: 2px;
+    line-height: 1.35;
   }
 }
 :deep(.mobile-date-picker-popper) {
