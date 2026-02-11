@@ -1450,7 +1450,143 @@ run_full_install() {
     echo ""
 }
 
-# --- 交互式主菜单（参考 install.sh）---
+# --- 菜单用项目目录（未安装时默认 /opt/cboard）---
+get_menu_project_dir() {
+    if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
+        echo "$PROJECT_DIR"
+    elif [ -d "/opt/cboard" ]; then
+        echo "/opt/cboard"
+    else
+        echo "/opt/cboard"
+    fi
+}
+
+# --- 创建/重置管理员账号（菜单项）---
+menu_manage_admin() {
+    local pd
+    pd="$(get_menu_project_dir)"
+    if [ ! -d "$pd" ]; then
+        error "项目目录不存在: $pd，请先执行一键安装"
+        return 1
+    fi
+    if ! command -v go &>/dev/null; then
+        error "未找到 Go 命令，请先执行一键安装"
+        return 1
+    fi
+    if [ ! -f "$pd/scripts/admin_tool.go" ]; then
+        error "未找到 scripts/admin_tool.go，请确认项目已完整部署"
+        return 1
+    fi
+    log "创建/重置管理员账户（项目目录: $pd）..."
+    read -r -p "管理员用户名 (留空默认 admin): " admin_username
+    admin_username="${admin_username:-admin}"
+    read -r -p "管理员邮箱 (留空默认 admin@example.com): " admin_email
+    admin_email="${admin_email:-admin@example.com}"
+    if [[ ! "$admin_email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        error "邮箱格式不正确"
+        return 1
+    fi
+    read -r -sp "管理员密码 (至少6位): " admin_pass
+    echo ""
+    if [ -z "$admin_pass" ] || [ ${#admin_pass} -lt 6 ]; then
+        error "密码至少6位"
+        return 1
+    fi
+    export PATH="${PATH}:/usr/local/go/bin"
+    export ADMIN_USERNAME="$admin_username"
+    export ADMIN_EMAIL="$admin_email"
+    export ADMIN_PASSWORD="$admin_pass"
+    cd "$pd" || return 1
+    if go run scripts/admin_tool.go 2>&1; then
+        log "✅ 管理员账户已创建/重置（用户名: $admin_username）"
+    else
+        error "创建失败，请检查上方错误信息"
+        return 1
+    fi
+}
+
+# --- 强制重启服务（杀进程后重启，菜单项）---
+menu_force_kill_restart() {
+    if ! systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
+        warn "未找到 cboard 服务，请先执行一键安装"
+        return 1
+    fi
+    log "强制停止相关进程..."
+    pkill -9 -f "$(get_menu_project_dir)/server" 2>/dev/null || true
+    systemctl stop cboard 2>/dev/null || true
+    sleep 2
+    if pgrep -f "cboard|server" >/dev/null 2>&1; then
+        pkill -9 -f "server" 2>/dev/null || true
+        sleep 1
+    fi
+    log "✅ 进程已清理，正在启动服务..."
+    if systemctl start cboard; then
+        sleep 2
+        if systemctl is-active --quiet cboard; then
+            log "✅ CBoard 服务已成功重启"
+        else
+            error "服务未运行，请查看: journalctl -u cboard -n 50"
+        fi
+    else
+        error "启动失败"
+    fi
+}
+
+# --- 深度清理系统缓存（菜单项）---
+menu_deep_clean() {
+    local pd
+    pd="$(get_menu_project_dir)"
+    if [ ! -d "$pd" ]; then
+        warn "项目目录不存在: $pd，跳过"
+        return 0
+    fi
+    log "深度清理系统缓存（项目目录: $pd）..."
+    [ -d "$pd/frontend/dist" ] && rm -rf "$pd/frontend/dist" && log "已清理 frontend/dist"
+    [ -d "$pd/logs" ] && rm -rf "$pd/logs"/* 2>/dev/null && log "已清理 logs"
+    local tmp_count; tmp_count=$(find "$pd" -name "*.tmp" 2>/dev/null | wc -l)
+    [ "$tmp_count" -gt 0 ] && find "$pd" -name "*.tmp" -delete 2>/dev/null && log "已清理 $tmp_count 个临时文件"
+    [ -f "$pd/server" ] && rm -f "$pd/server" && log "已删除 server 可执行文件"
+    log "✅ 缓存清理完毕"
+}
+
+# --- 解锁用户/管理员账户（菜单项）---
+menu_unlock_user() {
+    local pd
+    pd="$(get_menu_project_dir)"
+    if [ ! -d "$pd" ] || [ ! -f "$pd/scripts/unlock_user.go" ]; then
+        error "项目或 scripts/unlock_user.go 不存在，请先执行一键安装"
+        return 1
+    fi
+    if ! command -v go &>/dev/null; then
+        error "未找到 Go 命令"
+        return 1
+    fi
+    read -r -p "请输入要解锁的用户名或邮箱: " identifier
+    if [ -z "$identifier" ]; then
+        error "用户名或邮箱不能为空"
+        return 1
+    fi
+    export PATH="${PATH}:/usr/local/go/bin"
+    cd "$pd" || return 1
+    if go run scripts/unlock_user.go "$identifier" 2>&1; then
+        log "✅ 账户 $identifier 已解锁"
+    else
+        error "解锁失败，请检查用户名/邮箱及上方错误信息"
+        return 1
+    fi
+}
+
+# --- 查看实时服务日志（菜单项）---
+menu_show_logs() {
+    if ! systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
+        error "服务 cboard 不存在，请先部署"
+        return 1
+    fi
+    log "实时日志 (Ctrl+C 退出):"
+    journalctl -u cboard -n 50 -f
+}
+
+# --- 交互式主菜单（参考 install.sh，功能对齐）---
 show_menu() {
     clear
     echo -e "${BLUE}=========================================="
@@ -1458,12 +1594,18 @@ show_menu() {
     echo -e "==========================================${NC}"
     echo -e "  ${GREEN}1.${NC} 一键安装 CBoard（VPS 全自动部署）"
     echo -e "  ${GREEN}2.${NC} 卸载阿里云盾（安骑士）"
-    echo -e "  ${CYAN}3.${NC} 重启 Nginx"
-    echo -e "  ${CYAN}4.${NC} 重启 CBoard 服务"
-    echo -e "  ${CYAN}5.${NC} 查看 CBoard 服务状态"
+    echo -e "  ${GREEN}3.${NC} 创建/重置管理员账号"
+    echo -e "  ${GREEN}4.${NC} 强制重启服务（杀进程后重启）"
+    echo -e "  ${GREEN}5.${NC} 深度清理系统缓存"
+    echo -e "  ${GREEN}6.${NC} 解锁用户/管理员账户"
+    echo -e "  ${CYAN}7.${NC} 重启 Nginx"
+    echo -e "  ${CYAN}8.${NC} 重启 CBoard 服务"
+    echo -e "  ${CYAN}9.${NC} 查看 CBoard 服务状态"
+    echo -e "  ${CYAN}10.${NC} 查看实时服务日志"
+    echo -e "  ${CYAN}11.${NC} 停止 CBoard 服务"
     echo -e "  ${RED}0.${NC} 退出"
     echo -e "${BLUE}==========================================${NC}"
-    read -r -p "请选择操作 [0-5]: " choice
+    read -r -p "请选择操作 [0-11]: " choice
 }
 
 main() {
@@ -1479,14 +1621,18 @@ main() {
                     log "未检测到阿里云盾，无需卸载。"
                 fi
                 ;;
-            3)
+            3) menu_manage_admin ;;
+            4) menu_force_kill_restart ;;
+            5) menu_deep_clean ;;
+            6) menu_unlock_user ;;
+            7)
                 if systemctl restart nginx 2>/dev/null; then
                     log "✅ Nginx 已重启"
                 else
                     (command -v nginx &>/dev/null && nginx -s reload) || warn "Nginx 重启失败或未安装"
                 fi
                 ;;
-            4)
+            8)
                 if systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
                     if systemctl restart cboard; then
                         log "✅ CBoard 服务已重启"
@@ -1497,11 +1643,23 @@ main() {
                     warn "未找到 cboard 服务，请先执行一键安装"
                 fi
                 ;;
-            5)
+            9)
                 if systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
                     systemctl status cboard --no-pager -l
                 else
                     warn "未找到 cboard 服务，请先执行一键安装"
+                fi
+                ;;
+            10) menu_show_logs ;;
+            11)
+                if systemctl list-unit-files 2>/dev/null | grep -q "cboard.service"; then
+                    if systemctl stop cboard; then
+                        log "✅ CBoard 服务已停止"
+                    else
+                        error "停止失败"
+                    fi
+                else
+                    warn "未找到 cboard 服务"
                 fi
                 ;;
             0) log "已退出"; exit 0 ;;
