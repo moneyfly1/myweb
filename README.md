@@ -666,7 +666,7 @@ A: Try logging into admin backend, or check `users` table in database for record
 #### Payment Integration
 - [x] Alipay integration
 - [x] WeChat Pay integration
-- [x] PayPal integration
+- [x] Yipay integration (supports Alipay, WeChat Pay, QQ Pay)
 - [x] Apple Pay integration
 - [x] Balance payment
 - [x] Mixed payment (balance + third-party)
@@ -699,20 +699,24 @@ A: Try logging into admin backend, or check `users` table in database for record
 - [x] Reward distribution automation
 
 #### Node Management
+- [x] Node collection (auto-collect from subscription URLs)
+- [x] Manual node import (link import, manual entry, Clash config import)
 - [x] Node CRUD operations
-- [x] Node health monitoring
-- [x] Node status tracking
-- [x] Custom node support
-- [x] Node grouping
+- [x] Node health monitoring and auto-check
+- [x] Node status tracking (online/offline/timeout)
+- [x] Node speed test (single/batch)
+- [x] Node deduplication (based on Type:Server:Port)
+- [x] Node grouping (by region)
 - [x] Node subscription integration
 
 #### Custom Node System
-- [x] Server management (SSH connection)
-- [x] Automatic node deployment (via XrayR API)
-- [x] Cloudflare DNS and certificate automation
-- [x] Traffic control
-- [x] Expiration time management
-- [x] User-specific node allocation
+- [x] Custom node creation (link import, manual entry)
+- [x] Custom node edit and delete
+- [x] Custom node assignment (single/batch assign to users)
+- [x] Custom node unassignment
+- [x] Custom node speed test (single/batch)
+- [x] Expiration time management (independent expiry or follow user subscription)
+- [x] User-specific node allocation (custom-only or both regular + custom nodes)
 
 #### Device Management
 - [x] Device recognition and fingerprinting
@@ -723,11 +727,11 @@ A: Try logging into admin backend, or check `users` table in database for record
 - [x] Batch device operations
 
 #### Notification System
-- [x] Email notifications
-- [x] In-app notifications
-- [x] Notification templates
-- [x] Notification preferences
-- [x] Notification history
+- [x] Email notifications (SMTP configuration)
+- [x] Telegram Bot notifications (admin notifications)
+- [x] Bark iOS push notifications (admin notifications)
+- [x] Customer email notifications (subscription expiry reminders, new user registration, new orders, etc.)
+- [x] Admin notifications (order payment, user registration, subscription reset, subscription expiry, etc.)
 
 #### Ticket System
 - [x] Ticket creation
@@ -748,13 +752,15 @@ A: Try logging into admin backend, or check `users` table in database for record
 - [x] Real-time monitoring
 
 #### System Configuration
-- [x] System settings management
-- [x] Payment configuration
-- [x] Email configuration
-- [x] SMS configuration
-- [x] Security settings
-- [x] Feature toggles
-- [x] Announcement management
+- [x] System settings management (site info, logo, domain, GeoIP database)
+- [x] Payment configuration (Alipay, WeChat Pay, Yipay, Apple Pay)
+- [x] Email configuration (SMTP server settings)
+- [x] Security settings (login fail limit, account lock, IP whitelist, session timeout)
+- [x] Registration settings (open registration, email verification, password requirements, invite codes, default subscription)
+- [x] Theme settings (default theme, user customization permission, available themes list)
+- [x] Announcement management (login announcement popup)
+- [x] Node health check settings (check interval, latency threshold, test timeout, test URL)
+- [x] Backup settings (Gitee/GitHub auto backup)
 
 #### Backup & Restore
 - [x] Database backup
