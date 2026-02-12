@@ -38,7 +38,7 @@
 - 📦 **功能完整**: 包含所有核心业务功能
 - 🎨 **现代化前端**: Vue 3 + Element Plus，响应式设计
 - 🐳 **易于部署**: 支持无宝塔 VPS 一键脚本（install-vps.sh）与宝塔面板脚本（install.sh）
-- 💳 **多支付方式**: 支持支付宝、微信支付、PayPal、Apple Pay、易支付
+- 💳 **多支付方式**: 支持支付宝、微信支付、易支付、Apple Pay
 - 👥 **用户管理**: 完整的用户系统，包含等级、邀请、奖励
 - 📊 **数据分析**: 全面的统计和监控功能
 - 🎫 **工单系统**: 内置客户支持系统
@@ -83,448 +83,181 @@
 
 ## 🚀 安装指南
 
-### 安装方式选择
+### 两种安装方式一览
 
-本系统提供两套安装方式，请根据您的服务器环境选择：
+| 项目 | 方式一：无宝塔（纯 VPS） | 方式二：有宝塔面板 |
+|------|--------------------------|---------------------|
+| **适用场景** | 新 VPS、未安装宝塔的服务器 | 已安装宝塔面板的服务器 |
+| **安装脚本** | `install-vps.sh` | `install.sh` |
+| **项目目录** | 默认 `/opt/cboard`（可自定义） | 宝塔网站根目录，如 `/www/wwwroot/你的域名` |
+| **环境准备** | 脚本自动安装 Nginx、Go、Node.js、Certbot | 需先在宝塔「添加站点」，代码放入该站点目录 |
+| **一键程度** | 一条命令下载脚本并运行，按提示输入即可 | 先创建站点 → 放入代码 → 运行脚本 → 选菜单 1 |
 
-| 环境 | 使用脚本 | 项目目录（常见） | 说明 |
-|------|----------|------------------|------|
-| **无宝塔面板**（纯 VPS） | `install-vps.sh` | `/opt/cboard` | 全自动安装 Go、Node.js、Nginx、Certbot，从 GitHub 拉代码并部署。**适合新 VPS 或未安装宝塔的服务器。** |
-| **有宝塔面板** | `install.sh` | `/www/wwwroot/你的域名` | 在宝塔已创建的网站目录下部署，依赖宝塔的 Nginx 与站点。需先在宝塔中「添加站点」，再在该目录放入代码并运行脚本。 |
+**如何选择：**
 
-- **无宝塔**：详见下方 [无宝塔面板安装（纯 VPS）](#无宝塔面板安装纯-vps)，或直接查看 **[VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md)**。
-- **有宝塔**：详见下方 [宝塔面板安装](#宝塔面板安装)。
+- **没有宝塔**：用 **方式一**。SSH 登录 VPS 后执行一条命令即可开始安装，脚本会自动装好所有依赖并部署。
+- **已有宝塔**：用 **方式二**。在宝塔里先为域名添加一个站点，把代码放到该站点目录，再在目录里运行 `install.sh`，选择「一键全自动部署」。
+
+下文分别说明两种方式的**前置条件**、**安装步骤**和**安装后管理**，结构一致，便于对照。
 
 ---
 
-## 一、无宝塔面板安装（纯 VPS）
+### 方式一：无宝塔（纯 VPS）— 使用 install-vps.sh
 
-适用于**未安装宝塔面板**的 VPS（Ubuntu / Debian / CentOS）。脚本会自动安装 Nginx、Go、Node.js、Certbot 并完成部署。
+**适用**：Ubuntu / Debian / CentOS，未安装宝塔。脚本会自动安装 Nginx、Go、Node.js、Certbot 并完成部署。
 
-### 快速开始（无宝塔）
+#### 前置条件
 
-```bash
-# 下载并运行安装脚本（需 root）
-curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
-sudo bash install-vps.sh
-```
+| 项 | 要求 |
+|----|------|
+| 系统 | Ubuntu 18.04+ / Debian 10+ / CentOS 7+ |
+| 配置 | 至少 1 核 CPU、512 MB 内存、10 GB 磁盘 |
+| 域名 | 已绑定且 DNS 已解析到本机 IP |
+| 端口 | 80、443 已开放 |
 
-按提示输入**域名**、**项目目录**（默认 `/opt/cboard`）、**管理员账号**即可。若 GitHub 克隆失败（如国内网络），请先手动将代码放到安装目录再重新运行脚本，在「是否删除并重新下载」时选 **n**。详见：[VPS 部署教程 - 克隆失败时如何继续](./docs/VPS部署教程-无宝塔.md#克隆失败时如何继续代码下载失败)。
+#### 安装步骤
 
-### 前置条件（无宝塔）
-
-- ✅ 服务器系统：Ubuntu 18.04+ / Debian 10+ / CentOS 7+
-- ✅ 服务器配置：至少 1 核心 CPU + 512 MB 内存 + 10 GB 磁盘
-- ✅ 已绑定域名（用于 SSL 证书）
-- ✅ 已配置域名 DNS 解析到服务器 IP
-- ✅ 服务器已开放 80 和 443 端口
-
-### 一键安装步骤
-
-#### 步骤 1：下载并运行安装脚本
-
-通过 SSH 连接到 VPS 后执行（或使用上方「快速开始」中的命令）：
+**1. 下载并运行脚本（需 root）**
 
 ```bash
 curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
 sudo bash install-vps.sh
 ```
 
-**说明**：脚本会从 GitHub 下载代码并安装 Go、Node.js、Nginx、Certbot 等；若克隆失败，请按 [克隆失败时如何继续](./docs/VPS部署教程-无宝塔.md#克隆失败时如何继续代码下载失败) 操作后再重新运行脚本。
+**2. 按提示输入**
 
-#### 步骤 2：按提示输入信息
+- **域名**：如 `example.com`（需已解析）
+- **项目目录**：直接回车即用默认 `/opt/cboard`，或填自定义路径
+- **管理员用户名 / 邮箱 / 密码**：按需填写（邮箱必填）
 
-安装脚本会依次提示您输入以下信息：
+**3. 自动执行内容**
 
-1. **域名**：输入您的域名（例如：`example.com`）
-   - 必须输入，格式需正确
-   - 确保域名已正确解析到服务器 IP
+脚本会：安装依赖 → 从 GitHub 拉取代码（若失败见下）→ 安装 Go、Node.js → 编译后端、构建前端 → 生成 `.env` → 配置 Nginx、申请 SSL → 创建 systemd 服务并启动。
 
-2. **项目安装目录**：输入项目安装路径（默认：`/opt/cboard`）
-   - 可直接按回车使用默认路径
-   - 或输入自定义路径
+**4. 验证**
 
-3. **管理员用户名**：输入管理员用户名（默认：`admin`）
-   - 可直接按回车使用默认值
-   - 或输入自定义用户名
+- 前端：`https://你的域名`
+- 管理后台：`https://你的域名/admin/login`
+- 健康检查：`https://你的域名/health`
 
-4. **管理员邮箱**：输入管理员邮箱（必填）
-   - 必须输入有效的邮箱地址
-   - 用于接收系统通知和 SSL 证书申请
+**国内网络 GitHub 克隆失败时**：先手动把代码放到安装目录（如 `/opt/cboard`），再重新运行脚本，在「是否删除并重新下载」时选 **n**。详见：[VPS 部署教程 - 克隆失败时如何继续](./docs/VPS部署教程-无宝塔.md#克隆失败时如何继续代码下载失败)。
 
-5. **管理员密码**：输入管理员密码（必填）
-   - 密码长度至少 6 位
-   - 需要输入两次确认
+#### 安装后管理（无宝塔）
 
-#### 步骤 3：自动安装过程
+- **项目目录**：默认 `/opt/cboard`（若安装时改过，请替换为实际路径）
+- **服务**：`systemctl start/stop/restart/status cboard`
+- **日志**：`journalctl -u cboard -f` 或 `tail -f /opt/cboard/server.log`
+- **配置**：编辑 `/opt/cboard/.env` 后执行 `systemctl restart cboard`
 
-确认信息后，脚本会自动完成以下操作：
-
-- ✅ 检测操作系统类型
-- ✅ 安装系统依赖（curl, wget, git, nginx, certbot 等）
-- ✅ 自动安装 Go 语言环境（1.21.5）
-- ✅ 自动安装 Node.js 环境（18.x）
-- ✅ 从 GitHub 下载项目代码
-- ✅ 创建环境配置文件（`.env`）
-- ✅ 编译后端程序
-- ✅ 构建前端项目
-- ✅ 创建管理员账户
-- ✅ 配置 Nginx 反向代理
-- ✅ 申请 SSL 证书（Let's Encrypt）
-- ✅ 创建 systemd 服务
-- ✅ 启动服务
-
-#### 步骤 4：验证安装
-
-安装完成后，访问您的域名：
-
-- **前端界面**: `https://yourdomain.com`
-- **管理员登录**: `https://yourdomain.com/admin/login`
-- **健康检查**: `https://yourdomain.com/health`
-- **API 接口**: `https://yourdomain.com/api/v1/...`
-
-### 安装后管理（无宝塔）
-
-以下路径以默认安装目录 `/opt/cboard` 为例；若安装时修改过目录，请替换为实际路径。
-
-#### 常用命令
-
-```bash
-# 查看服务状态
-systemctl status cboard
-
-# 查看服务日志
-journalctl -u cboard -f
-
-# 重启服务
-systemctl restart cboard
-
-# 停止服务
-systemctl stop cboard
-
-# 启动服务
-systemctl start cboard
-```
-
-#### 查看应用日志
-
-```bash
-# 查看应用日志文件
-tail -f /opt/cboard/server.log
-
-# 或查看 systemd 日志
-journalctl -u cboard -n 100
-```
-
-#### 修改配置
-
-配置文件位置：`/opt/cboard/.env`
-
-修改后需要重启服务：
-
-```bash
-systemctl restart cboard
-```
-
-### 故障排除
-
-#### 1. SSL 证书申请失败
-
-**可能原因**：
-- 域名未正确解析到服务器 IP
-- 80 端口未开放
-- 防火墙阻止了 Let's Encrypt 验证
-
-**解决方法**：
-```bash
-# 检查域名解析
-nslookup yourdomain.com
-
-# 检查端口是否开放
-netstat -tlnp | grep :80
-
-# 手动申请证书
-certbot --nginx -d yourdomain.com
-```
-
-#### 2. 服务无法启动
-
-**检查日志**：
-```bash
-journalctl -u cboard -n 50
-```
-
-**常见原因**：
-- 端口被占用（默认 8000）
-- 配置文件错误
-- 数据库权限问题
-
-#### 3. 前端无法访问后端 API
-
-**检查 Nginx 配置**：
-```bash
-# 查看 Nginx 配置
-cat /etc/nginx/sites-available/cboard
-# 或 CentOS
-cat /etc/nginx/conf.d/cboard.conf
-
-# 测试 Nginx 配置
-nginx -t
-
-# 重载 Nginx
-systemctl reload nginx
-```
-
-#### 4. 忘记管理员密码
-
-```bash
-cd /opt/cboard
-export ADMIN_USERNAME="admin"
-export ADMIN_EMAIL="admin@your-domain.com"
-export ADMIN_PASSWORD="your-new-password"
-go run scripts/admin_tool.go
-```
-
-### 注意事项（无宝塔）
-
-1. **首次安装**：
-   - 确保服务器有足够的磁盘空间（至少 2GB）
-   - 确保网络连接正常，可以访问 GitHub
-   - 安装过程可能需要 5-10 分钟
-
-2. **安全建议**：
-   - 安装后立即修改默认密码
-   - 定期更新系统和依赖
-   - 配置防火墙规则
-   - 定期备份数据库
-
-3. **性能优化**：
-   - 对于高流量场景，建议使用 MySQL/PostgreSQL
-   - 可以配置 Nginx 缓存静态文件
-   - 监控服务器资源使用情况
+更多故障排除见 [安装问题排查指南](./docs/故障排查/安装问题排查指南.md)，或 [VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md)。
 
 ---
 
-## 二、宝塔面板安装
+### 方式二：有宝塔面板 — 使用 install.sh
 
-适用于**已安装宝塔面板**的服务器。需先在宝塔中「添加站点」，在网站根目录放入代码，再运行 `install.sh` 完成编译与 Nginx 配置。
+**适用**：已安装宝塔的服务器。先在宝塔中为域名「添加站点」，在站点根目录放入代码，再运行 `install.sh` 完成编译与 Nginx 配置。
 
-### 前置条件（宝塔）
+#### 前置条件
 
-- ✅ 已安装宝塔面板（建议版本 7.0+）
-- ✅ 服务器系统：Ubuntu 18.04+ / Debian 10+ / CentOS 7+
-- ✅ 服务器配置：至少 1 核心 CPU + 512 MB 内存 + 10 GB 磁盘
-- ✅ 已绑定域名（用于 SSL 证书）
+| 项 | 要求 |
+|----|------|
+| 宝塔 | 已安装宝塔面板（建议 7.0+） |
+| 系统 | Ubuntu 18.04+ / Debian 10+ / CentOS 7+ |
+| 配置 | 至少 1 核 CPU、512 MB 内存、10 GB 磁盘 |
+| 域名 | 已在宝塔中添加站点并绑定 |
 
-### 详细安装步骤
+#### 安装步骤
 
-#### 步骤 1：在宝塔面板创建网站
+**1. 在宝塔中创建网站**
 
-1. **登录宝塔面板**
-   - 访问 `http://your-server-ip:8888`（或您的宝塔面板地址）
-   - 使用您的宝塔账号登录
+- 登录宝塔 → **网站** → **添加站点**
+- 填写域名（如 `example.com`），根目录一般为 `/www/wwwroot/example.com`
+- 不需创建 FTP/数据库，PHP 选纯静态或任意均可
+- 记下**网站根目录**，后续代码放在此目录
 
-2. **创建网站**
-   - 点击左侧菜单 **网站** → **添加站点**
-   - 填写以下信息：
-     - **域名**：输入您的域名（如：`example.com`）
-     - **备注**：可填写项目名称（如：CBoard）
-     - **根目录**：系统会自动生成，通常为 `/www/wwwroot/example.com`
-     - **FTP**：不创建（可选）
-     - **数据库**：不创建（可选，系统使用 SQLite）
-     - **PHP 版本**：纯静态（或任意版本，不影响）
-   - 点击 **提交** 完成网站创建
+**2. 将代码放入网站目录**
 
-3. **记录网站目录路径**
-   - 创建完成后，记录下网站根目录路径（如：`/www/wwwroot/example.com`）
-   - 后续步骤将在此目录中部署代码
+任选一种方式：
 
-#### 步骤 2：下载代码到网站目录
+- **SSH**：`cd /www/wwwroot/example.com` → `rm -f index.html` → `git clone https://github.com/moneyfly1/myweb.git .`
+- **宝塔文件管理器**：进入该目录，终端中执行 `git clone https://github.com/moneyfly1/myweb.git .`
+- **本地上传**：用 SCP 等将项目文件上传到该目录
 
-**方式一：通过 SSH 克隆（推荐）**
+确认目录内有 `install.sh`、`go.mod`、`frontend` 等。
+
+**3. 运行安装脚本**
 
 ```bash
-# 1. 通过 SSH 连接到服务器
-ssh root@your-server-ip
-
-# 2. 进入刚创建的网站目录（替换为您的实际路径）
-cd /www/wwwroot/example.com
-
-# 3. 删除默认的 index.html（如果存在）
-rm -f index.html
-
-# 4. 从 GitHub 克隆项目代码
-git clone https://github.com/moneyfly1/myweb.git .
-
-# 5. 验证文件是否正确下载
-ls -la
-# 应该能看到 install.sh、go.mod、frontend 等文件和目录
-```
-
-**方式二：通过宝塔面板文件管理器**
-
-1. 登录宝塔面板
-2. 进入 **文件** → 导航到 `/www/wwwroot/example.com`
-3. 删除默认的 `index.html` 文件（如果存在）
-4. 点击 **终端** 按钮，打开终端
-5. 在终端中执行：
-   ```bash
-   git clone https://github.com/moneyfly1/myweb.git .
-   ```
-6. 验证文件是否正确下载
-
-**方式三：通过 SCP 上传（从本地机器）**
-
-```bash
-# 在本地机器执行（替换为您的实际路径）
-scp -r /path/to/goweb/* root@your-server:/www/wwwroot/example.com/
-```
-
-#### 步骤 3：运行安装脚本
-
-代码下载完成后，运行安装脚本：
-
-```bash
-# 1. 确保在网站目录中（替换为您的实际路径）
-cd /www/wwwroot/example.com
-
-# 2. 添加安装脚本执行权限
+cd /www/wwwroot/example.com   # 替换为你的站点目录
 chmod +x install.sh
-
-# 3. 运行安装脚本（需要 root 权限）
 sudo ./install.sh
 ```
 
-#### 步骤 4：配置安装参数
+**4. 按提示输入**
 
-安装脚本会提示您输入以下信息：
+- 项目目录：通常直接回车（使用当前目录）
+- 域名、管理员用户名、邮箱、密码：按需填写
 
-- **项目目录**：默认会检测当前目录，直接按回车确认即可
-- **域名**：输入您的域名（如：`example.com`）
-- **管理员用户名**：输入管理员用户名（默认：`admin`）
-- **管理员邮箱**：输入管理员邮箱（如：`admin@your-domain.com`）
-- **管理员密码**：设置管理员密码（建议使用强密码）
+**5. 选择菜单选项**
 
-#### 步骤 5：选择安装选项
+首次安装选 **1（一键全自动部署）**。脚本会：安装/检测 Go、Node.js → 编译后端、构建前端 → 配置 Nginx 反代 → 申请 SSL → 创建 systemd 服务并启动。
 
-安装脚本会显示以下菜单：
+**6. 验证**
 
-```
-==========================================
-       CBoard Go 终极管理面板
-==========================================
-  1. 一键全自动部署 (SSL + 反代)
-  2. 创建/重置管理员账号
-  3. 强制重启服务 (杀进程后重启)
-  4. 深度清理系统缓存
-  5. 解锁用户账户
-------------------------------------------
-  6. 查看服务运行状态
-  7. 查看实时服务日志
-  8. 标准重启服务 (Systemd)
-  9. 停止服务
-  0. 退出脚本
-==========================================
-```
+- 前端：`https://你的域名`
+- 管理后台：`https://你的域名/admin/login`
+- 健康检查：`https://你的域名/health`
 
-**首次安装请选择 `1`**，脚本会自动完成：
-- ✅ 安装 Go 语言环境（如未安装）
-- ✅ 安装 Node.js 环境（如未安装）
-- ✅ 编译后端服务
-- ✅ 构建前端
-- ✅ 配置 Nginx 反向代理
-- ✅ 申请 SSL 证书（Let's Encrypt）
-- ✅ 创建 systemd 服务
-- ✅ 启动服务
+#### 安装后管理（宝塔）
 
-#### 步骤 6：验证安装（宝塔）
+- **项目目录**：即站点根目录，如 `/www/wwwroot/example.com`
+- **服务**：`systemctl start/stop/restart/status cboard`，或在项目目录运行 `sudo ./install.sh` 通过菜单选择重启/查看状态/日志等
+- **Nginx**：宝塔 → **网站** → 对应站点 → **设置** → **配置文件**（脚本已写入反代，一般无需改）
+- **防火墙**：宝塔 **安全** 中放行 80、443 即可
 
-安装完成后，访问您的域名：
+更多问题见 [安装问题排查指南](./docs/故障排查/安装问题排查指南.md)。
 
-- **前端界面**: `https://yourdomain.com`
-- **管理员登录**: `https://yourdomain.com/admin/login`
-- **健康检查**: `https://yourdomain.com/health`
-- **API 接口**: `https://yourdomain.com/api/v1/...`
+---
 
-### 安装后配置（宝塔）
+### 安装方式对照小结
 
-#### 配置 Nginx（如果需要）
-
-安装脚本会自动配置 Nginx，但您也可以手动检查：
-
-1. 登录宝塔面板
-2. 进入 **网站** → 找到您的网站 → 点击 **设置**
-3. 进入 **配置文件** 标签
-4. 确认反向代理配置是否正确（脚本已自动配置）
-
-#### 配置防火墙
-
-确保以下端口已开放：
-- **80**：HTTP
-- **443**：HTTPS
-- **后端端口**：默认 8080（仅内网访问，不需要对外开放）
-
-在宝塔面板中：
-1. 进入 **安全** → **防火墙**
-2. 确保 80 和 443 端口已开放
+| 操作 | 方式一（无宝塔） | 方式二（宝塔） |
+|------|------------------|----------------|
+| 项目目录 | `/opt/cboard`（默认） | `/www/wwwroot/你的域名` |
+| 首次安装 | `curl ... \| sudo bash` 运行 `install-vps.sh` | 宝塔建站 → 放代码 → `sudo ./install.sh` 选 1 |
+| 重启服务 | `systemctl restart cboard` | 同上，或 `./install.sh` 选 8 |
+| 查看日志 | `journalctl -u cboard -f` 或 `tail -f 项目目录/server.log` | 同上 |
+| 修改配置 | 编辑 `项目目录/.env` 后 `systemctl restart cboard` | 同上 |
 
 ---
 
 ## 👤 管理员账户管理
 
-以下命令中的**项目目录**请按实际部署方式替换：
-- **无宝塔安装**：一般为 `/opt/cboard`
-- **宝塔安装**：一般为 `/www/wwwroot/你的域名`（如 `/www/wwwroot/example.com`）
+以下命令需在**项目目录**下执行。项目目录按安装方式区分：
+- **方式一（无宝塔）**：默认 `/opt/cboard`
+- **方式二（宝塔）**：宝塔站点根目录，如 `/www/wwwroot/example.com`
 
 ### 创建管理员账户
 
 管理员账户可以在安装过程中创建，也可以后续单独创建。
 
-#### 方法一：使用安装脚本（推荐）
+#### 方法一：使用安装脚本（仅宝塔）
 
-```bash
-# 进入项目目录（替换为您的实际路径）
-cd /www/wwwroot/example.com
+在**宝塔**安装时，进入项目目录后运行 `sudo ./install.sh`，选择 **2（创建/重置管理员账号）**，按提示输入用户名、邮箱、密码即可。无宝塔安装没有此菜单，用下面的方法二。
 
-# 运行安装脚本
-sudo ./install.sh
+#### 方法二：使用 Go 脚本（通用）
 
-# 选择选项 2: 创建/重置管理员账号
-# 然后按照提示输入：
-# - 管理员用户名（默认：admin）
-# - 管理员邮箱
-# - 管理员密码
-```
+在项目目录下执行 `go run scripts/admin_tool.go` 即可。支持两种用法：
 
-#### 方法二：使用 Go 脚本（通过环境变量）
-
-```bash
-# 进入项目目录
-cd /www/wwwroot/example.com
-
-# 设置环境变量并运行脚本
-export ADMIN_USERNAME="admin"
-export ADMIN_EMAIL="admin@your-domain.com"
-export ADMIN_PASSWORD="YourStrongPassword123!"
-
-# 运行创建脚本
-go run scripts/admin_tool.go
-```
-
-**说明**：
-- 如果未设置环境变量，脚本会使用默认值（用户名：`admin`，邮箱：`admin@your-domain.com`，密码：`admin123`）
-- 如果管理员账户已存在，脚本会更新该账户的信息
-- 生产环境建议通过环境变量设置强密码
-
-#### 方法三：使用 Go 脚本（交互式）
-
-```bash
-# 进入项目目录
-cd /www/wwwroot/example.com
-
-# 直接运行脚本（会使用默认值或提示输入）
-go run scripts/admin_tool.go
-```
+- **直接运行**：不设环境变量时使用默认值（用户名 `admin`、邮箱 `admin@your-domain.com`、密码 `admin123`），或按脚本提示输入。
+- **环境变量**：生产环境建议先设置再运行，避免弱密码：
+  ```bash
+  export ADMIN_USERNAME="admin"
+  export ADMIN_EMAIL="admin@your-domain.com"
+  export ADMIN_PASSWORD="YourStrongPassword123!"
+  go run scripts/admin_tool.go
+  ```
+  若管理员已存在，脚本会更新该账户信息。
 
 ### 修改管理员密码
 
@@ -604,7 +337,7 @@ go run scripts/unlock_user.go user@your-domain.com
 - **订单管理**：查看、处理订单，订单导出
 - **套餐管理**：创建、编辑、删除套餐，定价管理
 - **节点管理**：添加、编辑、删除节点，批量导入，节点测试
-- **支付配置**：配置支付宝、微信支付、PayPal 等
+- **支付配置**：配置支付宝、微信支付、易支付、Apple Pay 等
 - **系统配置**：系统设置、通知设置、邮件配置
 - **统计和监控**：数据统计、地区分析、用户分析
 - **工单管理**：处理用户工单，回复工单
@@ -808,28 +541,23 @@ DEBUG=false
 
 ### Nginx 配置
 
-- **宝塔**：安装脚本会自动写入站点 Nginx 配置；手动调整请登录宝塔 → **网站** → 对应站点 → **设置** → **配置文件** → 修改后保存并重载。
-- **无宝塔**：脚本会生成 `/etc/nginx/sites-available/cboard`（或 CentOS 下 `/etc/nginx/conf.d/cboard.conf`）；修改后执行 `nginx -t` 与 `systemctl reload nginx`。
+| 方式 | 说明 |
+|------|------|
+| **方式二（宝塔）** | 安装脚本会自动写入站点 Nginx 配置；修改：宝塔 → **网站** → 对应站点 → **设置** → **配置文件** → 保存并重载。 |
+| **方式一（无宝塔）** | 脚本会生成 `/etc/nginx/sites-available/cboard`（CentOS 为 `/etc/nginx/conf.d/cboard.conf`）；修改后执行 `nginx -t` 与 `systemctl reload nginx`。 |
 
 ---
 
 ## 🛠️ 管理脚本使用说明
 
-### 宝塔环境：使用 install.sh 菜单
+### 服务管理方式
 
-在**宝塔安装**的服务器上，可在项目目录下运行 `./install.sh`，通过菜单操作：
+| 环境 | 推荐方式 | 说明 |
+|------|----------|------|
+| **宝塔** | 项目目录下 `sudo ./install.sh` | 通过菜单选 6/7/8/9 查看状态、日志、重启、停止；选 2 可创建/重置管理员 |
+| **无宝塔** | systemd | 未使用 install.sh，直接用 `systemctl start/stop/restart/status cboard` |
 
-| 操作 | 步骤 |
-|------|------|
-| 创建/重置管理员账号 | 运行 `sudo ./install.sh` → 选择 **2** |
-| 重启服务 | 运行 `sudo ./install.sh` → 选择 **8**（标准）或 **3**（强制） |
-| 查看服务状态 | 运行 `sudo ./install.sh` → 选择 **6** |
-| 查看实时日志 | 运行 `sudo ./install.sh` → 选择 **7** |
-| 停止服务 | 运行 `sudo ./install.sh` → 选择 **9** |
-
-### 无宝塔环境：使用 systemd（推荐）
-
-**无宝塔**安装后没有 `install.sh` 的交互菜单，请直接使用 systemd。以下命令**两种部署方式均可使用**：
+以下 **systemd 命令两种部署方式均可使用**（无宝塔必用，宝塔也可用）：
 
 ```bash
 # 启动服务
@@ -853,193 +581,15 @@ systemctl enable cboard
 
 ---
 
-## 🔒 安全建议
-
-1. **生产环境必须设置强密码**
-   - `SECRET_KEY` 至少 32 位随机字符串
-   - 管理员密码使用强密码
-
-2. **使用 HTTPS**
-   - 安装脚本会自动配置 SSL 证书
-   - 确保强制 HTTPS 已开启
-
-3. **配置 CORS**
-   - 生产环境必须明确指定允许的域名
-   - 不要使用通配符 `*`
-
-4. **数据库安全**
-   - 定期备份数据库
-   - 使用 SQLite 时确保文件权限正确
-
-5. **系统安全**
-   - 定期更新系统和依赖
-   - 配置防火墙规则
-   - 使用强密码策略
-
----
-
 ## 📝 数据库备份
 
-### 自动备份（宝塔）
+系统支持**自动备份数据库并上传到 GitHub 或 Gitee**。在管理员后台 **系统设置 → 备份设置** 中配置后，可按计划自动备份并推送到远程仓库。配置与使用请参考：
 
-在**宝塔面板**中配置定时任务：
+- [备份设置说明](./docs/配置/备份设置说明.md) — 自动备份、Gitee/GitHub 开关与测试
+- [GitHub 配置说明](./docs/配置/GitHub配置说明.md) — 备份到 GitHub 的详细步骤
+- [Gitee 配置说明](./docs/配置/Gitee配置说明.md) — 备份到 Gitee 的详细步骤
 
-1. **计划任务** → **添加计划任务**
-2. **任务类型**：Shell 脚本
-3. **任务名称**：CBoard 数据库备份
-4. **执行周期**：每天 0 点 2 分
-5. **脚本内容**（请将 `PROJECT_DIR` 改为实际路径：宝塔一般为 `/www/wwwroot/你的域名`，无宝塔一般为 `/opt/cboard`）：
-```bash
-#!/bin/bash
-PROJECT_DIR="/www/wwwroot/你的域名"   # 或 /opt/cboard
-BACKUP_DIR="/www/backup/cboard"
-mkdir -p $BACKUP_DIR
-cp "$PROJECT_DIR/cboard.db" "$BACKUP_DIR/cboard_$(date +%Y%m%d_%H%M%S).db"
-find $BACKUP_DIR -name "cboard_*.db" -mtime +7 -delete
-```
-
-### 手动备份
-
-```bash
-# 进入项目目录（宝塔示例：/www/wwwroot/example.com，无宝塔示例：/opt/cboard）
-cd /opt/cboard
-cp cboard.db cboard.db.backup.$(date +%Y%m%d_%H%M%S)
-```
-
-### 通过 API 备份
-
-系统还提供备份 API 接口（仅管理员）：
-- `POST /api/v1/admin/backup/create` - 创建备份
-
----
-
-## 🔧 常见问题
-
-### 1. 服务无法启动
-
-**检查日志**：
-```bash
-# 查看服务日志
-journalctl -u cboard -f
-
-# 查看应用日志（无宝塔示例：/opt/cboard，宝塔示例：/www/wwwroot/你的域名）
-tail -f /opt/cboard/server.log
-```
-
-**常见原因**：
-- 端口被占用：检查 8000 端口是否被其他程序占用
-- 权限问题：确保项目目录权限正确
-- 配置文件错误：检查项目目录下的 `.env` 文件
-
-### 2. 502 Bad Gateway
-
-- 检查后端服务是否运行：`systemctl status cboard`
-- 检查端口是否正确：`netstat -tlnp | grep 8000`
-- 检查 Nginx 配置中的 `proxy_pass` 地址
-
-### 3. SSL 证书申请失败
-
-- 确保域名已正确解析到服务器 IP
-- 确保 80 端口已开放
-- 检查防火墙设置
-
-### 4. 数据库权限错误
-
-```bash
-# 进入项目目录（宝塔：/www/wwwroot/你的域名，无宝塔：/opt/cboard）
-cd /opt/cboard
-chmod 666 cboard.db
-# 宝塔下若以 www 运行，可执行：chown www:www cboard.db
-```
-
-### 5. 前端无法访问后端 API
-
-- 检查 `.env` 中的 `BACKEND_CORS_ORIGINS` 是否包含您的域名
-- 检查 Nginx 配置中的 `/api/` 代理是否正确
-
-### 6. 管理员登录问题
-
-- 使用安装脚本重置管理员密码（选项 2）
-- 检查管理员账号状态：`go run scripts/unlock_user.go <用户名或邮箱>`
-- 解锁用户账号（支持管理员和普通用户）：`go run scripts/unlock_user.go <用户名或邮箱>`
-
----
-
-## 📖 API 文档
-
-启动服务器后，主要 API 端点：
-
-### 认证
-- `POST /api/v1/auth/register` - 用户注册
-- `POST /api/v1/auth/login` - 用户登录
-- `POST /api/v1/auth/refresh` - 刷新令牌
-- `POST /api/v1/auth/logout` - 用户登出
-
-### 用户
-- `GET /api/v1/users/me` - 获取当前用户
-- `PUT /api/v1/users/me` - 更新用户资料
-- `GET /api/v1/users/login-history` - 获取登录历史
-
-### 订阅
-- `GET /api/v1/subscriptions` - 获取订阅列表
-- `GET /api/v1/subscriptions/:id` - 获取订阅详情
-- `GET /subscribe/:url` - 获取订阅配置（Clash/V2Ray）
-
-### 订单
-- `GET /api/v1/orders` - 获取订单列表
-- `POST /api/v1/orders` - 创建订单
-- `GET /api/v1/orders/:id` - 获取订单详情
-- `POST /api/v1/orders/:id/cancel` - 取消订单
-
-### 套餐
-- `GET /api/v1/packages` - 获取套餐列表
-- `GET /api/v1/packages/:id` - 获取套餐详情
-
-### 支付
-- `POST /api/v1/payment/notify/:method` - 支付回调
-- `GET /api/v1/payment/status/:orderNo` - 获取支付状态
-
-### 管理员 API
-所有管理员 API 需要管理员认证，前缀为 `/api/v1/admin/`
-
-完整 API 列表请查看：`internal/api/router/router.go`
-
----
-
-## 🏗️ 项目结构
-
-```
-goweb/
-├── cmd/server/main.go          # 主入口
-├── internal/
-│   ├── api/                    # API 层
-│   │   ├── handlers/           # 请求处理器
-│   │   └── router/             # 路由定义
-│   ├── core/                   # 核心模块
-│   │   ├── auth/               # 认证
-│   │   ├── config/             # 配置
-│   │   └── database/           # 数据库
-│   ├── models/                 # 数据模型
-│   ├── services/               # 业务服务
-│   ├── middleware/             # 中间件
-│   └── utils/                  # 工具函数
-├── frontend/                   # Vue 3 前端
-│   ├── src/                    # 前端源代码
-│   │   ├── views/              # 页面组件
-│   │   ├── components/         # 可复用组件
-│   │   ├── router/             # 前端路由
-│   │   └── store/              # 状态管理
-│   └── dist/                   # 构建后的文件
-├── scripts/                    # 工具脚本
-│   ├── admin_tool.go           # 创建/更新管理员账号和密码
-│   └── unlock_user.go          # 解锁用户账号（支持管理员和普通用户）
-├── .env                        # 环境变量
-├── install.sh                  # 宝塔面板安装脚本（有宝塔时使用）
-├── install-vps.sh              # 无宝塔 VPS 一键安装脚本（纯 VPS 使用）
-├── cboard.db                   # SQLite 数据库
-├── README.md                   # 英文版本文档
-└── README_zh.md                # 中文版本文档（本文件）
-```
+管理员也可通过 **后台备份** 或接口 `POST /api/v1/admin/backup` 手动触发备份并上传。
 
 ---
 
@@ -1081,7 +631,8 @@ goweb/
 |------|------|
 | [文档目录](./docs/README.md) | 完整文档索引（功能 + 配置 + 部署） |
 | [VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
-| [安装问题排查指南](./docs/故障排查/安装问题排查指南.md) | 常见安装问题与解决方法 |
+| [安装问题排查指南](./docs/故障排查/安装问题排查指南.md) | 常见安装与运行故障排查 |
+| [API 文档](./docs/API文档.md) | 接口说明（认证、用户、订阅、订单、支付、管理员等） |
 
 ### 功能说明
 
@@ -1122,7 +673,7 @@ goweb/
 
 如遇到问题：
 
-1. **查看日志**（项目目录：宝塔一般为 `/www/wwwroot/你的域名`，无宝塔一般为 `/opt/cboard`）：
+1. **查看日志**（项目目录：无宝塔一般为 `/opt/cboard`，宝塔一般为 `/www/wwwroot/你的域名`）：
    - 应用日志：`项目目录/server.log` 或 `项目目录/uploads/logs/app.log`
    - 服务日志：`journalctl -u cboard -f`
 
@@ -1131,7 +682,7 @@ goweb/
    - 健康检查：`curl http://127.0.0.1:8000/health`
    - 服务状态：`systemctl status cboard`
 
-3. **参考文档**：[安装问题排查指南](./docs/故障排查/安装问题排查指南.md)
+3. **常见问题与排查**：参见 [安装问题排查指南](./docs/故障排查/安装问题排查指南.md)（含服务无法启动、502、SSL、数据库权限、API 无法访问、管理员登录等）。
 
 ---
 

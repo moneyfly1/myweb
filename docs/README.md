@@ -13,7 +13,8 @@ This directory contains deployment, troubleshooting, feature docs and backend co
 | 文档 | 说明 |
 |------|------|
 | [VPS 部署教程（无宝塔）](./VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
-| [安装问题排查指南](./故障排查/安装问题排查指南.md) | 常见安装问题与解决方法 |
+| [安装问题排查指南](./故障排查/安装问题排查指南.md) | 常见安装与运行故障排查 |
+| [API 文档](./API文档.md) | 接口说明（认证、用户、订阅、订单、支付、管理员等） |
 
 ### 功能说明
 
