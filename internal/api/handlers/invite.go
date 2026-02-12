@@ -115,7 +115,7 @@ func CreateInviteCode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建邀请码失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "create_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("创建邀请码: %s", inviteCode.Code))
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	inviteLink := baseURL + "/register?invite=" + code
 
@@ -348,7 +348,7 @@ func UpdateInviteCode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新邀请码失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("更新邀请码: %s", inviteCode.Code))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", inviteCode)
 }
 

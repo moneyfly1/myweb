@@ -1349,7 +1349,7 @@ func UpdateUserStatus(c *gin.Context) {
 				map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
 		}
 	}
-
+	utils.CreateAuditLogSimple(c, "update_user_status", "user", user.ID, fmt.Sprintf("管理员操作: 更新用户状态 %s (ID=%d)", user.Username, user.ID))
 	utils.SuccessResponse(c, http.StatusOK, "用户状态已更新", user)
 }
 
@@ -1547,7 +1547,7 @@ func BatchDeleteUsers(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_delete_users", "user", 0, fmt.Sprintf("管理员操作: 批量删除用户 %d 个", len(req.UserIDs)))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)), nil)
 }
 
@@ -1573,7 +1573,7 @@ func BatchEnableUsers(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "启用用户失败", result.Error)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_enable_users", "user", 0, fmt.Sprintf("管理员操作: 批量启用用户 %d 个", result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected), nil)
 }
 
@@ -1606,7 +1606,7 @@ func BatchDisableUsers(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户失败", result.Error)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_disable_users", "user", 0, fmt.Sprintf("管理员操作: 批量禁用用户 %d 个", result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected), nil)
 }
 
@@ -1648,7 +1648,7 @@ func BatchSendSubEmail(c *gin.Context) {
 		}
 		successCount++
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_send_sub_email", "user", 0, fmt.Sprintf("管理员操作: 批量发送订阅邮件 成功 %d 失败 %d", successCount, failCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
 		"success_count": successCount,
 		"fail_count":    failCount,
@@ -1725,7 +1725,7 @@ func BatchSendExpireReminder(c *gin.Context) {
 		}
 		successCount++
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_send_expire_reminder", "user", 0, fmt.Sprintf("管理员操作: 批量发送到期提醒 成功 %d 失败 %d", successCount, failCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封提醒邮件，失败 %d 封", successCount, failCount), gin.H{
 		"success_count": successCount,
 		"fail_count":    failCount,
@@ -2046,14 +2046,15 @@ func GetNotificationSettings(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"email_enabled":         user.EmailNotifications,
-		"email_notifications":   user.EmailNotifications,
-		"system_notification":   true,
-		"security_notification": true,
-		"frequency":             "realtime",
-		"sms_notifications":     user.SMSNotifications,
-		"push_notifications":    user.PushNotifications,
-		"notification_types":    user.NotificationTypes,
+		"email_enabled":               user.EmailNotifications,
+		"email_notifications":         user.EmailNotifications,
+		"abnormal_login_alert":        user.AbnormalLoginAlertEnabled,
+		"system_notification":         true,
+		"security_notification":       true,
+		"frequency":                   "realtime",
+		"sms_notifications":           user.SMSNotifications,
+		"push_notifications":          user.PushNotifications,
+		"notification_types":          user.NotificationTypes,
 	})
 }
 
@@ -2075,6 +2076,9 @@ func UpdateUserNotificationSettings(c *gin.Context) {
 		user.EmailNotifications = emailNotifications
 	} else if emailEnabled, ok := req["email_enabled"].(bool); ok {
 		user.EmailNotifications = emailEnabled
+	}
+	if abnormalLoginAlert, ok := req["abnormal_login_alert"].(bool); ok {
+		user.AbnormalLoginAlertEnabled = abnormalLoginAlert
 	}
 
 	if notificationTypes, ok := req["notification_types"].([]interface{}); ok {

@@ -12,6 +12,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/device"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
@@ -453,6 +454,81 @@ func handleLoginFailure(c *gin.Context, ip, identifier, reason string, err error
 	utils.ErrorResponse(c, http.StatusUnauthorized, "用户名或密码错误", err)
 }
 
+// checkAndSendAbnormalLoginAlert 在 goroutine 中执行：检测新设备/异地登录并发送邮件与站内通知
+func checkAndSendAbnormalLoginAlert(db *gorm.DB, user *models.User, current *models.LoginHistory, ipAddress, userAgent string) {
+	var cfg models.SystemConfig
+	if err := db.Where("category = ? AND key = ?", "security", "abnormal_login_alert_enabled").First(&cfg).Error; err == nil && cfg.Value == "false" {
+		return
+	}
+
+	var prev models.LoginHistory
+	if err := db.Where("user_id = ? AND login_status = ? AND id != ?", user.ID, "success", current.ID).Order("login_time DESC").Limit(1).First(&prev).Error; err != nil {
+		return
+	}
+
+	currCountry, _ := current.GetLocationInfo()
+	prevCountry, _ := prev.GetLocationInfo()
+	isNewLocation := currCountry != "" && prevCountry != "" && currCountry != prevCountry
+
+	deviceHash := ""
+	if current.DeviceFingerprint.Valid {
+		deviceHash = current.DeviceFingerprint.String
+	}
+	isNewDevice := false
+	if deviceHash != "" {
+		ninetyDaysAgo := time.Now().Add(-90 * 24 * time.Hour)
+		var count int64
+		db.Model(&models.LoginHistory{}).Where("user_id = ? AND login_status = ? AND id != ? AND login_time >= ? AND device_fingerprint = ?",
+			user.ID, "success", current.ID, ninetyDaysAgo, deviceHash).Count(&count)
+		isNewDevice = count == 0
+	}
+
+	if !isNewDevice && !isNewLocation {
+		return
+	}
+
+	// 尊重用户通知设置：仅当用户开启「异常登录/设备告警」时发送邮件和站内通知
+	var u models.User
+	if err := db.Select("abnormal_login_alert_enabled").First(&u, user.ID).Error; err != nil {
+		return
+	}
+	if !u.AbnormalLoginAlertEnabled {
+		return
+	}
+	// 管理员账户：同时受系统开关「管理员异常登录告警」控制
+	if user.IsAdmin {
+		var adminCfg models.SystemConfig
+		if err := db.Where("category = ? AND key = ?", "security", "admin_abnormal_login_alert_enabled").First(&adminCfg).Error; err == nil && adminCfg.Value == "false" {
+			return
+		}
+	}
+
+	locationStr := ""
+	if current.Location.Valid {
+		locationStr = current.Location.String
+	}
+	loginTimeStr := utils.FormatBeijingTime(current.LoginTime)
+	templateBuilder := email.NewEmailTemplateBuilder()
+	content := templateBuilder.GetAbnormalLoginAlertTemplate(user.Username, loginTimeStr, ipAddress, locationStr, isNewDevice, isNewLocation)
+	emailSvc := email.NewEmailService()
+	if err := emailSvc.QueueEmail(user.Email, "账户登录安全提醒", content, "abnormal_login_alert"); err != nil {
+		utils.LogErrorMsg("异常登录告警邮件入队失败: email=%s, error=%v", user.Email, err)
+	}
+
+	notifContent := "检测到您的账户在新设备或新地点登录。如非本人操作请尽快修改密码。"
+	if isNewDevice && isNewLocation {
+		notifContent = "检测到您的账户在新设备且新地点登录。如非本人操作请尽快修改密码。"
+	} else if isNewDevice {
+		notifContent = "检测到您的账户在新设备登录。如非本人操作请尽快修改密码。"
+	} else {
+		notifContent = "检测到您的账户在异地登录。如非本人操作请尽快修改密码。"
+	}
+	uid := int64(user.ID)
+	if err := db.Create(&models.Notification{UserID: sql.NullInt64{Int64: uid, Valid: true}, Title: "账户登录安全提醒", Content: notifContent, Type: "security"}).Error; err != nil {
+		utils.LogErrorMsg("创建异常登录站内通知失败: user_id=%d, error=%v", user.ID, err)
+	}
+}
+
 func checkMaintenanceMode(c *gin.Context, db *gorm.DB, username, password, ip string) error {
 	var maintenanceConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", "maintenance_mode", "system").First(&maintenanceConfig).Error; err != nil || maintenanceConfig.Value != "true" {
@@ -517,16 +593,22 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 		location = geoip.GetLocationString(ipAddress)
 	}
 
+	ua := c.GetHeader("User-Agent")
+	deviceHash := device.NewDeviceManager().GenerateDeviceHash(ua, ipAddress, "")
+
 	loginHistory := models.LoginHistory{
-		UserID:      user.ID,
-		LoginTime:   now,
-		IPAddress:   database.NullString(ipAddress),
-		UserAgent:   database.NullString(c.GetHeader("User-Agent")),
-		Location:    location,
-		LoginStatus: "success",
+		UserID:             user.ID,
+		LoginTime:          now,
+		IPAddress:          database.NullString(ipAddress),
+		UserAgent:          database.NullString(ua),
+		Location:           location,
+		DeviceFingerprint:  database.NullString(deviceHash),
+		LoginStatus:        "success",
 	}
 	if err := db.Create(&loginHistory).Error; err != nil {
 		utils.LogError("Login: 创建登录历史失败", err, map[string]interface{}{"user_id": user.ID, "ip": ipAddress})
+	} else {
+		go checkAndSendAbnormalLoginAlert(db, user, &loginHistory, ipAddress, ua)
 	}
 
 	c.Set("user_id", user.ID)

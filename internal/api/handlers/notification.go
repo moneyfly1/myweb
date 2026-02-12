@@ -290,7 +290,7 @@ func CreateAdminNotification(c *gin.Context) {
 		errorResponse(c, http.StatusInternalServerError, "创建通知失败，请稍后重试")
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "create_admin_notification", "notification", notification.ID, fmt.Sprintf("管理员操作: 创建通知 %s", notification.Title))
 	if req.SendEmail != nil && *req.SendEmail {
 		sendNotificationEmail(db, req.UserID, req.Title, req.Content)
 	}
@@ -365,11 +365,15 @@ func UpdateAdminNotification(c *gin.Context) {
 func DeleteAdminNotification(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
-
-	if err := db.Delete(&models.Notification{}, id).Error; err != nil {
+	var notification models.Notification
+	if err := db.First(&notification, id).Error; err != nil {
+		handleGormError(c, err, "通知不存在", "获取通知失败")
+		return
+	}
+	if err := db.Delete(&notification).Error; err != nil {
 		errorResponse(c, http.StatusInternalServerError, "删除通知失败")
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "delete_admin_notification", "notification", notification.ID, fmt.Sprintf("管理员操作: 删除通知 %s", notification.Title))
 	successResponse(c, http.StatusOK, "删除成功", nil)
 }

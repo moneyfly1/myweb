@@ -299,7 +299,7 @@ func CreateBackup(c *gin.Context) {
 	} else {
 		response["gitee"] = uploadResult
 	}
-
+	utils.CreateAuditLogSimple(c, "create_backup", "backup", 0, fmt.Sprintf("管理员操作: 创建备份 %s", backupFileName))
 	utils.SuccessResponse(c, http.StatusOK, "备份创建成功", response)
 }
 

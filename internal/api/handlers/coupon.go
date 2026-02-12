@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -186,7 +187,7 @@ func CreateCoupon(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建优惠券失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "create_coupon", "coupon", coupon.ID, fmt.Sprintf("管理员操作: 创建优惠券 %s", coupon.Name))
 	utils.SuccessResponse(c, http.StatusCreated, "", coupon)
 }
 
@@ -320,18 +321,22 @@ func UpdateCoupon(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新优惠券失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_coupon", "coupon", coupon.ID, fmt.Sprintf("管理员操作: 更新优惠券 %s", coupon.Name))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", coupon)
 }
 
 func DeleteCoupon(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
-
-	if err := db.Delete(&models.Coupon{}, id).Error; err != nil {
+	var coupon models.Coupon
+	if err := db.First(&coupon, id).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "优惠券不存在", err)
+		return
+	}
+	if err := db.Delete(&coupon).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除优惠券失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "delete_coupon", "coupon", coupon.ID, fmt.Sprintf("管理员操作: 删除优惠券 %s", coupon.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
