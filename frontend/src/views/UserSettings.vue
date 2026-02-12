@@ -116,6 +116,14 @@
               inactive-text="禁用邮件通知"
             ></el-switch>
             <el-divider></el-divider>
+            <h4>异常登录/设备告警</h4>
+            <p class="setting-hint">当检测到新设备或异地登录时，可通过邮件和站内通知提醒您。关闭后将不再发送此类告警。</p>
+            <el-switch
+              v-model="notificationForm.abnormalLoginAlert"
+              active-text="接收告警通知"
+              inactive-text="不接收告警通知"
+            ></el-switch>
+            <el-divider></el-divider>
             <h4>通知类型</h4>
             <el-checkbox-group v-model="notificationForm.notificationTypes">
               <el-checkbox label="subscription">订阅相关通知</el-checkbox>
@@ -273,6 +281,14 @@
               inactive-text="禁用邮件通知"
             ></el-switch>
             <el-divider></el-divider>
+            <h4>异常登录/设备告警</h4>
+            <p class="setting-hint">当检测到新设备或异地登录时，可通过邮件和站内通知提醒您。关闭后将不再发送此类告警。</p>
+            <el-switch
+              v-model="notificationForm.abnormalLoginAlert"
+              active-text="接收告警通知"
+              inactive-text="不接收告警通知"
+            ></el-switch>
+            <el-divider></el-divider>
             <h4>通知类型</h4>
             <el-checkbox-group v-model="notificationForm.notificationTypes" class="mobile-checkbox-group">
               <el-checkbox label="subscription">订阅相关通知</el-checkbox>
@@ -401,6 +417,7 @@ export default {
     })
     const notificationForm = reactive({
       emailNotifications: true,
+      abnormalLoginAlert: true,  // 异常登录/设备告警，默认开启
       notificationTypes: ['subscription', 'payment', 'system', 'marketing']  // 默认所有类型都开启
     })
     const preferenceForm = reactive({
@@ -492,6 +509,11 @@ export default {
         } else {
           notificationForm.emailNotifications = true
         }
+        if (settings.abnormal_login_alert !== undefined && settings.abnormal_login_alert !== null) {
+          notificationForm.abnormalLoginAlert = settings.abnormal_login_alert === true || settings.abnormal_login_alert === 'true'
+        } else {
+          notificationForm.abnormalLoginAlert = true
+        }
         if (settings.notification_types !== undefined && settings.notification_types !== null) {
           if (typeof settings.notification_types === 'string' && settings.notification_types.trim() !== '') {
             try {
@@ -516,6 +538,7 @@ export default {
           url: '/users/notification-settings'
         })
         notificationForm.emailNotifications = true
+        notificationForm.abnormalLoginAlert = true
         notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
       }
       try {
@@ -610,6 +633,7 @@ export default {
         notificationSaving.value = true
         const response = await api.put('/users/notification-settings', {
           email_notifications: notificationForm.emailNotifications,
+          abnormal_login_alert: notificationForm.abnormalLoginAlert,
           notification_types: notificationForm.notificationTypes
         })
         if (response.data && response.data.success !== false) {
@@ -894,7 +918,8 @@ export default {
   margin: 0 0 15px 0;
   color: #333;
 }
-.security-tip {
+.security-tip,
+.setting-hint {
   margin: 10px 0 0 0;
   color: #666;
   font-size: 14px;

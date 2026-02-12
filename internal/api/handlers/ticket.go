@@ -535,7 +535,7 @@ func UpdateTicketStatus(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新工单失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_ticket_status", "ticket", ticket.ID, fmt.Sprintf("管理员操作: 更新工单状态 %s -> %s", ticket.Title, req.Status))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", ticket)
 }
 

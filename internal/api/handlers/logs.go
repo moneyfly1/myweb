@@ -559,6 +559,7 @@ func ClearLogs(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "清空日志失败", result.Error)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "clear_audit_logs", "audit_log", 0, fmt.Sprintf("管理员操作: 清空审计日志 %d 条", result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已清空 %d 条日志", result.RowsAffected), gin.H{
 		"deleted_count": result.RowsAffected,
 	})

@@ -590,6 +590,7 @@ func BatchClearDevices(c *gin.Context) {
 	db := database.GetDB()
 	db.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{})
 	db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0)
+	utils.CreateAuditLogSimple(c, "batch_clear_devices", "subscription", 0, fmt.Sprintf("管理员操作: 批量清除订阅设备 %d 个", len(req.SubscriptionIDs)))
 	utils.SuccessResponse(c, http.StatusOK, "设备已清除", nil)
 }
 
@@ -671,7 +672,9 @@ func UpdateSubscription(c *gin.Context) {
 	}
 
 	asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, utils.GetRealClientIP(c), beforeData, afterData, "更新订阅")
-
+	if actionBy == "admin" {
+		utils.CreateAuditLogSimple(c, "update_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 更新订阅 subscription_id=%d", sub.ID))
+	}
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", nil)
 }
 
@@ -692,7 +695,7 @@ func ResetSubscription(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "reset_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 重置订阅 subscription_id=%d", sub.ID))
 	go sendResetEmail(c, *sub, sub.User, "管理员重置")
 	utils.SuccessResponse(c, http.StatusOK, "订阅已重置", sub)
 }
@@ -719,7 +722,7 @@ func ExtendSubscription(c *gin.Context) {
 	}
 	sub.ExpireTime = sub.ExpireTime.AddDate(0, 0, req.Days)
 	db.Save(sub)
-
+	utils.CreateAuditLogSimple(c, "extend_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 延长订阅 %d 天 subscription_id=%d", req.Days, sub.ID))
 	// 异步发送通知
 	go func() {
 		pkgName := "默认套餐"
@@ -752,6 +755,7 @@ func ResetUserSubscription(c *gin.Context) {
 		subCopy := sub
 		_ = performSubscriptionReset(db, &subCopy, "admin_reset", "管理员重置用户订阅地址", adminName, adminUserID, ipAddress)
 	}
+	utils.CreateAuditLogSimple(c, "reset_user_subscription", "user", 0, fmt.Sprintf("管理员操作: 重置用户订阅 user_id=%s", userID))
 	utils.SuccessResponse(c, http.StatusOK, "用户订阅已重置", nil)
 }
 
@@ -771,6 +775,7 @@ func SendSubscriptionEmail(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "发送邮件失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "send_subscription_email", "subscription", sub.ID, fmt.Sprintf("管理员操作: 发送订阅邮件 user_id=%d", user.ID))
 	utils.SuccessResponse(c, http.StatusOK, "订阅邮件已加入队列", nil)
 }
 
@@ -783,6 +788,7 @@ func ClearUserDevices(c *gin.Context) {
 		db.Where("subscription_id IN ?", subIDs).Delete(&models.Device{})
 		db.Model(&models.Subscription{}).Where("id IN ?", subIDs).Update("current_devices", 0)
 	}
+	utils.CreateAuditLogSimple(c, "clear_user_devices", "user", 0, fmt.Sprintf("管理员操作: 清理用户设备 user_id=%s", userID))
 	utils.SuccessResponse(c, http.StatusOK, "设备已清理", nil)
 }
 
@@ -1003,7 +1009,7 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 		}
 		asyncSubscriptionLog(sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_delete_subscriptions", "subscription", 0, fmt.Sprintf("管理员操作: 批量删除订阅 %d 个", len(req.SubscriptionIDs)))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)), nil)
 }
 
@@ -1070,7 +1076,7 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 		}
 		asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_update_subscriptions_status", "subscription", 0, fmt.Sprintf("管理员操作: 批量%s订阅 %d 个", actionName, res.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功操作 %d 个订阅", res.RowsAffected), nil)
 }
 
@@ -1112,6 +1118,7 @@ func BatchResetSubscriptions(c *gin.Context) {
 		go sendResetEmail(c, subCopy, subCopy.User, "管理员批量重置")
 		successCount++
 	}
+	utils.CreateAuditLogSimple(c, "batch_reset_subscriptions", "subscription", 0, fmt.Sprintf("管理员操作: 批量重置订阅 成功 %d 失败 %d", successCount, failCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功重置 %d 个订阅，失败 %d 个", successCount, failCount), gin.H{
 		"success_count": successCount,
 		"fail_count":    failCount,
@@ -1145,6 +1152,7 @@ func BatchSendAdminSubEmail(c *gin.Context) {
 		}
 		successCount++
 	}
+	utils.CreateAuditLogSimple(c, "batch_send_subscription_email", "subscription", 0, fmt.Sprintf("管理员操作: 批量发送订阅邮件 成功 %d 失败 %d", successCount, failCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
 		"success_count": successCount,
 		"fail_count":    failCount,
@@ -1719,6 +1727,7 @@ func ClearConfigUpdateLogs(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "清理失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "clear_config_update_logs", "config_update", 0, "管理员操作: 清理配置更新日志")
 	utils.SuccessResponse(c, http.StatusOK, "日志已清理", nil)
 }
 
@@ -1790,7 +1799,7 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 			continue
 		}
 	}
-
+	utils.CreateAuditLogSimple(c, "update_config_update_config", "config_update", 0, "管理员操作: 更新配置更新设置")
 	utils.SuccessResponse(c, http.StatusOK, "配置保存成功", nil)
 }
 
@@ -1799,11 +1808,13 @@ func StartConfigUpdate(c *gin.Context) {
 	go func() {
 		_ = service.RunUpdateTask()
 	}()
+	utils.CreateAuditLogSimple(c, "start_config_update", "config_update", 0, "管理员操作: 启动配置更新任务")
 	utils.SuccessResponse(c, http.StatusOK, "配置更新任务已启动", nil)
 }
 
 func StopConfigUpdate(c *gin.Context) {
 	// 这里假设有一个 Stop 方法或类似的机制，原代码只有响应
+	utils.CreateAuditLogSimple(c, "stop_config_update", "config_update", 0, "管理员操作: 停止配置更新任务")
 	utils.SuccessResponse(c, http.StatusOK, "配置更新任务停止指令已发送", nil)
 }
 

@@ -179,7 +179,7 @@ func CreateCustomNode(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败: "+err.Error(), err)
 			return
 		}
-
+		utils.CreateAuditLogSimple(c, "create_custom_node", "custom_node", customNode.ID, fmt.Sprintf("管理员操作: 创建专线节点 %s", customNode.Name))
 		utils.SuccessResponse(c, http.StatusCreated, "", customNode)
 		return
 	}
@@ -206,7 +206,7 @@ func CreateCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败: "+err.Error(), err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "create_custom_node", "custom_node", customNode.ID, fmt.Sprintf("管理员操作: 创建专线节点 %s", customNode.Name))
 	utils.SuccessResponse(c, http.StatusCreated, "", customNode)
 }
 
@@ -264,7 +264,7 @@ func ImportCustomNodeLinks(c *gin.Context) {
 
 		imported++
 	}
-
+	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"imported":    imported,
 		"error_count": errorCount,
@@ -336,7 +336,7 @@ func UpdateCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败: "+err.Error(), err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 更新专线节点 %s", node.Name))
 	utils.SuccessResponse(c, http.StatusOK, "", node)
 }
 
@@ -356,7 +356,7 @@ func DeleteCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除失败: "+err.Error(), err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s", node.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
@@ -378,7 +378,7 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败: "+err.Error(), err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个", len(req.NodeIDs)))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", len(req.NodeIDs)), nil)
 }
 
@@ -439,7 +439,7 @@ func BatchAssignCustomNodes(c *gin.Context) {
 			}
 		}
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_assign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量分配专线节点 节点 %d 个 用户 %d 个 分配关系 %d", len(req.NodeIDs), len(req.UserIDs), assignedCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功分配 %d 个节点关系", assignedCount), nil)
 }
 

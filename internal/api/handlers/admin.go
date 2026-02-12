@@ -478,6 +478,7 @@ func CreateUserLevel(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建用户等级失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "create_user_level", "user_level", userLevel.ID, fmt.Sprintf("管理员操作: 创建用户等级 %s", userLevel.LevelName))
 	utils.SuccessResponse(c, http.StatusCreated, "", userLevel)
 }
 
@@ -544,6 +545,7 @@ func UpdateUserLevel(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户等级失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "update_user_level", "user_level", userLevel.ID, fmt.Sprintf("管理员操作: 更新用户等级 %s", userLevel.LevelName))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", userLevel)
 }
 
@@ -735,6 +737,7 @@ func DeleteEmailFromQueue(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除邮件失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "delete_email_from_queue", "email_queue", email.ID, fmt.Sprintf("管理员操作: 从队列删除邮件 id=%s", id))
 	utils.SuccessResponse(c, http.StatusOK, "邮件删除成功", nil)
 }
 
@@ -769,6 +772,7 @@ func ClearEmailQueue(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "清空邮件队列失败", result.Error)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "clear_email_queue", "email_queue", 0, fmt.Sprintf("管理员操作: 清空邮件队列 删除 %d 条", result.RowsAffected))
 	message := "邮件队列已清空"
 	if status != "" {
 		message = fmt.Sprintf("已清空 %s 状态的邮件", status)
@@ -958,6 +962,7 @@ func UpdateEmailConfig(c *gin.Context) {
 			return
 		}
 	}
+	utils.CreateAuditLogSimple(c, "update_email_config", "settings", 0, "管理员操作: 更新邮件配置")
 	utils.SuccessResponse(c, http.StatusOK, "邮件配置已更新", nil)
 }
 
@@ -1048,6 +1053,7 @@ func CreatePaymentConfig(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付配置失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "create_payment_config", "payment_config", paymentConfig.ID, fmt.Sprintf("管理员操作: 创建支付配置 %s", paymentConfig.PayType))
 	utils.SuccessResponse(c, http.StatusCreated, "支付配置创建成功", paymentConfig)
 }
 
@@ -1196,7 +1202,7 @@ func UpdatePaymentConfig(c *gin.Context) {
 	}
 
 	utils.LogInfo("UpdatePaymentConfig: 保存成功, id=%s, 最终ConfigJSON长度=%d", id, len(paymentConfig.ConfigJSON.String))
-
+	utils.CreateAuditLogSimple(c, "update_payment_config", "payment_config", paymentConfig.ID, fmt.Sprintf("管理员操作: 更新支付配置 id=%s %s", id, paymentConfig.PayType))
 	responseData := gin.H{
 		"id":                     paymentConfig.ID,
 		"pay_type":               paymentConfig.PayType,
@@ -1280,6 +1286,7 @@ func updateSingleConfig(c *gin.Context, category, key, label string) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("%s更新失败", label), err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "update_single_config", "settings", 0, fmt.Sprintf("管理员操作: 更新配置 %s", label))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%s已更新", label), nil)
 }
 

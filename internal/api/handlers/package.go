@@ -91,7 +91,7 @@ func CreatePackage(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建套餐失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "create_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 创建套餐 %s", pkg.Name))
 	utils.SuccessResponse(c, http.StatusCreated, "", pkg)
 }
 
@@ -180,7 +180,7 @@ func UpdatePackage(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新套餐失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 更新套餐 %s", pkg.Name))
 	responseData := gin.H{
 		"id":             pkg.ID,
 		"name":           pkg.Name,
@@ -202,11 +202,16 @@ func DeletePackage(c *gin.Context) {
 	id := c.Param("id")
 
 	db := database.GetDB()
-	if err := db.Delete(&models.Package{}, id).Error; err != nil {
+	var pkg models.Package
+	if err := db.First(&pkg, id).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "套餐不存在", err)
+		return
+	}
+	if err := db.Delete(&pkg).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除套餐失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "delete_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 删除套餐 %s", pkg.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
