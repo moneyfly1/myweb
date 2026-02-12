@@ -456,6 +456,7 @@ func CreateNode(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败", err)
 			return
 		}
+		utils.CreateAuditLogSimple(c, "create_node", "node", newNode.ID, fmt.Sprintf("管理员操作: 创建节点 %s", newNode.Name))
 		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
 		return
 	}
@@ -464,6 +465,7 @@ func CreateNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "create_node", "node", req.Node.ID, fmt.Sprintf("管理员操作: 创建节点 %s", req.Node.Name))
 	utils.SuccessResponse(c, http.StatusCreated, "", req.Node)
 }
 
@@ -489,6 +491,7 @@ func ImportNodeLinks(c *gin.Context) {
 			skp++
 		}
 	}
+	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d", imp, skp))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d", imp, skp), gin.H{
 		"imported": imp,
 		"skipped":  skp,
@@ -514,14 +517,27 @@ func UpdateNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新节点失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "update_node", "node", node.ID, fmt.Sprintf("管理员操作: 更新节点 %s", node.Name))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
 }
 
 func DeleteNode(c *gin.Context) {
-	if err := database.GetDB().Delete(&models.Node{}, c.Param("id")).Error; err != nil {
+	id := c.Param("id")
+	db := database.GetDB()
+	var node models.Node
+	if err := db.First(&node, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点失败", err)
+		}
+		return
+	}
+	if err := db.Delete(&node).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "delete_node", "node", node.ID, fmt.Sprintf("管理员操作: 删除节点 %s", node.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
@@ -695,7 +711,7 @@ func BatchDeleteNodes(c *gin.Context) {
 		}
 		deletedCount += int(result.RowsAffected)
 	}
-
+	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个", deletedCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
 }
 
@@ -708,6 +724,7 @@ func ImportFromClash(c *gin.Context) {
 		return
 	}
 	count, _ := importNodesFromClashConfig(req.ClashConfig)
+	utils.CreateAuditLogSimple(c, "import_from_clash", "node", 0, fmt.Sprintf("管理员操作: 从 Clash 配置导入节点 %d 个", count))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
 }
 
@@ -723,6 +740,7 @@ func ImportFromFile(c *gin.Context) {
 		return
 	}
 	count, _ := importNodesFromClashConfig(string(content))
+	utils.CreateAuditLogSimple(c, "import_from_file", "node", 0, fmt.Sprintf("管理员操作: 从文件导入节点 %d 个", count))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
 }
 

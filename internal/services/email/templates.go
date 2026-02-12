@@ -330,6 +330,40 @@ func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, pack
 	return b.GetBaseTemplate(title, content, "感谢您的信任")
 }
 
+// GetAbnormalLoginAlertTemplate 异常登录/新设备/异地登录告警邮件
+func (b *EmailTemplateBuilder) GetAbnormalLoginAlertTemplate(username, loginTime, ipAddress, locationStr string, isNewDevice, isNewLocation bool) string {
+	title := "账户登录安全提醒"
+	reasons := []string{}
+	if isNewDevice {
+		reasons = append(reasons, "检测到新设备登录")
+	}
+	if isNewLocation {
+		reasons = append(reasons, "检测到异地登录")
+	}
+	reasonText := ""
+	if len(reasons) > 0 {
+		reasonText = strings.Join(reasons, "；")
+	}
+	if locationStr == "" {
+		locationStr = "未知"
+	}
+	content := fmt.Sprintf(`<h2>⚠️ 账户登录安全提醒</h2>
+            <p>亲爱的 %s，</p>
+            <p>您的账户在以下时间从新设备或新地点完成了登录。若本次登录是您本人操作，可忽略此邮件。</p>
+            <div class="warning-box">
+                <h3>登录信息</h3>
+                <table class="info-table">
+                    <tr><th>登录时间</th><td>%s</td></tr>
+                    <tr><th>登录 IP</th><td>%s</td></tr>
+                    <tr><th>登录地点</th><td>%s</td></tr>
+                    <tr><th>提醒原因</th><td>%s</td></tr>
+                </table>
+            </div>
+            <p>如非本人操作，请立即修改密码并联系客服。</p>
+            <p style="text-align: center; color: #666; font-size: 14px;">此邮件由系统自动发送，请勿直接回复。</p>`, username, loginTime, ipAddress, locationStr, reasonText)
+	return b.GetBaseTemplate(title, content, "请妥善保管账户信息")
+}
+
 func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL string, hasPassword bool, password string) string {
 	title := "欢迎加入我们！"
 

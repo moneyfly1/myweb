@@ -28,10 +28,11 @@ type User struct {
 	Language string `gorm:"type:varchar(10);default:zh-CN" json:"language"`
 	Timezone string `gorm:"type:varchar(50);default:Asia/Shanghai" json:"timezone"`
 
-	EmailNotifications bool   `gorm:"default:true" json:"email_notifications"`
-	NotificationTypes  string `gorm:"type:text" json:"notification_types"`
-	SMSNotifications   bool   `gorm:"default:false" json:"sms_notifications"`
-	PushNotifications  bool   `gorm:"default:true" json:"push_notifications"`
+	EmailNotifications       bool   `gorm:"default:true" json:"email_notifications"`
+	AbnormalLoginAlertEnabled bool   `gorm:"default:true" json:"abnormal_login_alert_enabled"` // 是否接收异常登录/设备告警（邮件+站内通知），默认开启
+	NotificationTypes        string `gorm:"type:text" json:"notification_types"`
+	SMSNotifications         bool   `gorm:"default:false" json:"sms_notifications"`
+	PushNotifications        bool   `gorm:"default:true" json:"push_notifications"`
 
 	DataSharing bool `gorm:"default:true" json:"data_sharing"`
 	Analytics   bool `gorm:"default:true" json:"analytics"`

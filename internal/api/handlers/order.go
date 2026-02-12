@@ -698,7 +698,7 @@ func UpdateAdminOrder(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单失败", err)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 更新订单 %s 状态为 %s", order.OrderNo, order.Status))
 	utils.SuccessResponse(c, http.StatusOK, "订单已更新", order)
 }
 
@@ -809,6 +809,7 @@ func RefundAdminOrder(c *gin.Context) {
 	}
 
 	utils.LogInfo("RefundAdminOrder: 订单退款成功 - order_id=%d, order_no=%s, refund_amount=%.2f", order.ID, order.OrderNo, refundAmount)
+	utils.CreateAuditLogSimple(c, "refund_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 退款订单 %s 金额 %.2f", order.OrderNo, refundAmount))
 	utils.SuccessResponse(c, http.StatusOK, "订单退款成功", order)
 }
 
@@ -830,6 +831,7 @@ func DeleteAdminOrder(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订单失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "delete_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 删除订单 %s", order.OrderNo))
 	utils.SuccessResponse(c, http.StatusOK, "订单已删除", nil)
 }
 
@@ -893,6 +895,7 @@ func BulkMarkOrdersPaid(c *gin.Context) {
 			go sendPaymentNotifications(db, order.OrderNo)
 		}
 	}
+	utils.CreateAuditLogSimple(c, "bulk_mark_orders_paid", "order", 0, fmt.Sprintf("管理员操作: 批量标记订单已支付 成功 %d 失败 %d", successCount, failCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("处理完成: 成功 %d, 失败 %d", successCount, failCount), nil)
 }
 
@@ -909,6 +912,7 @@ func BulkCancelOrders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量取消失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "bulk_cancel_orders", "order", 0, fmt.Sprintf("管理员操作: 批量取消订单 %d 个", len(req.OrderIDs)))
 	utils.SuccessResponse(c, http.StatusOK, "批量取消成功", nil)
 }
 
@@ -925,6 +929,7 @@ func BatchDeleteOrders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "batch_delete_orders", "order", 0, fmt.Sprintf("管理员操作: 批量删除订单 %d 个", len(req.OrderIDs)))
 	utils.SuccessResponse(c, http.StatusOK, "批量删除成功", nil)
 }
 

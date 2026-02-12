@@ -268,6 +268,10 @@
             <el-form-item label="IP白名单" v-if="securitySettings.ip_whitelist_enabled">
               <el-input v-model="securitySettings.ip_whitelist" type="textarea" :rows="3" placeholder="每行一个IP地址" />
             </el-form-item>
+            <el-form-item label="管理员账户异常登录告警">
+              <el-switch v-model="securitySettings.admin_abnormal_login_alert_enabled" />
+              <span class="form-tip">开启后，管理员在新设备或异地登录时会收到邮件与站内告警（管理员个人通知设置中需同时开启「异常登录/设备告警」）</span>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveSecuritySettings" :class="{ 'full-width': isMobile }">保存安全设置</el-button>
             </el-form-item>
@@ -458,7 +462,8 @@ export default {
     })
     const securitySettings = reactive({
       login_fail_limit: 5, login_lock_time: 30, session_timeout: 120,
-      ip_whitelist_enabled: false, ip_whitelist: ''
+      ip_whitelist_enabled: false, ip_whitelist: '',
+      abnormal_login_alert_enabled: true, admin_abnormal_login_alert_enabled: true
     })
     const themeSettings = reactive({
       default_theme: 'light', allow_user_theme: true,

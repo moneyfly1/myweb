@@ -92,6 +92,7 @@ func updateSettingsCommon(c *gin.Context, category string) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存设置失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "update_settings", "settings", 0, fmt.Sprintf("管理员操作: 更新设置 category=%s", category))
 	utils.SuccessResponse(c, http.StatusOK, "设置已保存", nil)
 }
 
@@ -145,6 +146,7 @@ func CreateSystemConfig(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建配置失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "create_system_config", "system_config", req.ID, fmt.Sprintf("管理员操作: 创建系统配置 %s (category=%s)", req.Key, req.Category))
 	utils.SuccessResponse(c, http.StatusCreated, "", req)
 }
 
@@ -179,6 +181,7 @@ func UpdateSystemConfig(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "批量更新失败", err)
 			return
 		}
+		utils.CreateAuditLogSimple(c, "update_system_config_batch", "system_config", 0, "管理员操作: 批量更新系统配置")
 		utils.SuccessResponse(c, http.StatusOK, "批量更新成功", nil)
 		return
 	}
@@ -218,6 +221,7 @@ func UpdateSystemConfig(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存配置失败", err)
 		return
 	}
+	utils.CreateAuditLogSimple(c, "update_system_config", "system_config", config.ID, fmt.Sprintf("管理员操作: 更新系统配置 %s (category=%s)", config.Key, config.Category))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", config)
 }
 
@@ -235,6 +239,7 @@ func GetAdminSettings(c *gin.Context) {
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
 			"ip_whitelist_enabled": "false", "ip_whitelist": "",
+			"abnormal_login_alert_enabled": true, "admin_abnormal_login_alert_enabled": true, // 管理员账户异常登录告警开关，默认开启
 		},
 		"theme": {
 			"default_theme": "light", "allow_user_theme": "true",
@@ -620,10 +625,11 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 	}
 
 	if err := geoip.InitGeoIP(geoipPath); err != nil {
+		utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, "管理员操作: 更新 GeoIP 数据库（重载失败）")
 		utils.SuccessResponse(c, http.StatusOK, "更新成功，但重载失败: "+err.Error(), nil)
 		return
 	}
-
+	utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, "管理员操作: 更新 GeoIP 数据库")
 	utils.SuccessResponse(c, http.StatusOK, "GeoIP 数据库更新成功", nil)
 }
 
