@@ -1231,7 +1231,7 @@ export default {
         let expiryDisplayName = ''
         if (subscription.expire_time) {
           const expireDate = dayjs(subscription.expire_time).tz('Asia/Shanghai')
-          expiryDisplayName = `到期时间${expireDate.format('YYYY-MM-DD')}`
+          expiryDisplayName = `到期时间${expireDate.format('YYYY-MM-DD HH:mm:ss')}`
         } else {
           expiryDisplayName = subscription.subscription_url || '订阅'
         }

@@ -33,7 +33,7 @@ export function formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
   }
   return createShanghaiDayjs(date).format(format)
 }
-export function formatDate(date, format = 'YYYY-MM-DD') {
+export function formatDate(date, format = 'YYYY-MM-DD HH:mm:ss') {
   if (!date) return ''
   return createShanghaiDayjs(date).format(format)
 }

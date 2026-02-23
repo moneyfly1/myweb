@@ -1068,6 +1068,23 @@ onUnmounted(() => {
     }
   }
 }
+.mobile-action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  .search-input-wrapper {
+    display: flex;
+    gap: 8px;
+    .mobile-search-input {
+      flex: 1;
+    }
+  }
+  .mobile-filter-buttons {
+    display: flex;
+    gap: 8px;
+  }
+}
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
