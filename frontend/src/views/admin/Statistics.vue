@@ -238,33 +238,33 @@
 							<div class="desktop-only">
 								<div class="region-stats-table">
 									<h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133;">地区统计列表</h4>
-									<el-table :data="regionStats" stripe style="width: 100%" :empty-text="'暂无地区数据'" max-height="400">
-										<el-table-column prop="country" label="国家" min-width="100">
+									<el-table :data="regionStats" stripe style="width: 100%" :empty-text="'暂无地区数据'" max-height="400" :default-sort="{ prop: 'userCount', order: 'descending' }">
+										<el-table-column prop="country" label="国家" min-width="100" sortable>
 											<template #default="{ row }">
 												<el-tag type="success" size="small">{{ row.country || '-' }}</el-tag>
 											</template>
 										</el-table-column>
-										<el-table-column prop="city" label="城市" min-width="100">
+										<el-table-column prop="city" label="城市" min-width="100" sortable>
 											<template #default="{ row }">
 												<span>{{ row.city || '-' }}</span>
 											</template>
 										</el-table-column>
-										<el-table-column prop="userCount" label="用户数" width="80" align="right">
+										<el-table-column prop="userCount" label="用户数" width="100" align="right" sortable>
 											<template #default="{ row }">
 												<el-tag type="primary" size="small">{{ row.userCount || 0 }}</el-tag>
 											</template>
 										</el-table-column>
-										<el-table-column prop="percentage" label="占比" width="80" align="right">
+										<el-table-column prop="percentage" label="占比" width="100" align="right" sortable :sort-method="(a, b) => parseFloat(a.percentage || 0) - parseFloat(b.percentage || 0)">
 											<template #default="{ row }">
 												<span style="color: #606266;">{{ row.percentage || '0.0' }}%</span>
 											</template>
 										</el-table-column>
-										<el-table-column prop="loginCount" label="登录次数" width="80" align="right">
+										<el-table-column prop="loginCount" label="登录次数" width="120" align="right" sortable>
 											<template #default="{ row }">
 												<span style="color: #909399;">{{ row.loginCount || 0 }}</span>
 											</template>
 										</el-table-column>
-										<el-table-column prop="lastLogin" label="最后登录" width="160" align="right">
+										<el-table-column prop="lastLogin" label="最后登录" width="180" align="right" sortable>
 											<template #default="{ row }">
 												<span style="font-size: 12px; color: #909399;">{{ row.lastLogin }}</span>
 											</template>
