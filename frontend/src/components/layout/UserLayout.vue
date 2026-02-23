@@ -114,6 +114,20 @@
       </div>
     </main>
     <div v-if="isMobile && !sidebarCollapsed" class="mobile-overlay" @click.stop="sidebarCollapsed = true" />
+    <div v-if="isMobile" class="mobile-tabbar">
+      <div class="mobile-tab" :class="{ active: isRouteActive('/dashboard') }" @click="navigateTo('/dashboard')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><rect x="48" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="48" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">仪表盘</span>
+      </div>
+      <div class="mobile-tab" :class="{ active: isRouteActive('/packages') }" @click="navigateTo('/packages')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M80 176a16 16 0 00-16 16v216a16 16 0 0016 16h352a16 16 0 0016-16V192a16 16 0 00-16-16zM80 176l48-80h256l48 80"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 320l-48-48h96l-48 48zm0 0v88"/></svg>
+        <span class="mobile-tab-label">套餐购买</span>
+      </div>
+      <div class="mobile-tab" :class="{ active: isRouteActive('/devices') }" @click="navigateTo('/devices')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><rect x="128" y="16" width="256" height="480" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M176 16h24a8 8 0 018 8h0a16 16 0 0016 16h64a16 16 0 0016-16h0a8 8 0 018-8h24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">设备管理</span>
+      </div>
+    </div>
   </div>
 </template>
 <script setup>
@@ -450,9 +464,9 @@ onUnmounted(() => {
     width: calc(100% - var(--sidebar-collapsed-width));
   }
   @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; }
-  .content-wrapper { 
+  .content-wrapper {
     padding: var(--content-padding);
-    @include respond-to(sm) { padding: 12px; }
+    @include respond-to(sm) { padding: 12px; padding-bottom: 72px; }
   }
 }
 .mobile-nav-bar {
@@ -473,6 +487,36 @@ onUnmounted(() => {
     }
   }
 }
+.mobile-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--theme-background, #fff);
+  border-top: 1px solid var(--theme-border, #e8e8e8);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+.mobile-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #999;
+  transition: color 0.2s;
+  .tab-icon { width: 22px; height: 22px; }
+  &.active { color: var(--theme-primary, #409EFF); }
+}
+.mobile-tab-label { font-size: 10px; line-height: 1; }
 .mobile-overlay {
   position: fixed; 
   inset: 50px 0 0 0; 
