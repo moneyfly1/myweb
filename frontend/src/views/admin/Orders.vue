@@ -224,7 +224,7 @@
               </div>
               <div class="mc-row">
                 <el-icon><Timer /></el-icon>
-                <span>{{ formatDateTime(item.created_at).split(' ')[0] }}</span>
+                <span>{{ formatDateTime(item.created_at) }}</span>
               </div>
             </div>
           </div>

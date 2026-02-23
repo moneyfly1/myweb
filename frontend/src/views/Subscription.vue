@@ -507,7 +507,7 @@ export default {
             try {
               const expireDate = dayjs(subscription.value.expire_time).tz('Asia/Shanghai')
               if (expireDate.isValid()) {
-                expiryDisplayName = `到期时间${expireDate.format('YYYY-MM-DD')}`
+                expiryDisplayName = `到期时间${expireDate.format('YYYY-MM-DD HH:mm:ss')}`
               }
             } catch (e) {
               expiryDisplayName = subscription.value.expire_time

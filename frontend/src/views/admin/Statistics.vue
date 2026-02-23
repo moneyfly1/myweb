@@ -229,7 +229,7 @@
 									<p>暂无地区分布数据</p>
 									<p style="font-size: 12px; margin-top: 5px;">请确保已启用 GeoIP 数据库并记录用户登录位置</p>
 								</div>
-								<div v-else class="region-chart-container" style="height: 300px; position: relative;">
+								<div v-else class="region-chart-container" style="position: relative;">
 									<canvas ref="regionChart" style="width: 100%; height: 100%;"></canvas>
 								</div>
 							</div>
@@ -538,9 +538,9 @@ export default {
 							maintainAspectRatio: false,
 							plugins: {
 								legend: {
-									position: isMobile ? 'bottom' : 'right',
+									position: 'bottom',
 									labels: {
-										padding: isMobile ? 8 : 15,
+										padding: isMobile ? 8 : 12,
 										usePointStyle: true,
 										font: {
 											size: isMobile ? 10 : 12
@@ -677,13 +677,13 @@ export default {
   }
   .region-chart-container {
     width: 100%;
-    height: 350px;
+    height: 500px;
     position: relative;
     padding: 20px;
   }
   @media (max-width: 768px) {
     .region-chart-container {
-      height: 300px;
+      height: 450px;
       padding: 10px;
     }
   }

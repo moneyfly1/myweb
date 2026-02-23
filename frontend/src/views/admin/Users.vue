@@ -258,7 +258,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="created_at" label="注册时间" width="160" show-overflow-tooltip sortable="custom" :sort-orders="['ascending', 'descending', null]">
+          <el-table-column prop="created_at" label="注册时间" width="180" show-overflow-tooltip sortable="custom" :sort-orders="['ascending', 'descending', null]">
             <template #default="scope">
               {{ formatDate(scope.row.created_at) }}
             </template>

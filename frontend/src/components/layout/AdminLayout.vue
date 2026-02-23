@@ -60,20 +60,30 @@
       </div>
       <nav class="sidebar-nav">
         <div v-for="section in menuSections" :key="section.title" class="nav-section">
-          <div class="nav-section-title" v-show="!sidebarCollapsed || isMobile">{{ section.title }}</div>
-          <router-link 
-            v-for="item in section.items" :key="item.path" :to="item.path"
-            class="nav-item" :class="{ active: isRouteActive(item.path) }" @click="handleNavClick">
-            <i :class="item.icon"></i>
-            <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
-            <el-badge 
-              v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)" 
-              :value="item.badge" 
-              :max="99"
-              type="danger"
-              class="nav-badge"
-            />
-          </router-link>
+          <div
+            class="nav-section-title"
+            v-show="!sidebarCollapsed || isMobile"
+            :class="{ collapsible: section.collapsible, collapsed: collapsedSections[section.title] }"
+            @click="section.collapsible && toggleSection(section.title)"
+          >
+            <span>{{ section.title }}</span>
+            <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
+          </div>
+          <div class="nav-items" :class="{ 'is-collapsed': section.collapsible && collapsedSections[section.title] && (!sidebarCollapsed || isMobile) }">
+            <router-link
+              v-for="item in section.items" :key="item.path" :to="item.path"
+              class="nav-item" :class="{ active: isRouteActive(item.path) }" @click="handleNavClick">
+              <i :class="item.icon"></i>
+              <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
+              <el-badge
+                v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)"
+                :value="item.badge"
+                :max="99"
+                type="danger"
+                class="nav-badge"
+              />
+            </router-link>
+          </div>
         </div>
       </nav>
     </aside>
@@ -90,13 +100,22 @@
           <transition name="slide-down">
             <div class="mobile-nav-menu" v-show="mobileNavExpanded">
               <div v-for="section in menuSections" :key="section.title" class="nav-section-menu">
-                <div class="section-title">{{ section.title }}</div>
-                <div v-for="item in section.items" :key="item.path" 
-                  class="nav-menu-item" :class="{ 'active': isRouteActive(item.path) }"
-                  @click="navigateTo(item.path)">
-                  <i :class="item.icon"></i>
-                  <span>{{ item.title }}</span>
-                  <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
+                <div
+                  class="section-title"
+                  :class="{ collapsible: section.collapsible, collapsed: collapsedSections[section.title] }"
+                  @click="section.collapsible && toggleSection(section.title)"
+                >
+                  <span>{{ section.title }}</span>
+                  <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
+                </div>
+                <div class="mobile-nav-items" :class="{ 'is-collapsed': section.collapsible && collapsedSections[section.title] }">
+                  <div v-for="item in section.items" :key="item.path"
+                    class="nav-menu-item" :class="{ 'active': isRouteActive(item.path) }"
+                    @click="navigateTo(item.path)">
+                    <i :class="item.icon"></i>
+                    <span>{{ item.title }}</span>
+                    <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
+                  </div>
                 </div>
               </div>
             </div>
@@ -113,6 +132,24 @@
       </div>
     </main>
     <div v-if="isMobile && !sidebarCollapsed" class="mobile-overlay" @click.stop="sidebarCollapsed = true" />
+    <div v-if="isMobile" class="mobile-tabbar">
+      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/dashboard') }" @click="navigateTo('/admin/dashboard')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><rect x="48" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="48" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">仪表盘</span>
+      </div>
+      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/users') }" @click="navigateTo('/admin/users')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><path d="M402 168c-2.93 40.67-33.1 72-66 72s-63.12-31.32-66-72c-3-42.31 26.37-72 66-72s69 30.46 66 72z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M336 304c-65.17 0-127.84 32.37-143.54 95.41-2.08 8.34 3.15 16.59 11.72 16.59h263.65c8.57 0 13.77-8.25 11.72-16.59C463.85 336.36 401.18 304 336 304z" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/><path d="M200 185.94c-2.34 32.48-26.72 58.06-53 58.06s-50.7-25.57-53-58.06C91.61 152.15 115.34 128 147 128s55.39 24.77 53 57.94z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M206 306c-18.05-8.27-37.93-11.45-59-11.45-52 0-102.1 25.85-114.65 76.2-1.65 6.64 2.53 13.25 9.37 13.25H154" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">用户</span>
+      </div>
+      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/subscriptions') }" @click="navigateTo('/admin/subscriptions')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><path d="M400 240c-8.89-89.54-71-144-144-144-69 0-113.44 48.2-128 96-60 6-112 43.59-112 112 0 66 54 112 120 112h260c55 0 100-27.44 100-88 0-59.82-53-85.76-96-88z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">订阅</span>
+      </div>
+      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/orders') }" @click="navigateTo('/admin/orders')">
+        <svg viewBox="0 0 512 512" class="tab-icon"><path d="M80 176a16 16 0 00-16 16v216a16 16 0 0016 16h352a16 16 0 0016-16V192a16 16 0 00-16-16zm-8-48h368" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/><rect x="64" y="176" width="384" height="256" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M160 240l48 48 96-96"/></svg>
+        <span class="mobile-tab-label">订单</span>
+      </div>
+    </div>
   </div>
 </template>
 <script setup>
@@ -141,7 +178,11 @@ const adminMenuOptions = [
   { label: '退出登录', icon: 'el-icon-switch-button', command: 'logout', divided: true }
 ]
 const unreadTicketCount = ref(0)
+const collapsedSections = ref({})
 let unreadCheckInterval = null
+const toggleSection = (title) => {
+  collapsedSections.value[title] = !collapsedSections.value[title]
+}
 const loadUnreadTicketCount = async () => {
   try {
     const response = await ticketAPI.getUnreadCount()
@@ -154,58 +195,58 @@ const loadUnreadTicketCount = async () => {
 }
 const menuSections = computed(() => {
   const baseSections = [
-    { title: '概览', items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }] },
-    { 
-      title: '用户管理', 
+    { title: '概览', collapsible: false, items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }] },
+    {
+      title: '用户管理',
+      collapsible: true,
       items: [
         { path: '/admin/users', title: '用户列表', icon: 'el-icon-user' },
         { path: '/admin/abnormal-users', title: '异常用户', icon: 'el-icon-warning' },
-        { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' }
-      ] 
+        { path: '/admin/user-levels', title: '用户等级', icon: 'el-icon-medal' },
+        { path: '/admin/invites', title: '邀请管理', icon: 'el-icon-user-solid' },
+        {
+          path: '/admin/tickets',
+          title: '工单管理',
+          icon: 'el-icon-s-order',
+          badge: unreadTicketCount.value > 0 ? unreadTicketCount.value : null
+        }
+      ]
+    },
+    {
+      title: '业务管理',
+      collapsible: true,
+      items: [
+        { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' },
+        { path: '/admin/orders', title: '订单列表', icon: 'el-icon-shopping-cart-2' },
+        { path: '/admin/packages', title: '套餐管理', icon: 'el-icon-goods' },
+        { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' }
+      ]
     },
     {
       title: '节点管理',
+      collapsible: true,
       items: [
-        { path: '/admin/nodes', title: '节点管理', icon: 'el-icon-server' },
-        { path: '/admin/custom-nodes', title: '专线节点管理', icon: 'el-icon-connection' },
+        { path: '/admin/nodes', title: '节点列表', icon: 'el-icon-server' },
+        { path: '/admin/custom-nodes', title: '专线节点', icon: 'el-icon-connection' },
         { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' }
       ]
     },
-    { 
-      title: '订单管理', 
-      items: [
-        { path: '/admin/orders', title: '订单列表', icon: 'el-icon-shopping-cart-2' },
-        { path: '/admin/packages', title: '套餐管理', icon: 'el-icon-goods' }
-      ] 
-    },
     {
-      title: '系统管理',
+      title: '系统配置',
+      collapsible: true,
       items: [
         { path: '/admin/config', title: '配置管理', icon: 'el-icon-setting' },
         { path: '/admin/payment-config', title: '支付配置', icon: 'el-icon-wallet' },
-        { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' },
-        { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' }
+        { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' }
       ]
     },
     {
-      title: '日志与分析',
+      title: '数据与日志',
+      collapsible: true,
       items: [
+        { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' },
         { path: '/admin/logs', title: '日志管理', icon: 'el-icon-document' },
         { path: '/admin/system-logs', title: '系统日志', icon: 'el-icon-tickets' }
-      ]
-    },
-    {
-      title: '其他管理',
-      items: [
-        { path: '/admin/invites', title: '邀请管理', icon: 'el-icon-user-solid' },
-        { 
-          path: '/admin/tickets', 
-          title: '工单管理', 
-          icon: 'el-icon-s-order',
-          badge: unreadTicketCount.value > 0 ? unreadTicketCount.value : null
-        },
-        { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' },
-        { path: '/admin/user-levels', title: '用户等级管理', icon: 'el-icon-medal' }
       ]
     }
   ]
@@ -220,7 +261,7 @@ const showBreadcrumb = computed(() => route.meta.showBreadcrumb !== false)
 const breadcrumbItems = computed(() => route.meta.breadcrumb || [])
 const currentPageTitle = computed(() => {
   if (route.meta.title) return route.meta.title
-  const allItems = menuSections.flatMap(s => s.items)
+  const allItems = menuSections.value.flatMap(s => s.items)
   return allItems.find(i => i.path === route.path)?.title || '管理后台'
 })
 const toggleSidebar = () => {
@@ -378,8 +419,41 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     }
   }
   .nav-section {
-    margin-bottom: 24px;
-    .nav-section-title { padding: 12px 20px 8px; font-size: 12px; font-weight: 600; color: #909399; }
+    margin-bottom: 8px;
+    .nav-section-title {
+      padding: 12px 20px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #909399;
+      user-select: none;
+      &.collapsible {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 4px;
+        margin: 0 8px;
+        padding: 10px 12px;
+        &:hover { color: var(--theme-primary); background: var(--sidebar-hover-bg, #f5f7fa); }
+        .section-arrow {
+          font-size: 12px;
+          transition: transform 0.3s ease;
+        }
+        &.collapsed .section-arrow {
+          transform: rotate(-90deg);
+        }
+      }
+    }
+    .nav-items {
+      overflow: hidden;
+      max-height: 500px;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+      opacity: 1;
+      &.is-collapsed {
+        max-height: 0;
+        opacity: 0;
+      }
+    }
     .nav-item {
       display: flex; 
       align-items: center; 
@@ -462,9 +536,9 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     width: calc(100% - var(--sidebar-collapsed-width));
   }
   @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; }
-  .content-wrapper { 
+  .content-wrapper {
     padding: var(--content-padding);
-    @include respond-to(sm) { padding: 12px; }
+    @include respond-to(sm) { padding: 12px; padding-bottom: 72px; }
   }
 }
 .mobile-nav-bar {
@@ -472,7 +546,66 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   .mobile-nav-header { display: flex; justify-content: space-between; padding: 14px 16px; align-items: center; }
   .nav-expand-icon.expanded { transform: rotate(180deg); }
   .mobile-nav-menu { border-top: 1px solid #e4e7ed; max-height: 60vh; overflow-y: auto; }
+  .nav-section-menu {
+    .section-title {
+      &.collapsible {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-right: 16px;
+        &:hover { color: var(--theme-primary); }
+        .section-arrow {
+          font-size: 12px;
+          transition: transform 0.3s ease;
+        }
+        &.collapsed .section-arrow {
+          transform: rotate(-90deg);
+        }
+      }
+    }
+    .mobile-nav-items {
+      overflow: hidden;
+      max-height: 500px;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+      opacity: 1;
+      &.is-collapsed {
+        max-height: 0;
+        opacity: 0;
+      }
+    }
+  }
 }
+.mobile-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--theme-background, #fff);
+  border-top: 1px solid var(--theme-border, #e8e8e8);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+.mobile-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #999;
+  transition: color 0.2s;
+  .tab-icon { width: 22px; height: 22px; }
+  &.active { color: var(--theme-primary, #409EFF); }
+}
+.mobile-tab-label { font-size: 10px; line-height: 1; }
 .mobile-overlay {
   position: fixed; 
   inset: 50px 0 0 0; 
