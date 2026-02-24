@@ -52,7 +52,9 @@ type Config struct {
 	BaseURL                    string
 	DisableScheduleTasks       bool
 	OptimizeForLowEnd          bool
-	DeviceUpgradePricePerMonth float64 // 设备升级价格（每月）
+	DeviceUpgradePricePerMonth float64 // 设备升级价格（每月，兼容旧逻辑）
+	DeviceUpgradePricePerYear  float64 // 设备升级参考年度价格（如 200 元/年）
+	DeviceUpgradeBaseDevices   int     // 年度价格对应的设备数（如 200 元对应 5 台）
 }
 
 var AppConfig *Config
@@ -124,6 +126,8 @@ func LoadConfig() (*Config, error) {
 		DisableScheduleTasks:       getBool("DISABLE_SCHEDULE_TASKS", false),
 		OptimizeForLowEnd:          getBool("OPTIMIZE_FOR_LOW_END", true),
 		DeviceUpgradePricePerMonth: getFloat64("DEVICE_UPGRADE_PRICE_PER_MONTH", 10.0),
+		DeviceUpgradePricePerYear:  getFloat64("DEVICE_UPGRADE_PRICE_PER_YEAR", 200.0),
+		DeviceUpgradeBaseDevices:   getInt("DEVICE_UPGRADE_BASE_DEVICES", 5),
 	}
 
 	if err := validateConfig(config); err != nil {
