@@ -1098,6 +1098,34 @@ func GetOrderStatusByNo(c *gin.Context) {
 	})
 }
 
+// calcDeviceUpgradeAmount 按剩余时间与可选续期计算设备升级费用（年度价格法）
+// 规则：年度价 200 对应 baseDevices 台；仅加设备时按剩余天数比例；若同时加时长则 = 原设备续期费 + 新增设备在(剩余+续期)内的费用
+func calcDeviceUpgradeAmount(expireTime time.Time, currentDeviceLimit, additionalDevices, additionalDays int, yearlyPrice float64, baseDevices int) float64 {
+	if yearlyPrice <= 0 || baseDevices <= 0 {
+		return 0
+	}
+	now := utils.GetBeijingTime()
+	remainingDays := expireTime.Sub(now).Hours() / 24
+	if remainingDays < 0 {
+		remainingDays = 0
+	}
+
+	var cost float64
+	if additionalDays > 0 {
+		// 原设备续期费用 = 年度价 × (续期天数/365) × (当前设备数/基准设备数)
+		cost += yearlyPrice * (float64(additionalDays) / 365) * (float64(currentDeviceLimit) / float64(baseDevices))
+		// 新增设备在（剩余+续期）内的费用 = 年度价 × ((剩余+续期)天数/365) × (新增设备数/基准设备数)
+		cost += yearlyPrice * ((remainingDays + float64(additionalDays)) / 365) * (float64(additionalDevices) / float64(baseDevices))
+	} else {
+		// 仅增加设备：按剩余时间比例计费
+		if remainingDays <= 0 {
+			return 0 // 已过期且未续期，无法仅加设备
+		}
+		cost = yearlyPrice * (remainingDays / 365) * (float64(additionalDevices) / float64(baseDevices))
+	}
+	return cost
+}
+
 func UpgradeDevices(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -1111,6 +1139,7 @@ func UpgradeDevices(c *gin.Context) {
 		PaymentMethod     string  `json:"payment_method"`
 		UseBalance        bool    `json:"use_balance"`
 		BalanceAmount     float64 `json:"balance_amount"`
+		PreviewOnly       bool    `json:"preview_only"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
@@ -1124,17 +1153,54 @@ func UpgradeDevices(c *gin.Context) {
 		return
 	}
 
-	devicePricePerMonth := config.AppConfig.DeviceUpgradePricePerMonth
-	if devicePricePerMonth <= 0 {
-		devicePricePerMonth = 10.0
+	yearlyPrice := config.AppConfig.DeviceUpgradePricePerYear
+	baseDevices := config.AppConfig.DeviceUpgradeBaseDevices
+	if baseDevices <= 0 {
+		baseDevices = 5
 	}
-	totalAmount := (float64(req.AdditionalDevices) * devicePricePerMonth) + (float64(req.AdditionalDays) * (devicePricePerMonth / 30.0))
+
+	var totalAmount float64
+	if yearlyPrice > 0 && baseDevices > 0 {
+		totalAmount = calcDeviceUpgradeAmount(
+			subscription.ExpireTime,
+			subscription.DeviceLimit,
+			req.AdditionalDevices,
+			req.AdditionalDays,
+			yearlyPrice,
+			baseDevices,
+		)
+		// 已过期且未选续期时不允许仅加设备
+		if totalAmount == 0 && req.AdditionalDays <= 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "订阅已过期，请同时选择增加时长后再升级设备数量", nil)
+			return
+		}
+	}
+	// 未配置年度价时回退到按月的旧逻辑
+	if totalAmount == 0 {
+		devicePricePerMonth := config.AppConfig.DeviceUpgradePricePerMonth
+		if devicePricePerMonth <= 0 {
+			devicePricePerMonth = 10.0
+		}
+		totalAmount = (float64(req.AdditionalDevices) * devicePricePerMonth) + (float64(req.AdditionalDays) * (devicePricePerMonth / 30.0))
+	}
 
 	var userLevel models.UserLevel
+	levelDiscount := 1.0
 	if user.UserLevelID.Valid {
 		if err := db.First(&userLevel, user.UserLevelID.Int64).Error; err == nil && userLevel.DiscountRate > 0 && userLevel.DiscountRate < 1.0 {
+			levelDiscount = userLevel.DiscountRate
 			totalAmount *= userLevel.DiscountRate
 		}
+	}
+
+	// 仅预览：返回费用不创建订单
+	if req.PreviewOnly {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"upgrade_cost":   totalAmount,
+			"level_discount": levelDiscount,
+			"amount":         totalAmount,
+		})
+		return
 	}
 
 	balanceUsed := 0.0
