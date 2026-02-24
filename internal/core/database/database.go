@@ -85,8 +85,16 @@ func InitDatabase() error {
 		)
 	}
 
+	beijingTZ, _ := time.LoadLocation("Asia/Shanghai")
+	if beijingTZ == nil {
+		beijingTZ = time.FixedZone("CST", 8*3600)
+	}
+
 	gormConfig := &gorm.Config{
 		Logger: customLogger,
+		NowFunc: func() time.Time {
+			return time.Now().In(beijingTZ)
+		},
 	}
 	DB, err = gorm.Open(dialector, gormConfig)
 	if err != nil {
@@ -110,10 +118,10 @@ func InitDatabase() error {
 	}
 
 	if strings.Contains(cfg.DatabaseURL, "mysql") || os.Getenv("USE_MYSQL") == "true" {
-		if err := DB.Exec("SET time_zone = '+00:00'").Error; err != nil {
+		if err := DB.Exec("SET time_zone = '+08:00'").Error; err != nil {
 			log.Printf("警告: 设置 MySQL 时区失败: %v", err)
 		} else {
-			log.Println("MySQL 会话时区已设置为 UTC")
+			log.Println("MySQL 会话时区已设置为 Asia/Shanghai (+08:00)")
 		}
 	}
 
