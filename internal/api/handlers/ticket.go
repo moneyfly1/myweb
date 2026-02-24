@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -524,10 +523,10 @@ func UpdateTicketStatus(c *gin.Context) {
 	}
 
 	if req.Status == "resolved" {
-		now := time.Now()
+		now := utils.GetBeijingTime()
 		ticket.ResolvedAt = &now
 	} else if req.Status == "closed" {
-		now := time.Now()
+		now := utils.GetBeijingTime()
 		ticket.ClosedAt = &now
 	}
 
@@ -564,7 +563,7 @@ func CloseTicket(c *gin.Context) {
 	}
 
 	ticket.Status = "closed"
-	now := time.Now()
+	now := utils.GetBeijingTime()
 	ticket.ClosedAt = &now
 
 	if err := db.Save(&ticket).Error; err != nil {

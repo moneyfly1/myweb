@@ -349,7 +349,7 @@ func (c *GitClient) UploadBackup(filePath string) error {
 
 // UploadBackupWithProgress 上传备份文件（带进度回调）
 func (c *GitClient) UploadBackupWithProgress(filePath string, progressCallback ProgressCallback) error {
-	now := time.Now()
+	now := utils.GetBeijingTime()
 	dateFolder := utils.FormatBeijingDate(now)
 	fileName := filepath.Base(filePath)
 	remotePath := fmt.Sprintf("%s/%s", dateFolder, fileName)
@@ -437,7 +437,7 @@ func (m *UploadStatusManager) UpdateStatus(taskID string, status string, message
 		s.Message = message
 		s.Progress = progress
 		if status == "success" || status == "failed" {
-			s.FinishTime = time.Now()
+			s.FinishTime = utils.GetBeijingTime()
 		}
 	}
 }
@@ -450,7 +450,7 @@ func (m *UploadStatusManager) UpdateError(taskID string, err error) {
 		s.Status = "failed"
 		s.Error = err.Error()
 		s.Message = "上传失败: " + err.Error()
-		s.FinishTime = time.Now()
+		s.FinishTime = utils.GetBeijingTime()
 	}
 }
 
@@ -458,7 +458,7 @@ func (m *UploadStatusManager) UpdateError(taskID string, err error) {
 func (m *UploadStatusManager) CleanOldStatuses() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
+	now := utils.GetBeijingTime()
 	for taskID, status := range m.statuses {
 		if status.FinishTime.IsZero() {
 			// 未完成的任务，如果超过2小时也清理

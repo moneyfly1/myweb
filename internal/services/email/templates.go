@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"os"
 	"strings"
-	"time"
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
@@ -44,7 +43,7 @@ func (b *EmailTemplateBuilder) getBaseURL() string {
 }
 
 func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string) string {
-	currentYear := time.Now().Year()
+	currentYear := utils.GetBeijingTime().Year()
 	siteName := "网络服务"
 
 	baseTemplate := `<!DOCTYPE html>

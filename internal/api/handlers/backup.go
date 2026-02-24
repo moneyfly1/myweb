@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
@@ -247,7 +246,7 @@ func CreateBackup(c *gin.Context) {
 							Status:    "uploading",
 							Progress:  0,
 							Message:   "正在准备上传...",
-							StartTime: time.Now(),
+							StartTime: utils.GetBeijingTime(),
 							FileName:  backupFileName,
 							FileSize:  fileSize,
 						}

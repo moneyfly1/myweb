@@ -376,7 +376,7 @@ func GetOrders(c *gin.Context) {
 	}
 	var startParsed time.Time
 	if startDate != "" {
-		parsed, err := time.ParseInLocation("2006-01-02", startDate, time.Local)
+		parsed, err := time.ParseInLocation("2006-01-02", startDate, utils.BeijingTZ)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "start_date格式错误，应为YYYY-MM-DD", err)
 			return
@@ -385,7 +385,7 @@ func GetOrders(c *gin.Context) {
 		query = query.Where("created_at >= ?", startParsed)
 	}
 	if endDate != "" {
-		parsed, err := time.ParseInLocation("2006-01-02", endDate, time.Local)
+		parsed, err := time.ParseInLocation("2006-01-02", endDate, utils.BeijingTZ)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "end_date格式错误，应为YYYY-MM-DD", err)
 			return

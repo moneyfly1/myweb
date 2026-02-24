@@ -78,12 +78,12 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 
 	subscriptionURL := utils.GenerateSubscriptionURL()
 
-	nowUTC := time.Now().UTC()
+	now := utils.GetBeijingTime()
 	var expireTime time.Time
 	if durationMonths <= 0 {
-		expireTime = time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 23, 59, 59, 0, nowUTC.Location())
+		expireTime = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
 	} else {
-		expireTime = nowUTC.AddDate(0, durationMonths, 0)
+		expireTime = now.AddDate(0, durationMonths, 0)
 	}
 
 	sub := models.Subscription{
@@ -780,12 +780,12 @@ func CreateUser(c *gin.Context) {
 				if months <= 0 {
 					months = 1
 				}
-				expireTime = time.Now().UTC().AddDate(0, months, 0)
+				expireTime = utils.GetBeijingTime().AddDate(0, months, 0)
 			} else {
-				expireTime = parsedTime.UTC()
+				expireTime = parsedTime.In(utils.BeijingTZ)
 			}
 		} else {
-			expireTime = parsedTime.UTC()
+			expireTime = parsedTime.In(utils.BeijingTZ)
 		}
 	} else {
 		months := defaultDurationMonths

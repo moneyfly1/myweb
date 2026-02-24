@@ -6,7 +6,6 @@ import (
 	"mime"
 	"net/smtp"
 	"strings"
-	"time"
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
@@ -339,7 +338,7 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 		var emailQueue models.EmailQueue
 		if err := db.Where("to_email = ? AND subject = ? AND email_type = ? AND status = ?", to, subject, "verification", "pending").Order("created_at DESC").First(&emailQueue).Error; err == nil {
 			emailQueue.Status = "sent"
-			emailQueue.SentAt = database.NullTime(time.Now())
+			emailQueue.SentAt = database.NullTime(utils.GetBeijingTime())
 			db.Save(&emailQueue)
 		}
 	}
@@ -413,7 +412,7 @@ func (s *EmailService) ProcessEmailQueue() error {
 			}
 		} else {
 			email.Status = "sent"
-			now := time.Now()
+			now := utils.GetBeijingTime()
 			email.SentAt = database.NullTime(now)
 			utils.LogInfo("邮件发送成功: ID=%d, To=%s, Type=%s", email.ID, email.ToEmail, email.EmailType)
 			if err := db.Save(email).Error; err != nil {
