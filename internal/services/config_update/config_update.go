@@ -962,7 +962,7 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP stri
 	}
 
 	// 检查过期
-	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(time.Now()) {
+	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(utils.GetBeijingTime()) {
 		// 即便过期也可能需要显示节点（视业务逻辑而定），但这里标记为过期
 		// 原始代码逻辑：如果没有节点且过期，才标记过期。如果有节点，会先获取节点。
 		// 但 fetchProxiesForUser 内部也会判断过期。
@@ -972,7 +972,7 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP stri
 	ctx.Proxies = proxies
 
 	if len(ctx.Proxies) == 0 {
-		if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(time.Now()) {
+		if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(utils.GetBeijingTime()) {
 			ctx.Status = StatusExpired
 			return ctx
 		}

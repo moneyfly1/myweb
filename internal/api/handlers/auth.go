@@ -303,7 +303,7 @@ func Logout(c *gin.Context) {
 		return
 	}
 
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := utils.GetBeijingTime().Add(24 * time.Hour)
 	if claims.ExpiresAt != nil {
 		expiresAt = claims.ExpiresAt.Time
 	}
@@ -476,7 +476,7 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, user *models.User, current *mod
 	}
 	isNewDevice := false
 	if deviceHash != "" {
-		ninetyDaysAgo := time.Now().Add(-90 * 24 * time.Hour)
+		ninetyDaysAgo := utils.GetBeijingTime().Add(-90 * 24 * time.Hour)
 		var count int64
 		db.Model(&models.LoginHistory{}).Where("user_id = ? AND login_status = ? AND id != ? AND login_time >= ? AND device_fingerprint = ?",
 			user.ID, "success", current.ID, ninetyDaysAgo, deviceHash).Count(&count)

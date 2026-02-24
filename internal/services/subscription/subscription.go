@@ -3,7 +3,6 @@ package subscription
 import (
 	"fmt"
 	"strconv"
-	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -55,18 +54,18 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 		return nil, fmt.Errorf("数据库未初始化")
 	}
 	subscriptionURL := utils.GenerateSubscriptionURL()
-	nowUTC := time.Now().UTC()
+	now := utils.GetBeijingTime()
 
 	if durationDays <= 0 {
 		durationDays = 30
 	}
 
-	expireTime := nowUTC.AddDate(0, 0, durationDays)
+	expireTime := now.AddDate(0, 0, durationDays)
 
 	if utils.AppLogger != nil {
-		utils.AppLogger.Info("创建订阅 - UserID=%d, PackageID=%d, DurationDays=%d, Now(UTC)=%s, ExpireTime(UTC)=%s",
+		utils.AppLogger.Info("创建订阅 - UserID=%d, PackageID=%d, DurationDays=%d, Now(Beijing)=%s, ExpireTime(Beijing)=%s",
 			userID, packageID, durationDays,
-			nowUTC.Format("2006-01-02 15:04:05 MST"),
+			now.Format("2006-01-02 15:04:05 MST"),
 			expireTime.Format("2006-01-02 15:04:05 MST"))
 	}
 
