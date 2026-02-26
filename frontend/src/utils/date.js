@@ -19,8 +19,10 @@ const createShanghaiDayjs = (date) => {
     d = dayjs.utc(date)
   } else if (typeof date === 'string' && date.match(/[+-]\d{2}:\d{2}$/)) {
     d = dayjs(date)
-  } else if (typeof date === 'string' && (date.includes('T') || /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date))) {
+  } else if (typeof date === 'string' && date.includes('T')) {
     d = dayjs.utc(date)
+  } else if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) {
+    d = dayjs.tz(date, DEFAULT_TIMEZONE)
   } else {
     d = dayjs(date)
   }
@@ -35,6 +37,9 @@ export function formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
 }
 export function formatDate(date, format = 'YYYY-MM-DD HH:mm:ss') {
   if (!date) return ''
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) {
+    return date
+  }
   return createShanghaiDayjs(date).format(format)
 }
 export function formatTime(date, format = 'HH:mm:ss') {
