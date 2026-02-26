@@ -39,7 +39,7 @@ func InitDatabase() error {
 		dialector = sqlite.Open(dbPath)
 	} else if strings.Contains(cfg.DatabaseURL, "mysql") ||
 		os.Getenv("USE_MYSQL") == "true" {
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Asia%%2FShanghai",
 			cfg.MySQLUser,
 			cfg.MySQLPassword,
 			cfg.MySQLHost,
