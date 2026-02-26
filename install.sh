@@ -444,9 +444,19 @@ main() {
                 fi
                 ;;
             7) show_logs ;;
-            8) 
+            8)
                 if systemctl list-unit-files | grep -q "cboard.service"; then
-                    if systemctl restart cboard; then
+                    log "正在强制停止服务..."
+                    systemctl stop cboard 2>/dev/null
+                    pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
+                    sleep 1
+                    if pgrep -f "${PROJECT_DIR}/server" > /dev/null 2>&1; then
+                        error "仍有残留进程，尝试再次强制终止..."
+                        pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
+                        sleep 1
+                    fi
+                    log "正在启动服务..."
+                    if systemctl start cboard; then
                         sleep 2
                         if systemctl is-active --quiet cboard; then
                             log "✅ 服务已成功重启"
@@ -454,7 +464,7 @@ main() {
                             error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
                         fi
                     else
-                        error "服务重启失败"
+                        error "服务启动失败"
                     fi
                 else
                     error "服务 cboard 不存在，请先部署"
