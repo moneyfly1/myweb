@@ -85,16 +85,8 @@ func InitDatabase() error {
 		)
 	}
 
-	beijingTZ, _ := time.LoadLocation("Asia/Shanghai")
-	if beijingTZ == nil {
-		beijingTZ = time.FixedZone("CST", 8*3600)
-	}
-
 	gormConfig := &gorm.Config{
 		Logger: customLogger,
-		NowFunc: func() time.Time {
-			return time.Now().In(beijingTZ)
-		},
 	}
 	DB, err = gorm.Open(dialector, gormConfig)
 	if err != nil {
