@@ -701,6 +701,8 @@ export default {
       uploadStatus.value = null
       uploadTaskId.value = null
       try {
+        // 先保存备份设置，确保后端使用最新的备份目标
+        await api.put('/admin/settings/backup', backupSettings)
         const res = await api.post('/admin/backup', {}, { timeout: 60000 })
         if (res.data?.success !== false) {
           const d = res.data.data || res.data
