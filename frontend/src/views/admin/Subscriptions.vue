@@ -590,339 +590,129 @@
       :close-on-click-modal="false"
       class="user-detail-drawer"
     >
-      <div v-if="selectedUser" class="user-detail-content">
-        <el-card class="detail-section">
-          <template #header>
-            <h4>基本信息</h4>
-          </template>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="用户ID">{{ selectedUser.user?.id }}</el-descriptions-item>
-            <el-descriptions-item label="用户名">{{ selectedUser.user?.username }}</el-descriptions-item>
-            <el-descriptions-item label="邮箱">{{ selectedUser.user?.email }}</el-descriptions-item>
-            <el-descriptions-item label="注册时间">{{ formatDate(selectedUser.user?.created_at) }}</el-descriptions-item>
-            <el-descriptions-item label="最后登录">{{ formatDate(selectedUser.user?.last_login) || '从未登录' }}</el-descriptions-item>
-            <el-descriptions-item label="激活状态">
-              <el-tag :type="selectedUser.user?.is_active ? 'success' : 'danger'">
-                {{ selectedUser.user?.is_active ? '已激活' : '未激活' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="管理员权限">
-              <el-tag :type="selectedUser.user?.is_admin ? 'danger' : 'info'">
-                {{ selectedUser.user?.is_admin ? '是' : '否' }}
-              </el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
-        <el-card class="detail-section">
-          <template #header>
-            <h4>订阅信息</h4>
-          </template>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="订阅状态">
-              <el-tag :type="getSubscriptionStatusType(selectedUser.status)">
-                {{ getSubscriptionStatusText(selectedUser.status) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="到期时间">{{ formatDate(selectedUser.expire_time) }}</el-descriptions-item>
-            <el-descriptions-item label="设备限制">{{ selectedUser.device_limit }}</el-descriptions-item>
-            <el-descriptions-item label="在线设备">
-              <el-tooltip content="当前在线设备数" placement="top">
-                <span>{{ selectedUser.online_devices || 0 }}</span>
-              </el-tooltip>
-            </el-descriptions-item>
-            <el-descriptions-item label="通用订阅次数">
-              <el-tooltip content="订阅通用订阅（V2Ray/SSR）的次数" placement="top">
-                <span>{{ selectedUser.v2ray_count || selectedUser.apple_count || 0 }}</span>
-              </el-tooltip>
-            </el-descriptions-item>
-            <el-descriptions-item label="猫咪订阅次数">
-              <el-tooltip content="订阅猫咪订阅（Clash）的次数" placement="top">
-                <span>{{ selectedUser.clash_count || 0 }}</span>
-              </el-tooltip>
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
-        <el-card class="detail-section">
-          <template #header>
-            <h4>订阅地址</h4>
-          </template>
-          <div class="subscription-urls">
-            <div class="url-item">
-              <label>通用订阅地址:</label>
-              <el-input :value="selectedUser.universal_url" readonly>
-                <template #append>
-                  <el-button @click="copyToClipboard(selectedUser.universal_url)">复制</el-button>
+      <div v-if="selectedUser" class="drawer-content">
+        <!-- 用户基本信息 -->
+        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
+          <el-descriptions-item label="用户ID">{{ selectedUser.user?.id }}</el-descriptions-item>
+          <el-descriptions-item label="用户名">{{ selectedUser.user?.username }}</el-descriptions-item>
+          <el-descriptions-item label="邮箱">{{ selectedUser.user?.email }}</el-descriptions-item>
+          <el-descriptions-item label="注册时间">{{ formatDate(selectedUser.user?.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="最后登录">{{ formatDate(selectedUser.user?.last_login) || '从未登录' }}</el-descriptions-item>
+          <el-descriptions-item label="激活状态">
+            <el-tag :type="selectedUser.user?.is_active ? 'success' : 'danger'" size="small">
+              {{ selectedUser.user?.is_active ? '已激活' : '未激活' }}
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 订阅信息 -->
+        <el-divider content-position="left">订阅信息</el-divider>
+        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
+          <el-descriptions-item label="订阅状态">
+            <el-tag :type="getSubscriptionStatusType(selectedUser.status)" size="small">
+              {{ getSubscriptionStatusText(selectedUser.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="到期时间">{{ formatDate(selectedUser.expire_time) }}</el-descriptions-item>
+          <el-descriptions-item label="设备限制">{{ selectedUser.device_limit }}</el-descriptions-item>
+          <el-descriptions-item label="在线设备">{{ selectedUser.online_devices || 0 }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 订阅地址 -->
+        <div class="url-section">
+          <div class="url-row">
+            <span class="url-label">通用订阅:</span>
+            <code class="url-code">{{ selectedUser.universal_url || '无' }}</code>
+            <el-button size="small" @click="copyToClipboard(selectedUser.universal_url)" :disabled="!selectedUser.universal_url">复制</el-button>
+          </div>
+          <div class="url-row">
+            <span class="url-label">Clash订阅:</span>
+            <code class="url-code">{{ selectedUser.clash_url || '无' }}</code>
+            <el-button size="small" @click="copyToClipboard(selectedUser.clash_url)" :disabled="!selectedUser.clash_url">复制</el-button>
+          </div>
+        </div>
+
+        <!-- 记录信息 -->
+        <el-divider content-position="left">记录信息</el-divider>
+        <el-tabs v-model="detailActiveTab" class="records-tabs">
+          <!-- 设备管理 -->
+          <el-tab-pane name="devices">
+            <template #label>
+              <span>设备管理 <el-tag size="small" type="info">{{ selectedUser.online_devices || 0 }}/{{ selectedUser.device_limit || 0 }}</el-tag></span>
+            </template>
+            <div style="margin-bottom: 10px;">
+              <el-button type="primary" size="small" @click="loadUserDevices" :loading="loadingDevices">刷新设备列表</el-button>
+            </div>
+            <el-table :data="userDevices" size="small" max-height="240" v-loading="loadingDevices" empty-text="暂无设备记录">
+              <el-table-column prop="device_name" label="设备名称" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="device_type" label="类型" width="80">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
+                  <span v-else>-</span>
                 </template>
-              </el-input>
-            </div>
-            <div class="url-item">
-              <label>猫咪订阅地址:</label>
-              <el-input v-model="selectedUser.clash_url" readonly>
-                <template #append>
-                  <el-button @click="copyToClipboard(selectedUser.clash_url)">复制</el-button>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" width="130" />
+              <el-table-column prop="last_seen" label="最后在线" width="150">
+                <template #default="scope">{{ formatDate(scope.row.last_seen || scope.row.last_access) || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="scope">
+                  <el-button type="danger" size="small" link @click="deleteDevice(scope.row)">删除</el-button>
                 </template>
-              </el-input>
-            </div>
-          </div>
-        </el-card>
-        <el-card class="detail-section">
-          <template #header>
-            <div class="device-header">
-              <h4>设备管理</h4>
-              <div class="device-stats">
-                <el-tag type="info">在线设备: {{ selectedUser.online_devices || 0 }}/{{ selectedUser.device_limit || 0 }}</el-tag>
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  @click="loadUserDevices"
-                  :loading="loadingDevices"
-                >
-                  刷新设备列表
-                </el-button>
-              </div>
-            </div>
-          </template>
-          <div class="device-table-wrapper">
-            <el-table 
-              :data="userDevices" 
-              size="small" 
-              v-loading="loadingDevices"
-              empty-text="暂无设备记录"
-              class="device-table"
-            >
-            <el-table-column prop="device_name" label="设备名称" min-width="250">
-              <template #default="scope">
-                <div class="device-info">
-                  <el-icon><Monitor /></el-icon>
-                  <div class="device-name-details">
-                    <div class="device-main-name">
-                      <span class="device-name-text">{{ scope.row.device_name || '未知设备' }}</span>
-                      <el-tag v-if="scope.row.software_name" type="info" size="small" style="margin-left: 8px;">
-                        {{ scope.row.software_name }}{{ scope.row.software_version ? ' ' + scope.row.software_version : '' }}
-                      </el-tag>
-                    </div>
-                    <div v-if="scope.row.device_model" class="device-model-info">
-                      <el-tag type="success" size="small" style="margin-top: 4px;">
-                        {{ scope.row.device_model }}{{ scope.row.device_brand && scope.row.device_brand !== 'Apple' ? ' (' + scope.row.device_brand + ')' : '' }}
-                      </el-tag>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="device_type" label="设备类型" width="100">
-              <template #default="scope">
-                <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" 
-                        :type="getDeviceTypeTag(scope.row.device_type)" 
-                        size="small">
-                  {{ getDeviceTypeText(scope.row.device_type) }}
-                </el-tag>
-                <span v-else style="color: #909399; font-size: 12px;">-</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="ip_address" label="IP地址" width="200">
-              <template #default="scope">
-                <div class="ip-location-cell">
-                  <span class="ip-address">{{ scope.row.ip_address || '-' }}</span>
-                  <el-tag v-if="scope.row.location" type="info" size="small" style="margin-left: 8px;">
-                    <i class="el-icon-location"></i>
-                    {{ formatLocation(scope.row.location) }}
-                  </el-tag>
-                  <span v-else class="no-location-text">位置信息不可用</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="os_name" label="操作系统" width="180">
-              <template #default="scope">
-                <div class="os-info">
-                  <div class="os-name">{{ scope.row.os_name || '-' }}</div>
-                  <div v-if="scope.row.os_version" class="os-version">
-                    <el-tag type="primary" size="small" style="margin-top: 4px;">
-                      {{ scope.row.os_version }}
-                    </el-tag>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="last_seen" label="最后在线" width="150">
-              <template #default="scope">
-                <span>{{ formatDate(scope.row.last_seen || scope.row.last_access) || '从未在线' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="access_count" label="访问次数" width="100">
-              <template #default="scope">
-                <el-tag type="info" size="small">{{ scope.row.access_count || 0 }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="is_active" label="状态" width="80">
-              <template #default="scope">
-                <el-tag :type="scope.row.is_active ? 'success' : 'danger'" size="small">
-                  {{ scope.row.is_active ? '活跃' : '离线' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="120" fixed="right">
-              <template #default="scope">
-                <el-button 
-                  type="danger" 
-                  size="small" 
-                  @click="deleteDevice(scope.row)"
-                  :loading="deletingDevice === scope.row.id"
-                >
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          </div>
-          <div v-if="userDevices.length === 0 && !loadingDevices" class="empty-devices">
-            <el-empty description="暂无设备记录">
-              <el-button type="primary" @click="loadUserDevices">刷新设备列表</el-button>
-            </el-empty>
-          </div>
-        </el-card>
-        <el-card class="detail-section">
-          <template #header>
-            <h4>UA记录</h4>
-          </template>
-          <el-table :data="selectedUser.ua_records || []" size="small" empty-text="暂无UA记录">
-            <el-table-column prop="user_agent" label="User Agent" min-width="200">
-              <template #default="scope">
-                <el-tooltip :content="scope.row.user_agent || '未知'" placement="top">
-                  <span class="user-agent-text">{{ truncateUserAgent(scope.row.user_agent) }}</span>
-                </el-tooltip>
-              </template>
-            </el-table-column>
-            <el-table-column prop="device_type" label="设备类型" width="100">
-              <template #default="scope">
-                <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" 
-                        :type="getDeviceTypeTag(scope.row.device_type)" 
-                        size="small">
-                  {{ getDeviceTypeText(scope.row.device_type) }}
-                </el-tag>
-                <span v-else style="color: #909399; font-size: 12px;">-</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="device_name" label="设备名称" width="180">
-              <template #default="scope">
-                <span>{{ scope.row.device_name || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="首次访问" width="160">
-              <template #default="scope">
-                <span>{{ formatDate(scope.row.created_at) || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="last_access" label="最后访问" width="160">
-              <template #default="scope">
-                <span>{{ formatDate(scope.row.last_access) || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="ip_address" label="IP地址" width="200">
-              <template #default="scope">
-                <div class="ip-location-cell">
-                  <span>{{ scope.row.ip_address || '-' }}</span>
-                  <el-tag v-if="scope.row.location" type="info" size="small" style="margin-left: 8px;">
-                    {{ formatLocation(scope.row.location) }}
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="access_count" label="访问次数" width="100">
-              <template #default="scope">
-                <span>{{ scope.row.access_count || 0 }}</span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-        <el-card class="detail-section" v-if="selectedUser.user">
-          <template #header>
-            <h4>
-              <el-icon><Refresh /></el-icon>
-              订阅重置记录
-            </h4>
-          </template>
-          <el-table :data="selectedUser.user.subscription_resets || []" size="small" empty-text="暂无重置记录" border>
-            <el-table-column prop="created_at" label="重置时间" width="180">
-              <template #default="scope">
-                <span>{{ formatDate(scope.row.created_at) || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="reset_type" label="重置类型" width="120">
-              <template #default="scope">
-                <el-tag :type="getResetTypeTag(scope.row.reset_type)" size="small">
-                  {{ getResetTypeText(scope.row.reset_type) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="reset_by" label="操作人" width="100">
-              <template #default="scope">
-                <el-tag :type="getResetByTag(scope.row.reset_by)" size="small">
-                  {{ getResetByText(scope.row.reset_by) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="old_subscription_url" label="旧订阅地址" min-width="200">
-              <template #default="scope">
-                <div class="subscription-url-cell">
-                  <el-input 
-                    v-model="scope.row.old_subscription_url" 
-                    readonly 
-                    size="small"
-                    class="url-input"
-                  >
-                    <template #append>
-                      <el-button 
-                        size="small" 
-                        @click="copyToClipboard(scope.row.old_subscription_url)"
-                        title="复制旧订阅地址"
-                      >
-                        <el-icon><DocumentCopy /></el-icon>
-                      </el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="new_subscription_url" label="新订阅地址" min-width="200">
-              <template #default="scope">
-                <div class="subscription-url-cell">
-                  <el-input 
-                    v-model="scope.row.new_subscription_url" 
-                    readonly 
-                    size="small"
-                    class="url-input"
-                  >
-                    <template #append>
-                      <el-button 
-                        size="small" 
-                        @click="copyToClipboard(scope.row.new_subscription_url)"
-                        title="复制新订阅地址"
-                      >
-                        <el-icon><DocumentCopy /></el-icon>
-                      </el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="device_count_before" label="重置前设备数" width="120" align="center">
-              <template #default="scope">
-                <el-tag type="info" size="small">{{ scope.row.device_count_before || 0 }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="device_count_after" label="重置后设备数" width="120" align="center">
-              <template #default="scope">
-                <el-tag type="success" size="small">{{ scope.row.device_count_after || 0 }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="reason" label="重置原因" min-width="150">
-              <template #default="scope">
-                <span>{{ scope.row.reason || '-' }}</span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <!-- UA记录 -->
+          <el-tab-pane label="UA记录" name="ua">
+            <el-table :data="selectedUser.ua_records || []" size="small" max-height="240" empty-text="暂无UA记录">
+              <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
+              <el-table-column prop="device_type" label="类型" width="80">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" width="130" />
+              <el-table-column prop="location" label="位置" width="120" show-overflow-tooltip>
+                <template #default="scope">{{ formatLocation(scope.row.location) || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最后访问" width="150">
+                <template #default="scope">{{ formatDate(scope.row.last_access) || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="access_count" label="次数" width="70" align="center" />
+            </el-table>
+          </el-tab-pane>
+
+          <!-- 重置记录 -->
+          <el-tab-pane label="重置记录" name="resets">
+            <el-table :data="selectedUser.user?.subscription_resets || []" size="small" max-height="240" empty-text="暂无重置记录">
+              <el-table-column prop="reset_by" label="操作人" width="80">
+                <template #default="scope">
+                  <el-tag :type="getResetByTag(scope.row.reset_by)" size="small">{{ getResetByText(scope.row.reset_by) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="reset_type" label="类型" width="100">
+                <template #default="scope">
+                  <el-tag :type="getResetTypeTag(scope.row.reset_type)" size="small">{{ getResetTypeText(scope.row.reset_type) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="reason" label="原因" min-width="100" show-overflow-tooltip />
+              <el-table-column label="旧订阅URL" min-width="150" show-overflow-tooltip>
+                <template #default="scope"><code style="font-size:11px;">{{ scope.row.old_subscription_url }}</code></template>
+              </el-table-column>
+              <el-table-column label="新订阅URL" min-width="150" show-overflow-tooltip>
+                <template #default="scope"><code style="font-size:11px;">{{ scope.row.new_subscription_url }}</code></template>
+              </el-table-column>
+              <el-table-column label="设备数" width="90" align="center">
+                <template #default="scope">{{ scope.row.device_count_before }} → {{ scope.row.device_count_after }}</template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="时间" width="150">
+                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </el-drawer>
     <el-dialog v-model="showQRDialog" title="订阅二维码" width="400px" center>
@@ -1015,6 +805,7 @@ export default {
       status: ''
     })
     const showUserDetailDialog = ref(false)
+    const detailActiveTab = ref('devices')
     const showQRDialog = ref(false)
     const showColumnSettings = ref(false)
     const selectedUser = ref(null)
@@ -2077,6 +1868,7 @@ export default {
       currentSort,
       currentSortText,
       showUserDetailDialog,
+      detailActiveTab,
       showQRDialog,
       showColumnSettings,
       selectedUser,
@@ -2427,6 +2219,43 @@ export default {
     overflow-y: auto;
     @media (max-width: 768px) {
       padding: 12px;
+    }
+  }
+}
+.drawer-content {
+  .url-section {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .url-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    .url-label {
+      font-size: 13px;
+      color: #606266;
+      white-space: nowrap;
+      min-width: 80px;
+    }
+    .url-code {
+      flex: 1;
+      font-size: 12px;
+      font-family: monospace;
+      background: #f5f7fa;
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 1px solid #e4e7ed;
+      word-break: break-all;
+      color: #303133;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+  .records-tabs {
+    :deep(.el-tabs__header) {
+      margin-bottom: 10px;
     }
   }
 }
