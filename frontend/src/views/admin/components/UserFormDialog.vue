@@ -1,12 +1,11 @@
 <template>
-  <el-dialog 
-    :model-value="visible" 
+  <el-drawer
+    :model-value="visible"
     @update:model-value="$emit('update:visible', $event)"
     :title="editingUser ? '编辑用户' : '添加用户'"
-    :width="isMobile ? '95%' : '600px'"
-    :close-on-click-modal="!isMobile"
+    :size="isMobile ? '100%' : '500px'"
+    direction="rtl"
     class="user-form-dialog"
-    :class="{ 'mobile-dialog': isMobile }"
   >
     <el-form 
       :model="userForm" 
@@ -119,7 +118,7 @@
         </el-button>
       </div>
     </template>
-  </el-dialog>
+  </el-drawer>
 </template>
 <script>
 import { ref, reactive, watch, computed } from 'vue'
@@ -293,12 +292,6 @@ export default {
 <style scoped lang="scss">
 .user-form-dialog {
   * { box-sizing: border-box; }
-  :deep(.el-dialog__body) {
-    padding: 16px;
-    max-height: calc(100vh - 200px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
   :deep(.el-form-item) { margin-bottom: 20px; }
 
   /* 参考 ConfigUpdate：只保留外层输入框，内部输入无边框。保持原有宽度与统一高度 */
@@ -393,52 +386,8 @@ export default {
       margin-left: 0 !important;
       align-items: stretch;
     }
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 2vh auto !important;
-      max-height: 96vh;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-    }
-    :deep(.el-dialog__header) {
-      padding: 12px 12px 10px;
-      flex-shrink: 0;
-      border-bottom: 1px solid #ebeef5;
-      .el-dialog__title {
-        font-size: 17px;
-        font-weight: 600;
-      }
-      .el-dialog__headerbtn {
-        top: 6px;
-        right: 6px;
-        width: 32px;
-        height: 32px;
-        .el-dialog__close {
-          font-size: 18px;
-        }
-      }
-    }
-    :deep(.el-dialog__body) {
-      padding: 12px 12px 16px !important;
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      -webkit-overflow-scrolling: touch;
-      max-height: calc(96vh - 120px);
-      overscroll-behavior: contain;
-    }
-    :deep(.el-dialog__footer) {
-      padding: 10px 12px 12px;
-      flex-shrink: 0;
-      border-top: 1px solid #ebeef5;
-    }
   }
   @media (max-width: 768px) {
-    :deep(.el-dialog__body) {
-      padding: 12px !important;
-      max-height: calc(96vh - 120px);
-    }
     :deep(.el-form-item) {
       margin-bottom: 12px;
     }
