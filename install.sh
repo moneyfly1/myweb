@@ -5,9 +5,12 @@
 
 set +e
 
-# --- 基础配置 ---
-PROJECT_DIR="/www/wwwroot/dy.moneyfly.top"
-DOMAIN="dy.moneyfly.top"
+# --- 基础配置 (自动检测) ---
+# 脚本所在目录即为项目目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${SCRIPT_DIR}"
+# 自动从目录名提取域名（/www/wwwroot/xxx.com → xxx.com）
+DOMAIN="$(basename "$PROJECT_DIR")"
 LOG_FILE="/tmp/cboard_admin.log"
 
 # --- 颜色定义 ---
@@ -388,10 +391,20 @@ sync_from_github() {
     fi
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; return 1; }
 
-    # 检查是否是 git 仓库
+    # 检查是否是 git 仓库，不是则提示用户配置
     if [ ! -d ".git" ]; then
-        error "项目目录不是 Git 仓库，请先初始化"
-        return 1
+        log "项目目录不是 Git 仓库，正在初始化..."
+        read -r -p "请输入 GitHub 仓库地址 (例: https://github.com/user/repo.git): " repo_url
+        if [ -z "$repo_url" ]; then
+            error "仓库地址不能为空"
+            return 1
+        fi
+        git init
+        git remote add origin "$repo_url"
+        git fetch origin || { error "拉取代码失败，请检查仓库地址和网络"; return 1; }
+        git checkout -b main
+        git reset --hard origin/main
+        log "✅ Git 仓库初始化完成"
     fi
 
     # 拉取最新代码
