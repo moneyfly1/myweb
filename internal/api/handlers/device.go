@@ -131,14 +131,17 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
-	if err := db.Delete(&device).Error; err != nil {
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&device).Error; err != nil {
+			return err
+		}
+		var count int64
+		tx.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&count)
+		return tx.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count).Error
+	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
 		return
 	}
-
-	var count int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&count)
-	db.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count)
 
 	utils.CreateAuditLogSimple(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
 
@@ -162,14 +165,17 @@ func RemoveDevice(c *gin.Context) {
 	deviceInfo := getDeviceDisplayName(&device)
 	subscriptionID := device.SubscriptionID
 
-	if err := db.Delete(&device).Error; err != nil {
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&device).Error; err != nil {
+			return err
+		}
+		var count int64
+		tx.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&count)
+		return tx.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", count).Error
+	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
 		return
 	}
-
-	var count int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&count)
-	db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", count)
 
 	utils.CreateAuditLogSimple(c, "admin_delete_device", "device", device.ID, fmt.Sprintf("管理员删除设备: %s", deviceInfo))
 
@@ -209,15 +215,21 @@ func BatchDeleteDevices(c *gin.Context) {
 		subscriptionIDMap[d.SubscriptionID] = true
 	}
 
-	if err := db.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
+			return err
+		}
+		for subID := range subscriptionIDMap {
+			var count int64
+			tx.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subID, true).Count(&count)
+			if err := tx.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除设备失败", err)
 		return
-	}
-
-	for subID := range subscriptionIDMap {
-		var count int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subID, true).Count(&count)
-		db.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count)
 	}
 
 	utils.CreateAuditLogSimple(c, "batch_delete_devices", "device", 0, fmt.Sprintf("管理员批量删除设备: %d 个", len(devices)))

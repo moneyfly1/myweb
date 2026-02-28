@@ -241,12 +241,16 @@
           </div>
         </div>
         <div class="subscription-actions">
-          <el-button type="primary" @click="$router.push('/subscription')">
-            管理订阅
-          </el-button>
-          <el-button type="success" @click="$router.push('/packages')">
-            续费订阅
-          </el-button>
+          <router-link to="/subscription">
+            <el-button type="primary">
+              管理订阅
+            </el-button>
+          </router-link>
+          <router-link to="/packages">
+            <el-button type="success">
+              续费订阅
+            </el-button>
+          </router-link>
         </div>
       </el-card>
     </div>

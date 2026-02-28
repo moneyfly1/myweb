@@ -6,10 +6,10 @@
           <i :class="sidebarCollapsed ? 'el-icon-menu' : 'el-icon-close'"></i>
           <span class="menu-toggle-text">菜单</span>
         </button>
-        <div class="logo" @click="navigateTo('/admin/dashboard')">
+        <router-link to="/admin/dashboard" class="logo">
           <img src="/vite.svg" alt="Logo" class="logo-img">
           <span class="logo-text" v-show="!sidebarCollapsed">CBoard 管理后台</span>
-        </div>
+        </router-link>
       </div>
       <div class="header-center">
         <div class="quick-stats">
@@ -109,13 +109,13 @@
                   <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
                 </div>
                 <div class="mobile-nav-items" :class="{ 'is-collapsed': section.collapsible && collapsedSections[section.title] }">
-                  <div v-for="item in section.items" :key="item.path"
+                  <router-link v-for="item in section.items" :key="item.path" :to="item.path"
                     class="nav-menu-item" :class="{ 'active': isRouteActive(item.path) }"
                     @click="navigateTo(item.path)">
                     <i :class="item.icon"></i>
                     <span>{{ item.title }}</span>
                     <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
-                  </div>
+                  </router-link>
                 </div>
               </div>
             </div>
@@ -133,22 +133,22 @@
     </main>
     <div v-if="isMobile && !sidebarCollapsed" class="mobile-overlay" @click.stop="sidebarCollapsed = true" />
     <div v-if="isMobile" class="mobile-tabbar">
-      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/dashboard') }" @click="navigateTo('/admin/dashboard')">
+      <router-link to="/admin/dashboard" class="mobile-tab" :class="{ active: isRouteActive('/admin/dashboard') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><rect x="48" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="48" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
         <span class="mobile-tab-label">仪表盘</span>
-      </div>
-      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/users') }" @click="navigateTo('/admin/users')">
+      </router-link>
+      <router-link to="/admin/users" class="mobile-tab" :class="{ active: isRouteActive('/admin/users') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><path d="M402 168c-2.93 40.67-33.1 72-66 72s-63.12-31.32-66-72c-3-42.31 26.37-72 66-72s69 30.46 66 72z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M336 304c-65.17 0-127.84 32.37-143.54 95.41-2.08 8.34 3.15 16.59 11.72 16.59h263.65c8.57 0 13.77-8.25 11.72-16.59C463.85 336.36 401.18 304 336 304z" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/><path d="M200 185.94c-2.34 32.48-26.72 58.06-53 58.06s-50.7-25.57-53-58.06C91.61 152.15 115.34 128 147 128s55.39 24.77 53 57.94z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M206 306c-18.05-8.27-37.93-11.45-59-11.45-52 0-102.1 25.85-114.65 76.2-1.65 6.64 2.53 13.25 9.37 13.25H154" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/></svg>
         <span class="mobile-tab-label">用户</span>
-      </div>
-      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/subscriptions') }" @click="navigateTo('/admin/subscriptions')">
+      </router-link>
+      <router-link to="/admin/subscriptions" class="mobile-tab" :class="{ active: isRouteActive('/admin/subscriptions') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><path d="M400 240c-8.89-89.54-71-144-144-144-69 0-113.44 48.2-128 96-60 6-112 43.59-112 112 0 66 54 112 120 112h260c55 0 100-27.44 100-88 0-59.82-53-85.76-96-88z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/></svg>
         <span class="mobile-tab-label">订阅</span>
-      </div>
-      <div class="mobile-tab" :class="{ active: isRouteActive('/admin/orders') }" @click="navigateTo('/admin/orders')">
+      </router-link>
+      <router-link to="/admin/orders" class="mobile-tab" :class="{ active: isRouteActive('/admin/orders') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><path d="M80 176a16 16 0 00-16 16v216a16 16 0 0016 16h352a16 16 0 0016-16V192a16 16 0 00-16-16zm-8-48h368" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/><rect x="64" y="176" width="384" height="256" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M160 240l48 48 96-96"/></svg>
         <span class="mobile-tab-label">订单</span>
-      </div>
+      </router-link>
     </div>
   </div>
 </template>
@@ -370,7 +370,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   @include respond-to(sm) { height: 50px; padding: 0 12px; }
   .header-left {
     display: flex; align-items: center; gap: 16px;
-    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; }
     .logo-text { font-size: 18px; font-weight: 600; color: var(--theme-primary); }
     .menu-toggle {
       display: none; border: 1px solid var(--theme-border); background: none; padding: 8px 12px; border-radius: 6px;
@@ -573,6 +573,10 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
         max-height: 0;
         opacity: 0;
       }
+      .nav-menu-item {
+        text-decoration: none;
+        color: inherit;
+      }
     }
   }
 }
@@ -601,6 +605,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   padding: 6px 0;
   cursor: pointer;
   color: #999;
+  text-decoration: none;
   transition: color 0.2s;
   .tab-icon { width: 22px; height: 22px; }
   &.active { color: var(--theme-primary, #409EFF); }

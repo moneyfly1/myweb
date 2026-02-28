@@ -5,9 +5,11 @@
       <h1>页面未找到</h1>
       <p>抱歉，您访问的页面不存在或已被删除。</p>
       <div class="actions">
-        <el-button type="primary" @click="$router.push('/dashboard')">
-          返回首页
-        </el-button>
+        <router-link to="/dashboard">
+          <el-button type="primary">
+            返回首页
+          </el-button>
+        </router-link>
         <el-button @click="$router.go(-1)">
           返回上页
         </el-button>

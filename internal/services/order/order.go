@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"gorm.io/gorm"
@@ -68,36 +69,49 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		var lvl models.UserLevel
 		if err := s.db.First(&lvl, user.UserLevelID.Int64).Error; err == nil {
 			if lvl.DiscountRate > 0 && lvl.DiscountRate < 1.0 {
-				levelDiscountAmount = baseAmount * (1.0 - lvl.DiscountRate)
-				finalAmount = baseAmount * lvl.DiscountRate
+				levelDiscountAmount = math.Round(baseAmount*(1.0-lvl.DiscountRate)*100) / 100
+				finalAmount = math.Round(baseAmount*lvl.DiscountRate*100) / 100
 			}
 		}
 	}
 
-	var couponID *int64
+	// --- 优惠券验证：总量、有效期、每用户上限 ---
+	var coupon *models.Coupon
 	if params.CouponCode != "" {
-		var coupon models.Coupon
-		if err := s.db.Where("code = ? AND status = ?", params.CouponCode, "active").First(&coupon).Error; err == nil {
-			now := utils.GetBeijingTime()
-			if (now.After(coupon.ValidFrom) || now.Equal(coupon.ValidFrom)) && (now.Before(coupon.ValidUntil) || now.Equal(coupon.ValidUntil)) {
-				if !coupon.MinAmount.Valid || finalAmount >= coupon.MinAmount.Float64 {
-					if coupon.Type == "discount" {
-						couponDiscountAmount = finalAmount * (coupon.DiscountValue / 100)
-						if coupon.MaxDiscount.Valid && couponDiscountAmount > coupon.MaxDiscount.Float64 {
-							couponDiscountAmount = coupon.MaxDiscount.Float64
-						}
-					} else if coupon.Type == "fixed" {
-						couponDiscountAmount = coupon.DiscountValue
-						if couponDiscountAmount > finalAmount {
-							couponDiscountAmount = finalAmount
-						}
-					}
-					finalAmount = finalAmount - couponDiscountAmount
-					cID := int64(coupon.ID)
-					couponID = &cID
-				}
+		var c models.Coupon
+		if err := s.db.Where("code = ? AND status = ?", params.CouponCode, "active").First(&c).Error; err != nil {
+			return nil, "", fmt.Errorf("优惠券不存在或已失效")
+		}
+		now := utils.GetBeijingTime()
+		if now.Before(c.ValidFrom) || now.After(c.ValidUntil) {
+			return nil, "", fmt.Errorf("优惠券不在有效期内")
+		}
+		if c.TotalQuantity.Valid && c.UsedQuantity >= int(c.TotalQuantity.Int64) {
+			return nil, "", fmt.Errorf("优惠券已被领完")
+		}
+		if c.MaxUsesPerUser > 0 {
+			var userUsageCount int64
+			s.db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", c.ID, userID).Count(&userUsageCount)
+			if int(userUsageCount) >= c.MaxUsesPerUser {
+				return nil, "", fmt.Errorf("您已达到该优惠券的使用上限")
 			}
 		}
+		if c.MinAmount.Valid && finalAmount < c.MinAmount.Float64 {
+			return nil, "", fmt.Errorf("订单金额未达到优惠券最低使用金额")
+		}
+		if c.Type == "discount" {
+			couponDiscountAmount = math.Round(finalAmount*(c.DiscountValue/100)*100) / 100
+			if c.MaxDiscount.Valid && couponDiscountAmount > c.MaxDiscount.Float64 {
+				couponDiscountAmount = c.MaxDiscount.Float64
+			}
+		} else if c.Type == "fixed" {
+			couponDiscountAmount = c.DiscountValue
+			if couponDiscountAmount > finalAmount {
+				couponDiscountAmount = finalAmount
+			}
+		}
+		finalAmount = math.Round((finalAmount-couponDiscountAmount)*100) / 100
+		coupon = &c
 	}
 
 	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount
@@ -112,11 +126,6 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		}
 		balanceUsed = params.BalanceAmount
 		finalAmount -= balanceUsed
-
-		user.Balance -= balanceUsed
-		if err := s.db.Save(&user).Error; err != nil {
-			return nil, "", fmt.Errorf("扣除余额失败")
-		}
 	}
 
 	if finalAmount <= 0.01 {
@@ -144,9 +153,13 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		Amount:         baseAmount,
 		Status:         "pending",
 		DiscountAmount: database.NullFloat64(totalDiscountAmount),
-		FinalAmount:    database.NullFloat64(balanceUsed + finalAmount), // 记录实际价值（余额+支付）
+		FinalAmount:    database.NullFloat64(balanceUsed + finalAmount),
 		ExtraData:      database.NullString(string(extraDataJSON)),
-		CreatedAt:      now, // 显式设置创建时间为北京时间
+		CreatedAt:      now,
+	}
+
+	if coupon != nil {
+		order.CouponID = database.NullInt64(int64(coupon.ID))
 	}
 
 	if finalAmount == 0 {
@@ -161,12 +174,45 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		order.PaymentMethodName = database.NullString(methodName)
 	}
 
-	if couponID != nil {
-		order.CouponID = database.NullInt64(*couponID)
-	}
+	// --- 事务：创建订单 + 扣余额 + 记录优惠券使用 + 递增计数器 ---
+	txErr := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&order).Error; err != nil {
+			return fmt.Errorf("创建订单失败: %v", err)
+		}
 
-	if err := s.db.Create(&order).Error; err != nil {
-		return nil, "", fmt.Errorf("创建订单失败: %v", err)
+		// 扣除余额（事务内）
+		if balanceUsed > 0 {
+			result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
+				Update("balance", gorm.Expr("balance - ?", balanceUsed))
+			if result.Error != nil {
+				return fmt.Errorf("扣除余额失败: %v", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("余额不足")
+			}
+		}
+
+		// 记录优惠券使用 + 原子递增 used_quantity
+		if coupon != nil {
+			usage := models.CouponUsage{
+				CouponID:       coupon.ID,
+				UserID:         userID,
+				OrderID:        sql.NullInt64{Int64: int64(order.ID), Valid: true},
+				DiscountAmount: couponDiscountAmount,
+			}
+			if err := tx.Create(&usage).Error; err != nil {
+				return fmt.Errorf("记录优惠券使用失败: %v", err)
+			}
+			if err := tx.Model(&models.Coupon{}).Where("id = ?", coupon.ID).
+				Update("used_quantity", gorm.Expr("used_quantity + 1")).Error; err != nil {
+				return fmt.Errorf("更新优惠券使用次数失败: %v", err)
+			}
+		}
+
+		return nil
+	})
+	if txErr != nil {
+		return nil, "", txErr
 	}
 
 	if order.Status == "paid" {
@@ -502,6 +548,11 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		return
 	}
 
+	// 仅首单发放：如果已有首单记录，跳过
+	if inviteRelation.InviteeFirstOrderID.Valid {
+		return
+	}
+
 	var inviteCode models.InviteCode
 	if err := s.db.First(&inviteCode, inviteRelation.InviteCodeID).Error; err != nil {
 		utils.LogError("processInviteRewards: invite code not found", err, map[string]interface{}{
@@ -530,31 +581,45 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		}
 	}
 
-	if !inviteRelation.InviteeFirstOrderID.Valid {
-		inviteRelation.InviteeFirstOrderID = sql.NullInt64{Int64: int64(order.ID), Valid: true}
-	}
-
+	// 记录首单
+	inviteRelation.InviteeFirstOrderID = sql.NullInt64{Int64: int64(order.ID), Valid: true}
 	inviteRelation.InviteeTotalConsumption += paidAmount
 
 	if !inviteRelation.InviterRewardGiven && inviteRelation.InviterRewardAmount > 0 {
 		var inviter models.User
 		if err := s.db.First(&inviter, inviteRelation.InviterID).Error; err == nil {
-			inviter.Balance += inviteRelation.InviterRewardAmount
-			inviter.TotalInviteReward += inviteRelation.InviterRewardAmount
-			inviter.TotalInviteCount++
-			if err := s.db.Save(&inviter).Error; err == nil {
+			oldBalance := inviter.Balance
+			result := s.db.Model(&models.User{}).Where("id = ?", inviter.ID).
+				Updates(map[string]interface{}{
+					"balance":             gorm.Expr("balance + ?", inviteRelation.InviterRewardAmount),
+					"total_invite_reward": gorm.Expr("total_invite_reward + ?", inviteRelation.InviterRewardAmount),
+					"total_invite_count":  gorm.Expr("total_invite_count + 1"),
+				})
+			if result.Error == nil {
 				inviteRelation.InviterRewardGiven = true
+				var freshInviter models.User
+				s.db.First(&freshInviter, inviter.ID)
 				if utils.AppLogger != nil {
 					utils.AppLogger.Info("processInviteRewards: ✅ 发放邀请者奖励 - inviter_id=%d, amount=%.2f, order_id=%d",
 						inviter.ID, inviteRelation.InviterRewardAmount, order.ID)
 				}
+				go func() {
+					utils.CreateBalanceLog(
+						inviter.ID, "commission", inviteRelation.InviterRewardAmount,
+						oldBalance, freshInviter.Balance, nil, nil,
+						fmt.Sprintf("邀请奖励: 邀请人奖励 (订单 %s)", order.OrderNo),
+						"system", nil, "",
+					)
+					relationID := uint(inviteRelation.ID)
+					utils.CreateCommissionLog(
+						inviter.ID, order.UserID, "order_reward",
+						inviteRelation.InviterRewardAmount, &relationID, nil,
+						fmt.Sprintf("邀请人奖励: 订单 %s", order.OrderNo),
+					)
+				}()
 			} else {
-				utils.LogError("processInviteRewards: failed to give inviter reward", err, map[string]interface{}{
-					"inviter_id": inviter.ID,
-					"amount":     inviteRelation.InviterRewardAmount,
-				})
-				utils.CreateBusinessLog(nil, "invite_reward_failed", "邀请奖励发放失败: 邀请人余额更新失败", "error", map[string]interface{}{
-					"inviter_id": inviter.ID, "order_id": order.ID, "amount": inviteRelation.InviterRewardAmount, "reason": err.Error(),
+				utils.LogError("processInviteRewards: failed to give inviter reward", result.Error, map[string]interface{}{
+					"inviter_id": inviter.ID, "amount": inviteRelation.InviterRewardAmount,
 				})
 			}
 		}
@@ -563,20 +628,34 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 	if !inviteRelation.InviteeRewardGiven && inviteRelation.InviteeRewardAmount > 0 {
 		var invitee models.User
 		if err := s.db.First(&invitee, order.UserID).Error; err == nil {
-			invitee.Balance += inviteRelation.InviteeRewardAmount
-			if err := s.db.Save(&invitee).Error; err == nil {
+			oldBalance := invitee.Balance
+			result := s.db.Model(&models.User{}).Where("id = ?", invitee.ID).
+				Update("balance", gorm.Expr("balance + ?", inviteRelation.InviteeRewardAmount))
+			if result.Error == nil {
 				inviteRelation.InviteeRewardGiven = true
+				var freshInvitee models.User
+				s.db.First(&freshInvitee, invitee.ID)
 				if utils.AppLogger != nil {
 					utils.AppLogger.Info("processInviteRewards: ✅ 发放被邀请者奖励 - invitee_id=%d, amount=%.2f, order_id=%d",
 						invitee.ID, inviteRelation.InviteeRewardAmount, order.ID)
 				}
+				go func() {
+					utils.CreateBalanceLog(
+						invitee.ID, "commission", inviteRelation.InviteeRewardAmount,
+						oldBalance, freshInvitee.Balance, nil, nil,
+						fmt.Sprintf("邀请奖励: 被邀请人奖励 (订单 %s)", order.OrderNo),
+						"system", nil, "",
+					)
+					relationID := uint(inviteRelation.ID)
+					utils.CreateCommissionLog(
+						inviteRelation.InviterID, invitee.ID, "order_reward",
+						inviteRelation.InviteeRewardAmount, &relationID, nil,
+						fmt.Sprintf("被邀请人奖励: 订单 %s", order.OrderNo),
+					)
+				}()
 			} else {
-				utils.LogError("processInviteRewards: failed to give invitee reward", err, map[string]interface{}{
-					"invitee_id": invitee.ID,
-					"amount":     inviteRelation.InviteeRewardAmount,
-				})
-				utils.CreateBusinessLog(nil, "invite_reward_failed", "邀请奖励发放失败: 被邀请人余额更新失败", "error", map[string]interface{}{
-					"invitee_id": invitee.ID, "order_id": order.ID, "amount": inviteRelation.InviteeRewardAmount, "reason": err.Error(),
+				utils.LogError("processInviteRewards: failed to give invitee reward", result.Error, map[string]interface{}{
+					"invitee_id": invitee.ID, "amount": inviteRelation.InviteeRewardAmount,
 				})
 			}
 		}
@@ -586,14 +665,9 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		utils.LogError("processInviteRewards: failed to save invite relation", err, map[string]interface{}{
 			"invite_relation_id": inviteRelation.ID,
 		})
-		utils.CreateBusinessLog(nil, "invite_reward_failed", "邀请奖励发放失败: 保存邀请关系失败", "error", map[string]interface{}{
-			"invite_relation_id": inviteRelation.ID, "order_id": order.ID, "reason": err.Error(),
-		})
 	}
 }
 
-// ProcessRefundOrder 处理订单退款
-// 回退订阅、余额、累计消费等
 func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
 	if order.Status != "paid" {
 		return fmt.Errorf("只能退款已支付的订单")

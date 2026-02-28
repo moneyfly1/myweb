@@ -713,7 +713,9 @@ export default {
         await adminAPI.deleteCustomNode(node.id)
         ElMessage.success('已删除')
         loadCustomNodes()
-      } catch {}
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
+      }
     }
     const toggleNodeStatus = async (node) => {
       try {
@@ -749,7 +751,9 @@ export default {
         ElMessage.success('批量删除成功')
         selectedNodes.value = []
         loadCustomNodes()
-      } catch {} finally { batchDeleting.value = false }
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
+      } finally { batchDeleting.value = false }
     }
     const parseNodeLink = async () => {
       const link = nodeLinkInput.value.split('\n')[0].trim()
@@ -835,14 +839,18 @@ export default {
       try {
         const res = await adminAPI.getCustomNodeUsers(nodeId)
         assignedUsers.value = res.data.data || []
-      } catch {}
+      } catch (error) {
+        ElMessage.error('加载用户列表失败: ' + (error.response?.data?.message || error.message))
+      }
     }
     const handleUnassign = async (user) => {
       try {
         await adminAPI.unassignCustomNodeFromUser(user.id, assigningNode.value.id)
         ElMessage.success('已移除')
         loadAssignedUsers(assigningNode.value.id)
-      } catch {}
+      } catch (error) {
+        ElMessage.error('移除用户失败: ' + (error.response?.data?.message || error.message))
+      }
     }
     const getStatusType = (s) => ({ active: 'success', inactive: 'info', error: 'danger' }[s] || 'info')
     const getStatusText = (s) => ({ active: '活跃', inactive: '非活跃', error: '错误' }[s] || s)

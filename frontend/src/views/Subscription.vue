@@ -96,9 +96,11 @@
       </div>
       <div class="no-subscription" v-else>
         <el-empty description="您还没有订阅">
-          <el-button type="primary" @click="$router.push('/packages')">
-            立即订阅
-          </el-button>
+          <router-link to="/packages">
+            <el-button type="primary">
+              立即订阅
+            </el-button>
+          </router-link>
         </el-empty>
       </div>
       <div class="subscription-actions" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
@@ -118,14 +120,14 @@
         >
           发送到邮箱
         </el-button>
-        <el-button
-          type="warning"
-          class="action-btn renew-btn"
-          @click="$router.push('/packages')"
-          v-if="!isSubscriptionActive(subscription)"
-        >
-          续费订阅
-        </el-button>
+        <router-link to="/packages" v-if="!isSubscriptionActive(subscription)">
+          <el-button
+            type="warning"
+            class="action-btn renew-btn"
+          >
+            续费订阅
+          </el-button>
+        </router-link>
         <el-button
           type="primary"
           class="action-btn upgrade-btn"
@@ -260,9 +262,11 @@
         >
           <template #default>
             <div class="renewal-actions">
-              <el-button type="primary" @click="$router.push('/packages')">
-                立即续费
-              </el-button>
+              <router-link to="/packages">
+                <el-button type="primary">
+                  立即续费
+                </el-button>
+              </router-link>
             </div>
           </template>
         </el-alert>
@@ -385,7 +389,7 @@ export default {
           }
         }
       } catch (error) {
-        ElMessage.error('加载支付方式失败')
+        ElMessage.error('加载支付方式失败: ' + (error.response?.data?.message || error.message))
         availableUpgradePaymentMethods.value = []
       }
     }
@@ -783,7 +787,7 @@ export default {
         paymentQRVisible.value = true
         startPaymentStatusCheck()
       } catch (error) {
-        ElMessage.error('生成二维码失败')
+        ElMessage.error('生成二维码失败: ' + (error.response?.data?.message || error.message))
       }
     }
     const startPaymentStatusCheck = () => {
@@ -821,7 +825,7 @@ export default {
           ElMessage.warning('订单尚未支付，请完成支付')
         }
       } catch (error) {
-        if (!isAutoCheck) ElMessage.error('检查订单状态失败')
+        if (!isAutoCheck) ElMessage.error('检查订单状态失败: ' + (error.response?.data?.message || error.message))
       }
     }
     const onImageError = () => ElMessage.error('二维码加载失败')

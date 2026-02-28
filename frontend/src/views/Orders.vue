@@ -798,7 +798,7 @@ export default {
           mergeRecords()
         }
       } catch (error) {
-        ElMessage.error('加载订单列表失败')
+        ElMessage.error('加载订单列表失败: ' + (error.response?.data?.message || error.message))
         } finally {
         isLoading.value = false
       }

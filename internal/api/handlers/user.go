@@ -689,6 +689,43 @@ func GetUserDetails(c *gin.Context) {
 		}
 	}
 
+	var loginHistory []models.LoginHistory
+	db.Where("user_id = ?", u.ID).Order("login_time DESC").Limit(50).Find(&loginHistory)
+	formattedLoginHistory := make([]gin.H, 0, len(loginHistory))
+	for _, lh := range loginHistory {
+		ipAddr := ""
+		if lh.IPAddress.Valid {
+			ipAddr = lh.IPAddress.String
+		}
+		if ipAddr == "::1" {
+			ipAddr = "127.0.0.1"
+		} else if strings.HasPrefix(ipAddr, "::ffff:") {
+			ipAddr = strings.TrimPrefix(ipAddr, "::ffff:")
+		}
+		location := ""
+		if lh.Location.Valid {
+			location = lh.Location.String
+		} else if ipAddr != "" && geoip.IsEnabled() {
+			if loc := geoip.GetLocationString(ipAddr); loc.Valid {
+				location = loc.String
+			}
+		}
+		entry := gin.H{
+			"id":           lh.ID,
+			"login_time":   utils.FormatBeijingTime(lh.LoginTime),
+			"ip_address":   ipAddr,
+			"location":     location,
+			"login_status": lh.LoginStatus,
+		}
+		if lh.UserAgent.Valid {
+			entry["user_agent"] = lh.UserAgent.String
+		}
+		if lh.FailureReason.Valid {
+			entry["failure_reason"] = lh.FailureReason.String
+		}
+		formattedLoginHistory = append(formattedLoginHistory, entry)
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"user_info":        userInfo,
 		"subscriptions":    formattedSubs,
@@ -702,7 +739,7 @@ func GetUserDetails(c *gin.Context) {
 		},
 		"subscription_resets": formattedResets,
 		"ua_records":          uaRecords,
-		"recent_activities":   []gin.H{}, // 预留字段，后续可以添加最近活动记录
+		"login_history":       formattedLoginHistory,
 	})
 }
 
@@ -1432,6 +1469,16 @@ func BatchDeleteUsers(c *gin.Context) {
 		return
 	}
 
+	currentUser, _ := middleware.GetCurrentUser(c)
+	if currentUser != nil {
+		for _, id := range req.UserIDs {
+			if id == currentUser.ID {
+				utils.ErrorResponse(c, http.StatusBadRequest, "不能删除当前登录的管理员账户", nil)
+				return
+			}
+		}
+	}
+
 	db := database.GetDB()
 
 	var adminUsers []models.User
@@ -1590,6 +1637,16 @@ func BatchDisableUsers(c *gin.Context) {
 	if len(req.UserIDs) == 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要禁用的用户", nil)
 		return
+	}
+
+	currentUser, _ := middleware.GetCurrentUser(c)
+	if currentUser != nil {
+		for _, id := range req.UserIDs {
+			if id == currentUser.ID {
+				utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用当前登录的管理员账户", nil)
+				return
+			}
+		}
 	}
 
 	db := database.GetDB()
