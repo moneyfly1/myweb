@@ -459,13 +459,7 @@ func GetUserDetails(c *gin.Context) {
 		clashCount := sub.ClashCount
 
 		// 生成通用订阅和Clash订阅URL
-		baseURL := sub.SubscriptionURL
-		universalURL := baseURL
-		clashURL := ""
-		if baseURL != "" {
-			// Clash订阅URL通常是在基础URL后加上 ?type=clash 或 /clash
-			clashURL = baseURL + "?type=clash"
-		}
+		universalURL, clashURL := getSubscriptionURLs(c, sub.SubscriptionURL)
 
 		formattedSubs = append(formattedSubs, gin.H{
 			"id":                sub.ID,
