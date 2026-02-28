@@ -383,13 +383,12 @@
               <el-input
                 v-model="user.notes"
                 type="textarea"
-                :rows="2"
-                placeholder="点击输入备注，自动保存"
+                :rows="1"
+                placeholder="点击输入备注"
                 class="notes-input-mobile"
                 @blur="saveNotes(user)"
                 @input="debounceSaveNotes(user)"
                 :maxlength="500"
-                show-word-limit
               />
               <div v-if="user.savingNotes" class="saving-indicator-mobile">
                 <el-icon class="is-loading"><Loading /></el-icon>
@@ -1535,9 +1534,10 @@ export default {
 }
 .user-email-mobile {
   font-weight: 600;
+  font-size: 13px;
 }
 .user-name-mobile {
-  font-size: 0.85rem;
+  font-size: 12px;
   color: #999;
 }
 .device-info {
@@ -1659,27 +1659,29 @@ export default {
     display: none;
   }
   .mobile-card-list {
-    margin-top: 16px;
+    margin-top: 10px;
     .mobile-card {
       background: #fff;
       border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
       .card-row {
         display: flex;
         align-items: center;
-        margin-bottom: 12px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #f0f0f0;
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #f5f5f5;
+        font-size: 13px;
         &:last-of-type {
           border-bottom: none;
           margin-bottom: 0;
           padding-bottom: 0;
         }
         .label {
-          flex: 0 0 90px;
-          color: #666;
+          flex: 0 0 72px;
+          color: #999;
+          font-size: 12px;
         }
         .value {
           flex: 1;
@@ -1688,21 +1690,22 @@ export default {
         }
       }
       .card-actions {
-        margin-top: 12px;
-        padding-top: 12px;
+        margin-top: 8px;
+        padding-top: 8px;
         border-top: 1px solid #f0f0f0;
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
         .action-buttons-row {
           display: flex;
-          gap: 8px;
+          gap: 6px;
           width: 100%;
           .mobile-action-btn {
             flex: 1;
-            height: 44px;
-            font-size: 16px;
+            height: 32px;
+            font-size: 13px;
             margin: 0;
+            padding: 0 4px;
           }
         }
       }
@@ -1800,15 +1803,15 @@ export default {
   width: 100%;
 }
 .notes-input-mobile :deep(.el-textarea__inner) {
-  border: 2px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
-  line-height: 1.6;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.5;
   transition: all 0.3s;
   background-color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  min-height: 60px;
+  box-shadow: none;
+  min-height: 40px;
 }
 .notes-input-mobile :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc;
