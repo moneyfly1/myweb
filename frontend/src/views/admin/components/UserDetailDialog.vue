@@ -6,7 +6,7 @@
     :size="isMobile ? '100%' : '780px'"
     direction="rtl"
     class="user-detail-drawer"
-    :close-on-click-modal="false"
+    :close-on-click-modal="true"
   >
     <div v-if="user" class="drawer-content">
       <!-- 用户基本信息 (始终可见) -->
@@ -60,29 +60,33 @@
 
           <!-- 订阅链接 -->
           <div class="url-section">
-            <div class="url-row">
-              <span class="url-label">通用订阅:</span>
+            <div class="url-item">
+              <div class="url-header">
+                <span class="url-label">通用订阅:</span>
+                <el-button
+                  size="small"
+                  :icon="CopyDocument"
+                  @click="copyToClipboard(sub.universal_url || sub.subscription_url)"
+                  :disabled="!sub.universal_url && !sub.subscription_url"
+                >
+                  复制
+                </el-button>
+              </div>
               <code class="url-code">{{ sub.universal_url || sub.subscription_url || '无' }}</code>
-              <el-button
-                size="small"
-                :icon="CopyDocument"
-                @click="copyToClipboard(sub.universal_url || sub.subscription_url)"
-                :disabled="!sub.universal_url && !sub.subscription_url"
-              >
-                复制
-              </el-button>
             </div>
-            <div class="url-row">
-              <span class="url-label">Clash订阅:</span>
+            <div class="url-item">
+              <div class="url-header">
+                <span class="url-label">Clash订阅:</span>
+                <el-button
+                  size="small"
+                  :icon="CopyDocument"
+                  @click="copyToClipboard(sub.clash_url)"
+                  :disabled="!sub.clash_url"
+                >
+                  复制
+                </el-button>
+              </div>
               <code class="url-code">{{ sub.clash_url || '无' }}</code>
-              <el-button
-                size="small"
-                :icon="CopyDocument"
-                @click="copyToClipboard(sub.clash_url)"
-                :disabled="!sub.clash_url"
-              >
-                复制
-              </el-button>
             </div>
           </div>
 
@@ -670,42 +674,40 @@ export default {
     padding: 12px;
     background: #f5f7fa;
     border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .url-row {
+  .url-item {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
+    flex-direction: column;
+    gap: 6px;
 
-    &:last-child {
-      margin-bottom: 0;
-    }
+    .url-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
 
-    .url-label {
-      flex-shrink: 0;
-      font-size: 13px;
-      font-weight: 500;
-      color: #606266;
-      min-width: 80px;
+      .url-label {
+        font-size: 13px;
+        color: #606266;
+        font-weight: 500;
+      }
     }
 
     .url-code {
-      flex: 1;
       font-family: 'Courier New', Courier, monospace;
       font-size: 12px;
       color: #303133;
       background: #fff;
-      padding: 4px 8px;
+      padding: 8px 12px;
       border-radius: 3px;
       border: 1px solid #dcdfe6;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .el-button {
-      flex-shrink: 0;
+      word-break: break-all;
+      line-height: 1.6;
+      max-height: 120px;
+      overflow-y: auto;
     }
   }
 
@@ -775,28 +777,67 @@ export default {
 
   @media (max-width: 768px) {
     .drawer-content {
-      padding: 15px;
+      padding: 10px;
     }
 
-    .url-row {
-      flex-direction: column;
-      align-items: flex-start;
+    .url-section {
+      padding: 8px;
+      gap: 8px;
+    }
 
-      .url-label {
-        min-width: auto;
+    .url-item {
+      .url-header {
+        .url-label {
+          font-size: 12px;
+        }
       }
-
       .url-code {
-        width: 100%;
-      }
-
-      .el-button {
-        width: 100%;
+        font-size: 11px;
+        padding: 6px 8px;
+        max-height: 80px;
       }
     }
 
     .el-table {
       font-size: 12px;
+    }
+
+    :deep(.el-descriptions) {
+      .el-descriptions__body {
+        .el-descriptions__table {
+          .el-descriptions__cell {
+            padding: 6px 8px;
+          }
+          .el-descriptions__label {
+            font-size: 12px;
+            width: 70px;
+            min-width: 70px;
+            word-break: keep-all;
+          }
+          .el-descriptions__content {
+            font-size: 12px;
+            word-break: break-all;
+          }
+        }
+      }
+    }
+
+    :deep(.el-tabs__item) {
+      font-size: 12px;
+      padding: 0 8px;
+    }
+
+    :deep(.el-divider__text) {
+      font-size: 13px;
+      padding: 0 8px;
+    }
+
+    .subscription-section {
+      margin-bottom: 12px;
+    }
+
+    .records-tabs {
+      margin-top: 12px;
     }
   }
 }

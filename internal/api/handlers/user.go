@@ -458,9 +458,20 @@ func GetUserDetails(c *gin.Context) {
 		universalCount := sub.UniversalCount
 		clashCount := sub.ClashCount
 
+		// 生成通用订阅和Clash订阅URL
+		baseURL := sub.SubscriptionURL
+		universalURL := baseURL
+		clashURL := ""
+		if baseURL != "" {
+			// Clash订阅URL通常是在基础URL后加上 ?type=clash 或 /clash
+			clashURL = baseURL + "?type=clash"
+		}
+
 		formattedSubs = append(formattedSubs, gin.H{
 			"id":                sub.ID,
 			"subscription_url":  sub.SubscriptionURL,
+			"universal_url":     universalURL,
+			"clash_url":         clashURL,
 			"status":            sub.Status,
 			"is_active":         sub.IsActive,
 			"device_limit":      sub.DeviceLimit,
@@ -472,6 +483,7 @@ func GetUserDetails(c *gin.Context) {
 			"created_at":        utils.FormatBeijingTime(sub.CreatedAt),
 			"apple_count":       universalCount,
 			"clash_count":       clashCount,
+			"package_name":      sub.Package.Name,
 		})
 	}
 
