@@ -286,13 +286,12 @@
         />
       </div>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="showAddDialog"
       :title="editingNode ? '编辑专线节点' : '添加专线节点'"
-      :width="isMobile ? '100%' : '650px'"
-      :fullscreen="isMobile"
+      :size="isMobile ? '100%' : '600px'"
+      direction="rtl"
       destroy-on-close
-      class="responsive-dialog"
       append-to-body
     >
       <div class="dialog-scroll-content">
@@ -374,7 +373,7 @@
           <el-button v-else type="primary" @click="saveNode" :loading="saving">保存</el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
     <el-dialog
       v-model="showLinkDialog"
       title="节点链接"

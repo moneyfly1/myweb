@@ -258,11 +258,11 @@
         </div>
       </div>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="showAddDialog"
       :title="editingConfig ? '编辑支付配置' : '添加支付配置'"
-      :width="isMobile ? '95%' : '600px'"
-      :class="isMobile ? 'mobile-dialog' : ''"
+      :size="isMobile ? '100%' : '500px'"
+      direction="rtl"
     >
       <el-form :model="configForm" :label-width="isMobile ? '0' : '120px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="支付类型">
@@ -425,7 +425,7 @@
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
     <el-dialog
       v-model="showBulkOperationsDialog"
       title="批量操作"

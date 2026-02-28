@@ -212,12 +212,11 @@
         />
       </div>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="dialogVisible"
       :title="isEdit ? '编辑套餐' : '添加套餐'"
-      :width="isMobile ? '95%' : '600px'"
-      :close-on-click-modal="!isMobile"
-      class="package-form-dialog"
+      :size="isMobile ? '100%' : '500px'"
+      direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
     >
       <el-form
@@ -317,7 +316,7 @@
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script>

@@ -176,12 +176,11 @@
         </div>
       </div>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="showDialog"
       :title="editingLevel ? '编辑等级' : '添加等级'"
-      :width="isMobile ? '95%' : '600px'"
-      :close-on-click-modal="!isMobile"
-      class="level-form-dialog"
+      :size="isMobile ? '100%' : '500px'"
+      direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
     >
       <el-form 
@@ -275,7 +274,7 @@
           <el-button type="primary" @click="saveLevel" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">保存</el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script setup>

@@ -405,12 +405,11 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="showSettingsDialog"
       title="邀请设置"
-      :width="isMobile ? '95%' : '600px'"
-      :close-on-click-modal="!isMobile"
-      class="settings-dialog"
+      :size="isMobile ? '100%' : '500px'"
+      direction="rtl"
     >
       <div class="settings-dialog-content">
         <el-alert
@@ -471,7 +470,7 @@
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script setup>
