@@ -542,14 +542,14 @@ export default {
       try {
         const userId = this.user.user_info?.id || this.user.id
         const response = await adminAPI.getUserCustomNodes(userId)
-        if (response.code === 200) {
-          this.customNodes = response.data || []
+        if (response.data && response.data.success) {
+          this.customNodes = response.data.data || []
         } else {
-          ElMessage.error(response.message || '加载专线节点失败')
+          this.customNodes = []
         }
       } catch (error) {
         console.error('加载专线节点失败:', error)
-        ElMessage.error('加载专线节点失败')
+        this.customNodes = []
       } finally {
         this.loadingNodes = false
       }
@@ -560,14 +560,17 @@ export default {
         return
       }
       try {
-        const response = await adminAPI.searchCustomNodes(this.nodeSearchKeyword)
-        if (response.code === 200) {
-          this.searchedNodes = response.data || []
+        const params = { is_active: 'true', page: 1, size: 200, search: this.nodeSearchKeyword.trim() }
+        const response = await adminAPI.getCustomNodes(params)
+        if (response.data && response.data.success) {
+          const allNodes = response.data.data?.data || response.data.data || []
+          const assignedIds = this.customNodes.map(n => n.id)
+          this.searchedNodes = allNodes.filter(n => !assignedIds.includes(n.id))
           if (this.searchedNodes.length === 0) {
             ElMessage.info('未找到匹配的节点')
           }
         } else {
-          ElMessage.error(response.message || '搜索节点失败')
+          ElMessage.error('搜索节点失败')
         }
       } catch (error) {
         console.error('搜索节点失败:', error)
@@ -591,11 +594,8 @@ export default {
       }
       this.assigning = true
       try {
-        const response = await adminAPI.assignCustomNode({
-          user_id: userId,
-          node_id: this.selectedNodeId
-        })
-        if (response.code === 200) {
+        const response = await adminAPI.assignCustomNodeToUser(userId, this.selectedNodeId)
+        if (response.data && response.data.success) {
           ElMessage.success('分配成功')
           this.showAssignDialog = false
           this.selectedNodeId = null
@@ -603,11 +603,11 @@ export default {
           this.searchedNodes = []
           await this.loadUserCustomNodes()
         } else {
-          ElMessage.error(response.message || '分配失败')
+          ElMessage.error(response.data?.message || '分配失败')
         }
       } catch (error) {
         console.error('分配节点失败:', error)
-        ElMessage.error('分配节点失败')
+        ElMessage.error('分配节点失败: ' + (error.response?.data?.message || error.message))
       } finally {
         this.assigning = false
       }
@@ -619,19 +619,16 @@ export default {
         return
       }
       try {
-        const response = await adminAPI.unassignCustomNode({
-          user_id: userId,
-          node_id: nodeId
-        })
-        if (response.code === 200) {
+        const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
+        if (response.data && response.data.success) {
           ElMessage.success('取消分配成功')
           await this.loadUserCustomNodes()
         } else {
-          ElMessage.error(response.message || '取消分配失败')
+          ElMessage.error(response.data?.message || '取消分配失败')
         }
       } catch (error) {
         console.error('取消分配失败:', error)
-        ElMessage.error('取消分配失败')
+        ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
       }
     }
   }
