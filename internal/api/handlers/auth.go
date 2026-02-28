@@ -21,18 +21,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type RegisterRequest struct {
 	Username         string `json:"username" binding:"required"`
-	Email            string `json:"email" binding:"required,email"`
+	Email            string `json:"email" binding:"required,email,max=255"`
 	Password         string `json:"password" binding:"required,min=8"`
 	VerificationCode string `json:"verification_code"`
 	InviteCode       string `json:"invite_code"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Email    string `json:"email" binding:"required,email,max=255"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -643,51 +644,71 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 	}
 	inviteCodeStr = strings.ToUpper(strings.TrimSpace(inviteCodeStr))
 
-	var inviteCode models.InviteCode
-	if err := db.Where("UPPER(code) = ? AND is_active = ?", inviteCodeStr, true).First(&inviteCode).Error; err != nil {
-		return
-	}
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		// FOR UPDATE 行锁防止并发超用
+		var inviteCode models.InviteCode
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("UPPER(code) = ? AND is_active = ?", inviteCodeStr, true).
+			First(&inviteCode).Error; err != nil {
+			return nil // 邀请码不存在或未激活，静默返回
+		}
 
-	now := utils.GetBeijingTime()
-	if (inviteCode.ExpiresAt.Valid && inviteCode.ExpiresAt.Time.Before(now)) ||
-		(inviteCode.MaxUses.Valid && inviteCode.UsedCount >= int(inviteCode.MaxUses.Int64)) {
-		return
-	}
+		now := utils.GetBeijingTime()
+		if inviteCode.ExpiresAt.Valid && inviteCode.ExpiresAt.Time.Before(now) {
+			return nil // 已过期
+		}
+		if inviteCode.MaxUses.Valid && inviteCode.UsedCount >= int(inviteCode.MaxUses.Int64) {
+			return nil // 已达上限
+		}
 
-	var existingRelation models.InviteRelation
-	if err := db.Where("invitee_id = ?", newUserID).First(&existingRelation).Error; err == nil {
-		return
-	}
+		var existingRelation models.InviteRelation
+		if err := tx.Where("invitee_id = ?", newUserID).First(&existingRelation).Error; err == nil {
+			return nil // 已有邀请关系
+		}
 
-	inviteRelation := models.InviteRelation{
-		InviteCodeID:        inviteCode.ID,
-		InviterID:           inviteCode.UserID,
-		InviteeID:           newUserID,
-		InviterRewardGiven:  false,
-		InviteeRewardGiven:  false,
-		InviterRewardAmount: inviteCode.InviterReward,
-		InviteeRewardAmount: inviteCode.InviteeReward,
-	}
+		inviteRelation := models.InviteRelation{
+			InviteCodeID:        inviteCode.ID,
+			InviterID:           inviteCode.UserID,
+			InviteeID:           newUserID,
+			InviterRewardGiven:  false,
+			InviteeRewardGiven:  false,
+			InviterRewardAmount: inviteCode.InviterReward,
+			InviteeRewardAmount: inviteCode.InviteeReward,
+		}
 
-	if err := db.Create(&inviteRelation).Error; err != nil {
-		utils.LogError("processInviteCode: create invite relation failed", err, map[string]interface{}{"invite_code_id": inviteCode.ID, "new_user_id": newUserID})
-		return
-	}
+		if err := tx.Create(&inviteRelation).Error; err != nil {
+			utils.LogError("processInviteCode: create invite relation failed", err, map[string]interface{}{"invite_code_id": inviteCode.ID, "new_user_id": newUserID})
+			return err
+		}
 
-	inviteCode.UsedCount++
-	db.Save(&inviteCode)
+		// 原子递增使用次数
+		if err := tx.Model(&models.InviteCode{}).Where("id = ?", inviteCode.ID).
+			Update("used_count", gorm.Expr("used_count + 1")).Error; err != nil {
+			return err
+		}
 
-	var newUser models.User
-	if err := db.First(&newUser, newUserID).Error; err == nil {
-		newUser.InviteCodeUsed = database.NullString(inviteCodeStr)
-		db.Save(&newUser)
-	}
+		var newUser models.User
+		if err := tx.First(&newUser, newUserID).Error; err == nil {
+			newUser.InviteCodeUsed = database.NullString(inviteCodeStr)
+			tx.Save(&newUser)
+		}
 
-	if inviteCode.MinOrderAmount == 0 {
-		distributeReward(db, inviteCode.UserID, inviteCode.InviterReward, newUserID, &inviteRelation, true)
-		distributeReward(db, newUserID, inviteCode.InviteeReward, newUserID, &inviteRelation, false)
-	} else if utils.AppLogger != nil {
-		utils.AppLogger.Info("processInviteCode: ⏳ 等待订单支付后发放奖励 - invitee_id=%d, min_order_amount=%.2f", newUserID, inviteCode.MinOrderAmount)
+		// 无最低消费要求时立即发放奖励（事务外异步处理）
+		if inviteCode.MinOrderAmount == 0 {
+			go func() {
+				freshDB := database.GetDB()
+				distributeReward(freshDB, inviteCode.UserID, inviteCode.InviterReward, newUserID, &inviteRelation, true)
+				distributeReward(freshDB, newUserID, inviteCode.InviteeReward, newUserID, &inviteRelation, false)
+			}()
+		} else if utils.AppLogger != nil {
+			utils.AppLogger.Info("processInviteCode: ⏳ 等待订单支付后发放奖励 - invitee_id=%d, min_order_amount=%.2f", newUserID, inviteCode.MinOrderAmount)
+		}
+
+		return nil
+	})
+
+	if txErr != nil {
+		utils.LogError("processInviteCode: transaction failed", txErr, map[string]interface{}{"invite_code": inviteCodeStr, "new_user_id": newUserID})
 	}
 }
 
@@ -888,7 +909,7 @@ func ResetPassword(c *gin.Context) {
 }
 
 type ForgotPasswordRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	Email string `json:"email" binding:"required,email,max=255"`
 }
 
 func ForgotPassword(c *gin.Context) {
@@ -949,16 +970,32 @@ func ForgotPassword(c *gin.Context) {
 	content := templateBuilder.GetPasswordResetVerificationCodeTemplate(user.Username, code)
 	subject := "密码重置验证码"
 
-	if err := emailService.SendEmail(user.Email, subject, content); err != nil {
-		if queueErr := emailService.QueueEmail(user.Email, subject, content, "verification"); queueErr != nil {
-			utils.LogError("RequestPasswordReset: send email failed", err, map[string]interface{}{
-				"user_id": user.ID,
-			})
-			utils.LogError("RequestPasswordReset: queue email also failed", queueErr, map[string]interface{}{
-				"user_id": user.ID,
-			})
-			utils.ErrorResponse(c, http.StatusInternalServerError, "发送验证码邮件失败", err)
+	sendErr := emailService.SendEmail(user.Email, subject, content)
+	if sendErr != nil {
+		utils.LogError("RequestPasswordReset: send email failed", sendErr, map[string]interface{}{
+			"user_id": user.ID,
+		})
+	}
+
+	queueErr := emailService.QueueEmail(user.Email, subject, content, "password_reset")
+	if queueErr != nil {
+		utils.LogError("RequestPasswordReset: queue email failed", queueErr, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		if sendErr != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "发送验证码邮件失败", sendErr)
 			return
+		}
+	} else if sendErr == nil {
+		// 直接发送成功，将队列记录标记为已发送
+		db := database.GetDB()
+		var emailQueue models.EmailQueue
+		if err := db.Where("to_email = ? AND subject = ? AND email_type = ? AND status = ?",
+			user.Email, subject, "password_reset", "pending").
+			Order("created_at DESC").First(&emailQueue).Error; err == nil {
+			emailQueue.Status = "sent"
+			emailQueue.SentAt = database.NullTime(utils.GetBeijingTime())
+			db.Save(&emailQueue)
 		}
 	}
 
@@ -966,7 +1003,7 @@ func ForgotPassword(c *gin.Context) {
 }
 
 type ResetPasswordByCodeRequest struct {
-	Email            string `json:"email" binding:"required,email"`
+	Email            string `json:"email" binding:"required,email,max=255"`
 	VerificationCode string `json:"verification_code" binding:"required"`
 	NewPassword      string `json:"new_password" binding:"required,min=8"`
 }

@@ -5,74 +5,58 @@ import { secureStorage } from '@/utils/api'
 import { useApi } from '@/utils/api'
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
-const getAuthComponent = async () => {
-  try {
-    const api = useApi()
-    const response = await api.get('/settings/public-settings')
-    const settings = response.data?.data || response.data || {}
-    const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
-    return unifiedAuthEnabled 
-      ? () => import('@/views/UnifiedAuth.vue')
-      : () => import('@/views/Login.vue')
-  } catch (error) {
-    return () => import('@/views/Login.vue')
+let _unifiedAuthPromise = null
+const getUnifiedAuthEnabled = () => {
+  if (!_unifiedAuthPromise) {
+    _unifiedAuthPromise = useApi().get('/settings/public-settings')
+      .then(response => {
+        const settings = response.data?.data || response.data || {}
+        return settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
+      })
+      .catch(() => false)
   }
+  return _unifiedAuthPromise
+}
+const getAuthComponent = async () => {
+  const unifiedAuthEnabled = await getUnifiedAuthEnabled()
+  return unifiedAuthEnabled
+    ? () => import('@/views/UnifiedAuth.vue')
+    : () => import('@/views/Login.vue')
 }
 const routes = [
   { path: '/', redirect: '/dashboard' },
-  { 
-    path: '/login', 
-    name: 'Login', 
+  {
+    path: '/login',
+    name: 'Login',
     component: async () => {
-      try {
-        const api = useApi()
-        const response = await api.get('/settings/public-settings')
-        const settings = response.data?.data || response.data || {}
-        const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
-        return unifiedAuthEnabled 
-          ? (await import('@/views/UnifiedAuth.vue')).default
-          : (await import('@/views/Login.vue')).default
-      } catch (error) {
-        return (await import('@/views/Login.vue')).default
-      }
-    }, 
-    meta: { requiresGuest: true } 
+      const unifiedAuthEnabled = await getUnifiedAuthEnabled()
+      return unifiedAuthEnabled
+        ? (await import('@/views/UnifiedAuth.vue')).default
+        : (await import('@/views/Login.vue')).default
+    },
+    meta: { requiresGuest: true }
   },
-  { 
-    path: '/register', 
-    name: 'Register', 
+  {
+    path: '/register',
+    name: 'Register',
     component: async () => {
-      try {
-        const api = useApi()
-        const response = await api.get('/settings/public-settings')
-        const settings = response.data?.data || response.data || {}
-        const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
-        return unifiedAuthEnabled 
-          ? (await import('@/views/UnifiedAuth.vue')).default
-          : (await import('@/views/Register.vue')).default
-      } catch (error) {
-        return (await import('@/views/Register.vue')).default
-      }
-    }, 
-    meta: { requiresGuest: true } 
+      const unifiedAuthEnabled = await getUnifiedAuthEnabled()
+      return unifiedAuthEnabled
+        ? (await import('@/views/UnifiedAuth.vue')).default
+        : (await import('@/views/Register.vue')).default
+    },
+    meta: { requiresGuest: true }
   },
-  { 
-    path: '/forgot-password', 
-    name: 'ForgotPassword', 
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
     component: async () => {
-      try {
-        const api = useApi()
-        const response = await api.get('/settings/public-settings')
-        const settings = response.data?.data || response.data || {}
-        const unifiedAuthEnabled = settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
-        return unifiedAuthEnabled 
-          ? (await import('@/views/UnifiedAuth.vue')).default
-          : (await import('@/views/ForgotPassword.vue')).default
-      } catch (error) {
-        return (await import('@/views/ForgotPassword.vue')).default
-      }
-    }, 
-    meta: { requiresGuest: true } 
+      const unifiedAuthEnabled = await getUnifiedAuthEnabled()
+      return unifiedAuthEnabled
+        ? (await import('@/views/UnifiedAuth.vue')).default
+        : (await import('@/views/ForgotPassword.vue')).default
+    },
+    meta: { requiresGuest: true }
   },
   { path: '/admin/login', name: 'AdminLogin', component: () => import('@/views/admin/AdminLogin.vue'), meta: { requiresGuest: true } },
   {
@@ -166,7 +150,12 @@ router.beforeEach(async (to, from, next) => {
       }
     }
     if (token && user) {
-      const userData = JSON.parse(decodeURIComponent(user))
+      let userData
+      try {
+        userData = JSON.parse(decodeURIComponent(user))
+      } catch {
+        return next({ path: to.path, query: { ...to.query, token: undefined, user: undefined }, replace: true })
+      }
       if (userData._adminToken) saveAdminAuth(userData._adminToken, userData._adminUser)
       const finalUser = { ...userData, is_admin: false }
       delete finalUser._adminToken; delete finalUser._adminUser

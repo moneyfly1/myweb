@@ -424,7 +424,9 @@ export default {
         await adminAPI.deleteNode(node.id)
         ElMessage.success('删除成功')
         loadNodes()
-      } catch {}
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
+      }
     }
     const batchTest = async () => {
       testing.value = true
@@ -446,7 +448,9 @@ export default {
         ElMessage.success('批量删除成功')
         selectedNodes.value = [] // 重置选中
         loadNodes()
-      } catch {} finally {
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
+      } finally {
         deleting.value = false
       }
     }
