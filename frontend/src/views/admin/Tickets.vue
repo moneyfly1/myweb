@@ -243,14 +243,13 @@
       @current-change="loadTickets"
       style="margin-top: 20px; justify-content: center"
     />
-    <el-dialog
+    <el-drawer
       v-model="showDetailDialog"
       :title="currentTicket ? `工单详情 - ${currentTicket.ticket_no}` : '工单详情'"
-      :width="isMobile ? '100%' : '900px'"
-      :fullscreen="isMobile"
+      :size="isMobile ? '100%' : '780px'"
+      direction="rtl"
       @close="closeDetailDialog"
-      class="ticket-detail-dialog"
-      :close-on-click-modal="!isMobile"
+      class="ticket-detail-drawer"
     >
       <div v-if="currentTicket" class="ticket-detail">
         <div class="mobile-ticket-header" v-if="isMobile">
@@ -403,7 +402,7 @@
           </el-card>
         </div>
       </div>
-    </el-dialog>
+    </el-drawer>
     <el-dialog v-model="showStatusDialog" title="更新工单状态" :width="isMobile ? '90%' : '400px'">
       <el-select v-model="newStatus" placeholder="选择新状态" style="width: 100%">
         <el-option label="待处理" value="pending" />
@@ -1023,34 +1022,7 @@ onUnmounted(() => {
       border-top: 1px solid #f0f0f0;
     }
   }
-  .ticket-detail-dialog {
-    :deep(.el-dialog) {
-      margin: 0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    :deep(.el-dialog__header) {
-      padding: 16px;
-      border-bottom: 1px solid #f0f0f0;
-      position: sticky;
-      top: 0;
-      background: #fff;
-      z-index: 10;
-    }
-    :deep(.el-dialog__title) {
-      font-size: 16px;
-      font-weight: 600;
-    }
-    :deep(.el-dialog__body) {
-      padding: 16px;
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    :deep(.el-dialog__close) {
-      font-size: 20px;
-    }
+  .ticket-detail-drawer {
     .ticket-detail {
       padding-bottom: 20px;
     }

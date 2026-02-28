@@ -350,7 +350,7 @@
                 <el-avatar :size="24" :src="user.avatar">
                   {{ user.username?.charAt(0)?.toUpperCase() }}
                 </el-avatar>
-                <div>
+                <div @click="viewUserDetails(user.id)" style="cursor: pointer;">
                   <div class="user-email-mobile">{{ user.email }}</div>
                   <div class="user-name-mobile">{{ user.username }}</div>
                 </div>
@@ -403,7 +403,11 @@
           </div>
           <div class="card-actions">
             <div class="action-buttons-row">
-              <el-button type="primary" @click="editUser(user)" class="mobile-action-btn">
+              <el-button type="primary" @click="viewUserDetails(user.id)" class="mobile-action-btn">
+                <el-icon><View /></el-icon>
+                详情
+              </el-button>
+              <el-button type="primary" @click="editUser(user)" class="mobile-action-btn" plain>
                 <el-icon><Edit /></el-icon>
                 编辑
               </el-button>
@@ -421,8 +425,6 @@
                 <el-icon><Unlock /></el-icon>
                 解除限制
               </el-button>
-            </div>
-            <div class="action-buttons-row">
               <el-button type="danger" @click="deleteUser(user)" class="mobile-action-btn">
                 <el-icon><Delete /></el-icon>
                 删除
@@ -516,9 +518,9 @@
 <script>
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
+import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
-  Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck
+  Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'

@@ -363,12 +363,12 @@
         </div>
       </div>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="logDetailsVisible"
       title="日志详情"
-      :width="isMobile ? '95%' : '800px'"
+      :size="isMobile ? '100%' : '600px'"
+      direction="rtl"
       :before-close="closeLogDetails"
-      class="log-details-dialog"
     >
       <div v-if="selectedLog" class="log-details">
         <el-descriptions :column="isMobile ? 1 : 2" border>
@@ -432,7 +432,7 @@
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script>
@@ -1008,29 +1008,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       .el-pagination__jump {
         display: none;
       }
-    }
-  }
-  :deep(.log-details-dialog) {
-    .el-dialog {
-      width: 95% !important;
-      margin: 2vh auto !important;
-      max-height: 96vh;
-    }
-    .el-dialog__body {
-      padding: 15px !important;
-      max-height: calc(96vh - 140px);
-      overflow-y: auto;
-    }
-    .log-details {
-      max-height: none;
-    }
-    .log-message-content,
-    .log-details-content,
-    .log-stack-content,
-    .log-context-content {
-      font-size: 11px;
-      padding: 8px;
-      max-height: 150px;
     }
   }
 }
