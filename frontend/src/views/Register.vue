@@ -298,11 +298,7 @@ const canSendCode = computed(() => {
   return registerForm.emailPrefix && registerForm.emailDomain
 })
 const handleSendVerificationCode = async () => {
-  if (!registerForm.emailPrefix || !registerForm.emailDomain) {
-    ElMessage.warning('请先填写完整的邮箱地址')
-    return
-  }
-  if (!registerForm.email) {
+  if (!registerForm.emailPrefix || !registerForm.emailDomain || !registerForm.email) {
     ElMessage.warning('请先填写完整的邮箱地址')
     return
   }

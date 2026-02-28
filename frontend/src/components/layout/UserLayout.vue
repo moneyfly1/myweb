@@ -6,10 +6,10 @@
           <i :class="sidebarCollapsed ? 'el-icon-menu' : 'el-icon-close'"></i>
           <span class="menu-toggle-text">菜单</span>
         </button>
-        <div class="logo" @click="router.push('/dashboard')">
+        <router-link to="/dashboard" class="logo">
           <img src="/vite.svg" alt="Logo" class="logo-img">
           <span class="logo-text" v-show="!sidebarCollapsed">CBoard 用户中心</span>
-        </div>
+        </router-link>
       </div>
       <div class="header-right">
         <el-dropdown @command="handleThemeChange" class="theme-dropdown">
@@ -61,20 +61,28 @@
       <nav class="sidebar-nav">
         <div v-for="section in menuSections" :key="section.title" class="nav-section">
           <div class="nav-section-title" v-show="!sidebarCollapsed || isMobile">{{ section.title }}</div>
-          <div 
-            v-for="item in section.items" :key="item.path"
-            class="nav-item" :class="{ active: isRouteActive(item.path), 'admin-back': item.isAdminBack }" 
-            @click="item.isAdminBack ? returnToAdmin() : navigateTo(item.path)">
-            <i :class="item.icon"></i>
-            <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
-            <el-badge 
-              v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)" 
-              :value="item.badge" 
-              :max="99"
-              type="danger"
-              class="nav-badge"
-            />
-          </div>
+          <template v-for="item in section.items" :key="item.path">
+            <div v-if="item.isAdminBack"
+              class="nav-item admin-back"
+              @click="returnToAdmin()">
+              <i :class="item.icon"></i>
+              <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
+            </div>
+            <router-link v-else
+              :to="item.path"
+              class="nav-item" :class="{ active: isRouteActive(item.path) }"
+              @click="handleNavClick">
+              <i :class="item.icon"></i>
+              <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
+              <el-badge
+                v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)"
+                :value="item.badge"
+                :max="99"
+                type="danger"
+                class="nav-badge"
+              />
+            </router-link>
+          </template>
         </div>
       </nav>
     </aside>
@@ -92,13 +100,21 @@
             <div class="mobile-nav-menu" v-show="mobileNavExpanded">
               <div v-for="section in menuSections" :key="section.title" class="nav-section-menu">
                 <div class="section-title">{{ section.title }}</div>
-                <div v-for="item in section.items" :key="item.path" 
-                  class="nav-menu-item" :class="{ 'active': isRouteActive(item.path), 'admin-back': item.isAdminBack }"
-                  @click="navigateTo(item.path)">
-                  <i :class="item.icon"></i>
-                  <span>{{ item.title }}</span>
-                  <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
-                </div>
+                <template v-for="item in section.items" :key="item.path">
+                  <div v-if="item.isAdminBack"
+                    class="nav-menu-item admin-back"
+                    @click="returnToAdmin()">
+                    <i :class="item.icon"></i>
+                    <span>{{ item.title }}</span>
+                  </div>
+                  <router-link v-else :to="item.path"
+                    class="nav-menu-item" :class="{ 'active': isRouteActive(item.path) }"
+                    @click="navigateTo(item.path)">
+                    <i :class="item.icon"></i>
+                    <span>{{ item.title }}</span>
+                    <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
+                  </router-link>
+                </template>
               </div>
             </div>
           </transition>
@@ -115,18 +131,18 @@
     </main>
     <div v-if="isMobile && !sidebarCollapsed" class="mobile-overlay" @click.stop="sidebarCollapsed = true" />
     <div v-if="isMobile" class="mobile-tabbar">
-      <div class="mobile-tab" :class="{ active: isRouteActive('/dashboard') }" @click="navigateTo('/dashboard')">
+      <router-link to="/dashboard" class="mobile-tab" :class="{ active: isRouteActive('/dashboard') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><rect x="48" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="48" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="48" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="288" y="288" width="176" height="176" rx="20" ry="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
         <span class="mobile-tab-label">仪表盘</span>
-      </div>
-      <div class="mobile-tab" :class="{ active: isRouteActive('/packages') }" @click="navigateTo('/packages')">
+      </router-link>
+      <router-link to="/packages" class="mobile-tab" :class="{ active: isRouteActive('/packages') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M80 176a16 16 0 00-16 16v216a16 16 0 0016 16h352a16 16 0 0016-16V192a16 16 0 00-16-16zM80 176l48-80h256l48 80"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 320l-48-48h96l-48 48zm0 0v88"/></svg>
         <span class="mobile-tab-label">套餐购买</span>
-      </div>
-      <div class="mobile-tab" :class="{ active: isRouteActive('/devices') }" @click="navigateTo('/devices')">
+      </router-link>
+      <router-link to="/devices" class="mobile-tab" :class="{ active: isRouteActive('/devices') }">
         <svg viewBox="0 0 512 512" class="tab-icon"><rect x="128" y="16" width="256" height="480" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M176 16h24a8 8 0 018 8h0a16 16 0 0016 16h64a16 16 0 0016-16h0a8 8 0 018-8h24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
         <span class="mobile-tab-label">设备管理</span>
-      </div>
+      </router-link>
     </div>
   </div>
 </template>
@@ -325,7 +341,7 @@ onUnmounted(() => {
   @include respond-to(sm) { height: 50px; padding: 0 12px; }
   .header-left {
     display: flex; align-items: center; gap: 16px;
-    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; }
     .logo-img { width: 32px; height: 32px; }
     .logo-text { font-size: 18px; font-weight: 600; color: var(--theme-primary); }
     .menu-toggle {
@@ -478,7 +494,7 @@ onUnmounted(() => {
     .section-title { padding: 12px 16px; font-size: 12px; font-weight: 600; color: #909399; }
     .nav-menu-item {
       display: flex; align-items: center; padding: 14px 16px; gap: 12px;
-      cursor: pointer; transition: 0.2s;
+      cursor: pointer; transition: 0.2s; text-decoration: none; color: inherit;
       :is(i:first-child) { font-size: 18px; width: 20px; text-align: center; }
       :is(i:last-child) { margin-left: auto; color: var(--theme-primary); }
       &:hover { background: #f5f7fa; }
@@ -512,6 +528,7 @@ onUnmounted(() => {
   padding: 6px 0;
   cursor: pointer;
   color: #999;
+  text-decoration: none;
   transition: color 0.2s;
   .tab-icon { width: 22px; height: 22px; }
   &.active { color: var(--theme-primary, #409EFF); }

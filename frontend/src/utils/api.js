@@ -342,10 +342,13 @@ api.interceptors.response.use(
         isRefreshing[refreshKey] = true
         try {
           const refreshToken = secureStorage.get(isAdminAPI ? 'admin_refresh_token' : 'user_refresh_token')
-          const refreshResponse = await axios.post('/api/v1/auth/refresh', {}, {
+            const refreshCsrf = getCookie('csrf_token')
+            const refreshHeaders = refreshToken ? { Authorization: `Bearer ${refreshToken}` } : {}
+            if (refreshCsrf) refreshHeaders['X-CSRF-Token'] = refreshCsrf
+          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', {}, {
             withCredentials: true,
-            timeout: 5000,
-            headers: refreshToken ? { Authorization: `Bearer ${refreshToken}` } : {}
+            timeout: TIMEOUT,
+            headers: refreshHeaders
           })
           const { access_token, refresh_token } = refreshResponse.data || {}
           if (access_token) {

@@ -42,12 +42,12 @@
         </div>
       </form>
       <div class="login-actions">
-        <el-link type="primary" @click="$router.push('/register')">
+        <router-link to="/register" class="el-link el-link--primary">
           注册账户
-        </el-link>
-        <el-link type="primary" @click="$router.push('/forgot-password')">
+        </router-link>
+        <router-link to="/forgot-password" class="el-link el-link--primary">
           忘记密码？
-        </el-link>
+        </router-link>
       </div>
     </div>
     <el-dialog

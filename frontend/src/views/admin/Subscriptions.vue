@@ -401,9 +401,11 @@
                 class="device-limit-input"
               />
               <div class="quick-device-buttons">
+                <el-button size="small" @click="addDeviceLimit(scope.row, -5)">-5</el-button>
+                <el-button size="small" @click="addDeviceLimit(scope.row, -1)">-1</el-button>
+                <el-button size="small" @click="addDeviceLimit(scope.row, 1)">+1</el-button>
                 <el-button size="small" @click="addDeviceLimit(scope.row, 5)">+5</el-button>
                 <el-button size="small" @click="addDeviceLimit(scope.row, 10)">+10</el-button>
-                <el-button size="small" @click="addDeviceLimit(scope.row, 15)">+15</el-button>
               </div>
             </div>
           </template>
@@ -515,6 +517,7 @@
             </div>
             <div class="sub-btn-row device-limit-btn-row">
               <el-button size="small" type="danger" plain @click="clearUserDevices(subscription)">清理在线</el-button>
+              <el-button size="small" plain @click="addDeviceLimit(subscription, -1)">-1</el-button>
               <el-button size="small" plain @click="addDeviceLimit(subscription, 1)">+1</el-button>
               <el-button size="small" plain @click="addDeviceLimit(subscription, 5)">+5</el-button>
               <el-button size="small" plain @click="addDeviceLimit(subscription, 10)">+10</el-button>
@@ -579,13 +582,13 @@
         />
       </div>
     </el-card>
-    <el-dialog 
-      v-model="showUserDetailDialog" 
-      title="用户详细信息" 
-      :width="isMobile ? '95%' : '1000px'"
+    <el-drawer
+      v-model="showUserDetailDialog"
+      :title="'用户详情 - ' + (selectedUser?.user?.username || selectedUser?.user?.email || '')"
+      :size="isMobile ? '100%' : '780px'"
+      direction="rtl"
       :close-on-click-modal="false"
-      :fullscreen="isMobile"
-      class="user-detail-dialog"
+      class="user-detail-drawer"
     >
       <div v-if="selectedUser" class="user-detail-content">
         <el-card class="detail-section">
@@ -921,7 +924,7 @@
           </el-table>
         </el-card>
       </div>
-    </el-dialog>
+    </el-drawer>
     <el-dialog v-model="showQRDialog" title="订阅二维码" width="400px" center>
       <div class="qr-dialog-content">
         <div class="qr-code-large">
@@ -1199,10 +1202,11 @@ export default {
     }
     const addDeviceLimit = async (subscription, count) => {
       try {
-        subscription.device_limit = (subscription.device_limit || 0) + count
+        const newLimit = Math.max(0, (subscription.device_limit || 0) + count)
+        subscription.device_limit = newLimit
         await updateDeviceLimit(subscription)
       } catch (error) {
-        ElMessage.error('添加设备限制失败')
+        ElMessage.error('修改设备限制失败')
         }
     }
     const isExpired = (subscription) => {
@@ -2410,34 +2414,19 @@ export default {
   margin-top: 20px;
   text-align: right;
 }
-.user-detail-content {
-  max-height: 70vh;
-  overflow-y: auto;
-  @media (max-width: 768px) {
-    max-height: calc(100vh - 120px);
-    padding: 0;
+.user-detail-drawer {
+  :deep(.el-drawer__header) {
+    margin-bottom: 0;
+    padding: 16px 20px;
+    border-bottom: 1px solid #ebeef5;
+    font-weight: 600;
+    color: #303133;
   }
-}
-.user-detail-dialog {
-  :deep(.el-dialog) {
+  :deep(.el-drawer__body) {
+    padding: 20px;
+    overflow-y: auto;
     @media (max-width: 768px) {
-      margin: 0 !important;
-      height: 100vh;
-      max-height: 100vh;
-      border-radius: 0;
-      .el-dialog__body {
-        padding: 12px;
-        max-height: calc(100vh - 120px);
-        overflow-y: auto;
-      }
-      .el-dialog__header {
-        padding: 16px;
-        position: sticky;
-        top: 0;
-        background: white;
-        z-index: 10;
-        border-bottom: 1px solid #ebeef5;
-      }
+      padding: 12px;
     }
   }
 }

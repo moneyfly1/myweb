@@ -1256,15 +1256,28 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	if finalAmount <= 0.01 {
-		if balanceUsed > 0 {
-			oldBalance := user.Balance
-			user.Balance -= balanceUsed
-			if err := db.Save(&user).Error; err != nil {
-				utils.ErrorResponse(c, http.StatusInternalServerError, "扣除余额失败", err)
-				return
+		// --- 事务：扣余额 + 创建订单 + 标记已支付 ---
+		txErr := db.Transaction(func(tx *gorm.DB) error {
+			if balanceUsed > 0 {
+				result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
+					Update("balance", gorm.Expr("balance - ?", balanceUsed))
+				if result.Error != nil {
+					return fmt.Errorf("扣除余额失败: %v", result.Error)
+				}
+				if result.RowsAffected == 0 {
+					return fmt.Errorf("余额不足")
+				}
 			}
+			order.Status = "paid"
+			order.PaymentTime = database.NullTime(utils.GetBeijingTime())
+			return tx.Save(&order).Error
+		})
+		if txErr != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, txErr.Error(), txErr)
+			return
+		}
 
-			// 记录余额日志
+		if balanceUsed > 0 {
 			go func() {
 				orderID := uint(order.ID)
 				userID := user.ID
@@ -1272,8 +1285,8 @@ func UpgradeDevices(c *gin.Context) {
 					user.ID,
 					"consume",
 					-balanceUsed,
-					oldBalance,
 					user.Balance,
+					user.Balance-balanceUsed,
 					&orderID,
 					nil,
 					fmt.Sprintf("订单支付扣除余额，订单号: %s", order.OrderNo),
@@ -1283,9 +1296,6 @@ func UpgradeDevices(c *gin.Context) {
 				)
 			}()
 		}
-		order.Status = "paid"
-		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		db.Save(&order)
 		orderServicePkg.NewOrderService().ProcessPaidOrder(&order)
 		db.Where("user_id = ?", user.ID).First(&subscription)
 		utils.SuccessResponse(c, http.StatusOK, "设备数量升级成功", gin.H{

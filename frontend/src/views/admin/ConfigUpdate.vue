@@ -520,7 +520,9 @@ export default {
           logs.value = []
           ElMessage.success('日志已清空')
         }
-      } catch (e) {}
+      } catch (e) {
+        ElMessage.error('清空日志失败: ' + (e.response?.data?.message || e.message))
+      }
     }
 
     // 列表操作

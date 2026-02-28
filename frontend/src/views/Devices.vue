@@ -379,7 +379,7 @@ export default {
         await fetchDevices()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('移除设备失败')
+          ElMessage.error('移除设备失败: ' + (error.response?.data?.message || error.message))
         }
       }
     }

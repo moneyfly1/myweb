@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -107,9 +108,9 @@ func CreatePayment(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "支付方式无效", err)
 		return
 	}
-	amt := int(order.Amount * 100)
+	amt := int(math.Round(order.Amount * 100))
 	if order.FinalAmount.Valid {
-		amt = int(order.FinalAmount.Float64 * 100)
+		amt = int(math.Round(order.FinalAmount.Float64 * 100))
 	}
 	tx := models.PaymentTransaction{OrderID: order.ID, UserID: u.ID, PaymentMethodID: cfg.ID, Amount: amt, Status: "pending"}
 	db.Create(&tx)
