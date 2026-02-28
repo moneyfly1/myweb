@@ -726,10 +726,4 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px var(--el-border-color) inset !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px var(--el-color-primary) inset !important;
-}
 </style>
