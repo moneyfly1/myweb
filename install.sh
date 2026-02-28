@@ -379,6 +379,88 @@ unlock_user() {
     fi
 }
 
+sync_from_github() {
+    log "开始从 GitHub 同步代码..."
+
+    if [ ! -d "$PROJECT_DIR" ]; then
+        error "项目目录不存在: $PROJECT_DIR"
+        return 1
+    fi
+    cd "$PROJECT_DIR" || { error "无法进入项目目录"; return 1; }
+
+    # 检查是否是 git 仓库
+    if [ ! -d ".git" ]; then
+        error "项目目录不是 Git 仓库，请先初始化"
+        return 1
+    fi
+
+    # 拉取最新代码
+    log "正在拉取最新代码..."
+    if ! git fetch origin; then
+        error "拉取代码失败，请检查网络和仓库配置"
+        return 1
+    fi
+
+    # 强制覆盖本地代码
+    local branch=$(git rev-parse --abbrev-ref HEAD)
+    log "当前分支: $branch"
+    if ! git reset --hard "origin/$branch"; then
+        error "代码同步失败"
+        return 1
+    fi
+    log "✅ 代码同步成功"
+
+    # 编译后端
+    log "正在编译 Go 程序..."
+    if ! command -v go &> /dev/null; then
+        error "未找到 Go 命令，请先安装 Go"
+        return 1
+    fi
+    go mod download 2>/dev/null
+    go mod tidy 2>/dev/null
+    if go build -o server ./cmd/server/main.go; then
+        log "✅ Go 程序编译成功"
+    else
+        error "Go 程序编译失败"
+        return 1
+    fi
+
+    # 构建前端
+    log "正在构建前端..."
+    cd frontend || { error "前端目录不存在"; return 1; }
+    if [ ! -d "node_modules" ]; then
+        log "安装前端依赖..."
+        npm install --legacy-peer-deps || { error "前端依赖安装失败"; return 1; }
+    fi
+    if npm run build; then
+        log "✅ 前端构建成功"
+    else
+        error "前端构建失败"
+        return 1
+    fi
+    cd ..
+
+    # 重启服务
+    log "正在重启服务..."
+    if systemctl list-unit-files | grep -q "cboard.service"; then
+        systemctl stop cboard 2>/dev/null
+        pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
+        sleep 1
+        if systemctl start cboard; then
+            sleep 2
+            if systemctl is-active --quiet cboard; then
+                log "✅ 服务已成功重启，同步完成！"
+            else
+                error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
+            fi
+        else
+            error "服务启动失败"
+        fi
+    else
+        warn "服务 cboard 不存在，跳过重启。请先执行全自动部署。"
+    fi
+}
+
 show_logs() {
     # 检查服务是否存在
     if ! systemctl list-unit-files | grep -q "cboard.service"; then
@@ -408,9 +490,10 @@ show_menu() {
     echo -e "  ${CYAN}8.${NC} 标准重启服务 (Systemd)"
     echo -e "  ${CYAN}9.${NC} 停止服务"
     echo -e "  ${CYAN}10.${NC} 证书续期（手动续期，自动续期由 certbot 定时任务完成）"
+    echo -e "  ${CYAN}11.${NC} 从 GitHub 同步代码并重新构建"
     echo -e "  ${RED}0.${NC} 退出脚本"
     echo -e "${BLUE}==========================================${NC}"
-    read -r -p "请选择操作 [0-10]: " choice
+    read -r -p "请选择操作 [0-11]: " choice
 }
 
 # --- 主程序循环 ---
@@ -482,6 +565,7 @@ main() {
                 fi
                 ;;
             10) renew_cert ;;
+            11) sync_from_github ;;
             0) exit 0 ;;
             *) error "无效选择，请重新输入" ;;
         esac
