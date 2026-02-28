@@ -247,12 +247,11 @@
         />
       </div>
     </el-card>
-    <el-dialog
-      v-model="detailDialogVisible" 
-      title="邮件详情" 
-      width="70%"
-      :close-on-click-modal="false"
-      :class="isMobile ? 'mobile-dialog' : ''"
+    <el-drawer
+      v-model="detailDialogVisible"
+      title="邮件详情"
+      :size="isMobile ? '100%' : '600px'"
+      direction="rtl"
     >
       <div v-if="emailDetail" class="email-detail" v-loading="detailLoading">
         <el-descriptions :column="isMobile ? 1 : 2" border class="desktop-only">
@@ -367,7 +366,7 @@
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script>

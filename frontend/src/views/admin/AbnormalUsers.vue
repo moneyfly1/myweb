@@ -171,11 +171,11 @@
         </div>
       </div>
     </el-card>
-    <el-dialog
+    <el-drawer
       v-model="showUserDetailsDialog"
       title="用户详细信息"
-      :width="isMobile ? '95%' : '80%'"
-      class="user-details-dialog"
+      :size="isMobile ? '100%' : '700px'"
+      direction="rtl"
     >
       <div v-if="userDetails" class="user-details">
         <el-card style="margin-bottom: 20px;" shadow="never">
@@ -264,7 +264,7 @@
           </el-table>
         </el-card>
       </div>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script>
@@ -635,13 +635,6 @@ export default {
   .empty-state {
     padding: 40px 20px;
     text-align: center;
-  }
-}
-.user-details-dialog {
-  :deep(.el-dialog__body) {
-    max-height: calc(100vh - 200px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
   }
 }
 .user-details {
