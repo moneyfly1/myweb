@@ -290,13 +290,13 @@
       </div>
     </el-card>
 
-    <!-- 详情弹窗 (保持逻辑，微调样式) -->
-    <el-dialog 
-      v-model="showOrderDialog" 
-      title="订单详情" 
-      :width="isMobile ? '90%' : '600px'"
-      class="order-detail-dialog"
-      align-center
+    <!-- 详情抽屉 -->
+    <el-drawer
+      v-model="showOrderDialog"
+      title="订单详情"
+      :size="isMobile ? '100%' : '500px'"
+      direction="rtl"
+      class="order-detail-drawer"
     >
       <div class="order-detail-content">
         <div class="mobile-order-detail" v-if="isMobile">
@@ -359,9 +359,7 @@
           <img :src="selectedOrder.payment_proof" style="max-width: 100%; cursor: pointer;" />
         </div>
       </div>
-    </el-dialog>
-
-    <!-- 统计弹窗保持不变 -->
+    </el-drawer>
     <el-dialog v-model="showStatisticsDialog" title="订单统计" width="600px">
       <div class="statistics-content">
         <el-row :gutter="20">
