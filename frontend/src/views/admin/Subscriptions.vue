@@ -401,8 +401,6 @@
                 class="device-limit-input"
               />
               <div class="quick-device-buttons">
-                <el-button size="small" @click="addDeviceLimit(scope.row, -5)">-5</el-button>
-                <el-button size="small" @click="addDeviceLimit(scope.row, -1)">-1</el-button>
                 <el-button size="small" @click="addDeviceLimit(scope.row, 1)">+1</el-button>
                 <el-button size="small" @click="addDeviceLimit(scope.row, 5)">+5</el-button>
                 <el-button size="small" @click="addDeviceLimit(scope.row, 10)">+10</el-button>
@@ -514,14 +512,24 @@
               <span class="sub-section-icon"><el-icon><Monitor /></el-icon></span>
               <span class="sub-section-label">设备限制</span>
               <span class="sub-section-value">{{ subscription.online_devices || 0 }} / {{ subscription.device_limit || 0 }}</span>
+              <el-input-number
+                v-model="subscription.device_limit"
+                :min="0"
+                :max="999"
+                size="small"
+                @change="updateDeviceLimit(subscription)"
+                class="device-limit-input-inline"
+              />
             </div>
-            <div class="sub-btn-row device-limit-btn-row">
+            <div class="sub-btn-row first-btn-row">
               <el-button size="small" type="danger" plain @click="clearUserDevices(subscription)">清理在线</el-button>
-              <el-button size="small" plain @click="addDeviceLimit(subscription, -1)">-1</el-button>
+              <el-button size="small" plain @click="showUserDetails(subscription)">详情</el-button>
+            </div>
+            <div class="sub-btn-row second-btn-row">
               <el-button size="small" plain @click="addDeviceLimit(subscription, 1)">+1</el-button>
               <el-button size="small" plain @click="addDeviceLimit(subscription, 5)">+5</el-button>
               <el-button size="small" plain @click="addDeviceLimit(subscription, 10)">+10</el-button>
-              <el-button size="small" plain @click="showUserDetails(subscription)"><el-icon><Edit /></el-icon></el-button>
+              <el-button size="small" plain @click="addDeviceLimit(subscription, 20)">+20</el-button>
             </div>
           </div>
           <div class="sub-action-grid">
@@ -582,139 +590,12 @@
         />
       </div>
     </el-card>
-    <el-drawer
-      v-model="showUserDetailDialog"
-      :title="'用户详情 - ' + (selectedUser?.user?.username || selectedUser?.user?.email || '')"
-      :size="isMobile ? '100%' : '780px'"
-      direction="rtl"
-      :close-on-click-modal="false"
-      class="user-detail-drawer"
-    >
-      <div v-if="selectedUser" class="drawer-content">
-        <!-- 用户基本信息 -->
-        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
-          <el-descriptions-item label="用户ID">{{ selectedUser.user?.id }}</el-descriptions-item>
-          <el-descriptions-item label="用户名">{{ selectedUser.user?.username }}</el-descriptions-item>
-          <el-descriptions-item label="邮箱">{{ selectedUser.user?.email }}</el-descriptions-item>
-          <el-descriptions-item label="注册时间">{{ formatDate(selectedUser.user?.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="最后登录">{{ formatDate(selectedUser.user?.last_login) || '从未登录' }}</el-descriptions-item>
-          <el-descriptions-item label="激活状态">
-            <el-tag :type="selectedUser.user?.is_active ? 'success' : 'danger'" size="small">
-              {{ selectedUser.user?.is_active ? '已激活' : '未激活' }}
-            </el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <!-- 订阅信息 -->
-        <el-divider content-position="left">订阅信息</el-divider>
-        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
-          <el-descriptions-item label="订阅状态">
-            <el-tag :type="getSubscriptionStatusType(selectedUser.status)" size="small">
-              {{ getSubscriptionStatusText(selectedUser.status) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="到期时间">{{ formatDate(selectedUser.expire_time) }}</el-descriptions-item>
-          <el-descriptions-item label="设备限制">{{ selectedUser.device_limit }}</el-descriptions-item>
-          <el-descriptions-item label="在线设备">{{ selectedUser.online_devices || 0 }}</el-descriptions-item>
-        </el-descriptions>
-
-        <!-- 订阅地址 -->
-        <div class="url-section">
-          <div class="url-row">
-            <span class="url-label">通用订阅:</span>
-            <code class="url-code">{{ selectedUser.universal_url || '无' }}</code>
-            <el-button size="small" @click="copyToClipboard(selectedUser.universal_url)" :disabled="!selectedUser.universal_url">复制</el-button>
-          </div>
-          <div class="url-row">
-            <span class="url-label">Clash订阅:</span>
-            <code class="url-code">{{ selectedUser.clash_url || '无' }}</code>
-            <el-button size="small" @click="copyToClipboard(selectedUser.clash_url)" :disabled="!selectedUser.clash_url">复制</el-button>
-          </div>
-        </div>
-
-        <!-- 记录信息 -->
-        <el-divider content-position="left">记录信息</el-divider>
-        <el-tabs v-model="detailActiveTab" class="records-tabs">
-          <!-- 设备管理 -->
-          <el-tab-pane name="devices">
-            <template #label>
-              <span>设备管理 <el-tag size="small" type="info">{{ selectedUser.online_devices || 0 }}/{{ selectedUser.device_limit || 0 }}</el-tag></span>
-            </template>
-            <div style="margin-bottom: 10px;">
-              <el-button type="primary" size="small" @click="loadUserDevices" :loading="loadingDevices">刷新设备列表</el-button>
-            </div>
-            <el-table :data="userDevices" size="small" max-height="240" v-loading="loadingDevices" empty-text="暂无设备记录">
-              <el-table-column prop="device_name" label="设备名称" min-width="150" show-overflow-tooltip />
-              <el-table-column prop="device_type" label="类型" width="80">
-                <template #default="scope">
-                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
-                  <span v-else>-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="130" />
-              <el-table-column prop="last_seen" label="最后在线" width="150">
-                <template #default="scope">{{ formatDate(scope.row.last_seen || scope.row.last_access) || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" fixed="right">
-                <template #default="scope">
-                  <el-button type="danger" size="small" link @click="deleteDevice(scope.row)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <!-- UA记录 -->
-          <el-tab-pane label="UA记录" name="ua">
-            <el-table :data="selectedUser.ua_records || []" size="small" max-height="240" empty-text="暂无UA记录">
-              <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
-              <el-table-column prop="device_type" label="类型" width="80">
-                <template #default="scope">
-                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
-                  <span v-else>-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="130" />
-              <el-table-column prop="location" label="位置" width="120" show-overflow-tooltip>
-                <template #default="scope">{{ formatLocation(scope.row.location) || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="last_access" label="最后访问" width="150">
-                <template #default="scope">{{ formatDate(scope.row.last_access) || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="access_count" label="次数" width="70" align="center" />
-            </el-table>
-          </el-tab-pane>
-
-          <!-- 重置记录 -->
-          <el-tab-pane label="重置记录" name="resets">
-            <el-table :data="selectedUser.user?.subscription_resets || []" size="small" max-height="240" empty-text="暂无重置记录">
-              <el-table-column prop="reset_by" label="操作人" width="80">
-                <template #default="scope">
-                  <el-tag :type="getResetByTag(scope.row.reset_by)" size="small">{{ getResetByText(scope.row.reset_by) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="reset_type" label="类型" width="100">
-                <template #default="scope">
-                  <el-tag :type="getResetTypeTag(scope.row.reset_type)" size="small">{{ getResetTypeText(scope.row.reset_type) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="reason" label="原因" min-width="100" show-overflow-tooltip />
-              <el-table-column label="旧订阅URL" min-width="150" show-overflow-tooltip>
-                <template #default="scope"><code style="font-size:11px;">{{ scope.row.old_subscription_url }}</code></template>
-              </el-table-column>
-              <el-table-column label="新订阅URL" min-width="150" show-overflow-tooltip>
-                <template #default="scope"><code style="font-size:11px;">{{ scope.row.new_subscription_url }}</code></template>
-              </el-table-column>
-              <el-table-column label="设备数" width="90" align="center">
-                <template #default="scope">{{ scope.row.device_count_before }} → {{ scope.row.device_count_after }}</template>
-              </el-table-column>
-              <el-table-column prop="created_at" label="时间" width="150">
-                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-drawer>
+    <UserDetailDialog
+      :visible="showUserDetailDialog"
+      @update:visible="showUserDetailDialog = $event"
+      :user="selectedUser"
+      :isMobile="isMobile"
+    />
     <el-dialog v-model="showQRDialog" title="订阅二维码" width="400px" center>
       <div class="qr-dialog-content">
         <div class="qr-code-large">
@@ -781,13 +662,14 @@ import { formatLocation } from '@/utils/date'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
+import UserDetailDialog from './components/UserDetailDialog.vue'
 dayjs.extend(timezone)
 export default {
   name: 'AdminSubscriptions',
   components: {
     Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
     Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
-    Check, Close
+    Check, Close, UserDetailDialog
   },
   setup() {
     const route = useRoute()
@@ -805,7 +687,6 @@ export default {
       status: ''
     })
     const showUserDetailDialog = ref(false)
-    const detailActiveTab = ref('devices')
     const showQRDialog = ref(false)
     const showColumnSettings = ref(false)
     const selectedUser = ref(null)
@@ -1120,26 +1001,14 @@ export default {
       try {
         const userResponse = await adminAPI.getUserDetails(subscription.user.id)
         if (userResponse.data && userResponse.data.success) {
-          const userData = userResponse.data.data
-          selectedUser.value = {
-            ...subscription,
-            apple_count: subscription.apple_count || userData?.apple_count || 0,
-            clash_count: subscription.clash_count || userData?.clash_count || 0,
-            v2ray_count: subscription.apple_count || userData?.v2ray_count || userData?.apple_count || 0,
-            user: {
-              ...(userData?.user_info || userData),
-              subscription_resets: userData?.subscription_resets || []
-            },
-            ua_records: userData?.ua_records || []
-          }
+          selectedUser.value = userResponse.data.data
           showUserDetailDialog.value = true
-          await loadUserDevices()
         } else {
           throw new Error(userResponse.data?.message || '获取用户详情失败')
         }
       } catch (error) {
         ElMessage.error('加载用户详情失败: ' + (error.response?.data?.message || error.message))
-        }
+      }
     }
     const loadUserDevices = async () => {
       if (!selectedUser.value?.id) {
@@ -1868,7 +1737,6 @@ export default {
       currentSort,
       currentSortText,
       showUserDetailDialog,
-      detailActiveTab,
       showQRDialog,
       showColumnSettings,
       selectedUser,
@@ -2222,43 +2090,6 @@ export default {
     }
   }
 }
-.drawer-content {
-  .url-section {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .url-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    .url-label {
-      font-size: 13px;
-      color: #606266;
-      white-space: nowrap;
-      min-width: 80px;
-    }
-    .url-code {
-      flex: 1;
-      font-size: 12px;
-      font-family: monospace;
-      background: #f5f7fa;
-      padding: 6px 10px;
-      border-radius: 4px;
-      border: 1px solid #e4e7ed;
-      word-break: break-all;
-      color: #303133;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  }
-  .records-tabs {
-    :deep(.el-tabs__header) {
-      margin-bottom: 10px;
-    }
-  }
-}
 .device-header {
   display: flex;
   justify-content: space-between;
@@ -2540,10 +2371,24 @@ export default {
           font-size: 14px;
           font-weight: 600;
           color: #303133;
+          flex-shrink: 0;
+        }
+        .device-limit-input-inline {
+          width: 70px;
+          flex-shrink: 0;
+          margin-left: 8px;
+          :deep(.el-input__wrapper) {
+            padding: 0 8px;
+          }
+          :deep(.el-input__inner) {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+          }
         }
         .sub-btn-row {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          display: grid !important;
+          grid-template-columns: repeat(4, 1fr) !important;
           gap: 6px;
           margin-bottom: 8px;
           .el-button {
@@ -2555,8 +2400,11 @@ export default {
             border-radius: 6px !important;
             width: 100% !important;
           }
-          &.device-limit-btn-row {
-            grid-template-columns: repeat(5, 1fr);
+          &.first-btn-row {
+            grid-template-columns: 1.5fr 1fr !important;
+          }
+          &.second-btn-row {
+            grid-template-columns: repeat(4, 1fr) !important;
           }
         }
         .sub-date-picker-row {

@@ -617,10 +617,22 @@ func GetUserCustomNodes(c *gin.Context) {
 		return
 	}
 
-	nodes := make([]models.CustomNode, 0)
+	nodes := make([]gin.H, 0)
 	for _, un := range userNodes {
 		if un.CustomNode.ID > 0 {
-			nodes = append(nodes, un.CustomNode)
+			nodeAddress := un.CustomNode.Domain
+			if un.CustomNode.Port > 0 && un.CustomNode.Port != 443 {
+				nodeAddress = fmt.Sprintf("%s:%d", un.CustomNode.Domain, un.CustomNode.Port)
+			}
+			nodes = append(nodes, gin.H{
+				"id":           un.CustomNode.ID,
+				"node_id":      un.CustomNode.ID,
+				"node_name":    un.CustomNode.Name,
+				"node_address": nodeAddress,
+				"assigned_at":  utils.FormatBeijingTime(un.CreatedAt),
+				"status":       un.CustomNode.Status,
+				"is_active":    un.CustomNode.IsActive,
+			})
 		}
 	}
 
