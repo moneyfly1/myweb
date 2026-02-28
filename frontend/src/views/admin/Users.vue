@@ -455,12 +455,283 @@
       :isMobile="isMobile"
       @success="handleUserSaved"
     />
-    <UserDetailDialog
-      v-model:visible="showUserDialog"
-      :user="selectedUser"
-      :isMobile="isMobile"
-      :initialTab="activeBalanceTab"
-    />
+    <!-- 用户详情抽屉 -->
+    <el-drawer
+      v-model="showUserDialog"
+      :title="'用户详情 - ' + (selectedUser?.user?.username || selectedUser?.user?.email || '')"
+      :size="isMobile ? '100%' : '780px'"
+      direction="rtl"
+      :close-on-click-modal="true"
+      class="user-detail-drawer"
+    >
+      <div v-if="selectedUser" class="drawer-content">
+        <!-- 用户基本信息 -->
+        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
+          <el-descriptions-item label="用户ID">{{ selectedUser.user?.id }}</el-descriptions-item>
+          <el-descriptions-item label="用户名">{{ selectedUser.user?.username }}</el-descriptions-item>
+          <el-descriptions-item label="邮箱">{{ selectedUser.user?.email }}</el-descriptions-item>
+          <el-descriptions-item label="注册时间">{{ formatDate(selectedUser.user?.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="最后登录">{{ formatDate(selectedUser.user?.last_login) || '从未登录' }}</el-descriptions-item>
+          <el-descriptions-item label="激活状态">
+            <el-tag :type="selectedUser.user?.is_active ? 'success' : 'danger'" size="small">
+              {{ selectedUser.user?.is_active ? '已激活' : '未激活' }}
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 订阅信息 -->
+        <el-divider content-position="left">订阅信息</el-divider>
+        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
+          <el-descriptions-item label="订阅状态">
+            <el-tag :type="getSubscriptionStatusType(selectedUser.status)" size="small">
+              {{ getSubscriptionStatusText(selectedUser.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="到期时间">{{ formatDate(selectedUser.expire_time) }}</el-descriptions-item>
+          <el-descriptions-item label="设备限制">{{ selectedUser.device_limit }}</el-descriptions-item>
+          <el-descriptions-item label="在线设备">{{ selectedUser.online_devices || 0 }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 订阅地址 -->
+        <div class="url-section">
+          <div class="url-item">
+            <div class="url-header">
+              <span class="url-label">通用订阅:</span>
+              <el-button size="small" @click="copyToClipboard(selectedUser.universal_url)" :disabled="!selectedUser.universal_url">复制</el-button>
+            </div>
+            <code class="url-code">{{ selectedUser.universal_url || '无' }}</code>
+          </div>
+          <div class="url-item">
+            <div class="url-header">
+              <span class="url-label">Clash订阅:</span>
+              <el-button size="small" @click="copyToClipboard(selectedUser.clash_url)" :disabled="!selectedUser.clash_url">复制</el-button>
+            </div>
+            <code class="url-code">{{ selectedUser.clash_url || '无' }}</code>
+          </div>
+        </div>
+
+        <!-- 记录信息 -->
+        <el-divider content-position="left">记录信息</el-divider>
+        <el-tabs v-model="detailActiveTab" class="records-tabs">
+          <!-- 设备管理 -->
+          <el-tab-pane name="devices">
+            <template #label>
+              <span>设备管理 <el-tag size="small" type="info">{{ selectedUser.online_devices || 0 }}/{{ selectedUser.device_limit || 0 }}</el-tag></span>
+            </template>
+            <div style="margin-bottom: 10px;">
+              <el-button type="primary" size="small" @click="loadUserDevices" :loading="loadingDevices">刷新设备列表</el-button>
+            </div>
+            <el-table :data="userDevices" size="small" max-height="240" v-loading="loadingDevices" empty-text="暂无设备记录">
+              <el-table-column prop="device_name" label="设备名称" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="device_type" label="类型" width="80">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" width="130" />
+              <el-table-column prop="last_seen" label="最后在线" width="150">
+                <template #default="scope">{{ formatDate(scope.row.last_seen || scope.row.last_access) || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="scope">
+                  <el-button type="danger" size="small" link @click="deleteDevice(scope.row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <!-- UA记录 -->
+          <el-tab-pane label="UA记录" name="ua">
+            <el-table :data="selectedUser.ua_records || []" size="small" max-height="240" empty-text="暂无UA记录">
+              <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
+              <el-table-column prop="device_type" label="类型" width="80">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" width="130" />
+              <el-table-column prop="location" label="位置" width="120" show-overflow-tooltip>
+                <template #default="scope">{{ formatLocation(scope.row.location) || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最后访问" width="150">
+                <template #default="scope">{{ formatDate(scope.row.last_access) || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="access_count" label="次数" width="70" align="center" />
+            </el-table>
+          </el-tab-pane>
+
+          <!-- 重置记录 -->
+          <el-tab-pane label="重置记录" name="resets">
+            <el-table :data="selectedUser.user?.subscription_resets || []" size="small" max-height="240" empty-text="暂无重置记录">
+              <el-table-column prop="reset_by" label="操作人" width="80">
+                <template #default="scope">
+                  <el-tag :type="getResetByTag(scope.row.reset_by)" size="small">{{ getResetByText(scope.row.reset_by) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="reset_type" label="类型" width="100">
+                <template #default="scope">
+                  <el-tag :type="getResetTypeTag(scope.row.reset_type)" size="small">{{ getResetTypeText(scope.row.reset_type) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="reason" label="原因" min-width="100" show-overflow-tooltip />
+              <el-table-column label="旧订阅URL" min-width="150" show-overflow-tooltip>
+                <template #default="scope"><code style="font-size:11px;">{{ scope.row.old_subscription_url }}</code></template>
+              </el-table-column>
+              <el-table-column label="新订阅URL" min-width="150" show-overflow-tooltip>
+                <template #default="scope"><code style="font-size:11px;">{{ scope.row.new_subscription_url }}</code></template>
+              </el-table-column>
+              <el-table-column label="设备数" width="90" align="center">
+                <template #default="scope">{{ scope.row.device_count_before }} → {{ scope.row.device_count_after }}</template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="时间" width="150">
+                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <!-- 订单记录 -->
+          <el-tab-pane label="订单记录" name="orders">
+            <el-table :data="selectedUser.user?.orders || []" size="small" max-height="240" empty-text="暂无订单记录">
+              <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="amount" label="金额" width="100">
+                <template #default="scope">
+                  <span style="font-weight: 600;">¥{{ scope.row.amount }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="100">
+                <template #default="scope">
+                  <el-tag :type="getOrderStatusType(scope.row.status)" size="small">
+                    {{ getOrderStatusText(scope.row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" width="150">
+                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <!-- 充值记录 -->
+          <el-tab-pane label="充值记录" name="recharge">
+            <el-table :data="selectedUser.user?.recharge_records || []" size="small" max-height="240" empty-text="暂无充值记录">
+              <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="amount" label="金额" width="100">
+                <template #default="scope">
+                  <span style="font-weight: 600; color: #67c23a;">+¥{{ scope.row.amount }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="payment_method" label="支付方式" width="100">
+                <template #default="scope">
+                  {{ getPaymentMethodText(scope.row.payment_method) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="100">
+                <template #default="scope">
+                  <el-tag :type="getOrderStatusType(scope.row.status)" size="small">
+                    {{ getOrderStatusText(scope.row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" width="150">
+                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <!-- 登录历史 -->
+          <el-tab-pane label="登录历史" name="login">
+            <el-table :data="selectedUser.user?.login_history || []" size="small" max-height="240" empty-text="暂无登录历史">
+              <el-table-column prop="login_time" label="登录时间" width="150">
+                <template #default="scope">{{ formatDate(scope.row.login_time) || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" width="130" />
+              <el-table-column prop="location" label="位置" min-width="120" show-overflow-tooltip>
+                <template #default="scope">{{ formatLocation(scope.row.location) || '-' }}</template>
+              </el-table-column>
+              <el-table-column prop="user_agent" label="User Agent" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="login_status" label="状态" width="80">
+                <template #default="scope">
+                  <el-tag :type="scope.row.login_status === 'success' ? 'success' : 'danger'" size="small">
+                    {{ scope.row.login_status === 'success' ? '成功' : '失败' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <!-- 专线节点 -->
+          <el-tab-pane label="专线节点" name="custom-nodes">
+            <div style="margin-bottom: 10px;">
+              <el-button type="primary" size="small" @click="showAssignNodeDialog = true">分配专线节点</el-button>
+              <el-button size="small" @click="loadUserCustomNodes" :loading="loadingCustomNodes">刷新</el-button>
+            </div>
+            <el-table :data="userCustomNodes" size="small" max-height="240" v-loading="loadingCustomNodes" empty-text="暂无专线节点">
+              <el-table-column prop="node_name" label="节点名称" min-width="150" />
+              <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="assigned_at" label="分配时间" width="150">
+                <template #default="scope">{{ formatDate(scope.row.assigned_at) || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="scope">
+                  <el-button type="danger" size="small" link @click="unassignCustomNode(scope.row.node_id)">取消分配</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+    </el-drawer>
+
+    <!-- 分配专线节点对话框 -->
+    <el-dialog
+      v-model="showAssignNodeDialog"
+      title="分配专线节点"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <div class="node-search-section">
+        <div class="search-input-group">
+          <el-input
+            v-model="nodeSearchKeyword"
+            placeholder="输入节点名称或地址搜索"
+            clearable
+            @clear="handleNodeSearchClear"
+          />
+          <el-button type="primary" @click="handleNodeSearch">搜索</el-button>
+        </div>
+        <div v-if="nodeSearchKeyword && searchedNodes.length > 0" class="search-result-tip">
+          找到 {{ searchedNodes.length }} 个节点
+        </div>
+        <div v-else-if="nodeSearchKeyword && searchedNodes.length === 0" class="search-result-tip empty">
+          未找到匹配的节点
+        </div>
+      </div>
+
+      <el-form label-width="80px">
+        <el-form-item label="选择节点">
+          <el-select
+            v-model="selectedNodeId"
+            placeholder="请选择要分配的节点"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="node in (nodeSearchKeyword ? searchedNodes : availableNodes)"
+              :key="node.id"
+              :label="`${node.name} - ${node.address || node.domain}`"
+              :value="node.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showAssignNodeDialog = false">取消</el-button>
+        <el-button type="primary" @click="assignCustomNode" :loading="assigningNode">确定分配</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 <script>
@@ -473,7 +744,6 @@ import {
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import UserFormDialog from './components/UserFormDialog.vue'
-import UserDetailDialog from './components/UserDetailDialog.vue'
 const STATUS_MAP = {
   active: { type: 'success', text: '活跃' },
   inactive: { type: 'warning', text: '待激活' },
@@ -496,7 +766,6 @@ export default {
   name: 'AdminUsers',
   components: {
     UserFormDialog,
-    UserDetailDialog,
     Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
     Connection, Monitor, Unlock, Check, Message, Bell
   },
@@ -514,6 +783,18 @@ export default {
     const editingUser = ref(null)
     const selectedUser = ref(null)
     const activeBalanceTab = ref('recharge')
+    const detailActiveTab = ref('devices')
+    const userDevices = ref([])
+    const loadingDevices = ref(false)
+    const deletingDevice = ref(null)
+    const userCustomNodes = ref([])
+    const loadingCustomNodes = ref(false)
+    const showAssignNodeDialog = ref(false)
+    const availableNodes = ref([])
+    const searchedNodes = ref([])
+    const nodeSearchKeyword = ref('')
+    const selectedNodeId = ref(null)
+    const assigningNode = ref(false)
     const isMobile = ref(window.innerWidth <= 768)
     const defaultSort = ref({ prop: 'created_at', order: 'descending' })
     const tableRef = ref(null)
@@ -730,9 +1011,33 @@ export default {
         const response = await adminAPI.getUserDetails(userId)
         const userData = response?.data?.success ? response.data.data : (response?.success ? response.data : null)
         if (userData) {
-          selectedUser.value = userData
+          // 转换数据结构以匹配Subscriptions.vue的格式
+          // 如果用户有订阅，使用第一个订阅的信息
+          const firstSub = userData.subscriptions && userData.subscriptions.length > 0 ? userData.subscriptions[0] : null
+
+          selectedUser.value = {
+            id: firstSub?.id || 0,
+            user_id: userData.user_info?.id || userData.id,
+            status: firstSub?.status || 'inactive',
+            expire_time: firstSub?.expire_time || null,
+            device_limit: firstSub?.device_limit || 0,
+            online_devices: firstSub?.online_devices || 0,
+            current_devices: firstSub?.current_devices || 0,
+            universal_url: firstSub?.universal_url || firstSub?.subscription_url || '',
+            clash_url: firstSub?.clash_url || '',
+            apple_count: firstSub?.apple_count || 0,
+            clash_count: firstSub?.clash_count || 0,
+            user: userData.user_info || userData,
+            ua_records: userData.ua_records || []
+          }
+
           showUserDialog.value = true
-          activeBalanceTab.value = 'recharge'
+          detailActiveTab.value = activeBalanceTab.value || 'devices'
+
+          // 加载设备和专线节点
+          await loadUserDevices()
+          await loadUserCustomNodes()
+          await loadAvailableNodes()
         } else {
           ElMessage.error('获取用户详情失败: ' + (response?.data?.message || response?.message || '未知错误'))
         }
@@ -742,7 +1047,240 @@ export default {
     }
     const viewUserBalance = async (userId) => {
       activeBalanceTab.value = 'recharge'
+      detailActiveTab.value = 'recharge'
       await viewUserDetails(userId)
+    }
+    const loadUserDevices = async () => {
+      if (!selectedUser.value?.id) {
+        userDevices.value = []
+        return
+      }
+      loadingDevices.value = true
+      try {
+        const subscriptionId = selectedUser.value.id
+        const response = await adminAPI.getSubscriptionDevices(subscriptionId)
+        if (response && response.data) {
+          const responseData = response.data
+          let devices = []
+          if (responseData.data && responseData.data.devices && Array.isArray(responseData.data.devices)) {
+            devices = responseData.data.devices
+          } else if (responseData.data && Array.isArray(responseData.data)) {
+            devices = responseData.data
+          } else if (responseData.devices && Array.isArray(responseData.devices)) {
+            devices = responseData.devices
+          } else if (Array.isArray(responseData)) {
+            devices = responseData
+          }
+          userDevices.value = devices.map(device => ({
+            id: device.id,
+            device_name: device.device_name || device.name || '未知设备',
+            device_type: device.device_type || device.type || 'unknown',
+            ip_address: device.ip_address || device.ip || '-',
+            location: device.location || '',
+            last_seen: device.last_seen || device.last_access || null,
+            last_access: device.last_access || device.last_seen || null
+          }))
+        } else {
+          userDevices.value = []
+        }
+      } catch (error) {
+        ElMessage.error('加载设备列表失败: ' + (error.response?.data?.message || error.message))
+        userDevices.value = []
+      } finally {
+        loadingDevices.value = false
+      }
+    }
+    const deleteDevice = async (device) => {
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除设备 "${device.device_name || '未知设备'}" 吗？`,
+          '确认删除',
+          { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+        )
+        deletingDevice.value = device.id
+        const response = await adminAPI.removeDevice(device.id)
+        if (response.data && response.data.success) {
+          ElMessage.success('设备删除成功')
+          await loadUserDevices()
+        } else {
+          throw new Error(response.data?.message || '删除设备失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error('删除设备失败: ' + (error.response?.data?.message || error.message))
+        }
+      } finally {
+        deletingDevice.value = null
+      }
+    }
+    const loadUserCustomNodes = async () => {
+      if (!selectedUser.value?.user?.id) {
+        userCustomNodes.value = []
+        return
+      }
+      loadingCustomNodes.value = true
+      try {
+        const userId = selectedUser.value.user.id
+        const response = await adminAPI.getUserCustomNodes(userId)
+        if (response.data && response.data.success) {
+          userCustomNodes.value = response.data.data || []
+        } else {
+          throw new Error(response.data?.message || '加载专线节点失败')
+        }
+      } catch (error) {
+        ElMessage.error('加载专线节点失败: ' + (error.response?.data?.message || error.message))
+        userCustomNodes.value = []
+      } finally {
+        loadingCustomNodes.value = false
+      }
+    }
+    const loadAvailableNodes = async () => {
+      try {
+        const response = await adminAPI.getCustomNodes({ page: 1, page_size: 1000 })
+        if (response.data && response.data.success) {
+          availableNodes.value = response.data.data?.nodes || response.data.data || []
+        }
+      } catch (error) {
+        ElMessage.error('加载可用节点失败: ' + (error.response?.data?.message || error.message))
+      }
+    }
+    const handleNodeSearch = async () => {
+      if (!nodeSearchKeyword.value.trim()) {
+        searchedNodes.value = []
+        return
+      }
+      try {
+        const response = await adminAPI.getCustomNodes({
+          search: nodeSearchKeyword.value,
+          page: 1,
+          page_size: 100
+        })
+        if (response.data && response.data.success) {
+          searchedNodes.value = response.data.data?.nodes || response.data.data || []
+        }
+      } catch (error) {
+        ElMessage.error('搜索节点失败: ' + (error.response?.data?.message || error.message))
+      }
+    }
+    const handleNodeSearchClear = () => {
+      nodeSearchKeyword.value = ''
+      searchedNodes.value = []
+    }
+    const assignCustomNode = async () => {
+      if (!selectedNodeId.value) {
+        ElMessage.warning('请选择要分配的节点')
+        return
+      }
+      if (!selectedUser.value?.user?.id) {
+        ElMessage.error('用户信息不存在')
+        return
+      }
+      assigningNode.value = true
+      try {
+        const userId = selectedUser.value.user.id
+        const response = await adminAPI.assignCustomNodeToUser(userId, selectedNodeId.value)
+        if (response.data && response.data.success) {
+          ElMessage.success('专线节点分配成功')
+          showAssignNodeDialog.value = false
+          selectedNodeId.value = null
+          nodeSearchKeyword.value = ''
+          searchedNodes.value = []
+          await loadUserCustomNodes()
+        } else {
+          throw new Error(response.data?.message || '分配失败')
+        }
+      } catch (error) {
+        ElMessage.error('分配专线节点失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        assigningNode.value = false
+      }
+    }
+    const unassignCustomNode = async (nodeId) => {
+      if (!selectedUser.value?.user?.id) {
+        ElMessage.error('用户信息不存在')
+        return
+      }
+      try {
+        await ElMessageBox.confirm('确定要取消分配此专线节点吗？', '确认操作', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        const userId = selectedUser.value.user.id
+        const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
+        if (response.data && response.data.success) {
+          ElMessage.success('已取消分配')
+          await loadUserCustomNodes()
+        } else {
+          throw new Error(response.data?.message || '取消分配失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
+        }
+      }
+    }
+    const getDeviceTypeTag = (type) => {
+      const typeMap = { 'mobile': 'primary', 'desktop': 'success', 'tablet': 'warning', 'server': 'danger' }
+      return typeMap[type] || 'info'
+    }
+    const getDeviceTypeText = (type) => {
+      const typeMap = { 'mobile': '手机', 'desktop': '电脑', 'tablet': '平板', 'server': '服务器' }
+      return typeMap[type] || type || '未知'
+    }
+    const getResetTypeTag = (type) => {
+      const typeMap = { 'manual': 'primary', 'automatic': 'info', 'admin': 'warning', 'system': 'success' }
+      return typeMap[type] || 'info'
+    }
+    const getResetTypeText = (type) => {
+      const typeMap = { 'manual': '手动重置', 'automatic': '自动重置', 'admin': '管理员重置', 'system': '系统重置' }
+      return typeMap[type] || type || '未知'
+    }
+    const getResetByTag = (by) => {
+      const byMap = { 'user': 'primary', 'admin': 'warning', 'system': 'success' }
+      return byMap[by] || 'info'
+    }
+    const getResetByText = (by) => {
+      const byMap = { 'user': '用户', 'admin': '管理员', 'system': '系统' }
+      return byMap[by] || by || '未知'
+    }
+    const getOrderStatusType = (status) => {
+      const statusMap = { 'pending': 'warning', 'paid': 'success', 'completed': 'success', 'cancelled': 'info', 'failed': 'danger', 'refunded': 'info' }
+      return statusMap[status] || 'info'
+    }
+    const getOrderStatusText = (status) => {
+      const statusMap = { 'pending': '待支付', 'paid': '已支付', 'completed': '已完成', 'cancelled': '已取消', 'failed': '失败', 'refunded': '已退款' }
+      return statusMap[status] || status || '未知'
+    }
+    const getPaymentMethodText = (method) => {
+      const methodMap = { 'alipay': '支付宝', 'wechat': '微信支付', 'balance': '余额支付', 'card': '银行卡', 'paypal': 'PayPal' }
+      return methodMap[method] || method || '未知'
+    }
+    const copyToClipboard = async (text) => {
+      if (!text) {
+        ElMessage.warning('没有可复制的内容')
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(text)
+        ElMessage.success('已复制到剪贴板')
+      } catch (error) {
+        try {
+          const textArea = document.createElement('textarea')
+          textArea.value = text
+          document.body.appendChild(textArea)
+          textArea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textArea)
+          ElMessage.success('已复制到剪贴板')
+        } catch (fallbackError) {
+          ElMessage.error('复制失败，请手动复制')
+        }
+      }
+    }
+    const formatLocation = (location) => {
+      if (!location) return '-'
+      return location
     }
     const handleConfirmAction = async (message, title, type = 'warning') => {
       try {
@@ -951,6 +1489,18 @@ export default {
       editingUser,
       selectedUser,
       activeBalanceTab,
+      detailActiveTab,
+      userDevices,
+      loadingDevices,
+      deletingDevice,
+      userCustomNodes,
+      loadingCustomNodes,
+      showAssignNodeDialog,
+      availableNodes,
+      searchedNodes,
+      nodeSearchKeyword,
+      selectedNodeId,
+      assigningNode,
       searchUsers,
       resetSearch,
       handleStatusFilter,
@@ -961,6 +1511,25 @@ export default {
       handleCurrentChange,
       viewUserDetails,
       viewUserBalance,
+      loadUserDevices,
+      deleteDevice,
+      loadUserCustomNodes,
+      loadAvailableNodes,
+      handleNodeSearch,
+      handleNodeSearchClear,
+      assignCustomNode,
+      unassignCustomNode,
+      getDeviceTypeTag,
+      getDeviceTypeText,
+      getResetTypeTag,
+      getResetTypeText,
+      getResetByTag,
+      getResetByText,
+      getOrderStatusType,
+      getOrderStatusText,
+      getPaymentMethodText,
+      copyToClipboard,
+      formatLocation,
       editUser,
       deleteUser,
       toggleUserStatus,
@@ -1524,5 +2093,154 @@ export default {
 .saving-indicator-mobile .el-icon,
 .saved-indicator-mobile .el-icon {
   font-size: 14px;
+}
+
+.drawer-content {
+  .url-section {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .url-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    .url-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      .url-label {
+        font-size: 13px;
+        color: #606266;
+        font-weight: 500;
+      }
+    }
+    .url-code {
+      font-size: 12px;
+      font-family: monospace;
+      background: #f5f7fa;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #e4e7ed;
+      word-break: break-all;
+      color: #303133;
+      line-height: 1.6;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+  }
+  .records-tabs {
+    :deep(.el-tabs__header) {
+      margin-bottom: 10px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    padding: 15px 10px;
+
+    :deep(.el-descriptions) {
+      .el-descriptions__body {
+        .el-descriptions__table {
+          .el-descriptions__cell {
+            padding: 6px 8px;
+          }
+          .el-descriptions__label {
+            font-size: 12px;
+            width: 70px;
+            word-break: keep-all;
+          }
+          .el-descriptions__content {
+            font-size: 12px;
+            word-break: break-all;
+          }
+        }
+      }
+    }
+
+    :deep(.el-divider) {
+      margin: 15px 0;
+      .el-divider__text {
+        font-size: 13px;
+        padding: 0 10px;
+      }
+    }
+
+    .url-section {
+      margin-top: 10px;
+      gap: 10px;
+    }
+
+    .url-item {
+      .url-header {
+        margin-bottom: 5px;
+        .url-label {
+          font-size: 12px;
+        }
+        .el-button {
+          padding: 5px 10px;
+          font-size: 12px;
+        }
+      }
+      .url-code {
+        font-size: 10px;
+        padding: 6px 8px;
+        max-height: 80px;
+        line-height: 1.4;
+      }
+    }
+
+    :deep(.el-tabs__item) {
+      font-size: 12px;
+      padding: 0 10px;
+      height: 36px;
+      line-height: 36px;
+    }
+
+    :deep(.el-table) {
+      font-size: 11px;
+      .el-table__cell {
+        padding: 4px 0;
+      }
+      .el-table__header th {
+        padding: 6px 0;
+        font-size: 11px;
+      }
+      .el-button {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+    }
+
+    :deep(.el-tag) {
+      font-size: 11px;
+      padding: 0 6px;
+      height: 20px;
+      line-height: 20px;
+    }
+  }
+}
+
+.node-search-section {
+  margin-bottom: 20px;
+
+  .search-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .search-result-tip {
+    font-size: 13px;
+    color: #67c23a;
+    padding: 8px 12px;
+    background: #f0f9ff;
+    border-radius: 4px;
+
+    &.empty {
+      color: #909399;
+      background: #f5f7fa;
+    }
+  }
 }
 </style>
