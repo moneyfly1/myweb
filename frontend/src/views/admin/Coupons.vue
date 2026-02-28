@@ -171,12 +171,11 @@
       @current-change="loadCoupons"
       style="margin-top: 20px; justify-content: center"
     />
-    <el-dialog
+    <el-drawer
       v-model="showCreateDialog"
       :title="editingCoupon ? '编辑优惠券' : '创建优惠券'"
-      :width="isMobile ? '95%' : '600px'"
-      :close-on-click-modal="!isMobile"
-      class="coupon-form-dialog"
+      :size="isMobile ? '100%' : '500px'"
+      direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
     >
       <el-form 
@@ -318,7 +317,7 @@
           <el-button type="primary" @click="saveCoupon" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">保存</el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 <script setup>
