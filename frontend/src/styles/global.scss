@@ -910,29 +910,38 @@ $breakpoints: (
   }
   .el-input, .el-select {
     .el-input__inner {
-      border-radius: var(--border-radius);
-      border: 1px solid var(--theme-border);
+      border: none;
+      border-radius: 0;
       transition: all 0.3s ease;
       &:focus {
-        border-color: var(--theme-primary);
-        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+        box-shadow: none;
       }
     }
   }
 }
 
-// 全局去除 Element Plus 输入框内层 wrapper 的 box-shadow 边框，避免双层边框
+// 全局统一输入框样式：去掉内层弧形 box-shadow，改用方形 border
 .el-input__wrapper {
   box-shadow: none !important;
+  border: 1px solid var(--el-border-color, #dcdfe6) !important;
+  border-radius: 4px !important;
 }
 .el-input__wrapper:hover {
   box-shadow: none !important;
+  border-color: #c0c4cc !important;
 }
 .el-input__wrapper.is-focus {
   box-shadow: none !important;
+  border-color: var(--el-color-primary, #409eff) !important;
+}
+.el-textarea__inner {
+  box-shadow: none !important;
+  border: 1px solid var(--el-border-color, #dcdfe6) !important;
+  border-radius: 4px !important;
 }
 .el-textarea__inner:focus {
   box-shadow: none !important;
+  border-color: var(--el-color-primary, #409eff) !important;
 }
 .el-table {
   border-radius: var(--border-radius);
