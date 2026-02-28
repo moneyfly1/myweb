@@ -133,24 +133,74 @@
 
         <!-- 设备记录 Tab -->
         <el-tab-pane label="设备记录" name="devices">
-          <el-table
-            v-if="uaRecords && uaRecords.length > 0"
-            :data="uaRecords"
-            size="small"
-            max-height="240"
-            style="width: 100%"
-          >
-            <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="device_type" label="设备类型" width="100" />
-            <el-table-column prop="ip_address" label="IP地址" width="130" />
-            <el-table-column prop="location" label="位置" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="last_access" label="最后访问" width="160">
-              <template #default="scope">
-                {{ formatDateTime(scope.row.last_access) }}
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-empty v-else description="暂无设备记录" :image-size="80" />
+          <div class="devices-section">
+            <div class="devices-actions">
+              <el-button
+                size="small"
+                :icon="RefreshRight"
+                @click="loadDevices"
+                :loading="loadingDevices"
+              >
+                刷新设备
+              </el-button>
+              <span v-if="devices.length > 0" class="device-count-tip">
+                共 {{ devices.length }} 台设备在线
+              </span>
+            </div>
+            <el-table
+              v-if="devices.length > 0"
+              :data="devices"
+              size="small"
+              max-height="300"
+              style="width: 100%"
+              v-loading="loadingDevices"
+            >
+              <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
+              <el-table-column prop="device_type" label="类型" width="80" />
+              <el-table-column prop="ip_address" label="IP地址" width="130" show-overflow-tooltip />
+              <el-table-column prop="location" label="归属地" min-width="100" show-overflow-tooltip />
+              <el-table-column prop="last_access" label="最后访问" width="160">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.last_access || scope.row.last_seen) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="scope">
+                  <el-button
+                    type="danger"
+                    size="small"
+                    :icon="Delete"
+                    :loading="deletingDeviceId === scope.row.id"
+                    @click="deleteDevice(scope.row)"
+                    plain
+                  >
+                    删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-else-if="!loadingDevices" description="暂无在线设备" :image-size="80" />
+            <div v-if="uaRecords && uaRecords.length > 0" class="ua-records-section">
+              <el-divider content-position="left" style="margin: 16px 0 12px;">UA访问记录</el-divider>
+              <el-table
+                :data="uaRecords"
+                size="small"
+                max-height="200"
+                style="width: 100%"
+              >
+                <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
+                <el-table-column prop="device_type" label="类型" width="80" />
+                <el-table-column prop="ip_address" label="IP地址" width="130" />
+                <el-table-column prop="location" label="位置" min-width="100" show-overflow-tooltip />
+                <el-table-column prop="last_access" label="最后访问" width="160">
+                  <template #default="scope">
+                    {{ formatDateTime(scope.row.last_access) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="access_count" label="访问次数" width="90" />
+              </el-table>
+            </div>
+          </div>
         </el-tab-pane>
 
         <!-- 登录历史 Tab -->
@@ -382,7 +432,7 @@
 <script>
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Wallet,
   ShoppingCart,
@@ -392,7 +442,8 @@ import {
   Search,
   RefreshRight,
   CopyDocument,
-  Monitor
+  Monitor,
+  Delete
 } from '@element-plus/icons-vue'
 
 export default {
@@ -406,7 +457,8 @@ export default {
     Search,
     RefreshRight,
     CopyDocument,
-    Monitor
+    Monitor,
+    Delete
   },
   props: {
     visible: {
@@ -436,7 +488,10 @@ export default {
       showAssignDialog: false,
       selectedNodeId: null,
       assigning: false,
-      loadingNodes: false
+      loadingNodes: false,
+      devices: [],
+      loadingDevices: false,
+      deletingDeviceId: null
     }
   },
   computed: {
@@ -460,6 +515,7 @@ export default {
     visible(val) {
       if (val && this.user) {
         this.activeTab = this.initialTab
+        this.loadDevices()
         if (this.activeTab === 'custom-nodes') {
           this.loadUserCustomNodes()
         }
@@ -536,6 +592,92 @@ export default {
         ElMessage.success('复制成功')
       } catch (err) {
         ElMessage.error('复制失败')
+      }
+    },
+    async loadDevices() {
+      const userId = this.user?.user_info?.id || this.user?.id
+      if (!userId) {
+        this.devices = []
+        return
+      }
+      // 需要找到用户的订阅ID来加载设备
+      const subscriptions = this.user?.subscriptions || []
+      if (subscriptions.length === 0) {
+        this.devices = []
+        return
+      }
+      this.loadingDevices = true
+      try {
+        let allDevices = []
+        for (const sub of subscriptions) {
+          const subId = sub.id || sub.subscription_id
+          if (!subId) continue
+          try {
+            const response = await adminAPI.getSubscriptionDevices(subId)
+            if (response && response.data) {
+              const responseData = response.data
+              let devices = []
+              if (responseData.data && responseData.data.devices && Array.isArray(responseData.data.devices)) {
+                devices = responseData.data.devices
+              } else if (responseData.data && Array.isArray(responseData.data)) {
+                devices = responseData.data
+              } else if (responseData.devices && Array.isArray(responseData.devices)) {
+                devices = responseData.devices
+              } else if (Array.isArray(responseData)) {
+                devices = responseData
+              }
+              allDevices = allDevices.concat(devices.map(device => ({
+                id: device.id,
+                device_name: device.device_name || device.name || '未知设备',
+                device_type: device.device_type || device.type || 'unknown',
+                ip_address: device.ip_address || device.ip || '-',
+                location: device.location || '',
+                last_seen: device.last_seen || device.last_access || null,
+                last_access: device.last_access || device.last_seen || null,
+                access_count: device.access_count || 0,
+                is_active: device.is_active !== false,
+                user_agent: device.user_agent || '',
+                software_name: device.software_name || '',
+                subscription_id: subId
+              })))
+            }
+          } catch (e) {
+            // 单个订阅加载失败不影响其他
+          }
+        }
+        this.devices = allDevices
+      } catch (error) {
+        console.error('加载设备列表失败:', error)
+        this.devices = []
+      } finally {
+        this.loadingDevices = false
+      }
+    },
+    async deleteDevice(device) {
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除设备 "${device.device_name || '未知设备'}" 吗？删除后该设备将无法继续使用订阅。`,
+          '确认删除',
+          {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning',
+          }
+        )
+        this.deletingDeviceId = device.id
+        const response = await adminAPI.removeDevice(device.id)
+        if (response.data && response.data.success) {
+          ElMessage.success('设备删除成功')
+          await this.loadDevices()
+        } else {
+          throw new Error(response.data?.message || '删除设备失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          ElMessage.error('删除设备失败: ' + (error.response?.data?.message || error.message))
+        }
+      } finally {
+        this.deletingDeviceId = null
       }
     },
     async loadUserCustomNodes() {
@@ -706,8 +848,8 @@ export default {
       border: 1px solid #dcdfe6;
       word-break: break-all;
       line-height: 1.6;
-      max-height: 120px;
-      overflow-y: auto;
+      user-select: all;
+      display: block;
     }
   }
 
@@ -743,6 +885,24 @@ export default {
       margin-bottom: 15px;
       display: flex;
       gap: 10px;
+    }
+  }
+
+  .devices-section {
+    .devices-actions {
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .device-count-tip {
+      font-size: 12px;
+      color: #909399;
+    }
+
+    .ua-records-section {
+      margin-top: 8px;
     }
   }
 
@@ -794,7 +954,6 @@ export default {
       .url-code {
         font-size: 11px;
         padding: 6px 8px;
-        max-height: 80px;
       }
     }
 

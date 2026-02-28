@@ -456,233 +456,12 @@
       @success="handleUserSaved"
     />
     <!-- 用户详情抽屉 -->
-    <el-drawer
-      v-model="showUserDialog"
-      :title="'用户详情 - ' + (selectedUser?.user?.username || selectedUser?.user?.email || '')"
-      :size="isMobile ? '100%' : '780px'"
-      direction="rtl"
-      :close-on-click-modal="true"
-      class="user-detail-drawer"
-    >
-      <div v-if="selectedUser" class="drawer-content">
-        <!-- 用户基本信息 -->
-        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
-          <el-descriptions-item label="用户ID">{{ selectedUser.user?.id }}</el-descriptions-item>
-          <el-descriptions-item label="用户名">{{ selectedUser.user?.username }}</el-descriptions-item>
-          <el-descriptions-item label="邮箱">{{ selectedUser.user?.email }}</el-descriptions-item>
-          <el-descriptions-item label="注册时间">{{ formatDate(selectedUser.user?.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="最后登录">{{ formatDate(selectedUser.user?.last_login) || '从未登录' }}</el-descriptions-item>
-          <el-descriptions-item label="激活状态">
-            <el-tag :type="selectedUser.user?.is_active ? 'success' : 'danger'" size="small">
-              {{ selectedUser.user?.is_active ? '已激活' : '未激活' }}
-            </el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <!-- 订阅信息 -->
-        <el-divider content-position="left">订阅信息</el-divider>
-        <el-descriptions :column="isMobile ? 1 : 2" border size="small">
-          <el-descriptions-item label="订阅状态">
-            <el-tag :type="getSubscriptionStatusType(selectedUser.status)" size="small">
-              {{ getSubscriptionStatusText(selectedUser.status) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="到期时间">{{ formatDate(selectedUser.expire_time) }}</el-descriptions-item>
-          <el-descriptions-item label="设备限制">{{ selectedUser.device_limit }}</el-descriptions-item>
-          <el-descriptions-item label="在线设备">{{ selectedUser.online_devices || 0 }}</el-descriptions-item>
-        </el-descriptions>
-
-        <!-- 订阅地址 -->
-        <div class="url-section">
-          <div class="url-item">
-            <div class="url-header">
-              <span class="url-label">通用订阅:</span>
-              <el-button size="small" @click="copyToClipboard(selectedUser.universal_url)" :disabled="!selectedUser.universal_url">复制</el-button>
-            </div>
-            <code class="url-code">{{ selectedUser.universal_url || '无' }}</code>
-          </div>
-          <div class="url-item">
-            <div class="url-header">
-              <span class="url-label">Clash订阅:</span>
-              <el-button size="small" @click="copyToClipboard(selectedUser.clash_url)" :disabled="!selectedUser.clash_url">复制</el-button>
-            </div>
-            <code class="url-code">{{ selectedUser.clash_url || '无' }}</code>
-          </div>
-        </div>
-
-        <!-- 记录信息 -->
-        <el-divider content-position="left">记录信息</el-divider>
-        <el-tabs v-model="detailActiveTab" class="records-tabs">
-          <!-- 设备管理 -->
-          <el-tab-pane name="devices">
-            <template #label>
-              <span>设备管理 <el-tag size="small" type="info">{{ selectedUser.online_devices || 0 }}/{{ selectedUser.device_limit || 0 }}</el-tag></span>
-            </template>
-            <div style="margin-bottom: 10px;">
-              <el-button type="primary" size="small" @click="loadUserDevices" :loading="loadingDevices">刷新设备列表</el-button>
-            </div>
-            <el-table :data="userDevices" size="small" max-height="240" v-loading="loadingDevices" empty-text="暂无设备记录">
-              <el-table-column prop="device_name" label="设备名称" min-width="150" show-overflow-tooltip />
-              <el-table-column prop="device_type" label="类型" width="80">
-                <template #default="scope">
-                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
-                  <span v-else>-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="130" />
-              <el-table-column prop="last_seen" label="最后在线" width="150">
-                <template #default="scope">{{ formatDate(scope.row.last_seen || scope.row.last_access) || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" fixed="right">
-                <template #default="scope">
-                  <el-button type="danger" size="small" link @click="deleteDevice(scope.row)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <!-- UA记录 -->
-          <el-tab-pane label="UA记录" name="ua">
-            <el-table :data="selectedUser.ua_records || []" size="small" max-height="240" empty-text="暂无UA记录">
-              <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
-              <el-table-column prop="device_type" label="类型" width="80">
-                <template #default="scope">
-                  <el-tag v-if="scope.row.device_type && scope.row.device_type !== 'unknown'" :type="getDeviceTypeTag(scope.row.device_type)" size="small">{{ getDeviceTypeText(scope.row.device_type) }}</el-tag>
-                  <span v-else>-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="130" />
-              <el-table-column prop="location" label="位置" width="120" show-overflow-tooltip>
-                <template #default="scope">{{ formatLocation(scope.row.location) || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="last_access" label="最后访问" width="150">
-                <template #default="scope">{{ formatDate(scope.row.last_access) || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="access_count" label="次数" width="70" align="center" />
-            </el-table>
-          </el-tab-pane>
-
-          <!-- 重置记录 -->
-          <el-tab-pane label="重置记录" name="resets">
-            <el-table :data="selectedUser.user?.subscription_resets || []" size="small" max-height="240" empty-text="暂无重置记录">
-              <el-table-column prop="reset_by" label="操作人" width="80">
-                <template #default="scope">
-                  <el-tag :type="getResetByTag(scope.row.reset_by)" size="small">{{ getResetByText(scope.row.reset_by) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="reset_type" label="类型" width="100">
-                <template #default="scope">
-                  <el-tag :type="getResetTypeTag(scope.row.reset_type)" size="small">{{ getResetTypeText(scope.row.reset_type) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="reason" label="原因" min-width="100" show-overflow-tooltip />
-              <el-table-column label="旧订阅URL" min-width="150" show-overflow-tooltip>
-                <template #default="scope"><code style="font-size:11px;">{{ scope.row.old_subscription_url }}</code></template>
-              </el-table-column>
-              <el-table-column label="新订阅URL" min-width="150" show-overflow-tooltip>
-                <template #default="scope"><code style="font-size:11px;">{{ scope.row.new_subscription_url }}</code></template>
-              </el-table-column>
-              <el-table-column label="设备数" width="90" align="center">
-                <template #default="scope">{{ scope.row.device_count_before }} → {{ scope.row.device_count_after }}</template>
-              </el-table-column>
-              <el-table-column prop="created_at" label="时间" width="150">
-                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <!-- 订单记录 -->
-          <el-tab-pane label="订单记录" name="orders">
-            <el-table :data="selectedUser.user?.orders || []" size="small" max-height="240" empty-text="暂无订单记录">
-              <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="amount" label="金额" width="100">
-                <template #default="scope">
-                  <span style="font-weight: 600;">¥{{ scope.row.amount }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="status" label="状态" width="100">
-                <template #default="scope">
-                  <el-tag :type="getOrderStatusType(scope.row.status)" size="small">
-                    {{ getOrderStatusText(scope.row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="created_at" label="创建时间" width="150">
-                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <!-- 充值记录 -->
-          <el-tab-pane label="充值记录" name="recharge">
-            <el-table :data="selectedUser.user?.recharge_records || []" size="small" max-height="240" empty-text="暂无充值记录">
-              <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="amount" label="金额" width="100">
-                <template #default="scope">
-                  <span style="font-weight: 600; color: #67c23a;">+¥{{ scope.row.amount }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="payment_method" label="支付方式" width="100">
-                <template #default="scope">
-                  {{ getPaymentMethodText(scope.row.payment_method) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="status" label="状态" width="100">
-                <template #default="scope">
-                  <el-tag :type="getOrderStatusType(scope.row.status)" size="small">
-                    {{ getOrderStatusText(scope.row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="created_at" label="创建时间" width="150">
-                <template #default="scope">{{ formatDate(scope.row.created_at) || '-' }}</template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <!-- 登录历史 -->
-          <el-tab-pane label="登录历史" name="login">
-            <el-table :data="selectedUser.user?.login_history || []" size="small" max-height="240" empty-text="暂无登录历史">
-              <el-table-column prop="login_time" label="登录时间" width="150">
-                <template #default="scope">{{ formatDate(scope.row.login_time) || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="130" />
-              <el-table-column prop="location" label="位置" min-width="120" show-overflow-tooltip>
-                <template #default="scope">{{ formatLocation(scope.row.location) || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="user_agent" label="User Agent" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="login_status" label="状态" width="80">
-                <template #default="scope">
-                  <el-tag :type="scope.row.login_status === 'success' ? 'success' : 'danger'" size="small">
-                    {{ scope.row.login_status === 'success' ? '成功' : '失败' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <!-- 专线节点 -->
-          <el-tab-pane label="专线节点" name="custom-nodes">
-            <div style="margin-bottom: 10px;">
-              <el-button type="primary" size="small" @click="showAssignNodeDialog = true">分配专线节点</el-button>
-              <el-button size="small" @click="loadUserCustomNodes" :loading="loadingCustomNodes">刷新</el-button>
-            </div>
-            <el-table :data="userCustomNodes" size="small" max-height="240" v-loading="loadingCustomNodes" empty-text="暂无专线节点">
-              <el-table-column prop="node_name" label="节点名称" min-width="150" />
-              <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="assigned_at" label="分配时间" width="150">
-                <template #default="scope">{{ formatDate(scope.row.assigned_at) || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="100" fixed="right">
-                <template #default="scope">
-                  <el-button type="danger" size="small" link @click="unassignCustomNode(scope.row.node_id)">取消分配</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-drawer>
+    <UserDetailDialog
+      :visible="showUserDialog"
+      @update:visible="showUserDialog = $event"
+      :user="selectedUser"
+      :isMobile="isMobile"
+    />
 
     <!-- 分配专线节点对话框 -->
     <el-dialog
@@ -744,6 +523,7 @@ import {
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import UserFormDialog from './components/UserFormDialog.vue'
+import UserDetailDialog from './components/UserDetailDialog.vue'
 const STATUS_MAP = {
   active: { type: 'success', text: '活跃' },
   inactive: { type: 'warning', text: '待激活' },
@@ -1011,33 +791,8 @@ export default {
         const response = await adminAPI.getUserDetails(userId)
         const userData = response?.data?.success ? response.data.data : (response?.success ? response.data : null)
         if (userData) {
-          // 转换数据结构以匹配Subscriptions.vue的格式
-          // 如果用户有订阅，使用第一个订阅的信息
-          const firstSub = userData.subscriptions && userData.subscriptions.length > 0 ? userData.subscriptions[0] : null
-
-          selectedUser.value = {
-            id: firstSub?.id || 0,
-            user_id: userData.user_info?.id || userData.id,
-            status: firstSub?.status || 'inactive',
-            expire_time: firstSub?.expire_time || null,
-            device_limit: firstSub?.device_limit || 0,
-            online_devices: firstSub?.online_devices || 0,
-            current_devices: firstSub?.current_devices || 0,
-            universal_url: firstSub?.universal_url || firstSub?.subscription_url || '',
-            clash_url: firstSub?.clash_url || '',
-            apple_count: firstSub?.apple_count || 0,
-            clash_count: firstSub?.clash_count || 0,
-            user: userData.user_info || userData,
-            ua_records: userData.ua_records || []
-          }
-
+          selectedUser.value = userData
           showUserDialog.value = true
-          detailActiveTab.value = activeBalanceTab.value || 'devices'
-
-          // 加载设备和专线节点
-          await loadUserDevices()
-          await loadUserCustomNodes()
-          await loadAvailableNodes()
         } else {
           ElMessage.error('获取用户详情失败: ' + (response?.data?.message || response?.message || '未知错误'))
         }
