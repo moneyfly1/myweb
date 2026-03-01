@@ -561,11 +561,27 @@ export default {
   },
   methods: {
     getDeviceTypeName(type) {
-      const map = { mobile: '手机', desktop: '电脑', tablet: '平板', server: '服务器', unknown: '未知' }
+      const map = {
+        mobile: '手机',
+        desktop: '电脑',
+        tablet: '平板',
+        router: '路由器',
+        tv_box: '电视盒子',
+        server: '服务器',
+        unknown: '未知'
+      }
       return map[type] || type || '未知'
     },
     getDeviceTypeColor(type) {
-      const map = { mobile: 'primary', desktop: 'success', tablet: 'warning', server: 'danger', unknown: 'info' }
+      const map = {
+        mobile: 'primary',
+        desktop: 'success',
+        tablet: 'warning',
+        router: '',
+        tv_box: 'danger',
+        server: 'info',
+        unknown: 'info'
+      }
       return map[type] || 'info'
     },
     displayLocation(loc) {

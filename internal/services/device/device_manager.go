@@ -88,10 +88,12 @@ func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 }
 
 func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
+	// Shadowrocket
 	if strings.Contains(uaLower, "shadowrocket") {
 		return "Shadowrocket"
 	}
 
+	// iOS 设备特征识别
 	hasIPhoneID := regexp.MustCompile(`iPhone\d+,\d+`).MatchString(userAgent)
 	if hasIPhoneID && (strings.Contains(uaLower, "cfnetwork") || strings.Contains(uaLower, "darwin")) {
 		if strings.Contains(uaLower, "quantumult") {
@@ -109,10 +111,18 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Shadowrocket"
 	}
 
+	// Windows 客户端
 	if strings.Contains(uaLower, "v2rayn") {
 		return "v2rayN"
 	}
+	if strings.Contains(uaLower, "clash for windows") || strings.Contains(uaLower, "clash-windows") {
+		return "Clash for Windows"
+	}
+	if strings.Contains(uaLower, "clash verge") || strings.Contains(uaLower, "clash-verge") {
+		return "Clash Verge"
+	}
 
+	// Mihomo 系列
 	if strings.Contains(uaLower, "mihomo.party") || strings.Contains(uaLower, "mihomo/") {
 		return "Mihomo Party"
 	}
@@ -120,13 +130,46 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Mihomo"
 	}
 
+	// 路由器和软路由客户端
+	if strings.Contains(uaLower, "openwrt") {
+		if strings.Contains(uaLower, "clash") {
+			return "OpenClash"
+		}
+		if strings.Contains(uaLower, "passwall") {
+			return "PassWall"
+		}
+		if strings.Contains(uaLower, "ssr+") || strings.Contains(uaLower, "ssrplus") {
+			return "SSR Plus+"
+		}
+		return "OpenWrt"
+	}
+
+	// Android 客户端
+	if strings.Contains(uaLower, "clash for android") || strings.Contains(uaLower, "cfa") {
+		return "Clash for Android"
+	}
+	if strings.Contains(uaLower, "surfboard") {
+		return "Surfboard"
+	}
+	if strings.Contains(uaLower, "v2rayng") {
+		return "v2rayNG"
+	}
+
+	// 通用软件识别
 	softwares := map[string]string{
-		"quantumult": "Quantumult",
-		"hiddify":    "Hiddify",
-		"clash":      "Clash",
-		"v2ray":      "V2Ray",
-		"loon":       "Loon",
-		"surge":      "Surge",
+		"quantumult":  "Quantumult",
+		"hiddify":     "Hiddify",
+		"clash meta":  "Clash Meta",
+		"clash":       "Clash",
+		"v2ray":       "V2Ray",
+		"xray":        "Xray",
+		"loon":        "Loon",
+		"surge":       "Surge",
+		"stash":       "Stash",
+		"shadowsocks": "Shadowsocks",
+		"sing-box":    "sing-box",
+		"karing":      "Karing",
+		"nekobox":     "NekoBox",
 	}
 
 	for key, name := range softwares {
@@ -144,8 +187,37 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		"os_version": "",
 	}
 
+	// 路由器系统识别（优先级最高）
+	if strings.Contains(uaLower, "openwrt") {
+		result["os_name"] = "OpenWrt"
+		if match := regexp.MustCompile(`OpenWrt[/\s]+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["os_version"] = match[1]
+		}
+		return result
+	}
+	if strings.Contains(uaLower, "routeros") {
+		result["os_name"] = "RouterOS"
+		if match := regexp.MustCompile(`RouterOS[/\s]+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
+			result["os_version"] = match[1]
+		}
+		return result
+	}
+	if strings.Contains(uaLower, "padavan") {
+		result["os_name"] = "Padavan"
+		return result
+	}
+	if strings.Contains(uaLower, "merlin") || strings.Contains(uaLower, "asuswrt") {
+		result["os_name"] = "Asuswrt-Merlin"
+		return result
+	}
+
+	// iOS/iPadOS 识别
 	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
-		result["os_name"] = "iOS"
+		if strings.Contains(uaLower, "ipad") {
+			result["os_name"] = "iPadOS"
+		} else {
+			result["os_name"] = "iOS"
+		}
 		patterns := []string{
 			`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,          // OS 16_6_1, OS 16.6.1
 			`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`, // iPhone OS 16_6_1
@@ -165,6 +237,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
+	// Android 识别
 	if strings.Contains(uaLower, "android") {
 		result["os_name"] = "Android"
 		if match := regexp.MustCompile(`Android\s+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -173,6 +246,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
+	// Windows 识别
 	if strings.Contains(uaLower, "windows") {
 		result["os_name"] = "Windows"
 		if match := regexp.MustCompile(`Windows\s+NT\s+(\d+\.\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -181,6 +255,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
+	// macOS 识别
 	if strings.Contains(uaLower, "macintosh") || strings.Contains(uaLower, "mac os") {
 		result["os_name"] = "macOS"
 		if match := regexp.MustCompile(`Mac OS X\s+(\d+[._]\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
@@ -189,8 +264,19 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
+	// Linux 识别
 	if strings.Contains(uaLower, "linux") {
 		result["os_name"] = "Linux"
+		// 尝试识别具体发行版
+		if strings.Contains(uaLower, "ubuntu") {
+			result["os_name"] = "Ubuntu"
+		} else if strings.Contains(uaLower, "debian") {
+			result["os_name"] = "Debian"
+		} else if strings.Contains(uaLower, "centos") {
+			result["os_name"] = "CentOS"
+		} else if strings.Contains(uaLower, "fedora") {
+			result["os_name"] = "Fedora"
+		}
 		return result
 	}
 
@@ -199,37 +285,53 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
-	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng"}
-	windowsSoftware := []string{"clash for windows", "clash-verge", "v2rayn", "qv2ray", "mihomo", "mihomo party"}
-	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu", "mihomo", "mihomo party"}
-	linuxSoftware := []string{"mihomo", "mihomo party"}
+	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard"}
+	windowsSoftware := []string{"clash for windows", "clash-verge", "clash verge", "v2rayn", "qv2ray", "mihomo party"}
+	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu"}
+	routerSoftware := []string{"openclash", "passwall", "ssr plus+", "ssrplus"}
 
 	swLower := strings.ToLower(softwareName)
+
+	// 路由器软件
+	for _, sw := range routerSoftware {
+		if strings.Contains(swLower, sw) {
+			return map[string]string{"os_name": "OpenWrt", "os_version": ""}
+		}
+	}
+
+	// iOS 软件
 	for _, sw := range iosSoftware {
 		if strings.Contains(swLower, sw) {
 			return map[string]string{"os_name": "iOS", "os_version": ""}
 		}
 	}
+
+	// Android 软件
 	for _, sw := range androidSoftware {
 		if strings.Contains(swLower, sw) {
 			return map[string]string{"os_name": "Android", "os_version": ""}
 		}
 	}
+
+	// Windows 软件
 	for _, sw := range windowsSoftware {
 		if strings.Contains(swLower, sw) {
 			return map[string]string{"os_name": "Windows", "os_version": ""}
 		}
 	}
+
+	// macOS 软件
 	for _, sw := range macosSoftware {
 		if strings.Contains(swLower, sw) {
 			return map[string]string{"os_name": "macOS", "os_version": ""}
 		}
 	}
-	for _, sw := range linuxSoftware {
-		if strings.Contains(swLower, sw) {
-			return map[string]string{"os_name": "Linux", "os_version": ""}
-		}
+
+	// Mihomo 可能在多个平台
+	if strings.Contains(swLower, "mihomo") {
+		return map[string]string{"os_name": "Linux", "os_version": ""}
 	}
+
 	return nil
 }
 
@@ -277,7 +379,47 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 		}
 
 		if match := regexp.MustCompile(`iPad(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
-			result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
+			modelID := "iPad" + match[1]
+			// iPad 型号映射表
+			iPadModelMap := map[string]string{
+				"iPad13,1":  "iPad Air (第5代)",
+				"iPad13,2":  "iPad Air (第5代)",
+				"iPad13,4":  "iPad Pro 11英寸 (第4代)",
+				"iPad13,5":  "iPad Pro 11英寸 (第4代)",
+				"iPad13,6":  "iPad Pro 11英寸 (第4代)",
+				"iPad13,7":  "iPad Pro 11英寸 (第4代)",
+				"iPad13,8":  "iPad Pro 12.9英寸 (第6代)",
+				"iPad13,9":  "iPad Pro 12.9英寸 (第6代)",
+				"iPad13,10": "iPad Pro 12.9英寸 (第6代)",
+				"iPad13,11": "iPad Pro 12.9英寸 (第6代)",
+				"iPad13,16": "iPad Air (第5代)",
+				"iPad13,17": "iPad Air (第5代)",
+				"iPad13,18": "iPad (第10代)",
+				"iPad13,19": "iPad (第10代)",
+				"iPad14,1":  "iPad mini (第6代)",
+				"iPad14,2":  "iPad mini (第6代)",
+				"iPad14,3":  "iPad Pro 11英寸 (第5代)",
+				"iPad14,4":  "iPad Pro 11英寸 (第5代)",
+				"iPad14,5":  "iPad Pro 12.9英寸 (第7代)",
+				"iPad14,6":  "iPad Pro 12.9英寸 (第7代)",
+			}
+			if modelName, exists := iPadModelMap[modelID]; exists {
+				result["device_model"] = modelName
+			} else {
+				result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
+			}
+		} else if strings.Contains(userAgent, "iPad Pro") {
+			if strings.Contains(userAgent, "12.9") {
+				result["device_model"] = "iPad Pro 12.9英寸"
+			} else if strings.Contains(userAgent, "11") {
+				result["device_model"] = "iPad Pro 11英寸"
+			} else {
+				result["device_model"] = "iPad Pro"
+			}
+		} else if strings.Contains(userAgent, "iPad Air") {
+			result["device_model"] = "iPad Air"
+		} else if strings.Contains(userAgent, "iPad mini") {
+			result["device_model"] = "iPad mini"
 		} else if match := regexp.MustCompile(`iPad`).FindStringSubmatch(userAgent); len(match) > 0 {
 			result["device_model"] = "iPad"
 		}
@@ -290,11 +432,20 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			name := strings.TrimSpace(match[1])
 			result["device_model"] = name
 			brands := map[string][]string{
-				"Samsung": {"samsung", "galaxy"},
-				"Huawei":  {"huawei", "honor"},
-				"Xiaomi":  {"xiaomi", "redmi", "mi "},
-				"OPPO":    {"oppo", "oneplus"},
-				"vivo":    {"vivo", "iqoo"},
+				"Samsung":  {"samsung", "galaxy", "sm-"},
+				"Huawei":   {"huawei", "honor", "hma-", "ane-", "vog-", "ele-"},
+				"Xiaomi":   {"xiaomi", "redmi", "mi ", "poco"},
+				"OPPO":     {"oppo", "oneplus", "realme"},
+				"vivo":     {"vivo", "iqoo"},
+				"Meizu":    {"meizu", "m1"},
+				"Lenovo":   {"lenovo", "zuk"},
+				"Motorola": {"motorola", "moto"},
+				"Sony":     {"sony", "xperia"},
+				"LG":       {"lg-", "lge"},
+				"Google":   {"pixel", "nexus"},
+				"OnePlus":  {"oneplus"},
+				"Realme":   {"realme"},
+				"Nothing":  {"nothing"},
 			}
 			nameLower := strings.ToLower(name)
 			for brand, keywords := range brands {
@@ -344,30 +495,144 @@ func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo)
 	osName := strings.ToLower(info.OSName)
 	swName := strings.ToLower(info.SoftwareName)
 
+	// 路由器和软路由识别（优先级最高）
+	if dm.isRouter(userAgent, uaLower, osName) {
+		return "router"
+	}
+
+	// 电视盒子识别
+	if dm.isTVBox(userAgent, uaLower, osName) {
+		return "tv_box"
+	}
+
+	// iPad 识别（区分不同型号）
 	if strings.Contains(osName, "ipad") || strings.Contains(uaLower, "ipad") {
 		return "tablet"
 	}
+
+	// 手机识别
 	if strings.Contains(osName, "ios") || strings.Contains(osName, "android") || strings.Contains(uaLower, "iphone") {
 		return "mobile"
 	}
-	if strings.Contains(osName, "windows") || strings.Contains(osName, "macos") || strings.Contains(osName, "linux") {
+
+	// 桌面系统识别
+	if strings.Contains(osName, "windows") || strings.Contains(osName, "macos") {
 		return "desktop"
 	}
 
+	// Linux 系统需要进一步判断（可能是桌面、服务器或路由器）
+	if strings.Contains(osName, "linux") {
+		// 如果是常见的桌面 Linux 发行版
+		if strings.Contains(uaLower, "ubuntu") || strings.Contains(uaLower, "debian") ||
+		   strings.Contains(uaLower, "fedora") || strings.Contains(uaLower, "arch") {
+			return "desktop"
+		}
+		// 如果有桌面浏览器特征
+		if strings.Contains(uaLower, "chrome") || strings.Contains(uaLower, "firefox") ||
+		   strings.Contains(uaLower, "electron") {
+			return "desktop"
+		}
+		// 否则可能是服务器或路由器
+		return "server"
+	}
+
+	// 基于软件名称推断设备类型
 	if strings.Contains(swName, "shadowrocket") || strings.Contains(swName, "quantumult") || strings.Contains(swName, "surge") {
 		if strings.Contains(uaLower, "ipad") {
 			return "tablet"
 		}
 		return "mobile"
 	}
-	if strings.Contains(swName, "mihomo") {
-		return "desktop"
-	}
-	if strings.Contains(swName, "clash for windows") || strings.Contains(swName, "v2rayn") {
+	if strings.Contains(swName, "mihomo") || strings.Contains(swName, "clash for windows") || strings.Contains(swName, "v2rayn") {
 		return "desktop"
 	}
 
 	return "unknown"
+}
+
+// isRouter 判断是否为路由器或软路由
+func (dm *DeviceManager) isRouter(userAgent, uaLower, osName string) bool {
+	// OpenWrt 路由器系统
+	if strings.Contains(uaLower, "openwrt") {
+		return true
+	}
+
+	// RouterOS (MikroTik)
+	if strings.Contains(uaLower, "routeros") || strings.Contains(uaLower, "mikrotik") {
+		return true
+	}
+
+	// Padavan 固件
+	if strings.Contains(uaLower, "padavan") {
+		return true
+	}
+
+	// Merlin 固件 (华硕路由器)
+	if strings.Contains(uaLower, "merlin") || strings.Contains(uaLower, "asuswrt") {
+		return true
+	}
+
+	// DD-WRT 固件
+	if strings.Contains(uaLower, "dd-wrt") {
+		return true
+	}
+
+	// Tomato 固件
+	if strings.Contains(uaLower, "tomato") {
+		return true
+	}
+
+	// iKuai 爱快路由
+	if strings.Contains(uaLower, "ikuai") {
+		return true
+	}
+
+	// 软路由常见特征：clash/mihomo + mips/arm/aarch64 架构
+	if (strings.Contains(uaLower, "clash") || strings.Contains(uaLower, "mihomo")) &&
+	   (strings.Contains(uaLower, "mips") || strings.Contains(uaLower, "arm") ||
+	    strings.Contains(uaLower, "aarch64") || strings.Contains(uaLower, "armv7")) {
+		return true
+	}
+
+	// 常见路由器品牌特征
+	routerBrands := []string{"netgear", "tp-link", "asus router", "xiaomi router", "huawei router"}
+	for _, brand := range routerBrands {
+		if strings.Contains(uaLower, brand) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isTVBox 判断是否为电视盒子
+func (dm *DeviceManager) isTVBox(userAgent, uaLower, osName string) bool {
+	// Android TV
+	if strings.Contains(uaLower, "android tv") || strings.Contains(uaLower, "androidtv") {
+		return true
+	}
+
+	// Apple TV
+	if strings.Contains(uaLower, "apple tv") || strings.Contains(uaLower, "appletv") {
+		return true
+	}
+
+	// 小米盒子
+	if strings.Contains(uaLower, "mi box") || strings.Contains(uaLower, "mibox") {
+		return true
+	}
+
+	// Fire TV
+	if strings.Contains(uaLower, "fire tv") || strings.Contains(uaLower, "firetv") {
+		return true
+	}
+
+	// Nvidia Shield
+	if strings.Contains(uaLower, "shield") && strings.Contains(uaLower, "android") {
+		return true
+	}
+
+	return false
 }
 
 func (dm *DeviceManager) generateDeviceName(info *DeviceInfo) string {
