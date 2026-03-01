@@ -20,7 +20,9 @@
               placeholder="搜索邮箱、用户名或备注"
               class="mobile-search-input"
               clearable
+              @input="debouncedSearch"
               @keyup.enter="searchUsers"
+              @clear="searchUsers"
             />
             <el-button @click="searchUsers" class="search-button-inside" type="default" plain>
               <el-icon><Search /></el-icon>
@@ -88,12 +90,14 @@
       </div>
       <el-form :inline="true" :model="searchForm" class="search-form desktop-only">
         <el-form-item label="搜索">
-          <el-input 
-            v-model="searchForm.keyword" 
+          <el-input
+            v-model="searchForm.keyword"
             placeholder="搜索邮箱、用户名或备注"
             style="width: 300px;"
             clearable
+            @input="debouncedSearch"
             @keyup.enter="searchUsers"
+            @clear="searchUsers"
           />
         </el-form-item>
         <el-form-item label="状态">
@@ -622,6 +626,7 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
+import { debounce } from '@/composables/useDebounce'
 import UserDetailDialog from './components/UserDetailDialog.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -904,6 +909,8 @@ export default {
       currentPage.value = 1
       loadUsers()
     }
+    // 创建防抖版本的搜索函数（500ms延迟）
+    const debouncedSearch = debounce(searchUsers, 500)
     const resetSearch = () => {
       Object.assign(searchForm, { 
         keyword: '', 
@@ -1459,6 +1466,8 @@ export default {
       savedIndicatorTimers.forEach(timer => clearTimeout(timer))
       savedIndicatorTimers.clear()
       originalNotes.clear()
+      // 清理防抖函数
+      if (debouncedSearch.cancel) debouncedSearch.cancel()
     })
     return {
       isMobile,
