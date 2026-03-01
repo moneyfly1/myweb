@@ -72,6 +72,8 @@ func SetupRouter() *gin.Engine {
 			users.GET("/activities", handlers.GetUserActivities)
 			users.GET("/subscription-resets", handlers.GetSubscriptionResets)
 			users.GET("/devices", handlers.GetUserDevices)
+			users.POST("/checkin", handlers.Checkin)
+			users.GET("/checkin/status", handlers.GetCheckinStatus)
 		}
 
 		xboardCompat := api.Group("")
@@ -249,6 +251,17 @@ func SetupRouter() *gin.Engine {
 
 		// 已合并到 admin 组中处理，移除公共路由
 
+		// 知识库 - 用户端
+		knowledge := api.Group("/knowledge")
+		{
+			knowledge.GET("/categories", handlers.GetKnowledgeCategories)
+			knowledge.GET("/articles", handlers.GetKnowledgeArticles)
+			knowledge.GET("/articles/:id", handlers.GetKnowledgeArticle)
+		}
+
+		// 促销活动 - 用户端
+		api.GET("/promotions/active", handlers.GetActivePromotions)
+
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 
 		api.GET("/mobile-config", handlers.GetMobileConfig)
@@ -311,6 +324,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/batch-disable", handlers.BatchDisableUsers)
 			admin.POST("/users/batch-send-subscription-email", handlers.BatchSendSubEmail)
 			admin.POST("/users/batch-expire-reminder", handlers.BatchSendExpireReminder)
+			admin.POST("/users/send-email", handlers.SendEmailToUser)
+
 
 			admin.GET("/orders", handlers.GetAdminOrders)
 			admin.PUT("/orders/:id", handlers.UpdateAdminOrder)
@@ -458,6 +473,34 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/logs-stats", handlers.GetLogsStats)
 			admin.GET("/export-logs", handlers.ExportLogs)
 			admin.POST("/clear-logs", handlers.ClearLogs)
+
+			// 知识库管理
+			admin.GET("/knowledge/categories", handlers.GetAdminKnowledgeCategories)
+			admin.POST("/knowledge/categories", handlers.CreateKnowledgeCategory)
+			admin.PUT("/knowledge/categories/:id", handlers.UpdateKnowledgeCategory)
+			admin.DELETE("/knowledge/categories/:id", handlers.DeleteKnowledgeCategory)
+			admin.GET("/knowledge/articles", handlers.GetAdminKnowledgeArticles)
+			admin.POST("/knowledge/articles", handlers.CreateKnowledgeArticle)
+			admin.PUT("/knowledge/articles/:id", handlers.UpdateKnowledgeArticle)
+			admin.DELETE("/knowledge/articles/:id", handlers.DeleteKnowledgeArticle)
+
+			// 促销活动管理
+			admin.GET("/promotions", handlers.GetAdminPromotions)
+			admin.POST("/promotions", handlers.CreatePromotion)
+			admin.PUT("/promotions/:id", handlers.UpdatePromotion)
+			admin.DELETE("/promotions/:id", handlers.DeletePromotion)
+
+			// 用户行为分析
+			admin.GET("/analytics/users", handlers.GetUserAnalytics)
+			admin.GET("/analytics/retention", handlers.GetRetentionAnalytics)
+			admin.GET("/analytics/churn", handlers.GetChurnWarning)
+			admin.GET("/analytics/devices", handlers.GetDeviceAnalytics)
+			admin.GET("/analytics/revenue", handlers.GetRevenueAnalytics)
+
+			// 邮件模板
+			admin.GET("/email-templates", handlers.GetEmailTemplates)
+			admin.GET("/email-templates/:name", handlers.GetEmailTemplateByName)
+
 
 			// 日志管理
 			admin.GET("/logs/registration", handlers.GetRegistrationLogs)

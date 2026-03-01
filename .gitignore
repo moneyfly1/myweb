@@ -64,6 +64,10 @@ temp/
 *.tmp
 *.pid
 *.zip
+*.bak
+*.backup.*
+cboard-server
+cboard-go
 
 # Frontend
 frontend/node_modules/

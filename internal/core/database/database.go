@@ -227,6 +227,10 @@ func AutoMigrate() error {
 		&models.LoginHistory{},
 		&models.AuditLog{},
 		&models.TokenBlacklist{},
+		&models.CheckinRecord{},
+		&models.KnowledgeCategory{},
+		&models.KnowledgeArticle{},
+		&models.Promotion{},
 	)
 
 	if err != nil {
