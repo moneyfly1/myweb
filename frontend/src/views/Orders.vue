@@ -554,6 +554,9 @@ export default {
     const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
+    let paymentVisibilityHandler = null
+    let paymentFocusHandler = null
+    let paymentTimeoutId = null
     const orderTableRef = ref(null)
     const ORDER_TABLE_STORAGE_KEY = 'user_orders_table_settings'
     const orderColumnWidths = reactive({
@@ -1130,33 +1133,62 @@ export default {
       }
     }
     const startPaymentStatusCheck = () => {
+      // 清理之前的资源
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
         paymentStatusCheckInterval = null
       }
+      if (paymentVisibilityHandler) {
+        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
+        paymentVisibilityHandler = null
+      }
+      if (paymentFocusHandler) {
+        window.removeEventListener('focus', paymentFocusHandler)
+        paymentFocusHandler = null
+      }
+      if (paymentTimeoutId) {
+        clearTimeout(paymentTimeoutId)
+        paymentTimeoutId = null
+      }
+
+      // 立即检查一次
       checkPaymentStatus()
+
+      // 启动定时检查
       paymentStatusCheckInterval = setInterval(async () => {
         await checkPaymentStatus()
       }, 2000)
-      const handleVisibilityChange = async () => {
+
+      // 添加页面可见性监听
+      paymentVisibilityHandler = async () => {
         if (document.visibilityState === 'visible' && paymentQRVisible.value) {
           await checkPaymentStatus()
         }
       }
-      document.addEventListener('visibilitychange', handleVisibilityChange)
-      const handleFocus = async () => {
+      document.addEventListener('visibilitychange', paymentVisibilityHandler)
+
+      // 添加窗口焦点监听
+      paymentFocusHandler = async () => {
         if (paymentQRVisible.value) {
           await checkPaymentStatus()
         }
       }
-      window.addEventListener('focus', handleFocus)
-      setTimeout(() => {
+      window.addEventListener('focus', paymentFocusHandler)
+
+      // 30分钟后自动清理
+      paymentTimeoutId = setTimeout(() => {
         if (paymentStatusCheckInterval) {
           clearInterval(paymentStatusCheckInterval)
           paymentStatusCheckInterval = null
         }
-        document.removeEventListener('visibilitychange', handleVisibilityChange)
-        window.removeEventListener('focus', handleFocus)
+        if (paymentVisibilityHandler) {
+          document.removeEventListener('visibilitychange', paymentVisibilityHandler)
+          paymentVisibilityHandler = null
+        }
+        if (paymentFocusHandler) {
+          window.removeEventListener('focus', paymentFocusHandler)
+          paymentFocusHandler = null
+        }
       }, 30 * 60 * 1000)
     }
     const checkPaymentStatus = async () => {
@@ -1237,6 +1269,18 @@ export default {
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
         paymentStatusCheckInterval = null
+      }
+      if (paymentVisibilityHandler) {
+        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
+        paymentVisibilityHandler = null
+      }
+      if (paymentFocusHandler) {
+        window.removeEventListener('focus', paymentFocusHandler)
+        paymentFocusHandler = null
+      }
+      if (paymentTimeoutId) {
+        clearTimeout(paymentTimeoutId)
+        paymentTimeoutId = null
       }
       paymentQRVisible.value = false
       paymentQRCode.value = ''
@@ -1422,8 +1466,26 @@ export default {
       }
     })
     onUnmounted(() => {
+      // 清理 resize 监听器
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)
+      }
+      // 清理支付状态检查相关资源
+      if (paymentStatusCheckInterval) {
+        clearInterval(paymentStatusCheckInterval)
+        paymentStatusCheckInterval = null
+      }
+      if (paymentVisibilityHandler) {
+        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
+        paymentVisibilityHandler = null
+      }
+      if (paymentFocusHandler) {
+        window.removeEventListener('focus', paymentFocusHandler)
+        paymentFocusHandler = null
+      }
+      if (paymentTimeoutId) {
+        clearTimeout(paymentTimeoutId)
+        paymentTimeoutId = null
       }
     })
     return {
