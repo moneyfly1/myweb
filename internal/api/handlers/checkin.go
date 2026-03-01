@@ -5,11 +5,14 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 	"database/sql"
+	"fmt"
 	"math"
 	"math/rand"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func Checkin(c *gin.Context) {
@@ -24,62 +27,89 @@ func Checkin(c *gin.Context) {
 	now := utils.GetBeijingTime()
 	dayStart, dayEnd := utils.GetDayRange(now)
 
-	var count int64
-	db.Model(&models.CheckinRecord{}).Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, dayStart, dayEnd).Count(&count)
-	if count > 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "今天已经签到过了", nil)
+	// 使用事务和数据库锁防止重复签到
+	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+		// 在事务内再次检查，使用 FOR UPDATE 锁定用户记录
+		var count int64
+		if err := tx.Model(&models.CheckinRecord{}).
+			Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, dayStart, dayEnd).
+			Count(&count).Error; err != nil {
+			return err
+		}
+
+		if count > 0 {
+			return fmt.Errorf("今天已经签到过了")
+		}
+
+		// 生成随机奖励金额（1-10积分）
+		amount := math.Floor((rand.Float64()*9+1)*100) / 100
+
+		// 锁定用户记录并更新余额
+		var user models.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+			return fmt.Errorf("用户不存在")
+		}
+
+		balanceBefore := user.Balance
+		user.Balance += amount
+
+		if err := tx.Model(&user).Update("balance", user.Balance).Error; err != nil {
+			return err
+		}
+
+		// 创建签到记录
+		record := models.CheckinRecord{
+			UserID:    userID,
+			Amount:    amount,
+			CreatedAt: now,
+		}
+		if err := tx.Create(&record).Error; err != nil {
+			return err
+		}
+
+		// 创建余额日志
+		balanceLog := models.BalanceLog{
+			UserID:        userID,
+			ChangeType:    "checkin",
+			Amount:        amount,
+			BalanceBefore: balanceBefore,
+			BalanceAfter:  user.Balance,
+			Description:   sql.NullString{String: "每日签到奖励", Valid: true},
+			Operator:      sql.NullString{String: "system", Valid: true},
+		}
+		if err := tx.Create(&balanceLog).Error; err != nil {
+			return err
+		}
+
+		// 记录审计日志
+		utils.CreateBusinessLog(c, "user_checkin", "用户签到成功", "info", map[string]interface{}{
+			"user_id": userID,
+			"amount":  amount,
+			"balance": user.Balance,
+		})
+
+		// 将用户信息存储到上下文，供响应使用
+		c.Set("checkin_amount", amount)
+		c.Set("checkin_balance", user.Balance)
+
+		return nil
+	})
+
+	if err != nil {
+		if err.Error() == "今天已经签到过了" {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "签到失败", err)
+		}
 		return
 	}
 
-	amount := math.Floor((rand.Float64()*0.9+0.1)*100) / 100
-
-	var user models.User
-	if err := db.First(&user, userID).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "用户不存在", nil)
-		return
-	}
-
-	balanceBefore := user.Balance
-	user.Balance += amount
-
-	tx := db.Begin()
-	if err := tx.Model(&user).Update("balance", user.Balance).Error; err != nil {
-		tx.Rollback()
-		utils.ErrorResponse(c, http.StatusInternalServerError, "签到失败", nil)
-		return
-	}
-
-	record := models.CheckinRecord{
-		UserID:    userID,
-		Amount:    amount,
-		CreatedAt: now,
-	}
-	if err := tx.Create(&record).Error; err != nil {
-		tx.Rollback()
-		utils.ErrorResponse(c, http.StatusInternalServerError, "签到失败", nil)
-		return
-	}
-
-	balanceLog := models.BalanceLog{
-		UserID:      userID,
-		ChangeType:  "checkin",
-		Amount:      amount,
-		BalanceBefore: balanceBefore,
-		BalanceAfter:  user.Balance,
-		Description: sql.NullString{String: "每日签到奖励", Valid: true},
-		Operator:    sql.NullString{String: "system", Valid: true},
-	}
-	if err := tx.Create(&balanceLog).Error; err != nil {
-		tx.Rollback()
-		utils.ErrorResponse(c, http.StatusInternalServerError, "签到失败", nil)
-		return
-	}
-
-	tx.Commit()
+	amount, _ := c.Get("checkin_amount")
+	balance, _ := c.Get("checkin_balance")
 
 	utils.SuccessResponse(c, http.StatusOK, "签到成功", gin.H{
 		"amount":  amount,
-		"balance": user.Balance,
+		"balance": balance,
 	})
 }
 
