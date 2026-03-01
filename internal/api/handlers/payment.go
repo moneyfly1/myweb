@@ -382,23 +382,52 @@ func PaymentNotify(c *gin.Context) {
 				return
 			}
 		}
+
+		// 验证充值金额（所有支付方式都需要验证）
+		var callbackAmount float64
+		amountVerified := false
+
 		if paymentType == "alipay" {
 			if amountStr, ok := params["total_amount"]; ok {
-				var callbackAmount float64
 				fmt.Sscanf(amountStr, "%f", &callbackAmount)
-				if callbackAmount < recharge.Amount-0.01 || callbackAmount > recharge.Amount+0.01 {
-					utils.LogError("PaymentNotify: recharge amount mismatch", nil, map[string]interface{}{
-						"order_no":        orderNo,
-						"expected_amount": recharge.Amount,
-						"callback_amount": callbackAmount,
-					})
-					utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调充值金额与订单不一致", "error", map[string]interface{}{
-						"order_no": orderNo, "expected": recharge.Amount, "callback_amount": callbackAmount,
-					})
-					c.String(http.StatusBadRequest, "充值金额不匹配")
-					return
-				}
+				amountVerified = true
 			}
+		} else if paymentType == "wechat" {
+			// 微信支付金额单位是分
+			if amountStr, ok := params["total_fee"]; ok {
+				var amountInCents int
+				fmt.Sscanf(amountStr, "%d", &amountInCents)
+				callbackAmount = float64(amountInCents) / 100.0
+				amountVerified = true
+			}
+		} else if strings.HasPrefix(paymentType, "yipay") {
+			if amountStr, ok := params["money"]; ok {
+				fmt.Sscanf(amountStr, "%f", &callbackAmount)
+				amountVerified = true
+			}
+		}
+
+		// 如果成功解析到金额，则验证
+		if amountVerified {
+			if callbackAmount < recharge.Amount-0.01 || callbackAmount > recharge.Amount+0.01 {
+				utils.LogError("PaymentNotify: recharge amount mismatch", nil, map[string]interface{}{
+					"order_no":        orderNo,
+					"payment_type":    paymentType,
+					"expected_amount": recharge.Amount,
+					"callback_amount": callbackAmount,
+				})
+				utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调充值金额与订单不一致", "error", map[string]interface{}{
+					"order_no": orderNo, "payment_type": paymentType, "expected": recharge.Amount, "callback_amount": callbackAmount,
+				})
+				c.String(http.StatusBadRequest, "充值金额不匹配")
+				return
+			}
+		} else {
+			// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
+			utils.LogWarn("PaymentNotify: unable to verify recharge amount for payment type", map[string]interface{}{
+				"order_no":     orderNo,
+				"payment_type": paymentType,
+			})
 		}
 
 		if recharge.Status == "paid" {
@@ -472,56 +501,85 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
+	// 验证订单金额（所有支付方式都需要验证）
+	var callbackAmount float64
+	amountVerified := false
+
 	if paymentType == "alipay" {
 		if amountStr, ok := params["total_amount"]; ok {
-			var callbackAmount float64
 			fmt.Sscanf(amountStr, "%f", &callbackAmount)
-			expectedAmount := order.Amount
-			if order.FinalAmount.Valid {
-				expectedAmount = order.FinalAmount.Float64
-			}
+			amountVerified = true
+		}
+	} else if paymentType == "wechat" {
+		// 微信支付金额单位是分
+		if amountStr, ok := params["total_fee"]; ok {
+			var amountInCents int
+			fmt.Sscanf(amountStr, "%d", &amountInCents)
+			callbackAmount = float64(amountInCents) / 100.0
+			amountVerified = true
+		}
+	} else if strings.HasPrefix(paymentType, "yipay") {
+		if amountStr, ok := params["money"]; ok {
+			fmt.Sscanf(amountStr, "%f", &callbackAmount)
+			amountVerified = true
+		}
+	}
 
-			var balanceUsedInOrder float64 = 0
-			if order.ExtraData.Valid && order.ExtraData.String != "" {
-				var extraData map[string]interface{}
-				if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-					if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
-						balanceUsedInOrder = balanceUsedVal
-					}
-				}
-			}
+	// 如果成功解析到金额，则验证
+	if amountVerified {
+		expectedAmount := order.Amount
+		if order.FinalAmount.Valid {
+			expectedAmount = order.FinalAmount.Float64
+		}
 
-			expectedCallbackAmount := expectedAmount - balanceUsedInOrder
-			if balanceUsedInOrder > 0 {
-				if callbackAmount < expectedCallbackAmount-0.01 || callbackAmount > expectedCallbackAmount+0.01 {
-					utils.LogError("PaymentNotify: amount mismatch (mixed payment)", nil, map[string]interface{}{
-						"order_no":              orderNo,
-						"expected_callback":     expectedCallbackAmount,
-						"callback_amount":       callbackAmount,
-						"balance_used":          balanceUsedInOrder,
-						"total_expected_amount": expectedAmount,
-					})
-					utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致（混合支付）", "error", map[string]interface{}{
-						"order_no": orderNo, "expected": expectedCallbackAmount, "callback_amount": callbackAmount,
-					})
-					c.String(http.StatusBadRequest, "订单金额不匹配")
-					return
-				}
-			} else {
-				if callbackAmount < expectedAmount-0.01 || callbackAmount > expectedAmount+0.01 {
-					utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
-						"order_no":        orderNo,
-						"expected_amount": expectedAmount,
-						"callback_amount": callbackAmount,
-					})
-					utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致", "error", map[string]interface{}{
-						"order_no": orderNo, "expected": expectedAmount, "callback_amount": callbackAmount,
-					})
-					c.String(http.StatusBadRequest, "订单金额不匹配")
-					return
+		var balanceUsedInOrder float64 = 0
+		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+					balanceUsedInOrder = balanceUsedVal
 				}
 			}
 		}
+
+		expectedCallbackAmount := expectedAmount - balanceUsedInOrder
+		if balanceUsedInOrder > 0 {
+			if callbackAmount < expectedCallbackAmount-0.01 || callbackAmount > expectedCallbackAmount+0.01 {
+				utils.LogError("PaymentNotify: amount mismatch (mixed payment)", nil, map[string]interface{}{
+					"order_no":              orderNo,
+					"payment_type":          paymentType,
+					"expected_callback":     expectedCallbackAmount,
+					"callback_amount":       callbackAmount,
+					"balance_used":          balanceUsedInOrder,
+					"total_expected_amount": expectedAmount,
+				})
+				utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致（混合支付）", "error", map[string]interface{}{
+					"order_no": orderNo, "payment_type": paymentType, "expected": expectedCallbackAmount, "callback_amount": callbackAmount,
+				})
+				c.String(http.StatusBadRequest, "订单金额不匹配")
+				return
+			}
+		} else {
+			if callbackAmount < expectedAmount-0.01 || callbackAmount > expectedAmount+0.01 {
+				utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
+					"order_no":        orderNo,
+					"payment_type":    paymentType,
+					"expected_amount": expectedAmount,
+					"callback_amount": callbackAmount,
+				})
+				utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致", "error", map[string]interface{}{
+					"order_no": orderNo, "payment_type": paymentType, "expected": expectedAmount, "callback_amount": callbackAmount,
+				})
+				c.String(http.StatusBadRequest, "订单金额不匹配")
+				return
+			}
+		}
+	} else {
+		// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
+		utils.LogWarn("PaymentNotify: unable to verify order amount for payment type", map[string]interface{}{
+			"order_no":     orderNo,
+			"payment_type": paymentType,
+		})
 	}
 
 	if order.Status == "paid" {

@@ -390,20 +390,55 @@ func GetUsers(c *gin.Context) {
 }
 
 func GetUser(c *gin.Context) {
+	currentUser, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权", nil)
+		return
+	}
+
+	requestedUserID := c.Param("id")
 	db := database.GetDB()
 	var u models.User
-	if err := db.First(&u, c.Param("id")).Error; err != nil {
+	if err := db.First(&u, requestedUserID).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "不存在", err)
 		return
 	}
+
+	// 权限检查：只能查看自己的信息，除非是管理员
+	if u.ID != currentUser.ID && !currentUser.IsAdmin {
+		utils.ErrorResponse(c, http.StatusForbidden, "无权访问其他用户信息", nil)
+		utils.CreateBusinessLog(c, "unauthorized_user_access", "尝试越权访问用户信息", "warning", map[string]interface{}{
+			"current_user_id":   currentUser.ID,
+			"requested_user_id": u.ID,
+		})
+		return
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", u)
 }
 
 func GetUserDetails(c *gin.Context) {
+	currentUser, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权", nil)
+		return
+	}
+
+	requestedUserID := c.Param("id")
 	db := database.GetDB()
 	var u models.User
-	if err := db.First(&u, c.Param("id")).Error; err != nil {
+	if err := db.First(&u, requestedUserID).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "不存在", err)
+		return
+	}
+
+	// 权限检查：只能查看自己的详细信息，除非是管理员
+	if u.ID != currentUser.ID && !currentUser.IsAdmin {
+		utils.ErrorResponse(c, http.StatusForbidden, "无权访问其他用户详细信息", nil)
+		utils.CreateBusinessLog(c, "unauthorized_user_details_access", "尝试越权访问用户详细信息", "warning", map[string]interface{}{
+			"current_user_id":   currentUser.ID,
+			"requested_user_id": u.ID,
+		})
 		return
 	}
 
@@ -412,19 +447,39 @@ func GetUserDetails(c *gin.Context) {
 		lastLogin = utils.FormatBeijingTime(u.LastLogin.Time)
 	}
 
-	userInfo := gin.H{
-		"id":          u.ID,
-		"username":    u.Username,
-		"email":       u.Email,
-		"balance":     u.Balance,
-		"is_active":   u.IsActive,
-		"is_verified": u.IsVerified,
-		"is_admin":    u.IsAdmin,
-		"created_at":  utils.FormatBeijingTime(u.CreatedAt),
-		"last_login":  lastLogin,
-		"theme":       u.Theme,
-		"language":    u.Language,
-		"timezone":    u.Timezone,
+	// 根据用户权限返回不同的信息
+	var userInfo gin.H
+	if currentUser.IsAdmin {
+		// 管理员可以看到所有信息
+		userInfo = gin.H{
+			"id":          u.ID,
+			"username":    u.Username,
+			"email":       u.Email,
+			"balance":     u.Balance,
+			"is_active":   u.IsActive,
+			"is_verified": u.IsVerified,
+			"is_admin":    u.IsAdmin,
+			"created_at":  utils.FormatBeijingTime(u.CreatedAt),
+			"last_login":  lastLogin,
+			"theme":       u.Theme,
+			"language":    u.Language,
+			"timezone":    u.Timezone,
+		}
+	} else {
+		// 普通用户只能看到自己的基本信息（不包括敏感字段）
+		userInfo = gin.H{
+			"id":          u.ID,
+			"username":    u.Username,
+			"email":       u.Email,
+			"balance":     u.Balance,
+			"is_active":   u.IsActive,
+			"is_verified": u.IsVerified,
+			"created_at":  utils.FormatBeijingTime(u.CreatedAt),
+			"last_login":  lastLogin,
+			"theme":       u.Theme,
+			"language":    u.Language,
+			"timezone":    u.Timezone,
+		}
 	}
 
 	if u.Nickname.Valid {
