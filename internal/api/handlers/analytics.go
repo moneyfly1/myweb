@@ -20,6 +20,7 @@ func GetUserAnalytics(c *gin.Context) {
 	timeRange := c.DefaultQuery("range", "day")
 
 	var currentStart, currentEnd time.Time
+	var weekStart, monthStart time.Time
 	var dau, wau, mau int64
 
 	switch timeRange {
@@ -27,29 +28,48 @@ func GetUserAnalytics(c *gin.Context) {
 		// 本月
 		currentStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 		currentEnd = currentStart.AddDate(0, 1, 0)
+		// 本月的周活跃和月活跃都是本月范围
+		weekStart = currentStart
+		monthStart = currentStart
 	case "year":
 		// 本年
 		currentStart = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
 		currentEnd = currentStart.AddDate(1, 0, 0)
+		// 本年的周活跃和月活跃都是本年范围
+		weekStart = currentStart
+		monthStart = currentStart
 	default: // day
 		// 今日
 		currentStart, currentEnd = utils.GetDayRange(now)
+		// 今日的周活跃是最近7天，月活跃是最近30天
+		weekStart = now.AddDate(0, 0, -7)
+		monthStart = now.AddDate(0, -1, 0)
 	}
 
-	// 当前期间活跃用户
+	// DAU - 当前期间活跃用户
 	db.Model(&models.UserActivity{}).
 		Where("created_at >= ? AND created_at < ?", currentStart, currentEnd).
 		Distinct("user_id").Count(&dau)
 
-	// 周活跃（最近7天）
-	weekStart := now.AddDate(0, 0, -7)
-	db.Model(&models.UserActivity{}).Where("created_at >= ?", weekStart).
-		Distinct("user_id").Count(&wau)
+	// WAU - 根据时间范围计算
+	if timeRange == "day" {
+		// 今日模式：最近7天活跃用户
+		db.Model(&models.UserActivity{}).Where("created_at >= ?", weekStart).
+			Distinct("user_id").Count(&wau)
+	} else {
+		// 本月/本年模式：当前期间活跃用户（与DAU相同）
+		wau = dau
+	}
 
-	// 月活跃（最近30天）
-	monthStart := now.AddDate(0, -1, 0)
-	db.Model(&models.UserActivity{}).Where("created_at >= ?", monthStart).
-		Distinct("user_id").Count(&mau)
+	// MAU - 根据时间范围计算
+	if timeRange == "day" {
+		// 今日模式：最近30天活跃用户
+		db.Model(&models.UserActivity{}).Where("created_at >= ?", monthStart).
+			Distinct("user_id").Count(&mau)
+	} else {
+		// 本月/本年模式：当前期间活跃用户（与DAU相同）
+		mau = dau
+	}
 
 	var totalUsers int64
 	db.Model(&models.User{}).Count(&totalUsers)
