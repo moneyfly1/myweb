@@ -547,8 +547,9 @@ export default {
   name: 'AdminUsers',
   components: {
     UserFormDialog,
+    UserDetailDialog,
     Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
-    Connection, Monitor, Unlock, Check, Message, Bell
+    Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
   },
   setup() {
     const loading = ref(false)
@@ -650,6 +651,16 @@ export default {
           if (searchForm.status === 'device_overlimit') {
             userList = userList.filter(user => isDeviceOverlimit(user))
           }
+          // 初始化备注状态，避免使用 deep watcher
+          userList.forEach(user => {
+            if (user.id && !originalNotes.has(user.id)) {
+              originalNotes.set(user.id, user.notes || '')
+            }
+            if (!user.hasOwnProperty('savingNotes')) {
+              user.savingNotes = false
+              user.notesSaved = false
+            }
+          })
           users.value = userList
           total.value = searchForm.status === 'device_overlimit' ? userList.length : (responseData.total || 0)
         } else {
@@ -772,17 +783,7 @@ export default {
       }, 1000)
       saveTimers.set(user.id, timer)
     }
-    watch(users, (newUsers) => {
-      newUsers.forEach(user => {
-        if (user.id && !originalNotes.has(user.id)) {
-          originalNotes.set(user.id, user.notes || '')
-        }
-        if (!user.hasOwnProperty('savingNotes')) {
-          user.savingNotes = false
-          user.notesSaved = false
-        }
-      })
-    }, { deep: true })
+    // 备注初始化已移至 loadUsers 完成后执行，不再需要 deep watcher
     const editUser = (user) => {
       editingUser.value = user
       showAddUserDialog.value = true
@@ -1531,14 +1532,27 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  > div:last-child {
+    min-width: 0;
+    overflow: hidden;
+  }
 }
 .user-email-mobile {
   font-weight: 600;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .user-name-mobile {
   font-size: 12px;
   color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .device-info {
   display: flex;
@@ -1682,11 +1696,14 @@ export default {
           flex: 0 0 72px;
           color: #999;
           font-size: 12px;
+          flex-shrink: 0;
         }
         .value {
           flex: 1;
+          min-width: 0;
           color: #333;
-          word-break: break-word;
+          word-break: break-all;
+          overflow-wrap: break-word;
         }
       }
       .card-actions {

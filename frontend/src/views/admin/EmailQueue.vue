@@ -250,7 +250,7 @@
     <el-drawer
       v-model="detailDialogVisible"
       title="邮件详情"
-      :size="isMobile ? '100%' : '600px'"
+      :size="isMobile ? '92%' : '600px'"
       direction="rtl"
     >
       <div v-if="emailDetail" class="email-detail" v-loading="detailLoading">
@@ -670,6 +670,7 @@ export default {
     })
     onUnmounted(() => {
       window.removeEventListener('resize', checkMobile)
+      if (iframeLoadTimeout) clearTimeout(iframeLoadTimeout)
     })
     return {
       loading,

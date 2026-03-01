@@ -3,7 +3,7 @@
     :model-value="visible"
     @update:model-value="$emit('update:visible', $event)"
     :title="`用户详情 - ${user?.user_info?.username || user?.username || user?.user_info?.email || user?.email || ''}`"
-    :size="isMobile ? '100%' : '780px'"
+    :size="isMobile ? '92%' : '780px'"
     direction="rtl"
     class="user-detail-drawer"
     :close-on-click-modal="true"
@@ -608,44 +608,46 @@ export default {
       }
       this.loadingDevices = true
       try {
-        let allDevices = []
-        for (const sub of subscriptions) {
-          const subId = sub.id || sub.subscription_id
-          if (!subId) continue
-          try {
-            const response = await adminAPI.getSubscriptionDevices(subId)
-            if (response && response.data) {
-              const responseData = response.data
-              let devices = []
-              if (responseData.data && responseData.data.devices && Array.isArray(responseData.data.devices)) {
-                devices = responseData.data.devices
-              } else if (responseData.data && Array.isArray(responseData.data)) {
-                devices = responseData.data
-              } else if (responseData.devices && Array.isArray(responseData.devices)) {
-                devices = responseData.devices
-              } else if (Array.isArray(responseData)) {
-                devices = responseData
-              }
-              allDevices = allDevices.concat(devices.map(device => ({
-                id: device.id,
-                device_name: device.device_name || device.name || '未知设备',
-                device_type: device.device_type || device.type || 'unknown',
-                ip_address: device.ip_address || device.ip || '-',
-                location: device.location || '',
-                last_seen: device.last_seen || device.last_access || null,
-                last_access: device.last_access || device.last_seen || null,
-                access_count: device.access_count || 0,
-                is_active: device.is_active !== false,
-                user_agent: device.user_agent || '',
-                software_name: device.software_name || '',
-                subscription_id: subId
-              })))
-            }
-          } catch (e) {
-            // 单个订阅加载失败不影响其他
+        // 并行请求所有订阅的设备，避免串行等待导致卡顿
+        const subIds = subscriptions
+          .map(sub => sub.id || sub.subscription_id)
+          .filter(Boolean)
+        const parseDevices = (response, subId) => {
+          if (!response || !response.data) return []
+          const responseData = response.data
+          let devices = []
+          if (responseData.data && responseData.data.devices && Array.isArray(responseData.data.devices)) {
+            devices = responseData.data.devices
+          } else if (responseData.data && Array.isArray(responseData.data)) {
+            devices = responseData.data
+          } else if (responseData.devices && Array.isArray(responseData.devices)) {
+            devices = responseData.devices
+          } else if (Array.isArray(responseData)) {
+            devices = responseData
           }
+          return devices.map(device => ({
+            id: device.id,
+            device_name: device.device_name || device.name || '未知设备',
+            device_type: device.device_type || device.type || 'unknown',
+            ip_address: device.ip_address || device.ip || '-',
+            location: device.location || '',
+            last_seen: device.last_seen || device.last_access || null,
+            last_access: device.last_access || device.last_seen || null,
+            access_count: device.access_count || 0,
+            is_active: device.is_active !== false,
+            user_agent: device.user_agent || '',
+            software_name: device.software_name || '',
+            subscription_id: subId
+          }))
         }
-        this.devices = allDevices
+        const results = await Promise.all(
+          subIds.map(subId =>
+            adminAPI.getSubscriptionDevices(subId)
+              .then(response => parseDevices(response, subId))
+              .catch(() => [])
+          )
+        )
+        this.devices = results.flat()
       } catch (error) {
         console.error('加载设备列表失败:', error)
         this.devices = []

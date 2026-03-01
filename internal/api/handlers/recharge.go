@@ -25,7 +25,7 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	var req struct {
-		Amount        float64 `json:"amount" binding:"required,gt=0"`
+		Amount        float64 `json:"amount" binding:"required,gt=0,lte=50000"`
 		PaymentMethod string  `json:"payment_method"`
 	}
 

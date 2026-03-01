@@ -246,7 +246,7 @@
     <el-drawer
       v-model="showDetailDialog"
       :title="currentTicket ? `工单详情 - ${currentTicket.ticket_no}` : '工单详情'"
-      :size="isMobile ? '100%' : '780px'"
+      :size="isMobile ? '92%' : '780px'"
       direction="rtl"
       @close="closeDetailDialog"
       class="ticket-detail-drawer"
@@ -560,7 +560,6 @@ const updateStatus = async () => {
       showStatusDialog.value = false
       newStatus.value = ''
       viewTicket(currentTicket.value.id)
-      loadTickets()
     }
   } catch (error) {
     ElMessage.error('更新状态失败')
@@ -583,7 +582,6 @@ const assignTicketConfirm = async () => {
       showAssignDialog.value = false
       assignToUserId.value = null
       viewTicket(currentTicket.value.id)
-      loadTickets()
     }
   } catch (error) {
     ElMessage.error('分配失败')

@@ -39,14 +39,14 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const saveToken = (accessToken, isAdmin = false) => {
     if (isAdmin) {
-      secureStorage.set('admin_token', accessToken, false, TOKEN_TTL)
+      secureStorage.set('admin_token', accessToken, true, TOKEN_TTL)
     } else {
       secureStorage.set('user_token', accessToken, true, TOKEN_TTL)
     }
   }
   const saveUser = (userData, isAdmin = false) => {
     if (isAdmin) {
-      secureStorage.set('admin_user', userData, false, TOKEN_TTL)
+      secureStorage.set('admin_user', userData, true, TOKEN_TTL)
     } else {
       secureStorage.set('user_data', userData, true, TOKEN_TTL)
     }
@@ -159,9 +159,9 @@ export const useAuthStore = defineStore('auth', () => {
         theme: userData.theme,
         language: userData.language
       }
-      secureStorage.set('admin_token', access_token, false, TOKEN_TTL)
-      secureStorage.set('admin_user', safeUserData, false, TOKEN_TTL)
-      secureStorage.set('admin_refresh_token', refresh_token, false, REFRESH_TOKEN_TTL)
+      secureStorage.set('admin_token', access_token, true, TOKEN_TTL)
+      secureStorage.set('admin_user', safeUserData, true, TOKEN_TTL)
+      secureStorage.set('admin_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
       resetRefreshFailed()
       setTimeout(() => {
         const themeStore = useThemeStore()
@@ -266,8 +266,8 @@ export const useAuthStore = defineStore('auth', () => {
       secureStorage.set('user_token', newToken, true, TOKEN_TTL)
       secureStorage.set('user_data', newUser, true, TOKEN_TTL)
     } else {
-      secureStorage.set('admin_token', newToken, false, TOKEN_TTL)
-      secureStorage.set('admin_user', newUser, false, TOKEN_TTL)
+      secureStorage.set('admin_token', newToken, true, TOKEN_TTL)
+      secureStorage.set('admin_user', newUser, true, TOKEN_TTL)
     }
   }
   const setToken = (newToken) => {

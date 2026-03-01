@@ -109,8 +109,8 @@
           ref="tableRef"
         >
           <el-table-column type="selection" :width="columnWidths.selection" resizable />
-          <el-table-column prop="name" label="名称" :min-width="columnWidths.name" :width="columnWidths.name" resizable show-overflow-tooltip />
-          <el-table-column prop="display_name" label="显示名称" :min-width="columnWidths.display_name" :width="columnWidths.display_name" resizable show-overflow-tooltip>
+          <el-table-column prop="name" label="名称" :min-width="columnWidths.name" resizable show-overflow-tooltip />
+          <el-table-column prop="display_name" label="显示名称" :min-width="columnWidths.display_name" resizable show-overflow-tooltip>
             <template #default="{ row }">
               <span :class="row.display_name ? '' : 'text-secondary'">
                 {{ row.display_name || row.name || '-' }}
@@ -289,7 +289,7 @@
     <el-drawer
       v-model="showAddDialog"
       :title="editingNode ? '编辑专线节点' : '添加专线节点'"
-      :size="isMobile ? '100%' : '600px'"
+      :size="isMobile ? '92%' : '600px'"
       direction="rtl"
       destroy-on-close
       append-to-body
@@ -398,7 +398,7 @@
     <el-dialog
       v-model="showAssignDialog"
       :title="assignMode === 'single' ? '分配节点' : '批量分配'"
-      :width="isMobile ? '100%' : '750px'"
+      :width="isMobile ? '92%' : '750px'"
       :fullscreen="isMobile"
       class="responsive-dialog assign-dialog"
       append-to-body

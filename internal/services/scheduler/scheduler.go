@@ -350,7 +350,7 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 
 	for _, warningEmail := range warningEmails {
 		var user models.User
-		if err := s.db.Where("email = ?", warningEmail.ToEmail).First(&user).Error; err != nil {
+		if err := s.db.Where("LOWER(email) = ?", strings.ToLower(strings.TrimSpace(warningEmail.ToEmail))).First(&user).Error; err != nil {
 			continue
 		}
 

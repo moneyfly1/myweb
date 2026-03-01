@@ -75,13 +75,14 @@
           </div>
         </div>
       </el-drawer>
+      <div class="table-wrapper desktop-only" v-show="!isMobile">
       <el-table 
         :data="levels" 
         v-loading="loading"
         border
         style="width: 100%"
       >
-        <el-table-column prop="level_name" label="等级名称" width="150">
+        <el-table-column prop="level_name" label="等级名称" min-width="150">
           <template #default="scope">
             <div style="display: flex; align-items: center; gap: 8px;">
               <div 
@@ -125,6 +126,45 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
+      <div class="mobile-level-cards" v-if="isMobile" v-loading="loading">
+        <div v-if="levels.length === 0 && !loading" class="empty-state">
+          <el-empty description="暂无等级数据" />
+        </div>
+        <div v-for="level in levels" :key="level.id" class="level-card">
+          <div class="level-card-header">
+            <div 
+              v-if="level.color" 
+              class="level-color-dot"
+              :style="{ backgroundColor: level.color }"
+            ></div>
+            <span class="level-name" :style="{ color: level.color || '#333' }">{{ level.level_name }}</span>
+            <el-tag :type="level.is_active ? 'success' : 'danger'" size="small">{{ level.is_active ? '启用' : '禁用' }}</el-tag>
+          </div>
+          <div class="level-card-body">
+            <div class="level-row">
+              <span class="label">排序</span>
+              <span class="value">{{ level.level_order }}</span>
+            </div>
+            <div class="level-row">
+              <span class="label">最低消费</span>
+              <span class="value">¥{{ level.min_consumption?.toFixed(2) || '0.00' }}</span>
+            </div>
+            <div class="level-row">
+              <span class="label">折扣</span>
+              <span class="value">{{ (level.discount_rate * 10)?.toFixed(1) || '10' }}折</span>
+            </div>
+            <div class="level-row">
+              <span class="label">用户数</span>
+              <span class="value">{{ level.user_count || 0 }}</span>
+            </div>
+          </div>
+          <div class="level-card-actions">
+            <el-button type="primary" size="small" @click="editLevel(level)">编辑</el-button>
+            <el-button type="danger" size="small" @click="deleteLevel(level)">删除</el-button>
+          </div>
+        </div>
+      </div>
     </el-card>
     <el-card class="usage-guide-card" style="margin-top: 20px;">
       <template #header>
@@ -179,7 +219,7 @@
     <el-drawer
       v-model="showDialog"
       :title="editingLevel ? '编辑等级' : '添加等级'"
-      :size="isMobile ? '100%' : '500px'"
+      :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
     >
@@ -289,7 +329,7 @@ const showDialog = ref(false)
 const editingLevel = ref(null)
 const levelFormRef = ref(null)
 const statusFilter = ref('all')
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = ref(window.innerWidth <= 992)
 const showStatusFilterDrawer = ref(false)
 const levelForm = reactive({
   level_name: '',
@@ -480,7 +520,7 @@ const applyStatusFilter = () => {
   loadLevels()
 }
 const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
+  isMobile.value = window.innerWidth <= 992
 }
 onMounted(() => {
   loadLevels()
@@ -493,6 +533,88 @@ onUnmounted(() => {
 <style scoped>
 .user-levels-admin {
   padding: 20px;
+  @media (max-width: 992px) {
+    padding: 12px;
+  }
+}
+.table-wrapper.desktop-only {
+  @media (max-width: 992px) {
+    display: none !important;
+  }
+}
+.mobile-level-cards {
+  display: none;
+  @media (max-width: 992px) {
+    display: block;
+    margin-top: 16px;
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      background: #fff;
+      border-radius: 8px;
+    }
+    .level-card {
+      background: #fff;
+      border: 1px solid #ebeef5;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      .level-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f0f0f0;
+        flex-wrap: wrap;
+        .level-color-dot {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        .level-name {
+          flex: 1;
+          min-width: 0;
+          font-size: 16px;
+          font-weight: 600;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
+      .level-card-body {
+        margin-bottom: 12px;
+        .level-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 0;
+          border-bottom: 1px solid #f5f7fa;
+          font-size: 14px;
+          &:last-child {
+            border-bottom: none;
+          }
+          .label {
+            color: #909399;
+            flex-shrink: 0;
+          }
+          .value {
+            color: #303133;
+            font-weight: 500;
+            word-break: break-all;
+            text-align: right;
+          }
+        }
+      }
+      .level-card-actions {
+        display: flex;
+        gap: 8px;
+        padding-top: 12px;
+        border-top: 1px solid #f0f0f0;
+      }
+    }
+  }
 }
 .form-tip {
   font-size: 12px;
@@ -657,6 +779,8 @@ onUnmounted(() => {
 }
 .usage-guide-content {
   line-height: 1.8;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .guide-section {
   margin-bottom: 20px;
@@ -664,6 +788,8 @@ onUnmounted(() => {
   background: white;
   border-radius: 8px;
   border-left: 4px solid #409eff;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .guide-section h4 {
   margin: 0 0 12px 0;
@@ -679,6 +805,8 @@ onUnmounted(() => {
   margin-bottom: 8px;
   color: #606266;
   font-size: 14px;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .guide-section li strong {
   color: #303133;
@@ -753,11 +881,11 @@ onUnmounted(() => {
   height: 44px;
 }
 .desktop-only {
-  @media (max-width: 768px) {
+  @media (max-width: 992px) {
     display: none !important;
   }
 }
-@media (max-width: 768px) {
+@media (max-width: 992px) {
   .user-levels-admin {
     padding: 10px;
   }
@@ -1021,7 +1149,7 @@ onUnmounted(() => {
     }
   }
 }
-@media (min-width: 769px) {
+@media (min-width: 993px) {
   .mobile-action-bar {
     display: none !important;
   }
