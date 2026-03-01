@@ -35,13 +35,9 @@ export function formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
   }
   return createShanghaiDayjs(date).format(format)
 }
-export function formatDate(date, format = 'YYYY-MM-DD HH:mm:ss') {
-  if (!date) return ''
-  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) {
-    return date
-  }
-  return createShanghaiDayjs(date).format(format)
-}
+
+// formatDate 是 formatDateTime 的别名，保持向后兼容
+export const formatDate = formatDateTime
 export function formatTime(date, format = 'HH:mm:ss') {
   if (!date) return ''
   return createShanghaiDayjs(date).format(format)
