@@ -3,7 +3,7 @@
     :model-value="visible"
     @update:model-value="$emit('update:visible', $event)"
     :title="editingUser ? '编辑用户' : '添加用户'"
-    :size="isMobile ? '100%' : '500px'"
+    :size="isMobile ? '92%' : '500px'"
     direction="rtl"
     class="user-form-dialog"
   >

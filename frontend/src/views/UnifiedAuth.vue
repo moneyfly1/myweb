@@ -270,6 +270,10 @@
                 <el-link type="primary" @click="switchView('login')" :underline="false">
                   立即登录
                 </el-link>
+                <span class="footer-text" style="margin-left: 12px;">忘记密码？</span>
+                <el-link type="primary" @click="switchView('forgot')" :underline="false">
+                  找回密码
+                </el-link>
               </div>
             </div>
             <div v-else-if="currentView === 'forgot'" key="forgot" class="auth-form">

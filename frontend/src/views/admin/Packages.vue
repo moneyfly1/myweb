@@ -215,7 +215,7 @@
     <el-drawer
       v-model="dialogVisible"
       :title="isEdit ? '编辑套餐' : '添加套餐'"
-      :size="isMobile ? '100%' : '500px'"
+      :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
     >

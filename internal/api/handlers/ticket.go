@@ -23,8 +23,6 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
 			isAdmin = isAdminBool
-		} else if isAdminStr, ok := isAdminVal.(string); ok {
-			isAdmin = isAdminStr == "true" || isAdminStr == "1"
 		}
 	}
 
@@ -127,8 +125,6 @@ func GetTickets(c *gin.Context) {
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
 			isAdmin = isAdminBool
-		} else if isAdminStr, ok := isAdminVal.(string); ok {
-			isAdmin = isAdminStr == "true" || isAdminStr == "1"
 		}
 	}
 
@@ -264,8 +260,6 @@ func GetTicket(c *gin.Context) {
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
 			isAdmin = isAdminBool
-		} else if isAdminStr, ok := isAdminVal.(string); ok {
-			isAdmin = isAdminStr == "true" || isAdminStr == "1"
 		}
 	}
 
@@ -449,8 +443,6 @@ func ReplyTicket(c *gin.Context) {
 	if isAdminVal, exists := c.Get("is_admin"); exists {
 		if isAdminBool, ok := isAdminVal.(bool); ok {
 			isAdmin = isAdminBool
-		} else if isAdminStr, ok := isAdminVal.(string); ok {
-			isAdmin = isAdminStr == "true" || isAdminStr == "1"
 		}
 	}
 

@@ -294,7 +294,7 @@
     <el-drawer
       v-model="showOrderDialog"
       title="订单详情"
-      :size="isMobile ? '100%' : '500px'"
+      :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       class="order-detail-drawer"
     >

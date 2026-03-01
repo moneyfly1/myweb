@@ -366,7 +366,7 @@
     <el-drawer
       v-model="logDetailsVisible"
       title="日志详情"
-      :size="isMobile ? '100%' : '600px'"
+      :size="isMobile ? '92%' : '600px'"
       direction="rtl"
       :before-close="closeLogDetails"
     >

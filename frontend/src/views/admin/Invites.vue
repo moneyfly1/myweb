@@ -408,7 +408,7 @@
     <el-drawer
       v-model="showSettingsDialog"
       title="邀请设置"
-      :size="isMobile ? '100%' : '500px'"
+      :size="isMobile ? '92%' : '500px'"
       direction="rtl"
     >
       <div class="settings-dialog-content">

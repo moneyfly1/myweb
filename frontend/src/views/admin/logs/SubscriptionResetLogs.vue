@@ -36,7 +36,7 @@
       <el-table-column prop="user_email" label="邮箱" width="160" />
       <el-table-column prop="subscription_id" label="订阅ID" width="90" />
       <el-table-column prop="reset_type" label="重置类型" width="100" />
-      <el-table-column prop="reason" label="原因" width="120" show-overflow-tooltip />
+      <el-table-column prop="reason" label="原因" min-width="120" show-overflow-tooltip />
       <el-table-column prop="device_count_before" label="重置前设备数" width="120" />
       <el-table-column prop="device_count_after" label="重置后设备数" width="120" />
       <el-table-column prop="reset_by" label="操作方" width="90" />

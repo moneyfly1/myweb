@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"cboard-go/internal/core/config"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -188,10 +189,21 @@ func isValidOrigin(origin, host string) bool {
 		origin == "http://127.0.0.1:5173" || origin == "https://127.0.0.1:5173" {
 		return true
 	}
-	if strings.HasPrefix(origin, "http://192.168.") || strings.HasPrefix(origin, "https://192.168.") ||
-		strings.HasPrefix(origin, "http://10.") || strings.HasPrefix(origin, "https://10.") ||
-		strings.HasPrefix(origin, "http://172.") || strings.HasPrefix(origin, "https://172.") {
-		return true
+	if !utils.IsProduction() {
+		if strings.HasPrefix(origin, "http://192.168.") || strings.HasPrefix(origin, "https://192.168.") ||
+			strings.HasPrefix(origin, "http://10.") || strings.HasPrefix(origin, "https://10.") ||
+			strings.HasPrefix(origin, "http://172.") || strings.HasPrefix(origin, "https://172.") {
+			return true
+		}
+	}
+
+	// 检查配置的合法来源
+	if cfg := config.AppConfig; cfg != nil {
+		for _, o := range cfg.CorsOrigins {
+			if origin == o || origin == o+"/" {
+				return true
+			}
+		}
 	}
 
 	// 兼容用户误输入尾部点域名（如 example.com.）
@@ -218,10 +230,21 @@ func isValidReferer(referer, host string) bool {
 		strings.HasPrefix(referer, "http://127.0.0.1") || strings.HasPrefix(referer, "https://127.0.0.1") {
 		return true
 	}
-	if strings.HasPrefix(referer, "http://192.168.") || strings.HasPrefix(referer, "https://192.168.") ||
-		strings.HasPrefix(referer, "http://10.") || strings.HasPrefix(referer, "https://10.") ||
-		strings.HasPrefix(referer, "http://172.") || strings.HasPrefix(referer, "https://172.") {
-		return true
+	if !utils.IsProduction() {
+		if strings.HasPrefix(referer, "http://192.168.") || strings.HasPrefix(referer, "https://192.168.") ||
+			strings.HasPrefix(referer, "http://10.") || strings.HasPrefix(referer, "https://10.") ||
+			strings.HasPrefix(referer, "http://172.") || strings.HasPrefix(referer, "https://172.") {
+			return true
+		}
+	}
+
+	// 检查配置的合法来源
+	if cfg := config.AppConfig; cfg != nil {
+		for _, o := range cfg.CorsOrigins {
+			if strings.HasPrefix(referer, o) {
+				return true
+			}
+		}
 	}
 
 	// 兼容用户误输入尾部点域名（如 example.com.）

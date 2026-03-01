@@ -134,7 +134,7 @@
         </el-form-item>
       </el-form>
       <div class="register-footer" v-if="registrationEnabled">
-        <p>已有账户？ <router-link to="/login">立即登录</router-link></p>
+        <p>已有账户？ <router-link to="/login">立即登录</router-link> · 忘记密码？ <router-link to="/forgot-password">找回密码</router-link></p>
       </div>
     </div>
   </div>

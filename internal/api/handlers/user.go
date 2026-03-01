@@ -769,10 +769,11 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
+	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
 
 	var existingUser models.User
-	if err := db.Where("email = ? OR username = ?", req.Email, req.Username).First(&existingUser).Error; err == nil {
+	if err := db.Where("LOWER(email) = ? OR username = ?", req.Email, req.Username).First(&existingUser).Error; err == nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "邮箱或用户名已存在", nil)
 		return
 	}
@@ -835,7 +836,7 @@ func CreateUser(c *gin.Context) {
 		if months <= 0 {
 			months = 1
 		}
-		expireTime = time.Now().UTC().AddDate(0, months, 0)
+		expireTime = utils.GetBeijingTime().AddDate(0, months, 0)
 	}
 
 	subscription := models.Subscription{
@@ -975,8 +976,9 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if req.Email != "" {
+		req.Email = utils.NormalizeEmail(req.Email)
 		var existing models.User
-		if err := db.Where("email = ? AND id != ?", req.Email, id).First(&existing).Error; err == nil {
+		if err := db.Where("LOWER(email) = ? AND id != ?", req.Email, id).First(&existing).Error; err == nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "邮箱已被使用", nil)
 			return
 		}

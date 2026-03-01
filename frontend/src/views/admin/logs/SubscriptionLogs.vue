@@ -39,7 +39,7 @@
       <el-table-column prop="action_type" label="操作类型" width="120" />
       <el-table-column prop="action_by" label="操作方" width="90" />
       <el-table-column prop="action_by_user" label="操作人" width="100" />
-      <el-table-column prop="description" :width="descriptionColWidth" min-width="80" show-overflow-tooltip>
+      <el-table-column prop="description" :min-width="descriptionColWidth || 180" show-overflow-tooltip>
         <template #header>
           <div class="th-resizable">
             <span>说明</span>

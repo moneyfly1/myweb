@@ -174,7 +174,7 @@
     <el-drawer
       v-model="showUserDetailsDialog"
       title="用户详细信息"
-      :size="isMobile ? '100%' : '700px'"
+      :size="isMobile ? '92%' : '700px'"
       direction="rtl"
     >
       <div v-if="userDetails" class="user-details">
@@ -572,45 +572,59 @@ export default {
         align-items: center;
         gap: 12px;
         flex: 1;
+        min-width: 0;
+        overflow: hidden;
         .user-text {
           flex: 1;
+          min-width: 0;
+          overflow: hidden;
           .username {
             font-size: 16px;
             font-weight: 600;
             color: #333;
             margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
           .email {
             font-size: 14px;
             color: #666;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
         }
       }
     }
     .card-body {
       margin-bottom: 12px;
-      .card-row {
+        .card-row {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         margin-bottom: 12px;
         padding-bottom: 12px;
         border-bottom: 1px solid #f0f0f0;
+        gap: 8px;
         &:last-of-type {
           border-bottom: none;
           margin-bottom: 0;
           padding-bottom: 0;
         }
         .label {
-          flex: 0 0 90px;
-          font-size: 14px;
+          flex: 0 0 80px;
+          font-size: 13px;
           color: #666;
           font-weight: 500;
+          flex-shrink: 0;
         }
         .value {
           flex: 1;
+          min-width: 0;
           font-size: 14px;
           color: #333;
-          word-break: break-word;
+          word-break: break-all;
+          overflow-wrap: break-word;
           &.highlight {
             color: #f56c6c;
             font-weight: 600;

@@ -138,7 +138,7 @@ func SetupRouter() *gin.Engine {
 		{
 			nodes.GET("", middleware.TryAuthMiddleware(), handlers.GetNodes)
 			nodes.GET("/stats", middleware.TryAuthMiddleware(), handlers.GetNodeStats)
-			nodes.GET("/:id", handlers.GetNode)
+			nodes.GET("/:id", middleware.AuthMiddleware(), handlers.GetNode)
 		}
 		nodesAuth := api.Group("/nodes")
 		nodesAuth.Use(middleware.AuthMiddleware())
@@ -247,11 +247,7 @@ func SetupRouter() *gin.Engine {
 			recharge.POST("/:id/cancel", handlers.CancelRecharge)
 		}
 
-		config := api.Group("/config")
-		{
-			config.GET("", handlers.GetSystemConfigs)
-			config.GET("/:key", handlers.GetSystemConfig)
-		}
+		// 已合并到 admin 组中处理，移除公共路由
 
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 

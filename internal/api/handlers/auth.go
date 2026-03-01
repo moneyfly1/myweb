@@ -49,11 +49,12 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
 
 	var count int64
-	if db.Model(&models.User{}).Where("email = ?", req.Email).Count(&count); count > 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已被注册，请直接登录或使用其他邮箱", nil)
+	if db.Model(&models.User{}).Where("LOWER(email) = ?", req.Email).Count(&count); count > 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已注册，请直接登录。如忘记密码，请点击找回密码。", nil)
 		return
 	}
 	if db.Model(&models.User{}).Where("username = ?", req.Username).Count(&count); count > 0 {
@@ -87,7 +88,7 @@ func Register(c *gin.Context) {
 		if err := tx.Create(&user).Error; err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") || strings.Contains(err.Error(), "Duplicate entry") {
 				if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "Email") {
-					return fmt.Errorf("该邮箱已被注册，请直接登录或使用其他邮箱")
+					return fmt.Errorf("该邮箱已注册，请直接登录。如忘记密码，请点击找回密码。")
 				}
 				if strings.Contains(err.Error(), "username") || strings.Contains(err.Error(), "Username") {
 					return fmt.Errorf("用户名已被使用，请选择其他用户名")
@@ -107,7 +108,7 @@ func Register(c *gin.Context) {
 
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "邮箱已被注册") || strings.Contains(errMsg, "用户名已被使用") {
+		if strings.Contains(errMsg, "邮箱已注册") || strings.Contains(errMsg, "用户名已被使用") {
 			utils.ErrorResponse(c, http.StatusBadRequest, errMsg, nil)
 		} else {
 			utils.ErrorResponse(c, http.StatusInternalServerError, errMsg, err)
@@ -198,6 +199,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
 	ipAddress := utils.GetRealClientIP(c)
 	checkSuspiciousLogin(c, req.Email, ipAddress)
@@ -227,8 +229,9 @@ func LoginJSON(c *gin.Context) {
 
 	checkSuspiciousLogin(c, req.Username, ipAddress)
 
+	normalizedInput := utils.NormalizeEmail(req.Username)
 	var user models.User
-	if err := db.Where("email = ? OR username = ?", req.Username, req.Username).First(&user).Error; err != nil {
+	if err := db.Where("LOWER(email) = ? OR username = ?", normalizedInput, req.Username).First(&user).Error; err != nil {
 		handleLoginFailure(c, ipAddress, req.Username, "用户不存在或密码错误", err)
 		return
 	}
@@ -370,18 +373,18 @@ func verifyRegisterCode(db *gorm.DB, emailStr, code string) error {
 	}
 
 	var codeCount int64
-	db.Model(&models.VerificationCode{}).Where("email = ? AND purpose = ?", emailStr, "register").Count(&codeCount)
+	db.Model(&models.VerificationCode{}).Where("LOWER(email) = ? AND purpose = ?", emailStr, "register").Count(&codeCount)
 	if codeCount == 0 {
 		return fmt.Errorf("未找到该邮箱的验证码，请先获取验证码")
 	}
 
 	var usedCode models.VerificationCode
-	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", emailStr, code, 1, "register").First(&usedCode).Error; err == nil {
+	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ? AND purpose = ?", emailStr, code, 1, "register").First(&usedCode).Error; err == nil {
 		return fmt.Errorf("验证码已使用，请重新获取验证码")
 	}
 
 	var verificationCode models.VerificationCode
-	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", emailStr, code, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
+	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ? AND purpose = ?", emailStr, code, 0, "register").Order("created_at DESC").First(&verificationCode).Error; err != nil {
 		return fmt.Errorf("验证码错误，请检查后重新输入")
 	}
 
@@ -536,8 +539,9 @@ func checkMaintenanceMode(c *gin.Context, db *gorm.DB, username, password, ip st
 		return nil
 	}
 
+	normalizedInput := utils.NormalizeEmail(username)
 	var tempUser models.User
-	if err := db.Where("email = ? OR username = ?", username, username).First(&tempUser).Error; err != nil {
+	if err := db.Where("LOWER(email) = ? OR username = ?", normalizedInput, username).First(&tempUser).Error; err != nil {
 		handleLoginFailure(c, ip, username, "维护模式下用户不存在", err)
 		return fmt.Errorf("auth error")
 	}
@@ -933,10 +937,11 @@ func ForgotPassword(c *gin.Context) {
 		return
 	}
 
+	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
 	ipAddress := utils.GetRealClientIP(c)
 	var user models.User
-	if err := db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+	if err := db.Where("LOWER(email) = ?", req.Email).First(&user).Error; err != nil {
 		utils.SuccessResponse(c, http.StatusOK, "如果该邮箱存在，验证码已发送", nil)
 		return
 	}
@@ -1044,9 +1049,10 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
+	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
 	var user models.User
-	if err := db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+	if err := db.Where("LOWER(email) = ?", req.Email).First(&user).Error; err != nil {
 		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
 			"重置密码失败: 该邮箱未注册（可能撞库/探测）",
 			map[string]interface{}{"email": req.Email, "reason": "该邮箱未注册"})
@@ -1060,7 +1066,7 @@ func ResetPasswordByCode(c *gin.Context) {
 	}
 
 	var codeCount int64
-	db.Model(&models.VerificationCode{}).Where("email = ? AND purpose = ?", req.Email, "reset_password").Count(&codeCount)
+	db.Model(&models.VerificationCode{}).Where("LOWER(email) = ? AND purpose = ?", req.Email, "reset_password").Count(&codeCount)
 	if codeCount == 0 {
 		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
 			"重置密码失败: 未找到该邮箱的验证码",
@@ -1070,7 +1076,7 @@ func ResetPasswordByCode(c *gin.Context) {
 	}
 
 	var usedCode models.VerificationCode
-	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 1, "reset_password").First(&usedCode).Error; err == nil {
+	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 1, "reset_password").First(&usedCode).Error; err == nil {
 		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
 			"重置密码失败: 验证码已使用",
 			map[string]interface{}{"email": req.Email, "reason": "验证码已使用"})
@@ -1079,7 +1085,7 @@ func ResetPasswordByCode(c *gin.Context) {
 	}
 
 	var verificationCode models.VerificationCode
-	if err := db.Where("email = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "reset_password").Order("created_at DESC").First(&verificationCode).Error; err != nil {
+	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ? AND purpose = ?", req.Email, req.VerificationCode, 0, "reset_password").Order("created_at DESC").First(&verificationCode).Error; err != nil {
 		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
 			"重置密码失败: 验证码错误",
 			map[string]interface{}{"email": req.Email, "reason": "验证码错误"})
@@ -1174,6 +1180,7 @@ func SendVerificationCode(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusBadRequest, "邮箱不能为空", nil)
 			return
 		}
+		req.Email = utils.NormalizeEmail(req.Email)
 
 		verificationCode := models.VerificationCode{
 			Email:     req.Email,
@@ -1220,12 +1227,12 @@ func VerifyCode(c *gin.Context) {
 
 	db := database.GetDB()
 	ipAddress := utils.GetRealClientIP(c)
-	identifier := req.Email
+	identifier := utils.NormalizeEmail(req.Email)
 
 	fiveMinutesAgo := utils.GetBeijingTime().Add(-5 * time.Minute)
 	var failedAttempts int64
 	db.Model(&models.VerificationAttempt{}).
-		Where("email = ? AND success = ? AND created_at > ?", identifier, false, fiveMinutesAgo).
+		Where("LOWER(email) = ? AND success = ? AND created_at > ?", identifier, false, fiveMinutesAgo).
 		Count(&failedAttempts)
 
 	if failedAttempts >= 5 {
@@ -1237,7 +1244,7 @@ func VerifyCode(c *gin.Context) {
 	}
 
 	var verificationCode models.VerificationCode
-	if err := db.Where("email = ? AND code = ? AND used = ?", identifier, req.Code, 0).Order("created_at DESC").First(&verificationCode).Error; err != nil {
+	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ?", identifier, req.Code, 0).Order("created_at DESC").First(&verificationCode).Error; err != nil {
 		attempt := models.VerificationAttempt{
 			Email:     identifier,
 			IPAddress: database.NullString(ipAddress),
