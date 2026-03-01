@@ -388,7 +388,9 @@ export default {
         mobile: 'el-icon-mobile-phone',
         desktop: 'el-icon-monitor',
         tablet: 'el-icon-tablet',
-        tv: 'el-icon-video-camera',
+        router: 'el-icon-connection',
+        tv_box: 'el-icon-video-camera',
+        server: 'el-icon-box',
         unknown: 'el-icon-question'
       }
       return icons[deviceType] || icons.unknown
@@ -398,6 +400,8 @@ export default {
         mobile: '手机',
         desktop: '电脑',
         tablet: '平板',
+        router: '路由器',
+        tv_box: '电视盒子',
         server: '服务器',
         unknown: '未知'
       }
@@ -408,7 +412,9 @@ export default {
         mobile: 'primary',
         desktop: 'success',
         tablet: 'warning',
-        server: 'danger',
+        router: '',
+        tv_box: 'danger',
+        server: 'info',
         unknown: 'info'
       }
       return colors[deviceType] || colors.unknown
