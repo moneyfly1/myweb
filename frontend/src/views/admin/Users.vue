@@ -450,12 +450,111 @@
         />
       </div>
     </el-card>
-    <UserFormDialog
-      v-model:visible="showAddUserDialog"
-      :editingUser="editingUser"
-      :isMobile="isMobile"
-      @success="handleUserSaved"
-    />
+    <!-- 添加/编辑用户抽屉 -->
+    <el-drawer
+      v-model="showAddUserDialog"
+      :title="editingUser ? '编辑用户' : '添加用户'"
+      :size="isMobile ? '92%' : '500px'"
+      direction="rtl"
+      class="user-form-drawer"
+      @closed="onFormDrawerClosed"
+    >
+      <el-form
+        :model="userForm"
+        :rules="userRules"
+        ref="userFormRef"
+        :label-width="isMobile ? '0' : '100px'"
+        :label-position="isMobile ? 'top' : 'right'"
+      >
+        <el-form-item :label="isMobile ? '' : '邮箱'" prop="email">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">邮箱 <span class="required">*</span></div>
+          </template>
+          <el-input v-model="userForm.email" placeholder="请输入邮箱" />
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '用户名'" prop="username">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">用户名 <span class="required">*</span></div>
+          </template>
+          <el-input v-model="userForm.username" placeholder="请输入用户名" />
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '密码'" prop="password" v-if="!editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">密码 <span class="required">*</span></div>
+          </template>
+          <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password />
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '状态'" prop="status">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">状态 <span class="required">*</span></div>
+          </template>
+          <el-select v-model="userForm.status" placeholder="选择状态" style="width: 100%">
+            <el-option label="活跃" value="active" />
+            <el-option label="待激活" value="inactive" />
+            <el-option label="禁用" value="disabled" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '最大设备数'" prop="device_limit" v-if="!editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">最大设备数 <span class="required">*</span></div>
+          </template>
+          <el-input-number
+            v-model="userForm.device_limit"
+            :min="0"
+            :max="100"
+            placeholder="请输入最大设备数量"
+            controls-position="right"
+            style="width: 100%"
+          />
+          <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="!editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">到期时间 <span class="required">*</span></div>
+          </template>
+          <el-date-picker
+            v-model="userForm.expire_time"
+            type="datetime"
+            placeholder="选择到期时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 100%"
+            :teleported="isMobile"
+            :default-time="defaultTime"
+          />
+          <div class="form-item-hint">订阅的到期时间，到期后用户将无法使用服务</div>
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '管理员权限'" v-if="editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">管理员权限</div>
+          </template>
+          <el-switch
+            v-model="userForm.is_admin"
+            active-text="是管理员"
+            inactive-text="普通用户"
+          />
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '备注'" prop="note">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">备注</div>
+          </template>
+          <el-input
+            v-model="userForm.note"
+            type="textarea"
+            :rows="isMobile ? 2 : 3"
+            placeholder="请输入备注信息"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button @click="showAddUserDialog = false" :class="{ 'mobile-form-btn': isMobile }">取消</el-button>
+          <el-button type="primary" @click="saveUser" :loading="savingUser" :class="{ 'mobile-form-btn': isMobile }">
+            {{ editingUser ? '更新' : '创建' }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
     <!-- 用户详情抽屉 -->
     <UserDetailDialog
       :visible="showUserDialog"
@@ -523,8 +622,10 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
-import UserFormDialog from './components/UserFormDialog.vue'
 import UserDetailDialog from './components/UserDetailDialog.vue'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+dayjs.extend(timezone)
 const STATUS_MAP = {
   active: { type: 'success', text: '活跃' },
   inactive: { type: 'warning', text: '待激活' },
@@ -546,7 +647,6 @@ const normalizeBoolean = (val) => val === true || val === 1 || val === '1'
 export default {
   name: 'AdminUsers',
   components: {
-    UserFormDialog,
     UserDetailDialog,
     Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
     Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
@@ -580,6 +680,121 @@ export default {
     const isMobile = ref(window.innerWidth <= 768)
     const defaultSort = ref({ prop: 'created_at', order: 'descending' })
     const tableRef = ref(null)
+    // 用户表单相关
+    const userFormRef = ref()
+    const savingUser = ref(false)
+    const defaultTime = ref(new Date(2000, 1, 1, 23, 59, 59))
+    const getDefaultExpireTime = () => {
+      return dayjs().tz('Asia/Shanghai').add(1, 'year').format('YYYY-MM-DDTHH:mm:ss')
+    }
+    const userForm = reactive({
+      email: '',
+      username: '',
+      password: '',
+      status: 'active',
+      device_limit: 5,
+      expire_time: getDefaultExpireTime(),
+      is_admin: false,
+      is_verified: false,
+      note: ''
+    })
+    const userRules = {
+      email: [
+        { required: true, message: '请输入邮箱', trigger: 'blur' },
+        { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+      ],
+      username: [
+        { required: true, message: '请输入用户名', trigger: 'blur' },
+        { min: 2, max: 20, message: '用户名长度在2到20个字符', trigger: 'blur' }
+      ],
+      password: [
+        { required: true, message: '请输入密码', trigger: 'blur' },
+        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+      ],
+      status: [
+        { required: true, message: '请选择状态', trigger: 'change' }
+      ],
+      device_limit: [
+        { required: true, message: '请输入最大设备数量', trigger: 'blur' },
+        { type: 'number', min: 0, max: 100, message: '设备数量应在0-100之间', trigger: 'blur' }
+      ],
+      expire_time: [
+        { required: true, message: '请选择到期时间', trigger: 'change' }
+      ]
+    }
+    const resetUserForm = () => {
+      Object.assign(userForm, {
+        email: '', username: '', password: '', status: 'active',
+        device_limit: 5, expire_time: getDefaultExpireTime(),
+        is_admin: false, is_verified: false, note: ''
+      })
+      if (userFormRef.value) {
+        userFormRef.value.resetFields()
+      }
+    }
+    const onFormDrawerClosed = () => {
+      editingUser.value = null
+      resetUserForm()
+    }
+    watch(editingUser, (user) => {
+      if (user) {
+        let status = user.status
+        if (!status) {
+          status = user.is_active ? 'active' : 'inactive'
+        }
+        Object.assign(userForm, {
+          email: user.email, username: user.username,
+          status, is_admin: Boolean(user.is_admin),
+          is_verified: Boolean(user.is_verified),
+          note: user.notes || '', password: '',
+          device_limit: 5, expire_time: getDefaultExpireTime()
+        })
+      } else {
+        resetUserForm()
+      }
+    }, { immediate: true })
+    const saveUser = async () => {
+      try {
+        await userFormRef.value.validate()
+        savingUser.value = true
+        if (editingUser.value) {
+          await adminAPI.updateUser(editingUser.value.id, {
+            username: userForm.username, email: userForm.email,
+            is_active: userForm.status === 'active',
+            is_verified: Boolean(userForm.is_verified),
+            is_admin: userForm.is_admin,
+            notes: userForm.note || null
+          })
+          ElMessage.success('用户更新成功')
+        } else {
+          const response = await adminAPI.createUser({
+            username: userForm.username, email: userForm.email,
+            password: userForm.password,
+            is_active: userForm.status === 'active',
+            is_admin: false, is_verified: false,
+            device_limit: userForm.device_limit || 5,
+            expire_time: userForm.expire_time || getDefaultExpireTime(),
+            notes: userForm.note || ''
+          })
+          if (response.data && response.data.success === false) {
+            ElMessage.error(response.data.message || '用户创建失败')
+            savingUser.value = false
+            return
+          }
+          ElMessage.success('用户创建成功')
+        }
+        handleUserSaved()
+      } catch (error) {
+        if (error.response) {
+          const data = error.response.data
+          ElMessage.error(data?.message || data?.detail || '操作失败')
+        } else if (error.message) {
+          ElMessage.error(error.message)
+        }
+      } finally {
+        savingUser.value = false
+      }
+    }
     const searchForm = reactive({
       keyword: '',
       status: '',
@@ -607,8 +822,12 @@ export default {
     const getExpireText = (subscription) => {
       return subscription.is_expired ? '已过期' : `${subscription.days_until_expire}天后到期`
     }
+    let resizeTimer = null
     const handleResize = () => {
-      isMobile.value = window.innerWidth <= 768
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        isMobile.value = window.innerWidth <= 768
+      }, 150)
     }
     const buildSearchParams = () => {
       const params = {
@@ -640,11 +859,14 @@ export default {
         is_admin: normalizeBoolean(user.is_admin)
       }))
     }
+    let loadUsersSeq = 0
     const loadUsers = async () => {
+      const seq = ++loadUsersSeq
       loading.value = true
       try {
         const params = buildSearchParams()
         const response = await adminAPI.getUsers(params)
+        if (seq !== loadUsersSeq) return // 丢弃过时的响应
         if (response.data?.success && response.data?.data) {
           const responseData = response.data.data
           let userList = normalizeUserData(responseData.users || [])
@@ -740,6 +962,7 @@ export default {
       loadUsers()
     }
     const saveTimers = new Map()
+    const savedIndicatorTimers = new Map()
     const originalNotes = new Map()
     const saveNotes = async (user) => {
       if (!user || !user.id) return
@@ -759,9 +982,13 @@ export default {
         await adminAPI.updateUser(user.id, { notes: currentNotes || null })
         originalNotes.set(user.id, currentNotes)
         user.notesSaved = true
-        setTimeout(() => {
+        if (savedIndicatorTimers.has(user.id)) {
+          clearTimeout(savedIndicatorTimers.get(user.id))
+        }
+        savedIndicatorTimers.set(user.id, setTimeout(() => {
           user.notesSaved = false
-        }, 2000)
+          savedIndicatorTimers.delete(user.id)
+        }, 2000))
       } catch (error) {
         ElMessage.error(`保存备注失败: ${error.response?.data?.message || error.message}`)
         user.notes = originalNote
@@ -1226,8 +1453,11 @@ export default {
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('subscription-device-limit-updated', loadUsers)
+      if (resizeTimer) clearTimeout(resizeTimer)
       saveTimers.forEach(timer => clearTimeout(timer))
       saveTimers.clear()
+      savedIndicatorTimers.forEach(timer => clearTimeout(timer))
+      savedIndicatorTimers.clear()
       originalNotes.clear()
     })
     return {
@@ -1258,6 +1488,14 @@ export default {
       nodeSearchKeyword,
       selectedNodeId,
       assigningNode,
+      // 用户表单
+      userForm,
+      userRules,
+      userFormRef,
+      savingUser,
+      defaultTime,
+      saveUser,
+      onFormDrawerClosed,
       searchUsers,
       resetSearch,
       handleStatusFilter,
@@ -2017,6 +2255,42 @@ export default {
     &.empty {
       color: #909399;
       background: #f5f7fa;
+    }
+  }
+}
+
+// 用户表单抽屉样式
+.form-mobile-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 6px;
+  line-height: 1.4;
+  .required {
+    color: #f56c6c;
+    margin-left: 2px;
+  }
+}
+.form-item-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.dialog-footer-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  &.mobile-footer {
+    flex-direction: column;
+    gap: 8px;
+    .mobile-form-btn {
+      width: 100%;
+      min-height: 36px;
+      font-size: 14px;
+      font-weight: 500;
+      margin: 0 !important;
+      border-radius: 6px;
     }
   }
 }
