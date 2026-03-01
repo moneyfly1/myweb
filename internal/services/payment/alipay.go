@@ -76,14 +76,13 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 		publicKey := utils.NormalizePublicKey(paymentConfig.AlipayPublicKey.String)
 		if publicKey != "" {
 			if err := client.LoadAliPayPublicKey(publicKey); err != nil {
-				utils.LogWarn("加载支付宝公钥失败（不影响创建支付，但会影响回调验证）: %v。请检查支付宝公钥格式是否正确", err)
-			} else {
+				return nil, fmt.Errorf("加载支付宝公钥失败: %v。请检查支付宝公钥格式是否正确（需要完整的PEM格式）", err)
 			}
 		} else {
-			utils.LogWarn("支付宝公钥格式无法识别，回调验证可能失败")
+			return nil, fmt.Errorf("支付宝公钥格式无法识别，请提供完整的PEM格式公钥")
 		}
 	} else {
-		utils.LogWarn("未配置支付宝公钥，回调验证可能失败。建议配置支付宝公钥以确保回调安全")
+		return nil, fmt.Errorf("未配置支付宝公钥，无法验证回调签名。请在支付配置中添加支付宝公钥以确保支付安全")
 	}
 
 	service := &AlipayService{
