@@ -2,9 +2,14 @@
   <div class="log-list logs-page">
     <div class="filter-bar desktop-only">
       <el-input v-model="filter.keyword" placeholder="邀请人/被邀请人" clearable style="width: 200px" @keyup.enter="fetch" />
-      <el-input v-model="filter.inviter_id" placeholder="邀请人ID" clearable style="width: 100px" />
-      <el-select v-model="filter.commission_type" placeholder="佣金类型" clearable style="width: 120px" />
-      <el-select v-model="filter.status" placeholder="状态" clearable style="width: 100px" />
+      <el-select v-model="filter.commission_type" placeholder="佣金类型" clearable style="width: 120px">
+        <el-option v-for="(label, value) in COMMISSION_TYPE_MAP" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="filter.status" placeholder="状态" clearable style="width: 100px">
+        <el-option label="待结算" value="pending" />
+        <el-option label="已结算" value="paid" />
+        <el-option label="已取消" value="cancelled" />
+      </el-select>
       <el-date-picker
         v-model="filter.timeRange"
         type="datetimerange"
@@ -20,6 +25,18 @@
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
         <el-form-item label="关键词"><el-input v-model="filter.keyword" placeholder="邀请人/被邀请人" clearable /></el-form-item>
+        <el-form-item label="佣金类型">
+          <el-select v-model="filter.commission_type" placeholder="佣金类型" clearable style="width: 100%">
+            <el-option v-for="(label, value) in COMMISSION_TYPE_MAP" :key="value" :label="label" :value="value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="filter.status" placeholder="状态" clearable style="width: 100%">
+            <el-option label="待结算" value="pending" />
+            <el-option label="已结算" value="paid" />
+            <el-option label="已取消" value="cancelled" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="时间范围">
           <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
         </el-form-item>
@@ -32,14 +49,24 @@
     <div class="table-wrapper desktop-only">
     <el-table v-loading="loading" :data="list" stripe border>
       <el-table-column prop="created_at" label="时间" width="180" />
-      <el-table-column prop="inviter_id" label="邀请人ID" width="90" />
       <el-table-column prop="inviter_name" label="邀请人" width="120" />
-      <el-table-column prop="invitee_id" label="被邀请人ID" width="100" />
       <el-table-column prop="invitee_name" label="被邀请人" width="120" />
-      <el-table-column prop="commission_type" label="类型" width="100" />
-      <el-table-column prop="amount" label="佣金金额" width="110" />
+      <el-table-column prop="commission_type" label="类型" width="110">
+        <template #default="{ row }">
+          <el-tag size="small" type="info">{{ getCommissionTypeText(row.commission_type) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="amount" label="佣金" width="100">
+        <template #default="{ row }">
+          <span class="text-green">+{{ row.amount }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="order_no" label="关联订单" width="140" />
-      <el-table-column prop="status" label="状态" width="90" />
+      <el-table-column prop="status" label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="getStatusColor(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="settled_at" label="结算时间" width="180" />
       <el-table-column prop="description" label="说明" min-width="160" show-overflow-tooltip />
     </el-table>
@@ -49,8 +76,10 @@
         <div v-for="row in list" :key="row.id" class="mobile-log-card">
           <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">邀请人</span><span class="mobile-value">{{ row.inviter_name || '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">金额</span><span class="mobile-value">{{ row.amount ?? '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value">{{ row.status || '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">被邀请人</span><span class="mobile-value">{{ row.invitee_name || '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value">{{ getCommissionTypeText(row.commission_type) }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">佣金</span><span class="mobile-value text-green">+{{ row.amount ?? '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value"><el-tag :type="getStatusColor(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag></span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
       </div>
@@ -76,9 +105,21 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+
+const COMMISSION_TYPE_MAP = {
+  register_reward: '注册奖励', order_commission: '订单佣金'
+}
+const STATUS_MAP = { pending: '待结算', paid: '已结算', cancelled: '已取消' }
+
+const getCommissionTypeText = (type) => COMMISSION_TYPE_MAP[type] || type || '-'
+const getStatusText = (status) => STATUS_MAP[status] || status || '-'
+const getStatusColor = (status) => {
+  const map = { pending: 'warning', paid: 'success', cancelled: 'info' }
+  return map[status] || ''
+}
+
 const filter = ref({
   keyword: '',
-  inviter_id: '',
   commission_type: '',
   status: '',
   timeRange: null
@@ -92,7 +133,6 @@ async function fetch() {
   try {
     const params = { page: page.value, page_size: pageSize.value }
     if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.inviter_id) params.inviter_id = filter.value.inviter_id
     if (filter.value.commission_type) params.commission_type = filter.value.commission_type
     if (filter.value.status) params.status = filter.value.status
     if (filter.value.timeRange && filter.value.timeRange.length === 2) {
@@ -111,7 +151,7 @@ async function fetch() {
 }
 
 function resetFilter() {
-  filter.value = { keyword: '', inviter_id: '', commission_type: '', status: '', timeRange: null }
+  filter.value = { keyword: '', commission_type: '', status: '', timeRange: null }
   page.value = 1
   fetch()
 }
@@ -129,6 +169,7 @@ onUnmounted(() => { window.removeEventListener('resize', checkMobile) })
 .log-list { padding: 0; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
+.text-green { color: #67c23a; }
 .desktop-only { display: block; }
 .mobile-only { display: none; }
 .mobile-filter-form { width: 100%; }
