@@ -5,42 +5,53 @@
         <h1>CBoard Modern</h1>
         <p>现代化订阅管理系统</p>
       </div>
-      <form class="login-form" @submit.prevent="handleLogin">
-        <div class="form-item">
-          <input
+      <el-form
+        ref="loginFormRef"
+        :model="loginForm"
+        :rules="loginRules"
+        class="login-form"
+        @submit.prevent="handleLogin"
+      >
+        <el-form-item prop="username">
+          <el-input
             v-model="loginForm.username"
-            type="text"
             placeholder="用户名或邮箱"
-            class="login-input"
+            size="large"
             autocomplete="username"
-            name="username"
-            id="username"
-            required
-          />
-        </div>
-        <div class="form-item">
-          <input
+            clearable
+          >
+            <template #prefix>
+              <el-icon><User /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item prop="password">
+          <el-input
             v-model="loginForm.password"
             type="password"
             placeholder="密码"
-            class="login-input"
+            size="large"
             autocomplete="current-password"
-            name="password"
-            id="password"
-            required
+            show-password
             @keyup.enter="handleLogin"
-          />
-        </div>
-        <div class="form-item">
-          <button
-            type="submit"
-            :disabled="loading"
+          >
+            <template #prefix>
+              <el-icon><Lock /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item>
+          <el-button
+            type="primary"
+            size="large"
+            :loading="loading"
+            @click="handleLogin"
             class="login-button"
           >
             {{ loading ? '登录中...' : '登录' }}
-          </button>
-        </div>
-      </form>
+          </el-button>
+        </el-form-item>
+      </el-form>
       <div class="login-actions">
         <router-link to="/register" class="el-link el-link--primary">
           注册账户
@@ -56,7 +67,7 @@
       width="400px"
     >
       <el-form
-        ref="forgotForm"
+        ref="forgotFormRef"
         :model="forgotForm"
         :rules="forgotRules"
       >
@@ -70,8 +81,8 @@
       </el-form>
       <template #footer>
         <el-button @click="showForgotPassword = false">取消</el-button>
-        <el-button 
-          type="primary" 
+        <el-button
+          type="primary"
           :loading="forgotLoading"
           @click="handleForgotPassword"
         >
@@ -85,13 +96,20 @@
 import { ref, reactive, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { User, Lock } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 export default {
   name: 'Login',
+  components: {
+    User,
+    Lock
+  },
   setup() {
     const router = useRouter()
     const route = useRoute()
     const authStore = useAuthStore()
+    const loginFormRef = ref(null)
+    const forgotFormRef = ref(null)
     const loginForm = reactive({
       username: '',
       password: ''
@@ -112,7 +130,8 @@ export default {
     const showForgotPassword = ref(false)
     const loginRules = {
       username: [
-        { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
+        { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
+        { min: 3, message: '用户名长度不能少于3位', trigger: 'blur' }
       ],
       password: [
         { required: true, message: '请输入密码', trigger: 'blur' },
@@ -126,6 +145,15 @@ export default {
       ]
     }
     const handleLogin = async () => {
+      if (!loginFormRef.value) return
+
+      try {
+        // 验证表单
+        await loginFormRef.value.validate()
+      } catch (error) {
+        return
+      }
+
       loading.value = true
       try {
         const result = await authStore.login(loginForm)
@@ -139,9 +167,9 @@ export default {
           console.error('登录失败:', result)
         }
       } catch (error) {
-        let errorMessage = error.response?.data?.detail || 
-                          error.response?.data?.message || 
-                          error.message || 
+        let errorMessage = error.response?.data?.detail ||
+                          error.response?.data?.message ||
+                          error.message ||
                           '登录失败，请重试'
         if (error.response?.status === 403) {
           if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
@@ -205,6 +233,14 @@ export default {
       }
     }
     const handleForgotPassword = async () => {
+      if (!forgotFormRef.value) return
+
+      try {
+        await forgotFormRef.value.validate()
+      } catch (error) {
+        return
+      }
+
       forgotLoading.value = true
       try {
         const result = await authStore.forgotPassword(forgotForm.email)
@@ -222,6 +258,8 @@ export default {
       }
     }
     return {
+      loginFormRef,
+      forgotFormRef,
       loginForm,
       forgotForm,
       loading,
@@ -270,20 +308,14 @@ export default {
 .login-form {
   margin-top: 20px;
 }
-.form-item {
-  margin-bottom: 20px;
-}
-.login-input {
+.login-button {
   width: 100%;
-  height: 44px;
-  padding: 0 16px;
-  border: 1px solid #dcdfe6;
-  border-radius: 0; /* 移除圆角，设置为长方形 */
-  font-size: 16px;
-  outline: none;
-  transition: border-color 0.3s;
-  box-shadow: none !important;
-  background-color: #ffffff !important;
+}
+.login-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  font-size: 14px;
 }
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
@@ -310,39 +342,6 @@ export default {
 :deep(.el-input__wrapper.is-focus:hover) {
   background-color: #ffffff !important;
 }
-.login-input:focus {
-  border-color: #1677ff;
-  box-shadow: none !important;
-  background-color: #ffffff !important;
-}
-.login-input::placeholder {
-  color: #a8abb2;
-}
-.login-button {
-  width: 100%;
-  height: 44px;
-  font-size: 16px;
-  font-weight: 500;
-  background: #1677ff;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-.login-button:hover:not(:disabled) {
-  background: #0958d9;
-}
-.login-button:disabled {
-  background: #a8abb2;
-  cursor: not-allowed;
-}
-.login-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 20px;
-  font-size: 14px;
-}
 @media (max-width: 768px) {
   .login-container {
     padding: 10px;
@@ -364,17 +363,6 @@ export default {
     :is(p) {
       font-size: 13px;
     }
-  }
-  .login-input {
-    height: 48px; /* 手机端增大高度，防止iOS自动缩放 */
-    font-size: 16px; /* 16px防止iOS自动缩放 */
-    padding: 0 14px;
-  }
-  .login-button {
-    height: 48px; /* 手机端增大高度 */
-    font-size: 16px;
-    font-weight: 500;
-    min-height: 48px; /* 确保最小高度 */
   }
   .login-actions {
     flex-direction: column;
@@ -404,12 +392,10 @@ export default {
   :deep(.el-input__inner) {
     height: 48px;
     font-size: 16px;
-    padding: 0 14px;
   }
   :deep(.el-button) {
     min-height: 48px;
     font-size: 16px;
-    padding: 12px 20px;
   }
 }
 </style> 
