@@ -95,8 +95,9 @@ func ValidatePasswordStrength(password string, minLength int) (bool, string) {
 }
 
 func AuthenticateUser(db *gorm.DB, email, password string) (*models.User, error) {
+	emailNorm := strings.ToLower(strings.TrimSpace(email))
 	var user models.User
-	if err := db.Where("email = ?", email).First(&user).Error; err != nil {
+	if err := db.Where("LOWER(email) = ?", emailNorm).First(&user).Error; err != nil {
 		return nil, errors.New("用户不存在或密码错误")
 	}
 

@@ -86,6 +86,12 @@ func ParsePagination(c *gin.Context) PaginationParams {
 	if skipStr := c.Query("skip"); skipStr != "" {
 		var skip int
 		fmt.Sscanf(skipStr, "%d", &skip)
+		if skip < 0 {
+			skip = 0
+		}
+		if skip > 100000 {
+			skip = 100000
+		}
 		if page == 1 && size == 20 {
 			page = (skip / size) + 1
 		}
@@ -100,6 +106,9 @@ func ParsePagination(c *gin.Context) PaginationParams {
 
 	if page < 1 {
 		page = 1
+	}
+	if page > 10000 {
+		page = 10000
 	}
 	if size < 1 {
 		size = 20

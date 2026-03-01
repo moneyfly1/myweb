@@ -260,8 +260,9 @@ func GetRevenueChart(c *gin.Context) {
 		defer rows.Close()
 		for rows.Next() {
 			var stat RevenueStat
-			rows.Scan(&stat.Date, &stat.Revenue)
-			stats = append(stats, stat)
+			if scanErr := rows.Scan(&stat.Date, &stat.Revenue); scanErr == nil {
+				stats = append(stats, stat)
+			}
 		}
 	}
 

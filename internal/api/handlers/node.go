@@ -269,10 +269,16 @@ func GetNodes(c *gin.Context) {
 
 	finalNodes := append(customNodesList, uniqueNodes...)
 
+	// 对普通用户进行配置脱敏
+	isAdmin := false
 	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
-		utils.LogInfo("GetNodes: 用户 %s (ID: %d) 订阅类型=%s, 返回节点数: 专线=%d, 普通=%d, 总计=%d",
-			user.Username, user.ID, user.SpecialNodeSubscriptionType,
-			len(customNodesList), len(uniqueNodes), len(finalNodes))
+		isAdmin = user.IsAdmin
+	}
+
+	if !isAdmin {
+		for i := range finalNodes {
+			finalNodes[i].Config = nil
+		}
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", finalNodes)
@@ -422,6 +428,17 @@ func GetNode(c *gin.Context) {
 		}
 		return
 	}
+
+	// 对非管理员用户进行脱敏处理
+	isAdmin := false
+	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
+		isAdmin = user.IsAdmin
+	}
+
+	if !isAdmin {
+		node.Config = nil
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", node)
 }
 

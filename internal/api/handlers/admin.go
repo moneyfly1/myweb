@@ -44,7 +44,7 @@ func GetAdminInvites(c *gin.Context) {
 	var total int64
 	query.Count(&total)
 	var inviteCodes []models.InviteCode
-	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&inviteCodes).Error; err != nil {
+	if err := query.Preload("User").Offset(offset).Limit(size).Order("created_at DESC").Find(&inviteCodes).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请码列表失败", err)
 		return
 	}
@@ -63,11 +63,6 @@ func GetAdminInvites(c *gin.Context) {
 		username, email := "", ""
 		if code.User.ID != 0 {
 			username, email = code.User.Username, code.User.Email
-		} else if code.UserID != 0 {
-			var user models.User
-			if err := db.First(&user, code.UserID).Error; err == nil {
-				username, email = user.Username, user.Email
-			}
 		}
 
 		result = append(result, gin.H{
@@ -107,7 +102,7 @@ func GetAdminInviteRelations(c *gin.Context) {
 	var total int64
 	query.Count(&total)
 	var relations []models.InviteRelation
-	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&relations).Error; err != nil {
+	if err := query.Preload("Inviter").Preload("Invitee").Preload("InviteCode").Offset(offset).Limit(size).Order("created_at DESC").Find(&relations).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请关系列表失败", err)
 		return
 	}
@@ -117,31 +112,16 @@ func GetAdminInviteRelations(c *gin.Context) {
 		inviteCode := ""
 		if relation.InviteCode.ID != 0 && relation.InviteCode.Code != "" {
 			inviteCode = relation.InviteCode.Code
-		} else if relation.InviteCodeID != 0 {
-			var code models.InviteCode
-			if err := db.First(&code, relation.InviteCodeID).Error; err == nil {
-				inviteCode = code.Code
-			}
 		}
 
 		inviterUsername, inviterEmail := "", ""
 		if relation.Inviter.ID != 0 {
 			inviterUsername, inviterEmail = relation.Inviter.Username, relation.Inviter.Email
-		} else if relation.InviterID != 0 {
-			var inviter models.User
-			if err := db.First(&inviter, relation.InviterID).Error; err == nil {
-				inviterUsername, inviterEmail = inviter.Username, inviter.Email
-			}
 		}
 
 		inviteeUsername, inviteeEmail := "", ""
 		if relation.Invitee.ID != 0 {
 			inviteeUsername, inviteeEmail = relation.Invitee.Username, relation.Invitee.Email
-		} else if relation.InviteeID != 0 {
-			var invitee models.User
-			if err := db.First(&invitee, relation.InviteeID).Error; err == nil {
-				inviteeUsername, inviteeEmail = invitee.Username, invitee.Email
-			}
 		}
 
 		result = append(result, gin.H{
@@ -215,41 +195,75 @@ func GetAdminTickets(c *gin.Context) {
 	}
 
 	ticketList := make([]gin.H, 0)
-	for _, ticket := range tickets {
-		var repliesCount int64
-		db.Model(&models.TicketReply{}).Where("ticket_id = ?", ticket.ID).Count(&repliesCount)
-		var unreadRepliesCount int64 = 0
-		if adminUserID > 0 {
-			db.Model(&models.TicketReply{}).
-				Where("ticket_id = ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
-					ticket.ID, "true", false, adminUserID).
-				Count(&unreadRepliesCount)
-		}
-		var ticketRead models.TicketRead
-		err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, adminUserID).First(&ticketRead).Error
-		hasNewTicket := errors.Is(err, gorm.ErrRecordNotFound)
-		hasUnread := unreadRepliesCount > 0 || hasNewTicket
 
-		ticketList = append(ticketList, gin.H{
-			"id":             ticket.ID,
-			"ticket_no":      ticket.TicketNo,
-			"user_id":        ticket.UserID,
-			"user":           ticket.User,
-			"title":          ticket.Title,
-			"content":        ticket.Content,
-			"type":           ticket.Type,
-			"status":         ticket.Status,
-			"priority":       ticket.Priority,
-			"assigned_to":    ticket.AssignedTo,
-			"assignee":       ticket.Assignee,
-			"admin_notes":    ticket.AdminNotes,
-			"replies_count":  repliesCount,
-			"unread_replies": unreadRepliesCount,
-			"has_unread":     hasUnread,
-			"has_new_ticket": hasNewTicket,
-			"created_at":     utils.FormatBeijingTime(ticket.CreatedAt),
-			"updated_at":     utils.FormatBeijingTime(ticket.UpdatedAt),
-		})
+	if len(tickets) > 0 {
+		// 批量查询回复数，避免 N+1
+		ticketIDs := make([]uint, len(tickets))
+		for i, t := range tickets {
+			ticketIDs[i] = t.ID
+		}
+
+		// 批量获取 repliesCount
+		type CountResult struct {
+			TicketID uint
+			Cnt      int64
+		}
+		var repliesCounts []CountResult
+		db.Model(&models.TicketReply{}).Select("ticket_id, COUNT(*) as cnt").
+			Where("ticket_id IN ?", ticketIDs).Group("ticket_id").Find(&repliesCounts)
+		repliesMap := make(map[uint]int64)
+		for _, r := range repliesCounts {
+			repliesMap[r.TicketID] = r.Cnt
+		}
+
+		// 批量获取 unreadRepliesCount
+		unreadMap := make(map[uint]int64)
+		if adminUserID > 0 {
+			var unreadCounts []CountResult
+			db.Model(&models.TicketReply{}).Select("ticket_id, COUNT(*) as cnt").
+				Where("ticket_id IN ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
+					ticketIDs, "true", false, adminUserID).
+				Group("ticket_id").Find(&unreadCounts)
+			for _, r := range unreadCounts {
+				unreadMap[r.TicketID] = r.Cnt
+			}
+		}
+
+		// 批量获取 ticketRead
+		var ticketReads []models.TicketRead
+		db.Where("ticket_id IN ? AND user_id = ?", ticketIDs, adminUserID).Find(&ticketReads)
+		readMap := make(map[uint]bool)
+		for _, tr := range ticketReads {
+			readMap[tr.TicketID] = true
+		}
+
+		for _, ticket := range tickets {
+			repliesCount := repliesMap[ticket.ID]
+			unreadRepliesCount := unreadMap[ticket.ID]
+			hasNewTicket := !readMap[ticket.ID]
+			hasUnread := unreadRepliesCount > 0 || hasNewTicket
+
+			ticketList = append(ticketList, gin.H{
+				"id":             ticket.ID,
+				"ticket_no":      ticket.TicketNo,
+				"user_id":        ticket.UserID,
+				"user":           ticket.User,
+				"title":          ticket.Title,
+				"content":        ticket.Content,
+				"type":           ticket.Type,
+				"status":         ticket.Status,
+				"priority":       ticket.Priority,
+				"assigned_to":    ticket.AssignedTo,
+				"assignee":       ticket.Assignee,
+				"admin_notes":    ticket.AdminNotes,
+				"replies_count":  repliesCount,
+				"unread_replies": unreadRepliesCount,
+				"has_unread":     hasUnread,
+				"has_new_ticket": hasNewTicket,
+				"created_at":     utils.FormatBeijingTime(ticket.CreatedAt),
+				"updated_at":     utils.FormatBeijingTime(ticket.UpdatedAt),
+			})
+		}
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"tickets": ticketList, "total": total, "page": page, "size": size})
 }

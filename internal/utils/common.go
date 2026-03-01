@@ -26,6 +26,11 @@ func Base64Encode(str string) string {
 	return base64.StdEncoding.EncodeToString([]byte(str))
 }
 
+// NormalizeEmail 将邮箱转为小写并去空格，用于注册/登录等场景防止同一邮箱不同写法重复注册
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func GenerateUUID() string {
 	return uuid.New().String()
 }
@@ -50,8 +55,7 @@ func findMaxSequenceFromTable(db *gorm.DB, tableName string, prefix string) int 
 	}
 
 	var orderNos []string
-	query := fmt.Sprintf("SELECT order_no FROM %s WHERE order_no LIKE ? ORDER BY order_no DESC LIMIT 100", tableName)
-	if err := db.Raw(query, fullPrefix+"%").Scan(&orderNos).Error; err != nil {
+	if err := db.Table(tableName).Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
 		return 0
 	}
 
@@ -76,8 +80,7 @@ func checkOrderNoExistsInTable(db *gorm.DB, tableName string, orderNo string) bo
 	}
 
 	var count int64
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE order_no = ?", tableName)
-	if err := db.Raw(query, orderNo).Scan(&count).Error; err != nil {
+	if err := db.Table(tableName).Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
 		return false
 	}
 	return count > 0

@@ -37,9 +37,23 @@ const (
 // 辅助函数 (Helpers)
 // ==========================================
 
-// fetchSubscription 统一获取订阅逻辑，自动处理 404/500 响应
+// fetchSubscription 统一获取订阅逻辑，自动处理 404/500 响应（用户端，强制校验 userID）
 func fetchSubscription(c *gin.Context, db *gorm.DB, subID string, userID uint) (*models.Subscription, bool) {
 	sub, err := getSubscriptionByID(db, subID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		}
+		return nil, false
+	}
+	return sub, true
+}
+
+// fetchSubscriptionAdmin 管理端获取订阅，不限制 userID
+func fetchSubscriptionAdmin(c *gin.Context, db *gorm.DB, subID string) (*models.Subscription, bool) {
+	sub, err := getSubscriptionByIDAdmin(db, subID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
@@ -149,11 +163,17 @@ func formatDeviceList(devices []models.Device) []gin.H {
 
 func getSubscriptionByID(db *gorm.DB, id string, userID uint) (*models.Subscription, error) {
 	var sub models.Subscription
-	query := db.Where("id = ?", id)
-	if userID > 0 {
-		query = query.Where("user_id = ?", userID)
+	// userID 必须参与过滤，防止 IDOR
+	if err := db.Where("id = ? AND user_id = ?", id, userID).Preload("User").First(&sub).Error; err != nil {
+		return nil, err
 	}
-	if err := query.Preload("User").First(&sub).Error; err != nil {
+	return &sub, nil
+}
+
+// getSubscriptionByIDAdmin 管理端专用，不限制 userID
+func getSubscriptionByIDAdmin(db *gorm.DB, id string) (*models.Subscription, error) {
+	var sub models.Subscription
+	if err := db.Where("id = ?", id).Preload("User").First(&sub).Error; err != nil {
 		return nil, err
 	}
 	return &sub, nil
@@ -357,9 +377,8 @@ func CreateSubscription(c *gin.Context) {
 func GetAdminSubscriptions(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Subscription{})
-	page, size := 1, 20
-	fmt.Sscanf(c.Query("page"), "%d", &page)
-	fmt.Sscanf(c.Query("size"), "%d", &size)
+	p := utils.ParsePagination(c)
+	page, size := p.Page, p.Size
 
 	if keyword := utils.SanitizeSearchKeyword(c.DefaultQuery("search", c.Query("keyword"))); keyword != "" {
 		likeKey := "%" + keyword + "%"
@@ -562,7 +581,7 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 }
 
 func GetSubscriptionDevices(c *gin.Context) {
-	sub, ok := fetchSubscription(c, database.GetDB(), c.Param("id"), 0)
+	sub, ok := fetchSubscriptionAdmin(c, database.GetDB(), c.Param("id"))
 	if !ok {
 		return
 	}
@@ -607,7 +626,7 @@ func UpdateSubscription(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	sub, ok := fetchSubscription(c, db, c.Param("id"), 0)
+	sub, ok := fetchSubscriptionAdmin(c, db, c.Param("id"))
 	if !ok {
 		return
 	}
@@ -680,7 +699,7 @@ func UpdateSubscription(c *gin.Context) {
 
 func ResetSubscription(c *gin.Context) {
 	db := database.GetDB()
-	sub, ok := fetchSubscription(c, db, c.Param("id"), 0)
+	sub, ok := fetchSubscriptionAdmin(c, db, c.Param("id"))
 	if !ok {
 		return
 	}
@@ -709,7 +728,7 @@ func ExtendSubscription(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	sub, ok := fetchSubscription(c, db, c.Param("id"), 0)
+	sub, ok := fetchSubscriptionAdmin(c, db, c.Param("id"))
 	if !ok {
 		return
 	}
@@ -853,15 +872,32 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 
 	convertedAmount, days, dailyPrice, originalPkgDays, originalPkgPrice := calculateSubscriptionValue(db, sub, user.ID)
 
-	oldBalance := user.Balance
-	user.Balance += convertedAmount
-	if err := db.Save(&user).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "更新余额失败", err)
+	ipAddress := utils.GetRealClientIP(c)
+	var oldBalance, newBalance float64
+
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		// 行锁：防止并发双花
+		var lockedUser models.User
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&lockedUser, user.ID).Error; err != nil {
+			return fmt.Errorf("锁定用户失败: %v", err)
+		}
+		oldBalance = lockedUser.Balance
+		newBalance = lockedUser.Balance + convertedAmount
+
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Update("balance", newBalance).Error; err != nil {
+			return fmt.Errorf("更新余额失败: %v", err)
+		}
+		if err := tx.Delete(&sub).Error; err != nil {
+			return fmt.Errorf("删除订阅失败: %v", err)
+		}
+		return nil
+	})
+	if txErr != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, txErr.Error(), txErr)
 		return
 	}
 
 	// 记录余额日志
-	ipAddress := utils.GetRealClientIP(c)
 	userID := user.ID
 	go func() {
 		utils.CreateBalanceLog(
@@ -869,7 +905,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 			"refund",
 			convertedAmount,
 			oldBalance,
-			user.Balance,
+			newBalance,
 			nil,
 			nil,
 			fmt.Sprintf("订阅转换为余额，订阅ID: %d", sub.ID),
@@ -879,24 +915,17 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 		)
 	}()
 
-	// 记录订阅日志并删除订阅
+	// 记录订阅日志
 	beforeData := map[string]interface{}{
 		"subscription_id": sub.ID,
 		"expire_time":     sub.ExpireTime.Format(TimeLayout),
 	}
 	asyncSubscriptionLog(sub.ID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
 
-	if err := db.Delete(&sub).Error; err != nil {
-		utils.LogError("ConvertSubscriptionToBalance: failed to delete subscription", err, map[string]interface{}{"user_id": user.ID, "sub_id": sub.ID})
-		utils.CreateBusinessLog(c, "subscription_convert_failed", "订阅转余额: 删除订阅记录失败", "error", map[string]interface{}{
-			"user_id": user.ID, "subscription_id": sub.ID, "reason": err.Error(),
-		})
-	}
-
 	utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{
 		"converted_amount":       convertedAmount,
 		"balance_added":          convertedAmount,
-		"new_balance":            user.Balance,
+		"new_balance":            newBalance,
 		"remaining_days":         days,
 		"daily_price":            dailyPrice,
 		"original_package_price": originalPkgPrice,

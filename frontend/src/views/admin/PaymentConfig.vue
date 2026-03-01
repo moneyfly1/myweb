@@ -106,7 +106,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="app_id" label="应用ID/商户ID" :min-width="columnWidths.app_id" :width="columnWidths.app_id" resizable show-overflow-tooltip>
+          <el-table-column prop="app_id" label="应用ID/商户ID" :min-width="columnWidths.app_id" resizable show-overflow-tooltip>
             <template #default="scope">
               <span v-if="scope.row.app_id">{{ scope.row.app_id }}</span>
               <span v-else-if="scope.row.config_json?.yipay_pid">
@@ -261,7 +261,7 @@
     <el-drawer
       v-model="showAddDialog"
       :title="editingConfig ? '编辑支付配置' : '添加支付配置'"
-      :size="isMobile ? '100%' : '500px'"
+      :size="isMobile ? '92%' : '500px'"
       direction="rtl"
     >
       <el-form :model="configForm" :label-width="isMobile ? '0' : '120px'" :label-position="isMobile ? 'top' : 'right'">

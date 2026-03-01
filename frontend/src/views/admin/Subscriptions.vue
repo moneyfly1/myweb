@@ -274,16 +274,16 @@
                 @click="showQRCode(scope.row)"
                 v-if="scope.row.subscription_url || scope.row.universal_url"
               >
-                <img :src="generateQRCode(scope.row)" alt="QR Code" />
+                <img :src="scope.row.qr_code_url" alt="QR Code" />
               </div>
               <el-text v-else type="info" size="small">无订阅</el-text>
             </div>
           </template>
         </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('universal_url')" 
-          label="通用订阅" 
-          width="180"
+        <el-table-column
+          v-if="visibleColumns.includes('universal_url')"
+          label="通用订阅"
+          min-width="180"
         >
           <template #default="scope">
             <div class="subscription-link">
@@ -757,12 +757,17 @@ export default {
         const response = await adminAPI.getSubscriptions(params)
         if (response.data?.success !== false) {
           const subscriptionList = response.data?.data?.subscriptions || []
-          subscriptions.value = subscriptionList.map(sub => ({
-            ...sub,
-            is_active: sub.is_active === true || sub.is_active === 1 || sub.is_active === '1',
-            device_limit: Number(sub.device_limit) || 0,
-            expire_time: sub.expire_time || ''
-          }))
+          subscriptions.value = subscriptionList.map(sub => {
+            const mapped = {
+              ...sub,
+              is_active: sub.is_active === true || sub.is_active === 1 || sub.is_active === '1',
+              device_limit: Number(sub.device_limit) || 0,
+              expire_time: sub.expire_time || ''
+            }
+            // 预计算二维码 URL，避免模板每次渲染重复计算
+            mapped.qr_code_url = generateQRCode(mapped)
+            return mapped
+          })
           total.value = response.data?.data?.total || 0
           } else {
           ElMessage.error('加载订阅列表失败')

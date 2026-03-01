@@ -97,14 +97,13 @@ func GetCustomNodeUsers(c *gin.Context) {
 
 	users := make([]gin.H, 0)
 	for _, un := range userNodes {
-		var user models.User
-		if err := db.First(&user, un.UserID).Error; err == nil {
+		if un.User.ID != 0 {
 			users = append(users, gin.H{
-				"id":                             user.ID,
-				"username":                       user.Username,
-				"email":                          user.Email,
-				"special_node_subscription_type": user.SpecialNodeSubscriptionType,
-				"special_node_expires_at":        user.SpecialNodeExpiresAt,
+				"id":                             un.User.ID,
+				"username":                       un.User.Username,
+				"email":                          un.User.Email,
+				"special_node_subscription_type": un.User.SpecialNodeSubscriptionType,
+				"special_node_expires_at":        un.User.SpecialNodeExpiresAt,
 			})
 		}
 	}

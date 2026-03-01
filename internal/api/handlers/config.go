@@ -377,6 +377,14 @@ func UploadFile(c *gin.Context) {
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
+
+	// 防止路径穿越攻击
+	baseName := filepath.Base(file.Filename)
+	if strings.Contains(baseName, "..") || strings.ContainsAny(baseName, "/\\") {
+		utils.ErrorResponse(c, http.StatusBadRequest, "文件名包含非法字符", nil)
+		return
+	}
+
 	allowedExts := map[string]bool{
 		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
 		".pdf": true, ".txt": true, ".doc": true, ".docx": true,
@@ -597,12 +605,16 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 
 	tmpFile := geoipPath + ".tmp"
 	resp, err := http.Get("https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil {
 		utils.LogError("UpdateGeoIPDatabase: Download failed", err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "下载失败", err)
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "下载失败，状态码: "+resp.Status, nil)
+		return
+	}
 
 	out, err := os.Create(tmpFile)
 	if err != nil {

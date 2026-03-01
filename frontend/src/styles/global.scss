@@ -431,26 +431,26 @@ $breakpoints: (
 }
 @include respond-to(sm) {
   :root {
-    --header-height: 50px;
+    --header-height: 44px;
     --sidebar-width: 280px;
     --sidebar-collapsed-width: 64px;
-    --content-padding: 12px;
+    --content-padding: 8px;
   }
   .el-card {
-    margin-bottom: 12px;
-    border-radius: 8px;
+    margin-bottom: 8px;
+    border-radius: 6px;
     .el-card__header {
-      padding: 12px 16px;
-      font-size: 15px;
+      padding: 8px 12px;
+      font-size: 14px;
     }
     .el-card__body {
-      padding: 16px;
+      padding: 10px 12px;
     }
   }
   .el-table {
-    font-size: 13px;
+    font-size: 12px;
     :is(th), :is(td) {
-      padding: 10px 6px;
+      padding: 6px 4px;
     }
     .el-table__body-wrapper {
       overflow-x: auto;
@@ -458,29 +458,29 @@ $breakpoints: (
     }
   }
   .el-button {
-    padding: 10px 16px;
+    padding: 8px 12px;
     font-size: 14px;
     &.el-button--small {
-      padding: 8px 12px;
+      padding: 6px 10px;
       font-size: 13px;
     }
     &.el-button--mini {
-      padding: 6px 10px;
+      padding: 4px 8px;
       font-size: 12px;
     }
   }
   .el-form-item {
-    margin-bottom: 18px;
+    margin-bottom: 12px;
     .el-form-item__label {
-      font-size: 14px;
-      margin-bottom: 6px;
+      font-size: 13px;
+      margin-bottom: 4px;
     }
   }
   .el-input {
     .el-input__inner {
       font-size: 14px;
-      height: 40px;
-      padding: 0 12px;
+      height: 36px;
+      padding: 0 10px;
     }
   }
   .el-pagination {
@@ -579,11 +579,11 @@ $breakpoints: (
       z-index: 10;
       .el-button {
         width: 100%;
-        min-height: 48px;
-        font-size: 16px;
+        min-height: 38px;
+        font-size: 15px;
         font-weight: 500;
         margin: 0 !important;
-        border-radius: 8px;
+        border-radius: 6px;
         -webkit-tap-highlight-color: rgba(0,0,0,0.1);
       }
       .el-button + .el-button {
@@ -616,15 +616,15 @@ $breakpoints: (
       width: 100%;
       .el-input__inner,
       .el-textarea__inner {
-        font-size: 16px !important;
-        min-height: 44px;
-        padding: 0 12px;
-        border-radius: 6px;
+        font-size: 14px !important;
+        min-height: 36px;
+        padding: 0 10px;
+        border-radius: 4px;
       }
     }
     .el-select .el-input__inner {
-      height: 44px;
-      line-height: 44px;
+      height: 36px;
+      line-height: 36px;
     }
     .el-textarea {
       .el-textarea__inner {
@@ -1005,4 +1005,39 @@ $breakpoints: (
 }
 .slide-leave-to {
   transform: translateX(100%);
+}
+
+/* 管理后台移动端：弹窗/抽屉避免满屏，留出边距 */
+@media (max-width: 768px) {
+  .el-drawer {
+    width: 92% !important;
+    max-width: 92% !important;
+    .el-drawer__header {
+      padding: 16px 20px;
+      margin-bottom: 0;
+      font-size: 16px;
+    }
+    .el-drawer__body {
+      padding: 16px 20px 24px;
+      overflow-y: auto;
+      max-height: calc(100vh - 80px);
+    }
+  }
+  .el-dialog {
+    width: 92% !important;
+    max-width: 92% !important;
+    margin: 4vh auto !important;
+    border-radius: 12px;
+    .el-dialog__header {
+      padding: 14px 16px;
+    }
+    .el-dialog__body {
+      padding: 14px 16px;
+      max-height: calc(90vh - 120px);
+      overflow-y: auto;
+    }
+    .el-dialog__footer {
+      padding: 12px 16px 16px;
+    }
+  }
 } 

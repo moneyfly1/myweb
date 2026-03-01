@@ -174,7 +174,7 @@
     <el-drawer
       v-model="showCreateDialog"
       :title="editingCoupon ? '编辑优惠券' : '创建优惠券'"
-      :size="isMobile ? '100%' : '500px'"
+      :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
     >
@@ -679,11 +679,18 @@ onUnmounted(() => {
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
+        gap: 8px;
+        min-width: 0;
         .coupon-code {
+          flex: 1;
+          min-width: 0;
           font-weight: bold;
           font-size: 16px;
           color: #333;
           font-family: 'Courier New', monospace;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
       }
       .coupon-card-name {
@@ -692,6 +699,8 @@ onUnmounted(() => {
         color: #333;
         margin-bottom: 12px;
         line-height: 1.4;
+        word-break: break-word;
+        overflow-wrap: break-word;
       }
       .coupon-card-info {
         margin-bottom: 12px;
@@ -707,6 +716,8 @@ onUnmounted(() => {
           .info-value {
             color: #333;
             flex: 1;
+            min-width: 0;
+            word-break: break-all;
             &.highlight {
               color: #f56c6c;
               font-weight: 600;

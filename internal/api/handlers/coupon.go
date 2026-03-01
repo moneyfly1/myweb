@@ -76,9 +76,15 @@ func VerifyCoupon(c *gin.Context) {
 
 	discountAmount := 0.0
 	if coupon.Type == "discount" {
+		if coupon.DiscountValue > 100 {
+			coupon.DiscountValue = 100
+		}
 		discountAmount = req.Amount * (coupon.DiscountValue / 100)
 		if coupon.MaxDiscount.Valid && discountAmount > coupon.MaxDiscount.Float64 {
 			discountAmount = coupon.MaxDiscount.Float64
+		}
+		if discountAmount > req.Amount {
+			discountAmount = req.Amount
 		}
 	} else if coupon.Type == "fixed" {
 		discountAmount = coupon.DiscountValue
@@ -139,7 +145,13 @@ func CreateCoupon(c *gin.Context) {
 	if code == "" {
 		code = utils.GenerateCouponCode()
 		var existing models.Coupon
+		maxRetries := 20
 		for db.Where("code = ?", code).First(&existing).Error == nil {
+			maxRetries--
+			if maxRetries <= 0 {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "生成唯一优惠券码失败，请重试", nil)
+				return
+			}
 			code = utils.GenerateCouponCode()
 		}
 	} else {

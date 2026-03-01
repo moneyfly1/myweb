@@ -186,7 +186,7 @@
     <el-drawer
       v-model="showAddDialog"
       :title="editingNode ? '编辑节点' : '添加节点'"
-      :size="isMobile ? '100%' : '600px'"
+      :size="isMobile ? '92%' : '600px'"
       direction="rtl"
       destroy-on-close
       append-to-body

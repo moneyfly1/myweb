@@ -57,7 +57,7 @@
         <el-table-column prop="status" label="状态" width="80" />
         <el-table-column prop="invite_code" label="邀请码" width="100" />
         <el-table-column prop="inviter_name" label="邀请人" width="100" />
-        <el-table-column prop="reason" :width="reasonColWidth" min-width="80" show-overflow-tooltip>
+        <el-table-column prop="reason" :min-width="reasonColWidth || 180" show-overflow-tooltip>
           <template #header>
             <div class="th-resizable">
               <span>失败原因</span>

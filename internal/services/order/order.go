@@ -192,8 +192,17 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 			}
 		}
 
-		// 记录优惠券使用 + 原子递增 used_quantity
+		// 记录优惠券使用 + 原子递增 used_quantity（事务内二次校验防并发超卖）
 		if coupon != nil {
+			// 事务内锁定优惠券行，防止并发超卖
+			var lockedCoupon models.Coupon
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&lockedCoupon, coupon.ID).Error; err != nil {
+				return fmt.Errorf("锁定优惠券失败: %v", err)
+			}
+			if lockedCoupon.TotalQuantity.Valid && lockedCoupon.UsedQuantity >= int(lockedCoupon.TotalQuantity.Int64) {
+				return fmt.Errorf("优惠券已被领完")
+			}
+
 			usage := models.CouponUsage{
 				CouponID:       coupon.ID,
 				UserID:         userID,
