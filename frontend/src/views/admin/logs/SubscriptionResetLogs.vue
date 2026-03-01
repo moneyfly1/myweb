@@ -2,8 +2,13 @@
   <div class="log-list logs-page">
     <div class="filter-bar desktop-only">
       <el-input v-model="filter.keyword" placeholder="用户名/邮箱/订阅链接" clearable style="width: 220px" @keyup.enter="fetch" />
-      <el-input v-model="filter.user_id" placeholder="用户ID" clearable style="width: 100px" />
-      <el-select v-model="filter.reset_type" placeholder="重置类型" clearable style="width: 120px" />
+      <el-select v-model="filter.reset_type" placeholder="重置类型" clearable style="width: 130px">
+        <el-option v-for="(label, value) in RESET_TYPE_MAP" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="filter.reset_by" placeholder="操作方" clearable style="width: 100px">
+        <el-option label="用户" value="user" />
+        <el-option label="管理员" value="admin" />
+      </el-select>
       <el-date-picker
         v-model="filter.timeRange"
         type="datetimerange"
@@ -19,6 +24,17 @@
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
         <el-form-item label="关键词"><el-input v-model="filter.keyword" placeholder="用户名/邮箱/订阅链接" clearable /></el-form-item>
+        <el-form-item label="重置类型">
+          <el-select v-model="filter.reset_type" placeholder="重置类型" clearable style="width: 100%">
+            <el-option v-for="(label, value) in RESET_TYPE_MAP" :key="value" :label="label" :value="value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="操作方">
+          <el-select v-model="filter.reset_by" placeholder="操作方" clearable style="width: 100%">
+            <el-option label="用户" value="user" />
+            <el-option label="管理员" value="admin" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="时间范围">
           <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
         </el-form-item>
@@ -31,23 +47,36 @@
     <div class="table-wrapper desktop-only">
     <el-table v-loading="loading" :data="list" stripe border>
       <el-table-column prop="created_at" label="时间" width="180" />
-      <el-table-column prop="user_id" label="用户ID" width="90" />
-      <el-table-column prop="username" label="用户名" width="120" />
-      <el-table-column prop="user_email" label="邮箱" width="160" />
-      <el-table-column prop="subscription_id" label="订阅ID" width="90" />
-      <el-table-column prop="reset_type" label="重置类型" width="100" />
-      <el-table-column prop="reason" label="原因" min-width="120" show-overflow-tooltip />
-      <el-table-column prop="device_count_before" label="重置前设备数" width="120" />
-      <el-table-column prop="device_count_after" label="重置后设备数" width="120" />
-      <el-table-column prop="reset_by" label="操作方" width="90" />
+      <el-table-column label="用户" width="120">
+        <template #default="{ row }">
+          <span>{{ row.username || '-' }}</span>
+          <div class="sub-text">ID: {{ row.user_id }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="reset_type" label="重置类型" width="120">
+        <template #default="{ row }">
+          <el-tag :type="getResetTypeColor(row.reset_type)" size="small">{{ getResetTypeText(row.reset_type) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="reason" label="原因" min-width="150" show-overflow-tooltip />
+      <el-table-column label="设备数" width="100">
+        <template #default="{ row }">
+          {{ row.device_count_before ?? 0 }} → {{ row.device_count_after ?? 0 }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="reset_by" label="操作方" width="90">
+        <template #default="{ row }">{{ getResetByText(row.reset_by) }}</template>
+      </el-table-column>
     </el-table>
     </div>
     <div class="mobile-only mobile-card-list">
       <div v-loading="loading" class="mobile-list-inner">
         <div v-for="row in list" :key="row.id" class="mobile-log-card">
           <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ row.username || row.user_email || '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value">{{ row.reset_type || '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value"><el-tag :type="getResetTypeColor(row.reset_type)" size="small">{{ getResetTypeText(row.reset_type) }}</el-tag></span></div>
+          <div class="mobile-card-row"><span class="mobile-label">设备数</span><span class="mobile-value">{{ row.device_count_before ?? 0 }} → {{ row.device_count_after ?? 0 }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">操作方</span><span class="mobile-value">{{ getResetByText(row.reset_by) }}</span></div>
           <div class="mobile-card-row" v-if="row.reason"><span class="mobile-label">原因</span><span class="mobile-value mobile-value-wrap">{{ row.reason }}</span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
@@ -74,10 +103,26 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+
+const RESET_TYPE_MAP = {
+  user_reset: '用户重置', admin_reset: '管理员重置', admin_batch_reset: '批量重置'
+}
+const getResetTypeText = (type) => RESET_TYPE_MAP[type] || type || '-'
+const getResetTypeColor = (type) => {
+  const map = { user_reset: '', admin_reset: 'warning', admin_batch_reset: 'danger' }
+  return map[type] || 'info'
+}
+const getResetByText = (by) => {
+  if (!by) return '-'
+  if (by === 'user' || by === '用户') return '用户'
+  if (by === 'admin' || by === '管理员') return '管理员'
+  return by
+}
+
 const filter = ref({
   keyword: '',
-  user_id: '',
   reset_type: '',
+  reset_by: '',
   timeRange: null
 })
 const isMobile = ref(false)
@@ -89,8 +134,8 @@ async function fetch() {
   try {
     const params = { page: page.value, page_size: pageSize.value }
     if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.user_id) params.user_id = filter.value.user_id
     if (filter.value.reset_type) params.reset_type = filter.value.reset_type
+    if (filter.value.reset_by) params.reset_by = filter.value.reset_by
     if (filter.value.timeRange && filter.value.timeRange.length === 2) {
       params.start_time = filter.value.timeRange[0]
       params.end_time = filter.value.timeRange[1]
@@ -107,7 +152,7 @@ async function fetch() {
 }
 
 function resetFilter() {
-  filter.value = { keyword: '', user_id: '', reset_type: '', timeRange: null }
+  filter.value = { keyword: '', reset_type: '', reset_by: '', timeRange: null }
   page.value = 1
   fetch()
 }
@@ -125,6 +170,7 @@ onUnmounted(() => { window.removeEventListener('resize', checkMobile) })
 .log-list { padding: 0; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
+.sub-text { font-size: 12px; color: #909399; }
 .desktop-only { display: block; }
 .mobile-only { display: none; }
 .mobile-filter-form { width: 100%; }

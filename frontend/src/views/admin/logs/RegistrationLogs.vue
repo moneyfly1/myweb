@@ -53,7 +53,9 @@
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="email" label="邮箱" width="180" />
         <el-table-column prop="ip_address" label="IP" width="130" />
-        <el-table-column prop="location" label="地区" width="120" />
+        <el-table-column prop="location" label="地区" width="120">
+          <template #default="{ row }">{{ displayLocation(row.location) }}</template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80" />
         <el-table-column prop="invite_code" label="邀请码" width="100" />
         <el-table-column prop="inviter_name" label="邀请人" width="100" />
@@ -82,6 +84,10 @@
             <span class="mobile-label">状态</span>
             <span class="mobile-value">{{ row.status || '-' }}</span>
           </div>
+          <div class="mobile-card-row" v-if="row.location">
+            <span class="mobile-label">地区</span>
+            <span class="mobile-value">{{ displayLocation(row.location) }}</span>
+          </div>
           <div class="mobile-card-row" v-if="row.reason">
             <span class="mobile-label">失败原因</span>
             <span class="mobile-value mobile-value-wrap">{{ row.reason }}</span>
@@ -105,6 +111,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { adminAPI } from '@/utils/api'
+import { formatLocation } from '@/utils/date'
+
+const displayLocation = (loc) => {
+  if (!loc) return '-'
+  const result = formatLocation(loc)
+  return result || loc
+}
 
 const loading = ref(false)
 const list = ref([])

@@ -276,7 +276,7 @@
                 <div>
                   <div>{{ row.ip_address }}</div>
                   <div v-if="row.location" class="location-text">
-                    <el-tag size="small" type="info">{{ row.location }}</el-tag>
+                    <el-tag size="small" type="info">{{ displayLocation(row.location) }}</el-tag>
                   </div>
                 </div>
               </template>
@@ -338,7 +338,7 @@
                 </div>
                 <div class="log-card-row" v-if="log.location">
                   <span class="log-label">地理位置：</span>
-                  <el-tag size="small" type="info">{{ log.location }}</el-tag>
+                  <el-tag size="small" type="info">{{ displayLocation(log.location) }}</el-tag>
                 </div>
               </div>
               <div class="log-card-footer">
@@ -390,7 +390,7 @@
             {{ selectedLog.ip_address }}
           </el-descriptions-item>
           <el-descriptions-item label="地理位置" v-if="selectedLog.location">
-            <el-tag type="info">{{ selectedLog.location }}</el-tag>
+            <el-tag type="info">{{ displayLocation(selectedLog.location) }}</el-tag>
             <div v-if="selectedLog.location_info" class="location-details">
               <div v-if="selectedLog.location_info.country">国家: {{ selectedLog.location_info.country }}</div>
               <div v-if="selectedLog.location_info.city">城市: {{ selectedLog.location_info.city }}</div>
@@ -440,6 +440,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { formatLocation } from '@/utils/date'
 export default {
   name: 'AdminSystemLogs',
   components: {
@@ -701,6 +702,11 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       if (!text) return ''
       return text.length > length ? text.substring(0, length) + '...' : text
     }
+    const displayLocation = (loc) => {
+      if (!loc) return '-'
+      const result = formatLocation(loc)
+      return result || loc
+    }
     onMounted(() => {
       loadLogs()
       loadLogsStats()
@@ -732,7 +738,8 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       getLogLevelTagType,
       getLogLevelText,
       getTaskTypeName,
-      truncateText
+      truncateText,
+      displayLocation
     }
   }
 }
