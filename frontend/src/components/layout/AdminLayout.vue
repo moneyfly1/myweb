@@ -219,7 +219,9 @@ const menuSections = computed(() => {
         { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' },
         { path: '/admin/orders', title: '订单列表', icon: 'el-icon-shopping-cart-2' },
         { path: '/admin/packages', title: '套餐管理', icon: 'el-icon-goods' },
-        { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' }
+        { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' },
+        { path: '/admin/promotions', title: '营销活动', icon: 'el-icon-present' },
+        { path: '/admin/knowledge', title: '知识库管理', icon: 'el-icon-reading' }
       ]
     },
     {
@@ -245,6 +247,7 @@ const menuSections = computed(() => {
       collapsible: true,
       items: [
         { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' },
+        { path: '/admin/analytics', title: '用户分析', icon: 'el-icon-pie-chart' },
         { path: '/admin/logs', title: '日志管理', icon: 'el-icon-document' },
         { path: '/admin/system-logs', title: '系统日志', icon: 'el-icon-tickets' }
       ]

@@ -1,0 +1,182 @@
+/* 移动端全局样式优化 - 添加到 main.css 或 App.vue */
+
+/* 抽屉弹窗移动端优化 */
+@media (max-width: 768px) {
+  /* Element Plus 抽屉移动端全屏 */
+  .el-drawer {
+    width: 100% !important;
+  }
+
+  .el-drawer__header {
+    padding: 16px;
+    margin-bottom: 0;
+  }
+
+  .el-drawer__body {
+    padding: 16px;
+  }
+
+  .el-drawer__footer {
+    padding: 12px 16px;
+  }
+
+  /* 表单在抽屉中的优化 */
+  .el-drawer .el-form-item {
+    margin-bottom: 18px;
+  }
+
+  .el-drawer .el-form-item__label {
+    font-size: 14px;
+  }
+
+  .el-drawer .el-input,
+  .el-drawer .el-select,
+  .el-drawer .el-textarea {
+    font-size: 16px; /* 防止iOS自动缩放 */
+  }
+
+  /* 按钮统一样式 */
+  .el-button {
+    min-height: 36px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+
+  .el-button--small {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .el-button--large {
+    min-height: 40px;
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  /* 卡片容器优化 */
+  .list-container {
+    padding: 12px;
+  }
+
+  .list-card {
+    border-radius: 8px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  /* 表格移动端优化 */
+  .el-table {
+    font-size: 13px;
+  }
+
+  .el-table th,
+  .el-table td {
+    padding: 8px 4px;
+  }
+
+  .el-table .el-button {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  /* 分页器移动端优化 */
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .el-pagination .el-pagination__sizes {
+    margin: 0;
+  }
+
+  .el-pagination .el-pagination__jump {
+    margin-left: 0;
+  }
+
+  /* 输入框优化 */
+  .el-input__inner,
+  .el-textarea__inner {
+    font-size: 16px !important; /* 防止iOS自动缩放 */
+  }
+
+  /* 对话框移动端优化 */
+  .el-dialog {
+    width: 95% !important;
+    margin-top: 5vh !important;
+  }
+
+  .el-dialog__body {
+    padding: 16px;
+  }
+
+  /* 标签页优化 */
+  .el-tabs__item {
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  /* 下拉菜单优化 */
+  .el-select-dropdown {
+    max-width: 90vw;
+  }
+
+  /* 日期选择器优化 */
+  .el-picker-panel {
+    max-width: 90vw;
+  }
+}
+
+/* 超小屏幕优化 (iPhone SE等) */
+@media (max-width: 375px) {
+  .el-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .el-button--small {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .list-container {
+    padding: 8px;
+  }
+
+  .card-header span {
+    font-size: 16px;
+  }
+}
+
+/* 触摸优化 */
+@media (hover: none) and (pointer: coarse) {
+  /* 增加可点击区域 */
+  .el-button,
+  .category-item,
+  .article-card,
+  .mobile-ticket-card {
+    min-height: 44px; /* iOS推荐的最小触摸目标 */
+  }
+
+  /* 移除hover效果 */
+  .el-button:hover,
+  .category-item:hover,
+  .article-card:hover {
+    transform: none;
+  }
+
+  /* 添加active状态 */
+  .el-button:active {
+    opacity: 0.8;
+  }
+
+  .category-item:active,
+  .article-card:active {
+    opacity: 0.9;
+  }
+}

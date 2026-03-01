@@ -577,6 +577,36 @@ export const adminAPI = {
   testAdminTelegramNotification: () => api.post('/admin/settings/admin-notification/test/telegram'),
   testAdminBarkNotification: () => api.post('/admin/settings/admin-notification/test/bark'),
 }
+export const checkinAPI = {
+  checkin: () => api.post('/users/checkin'),
+  getStatus: () => api.get('/users/checkin/status')
+}
+export const knowledgeAPI = {
+  getCategories: () => api.get('/knowledge/categories'),
+  getArticles: (params) => api.get('/knowledge/articles', { params }),
+  getArticle: (id) => api.get(`/knowledge/articles/${id}`),
+  getAdminCategories: () => api.get('/admin/knowledge/categories'),
+  createCategory: (data) => api.post('/admin/knowledge/categories', data),
+  updateCategory: (id, data) => api.put(`/admin/knowledge/categories/${id}`, data),
+  deleteCategory: (id) => api.delete(`/admin/knowledge/categories/${id}`),
+  getAdminArticles: (params) => api.get('/admin/knowledge/articles', { params }),
+  createArticle: (data) => api.post('/admin/knowledge/articles', data),
+  updateArticle: (id, data) => api.put(`/admin/knowledge/articles/${id}`, data),
+  deleteArticle: (id) => api.delete(`/admin/knowledge/articles/${id}`)
+}
+export const promotionAPI = {
+  getActive: () => api.get('/promotions/active'),
+  getAll: (params) => api.get('/admin/promotions', { params }),
+  create: (data) => api.post('/admin/promotions', data),
+  update: (id, data) => api.put(`/admin/promotions/${id}`, data),
+  remove: (id) => api.delete(`/admin/promotions/${id}`)
+}
+export const analyticsAPI = {
+  getUserAnalytics: () => api.get('/admin/analytics/users'),
+  getRetention: () => api.get('/admin/analytics/retention'),
+  getChurnWarning: () => api.get('/admin/analytics/churn'),
+  getDeviceAnalytics: () => api.get('/admin/analytics/devices')
+}
 export const configAPI = {
   getEmailConfig: () => api.get('/admin/email-config'),
   saveEmailConfig: (data) => api.post('/admin/email-config', data)

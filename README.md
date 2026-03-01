@@ -32,16 +32,23 @@ This design ensures effective resource utilization while preventing resource abu
 
 ### 🎯 Key Features
 
+#### Core Features
 - 🚀 **High Performance**: Memory usage only 35-95 MB (vs 300-850 MB in Python version)
 - ⚡ **Fast Startup**: Millisecond-level startup time
 - 🔒 **Secure**: JWT authentication, password encryption, SQL injection protection
 - 📦 **Feature Complete**: All core business functions included
 - 🎨 **Modern Frontend**: Vue 3 + Element Plus, responsive design
 - 🐳 **Easy Deployment**: One-click VPS script (`install-vps.sh`) or BT Panel script (`install.sh`)
+
+#### Business Features
 - 💳 **Multi-Payment**: Alipay, WeChat Pay, PayPal, Apple Pay, Yipay
 - 👥 **User Management**: Complete user system with levels, invites, and rewards
-- 📊 **Analytics**: Comprehensive statistics and monitoring
+- 📊 **Analytics Dashboard**: DAU/WAU/MAU statistics, retention analysis, churn prediction
 - 🎫 **Ticket System**: Built-in customer support system
+- 📚 **Knowledge Base**: Complete help documentation with Clash series tutorials
+- 🎁 **Daily Check-in**: Random rewards (0.1-1 CNY) for user engagement
+- 🎉 **Promotions**: Flexible marketing campaigns (flash sales, new user offers, member days)
+- 📱 **Mobile Optimized**: Full responsive design with drawer components
 
 ---
 
@@ -1090,6 +1097,13 @@ goweb/
 ---
 
 ## 📚 Documentation
+
+### Quick Start & Migration
+| Document | Description |
+|----------|-------------|
+| [Quick Start Guide](./docs/migration/QUICK_START.md) | Quick start guide for new features |
+| [Migration Guide](./docs/migration/MIGRATION_GUIDE.md) | Migrate new features to existing database |
+| [Production Ready Report](./docs/reports/PRODUCTION_READY_REPORT.md) | Latest production deployment report |
 
 ### Deployment & Troubleshooting
 
