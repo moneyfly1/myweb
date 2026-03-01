@@ -269,7 +269,7 @@
           </el-descriptions-item>
           <el-descriptions-item label="重试次数">{{ emailDetail.retry_count }}/{{ emailDetail.max_retries }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDate(emailDetail.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="发送时间" v-if="emailDetail.sent_at">
+          <el-descriptions-item label="发送时间" v-if="emailDetail.sent_at && emailDetail.sent_at.Valid !== false">
             {{ formatDate(emailDetail.sent_at) }}
           </el-descriptions-item>
           <el-descriptions-item label="处理时间" v-if="emailDetail.processing_time">
@@ -292,7 +292,7 @@
           <div class="detail-info-row" v-if="emailDetail.priority"><span class="detail-label">优先级</span><span class="detail-value">{{ emailDetail.priority }}</span></div>
           <div class="detail-info-row"><span class="detail-label">重试次数</span><span class="detail-value">{{ emailDetail.retry_count }}/{{ emailDetail.max_retries }}</span></div>
           <div class="detail-info-row"><span class="detail-label">创建时间</span><span class="detail-value">{{ formatDate(emailDetail.created_at) }}</span></div>
-          <div class="detail-info-row" v-if="emailDetail.sent_at"><span class="detail-label">发送时间</span><span class="detail-value">{{ formatDate(emailDetail.sent_at) }}</span></div>
+          <div class="detail-info-row" v-if="emailDetail.sent_at && emailDetail.sent_at.Valid !== false"><span class="detail-label">发送时间</span><span class="detail-value">{{ formatDate(emailDetail.sent_at) }}</span></div>
           <div class="detail-info-row" v-if="emailDetail.processing_time"><span class="detail-label">处理时间</span><span class="detail-value">{{ emailDetail.processing_time }}ms</span></div>
         </div>
         <div class="detail-section">
@@ -331,10 +331,10 @@
             class="template-data-content"
           />
         </div>
-        <div class="detail-section" v-if="emailDetail.error_message">
+        <div class="detail-section" v-if="getErrorMessage(emailDetail.error_message)">
           <h4>错误信息</h4>
           <el-alert
-            :title="emailDetail.error_message"
+            :title="getErrorMessage(emailDetail.error_message)"
             type="error"
             :description="emailDetail.error_details || '无详细错误信息'"
             show-icon
@@ -659,8 +659,23 @@ export default {
     const getStatusText = (status) => {
       return STATUS_MAP[status]?.text || status
     }
+    // 处理 Go sql.NullString JSON 序列化格式 {"String":"...","Valid":true}
+    const getErrorMessage = (val) => {
+      if (!val) return ''
+      if (typeof val === 'object' && val !== null) {
+        if (val.Valid === false) return ''
+        return val.String || ''
+      }
+      return val
+    }
     const formatDate = (dateString) => {
       if (!dateString) return '-'
+      // 处理 Go sql.NullTime JSON 序列化格式 {"Time":"...","Valid":true}
+      if (typeof dateString === 'object' && dateString !== null) {
+        if (dateString.Valid === false) return '-'
+        if (dateString.Time) return formatDateTime(dateString.Time, 'YYYY-MM-DD HH:mm:ss')
+        return '-'
+      }
       return formatDateTime(dateString, 'YYYY-MM-DD HH:mm:ss')
     }
     onMounted(() => {
@@ -699,6 +714,7 @@ export default {
       handleCurrentChange,
       getStatusTagType,
       getStatusText,
+      getErrorMessage,
       formatDate
     }
   }
@@ -778,7 +794,6 @@ export default {
   gap: 10px;
 }
 .email-detail {
-  max-height: 60vh;
   overflow-y: auto;
 }
 .detail-section {
@@ -792,7 +807,7 @@ export default {
 .email-content-html {
   border: 1px solid #ddd;
   border-radius: 4px;
-  max-height: 800px;
+  max-height: 500px;
   overflow-y: auto;
   overflow-x: clip;
   background-color: #f4f4f4;
@@ -801,8 +816,8 @@ export default {
 }
 .email-html-iframe {
   width: 100%;
-  min-height: 400px;
-  max-height: 1000px;
+  min-height: 150px;
+  max-height: 600px;
   border: none;
   background-color: #f4f4f4;
   border-radius: 4px;
@@ -813,7 +828,7 @@ export default {
 }
 .email-html-content {
   width: 100%;
-  min-height: 200px;
+  min-height: 100px;
   padding: 20px;
   background-color: #f4f4f4;
   display: flex;
@@ -850,7 +865,7 @@ export default {
   width: 100%;
 }
 .email-content-empty {
-  padding: 40px;
+  padding: 20px;
   text-align: center;
   color: #909399;
 }
