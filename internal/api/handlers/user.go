@@ -2293,3 +2293,91 @@ func UpdatePrivacySettings(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "隐私设置已保存", nil)
 }
+
+// SendEmailToUser 发送邮件给用户
+func SendEmailToUser(c *gin.Context) {
+	var req struct {
+		UserID       uint   `json:"user_id" binding:"required"`
+		Email        string `json:"email" binding:"required,email"`
+		Subject      string `json:"subject"`
+		Content      string `json:"content"`
+		EmailType    string `json:"email_type"`
+		TemplateID   uint   `json:"template_id"`
+		TemplateName string `json:"template_name"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+
+	db := database.GetDB()
+
+	// 验证用户是否存在
+	var user models.User
+	if err := db.First(&user, req.UserID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		return
+	}
+
+	subject := req.Subject
+	content := req.Content
+
+	// 如果指定了模板，使用模板
+	if req.TemplateID > 0 || req.TemplateName != "" {
+		var template models.EmailTemplate
+		var err error
+
+		if req.TemplateID > 0 {
+			err = db.Where("id = ? AND is_active = ?", req.TemplateID, true).First(&template).Error
+		} else {
+			err = db.Where("name = ? AND is_active = ?", req.TemplateName, true).First(&template).Error
+		}
+
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusNotFound, "邮件模板不存在或未启用", err)
+			return
+		}
+
+		subject = template.Subject
+		content = template.Content
+
+		// 替换模板变量
+		content = strings.ReplaceAll(content, "{username}", user.Username)
+		content = strings.ReplaceAll(content, "{email}", user.Email)
+
+		// 获取用户订阅信息
+		var subscription models.Subscription
+		if err := db.Where("user_id = ? AND is_active = ?", user.ID, true).First(&subscription).Error; err == nil {
+			expireDate := subscription.ExpireTime.Format("2006-01-02")
+			content = strings.ReplaceAll(content, "{expire_date}", expireDate)
+
+			daysLeft := int(subscription.ExpireTime.Sub(time.Now()).Hours() / 24)
+			content = strings.ReplaceAll(content, "{days_left}", fmt.Sprintf("%d", daysLeft))
+		}
+	}
+
+	// 发送邮件
+	emailService := email.NewEmailService()
+	if err := emailService.SendEmail(req.Email, subject, content); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "邮件发送失败", err)
+		return
+	}
+
+	// 记录审计日志
+	utils.CreateAuditLogSimple(c, "send_email", "user", req.UserID,
+		fmt.Sprintf("向用户 %s 发送邮件: %s (模板: %s)", user.Username, subject, req.TemplateName))
+
+	// 记录到邮件队列
+	emailQueue := models.EmailQueue{
+		ToEmail:   req.Email,
+		Subject:   subject,
+		Content:   content,
+		EmailType: req.TemplateName,
+		Status:    "sent",
+		SentAt:    sql.NullTime{Time: time.Now(), Valid: true},
+	}
+	db.Create(&emailQueue)
+
+	utils.SuccessResponse(c, http.StatusOK, "邮件发送成功", nil)
+}

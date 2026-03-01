@@ -204,6 +204,7 @@ const menuSections = computed(() => {
           badge: unreadTicketReplies.value > 0 ? unreadTicketReplies.value : null
         },
         { path: '/invites', title: '我的邀请', icon: 'el-icon-user' },
+        { path: '/knowledge', title: '知识库', icon: 'el-icon-reading' },
         { path: '/help', title: '帮助中心', icon: 'el-icon-question' }
       ] 
     }

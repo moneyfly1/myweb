@@ -51,6 +51,9 @@ type User struct {
 	SpecialNodeSubscriptionType string       `gorm:"type:varchar(20);default:both" json:"special_node_subscription_type"` // both, special_only
 	SpecialNodeExpiresAt        sql.NullTime `json:"special_node_expires_at,omitempty"`
 
+	TelegramID       sql.NullInt64  `gorm:"index" json:"telegram_id,omitempty"`
+	TelegramUsername sql.NullString `gorm:"type:varchar(100)" json:"telegram_username,omitempty"`
+
 	Notes sql.NullString `gorm:"type:text" json:"notes,omitempty"` // 备注字段
 
 	Subscriptions            []Subscription       `gorm:"foreignKey:UserID" json:"-"`

@@ -94,14 +94,26 @@
             <h3 class="stat-title">¥ {{ userInfo.balance || '0.00' }}</h3>
             <p class="stat-subtitle">账户余额</p>
           </div>
-          <el-button 
-            type="primary" 
-            class="recharge-btn"
-            @click="showRechargeDialog"
-          >
-            <i class="fas fa-plus"></i>
-            充值
-          </el-button>
+          <div class="balance-actions">
+            <el-button
+              :type="checkedIn ? 'info' : 'success'"
+              size="small"
+              :loading="checkinLoading"
+              :disabled="checkedIn"
+              @click="handleCheckin"
+            >
+              <i class="fas fa-calendar-check"></i>
+              {{ checkedIn ? '已签到' : '签到' }}
+            </el-button>
+            <el-button
+              type="primary"
+              class="recharge-btn"
+              @click="showRechargeDialog"
+            >
+              <i class="fas fa-plus"></i>
+              充值
+            </el-button>
+          </div>
         </div>
       </div>
       <div 
@@ -494,7 +506,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, useApi, parsePaymentMethods } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import DOMPurify from 'dompurify'
 const router = useRouter()
@@ -531,6 +543,29 @@ const subscriptionInfo = ref({
   expiryDate: '未设置',
   status: 'inactive'
 })
+const checkinLoading = ref(false)
+const checkedIn = ref(false)
+const handleCheckin = async () => {
+  checkinLoading.value = true
+  try {
+    const res = await checkinAPI.checkin()
+    const data = res.data?.data || res.data
+    checkedIn.value = true
+    userInfo.value.balance = data.balance
+    ElMessage.success(`签到成功！获得 ¥${data.amount} 奖励`)
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '签到失败')
+  } finally {
+    checkinLoading.value = false
+  }
+}
+const loadCheckinStatus = async () => {
+  try {
+    const res = await checkinAPI.getStatus()
+    const data = res.data?.data || res.data
+    checkedIn.value = data.checked_in
+  } catch (e) {}
+}
 const rechargeDialogVisible = ref(false)
 const rechargeForm = ref({
   amount: 20
@@ -1480,6 +1515,7 @@ onMounted(() => {
   }
   loadUserInfo() // 这个接口现在返回所有数据（包括订阅和公告）
   loadSoftwareConfig()
+  loadCheckinStatus()
   setTimeout(() => {
     checkAndShowAnnouncement()
   }, 1000)
@@ -1895,6 +1931,24 @@ onUnmounted(() => {
   .balance-main {
     flex: 1;
     min-width: 0;
+  }
+  .balance-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .balance-actions .el-button {
+    padding: 8px 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    box-sizing: border-box;
+    height: auto;
+  }
+  .balance-actions .el-button i {
+    margin-right: 4px;
+    font-size: 12px;
   }
   .recharge-btn {
     margin-left: 12px;
@@ -2856,13 +2910,24 @@ onUnmounted(() => {
     }
     .balance-card {
       .stat-content {
-        flex-direction: row;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
         gap: 12px;
       }
       .balance-main {
         flex: 1;
         min-width: 0;
+        text-align: center;
+      }
+      .balance-actions {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+      }
+      .balance-actions .el-button {
+        flex: 1;
+        padding: 8px 12px;
+        font-size: 0.75rem;
       }
       .recharge-btn {
         padding: 6px 12px;

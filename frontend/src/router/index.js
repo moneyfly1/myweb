@@ -77,6 +77,7 @@ const routes = [
       { path: 'settings', name: 'UserSettings', component: () => import('@/views/UserSettings.vue'), meta: { title: '用户设置', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '用户设置', path: '/settings' }] } },
       { path: 'tutorials', name: 'SoftwareTutorials', component: () => import('@/components/tutorials/SoftwareTutorials.vue'), meta: { title: '软件教程', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '软件教程', path: '/tutorials' }] } },
       { path: 'invites', name: 'Invites', component: () => import('@/views/Invites.vue'), meta: { title: '我的邀请', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '我的邀请', path: '/invites' }] } },
+      { path: 'knowledge', name: 'Knowledge', component: () => import('@/views/Knowledge.vue'), meta: { title: '知识库', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '知识库', path: '/knowledge' }] } },
       { path: 'payment/return', name: 'PaymentReturn', component: () => import('@/views/PaymentReturn.vue'), meta: { title: '支付返回', requiresAuth: true } }
     ]
   },
@@ -107,7 +108,10 @@ const routes = [
       { path: 'coupons', name: 'AdminCoupons', component: () => import('@/views/admin/Coupons.vue'), meta: { title: '优惠券管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '优惠券管理', path: '/admin/coupons' }] } },
       { path: 'tickets', name: 'AdminTickets', component: () => import('@/views/admin/Tickets.vue'), meta: { title: '工单管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '工单管理', path: '/admin/tickets' }] } },
       { path: 'invites', name: 'AdminInvites', component: () => import('@/views/admin/Invites.vue'), meta: { title: '邀请管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '邀请管理', path: '/admin/invites' }] } },
-      { path: 'user-levels', name: 'AdminUserLevels', component: () => import('@/views/admin/UserLevels.vue'), meta: { title: '用户等级管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '用户等级管理', path: '/admin/user-levels' }] } }
+      { path: 'user-levels', name: 'AdminUserLevels', component: () => import('@/views/admin/UserLevels.vue'), meta: { title: '用户等级管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '用户等级管理', path: '/admin/user-levels' }] } },
+      { path: 'knowledge', name: 'AdminKnowledge', component: () => import('@/views/admin/Knowledge.vue'), meta: { title: '知识库管理', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '知识库管理', path: '/admin/knowledge' }] } },
+      { path: 'analytics', name: 'AdminAnalytics', component: () => import('@/views/admin/Analytics.vue'), meta: { title: '用户分析', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '用户分析', path: '/admin/analytics' }] } },
+      { path: 'promotions', name: 'AdminPromotions', component: () => import('@/views/admin/Promotions.vue'), meta: { title: '营销活动', breadcrumb: [{ title: '管理后台', path: '/admin/dashboard' }, { title: '营销活动', path: '/admin/promotions' }] } }
     ]
   },
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFound.vue') }
