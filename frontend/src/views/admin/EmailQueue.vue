@@ -130,7 +130,11 @@
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="to_email" label="收件人" min-width="200" />
           <el-table-column prop="subject" label="主题" min-width="250" />
-          <el-table-column prop="email_type" label="邮件类型" width="120" />
+          <el-table-column prop="email_type" label="邮件类型" width="120">
+            <template #default="{ row }">
+              {{ getEmailTypeText(row.email_type) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusTagType(row.status)">
@@ -188,7 +192,7 @@
           <div class="card-row"><span class="label">ID</span><span class="value">#{{ email.id }}</span></div>
           <div class="card-row"><span class="label">收件人</span><span class="value">{{ email.to_email }}</span></div>
           <div class="card-row"><span class="label">主题</span><span class="value">{{ email.subject }}</span></div>
-          <div class="card-row"><span class="label">邮件类型</span><span class="value">{{ email.email_type }}</span></div>
+          <div class="card-row"><span class="label">邮件类型</span><span class="value">{{ getEmailTypeText(email.email_type) }}</span></div>
           <div class="card-row">
             <span class="label">状态</span>
             <span class="value">
@@ -258,7 +262,7 @@
           <el-descriptions-item label="邮件ID">{{ emailDetail.id }}</el-descriptions-item>
           <el-descriptions-item label="收件人">{{ emailDetail.to_email }}</el-descriptions-item>
           <el-descriptions-item label="主题">{{ emailDetail.subject }}</el-descriptions-item>
-          <el-descriptions-item label="邮件类型">{{ emailDetail.email_type }}</el-descriptions-item>
+          <el-descriptions-item label="邮件类型">{{ getEmailTypeText(emailDetail.email_type) }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusTagType(emailDetail.status)">
               {{ getStatusText(emailDetail.status) }}
@@ -280,7 +284,7 @@
           <div class="detail-info-row"><span class="detail-label">邮件ID</span><span class="detail-value">#{{ emailDetail.id }}</span></div>
           <div class="detail-info-row"><span class="detail-label">收件人</span><span class="detail-value">{{ emailDetail.to_email }}</span></div>
           <div class="detail-info-row"><span class="detail-label">主题</span><span class="detail-value">{{ emailDetail.subject }}</span></div>
-          <div class="detail-info-row"><span class="detail-label">邮件类型</span><span class="detail-value">{{ emailDetail.email_type }}</span></div>
+          <div class="detail-info-row"><span class="detail-label">邮件类型</span><span class="detail-value">{{ getEmailTypeText(emailDetail.email_type) }}</span></div>
           <div class="detail-info-row">
             <span class="detail-label">状态</span>
             <span class="detail-value">
@@ -659,6 +663,25 @@ export default {
     const getStatusText = (status) => {
       return STATUS_MAP[status]?.text || status
     }
+    const EMAIL_TYPE_MAP = {
+      verification: '邮箱验证',
+      password_reset: '密码重置',
+      password_changed: '密码已更改',
+      welcome: '欢迎注册',
+      subscription: '订阅配置',
+      subscription_reset: '订阅重置',
+      expiration_reminder: '到期提醒',
+      payment_success: '支付成功',
+      admin_notification: '管理员通知',
+      account_deletion: '账号删除',
+      account_deletion_warning: '账号删除警告',
+      user_created: '账户创建',
+      abnormal_login_alert: '异常登录提醒',
+      marketing: '营销推广'
+    }
+    const getEmailTypeText = (type) => {
+      return EMAIL_TYPE_MAP[type] || type || '-'
+    }
     // 处理 Go sql.NullString JSON 序列化格式 {"String":"...","Valid":true}
     const getErrorMessage = (val) => {
       if (!val) return ''
@@ -714,6 +737,7 @@ export default {
       handleCurrentChange,
       getStatusTagType,
       getStatusText,
+      getEmailTypeText,
       getErrorMessage,
       formatDate
     }

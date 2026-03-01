@@ -2,7 +2,9 @@
   <div class="log-list logs-page">
     <div class="filter-bar desktop-only">
       <el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable style="width: 220px" @keyup.enter="fetch" />
-      <el-select v-model="filter.email_type" placeholder="邮件类型" clearable style="width: 140px" />
+      <el-select v-model="filter.email_type" placeholder="邮件类型" clearable style="width: 140px">
+        <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
+      </el-select>
       <el-select v-model="filter.status" placeholder="状态" clearable style="width: 120px">
         <el-option label="待发送" value="pending" />
         <el-option label="已发送" value="sent" />
@@ -23,6 +25,11 @@
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
         <el-form-item label="收件人"><el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable /></el-form-item>
+        <el-form-item label="邮件类型">
+          <el-select v-model="filter.email_type" placeholder="邮件类型" clearable style="width: 100%">
+            <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="filter.status" placeholder="状态" clearable style="width: 100%">
             <el-option label="待发送" value="pending" />
@@ -44,9 +51,17 @@
       <el-table-column prop="created_at" label="创建时间" width="180" />
       <el-table-column prop="to_email" label="收件人" width="200" />
       <el-table-column prop="subject" label="主题" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="email_type" label="类型" width="120" />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column prop="retry_count" label="重试次数" width="90" />
+      <el-table-column prop="email_type" label="类型" width="120">
+        <template #default="{ row }">
+          {{ getEmailTypeText(row.email_type) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="status" label="状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="getStatusColor(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="retry_count" label="重试" width="70" />
       <el-table-column prop="sent_at" label="发送时间" width="180" />
       <el-table-column prop="error_message" label="错误信息" min-width="180" show-overflow-tooltip />
     </el-table>
@@ -56,8 +71,9 @@
         <div v-for="row in list" :key="row.id" class="mobile-log-card">
           <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">收件人</span><span class="mobile-value">{{ row.to_email || '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value">{{ getEmailTypeText(row.email_type) }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">主题</span><span class="mobile-value mobile-value-wrap">{{ row.subject || '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value">{{ row.status || '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value"><el-tag :type="getStatusColor(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag></span></div>
           <div class="mobile-card-row" v-if="row.error_message"><span class="mobile-label">错误</span><span class="mobile-value mobile-value-wrap">{{ row.error_message }}</span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
@@ -80,6 +96,24 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { adminAPI } from '@/utils/api'
 
 const loading = ref(false)
+const EMAIL_TYPE_MAP = {
+  verification: '邮箱验证', password_reset: '密码重置', password_changed: '密码已更改',
+  welcome: '欢迎注册', subscription: '订阅配置', subscription_reset: '订阅重置',
+  expiration_reminder: '到期提醒', payment_success: '支付成功',
+  admin_notification: '管理员通知', account_deletion: '账号删除',
+  account_deletion_warning: '账号删除警告', user_created: '账户创建',
+  abnormal_login_alert: '异常登录提醒', marketing: '营销推广'
+}
+const getEmailTypeText = (type) => EMAIL_TYPE_MAP[type] || type || '-'
+const getStatusText = (status) => {
+  const map = { pending: '待发送', sent: '已发送', failed: '失败' }
+  return map[status] || status || '-'
+}
+const getStatusColor = (status) => {
+  const map = { pending: 'warning', sent: 'success', failed: 'danger' }
+  return map[status] || 'info'
+}
+
 const list = ref([])
 const total = ref(0)
 const page = ref(1)

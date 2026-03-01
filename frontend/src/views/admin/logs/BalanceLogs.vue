@@ -2,8 +2,9 @@
   <div class="log-list logs-page">
     <div class="filter-bar desktop-only">
       <el-input v-model="filter.keyword" placeholder="用户名/邮箱" clearable style="width: 200px" @keyup.enter="fetch" />
-      <el-input v-model="filter.user_id" placeholder="用户ID" clearable style="width: 100px" />
-      <el-select v-model="filter.change_type" placeholder="变更类型" clearable style="width: 120px" />
+      <el-select v-model="filter.change_type" placeholder="变更类型" clearable style="width: 120px">
+        <el-option v-for="(label, value) in CHANGE_TYPE_MAP" :key="value" :label="label" :value="value" />
+      </el-select>
       <el-date-picker
         v-model="filter.timeRange"
         type="datetimerange"
@@ -19,6 +20,11 @@
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
         <el-form-item label="关键词"><el-input v-model="filter.keyword" placeholder="用户名/邮箱" clearable /></el-form-item>
+        <el-form-item label="变更类型">
+          <el-select v-model="filter.change_type" placeholder="变更类型" clearable style="width: 100%">
+            <el-option v-for="(label, value) in CHANGE_TYPE_MAP" :key="value" :label="label" :value="value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="时间范围">
           <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
         </el-form-item>
@@ -31,16 +37,28 @@
     <div class="table-wrapper desktop-only">
     <el-table v-loading="loading" :data="list" stripe border>
       <el-table-column prop="created_at" label="时间" width="180" />
-      <el-table-column prop="user_id" label="用户ID" width="90" />
-      <el-table-column prop="username" label="用户名" width="120" />
-      <el-table-column prop="change_type" label="变更类型" width="100" />
-      <el-table-column prop="amount" label="金额" width="120" />
-      <el-table-column prop="balance_before" label="变更前余额" width="120" />
-      <el-table-column prop="balance_after" label="变更后余额" width="120" />
+      <el-table-column label="用户" width="120">
+        <template #default="{ row }">
+          <span>{{ row.username || '-' }}</span>
+          <div class="sub-text">ID: {{ row.user_id }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="change_type" label="变更类型" width="100">
+        <template #default="{ row }">
+          <el-tag :type="getChangeTypeColor(row.change_type)" size="small">{{ getChangeTypeText(row.change_type) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="amount" label="金额" width="100">
+        <template #default="{ row }">
+          <span :class="row.amount >= 0 ? 'text-green' : 'text-red'">{{ row.amount >= 0 ? '+' : '' }}{{ row.amount }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="余额变化" width="140">
+        <template #default="{ row }">{{ row.balance_before }} → {{ row.balance_after }}</template>
+      </el-table-column>
       <el-table-column prop="order_no" label="关联订单" width="140" />
       <el-table-column prop="description" label="说明" min-width="160" show-overflow-tooltip />
       <el-table-column prop="operator_user" label="操作人" width="100" />
-      <el-table-column prop="ip_address" label="IP/地区" width="140" show-overflow-tooltip />
     </el-table>
     </div>
     <div class="mobile-only mobile-card-list">
@@ -48,8 +66,9 @@
         <div v-for="row in list" :key="row.id" class="mobile-log-card">
           <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">金额</span><span class="mobile-value">{{ row.amount ?? '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">变更后</span><span class="mobile-value">{{ row.balance_after ?? '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value"><el-tag :type="getChangeTypeColor(row.change_type)" size="small">{{ getChangeTypeText(row.change_type) }}</el-tag></span></div>
+          <div class="mobile-card-row"><span class="mobile-label">金额</span><span class="mobile-value" :class="row.amount >= 0 ? 'text-green' : 'text-red'">{{ row.amount >= 0 ? '+' : '' }}{{ row.amount }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">余额</span><span class="mobile-value">{{ row.balance_before }} → {{ row.balance_after }}</span></div>
           <div class="mobile-card-row" v-if="row.description"><span class="mobile-label">说明</span><span class="mobile-value mobile-value-wrap">{{ row.description }}</span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
@@ -76,9 +95,19 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+
+const CHANGE_TYPE_MAP = {
+  recharge: '充值', consume: '消费', refund: '退款',
+  commission: '佣金', gift: '赠送', admin_adjust: '管理员调整'
+}
+const getChangeTypeText = (type) => CHANGE_TYPE_MAP[type] || type || '-'
+const getChangeTypeColor = (type) => {
+  const map = { recharge: 'success', consume: 'danger', refund: 'warning', commission: '', gift: 'info', admin_adjust: 'warning' }
+  return map[type] || 'info'
+}
+
 const filter = ref({
   keyword: '',
-  user_id: '',
   change_type: '',
   timeRange: null
 })
@@ -91,7 +120,6 @@ async function fetch() {
   try {
     const params = { page: page.value, page_size: pageSize.value }
     if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.user_id) params.user_id = filter.value.user_id
     if (filter.value.change_type) params.change_type = filter.value.change_type
     if (filter.value.timeRange && filter.value.timeRange.length === 2) {
       params.start_time = filter.value.timeRange[0]
@@ -109,7 +137,7 @@ async function fetch() {
 }
 
 function resetFilter() {
-  filter.value = { keyword: '', user_id: '', change_type: '', timeRange: null }
+  filter.value = { keyword: '', change_type: '', timeRange: null }
   page.value = 1
   fetch()
 }
@@ -127,6 +155,9 @@ onUnmounted(() => { window.removeEventListener('resize', checkMobile) })
 .log-list { padding: 0; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
+.sub-text { font-size: 12px; color: #909399; }
+.text-green { color: #67c23a; }
+.text-red { color: #f56c6c; }
 .desktop-only { display: block; }
 .mobile-only { display: none; }
 .mobile-filter-form { width: 100%; }

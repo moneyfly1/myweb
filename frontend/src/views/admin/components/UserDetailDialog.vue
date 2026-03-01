@@ -156,9 +156,19 @@
               v-loading="loadingDevices"
             >
               <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
-              <el-table-column prop="device_type" label="类型" width="80" />
+              <el-table-column prop="device_type" label="类型" width="80">
+                <template #default="scope">
+                  <el-tag :type="getDeviceTypeColor(scope.row.device_type)" size="small">
+                    {{ getDeviceTypeName(scope.row.device_type) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column prop="ip_address" label="IP地址" width="130" show-overflow-tooltip />
-              <el-table-column prop="location" label="归属地" min-width="100" show-overflow-tooltip />
+              <el-table-column prop="location" label="归属地" min-width="100" show-overflow-tooltip>
+                <template #default="scope">
+                  {{ displayLocation(scope.row.location) }}
+                </template>
+              </el-table-column>
               <el-table-column prop="last_access" label="最后访问" width="160">
                 <template #default="scope">
                   {{ formatDateTime(scope.row.last_access || scope.row.last_seen) }}
@@ -189,9 +199,19 @@
                 style="width: 100%"
               >
                 <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
-                <el-table-column prop="device_type" label="类型" width="80" />
+                <el-table-column prop="device_type" label="类型" width="80">
+                  <template #default="scope">
+                    <el-tag :type="getDeviceTypeColor(scope.row.device_type)" size="small">
+                      {{ getDeviceTypeName(scope.row.device_type) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="ip_address" label="IP地址" width="130" />
-                <el-table-column prop="location" label="位置" min-width="100" show-overflow-tooltip />
+                <el-table-column prop="location" label="位置" min-width="100" show-overflow-tooltip>
+                  <template #default="scope">
+                    {{ displayLocation(scope.row.location) }}
+                  </template>
+                </el-table-column>
                 <el-table-column prop="last_access" label="最后访问" width="160">
                   <template #default="scope">
                     {{ formatDateTime(scope.row.last_access) }}
@@ -218,7 +238,11 @@
               </template>
             </el-table-column>
             <el-table-column prop="ip_address" label="IP地址" width="130" />
-            <el-table-column prop="location" label="位置" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="location" label="位置" min-width="120" show-overflow-tooltip>
+              <template #default="scope">
+                {{ displayLocation(scope.row.location) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="user_agent" label="User Agent" min-width="200" show-overflow-tooltip />
             <el-table-column prop="login_status" label="登录状态" width="100">
               <template #default="scope">
@@ -431,7 +455,7 @@
 
 <script>
 import { adminAPI } from '@/utils/api'
-import { formatDate as formatDateUtil } from '@/utils/date'
+import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Wallet,
@@ -536,6 +560,19 @@ export default {
     this._unmounted = true
   },
   methods: {
+    getDeviceTypeName(type) {
+      const map = { mobile: '手机', desktop: '电脑', tablet: '平板', server: '服务器', unknown: '未知' }
+      return map[type] || type || '未知'
+    },
+    getDeviceTypeColor(type) {
+      const map = { mobile: 'primary', desktop: 'success', tablet: 'warning', server: 'danger', unknown: 'info' }
+      return map[type] || 'info'
+    },
+    displayLocation(loc) {
+      if (!loc) return '-'
+      const result = formatLocation(loc)
+      return result || loc
+    },
     formatDate(date) {
       if (!date) return ''
       return formatDateUtil(date)
