@@ -1,21 +1,25 @@
 <template>
   <div class="list-container packages-container">
-    <div v-if="isLoading" class="loading-container">
-      <el-icon class="is-loading"><Loading /></el-icon>
-      <p>正在加载套餐列表...</p>
-    </div>
-    <div v-else-if="errorMessage" class="error-container">
-      <el-alert
-        :title="errorMessage"
-        type="error"
-        :closable="false"
-        show-icon
-      />
-      <el-button @click="loadPackages" type="primary" style="margin-top: 10px;">
-        重试加载
-      </el-button>
-    </div>
-    <div v-else-if="packages.length > 0" class="packages-grid">
+    <!-- 加载状态 -->
+    <LoadingState v-if="isLoading" text="正在加载套餐列表..." />
+
+    <!-- 错误状态 -->
+    <ErrorState
+      v-else-if="errorMessage"
+      :message="errorMessage"
+      @retry="loadPackages"
+    />
+
+    <!-- 空状态 -->
+    <EmptyState
+      v-else-if="packages.length === 0"
+      type="empty"
+      title="暂无可用套餐"
+      description="当前没有可购买的套餐，请稍后再试"
+    />
+
+    <!-- 套餐列表 -->
+    <div v-else class="packages-grid">
       <el-card 
         v-for="pkg in packages" 
         :key="pkg.id" 
@@ -69,9 +73,6 @@
           </el-button>
         </div>
       </el-card>
-    </div>
-    <div v-else class="empty-container">
-      <el-empty description="暂无可用套餐" />
     </div>
     <el-dialog
       v-model="purchaseDialogVisible"
@@ -439,6 +440,9 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion } from '@element-plus/icons-vue'
 import { useApi, couponAPI, userAPI, userLevelAPI, parsePaymentMethods } from '@/utils/api'
+import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
+import ErrorState from '@/components/ErrorState.vue'
 export default {
   name: 'Packages',
   components: {
@@ -448,7 +452,10 @@ export default {
     CreditCard,
     Money,
     StarFilled,
-    Promotion
+    Promotion,
+    EmptyState,
+    LoadingState,
+    ErrorState
   },
   setup() {
     const router = useRouter()
