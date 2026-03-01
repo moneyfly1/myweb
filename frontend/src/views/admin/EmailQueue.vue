@@ -315,7 +315,7 @@
             <el-input
               v-model="emailDetail.content"
               type="textarea"
-              :rows="isMobile ? 8 : 10"
+              :autosize="{ minRows: 4, maxRows: 30 }"
               readonly
               class="email-text-content"
             />
@@ -794,20 +794,29 @@ export default {
   gap: 10px;
 }
 .email-detail {
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 .detail-section {
-  margin-top: 20px;
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   :is(h4) {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     color: #333;
-    font-size: 1rem;
+    font-size: 0.9rem;
+    flex-shrink: 0;
   }
 }
 .email-content-html {
   border: 1px solid #ddd;
   border-radius: 4px;
-  max-height: 500px;
+  flex: 1;
+  min-height: 120px;
   overflow-y: auto;
   overflow-x: clip;
   background-color: #f4f4f4;
@@ -816,8 +825,8 @@ export default {
 }
 .email-html-iframe {
   width: 100%;
-  min-height: 150px;
-  max-height: 600px;
+  height: 100%;
+  min-height: 120px;
   border: none;
   background-color: #f4f4f4;
   border-radius: 4px;
@@ -828,8 +837,8 @@ export default {
 }
 .email-html-content {
   width: 100%;
-  min-height: 100px;
-  padding: 20px;
+  min-height: 80px;
+  padding: 16px;
   background-color: #f4f4f4;
   display: flex;
   justify-content: center;
@@ -863,9 +872,15 @@ export default {
 .template-data-content,
 .smtp-response-content {
   width: 100%;
+  flex: 1;
+}
+.email-content-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 .email-content-empty {
-  padding: 20px;
+  padding: 16px;
   text-align: center;
   color: #909399;
 }
@@ -890,27 +905,28 @@ export default {
   display: none;
   @media (max-width: 768px) {
     display: block;
-    margin-bottom: 20px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
   }
   .detail-info-row {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 12px 0;
+    padding: 8px 0;
     border-bottom: 1px solid #f0f0f0;
     &:last-child { border-bottom: none; }
     .detail-label {
       font-weight: 600;
       color: #606266;
-      font-size: 14px;
-      min-width: 100px;
+      font-size: 13px;
+      min-width: 80px;
       flex-shrink: 0;
     }
     .detail-value {
       flex: 1;
       text-align: right;
       color: #303133;
-      font-size: 14px;
+      font-size: 13px;
       word-break: break-all;
     }
   }
@@ -998,6 +1014,13 @@ export default {
       overflow-y: auto;
     }
   }
+}
+// 让抽屉body撑满以便邮件内容区自适应高度
+:deep(.el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
 }
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;
