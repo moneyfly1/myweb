@@ -512,11 +512,14 @@ export default {
     }
   },
   watch: {
-    visible(val) {
-      if (val && this.user) {
+    visible(val, oldVal) {
+      if (val && !oldVal && this.user) {
         this.activeTab = this.initialTab
-        this.loadDevices()
-        if (this.activeTab === 'custom-nodes') {
+        this.devices = []
+        this.customNodes = []
+        if (this.activeTab === 'devices') {
+          this.loadDevices()
+        } else if (this.activeTab === 'custom-nodes') {
           this.loadUserCustomNodes()
         }
       }
@@ -524,8 +527,13 @@ export default {
     activeTab(val) {
       if (val === 'custom-nodes' && this.customNodes.length === 0) {
         this.loadUserCustomNodes()
+      } else if (val === 'devices' && this.devices.length === 0 && !this.loadingDevices) {
+        this.loadDevices()
       }
     }
+  },
+  beforeUnmount() {
+    this._unmounted = true
   },
   methods: {
     formatDate(date) {
@@ -595,12 +603,12 @@ export default {
       }
     },
     async loadDevices() {
+      if (this._unmounted) return
       const userId = this.user?.user_info?.id || this.user?.id
       if (!userId) {
         this.devices = []
         return
       }
-      // 需要找到用户的订阅ID来加载设备
       const subscriptions = this.user?.subscriptions || []
       if (subscriptions.length === 0) {
         this.devices = []
@@ -608,7 +616,6 @@ export default {
       }
       this.loadingDevices = true
       try {
-        // 并行请求所有订阅的设备，避免串行等待导致卡顿
         const subIds = subscriptions
           .map(sub => sub.id || sub.subscription_id)
           .filter(Boolean)
@@ -640,14 +647,24 @@ export default {
             subscription_id: subId
           }))
         }
-        const results = await Promise.all(
-          subIds.map(subId =>
-            adminAPI.getSubscriptionDevices(subId)
-              .then(response => parseDevices(response, subId))
-              .catch(() => [])
+        // 限制并发数为5，避免大量订阅时同时发起过多请求
+        const CONCURRENCY = 5
+        const allDevices = []
+        for (let i = 0; i < subIds.length; i += CONCURRENCY) {
+          if (this._unmounted) return
+          const batch = subIds.slice(i, i + CONCURRENCY)
+          const results = await Promise.all(
+            batch.map(subId =>
+              adminAPI.getSubscriptionDevices(subId)
+                .then(response => parseDevices(response, subId))
+                .catch(() => [])
+            )
           )
-        )
-        this.devices = results.flat()
+          allDevices.push(...results.flat())
+        }
+        if (!this._unmounted) {
+          this.devices = allDevices
+        }
       } catch (error) {
         console.error('加载设备列表失败:', error)
         this.devices = []
@@ -939,44 +956,48 @@ export default {
 
   @media (max-width: 768px) {
     .drawer-content {
-      padding: 10px;
+      padding: 8px;
+    }
+
+    .balance-highlight {
+      font-size: 13px;
     }
 
     .url-section {
-      padding: 8px;
-      gap: 8px;
+      padding: 6px;
+      gap: 6px;
     }
 
     .url-item {
       .url-header {
         .url-label {
-          font-size: 12px;
+          font-size: 11px;
         }
       }
       .url-code {
-        font-size: 11px;
-        padding: 6px 8px;
+        font-size: 10px;
+        padding: 4px 6px;
       }
     }
 
     .el-table {
-      font-size: 12px;
+      font-size: 11px;
     }
 
     :deep(.el-descriptions) {
       .el-descriptions__body {
         .el-descriptions__table {
           .el-descriptions__cell {
-            padding: 6px 8px;
+            padding: 4px 6px;
           }
           .el-descriptions__label {
-            font-size: 12px;
-            width: 70px;
-            min-width: 70px;
+            font-size: 11px;
+            width: 62px;
+            min-width: 62px;
             word-break: keep-all;
           }
           .el-descriptions__content {
-            font-size: 12px;
+            font-size: 11px;
             word-break: break-all;
           }
         }
@@ -985,20 +1006,47 @@ export default {
 
     :deep(.el-tabs__item) {
       font-size: 12px;
-      padding: 0 8px;
+      padding: 0 6px;
     }
 
     :deep(.el-divider__text) {
-      font-size: 13px;
-      padding: 0 8px;
+      font-size: 12px;
+      padding: 0 6px;
+    }
+
+    :deep(.el-divider) {
+      margin: 10px 0;
     }
 
     .subscription-section {
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
 
     .records-tabs {
-      margin-top: 12px;
+      margin-top: 8px;
+    }
+
+    .custom-nodes-section {
+      .custom-nodes-actions {
+        margin-bottom: 10px;
+        gap: 6px;
+      }
+    }
+
+    .devices-section {
+      .devices-actions {
+        margin-bottom: 8px;
+        gap: 6px;
+      }
+      .device-count-tip {
+        font-size: 11px;
+      }
+    }
+
+    .el-button {
+      font-size: 12px;
+      padding: 4px 8px;
+      min-height: 28px;
     }
   }
 }

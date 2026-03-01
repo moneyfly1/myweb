@@ -498,28 +498,28 @@ $breakpoints: (
   }
   .el-drawer {
     .el-drawer__header {
-      padding: 16px 20px;
+      padding: 12px 16px;
       margin-bottom: 0;
       border-bottom: 1px solid var(--theme-border);
       .el-drawer__title {
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 600;
       }
     }
     .el-drawer__body {
-      padding: 20px;
+      padding: 12px 14px;
     }
   }
   .el-dialog {
-    width: 95% !important;
-    margin: 1vh auto !important;
-    max-height: 98vh;
+    width: 88% !important;
+    margin: 5vh auto !important;
+    max-height: 90vh;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
     .el-dialog__header {
-      padding: 16px 16px 12px;
+      padding: 12px 14px 10px;
       flex-shrink: 0;
       border-bottom: 1px solid #ebeef5;
       background: #ffffff;
@@ -527,16 +527,16 @@ $breakpoints: (
       top: 0;
       z-index: 10;
       .el-dialog__title {
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 600;
         color: #303133;
         line-height: 1.5;
       }
       .el-dialog__headerbtn {
-        top: 12px;
-        right: 12px;
-        width: 36px;
-        height: 36px;
+        top: 10px;
+        right: 10px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -552,11 +552,11 @@ $breakpoints: (
       }
     }
     .el-dialog__body {
-      padding: 16px !important;
+      padding: 12px 14px !important;
       flex: 1;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      max-height: calc(98vh - 140px);
+      max-height: calc(90vh - 120px);
       background: #ffffff;
       &::-webkit-scrollbar {
         width: 4px;
@@ -567,20 +567,20 @@ $breakpoints: (
       }
     }
     .el-dialog__footer {
-      padding: 12px 16px 16px;
+      padding: 10px 14px 14px;
       flex-shrink: 0;
       border-top: 1px solid #ebeef5;
       background: #ffffff;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
       position: sticky;
       bottom: 0;
       z-index: 10;
       .el-button {
         width: 100%;
-        min-height: 38px;
-        font-size: 15px;
+        min-height: 34px;
+        font-size: 14px;
         font-weight: 500;
         margin: 0 !important;
         border-radius: 6px;
@@ -593,14 +593,14 @@ $breakpoints: (
     .el-form {
       width: 100%;
       .el-form-item {
-        margin-bottom: 20px;
+        margin-bottom: 14px;
         .el-form-item__label {
           width: 100% !important;
           text-align: left !important;
-          margin-bottom: 8px !important;
+          margin-bottom: 4px !important;
           padding: 0 !important;
           font-weight: 500;
-          font-size: 14px;
+          font-size: 13px;
           color: #303133;
           line-height: 1.5;
         }
@@ -617,62 +617,62 @@ $breakpoints: (
       .el-input__inner,
       .el-textarea__inner {
         font-size: 14px !important;
-        min-height: 36px;
+        min-height: 32px;
         padding: 0 10px;
         border-radius: 4px;
       }
     }
     .el-select .el-input__inner {
-      height: 36px;
-      line-height: 36px;
+      height: 32px;
+      line-height: 32px;
     }
     .el-textarea {
       .el-textarea__inner {
-        min-height: 100px;
-        padding: 12px;
-        line-height: 1.6;
+        min-height: 72px;
+        padding: 8px 10px;
+        line-height: 1.5;
         resize: vertical;
       }
     }
     .el-select-dropdown {
       .el-select-dropdown__item {
-        min-height: 44px;
-        font-size: 15px;
-        padding: 12px 20px;
+        min-height: 38px;
+        font-size: 14px;
+        padding: 8px 16px;
         line-height: 1.5;
       }
     }
     .el-switch {
-      height: 24px;
-      line-height: 24px;
+      height: 22px;
+      line-height: 22px;
     }
     .el-tabs {
       .el-tabs__header {
-        margin-bottom: 16px;
+        margin-bottom: 12px;
       }
       .el-tabs__nav {
         .el-tabs__item {
-          font-size: 15px;
-          padding: 12px 16px;
-          min-height: 44px;
+          font-size: 13px;
+          padding: 8px 12px;
+          min-height: 36px;
         }
       }
     }
     .el-card {
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       .el-card__header {
-        padding: 12px 16px;
-        font-size: 14px;
+        padding: 10px 14px;
+        font-size: 13px;
       }
       .el-card__body {
-        padding: 16px;
+        padding: 12px 14px;
       }
     }
     .el-alert {
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       .el-alert__content {
-        font-size: 14px;
-        line-height: 1.6;
+        font-size: 13px;
+        line-height: 1.5;
       }
     }
   }
@@ -682,43 +682,43 @@ $breakpoints: (
     .el-input__inner,
     .el-textarea__inner {
       font-size: 16px !important; /* 16px防止iOS自动缩放 */
-      min-height: 44px;
+      min-height: 40px;
       padding: 0 12px;
     }
   }
   .el-select .el-input__inner {
-    height: 44px;
-    line-height: 44px;
+    height: 40px;
+    line-height: 40px;
   }
   .el-button {
-    min-height: 44px;
-    font-size: 16px;
-    padding: 12px 20px;
+    min-height: 40px;
+    font-size: 14px;
+    padding: 10px 16px;
     -webkit-tap-highlight-color: rgba(0,0,0,0.1);
     &.el-button--small {
-      min-height: 40px;
-      font-size: 15px;
-      padding: 10px 16px;
+      min-height: 36px;
+      font-size: 13px;
+      padding: 8px 14px;
     }
     &.el-button--mini {
-      min-height: 36px;
-      font-size: 14px;
-      padding: 8px 12px;
+      min-height: 32px;
+      font-size: 12px;
+      padding: 6px 10px;
     }
   }
   .el-dropdown-menu {
     .el-dropdown-menu__item {
-      min-height: 44px;
-      font-size: 15px;
-      padding: 12px 20px;
+      min-height: 40px;
+      font-size: 14px;
+      padding: 10px 16px;
       line-height: 1.5;
     }
   }
   .el-select-dropdown {
     .el-select-dropdown__item {
-      min-height: 44px;
-      font-size: 15px;
-      padding: 12px 20px;
+      min-height: 40px;
+      font-size: 14px;
+      padding: 10px 16px;
       line-height: 1.5;
     }
   }
@@ -1010,34 +1010,129 @@ $breakpoints: (
 /* 管理后台移动端：弹窗/抽屉避免满屏，留出边距 */
 @media (max-width: 768px) {
   .el-drawer {
-    width: 92% !important;
-    max-width: 92% !important;
+    width: 85% !important;
+    max-width: 85% !important;
     .el-drawer__header {
-      padding: 16px 20px;
+      padding: 12px 16px;
       margin-bottom: 0;
-      font-size: 16px;
+      border-bottom: 1px solid var(--theme-border);
+      .el-drawer__title {
+        font-size: 15px;
+        font-weight: 600;
+      }
     }
     .el-drawer__body {
-      padding: 16px 20px 24px;
+      padding: 12px 14px 20px;
       overflow-y: auto;
-      max-height: calc(100vh - 80px);
+      max-height: calc(100vh - 60px);
+      font-size: 13px;
+    }
+    .el-drawer__footer {
+      padding: 10px 14px 14px;
+      border-top: 1px solid #ebeef5;
+    }
+    // 抽屉内表单紧凑化
+    .el-form-item {
+      margin-bottom: 14px;
+      .el-form-item__label {
+        font-size: 13px;
+        padding-bottom: 2px;
+      }
+    }
+    .el-input__inner {
+      font-size: 14px;
+      height: 34px;
+    }
+    .el-textarea__inner {
+      font-size: 13px;
+    }
+    .el-button {
+      font-size: 13px;
+      min-height: 34px;
+      padding: 6px 12px;
+      &.el-button--small {
+        font-size: 12px;
+        min-height: 30px;
+        padding: 4px 10px;
+      }
+    }
+    .el-descriptions {
+      .el-descriptions__cell {
+        padding: 5px 8px;
+        font-size: 12px;
+      }
+      .el-descriptions__label {
+        font-size: 12px;
+      }
+      .el-descriptions__content {
+        font-size: 12px;
+      }
+    }
+    .el-table {
+      font-size: 12px;
+      .el-table__cell {
+        padding: 4px 2px;
+      }
+    }
+    .el-tag {
+      font-size: 11px;
+      padding: 0 6px;
+      height: 20px;
+      line-height: 20px;
+    }
+    .el-tabs__item {
+      font-size: 13px;
+      padding: 0 10px;
+      height: 34px;
+      line-height: 34px;
+    }
+    .el-divider__text {
+      font-size: 12px;
+    }
+    .el-select {
+      .el-input__inner {
+        font-size: 14px;
+      }
+    }
+    .el-input-number {
+      .el-input__inner {
+        font-size: 14px;
+      }
     }
   }
   .el-dialog {
-    width: 92% !important;
-    max-width: 92% !important;
-    margin: 4vh auto !important;
+    width: 88% !important;
+    max-width: 88% !important;
+    margin: 5vh auto !important;
     border-radius: 12px;
     .el-dialog__header {
-      padding: 14px 16px;
+      padding: 12px 14px;
+      border-bottom: 1px solid #ebeef5;
+      .el-dialog__title {
+        font-size: 15px;
+        font-weight: 600;
+      }
     }
     .el-dialog__body {
-      padding: 14px 16px;
-      max-height: calc(90vh - 120px);
+      padding: 12px 14px;
+      max-height: calc(88vh - 120px);
       overflow-y: auto;
+      font-size: 13px;
     }
     .el-dialog__footer {
-      padding: 12px 16px 16px;
+      padding: 10px 14px 14px;
+      border-top: 1px solid #ebeef5;
+      .el-button {
+        font-size: 13px;
+        min-height: 34px;
+      }
+    }
+    // 弹窗内表单紧凑化
+    .el-form-item {
+      margin-bottom: 14px;
+      .el-form-item__label {
+        font-size: 13px;
+      }
     }
   }
 } 
