@@ -250,17 +250,19 @@ func GetRevenueAnalytics(c *gin.Context) {
 		previousStart, previousEnd = utils.GetDayRange(yesterday)
 	}
 
-	// 当前期间收入
+	// 当前期间收入 - 使用 final_amount（实际支付金额），如果为空则使用 amount
 	var currentRevenue float64
 	db.Model(&models.Order{}).
 		Where("status = ? AND created_at >= ? AND created_at < ?", "paid", currentStart, currentEnd).
-		Select("COALESCE(SUM(amount), 0)").Scan(&currentRevenue)
+		Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END), 0)").
+		Scan(&currentRevenue)
 
 	// 上期收入
 	var previousRevenue float64
 	db.Model(&models.Order{}).
 		Where("status = ? AND created_at >= ? AND created_at < ?", "paid", previousStart, previousEnd).
-		Select("COALESCE(SUM(amount), 0)").Scan(&previousRevenue)
+		Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END), 0)").
+		Scan(&previousRevenue)
 
 	// 订单数量
 	var orderCount int64
@@ -288,6 +290,9 @@ func GetRevenueAnalytics(c *gin.Context) {
 		"change_rate":  changeRate,
 		"order_count":  orderCount,
 		"avg_order":    formatMoney(avgOrder),
+		"time_range":   timeRange,
+		"current_start": currentStart.Format("2006-01-02 15:04:05"),
+		"current_end":   currentEnd.Format("2006-01-02 15:04:05"),
 	})
 }
 
