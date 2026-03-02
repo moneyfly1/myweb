@@ -46,29 +46,60 @@ func GetUserAnalytics(c *gin.Context) {
 		monthStart = now.AddDate(0, -1, 0)
 	}
 
-	// DAU - 当前期间活跃用户
-	db.Model(&models.UserActivity{}).
-		Where("created_at >= ? AND created_at < ?", currentStart, currentEnd).
-		Distinct("user_id").Count(&dau)
+	// 优先使用 user_activities 表，如果为空则使用 users.last_login
+	var activityCount int64
+	db.Model(&models.UserActivity{}).Count(&activityCount)
 
-	// WAU - 根据时间范围计算
-	if timeRange == "day" {
-		// 今日模式：最近7天活跃用户
-		db.Model(&models.UserActivity{}).Where("created_at >= ?", weekStart).
-			Distinct("user_id").Count(&wau)
-	} else {
-		// 本月/本年模式：当前期间活跃用户（与DAU相同）
-		wau = dau
-	}
+	if activityCount > 0 {
+		// 使用 user_activities 表统计
+		// DAU - 当前期间活跃用户
+		db.Model(&models.UserActivity{}).
+			Where("created_at >= ? AND created_at < ?", currentStart, currentEnd).
+			Distinct("user_id").Count(&dau)
 
-	// MAU - 根据时间范围计算
-	if timeRange == "day" {
-		// 今日模式：最近30天活跃用户
-		db.Model(&models.UserActivity{}).Where("created_at >= ?", monthStart).
-			Distinct("user_id").Count(&mau)
+		// WAU - 根据时间范围计算
+		if timeRange == "day" {
+			// 今日模式：最近7天活跃用户
+			db.Model(&models.UserActivity{}).Where("created_at >= ?", weekStart).
+				Distinct("user_id").Count(&wau)
+		} else {
+			// 本月/本年模式：当前期间活跃用户（与DAU相同）
+			wau = dau
+		}
+
+		// MAU - 根据时间范围计算
+		if timeRange == "day" {
+			// 今日模式：最近30天活跃用户
+			db.Model(&models.UserActivity{}).Where("created_at >= ?", monthStart).
+				Distinct("user_id").Count(&mau)
+		} else {
+			// 本月/本年模式：当前期间活跃用户（与DAU相同）
+			mau = dau
+		}
 	} else {
-		// 本月/本年模式：当前期间活跃用户（与DAU相同）
-		mau = dau
+		// 使用 users.last_login 统计（备用方案）
+		// DAU - 当前期间登录的用户
+		db.Model(&models.User{}).
+			Where("last_login >= ? AND last_login < ?", currentStart, currentEnd).
+			Count(&dau)
+
+		// WAU - 根据时间范围计算
+		if timeRange == "day" {
+			// 今日模式：最近7天登录的用户
+			db.Model(&models.User{}).Where("last_login >= ?", weekStart).Count(&wau)
+		} else {
+			// 本月/本年模式：当前期间登录的用户（与DAU相同）
+			wau = dau
+		}
+
+		// MAU - 根据时间范围计算
+		if timeRange == "day" {
+			// 今日模式：最近30天登录的用户
+			db.Model(&models.User{}).Where("last_login >= ?", monthStart).Count(&mau)
+		} else {
+			// 本月/本年模式：当前期间登录的用户（与DAU相同）
+			mau = dau
+		}
 	}
 
 	var totalUsers int64
@@ -89,13 +120,18 @@ func GetRetentionAnalytics(c *gin.Context) {
 	now := utils.GetBeijingTime()
 
 	type RetentionData struct {
-		Day       int     `json:"day"`
-		Retained  int64   `json:"retained"`
-		Total     int64   `json:"total"`
-		Rate      float64 `json:"rate"`
+		Day      int     `json:"day"`
+		Retained int64   `json:"retained"`
+		Total    int64   `json:"total"`
+		Rate     float64 `json:"rate"`
 	}
 
 	var result []RetentionData
+
+	// 检查是否有用户活动数据
+	var activityCount int64
+	db.Model(&models.UserActivity{}).Count(&activityCount)
+
 	for _, days := range []int{1, 3, 7, 14, 30} {
 		registerStart := now.AddDate(0, 0, -days-1)
 		registerEnd := now.AddDate(0, 0, -days)
@@ -105,11 +141,19 @@ func GetRetentionAnalytics(c *gin.Context) {
 
 		var retained int64
 		if totalNew > 0 {
-			db.Model(&models.UserActivity{}).
-				Where("created_at >= ? AND user_id IN (?)",
-					registerEnd,
-					db.Model(&models.User{}).Select("id").Where("created_at >= ? AND created_at < ?", registerStart, registerEnd),
-				).Distinct("user_id").Count(&retained)
+			if activityCount > 0 {
+				// 使用 user_activities 表统计留存
+				db.Model(&models.UserActivity{}).
+					Where("created_at >= ? AND user_id IN (?)",
+						registerEnd,
+						db.Model(&models.User{}).Select("id").Where("created_at >= ? AND created_at < ?", registerStart, registerEnd),
+					).Distinct("user_id").Count(&retained)
+			} else {
+				// 使用 users.last_login 统计留存（备用方案）
+				db.Model(&models.User{}).
+					Where("created_at >= ? AND created_at < ? AND last_login >= ?",
+						registerStart, registerEnd, registerEnd).Count(&retained)
+			}
 		}
 
 		rate := float64(0)
