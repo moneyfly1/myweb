@@ -114,13 +114,13 @@ func GetUserAnalytics(c *gin.Context) {
 	})
 }
 
-// 用户留存分析
+// 用户留存分析 - 基于订阅业务维度
 func GetRetentionAnalytics(c *gin.Context) {
 	db := database.GetDB()
 	now := utils.GetBeijingTime()
 
 	type RetentionData struct {
-		Day      int     `json:"day"`
+		Label    string  `json:"label"`
 		Retained int64   `json:"retained"`
 		Total    int64   `json:"total"`
 		Rate     float64 `json:"rate"`
@@ -128,40 +128,64 @@ func GetRetentionAnalytics(c *gin.Context) {
 
 	var result []RetentionData
 
-	// 检查是否有用户活动数据
-	var activityCount int64
-	db.Model(&models.UserActivity{}).Count(&activityCount)
-
-	for _, days := range []int{1, 3, 7, 14, 30} {
-		registerStart := now.AddDate(0, 0, -days-1)
-		registerEnd := now.AddDate(0, 0, -days)
-
-		var totalNew int64
-		db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", registerStart, registerEnd).Count(&totalNew)
-
-		var retained int64
-		if totalNew > 0 {
-			if activityCount > 0 {
-				// 使用 user_activities 表统计留存
-				db.Model(&models.UserActivity{}).
-					Where("created_at >= ? AND user_id IN (?)",
-						registerEnd,
-						db.Model(&models.User{}).Select("id").Where("created_at >= ? AND created_at < ?", registerStart, registerEnd),
-					).Distinct("user_id").Count(&retained)
-			} else {
-				// 使用 users.last_login 统计留存（备用方案）
-				db.Model(&models.User{}).
-					Where("created_at >= ? AND created_at < ? AND last_login >= ?",
-						registerStart, registerEnd, registerEnd).Count(&retained)
-			}
-		}
-
-		rate := float64(0)
-		if totalNew > 0 {
-			rate = float64(retained) / float64(totalNew) * 100
-		}
-		result = append(result, RetentionData{Day: days, Retained: retained, Total: totalNew, Rate: rate})
+	// 1. 7日留存：7天前注册的用户中，之后仍登录过的比例
+	d7Start := now.AddDate(0, 0, -8)
+	d7End := now.AddDate(0, 0, -7)
+	var total7 int64
+	db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", d7Start, d7End).Count(&total7)
+	var retained7 int64
+	if total7 > 0 {
+		db.Model(&models.User{}).Where("created_at >= ? AND created_at < ? AND last_login >= ?", d7Start, d7End, d7End).Count(&retained7)
 	}
+	rate7 := float64(0)
+	if total7 > 0 {
+		rate7 = float64(retained7) / float64(total7) * 100
+	}
+	result = append(result, RetentionData{Label: "7日留存", Retained: retained7, Total: total7, Rate: rate7})
+
+	// 2. 30日留存：30天前注册的用户中，之后仍登录过的比例
+	d30Start := now.AddDate(0, 0, -31)
+	d30End := now.AddDate(0, 0, -30)
+	var total30 int64
+	db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", d30Start, d30End).Count(&total30)
+	var retained30 int64
+	if total30 > 0 {
+		db.Model(&models.User{}).Where("created_at >= ? AND created_at < ? AND last_login >= ?", d30Start, d30End, d30End).Count(&retained30)
+	}
+	rate30 := float64(0)
+	if total30 > 0 {
+		rate30 = float64(retained30) / float64(total30) * 100
+	}
+	result = append(result, RetentionData{Label: "30日留存", Retained: retained30, Total: total30, Rate: rate30})
+
+	// 3. 付费转化率：总用户中有过付费订单的比例
+	var totalUsers int64
+	db.Model(&models.User{}).Count(&totalUsers)
+	var paidUsers int64
+	db.Model(&models.Order{}).Where("status = ?", "paid").Distinct("user_id").Count(&paidUsers)
+	paidRate := float64(0)
+	if totalUsers > 0 {
+		paidRate = float64(paidUsers) / float64(totalUsers) * 100
+	}
+	result = append(result, RetentionData{Label: "付费转化", Retained: paidUsers, Total: totalUsers, Rate: paidRate})
+
+	// 4. 订阅活跃率：有活跃订阅的用户占总用户比例
+	var activeSubs int64
+	db.Model(&models.Subscription{}).Where("is_active = ? AND expire_time > ?", true, now).Distinct("user_id").Count(&activeSubs)
+	activeRate := float64(0)
+	if totalUsers > 0 {
+		activeRate = float64(activeSubs) / float64(totalUsers) * 100
+	}
+	result = append(result, RetentionData{Label: "订阅活跃", Retained: activeSubs, Total: totalUsers, Rate: activeRate})
+
+	// 5. 续费率：有2笔及以上付费订单的用户占付费用户比例
+	var renewUsers int64
+	db.Raw("SELECT COUNT(*) FROM (SELECT user_id FROM orders WHERE status = 'paid' GROUP BY user_id HAVING COUNT(*) >= 2)").Scan(&renewUsers)
+	renewRate := float64(0)
+	if paidUsers > 0 {
+		renewRate = float64(renewUsers) / float64(paidUsers) * 100
+	}
+	result = append(result, RetentionData{Label: "续费率", Retained: renewUsers, Total: paidUsers, Rate: renewRate})
 
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
