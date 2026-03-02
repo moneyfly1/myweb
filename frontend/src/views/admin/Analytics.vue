@@ -76,11 +76,11 @@
         <el-col :xs="24" :lg="12">
           <el-card header="用户留存分析" shadow="never" class="data-card">
             <el-table :data="retention" stripe size="small" v-loading="loading">
-              <el-table-column label="天数" width="80" align="center">
-                <template #default="{ row }">第{{ row.day }}天</template>
+              <el-table-column label="指标" min-width="90" align="center">
+                <template #default="{ row }">{{ row.label || `第${row.day}天` }}</template>
               </el-table-column>
-              <el-table-column prop="total" label="新增" width="80" align="center" />
-              <el-table-column prop="retained" label="留存" width="80" align="center" />
+              <el-table-column prop="total" label="基数" width="80" align="center" />
+              <el-table-column prop="retained" label="达标" width="80" align="center" />
               <el-table-column label="留存率">
                 <template #default="{ row }">
                   <el-progress
@@ -517,9 +517,9 @@ const exportData = async () => {
 
     // 4. 用户留存分析
     csvContent += '用户留存分析\n'
-    csvContent += '天数,新增用户,留存用户,留存率\n'
+    csvContent += '指标,基数,达标,比率\n'
     retention.value.forEach(row => {
-      csvContent += `第${row.day}天,${row.total},${row.retained},${row.rate.toFixed(1)}%\n`
+      csvContent += `${row.label || '第' + row.day + '天'},${row.total},${row.retained},${row.rate.toFixed(1)}%\n`
     })
     csvContent += '\n'
 

@@ -1227,11 +1227,14 @@ func GetExpiringSubscriptions(c *gin.Context) {
 				daysUntilExpire = int(diff.Hours() / 24)
 			}
 		}
-		userInfo := gin.H{"id": 0, "username": "用户已删除", "email": "", "qq": ""}
+		userInfo := gin.H{"id": 0, "username": "用户已删除", "email": "", "last_login": ""}
 		if sub.User.ID > 0 {
 			userInfo["id"] = sub.User.ID
 			userInfo["username"] = sub.User.Username
 			userInfo["email"] = sub.User.Email
+			if sub.User.LastLogin.Valid {
+				userInfo["last_login"] = sub.User.LastLogin.Time.Format(TimeLayout)
+			}
 		}
 
 		result = append(result, gin.H{
@@ -1239,7 +1242,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 			"user_id":           sub.UserID,
 			"username":          userInfo["username"],
 			"email":             userInfo["email"],
-			"qq":                userInfo["qq"],
+			"last_login":        userInfo["last_login"],
 			"expire_time":       sub.ExpireTime.Format(TimeLayout),
 			"days_until_expire": daysUntilExpire,
 		})
