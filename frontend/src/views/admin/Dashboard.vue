@@ -1,7 +1,7 @@
 <template>
   <div class="admin-dashboard">
-    <el-row :gutter="20">
-      <el-col :span="6">
+    <el-row :gutter="20" class="stat-row">
+      <el-col :xs="12" :sm="6">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-number">{{ stats.totalUsers }}</div>
@@ -9,7 +9,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :sm="6">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-number">{{ stats.activeSubscriptions }}</div>
@@ -17,7 +17,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :sm="6">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-number">{{ stats.totalOrders }}</div>
@@ -25,7 +25,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :sm="6">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-number">¥{{ formatMoney(stats.totalRevenue) }}</div>
@@ -220,10 +220,10 @@
               <el-table-column type="selection" width="55" />
               <el-table-column prop="username" label="用户名" width="120" />
               <el-table-column prop="email" label="邮箱" width="200" />
-              <el-table-column prop="qq" label="QQ" width="120">
+              <el-table-column prop="last_login" label="最后登录" width="160">
                 <template #default="scope">
-                  <span v-if="scope.row.qq">{{ scope.row.qq }}</span>
-                  <span v-else style="color: #999;">-</span>
+                  <span v-if="scope.row.last_login">{{ scope.row.last_login }}</span>
+                  <span v-else style="color: #999;">未登录</span>
                 </template>
               </el-table-column>
               <el-table-column prop="expire_time" label="到期时间" width="180">
@@ -240,19 +240,11 @@
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="200" fixed="right">
+              <el-table-column label="操作" width="120" fixed="right">
                 <template #default="scope">
-                  <el-button 
-                    v-if="scope.row.qq && scope.row.qq !== ''" 
-                    type="primary" 
-                    size="small" 
-                    @click="openQQChat(scope.row)"
-                  >
-                    联系QQ
-                  </el-button>
-                  <el-button 
-                    type="success" 
-                    size="small" 
+                  <el-button
+                    type="success"
+                    size="small"
                     @click="sendExpireReminder([scope.row.user_id || scope.row.id])"
                   >
                     发送提醒
@@ -293,8 +285,8 @@
               </div>
               <div class="expiring-item-body">
                 <div class="expiring-item-row">
-                  <span class="expiring-label">QQ:</span>
-                  <span class="expiring-value">{{ item.qq || '-' }}</span>
+                  <span class="expiring-label">最后登录:</span>
+                  <span class="expiring-value">{{ item.last_login || '未登录' }}</span>
                 </div>
                 <div class="expiring-item-row">
                   <span class="expiring-label">到期时间:</span>
@@ -304,18 +296,9 @@
                 </div>
               </div>
               <div class="expiring-item-actions">
-                <el-button 
-                  v-if="item.qq && item.qq !== ''" 
-                  type="primary" 
-                  size="small" 
-                  class="action-btn"
-                  @click="openQQChat(item)"
-                >
-                  联系QQ
-                </el-button>
-                <el-button 
-                  type="success" 
-                  size="small" 
+                <el-button
+                  type="success"
+                  size="small"
                   class="action-btn"
                   @click="sendExpireReminder([item.user_id || item.id])"
                 >
@@ -607,15 +590,6 @@ export default {
       if (days <= 3) return '#e6a23c'
       return '#409eff'
     }
-    const openQQChat = (row) => {
-      if (!row.qq) {
-        ElMessage.warning('该用户未设置QQ号码')
-        return
-      }
-      const message = `您好，您的订阅服务将在 ${row.days_until_expire} 天后到期（${row.expire_time}），请及时续费以继续使用服务。如有疑问，请联系客服。`
-      const qqUrl = `tencent://message/?uin=${row.qq}&Menu=yes&Message=${encodeURIComponent(message)}`
-      window.open(qqUrl, '_blank')
-    }
     const sendExpireReminder = async (ids) => {
       try {
         sendingExpireReminder.value = true
@@ -676,7 +650,6 @@ export default {
       toggleExpiringSelection,
       getExpireTagType,
       getExpireColor,
-      openQQChat,
       sendExpireReminder,
       batchSendExpireReminder
     }
@@ -706,7 +679,7 @@ export default {
   .admin-dashboard {
     padding: 0;
   }
-  .admin-dashboard :deep(.el-row) {
+  .admin-dashboard :deep(.el-row:not(.stat-row)) {
     margin-left: 0 !important;
     margin-right: 0 !important;
     margin-top: 0 !important;
@@ -722,20 +695,29 @@ export default {
       margin-top: 0 !important;
     }
   }
+  .admin-dashboard :deep(.stat-row) {
+    margin-left: -4px !important;
+    margin-right: -4px !important;
+    .el-col {
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+      margin-bottom: 8px !important;
+    }
+  }
   .stat-card {
     margin-bottom: 0;
     :deep(.el-card__body) {
-      padding: 16px 12px !important;
+      padding: 10px 8px !important;
     }
     .stat-content {
-      padding: 12px;
+      padding: 6px;
     }
     .stat-number {
-      font-size: 1.75em;
+      font-size: 1.4em;
     }
     .stat-label {
-      font-size: 0.875rem;
-      margin-top: 8px;
+      font-size: 0.75rem;
+      margin-top: 4px;
     }
   }
   .dashboard-card {
