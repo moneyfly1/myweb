@@ -213,12 +213,42 @@ func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *pa
 		return false, result, err
 	}
 
+	// 验证订单号匹配（防止订单号碰撞）
+	if result.OutTradeNo != orderNo {
+		utils.LogError("performAlipayQuery: order number mismatch", nil, map[string]interface{}{
+			"expected_order_no": orderNo,
+			"alipay_order_no":   result.OutTradeNo,
+			"trade_no":          result.TradeNo,
+		})
+		return false, result, fmt.Errorf("订单号不匹配")
+	}
+
+	// 解析支付宝返回的金额
+	var alipayAmount float64
+	if result.TotalAmount != "" {
+		fmt.Sscanf(result.TotalAmount, "%f", &alipayAmount)
+	}
+
 	err = utils.WithTransaction(db, func(tx *gorm.DB) error {
 		if isRecharge {
 			var record models.RechargeRecord
 			if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&record).Error; err != nil {
 				return err
 			}
+
+			// 验证充值金额（防止金额篡改）
+			if alipayAmount > 0 {
+				if alipayAmount < record.Amount-0.01 || alipayAmount > record.Amount+0.01 {
+					utils.LogError("performAlipayQuery: recharge amount mismatch", nil, map[string]interface{}{
+						"order_no":        orderNo,
+						"expected_amount": record.Amount,
+						"alipay_amount":   alipayAmount,
+						"trade_no":        result.TradeNo,
+					})
+					return fmt.Errorf("充值金额不匹配: 预期%.2f元, 支付宝返回%.2f元", record.Amount, alipayAmount)
+				}
+			}
+
 			record.Status = "paid"
 			record.PaidAt = database.NullTime(utils.GetBeijingTime())
 			if result.TradeNo != "" {
@@ -239,6 +269,41 @@ func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *pa
 		if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&order).Error; err != nil {
 			return err
 		}
+
+		// 验证订单金额（防止金额篡改）
+		if alipayAmount > 0 {
+			expectedAmount := order.Amount
+			if order.FinalAmount.Valid {
+				expectedAmount = order.FinalAmount.Float64
+			}
+
+			// 检查是否使用了余额支付
+			var balanceUsed float64 = 0
+			if order.ExtraData.Valid && order.ExtraData.String != "" {
+				var extraData map[string]interface{}
+				if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+					if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+						balanceUsed = balanceUsedVal
+					}
+				}
+			}
+
+			// 如果使用了余额，实际支付金额应该是订单金额减去余额
+			expectedPaymentAmount := expectedAmount - balanceUsed
+
+			if alipayAmount < expectedPaymentAmount-0.01 || alipayAmount > expectedPaymentAmount+0.01 {
+				utils.LogError("performAlipayQuery: order amount mismatch", nil, map[string]interface{}{
+					"order_no":               orderNo,
+					"expected_amount":        expectedAmount,
+					"balance_used":           balanceUsed,
+					"expected_payment":       expectedPaymentAmount,
+					"alipay_amount":          alipayAmount,
+					"trade_no":               result.TradeNo,
+				})
+				return fmt.Errorf("订单金额不匹配: 预期支付%.2f元, 支付宝返回%.2f元", expectedPaymentAmount, alipayAmount)
+			}
+		}
+
 		order.Status = "paid"
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
 		if err := tx.Save(&order).Error; err != nil {
