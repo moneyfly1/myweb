@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -598,21 +599,48 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	geoipPath := os.Getenv("GEOIP_DB_PATH")
-	if geoipPath == "" {
-		geoipPath = "./GeoLite2-City.mmdb"
+	var req struct {
+		Type string `json:"type"` // "dbip", "geolite2", 或空（默认 geolite2）
+	}
+	c.ShouldBindJSON(&req)
+
+	if req.Type == "" {
+		req.Type = "geolite2"
 	}
 
-	tmpFile := geoipPath + ".tmp"
-	resp, err := http.Get("https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
+	var url, filename string
+	var needsGzip bool
+
+	switch req.Type {
+	case "dbip":
+		// DB-IP 免费数据库（推荐，中国数据更详细）
+		now := time.Now()
+		yearMonth := now.Format("2006-01")
+		url = fmt.Sprintf("https://download.db-ip.com/free/dbip-city-lite-%s.mmdb.gz", yearMonth)
+		filename = "dbip-city-lite.mmdb"
+		needsGzip = true
+	case "geolite2":
+		// GeoLite2 数据库（从 GitHub 镜像）
+		url = "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
+		filename = "GeoLite2-City.mmdb"
+		needsGzip = false
+	default:
+		utils.ErrorResponse(c, http.StatusBadRequest, "不支持的数据库类型", nil)
+		return
+	}
+
+	// 下载文件
+	tmpFile := filepath.Join(os.TempDir(), filename+".tmp")
+	resp, err := http.Get(url)
 	if err != nil {
 		utils.LogError("UpdateGeoIPDatabase: Download failed", err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "下载失败", err)
 		return
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "下载失败，状态码: "+resp.Status, nil)
+		utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("下载失败，状态码: %d", resp.StatusCode), nil)
 		return
 	}
 
@@ -621,51 +649,119 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建临时文件失败", err)
 		return
 	}
+	defer out.Close()
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		out.Close()
+	// 如果需要解压 gzip
+	var reader io.Reader = resp.Body
+	if needsGzip {
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "解压失败", err)
+			return
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	written, err := io.Copy(out, reader)
+	if err != nil {
 		os.Remove(tmpFile)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存文件失败", err)
 		return
 	}
 	out.Close()
 
-	if err := os.Rename(tmpFile, geoipPath); err != nil {
+	// 移动到目标位置
+	targetPath := filepath.Join(".", filename)
+	if err := os.Rename(tmpFile, targetPath); err != nil {
 		os.Remove(tmpFile)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "替换文件失败", err)
 		return
 	}
 
-	if err := geoip.InitGeoIP(geoipPath); err != nil {
-		utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, "管理员操作: 更新 GeoIP 数据库（重载失败）")
+	// 重新初始化 GeoIP
+	if err := geoip.InitGeoIP(""); err != nil {
+		utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 更新 GeoIP 数据库 (%s, 重载失败)", req.Type))
 		utils.SuccessResponse(c, http.StatusOK, "更新成功，但重载失败: "+err.Error(), nil)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, "管理员操作: 更新 GeoIP 数据库")
-	utils.SuccessResponse(c, http.StatusOK, "GeoIP 数据库更新成功", nil)
+
+	utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 更新 GeoIP 数据库 (%s, %d bytes)", req.Type, written))
+	utils.SuccessResponse(c, http.StatusOK, "GeoIP 数据库更新成功", gin.H{
+		"type":     req.Type,
+		"filename": filename,
+		"size":     formatFileSize(written),
+	})
 }
 
 func GetGeoIPStatus(c *gin.Context) {
-	geoipPath := os.Getenv("GEOIP_DB_PATH")
-	if geoipPath == "" {
-		geoipPath = "./GeoLite2-City.mmdb"
-	}
-
 	status := gin.H{
-		"enabled":     geoip.IsEnabled(),
-		"db_path":     geoipPath,
-		"db_exists":   false,
-		"db_size":     int64(0),
-		"db_modified": "",
+		"enabled":   geoip.IsEnabled(),
+		"databases": []gin.H{},
 	}
 
-	if info, err := os.Stat(geoipPath); err == nil {
-		status["db_exists"] = true
-		status["db_size"] = info.Size()
-		status["db_modified"] = utils.FormatBeijingTime(info.ModTime())
+	// 检查各种数据库文件
+	databases := []struct {
+		Name     string
+		Path     string
+		Type     string
+		Priority int
+	}{
+		{"DB-IP City Lite", "./dbip-city-lite.mmdb", "mmdb", 1},
+		{"DB-IP City Lite (data)", "./data/dbip-city-lite.mmdb", "mmdb", 2},
+		{"IP2Location LITE IPv4", "./IP2LOCATION-LITE-DB11.BIN", "bin", 3},
+		{"IP2Location LITE IPv6", "./IP2LOCATION-LITE-DB11.IPV6.BIN", "bin", 4},
+		{"GeoLite2 City", "./GeoLite2-City.mmdb", "mmdb", 5},
+		{"GeoLite2 City (data)", "./data/GeoLite2-City.mmdb", "mmdb", 6},
 	}
+
+	var dbList []gin.H
+	var activeDB string
+
+	for _, db := range databases {
+		if info, err := os.Stat(db.Path); err == nil {
+			sizeStr := formatFileSize(info.Size())
+			modTime := utils.FormatBeijingTime(info.ModTime())
+
+			dbInfo := gin.H{
+				"name":     db.Name,
+				"path":     db.Path,
+				"type":     db.Type,
+				"size":     sizeStr,
+				"modified": modTime,
+				"exists":   true,
+				"priority": db.Priority,
+			}
+
+			// 第一个找到的数据库就是当前使用的
+			if activeDB == "" && geoip.IsEnabled() {
+				activeDB = db.Name
+				dbInfo["active"] = true
+			} else {
+				dbInfo["active"] = false
+			}
+
+			dbList = append(dbList, dbInfo)
+		}
+	}
+
+	status["databases"] = dbList
+	status["active_database"] = activeDB
 
 	utils.SuccessResponse(c, http.StatusOK, "", status)
+}
+
+func formatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(size)/float64(div), "KMGTPE"[exp])
 }
 
 func GetMobileConfig(c *gin.Context) {

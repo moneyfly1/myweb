@@ -13,13 +13,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ip2location/ip2location-go/v9"
 	"github.com/oschwald/geoip2-golang"
 )
 
 var (
-	geoipDB      *geoip2.Reader
-	geoipDBLock  sync.RWMutex
-	geoipEnabled bool
+	geoipDB        *geoip2.Reader
+	ip2locationDB  *ip2location.DB
+	geoipDBLock    sync.RWMutex
+	geoipEnabled   bool
+	dbType         string // "geoip2" or "ip2location"
 )
 
 type ping0CacheEntry struct {
@@ -88,9 +91,22 @@ func InitGeoIP(dbPath string) error {
 		geoipDB.Close()
 		geoipDB = nil
 	}
+	if ip2locationDB != nil {
+		ip2locationDB.Close()
+		ip2locationDB = nil
+	}
 
 	if dbPath == "" {
 		possiblePaths := []string{
+			// DB-IP database (MMDB format, compatible with GeoIP2)
+			"./dbip-city-lite.mmdb",
+			"./data/dbip-city-lite.mmdb",
+			// IP2Location databases
+			"./IP2LOCATION-LITE-DB11.BIN",
+			"./IP2LOCATION-LITE-DB11.IPV6.BIN",
+			"./data/IP2LOCATION-LITE-DB11.BIN",
+			"./data/IP2LOCATION-LITE-DB11.IPV6.BIN",
+			// GeoLite2 databases
 			"./GeoLite2-City.mmdb",
 			"./data/GeoLite2-City.mmdb",
 			"/usr/share/GeoIP/GeoLite2-City.mmdb",
@@ -115,19 +131,37 @@ func InitGeoIP(dbPath string) error {
 		return fmt.Errorf("GeoIP 数据库文件不存在: %s", dbPath)
 	}
 
-	db, err := geoip2.Open(dbPath)
-	if err != nil {
-		geoipEnabled = false
-		return fmt.Errorf("打开 GeoIP 数据库失败: %w", err)
+	// 根据文件扩展名判断数据库类型
+	if strings.HasSuffix(strings.ToUpper(dbPath), ".BIN") {
+		// IP2Location database
+		db, err := ip2location.OpenDB(dbPath)
+		if err != nil {
+			geoipEnabled = false
+			return fmt.Errorf("打开 IP2Location 数据库失败: %w", err)
+		}
+		ip2locationDB = db
+		dbType = "ip2location"
+		geoipEnabled = true
+		return nil
+	} else if strings.HasSuffix(strings.ToLower(dbPath), ".mmdb") {
+		// GeoIP2 database
+		db, err := geoip2.Open(dbPath)
+		if err != nil {
+			geoipEnabled = false
+			return fmt.Errorf("打开 GeoIP2 数据库失败: %w", err)
+		}
+		geoipDB = db
+		dbType = "geoip2"
+		geoipEnabled = true
+		return nil
 	}
 
-	geoipDB = db
-	geoipEnabled = true
-	return nil
+	geoipEnabled = false
+	return fmt.Errorf("不支持的数据库格式: %s", dbPath)
 }
 
 func GetLocation(ipAddress string) (*LocationInfo, error) {
-	if !geoipEnabled || geoipDB == nil {
+	if !geoipEnabled {
 		return nil, fmt.Errorf("GeoIP 未启用")
 	}
 
@@ -167,9 +201,19 @@ func GetLocation(ipAddress string) (*LocationInfo, error) {
 	geoipDBLock.RLock()
 	defer geoipDBLock.RUnlock()
 
+	if dbType == "ip2location" && ip2locationDB != nil {
+		return getLocationFromIP2Location(ipAddress)
+	} else if dbType == "geoip2" && geoipDB != nil {
+		return getLocationFromGeoIP2(parsedIP)
+	}
+
+	return nil, fmt.Errorf("没有可用的数据库")
+}
+
+func getLocationFromGeoIP2(parsedIP net.IP) (*LocationInfo, error) {
 	record, err := geoipDB.City(parsedIP)
 	if err != nil {
-		return nil, fmt.Errorf("GeoIP解析失败: %w", err)
+		return nil, fmt.Errorf("GeoIP2解析失败: %w", err)
 	}
 
 	if record.Country.IsoCode == "" {
@@ -209,6 +253,48 @@ func GetLocation(ipAddress string) (*LocationInfo, error) {
 	return location, nil
 }
 
+func getLocationFromIP2Location(ipAddress string) (*LocationInfo, error) {
+	results, err := ip2locationDB.Get_all(ipAddress)
+	if err != nil {
+		return nil, fmt.Errorf("IP2Location解析失败: %w", err)
+	}
+
+	if results.Country_short == "-" || results.Country_short == "" {
+		return nil, fmt.Errorf("数据库中没有该IP地址的地理位置记录")
+	}
+
+	location := &LocationInfo{
+		CountryCode: results.Country_short,
+		Country:     results.Country_long,
+		Region:      results.Region,
+		City:        results.City,
+		Latitude:    float64(results.Latitude),
+		Longitude:   float64(results.Longitude),
+		Timezone:    results.Timezone,
+	}
+
+	// 清理无效数据
+	if location.Country == "-" {
+		location.Country = ""
+	}
+	if location.Region == "-" {
+		location.Region = ""
+	}
+	if location.City == "-" {
+		location.City = ""
+	}
+	if location.Timezone == "-" {
+		location.Timezone = ""
+	}
+
+	// 如果国家名称为空，尝试使用国家代码
+	if location.Country == "" && location.CountryCode != "" {
+		location.Country = location.CountryCode
+	}
+
+	return location, nil
+}
+
 func GetLocationString(ipAddress string) sql.NullString {
 	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
 		return sql.NullString{String: "本地", Valid: true}
@@ -229,12 +315,7 @@ func GetLocationString(ipAddress string) sql.NullString {
 
 	location, err := GetLocation(ipAddress)
 	if err != nil || location == nil || location.Country == "" {
-		ping0Location, err2 := GetLocationFromPing0(ipAddress)
-		if err2 == nil && ping0Location != nil && ping0Location.Country != "" {
-			location = ping0Location
-		} else {
-			return sql.NullString{Valid: false}
-		}
+		return sql.NullString{Valid: false}
 	}
 
 	locationJSON, err := json.Marshal(location)
@@ -254,12 +335,7 @@ func GetLocationString(ipAddress string) sql.NullString {
 func GetLocationSimple(ipAddress string) string {
 	location, err := GetLocation(ipAddress)
 	if err != nil || location == nil || location.Country == "" {
-		ping0Location, err2 := GetLocationFromPing0(ipAddress)
-		if err2 == nil && ping0Location != nil && ping0Location.Country != "" {
-			location = ping0Location
-		} else {
-			return ""
-		}
+		return ""
 	}
 
 	if location.City != "" {
@@ -283,6 +359,10 @@ func Close() {
 	if geoipDB != nil {
 		geoipDB.Close()
 		geoipDB = nil
+	}
+	if ip2locationDB != nil {
+		ip2locationDB.Close()
+		ip2locationDB = nil
 	}
 	geoipEnabled = false
 }
