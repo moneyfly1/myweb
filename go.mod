@@ -8,6 +8,7 @@ require (
 	github.com/go-playground/validator/v10 v10.29.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.4.0
+	github.com/ip2location/ip2location-go/v9 v9.8.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/smartwalle/alipay/v3 v3.2.28
 	github.com/spf13/viper v1.18.2
@@ -33,7 +34,6 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/ip2location/ip2location-go/v9 v9.8.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.6 // indirect

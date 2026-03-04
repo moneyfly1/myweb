@@ -256,6 +256,7 @@ func GetAdminSettings(c *gin.Context) {
 		"notification": {
 			"system_notifications": "true", "email_notifications": "true", "subscription_expiry_notifications": "true",
 			"new_user_notifications": "true", "new_order_notifications": "true",
+			"subscription_expiry_reminder_cooldown_hours": 24, "subscription_expiry_reminder_daily_limit": 1,
 		},
 		CatAdminNotification: {
 			"admin_notification_enabled": "false", "admin_email_notification": "false", "admin_telegram_notification": "false",

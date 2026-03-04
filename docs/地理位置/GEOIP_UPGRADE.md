@@ -126,7 +126,7 @@ bash scripts/test_geoip.sh
 ## 文档
 
 详细文档请参考：
-- `docs/GEOIP_DATABASES.md` - 数据库对比和配置指南
+- `./GEOIP_DATABASES.md` - 数据库对比和配置指南
 
 ## 技术细节
 

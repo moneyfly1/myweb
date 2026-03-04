@@ -141,6 +141,24 @@
                 <el-form-item label="系统通知"><el-switch v-model="notificationSettings.system_notifications" /></el-form-item>
                 <el-form-item label="邮件通知"><el-switch v-model="notificationSettings.email_notifications" /></el-form-item>
                 <el-form-item label="订阅到期提醒"><el-switch v-model="notificationSettings.subscription_expiry_notifications" /></el-form-item>
+                <el-form-item label="提醒冷却(小时)">
+                  <el-input-number
+                    v-model="notificationSettings.subscription_expiry_reminder_cooldown_hours"
+                    :min="0"
+                    :max="720"
+                    :step="1"
+                  />
+                  <div class="form-tip">同一用户同主题到期提醒的最小发送间隔，0 表示不限制。</div>
+                </el-form-item>
+                <el-form-item label="单用户每日上限">
+                  <el-input-number
+                    v-model="notificationSettings.subscription_expiry_reminder_daily_limit"
+                    :min="0"
+                    :max="20"
+                    :step="1"
+                  />
+                  <div class="form-tip">同一用户每天最多接收多少封到期提醒，0 表示不限制。</div>
+                </el-form-item>
                 <el-form-item label="新用户注册通知"><el-switch v-model="notificationSettings.new_user_notifications" /></el-form-item>
                 <el-form-item label="新订单通知"><el-switch v-model="notificationSettings.new_order_notifications" /></el-form-item>
                 <el-form-item>
@@ -489,7 +507,10 @@ export default {
     })
     const notificationSettings = reactive({
       system_notifications: true, email_notifications: true,
-      subscription_expiry_notifications: true, new_user_notifications: true, new_order_notifications: true
+      subscription_expiry_notifications: true,
+      subscription_expiry_reminder_cooldown_hours: 24,
+      subscription_expiry_reminder_daily_limit: 1,
+      new_user_notifications: true, new_order_notifications: true
     })
     const securitySettings = reactive({
       login_fail_limit: 5, login_lock_time: 30, session_timeout: 120,
@@ -556,7 +577,13 @@ export default {
           if (data.node_health.test_url) nodeHealthSettings.test_url = data.node_health.test_url
         }
         if (data.registration) Object.assign(registrationSettings, data.registration)
-        if (data.notification) Object.assign(notificationSettings, data.notification)
+        if (data.notification) {
+          Object.assign(notificationSettings, data.notification)
+          const cooldown = parseInt(notificationSettings.subscription_expiry_reminder_cooldown_hours, 10)
+          notificationSettings.subscription_expiry_reminder_cooldown_hours = Number.isNaN(cooldown) ? 24 : cooldown
+          const dailyLimit = parseInt(notificationSettings.subscription_expiry_reminder_daily_limit, 10)
+          notificationSettings.subscription_expiry_reminder_daily_limit = Number.isNaN(dailyLimit) ? 1 : dailyLimit
+        }
         if (data.security) Object.assign(securitySettings, data.security)
         if (data.announcement) Object.assign(announcementSettings, data.announcement)
         if (data.theme) {

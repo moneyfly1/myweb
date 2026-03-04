@@ -295,7 +295,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 
 		if tradeStatus == "TRADE_FREEZE" {
-			utils.LogWarn("PaymentNotify: yipay trade frozen", map[string]interface{}{
+			utils.LogWarn("PaymentNotify: yipay trade frozen: %+v", map[string]interface{}{
 				"payment_type": paymentType,
 				"order_no":     orderNo,
 				"trade_status": tradeStatus,
@@ -305,7 +305,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 
 		if tradeStatus == "TRADE_UNFREEZE" {
-			utils.LogInfo("PaymentNotify: yipay trade unfrozen", map[string]interface{}{
+			utils.LogInfo("PaymentNotify: yipay trade unfrozen: %+v", map[string]interface{}{
 				"payment_type": paymentType,
 				"order_no":     orderNo,
 				"trade_status": tradeStatus,
@@ -315,7 +315,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 
 		if tradeStatus != "TRADE_SUCCESS" {
-			utils.LogWarn("PaymentNotify: yipay trade status not success", map[string]interface{}{
+			utils.LogWarn("PaymentNotify: yipay trade status not success: %+v", map[string]interface{}{
 				"payment_type": paymentType,
 				"order_no":     orderNo,
 				"trade_status": tradeStatus,
@@ -424,7 +424,7 @@ func PaymentNotify(c *gin.Context) {
 			}
 		} else {
 			// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
-			utils.LogWarn("PaymentNotify: unable to verify recharge amount for payment type", map[string]interface{}{
+			utils.LogWarn("PaymentNotify: unable to verify recharge amount for payment type: %+v", map[string]interface{}{
 				"order_no":     orderNo,
 				"payment_type": paymentType,
 			})
@@ -576,7 +576,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 	} else {
 		// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
-		utils.LogWarn("PaymentNotify: unable to verify order amount for payment type", map[string]interface{}{
+		utils.LogWarn("PaymentNotify: unable to verify order amount for payment type: %+v", map[string]interface{}{
 			"order_no":     orderNo,
 			"payment_type": paymentType,
 		})

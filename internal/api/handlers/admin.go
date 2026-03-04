@@ -161,6 +161,93 @@ func GetAdminInviteStatistics(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
+func BatchDeleteInviteCodes(c *gin.Context) {
+	ids, err := parseBatchUintIDs(c, "ids", "code_ids", "invite_code_ids")
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误: 需提供邀请码ID数组", err)
+		return
+	}
+
+	db := database.GetDB()
+	var deletedCount int64
+	var disabledCount int64
+
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		var inviteCodes []models.InviteCode
+		if err := tx.Where("id IN ?", ids).Find(&inviteCodes).Error; err != nil {
+			return err
+		}
+		if len(inviteCodes) == 0 {
+			return gorm.ErrRecordNotFound
+		}
+
+		for _, code := range inviteCodes {
+			if code.UsedCount > 0 {
+				if code.IsActive {
+					if err := tx.Model(&models.InviteCode{}).
+						Where("id = ?", code.ID).
+						Update("is_active", false).Error; err != nil {
+						return err
+					}
+					disabledCount++
+				}
+				continue
+			}
+
+			if err := tx.Where("invite_code_id = ?", code.ID).
+				Delete(&models.InviteRelation{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(&code).Error; err != nil {
+				return err
+			}
+			deletedCount++
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			utils.ErrorResponse(c, http.StatusNotFound, "未找到可操作的邀请码", err)
+			return
+		}
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除邀请码失败", err)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, "batch_delete_invite_codes", "invite_code", 0,
+		fmt.Sprintf("管理员批量删除邀请码: request_count=%d, deleted=%d, disabled=%d", len(ids), deletedCount, disabledCount))
+	utils.SuccessResponse(c, http.StatusOK, "批量处理成功", gin.H{
+		"requested_count": len(ids),
+		"deleted_count":   deletedCount,
+		"disabled_count":  disabledCount,
+	})
+}
+
+func BatchDeleteInviteRelations(c *gin.Context) {
+	ids, err := parseBatchUintIDs(c, "ids", "relation_ids", "invite_relation_ids")
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误: 需提供邀请关系ID数组", err)
+		return
+	}
+
+	db := database.GetDB()
+	result := db.Where("id IN ?", ids).Delete(&models.InviteRelation{})
+	if result.Error != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除邀请关系失败", result.Error)
+		return
+	}
+	if result.RowsAffected == 0 {
+		utils.ErrorResponse(c, http.StatusNotFound, "未找到可删除的邀请关系", nil)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, "batch_delete_invite_relations", "invite_relation", 0,
+		fmt.Sprintf("管理员批量删除邀请关系: request_count=%d, deleted=%d", len(ids), result.RowsAffected))
+	utils.SuccessResponse(c, http.StatusOK, "批量删除成功", gin.H{
+		"requested_count": len(ids),
+		"deleted_count":   result.RowsAffected,
+	})
+}
+
 func GetAdminTickets(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Ticket{}).Preload("User").Preload("Assignee")
@@ -561,6 +648,48 @@ func UpdateUserLevel(c *gin.Context) {
 	}
 	utils.CreateAuditLogSimple(c, "update_user_level", "user_level", userLevel.ID, fmt.Sprintf("管理员操作: 更新用户等级 %s", userLevel.LevelName))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", userLevel)
+}
+
+func DeleteUserLevel(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+
+	var userLevel models.UserLevel
+	if err := db.First(&userLevel, id).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "用户等级不存在", err)
+		return
+	}
+
+	var affectedUsers int64
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.User{}).
+			Where("user_level_id = ?", userLevel.ID).
+			Count(&affectedUsers).Error; err != nil {
+			return err
+		}
+
+		if affectedUsers > 0 {
+			if err := tx.Model(&models.User{}).
+				Where("user_level_id = ?", userLevel.ID).
+				Updates(map[string]interface{}{
+					"user_level_id":    gorm.Expr("NULL"),
+					"level_expires_at": gorm.Expr("NULL"),
+				}).Error; err != nil {
+				return err
+			}
+		}
+
+		return tx.Delete(&userLevel).Error
+	}); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户等级失败", err)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, "delete_user_level", "user_level", userLevel.ID,
+		fmt.Sprintf("管理员操作: 删除用户等级 %s, 受影响用户数=%d", userLevel.LevelName, affectedUsers))
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", gin.H{
+		"affected_users": affectedUsers,
+	})
 }
 
 func GetUserLevel(c *gin.Context) {
@@ -1264,6 +1393,90 @@ func getPagination(c *gin.Context) (page int, size int, offset int) {
 		size = 20
 	}
 	return page, size, (page - 1) * size
+}
+
+func parseBatchUintIDs(c *gin.Context, keys ...string) ([]uint, error) {
+	raw, err := c.GetRawData()
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("empty request body")
+	}
+
+	var ids []uint
+	if err := json.Unmarshal(raw, &ids); err == nil && len(ids) > 0 {
+		return normalizeUintIDs(ids), nil
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+
+	defaultKeys := []string{"ids", "id_list"}
+	searchKeys := append([]string{}, keys...)
+	searchKeys = append(searchKeys, defaultKeys...)
+
+	for _, key := range searchKeys {
+		if val, exists := payload[key]; exists {
+			parsed := parseUintIDSlice(val)
+			if len(parsed) > 0 {
+				return normalizeUintIDs(parsed), nil
+			}
+		}
+	}
+
+	for _, val := range payload {
+		parsed := parseUintIDSlice(val)
+		if len(parsed) > 0 {
+			return normalizeUintIDs(parsed), nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid id list in payload")
+}
+
+func parseUintIDSlice(val interface{}) []uint {
+	rawList, ok := val.([]interface{})
+	if !ok {
+		return nil
+	}
+	ids := make([]uint, 0, len(rawList))
+	for _, item := range rawList {
+		switch v := item.(type) {
+		case float64:
+			if v > 0 {
+				ids = append(ids, uint(v))
+			}
+		case int:
+			if v > 0 {
+				ids = append(ids, uint(v))
+			}
+		case string:
+			var parsed uint64
+			if _, err := fmt.Sscanf(v, "%d", &parsed); err == nil && parsed > 0 {
+				ids = append(ids, uint(parsed))
+			}
+		}
+	}
+	return ids
+}
+
+func normalizeUintIDs(ids []uint) []uint {
+	seen := make(map[uint]struct{}, len(ids))
+	result := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func upsertSystemConfig(db *gorm.DB, category, key, value string) error {

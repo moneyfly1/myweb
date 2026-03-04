@@ -155,6 +155,8 @@ func SetupRouter() *gin.Engine {
 			coupons.GET("", handlers.GetCoupons)
 			coupons.GET("/:code", handlers.GetCoupon)
 			coupons.POST("/verify", handlers.VerifyCoupon)
+			// 兼容旧前端路径
+			coupons.POST("/validate", handlers.VerifyCoupon)
 		}
 		couponsAuth := coupons.Group("")
 		couponsAuth.Use(middleware.AuthMiddleware())
@@ -326,7 +328,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/batch-expire-reminder", handlers.BatchSendExpireReminder)
 			admin.POST("/users/send-email", handlers.SendEmailToUser)
 
-
 			admin.GET("/orders", handlers.GetAdminOrders)
 			admin.PUT("/orders/:id", handlers.UpdateAdminOrder)
 			admin.POST("/orders/:id/refund", handlers.RefundAdminOrder)
@@ -436,10 +437,13 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/invites", handlers.GetAdminInvites)
 			admin.GET("/invite-relations", handlers.GetAdminInviteRelations)
 			admin.GET("/invite-statistics", handlers.GetAdminInviteStatistics)
+			admin.POST("/invites/batch-delete", handlers.BatchDeleteInviteCodes)
+			admin.POST("/invite-relations/batch-delete", handlers.BatchDeleteInviteRelations)
 
 			admin.GET("/user-levels", handlers.GetAdminUserLevels)
 			admin.POST("/user-levels", handlers.CreateUserLevel)
 			admin.PUT("/user-levels/:id", handlers.UpdateUserLevel)
+			admin.DELETE("/user-levels/:id", handlers.DeleteUserLevel)
 
 			admin.GET("/email-queue", handlers.GetAdminEmailQueue)
 			admin.GET("/email-queue/statistics", handlers.GetEmailQueueStatistics)
@@ -500,7 +504,6 @@ func SetupRouter() *gin.Engine {
 			// 邮件模板
 			admin.GET("/email-templates", handlers.GetEmailTemplates)
 			admin.GET("/email-templates/:name", handlers.GetEmailTemplateByName)
-
 
 			// 日志管理
 			admin.GET("/logs/registration", handlers.GetRegistrationLogs)

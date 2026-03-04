@@ -1,20 +1,38 @@
 # 文档说明 / Documentation
 
-本目录包含部署、故障排查、功能说明与后台配置说明。
+本目录包含部署、迁移、接口、功能、配置、安全与地理位置文档。
 
-This directory contains deployment, troubleshooting, feature docs and backend configuration guides.
+This directory contains docs for deployment, migration, API, features, configuration, security and GeoIP.
 
 ---
 
 ## 中文
 
-### 部署与故障排查
+### 部署、迁移与排障
 
 | 文档 | 说明 |
 |------|------|
-| [VPS 部署教程（无宝塔）](./VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
+| [VPS 部署教程（无宝塔）](./部署/VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
+| [迁移指南](./migration/MIGRATION_GUIDE.md) | 版本迁移与兼容性处理 |
+| [迁移快速开始](./migration/QUICK_START.md) | 迁移最短路径与命令 |
 | [安装问题排查指南](./故障排查/安装问题排查指南.md) | 常见安装与运行故障排查 |
-| [API 文档](./API文档.md) | 接口说明（认证、用户、订阅、订单、支付、管理员等） |
+
+### 接口与专题说明
+
+| 文档 | 说明 |
+|------|------|
+| [API 文档](./接口/API文档.md) | 接口说明（认证、用户、订阅、订单、支付、管理员等） |
+| [设备升级计费说明](./功能/设备升级计费说明.md) | 设备升级计费规则说明 |
+| [新功能总览](./功能/NEW_FEATURES.md) | 近期新增功能与迁移提示 |
+
+### 安全与 GeoIP 说明
+
+| 文档 | 说明 |
+|------|------|
+| [安全修复计划](./安全/SECURITY_FIX_PLAN.md) | 安全修复实施计划 |
+| [GeoIP 升级说明](./地理位置/GEOIP_UPGRADE.md) | GeoIP 升级步骤与注意事项 |
+| [GeoIP 数据库说明](./地理位置/GEOIP_DATABASES.md) | 各 GeoIP 数据库选型与配置 |
+| [城市翻译说明](./地理位置/CITY_TRANSLATION.md) | 城市名称翻译映射说明 |
 
 ### 功能说明
 
@@ -83,12 +101,23 @@ This directory contains deployment, troubleshooting, feature docs and backend co
 
 ## English
 
-### Deployment & Troubleshooting
+### Deployment, Migration & Troubleshooting
 
 | Document | Description |
 |----------|-------------|
-| [VPS Deployment (No BT Panel)](./VPS部署教程-无宝塔.md) | One-click VPS deployment |
+| [VPS Deployment (No BT Panel)](./部署/VPS部署教程-无宝塔.md) | One-click VPS deployment |
+| [Migration Guide](./migration/MIGRATION_GUIDE.md) | Full migration workflow |
+| [Migration Quick Start](./migration/QUICK_START.md) | Fast migration path |
 | [Installation Troubleshooting](./故障排查/安装问题排查指南.md) | Common installation issues and solutions |
+
+### API, Security & GeoIP
+
+| Document | Description |
+|----------|-------------|
+| [API Documentation](./接口/API文档.md) | API details for auth, users, subscriptions, orders and admin |
+| [Security Fix Plan](./安全/SECURITY_FIX_PLAN.md) | Security remediation plan |
+| [GeoIP Upgrade](./地理位置/GEOIP_UPGRADE.md) | GeoIP upgrade instructions |
+| [GeoIP Databases](./地理位置/GEOIP_DATABASES.md) | GeoIP database options and setup |
 
 ### Feature Documentation
 

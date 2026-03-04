@@ -14,6 +14,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func buildRequestParams(c *gin.Context) sql.NullString {
+	if c == nil || c.Request == nil {
+		return sql.NullString{Valid: false}
+	}
+
+	params := make(map[string]interface{})
+
+	if len(c.Params) > 0 {
+		pathParams := make(map[string]string, len(c.Params))
+		for _, p := range c.Params {
+			pathParams[p.Key] = p.Value
+		}
+		params["path"] = pathParams
+	}
+
+	queryParams := c.Request.URL.Query()
+	if len(queryParams) > 0 {
+		params["query"] = queryParams
+	}
+
+	if len(params) == 0 {
+		return sql.NullString{Valid: false}
+	}
+
+	b, err := json.Marshal(params)
+	if err != nil {
+		return sql.NullString{Valid: false}
+	}
+
+	return sql.NullString{String: string(b), Valid: true}
+}
+
 func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID uint, description string, beforeData, afterData interface{}) {
 	db := database.GetDB()
 	if db == nil {
@@ -73,21 +105,20 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		Location:          location,
 		RequestMethod:     sql.NullString{String: c.Request.Method, Valid: true},
 		RequestPath:       sql.NullString{String: c.Request.URL.Path, Valid: true},
+		RequestParams:     buildRequestParams(c),
 		ResponseStatus:    responseStatus,
 		BeforeData:        beforeDataJSON,
 		AfterData:         afterDataJSON,
 	}
 
-	go func() {
-		if err := db.Create(&auditLog).Error; err != nil {
-			if userID.Valid {
-				LogAudit(uint(userID.Int64), actionType, resourceType, resourceID, description)
-			}
-			if AppLogger != nil {
-				AppLogger.Error("保存审计日志失败: %v", err)
-			}
+	if err := db.Create(&auditLog).Error; err != nil {
+		if userID.Valid {
+			LogAudit(uint(userID.Int64), actionType, resourceType, resourceID, description)
 		}
-	}()
+		if AppLogger != nil {
+			AppLogger.Error("保存审计日志失败: %v", err)
+		}
+	}
 }
 
 func CreateAuditLogSimple(c *gin.Context, actionType, resourceType string, resourceID uint, description string) {
@@ -185,39 +216,38 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		Location:          location,
 		RequestMethod:     sql.NullString{String: c.Request.Method, Valid: true},
 		RequestPath:       sql.NullString{String: c.Request.URL.Path, Valid: true},
+		RequestParams:     buildRequestParams(c),
 		ResponseStatus:    responseStatus,
 		BeforeData:        additionalDataJSON, // 将附加数据存储在 BeforeData 中
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	go func() {
-		if err := db.Create(&auditLog).Error; err != nil {
-			if AppLogger != nil {
-				AppLogger.Error("[安全日志保存失败] %s - %s: %s, 错误: %v", severity, eventType, description, err)
+	if err := db.Create(&auditLog).Error; err != nil {
+		if AppLogger != nil {
+			AppLogger.Error("[安全日志保存失败] %s - %s: %s, 错误: %v", severity, eventType, description, err)
+		}
+	} else {
+		if AppLogger != nil {
+			logMsg := fmt.Sprintf("[安全事件] IP:%s | 类型:%s | 严重程度:%s | 描述:%s",
+				ipAddress, eventType, severity, description)
+			if additionalData != nil {
+				if data, err := json.Marshal(additionalData); err == nil {
+					logMsg += fmt.Sprintf(" | 附加信息:%s", string(data))
+				}
 			}
-		} else {
-			if AppLogger != nil {
-				logMsg := fmt.Sprintf("[安全事件] IP:%s | 类型:%s | 严重程度:%s | 描述:%s",
-					ipAddress, eventType, severity, description)
-				if additionalData != nil {
-					if data, err := json.Marshal(additionalData); err == nil {
-						logMsg += fmt.Sprintf(" | 附加信息:%s", string(data))
-					}
-				}
 
-				switch severity {
-				case "CRITICAL":
-					AppLogger.Error(logMsg)
-				case "HIGH":
-					AppLogger.Error(logMsg)
-				case "MEDIUM":
-					AppLogger.Warn(logMsg)
-				default:
-					AppLogger.Info(logMsg)
-				}
+			switch severity {
+			case "CRITICAL":
+				AppLogger.Error("%s", logMsg)
+			case "HIGH":
+				AppLogger.Error("%s", logMsg)
+			case "MEDIUM":
+				AppLogger.Warn("%s", logMsg)
+			default:
+				AppLogger.Info("%s", logMsg)
 			}
 		}
-	}()
+	}
 }
 
 // CreateBusinessLog 记录业务/操作类日志（支付回调失败、订阅拒绝、Token 无效等），便于在系统日志中排查问题
@@ -234,6 +264,7 @@ func CreateBusinessLog(c *gin.Context, actionType, description, level string, da
 	var ipAddress, userAgent, method, path string
 	var location sql.NullString
 	var userID sql.NullInt64
+	requestParams := sql.NullString{Valid: false}
 	if c != nil {
 		ipAddress = GetRealClientIP(c)
 		if ipAddress == "" {
@@ -250,6 +281,7 @@ func CreateBusinessLog(c *gin.Context, actionType, description, level string, da
 				userID = sql.NullInt64{Int64: int64(u), Valid: true}
 			}
 		}
+		requestParams = buildRequestParams(c)
 	}
 
 	var dataJSON sql.NullString
@@ -280,16 +312,15 @@ func CreateBusinessLog(c *gin.Context, actionType, description, level string, da
 		Location:          location,
 		RequestMethod:     sql.NullString{String: method, Valid: method != ""},
 		RequestPath:       sql.NullString{String: path, Valid: path != ""},
+		RequestParams:     requestParams,
 		ResponseStatus:    responseStatus,
 		BeforeData:        dataJSON,
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	go func() {
-		if err := db.Create(&auditLog).Error; err != nil && AppLogger != nil {
-			AppLogger.Error("[业务日志保存失败] %s: %s, 错误: %v", actionType, description, err)
-		}
-	}()
+	if err := db.Create(&auditLog).Error; err != nil && AppLogger != nil {
+		AppLogger.Error("[业务日志保存失败] %s: %s, 错误: %v", actionType, description, err)
+	}
 }
 
 func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool, reason string) {
@@ -343,6 +374,10 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 }
 
 func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err error) {
+	if c != nil {
+		c.Set("system_error_logged", true)
+	}
+
 	db := database.GetDB()
 	if db == nil {
 		if AppLogger != nil {
@@ -395,27 +430,26 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		Location:          location,
 		RequestMethod:     sql.NullString{String: c.Request.Method, Valid: true},
 		RequestPath:       sql.NullString{String: c.Request.URL.Path, Valid: true},
+		RequestParams:     buildRequestParams(c),
 		ResponseStatus:    sql.NullInt64{Int64: int64(statusCode), Valid: true},
 		BeforeData:        errorDetailsJSON,
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	go func() {
-		errDetail := err
-		if saveErr := db.Create(&auditLog).Error; saveErr != nil {
-			if AppLogger != nil {
-				AppLogger.Error("[系统错误日志保存失败] %s: %v, 错误: %v", message, errDetail, saveErr)
-			}
-		} else {
-			if AppLogger != nil {
-				errorMsg := fmt.Sprintf("[系统错误] 状态码:%d | 路径:%s | 错误:%s", statusCode, c.Request.URL.Path, message)
-				if errDetail != nil {
-					errorMsg += fmt.Sprintf(" | 详细错误:%v", errDetail)
-				}
-				AppLogger.Error(errorMsg)
-			}
+	errDetail := err
+	if saveErr := db.Create(&auditLog).Error; saveErr != nil {
+		if AppLogger != nil {
+			AppLogger.Error("[系统错误日志保存失败] %s: %v, 错误: %v", message, errDetail, saveErr)
 		}
-	}()
+	} else {
+		if AppLogger != nil {
+			errorMsg := fmt.Sprintf("[系统错误] 状态码:%d | 路径:%s | 错误:%s", statusCode, c.Request.URL.Path, message)
+			if errDetail != nil {
+				errorMsg += fmt.Sprintf(" | 详细错误:%v", errDetail)
+			}
+			AppLogger.Error("%s", errorMsg)
+		}
+	}
 }
 
 // ==========================================
@@ -461,18 +495,17 @@ func CreateSystemLog(actionType, description string, level string, data map[stri
 		Location:          sql.NullString{Valid: false},
 		RequestMethod:     sql.NullString{Valid: false},
 		RequestPath:       sql.NullString{Valid: false},
+		RequestParams:     sql.NullString{Valid: false},
 		ResponseStatus:    responseStatus,
 		BeforeData:        dataJSON,
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	go func() {
-		if err := db.Create(&auditLog).Error; err != nil {
-			if AppLogger != nil {
-				AppLogger.Error("[系统日志保存失败] %s: %s, 错误: %v", actionType, description, err)
-			}
+	if err := db.Create(&auditLog).Error; err != nil {
+		if AppLogger != nil {
+			AppLogger.Error("[系统日志保存失败] %s: %s, 错误: %v", actionType, description, err)
 		}
-	}()
+	}
 
 	return nil
 }

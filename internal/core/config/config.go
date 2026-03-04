@@ -202,15 +202,56 @@ func getStringSlice(key string, defaultValue []string) []string {
 }
 
 func getSecretKey() string {
-	key := viper.GetString("SECRET_KEY")
-	if key == "" || key == "your-secret-key-here" || len(key) < 32 {
-		b := make([]byte, 32)
-		rand.Read(b)
-		generatedKey := base64.URLEncoding.EncodeToString(b)
-		fmt.Printf("警告: SECRET_KEY未设置或太弱，已自动生成: %s...\n", generatedKey[:20])
-		return generatedKey
+	key := strings.TrimSpace(viper.GetString("SECRET_KEY"))
+	if !isWeakSecretKey(key) {
+		return key
 	}
-	return key
+
+	// 生产环境必须显式配置强密钥，避免服务重启后自动换 key 导致令牌全部失效
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+	if env == "production" || env == "prod" {
+		return key
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Errorf("生成 SECRET_KEY 失败: %w", err))
+	}
+	generatedKey := base64.URLEncoding.EncodeToString(b)
+	fmt.Println("警告: SECRET_KEY 未设置或使用弱口令，已自动生成临时强密钥，请尽快在 .env 中设置固定强密钥")
+	return generatedKey
+}
+
+func isWeakSecretKey(key string) bool {
+	if key == "" || len(key) < 32 {
+		return true
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(key))
+	weakPatterns := []string{
+		"your-secret-key",
+		"change-me",
+		"changeme",
+		"example",
+		"default",
+		"password",
+		"test",
+	}
+	for _, pattern := range weakPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+
+	// 同一字符重复的低熵 key（如 aaaaaa...）
+	allSame := true
+	for i := 1; i < len(lower); i++ {
+		if lower[i] != lower[0] {
+			allSame = false
+			break
+		}
+	}
+	return allSame
 }
 
 func validateConfig(config *Config) error {
@@ -220,7 +261,12 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	if os.Getenv("ENV") == "production" {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+	if env == "production" || env == "prod" {
+		rawSecret := strings.TrimSpace(viper.GetString("SECRET_KEY"))
+		if isWeakSecretKey(rawSecret) {
+			return fmt.Errorf("生产环境必须设置强 SECRET_KEY（至少32位随机字符串，且不能使用占位符）")
+		}
 		if config.MySQLPassword == "" || config.MySQLPassword == "cboard_password_2024" {
 			return fmt.Errorf("生产环境必须设置强密码！(MYSQL_PASSWORD)")
 		}

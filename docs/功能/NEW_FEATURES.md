@@ -221,9 +221,8 @@ cd frontend && npm run dev
 
 ## 📝 相关文档
 
-- [生产环境就绪报告](../reports/PRODUCTION_READY_REPORT.md)
-- [最终检查报告](../reports/FINAL_REPORT.md)
-- [实现总结](../reports/IMPLEMENTATION_SUMMARY.md)
+- [迁移指南](../migration/MIGRATION_GUIDE.md)
+- [快速启动指南](../migration/QUICK_START.md)
 
 ---
 
