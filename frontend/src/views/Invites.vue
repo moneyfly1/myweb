@@ -286,6 +286,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, DocumentCopy, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
+import { copyToClipboard as copyText } from '@/utils/textSelection'
 const loading = ref(false)
 const generating = ref(false)
 const showGenerateDialog = ref(false)
@@ -541,12 +542,8 @@ const generateCode = async () => {
     generating.value = false
   }
 }
-const copyLink = (link) => {
-  navigator.clipboard.writeText(link).then(() => {
-    ElMessage.success('邀请链接已复制到剪贴板')
-  }).catch(() => {
-    ElMessage.error('复制失败，请手动复制')
-  })
+const copyLink = async (link) => {
+  await copyText(link, '邀请链接已复制到剪贴板')
 }
 const deleteCode = async (code) => {
   try {
