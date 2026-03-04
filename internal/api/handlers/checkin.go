@@ -41,11 +41,15 @@ func Checkin(c *gin.Context) {
 			return fmt.Errorf("今天已经签到过了")
 		}
 
-		// 生成随机奖励金额（1.00-10.00，使用加密安全随机数）
+		// 生成随机奖励金额（1.00-2.00，使用加密安全随机数）
 		amount := 1.0
-		randomCents, randomErr := rand.Int(rand.Reader, big.NewInt(901)) // 0-900
+		randomCents, randomErr := rand.Int(rand.Reader, big.NewInt(101)) // 0-100
 		if randomErr == nil {
 			amount = float64(100+randomCents.Int64()) / 100.0
+		}
+		// 兜底限制：签到奖励不能超过 2 元
+		if amount > 2.0 {
+			amount = 2.0
 		}
 
 		// 锁定用户记录并更新余额
@@ -172,5 +176,39 @@ func GetCheckinStatus(c *gin.Context) {
 		"total_checkins": totalCheckins,
 		"total_reward":   totalReward,
 		"streak":         streak,
+	})
+}
+
+func GetMyCheckinHistory(c *gin.Context) {
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+	userID := userIDVal.(uint)
+
+	db := database.GetDB()
+	pagination := utils.ParsePagination(c)
+
+	var total int64
+	if err := db.Model(&models.CheckinRecord{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取签到历史失败", err)
+		return
+	}
+
+	var records []models.CheckinRecord
+	if err := db.Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Limit(pagination.Size).
+		Offset((pagination.Page - 1) * pagination.Size).
+		Find(&records).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取签到历史失败", err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"records": records,
+		"total":   total,
+		"page":    pagination.Page,
 	})
 }
