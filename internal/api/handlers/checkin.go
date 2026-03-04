@@ -41,11 +41,21 @@ func Checkin(c *gin.Context) {
 			return fmt.Errorf("今天已经签到过了")
 		}
 
-		// 生成随机奖励金额（1.00-2.00，使用加密安全随机数）
-		amount := 1.0
-		randomCents, randomErr := rand.Int(rand.Reader, big.NewInt(101)) // 0-100
-		if randomErr == nil {
-			amount = float64(100+randomCents.Int64()) / 100.0
+		// 生成随机奖励金额（0-2.00元，1元以下概率70%）
+		amount := 0.0
+		randomPercent, _ := rand.Int(rand.Reader, big.NewInt(100)) // 0-99
+		if randomPercent.Int64() < 70 {
+			// 70%概率：0-1元
+			randomCents, randomErr := rand.Int(rand.Reader, big.NewInt(101)) // 0-100
+			if randomErr == nil {
+				amount = float64(randomCents.Int64()) / 100.0
+			}
+		} else {
+			// 30%概率：1-2元
+			randomCents, randomErr := rand.Int(rand.Reader, big.NewInt(101)) // 0-100
+			if randomErr == nil {
+				amount = float64(100+randomCents.Int64()) / 100.0
+			}
 		}
 		// 兜底限制：签到奖励不能超过 2 元
 		if amount > 2.0 {
