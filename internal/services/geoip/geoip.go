@@ -241,6 +241,11 @@ func getLocationFromGeoIP2(parsedIP net.IP) (*LocationInfo, error) {
 		location.City = record.City.Names["en"]
 	}
 
+	// 翻译常见英文城市名为中文
+	if location.CountryCode == "CN" && location.City != "" {
+		location.City = translateCityName(location.City, location.Region)
+	}
+
 	if record.Location.Latitude != 0 || record.Location.Longitude != 0 {
 		location.Latitude = record.Location.Latitude
 		location.Longitude = record.Location.Longitude
@@ -251,6 +256,60 @@ func getLocationFromGeoIP2(parsedIP net.IP) (*LocationInfo, error) {
 	}
 
 	return location, nil
+}
+
+// translateCityName 将英文城市名翻译为中文
+func translateCityName(cityEN string, regionEN string) string {
+	// 常见中国城市英文到中文的映射
+	cityMap := map[string]string{
+		"Beijing": "北京", "Shanghai": "上海", "Guangzhou": "广州", "Shenzhen": "深圳",
+		"Chengdu": "成都", "Hangzhou": "杭州", "Wuhan": "武汉", "Xi'an": "西安",
+		"Chongqing": "重庆", "Tianjin": "天津", "Nanjing": "南京", "Shenyang": "沈阳",
+		"Harbin": "哈尔滨", "Changchun": "长春", "Dalian": "大连", "Jinan": "济南",
+		"Qingdao": "青岛", "Zhengzhou": "郑州", "Shijiazhuang": "石家庄", "Taiyuan": "太原",
+		"Hohhot": "呼和浩特", "Urumqi": "乌鲁木齐", "Lanzhou": "兰州", "Yinchuan": "银川",
+		"Xining": "西宁", "Lhasa": "拉萨", "Kunming": "昆明", "Guiyang": "贵阳",
+		"Nanning": "南宁", "Haikou": "海口", "Fuzhou": "福州", "Xiamen": "厦门",
+		"Nanchang": "南昌", "Changsha": "长沙", "Hefei": "合肥", "Suzhou": "苏州",
+		"Wuxi": "无锡", "Ningbo": "宁波", "Wenzhou": "温州", "Dongguan": "东莞",
+		"Foshan": "佛山", "Zhuhai": "珠海", "Zhongshan": "中山", "Huizhou": "惠州",
+		"Hong Kong": "香港", "Kowloon": "九龙", "Macau": "澳门",
+		"Zhu Cheng": "诸城", "Jinrongjie": "金融街",
+	}
+
+	// 清理城市名称
+	cityEN = strings.TrimSpace(cityEN)
+
+	// 移除括号内容 (例如: "Jinrongjie (Xicheng District)" -> "Jinrongjie")
+	if idx := strings.Index(cityEN, "("); idx > 0 {
+		cityEN = strings.TrimSpace(cityEN[:idx])
+	}
+
+	// 优先查找完整匹配
+	if zhCity, ok := cityMap[cityEN]; ok {
+		return zhCity
+	}
+
+	// 移除常见后缀再查找
+	cleanCity := strings.TrimSuffix(cityEN, " City")
+	cleanCity = strings.TrimSuffix(cleanCity, " Shi")
+	cleanCity = strings.TrimSpace(cleanCity)
+
+	if zhCity, ok := cityMap[cleanCity]; ok {
+		return zhCity
+	}
+
+	// 如果有地区信息，翻译地区
+	if regionEN != "" {
+		zhRegion := translateRegionName(regionEN)
+		if zhRegion != regionEN {
+			// 地区翻译成功，返回"地区 城市"
+			return zhRegion + " " + cleanCity
+		}
+	}
+
+	// 无法翻译，返回清理后的原文
+	return cleanCity
 }
 
 func getLocationFromIP2Location(ipAddress string) (*LocationInfo, error) {
@@ -292,7 +351,34 @@ func getLocationFromIP2Location(ipAddress string) (*LocationInfo, error) {
 		location.Country = location.CountryCode
 	}
 
+	// 翻译中国城市名为中文
+	if location.CountryCode == "CN" && location.City != "" {
+		location.City = translateCityName(location.City, location.Region)
+		if location.Region != "" {
+			location.Region = translateRegionName(location.Region)
+		}
+	}
+
 	return location, nil
+}
+
+// translateRegionName 翻译省份/地区名称
+func translateRegionName(regionEN string) string {
+	regionMap := map[string]string{
+		"Beijing": "北京", "Shanghai": "上海", "Tianjin": "天津", "Chongqing": "重庆",
+		"Guangdong": "广东", "Shandong": "山东", "Henan": "河南", "Sichuan": "四川",
+		"Jiangsu": "江苏", "Hebei": "河北", "Hunan": "湖南", "Anhui": "安徽",
+		"Hubei": "湖北", "Zhejiang": "浙江", "Guangxi": "广西", "Yunnan": "云南",
+		"Jiangxi": "江西", "Liaoning": "辽宁", "Fujian": "福建", "Shaanxi": "陕西",
+		"Heilongjiang": "黑龙江", "Shanxi": "山西", "Guizhou": "贵州", "Jilin": "吉林",
+		"Inner Mongolia": "内蒙古", "Xinjiang": "新疆", "Gansu": "甘肃", "Hainan": "海南",
+		"Ningxia": "宁夏", "Qinghai": "青海", "Tibet": "西藏", "Hong Kong": "香港", "Macau": "澳门",
+	}
+
+	if zhRegion, ok := regionMap[regionEN]; ok {
+		return zhRegion
+	}
+	return regionEN
 }
 
 func GetLocationString(ipAddress string) sql.NullString {
