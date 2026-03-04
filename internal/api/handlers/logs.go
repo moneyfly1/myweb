@@ -22,6 +22,8 @@ const (
 	DefaultPageSize = 20
 )
 
+const systemLogsBaseWhere = "(audit_logs.action_type = ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type = ? OR audit_logs.resource_type = ?)"
+
 // PaginationParams 分页参数结构
 type PaginationParams struct {
 	Page     int
@@ -60,34 +62,55 @@ func parsePagination(c *gin.Context) PaginationParams {
 // applyTimeRangeFilter 通用时间范围过滤
 func applyTimeRangeFilter(query *gorm.DB, c *gin.Context, dbTimeField string) *gorm.DB {
 	if startTime := c.Query("start_time"); startTime != "" {
-		if t, err := time.Parse(TimeLayout, startTime); err == nil {
+		if t, err := time.ParseInLocation(TimeLayout, startTime, utils.BeijingTZ); err == nil {
 			query = query.Where(fmt.Sprintf("%s >= ?", dbTimeField), t)
 		}
 	}
 	if endTime := c.Query("end_time"); endTime != "" {
-		if t, err := time.Parse(TimeLayout, endTime); err == nil {
+		if t, err := time.ParseInLocation(TimeLayout, endTime, utils.BeijingTZ); err == nil {
 			query = query.Where(fmt.Sprintf("%s <= ?", dbTimeField), t)
 		}
 	}
 	return query
 }
 
+func normalizeLogLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "critical", "error":
+		return "error"
+	case "warning":
+		return "warning"
+	case "debug", "info":
+		return "info"
+	default:
+		return ""
+	}
+}
+
+func getRequestedLogLevel(c *gin.Context) string {
+	level := c.Query("log_level")
+	if strings.TrimSpace(level) == "" {
+		level = c.Query("log_type")
+	}
+	return normalizeLogLevel(level)
+}
+
 // applyCommonKeywordFilter 通用关键词过滤 (针对 AuditLog)
 func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
-	if logLevel := strings.TrimSpace(c.Query("log_level")); logLevel != "" {
+	if logLevel := getRequestedLogLevel(c); logLevel != "" {
 		switch logLevel {
 		case "error":
-			query = query.Where("response_status >= ?", 400)
+			query = query.Where("audit_logs.response_status >= ?", 400)
 		case "warning":
-			query = query.Where("response_status >= ? AND response_status < ?", 300, 400)
+			query = query.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400)
 		case "info":
-			query = query.Where("response_status < ? OR response_status IS NULL", 300)
+			query = query.Where("audit_logs.response_status < ? OR audit_logs.response_status IS NULL", 300)
 		}
 	}
 
 	if module := strings.TrimSpace(c.Query("module")); module != "" {
 		escapedModule := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(module))
-		query = query.Where("resource_type LIKE ?", "%"+escapedModule+"%")
+		query = query.Where("audit_logs.resource_type LIKE ?", "%"+escapedModule+"%")
 	}
 
 	if username := strings.TrimSpace(c.Query("username")); username != "" {
@@ -100,10 +123,76 @@ func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 		// 这里不需要再次 Escape，因为通常 utils 内部处理，或者简单的 SQL 注入防护
 		// 假设 utils.EscapeLikePattern 只是转义 % 和 _
 		k := "%" + utils.EscapeLikePattern(utils.SanitizeSearchKeyword(keyword)) + "%"
-		query = query.Where("action_description LIKE ? OR action_type LIKE ? OR resource_type LIKE ?", k, k, k)
+		query = query.Where("audit_logs.action_description LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type LIKE ?", k, k, k)
 	}
 
-	return applyTimeRangeFilter(query, c, "created_at")
+	return applyTimeRangeFilter(query, c, "audit_logs.created_at")
+}
+
+func applySystemLogsBaseScope(query *gorm.DB) *gorm.DB {
+	return query.Where(systemLogsBaseWhere,
+		"system_error", "scheduler_%", "system_%", "security_%", "business_%", "system", "security")
+}
+
+func applySystemTaskTypeFilter(query *gorm.DB, taskType string) *gorm.DB {
+	taskType = strings.TrimSpace(taskType)
+	if taskType == "" {
+		return query
+	}
+
+	taskType = utils.SanitizeSearchKeyword(taskType)
+	escapedTaskType := utils.EscapeLikePattern(taskType)
+
+	switch taskType {
+	case "scheduler":
+		return query.Where("audit_logs.action_type LIKE ?", "scheduler_%")
+	case "system_error":
+		return query.Where("audit_logs.action_type = ?", "system_error")
+	}
+
+	if strings.HasPrefix(taskType, "scheduler_") {
+		return query.Where("(audit_logs.action_type = ? OR audit_logs.action_type LIKE ?)",
+			taskType, escapedTaskType+"%")
+	}
+
+	return query.Where("(audit_logs.action_type = ? OR audit_logs.action_type = ? OR audit_logs.action_type LIKE ?)",
+		taskType, "scheduler_"+taskType, "scheduler_"+escapedTaskType+"%")
+}
+
+func applySystemLogsFilters(query *gorm.DB, c *gin.Context, includeLevel bool) *gorm.DB {
+	if includeLevel {
+		if logLevel := getRequestedLogLevel(c); logLevel != "" {
+			switch logLevel {
+			case "error":
+				query = query.Where("(audit_logs.response_status >= ? OR audit_logs.action_type = ?)", 400, "system_error")
+			case "warning":
+				query = query.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400)
+			case "info":
+				query = query.Where("(audit_logs.response_status < ? OR audit_logs.response_status IS NULL) AND audit_logs.action_type != ?", 300, "system_error")
+			}
+		}
+	}
+
+	query = applySystemTaskTypeFilter(query, c.Query("task_type"))
+
+	if module := strings.TrimSpace(c.Query("module")); module != "" {
+		escaped := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(module))
+		query = query.Where("audit_logs.resource_type LIKE ?", "%"+escaped+"%")
+	}
+
+	if username := strings.TrimSpace(c.Query("username")); username != "" {
+		escaped := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(username))
+		query = query.Joins("JOIN users ON audit_logs.user_id = users.id").
+			Where("users.username LIKE ?", "%"+escaped+"%")
+	}
+
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		escaped := "%" + utils.EscapeLikePattern(utils.SanitizeSearchKeyword(keyword)) + "%"
+		query = query.Where("audit_logs.action_description LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type LIKE ?",
+			escaped, escaped, escaped)
+	}
+
+	return applyTimeRangeFilter(query, c, "audit_logs.created_at")
 }
 
 // genericSuccessResponse 统一的分页响应封装
@@ -418,7 +507,7 @@ func GetAuditLogs(c *gin.Context) {
 
 	var logs []models.AuditLog
 	// 再分页查询 (预加载 User)
-	query.Preload("User").Order("created_at DESC").
+	query.Preload("User").Order("audit_logs.created_at DESC").
 		Offset(p.Offset).Limit(p.PageSize).Find(&logs)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
@@ -452,31 +541,9 @@ func GetSystemLogs(c *gin.Context) {
 	p := parsePagination(c)
 	db := database.GetDB()
 
-	// 基础查询：系统级别 + 安全/异常 + 业务操作日志（支付回调失败、订阅拒绝、Token 无效等）
-	query := db.Model(&models.AuditLog{}).
-		Where("action_type = ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR resource_type = ? OR resource_type = ?",
-			"system_error", "scheduler_%", "system_%", "security_%", "business_%", "system", "security")
-
-	// 筛选条件 (Log Level)
-	if logLevel := strings.TrimSpace(c.Query("log_level")); logLevel != "" {
-		switch logLevel {
-		case "error":
-			query = query.Where("response_status >= ? OR action_type = ?", 400, "system_error")
-		case "warning":
-			query = query.Where("response_status >= ? AND response_status < ?", 300, 400)
-		case "info":
-			query = query.Where("(response_status < ? OR response_status IS NULL) AND action_type != ?", 300, "system_error")
-		}
-	}
-
-	// 筛选条件 (Keyword)
-	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
-		k := "%" + keyword + "%"
-		query = query.Where("action_description LIKE ? OR action_type LIKE ?", k, k)
-	}
-
-	// 时间筛选
-	query = applyTimeRangeFilter(query, c, "created_at")
+	query := db.Model(&models.AuditLog{})
+	query = applySystemLogsBaseScope(query)
+	query = applySystemLogsFilters(query, c, true)
 
 	// 1. 获取总数
 	var total int64
@@ -487,7 +554,7 @@ func GetSystemLogs(c *gin.Context) {
 
 	// 2. 获取数据 (Preload User)
 	var logs []models.AuditLog
-	if err := query.Preload("User").Order("created_at DESC").
+	if err := query.Preload("User").Order("audit_logs.created_at DESC").
 		Offset(p.Offset).Limit(p.PageSize).Find(&logs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取系统日志失败", err)
 		return
@@ -516,14 +583,14 @@ func GetLogsStats(c *gin.Context) {
 		Info    int64 `json:"info"`
 	}
 
-	// 与 GetSystemLogs 一致：系统 + 安全 + 业务日志
-	baseWhere := "action_type = ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR action_type LIKE ? OR resource_type = ? OR resource_type = ?"
-	baseArgs := []interface{}{"system_error", "scheduler_%", "system_%", "security_%", "business_%", "system", "security"}
+	baseQuery := db.Model(&models.AuditLog{})
+	baseQuery = applySystemLogsBaseScope(baseQuery)
+	baseQuery = applySystemLogsFilters(baseQuery, c, false)
 
-	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Count(&stats.Total)
-	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Where("response_status >= ?", 400).Count(&stats.Error)
-	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Where("response_status >= ? AND response_status < ?", 300, 400).Count(&stats.Warning)
-	db.Model(&models.AuditLog{}).Where(baseWhere, baseArgs...).Where("response_status < ? OR response_status IS NULL", 300).Count(&stats.Info)
+	baseQuery.Count(&stats.Total)
+	baseQuery.Where("(audit_logs.response_status >= ? OR audit_logs.action_type = ?)", 400, "system_error").Count(&stats.Error)
+	baseQuery.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400).Count(&stats.Warning)
+	baseQuery.Where("(audit_logs.response_status < ? OR audit_logs.response_status IS NULL) AND audit_logs.action_type != ?", 300, "system_error").Count(&stats.Info)
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
@@ -531,10 +598,11 @@ func GetLogsStats(c *gin.Context) {
 func ExportLogs(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.AuditLog{}).Preload("User")
-	query = applyAuditLogFilters(query, c)
+	query = applySystemLogsBaseScope(query)
+	query = applySystemLogsFilters(query, c, true)
 
 	var logs []models.AuditLog
-	if err := query.Order("created_at DESC").Limit(10000).Find(&logs).Error; err != nil {
+	if err := query.Order("audit_logs.created_at DESC").Limit(10000).Find(&logs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "导出日志失败", err)
 		return
 	}

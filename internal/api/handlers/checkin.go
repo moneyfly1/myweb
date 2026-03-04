@@ -4,10 +4,10 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
-	"math"
-	"math/rand"
+	"math/big"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -41,8 +41,12 @@ func Checkin(c *gin.Context) {
 			return fmt.Errorf("今天已经签到过了")
 		}
 
-		// 生成随机奖励金额（1-10积分）
-		amount := math.Floor((rand.Float64()*9+1)*100) / 100
+		// 生成随机奖励金额（1.00-10.00，使用加密安全随机数）
+		amount := 1.0
+		randomCents, randomErr := rand.Int(rand.Reader, big.NewInt(901)) // 0-900
+		if randomErr == nil {
+			amount = float64(100+randomCents.Int64()) / 100.0
+		}
 
 		// 锁定用户记录并更新余额
 		var user models.User
@@ -134,22 +138,37 @@ func GetCheckinStatus(c *gin.Context) {
 	var totalReward float64
 	db.Model(&models.CheckinRecord{}).Where("user_id = ?", userID).Select("COALESCE(SUM(amount), 0)").Scan(&totalReward)
 
-	// 连续签到天数
+	// 连续签到天数：单次查询近10年的签到记录，避免按天N次查询
 	streak := 0
-	checkDate := now
-	for {
-		ds, de := utils.GetDayRange(checkDate)
-		var c int64
-		db.Model(&models.CheckinRecord{}).Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, ds, de).Count(&c)
-		if c == 0 {
-			break
+	var checkinTimes []sql.NullTime
+	err := db.Model(&models.CheckinRecord{}).
+		Where("user_id = ? AND created_at < ?", userID, dayEnd).
+		Order("created_at DESC").
+		Limit(3650).
+		Pluck("created_at", &checkinTimes).Error
+	if err == nil {
+		daySet := make(map[string]struct{}, len(checkinTimes))
+		for _, ct := range checkinTimes {
+			if !ct.Valid {
+				continue
+			}
+			dayKey := ct.Time.In(utils.BeijingTZ).Format("2006-01-02")
+			daySet[dayKey] = struct{}{}
 		}
-		streak++
-		checkDate = checkDate.AddDate(0, 0, -1)
+
+		checkDate := dayStart
+		for {
+			dayKey := checkDate.In(utils.BeijingTZ).Format("2006-01-02")
+			if _, exists := daySet[dayKey]; !exists {
+				break
+			}
+			streak++
+			checkDate = checkDate.AddDate(0, 0, -1)
+		}
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"checked_in":    count > 0,
+		"checked_in":     count > 0,
 		"total_checkins": totalCheckins,
 		"total_reward":   totalReward,
 		"streak":         streak,

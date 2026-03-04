@@ -85,6 +85,7 @@ func ErrorRecoveryMiddleware() gin.HandlerFunc {
 
 		utils.CreateSystemErrorLog(c, http.StatusInternalServerError,
 			fmt.Sprintf("系统异常: %s", safeErrMsg), err)
+		c.Set("system_error_logged", true)
 
 		if utils.AppLogger != nil {
 			// 生产环境不记录完整堆栈信息

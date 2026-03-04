@@ -823,9 +823,9 @@ func (s *Scheduler) runAutoBackup() error {
 
 						client := git.NewClient(platformType, tokenConfig.Value, owner, repo)
 						if err := client.UploadBackup(backupFilePath); err != nil {
-							utils.LogErrorMsg(fmt.Sprintf("上传备份到 %s 失败: %v", platformName, err))
+							utils.LogErrorMsg("上传备份到 %s 失败: %v", platformName, err)
 						} else {
-							utils.LogInfo(fmt.Sprintf("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName))
+							utils.LogInfo("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName)
 						}
 
 						// 删除临时的备份文件

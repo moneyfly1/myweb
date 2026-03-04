@@ -1,8 +1,4 @@
-.PHONY: build run test clean deps
-
-# 构建
-build:
-	go build -o bin/cboard-go cmd/server/main.go
+.PHONY: build run test test-all clean deps
 
 # 运行
 run:
@@ -10,7 +6,12 @@ run:
 
 # 测试
 test:
+	@echo "运行全部模块测试..."
 	go test ./...
+
+# 兼容旧命令
+test-all:
+	@$(MAKE) test
 
 # 清理
 clean:
@@ -51,4 +52,3 @@ lint:
 # 数据库迁移
 migrate:
 	go run cmd/server/main.go migrate
-

@@ -61,4 +61,4 @@
 
 ## 相关文档
 
-- [README - 数据库备份](../README_zh.md#-数据库备份)（若项目 README 中有备份章节）
+- [README - 数据库备份](../../README_zh.md#-数据库备份)（若项目 README 中有备份章节）

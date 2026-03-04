@@ -27,6 +27,7 @@ go.work
 # Environment variables
 .env
 .env.local
+.env.backup
 
 # Database（不提交到仓库，首次运行或安装脚本会自动创建）
 *.db
@@ -65,6 +66,7 @@ temp/
 *.pid
 *.zip
 *.bak
+*.backup
 *.backup.*
 cboard-server
 cboard-go
@@ -81,3 +83,7 @@ create_admin
 unlock_user
 update_admin_password
 main
+
+# Local helper module for running scripts without affecting root build
+scripts/go.mod
+scripts/go.sum

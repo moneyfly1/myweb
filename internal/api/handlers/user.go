@@ -1839,7 +1839,7 @@ func BatchSendExpireReminder(c *gin.Context) {
 			isExpired,
 		)
 
-		if err := emailService.QueueEmail(user.Email, subject, content, "expiry_reminder"); err != nil {
+		if err := emailService.QueueEmail(user.Email, subject, content, "expiration_reminder"); err != nil {
 			failCount++
 			continue
 		}
@@ -2166,15 +2166,15 @@ func GetNotificationSettings(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"email_enabled":               user.EmailNotifications,
-		"email_notifications":         user.EmailNotifications,
-		"abnormal_login_alert":        user.AbnormalLoginAlertEnabled,
-		"system_notification":         true,
-		"security_notification":       true,
-		"frequency":                   "realtime",
-		"sms_notifications":           user.SMSNotifications,
-		"push_notifications":          user.PushNotifications,
-		"notification_types":          user.NotificationTypes,
+		"email_enabled":         user.EmailNotifications,
+		"email_notifications":   user.EmailNotifications,
+		"abnormal_login_alert":  user.AbnormalLoginAlertEnabled,
+		"system_notification":   true,
+		"security_notification": true,
+		"frequency":             "realtime",
+		"sms_notifications":     user.SMSNotifications,
+		"push_notifications":    user.PushNotifications,
+		"notification_types":    user.NotificationTypes,
 	})
 }
 
@@ -2412,27 +2412,23 @@ func SendEmailToUser(c *gin.Context) {
 		}
 	}
 
-	// 发送邮件
+	// 统一走邮件队列，确保日志可追踪并避免同步阻塞
 	emailService := email.NewEmailService()
-	if err := emailService.SendEmail(req.Email, subject, content); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "邮件发送失败", err)
+	emailType := strings.TrimSpace(req.EmailType)
+	if emailType == "" {
+		emailType = strings.TrimSpace(req.TemplateName)
+	}
+	if emailType == "" {
+		emailType = "admin_manual"
+	}
+	if err := emailService.QueueEmail(req.Email, subject, content, emailType); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "邮件加入队列失败", err)
 		return
 	}
 
 	// 记录审计日志
 	utils.CreateAuditLogSimple(c, "send_email", "user", req.UserID,
-		fmt.Sprintf("向用户 %s 发送邮件: %s (模板: %s)", user.Username, subject, req.TemplateName))
+		fmt.Sprintf("向用户 %s 加入邮件队列: %s (模板: %s, 类型: %s)", user.Username, subject, req.TemplateName, emailType))
 
-	// 记录到邮件队列
-	emailQueue := models.EmailQueue{
-		ToEmail:   req.Email,
-		Subject:   subject,
-		Content:   content,
-		EmailType: req.TemplateName,
-		Status:    "sent",
-		SentAt:    sql.NullTime{Time: time.Now(), Valid: true},
-	}
-	db.Create(&emailQueue)
-
-	utils.SuccessResponse(c, http.StatusOK, "邮件发送成功", nil)
+	utils.SuccessResponse(c, http.StatusOK, "邮件已加入队列", nil)
 }
