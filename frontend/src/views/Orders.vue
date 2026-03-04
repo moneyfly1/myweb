@@ -892,6 +892,99 @@ export default {
       pagination.current = page
       loadOrders()
     }
+    const PAYMENT_METHOD_KEY_MAP = Object.freeze({
+      alipay: 'alipay',
+      支付宝: 'alipay',
+      wechat: 'wechat',
+      微信支付: 'wechat',
+      weixin: 'wechat'
+    })
+    const normalizePaymentMethodValue = (method) => {
+      let value = method
+      if (method && typeof method === 'object') {
+        if (method.String) {
+          value = method.String
+        } else if (method.payment_method) {
+          value = method.payment_method
+        } else {
+          const values = Object.values(method).filter(v => typeof v === 'string' && v.length > 0)
+          value = values.length > 0 ? values[0] : ''
+        }
+      }
+      return String(value || '').trim()
+    }
+    const isHttpUrl = (url) => /^https?:\/\//i.test(String(url || '').trim())
+    const createPaymentQRCode = async (url) => {
+      const QRCode = await import('qrcode')
+      return QRCode.toDataURL(String(url || '').trim(), {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        },
+        errorCorrectionLevel: 'M'
+      })
+    }
+    const resolvePaymentMethodId = async (paymentMethodId, paymentMethod) => {
+      if (paymentMethodId) {
+        return paymentMethodId
+      }
+      const normalizedMethod = normalizePaymentMethodValue(paymentMethod)
+      if (!normalizedMethod) {
+        return null
+      }
+      try {
+        const paymentMethodsResponse = await paymentAPI.getPaymentMethods()
+        const paymentMethods = paymentMethodsResponse.data?.data || paymentMethodsResponse.data || []
+        if (!Array.isArray(paymentMethods) || paymentMethods.length === 0) {
+          return null
+        }
+        const methodKey = PAYMENT_METHOD_KEY_MAP[normalizedMethod] || normalizedMethod
+        const matchedMethod = paymentMethods.find(m =>
+          m.key === methodKey ||
+          m.name === normalizedMethod ||
+          m.pay_type === methodKey
+        )
+        return matchedMethod?.id || paymentMethods[0]?.id || null
+      } catch (error) {
+        return null
+      }
+    }
+    const cleanupPaymentStatusCheck = () => {
+      if (paymentStatusCheckInterval) {
+        clearInterval(paymentStatusCheckInterval)
+        paymentStatusCheckInterval = null
+      }
+      if (paymentVisibilityHandler) {
+        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
+        paymentVisibilityHandler = null
+      }
+      if (paymentFocusHandler) {
+        window.removeEventListener('focus', paymentFocusHandler)
+        paymentFocusHandler = null
+      }
+      if (paymentTimeoutId) {
+        clearTimeout(paymentTimeoutId)
+        paymentTimeoutId = null
+      }
+    }
+    const generateQRCode = async (url) => {
+      try {
+        const QRCode = await import('qrcode')
+        return await QRCode.toDataURL(url, {
+          width: 256,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          },
+          errorCorrectionLevel: 'M'
+        })
+      } catch (error) {
+        throw new Error('生成二维码失败')
+      }
+    }
     const payOrder = async (order) => {
       try {
         const orderNo = order.order_no || order.display_no
@@ -899,32 +992,7 @@ export default {
           ElMessage.error('订单号不存在，无法支付')
           return
         }
-        let paymentMethodId = order.payment_method_id
-        if (!paymentMethodId && order.payment_method) {
-          try {
-            const paymentMethodsResponse = await paymentAPI.getPaymentMethods()
-            const paymentMethods = paymentMethodsResponse.data?.data || paymentMethodsResponse.data || []
-            const paymentMethodMap = {
-              'alipay': 'alipay',
-              '支付宝': 'alipay',
-              'wechat': 'wechat',
-              '微信支付': 'wechat',
-              'weixin': 'wechat'
-            }
-            const methodKey = paymentMethodMap[order.payment_method] || order.payment_method
-            const matchedMethod = paymentMethods.find(m => 
-              m.key === methodKey || 
-              m.name === order.payment_method ||
-              m.pay_type === methodKey
-            )
-            if (matchedMethod) {
-              paymentMethodId = matchedMethod.id
-            } else if (paymentMethods.length > 0) {
-              paymentMethodId = paymentMethods[0].id
-            }
-          } catch (error) {
-          }
-        }
+        const paymentMethodId = await resolvePaymentMethodId(order.payment_method_id, order.payment_method)
         if (!paymentMethodId) {
           ElMessage.error('无法确定支付方式，请刷新页面后重试')
           return
@@ -993,65 +1061,21 @@ export default {
       paymentUrl.value = url
       selectedOrder.value = order
       const paymentMethod = order.payment_method_name || order.payment_method || 'alipay'
-      if (paymentMethod === 'alipay') {
+
+      try {
         if (url.startsWith('http://') || url.startsWith('https://')) {
-          try {
-            const QRCode = await import('qrcode')
-            const qrCodeDataURL = await QRCode.toDataURL(url, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
-            paymentQRCode.value = qrCodeDataURL
-          } catch (error) {
-            ElMessage.error('生成二维码失败，请刷新页面重试')
-            return
-          }
+          paymentQRCode.value = await generateQRCode(url)
+        } else if (paymentMethod !== 'alipay') {
+          paymentQRCode.value = await generateQRCode(url)
         } else {
           ElMessage.error('支付宝二维码格式错误，请联系管理员检查配置')
           return
         }
-      } else {
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          try {
-            const QRCode = await import('qrcode')
-            const qrCodeDataURL = await QRCode.toDataURL(url, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
-            paymentQRCode.value = qrCodeDataURL
-          } catch (error) {
-            ElMessage.error('生成二维码失败，请刷新页面重试')
-            return
-          }
-        } else {
-          try {
-            const QRCode = await import('qrcode')
-            const qrCodeDataURL = await QRCode.toDataURL(url, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
-            paymentQRCode.value = qrCodeDataURL
-          } catch (error) {
-            ElMessage.error('生成二维码失败，请刷新页面重试')
-            return
-          }
-        }
+      } catch (error) {
+        ElMessage.error('生成二维码失败，请刷新页面重试')
+        return
       }
+
       selectedOrder.value = {
         ...order,
         order_no: order.order_no || order.display_no,
@@ -1078,32 +1102,10 @@ export default {
         ElMessage.warning('二维码显示异常，正在重新生成...')
         if (selectedOrder.value) {
           try {
-            let paymentMethodId = selectedOrder.value.payment_method_id
-            if (!paymentMethodId) {
-              try {
-                const paymentMethodsResponse = await paymentAPI.getPaymentMethods()
-                const paymentMethods = paymentMethodsResponse.data?.data || paymentMethodsResponse.data || []
-                const paymentMethodMap = {
-                  'alipay': 'alipay',
-                  '支付宝': 'alipay',
-                  'wechat': 'wechat',
-                  '微信支付': 'wechat',
-                  'weixin': 'wechat'
-                }
-                const methodKey = paymentMethodMap[selectedOrder.value.payment_method] || selectedOrder.value.payment_method
-                const matchedMethod = paymentMethods.find(m => 
-                  m.key === methodKey || 
-                  m.name === selectedOrder.value.payment_method ||
-                  m.pay_type === methodKey
-                )
-                if (matchedMethod) {
-                  paymentMethodId = matchedMethod.id
-                } else if (paymentMethods.length > 0) {
-                  paymentMethodId = paymentMethods[0].id
-                }
-              } catch (error) {
-              }
-            }
+            const paymentMethodId = await resolvePaymentMethodId(
+              selectedOrder.value.payment_method_id,
+              selectedOrder.value.payment_method
+            )
             if (!paymentMethodId) {
               ElMessage.error('无法确定支付方式，请刷新页面后重试')
               return
@@ -1113,19 +1115,10 @@ export default {
             })
             const paymentUrl = response.data.data?.payment_url || response.data.data?.payment_qr_code
             if (paymentUrl) {
-              const QRCode = await import('qrcode')
-              const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, {
-                width: 256,
-                margin: 2,
-                color: {
-                  dark: '#000000',
-                  light: '#FFFFFF'
-                },
-                errorCorrectionLevel: 'M'
-              })
+              const qrCodeDataURL = await generateQRCode(paymentUrl)
               paymentQRCode.value = qrCodeDataURL
               event.target.src = qrCodeDataURL
-              }
+            }
           } catch (error) {
             ElMessage.error('二维码生成失败，请刷新页面后重试')
           }
@@ -1133,23 +1126,7 @@ export default {
       }
     }
     const startPaymentStatusCheck = () => {
-      // 清理之前的资源
-      if (paymentStatusCheckInterval) {
-        clearInterval(paymentStatusCheckInterval)
-        paymentStatusCheckInterval = null
-      }
-      if (paymentVisibilityHandler) {
-        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
-        paymentVisibilityHandler = null
-      }
-      if (paymentFocusHandler) {
-        window.removeEventListener('focus', paymentFocusHandler)
-        paymentFocusHandler = null
-      }
-      if (paymentTimeoutId) {
-        clearTimeout(paymentTimeoutId)
-        paymentTimeoutId = null
-      }
+      cleanupPaymentStatusCheck()
 
       // 立即检查一次
       checkPaymentStatus()
