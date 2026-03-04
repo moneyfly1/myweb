@@ -332,6 +332,65 @@
           <el-empty v-else description="暂无充值记录" :image-size="80" />
         </el-tab-pane>
 
+        <!-- 签到日志 Tab -->
+        <el-tab-pane label="签到日志" name="checkins">
+          <div class="checkin-actions">
+            <el-button
+              size="small"
+              :icon="RefreshRight"
+              @click="loadCheckinLogs"
+              :loading="loadingCheckins"
+            >
+              刷新
+            </el-button>
+            <el-button
+              type="success"
+              size="small"
+              @click="exportCheckinLogs"
+              :loading="exportingCheckins"
+            >
+              导出签到日志
+            </el-button>
+          </div>
+          <el-table
+            v-if="checkinLogs && checkinLogs.length > 0"
+            :data="checkinLogs"
+            size="small"
+            max-height="240"
+            style="width: 100%"
+            v-loading="loadingCheckins"
+          >
+            <el-table-column prop="created_at" label="签到时间" width="180">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.created_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="amount" label="奖励金额" width="140">
+              <template #default="scope">
+                <span class="amount-text positive">+¥{{ Number(scope.row.amount || 0).toFixed(2) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="180">
+              <template #default>
+                每日签到奖励
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else-if="!loadingCheckins" description="暂无签到日志" :image-size="80" />
+          <div class="checkin-pagination">
+            <el-pagination
+              v-model:current-page="checkinPagination.page"
+              v-model:page-size="checkinPagination.size"
+              :total="checkinPagination.total"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              small
+              @size-change="handleCheckinSizeChange"
+              @current-change="handleCheckinPageChange"
+            />
+          </div>
+        </el-tab-pane>
+
         <!-- 专线节点 Tab -->
         <el-tab-pane label="专线节点" name="custom-nodes">
           <div class="custom-nodes-section">
@@ -515,7 +574,16 @@ export default {
       loadingNodes: false,
       devices: [],
       loadingDevices: false,
-      deletingDeviceId: null
+      deletingDeviceId: null,
+      checkinLogs: [],
+      checkinLoaded: false,
+      loadingCheckins: false,
+      exportingCheckins: false,
+      checkinPagination: {
+        page: 1,
+        size: 20,
+        total: 0
+      }
     }
   },
   computed: {
@@ -541,10 +609,17 @@ export default {
         this.activeTab = this.initialTab
         this.devices = []
         this.customNodes = []
+        this.checkinLogs = []
+        this.checkinLoaded = false
+        this.checkinPagination.page = 1
+        this.checkinPagination.size = 20
+        this.checkinPagination.total = 0
         if (this.activeTab === 'devices') {
           this.loadDevices()
         } else if (this.activeTab === 'custom-nodes') {
           this.loadUserCustomNodes()
+        } else if (this.activeTab === 'checkins') {
+          this.loadCheckinLogs()
         }
       }
     },
@@ -553,6 +628,8 @@ export default {
         this.loadUserCustomNodes()
       } else if (val === 'devices' && this.devices.length === 0 && !this.loadingDevices) {
         this.loadDevices()
+      } else if (val === 'checkins' && !this.checkinLoaded && !this.loadingCheckins) {
+        this.loadCheckinLogs()
       }
     }
   },
@@ -653,6 +730,88 @@ export default {
         ElMessage.success('复制成功')
       } catch (err) {
         ElMessage.error('复制失败')
+      }
+    },
+    getCurrentUserId() {
+      return this.user?.user_info?.id || this.user?.id
+    },
+    async loadCheckinLogs() {
+      const userId = this.getCurrentUserId()
+      if (!userId) {
+        this.checkinLogs = []
+        this.checkinPagination.total = 0
+        return
+      }
+      this.loadingCheckins = true
+      try {
+        const params = {
+          page: this.checkinPagination.page,
+          size: this.checkinPagination.size
+        }
+        const response = await adminAPI.getUserCheckinLogs(userId, params)
+        if (response?.data?.success) {
+          const data = response.data.data || {}
+          this.checkinLogs = data.logs || []
+          this.checkinPagination.total = data.total || 0
+          this.checkinLoaded = true
+        } else {
+          this.checkinLogs = []
+          this.checkinPagination.total = 0
+          ElMessage.error(response?.data?.message || '加载签到日志失败')
+        }
+      } catch (error) {
+        this.checkinLogs = []
+        this.checkinPagination.total = 0
+        ElMessage.error('加载签到日志失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        this.loadingCheckins = false
+      }
+    },
+    handleCheckinSizeChange(size) {
+      this.checkinPagination.size = size
+      this.checkinPagination.page = 1
+      this.loadCheckinLogs()
+    },
+    handleCheckinPageChange(page) {
+      this.checkinPagination.page = page
+      this.loadCheckinLogs()
+    },
+    async exportCheckinLogs() {
+      const userId = this.getCurrentUserId()
+      if (!userId) {
+        ElMessage.warning('用户ID不存在')
+        return
+      }
+      this.exportingCheckins = true
+      try {
+        const response = await adminAPI.exportUserCheckinLogs(userId, {})
+        if (response?.data instanceof Blob) {
+          const url = window.URL.createObjectURL(response.data)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `user_${userId}_checkin_logs_${new Date().toISOString().split('T')[0]}.csv`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+          ElMessage.success('签到日志导出成功')
+          return
+        }
+        ElMessage.error('导出失败：响应格式不正确')
+      } catch (error) {
+        if (error.response?.data instanceof Blob) {
+          try {
+            const text = await error.response.data.text()
+            const errData = JSON.parse(text)
+            ElMessage.error(errData.message || '导出签到日志失败')
+          } catch (e) {
+            ElMessage.error('导出签到日志失败')
+          }
+        } else {
+          ElMessage.error('导出签到日志失败: ' + (error.response?.data?.message || error.message))
+        }
+      } finally {
+        this.exportingCheckins = false
       }
     },
     async loadDevices() {
@@ -976,6 +1135,19 @@ export default {
     .ua-records-section {
       margin-top: 8px;
     }
+  }
+
+  .checkin-actions {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .checkin-pagination {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
   }
 
   .node-search-section {
