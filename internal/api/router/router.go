@@ -74,6 +74,7 @@ func SetupRouter() *gin.Engine {
 			users.GET("/devices", handlers.GetUserDevices)
 			users.POST("/checkin", handlers.Checkin)
 			users.GET("/checkin/status", handlers.GetCheckinStatus)
+			users.GET("/checkin/history", handlers.GetMyCheckinHistory)
 		}
 
 		xboardCompat := api.Group("")
@@ -315,6 +316,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users", handlers.CreateUser)
 			admin.GET("/users/:id", handlers.GetUser)
 			admin.GET("/users/:id/details", handlers.GetUserDetails)
+			admin.GET("/users/:id/checkin-logs", handlers.GetUserCheckinLogs)
+			admin.GET("/users/:id/checkin-logs/export", handlers.ExportUserCheckinLogs)
 			admin.PUT("/users/:id", handlers.UpdateUser)
 			admin.PUT("/users/:id/status", handlers.UpdateUserStatus)
 			admin.POST("/users/:id/unlock-login", handlers.UnlockUserLogin)
