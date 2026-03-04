@@ -369,13 +369,9 @@
               </el-tag>
             </span>
           </div>
-          <div class="card-row" v-if="user.subscription">
-            <span class="label">订阅状态</span>
-            <span class="value">
-              <el-tag :type="getSubscriptionStatusType(user.subscription.status)" size="small">
-                {{ getSubscriptionStatusText(user.subscription.status) }}
-              </el-tag>
-            </span>
+          <div class="card-row">
+            <span class="label">余额</span>
+            <span class="value">¥{{ Number(user.balance || 0).toFixed(2) }}</span>
           </div>
           <div class="card-row">
             <span class="label">注册时间</span>

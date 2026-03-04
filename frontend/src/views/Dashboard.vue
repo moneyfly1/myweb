@@ -508,6 +508,7 @@ import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
+import { copyToClipboard as copyText } from '@/utils/textSelection'
 import DOMPurify from 'dompurify'
 const router = useRouter()
 const api = useApi()
@@ -1162,6 +1163,10 @@ const downloadApp = async (appName) => {
   }
 }
 const openTutorial = (url) => {
+  if (url) {
+    router.push(url)
+    return
+  }
   router.push('/help')
 }
 const goToPackages = () => {
@@ -1174,232 +1179,113 @@ const loadDevices = async () => {
   } catch (error) {
     }
 }
-const handleClashCommand = (command) => {
-  if (command === 'copy-clash') {
-    copyClashSubscription()
-  } else if (command === 'import-clash') {
-    importClashSubscription()
+const executeCommand = (command, handlers) => {
+  const handler = handlers[command]
+  if (handler) {
+    handler()
   }
 }
-const handleFlashCommand = (command) => {
-  if (command === 'copy-flash') {
-    copyFlashSubscription()
-  } else if (command === 'import-flash') {
-    importFlashSubscription()
+const getExpiryName = (withSuffix = true) => {
+  const expiryDateValue = userInfo.value?.expiryDate
+  if (!expiryDateValue || expiryDateValue === '未设置') {
+    return ''
   }
-}
-const handleMohomoCommand = (command) => {
-  if (command === 'copy-mohomo') {
-    copyMohomoSubscription()
-  } else if (command === 'import-mohomo') {
-    importMohomoSubscription()
+  const expiryDate = new Date(expiryDateValue)
+  if (isNaN(expiryDate.getTime())) {
+    return ''
   }
+  const year = expiryDate.getFullYear()
+  const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
+  const day = String(expiryDate.getDate()).padStart(2, '0')
+  return `到期时间${year}-${month}-${day}${withSuffix ? '_到期' : ''}`
 }
-const handleClashVergeCommand = (command) => {
-  if (command === 'copy-clash-verge') {
-    copyClashVergeSubscription()
-  } else if (command === 'import-clash-verge') {
-    importClashVergeSubscription()
+const ensureSubscriptionUrl = (url, errorMessage = '订阅地址不可用，请先购买套餐或刷新页面重试') => {
+  if (!url) {
+    ElMessage.error(errorMessage)
+    return false
   }
+  return true
 }
-const handleShadowrocketCommand = (command) => {
-  if (command === 'copy-shadowrocket') {
-    copyShadowrocketSubscription()
-  } else if (command === 'import-shadowrocket') {
-    importShadowrocketSubscription()
+const copySubscriptionUrl = async (url, successMessage, errorMessage) => {
+  if (!ensureSubscriptionUrl(url, errorMessage)) {
+    return
   }
+  await copyText(url, successMessage)
 }
-const copyClashSubscription = () => {
-  if (!userInfo.value.clashUrl) {
-    ElMessage.error('Clash 订阅地址不可用，请刷新页面重试')
+const importClashBasedSubscription = (client, successMessage) => {
+  const clashUrl = userInfo.value?.clashUrl
+  if (!ensureSubscriptionUrl(clashUrl)) {
     return
   }
   try {
-    copyToClipboard(userInfo.value.clashUrl, 'Clash 订阅地址已复制到剪贴板')
-  } catch (error) {
-    ElMessage.error('复制失败，请手动复制订阅地址')
-  }
-}
-const copyShadowrocketSubscription = () => {
-  if (!userInfo.value || !userInfo.value.universalUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
-  } catch (error) {
-    ElMessage.error('复制失败，请手动复制订阅地址')
-  }
-}
-const copyUniversalSubscription = () => {
-  if (!userInfo.value || !userInfo.value.universalUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐')
-    return
-  }
-  copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
-}
-const copyFlashSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    copyToClipboard(userInfo.value.clashUrl, 'Flash 订阅地址已复制到剪贴板')
-  } catch (error) {
-    ElMessage.error('复制失败，请手动复制订阅地址')
-  }
-}
-const importFlashSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    let url = userInfo.value.clashUrl
-    let name = ''
-    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      const expiryDate = new Date(userInfo.value.expiryDate)
-      if (!isNaN(expiryDate.getTime())) {
-        const year = expiryDate.getFullYear()
-        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-        const day = String(expiryDate.getDate()).padStart(2, '0')
-        name = `到期时间${year}-${month}-${day}_到期`
-      }
-    }
-    oneclickImport('flash', url, name)
-    ElMessage.success('正在打开 Flash 客户端...')
+    oneclickImport(client, clashUrl, getExpiryName(true))
+    ElMessage.success(successMessage)
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
 }
-const copyMohomoSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    copyToClipboard(userInfo.value.clashUrl, 'Clash Part 订阅地址已复制到剪贴板')
-  } catch (error) {
-    ElMessage.error('复制失败，请手动复制订阅地址')
-  }
-}
-const importMohomoSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    let url = userInfo.value.clashUrl
-    let name = ''
-    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      const expiryDate = new Date(userInfo.value.expiryDate)
-      if (!isNaN(expiryDate.getTime())) {
-        const year = expiryDate.getFullYear()
-        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-        const day = String(expiryDate.getDate()).padStart(2, '0')
-        name = `到期时间${year}-${month}-${day}_到期`
-      }
-    }
-    oneclickImport('mohomo', url, name)
-    ElMessage.success('正在打开 Clash Part 客户端...')
-  } catch (error) {
-    ElMessage.error('一键导入失败，请手动复制订阅地址')
-  }
-}
-const copyClashVergeSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    copyToClipboard(userInfo.value.clashUrl, 'Clash Verge 订阅地址已复制到剪贴板')
-  } catch (error) {
-    ElMessage.error('复制失败，请手动复制订阅地址')
-  }
-}
-const importClashVergeSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    let url = userInfo.value.clashUrl
-    let name = ''
-    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      const expiryDate = new Date(userInfo.value.expiryDate)
-      if (!isNaN(expiryDate.getTime())) {
-        const year = expiryDate.getFullYear()
-        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-        const day = String(expiryDate.getDate()).padStart(2, '0')
-        name = `到期时间${year}-${month}-${day}_到期`
-      }
-    }
-    oneclickImport('clash-verge', url, name)
-    ElMessage.success('正在打开 Clash Verge 客户端...')
-  } catch (error) {
-    ElMessage.error('一键导入失败，请手动复制订阅地址')
-  }
-}
-const copyHiddifySubscription = () => {
-  if (!userInfo.value.universalUrl) {
-    ElMessage.error('通用订阅地址不可用')
-    return
-  }
-  copyToClipboard(userInfo.value.universalUrl, '通用订阅地址已复制到剪贴板')
-}
-const copyToClipboard = async (text, message) => {
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success(message)
-  } catch (error) {
-    const textArea = document.createElement('textarea')
-    textArea.value = text
-    document.body.appendChild(textArea)
-    textArea.select()
-    document.execCommand('copy')
-    document.body.removeChild(textArea)
-    ElMessage.success(message)
-  }
-}
-const importClashSubscription = () => {
-  if (!userInfo.value || !userInfo.value.clashUrl) {
-    ElMessage.error('订阅地址不可用，请先购买套餐或刷新页面重试')
-    return
-  }
-  try {
-    let url = userInfo.value.clashUrl
-    let name = ''
-    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      const expiryDate = new Date(userInfo.value.expiryDate)
-      if (!isNaN(expiryDate.getTime())) {
-        const year = expiryDate.getFullYear()
-        const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-        const day = String(expiryDate.getDate()).padStart(2, '0')
-        name = `到期时间${year}-${month}-${day}_到期`
-      }
-    }
-    oneclickImport('clashx', url, name)
-    ElMessage.success('正在打开 Clash 客户端...')
-  } catch (error) {
-    ElMessage.error('一键导入失败，请手动复制订阅地址')
-  }
-}
+const handleClashCommand = (command) => executeCommand(command, {
+  'copy-clash': copyClashSubscription,
+  'import-clash': importClashSubscription
+})
+const handleFlashCommand = (command) => executeCommand(command, {
+  'copy-flash': copyFlashSubscription,
+  'import-flash': importFlashSubscription
+})
+const handleMohomoCommand = (command) => executeCommand(command, {
+  'copy-mohomo': copyMohomoSubscription,
+  'import-mohomo': importMohomoSubscription
+})
+const handleClashVergeCommand = (command) => executeCommand(command, {
+  'copy-clash-verge': copyClashVergeSubscription,
+  'import-clash-verge': importClashVergeSubscription
+})
+const handleShadowrocketCommand = (command) => executeCommand(command, {
+  'copy-shadowrocket': copyShadowrocketSubscription,
+  'import-shadowrocket': importShadowrocketSubscription
+})
+const copyClashSubscription = () => copySubscriptionUrl(
+  userInfo.value?.clashUrl,
+  'Clash 订阅地址已复制到剪贴板',
+  'Clash 订阅地址不可用，请刷新页面重试'
+)
+const copyFlashSubscription = () => copySubscriptionUrl(
+  userInfo.value?.clashUrl,
+  'Flash 订阅地址已复制到剪贴板'
+)
+const copyMohomoSubscription = () => copySubscriptionUrl(
+  userInfo.value?.clashUrl,
+  'Clash Part 订阅地址已复制到剪贴板'
+)
+const copyClashVergeSubscription = () => copySubscriptionUrl(
+  userInfo.value?.clashUrl,
+  'Clash Verge 订阅地址已复制到剪贴板'
+)
+const copyUniversalSubscription = () => copySubscriptionUrl(
+  userInfo.value?.universalUrl,
+  '通用订阅地址已复制到剪贴板',
+  '订阅地址不可用，请先购买套餐'
+)
+const copyHiddifySubscription = () => copySubscriptionUrl(
+  userInfo.value?.universalUrl,
+  '通用订阅地址已复制到剪贴板',
+  '通用订阅地址不可用'
+)
+const copyShadowrocketSubscription = () => copySubscriptionUrl(
+  userInfo.value?.universalUrl,
+  '通用订阅地址已复制到剪贴板'
+)
+const importClashSubscription = () => importClashBasedSubscription('clashx', '正在打开 Clash 客户端...')
+const importFlashSubscription = () => importClashBasedSubscription('flash', '正在打开 Flash 客户端...')
+const importMohomoSubscription = () => importClashBasedSubscription('mohomo', '正在打开 Clash Part 客户端...')
+const importClashVergeSubscription = () => importClashBasedSubscription('clash-verge', '正在打开 Clash Verge 客户端...')
 const importShadowrocketSubscription = () => {
-  if (!userInfo.value.universalUrl) {
-    ElMessage.error('通用订阅地址不可用，请刷新页面重试')
+  const universalUrl = userInfo.value?.universalUrl
+  if (!ensureSubscriptionUrl(universalUrl, '通用订阅地址不可用，请刷新页面重试')) {
     return
   }
   try {
-    let url = userInfo.value.universalUrl
-    let expiryName = ''
-    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      const expiryDate = new Date(userInfo.value.expiryDate)
-      const year = expiryDate.getFullYear()
-      const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
-      const day = String(expiryDate.getDate()).padStart(2, '0')
-      expiryName = `到期时间${year}-${month}-${day}`
-    }
-    oneclickImport('shadowrocket', url, expiryName)
+    oneclickImport('shadowrocket', universalUrl, getExpiryName(false))
     ElMessage.success('正在打开 Shadowrocket 客户端...')
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
@@ -1421,43 +1307,14 @@ const getDeviceIcon = (osName) => {
 }
 const oneclickImport = (client, url, name = '') => {
   try {
+    const clashCompatibleClients = new Set(['clashx', 'clash', 'flash', 'mohomo', 'sparkle', 'clash-verge'])
+    if (clashCompatibleClients.has(client)) {
+      const baseUrl = `clash://install-config?url=${encodeURIComponent(url)}`
+      const targetUrl = name ? `${baseUrl}&name=${encodeURIComponent(name)}` : baseUrl
+      window.open(targetUrl, '_blank')
+      return
+    }
     switch (client) {
-      case 'clashx':
-      case 'clash':
-        if (name) {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
-        } else {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}`, '_blank')
-        }
-        break
-      case 'flash':
-        if (name) {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
-        } else {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}`, '_blank')
-        }
-        break
-      case 'mohomo':
-        if (name) {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
-        } else {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}`, '_blank')
-        }
-        break
-      case 'sparkle':
-        if (name) {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
-        } else {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}`, '_blank')
-        }
-        break
-      case 'clash-verge':
-        if (name) {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`, '_blank')
-        } else {
-          window.open(`clash://install-config?url=${encodeURIComponent(url)}`, '_blank')
-        }
-        break
       case 'shadowrocket':
         let shadowrocketUrl = `shadowrocket://add/sub://${btoa(url)}`
         if (name) {

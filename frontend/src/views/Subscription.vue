@@ -343,6 +343,7 @@ import QRCode from 'qrcode'
 import { subscriptionAPI, userAPI, orderAPI, userLevelAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { useRouter } from 'vue-router'
 import { formatDateTime, formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
+import { copyToClipboard as copyText } from '@/utils/textSelection'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -534,28 +535,7 @@ export default {
       }
     }
     const copyUrl = async (url) => {
-      if (!url) {
-        ElMessage.warning('没有可复制的内容')
-        return
-      }
-      try {
-        await navigator.clipboard.writeText(url)
-        ElMessage.success('链接已复制到剪贴板')
-      } catch (error) {
-        try {
-          const textArea = document.createElement('textarea')
-          textArea.value = url
-          textArea.style.position = 'fixed'
-          textArea.style.opacity = '0'
-          document.body.appendChild(textArea)
-          textArea.select()
-          document.execCommand('copy')
-          document.body.removeChild(textArea)
-          ElMessage.success('链接已复制到剪贴板')
-        } catch (fallbackError) {
-          ElMessage.error('复制失败，请手动复制')
-        }
-      }
+      await copyText(url, '链接已复制到剪贴板')
     }
     const resetSubscription = async () => {
       try {
