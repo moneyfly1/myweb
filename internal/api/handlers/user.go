@@ -650,6 +650,18 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
+	var checkins []models.CheckinRecord
+	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(100).Find(&checkins)
+	formattedCheckins := make([]gin.H, 0, len(checkins))
+	for _, record := range checkins {
+		formattedCheckins = append(formattedCheckins, gin.H{
+			"id":         record.ID,
+			"user_id":    record.UserID,
+			"amount":     record.Amount,
+			"created_at": utils.FormatBeijingTime(record.CreatedAt),
+		})
+	}
+
 	var totalOrders int64
 	db.Model(&models.Order{}).Where("user_id = ?", u.ID).Count(&totalOrders)
 
@@ -792,6 +804,7 @@ func GetUserDetails(c *gin.Context) {
 		"subscriptions":    formattedSubs,
 		"orders":           formattedOrders,
 		"recharge_records": formattedRecharges,
+		"checkin_records":  formattedCheckins,
 		"statistics": gin.H{
 			"total_subscriptions": len(subs),
 			"total_orders":        totalOrders,
@@ -802,6 +815,130 @@ func GetUserDetails(c *gin.Context) {
 		"ua_records":          uaRecords,
 		"login_history":       formattedLoginHistory,
 	})
+}
+
+func buildUserCheckinLogsQuery(db *gorm.DB, c *gin.Context, userID uint) (*gorm.DB, error) {
+	query := db.Model(&models.CheckinRecord{}).Where("user_id = ?", userID)
+
+	if startTime := strings.TrimSpace(c.Query("start_time")); startTime != "" {
+		t, err := time.ParseInLocation(TimeLayout, startTime, utils.BeijingTZ)
+		if err != nil {
+			return nil, fmt.Errorf("开始时间格式错误，请使用 %s", TimeLayout)
+		}
+		query = query.Where("created_at >= ?", t)
+	}
+	if endTime := strings.TrimSpace(c.Query("end_time")); endTime != "" {
+		t, err := time.ParseInLocation(TimeLayout, endTime, utils.BeijingTZ)
+		if err != nil {
+			return nil, fmt.Errorf("结束时间格式错误，请使用 %s", TimeLayout)
+		}
+		query = query.Where("created_at <= ?", t)
+	}
+
+	return query, nil
+}
+
+func GetUserCheckinLogs(c *gin.Context) {
+	currentUser, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权", nil)
+		return
+	}
+	if !currentUser.IsAdmin {
+		utils.ErrorResponse(c, http.StatusForbidden, "权限不足", nil)
+		return
+	}
+
+	db := database.GetDB()
+	userID := c.Param("id")
+
+	var user models.User
+	if err := db.Select("id").First(&user, userID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		return
+	}
+
+	query, err := buildUserCheckinLogsQuery(db, c, user.ID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+
+	pagination := utils.ParsePagination(c)
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取签到日志总数失败", err)
+		return
+	}
+
+	var records []models.CheckinRecord
+	if err := query.Order("created_at DESC").Offset(pagination.GetOffset()).Limit(pagination.Size).Find(&records).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取签到日志失败", err)
+		return
+	}
+
+	logs := make([]gin.H, 0, len(records))
+	for _, record := range records {
+		logs = append(logs, gin.H{
+			"id":         record.ID,
+			"user_id":    record.UserID,
+			"amount":     record.Amount,
+			"created_at": utils.FormatBeijingTime(record.CreatedAt),
+		})
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"logs":  logs,
+		"total": total,
+		"page":  pagination.Page,
+		"size":  pagination.Size,
+	})
+}
+
+func ExportUserCheckinLogs(c *gin.Context) {
+	currentUser, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权", nil)
+		return
+	}
+	if !currentUser.IsAdmin {
+		utils.ErrorResponse(c, http.StatusForbidden, "权限不足", nil)
+		return
+	}
+
+	db := database.GetDB()
+	userID := c.Param("id")
+
+	var user models.User
+	if err := db.Select("id").First(&user, userID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		return
+	}
+
+	query, err := buildUserCheckinLogsQuery(db, c, user.ID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+
+	var records []models.CheckinRecord
+	if err := query.Order("created_at DESC").Limit(20000).Find(&records).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "导出签到日志失败", err)
+		return
+	}
+
+	var csvContent strings.Builder
+	csvContent.WriteString("\xEF\xBB\xBF")
+	csvContent.WriteString("签到时间,奖励金额,用户ID,备注\n")
+	for _, record := range records {
+		csvContent.WriteString(fmt.Sprintf("%s,%.2f,%d,每日签到奖励\n",
+			utils.FormatBeijingTime(record.CreatedAt), record.Amount, record.UserID))
+	}
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=user_%d_checkin_logs_%s.csv",
+		user.ID, utils.GetBeijingTime().Format("20060102")))
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csvContent.String()))
 }
 
 func CreateUser(c *gin.Context) {
