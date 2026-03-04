@@ -87,3 +87,4 @@ main
 # Local helper module for running scripts without affecting root build
 scripts/go.mod
 scripts/go.sum
+dbip-city-lite.mmdb
