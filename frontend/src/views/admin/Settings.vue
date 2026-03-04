@@ -59,18 +59,48 @@
                 <el-tag :type="geoipStatus.enabled ? 'success' : 'warning'" style="margin-right: 10px;">
                   {{ geoipStatus.enabled ? '已启用' : '未启用' }}
                 </el-tag>
-                <span v-if="geoipStatus.db_exists" style="color: #909399; font-size: 12px;">
-                  大小: {{ formatFileSize(geoipStatus.db_size) }} | 更新: {{ geoipStatus.db_modified || '未知' }}
+                <span v-if="geoipStatus.active_database" style="color: #67c23a; font-size: 12px;">
+                  当前使用: {{ geoipStatus.active_database }}
                 </span>
-                <span v-else style="color: #f56c6c; font-size: 12px;">文件不存在</span>
+                <span v-else style="color: #f56c6c; font-size: 12px;">未找到数据库文件</span>
+              </div>
+            </el-form-item>
+            <el-form-item label="已安装数据库" v-if="geoipStatus && geoipStatus.databases && geoipStatus.databases.length > 0">
+              <el-table :data="geoipStatus.databases" style="width: 100%; margin-top: 10px;" size="small">
+                <el-table-column prop="name" label="数据库名称" min-width="180">
+                  <template #default="scope">
+                    <span>{{ scope.row.name }}</span>
+                    <el-tag v-if="scope.row.active" type="success" size="small" style="margin-left: 8px;">使用中</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="size" label="大小" width="100" />
+                <el-table-column prop="modified" label="更新时间" width="160" />
+              </el-table>
+            </el-form-item>
+            <el-form-item label="选择数据库类型">
+              <el-radio-group v-model="geoipDatabaseType">
+                <el-radio label="dbip">DB-IP City Lite（推荐，中国数据详细）</el-radio>
+                <el-radio label="geolite2">GeoLite2 City（MaxMind）</el-radio>
+              </el-radio-group>
+              <div class="form-tip" style="margin-top: 8px;">
+                <div v-if="geoipDatabaseType === 'dbip'">
+                  • DB-IP 提供更详细的中国城市数据<br>
+                  • 完全免费，无需注册<br>
+                  • 文件大小约 125MB
+                </div>
+                <div v-else>
+                  • GeoLite2 是广泛使用的数据库<br>
+                  • 部分中国 IP 城市数据不完整<br>
+                  • 文件大小约 60MB
+                </div>
               </div>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="updateGeoIPDatabase" :loading="geoipUpdating" :class="{ 'full-width': isMobile }">
-                {{ geoipUpdating ? '更新中...' : '更新 GeoIP 数据库' }}
+                {{ geoipUpdating ? '下载中...' : '下载/更新数据库' }}
               </el-button>
               <div class="form-tip" style="margin-top: 10px;">
-                更新以获取最新地理位置信息。文件约 60-80MB。
+                点击下载最新的 GeoIP 数据库。建议每月更新一次以获取最新的 IP 地址分配信息。
               </div>
             </el-form-item>
           </el-form>
@@ -439,6 +469,7 @@ export default {
     const creatingBackup = ref(false)
     const geoipStatus = ref(null)
     const geoipUpdating = ref(false)
+    const geoipDatabaseType = ref('dbip')
     const uploadStatus = ref(null)
     const uploadTaskId = ref(null)
     const uploadTarget = ref('gitee')
@@ -605,7 +636,10 @@ export default {
     }
     const updateGeoIPDatabase = async () => {
       geoipUpdating.value = true
-      await handleSave(() => api.post('/admin/settings/geoip/update'), 'GeoIP 数据库更新成功')
+      await handleSave(
+        () => api.post('/admin/settings/geoip/update', { type: geoipDatabaseType.value }),
+        `${geoipDatabaseType.value === 'dbip' ? 'DB-IP' : 'GeoLite2'} 数据库下载成功`
+      )
       await loadGeoIPStatus()
       geoipUpdating.value = false
     }
@@ -779,7 +813,7 @@ export default {
       themeSettings, adminNotificationSettings, announcementSettings,
       nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS,
-      testingStates, geoipStatus, geoipUpdating, creatingBackup,
+      testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, creatingBackup,
       uploadStatus, uploadTaskId, stopStatusPolling,
       saveGeneralSettings, saveRegistrationSettings, saveNotificationSettings,
       saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
