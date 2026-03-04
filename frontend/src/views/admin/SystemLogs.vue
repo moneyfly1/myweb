@@ -462,6 +462,7 @@ export default {
       start_time: '',
       end_time: '',
       keyword: '',
+      task_type: '',
       module: '',
       username: ''
     })
@@ -493,9 +494,19 @@ export default {
         loading.value = false
       }
     }
+    const buildStatsParams = () => {
+      return {
+        start_time: filterForm.start_time,
+        end_time: filterForm.end_time,
+        keyword: filterForm.keyword,
+        task_type: filterForm.task_type,
+        module: filterForm.module,
+        username: filterForm.username
+      }
+    }
     const loadLogsStats = async () => {
       try {
-        const response = await adminAPI.getLogsStats()
+        const response = await adminAPI.getLogsStats(buildStatsParams())
         if (response && response.data && response.data.success) {
           logsStats.value = response.data.data || {}
         } else {
@@ -508,6 +519,7 @@ export default {
     const applyFilter = () => {
       pagination.page = 1
       loadLogs()
+      loadLogsStats()
     }
     const resetFilter = () => {
       Object.keys(filterForm).forEach(key => {
@@ -515,11 +527,13 @@ export default {
       })
       pagination.page = 1
       loadLogs()
+      loadLogsStats()
     }
     const filterByLevel = (level) => {
       filterForm.log_level = level
       pagination.page = 1
       loadLogs()
+      loadLogsStats()
     }
     const exportLogs = async () => {
       try {
@@ -648,11 +662,17 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       const nameMap = {
         'scheduler': '定时任务调度器',
         'email_queue': '邮件队列',
+        'scheduler_email_queue': '邮件队列',
         'auto_backup': '自动备份',
+        'scheduler_auto_backup': '自动备份',
         'auto_node_update': '节点更新',
+        'scheduler_auto_node_update': '节点更新',
         'node_health_check': '节点健康检查',
+        'scheduler_node_health_check': '节点健康检查',
         'expiring_subscriptions': '订阅到期检查',
+        'scheduler_expiring_subscriptions': '订阅到期检查',
         'account_deletion': '账户删除',
+        'scheduler_account_deletion': '账户删除',
         'system_error': '系统错误',
         'security_login_success': '用户登录成功',
         'security_admin_login_success': '管理员登录',
@@ -696,7 +716,12 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
         'business_payment_config_save_failed': '支付配置保存失败',
         'business_invite_reward_failed': '邀请奖励发放失败'
       }
-      return nameMap[type] || type
+      if (nameMap[type]) return nameMap[type]
+      if (type && type.startsWith('scheduler_')) {
+        const plainTaskType = type.substring('scheduler_'.length)
+        return nameMap[plainTaskType] || `定时任务(${plainTaskType})`
+      }
+      return type
     }
     const truncateText = (text, length) => {
       if (!text) return ''

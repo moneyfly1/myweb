@@ -66,7 +66,7 @@ func (s *EmailTemplateService) SendTemplatedEmail(templateName string, to string
 	}
 
 	emailService := NewEmailService()
-	return emailService.SendEmail(to, subject, content)
+	return emailService.QueueEmail(to, subject, content, templateName)
 }
 
 func (s *EmailTemplateService) SendVerificationEmailWithTemplate(to, code string) error {

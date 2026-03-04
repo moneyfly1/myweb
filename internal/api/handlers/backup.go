@@ -265,7 +265,7 @@ func CreateBackup(c *gin.Context) {
 								statusManager.UpdateError(taskID, err)
 							} else {
 								statusManager.UpdateStatus(taskID, "success", fmt.Sprintf("已成功上传数据库备份到 %s（仅数据库文件）", platformName), 100)
-								utils.LogInfo(fmt.Sprintf("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName))
+								utils.LogInfo("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName)
 							}
 
 							os.Remove(backupFilePath)

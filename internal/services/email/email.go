@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"mime"
 	"net/smtp"
+	"strconv"
 	"strings"
+	"time"
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
@@ -25,6 +27,11 @@ type EmailService struct {
 	tls        bool
 	encryption string // "tls", "ssl", "none"
 }
+
+const (
+	expirationReminderEmailType = "expiration_reminder"
+	legacyExpiryReminderType    = "expiry_reminder"
+)
 
 func NewEmailService() *EmailService {
 	db := database.GetDB()
@@ -365,18 +372,97 @@ func (s *EmailService) SendPasswordResetEmail(to, resetLink string) error {
 
 func (s *EmailService) QueueEmail(to, subject, content, emailType string) error {
 	db := database.GetDB()
+	if db == nil {
+		return fmt.Errorf("数据库未初始化")
+	}
+
+	normalizedType := normalizeEmailType(emailType)
+
+	if normalizedType == expirationReminderEmailType {
+		shouldSkip, reason, err := shouldThrottleExpirationReminder(db, to, subject)
+		if err != nil {
+			// 限流查询失败不应阻塞核心提醒流程，记录后继续入队
+			utils.LogWarn("邮件限流查询失败，继续入队: to=%s, type=%s, error=%v", to, normalizedType, err)
+		} else if shouldSkip {
+			utils.LogInfo("邮件限流命中，跳过入队: to=%s, type=%s, reason=%s", to, normalizedType, reason)
+			return nil
+		}
+	}
 
 	emailQueue := models.EmailQueue{
 		ToEmail:     to,
 		Subject:     subject,
 		Content:     content,
 		ContentType: "html",
-		EmailType:   emailType,
+		EmailType:   normalizedType,
 		Status:      "pending",
 		MaxRetries:  3,
 	}
 
 	return db.Create(&emailQueue).Error
+}
+
+func normalizeEmailType(emailType string) string {
+	normalized := strings.TrimSpace(emailType)
+	if strings.EqualFold(normalized, legacyExpiryReminderType) {
+		return expirationReminderEmailType
+	}
+	return normalized
+}
+
+func shouldThrottleExpirationReminder(db *gorm.DB, toEmail, subject string) (bool, string, error) {
+	now := utils.GetBeijingTime()
+	cooldownHours := getNotificationIntConfig(db, "subscription_expiry_reminder_cooldown_hours", 24, 0, 720)
+	dailyLimit := getNotificationIntConfig(db, "subscription_expiry_reminder_daily_limit", 1, 0, 20)
+
+	if dailyLimit > 0 {
+		dayStart, _ := utils.GetDayRange(now)
+		var dailyCount int64
+		if err := db.Model(&models.EmailQueue{}).
+			Where("to_email = ? AND email_type = ? AND status IN ? AND created_at >= ?",
+				toEmail, expirationReminderEmailType, []string{"pending", "sent"}, dayStart).
+			Count(&dailyCount).Error; err != nil {
+			return false, "", err
+		}
+		if int(dailyCount) >= dailyLimit {
+			return true, fmt.Sprintf("同类提醒当日已达上限(%d)", dailyLimit), nil
+		}
+	}
+
+	if cooldownHours > 0 {
+		cutoff := now.Add(-time.Duration(cooldownHours) * time.Hour)
+		var recentCount int64
+		if err := db.Model(&models.EmailQueue{}).
+			Where("to_email = ? AND email_type = ? AND subject = ? AND status IN ? AND created_at >= ?",
+				toEmail, expirationReminderEmailType, subject, []string{"pending", "sent"}, cutoff).
+			Count(&recentCount).Error; err != nil {
+			return false, "", err
+		}
+		if recentCount > 0 {
+			return true, fmt.Sprintf("同主题提醒冷却中(%d小时)", cooldownHours), nil
+		}
+	}
+
+	return false, "", nil
+}
+
+func getNotificationIntConfig(db *gorm.DB, key string, defaultValue, minValue, maxValue int) int {
+	var cfg models.SystemConfig
+	if err := db.Where("category = ? AND key = ?", "notification", key).First(&cfg).Error; err != nil {
+		return defaultValue
+	}
+
+	value, err := strconv.Atoi(strings.TrimSpace(cfg.Value))
+	if err != nil {
+		return defaultValue
+	}
+	if value < minValue {
+		value = minValue
+	}
+	if maxValue > 0 && value > maxValue {
+		value = maxValue
+	}
+	return value
 }
 
 func (s *EmailService) ProcessEmailQueue() error {

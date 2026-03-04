@@ -42,7 +42,16 @@ func ErrorResponse(c *gin.Context, code int, message string, err error) {
 
 	// 系统错误记录到审计日志
 	if code >= http.StatusInternalServerError {
-		CreateSystemErrorLog(c, code, message, err)
+		alreadyLogged := false
+		if logged, exists := c.Get("system_error_logged"); exists {
+			if v, ok := logged.(bool); ok && v {
+				alreadyLogged = true
+			}
+		}
+		if !alreadyLogged {
+			CreateSystemErrorLog(c, code, message, err)
+			c.Set("system_error_logged", true)
+		}
 	}
 
 	// 生产环境：隐藏详细错误信息，使用通用错误消息
@@ -226,7 +235,7 @@ func LogError(operation string, err error, context map[string]interface{}) {
 	}
 
 	if AppLogger != nil {
-		AppLogger.Error(msg)
+		AppLogger.Error("%s", msg)
 	} else {
 		log.Printf("[ERROR] %s", msg)
 	}

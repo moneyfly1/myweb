@@ -958,7 +958,7 @@ func (s *YipayService) buildNewFormatRefundParams(orderNo, tradeNo string, refun
 		if rsaSign, err := s.signRSASign(signStr); err == nil {
 			params["rsa_sign"] = rsaSign
 		} else {
-			utils.LogWarn("易支付退款MD5+RSA模式: RSA签名生成失败，仅使用MD5", nil)
+			utils.LogWarn("易支付退款MD5+RSA模式: RSA签名生成失败，仅使用MD5")
 		}
 		sign = md5Sign
 	default: // MD5
