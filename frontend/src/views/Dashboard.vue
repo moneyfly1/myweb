@@ -91,7 +91,7 @@
         </div>
         <div class="stat-content">
           <div class="balance-main">
-            <h3 class="stat-title">¥ {{ userInfo.balance || '0.00' }}</h3>
+            <h3 class="stat-title">¥ {{ (userInfo.balance || 0).toFixed(2) }}</h3>
             <p class="stat-subtitle">账户余额</p>
           </div>
           <div class="balance-actions">
