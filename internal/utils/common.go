@@ -10,8 +10,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
+	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -548,4 +551,48 @@ func CalculateUserOrderAmount(db *gorm.DB, userID uint, status string, useAbsolu
 	query.Select(selectExpr).Scan(&total)
 
 	return total
+}
+
+// GenerateRandomString 生成指定长度的随机字符串
+func GenerateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		n, err := crand.Int(crand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			panic(fmt.Sprintf("随机数生成失败: %v", err))
+		}
+		b[i] = charset[n.Int64()]
+	}
+	return string(b)
+}
+
+// ParseFloat 解析字符串为float64，失败返回默认值
+func ParseFloat(s string, defaultValue float64) float64 {
+	if s == "" {
+		return defaultValue
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return f
+}
+
+// ParseInt 解析字符串为int，失败返回默认值
+func ParseInt(s string, defaultValue int) int {
+	if s == "" {
+		return defaultValue
+	}
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultValue
+	}
+	return i
+}
+
+// RoundFloat 四舍五入到指定小数位
+func RoundFloat(f float64, decimals int) float64 {
+	multiplier := math.Pow(10, float64(decimals))
+	return math.Round(f*multiplier) / multiplier
 }

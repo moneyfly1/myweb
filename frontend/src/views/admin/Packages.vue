@@ -3,11 +3,15 @@
     <el-card class="list-card">
       <template #header>
         <div class="card-header">
-          <span>套餐列表</span>
-          <el-button type="primary" @click="showAddDialog" class="add-package-btn">
-            <el-icon><Plus /></el-icon>
-            <span class="desktop-only">添加套餐</span>
-          </el-button>
+          <span class="header-title">套餐列表</span>
+          <div class="header-actions">
+            <el-button @click="showCustomPackageDialog" class="custom-package-btn" :icon="Setting">
+              <span class="btn-text">自定义套餐设置</span>
+            </el-button>
+            <el-button type="primary" @click="showAddDialog" class="add-package-btn" :icon="Plus">
+              <span class="btn-text">添加套餐</span>
+            </el-button>
+          </div>
         </div>
       </template>
       <div class="search-section desktop-only">
@@ -317,20 +321,181 @@
         </div>
       </template>
     </el-drawer>
+
+    <!-- 自定义套餐设置对话框 -->
+    <el-drawer
+      v-model="customPackageDialogVisible"
+      title="自定义套餐设置"
+      :size="isMobile ? '95%' : '600px'"
+      direction="rtl"
+      :class="{ 'mobile-dialog': isMobile }"
+    >
+      <el-form
+        ref="customPackageFormRef"
+        :model="customPackageForm"
+        :label-width="isMobile ? '0' : '160px'"
+        :label-position="isMobile ? 'top' : 'right'"
+      >
+        <el-form-item :label="isMobile ? '' : '启用自定义套餐'" prop="enabled">
+          <template v-if="isMobile">
+            <div class="mobile-label">启用自定义套餐</div>
+          </template>
+          <el-switch v-model="customPackageForm.enabled" :size="isMobile ? 'large' : 'default'" />
+          <div class="form-tip">启用后，用户可以自定义设备数量和购买月数</div>
+        </el-form-item>
+
+        <el-form-item :label="isMobile ? '' : '每设备每年价格 (元)'" prop="price_per_device_year">
+          <template v-if="isMobile">
+            <div class="mobile-label">每设备每年价格 (元) <span class="required">*</span></div>
+          </template>
+          <el-input-number
+            v-model="customPackageForm.price_per_device_year"
+            :min="0"
+            :precision="2"
+            :step="1"
+            placeholder="例如: 40.00"
+            :size="isMobile ? 'large' : 'default'"
+            style="width: 100%"
+          />
+          <div class="form-tip">例如 40 表示每台设备每年 40 元</div>
+        </el-form-item>
+
+        <el-form-item :label="isMobile ? '' : '最少设备数'" prop="min_devices">
+          <template v-if="isMobile">
+            <div class="mobile-label">最少设备数 <span class="required">*</span></div>
+          </template>
+          <el-input-number
+            v-model="customPackageForm.min_devices"
+            :min="1"
+            :precision="0"
+            placeholder="例如: 5"
+            :size="isMobile ? 'large' : 'default'"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item :label="isMobile ? '' : '最多设备数'" prop="max_devices">
+          <template v-if="isMobile">
+            <div class="mobile-label">最多设备数 <span class="required">*</span></div>
+          </template>
+          <el-input-number
+            v-model="customPackageForm.max_devices"
+            :min="1"
+            :precision="0"
+            placeholder="例如: 100"
+            :size="isMobile ? 'large' : 'default'"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item :label="isMobile ? '' : '最少购买月数'" prop="min_months">
+          <template v-if="isMobile">
+            <div class="mobile-label">最少购买月数 <span class="required">*</span></div>
+          </template>
+          <el-input-number
+            v-model="customPackageForm.min_months"
+            :min="1"
+            :precision="0"
+            placeholder="例如: 6"
+            :size="isMobile ? 'large' : 'default'"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item :label="isMobile ? '' : '时长折扣配置'" prop="duration_discounts">
+          <template v-if="isMobile">
+            <div class="mobile-label">时长折扣配置</div>
+          </template>
+          <div class="discount-config">
+            <div
+              v-for="(discount, index) in customPackageForm.duration_discounts"
+              :key="index"
+              class="discount-item"
+            >
+              <div class="discount-input-group">
+                <el-input-number
+                  v-model="discount.months"
+                  :min="1"
+                  :precision="0"
+                  placeholder="月数"
+                  :size="isMobile ? 'default' : 'default'"
+                  :style="isMobile ? 'width: 100%' : 'width: 120px'"
+                />
+                <span class="discount-separator">个月</span>
+              </div>
+              <div class="discount-input-group">
+                <el-input-number
+                  v-model="discount.discount"
+                  :min="0"
+                  :max="100"
+                  :precision="1"
+                  placeholder="折扣"
+                  :size="isMobile ? 'default' : 'default'"
+                  :style="isMobile ? 'width: 100%' : 'width: 120px'"
+                />
+                <span class="discount-separator">% 优惠</span>
+              </div>
+              <el-button
+                type="danger"
+                :size="isMobile ? 'default' : 'small'"
+                @click="removeDiscount(index)"
+                :icon="Delete"
+                class="discount-delete-btn"
+              >
+                删除
+              </el-button>
+            </div>
+            <el-button
+              type="primary"
+              :size="isMobile ? 'default' : 'small'"
+              @click="addDiscount"
+              :icon="Plus"
+              class="discount-add-btn"
+              style="margin-top: 10px"
+            >
+              添加折扣
+            </el-button>
+          </div>
+          <div class="form-tip">例如: 购买12个月打10%折扣，购买24个月打20%折扣</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
+          <el-button
+            @click="customPackageDialogVisible = false"
+            :size="isMobile ? 'large' : 'default'"
+            :class="{ 'mobile-action-btn': isMobile }"
+          >
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            @click="saveCustomPackageSettings"
+            :loading="customPackageLoading"
+            :size="isMobile ? 'large' : 'default'"
+            :class="{ 'mobile-action-btn': isMobile }"
+          >
+            保存设置
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, HomeFilled, Search, Refresh } from '@element-plus/icons-vue'
-import { adminAPI } from '@/utils/api'
+import { Plus, HomeFilled, Search, Refresh, Setting, Delete } from '@element-plus/icons-vue'
+import { adminAPI, configAPI } from '@/utils/api'
 export default {
   name: 'AdminPackages',
   components: {
     Plus,
     HomeFilled,
     Search,
-    Refresh
+    Refresh,
+    Setting,
+    Delete
   },
   setup() {
     const loading = ref(false)
@@ -340,6 +505,24 @@ export default {
     const formRef = ref()
     const packages = ref([])
     const isMobile = ref(window.innerWidth <= 768)
+
+    // 自定义套餐相关
+    const customPackageDialogVisible = ref(false)
+    const customPackageLoading = ref(false)
+    const customPackageFormRef = ref()
+    const customPackageForm = reactive({
+      enabled: false,
+      price_per_device_year: 40,
+      min_devices: 5,
+      max_devices: 100,
+      min_months: 6,
+      duration_discounts: [
+        { months: 6, discount: 0 },
+        { months: 12, discount: 10 },
+        { months: 24, discount: 20 }
+      ]
+    })
+
     const searchForm = reactive({
       name: '',
       status: ''
@@ -588,6 +771,105 @@ export default {
     const handleResize = () => {
       isMobile.value = window.innerWidth <= 768
     }
+
+    // 自定义套餐相关方法
+    const showCustomPackageDialog = async () => {
+      await loadCustomPackageSettings()
+      customPackageDialogVisible.value = true
+    }
+
+    const loadCustomPackageSettings = async () => {
+      try {
+        const response = await configAPI.getSystemConfigs({ category: 'custom_package' })
+        if (response.data && response.data.success) {
+          const configs = response.data.data || []
+          const configMap = {}
+          configs.forEach(config => {
+            configMap[config.key] = config.value
+          })
+
+          // 填充表单
+          customPackageForm.enabled = configMap.custom_package_enabled === 'true'
+          customPackageForm.price_per_device_year = parseFloat(configMap.custom_package_price_per_device_year || 40)
+          customPackageForm.min_devices = parseInt(configMap.custom_package_min_devices || 5)
+          customPackageForm.max_devices = parseInt(configMap.custom_package_max_devices || 100)
+          customPackageForm.min_months = parseInt(configMap.custom_package_min_months || 6)
+
+          // 解析折扣配置
+          if (configMap.custom_package_duration_discounts) {
+            try {
+              const discounts = JSON.parse(configMap.custom_package_duration_discounts)
+              if (Array.isArray(discounts) && discounts.length > 0) {
+                customPackageForm.duration_discounts = discounts
+              }
+            } catch (e) {
+              console.error('解析折扣配置失败:', e)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('加载自定义套餐设置失败:', error)
+      }
+    }
+
+    const saveCustomPackageSettings = async () => {
+      customPackageLoading.value = true
+      try {
+        const settings = {
+          custom_package_enabled: customPackageForm.enabled.toString(),
+          custom_package_price_per_device_year: customPackageForm.price_per_device_year.toString(),
+          custom_package_min_devices: customPackageForm.min_devices.toString(),
+          custom_package_max_devices: customPackageForm.max_devices.toString(),
+          custom_package_min_months: customPackageForm.min_months.toString(),
+          custom_package_duration_discounts: JSON.stringify(customPackageForm.duration_discounts)
+        }
+
+        // 批量更新配置
+        for (const [key, value] of Object.entries(settings)) {
+          await configAPI.updateSystemConfig(key, {
+            key: key,
+            value: value,
+            category: 'custom_package',
+            type: key === 'custom_package_enabled' ? 'boolean' :
+                  key === 'custom_package_duration_discounts' ? 'json' : 'string',
+            display_name: getDisplayName(key),
+            is_public: true
+          })
+        }
+
+        ElMessage.success('自定义套餐设置保存成功')
+        customPackageDialogVisible.value = false
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '保存失败')
+      } finally {
+        customPackageLoading.value = false
+      }
+    }
+
+    const getDisplayName = (key) => {
+      const displayNames = {
+        custom_package_enabled: '启用自定义套餐',
+        custom_package_price_per_device_year: '每设备每年价格',
+        custom_package_min_devices: '最少设备数',
+        custom_package_max_devices: '最多设备数',
+        custom_package_min_months: '最少购买月数',
+        custom_package_duration_discounts: '时长折扣配置'
+      }
+      return displayNames[key] || key
+    }
+
+    const addDiscount = () => {
+      customPackageForm.duration_discounts.push({ months: 6, discount: 0 })
+    }
+
+    const removeDiscount = (index) => {
+      if (customPackageForm.duration_discounts.length > 1) {
+        customPackageForm.duration_discounts.splice(index, 1)
+      } else {
+        ElMessage.warning('至少保留一个折扣配置')
+      }
+    }
+
     onMounted(() => {
       fetchPackages()
       window.addEventListener('resize', handleResize)
@@ -617,7 +899,16 @@ export default {
       handleSubmit,
       deletePackage,
       autoGenerateDescription,
-      handleDescriptionInput
+      handleDescriptionInput,
+      // 自定义套餐相关
+      customPackageDialogVisible,
+      customPackageLoading,
+      customPackageFormRef,
+      customPackageForm,
+      showCustomPackageDialog,
+      saveCustomPackageSettings,
+      addDiscount,
+      removeDiscount
     }
   }
 }
@@ -646,12 +937,71 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  .header-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #303133;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+
+    .el-button {
+      .btn-text {
+        margin-left: 4px;
+      }
+    }
+  }
 }
+
 .card-header h2 {
   margin: 0;
   color: #333;
   font-size: 1.5rem;
 }
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.discount-config {
+  width: 100%;
+
+  .discount-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+
+    .discount-input-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .discount-separator {
+      color: #606266;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .discount-delete-btn {
+      flex-shrink: 0;
+    }
+  }
+
+  .discount-add-btn {
+    width: auto;
+  }
+}
+
 .search-section {
   margin-bottom: 20px;
   padding: 20px;
@@ -677,14 +1027,184 @@ export default {
   }
   .card-header {
     flex-direction: column;
-    gap: 12px;
     align-items: stretch;
-    .add-package-btn {
+    gap: 12px;
+
+    .header-title {
+      font-size: 1.125rem;
+      text-align: left;
+    }
+
+    .header-actions {
       width: 100%;
-      height: 44px;
-      font-size: 16px;
+      flex-direction: column;
+      gap: 10px;
+
+      .custom-package-btn,
+      .add-package-btn {
+        width: 100%;
+        height: 44px;
+        font-size: 15px;
+        justify-content: center;
+        padding: 0 16px;
+
+        :deep(.el-icon) {
+          font-size: 18px;
+        }
+
+        .btn-text {
+          margin-left: 6px;
+          font-weight: 500;
+        }
+      }
+
+      .custom-package-btn {
+        order: 2;
+      }
+
+      .add-package-btn {
+        order: 1;
+      }
     }
   }
+  .discount-config {
+    .discount-item {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      padding: 16px;
+      background: #f5f7fa;
+      border-radius: 8px;
+      margin-bottom: 12px;
+
+      .discount-input-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+
+        .el-input-number {
+          flex: 1;
+        }
+
+        .discount-separator {
+          flex-shrink: 0;
+          font-size: 14px;
+          color: #606266;
+        }
+      }
+
+      .discount-delete-btn {
+        width: 100%;
+        height: 40px;
+        font-size: 15px;
+      }
+
+      :deep(.el-input-number) {
+        width: 100% !important;
+
+        .el-input__wrapper {
+          width: 100%;
+          padding: 10px 12px;
+        }
+      }
+    }
+
+    .discount-add-btn {
+      width: 100%;
+      height: 44px;
+      font-size: 15px;
+      margin-top: 10px;
+    }
+  }
+
+  // 自定义套餐设置drawer移动端优化
+  .mobile-dialog {
+    :deep(.el-drawer__header) {
+      padding: 16px 20px;
+      margin-bottom: 0;
+      border-bottom: 1px solid #ebeef5;
+
+      .el-drawer__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .el-drawer__close-btn {
+        font-size: 20px;
+      }
+    }
+
+    :deep(.el-drawer__body) {
+      padding: 16px 20px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    :deep(.el-drawer__footer) {
+      padding: 12px 20px 16px;
+      border-top: 1px solid #ebeef5;
+    }
+
+    :deep(.el-form) {
+      .el-form-item {
+        margin-bottom: 20px;
+
+        .el-form-item__content {
+          margin-left: 0 !important;
+        }
+      }
+
+      .el-input-number {
+        width: 100%;
+
+        .el-input__wrapper {
+          padding: 10px 12px;
+          min-height: 44px;
+        }
+
+        .el-input__inner {
+          font-size: 16px !important;
+        }
+
+        .el-input-number__decrease,
+        .el-input-number__increase {
+          width: 36px;
+          height: 44px;
+        }
+      }
+
+      .el-switch {
+        height: 28px;
+
+        &.is-checked .el-switch__core {
+          background-color: #409eff;
+        }
+      }
+    }
+
+    .form-tip {
+      font-size: 13px;
+      color: #909399;
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    .mobile-label {
+      font-size: 15px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 8px;
+      display: block;
+      line-height: 1.5;
+
+      .required {
+        color: #f56c6c;
+        margin-left: 2px;
+      }
+    }
+  }
+
   .search-section.desktop-only {
     display: none;
   }

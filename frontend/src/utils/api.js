@@ -437,6 +437,7 @@ export const packageAPI = {
 export const orderAPI = {
   upgradeDevices: (data) => api.post('/orders/upgrade-devices', data),
   createOrder: (data) => api.post('/orders/', data),
+  createCustomOrder: (data) => api.post('/orders/custom', data),
   getOrderList: (params) => api.get('/orders', { params }), // 订单列表（兼容别名）
   getUserOrders: (params) => api.get('/orders/', { params }),
   getOrderDetail: (id) => api.get(`/orders/${id}`), // 订单详情
@@ -611,7 +612,11 @@ export const analyticsAPI = {
 }
 export const configAPI = {
   getEmailConfig: () => api.get('/admin/email-config'),
-  saveEmailConfig: (data) => api.post('/admin/email-config', data)
+  saveEmailConfig: (data) => api.post('/admin/email-config', data),
+  getSystemConfigs: (params) => api.get('/admin/configs', { params }),
+  getSystemConfig: (key) => api.get(`/admin/configs/${key}`),
+  updateSystemConfig: (key, data) => api.put(`/admin/configs/${key}`, data),
+  createSystemConfig: (data) => api.post('/admin/configs', data)
 }
 export const statisticsAPI = {
   getStatistics: () => api.get('/admin/statistics'),
