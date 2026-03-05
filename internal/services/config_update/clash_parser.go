@@ -16,23 +16,27 @@ func (s *ConfigUpdateService) parseClashYAML(content string) []string {
 	}
 
 	if err := yaml.Unmarshal([]byte(content), &clashConfig); err != nil {
-		s.log("DEBUG", fmt.Sprintf("YAML 解析失败: %v", err))
+		// YAML 解析失败是正常的，不是所有内容都是 YAML 格式
 		return nil
 	}
 
 	if len(clashConfig.Proxies) == 0 {
-		s.log("DEBUG", "YAML 解析成功但未找到 proxies 字段")
+		// YAML 解析成功但无 proxies 字段，继续用正则提取
 		return nil
 	}
 
-	s.log("INFO", fmt.Sprintf("检测到 Clash YAML 格式，包含 %d 个代理节点", len(clashConfig.Proxies)))
+	s.log("INFO", fmt.Sprintf("✓ 检测到 Clash YAML 格式 (%d 个代理)", len(clashConfig.Proxies)))
 
 	var links []string
+	var nodeNames []string
 	var failedCount int
 	for i, proxy := range clashConfig.Proxies {
 		// 将 Clash YAML 格式的代理转换为节点链接
 		if link := s.convertClashProxyToLink(proxy); link != "" {
 			links = append(links, link)
+			if name, ok := proxy["name"].(string); ok {
+				nodeNames = append(nodeNames, name)
+			}
 		} else {
 			failedCount++
 			if failedCount <= 3 {
@@ -45,7 +49,18 @@ func (s *ConfigUpdateService) parseClashYAML(content string) []string {
 		s.log("WARN", fmt.Sprintf("有 %d 个节点转换失败", failedCount))
 	}
 
-	s.log("INFO", fmt.Sprintf("成功转换 %d 个节点链接", len(links)))
+	s.log("INFO", fmt.Sprintf("✓ 成功转换 %d 个节点", len(links)))
+
+	// 显示采集到的节点名称
+	if len(nodeNames) > 0 {
+		s.logSeparator()
+		s.log("INFO", "📋 采集到的节点:")
+		for i, name := range nodeNames {
+			s.log("INFO", fmt.Sprintf("  %d. %s", i+1, name))
+		}
+		s.logSeparator()
+	}
+
 	return links
 }
 
@@ -56,11 +71,7 @@ func (s *ConfigUpdateService) convertClashProxyToLink(proxy map[string]interface
 	server, _ := proxy["server"].(string)
 	port := int(getFloat(proxy, "port"))
 
-	s.log("DEBUG", fmt.Sprintf("convertClashProxyToLink: type=%s, name=%s, server=%s, port=%d", 
-		proxyType, name, server, port))
-
 	if server == "" || port == 0 {
-		s.log("DEBUG", fmt.Sprintf("convertClashProxyToLink 失败: server=%q, port=%d", server, port))
 		return ""
 	}
 
@@ -196,20 +207,15 @@ func (s *ConfigUpdateService) buildTrojanLink(proxy map[string]interface{}, name
 func (s *ConfigUpdateService) buildSSLink(proxy map[string]interface{}, name, server string, port int) string {
 	password, _ := proxy["password"].(string)
 	cipher, _ := proxy["cipher"].(string)
-	
-	s.log("DEBUG", fmt.Sprintf("buildSSLink: name=%s, server=%s, port=%d, cipher=%s, password=%s", 
-		name, server, port, cipher, password))
-	
+
 	if password == "" || cipher == "" {
-		s.log("DEBUG", fmt.Sprintf("buildSSLink 失败: password=%q, cipher=%q", password, cipher))
 		return ""
 	}
 
 	auth := fmt.Sprintf("%s:%s", cipher, password)
 	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
 	link := fmt.Sprintf("ss://%s@%s:%d#%s", encoded, server, port, url.QueryEscape(name))
-	
-	s.log("DEBUG", fmt.Sprintf("buildSSLink 成功: %s", link[:50]+"..."))
+
 	return link
 }
 
