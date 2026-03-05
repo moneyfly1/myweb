@@ -898,13 +898,13 @@ export default {
       themeSettings, adminNotificationSettings, announcementSettings,
       nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS,
-      testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, switchingDatabase, creatingBackup,
+      testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, switchingDatabase, creatingBackup, cacheClearing,
       uploadStatus, uploadTaskId, stopStatusPolling,
       saveGeneralSettings, saveRegistrationSettings, saveNotificationSettings,
       saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup,
-      updateGeoIPDatabase, switchDatabase, handleLogoSuccess, beforeLogoUpload, formatFileSize
+      updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize
     }
   }
 }
