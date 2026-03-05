@@ -446,6 +446,7 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/config-update/files", handlers.GetConfigUpdateFiles)
 			admin.GET("/config-update/logs", handlers.GetConfigUpdateLogs)
 			admin.POST("/config-update/logs/clear", handlers.ClearConfigUpdateLogs)
+			admin.GET("/config-update/logs/stream", handlers.StreamConfigUpdateLogs)
 
 			admin.GET("/invites", handlers.GetAdminInvites)
 			admin.GET("/invite-relations", handlers.GetAdminInviteRelations)

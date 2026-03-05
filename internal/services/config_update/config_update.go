@@ -93,6 +93,9 @@ type ConfigUpdateService struct {
 	supportQQ     string
 	regionMatcher *RegionMatcher
 	parserPool    *ParserPool
+	sseManager    *SSEManager                 // SSE 管理器
+	logBuffer     []map[string]interface{}    // 内存日志缓冲
+	logMutex      sync.RWMutex                // 日志缓冲锁
 }
 
 type nodeWithOrder struct {
@@ -116,6 +119,8 @@ func NewConfigUpdateService() *ConfigUpdateService {
 	service := &ConfigUpdateService{
 		db:         database.GetDB(),
 		parserPool: NewParserPool(10),
+		sseManager: NewSSEManager(),
+		logBuffer:  make([]map[string]interface{}, 0, 500),
 	}
 
 	regionConfig, err := LoadRegionConfig()
@@ -187,6 +192,21 @@ func (s *ConfigUpdateService) GetStatus() map[string]interface{} {
 }
 
 func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
+	// 优先从内存缓冲读取（实时日志）
+	s.logMutex.RLock()
+	if len(s.logBuffer) > 0 {
+		logs := make([]map[string]interface{}, len(s.logBuffer))
+		copy(logs, s.logBuffer)
+		s.logMutex.RUnlock()
+
+		if len(logs) > limit {
+			return logs[len(logs)-limit:]
+		}
+		return logs
+	}
+	s.logMutex.RUnlock()
+
+	// 如果内存中没有，从数据库读取（历史日志）
 	var config models.SystemConfig
 	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
 		return []map[string]interface{}{}
@@ -204,6 +224,17 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 }
 
 func (s *ConfigUpdateService) ClearLogs() error {
+	// 清空内存缓冲
+	s.logMutex.Lock()
+	s.logBuffer = make([]map[string]interface{}, 0, 500)
+	s.logMutex.Unlock()
+
+	// 清空 SSE 历史
+	if s.sseManager != nil {
+		s.sseManager.ClearHistory()
+	}
+
+	// 清空数据库
 	var config models.SystemConfig
 	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
 	if err != nil {
@@ -211,6 +242,11 @@ func (s *ConfigUpdateService) ClearLogs() error {
 	}
 	config.Value = "[]"
 	return s.db.Save(&config).Error
+}
+
+// GetSSEManager 获取 SSE 管理器
+func (s *ConfigUpdateService) GetSSEManager() *SSEManager {
+	return s.sseManager
 }
 
 func (s *ConfigUpdateService) log(level, message string) {
@@ -222,8 +258,18 @@ func (s *ConfigUpdateService) log(level, message string) {
 		"message":   message,
 	}
 
-	// 同步保存所有日志，确保实时显示
-	s.saveLogToDB(logEntry)
+	// 写入内存缓冲
+	s.logMutex.Lock()
+	s.logBuffer = append(s.logBuffer, logEntry)
+	if len(s.logBuffer) > 500 {
+		s.logBuffer = s.logBuffer[len(s.logBuffer)-500:]
+	}
+	s.logMutex.Unlock()
+
+	// 通过 SSE 实时广播
+	if s.sseManager != nil {
+		s.sseManager.Broadcast(logEntry)
+	}
 
 	if utils.AppLogger != nil {
 		if level == "ERROR" {
@@ -235,26 +281,38 @@ func (s *ConfigUpdateService) log(level, message string) {
 }
 
 func (s *ConfigUpdateService) saveLogToDB(logEntry map[string]interface{}) {
-	var config models.SystemConfig
-	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
+	// 此函数已废弃，保留以兼容旧代码
+	// 现在使用 flushLogsToDB() 批量保存
+}
 
-	var logs []map[string]interface{}
-	if err == nil {
-		json.Unmarshal([]byte(config.Value), &logs)
+// flushLogsToDB 批量保存内存中的日志到数据库
+func (s *ConfigUpdateService) flushLogsToDB() error {
+	s.logMutex.RLock()
+	if len(s.logBuffer) == 0 {
+		s.logMutex.RUnlock()
+		return nil
 	}
 
-	logs = append(logs, logEntry)
-	if len(logs) > 500 {
-		logs = logs[len(logs)-500:]
-	}
+	// 复制日志缓冲
+	logs := make([]map[string]interface{}, len(s.logBuffer))
+	copy(logs, s.logBuffer)
+	s.logMutex.RUnlock()
 
-	logsJSON, _ := json.Marshal(logs)
+	// 批量写入数据库
+	logsJSON, err := json.Marshal(logs)
 	if err != nil {
-		s.saveLogConfig(string(logsJSON))
-	} else {
-		config.Value = string(logsJSON)
-		s.db.Save(&config)
+		return err
 	}
+
+	var config models.SystemConfig
+	err = s.db.Where("key = ?", "config_update_logs").First(&config).Error
+	if err != nil {
+		// 不存在则创建
+		return s.saveLogConfig(string(logsJSON))
+	}
+
+	config.Value = string(logsJSON)
+	return s.db.Save(&config).Error
 }
 
 func (s *ConfigUpdateService) saveLogConfig(value string) error {
@@ -359,21 +417,27 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 
 	// 清除节点和订阅配置缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		cs.ClearNodesCache()
-		(&CacheService{}).ClearSystemNodesCache()
-		(&CacheService{}).ClearAllSubscriptionCache()
-		s.logSeparator()
-		s.log("INFO", "🧹 清理缓存")
-		s.logSeparator()
-		s.log("INFO", "✓ 节点列表缓存已清除")
-		s.log("INFO", "✓ 系统节点缓存已清除")
-		s.log("INFO", "✓ 订阅配置缓存已清除")
-	}()
+	cs := cache_service.NewCacheService()
+	cs.ClearNodesCache()
+	(&CacheService{}).ClearSystemNodesCache()
+	(&CacheService{}).ClearAllSubscriptionCache()
+	s.logSeparator()
+	s.log("INFO", "🧹 清理缓存")
+	s.logSeparator()
+	s.log("INFO", "✓ 节点列表缓存已清除")
+	s.log("INFO", "✓ 系统节点缓存已清除")
+	s.log("INFO", "✓ 订阅配置缓存已清除")
 
-	// 再次等待，确保最终日志保存完成
-	time.Sleep(200 * time.Millisecond)
+	// 任务完成，批量保存日志到数据库
+	s.log("INFO", "💾 保存日志到数据库...")
+	if err := s.flushLogsToDB(); err != nil {
+		s.log("ERROR", fmt.Sprintf("保存日志失败: %v", err))
+	} else {
+		s.log("INFO", "✓ 日志已保存")
+	}
+
+	// 等待最后的日志广播完成
+	time.Sleep(100 * time.Millisecond)
 
 	return nil
 }
