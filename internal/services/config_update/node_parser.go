@@ -594,9 +594,13 @@ func getFloat(m map[string]interface{}, key string) float64 {
 	switch v := m[key].(type) {
 	case float64:
 		return v
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
 	case string:
 		f, _ := strconv.ParseFloat(v, 64)
-				return f
+		return f
 	}
 	return 0
 }

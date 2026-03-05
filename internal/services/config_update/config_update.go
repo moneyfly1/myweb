@@ -22,6 +22,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
+	"cboard-go/internal/services/cache_service"
 )
 
 // ==========================================
@@ -353,6 +354,16 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，删除 %d 个旧节点，新增 %d 个节点，更新 %d 个节点，跳过 %d 个节点",
 		len(nodesWithOrder), deletedCount, importStats.Created, importStats.Updated, importStats.Skipped))
+
+
+	// 清除节点和订阅配置缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		cs.ClearNodesCache()
+		(&CacheService{}).ClearSystemNodesCache()
+		(&CacheService{}).ClearAllSubscriptionCache()
+		s.log("INFO", "已清除节点和订阅配置缓存")
+	}()
 
 	// 再次等待，确保最终日志保存完成
 	time.Sleep(200 * time.Millisecond)
@@ -691,8 +702,13 @@ func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
 	}
 	s.log("INFO", fmt.Sprintf("从 %s 提取到 %d 个节点链接 (%s)", url, len(nodeLinks), strings.Join(parts, ", ")))
 }
-
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
+	// 首先尝试解析 Clash YAML 格式
+	if yamlLinks := s.parseClashYAML(content); len(yamlLinks) > 0 {
+		return yamlLinks
+	}
+
+	// 如果不是 YAML 格式，则使用原有的正则提取逻辑
 	var links []string
 	var invalidLinks []string
 	// 使用 bitset 或区间树会更高效，但这里用 map[int]bool 简单处理
