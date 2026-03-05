@@ -6,6 +6,7 @@ import (
 	"cboard-go/internal/utils"
 	"net/http"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -13,6 +14,9 @@ func SetupRouter() *gin.Engine {
 	r := gin.New()
 
 	r.SetTrustedProxies(nil)
+
+	// 启用 Gzip 压缩（性能优化：传输大小减少 70-80%）
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.SecurityHeadersMiddleware())
