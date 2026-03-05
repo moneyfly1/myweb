@@ -18,6 +18,7 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/scheduler"
 	"cboard-go/internal/utils"
@@ -69,7 +70,14 @@ func main() {
 
 	geoipPath := os.Getenv("GEOIP_DB_PATH")
 	if geoipPath == "" {
-		geoipPath = "./GeoLite2-City.mmdb"
+		// 从数据库配置中读取
+		db := database.GetDB()
+		var conf models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "geoip_database_path", "system").First(&conf).Error; err == nil && conf.Value != "" {
+			geoipPath = conf.Value
+		} else {
+			geoipPath = "./GeoLite2-City.mmdb"
+		}
 	}
 
 	if _, err := os.Stat(geoipPath); os.IsNotExist(err) {
@@ -98,6 +106,8 @@ func main() {
 		log.Println("提示: 如需启用缓存功能，请配置 REDIS_ADDR 环境变量")
 	} else {
 		log.Println("Redis 缓存已启用，GeoIP 查询将使用缓存加速")
+		// 预热缓存
+		cache_service.WarmupCache()
 	}
 	defer cache.Close()
 

@@ -30,7 +30,11 @@ func GetKnowledgeArticles(c *gin.Context) {
 		query = query.Where("category_id = ?", categoryID)
 	}
 	if keyword != "" {
-		query = query.Where("title LIKE ? OR content LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		sanitized := utils.SanitizeSearchKeyword(keyword)
+		if sanitized != "" {
+			escaped := utils.EscapeLikePattern(sanitized)
+			query = query.Where("title LIKE ? OR content LIKE ?", "%"+escaped+"%", "%"+escaped+"%")
+		}
 	}
 
 	var articles []models.KnowledgeArticle

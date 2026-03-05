@@ -98,3 +98,11 @@ func Exists(keys ...string) (int64, error) {
 	}
 	return redisClient.Exists(ctx, keys...).Result()
 }
+
+// FlushAll 清空所有缓存（谨慎使用）
+func FlushAll() error {
+	if !IsRedisEnabled() {
+		return fmt.Errorf("redis not enabled")
+	}
+	return redisClient.FlushDB(ctx).Err()
+}

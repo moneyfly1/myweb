@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/ip2location/ip2location-go/v9 v9.8.0
 	github.com/oschwald/geoip2-golang v1.13.0
+	github.com/redis/go-redis/v9 v9.18.0
 	github.com/smartwalle/alipay/v3 v3.2.28
 	github.com/spf13/viper v1.18.2
 	golang.org/x/crypto v0.46.0
@@ -55,7 +56,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.57.1 // indirect
-	github.com/redis/go-redis/v9 v9.18.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/smartwalle/ncrypto v1.0.4 // indirect
