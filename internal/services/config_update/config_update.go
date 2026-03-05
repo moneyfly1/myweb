@@ -198,15 +198,16 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 		logs := make([]map[string]interface{}, len(s.logBuffer))
 		copy(logs, s.logBuffer)
 		s.logMutex.RUnlock()
-
-		if len(logs) > limit {
-			return logs[len(logs)-limit:]
-		}
-		return logs
+		return s.limitLogs(logs, limit)
 	}
 	s.logMutex.RUnlock()
 
 	// 如果内存中没有，从数据库读取（历史日志）
+	return s.getLogsFromDB(limit)
+}
+
+// getLogsFromDB 从数据库读取日志
+func (s *ConfigUpdateService) getLogsFromDB(limit int) []map[string]interface{} {
 	var config models.SystemConfig
 	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
 		return []map[string]interface{}{}
@@ -217,6 +218,11 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 		return []map[string]interface{}{}
 	}
 
+	return s.limitLogs(logs, limit)
+}
+
+// limitLogs 限制日志数量
+func (s *ConfigUpdateService) limitLogs(logs []map[string]interface{}, limit int) []map[string]interface{} {
 	if len(logs) > limit {
 		return logs[len(logs)-limit:]
 	}
@@ -225,9 +231,7 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 
 func (s *ConfigUpdateService) ClearLogs() error {
 	// 清空内存缓冲
-	s.logMutex.Lock()
-	s.logBuffer = make([]map[string]interface{}, 0, 500)
-	s.logMutex.Unlock()
+	s.clearLogBuffer()
 
 	// 清空 SSE 历史
 	if s.sseManager != nil {
@@ -235,6 +239,18 @@ func (s *ConfigUpdateService) ClearLogs() error {
 	}
 
 	// 清空数据库
+	return s.clearLogsInDB()
+}
+
+// clearLogBuffer 清空内存日志缓冲
+func (s *ConfigUpdateService) clearLogBuffer() {
+	s.logMutex.Lock()
+	defer s.logMutex.Unlock()
+	s.logBuffer = make([]map[string]interface{}, 0, 500)
+}
+
+// clearLogsInDB 清空数据库中的日志
+func (s *ConfigUpdateService) clearLogsInDB() error {
 	var config models.SystemConfig
 	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
 	if err != nil {
@@ -250,27 +266,44 @@ func (s *ConfigUpdateService) GetSSEManager() *SSEManager {
 }
 
 func (s *ConfigUpdateService) log(level, message string) {
-	now := utils.FormatBeijingTime(utils.GetBeijingTime())
-	logEntry := map[string]interface{}{
-		"timestamp": now, // 使用 timestamp 字段名，与前端保持一致
-		"time":      now, // 保留 time 字段以兼容旧代码
-		"level":     level,
-		"message":   message,
-	}
+	logEntry := s.createLogEntry(level, message)
 
 	// 写入内存缓冲
-	s.logMutex.Lock()
-	s.logBuffer = append(s.logBuffer, logEntry)
-	if len(s.logBuffer) > 500 {
-		s.logBuffer = s.logBuffer[len(s.logBuffer)-500:]
-	}
-	s.logMutex.Unlock()
+	s.addLogToBuffer(logEntry)
 
 	// 通过 SSE 实时广播
 	if s.sseManager != nil {
 		s.sseManager.Broadcast(logEntry)
 	}
 
+	// 写入应用日志
+	s.writeToAppLogger(level, message)
+}
+
+// createLogEntry 创建日志条目
+func (s *ConfigUpdateService) createLogEntry(level, message string) map[string]interface{} {
+	now := utils.FormatBeijingTime(utils.GetBeijingTime())
+	return map[string]interface{}{
+		"timestamp": now,
+		"time":      now,
+		"level":     level,
+		"message":   message,
+	}
+}
+
+// addLogToBuffer 添加日志到内存缓冲
+func (s *ConfigUpdateService) addLogToBuffer(logEntry map[string]interface{}) {
+	s.logMutex.Lock()
+	defer s.logMutex.Unlock()
+
+	s.logBuffer = append(s.logBuffer, logEntry)
+	if len(s.logBuffer) > 500 {
+		s.logBuffer = s.logBuffer[len(s.logBuffer)-500:]
+	}
+}
+
+// writeToAppLogger 写入应用日志
+func (s *ConfigUpdateService) writeToAppLogger(level, message string) {
 	if utils.AppLogger != nil {
 		if level == "ERROR" {
 			utils.AppLogger.Error("%s", message)
@@ -278,11 +311,6 @@ func (s *ConfigUpdateService) log(level, message string) {
 			utils.AppLogger.Info("%s", message)
 		}
 	}
-}
-
-func (s *ConfigUpdateService) saveLogToDB(logEntry map[string]interface{}) {
-	// 此函数已废弃，保留以兼容旧代码
-	// 现在使用 flushLogsToDB() 批量保存
 }
 
 // flushLogsToDB 批量保存内存中的日志到数据库

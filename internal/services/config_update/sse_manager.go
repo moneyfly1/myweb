@@ -5,6 +5,13 @@ import (
 	"sync"
 )
 
+const (
+	// MaxHistoryLogs SSE 历史日志最大数量
+	MaxHistoryLogs = 500
+	// ClientChannelBuffer 客户端通道缓冲大小
+	ClientChannelBuffer = 100
+)
+
 // SSEManager 管理所有 SSE 连接和日志广播
 type SSEManager struct {
 	clients      map[chan []byte]bool
@@ -17,7 +24,7 @@ type SSEManager struct {
 func NewSSEManager() *SSEManager {
 	return &SSEManager{
 		clients:     make(map[chan []byte]bool),
-		historyLogs: make([]map[string]interface{}, 0, 500),
+		historyLogs: make([]map[string]interface{}, 0, MaxHistoryLogs),
 	}
 }
 
@@ -41,12 +48,7 @@ func (m *SSEManager) RemoveClient(ch chan []byte) {
 // Broadcast 向所有连接的客户端广播日志
 func (m *SSEManager) Broadcast(logEntry map[string]interface{}) {
 	// 保存到历史记录
-	m.historyMutex.Lock()
-	m.historyLogs = append(m.historyLogs, logEntry)
-	if len(m.historyLogs) > 500 {
-		m.historyLogs = m.historyLogs[len(m.historyLogs)-500:]
-	}
-	m.historyMutex.Unlock()
+	m.addToHistory(logEntry)
 
 	// 序列化日志
 	data, err := json.Marshal(logEntry)
@@ -55,6 +57,22 @@ func (m *SSEManager) Broadcast(logEntry map[string]interface{}) {
 	}
 
 	// 广播给所有客户端
+	m.broadcastToClients(data)
+}
+
+// addToHistory 添加日志到历史记录
+func (m *SSEManager) addToHistory(logEntry map[string]interface{}) {
+	m.historyMutex.Lock()
+	defer m.historyMutex.Unlock()
+
+	m.historyLogs = append(m.historyLogs, logEntry)
+	if len(m.historyLogs) > MaxHistoryLogs {
+		m.historyLogs = m.historyLogs[len(m.historyLogs)-MaxHistoryLogs:]
+	}
+}
+
+// broadcastToClients 向所有客户端广播数据
+func (m *SSEManager) broadcastToClients(data []byte) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -82,7 +100,7 @@ func (m *SSEManager) GetHistoryLogs() []map[string]interface{} {
 func (m *SSEManager) ClearHistory() {
 	m.historyMutex.Lock()
 	defer m.historyMutex.Unlock()
-	m.historyLogs = make([]map[string]interface{}, 0, 500)
+	m.historyLogs = make([]map[string]interface{}, 0, MaxHistoryLogs)
 }
 
 // ClientCount 返回当前连接的客户端数量
