@@ -23,7 +23,7 @@ func CreateRegistrationLog(userID uint, username, email, ipAddress, userAgent st
 
 	var location sql.NullString
 	if ipAddress != "" && geoip.IsEnabled() {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	log := models.RegistrationLog{
@@ -58,7 +58,7 @@ func CreateRegistrationLogFailed(email, ipAddress, userAgent, reason string) err
 
 	var location sql.NullString
 	if ipAddress != "" && geoip.IsEnabled() {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	log := models.RegistrationLog{
@@ -99,7 +99,7 @@ func CreateSubscriptionLog(subscriptionID, userID uint, actionType, actionBy str
 	// 获取地理位置信息（如果 GeoIP 已启用）
 	var location sql.NullString
 	if ipAddress != "" && geoip.IsEnabled() {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	log := models.SubscriptionLog{
@@ -135,7 +135,7 @@ func CreateBalanceLog(userID uint, changeType string, amount, balanceBefore, bal
 	// 获取地理位置信息（如果 GeoIP 已启用）
 	var location sql.NullString
 	if ipAddress != "" && geoip.IsEnabled() {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	log := models.BalanceLog{

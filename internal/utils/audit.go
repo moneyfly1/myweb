@@ -70,7 +70,7 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 
 	var location sql.NullString
 	if ipAddress != "" {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	var beforeDataJSON, afterDataJSON sql.NullString
@@ -151,7 +151,7 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 
 	var location sql.NullString
 	if ipAddress != "" {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	var additionalDataJSON sql.NullString
@@ -274,7 +274,7 @@ func CreateBusinessLog(c *gin.Context, actionType, description, level string, da
 		method = c.Request.Method
 		path = c.Request.URL.Path
 		if ipAddress != "" {
-			location = geoip.GetLocationString(ipAddress)
+			location = geoip.GetLocationWithCache(ipAddress)
 		}
 		if uid, exists := c.Get("user_id"); exists {
 			if u, ok := uid.(uint); ok {
@@ -573,7 +573,7 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 
 	var location sql.NullString
 	if ipAddress != "" {
-		location = geoip.GetLocationString(ipAddress)
+		location = geoip.GetLocationWithCache(ipAddress)
 	}
 
 	var userID sql.NullInt64

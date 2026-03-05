@@ -3,6 +3,7 @@ package geoip
 import (
 	"cboard-go/internal/core/cache"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -75,4 +76,47 @@ func WarmupCache(ipAddresses []string) {
 		}(ip)
 		time.Sleep(10 * time.Millisecond) // 避免过载
 	}
+}
+
+// GetLocationWithFallbackCached 带缓存的详细地理位置查询（包含 Fallback）
+func GetLocationWithFallbackCached(ipAddress string) (*LocationInfo, error) {
+	// 快速检查本地/内网 IP
+	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
+		return &LocationInfo{Country: "本地"}, nil
+	}
+
+	// 尝试从 Redis 缓存获取
+	if cache.IsRedisEnabled() {
+		cacheKey := fmt.Sprintf("geoip:detail:%s", ipAddress)
+		if cached, err := cache.Get(cacheKey); err == nil && cached != "" {
+			// 缓存命中
+			if cached == "NULL" {
+				return nil, fmt.Errorf("location not found in cache")
+			}
+			var loc LocationInfo
+			if err := json.Unmarshal([]byte(cached), &loc); err == nil {
+				return &loc, nil
+			}
+		}
+	}
+
+	// 缓存未命中，查询 GeoIP 数据库（带 Fallback）
+	location, err := GetLocationWithFallback(ipAddress)
+
+	// 异步写入缓存（不阻塞响应）
+	if cache.IsRedisEnabled() {
+		go func(ip string, loc *LocationInfo, queryErr error) {
+			cacheKey := fmt.Sprintf("geoip:detail:%s", ip)
+			cacheValue := "NULL"
+			if queryErr == nil && loc != nil {
+				if data, err := json.Marshal(loc); err == nil {
+					cacheValue = string(data)
+				}
+			}
+			// 缓存 24 小时
+			cache.Set(cacheKey, cacheValue, 24*time.Hour)
+		}(ipAddress, location, err)
+	}
+
+	return location, err
 }

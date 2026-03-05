@@ -258,7 +258,7 @@ func GetRechargeRecord(c *gin.Context) {
 	ipAddress := formatIP(ipStr)
 	location := ""
 	if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-		locationStr := geoip.GetLocationString(ipAddress)
+		locationStr := geoip.GetLocationWithCache(ipAddress)
 		if locationStr.Valid {
 			location = locationStr.String
 		}
