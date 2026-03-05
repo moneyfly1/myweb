@@ -14,6 +14,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -1197,6 +1198,10 @@ func CreatePaymentConfig(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "create_payment_config", "payment_config", paymentConfig.ID, fmt.Sprintf("管理员操作: 创建支付配置 %s", paymentConfig.PayType))
+
+	// 清除支付方式缓存
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+
 	utils.SuccessResponse(c, http.StatusCreated, "支付配置创建成功", paymentConfig)
 }
 
@@ -1376,6 +1381,10 @@ func UpdatePaymentConfig(c *gin.Context) {
 			responseData["config_json"] = jsonData
 		}
 	}
+
+	// 清除支付方式缓存
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+
 	utils.SuccessResponse(c, http.StatusOK, "支付配置更新成功", responseData)
 }
 func getPagination(c *gin.Context) (page int, size int, offset int) {
