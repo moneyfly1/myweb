@@ -627,7 +627,7 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 			fmt.Sprintf("管理员登录: %s (IP: %s)", user.Username, ipAddress),
 			map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
 	}
-	utils.CreateAuditLogSimple(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
+	utils.CreateAuditLogSimpleFast(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"access_token":  atk,
