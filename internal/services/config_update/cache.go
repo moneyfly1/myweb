@@ -2,6 +2,7 @@ package config_update
 
 import (
 	"cboard-go/internal/core/cache"
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -106,8 +107,27 @@ func (cs *CacheService) ClearAllSubscriptionCache() error {
 	// 清除系统节点缓存
 	cache.Del("nodes:system:all")
 
-	// 注意：这里不清除用户自定义节点缓存，因为系统节点变更不影响自定义节点
-	// 如果需要清除所有缓存，可以使用 Redis 的 KEYS 命令（生产环境慎用）
+	// 清除所有订阅配置缓存（节点变更时，所有订阅配置都应失效）
+	// 使用 SCAN 命令批量删除，避免 KEYS 命令阻塞
+	client := cache.GetRedisClient()
+	if client != nil {
+		ctx := context.Background()
+		var cursor uint64
+		for {
+			var keys []string
+			var err error
+			keys, cursor, err = client.Scan(ctx, cursor, "subscription:config:*", 100).Result()
+			if err != nil {
+				break
+			}
+			if len(keys) > 0 {
+				client.Del(ctx, keys...)
+			}
+			if cursor == 0 {
+				break
+			}
+		}
+	}
 
 	return nil
 }
@@ -144,8 +164,8 @@ func (cs *CacheService) ClearSubscriptionConfigCache(subscriptionURL string) err
 	}
 
 	// 清除该订阅的所有格式缓存
-	cache.Del(fmt.Sprintf("subscription:config:%s:base64", subscriptionURL))
 	cache.Del(fmt.Sprintf("subscription:config:%s:clash", subscriptionURL))
+	cache.Del(fmt.Sprintf("subscription:config:%s:base64", subscriptionURL))
 
 	return nil
 }

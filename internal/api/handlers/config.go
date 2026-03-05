@@ -195,6 +195,7 @@ func UpdateSystemConfig(c *gin.Context) {
 			return
 		}
 		utils.CreateAuditLogSimple(c, "update_system_config_batch", "system_config", 0, "管理员操作: 批量更新系统配置")
+		go cache_service.NewCacheService().ClearSystemConfigCache(CatSystem)
 		utils.SuccessResponse(c, http.StatusOK, "批量更新成功", nil)
 		return
 	}
@@ -235,6 +236,7 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "update_system_config", "system_config", config.ID, fmt.Sprintf("管理员操作: 更新系统配置 %s (category=%s)", config.Key, config.Category))
+	go cache_service.NewCacheService().ClearSystemConfigCache(config.Category)
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", config)
 }
 

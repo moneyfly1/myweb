@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -191,6 +192,9 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 	if err := db.Save(sub).Error; err != nil {
 		return err
 	}
+
+	// 清除旧 token 的配置缓存
+	go cache.ClearSubscriptionConfigCache(oldURL)
 
 	reset := models.SubscriptionReset{
 		UserID:             sub.UserID,
@@ -607,8 +611,15 @@ func BatchClearDevices(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
+	var subs []models.Subscription
+	db.Select("subscription_url").Where("id IN ?", req.SubscriptionIDs).Find(&subs)
 	db.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{})
 	db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0)
+	go func(subscriptions []models.Subscription) {
+		for _, sub := range subscriptions {
+			cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+		}
+	}(subs)
 	utils.CreateAuditLogSimple(c, "batch_clear_devices", "subscription", 0, fmt.Sprintf("管理员操作: 批量清除订阅设备 %d 个", len(req.SubscriptionIDs)))
 	utils.SuccessResponse(c, http.StatusOK, "设备已清除", nil)
 }
@@ -694,6 +705,7 @@ func UpdateSubscription(c *gin.Context) {
 	if actionBy == "admin" {
 		utils.CreateAuditLogSimple(c, "update_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 更新订阅 subscription_id=%d", sub.ID))
 	}
+	go cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", nil)
 }
 
@@ -801,11 +813,20 @@ func SendSubscriptionEmail(c *gin.Context) {
 func ClearUserDevices(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
-	var subIDs []uint
-	db.Model(&models.Subscription{}).Where("user_id = ?", userID).Pluck("id", &subIDs)
-	if len(subIDs) > 0 {
+	var subs []models.Subscription
+	db.Select("id, subscription_url").Where("user_id = ?", userID).Find(&subs)
+	if len(subs) > 0 {
+		var subIDs []uint
+		for _, sub := range subs {
+			subIDs = append(subIDs, sub.ID)
+		}
 		db.Where("subscription_id IN ?", subIDs).Delete(&models.Device{})
 		db.Model(&models.Subscription{}).Where("id IN ?", subIDs).Update("current_devices", 0)
+		go func(subscriptions []models.Subscription) {
+			for _, sub := range subscriptions {
+				cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+			}
+		}(subs)
 	}
 	utils.CreateAuditLogSimple(c, "clear_user_devices", "user", 0, fmt.Sprintf("管理员操作: 清理用户设备 user_id=%s", userID))
 	utils.SuccessResponse(c, http.StatusOK, "设备已清理", nil)
@@ -1037,6 +1058,7 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 			"expire_time":     sub.ExpireTime.Format(TimeLayout),
 		}
 		asyncSubscriptionLog(sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
+		go cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLogSimple(c, "batch_delete_subscriptions", "subscription", 0, fmt.Sprintf("管理员操作: 批量删除订阅 %d 个", len(req.SubscriptionIDs)))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)), nil)
@@ -1104,6 +1126,7 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 			"status":    status,
 		}
 		asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
+		go cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLogSimple(c, "batch_update_subscriptions_status", "subscription", 0, fmt.Sprintf("管理员操作: 批量%s订阅 %d 个", actionName, res.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功操作 %d 个订阅", res.RowsAffected), nil)
