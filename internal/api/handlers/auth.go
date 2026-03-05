@@ -137,22 +137,25 @@ func Register(c *gin.Context) {
 		utils.LogError("Register: 更新最后登录时间失败", saveErr, nil)
 	}
 
-	var location sql.NullString
-	if geoip.IsEnabled() {
-		location = geoip.GetLocationString(ipAddress)
-	}
+	// 异步记录登录历史，不阻塞注册流程
+	go func(userID uint, ip, ua string, loginTime time.Time) {
+		var location sql.NullString
+		if geoip.IsEnabled() {
+			location = geoip.GetLocationString(ip)
+		}
 
-	loginHistory := models.LoginHistory{
-		UserID:      user.ID,
-		LoginTime:   now,
-		IPAddress:   database.NullString(ipAddress),
-		UserAgent:   database.NullString(c.GetHeader("User-Agent")),
-		Location:    location,
-		LoginStatus: "success",
-	}
-	if err := db.Create(&loginHistory).Error; err != nil {
-		utils.LogError("Register: 创建登录历史失败", err, map[string]interface{}{"user_id": user.ID, "ip": ipAddress})
-	}
+		loginHistory := models.LoginHistory{
+			UserID:      userID,
+			LoginTime:   loginTime,
+			IPAddress:   database.NullString(ip),
+			UserAgent:   database.NullString(ua),
+			Location:    location,
+			LoginStatus: "success",
+		}
+		if err := database.GetDB().Create(&loginHistory).Error; err != nil {
+			utils.LogError("Register: 创建登录历史失败", err, map[string]interface{}{"user_id": userID, "ip": ip})
+		}
+	}(user.ID, ipAddress, c.GetHeader("User-Agent"), now)
 
 	utils.CreateSecurityLog(c, "register_success", "INFO",
 		fmt.Sprintf("注册成功: 用户 %s (IP: %s)", user.Username, ipAddress),
@@ -593,28 +596,32 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 
 	middleware.ResetLoginAttempt(ipAddress)
 
-	var location sql.NullString
-	if geoip.IsEnabled() {
-		location = geoip.GetLocationString(ipAddress)
-	}
-
 	ua := c.GetHeader("User-Agent")
 	deviceHash := device.NewDeviceManager().GenerateDeviceHash(ua, ipAddress, "")
 
-	loginHistory := models.LoginHistory{
-		UserID:             user.ID,
-		LoginTime:          now,
-		IPAddress:          database.NullString(ipAddress),
-		UserAgent:          database.NullString(ua),
-		Location:           location,
-		DeviceFingerprint:  database.NullString(deviceHash),
-		LoginStatus:        "success",
-	}
-	if err := db.Create(&loginHistory).Error; err != nil {
-		utils.LogError("Login: 创建登录历史失败", err, map[string]interface{}{"user_id": user.ID, "ip": ipAddress})
-	} else {
-		go checkAndSendAbnormalLoginAlert(db, user, &loginHistory, ipAddress, ua)
-	}
+	// 异步记录登录历史，不阻塞登录流程
+	go func(userID uint, ip, userAgent, devHash string, loginTime time.Time) {
+		var location sql.NullString
+		if geoip.IsEnabled() {
+			location = geoip.GetLocationString(ip)
+		}
+
+		loginHistory := models.LoginHistory{
+			UserID:             userID,
+			LoginTime:          loginTime,
+			IPAddress:          database.NullString(ip),
+			UserAgent:          database.NullString(userAgent),
+			Location:           location,
+			LoginStatus:        "success",
+			DeviceFingerprint:  database.NullString(devHash),
+		}
+		if err := database.GetDB().Create(&loginHistory).Error; err != nil {
+			utils.LogError("Login: 创建登录历史失败", err, map[string]interface{}{"user_id": userID, "ip": ip})
+		} else {
+			// 检查异常登录
+			checkAndSendAbnormalLoginAlert(database.GetDB(), &models.User{ID: userID}, &loginHistory, ip, userAgent)
+		}
+	}(user.ID, ipAddress, ua, deviceHash, now)
 
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
