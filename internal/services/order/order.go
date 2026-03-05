@@ -1,6 +1,7 @@
 package order
 
 import (
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
@@ -387,12 +388,14 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	}
 
 	// 异步清除缓存
-	if err == nil {
-		go func() {
+	if err == nil && result != nil {
+		go func(userID uint, subscriptionURL string) {
 			cs := cache_service.NewCacheService()
-			cs.ClearUserCache(user.ID)
-			cs.ClearUserSubscriptionCache(user.ID)
-		}()
+			cs.ClearUserCache(userID)
+			cs.ClearUserSubscriptionCache(userID)
+			// 清除订阅配置缓存，确保用户立即获得最新配置
+			cache.ClearSubscriptionConfigCache(subscriptionURL)
+		}(user.ID, result.SubscriptionURL)
 	}
 
 	return result, err

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/auth"
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -1823,6 +1824,16 @@ func BatchEnableUsers(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "启用用户失败", result.Error)
 		return
 	}
+
+	// 清除被启用用户的订阅配置缓存
+	go func(userIDs []uint) {
+		var subs []models.Subscription
+		db.Select("subscription_url").Where("user_id IN ?", userIDs).Find(&subs)
+		for _, sub := range subs {
+			cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+		}
+	}(req.UserIDs)
+
 	utils.CreateAuditLogSimple(c, "batch_enable_users", "user", 0, fmt.Sprintf("管理员操作: 批量启用用户 %d 个", result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected), nil)
 }
@@ -1866,6 +1877,16 @@ func BatchDisableUsers(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户失败", result.Error)
 		return
 	}
+
+	// 清除被禁用用户的订阅配置缓存
+	go func(userIDs []uint) {
+		var subs []models.Subscription
+		db.Select("subscription_url").Where("user_id IN ?", userIDs).Find(&subs)
+		for _, sub := range subs {
+			cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+		}
+	}(req.UserIDs)
+
 	utils.CreateAuditLogSimple(c, "batch_disable_users", "user", 0, fmt.Sprintf("管理员操作: 批量禁用用户 %d 个", result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected), nil)
 }
