@@ -1415,10 +1415,17 @@ func GetSubscriptionConfig(c *gin.Context) {
 		}
 	}
 
-	// 记录设备访问
+	// 异步记录设备访问和更新计数（不阻塞配置返回）
 	if shouldRecord {
-		deviceManager.RecordDeviceAccess(subscription.ID, subscription.UserID, userAgent, clientIP, "clash")
-		db.Model(&subscription).Update("clash_count", gorm.Expr("clash_count + ?", 1))
+		go func(subID, userID uint, ua, ip string) {
+			deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "clash")
+		}(subscription.ID, subscription.UserID, userAgent, clientIP)
+
+		go func(subID uint) {
+			db := database.GetDB()
+			db.Model(&models.Subscription{}).Where("id = ?", subID).
+				Update("clash_count", gorm.Expr("clash_count + ?", 1))
+		}(subscription.ID)
 	}
 
 	// 生成 Clash 配置
@@ -1613,9 +1620,17 @@ func GetUniversalSubscription(c *gin.Context) {
 			}
 		}
 
+		// 异步记录设备访问和更新计数（不阻塞配置返回）
 		if shouldRecord {
-			deviceManager.RecordDeviceAccess(sub.ID, sub.UserID, deviceUA, deviceIP, "universal")
-			db.Model(&sub).Update("universal_count", gorm.Expr("universal_count + ?", 1))
+			go func(subID, userID uint, ua, ip string) {
+				deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "universal")
+			}(sub.ID, sub.UserID, deviceUA, deviceIP)
+
+			go func(subID uint) {
+				db := database.GetDB()
+				db.Model(&models.Subscription{}).Where("id = ?", subID).
+					Update("universal_count", gorm.Expr("universal_count + ?", 1))
+			}(sub.ID)
 		}
 
 		// 正常生成配置
