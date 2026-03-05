@@ -1068,9 +1068,24 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 }
 
 func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed map[string]bool) {
+	// 尝试从缓存获取系统节点
+	cacheService := &CacheService{}
+	if cachedNodes, ok := cacheService.GetSystemNodesCache(); ok {
+		for _, node := range cachedNodes {
+			key := s.generateNodeDedupKey(node.Type, node.Server, node.Port)
+			if !processed[key] {
+				processed[key] = true
+				*proxies = append(*proxies, node)
+			}
+		}
+		return
+	}
+
+	// 缓存未命中，从数据库查询
 	var nodes []models.Node
 	s.db.Model(&models.Node{}).Where("is_active = ? AND status != ?", true, "timeout").Find(&nodes)
 
+	var systemNodes []*ProxyNode
 	for _, node := range nodes {
 		if node.Config == nil || *node.Config == "" {
 			continue
@@ -1082,13 +1097,42 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 			if !processed[key] {
 				processed[key] = true
 				*proxies = append(*proxies, &proxy)
+				systemNodes = append(systemNodes, &proxy)
 			}
 		}
+	}
+
+	// 异步写入缓存
+	if len(systemNodes) > 0 {
+		go func(nodes []*ProxyNode) {
+			cacheService.SetSystemNodesCache(nodes)
+		}(systemNodes)
 	}
 }
 
 func (s *ConfigUpdateService) generateNodeDedupKey(nodeType, server string, port int) string {
 	return fmt.Sprintf("%s:%s:%d", nodeType, server, port)
+}
+
+// calculateCacheTTL 智能计算缓存TTL
+func (s *ConfigUpdateService) calculateCacheTTL(sub *models.Subscription, user *models.User) time.Duration {
+	now := utils.GetBeijingTime()
+
+	// 已到期，不缓存
+	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now) {
+		return 0
+	}
+
+	// 即将到期（24小时内），短缓存
+	if !sub.ExpireTime.IsZero() {
+		timeUntilExpire := sub.ExpireTime.Sub(now)
+		if timeUntilExpire < 24*time.Hour {
+			return 1 * time.Minute
+		}
+	}
+
+	// 正常情况，长缓存
+	return 10 * time.Minute
 }
 
 func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) error {
@@ -1101,15 +1145,45 @@ func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) e
 }
 
 func (s *ConfigUpdateService) GenerateClashConfig(token string, clientIP string, userAgent string) (string, error) {
+	// 尝试从缓存获取
+	cacheService := &CacheService{}
+	if cached, ok := cacheService.GetSubscriptionConfigCache(token, "clash"); ok {
+		return cached, nil
+	}
+
+	// 缓存未命中，生成配置
 	nodes, err := s.prepareExportNodes(token, clientIP, userAgent)
 	if err != nil {
 		return "", err
 	}
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
-	return s.generateClashYAML(nodes, ctx), nil
+	config := s.generateClashYAML(nodes, ctx)
+
+	// 计算智能TTL并异步写入缓存
+	if ctx.Status == StatusNormal {
+		ttl := s.calculateCacheTTL(&ctx.Subscription, &ctx.User)
+		if ttl > 0 {
+			go func(token, cfg string, cacheTTL time.Duration) {
+				cacheService.SetSubscriptionConfigCache(token, "clash", cfg, cacheTTL)
+			}(token, config, ttl)
+		}
+	}
+
+	return config, nil
 }
 
 func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP string, userAgent string, format string) (string, error) {
+	// 尝试从缓存获取
+	cacheService := &CacheService{}
+	cacheFormat := "base64"
+	if format == "ssr" {
+		cacheFormat = "ssr"
+	}
+	if cached, ok := cacheService.GetSubscriptionConfigCache(token, cacheFormat); ok {
+		return cached, nil
+	}
+
+	// 缓存未命中，生成配置
 	nodes, err := s.prepareExportNodes(token, clientIP, userAgent)
 	if err != nil {
 		return "", err
@@ -1128,7 +1202,20 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP str
 		}
 	}
 
-	return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))), nil
+	config := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+
+	// 计算智能TTL并异步写入缓存
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	if ctx.Status == StatusNormal {
+		ttl := s.calculateCacheTTL(&ctx.Subscription, &ctx.User)
+		if ttl > 0 {
+			go func(token, fmt, cfg string, cacheTTL time.Duration) {
+				cacheService.SetSubscriptionConfigCache(token, fmt, cfg, cacheTTL)
+			}(token, cacheFormat, config, ttl)
+		}
+	}
+
+	return config, nil
 }
 
 func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent string) ([]*ProxyNode, error) {
