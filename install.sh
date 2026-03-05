@@ -491,7 +491,21 @@ force_kill() {
 
 deep_clean() {
     log "正在清理深度缓存..."
-    
+
+    # 清理 Redis 缓存
+    if command -v redis-cli &> /dev/null; then
+        local redis_addr=$(grep "^REDIS_ADDR=" "${PROJECT_DIR}/.env" 2>/dev/null | cut -d'=' -f2)
+        if [[ -n "$redis_addr" ]]; then
+            local redis_host=$(echo "$redis_addr" | cut -d':' -f1)
+            local redis_port=$(echo "$redis_addr" | cut -d':' -f2)
+            if redis-cli -h "$redis_host" -p "$redis_port" FLUSHDB &> /dev/null; then
+                log "✅ Redis 缓存已清空"
+            else
+                warn "Redis 缓存清除失败（可能未连接）"
+            fi
+        fi
+    fi
+
     # 清理前端构建文件
     if [[ -d "$PROJECT_DIR/frontend/dist" ]]; then
         rm -rf "$PROJECT_DIR/frontend/dist"
@@ -499,7 +513,7 @@ deep_clean() {
     else
         log "前端构建目录不存在，跳过"
     fi
-    
+
     # 清理日志文件
     if [[ -d "$PROJECT_DIR/logs" ]]; then
         rm -rf "$PROJECT_DIR/logs"/* 2>/dev/null
@@ -507,7 +521,7 @@ deep_clean() {
     else
         log "日志目录不存在，跳过"
     fi
-    
+
     # 清理临时文件
     local tmp_count=$(find "$PROJECT_DIR" -name "*.tmp" 2>/dev/null | wc -l)
     if [[ $tmp_count -gt 0 ]]; then
@@ -516,13 +530,13 @@ deep_clean() {
     else
         log "未找到临时文件"
     fi
-    
+
     # 清理 Go 构建缓存
     if [[ -f "$PROJECT_DIR/server" ]]; then
         rm -f "$PROJECT_DIR/server"
         log "已清理 Go 可执行文件"
     fi
-    
+
     log "✅ 缓存清理完毕"
 }
 
@@ -659,6 +673,19 @@ sync_from_github() {
 
     # 检查并更新 Redis 配置
     check_and_update_redis_config
+
+    # 清除 Redis 缓存（代码更新后必须清除）
+    log "正在清除 Redis 缓存..."
+    if command -v redis-cli &> /dev/null; then
+        local redis_addr=$(grep "^REDIS_ADDR=" "${PROJECT_DIR}/.env" 2>/dev/null | cut -d'=' -f2)
+        if [[ -n "$redis_addr" ]]; then
+            local redis_host=$(echo "$redis_addr" | cut -d':' -f1)
+            local redis_port=$(echo "$redis_addr" | cut -d':' -f2)
+            if redis-cli -h "$redis_host" -p "$redis_port" FLUSHDB &> /dev/null; then
+                log "✅ Redis 缓存已清空（避免旧数据）"
+            fi
+        fi
+    fi
 
     # 重启服务
     log "正在重启服务..."

@@ -75,6 +75,19 @@
                 </el-table-column>
                 <el-table-column prop="size" label="大小" width="100" />
                 <el-table-column prop="modified" label="更新时间" width="160" />
+                <el-table-column label="操作" width="100">
+                  <template #default="scope">
+                    <el-button
+                      v-if="!scope.row.active"
+                      type="primary"
+                      size="small"
+                      @click="switchDatabase(scope.row.path)"
+                      :loading="switchingDatabase"
+                    >
+                      切换
+                    </el-button>
+                  </template>
+                </el-table-column>
               </el-table>
             </el-form-item>
             <el-form-item label="选择数据库类型">
@@ -101,6 +114,15 @@
               </el-button>
               <div class="form-tip" style="margin-top: 10px;">
                 点击下载最新的 GeoIP 数据库。建议每月更新一次以获取最新的 IP 地址分配信息。
+              </div>
+            </el-form-item>
+            <el-divider content-position="left">缓存管理</el-divider>
+            <el-form-item label="Redis 缓存">
+              <el-button type="danger" @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
+                {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
+              </el-button>
+              <div class="form-tip" style="margin-top: 10px;">
+                清除所有 Redis 缓存数据。适用于代码更新、数据不一致等情况。清除后系统会自动重新缓存。
               </div>
             </el-form-item>
           </el-form>
@@ -488,6 +510,8 @@ export default {
     const geoipStatus = ref(null)
     const geoipUpdating = ref(false)
     const geoipDatabaseType = ref('dbip')
+    const switchingDatabase = ref(false)
+    const cacheClearing = ref(false)
     const uploadStatus = ref(null)
     const uploadTaskId = ref(null)
     const uploadTarget = ref('gitee')
@@ -670,6 +694,40 @@ export default {
       await loadGeoIPStatus()
       geoipUpdating.value = false
     }
+
+    const switchDatabase = async (path) => {
+      switchingDatabase.value = true
+      await handleSave(
+        () => api.post('/admin/settings/geoip/switch', { path }),
+        '数据库切换成功'
+      )
+      await loadGeoIPStatus()
+      switchingDatabase.value = false
+    }
+
+    const flushCache = async () => {
+      try {
+        await ElMessageBox.confirm('确定要清除所有缓存吗？此操作不可撤销。', '警告', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        cacheClearing.value = true
+        const res = await api.post('/admin/settings/cache/flush')
+        if (res.data.success) {
+          ElMessage.success('缓存已清除')
+        } else {
+          ElMessage.error(res.data.message || '清除失败')
+        }
+      } catch (e) {
+        if (e !== 'cancel') {
+          ElMessage.error('清除失败: ' + (e.response?.data?.message || e.message))
+        }
+      } finally {
+        cacheClearing.value = false
+      }
+    }
+
     const testNotification = async (type) => {
       const apiMap = {
         email: { api: adminAPI.testAdminEmailNotification, msg: '邮件测试消息已发送' },
@@ -840,13 +898,13 @@ export default {
       themeSettings, adminNotificationSettings, announcementSettings,
       nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS,
-      testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, creatingBackup,
+      testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, switchingDatabase, creatingBackup,
       uploadStatus, uploadTaskId, stopStatusPolling,
       saveGeneralSettings, saveRegistrationSettings, saveNotificationSettings,
       saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup,
-      updateGeoIPDatabase, handleLogoSuccess, beforeLogoUpload, formatFileSize
+      updateGeoIPDatabase, switchDatabase, handleLogoSuccess, beforeLogoUpload, formatFileSize
     }
   }
 }

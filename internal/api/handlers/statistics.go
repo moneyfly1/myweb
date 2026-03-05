@@ -3,37 +3,28 @@ package handlers
 import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/utils"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-const statsCacheTTL = 30 * time.Second
-
-var statsCache = struct {
-	mu        sync.RWMutex
-	expiresAt time.Time
-	payload   gin.H
-}{}
-
 func GetStatistics(c *gin.Context) {
-	now := utils.GetBeijingTime()
-	statsCache.mu.RLock()
-	if now.Before(statsCache.expiresAt) && statsCache.payload != nil {
-		payload := statsCache.payload
-		statsCache.mu.RUnlock()
-		utils.SuccessResponse(c, http.StatusOK, "", payload)
+	cacheService := cache_service.NewCacheService()
+
+	// 尝试从 Redis 缓存获取
+	if cached, ok := cacheService.GetStatisticsCache("overview"); ok {
+		utils.SuccessResponse(c, http.StatusOK, "", cached)
 		return
 	}
-	statsCache.mu.RUnlock()
+
+	now := utils.GetBeijingTime()
 
 	db := database.GetDB()
 
@@ -217,16 +208,26 @@ func GetStatistics(c *gin.Context) {
 		"recentActivities":  recentActivitiesList,
 	}
 
-	statsCache.mu.Lock()
-	statsCache.payload = payload
-	statsCache.expiresAt = now.Add(statsCacheTTL)
-	statsCache.mu.Unlock()
+	// 异步写入 Redis 缓存
+	go cacheService.SetStatisticsCache("overview", payload, 30*time.Second)
 
 	utils.SuccessResponse(c, http.StatusOK, "", payload)
 }
 
 func GetRevenueChart(c *gin.Context) {
-	_ = c.DefaultQuery("days", "30")
+	days := 30
+	if daysParam := c.Query("days"); daysParam != "" {
+		fmt.Sscanf(daysParam, "%d", &days)
+	}
+
+	cacheService := cache_service.NewCacheService()
+	cacheKey := fmt.Sprintf("revenue_chart:%d", days)
+
+	// 尝试从缓存获取
+	if cached, ok := cacheService.GetStatisticsCache(cacheKey); ok {
+		utils.SuccessResponse(c, http.StatusOK, "", cached)
+		return
+	}
 
 	type RevenueStat struct {
 		Date    string  `json:"date"`
@@ -234,23 +235,16 @@ func GetRevenueChart(c *gin.Context) {
 	}
 
 	var stats []RevenueStat
-	days := 30 // 默认30天
-	if daysParam := c.Query("days"); daysParam != "" {
-		fmt.Sscanf(daysParam, "%d", &days)
-	}
-
 	db := database.GetDB()
-	var rows *sql.Rows
-	var err error
 	startTime := utils.GetBeijingTime().AddDate(0, 0, -days)
-	rows, err = db.Raw(`
+	rows, err := db.Raw(`
 		SELECT DATE(created_at) as date, COALESCE(SUM(
-			CASE 
+			CASE
 				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
 				ELSE amount
 			END
 		), 0) as revenue
-		FROM orders 
+		FROM orders
 		WHERE status = ? AND created_at >= ?
 		GROUP BY DATE(created_at)
 		ORDER BY date ASC
@@ -273,10 +267,15 @@ func GetRevenueChart(c *gin.Context) {
 		data = append(data, stat.Revenue)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+	result := gin.H{
 		"labels": labels,
 		"data":   data,
-	})
+	}
+
+	// 异步写入缓存
+	go cacheService.SetStatisticsCache(cacheKey, result, 5*time.Minute)
+
+	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
 func GetUserStatistics(c *gin.Context) {

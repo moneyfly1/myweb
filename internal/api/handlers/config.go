@@ -15,6 +15,7 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
@@ -93,6 +94,17 @@ func updateSettingsCommon(c *gin.Context, category string) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存设置失败", err)
 		return
 	}
+
+	// 清除系统配置缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		cs.ClearSystemConfigCache(category)
+		// 如果修改的是公告设置，同时清除公告列表缓存
+		if category == CatAnnouncement {
+			cs.ClearAnnouncementsCache()
+		}
+	}()
+
 	utils.CreateAuditLogSimple(c, "update_settings", "settings", 0, fmt.Sprintf("管理员操作: 更新设置 category=%s", category))
 	utils.SuccessResponse(c, http.StatusOK, "设置已保存", nil)
 }
@@ -732,6 +744,10 @@ func GetGeoIPStatus(c *gin.Context) {
 		"databases": []gin.H{},
 	}
 
+	// 获取当前配置的数据库路径
+	configMap := getConfigMap(CatSystem)
+	selectedPath := configMap["geoip_database_path"]
+
 	// 检查各种数据库文件
 	databases := []struct {
 		Name     string
@@ -765,8 +781,15 @@ func GetGeoIPStatus(c *gin.Context) {
 				"priority": db.Priority,
 			}
 
-			// 第一个找到的数据库就是当前使用的
-			if activeDB == "" && geoip.IsEnabled() {
+			// 判断是否为当前使用的数据库
+			isActive := false
+			if selectedPath != "" {
+				isActive = db.Path == selectedPath
+			} else if activeDB == "" && geoip.IsEnabled() {
+				isActive = true
+			}
+
+			if isActive {
 				activeDB = db.Name
 				dbInfo["active"] = true
 			} else {
@@ -781,6 +804,55 @@ func GetGeoIPStatus(c *gin.Context) {
 	status["active_database"] = activeDB
 
 	utils.SuccessResponse(c, http.StatusOK, "", status)
+}
+
+func SwitchGeoIPDatabase(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权", nil)
+		return
+	}
+
+	db := database.GetDB()
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil || !user.IsAdmin {
+		utils.ErrorResponse(c, http.StatusForbidden, "需要管理员权限", err)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+
+	// 验证文件是否存在
+	if _, err := os.Stat(req.Path); os.IsNotExist(err) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "数据库文件不存在", nil)
+		return
+	}
+
+	// 保存配置
+	var conf models.SystemConfig
+	db.Where("key = ? AND category = ?", "geoip_database_path", CatSystem).FirstOrInit(&conf)
+	conf.Key = "geoip_database_path"
+	conf.Category = CatSystem
+	conf.Value = req.Path
+	if err := db.Save(&conf).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "保存配置失败", err)
+		return
+	}
+
+	// 重新初始化 GeoIP
+	if err := geoip.InitGeoIP(req.Path); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "切换数据库失败", err)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, "switch_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 切换 GeoIP 数据库到 %s", req.Path))
+	utils.SuccessResponse(c, http.StatusOK, "数据库切换成功", gin.H{"path": req.Path})
 }
 
 func formatFileSize(size int64) string {
@@ -825,4 +897,15 @@ func GetMobileConfig(c *gin.Context) {
 		"message":         "OK",
 		"code":            1,
 	})
+}
+
+// FlushCache 清除所有 Redis 缓存
+func FlushCache(c *gin.Context) {
+	if err := cache_service.FlushAllCache(); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "清除缓存失败", err)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, "flush_cache", "system", 0, "管理员操作: 清除所有缓存")
+	utils.SuccessResponse(c, http.StatusOK, "缓存已清除", nil)
 }

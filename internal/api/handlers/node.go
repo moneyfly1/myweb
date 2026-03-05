@@ -15,6 +15,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/utils"
@@ -474,6 +475,15 @@ func CreateNode(c *gin.Context) {
 			return
 		}
 		utils.CreateAuditLogSimple(c, "create_node", "node", newNode.ID, fmt.Sprintf("管理员操作: 创建节点 %s", newNode.Name))
+
+		// 清除节点相关缓存
+		go func() {
+			cs := cache_service.NewCacheService()
+			cs.ClearNodesCache()
+			(&config_update.CacheService{}).ClearSystemNodesCache()
+			(&config_update.CacheService{}).ClearAllSubscriptionCache()
+		}()
+
 		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
 		return
 	}
@@ -483,6 +493,15 @@ func CreateNode(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "create_node", "node", req.Node.ID, fmt.Sprintf("管理员操作: 创建节点 %s", req.Node.Name))
+
+	// 清除节点相关缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		cs.ClearNodesCache()
+		(&config_update.CacheService{}).ClearSystemNodesCache()
+		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+	}()
+
 	utils.SuccessResponse(c, http.StatusCreated, "", req.Node)
 }
 
@@ -509,6 +528,15 @@ func ImportNodeLinks(c *gin.Context) {
 		}
 	}
 	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d", imp, skp))
+
+	// 清除节点相关缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		cs.ClearNodesCache()
+		(&config_update.CacheService{}).ClearSystemNodesCache()
+		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+	}()
+
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d", imp, skp), gin.H{
 		"imported": imp,
 		"skipped":  skp,
@@ -535,6 +563,15 @@ func UpdateNode(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "update_node", "node", node.ID, fmt.Sprintf("管理员操作: 更新节点 %s", node.Name))
+
+	// 清除节点和订阅配置缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		cs.ClearNodesCache()
+		(&config_update.CacheService{}).ClearSystemNodesCache()
+		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+	}()
+
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
 }
 
@@ -554,6 +591,15 @@ func DeleteNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", err)
 		return
 	}
+
+	// 清除节点和订阅配置缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		cs.ClearNodesCache()
+		(&config_update.CacheService{}).ClearSystemNodesCache()
+		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+	}()
+
 	utils.CreateAuditLogSimple(c, "delete_node", "node", node.ID, fmt.Sprintf("管理员操作: 删除节点 %s", node.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }

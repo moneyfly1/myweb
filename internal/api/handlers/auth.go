@@ -733,13 +733,17 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 	}
 
 	oldBalance := user.Balance
-	user.Balance += amount
+	updates := map[string]interface{}{
+		"balance": gorm.Expr("balance + ?", amount),
+	}
 	if isInviter {
-		user.TotalInviteReward += amount
-		user.TotalInviteCount++
+		updates["total_invite_reward"] = gorm.Expr("total_invite_reward + ?", amount)
+		updates["total_invite_count"] = gorm.Expr("total_invite_count + 1")
 	}
 
-	if err := db.Save(&user).Error; err == nil {
+	if err := db.Model(&user).Updates(updates).Error; err == nil {
+		// 刷新余额用于日志记录
+		db.First(&user, user.ID)
 		if isInviter {
 			relation.InviterRewardGiven = true
 		} else {

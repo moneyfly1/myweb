@@ -406,6 +406,8 @@ func SetupRouter() *gin.Engine {
 			admin.PUT("/settings/backup", handlers.UpdateBackupSettings)
 			admin.GET("/settings/geoip/status", handlers.GetGeoIPStatus)
 			admin.POST("/settings/geoip/update", handlers.UpdateGeoIPDatabase)
+			admin.POST("/settings/geoip/switch", handlers.SwitchGeoIPDatabase)
+			admin.POST("/settings/cache/flush", handlers.FlushCache)
 
 			admin.GET("/profile", handlers.GetAdminProfile)
 			admin.PUT("/profile", handlers.UpdateAdminProfile)

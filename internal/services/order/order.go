@@ -3,6 +3,7 @@ package order
 import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/payment"
@@ -377,11 +378,24 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 		}
 	}
 
+	var result *models.Subscription
+	var err error
 	if order.PackageID > 0 || isCustomPackage {
-		return s.processPackageOrder(order, &user)
+		result, err = s.processPackageOrder(order, &user)
 	} else {
-		return s.processDeviceUpgradeOrder(order, &user)
+		result, err = s.processDeviceUpgradeOrder(order, &user)
 	}
+
+	// 异步清除缓存
+	if err == nil {
+		go func() {
+			cs := cache_service.NewCacheService()
+			cs.ClearUserCache(user.ID)
+			cs.ClearUserSubscriptionCache(user.ID)
+		}()
+	}
+
+	return result, err
 }
 
 func (s *OrderService) processPackageOrder(order *models.Order, user *models.User) (*models.Subscription, error) {

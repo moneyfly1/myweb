@@ -10,6 +10,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
 	orderServicePkg "cboard-go/internal/services/order"
@@ -21,6 +22,14 @@ import (
 )
 
 func GetPaymentMethods(c *gin.Context) {
+	cacheService := cache_service.NewCacheService()
+
+	// 尝试从缓存获取
+	if cached, ok := cacheService.GetPaymentMethodsCache(); ok {
+		utils.SuccessResponse(c, http.StatusOK, "", cached)
+		return
+	}
+
 	db := database.GetDB()
 	var cfg []models.PaymentConfig
 	db.Where("status = ?", 1).Order("sort_order ASC").Find(&cfg)
@@ -80,6 +89,16 @@ func GetPaymentMethods(c *gin.Context) {
 			})
 		}
 	}
+
+	// 转换为 []map[string]interface{} 以便缓存
+	cacheData := make([]map[string]interface{}, len(res))
+	for i, item := range res {
+		cacheData[i] = map[string]interface{}(item)
+	}
+
+	// 异步写入缓存
+	go cacheService.SetPaymentMethodsCache(cacheData)
+
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
