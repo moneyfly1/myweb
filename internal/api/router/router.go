@@ -114,6 +114,7 @@ func SetupRouter() *gin.Engine {
 		{
 			orders.GET("", handlers.GetOrders)
 			orders.POST("", handlers.CreateOrder)
+			orders.POST("/custom", handlers.CreateCustomOrder)
 			orders.POST("/upgrade-devices", handlers.UpgradeDevices)
 			orders.GET("/stats", handlers.GetOrderStats)
 			orders.POST("/:orderNo/pay", handlers.PayOrder)

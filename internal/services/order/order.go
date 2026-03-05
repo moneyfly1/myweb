@@ -366,7 +366,18 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 
 	s.processInviteRewards(order, paidAmount)
 
-	if order.PackageID > 0 {
+	// 检查是否是自定义套餐订单
+	isCustomPackage := false
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+				isCustomPackage = true
+			}
+		}
+	}
+
+	if order.PackageID > 0 || isCustomPackage {
 		return s.processPackageOrder(order, &user)
 	} else {
 		return s.processDeviceUpgradeOrder(order, &user)
@@ -374,28 +385,67 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 }
 
 func (s *OrderService) processPackageOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
-	var pkg models.Package
-	if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
-		return nil, fmt.Errorf("套餐不存在: %v", err)
-	}
+	// 检查是否是自定义套餐
+	isCustomPackage := false
+	var customDevices int
+	var customMonths int
 
-	durationMonths := 1
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
 		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if months, ok := extraData["duration_months"].(float64); ok {
-				durationMonths = int(months)
+			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+				isCustomPackage = true
+				if devices, ok := extraData["devices"].(float64); ok {
+					customDevices = int(devices)
+				}
+				if months, ok := extraData["months"].(float64); ok {
+					customMonths = int(months)
+				}
 			}
 		}
 	}
-	if durationMonths <= 0 {
-		durationMonths = 1
-	}
-	if durationMonths > 60 {
-		durationMonths = 60
-	}
 
-	totalDurationDays := pkg.DurationDays * durationMonths
+	var pkg models.Package
+	var deviceLimit int
+	var durationMonths int
+	var totalDurationDays int
+	var packageName string
+
+	if isCustomPackage {
+		// 自定义套餐：直接使用 ExtraData 中的参数
+		if customDevices <= 0 || customMonths <= 0 {
+			return nil, fmt.Errorf("自定义套餐参数无效: devices=%d, months=%d", customDevices, customMonths)
+		}
+		deviceLimit = customDevices
+		durationMonths = customMonths
+		totalDurationDays = customMonths * 30
+		packageName = fmt.Sprintf("自定义套餐 (%d设备/%d月)", customDevices, customMonths)
+	} else {
+		// 普通套餐：从数据库加载套餐信息
+		if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
+			return nil, fmt.Errorf("套餐不存在: %v", err)
+		}
+		packageName = pkg.Name
+		deviceLimit = pkg.DeviceLimit
+
+		durationMonths = 1
+		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if months, ok := extraData["duration_months"].(float64); ok {
+					durationMonths = int(months)
+				}
+			}
+		}
+		if durationMonths <= 0 {
+			durationMonths = 1
+		}
+		if durationMonths > 60 {
+			durationMonths = 60
+		}
+
+		totalDurationDays = pkg.DurationDays * durationMonths
+	}
 
 	now := utils.GetBeijingTime()
 
@@ -403,12 +453,16 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		subscriptionURL := utils.GenerateSubscriptionURL()
 		expireTime := now.AddDate(0, 0, totalDurationDays)
-		pkgID := int64(pkg.ID)
+		var pkgID *int64
+		if !isCustomPackage {
+			id := int64(pkg.ID)
+			pkgID = &id
+		}
 		subscription = models.Subscription{
 			UserID:          user.ID,
-			PackageID:       &pkgID,
+			PackageID:       pkgID,
 			SubscriptionURL: subscriptionURL,
-			DeviceLimit:     pkg.DeviceLimit,
+			DeviceLimit:     deviceLimit,
 			CurrentDevices:  0,
 			IsActive:        true,
 			Status:          "active",
@@ -418,8 +472,8 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			return nil, fmt.Errorf("创建订阅失败: %v", err)
 		}
 		if utils.AppLogger != nil {
-			utils.AppLogger.Info("ProcessPaidOrder: ✅ 创建新订阅成功 - user_id=%d, package_id=%d, device_limit=%d, duration_months=%d, duration_days=%d, expire_time=%s",
-				user.ID, pkg.ID, pkg.DeviceLimit, durationMonths, totalDurationDays, utils.FormatBeijingTime(expireTime))
+			utils.AppLogger.Info("ProcessPaidOrder: ✅ 创建新订阅成功 - user_id=%d, package_name=%s, device_limit=%d, duration_months=%d, duration_days=%d, expire_time=%s",
+				user.ID, packageName, deviceLimit, durationMonths, totalDurationDays, utils.FormatBeijingTime(expireTime))
 		}
 
 		go func() {
@@ -428,8 +482,8 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			_ = notificationService.SendAdminNotification("subscription_created", map[string]interface{}{
 				"username":        user.Username,
 				"email":           user.Email,
-				"package_name":    pkg.Name,
-				"device_limit":    pkg.DeviceLimit,
+				"package_name":    packageName,
+				"device_limit":    deviceLimit,
 				"duration_months": durationMonths,
 				"duration_days":   totalDurationDays,
 				"expire_time":     utils.FormatBeijingTime(expireTime),
@@ -444,18 +498,20 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, totalDurationDays)
 		}
 		oldDeviceLimit := subscription.DeviceLimit
-		subscription.DeviceLimit = pkg.DeviceLimit
+		subscription.DeviceLimit = deviceLimit
 		subscription.IsActive = true
 		subscription.Status = "active"
-		pkgID := int64(pkg.ID)
-		subscription.PackageID = &pkgID
+		if !isCustomPackage {
+			pkgID := int64(pkg.ID)
+			subscription.PackageID = &pkgID
+		}
 
 		if err := s.db.Save(&subscription).Error; err != nil {
 			return nil, fmt.Errorf("更新订阅失败: %v", err)
 		}
 		if utils.AppLogger != nil {
-			utils.AppLogger.Info("ProcessPaidOrder: ✅ 更新订阅成功 - user_id=%d, package_id=%d, device_limit: %d->%d, duration_months=%d, duration_days=%d, expire_time: %s->%s",
-				user.ID, pkg.ID, oldDeviceLimit, pkg.DeviceLimit, durationMonths, totalDurationDays, utils.FormatBeijingTime(oldExpireTime), utils.FormatBeijingTime(subscription.ExpireTime))
+			utils.AppLogger.Info("ProcessPaidOrder: ✅ 更新订阅成功 - user_id=%d, package_name=%s, device_limit: %d->%d, duration_months=%d, duration_days=%d, expire_time: %s->%s",
+				user.ID, packageName, oldDeviceLimit, deviceLimit, durationMonths, totalDurationDays, utils.FormatBeijingTime(oldExpireTime), utils.FormatBeijingTime(subscription.ExpireTime))
 		}
 	}
 

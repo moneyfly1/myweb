@@ -47,6 +47,22 @@ func resolvePackageInfo(db *gorm.DB, order models.Order) (uint, string, interfac
 	if order.PackageID == 0 {
 		name := "设备升级"
 		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+					// 自定义套餐
+					devices := 0
+					months := 0
+					if devicesVal, ok := extraData["devices"].(float64); ok {
+						devices = int(devicesVal)
+					}
+					if monthsVal, ok := extraData["months"].(float64); ok {
+						months = int(monthsVal)
+					}
+					name = fmt.Sprintf("自定义套餐 (%d设备/%d月)", devices, months)
+					return 0, name, gin.H{"id": 0, "name": name, "type": "custom_package"}
+				}
+			}
 			name = "设备升级订单"
 		}
 		return 0, name, gin.H{"id": 0, "name": name}
@@ -1442,7 +1458,7 @@ func PayOrder(c *gin.Context) {
 	}
 
 	var req struct {
-		PaymentMethodID uint   `json:"payment_method_id" binding:"required"`
+		PaymentMethodID uint   `json:"payment_method_id"`
 		PaymentMethod   string `json:"payment_method"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1461,15 +1477,71 @@ func PayOrder(c *gin.Context) {
 		return
 	}
 
+	amount := order.Amount
+	if order.FinalAmount.Valid {
+		amount = order.FinalAmount.Float64
+	}
+
+	// 余额支付
+	if req.PaymentMethod == "balance" {
+		// 检查余额是否充足
+		if user.Balance < amount {
+			utils.ErrorResponse(c, http.StatusBadRequest, "余额不足", nil)
+			return
+		}
+
+		// 扣除余额
+		tx := db.Begin()
+		if err := tx.Model(user).UpdateColumn("balance", gorm.Expr("balance - ?", amount)).Error; err != nil {
+			tx.Rollback()
+			utils.ErrorResponse(c, http.StatusInternalServerError, "扣减余额失败", err)
+			return
+		}
+
+		// 更新订单状态
+		now := time.Now()
+		balanceStr := "balance"
+		if err := tx.Model(&order).Updates(map[string]interface{}{
+			"status":              "paid",
+			"payment_method_name": &balanceStr,
+			"payment_time":        &now,
+		}).Error; err != nil {
+			tx.Rollback()
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单状态失败", err)
+			return
+		}
+
+		// 激活订阅
+		orderService := orderServicePkg.NewOrderService()
+		if _, err := orderService.ProcessPaidOrder(&order); err != nil {
+			tx.Rollback()
+			utils.ErrorResponse(c, http.StatusInternalServerError, "激活订阅失败", err)
+			return
+		}
+
+		if err := tx.Commit().Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "支付事务提交失败", err)
+			return
+		}
+
+		utils.SuccessResponse(c, http.StatusOK, "支付成功", gin.H{
+			"status":   "paid",
+			"order_no": order.OrderNo,
+			"amount":   amount,
+		})
+		return
+	}
+
+	// 第三方支付
+	if req.PaymentMethodID == 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择支付方式", nil)
+		return
+	}
+
 	var paymentConfig models.PaymentConfig
 	if err := db.First(&paymentConfig, req.PaymentMethodID).Error; err != nil || paymentConfig.Status != 1 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "支付方式无效", nil)
 		return
-	}
-
-	amount := order.Amount
-	if order.FinalAmount.Valid {
-		amount = order.FinalAmount.Float64
 	}
 
 	transaction := models.PaymentTransaction{
@@ -1496,5 +1568,200 @@ func PayOrder(c *gin.Context) {
 		"order_no":       order.OrderNo,
 		"amount":         amount,
 		"transaction_id": transaction.ID,
+	})
+}
+
+// CreateCustomOrder 创建自定义套餐订单
+func CreateCustomOrder(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+
+	var req struct {
+		Devices    int    `json:"devices" binding:"required,min=1"`
+		Months     int    `json:"months" binding:"required,min=1"`
+		CouponCode string `json:"coupon_code"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+
+	// 检查自定义套餐是否启用
+	db := database.GetDB()
+	var enabledConfig models.SystemConfig
+	if err := db.Where("`key` = ? AND category = ?", "custom_package_enabled", "custom_package").First(&enabledConfig).Error; err != nil || enabledConfig.Value != "true" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "自定义套餐功能未启用", nil)
+		return
+	}
+
+	// 获取配置
+	var configs []models.SystemConfig
+	db.Where("category = ?", "custom_package").Find(&configs)
+	configMap := make(map[string]string)
+	for _, cfg := range configs {
+		configMap[cfg.Key] = cfg.Value
+	}
+
+	pricePerDeviceYear := utils.ParseFloat(configMap["custom_package_price_per_device_year"], 40.0)
+	minDevices := utils.ParseInt(configMap["custom_package_min_devices"], 5)
+	maxDevices := utils.ParseInt(configMap["custom_package_max_devices"], 100)
+	minMonths := utils.ParseInt(configMap["custom_package_min_months"], 6)
+
+	// 验证参数
+	if req.Devices < minDevices || req.Devices > maxDevices {
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("设备数量需在 %d ~ %d 之间", minDevices, maxDevices), nil)
+		return
+	}
+	if req.Months < minMonths {
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("最少购买 %d 个月", minMonths), nil)
+		return
+	}
+	if req.Months > 120 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "最多购买 120 个月", nil)
+		return
+	}
+
+	// 计算价格
+	basePrice := pricePerDeviceYear * float64(req.Devices) * (float64(req.Months) / 12.0)
+	basePrice = utils.RoundFloat(basePrice, 2)
+
+	// 解析时长折扣
+	var discountTiers []struct {
+		Months   int     `json:"months"`
+		Discount float64 `json:"discount"`
+	}
+	if discountsJSON := configMap["custom_package_duration_discounts"]; discountsJSON != "" {
+		json.Unmarshal([]byte(discountsJSON), &discountTiers)
+	}
+
+	// 找到最佳折扣
+	var discountPercent float64
+	for _, tier := range discountTiers {
+		if req.Months >= tier.Months && tier.Discount > discountPercent {
+			discountPercent = tier.Discount
+		}
+	}
+
+	finalPrice := basePrice * (1 - discountPercent/100)
+	finalPrice = utils.RoundFloat(finalPrice, 2)
+
+	// 应用优惠券
+	var couponDiscount float64
+	var couponID *int64
+	if req.CouponCode != "" {
+		var coupon models.Coupon
+		if err := db.Where("code = ? AND status = ?", req.CouponCode, "active").First(&coupon).Error; err == nil {
+			now := time.Now()
+			if now.After(coupon.ValidFrom) && now.Before(coupon.ValidUntil) {
+				// 检查总数量
+				if coupon.TotalQuantity.Valid && coupon.UsedQuantity >= int(coupon.TotalQuantity.Int64) {
+					utils.ErrorResponse(c, http.StatusBadRequest, "优惠券已被领完", nil)
+					return
+				}
+				// 检查用户使用次数
+				var usageCount int64
+				db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", coupon.ID, user.ID).Count(&usageCount)
+				if int(usageCount) >= coupon.MaxUsesPerUser {
+					utils.ErrorResponse(c, http.StatusBadRequest, "您已达到该优惠券的使用上限", nil)
+					return
+				}
+
+				// 计算折扣
+				switch coupon.Type {
+				case "discount":
+					couponDiscount = utils.RoundFloat(finalPrice*coupon.DiscountValue/100, 2)
+				case "fixed":
+					couponDiscount = coupon.DiscountValue
+				}
+
+				if coupon.MaxDiscount.Valid && couponDiscount > coupon.MaxDiscount.Float64 {
+					couponDiscount = coupon.MaxDiscount.Float64
+				}
+				if couponDiscount > finalPrice {
+					couponDiscount = finalPrice
+				}
+				couponDiscount = utils.RoundFloat(couponDiscount, 2)
+				cid := int64(coupon.ID)
+				couponID = &cid
+			}
+		}
+	}
+
+	finalPrice = finalPrice - couponDiscount
+	if finalPrice < 0 {
+		finalPrice = 0
+	}
+	finalPrice = utils.RoundFloat(finalPrice, 2)
+
+	// 构建额外数据
+	extraData := map[string]interface{}{
+		"type":             "custom_package",
+		"devices":          req.Devices,
+		"months":           req.Months,
+		"discount_percent": discountPercent,
+	}
+	extraDataJSON, _ := json.Marshal(extraData)
+	extraStr := string(extraDataJSON)
+
+	// 创建订单号
+	orderNo, err := utils.GenerateOrderNo(db)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订单号失败", err)
+		return
+	}
+	expireTime := time.Now().Add(30 * time.Minute)
+	totalDiscount := basePrice - finalPrice
+
+	order := models.Order{
+		OrderNo:        orderNo,
+		UserID:         user.ID,
+		PackageID:      0,
+		Amount:         basePrice,
+		Status:         "pending",
+		ExpireTime:     database.NullTime(expireTime),
+		DiscountAmount: database.NullFloat64(totalDiscount),
+		FinalAmount:    database.NullFloat64(finalPrice),
+		ExtraData:      database.NullString(extraStr),
+	}
+
+	if couponID != nil {
+		order.CouponID = database.NullInt64(*couponID)
+	}
+
+	if err := db.Create(&order).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
+		return
+	}
+
+	// 记录优惠券使用
+	if couponID != nil {
+		db.Create(&models.CouponUsage{
+			CouponID:       uint(*couponID),
+			UserID:         user.ID,
+			OrderID:        database.NullInt64(int64(order.ID)),
+			DiscountAmount: couponDiscount,
+		})
+		db.Model(&models.Coupon{}).Where("id = ?", *couponID).UpdateColumn("used_quantity", gorm.Expr("used_quantity + 1"))
+	}
+
+	// 创建审计日志
+	pkgName := fmt.Sprintf("自定义套餐 (%d设备/%d月)", req.Devices, req.Months)
+	utils.CreateAuditLogSimple(c, "create_custom_order", "order", order.ID, fmt.Sprintf("用户创建自定义套餐订单: %s, 金额: %.2f", pkgName, finalPrice))
+
+	utils.SuccessResponse(c, http.StatusCreated, "订单创建成功", gin.H{
+		"order_no":        order.OrderNo,
+		"id":              order.ID,
+		"user_id":         order.UserID,
+		"package_id":      0,
+		"package_name":    pkgName,
+		"amount":          basePrice,
+		"final_amount":    finalPrice,
+		"discount_amount": totalDiscount,
+		"status":          order.Status,
+		"created_at":      utils.FormatBeijingTime(order.CreatedAt),
 	})
 }
