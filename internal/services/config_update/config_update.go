@@ -222,12 +222,8 @@ func (s *ConfigUpdateService) log(level, message string) {
 		"message":   message,
 	}
 
-	// 对于 SUCCESS 和 ERROR 级别的日志，同步保存以确保不会丢失
-	if level == "SUCCESS" || level == "ERROR" {
-		s.saveLogToDB(logEntry)
-	} else {
-		go s.saveLogToDB(logEntry)
-	}
+	// 同步保存所有日志，确保实时显示
+	s.saveLogToDB(logEntry)
 
 	if utils.AppLogger != nil {
 		if level == "ERROR" {
@@ -248,8 +244,8 @@ func (s *ConfigUpdateService) saveLogToDB(logEntry map[string]interface{}) {
 	}
 
 	logs = append(logs, logEntry)
-	if len(logs) > 100 {
-		logs = logs[len(logs)-100:]
+	if len(logs) > 500 {
+		logs = logs[len(logs)-500:]
 	}
 
 	logsJSON, _ := json.Marshal(logs)
@@ -296,7 +292,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		s.runningMutex.Unlock()
 	}()
 
-	s.log("INFO", "开始执行配置更新任务")
+	s.logSection("🚀", "开始执行配置更新任务")
 
 	config, err := s.getConfig()
 	if err != nil {
@@ -311,7 +307,8 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		return fmt.Errorf("%s", msg)
 	}
 
-	s.log("INFO", fmt.Sprintf("获取到 %d 个节点源URL", len(urls)))
+	s.log("INFO", "📋 配置信息")
+	s.logItem("└─", fmt.Sprintf("节点源数量: %d 个", len(urls)))
 
 	nodes, err := s.FetchNodesFromURLs(urls)
 	if err != nil {
@@ -340,20 +337,25 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	// 在导入新节点之前，删除所有自动导入的节点（IsManual = false），保留手动添加的节点（IsManual = true，包括专线节点）
 	deletedCount := s.deleteAutoImportedNodes()
-	s.log("INFO", fmt.Sprintf("已删除 %d 个自动导入的旧节点（保留手动添加的节点）", deletedCount))
+	s.logSeparator()
+	s.log("INFO", "💾 数据库操作")
+	s.logSeparator()
+	s.log("INFO", fmt.Sprintf("🗑️  删除旧节点: %d 个", deletedCount))
 
+	s.log("INFO", "⠼ 正在导入节点到数据库...")
 	importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
 	s.updateLastUpdateTime()
 
 	// 输出详细的统计信息
-	s.log("INFO", fmt.Sprintf("节点导入统计: 新增 %d 个，更新 %d 个，跳过 %d 个（与手动节点同名）",
-		importStats.Created, importStats.Updated, importStats.Skipped))
+	s.log("INFO", fmt.Sprintf("➕ 新增节点: %d 个", importStats.Created))
+	s.log("INFO", fmt.Sprintf("🔄 更新节点: %d 个", importStats.Updated))
+	s.log("INFO", fmt.Sprintf("⏭️  跳过节点: %d 个 (手动添加)", importStats.Skipped))
 
 	// 等待日志保存完成，确保最终日志能够保存
 	time.Sleep(100 * time.Millisecond)
 
-	s.log("SUCCESS", fmt.Sprintf("任务完成: 解析出 %d 个节点，删除 %d 个旧节点，新增 %d 个节点，更新 %d 个节点，跳过 %d 个节点",
-		len(nodesWithOrder), deletedCount, importStats.Created, importStats.Updated, importStats.Skipped))
+	s.logSection("✅", "任务完成")
+	s.logItem("└─", fmt.Sprintf("最终结果: 成功导入 %d 个节点", importStats.Created))
 
 
 	// 清除节点和订阅配置缓存
@@ -362,7 +364,12 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		cs.ClearNodesCache()
 		(&CacheService{}).ClearSystemNodesCache()
 		(&CacheService{}).ClearAllSubscriptionCache()
-		s.log("INFO", "已清除节点和订阅配置缓存")
+		s.logSeparator()
+		s.log("INFO", "🧹 清理缓存")
+		s.logSeparator()
+		s.log("INFO", "✓ 节点列表缓存已清除")
+		s.log("INFO", "✓ 系统节点缓存已清除")
+		s.log("INFO", "✓ 订阅配置缓存已清除")
 	}()
 
 	// 再次等待，确保最终日志保存完成
@@ -423,7 +430,7 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			continue
 		}
 
-		s.log("INFO", fmt.Sprintf("开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes)))
+		s.log("INFO", fmt.Sprintf("⠸ 开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes)))
 
 		links := make([]string, 0, len(urlNodes))
 		for _, nodeInfo := range urlNodes {
@@ -481,7 +488,7 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			nodeIndexInURL++
 		}
 
-		s.log("INFO", fmt.Sprintf("订阅地址 [%d/%d] 完成: 成功=%d, 失败=%d, 过滤=%d, 重复=%d",
+		s.log("INFO", fmt.Sprintf("✓ 订阅地址 [%d/%d] 完成: 成功=%d, 失败=%d, 过滤=%d, 重复=%d",
 			urlIndex+1, len(urls), counts.Processed, counts.Failed, counts.Filtered, counts.Duplicate))
 	}
 	return nodesWithOrder, stats
@@ -611,7 +618,11 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 	}
 
 	for i, url := range urls {
-		s.log("INFO", fmt.Sprintf("正在下载节点源 [%d/%d]: %s", i+1, len(urls), url))
+		s.logSeparator()
+		s.log("INFO", fmt.Sprintf("📥 下载节点源 [%d/%d]", i+1, len(urls)))
+		s.logSeparator()
+		s.logItem("└─", fmt.Sprintf("URL: %s", url))
+		s.log("INFO", "⠋ 正在连接...")
 
 		content, err := s.fetchURLContent(client, url)
 		if err != nil {
@@ -620,10 +631,11 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 		}
 
 		decoded := TryDecodeNodeList(string(content))
-		s.log("DEBUG", fmt.Sprintf("内容长度: %d, 预览: %s", len(decoded), truncateString(decoded, 200)))
 
+		s.log("INFO", "⠹ 正在解析节点...")
 		nodeLinks := s.extractNodeLinks(decoded)
 		s.logNodeTypeStats(url, nodeLinks)
+		s.logNodeNames(nodeLinks)
 
 		for _, link := range nodeLinks {
 			allNodes = append(allNodes, map[string]interface{}{
@@ -700,8 +712,46 @@ func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
 	for t, c := range typeCount {
 		parts = append(parts, fmt.Sprintf("%s:%d", t, c))
 	}
-	s.log("INFO", fmt.Sprintf("从 %s 提取到 %d 个节点链接 (%s)", url, len(nodeLinks), strings.Join(parts, ", ")))
+	s.log("INFO", fmt.Sprintf("✓ 提取到 %d 个节点 (%s)", len(nodeLinks), strings.Join(parts, ", ")))
 }
+
+func (s *ConfigUpdateService) logNodeNames(nodeLinks []string) {
+	if len(nodeLinks) == 0 {
+		return
+	}
+
+	// 从节点链接中提取节点名称
+	var nodeNames []string
+	for _, link := range nodeLinks {
+		name := s.extractNodeName(link)
+		if name != "" {
+			nodeNames = append(nodeNames, name)
+		}
+	}
+
+	if len(nodeNames) > 0 {
+		s.logSeparator()
+		s.log("INFO", "📋 采集到的节点:")
+		for i, name := range nodeNames {
+			s.log("INFO", fmt.Sprintf("  %d. %s", i+1, name))
+		}
+		s.logSeparator()
+	}
+}
+
+func (s *ConfigUpdateService) extractNodeName(link string) string {
+	// 节点名称通常在 # 后面
+	if idx := strings.Index(link, "#"); idx != -1 {
+		name := link[idx+1:]
+		// URL decode
+		if decoded, err := url.QueryUnescape(name); err == nil {
+			return decoded
+		}
+		return name
+	}
+	return ""
+}
+
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	// 首先尝试解析 Clash YAML 格式
 	if yamlLinks := s.parseClashYAML(content); len(yamlLinks) > 0 {
@@ -709,6 +759,7 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	}
 
 	// 如果不是 YAML 格式，则使用原有的正则提取逻辑
+	s.log("INFO", "✓ 检测到节点链接格式（非 YAML）")
 	var links []string
 	var invalidLinks []string
 	// 使用 bitset 或区间树会更高效，但这里用 map[int]bool 简单处理
@@ -2054,4 +2105,36 @@ func unescapeUnicode(s string) string {
 		}
 		return string(rune(codePoint))
 	})
+}
+
+// ==========================================
+// 格式化日志辅助函数
+// ==========================================
+
+// logSeparator 输出分隔线
+func (s *ConfigUpdateService) logSeparator() {
+	s.log("INFO", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+}
+
+// logSection 输出章节标题
+func (s *ConfigUpdateService) logSection(icon, title string) {
+	s.logSeparator()
+	s.log("INFO", fmt.Sprintf("%s %s", icon, title))
+	s.logSeparator()
+}
+
+// logItem 输出带缩进的项目
+func (s *ConfigUpdateService) logItem(prefix, content string) {
+	s.log("INFO", fmt.Sprintf("           %s %s", prefix, content))
+}
+
+// formatBytes 格式化字节大小
+func formatBytes(bytes int) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	} else {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
 }
