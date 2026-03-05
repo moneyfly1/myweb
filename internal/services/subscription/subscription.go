@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
@@ -145,10 +146,31 @@ func (s *SubscriptionService) CheckExpired() error {
 		return fmt.Errorf("数据库未初始化")
 	}
 	now := utils.GetBeijingTime()
-	return s.db.Model(&models.Subscription{}).
+
+	// 先查询即将过期的订阅 URL，用于清除缓存
+	var expiredSubs []models.Subscription
+	s.db.Select("subscription_url").
+		Where("expire_time < ? AND status = ?", now, "active").
+		Find(&expiredSubs)
+
+	// 批量更新状态
+	err := s.db.Model(&models.Subscription{}).
 		Where("expire_time < ? AND status = ?", now, "active").
 		Updates(map[string]interface{}{
 			"status":    "expired",
 			"is_active": false,
 		}).Error
+
+	// 清除过期订阅的配置缓存
+	if err == nil && len(expiredSubs) > 0 {
+		go func(subs []models.Subscription) {
+			for _, sub := range subs {
+				if sub.SubscriptionURL != "" {
+					cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+				}
+			}
+		}(expiredSubs)
+	}
+
+	return err
 }

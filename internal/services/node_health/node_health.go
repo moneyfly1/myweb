@@ -330,16 +330,13 @@ func (s *NodeHealthService) CheckAllNodes() error {
 func (s *NodeHealthService) StartPeriodicCheck(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
+		defer ticker.Stop()
 		for range ticker.C {
-			utils.LogError("节点健康检查", nil, map[string]interface{}{
-				"message": "开始执行节点健康检查",
-			})
+			utils.LogInfo("节点健康检查: 开始执行")
 			if err := s.CheckAllNodes(); err != nil {
 				utils.LogError("节点健康检查失败", err, nil)
 			} else {
-				utils.LogError("节点健康检查", nil, map[string]interface{}{
-					"message": "节点健康检查完成",
-				})
+				utils.LogInfo("节点健康检查: 执行完成")
 			}
 		}
 	}()

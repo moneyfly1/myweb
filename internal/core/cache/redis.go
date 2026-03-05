@@ -106,3 +106,15 @@ func FlushAll() error {
 	}
 	return redisClient.FlushDB(ctx).Err()
 }
+
+// ClearSubscriptionConfigCache 清除指定订阅的配置缓存（所有格式）
+func ClearSubscriptionConfigCache(subscriptionURL string) error {
+	if !IsRedisEnabled() {
+		return nil
+	}
+	Del(
+		fmt.Sprintf("subscription:config:%s:clash", subscriptionURL),
+		fmt.Sprintf("subscription:config:%s:base64", subscriptionURL),
+	)
+	return nil
+}
