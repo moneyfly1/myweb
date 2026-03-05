@@ -8,12 +8,22 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 func GetPackages(c *gin.Context) {
+	cacheService := cache_service.NewCacheService()
+
+	// 尝试从缓存获取
+	if cached, ok := cacheService.GetPackagesCache(); ok {
+		utils.SuccessResponse(c, http.StatusOK, "", cached)
+		return
+	}
+
+	// 缓存未命中，查询数据库
 	db := database.GetDB()
 
 	var packages []models.Package
@@ -22,9 +32,9 @@ func GetPackages(c *gin.Context) {
 		return
 	}
 
-	result := make([]gin.H, 0)
+	result := make([]map[string]interface{}, 0)
 	for _, pkg := range packages {
-		result = append(result, gin.H{
+		result = append(result, map[string]interface{}{
 			"id":             pkg.ID,
 			"name":           pkg.Name,
 			"description":    pkg.Description.String,
@@ -38,6 +48,9 @@ func GetPackages(c *gin.Context) {
 			"updated_at":     utils.FormatBeijingTime(pkg.UpdatedAt),
 		})
 	}
+
+	// 异步写入缓存
+	go cacheService.SetPackagesCache(result)
 
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
@@ -91,6 +104,11 @@ func CreatePackage(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建套餐失败", err)
 		return
 	}
+
+	// 清除套餐列表缓存
+	cacheService := cache_service.NewCacheService()
+	cacheService.ClearPackagesCache()
+
 	utils.CreateAuditLogSimple(c, "create_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 创建套餐 %s", pkg.Name))
 	utils.SuccessResponse(c, http.StatusCreated, "", pkg)
 }
@@ -180,6 +198,11 @@ func UpdatePackage(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新套餐失败", err)
 		return
 	}
+
+	// 清除套餐列表缓存
+	cacheService := cache_service.NewCacheService()
+	cacheService.ClearPackagesCache()
+
 	utils.CreateAuditLogSimple(c, "update_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 更新套餐 %s", pkg.Name))
 	responseData := gin.H{
 		"id":             pkg.ID,
@@ -211,6 +234,11 @@ func DeletePackage(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除套餐失败", err)
 		return
 	}
+
+	// 清除套餐列表缓存
+	cacheService := cache_service.NewCacheService()
+	cacheService.ClearPackagesCache()
+
 	utils.CreateAuditLogSimple(c, "delete_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 删除套餐 %s", pkg.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
