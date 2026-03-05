@@ -14,6 +14,7 @@ type Device struct {
 	DeviceName        *string    `gorm:"type:varchar(100)" json:"device_name,omitempty"`
 	DeviceType        *string    `gorm:"type:varchar(50)" json:"device_type,omitempty"`
 	IPAddress         *string    `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
+	Location          *string    `gorm:"type:varchar(255)" json:"location,omitempty"` // GeoIP 位置信息
 	UserAgent         *string    `gorm:"type:text" json:"user_agent,omitempty"`
 	SoftwareName      *string    `gorm:"type:varchar(100)" json:"software_name,omitempty"`
 	SoftwareVersion   *string    `gorm:"type:varchar(50)" json:"software_version,omitempty"`
