@@ -88,3 +88,4 @@ main
 scripts/go.mod
 scripts/go.sum
 dbip-city-lite.mmdb
+cboard
