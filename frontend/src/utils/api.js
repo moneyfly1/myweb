@@ -445,6 +445,13 @@ export const orderAPI = {
   cancelOrder: (orderNo) => api.post(`/orders/${orderNo}/cancel`),
   getPackages: () => api.get('/packages/')
 }
+
+// GeoIP API
+export const geoipAPI = {
+  lookup: (ip) => api.get(`/geoip/lookup?ip=${ip}`),
+  batchLookup: (ips) => api.post('/geoip/batch-lookup', { ips })
+}
+
 export const nodeAPI = {
   getNodes: () => api.get('/nodes/'),
   getNode: (id) => api.get(`/nodes/${id}`),

@@ -14,6 +14,7 @@ import (
 
 	"cboard-go/internal/api/router"
 	"cboard-go/internal/core/auth"
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -90,6 +91,15 @@ func main() {
 		log.Println("GeoIP 数据库已加载，地理位置解析功能已启用")
 	}
 	defer geoip.Close()
+
+	// 初始化 Redis（可选，如果连接失败会自动禁用缓存）
+	if err := cache.InitRedis(); err != nil {
+		log.Printf("Redis 初始化失败（缓存功能已禁用）: %v", err)
+		log.Println("提示: 如需启用缓存功能，请配置 REDIS_ADDR 环境变量")
+	} else {
+		log.Println("Redis 缓存已启用，GeoIP 查询将使用缓存加速")
+	}
+	defer cache.Close()
 
 	if !cfg.DisableScheduleTasks {
 		sched := scheduler.NewScheduler()

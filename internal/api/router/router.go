@@ -138,6 +138,13 @@ func SetupRouter() *gin.Engine {
 		}
 		api.GET("/payment-methods/active", handlers.GetPaymentMethods)
 
+		// GeoIP 查询接口
+		geoip := api.Group("/geoip")
+		{
+			geoip.GET("/lookup", handlers.LookupIPLocation)
+			geoip.POST("/batch-lookup", handlers.BatchLookupIPLocation)
+		}
+
 		nodes := api.Group("/nodes")
 		{
 			nodes.GET("", middleware.TryAuthMiddleware(), handlers.GetNodes)
