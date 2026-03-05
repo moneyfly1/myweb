@@ -15,7 +15,6 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
-	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -618,13 +617,14 @@ func GetUserDetails(c *gin.Context) {
 			ipStr = ipValue.(string)
 		}
 		ipAddress := formatIPForRecharge(ipStr)
+		// 列表查询不查询 GeoIP，提升性能
 		location := ""
-		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-			locationStr := geoip.GetLocationString(ipAddress)
-			if locationStr.Valid {
-				location = locationStr.String
-			}
-		}
+		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+		// 	locationStr := geoip.GetLocationString(ipAddress)
+		// 	if locationStr.Valid {
+		// 		location = locationStr.String
+		// 	}
+		// }
 
 		formattedRecharges = append(formattedRecharges, gin.H{
 			"id":                     record.ID,
@@ -741,13 +741,14 @@ func GetUserDetails(c *gin.Context) {
 
 		for _, d := range uaMap {
 			ipAddress := formatIPForUA(getString(d.IPAddress))
+			// 列表查询不查询 GeoIP，提升性能
 			location := ""
-			if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-				locationStr := geoip.GetLocationString(ipAddress)
-				if locationStr.Valid {
-					location = locationStr.String
-				}
-			}
+			// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+			// 	locationStr := geoip.GetLocationString(ipAddress)
+			// 	if locationStr.Valid {
+			// 		location = locationStr.String
+			// 	}
+			// }
 
 			uaRecords = append(uaRecords, gin.H{
 				"user_agent":   *d.UserAgent,
@@ -778,11 +779,13 @@ func GetUserDetails(c *gin.Context) {
 		location := ""
 		if lh.Location.Valid {
 			location = lh.Location.String
-		} else if ipAddr != "" && geoip.IsEnabled() {
-			if loc := geoip.GetLocationString(ipAddr); loc.Valid {
-				location = loc.String
-			}
 		}
+		// 列表查询不查询 GeoIP，提升性能
+		// else if ipAddr != "" && geoip.IsEnabled() {
+		// 	if loc := geoip.GetLocationString(ipAddr); loc.Valid {
+		// 		location = loc.String
+		// 	}
+		// }
 		entry := gin.H{
 			"id":           lh.ID,
 			"login_time":   utils.FormatBeijingTime(lh.LoginTime),

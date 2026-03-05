@@ -187,13 +187,14 @@ func GetRechargeRecords(c *gin.Context) {
 			ipStr = ipValue.(string)
 		}
 		ipAddress := formatIP(ipStr)
+		// 列表查询不查询 GeoIP，提升性能
 		location := ""
-		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-			locationStr := geoip.GetLocationString(ipAddress)
-			if locationStr.Valid {
-				location = locationStr.String
-			}
-		}
+		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+		// 	locationStr := geoip.GetLocationString(ipAddress)
+		// 	if locationStr.Valid {
+		// 		location = locationStr.String
+		// 	}
+		// }
 
 		formattedRecords = append(formattedRecords, gin.H{
 			"id":                     record.ID,
@@ -503,13 +504,14 @@ func GetAdminRechargeRecords(c *gin.Context) {
 			ipStr = ipValue.(string)
 		}
 		ipAddress := formatIP(ipStr)
+		// 列表查询不查询 GeoIP，提升性能
 		location := ""
-		if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-			locationStr := geoip.GetLocationString(ipAddress)
-			if locationStr.Valid {
-				location = locationStr.String
-			}
-		}
+		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
+		// 	locationStr := geoip.GetLocationString(ipAddress)
+		// 	if locationStr.Valid {
+		// 		location = locationStr.String
+		// 	}
+		// }
 
 		userInfo := gin.H{}
 		if record.User.ID > 0 {

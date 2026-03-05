@@ -20,7 +20,6 @@ import (
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/device"
 	"cboard-go/internal/services/email"
-	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -118,7 +117,8 @@ func asyncSubscriptionLog(
 
 func formatDeviceList(devices []models.Device) []gin.H {
 	list := make([]gin.H, 0, len(devices))
-	geoEnabled := geoip.IsEnabled()
+	// 列表查询不查询 GeoIP，提升性能
+	// geoEnabled := geoip.IsEnabled()
 
 	for _, d := range devices {
 		lastSeen := d.LastAccess.Format(TimeLayout)
@@ -127,11 +127,11 @@ func formatDeviceList(devices []models.Device) []gin.H {
 		}
 		ipAddress := formatIP(getString(d.IPAddress))
 		location := ""
-		if ipAddress != "" && ipAddress != "-" && geoEnabled {
-			if loc := geoip.GetLocationString(ipAddress); loc.Valid {
-				location = loc.String
-			}
-		}
+		// if ipAddress != "" && ipAddress != "-" && geoEnabled {
+		// 	if loc := geoip.GetLocationString(ipAddress); loc.Valid {
+		// 		location = loc.String
+		// 	}
+		// }
 
 		list = append(list, gin.H{
 			"id":                 d.ID,
