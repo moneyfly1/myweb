@@ -1895,3 +1895,46 @@ func TestConfigUpdate(c *gin.Context) {
 	}()
 	utils.SuccessResponse(c, http.StatusOK, "测试任务已启动", nil)
 }
+
+// StreamConfigUpdateLogs SSE 实时推送配置更新日志
+func StreamConfigUpdateLogs(c *gin.Context) {
+	// 设置 SSE 响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Access-Control-Allow-Origin", "*")
+
+	service := config_update.NewConfigUpdateService()
+
+	// 创建客户端通道
+	clientChan := make(chan []byte, 100)
+
+	// 注册客户端
+	service.GetSSEManager().AddClient(clientChan)
+	defer service.GetSSEManager().RemoveClient(clientChan)
+
+	// 先发送历史日志
+	historyLogs := service.GetSSEManager().GetHistoryLogs()
+	for _, log := range historyLogs {
+		data, err := json.Marshal(log)
+		if err != nil {
+			continue
+		}
+		c.SSEvent("message", string(data))
+		c.Writer.Flush()
+	}
+
+	// 持续推送新日志
+	notify := c.Request.Context().Done()
+	for {
+		select {
+		case <-notify:
+			// 客户端断开连接
+			return
+		case data := <-clientChan:
+			// 发送日志数据
+			c.SSEvent("message", string(data))
+			c.Writer.Flush()
+		}
+	}
+}

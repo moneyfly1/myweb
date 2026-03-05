@@ -257,7 +257,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus, 
@@ -302,7 +302,7 @@ export default {
 
     let statusPollingInterval = null
     let refreshInterval = null
-    let logPollingInterval = null
+    let eventSource = null // SSE 连接
 
     // 辅助函数
     const checkMobile = () => {
@@ -383,6 +383,13 @@ export default {
         const data = response?.data?.data
         if (response?.data?.success && Array.isArray(data)) {
           logs.value = data
+          // 自动滚动到底部
+          nextTick(() => {
+            const logContainer = document.querySelector('.log-container')
+            if (logContainer) {
+              logContainer.scrollTop = logContainer.scrollHeight
+            }
+          })
         }
       } catch (error) {
         console.error('日志获取失败', error)
@@ -438,17 +445,68 @@ export default {
     const stopAllPolling = () => {
       if (statusPollingInterval) { clearInterval(statusPollingInterval); statusPollingInterval = null; }
       if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
-      if (logPollingInterval) { clearInterval(logPollingInterval); logPollingInterval = null; }
+      disconnectSSE()
       isLogPolling.value = false
     }
-    
-    const startLogPolling = () => {
-      if (logPollingInterval) clearInterval(logPollingInterval)
+
+    // SSE 连接管理
+    const connectSSE = () => {
+      // 如果已有连接，先断开
+      disconnectSSE()
+
       isLogPolling.value = true
-      logPollingInterval = setInterval(async () => {
-        if (status.value.is_running) await getLogs()
-        else stopAllPolling()
-      }, 2000)
+
+      // 建立 SSE 连接
+      eventSource = new EventSource('/api/admin/config-update/logs/stream')
+
+      eventSource.onmessage = (event) => {
+        try {
+          const log = JSON.parse(event.data)
+          logs.value.push(log)
+
+          // 限制日志数量
+          if (logs.value.length > 500) {
+            logs.value = logs.value.slice(-500)
+          }
+
+          // 自动滚动到底部
+          nextTick(() => {
+            const viewer = document.querySelector('.log-viewer')
+            if (viewer) {
+              viewer.scrollTop = viewer.scrollHeight
+            }
+          })
+        } catch (e) {
+          console.error('解析日志失败:', e)
+        }
+      }
+
+      eventSource.onerror = (error) => {
+        console.error('SSE 连接错误:', error)
+        disconnectSSE()
+
+        // 如果任务还在运行，3秒后重连
+        if (status.value.is_running) {
+          setTimeout(() => {
+            if (status.value.is_running) {
+              connectSSE()
+            }
+          }, 3000)
+        }
+      }
+    }
+
+    const disconnectSSE = () => {
+      if (eventSource) {
+        eventSource.close()
+        eventSource = null
+      }
+      isLogPolling.value = false
+    }
+
+    const startLogPolling = () => {
+      // 使用 SSE 替代轮询
+      connectSSE()
     }
 
     // 按钮操作
@@ -557,8 +615,12 @@ export default {
       }
     })
 
-    onUnmounted(() => stopAllPolling())
+    onUnmounted(() => {
+      stopAllPolling()
+      disconnectSSE()
+    })
     onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
+
 
     return {
       status, config, logs, loading, isLogPolling, isMobile,
@@ -974,17 +1036,37 @@ $primary-color: #409eff;
   }
 }
 
-// 3. 日志样式 (Terminal 风格)
+// 3. 日志样式 (Terminal 风格 - 优化版)
 .log-viewer {
-  background: #1e1e1e;
+  background: #0d1117;
   border-radius: 6px;
   padding: 12px;
   height: 350px;
   overflow-y: auto;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
-  
+  scroll-behavior: smooth;
+
+  // 自定义滚动条
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #161b22;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 4px;
+
+    &:hover {
+      background: #484f58;
+    }
+  }
+
   .empty-logs {
     height: 100%;
     display: flex;
@@ -995,31 +1077,48 @@ $primary-color: #409eff;
     gap: 8px;
     font-size: 14px;
   }
-  
+
   .log-line {
     display: flex;
     gap: 8px;
     margin-bottom: 4px;
     word-break: break-all;
-    
+    animation: fadeInLog 0.2s ease-in;
+
     .log-ts {
-      color: #61afef;
+      color: #58a6ff;
       flex-shrink: 0;
       min-width: 70px;
+      font-weight: 500;
     }
-    
+
     .log-lvl {
       flex-shrink: 0;
       font-weight: bold;
-      
-      &.info { color: #98c379; }
-      &.warn, &.warning { color: #e5c07b; }
-      &.err, &.error { color: #e06c75; }
+      min-width: 50px;
+
+      &.info { color: #3fb950; }
+      &.warn, &.warning { color: #d29922; }
+      &.err, &.error { color: #f85149; }
+      &.success { color: #3fb950; }
+      &.debug { color: #8b949e; }
     }
-    
+
     .log-msg {
-      color: #abb2bf;
+      color: #c9d1d9;
+      flex: 1;
     }
+  }
+}
+
+@keyframes fadeInLog {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
