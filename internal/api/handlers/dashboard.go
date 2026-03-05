@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -378,30 +379,62 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 			Where("user_id = ? AND created_at >= ? AND created_at <= ?", user.ID, startTime, endTime).
 			Count(&subscriptionCount)
 
-		abnormalType := "unknown"
+		// 收集所有异常类型
+		var abnormalTypes []string
+		var abnormalDescriptions []string
 		abnormalCount := 0
+
+		// 检查账户禁用
+		if !user.IsActive {
+			abnormalTypes = append(abnormalTypes, "账户已禁用")
+			abnormalDescriptions = append(abnormalDescriptions, "账户已被禁用")
+			abnormalCount++
+		}
+
+		// 检查频繁重置
+		if resetCount >= int64(minReset) {
+			abnormalTypes = append(abnormalTypes, "频繁重置")
+			abnormalDescriptions = append(abnormalDescriptions, fmt.Sprintf("频繁重置订阅 %d 次", resetCount))
+			abnormalCount++
+		}
+
+		// 检查频繁创建订阅
+		if subscriptionCount >= int64(minSub) {
+			abnormalTypes = append(abnormalTypes, "频繁创建订阅")
+			abnormalDescriptions = append(abnormalDescriptions, fmt.Sprintf("频繁创建订阅 %d 次", subscriptionCount))
+			abnormalCount++
+		}
+
+		// 检查长期未登录
+		if !user.LastLogin.Valid && user.CreatedAt.Before(oneMonthAgo) {
+			abnormalTypes = append(abnormalTypes, "长期未登录")
+			abnormalDescriptions = append(abnormalDescriptions, "注册超过1个月且从未登录")
+			abnormalCount++
+		}
+
+		// 根据异常数量确定类型和描述
+		abnormalType := "unknown"
 		description := ""
 
-		if !user.IsActive {
-			abnormalType = "disabled"
-			abnormalCount = 1
-			description = "账户已被禁用"
-		} else if resetCount >= int64(minReset) {
-			abnormalType = "frequent_reset"
-			abnormalCount = int(resetCount)
-			description = fmt.Sprintf("频繁重置订阅 %d 次（时间范围内）", resetCount)
-		} else if subscriptionCount >= int64(minSub) {
-			abnormalType = "frequent_subscription"
-			abnormalCount = int(subscriptionCount)
-			description = fmt.Sprintf("频繁创建订阅 %d 次（时间范围内）", subscriptionCount)
-		} else if !user.LastLogin.Valid && user.CreatedAt.Before(oneMonthAgo) {
-			abnormalType = "inactive"
-			abnormalCount = 1
-			description = "长期未登录（注册超过1个月且从未登录）"
+		if abnormalCount == 0 {
+			// 没有异常，跳过此用户
+			continue
+		} else if abnormalCount == 1 {
+			// 单一异常
+			if !user.IsActive {
+				abnormalType = "disabled"
+			} else if resetCount >= int64(minReset) {
+				abnormalType = "frequent_reset"
+			} else if subscriptionCount >= int64(minSub) {
+				abnormalType = "frequent_subscription"
+			} else {
+				abnormalType = "inactive"
+			}
+			description = abnormalDescriptions[0]
 		} else {
+			// 多重异常
 			abnormalType = "multiple_abnormal"
-			abnormalCount = 1
-			description = "存在多种异常行为"
+			description = fmt.Sprintf("存在 %d 种异常：%s", abnormalCount, strings.Join(abnormalTypes, "、"))
 		}
 
 		var lastActivity string
