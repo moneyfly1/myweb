@@ -20,9 +20,51 @@
 
     <!-- 套餐列表 -->
     <div v-else class="packages-grid">
-      <el-card 
-        v-for="pkg in packages" 
-        :key="pkg.id" 
+      <!-- 自定义套餐卡片 -->
+      <el-card
+        v-if="customPackageEnabled"
+        class="package-card custom-package-card"
+      >
+        <div class="package-header">
+          <h3 class="package-name">自定义套餐</h3>
+          <div class="custom-badge">灵活配置</div>
+        </div>
+        <div class="package-price">
+          <div style="display: flex; align-items: baseline; gap: 4px;">
+            <span class="currency">¥</span>
+            <span class="amount">{{ customPackageConfig.price_per_device_year }}</span>
+            <span class="period">/设备/年</span>
+          </div>
+        </div>
+        <div class="package-description">
+          <p>根据您的需求自由选择设备数量和购买时长</p>
+        </div>
+        <div class="package-features">
+          <ul>
+            <li><i class="el-icon-check"></i>设备数：{{ customPackageConfig.min_devices }}-{{ customPackageConfig.max_devices }}个</li>
+            <li><i class="el-icon-check"></i>最少购买：{{ customPackageConfig.min_months }}个月</li>
+            <li><i class="el-icon-check"></i>购买越久，折扣越多</li>
+            <li><i class="el-icon-check"></i>灵活配置，按需购买</li>
+          </ul>
+        </div>
+        <div class="package-actions">
+          <el-button
+            type="success"
+            size="large"
+            @click.stop.prevent="openCustomPackageDialog"
+            :loading="isProcessing"
+            :disabled="isProcessing"
+            style="width: 100%"
+          >
+            {{ isProcessing ? '处理中...' : '自定义购买' }}
+          </el-button>
+        </div>
+      </el-card>
+
+      <!-- 普通套餐卡片 -->
+      <el-card
+        v-for="pkg in packages"
+        :key="pkg.id"
         class="package-card"
         :class="{ 'popular': pkg.is_popular, 'recommended': pkg.is_recommended }"
       >
@@ -432,6 +474,126 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 自定义套餐对话框 -->
+    <el-dialog
+      v-model="customPackageDialogVisible"
+      title="自定义套餐购买"
+      :width="isMobile ? '95%' : '600px'"
+      :close-on-click-modal="false"
+      class="custom-package-dialog"
+    >
+      <div class="custom-package-form">
+        <el-form :model="customPackageForm" :label-width="isMobile ? '0' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+          <el-form-item :label="isMobile ? '' : '设备数量'">
+            <div v-if="isMobile" class="mobile-form-label">设备数量</div>
+            <el-input-number
+              v-model="customPackageForm.devices"
+              :min="customPackageConfig.min_devices"
+              :max="customPackageConfig.max_devices"
+              :step="1"
+              @change="calculateCustomPrice"
+              :size="isMobile ? 'large' : 'default'"
+              style="width: 100%"
+            />
+            <div class="form-hint">
+              可选范围：{{ customPackageConfig.min_devices }}-{{ customPackageConfig.max_devices }}个设备
+            </div>
+          </el-form-item>
+
+          <el-form-item :label="isMobile ? '' : '购买月数'">
+            <div v-if="isMobile" class="mobile-form-label">购买月数</div>
+            <el-input-number
+              v-model="customPackageForm.months"
+              :min="customPackageConfig.min_months"
+              :max="120"
+              :step="1"
+              @change="calculateCustomPrice"
+              :size="isMobile ? 'large' : 'default'"
+              style="width: 100%"
+            />
+            <div class="form-hint">
+              最少购买{{ customPackageConfig.min_months }}个月，最多120个月
+            </div>
+          </el-form-item>
+
+          <el-form-item :label="isMobile ? '' : '优惠券'">
+            <div v-if="isMobile" class="mobile-form-label">优惠券（可选）</div>
+            <div class="coupon-input-group">
+              <el-input
+                v-model="customPackageForm.couponCode"
+                placeholder="输入优惠券码（可选）"
+                @input="handleCustomCouponInput"
+                :size="isMobile ? 'large' : 'default'"
+              />
+              <el-button
+                @click="validateCustomCoupon"
+                :loading="validatingCustomCoupon"
+                :disabled="!customPackageForm.couponCode"
+                :size="isMobile ? 'large' : 'default'"
+              >
+                验证
+              </el-button>
+            </div>
+            <div v-if="customCouponInfo" style="margin-top: 8px">
+              <el-alert
+                :title="customCouponInfo.message"
+                :type="customCouponInfo.valid ? 'success' : 'error'"
+                :closable="false"
+                show-icon
+              />
+            </div>
+          </el-form-item>
+
+          <el-divider />
+
+          <div class="price-summary-custom">
+            <h4 style="margin: 0 0 12px 0; font-size: 15px; color: #303133;">费用明细</h4>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="单价">
+                ¥{{ customPackageConfig.price_per_device_year }}/设备/年
+              </el-descriptions-item>
+              <el-descriptions-item label="设备数量">
+                {{ customPackageForm.devices }}个
+              </el-descriptions-item>
+              <el-descriptions-item label="购买时长">
+                {{ customPackageForm.months }}个月
+              </el-descriptions-item>
+              <el-descriptions-item label="基础价格">
+                ¥{{ customPackagePrice.basePrice.toFixed(2) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="时长折扣" v-if="customPackagePrice.discountPercent > 0">
+                <span class="discount-amount">
+                  -¥{{ (customPackagePrice.basePrice * customPackagePrice.discountPercent / 100).toFixed(2) }}
+                  ({{ customPackagePrice.discountPercent }}%折扣)
+                </span>
+              </el-descriptions-item>
+              <el-descriptions-item label="优惠券折扣" v-if="customCouponInfo && customCouponInfo.valid && customPackagePrice.couponDiscount > 0">
+                <span class="discount-amount">-¥{{ customPackagePrice.couponDiscount.toFixed(2) }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="实付金额">
+                <span class="final-amount">¥{{ customPackagePrice.finalPrice.toFixed(2) }}</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+        </el-form>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="customPackageDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
+          <el-button
+            type="primary"
+            @click="confirmCustomPackage"
+            :loading="isProcessing"
+            :disabled="isProcessing"
+            :size="isMobile ? 'large' : 'default'"
+          >
+            确认购买
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 <script>
@@ -439,7 +601,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion } from '@element-plus/icons-vue'
-import { useApi, couponAPI, userAPI, userLevelAPI, parsePaymentMethods } from '@/utils/api'
+import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods } from '@/utils/api'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import ErrorState from '@/components/ErrorState.vue'
@@ -475,7 +637,7 @@ export default {
     const isPaymentPageUrl = computed(() => {
       if (!paymentUrl.value) return false
       const url = String(paymentUrl.value).toLowerCase()
-      return url.includes('payapi/pay/payment') || 
+      return url.includes('payapi/pay/payment') ||
              url.includes('submit.php') ||
              (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
     })
@@ -485,6 +647,30 @@ export default {
     const validatingCoupon = ref(false)
     const couponInfo = ref(null)
     const paymentMethod = ref('alipay')
+
+    // 自定义套餐相关
+    const customPackageEnabled = ref(false)
+    const customPackageConfig = reactive({
+      price_per_device_year: 40,
+      min_devices: 5,
+      max_devices: 100,
+      min_months: 6,
+      duration_discounts: []
+    })
+    const customPackageDialogVisible = ref(false)
+    const customPackageForm = reactive({
+      devices: 5,
+      months: 6,
+      couponCode: ''
+    })
+    const validatingCustomCoupon = ref(false)
+    const customCouponInfo = ref(null)
+    const customPackagePrice = reactive({
+      basePrice: 0,
+      discountPercent: 0,
+      couponDiscount: 0,
+      finalPrice: 0
+    })
     const availablePaymentMethods = ref([])
     const userBalance = ref(0)
     const userLevel = ref(null)
@@ -686,6 +872,43 @@ export default {
       try {
         isLoading.value = true
         errorMessage.value = ''
+
+        // 加载公开配置（包含自定义套餐配置）
+        try {
+          const settingsResponse = await api.get('/settings/public-settings')
+          if (settingsResponse && settingsResponse.data && settingsResponse.data.data) {
+            const settings = settingsResponse.data.data
+            customPackageEnabled.value = settings.custom_package_enabled === true
+            if (customPackageEnabled.value) {
+              customPackageConfig.price_per_device_year = parseFloat(settings.custom_package_price_per_device_year || 40)
+              customPackageConfig.min_devices = parseInt(settings.custom_package_min_devices || 5)
+              customPackageConfig.max_devices = parseInt(settings.custom_package_max_devices || 100)
+              customPackageConfig.min_months = parseInt(settings.custom_package_min_months || 6)
+
+              // 解析折扣配置
+              if (settings.custom_package_duration_discounts) {
+                try {
+                  const discounts = typeof settings.custom_package_duration_discounts === 'string'
+                    ? JSON.parse(settings.custom_package_duration_discounts)
+                    : settings.custom_package_duration_discounts
+                  if (Array.isArray(discounts)) {
+                    customPackageConfig.duration_discounts = discounts
+                  }
+                } catch (e) {
+                  console.error('解析折扣配置失败:', e)
+                }
+              }
+
+              // 初始化表单默认值
+              customPackageForm.devices = customPackageConfig.min_devices
+              customPackageForm.months = customPackageConfig.min_months
+              calculateCustomPrice()
+            }
+          }
+        } catch (error) {
+          console.error('加载自定义套餐配置失败:', error)
+        }
+
         const response = await api.get('/packages/')
         let packagesList = []
         if (response && response.data) {
@@ -804,6 +1027,58 @@ export default {
       }
     }
     const confirmPurchase = async () => {
+      // 如果是自定义套餐订单（已创建），直接调用支付接口
+      if (currentOrder.value && currentOrder.value.order_no && selectedPackage.value && selectedPackage.value.id === 0) {
+        try {
+          if (isProcessing.value) return
+          isProcessing.value = true
+
+          // 查找支付方式ID
+          const selectedPaymentMethod = availablePaymentMethods.value.find(
+            method => method.key === paymentMethod.value || method.pay_type === paymentMethod.value
+          )
+
+          if (!selectedPaymentMethod && paymentMethod.value !== 'balance') {
+            ElMessage.error('请选择有效的支付方式')
+            isProcessing.value = false
+            return
+          }
+
+          const payData = {
+            payment_method: paymentMethod.value
+          }
+
+          // 如果不是余额支付，需要传payment_method_id
+          if (paymentMethod.value !== 'balance' && selectedPaymentMethod) {
+            payData.payment_method_id = selectedPaymentMethod.id
+          }
+
+          const response = await api.post(`/orders/${currentOrder.value.order_no}/pay`, payData)
+
+          if (response.data && response.data.success) {
+            const order = response.data.data || response.data
+
+            if (order.status === 'paid') {
+              purchaseDialogVisible.value = false
+              ElMessage.success('支付成功！')
+              successDialogVisible.value = true
+              await loadPackages()
+            } else if (order.payment_url || order.payment_qr_code) {
+              purchaseDialogVisible.value = false
+              await showPaymentQRCode(order)
+            } else {
+              ElMessage.error('支付链接生成失败')
+            }
+          }
+        } catch (error) {
+          ElMessage.error(error.response?.data?.message || '支付失败')
+        } finally {
+          isProcessing.value = false
+        }
+        return
+      }
+
+      // 普通套餐购买流程
       if (paymentMethod.value === 'balance' && userBalance.value < finalAmount.value) {
         ElMessage.error(`余额不足，当前余额：¥${userBalance.value.toFixed(2)}，需要：¥${finalAmount.value.toFixed(2)}`)
         return
@@ -1400,6 +1675,153 @@ export default {
       window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
       window.removeEventListener('user-info-updated', handleUserInfoUpdate)
     })
+
+    // 自定义套餐相关方法
+    const openCustomPackageDialog = () => {
+      customPackageDialogVisible.value = true
+      customPackageForm.devices = customPackageConfig.min_devices
+      customPackageForm.months = customPackageConfig.min_months
+      customPackageForm.couponCode = ''
+      customCouponInfo.value = null
+      calculateCustomPrice()
+    }
+
+    const calculateCustomPrice = () => {
+      // 计算基础价格
+      const basePrice = customPackageConfig.price_per_device_year *
+                       customPackageForm.devices *
+                       (customPackageForm.months / 12)
+      customPackagePrice.basePrice = Math.round(basePrice * 100) / 100
+
+      // 计算时长折扣
+      let discountPercent = 0
+      if (customPackageConfig.duration_discounts && Array.isArray(customPackageConfig.duration_discounts)) {
+        for (const tier of customPackageConfig.duration_discounts) {
+          if (customPackageForm.months >= tier.months && tier.discount > discountPercent) {
+            discountPercent = tier.discount
+          }
+        }
+      }
+      customPackagePrice.discountPercent = discountPercent
+
+      // 应用时长折扣
+      let priceAfterDiscount = customPackagePrice.basePrice * (1 - discountPercent / 100)
+      priceAfterDiscount = Math.round(priceAfterDiscount * 100) / 100
+
+      // 应用优惠券折扣
+      let couponDiscount = 0
+      if (customCouponInfo.value && customCouponInfo.value.valid && customCouponInfo.value.discount_amount) {
+        couponDiscount = customCouponInfo.value.discount_amount
+      }
+      customPackagePrice.couponDiscount = couponDiscount
+
+      // 计算最终价格
+      let finalPrice = priceAfterDiscount - couponDiscount
+      if (finalPrice < 0) finalPrice = 0
+      customPackagePrice.finalPrice = Math.round(finalPrice * 100) / 100
+    }
+
+    const handleCustomCouponInput = () => {
+      customCouponInfo.value = null
+      calculateCustomPrice()
+    }
+
+    const validateCustomCoupon = async () => {
+      if (!customPackageForm.couponCode) {
+        return
+      }
+
+      validatingCustomCoupon.value = true
+      try {
+        const response = await couponAPI.validateCoupon({
+          code: customPackageForm.couponCode,
+          amount: customPackagePrice.basePrice * (1 - customPackagePrice.discountPercent / 100)
+        })
+
+        if (response.data && response.data.success) {
+          const data = response.data.data
+          customCouponInfo.value = {
+            valid: data.valid,
+            message: data.message,
+            discount_amount: data.discount_amount || 0
+          }
+          calculateCustomPrice()
+        }
+      } catch (error) {
+        customCouponInfo.value = {
+          valid: false,
+          message: error.response?.data?.message || '优惠券验证失败'
+        }
+      } finally {
+        validatingCustomCoupon.value = false
+      }
+    }
+
+    const confirmCustomPackage = async () => {
+      if (isProcessing.value) return
+
+      isProcessing.value = true
+      try {
+        const orderData = {
+          devices: customPackageForm.devices,
+          months: customPackageForm.months,
+          coupon_code: customPackageForm.couponCode || undefined
+        }
+
+        const response = await orderAPI.createCustomOrder(orderData)
+
+        if (response.data && response.data.success) {
+          const order = response.data.data
+
+          // 关闭自定义套餐对话框
+          customPackageDialogVisible.value = false
+
+          // 构建虚拟套餐对象用于显示
+          selectedPackage.value = {
+            id: 0,
+            name: order.package_name || `自定义套餐 (${customPackageForm.devices}设备/${customPackageForm.months}月)`,
+            price: order.final_amount || order.amount || 0,
+            duration_days: customPackageForm.months * 30,
+            device_limit: customPackageForm.devices,
+            description: `自定义套餐：${customPackageForm.devices}个设备，${customPackageForm.months}个月`
+          }
+
+          // 设置数量为1
+          selectedQuantity.value = 1
+
+          // 设置当前订单信息
+          currentOrder.value = order
+
+          // 清空优惠券信息
+          couponCode.value = ''
+          couponInfo.value = null
+
+          // 加载支付方式和余额
+          await loadPaymentMethods()
+          await loadUserBalance()
+
+          // 设置默认支付方式
+          const finalPrice = order.final_amount || order.amount || 0
+          if (userBalance.value >= finalPrice) {
+            paymentMethod.value = 'balance'
+          } else if (userBalance.value > 0 && userBalance.value < finalPrice) {
+            paymentMethod.value = 'mixed'
+          } else {
+            paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
+          }
+
+          // 显示支付对话框
+          purchaseDialogVisible.value = true
+
+          ElMessage.success('订单创建成功，请选择支付方式')
+        }
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '创建订单失败')
+      } finally {
+        isProcessing.value = false
+      }
+    }
+
     return {
       packages,
       isLoading,
@@ -1451,6 +1873,19 @@ export default {
       packageType,
       durationOptions,
       durationPlaceholder,
+      // 自定义套餐
+      customPackageEnabled,
+      customPackageConfig,
+      customPackageDialogVisible,
+      customPackageForm,
+      customPackagePrice,
+      validatingCustomCoupon,
+      customCouponInfo,
+      openCustomPackageDialog,
+      calculateCustomPrice,
+      handleCustomCouponInput,
+      validateCustomCoupon,
+      confirmCustomPackage,
       durationHint,
       durationDisplayText,
       handleQuantityChange,
@@ -2436,6 +2871,383 @@ export default {
       padding: 10px;
       .qr-code img {
         max-width: 85%;
+      }
+    }
+  }
+}
+
+/* 自定义套餐卡片样式 */
+.packages-container {
+  padding: 20px;
+}
+
+.custom-package-card {
+  border: 2px solid #67c23a !important;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  position: relative;
+}
+
+.custom-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
+  z-index: 1;
+}
+
+.custom-package-form {
+  .form-hint {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+
+  .coupon-input-group {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+
+    .el-input {
+      flex: 1;
+    }
+
+    .el-button {
+      flex-shrink: 0;
+    }
+  }
+
+  .price-summary-custom {
+    margin-top: 20px;
+
+    .el-descriptions {
+      :deep(.el-descriptions__label) {
+        font-weight: 600;
+        background-color: #f5f7fa;
+      }
+
+      :deep(.el-descriptions__content) {
+        font-weight: 500;
+      }
+    }
+  }
+
+  .discount-amount {
+    color: #f56c6c;
+    font-weight: bold;
+  }
+
+  .final-amount {
+    color: #409eff;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .mobile-form-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #303133;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+}
+
+.custom-package-dialog {
+  :deep(.el-dialog__body) {
+    padding: 20px;
+  }
+
+  :deep(.el-form-item__label) {
+    font-weight: 600;
+    color: #303133;
+  }
+
+  :deep(.el-input-number) {
+    width: 100%;
+
+    .el-input__wrapper {
+      width: 100%;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .packages-container {
+    padding: 12px;
+  }
+
+  .packages-grid {
+    gap: 16px;
+    margin-top: 12px;
+  }
+
+  .custom-package-card {
+    .package-header {
+      padding-right: 100px;
+      margin-bottom: 16px;
+
+      .package-name {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0;
+      }
+    }
+
+    .custom-badge {
+      top: 15px;
+      right: 15px;
+      padding: 6px 14px;
+      font-size: 13px;
+    }
+
+    .package-price {
+      margin: 15px 0;
+
+      .currency {
+        font-size: 18px;
+      }
+
+      .amount {
+        font-size: 32px;
+      }
+
+      .period {
+        font-size: 14px;
+      }
+    }
+
+    .package-description {
+      margin: 15px 0;
+
+      p {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #606266;
+      }
+    }
+
+    .package-features {
+      margin: 15px 0;
+
+      ul {
+        padding-left: 0;
+        list-style: none;
+
+        li {
+          font-size: 14px;
+          padding: 8px 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+
+          i {
+            color: #67c23a;
+            font-size: 16px;
+          }
+        }
+      }
+    }
+
+    .package-actions {
+      margin-top: 20px;
+
+      .el-button {
+        height: 48px;
+        font-size: 16px;
+        font-weight: 600;
+        border-radius: 8px;
+      }
+    }
+  }
+
+  .custom-package-dialog {
+    :deep(.el-dialog) {
+      width: 95% !important;
+      margin: 2vh auto !important;
+      max-height: 96vh;
+      border-radius: 12px;
+    }
+
+    :deep(.el-dialog__header) {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid #ebeef5;
+
+      .el-dialog__title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .el-dialog__headerbtn {
+        top: 12px;
+        right: 12px;
+        width: 36px;
+        height: 36px;
+
+        .el-dialog__close {
+          font-size: 20px;
+        }
+      }
+    }
+
+    :deep(.el-dialog__body) {
+      padding: 16px 20px !important;
+      max-height: calc(96vh - 140px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    :deep(.el-dialog__footer) {
+      padding: 12px 20px 16px;
+      border-top: 1px solid #ebeef5;
+
+      .dialog-footer {
+        display: flex;
+        gap: 10px;
+
+        .el-button {
+          flex: 1;
+          height: 44px;
+          font-size: 16px;
+          font-weight: 500;
+          border-radius: 8px;
+        }
+      }
+    }
+
+    :deep(.el-form) {
+      .el-form-item {
+        margin-bottom: 20px;
+
+        .el-form-item__label {
+          display: block;
+          text-align: left;
+          padding: 0 0 8px 0;
+          font-size: 15px;
+          font-weight: 600;
+          color: #303133;
+          line-height: 1.5;
+        }
+
+        .el-form-item__content {
+          margin-left: 0 !important;
+        }
+      }
+
+      .el-input-number {
+        width: 100%;
+
+        .el-input__wrapper {
+          padding: 12px 15px;
+          font-size: 16px;
+          min-height: 48px;
+        }
+
+        .el-input__inner {
+          font-size: 16px !important;
+          text-align: center;
+        }
+
+        .el-input-number__decrease,
+        .el-input-number__increase {
+          width: 40px;
+          height: 48px;
+          font-size: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          .el-icon {
+            font-size: 18px;
+          }
+        }
+      }
+
+      .el-input {
+        .el-input__wrapper {
+          padding: 12px 15px;
+          font-size: 16px;
+          min-height: 48px;
+        }
+
+        .el-input__inner {
+          font-size: 16px !important;
+        }
+      }
+    }
+
+    .form-hint {
+      font-size: 13px;
+      color: #909399;
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    .coupon-input-group {
+      flex-direction: column;
+      gap: 10px;
+
+      .el-input {
+        width: 100%;
+      }
+
+      .el-button {
+        width: 100%;
+        height: 44px;
+        font-size: 16px;
+      }
+    }
+
+    .price-summary-custom {
+      margin-top: 20px;
+      background: #f5f7fa;
+      padding: 15px;
+      border-radius: 8px;
+
+      .el-descriptions {
+        :deep(.el-descriptions__table) {
+          .el-descriptions__label,
+          .el-descriptions__content {
+            font-size: 14px;
+            padding: 10px 12px;
+          }
+
+          .el-descriptions__label {
+            font-weight: 600;
+            background-color: #fff;
+          }
+
+          .el-descriptions__content {
+            font-weight: 500;
+          }
+        }
+      }
+
+      .discount-amount {
+        font-size: 15px;
+      }
+
+      .final-amount {
+        font-size: 22px;
+      }
+    }
+
+    :deep(.el-divider) {
+      margin: 20px 0;
+    }
+
+    :deep(.el-alert) {
+      padding: 10px 12px;
+      font-size: 13px;
+
+      .el-alert__title {
+        font-size: 13px;
+        line-height: 1.5;
       }
     }
   }

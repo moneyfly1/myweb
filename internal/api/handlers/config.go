@@ -468,7 +468,7 @@ func GetPublicSettings(c *gin.Context) {
 	var configs []models.SystemConfig
 
 	// Fetch all public configs + specific categories we need internally
-	db.Where("is_public = ? OR category IN ?", true, []string{CatRegistration, CatAnnouncement, CatGeneral}).Find(&configs)
+	db.Where("is_public = ? OR category IN ?", true, []string{CatRegistration, CatAnnouncement, CatGeneral, "custom_package"}).Find(&configs)
 
 	// Index by Key (last one wins if duplicates, but category logic below clarifies)
 	configMap := make(map[string]models.SystemConfig)
@@ -528,6 +528,37 @@ func GetPublicSettings(c *gin.Context) {
 		settings["unified_auth_enabled"] = (conf.Value == "true")
 	} else {
 		settings["unified_auth_enabled"] = false
+	}
+
+	// 5. Custom Package Logic
+	customPackageKeys := []string{
+		"custom_package_enabled",
+		"custom_package_price_per_device_year",
+		"custom_package_min_devices",
+		"custom_package_max_devices",
+		"custom_package_min_months",
+		"custom_package_duration_discounts",
+	}
+	for _, k := range customPackageKeys {
+		if conf, ok := configMap[k]; ok && conf.Category == "custom_package" {
+			if k == "custom_package_enabled" {
+				settings[k] = (conf.Value == "true")
+			} else if k == "custom_package_duration_discounts" {
+				settings[k] = conf.Value // Keep as JSON string
+			} else if k == "custom_package_price_per_device_year" {
+				if val, err := strconv.ParseFloat(conf.Value, 64); err == nil {
+					settings[k] = val
+				} else {
+					settings[k] = conf.Value
+				}
+			} else {
+				if val, err := strconv.Atoi(conf.Value); err == nil {
+					settings[k] = val
+				} else {
+					settings[k] = conf.Value
+				}
+			}
+		}
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", settings)

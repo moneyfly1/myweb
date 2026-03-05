@@ -88,6 +88,7 @@ func GetUserDashboard(c *gin.Context) {
 	}
 
 	var userLevelInfo gin.H
+	var membershipName interface{}
 	if userLevel != nil {
 		userLevelInfo = gin.H{
 			"id":              userLevel.ID,
@@ -99,6 +100,9 @@ func GetUserDashboard(c *gin.Context) {
 			"level_order":     userLevel.LevelOrder,
 			"min_consumption": userLevel.MinConsumption,
 		}
+		membershipName = userLevel.LevelName
+	} else {
+		membershipName = nil
 	}
 
 	var orderCount int64
@@ -129,7 +133,7 @@ func GetUserDashboard(c *gin.Context) {
 		"is_active":           user.IsActive,
 		"is_admin":            user.IsAdmin,
 		"balance":             fmt.Sprintf("%.2f", user.Balance),
-		"membership":          userLevelInfo["name"],
+		"membership":          membershipName,
 		"user_level":          userLevelInfo,
 		"online_devices":      deviceCount,
 		"total_devices":       subscription.DeviceLimit,
