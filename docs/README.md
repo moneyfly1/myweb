@@ -1,12 +1,24 @@
 # 文档说明 / Documentation
 
-本目录包含部署、迁移、接口、功能、配置、安全与地理位置文档。
+本目录包含部署、迁移、接口、功能、配置、安全、地理位置、教程与指南文档。
 
-This directory contains docs for deployment, migration, API, features, configuration, security and GeoIP.
+This directory contains docs for deployment, migration, API, features, configuration, security, GeoIP, tutorials and guides.
 
 ---
 
 ## 中文
+
+### 教程与指南
+
+| 文档 | 说明 |
+|------|------|
+| [SSE实时日志实现教程](./tutorials/SSE实时日志实现教程.md) | SSE 实时日志推送实现详解 |
+| [缓存实现指南](./guides/缓存实现指南.md) | 缓存系统实现与使用指南 |
+| [缓存优化计划](./guides/缓存优化计划.md) | 缓存性能优化方案 |
+| [GeoIP缓存教程](./guides/GeoIP缓存教程.md) | GeoIP 缓存实现教程 |
+| [性能改进分析](./guides/性能改进分析.md) | 系统性能分析与优化 |
+| [订阅优化指南](./guides/订阅优化指南.md) | 订阅系统优化指南 |
+| [更新指南](./guides/更新指南.md) | 系统更新与升级指南 |
 
 ### 部署、迁移与排障
 
@@ -100,6 +112,18 @@ This directory contains docs for deployment, migration, API, features, configura
 ---
 
 ## English
+
+### Tutorials & Guides
+
+| Document | Description |
+|----------|-------------|
+| [SSE Real-time Log Tutorial](./tutorials/SSE实时日志实现教程.md) | SSE real-time log streaming implementation |
+| [Cache Implementation Guide](./guides/缓存实现指南.md) | Cache system implementation guide |
+| [Cache Optimization Plan](./guides/缓存优化计划.md) | Cache performance optimization |
+| [GeoIP Cache Tutorial](./guides/GeoIP缓存教程.md) | GeoIP caching tutorial |
+| [Performance Analysis](./guides/性能改进分析.md) | System performance analysis |
+| [Subscription Optimization](./guides/订阅优化指南.md) | Subscription system optimization |
+| [Update Guide](./guides/更新指南.md) | System update and upgrade guide |
 
 ### Deployment, Migration & Troubleshooting
 
