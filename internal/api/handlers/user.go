@@ -407,7 +407,7 @@ func GetUser(c *gin.Context) {
 	// 权限检查：只能查看自己的信息，除非是管理员
 	if u.ID != currentUser.ID && !currentUser.IsAdmin {
 		utils.ErrorResponse(c, http.StatusForbidden, "无权访问其他用户信息", nil)
-		utils.CreateBusinessLog(c, "unauthorized_user_access", "尝试越权访问用户信息", "warning", map[string]interface{}{
+		utils.CreateBusinessLogAsync(c, "unauthorized_user_access", "尝试越权访问用户信息", "warning", map[string]interface{}{
 			"current_user_id":   currentUser.ID,
 			"requested_user_id": u.ID,
 		})
@@ -435,7 +435,7 @@ func GetUserDetails(c *gin.Context) {
 	// 权限检查：只能查看自己的详细信息，除非是管理员
 	if u.ID != currentUser.ID && !currentUser.IsAdmin {
 		utils.ErrorResponse(c, http.StatusForbidden, "无权访问其他用户详细信息", nil)
-		utils.CreateBusinessLog(c, "unauthorized_user_details_access", "尝试越权访问用户详细信息", "warning", map[string]interface{}{
+		utils.CreateBusinessLogAsync(c, "unauthorized_user_details_access", "尝试越权访问用户详细信息", "warning", map[string]interface{}{
 			"current_user_id":   currentUser.ID,
 			"requested_user_id": u.ID,
 		})

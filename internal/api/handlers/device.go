@@ -143,7 +143,7 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
-	utils.CreateAuditLogSimple(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
+	utils.CreateAuditLogSimpleFast(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
 
 	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
 }

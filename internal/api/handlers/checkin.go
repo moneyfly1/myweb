@@ -99,8 +99,8 @@ func Checkin(c *gin.Context) {
 			return err
 		}
 
-		// 记录审计日志
-		utils.CreateBusinessLog(c, "user_checkin", "用户签到成功", "info", map[string]interface{}{
+		// 记录审计日志（使用快速版本，跳过 GeoIP 查询）
+		utils.CreateBusinessLogFast(c, "user_checkin", "用户签到成功", "info", map[string]interface{}{
 			"user_id": userID,
 			"amount":  amount,
 			"balance": user.Balance,
