@@ -373,9 +373,9 @@ func GetRegionStats(c *gin.Context) {
 		if locationStr != "" {
 			country, city = parseLocation(locationStr)
 		} else if ipStr != "" && ipStr != "127.0.0.1" && ipStr != "::1" && geoip.IsEnabled() {
-			if location, err := geoip.GetLocation(ipStr); err == nil && location != nil {
-				country = location.Country
-				city = location.City
+			locationResult := geoip.GetLocationWithCache(ipStr)
+			if locationResult.Valid && locationResult.String != "" {
+				country, city = parseLocation(locationResult.String)
 			}
 		}
 

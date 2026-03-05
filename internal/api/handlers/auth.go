@@ -141,7 +141,7 @@ func Register(c *gin.Context) {
 	go func(userID uint, ip, ua string, loginTime time.Time) {
 		var location sql.NullString
 		if geoip.IsEnabled() {
-			location = geoip.GetLocationString(ip)
+			location = geoip.GetLocationWithCache(ip)
 		}
 
 		loginHistory := models.LoginHistory{
@@ -603,7 +603,7 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 	go func(userID uint, ip, userAgent, devHash string, loginTime time.Time) {
 		var location sql.NullString
 		if geoip.IsEnabled() {
-			location = geoip.GetLocationString(ip)
+			location = geoip.GetLocationWithCache(ip)
 		}
 
 		loginHistory := models.LoginHistory{

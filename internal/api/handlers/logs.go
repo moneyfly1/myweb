@@ -263,7 +263,7 @@ func getLocationDisplay(location sql.NullString, ip sql.NullString) (string, map
 
 	// 尝试从 IP 实时解析 (Fallback)
 	if ip.Valid && ip.String != "" && geoip.IsEnabled() {
-		if loc, err := geoip.GetLocationWithFallback(ip.String); err == nil && loc != nil {
+		if loc, err := geoip.GetLocationWithFallbackCached(ip.String); err == nil && loc != nil {
 			display := loc.Country
 			if loc.City != "" {
 				display = fmt.Sprintf("%s, %s", loc.Country, loc.City)
@@ -278,7 +278,7 @@ func getLocationDisplay(location sql.NullString, ip sql.NullString) (string, map
 			}
 		}
 		// 简单解析
-		if simple := geoip.GetLocationSimple(ip.String); simple != "" {
+		if simple := geoip.GetLocationSimpleWithCache(ip.String); simple != "" {
 			return simple, nil
 		}
 	}
