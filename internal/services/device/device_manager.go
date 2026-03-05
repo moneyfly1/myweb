@@ -9,6 +9,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
@@ -753,6 +754,14 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		existingDevice.UserAgent = &userAgent
 		existingDevice.IsActive = true // 确保设备标记为活跃
 
+		// 查询并更新位置信息（使用缓存）
+		if ipAddress != "" {
+			location := geoip.GetLocationWithCache(ipAddress)
+			if location.Valid && location.String != "" {
+				existingDevice.Location = &location.String
+			}
+		}
+
 		if subscriptionType != "" {
 			subscriptionTypeStr := subscriptionType
 			existingDevice.SubscriptionType = &subscriptionTypeStr
@@ -791,6 +800,16 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		now := utils.GetBeijingTime()
 		userIDInt64 := int64(userID)
 		subscriptionTypeStr := subscriptionType
+
+		// 查询位置信息（使用缓存）
+		var locationStr *string
+		if ipAddress != "" {
+			location := geoip.GetLocationWithCache(ipAddress)
+			if location.Valid && location.String != "" {
+				locationStr = &location.String
+			}
+		}
+
 		device := models.Device{
 			UserID:            &userIDInt64,
 			SubscriptionID:    subscriptionID,
@@ -802,6 +821,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			DeviceModel:       &deviceInfo.DeviceModel,
 			DeviceBrand:       &deviceInfo.DeviceBrand,
 			IPAddress:         &ipAddress,
+			Location:          locationStr,
 			UserAgent:         &userAgent,
 			SoftwareName:      &deviceInfo.SoftwareName,
 			SoftwareVersion:   &deviceInfo.SoftwareVersion,
