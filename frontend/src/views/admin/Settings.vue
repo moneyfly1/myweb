@@ -156,9 +156,15 @@
           </el-form>
         </el-tab-pane>
         <el-tab-pane label="通知设置" name="notification">
-          <el-tabs type="border-card" class="notification-tabs">
-            <el-tab-pane label="客户通知" name="customer">
-              <el-alert title="客户通知设置" description="控制发送给客户的邮件通知。" type="info" :closable="false" class="mb-20" />
+          <div class="notification-container">
+            <!-- 客户通知部分 -->
+            <el-card class="notification-section" shadow="never">
+              <template #header>
+                <div class="section-header">
+                  <span class="section-title">客户通知</span>
+                  <el-tag type="info" size="small">控制发送给客户的邮件通知</el-tag>
+                </div>
+              </template>
               <el-form :model="notificationSettings" v-bind="formLayout" class="settings-form">
                 <el-form-item label="系统通知"><el-switch v-model="notificationSettings.system_notifications" /></el-form-item>
                 <el-form-item label="邮件通知"><el-switch v-model="notificationSettings.email_notifications" /></el-form-item>
@@ -187,12 +193,22 @@
                   <el-button type="primary" @click="saveNotificationSettings" :class="{ 'full-width': isMobile }">保存客户通知设置</el-button>
                 </el-form-item>
               </el-form>
-            </el-tab-pane>
-            <el-tab-pane label="管理员通知" name="admin">
-              <el-alert title="管理员通知设置" description="支持邮件、Telegram 和 Bark 三种方式。" type="info" :closable="false" class="mb-20" />
+            </el-card>
+
+            <!-- 管理员通知部分 -->
+            <el-card class="notification-section" shadow="never">
+              <template #header>
+                <div class="section-header">
+                  <span class="section-title">管理员通知</span>
+                  <el-tag type="warning" size="small">支持邮件、Telegram 和 Bark 三种方式</el-tag>
+                </div>
+              </template>
               <el-form :model="adminNotificationSettings" v-bind="formLayout" class="settings-form">
                 <el-form-item label="启用管理员通知"><el-switch v-model="adminNotificationSettings.admin_notification_enabled" /></el-form-item>
+
                 <el-divider content-position="left">通知方式</el-divider>
+
+                <!-- 邮件通知 -->
                 <el-form-item label="邮件通知"><el-switch v-model="adminNotificationSettings.admin_email_notification" /></el-form-item>
                 <template v-if="adminNotificationSettings.admin_email_notification">
                   <el-form-item label="管理员邮箱">
@@ -202,6 +218,8 @@
                     <el-button type="primary" @click="testNotification('email')" :loading="testingStates.email" :class="{ 'full-width': isMobile }">测试邮件通知</el-button>
                   </el-form-item>
                 </template>
+
+                <!-- Telegram 通知 -->
                 <el-form-item label="Telegram 通知"><el-switch v-model="adminNotificationSettings.admin_telegram_notification" /></el-form-item>
                 <template v-if="adminNotificationSettings.admin_telegram_notification">
                   <el-form-item label="Bot Token">
@@ -216,6 +234,8 @@
                     <el-button type="primary" @click="testNotification('telegram')" :loading="testingStates.telegram" :class="{ 'full-width': isMobile }">测试 Telegram 通知</el-button>
                   </el-form-item>
                 </template>
+
+                <!-- Bark 通知 -->
                 <el-form-item label="Bark 通知"><el-switch v-model="adminNotificationSettings.admin_bark_notification" /></el-form-item>
                 <template v-if="adminNotificationSettings.admin_bark_notification">
                   <el-form-item label="服务器地址">
@@ -228,6 +248,7 @@
                     <el-button type="primary" @click="testNotification('bark')" :loading="testingStates.bark" :class="{ 'full-width': isMobile }">测试 Bark 通知</el-button>
                   </el-form-item>
                 </template>
+
                 <el-divider content-position="left">通知事件开关</el-divider>
                 <div class="notification-events-grid">
                    <el-form-item label="订单支付成功"><el-switch v-model="adminNotificationSettings.admin_notify_order_paid" /></el-form-item>
@@ -239,17 +260,19 @@
                    <el-form-item label="管理员创建用户"><el-switch v-model="adminNotificationSettings.admin_notify_user_created" /></el-form-item>
                    <el-form-item label="订阅创建"><el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" /></el-form-item>
                 </div>
+
                 <el-divider content-position="left">安全告警</el-divider>
                 <el-form-item label="管理员账户异常登录告警">
                   <el-switch v-model="adminNotificationSettings.admin_abnormal_login_alert_enabled" />
                   <div class="form-tip">开启后，管理员在新设备或异地登录时会收到邮件与站内告警（管理员个人通知设置中需同时开启「异常登录/设备告警」）</div>
                 </el-form-item>
+
                 <el-form-item>
                   <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">保存管理员通知设置</el-button>
                 </el-form-item>
               </el-form>
-            </el-tab-pane>
-          </el-tabs>
+            </el-card>
+          </div>
         </el-tab-pane>
         <el-tab-pane label="公告管理" name="announcement">
           <el-form :model="announcementSettings" v-bind="formLayout" class="settings-form">
@@ -934,6 +957,39 @@ export default {
 .theme-checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; }
 .theme-checkbox-group :deep(.el-checkbox) { min-width: 120px; margin-right: 0; }
 .notification-events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+
+/* 通知设置容器样式 - 左右布局 */
+.notification-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.notification-section {
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  height: fit-content;
+}
+
+.notification-section :deep(.el-card__header) {
+  background-color: #f5f7fa;
+  border-bottom: 1px solid #e4e7ed;
+  padding: 16px 20px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
 :deep(.el-input__wrapper), :deep(.el-textarea__inner) {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -951,6 +1007,7 @@ export default {
 }
 .settings-form :deep(.el-form-item) { margin-bottom: 18px; }
 .settings-form :deep(.el-form-item__label) { font-weight: 500; }
+
 @media (max-width: 768px) {
   .admin-settings { padding: 10px; }
   .short-input { width: 100%; }
@@ -964,5 +1021,12 @@ export default {
   .admin-settings :deep(.el-tabs__nav-wrap) { overflow-x: auto; }
   .admin-settings :deep(.el-divider) { margin: 20px 0; }
   .notification-events-grid { grid-template-columns: 1fr; }
+
+  /* 移动端改为上下布局 */
+  .notification-container {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
 }
 </style>
