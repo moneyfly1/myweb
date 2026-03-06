@@ -254,7 +254,7 @@ func GetAdminSettings(c *gin.Context) {
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
 			"ip_whitelist_enabled": "false", "ip_whitelist": "",
-			"abnormal_login_alert_enabled": true, "admin_abnormal_login_alert_enabled": true, // 管理员账户异常登录告警开关，默认开启
+			"abnormal_login_alert_enabled": true, // 全局异常登录告警开关，默认开启
 		},
 		"theme": {
 			"default_theme": "light", "allow_user_theme": "true",
@@ -279,6 +279,7 @@ func GetAdminSettings(c *gin.Context) {
 			"admin_notify_order_paid": "false", "admin_notify_user_registered": "false", "admin_notify_password_reset": "false",
 			"admin_notify_subscription_sent": "false", "admin_notify_subscription_reset": "false", "admin_notify_subscription_expired": "false",
 			"admin_notify_user_created": "false", "admin_notify_subscription_created": "false",
+			"admin_abnormal_login_alert_enabled": true, // 管理员账户异常登录告警开关，默认开启
 		},
 		"backup": {
 			"backup_target":        "gitee",
