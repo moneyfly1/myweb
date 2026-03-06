@@ -127,12 +127,8 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			lastSeen = d.LastSeen.Format(TimeLayout)
 		}
 		ipAddress := formatIP(getString(d.IPAddress))
-		location := ""
-		// if ipAddress != "" && ipAddress != "-" && geoEnabled {
-		// 	if loc := geoip.GetLocationString(ipAddress); loc.Valid {
-		// 		location = loc.String
-		// 	}
-		// }
+		// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
+		location := getString(d.Location)
 
 		list = append(list, gin.H{
 			"id":                 d.ID,
