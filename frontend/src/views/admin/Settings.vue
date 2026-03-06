@@ -36,6 +36,7 @@
                 <el-option label="跟随系统" value="auto" />
               </el-select>
             </el-form-item>
+
             <el-divider content-position="left">客服联系方式</el-divider>
             <el-form-item label="售后QQ" prop="support_qq">
               <el-input v-model="generalSettings.support_qq" placeholder="请输入售后QQ号码" />
@@ -45,14 +46,20 @@
               <el-input v-model="generalSettings.support_email" placeholder="例如: support@example.com" />
               <div class="form-tip">帮助中心显示，留空不显示。</div>
             </el-form-item>
+
             <el-divider content-position="left">用户界面设置</el-divider>
-            <el-form-item label="统一认证页面">
-              <el-switch v-model="generalSettings.unified_auth_enabled" />
-              <div class="form-tip">开启后使用集成登录页；关闭后使用传统分离页面。</div>
-            </el-form-item>
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">统一认证页面</span>
+                <el-switch v-model="generalSettings.unified_auth_enabled" />
+              </div>
+            </div>
+            <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">开启后使用集成登录页；关闭后使用传统分离页面。</div>
+
             <el-form-item>
               <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
             </el-form-item>
+
             <el-divider content-position="left">GeoIP 数据库管理</el-divider>
             <el-form-item label="数据库状态">
               <div v-if="geoipStatus">
@@ -116,6 +123,7 @@
                 点击下载最新的 GeoIP 数据库。建议每月更新一次以获取最新的 IP 地址分配信息。
               </div>
             </el-form-item>
+
             <el-divider content-position="left">缓存管理</el-divider>
             <el-form-item label="Redis 缓存">
               <el-button type="danger" @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
@@ -129,18 +137,28 @@
         </el-tab-pane>
         <el-tab-pane label="注册设置" name="registration">
           <el-form :model="registrationSettings" v-bind="formLayout" class="settings-form">
-            <el-form-item label="开放注册">
-              <el-switch v-model="registrationSettings.registration_enabled" />
-            </el-form-item>
-            <el-form-item label="邮箱验证">
-              <el-switch v-model="registrationSettings.email_verification_required" />
-            </el-form-item>
+            <!-- 注册开关组 -->
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">开放注册</span>
+                <el-switch v-model="registrationSettings.registration_enabled" />
+              </div>
+              <div class="switch-item">
+                <span class="switch-label">邮箱验证</span>
+                <el-switch v-model="registrationSettings.email_verification_required" />
+              </div>
+              <div class="switch-item">
+                <span class="switch-label">邀请码注册</span>
+                <el-switch v-model="registrationSettings.invite_code_required" />
+              </div>
+            </div>
+
+            <el-divider />
+
             <el-form-item label="最小密码长度" prop="min_password_length">
               <el-input v-model.number="registrationSettings.min_password_length" type="number" class="short-input" />
             </el-form-item>
-            <el-form-item label="邀请码注册">
-              <el-switch v-model="registrationSettings.invite_code_required" />
-            </el-form-item>
+
             <el-divider content-position="left">新用户默认订阅设置</el-divider>
             <el-form-item label="默认设备数" prop="default_subscription_device_limit">
               <el-input v-model.number="registrationSettings.default_subscription_device_limit" type="number" class="short-input" />
@@ -150,7 +168,8 @@
               <el-input v-model.number="registrationSettings.default_subscription_duration_months" type="number" class="short-input" />
               <div class="form-tip">新注册用户默认订阅有效期</div>
             </el-form-item>
-            <el-form-item>
+
+            <el-form-item style="margin-top: 24px;">
               <el-button type="primary" @click="saveRegistrationSettings" :class="{ 'full-width': isMobile }">保存注册设置</el-button>
             </el-form-item>
           </el-form>
@@ -350,13 +369,18 @@
         </el-tab-pane>
         <el-tab-pane label="公告管理" name="announcement">
           <el-form :model="announcementSettings" v-bind="formLayout" class="settings-form">
-            <el-form-item label="启用公告">
-              <el-switch v-model="announcementSettings.announcement_enabled" />
-              <div class="form-tip">用户登录时会看到公告弹窗</div>
-            </el-form-item>
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">启用公告</span>
+                <el-switch v-model="announcementSettings.announcement_enabled" />
+              </div>
+            </div>
+            <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">用户登录时会看到公告弹窗</div>
+
             <el-form-item label="公告内容" prop="announcement_content">
               <el-input v-model="announcementSettings.announcement_content" type="textarea" :rows="8" placeholder="支持HTML格式" />
             </el-form-item>
+
             <el-form-item>
               <el-button type="primary" @click="saveAnnouncementSettings" :class="{ 'full-width': isMobile }">保存公告设置</el-button>
             </el-form-item>
@@ -366,10 +390,10 @@
           <el-form :model="themeSettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="默认主题" prop="default_theme">
               <el-select v-model="themeSettings.default_theme" :style="{ width: isMobile ? '100%' : '300px' }">
-                <el-option 
-                  v-for="theme in themeOptions" 
-                  :key="theme.value" 
-                  :label="theme.label" 
+                <el-option
+                  v-for="theme in themeOptions"
+                  :key="theme.value"
+                  :label="theme.label"
                   :value="theme.value"
                 >
                   <span :style="{ backgroundColor: theme.color }" class="theme-color-block"></span>
@@ -377,9 +401,16 @@
                 </el-option>
               </el-select>
             </el-form-item>
-            <el-form-item label="允许用户自定义">
-              <el-switch v-model="themeSettings.allow_user_theme" />
-            </el-form-item>
+
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">允许用户自定义主题</span>
+                <el-switch v-model="themeSettings.allow_user_theme" />
+              </div>
+            </div>
+
+            <el-divider />
+
             <el-form-item label="可用主题">
               <el-checkbox-group v-model="themeSettings.available_themes" :class="['theme-checkbox-group', { 'mobile': isMobile }]">
                 <el-checkbox v-for="theme in themeOptions" :key="theme.value" :label="theme.value">
@@ -390,7 +421,8 @@
                 </el-checkbox>
               </el-checkbox-group>
             </el-form-item>
-            <el-form-item>
+
+            <el-form-item style="margin-top: 24px;">
               <el-button type="primary" @click="saveThemeSettings" :class="{ 'full-width': isMobile }">保存主题设置</el-button>
             </el-form-item>
           </el-form>
@@ -434,13 +466,21 @@
             <el-form-item label="会话超时(分钟)" prop="session_timeout">
               <el-input v-model.number="securitySettings.session_timeout" type="number" class="short-input" />
             </el-form-item>
-            <el-form-item label="启用IP白名单">
-              <el-switch v-model="securitySettings.ip_whitelist_enabled" />
-            </el-form-item>
+
+            <el-divider />
+
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">启用IP白名单</span>
+                <el-switch v-model="securitySettings.ip_whitelist_enabled" />
+              </div>
+            </div>
+
             <el-form-item label="IP白名单" v-if="securitySettings.ip_whitelist_enabled">
               <el-input v-model="securitySettings.ip_whitelist" type="textarea" :rows="3" placeholder="每行一个IP地址" />
             </el-form-item>
-            <el-form-item>
+
+            <el-form-item style="margin-top: 24px;">
               <el-button type="primary" @click="saveSecuritySettings" :class="{ 'full-width': isMobile }">保存安全设置</el-button>
             </el-form-item>
           </el-form>
@@ -457,10 +497,14 @@
               <div class="form-tip">选择备份上传的目标平台。</div>
             </el-form-item>
             <el-divider content-position="left">Gitee 配置</el-divider>
-            <el-form-item label="启用 Gitee 备份">
-              <el-switch v-model="backupSettings.backup_gitee_enabled" />
-              <div class="form-tip">备份自动上传到 Gitee 仓库。</div>
-            </el-form-item>
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">启用 Gitee 备份</span>
+                <el-switch v-model="backupSettings.backup_gitee_enabled" />
+              </div>
+            </div>
+            <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">备份自动上传到 Gitee 仓库。</div>
+
             <template v-if="backupSettings.backup_gitee_enabled">
               <el-form-item label="Access Token">
                 <el-input v-model="backupSettings.backup_gitee_token" type="password" show-password placeholder="Gitee Access Token" style="width: 100%; max-width: 400px;" />
@@ -486,10 +530,14 @@
               </el-form-item>
             </template>
             <el-divider content-position="left">GitHub 配置</el-divider>
-            <el-form-item label="启用 GitHub 备份">
-              <el-switch v-model="backupSettings.backup_github_enabled" />
-              <div class="form-tip">备份自动上传到 GitHub 仓库。</div>
-            </el-form-item>
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">启用 GitHub 备份</span>
+                <el-switch v-model="backupSettings.backup_github_enabled" />
+              </div>
+            </div>
+            <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">备份自动上传到 GitHub 仓库。</div>
+
             <template v-if="backupSettings.backup_github_enabled">
               <el-form-item label="Access Token">
                 <el-input v-model="backupSettings.backup_github_token" type="password" show-password placeholder="GitHub Personal Access Token" style="width: 100%; max-width: 400px;" />
@@ -515,9 +563,12 @@
               </el-form-item>
             </template>
             <el-divider content-position="left">自动备份设置</el-divider>
-            <el-form-item label="启用自动备份">
-              <el-switch v-model="backupSettings.backup_auto_enabled" />
-            </el-form-item>
+            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+              <div class="switch-item">
+                <span class="switch-label">启用自动备份</span>
+                <el-switch v-model="backupSettings.backup_auto_enabled" />
+              </div>
+            </div>
             <el-form-item label="备份间隔(小时)" v-if="backupSettings.backup_auto_enabled">
               <el-input v-model.number="backupSettings.backup_auto_interval" type="number" :min="1" class="short-input" />
               <div class="form-tip">建议12-24小时。</div>
