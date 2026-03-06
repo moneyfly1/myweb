@@ -166,9 +166,24 @@
                 </div>
               </template>
               <el-form :model="notificationSettings" v-bind="formLayout" class="settings-form">
-                <el-form-item label="系统通知"><el-switch v-model="notificationSettings.system_notifications" /></el-form-item>
-                <el-form-item label="邮件通知"><el-switch v-model="notificationSettings.email_notifications" /></el-form-item>
-                <el-form-item label="订阅到期提醒"><el-switch v-model="notificationSettings.subscription_expiry_notifications" /></el-form-item>
+                <!-- 开关按钮组 - 移动端横排显示 -->
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item">
+                    <span class="switch-label">系统通知</span>
+                    <el-switch v-model="notificationSettings.system_notifications" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">邮件通知</span>
+                    <el-switch v-model="notificationSettings.email_notifications" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">订阅到期提醒</span>
+                    <el-switch v-model="notificationSettings.subscription_expiry_notifications" />
+                  </div>
+                </div>
+
+                <el-divider />
+
                 <el-form-item label="提醒冷却(小时)">
                   <el-input-number
                     v-model="notificationSettings.subscription_expiry_reminder_cooldown_hours"
@@ -187,9 +202,22 @@
                   />
                   <div class="form-tip">同一用户每天最多接收多少封到期提醒，0 表示不限制。</div>
                 </el-form-item>
-                <el-form-item label="新用户注册通知"><el-switch v-model="notificationSettings.new_user_notifications" /></el-form-item>
-                <el-form-item label="新订单通知"><el-switch v-model="notificationSettings.new_order_notifications" /></el-form-item>
-                <el-form-item>
+
+                <el-divider />
+
+                <!-- 其他通知开关 -->
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item">
+                    <span class="switch-label">新用户注册通知</span>
+                    <el-switch v-model="notificationSettings.new_user_notifications" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">新订单通知</span>
+                    <el-switch v-model="notificationSettings.new_order_notifications" />
+                  </div>
+                </div>
+
+                <el-form-item style="margin-top: 24px;">
                   <el-button type="primary" @click="saveNotificationSettings" :class="{ 'full-width': isMobile }">保存客户通知设置</el-button>
                 </el-form-item>
               </el-form>
@@ -204,12 +232,33 @@
                 </div>
               </template>
               <el-form :model="adminNotificationSettings" v-bind="formLayout" class="settings-form">
-                <el-form-item label="启用管理员通知"><el-switch v-model="adminNotificationSettings.admin_notification_enabled" /></el-form-item>
+                <!-- 主开关 -->
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item primary-switch">
+                    <span class="switch-label">启用管理员通知</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notification_enabled" />
+                  </div>
+                </div>
 
                 <el-divider content-position="left">通知方式</el-divider>
 
-                <!-- 邮件通知 -->
-                <el-form-item label="邮件通知"><el-switch v-model="adminNotificationSettings.admin_email_notification" /></el-form-item>
+                <!-- 通知方式开关组 -->
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item">
+                    <span class="switch-label">邮件通知</span>
+                    <el-switch v-model="adminNotificationSettings.admin_email_notification" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">Telegram 通知</span>
+                    <el-switch v-model="adminNotificationSettings.admin_telegram_notification" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">Bark 通知</span>
+                    <el-switch v-model="adminNotificationSettings.admin_bark_notification" />
+                  </div>
+                </div>
+
+                <!-- 邮件通知配置 -->
                 <template v-if="adminNotificationSettings.admin_email_notification">
                   <el-form-item label="管理员邮箱">
                     <el-input v-model="adminNotificationSettings.admin_notification_email" placeholder="请输入接收邮箱" />
@@ -219,8 +268,7 @@
                   </el-form-item>
                 </template>
 
-                <!-- Telegram 通知 -->
-                <el-form-item label="Telegram 通知"><el-switch v-model="adminNotificationSettings.admin_telegram_notification" /></el-form-item>
+                <!-- Telegram 通知配置 -->
                 <template v-if="adminNotificationSettings.admin_telegram_notification">
                   <el-form-item label="Bot Token">
                     <el-input v-model="adminNotificationSettings.admin_telegram_bot_token" type="password" show-password />
@@ -235,8 +283,7 @@
                   </el-form-item>
                 </template>
 
-                <!-- Bark 通知 -->
-                <el-form-item label="Bark 通知"><el-switch v-model="adminNotificationSettings.admin_bark_notification" /></el-form-item>
+                <!-- Bark 通知配置 -->
                 <template v-if="adminNotificationSettings.admin_bark_notification">
                   <el-form-item label="服务器地址">
                     <el-input v-model="adminNotificationSettings.admin_bark_server_url" placeholder="默认: https://api.day.app" />
@@ -250,24 +297,51 @@
                 </template>
 
                 <el-divider content-position="left">通知事件开关</el-divider>
-                <div class="notification-events-grid">
-                   <el-form-item label="订单支付成功"><el-switch v-model="adminNotificationSettings.admin_notify_order_paid" /></el-form-item>
-                   <el-form-item label="新用户注册"><el-switch v-model="adminNotificationSettings.admin_notify_user_registered" /></el-form-item>
-                   <el-form-item label="重置密码"><el-switch v-model="adminNotificationSettings.admin_notify_password_reset" /></el-form-item>
-                   <el-form-item label="发送订阅"><el-switch v-model="adminNotificationSettings.admin_notify_subscription_sent" /></el-form-item>
-                   <el-form-item label="重置订阅"><el-switch v-model="adminNotificationSettings.admin_notify_subscription_reset" /></el-form-item>
-                   <el-form-item label="订阅到期"><el-switch v-model="adminNotificationSettings.admin_notify_subscription_expired" /></el-form-item>
-                   <el-form-item label="管理员创建用户"><el-switch v-model="adminNotificationSettings.admin_notify_user_created" /></el-form-item>
-                   <el-form-item label="订阅创建"><el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" /></el-form-item>
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                   <div class="switch-item">
+                     <span class="switch-label">订单支付成功</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_order_paid" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">新用户注册</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_user_registered" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">重置密码</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_password_reset" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">发送订阅</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_sent" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">重置订阅</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_reset" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">订阅到期</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_expired" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">管理员创建用户</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_user_created" />
+                   </div>
+                   <div class="switch-item">
+                     <span class="switch-label">订阅创建</span>
+                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" />
+                   </div>
                 </div>
 
                 <el-divider content-position="left">安全告警</el-divider>
-                <el-form-item label="管理员账户异常登录告警">
-                  <el-switch v-model="adminNotificationSettings.admin_abnormal_login_alert_enabled" />
-                  <div class="form-tip">开启后，管理员在新设备或异地登录时会收到邮件与站内告警（管理员个人通知设置中需同时开启「异常登录/设备告警」）</div>
-                </el-form-item>
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item">
+                    <span class="switch-label">管理员账户异常登录告警</span>
+                    <el-switch v-model="adminNotificationSettings.admin_abnormal_login_alert_enabled" />
+                  </div>
+                </div>
+                <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">开启后，管理员在新设备或异地登录时会收到邮件与站内告警（管理员个人通知设置中需同时开启「异常登录/设备告警」）</div>
 
-                <el-form-item>
+                <el-form-item style="margin-top: 24px;">
                   <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">保存管理员通知设置</el-button>
                 </el-form-item>
               </el-form>
@@ -988,6 +1062,66 @@ export default {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+}
+
+/* 通知开关按钮组样式 */
+.notification-switches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.switch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: #f5f7fa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+  transition: all 0.3s;
+}
+
+.switch-item:hover {
+  background-color: #ecf5ff;
+  border-color: #b3d8ff;
+}
+
+.switch-item.primary-switch {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+  color: white;
+}
+
+.switch-item.primary-switch .switch-label {
+  color: white;
+  font-weight: 600;
+}
+
+.switch-item.primary-switch:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
+  border-color: #5568d3;
+}
+
+.switch-label {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+/* 移动端优化 */
+.mobile-switches {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.mobile-switches .switch-item {
+  padding: 14px 16px;
+}
+
+.mobile-switches .switch-label {
+  font-size: 15px;
 }
 
 :deep(.el-input__wrapper), :deep(.el-textarea__inner) {
