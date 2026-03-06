@@ -44,8 +44,8 @@
             </div>
           </template>
           <div class="table-container">
-            <el-table 
-              :data="recentUsers.slice(0, 10)" 
+            <el-table
+              :data="recentUsers.slice(0, 10)"
               style="width: 100%"
               :show-header="false"
               size="small"
@@ -63,13 +63,14 @@
                   <div class="user-info clickable-row">
                     <div class="user-name">{{ scope.row.username }}</div>
                     <div class="user-email">{{ scope.row.email }}</div>
+                    <div class="user-time">{{ formatTimeAgo(scope.row.created_at) }}</div>
                   </div>
                 </template>
               </el-table-column>
               <el-table-column width="80" align="right">
                 <template #default="scope">
-                  <el-tag 
-                    :type="scope.row.status === 'active' ? 'success' : 'warning'" 
+                  <el-tag
+                    :type="scope.row.status === 'active' ? 'success' : 'warning'"
                     size="small"
                     effect="plain"
                   >
@@ -90,8 +91,8 @@
             </div>
           </template>
           <div class="table-container">
-            <el-table 
-              :data="recentOrders.slice(0, 10)" 
+            <el-table
+              :data="recentOrders.slice(0, 10)"
               style="width: 100%"
               :show-header="false"
               size="small"
@@ -109,13 +110,14 @@
                   <div class="order-info clickable-row">
                     <div class="order-no">{{ scope.row.order_no }}</div>
                     <div class="order-amount">¥{{ formatMoney(scope.row.amount) }}</div>
+                    <div class="order-time">{{ formatTimeAgo(scope.row.created_at) }}</div>
                   </div>
                 </template>
               </el-table-column>
               <el-table-column width="80" align="right">
                 <template #default="scope">
-                  <el-tag 
-                    :type="getOrderStatusType(scope.row.status)" 
+                  <el-tag
+                    :type="getOrderStatusType(scope.row.status)"
                     size="small"
                     effect="plain"
                   >
@@ -545,6 +547,24 @@ export default {
       if (isNaN(num)) return '0.00'
       return num.toFixed(2)
     }
+    const formatTimeAgo = (dateString) => {
+      if (!dateString) return '未知'
+      const date = new Date(dateString)
+      const now = new Date()
+      const diffMs = now - date
+      const diffSec = Math.floor(diffMs / 1000)
+      const diffMin = Math.floor(diffSec / 60)
+      const diffHour = Math.floor(diffMin / 60)
+      const diffDay = Math.floor(diffHour / 24)
+
+      if (diffSec < 60) return '刚刚'
+      if (diffMin < 60) return `${diffMin}分钟前`
+      if (diffHour < 24) return `${diffHour}小时前`
+      if (diffDay < 7) return `${diffDay}天前`
+      if (diffDay < 30) return `${Math.floor(diffDay / 7)}周前`
+      if (diffDay < 365) return `${Math.floor(diffDay / 30)}个月前`
+      return `${Math.floor(diffDay / 365)}年前`
+    }
     const loadExpiringSubscriptions = async () => {
       try {
         const params = { days: 7 }
@@ -641,6 +661,7 @@ export default {
       goToUserSubscription,
       goToOrderUserSubscription,
       formatMoney,
+      formatTimeAgo,
       expiringSubscriptions,
       selectedExpiring,
       expiringFilter,
@@ -776,6 +797,11 @@ export default {
     .abnormal-email {
       font-size: 0.75rem;
     }
+    .user-time,
+    .order-time {
+      font-size: 0.6875rem;
+      margin-top: 3px;
+    }
   }
   :deep(.el-col) {
     flex: 0 0 100% !important;
@@ -884,6 +910,13 @@ export default {
   line-height: 1.2;
   margin-top: 2px;
 }
+.user-time {
+  color: #67c23a;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 2px;
+  font-weight: 500;
+}
 .order-icon {
   width: 24px;
   height: 24px;
@@ -910,6 +943,13 @@ export default {
   line-height: 1.2;
   margin-top: 2px;
   font-weight: 600;
+}
+.order-time {
+  color: #67c23a;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 2px;
+  font-weight: 500;
 }
 .abnormal-icon {
   width: 24px;
