@@ -742,14 +742,8 @@ func GetUserDetails(c *gin.Context) {
 
 		for _, d := range uaMap {
 			ipAddress := formatIPForUA(getString(d.IPAddress))
-			// 列表查询不查询 GeoIP，提升性能
-			location := ""
-			// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-			// 	locationStr := geoip.GetLocationString(ipAddress)
-			// 	if locationStr.Valid {
-			// 		location = locationStr.String
-			// 	}
-			// }
+			// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
+			location := getString(d.Location)
 
 			uaRecords = append(uaRecords, gin.H{
 				"user_agent":   *d.UserAgent,
