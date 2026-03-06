@@ -534,6 +534,47 @@
             inactive-text="普通用户"
           />
         </el-form-item>
+        <el-form-item :label="isMobile ? '' : '余额'" prop="balance" v-if="editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">余额</div>
+          </template>
+          <el-input-number
+            v-model="userForm.balance"
+            :min="0"
+            :precision="2"
+            :step="10"
+            style="width: 100%"
+          />
+          <div class="form-item-hint">用户账户余额（元）</div>
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '设备数量'" prop="device_limit" v-if="editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">设备数量</div>
+          </template>
+          <el-input-number
+            v-model="userForm.device_limit"
+            :min="0"
+            :max="100"
+            style="width: 100%"
+          />
+          <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="editingUser">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">到期时间</div>
+          </template>
+          <el-date-picker
+            v-model="userForm.expire_time"
+            type="datetime"
+            placeholder="选择到期时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 100%"
+            :teleported="isMobile"
+            :default-time="defaultTime"
+          />
+          <div class="form-item-hint">订阅的到期时间，到期后用户将无法使用服务</div>
+        </el-form-item>
         <el-form-item :label="isMobile ? '' : '备注'" prop="note">
           <template v-if="isMobile">
             <div class="form-mobile-label">备注</div>
@@ -697,7 +738,8 @@ export default {
       expire_time: getDefaultExpireTime(),
       is_admin: false,
       is_verified: false,
-      note: ''
+      note: '',
+      balance: 0
     })
     const userRules = {
       email: [
@@ -727,7 +769,7 @@ export default {
       Object.assign(userForm, {
         email: '', username: '', password: '', status: 'active',
         device_limit: 5, expire_time: getDefaultExpireTime(),
-        is_admin: false, is_verified: false, note: ''
+        is_admin: false, is_verified: false, note: '', balance: 0
       })
       if (userFormRef.value) {
         userFormRef.value.resetFields()
@@ -737,19 +779,37 @@ export default {
       editingUser.value = null
       resetUserForm()
     }
-    watch(editingUser, (user) => {
+    watch(editingUser, async (user) => {
       if (user) {
         let status = user.status
         if (!status) {
           status = user.is_active ? 'active' : 'inactive'
         }
+
+        // 基本信息
         Object.assign(userForm, {
           email: user.email, username: user.username,
           status, is_admin: Boolean(user.is_admin),
           is_verified: Boolean(user.is_verified),
           note: user.notes || '', password: '',
+          balance: user.balance || 0,
           device_limit: 5, expire_time: getDefaultExpireTime()
         })
+
+        // 加载用户详情以获取订阅信息
+        try {
+          const response = await adminAPI.getUserDetails(user.id)
+          const userData = response?.data?.success ? response.data.data : (response?.success ? response.data : response.data)
+          if (userData && userData.subscription) {
+            const subscription = userData.subscription
+            userForm.device_limit = subscription.device_limit || 5
+            if (subscription.expire_time) {
+              userForm.expire_time = dayjs(subscription.expire_time).format('YYYY-MM-DDTHH:mm:ss')
+            }
+          }
+        } catch (error) {
+          console.error('加载用户详情失败:', error)
+        }
       } else {
         resetUserForm()
       }
@@ -764,7 +824,10 @@ export default {
             is_active: userForm.status === 'active',
             is_verified: Boolean(userForm.is_verified),
             is_admin: userForm.is_admin,
-            notes: userForm.note || null
+            notes: userForm.note || null,
+            balance: userForm.balance,
+            device_limit: userForm.device_limit,
+            expire_time: userForm.expire_time
           })
           ElMessage.success('用户更新成功')
         } else {
