@@ -1131,14 +1131,16 @@ func UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		Username   string   `json:"username"`
-		Email      string   `json:"email"`
-		IsActive   *bool    `json:"is_active"`
-		IsVerified *bool    `json:"is_verified"`
-		IsAdmin    *bool    `json:"is_admin"`
-		Balance    *float64 `json:"balance"`
-		Password   string   `json:"password"`
-		Notes      *string  `json:"notes"` // 备注
+		Username    string   `json:"username"`
+		Email       string   `json:"email"`
+		IsActive    *bool    `json:"is_active"`
+		IsVerified  *bool    `json:"is_verified"`
+		IsAdmin     *bool    `json:"is_admin"`
+		Balance     *float64 `json:"balance"`
+		Password    string   `json:"password"`
+		Notes       *string  `json:"notes"` // 备注
+		DeviceLimit *int     `json:"device_limit"`
+		ExpireTime  *string  `json:"expire_time"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1214,6 +1216,56 @@ func UpdateUser(c *gin.Context) {
 	if err := db.Save(&user).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败", err)
 		return
+	}
+
+	// 如果设备数量或到期时间有变更，更新订阅信息
+	if req.DeviceLimit != nil || req.ExpireTime != nil {
+		var subscription models.Subscription
+		if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&subscription).Error; err == nil {
+			// 记录订阅变更前数据
+			beforeSubData := map[string]interface{}{
+				"device_limit": subscription.DeviceLimit,
+				"expire_time":  utils.FormatBeijingTime(subscription.ExpireTime),
+			}
+
+			if req.DeviceLimit != nil {
+				subscription.DeviceLimit = *req.DeviceLimit
+			}
+			if req.ExpireTime != nil && *req.ExpireTime != "" {
+				if t, err := time.Parse("2006-01-02T15:04:05", *req.ExpireTime); err == nil {
+					subscription.ExpireTime = t
+				} else if t, err := time.Parse("2006-01-02 15:04:05", *req.ExpireTime); err == nil {
+					subscription.ExpireTime = t
+				} else if t, err := time.Parse(time.RFC3339, *req.ExpireTime); err == nil {
+					subscription.ExpireTime = t
+				}
+			}
+
+			if err := db.Save(&subscription).Error; err == nil {
+				// 记录订阅变更日志
+				afterSubData := map[string]interface{}{
+					"device_limit": subscription.DeviceLimit,
+					"expire_time":  utils.FormatBeijingTime(subscription.ExpireTime),
+				}
+
+				go func() {
+					adminUser, _ := middleware.GetCurrentUser(c)
+					var actionByUserID *uint
+					actionBy := "admin"
+					if adminUser != nil {
+						actionByUserID = &adminUser.ID
+						actionBy = adminUser.Username
+					}
+					ipAddress := utils.GetRealClientIP(c)
+					utils.CreateSubscriptionLog(subscription.ID, user.ID, "update", actionBy, actionByUserID, ipAddress, beforeSubData, afterSubData, "管理员通过编辑用户更新订阅信息")
+				}()
+
+				// 清除订阅配置缓存
+				go func(subURL string) {
+					cache.ClearSubscriptionConfigCache(subURL)
+				}(subscription.SubscriptionURL)
+			}
+		}
 	}
 
 	afterData := map[string]interface{}{
