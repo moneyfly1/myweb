@@ -462,14 +462,14 @@ func handleLoginFailure(c *gin.Context, ip, identifier, reason string, err error
 }
 
 // checkAndSendAbnormalLoginAlert 在 goroutine 中执行：检测新设备/异地登录并发送邮件与站内通知
-func checkAndSendAbnormalLoginAlert(db *gorm.DB, user *models.User, current *models.LoginHistory, ipAddress, userAgent string) {
+func checkAndSendAbnormalLoginAlert(db *gorm.DB, userID uint, current *models.LoginHistory, ipAddress, userAgent string) {
 	var cfg models.SystemConfig
 	if err := db.Where("category = ? AND key = ?", "security", "abnormal_login_alert_enabled").First(&cfg).Error; err == nil && cfg.Value == "false" {
 		return
 	}
 
 	var prev models.LoginHistory
-	if err := db.Where("user_id = ? AND login_status = ? AND id != ?", user.ID, "success", current.ID).Order("login_time DESC").Limit(1).First(&prev).Error; err != nil {
+	if err := db.Where("user_id = ? AND login_status = ? AND id != ?", userID, "success", current.ID).Order("login_time DESC").Limit(1).First(&prev).Error; err != nil {
 		return
 	}
 
@@ -486,7 +486,7 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, user *models.User, current *mod
 		ninetyDaysAgo := utils.GetBeijingTime().Add(-90 * 24 * time.Hour)
 		var count int64
 		db.Model(&models.LoginHistory{}).Where("user_id = ? AND login_status = ? AND id != ? AND login_time >= ? AND device_fingerprint = ?",
-			user.ID, "success", current.ID, ninetyDaysAgo, deviceHash).Count(&count)
+			userID, "success", current.ID, ninetyDaysAgo, deviceHash).Count(&count)
 		isNewDevice = count == 0
 	}
 
@@ -494,18 +494,21 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, user *models.User, current *mod
 		return
 	}
 
-	// 尊重用户通知设置：仅当用户开启「异常登录/设备告警」时发送邮件和站内通知
-	var u models.User
-	if err := db.Select("abnormal_login_alert_enabled").First(&u, user.ID).Error; err != nil {
+	// 查询完整的用户信息（包括 email, username, is_admin, abnormal_login_alert_enabled）
+	var user models.User
+	if err := db.Select("id, email, username, is_admin, abnormal_login_alert_enabled").First(&user, userID).Error; err != nil {
+		utils.LogErrorMsg("查询用户信息失败: user_id=%d, error=%v", userID, err)
 		return
 	}
-	if !u.AbnormalLoginAlertEnabled {
+
+	// 尊重用户通知设置：仅当用户开启「异常登录/设备告警」时发送邮件和站内通知
+	if !user.AbnormalLoginAlertEnabled {
 		return
 	}
 	// 管理员账户：同时受系统开关「管理员异常登录告警」控制
 	if user.IsAdmin {
 		var adminCfg models.SystemConfig
-		if err := db.Where("category = ? AND key = ?", "security", "admin_abnormal_login_alert_enabled").First(&adminCfg).Error; err == nil && adminCfg.Value == "false" {
+		if err := db.Where("category = ? AND key = ?", "admin_notification", "admin_abnormal_login_alert_enabled").First(&adminCfg).Error; err == nil && adminCfg.Value == "false" {
 			return
 		}
 	}
@@ -618,8 +621,8 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 		if err := database.GetDB().Create(&loginHistory).Error; err != nil {
 			utils.LogError("Login: 创建登录历史失败", err, map[string]interface{}{"user_id": userID, "ip": ip})
 		} else {
-			// 检查异常登录
-			checkAndSendAbnormalLoginAlert(database.GetDB(), &models.User{ID: userID}, &loginHistory, ip, userAgent)
+			// 检查异常登录 - 传入 userID 而不是不完整的 User 对象
+			checkAndSendAbnormalLoginAlert(database.GetDB(), userID, &loginHistory, ip, userAgent)
 		}
 	}(user.ID, ipAddress, ua, deviceHash, now)
 
