@@ -312,23 +312,16 @@
         <div class="payment-tips">
           <p class="tip-text"><el-icon><InfoFilled /></el-icon> 请使用支付宝扫码支付</p>
         </div>
-        <div class="payment-actions-container">
-          <el-button 
-            v-if="isMobile && paymentUrl"
+        <div class="payment-actions-container" v-if="isMobile && paymentUrl">
+          <el-button
             type="success"
             size="large"
             class="payment-btn alipay-btn"
             @click="openAlipayApp"
+            style="width: 100%;"
           >
             <el-icon class="btn-icon"><Wallet /></el-icon>
             跳转支付宝App支付
-          </el-button>
-          <el-button 
-            size="large"
-            class="payment-btn cancel-btn"
-            @click="paymentQRVisible = false" 
-          >
-            取消
           </el-button>
         </div>
       </div>
@@ -706,9 +699,9 @@ export default {
               ElMessage.error('支付链接生成失败，请稍后重试')
               return
             }
-            const paymentMethodName = data.payment_method_name || data.payment_method || paymentMethod.value
+            const paymentMethodName = data.payment_method || paymentMethod.value
             const isYipay = paymentMethodName && (
-              paymentMethodName.includes('yipay') || 
+              paymentMethodName.includes('yipay') ||
               paymentMethodName.includes('易支付')
             )
             if (isYipay) {

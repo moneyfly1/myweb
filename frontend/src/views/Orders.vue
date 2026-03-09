@@ -429,80 +429,45 @@
     <el-dialog
       v-model="paymentQRVisible"
       title="扫码支付"
-      :width="isMobile ? '90%' : '500px'"
+      :width="isMobile ? '92%' : '450px'"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       class="payment-qr-dialog"
     >
       <div class="payment-qr-container">
-        <div class="order-info">
-          <h3>订单信息</h3>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="订单号">{{ selectedOrder?.order_no }}</el-descriptions-item>
-            <el-descriptions-item label="套餐名称">{{ selectedOrder?.package_name }}</el-descriptions-item>
-            <el-descriptions-item label="支付金额">
-              <span class="amount">¥{{ parseFloat(selectedOrder?.amount || 0).toFixed(2) }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="支付方式">
-              <el-tag type="primary">{{ getPaymentMethodName(paymentQRCode) }}</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
+        <div class="order-info-compact">
+          <div class="info-row">
+            <span class="label">订单号</span>
+            <span class="value">{{ selectedOrder?.order_no }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">金额</span>
+            <span class="value amount">¥{{ parseFloat(selectedOrder?.amount || 0).toFixed(2) }}</span>
+          </div>
         </div>
-        <div class="qr-code-wrapper">
+        <div class="qr-code-wrapper-compact">
           <div v-if="paymentQRCode" class="qr-code">
-            <img 
-              :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())" 
-              alt="支付二维码" 
-              :title="getPaymentMethodName(paymentQRCode) + '二维码'"
+            <img
+              :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
+              alt="支付二维码"
               @error="onImageError"
               @load="onImageLoad"
             />
           </div>
           <div v-else class="qr-loading">
             <el-icon class="is-loading"><Loading /></el-icon>
-            <p>正在生成二维码...</p>
+            <p>生成中...</p>
           </div>
         </div>
-        <div class="payment-tips">
-          <el-alert
-            title="支付提示"
-            type="info"
-            :closable="false"
-            show-icon
-          >
-            <template #default>
-              <p>1. 请使用{{ getPaymentMethodName(paymentQRCode) }}扫描上方二维码</p>
-              <p>2. 确认订单信息无误后完成支付</p>
-              <p>3. 支付完成后请勿关闭此窗口，系统将自动检测支付状态</p>
-            </template>
-          </el-alert>
-        </div>
-        <div class="payment-actions">
-          <el-button 
-            v-if="isMobile && paymentUrl && (selectedOrder?.payment_method === 'alipay' || selectedOrder?.payment_method_name === 'alipay' || paymentUrl.includes('alipay'))"
+        <div class="payment-actions-compact" v-if="isMobile && paymentUrl && (selectedOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
+          <el-button
             type="success"
-            size="large"
+            size="default"
             @click="openAlipayApp"
-            style="width: 100%; margin-bottom: 10px;"
+            style="width: 100%;"
           >
             <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
-            跳转到支付宝支付
-          </el-button>
-          <el-button 
-            @click="checkPaymentStatus" 
-            :loading="isCheckingPayment"
-            type="primary"
-            size="large"
-            :style="isMobile ? 'width: 100%; margin-bottom: 10px;' : ''"
-          >
-            检查支付状态
-          </el-button>
-          <el-button 
-            @click="closePaymentQR"
-            size="large"
-            :style="isMobile ? 'width: 100%;' : ''"
-          >
-            关闭
+            打开支付宝App
           </el-button>
         </div>
       </div>
@@ -694,6 +659,9 @@ export default {
       allRecords.value = merged
     }
     const formatOrderRecord = (order) => {
+      // 统一使用 payment_method
+      const paymentMethod = order.payment_method || null
+
       return {
         ...order,
         record_type: 'order',
@@ -705,8 +673,8 @@ export default {
         order_no: order.order_no,
         amount: order.amount,
         status: order.status,
-        payment_method: order.payment_method || order.payment_method_name,
-        payment_method_id: order.payment_method_id, // 保留支付方式ID
+        payment_method: paymentMethod,
+        payment_method_id: order.payment_method_id,
         created_at: order.created_at,
         paid_at: order.paid_at || order.payment_time
       }
@@ -783,17 +751,22 @@ export default {
         }
         const response = await api.get('/orders/', { params })
         const orderList = response.data.data?.orders || []
-        orders.value = orderList.map(order => ({
-          ...order,
-          order_no: order.order_no,
-          amount: order.amount,
-          package_name: order.package_name,
-          status: order.status,
-          payment_method: order.payment_method || order.payment_method_name,
-          payment_method_id: order.payment_method_id, // 保留支付方式ID
-          created_at: order.created_at,
-          paid_at: order.paid_at || order.payment_time
-        }))
+        orders.value = orderList.map(order => {
+          // 统一使用 payment_method
+          const paymentMethod = order.payment_method || null
+
+          return {
+            ...order,
+            order_no: order.order_no,
+            amount: order.amount,
+            package_name: order.package_name,
+            status: order.status,
+            payment_method: paymentMethod,
+            payment_method_id: order.payment_method_id,
+            created_at: order.created_at,
+            paid_at: order.paid_at || order.payment_time
+          }
+        })
         pagination.total = response.data.data?.total || response.data.total || 0
         await loadOrderStats()
         if (activeTab.value === 'all') {
@@ -927,27 +900,45 @@ export default {
       })
     }
     const resolvePaymentMethodId = async (paymentMethodId, paymentMethod) => {
+      // 如果已有支付方式ID，直接返回
       if (paymentMethodId) {
         return paymentMethodId
       }
+
+      // 尝试从支付方式名称获取ID
       const normalizedMethod = normalizePaymentMethodValue(paymentMethod)
-      if (!normalizedMethod) {
-        return null
-      }
+
       try {
         const paymentMethodsResponse = await paymentAPI.getPaymentMethods()
         const paymentMethods = paymentMethodsResponse.data?.data || paymentMethodsResponse.data || []
+
         if (!Array.isArray(paymentMethods) || paymentMethods.length === 0) {
+          ElMessage.error('暂无可用的支付方式')
           return null
         }
-        const methodKey = PAYMENT_METHOD_KEY_MAP[normalizedMethod] || normalizedMethod
-        const matchedMethod = paymentMethods.find(m =>
-          m.key === methodKey ||
-          m.name === normalizedMethod ||
-          m.pay_type === methodKey
-        )
-        return matchedMethod?.id || paymentMethods[0]?.id || null
+
+        // 如果有支付方式名称，尝试匹配
+        if (normalizedMethod) {
+          const methodKey = PAYMENT_METHOD_KEY_MAP[normalizedMethod] || normalizedMethod
+          const matchedMethod = paymentMethods.find(m =>
+            m.key === methodKey ||
+            m.name === normalizedMethod ||
+            m.pay_type === methodKey
+          )
+          if (matchedMethod) {
+            return matchedMethod.id
+          }
+        }
+
+        // 如果无法匹配或没有支付方式，使用第一个可用的支付方式
+        if (paymentMethods.length > 0) {
+          ElMessage.info(`将使用 ${paymentMethods[0].name || '默认支付方式'} 进行支付`)
+          return paymentMethods[0].id
+        }
+
+        return null
       } catch (error) {
+        ElMessage.error('获取支付方式失败')
         return null
       }
     }
@@ -1060,18 +1051,13 @@ export default {
       }
       paymentUrl.value = url
       selectedOrder.value = order
-      const paymentMethod = order.payment_method_name || order.payment_method || 'alipay'
+      const paymentMethod = order.payment_method || 'alipay'
 
       try {
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          paymentQRCode.value = await generateQRCode(url)
-        } else if (paymentMethod !== 'alipay') {
-          paymentQRCode.value = await generateQRCode(url)
-        } else {
-          ElMessage.error('支付宝二维码格式错误，请联系管理员检查配置')
-          return
-        }
+        // 所有URL都生成二维码
+        paymentQRCode.value = await generateQRCode(url)
       } catch (error) {
+        console.error('生成二维码失败:', error)
         ElMessage.error('生成二维码失败，请刷新页面重试')
         return
       }
@@ -1081,7 +1067,7 @@ export default {
         order_no: order.order_no || order.display_no,
         package_name: order.package_name || '账户充值',
         amount: order.amount || order.display_amount,
-        payment_method: order.payment_method || order.payment_method_name || 'alipay'
+        payment_method: paymentMethod
       }
       paymentQRVisible.value = true
       await new Promise(resolve => setTimeout(resolve, 200))
@@ -1362,7 +1348,7 @@ export default {
           order_no: order.order_no || order.display_no,
           package_name: order.package_name || '-',
           amount: order.amount || order.display_amount,
-          payment_method: order.payment_method || order.payment_method_name,
+          payment_method: order.payment_method,
           status: order.status,
           created_at: order.created_at,
           paid_at: order.paid_at || order.payment_time
@@ -1391,6 +1377,11 @@ export default {
       return statusMap[status] || status
     }
     const getPaymentMethodText = (method) => {
+      // 如果没有支付方式，返回"未知"
+      if (!method || method === '' || method === null || method === undefined) {
+        return '未知'
+      }
+
       let methodStr = method
       if (method && typeof method === 'object') {
         if (method.String) {
@@ -1406,11 +1397,19 @@ export default {
           }
         }
       }
+
       const methodMap = {
         alipay: '支付宝',
         wechat: '微信支付',
+        wxpay: '微信支付',
         balance: '余额支付',
-        mixed: '余额+支付宝'
+        mixed: '余额+支付宝',
+        yipay_alipay: '易支付-支付宝',
+        yipay_wxpay: '易支付-微信',
+        yipay_qqpay: '易支付-QQ钱包',
+        '支付宝': '支付宝',
+        '微信支付': '微信支付',
+        '余额支付': '余额支付'
       }
       return methodMap[methodStr] || methodStr || '未知'
     }
@@ -1818,6 +1817,69 @@ export default {
       }
     }
   }
+  // 紧凑布局样式
+  .order-info-compact {
+    margin-bottom: 12px;
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+      &:last-child {
+        border-bottom: none;
+      }
+      .label {
+        font-size: 13px;
+        color: #666;
+        font-weight: 500;
+      }
+      .value {
+        font-size: 13px;
+        color: #333;
+        font-weight: 500;
+        &.amount {
+          color: #f56c6c;
+          font-size: 16px;
+          font-weight: 600;
+        }
+      }
+    }
+  }
+  .qr-code-wrapper-compact {
+    text-align: center;
+    margin: 12px 0;
+    .qr-code img {
+      max-width: 180px;
+      max-height: 180px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+    }
+    .qr-loading {
+      padding: 40px 0;
+      color: #999;
+      p {
+        margin-top: 10px;
+        font-size: 13px;
+      }
+    }
+  }
+  .payment-tips-compact {
+    text-align: center;
+    margin: 10px 0;
+    p {
+      font-size: 13px;
+      color: #666;
+      margin: 0;
+    }
+  }
+  .payment-actions-compact {
+    margin-top: 12px;
+    .button-group {
+      display: flex;
+      gap: 8px;
+    }
+  }
 }
 .filter-card {
   padding: 12px;
@@ -1930,19 +1992,6 @@ export default {
           border-color: #c0c4cc;
           transform: scale(0.98);
         }
-      }
-    }
-  }
-}
-.stats-row {
-  @media (max-width: 480px) {
-    grid-template-columns: 1fr !important;
-    .stat-card {
-      .stat-number {
-        font-size: 1.75rem;
-      }
-      .stat-label {
-        font-size: 0.85rem;
       }
     }
   }

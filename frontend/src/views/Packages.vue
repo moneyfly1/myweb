@@ -119,15 +119,16 @@
     <el-dialog
       v-model="purchaseDialogVisible"
       title="确认购买"
-      :width="isMobile ? '90%' : '800px'"
+      :width="isMobile ? '95%' : '800px'"
       :close-on-click-modal="false"
       class="purchase-dialog"
+      :class="{ 'mobile-purchase-dialog': isMobile }"
       :show-close="true"
     >
       <div class="purchase-confirm-horizontal">
         <div class="purchase-left">
           <div class="package-summary">
-            <h4>套餐信息</h4>
+            <h4>订单信息</h4>
             <el-descriptions :column="1" border size="small">
               <el-descriptions-item label="套餐名称">{{ selectedPackage?.name }}</el-descriptions-item>
               <el-descriptions-item label="套餐单价">
@@ -206,15 +207,8 @@
           <div class="price-summary">
             <h4>费用明细</h4>
             <el-descriptions :column="1" border size="small">
-              <el-descriptions-item label="套餐单价">
-                <span>¥{{ selectedPackage?.price }}</span>
-                <span style="color: #909399; margin-left: 8px;">/{{ packageType?.type === 'monthly' ? '月' : packageType?.type === 'yearly' ? '年' : packageType?.type === 'half_yearly' ? '半年' : packageType?.type === 'quarterly' ? '季度' : `${selectedPackage?.duration_days || 30}天` }}</span>
-              </el-descriptions-item>
               <el-descriptions-item label="购买时长">
                 <span>{{ durationDisplayText }}</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="设备数量">
-                <span>{{ selectedPackage?.device_limit || 0 }} 个设备</span>
               </el-descriptions-item>
               <el-descriptions-item label="原价总计">
                 <span>¥{{ totalOriginalPrice.toFixed(2) }}</span>
@@ -224,9 +218,9 @@
                   <span class="discount-amount">
                     -¥{{ calculateLevelDiscount(totalOriginalPrice).toFixed(2) }}
                   </span>
-                  <el-tag 
-                    :type="userLevel.color ? 'info' : 'success'" 
-                    size="small" 
+                  <el-tag
+                    :type="userLevel.color ? 'info' : 'success'"
+                    size="small"
                     class="level-tag"
                     :style="{ backgroundColor: userLevel.color || '#67c23a', color: '#fff', border: 'none' }"
                   >
@@ -364,26 +358,31 @@
     <el-dialog
       v-model="paymentQRVisible"
       title="扫码支付"
-      :width="isMobile ? '90%' : '500px'"
+      :width="isMobile ? '92%' : '450px'"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       class="payment-qr-dialog"
     >
       <div class="payment-qr-container">
-        <div class="order-info">
-          <h3>订单信息</h3>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="订单号">{{ currentOrder?.order_no || orderInfo.orderNo }}</el-descriptions-item>
-            <el-descriptions-item label="套餐名称">{{ currentOrder?.package_name || orderInfo.packageName }}</el-descriptions-item>
-            <el-descriptions-item label="支付金额">
-              <span class="amount">¥{{ parseFloat(currentOrder?.amount || orderInfo.amount || 0).toFixed(2) }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="支付方式">
-              <el-tag type="primary">{{ getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) }}</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
+        <div class="order-info-compact">
+          <div class="info-row">
+            <span class="label">订单号</span>
+            <span class="value">{{ currentOrder?.order_no || orderInfo.orderNo }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">套餐名称</span>
+            <span class="value">{{ currentOrder?.package_name || orderInfo.packageName }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">支付金额</span>
+            <span class="value amount">¥{{ parseFloat(currentOrder?.amount || orderInfo.amount || 0).toFixed(2) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">支付方式</span>
+            <span class="value">{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}</span>
+          </div>
         </div>
-        <div class="qr-code-wrapper">
+        <div class="qr-code-wrapper-compact">
           <div v-if="isPaymentPageUrl && paymentUrl" class="payment-page-iframe">
             <iframe 
               ref="paymentIframe"
@@ -398,62 +397,25 @@
             <img 
               :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())" 
               alt="支付二维码" 
-              :title="getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) + '二维码'"
+              :title="getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) + '二维码'"
               @error="onImageError"
               @load="onImageLoad"
             />
           </div>
           <div v-else class="qr-loading">
             <el-icon class="is-loading"><Loading /></el-icon>
-            <p>正在生成二维码...</p>
+            <p>生成中...</p>
           </div>
         </div>
-        <div class="payment-tips">
-          <el-alert
-            v-if="isPaymentPageUrl"
-            title="支付提示"
-            type="info"
-            :closable="false"
-            show-icon
-          >
-            <template #default>
-              <p><strong>支付页面已加载</strong></p>
-              <p>1. 页面将自动跳转到支付页面</p>
-              <p>2. 在支付页面使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) }}扫描二维码完成支付</p>
-              <p>3. 支付完成后请勿关闭此窗口，系统将自动检测支付状态并开通套餐</p>
-            </template>
-          </el-alert>
-          <el-alert
-            v-else
-            title="支付提示"
-            type="info"
-            :closable="false"
-            show-icon
-          >
-            <template #default>
-              <p>1. 请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method_name || currentOrder?.payment_method || paymentMethod) }}扫描上方二维码</p>
-              <p>2. 确认订单信息无误后完成支付</p>
-              <p>3. 支付完成后请勿关闭此窗口，系统将自动检测支付状态并开通套餐</p>
-            </template>
-          </el-alert>
-        </div>
-        <div class="payment-actions" :class="{ 'mobile-layout': isMobile }">
-          <el-button 
-            v-if="isMobile && paymentUrl && (currentOrder?.payment_method_name === 'alipay' || currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))"
+        <div class="payment-actions-compact" v-if="isMobile && paymentUrl && (currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
+          <el-button
             type="success"
-            size="large"
+            size="default"
             @click="openAlipayApp"
-            style="width: 100%; margin-bottom: 10px;"
+            style="width: 100%;"
           >
             <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
-            跳转到支付宝支付
-          </el-button>
-          <el-button 
-            @click="paymentQRVisible = false"
-            size="large"
-            :style="isMobile ? 'width: 100%;' : ''"
-          >
-            关闭
+            打开支付宝App
           </el-button>
         </div>
         </div>
@@ -1150,8 +1112,7 @@ export default {
         orderInfo.packageName = selectedPackage.value.name
         orderInfo.amount = order.amount
         orderInfo.duration = selectedPackage.value.duration_days
-        const orderPaymentMethod = order.payment_method_name || paymentMethod.value
-        order.payment_method_name = orderPaymentMethod
+        const orderPaymentMethod = order.payment_method || paymentMethod.value
         order.payment_method = orderPaymentMethod
         if (order.status === 'paid') {
           purchaseDialogVisible.value = false
@@ -1168,13 +1129,12 @@ export default {
           orderInfo.amount = order.amount
           orderInfo.duration = selectedPackage.value.duration_days
           orderInfo.paymentUrl = order.payment_url || order.payment_qr_code
-          if (!order.payment_method_name && !order.payment_method) {
-            order.payment_method_name = paymentMethod.value
+          if (!order.payment_method) {
             order.payment_method = paymentMethod.value
           }
-          const paymentMethodName = order.payment_method_name || order.payment_method || paymentMethod.value
+          const paymentMethodName = order.payment_method || paymentMethod.value
           const isYipay = paymentMethodName && (
-            paymentMethodName.includes('yipay') || 
+            paymentMethodName.includes('yipay') ||
             paymentMethodName.includes('易支付')
           )
           if (isYipay) {
@@ -1348,44 +1308,57 @@ export default {
           return
         }
         paymentUrl.value = url
-        const orderPaymentMethod = order.payment_method_name || order.payment_method || paymentMethod.value
+        const orderPaymentMethod = order.payment_method || paymentMethod.value
         currentOrder.value = {
           order_no: order.order_no || orderInfo.orderNo,
           amount: order.amount || orderInfo.amount,
           package_name: orderInfo.packageName || selectedPackage.value?.name,
-          payment_method_name: orderPaymentMethod,
           payment_method: orderPaymentMethod
         }
         const paymentMethodForQR = orderPaymentMethod
       try {
-        const QRCode = await import('qrcode')
-        const isMobileDevice = window.innerWidth <= 768
-        const qrOptions = {
-          width: isMobileDevice ? 200 : 256,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M'
-        }
         if (!url || url.trim() === '') {
           ElMessage.error('支付链接为空，请联系管理员检查配置')
           return
         }
         const urlString = String(url).trim()
-        const isYipayPaymentPage = urlString.includes('payApi/pay/payment') || 
+
+        // 检查是否是支付宝页面支付URL（需要跳转而不是生成二维码）
+        const isAlipayPagePay = urlString.includes('alipay.com') &&
+                                (urlString.includes('?') || urlString.includes('&'))
+
+        // 检查是否是易支付页面
+        const isYipayPaymentPage = urlString.includes('payApi/pay/payment') ||
                                    urlString.includes('payapi/pay/payment') ||
                                    urlString.includes('submit.php')
-        if (isYipayPaymentPage) {
-          paymentQRCode.value = '' // 清空二维码，使用iframe
+
+        if (isAlipayPagePay) {
+          // 支付宝页面支付，直接跳转
+          ElMessage.info('正在跳转到支付宝支付页面...')
+          window.location.href = urlString
+          return
+        } else if (isYipayPaymentPage) {
+          // 易支付页面，使用iframe
+          paymentQRCode.value = ''
         } else {
+          // 生成二维码
+          const QRCode = await import('qrcode')
+          const isMobileDevice = window.innerWidth <= 768
+          const qrOptions = {
+            width: isMobileDevice ? 200 : 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            },
+            errorCorrectionLevel: 'M'
+          }
           const qrCodeDataURL = await QRCode.toDataURL(urlString, qrOptions)
           paymentQRCode.value = qrCodeDataURL
         }
       } catch (error) {
-        console.error('生成二维码失败:', error)
-        ElMessage.error('生成二维码失败: ' + (error.message || '未知错误') + '，请刷新页面重试')
+        console.error('处理支付链接失败:', error)
+        ElMessage.error('处理支付链接失败: ' + (error.message || '未知错误'))
         return
       }
         paymentQRVisible.value = true
@@ -2277,27 +2250,27 @@ export default {
   .purchase-dialog {
     :deep(.el-dialog) {
       width: 95% !important;
-      margin: 2vh auto !important;
-      max-height: 96vh;
+      margin: 1vh auto !important;
+      max-height: 98vh;
     }
     :deep(.el-dialog__header) {
-      padding: 15px 15px 10px 15px;
+      padding: 12px 12px 8px 12px;
     }
     :deep(.el-dialog__title) {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
     }
     :deep(.el-dialog__body) {
-      padding: 10px 15px 15px 15px !important;
-      max-height: calc(96vh - 80px);
+      padding: 8px 12px 12px 12px !important;
+      max-height: calc(98vh - 70px);
       overflow-y: auto;
     }
   }
   .purchase-confirm-horizontal {
     flex-direction: column;
-    gap: 16px;
-    padding: 5px 0;
-    max-height: calc(96vh - 120px);
+    gap: 10px;
+    padding: 0;
+    max-height: calc(98vh - 100px);
   }
   .purchase-left,
   .purchase-right {
@@ -2307,32 +2280,38 @@ export default {
   .duration-selection :is(h4),
   .price-summary :is(h4),
   .payment-section-title {
-    font-size: 15px;
-    margin-bottom: 10px;
+    font-size: 14px;
+    margin-bottom: 8px;
+    font-weight: 600;
   }
   .purchase-confirm-horizontal :deep(.el-descriptions) {
-    font-size: 13px;
+    font-size: 12px;
   }
   .purchase-confirm-horizontal :deep(.el-descriptions__label) {
-    width: 32% !important;
-    font-size: 13px;
-    padding: 10px 8px !important;
+    width: 30% !important;
+    font-size: 12px;
+    padding: 8px 6px !important;
     font-weight: 500;
   }
   .purchase-confirm-horizontal :deep(.el-descriptions__content) {
-    width: 68% !important;
-    font-size: 13px;
-    padding: 10px 8px !important;
+    width: 70% !important;
+    font-size: 12px;
+    padding: 8px 6px !important;
   }
   .purchase-confirm-horizontal :deep(.el-descriptions__table) {
     width: 100%;
   }
   .coupon-section {
-    padding: 12px !important;
+    padding: 10px !important;
+    margin-top: 10px !important;
+    :is(h4) {
+      font-size: 13px !important;
+      margin-bottom: 6px !important;
+    }
   }
   .coupon-input-group {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .coupon-input {
     width: 100%;
@@ -2340,109 +2319,134 @@ export default {
   .coupon-buttons {
     width: 100%;
     display: flex;
-    gap: 8px;
+    gap: 6px;
   }
   .coupon-buttons .el-button {
     flex: 1;
-    min-height: 44px;
-    font-size: 15px;
+    min-height: 40px;
+    font-size: 14px;
   }
   .duration-selection {
+    margin-top: 10px !important;
     :deep(.el-select) {
       .el-input__wrapper {
-        min-height: 44px;
+        min-height: 40px;
       }
       .el-input__inner {
-        font-size: 15px;
+        font-size: 14px;
       }
     }
   }
   .form-hint {
-    font-size: 12px !important;
-    margin-top: 6px !important;
+    font-size: 11px !important;
+    margin-top: 4px !important;
   }
   .payment-method-section {
     border: none;
     padding: 0;
+    margin-top: 10px !important;
     :deep(.el-radio-group) {
       width: 100%;
     }
   }
+  .balance-info {
+    margin-bottom: 8px;
+    .balance-row {
+      font-size: 13px;
+    }
+  }
   .payment-option {
-    padding: 14px;
-    margin-bottom: 12px;
-    min-height: 56px;
+    padding: 10px;
+    margin-bottom: 8px;
+    min-height: 48px;
     border: 1.5px solid #e4e7ed;
+    :deep(.el-radio__label) {
+      font-size: 13px;
+    }
     &:active {
       background-color: #f0f9ff;
       border-color: #409eff;
     }
   }
   .payment-option-content {
-    font-size: 15px;
+    font-size: 13px;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: 4px;
   }
   .payment-option-label {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
     width: 100%;
   }
   .payment-icon {
-    font-size: 18px;
-    margin-right: 8px;
+    font-size: 16px;
+    margin-right: 6px;
   }
   .payment-status {
-    font-size: 13px;
+    font-size: 12px;
     width: 100%;
     text-align: left;
-    line-height: 1.4;
+    line-height: 1.3;
   }
   .balance-info {
-    padding: 10px;
-    margin-bottom: 12px;
+    padding: 8px;
+    margin-bottom: 8px;
     .balance-label {
-      font-size: 14px;
+      font-size: 13px;
     }
     .balance-amount {
-      font-size: 18px;
+      font-size: 16px;
     }
   }
   .level-discount-tip,
   .level-upgrade-tip {
-    padding: 12px;
-    margin-top: 12px;
+    padding: 10px;
+    margin-top: 10px !important;
     .tip-title {
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: 12px;
+      line-height: 1.4;
     }
     .tip-content {
-      font-size: 12px;
-      line-height: 1.5;
-      margin-top: 6px;
+      font-size: 11px;
+      line-height: 1.4;
+      margin-top: 4px;
+    }
+    .tip-icon {
+      font-size: 14px;
     }
   }
   .purchase-actions {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 12px;
-    padding-top: 12px;
+    flex-direction: row;
+    gap: 8px;
+    margin-top: 10px !important;
+    padding-top: 10px !important;
   }
   .purchase-actions .el-button {
-    width: 100%;
-    min-height: 48px;
-    font-size: 16px;
+    flex: 1;
+    min-height: 44px;
+    font-size: 15px;
     font-weight: 600;
     margin: 0 !important;
   }
   .price-summary {
     .final-amount {
-      font-size: 20px;
+      font-size: 18px;
     }
     .discount-amount {
-      font-size: 14px;
+      font-size: 13px;
+    }
+  }
+  // 优化 Alert 组件
+  :deep(.el-alert) {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+    .el-alert__title {
+      font-size: 12px !important;
+    }
+    .el-alert__icon {
+      font-size: 14px !important;
     }
   }
   .packages-grid {
@@ -2696,65 +2700,81 @@ export default {
   pointer-events: auto !important;
 }
 .payment-qr-dialog {
-  .el-dialog__body {
-    padding: 20px;
+  :deep(.el-dialog) {
+    border-radius: 12px;
+  }
+  :deep(.el-dialog__header) {
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  :deep(.el-dialog__body) {
+    padding: 16px 20px;
   }
 }
+
 .payment-qr-container {
-  .order-info {
-    margin-bottom: 20px;
-    h3 {
-      margin: 0 0 15px 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-    }
-    .el-descriptions {
-      :deep(.el-descriptions__label) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  .order-info-compact {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #e9ecef;
+      &:last-child {
+        border-bottom: none;
+      }
+      .label {
+        color: #666;
+        font-size: 14px;
         font-weight: 500;
-        color: #606266;
       }
-      :deep(.el-descriptions__content) {
-        color: #303133;
-      }
-      .amount {
-        font-size: 18px;
+      .value {
+        color: #333;
+        font-size: 14px;
         font-weight: 600;
-        color: #f56c6c;
+        text-align: right;
+        word-break: break-all;
+        &.amount {
+          color: #f56c6c;
+          font-size: 18px;
+        }
       }
     }
   }
-  .qr-code-wrapper {
+
+  .qr-code-wrapper-compact {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin: 25px 0;
-    padding: 20px;
-    background: #f5f7fa;
-    border-radius: 8px;
-    min-height: 280px;
+    padding: 16px 0;
     .qr-code {
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      display: inline-block;
+      padding: 12px;
+      background: #fff;
+      border: 1px solid #e4e7ed;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       img {
+        display: block;
+        width: 200px;
+        height: 200px;
         max-width: 100%;
-        height: auto;
-        border-radius: 8px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-        background: #fff;
-        padding: 10px;
       }
     }
     .qr-loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
       color: #909399;
       .el-icon {
         font-size: 32px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
       }
       p {
         margin: 0;
@@ -2776,101 +2796,56 @@ export default {
       }
     }
   }
-  .payment-tips {
-    margin: 20px 0;
-    :deep(.el-alert) {
-      .el-alert__content {
-        .el-alert__title {
-          font-weight: 600;
-          margin-bottom: 8px;
-        }
-        p {
-          margin: 6px 0;
-          font-size: 14px;
-          line-height: 1.6;
-          strong {
-            color: #e6a23c;
-          }
-        }
-      }
-    }
-  }
-  .payment-actions {
-    margin-top: 20px;
+
+  .payment-actions-compact {
     display: flex;
-    justify-content: center;
-    gap: 15px;
-    .el-button {
-      margin: 0;
-    }
-    &.mobile-layout {
-      flex-direction: column;
-      gap: 10px;
-      .el-button {
-        width: 100%;
-      }
-    }
+    flex-direction: column;
+    gap: 8px;
   }
 }
+
 @media (max-width: 768px) {
   .payment-qr-dialog {
     :deep(.el-dialog) {
-      margin: 5vh auto;
-      max-height: 90vh;
-      overflow-y: auto;
+      width: 92% !important;
+      margin: 5vh auto !important;
+      border-radius: 12px;
     }
-    .el-dialog__body {
-      padding: 15px;
+    :deep(.el-dialog__header) {
+      padding: 12px 16px;
+    }
+    :deep(.el-dialog__body) {
+      padding: 12px 16px;
     }
   }
+
   .payment-qr-container {
-    .order-info {
-      margin-bottom: 15px;
-      h3 {
-        font-size: 16px;
-        margin-bottom: 12px;
-      }
-      .el-descriptions {
-        :deep(.el-descriptions__table) {
-          .el-descriptions__label,
-          .el-descriptions__content {
-            font-size: 13px;
-            padding: 8px 10px;
+    gap: 12px;
+
+    .order-info-compact {
+      padding: 8px;
+      .info-row {
+        padding: 6px 0;
+        .label {
+          font-size: 13px;
+        }
+        .value {
+          font-size: 13px;
+          &.amount {
+            font-size: 16px;
           }
         }
       }
     }
-    .qr-code-wrapper {
-      margin: 20px 0;
-      padding: 15px;
-      min-height: 240px;
-      .qr-code img {
-        max-width: 90%;
-      }
-    }
-    .payment-tips {
-      margin: 15px 0;
-      :deep(.el-alert) {
-        .el-alert__content {
-          .el-alert__title {
-            font-size: 14px;
-          }
-          p {
-            font-size: 13px;
-            margin: 5px 0;
-          }
+
+    .qr-code-wrapper-compact {
+      padding: 8px 0;
+      .qr-code {
+        padding: 8px;
+        img {
+          width: 180px;
+          height: 180px;
         }
-      }
-    }
-  }
-}
-@media (max-width: 480px) {
-  .payment-qr-container {
-    .qr-code-wrapper {
-      min-height: 200px;
-      padding: 10px;
-      .qr-code img {
-        max-width: 85%;
       }
     }
   }

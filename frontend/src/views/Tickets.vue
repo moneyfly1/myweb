@@ -87,67 +87,77 @@
           </el-table-column>
         </el-table>
       </div>
-      <div class="mobile-ticket-list" v-loading="loading">
-      <div 
-        v-for="ticket in tickets" 
-        :key="ticket.id"
-        class="mobile-ticket-card"
-      >
-        <div class="ticket-card-header">
-          <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-            <h4>{{ ticket.title }}</h4>
-            <el-badge 
-              v-if="ticket.has_unread && ticket.unread_replies > 0" 
-              :value="ticket.unread_replies" 
-              :max="99"
-              type="danger"
-            />
+      <div class="mobile-card-list" v-if="tickets.length > 0 || !loading">
+        <div
+          v-for="ticket in tickets"
+          :key="ticket.id"
+          class="mobile-card"
+        >
+          <div class="card-row">
+            <span class="label">状态</span>
+            <span class="value">
+              <el-tag :type="getStatusTagType(ticket.status)" size="small">
+                {{ getStatusText(ticket.status) }}
+              </el-tag>
+            </span>
           </div>
-          <el-tag :type="getStatusTagType(ticket.status)" size="small">
-            {{ getStatusText(ticket.status) }}
-          </el-tag>
-        </div>
-        <div class="ticket-card-body">
-          <div class="ticket-card-row">
-            <span class="label">工单编号：</span>
+          <div class="card-row">
+            <span class="label">标题</span>
+            <span class="value">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>{{ ticket.title }}</span>
+                <el-badge
+                  v-if="ticket.has_unread && ticket.unread_replies > 0"
+                  :value="ticket.unread_replies"
+                  :max="99"
+                  type="danger"
+                />
+              </div>
+            </span>
+          </div>
+          <div class="card-row">
+            <span class="label">工单编号</span>
             <span class="value">{{ ticket.ticket_no }}</span>
           </div>
-          <div class="ticket-card-row">
-            <span class="label">类型：</span>
+          <div class="card-row">
+            <span class="label">类型</span>
             <span class="value">
               <el-tag :type="getTypeTagType(ticket.type)" size="small">
                 {{ getTypeText(ticket.type) }}
               </el-tag>
             </span>
           </div>
-          <div class="ticket-card-row">
-            <span class="label">优先级：</span>
+          <div class="card-row">
+            <span class="label">优先级</span>
             <span class="value">
               <el-tag :type="getPriorityTagType(ticket.priority)" size="small">
                 {{ getPriorityText(ticket.priority) }}
               </el-tag>
             </span>
           </div>
-          <div class="ticket-card-row">
-            <span class="label">创建时间：</span>
+          <div class="card-row">
+            <span class="label">创建时间</span>
             <span class="value">{{ ticket.created_at }}</span>
           </div>
+          <div class="card-actions">
+            <el-button
+              type="primary"
+              size="small"
+              @click="viewTicket(ticket.id)"
+            >
+              查看详情
+              <el-badge
+                v-if="ticket.has_unread && ticket.unread_replies > 0"
+                :value="ticket.unread_replies"
+                :max="99"
+                type="danger"
+                style="margin-left: 4px;"
+              />
+            </el-button>
+          </div>
         </div>
-        <div class="ticket-card-actions">
-          <el-button 
-            type="primary" 
-            size="small" 
-            @click="viewTicket(ticket.id)"
-            style="width: 100%"
-          >
-            查看详情
-          </el-button>
-        </div>
+        <el-empty v-if="tickets.length === 0 && !loading" description="暂无工单" />
       </div>
-      <div v-if="!loading && tickets.length === 0" class="empty-state">
-        <p>暂无工单</p>
-      </div>
-    </div>
     <div class="pagination">
       <el-pagination
         v-model:current-page="pagination.page"
@@ -760,62 +770,8 @@ const handleFilterChange = () => {
   .tickets-container {
     padding: 10px;
   }
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 16px;
-    :is(h1) {
-      font-size: 1.5rem;
-      margin: 0;
-    }
-    .el-button {
-      width: 100%;
-      min-height: 44px;
-      font-size: 16px;
-    }
-  }
-  .filter-bar {
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 16px;
-    .el-select {
-      width: 100% !important;
-    }
-    .el-button {
-      width: 100%;
-      min-height: 44px;
-      font-size: 16px;
-    }
-  }
   :deep(.el-table) {
     display: none;
-  }
-  .mobile-ticket-list {
-    display: block;
-  }
-  :deep(.el-pagination) {
-    flex-wrap: wrap;
-    justify-content: center;
-    .el-pagination__sizes,
-    .el-pagination__jump {
-      display: none;
-    }
-    .el-pagination__total {
-      display: none;
-    }
-    .btn-prev,
-    .btn-next {
-      padding: 8px 12px;
-      min-width: 40px;
-      min-height: 40px;
-    }
-    .number {
-      min-width: 36px;
-      height: 36px;
-      line-height: 36px;
-      font-size: 14px;
-    }
   }
   :deep(.el-dialog:not(.create-ticket-dialog .el-dialog)) {
     width: 95% !important;
@@ -914,71 +870,6 @@ const handleFilterChange = () => {
       min-height: 44px;
       font-size: 16px;
     }
-  }
-}
-.mobile-ticket-list {
-  display: none;
-}
-@media (min-width: 769px) {
-  .mobile-ticket-list {
-    display: none;
-  }
-}
-.mobile-ticket-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-.ticket-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  :is(h4) {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #333;
-    flex: 1;
-    padding-right: 12px;
-  }
-}
-.ticket-card-body {
-  margin-bottom: 12px;
-}
-.ticket-card-row {
-  display: flex;
-  margin-bottom: 8px;
-  font-size: 0.875rem;
-  &:last-child {
-    margin-bottom: 0;
-  }
-  .label {
-    color: #666;
-    min-width: 80px;
-    font-weight: 500;
-  }
-  .value {
-    color: #333;
-    flex: 1;
-    word-break: break-word;
-  }
-}
-.ticket-card-actions {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-}
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #999;
-  :is(p) {
-    margin: 0;
-    font-size: 0.9rem;
   }
 }
 </style>
