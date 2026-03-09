@@ -68,14 +68,25 @@
             size="large"
             show-password
             @input="checkPasswordStrength"
+            @focus="passwordFocused = true"
           />
-          <div v-if="registerForm.password" class="password-strength-indicator">
-            <div class="strength-bar">
-              <div
-                class="strength-fill"
-                :class="passwordStrength.level"
-                :style="{ width: passwordStrength.percentage + '%' }"
-              ></div>
+          <!-- 始终显示密码要求提示 -->
+          <div class="password-strength-indicator" :class="{ 'focused': passwordFocused || registerForm.password }">
+            <div v-if="!registerForm.password" class="password-hint">
+              <i class="el-icon-info"></i>
+              <span>请输入密码，密码需满足以下要求：</span>
+            </div>
+            <div v-else>
+              <div class="strength-bar">
+                <div
+                  class="strength-fill"
+                  :class="passwordStrength.level"
+                  :style="{ width: passwordStrength.percentage + '%' }"
+                ></div>
+              </div>
+              <div class="strength-text" :class="passwordStrength.level">
+                密码强度: {{ passwordStrength.text }}
+              </div>
             </div>
             <div class="strength-requirements">
               <div class="requirement-item" :class="{ 'met': passwordStrength.hasMinLength }">
@@ -98,9 +109,6 @@
                 <i :class="passwordStrength.hasSpecialChar ? 'el-icon-check' : 'el-icon-close'"></i>
                 <span>包含特殊字符</span>
               </div>
-            </div>
-            <div class="strength-text" :class="passwordStrength.level">
-              密码强度: {{ passwordStrength.text }}
             </div>
           </div>
         </el-form-item>
@@ -198,6 +206,7 @@ const sendingCode = ref(false) // 发送验证码加载状态
 const countdown = ref(0) // 倒计时
 let countdownTimer = null // 倒计时定时器
 const inviteCodeInfo = ref(null) // 邀请码验证信息
+const passwordFocused = ref(false) // 密码输入框是否获得焦点
 const passwordStrength = reactive({
   level: 'weak',
   percentage: 0,
@@ -859,13 +868,32 @@ onUnmounted(() => {
   background: #f5f7fa;
   border-radius: 8px;
   border: 1px solid #e4e7ed;
+  transition: all 0.3s ease;
+  &.focused {
+    background: #fff;
+    border-color: #409eff;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  }
+}
+.password-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: #606266;
+  font-size: 13px;
+  margin-bottom: 8px;
+  :is(i) {
+    font-size: 16px;
+    color: #409eff;
+  }
 }
 .strength-bar {
   height: 6px;
   background: #e4e7ed;
   border-radius: 3px;
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .strength-fill {
   height: 100%;
@@ -900,6 +928,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: #909399;
   transition: all 0.2s ease;
+  padding: 4px 0;
   :is(i) {
     font-size: 14px;
     font-weight: bold;
