@@ -67,7 +67,42 @@
             prefix-icon="Lock"
             size="large"
             show-password
+            @input="checkPasswordStrength"
           />
+          <div v-if="registerForm.password" class="password-strength-indicator">
+            <div class="strength-bar">
+              <div
+                class="strength-fill"
+                :class="passwordStrength.level"
+                :style="{ width: passwordStrength.percentage + '%' }"
+              ></div>
+            </div>
+            <div class="strength-requirements">
+              <div class="requirement-item" :class="{ 'met': passwordStrength.hasMinLength }">
+                <i :class="passwordStrength.hasMinLength ? 'el-icon-check' : 'el-icon-close'"></i>
+                <span>至少 {{ minPasswordLength }} 个字符</span>
+              </div>
+              <div class="requirement-item" :class="{ 'met': passwordStrength.hasLowerCase }">
+                <i :class="passwordStrength.hasLowerCase ? 'el-icon-check' : 'el-icon-close'"></i>
+                <span>包含小写字母</span>
+              </div>
+              <div class="requirement-item" :class="{ 'met': passwordStrength.hasUpperCase }">
+                <i :class="passwordStrength.hasUpperCase ? 'el-icon-check' : 'el-icon-close'"></i>
+                <span>包含大写字母</span>
+              </div>
+              <div class="requirement-item" :class="{ 'met': passwordStrength.hasNumber }">
+                <i :class="passwordStrength.hasNumber ? 'el-icon-check' : 'el-icon-close'"></i>
+                <span>包含数字</span>
+              </div>
+              <div class="requirement-item" :class="{ 'met': passwordStrength.hasSpecialChar }">
+                <i :class="passwordStrength.hasSpecialChar ? 'el-icon-check' : 'el-icon-close'"></i>
+                <span>包含特殊字符</span>
+              </div>
+            </div>
+            <div class="strength-text" :class="passwordStrength.level">
+              密码强度: {{ passwordStrength.text }}
+            </div>
+          </div>
         </el-form-item>
         <el-form-item prop="confirmPassword">
           <el-input
@@ -163,6 +198,16 @@ const sendingCode = ref(false) // 发送验证码加载状态
 const countdown = ref(0) // 倒计时
 let countdownTimer = null // 倒计时定时器
 const inviteCodeInfo = ref(null) // 邀请码验证信息
+const passwordStrength = reactive({
+  level: 'weak',
+  percentage: 0,
+  text: '弱',
+  hasMinLength: false,
+  hasLowerCase: false,
+  hasUpperCase: false,
+  hasNumber: false,
+  hasSpecialChar: false
+})
 const registerForm = reactive({
   emailPrefix: '',
   emailDomain: 'qq.com', // 默认选择qq.com
@@ -297,6 +342,55 @@ const registerRules = computed(() => ({
 const canSendCode = computed(() => {
   return registerForm.emailPrefix && registerForm.emailDomain
 })
+const checkPasswordStrength = () => {
+  const password = registerForm.password
+
+  if (!password) {
+    passwordStrength.level = 'weak'
+    passwordStrength.percentage = 0
+    passwordStrength.text = '弱'
+    passwordStrength.hasMinLength = false
+    passwordStrength.hasLowerCase = false
+    passwordStrength.hasUpperCase = false
+    passwordStrength.hasNumber = false
+    passwordStrength.hasSpecialChar = false
+    return
+  }
+
+  // 检查各项要求
+  passwordStrength.hasMinLength = password.length >= minPasswordLength.value
+  passwordStrength.hasLowerCase = /[a-z]/.test(password)
+  passwordStrength.hasUpperCase = /[A-Z]/.test(password)
+  passwordStrength.hasNumber = /\d/.test(password)
+  passwordStrength.hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)
+
+  // 计算满足的条件数量
+  let metCount = 0
+  if (passwordStrength.hasMinLength) metCount++
+  if (passwordStrength.hasLowerCase) metCount++
+  if (passwordStrength.hasUpperCase) metCount++
+  if (passwordStrength.hasNumber) metCount++
+  if (passwordStrength.hasSpecialChar) metCount++
+
+  // 根据满足的条件数量设置强度
+  if (metCount <= 2) {
+    passwordStrength.level = 'weak'
+    passwordStrength.percentage = 20
+    passwordStrength.text = '弱'
+  } else if (metCount === 3) {
+    passwordStrength.level = 'medium'
+    passwordStrength.percentage = 50
+    passwordStrength.text = '中等'
+  } else if (metCount === 4) {
+    passwordStrength.level = 'good'
+    passwordStrength.percentage = 75
+    passwordStrength.text = '良好'
+  } else {
+    passwordStrength.level = 'strong'
+    passwordStrength.percentage = 100
+    passwordStrength.text = '强'
+  }
+}
 const handleSendVerificationCode = async () => {
   if (!registerForm.emailPrefix || !registerForm.emailDomain || !registerForm.email) {
     ElMessage.warning('请先填写完整的邮箱地址')
@@ -758,6 +852,92 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.5;
   padding: 0 4px;
+}
+.password-strength-indicator {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+.strength-bar {
+  height: 6px;
+  background: #e4e7ed;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.strength-fill {
+  height: 100%;
+  transition: all 0.3s ease;
+  border-radius: 3px;
+  &.weak {
+    background: linear-gradient(90deg, #f56c6c, #ff8080);
+  }
+  &.medium {
+    background: linear-gradient(90deg, #e6a23c, #f0b860);
+  }
+  &.good {
+    background: linear-gradient(90deg, #409eff, #66b1ff);
+  }
+  &.strong {
+    background: linear-gradient(90deg, #67c23a, #85ce61);
+  }
+}
+.strength-requirements {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+.requirement-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #909399;
+  transition: all 0.2s ease;
+  :is(i) {
+    font-size: 14px;
+    font-weight: bold;
+  }
+  &.met {
+    color: #67c23a;
+    :is(i) {
+      color: #67c23a;
+    }
+  }
+  &:not(.met) {
+    :is(i) {
+      color: #f56c6c;
+    }
+  }
+}
+.strength-text {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px;
+  border-radius: 4px;
+  &.weak {
+    color: #f56c6c;
+    background: rgba(245, 108, 108, 0.1);
+  }
+  &.medium {
+    color: #e6a23c;
+    background: rgba(230, 162, 60, 0.1);
+  }
+  &.good {
+    color: #409eff;
+    background: rgba(64, 158, 255, 0.1);
+  }
+  &.strong {
+    color: #67c23a;
+    background: rgba(103, 194, 58, 0.1);
+  }
 }
 @media (max-width: 480px) {
   .register-card {
