@@ -47,9 +47,11 @@ func (s *Scheduler) Start() {
 
 	s.running = true
 	log.Println("定时任务调度器已启动")
-	utils.CreateSchedulerLog("scheduler", "started", "定时任务调度器已启动", map[string]interface{}{
+	if err := utils.CreateSchedulerLog("scheduler", "started", "定时任务调度器已启动", map[string]interface{}{
 		"status": "started",
-	})
+	}); err != nil {
+		log.Printf("failed to create scheduler log: %v", err)
+	}
 
 	go s.processEmailQueue()
 	go s.checkExpiringSubscriptions()
@@ -67,18 +69,22 @@ func (s *Scheduler) Stop() {
 	s.running = false
 	close(s.stopChan)
 	log.Println("定时任务调度器已停止")
-	utils.CreateSchedulerLog("scheduler", "stopped", "定时任务调度器已停止", map[string]interface{}{
+	if err := utils.CreateSchedulerLog("scheduler", "stopped", "定时任务调度器已停止", map[string]interface{}{
 		"status": "stopped",
-	})
+	}); err != nil {
+		log.Printf("failed to create scheduler log: %v", err)
+	}
 }
 
 func (s *Scheduler) processEmailQueue() {
 	emailService := email.NewEmailService() // 每次重新创建，确保使用最新配置
 	if err := emailService.ProcessEmailQueue(); err != nil {
 		utils.LogErrorMsg("处理邮件队列失败: %v", err)
-		utils.CreateSchedulerLog("email_queue", "error", fmt.Sprintf("处理邮件队列失败: %v", err), map[string]interface{}{
+		if logErr := utils.CreateSchedulerLog("email_queue", "error", fmt.Sprintf("处理邮件队列失败: %v", err), map[string]interface{}{
 			"error": err.Error(),
-		})
+		}); logErr != nil {
+			log.Printf("failed to create scheduler log: %v", logErr)
+		}
 	}
 
 	ticker := time.NewTicker(1 * time.Minute)
@@ -92,9 +98,11 @@ func (s *Scheduler) processEmailQueue() {
 			emailService := email.NewEmailService()
 			if err := emailService.ProcessEmailQueue(); err != nil {
 				utils.LogErrorMsg("处理邮件队列失败: %v", err)
-				utils.CreateSchedulerLog("email_queue", "error", fmt.Sprintf("处理邮件队列失败: %v", err), map[string]interface{}{
+				if logErr := utils.CreateSchedulerLog("email_queue", "error", fmt.Sprintf("处理邮件队列失败: %v", err), map[string]interface{}{
 					"error": err.Error(),
-				})
+				}); logErr != nil {
+					log.Printf("failed to create scheduler log: %v", logErr)
+				}
 			}
 		}
 	}
@@ -146,9 +154,11 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 
 	if err := query.Preload("User").Preload("Package").Find(&subscriptions).Error; err != nil {
 		utils.LogErrorMsg("查询到期订阅失败: %v", err)
-		utils.CreateSchedulerLog("expiring_subscriptions", "error", fmt.Sprintf("查询到期订阅失败: %v", err), map[string]interface{}{
+		if logErr := utils.CreateSchedulerLog("expiring_subscriptions", "error", fmt.Sprintf("查询到期订阅失败: %v", err), map[string]interface{}{
 			"error": err.Error(),
-		})
+		}); logErr != nil {
+			log.Printf("failed to create scheduler log: %v", logErr)
+		}
 		return
 	}
 
@@ -161,11 +171,13 @@ func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remaining
 	}()
 	utils.LogInfo("发现 %d 个%s的订阅", count, statusText)
 	if count > 0 {
-		utils.CreateSchedulerLog("expiring_subscriptions", "info", fmt.Sprintf("发现 %d 个%s的订阅", count, statusText), map[string]interface{}{
+		if err := utils.CreateSchedulerLog("expiring_subscriptions", "info", fmt.Sprintf("发现 %d 个%s的订阅", count, statusText), map[string]interface{}{
 			"count":          count,
 			"remaining_days": remainingDays,
 			"is_expired":     isExpired,
-		})
+		}); err != nil {
+			log.Printf("failed to create scheduler log: %v", err)
+		}
 	}
 
 	emailService := email.NewEmailService()
@@ -434,12 +446,16 @@ func (s *Scheduler) checkNodeHealthNow() {
 
 	if err := healthService.CheckAllNodes(); err != nil {
 		utils.LogErrorMsg("节点健康检查失败: %v", err)
-		utils.CreateSchedulerLog("node_health_check", "error", fmt.Sprintf("节点健康检查失败: %v", err), map[string]interface{}{
+		if logErr := utils.CreateSchedulerLog("node_health_check", "error", fmt.Sprintf("节点健康检查失败: %v", err), map[string]interface{}{
 			"error": err.Error(),
-		})
+		}); logErr != nil {
+			log.Printf("failed to create scheduler log: %v", logErr)
+		}
 	} else {
 		utils.LogInfo("节点健康检查完成")
-		utils.CreateSchedulerLog("node_health_check", "success", "节点健康检查完成", nil)
+		if err := utils.CreateSchedulerLog("node_health_check", "success", "节点健康检查完成", nil); err != nil {
+			log.Printf("failed to create scheduler log: %v", err)
+		}
 	}
 }
 
@@ -579,7 +595,7 @@ func (s *Scheduler) checkAndRunAutoBackup() {
 	// 获取备份间隔
 	interval := 24 // 默认24小时
 	if err := s.db.Where("key = ? AND category = ?", "backup_auto_interval", "backup").First(&config).Error; err == nil {
-		if hours, err := strconv.Atoi(config.Value); err == nil && hours > 0 {
+		if hours, parseErr := strconv.Atoi(config.Value); parseErr == nil && hours > 0 {
 			interval = hours
 		}
 	}
@@ -592,15 +608,21 @@ func (s *Scheduler) checkAndRunAutoBackup() {
 
 	// 执行备份
 	utils.LogInfo("开始执行自动备份任务")
-	utils.CreateSchedulerLog("auto_backup", "started", "开始执行自动备份任务", nil)
+	if err := utils.CreateSchedulerLog("auto_backup", "started", "开始执行自动备份任务", nil); err != nil {
+		log.Printf("failed to create scheduler log: %v", err)
+	}
 	if err := s.runAutoBackup(); err != nil {
 		utils.LogErrorMsg("自动备份失败: %v", err)
-		utils.CreateSchedulerLog("auto_backup", "error", fmt.Sprintf("自动备份失败: %v", err), map[string]interface{}{
+		if logErr := utils.CreateSchedulerLog("auto_backup", "error", fmt.Sprintf("自动备份失败: %v", err), map[string]interface{}{
 			"error": err.Error(),
-		})
+		}); logErr != nil {
+			log.Printf("failed to create scheduler log: %v", logErr)
+		}
 	} else {
 		utils.LogInfo("自动备份任务执行成功")
-		utils.CreateSchedulerLog("auto_backup", "success", "自动备份任务执行成功", nil)
+		if err := utils.CreateSchedulerLog("auto_backup", "success", "自动备份任务执行成功", nil); err != nil {
+			log.Printf("failed to create scheduler log: %v", err)
+		}
 		// 更新最后备份时间
 		now := utils.GetBeijingTime()
 		lastBackupTime := now.Format("2006-01-02T15:04:05")
@@ -656,7 +678,7 @@ func (s *Scheduler) runAutoBackup() error {
 		return fmt.Errorf("无效的备份路径")
 	}
 
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	if err := os.MkdirAll(backupDir, 0750); err != nil {
 		return fmt.Errorf("创建备份目录失败: %w", err)
 	}
 
@@ -692,7 +714,9 @@ func (s *Scheduler) runAutoBackup() error {
 
 				writer, err := zipWriter.Create("cboard.db")
 				if err == nil {
-					io.Copy(writer, dbFile)
+					if _, copyErr := io.Copy(writer, dbFile); copyErr != nil {
+						log.Printf("failed to copy database file: %v", copyErr)
+					}
 				}
 			}
 		}
@@ -716,7 +740,9 @@ func (s *Scheduler) runAutoBackup() error {
 
 					writer, err := zipWriter.Create(filepath.Base(configFile))
 					if err == nil {
-						io.Copy(writer, file)
+						if _, copyErr := io.Copy(writer, file); copyErr != nil {
+							log.Printf("failed to copy config file %s: %v", configFile, copyErr)
+						}
 					}
 				}
 			}
@@ -748,7 +774,7 @@ func (s *Scheduler) runAutoBackup() error {
 			if backupTarget == "github" {
 				tokenKey = "backup_github_token"
 			} else {
-				tokenKey = "backup_gitee_token"
+			tokenKey = "backup_gitee_token" // #nosec G101 - Config key name, not credential
 			}
 
 			if err := s.db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
@@ -800,15 +826,23 @@ func (s *Scheduler) runAutoBackup() error {
 								if err == nil {
 									writer, err := zipWriter.Create("cboard.db")
 									if err == nil {
-										io.Copy(writer, dbFile)
+										if _, copyErr := io.Copy(writer, dbFile); copyErr != nil {
+											log.Printf("failed to copy database file: %v", copyErr)
+										}
 									}
-									dbFile.Close()
+									if closeErr := dbFile.Close(); closeErr != nil {
+										log.Printf("failed to close database file: %v", closeErr)
+									}
 								}
 							}
 						}
 
-						zipWriter.Close()
-						zipFile.Close()
+						if closeErr := zipWriter.Close(); closeErr != nil {
+							log.Printf("failed to close zip writer: %v", closeErr)
+						}
+						if closeErr := zipFile.Close(); closeErr != nil {
+							log.Printf("failed to close zip file: %v", closeErr)
+						}
 
 						// 根据目标选择平台类型并上传
 						var platformType git.PlatformType
@@ -829,7 +863,9 @@ func (s *Scheduler) runAutoBackup() error {
 						}
 
 						// 删除临时的备份文件
-						os.Remove(backupFilePath)
+						if err := os.Remove(backupFilePath); err != nil {
+							log.Printf("failed to remove backup file: %v", err)
+						}
 					}
 				}
 			}

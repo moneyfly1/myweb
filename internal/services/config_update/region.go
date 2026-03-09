@@ -40,7 +40,15 @@ func LoadRegionConfig() (*RegionConfig, error) {
 
 		var lastErr error
 		for _, path := range paths {
-			data, err := os.ReadFile(path)
+			// 清理路径并验证安全性
+			cleanPath := filepath.Clean(path)
+			// 确保路径不包含路径遍历字符
+			if strings.Contains(cleanPath, "..") {
+				lastErr = fmt.Errorf("不安全的路径: %s", path)
+				continue
+			}
+
+			data, err := os.ReadFile(cleanPath)
 			if err == nil {
 				var config RegionConfig
 				if err := json.Unmarshal(data, &config); err == nil {

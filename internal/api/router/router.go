@@ -13,7 +13,9 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.New()
 
-	r.SetTrustedProxies(nil)
+	if err := r.SetTrustedProxies(nil); err != nil {
+		utils.LogErrorMsg("failed to set trusted proxies: %v", err)
+	}
 
 	// 启用 Gzip 压缩（性能优化：传输大小减少 70-80%）
 	r.Use(gzip.Gzip(gzip.DefaultCompression))

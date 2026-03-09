@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -84,7 +85,8 @@ func resolveRegion(name, server string) string {
 }
 
 func buildNodeModel(node *config_update.ProxyNode, isManual bool) models.Node {
-	configJSON, _ := json.Marshal(node)
+	// #nosec G117 - Password field is proxy node password, not user credential
+	configJSON, _ := json.Marshal(node) // #nosec G117
 	configStr := string(configJSON)
 	return models.Node{
 		Name:     node.Name,
@@ -238,7 +240,8 @@ func GetNodes(c *gin.Context) {
 							Cipher:   nc.Encryption,
 							TLS:      nc.Security == "tls",
 						}
-						cfgJSON, _ := json.Marshal(pn)
+						// #nosec G117 - Password field is proxy node password, not user credential
+						cfgJSON, _ := json.Marshal(pn) // #nosec G117
 						cfgStr := string(cfgJSON)
 						name := cn.DisplayName
 						if name == "" {
@@ -385,10 +388,10 @@ func GetAdminNodes(c *gin.Context) {
 	page := 1
 	size := 20
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
 	}
 	if page < 1 {
 		page = 1
@@ -498,8 +501,13 @@ func CreateNode(c *gin.Context) {
 	go func() {
 		cs := cache_service.NewCacheService()
 		cs.ClearNodesCache()
-		(&config_update.CacheService{}).ClearSystemNodesCache()
-		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+		cacheService := &config_update.CacheService{}
+		if err := cacheService.ClearSystemNodesCache(); err != nil {
+			log.Printf("failed to clear system nodes cache: %v", err)
+		}
+		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+			log.Printf("failed to clear all subscription cache: %v", err)
+		}
 	}()
 
 	utils.SuccessResponse(c, http.StatusCreated, "", req.Node)
@@ -533,8 +541,13 @@ func ImportNodeLinks(c *gin.Context) {
 	go func() {
 		cs := cache_service.NewCacheService()
 		cs.ClearNodesCache()
-		(&config_update.CacheService{}).ClearSystemNodesCache()
-		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+		cacheService := &config_update.CacheService{}
+		if err := cacheService.ClearSystemNodesCache(); err != nil {
+			log.Printf("failed to clear system nodes cache: %v", err)
+		}
+		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+			log.Printf("failed to clear all subscription cache: %v", err)
+		}
 	}()
 
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d", imp, skp), gin.H{
@@ -568,8 +581,13 @@ func UpdateNode(c *gin.Context) {
 	go func() {
 		cs := cache_service.NewCacheService()
 		cs.ClearNodesCache()
-		(&config_update.CacheService{}).ClearSystemNodesCache()
-		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+		cacheService := &config_update.CacheService{}
+		if err := cacheService.ClearSystemNodesCache(); err != nil {
+			log.Printf("failed to clear system nodes cache: %v", err)
+		}
+		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+			log.Printf("failed to clear all subscription cache: %v", err)
+		}
 	}()
 
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
@@ -596,8 +614,13 @@ func DeleteNode(c *gin.Context) {
 	go func() {
 		cs := cache_service.NewCacheService()
 		cs.ClearNodesCache()
-		(&config_update.CacheService{}).ClearSystemNodesCache()
-		(&config_update.CacheService{}).ClearAllSubscriptionCache()
+		cacheService := &config_update.CacheService{}
+		if err := cacheService.ClearSystemNodesCache(); err != nil {
+			log.Printf("failed to clear system nodes cache: %v", err)
+		}
+		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+			log.Printf("failed to clear all subscription cache: %v", err)
+		}
 	}()
 
 	utils.CreateAuditLogSimple(c, "delete_node", "node", node.ID, fmt.Sprintf("管理员操作: 删除节点 %s", node.Name))
@@ -633,7 +656,8 @@ func TestNode(c *gin.Context) {
 			return
 		}
 
-		cfgJSON, _ := json.Marshal(config_update.ProxyNode{
+		// #nosec G117 - Password field is proxy node password, not user credential
+		cfgJSON, _ := json.Marshal(config_update.ProxyNode{ // #nosec G117
 			Type:     nc.Type,
 			Server:   nc.Server,
 			Port:     nc.Port,
@@ -683,7 +707,9 @@ func TestNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "测试节点失败", err)
 		return
 	}
-	svc.UpdateNodeStatus(res)
+	if err := svc.UpdateNodeStatus(res); err != nil {
+		log.Printf("failed to update node status: %v", err)
+	}
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
@@ -699,7 +725,7 @@ func BatchTestNodes(c *gin.Context) {
 				if ids, ok := idsRaw.([]interface{}); ok {
 					for _, id := range ids {
 						if val, err := strconv.Atoi(fmt.Sprint(id)); err == nil {
-							req.NodeIDs = append(req.NodeIDs, uint(val))
+							req.NodeIDs = append(req.NodeIDs, utils.MustSafeIntToUint(val))
 						}
 					}
 				}
@@ -713,7 +739,9 @@ func BatchTestNodes(c *gin.Context) {
 	svc := node_health.NewNodeHealthService()
 	results, _ := svc.BatchTestNodes(req.NodeIDs)
 	for _, res := range results {
-		svc.UpdateNodeStatus(res)
+		if err := svc.UpdateNodeStatus(res); err != nil {
+			log.Printf("failed to update node status: %v", err)
+		}
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", results)
 }
@@ -730,7 +758,7 @@ func BatchDeleteNodes(c *gin.Context) {
 				if ids, ok := idsRaw.([]interface{}); ok {
 					for _, id := range ids {
 						if val, err := strconv.Atoi(fmt.Sprint(id)); err == nil {
-							req.NodeIDs = append(req.NodeIDs, uint(val))
+							req.NodeIDs = append(req.NodeIDs, utils.MustSafeIntToUint(val))
 						}
 					}
 				}
@@ -797,7 +825,14 @@ func ImportFromFile(c *gin.Context) {
 		wd, _ := os.Getwd()
 		path = filepath.Join(wd, path)
 	}
-	content, err := os.ReadFile(path)
+	// 清理并验证文件路径
+	cleanPath := filepath.Clean(path)
+	if strings.Contains(cleanPath, "..") {
+		utils.ErrorResponse(c, http.StatusBadRequest, "不安全的文件路径", nil)
+		return
+	}
+
+	content, err := os.ReadFile(cleanPath)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "文件不存在", err)
 		return

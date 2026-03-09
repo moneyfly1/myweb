@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -533,7 +534,7 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, userID uint, current *models.Lo
 	} else {
 		notifContent = "检测到您的账户在异地登录。如非本人操作请尽快修改密码。"
 	}
-	uid := int64(user.ID)
+	uid := utils.MustSafeUintToInt64(user.ID)
 	if err := db.Create(&models.Notification{UserID: sql.NullInt64{Int64: uid, Valid: true}, Title: "账户登录安全提醒", Content: notifContent, Type: "security"}).Error; err != nil {
 		utils.LogErrorMsg("创建异常登录站内通知失败: user_id=%d, error=%v", user.ID, err)
 	}
@@ -762,7 +763,7 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 		// 这是系统内部操作（邀请奖励），不是用户直接操作，所以 IP 为空是合理的
 		go func() {
 			// 余额日志
-			utils.CreateBalanceLog(
+			if err := utils.CreateBalanceLog(
 				userID,
 				"commission",
 				amount,
@@ -774,7 +775,9 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 				"system",
 				nil,
 				"", // 系统内部操作，无客户端 IP
-			)
+			); err != nil {
+				log.Printf("failed to create balance log: %v", err)
+			}
 
 			// 佣金日志
 			commissionType := "register_reward"
@@ -785,7 +788,7 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 				inviteeID = userID
 			}
 			relationID := uint(relation.ID)
-			utils.CreateCommissionLog(
+			if err := utils.CreateCommissionLog(
 				inviterID,
 				inviteeID,
 				commissionType,
@@ -793,7 +796,9 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 				&relationID,
 				nil,
 				fmt.Sprintf("邀请奖励: %s", map[bool]string{true: "邀请人奖励", false: "被邀请人奖励"}[isInviter]),
-			)
+			); err != nil {
+				log.Printf("failed to create commission log: %v", err)
+			}
 		}()
 	} else {
 		utils.LogError("processInviteCode: failed to give reward", err, map[string]interface{}{"user_id": userID, "amount": amount})

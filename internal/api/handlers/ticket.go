@@ -507,7 +507,7 @@ func UpdateTicketStatus(c *gin.Context) {
 
 	ticket.Status = req.Status
 	if req.AssignedTo > 0 {
-		assignedTo := int64(req.AssignedTo)
+		assignedTo := utils.MustSafeUintToInt64(req.AssignedTo)
 		ticket.AssignedTo = &assignedTo
 	}
 	if req.AdminNotes != "" {

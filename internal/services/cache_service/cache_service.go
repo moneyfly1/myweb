@@ -4,6 +4,7 @@ import (
 	"cboard-go/internal/core/cache"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -28,7 +29,9 @@ func (cs *CacheService) Get(key string, result interface{}) (bool, error) {
 
 	if err := json.Unmarshal([]byte(cached), result); err != nil {
 		// 缓存数据异常，删除
-		cache.Del(key)
+		if delErr := cache.Del(key); delErr != nil {
+			log.Printf("failed to delete invalid cache: %v", delErr)
+		}
 		return false, err
 	}
 
@@ -263,8 +266,12 @@ func (cs *CacheService) SetKnowledgeArticlesCache(categoryID string, articles []
 // ClearKnowledgeArticlesCache 清除知识库文章缓存
 func (cs *CacheService) ClearKnowledgeArticlesCache() error {
 	// 清除所有知识库相关缓存
-	cs.Del("knowledge:articles:active")
-	cs.Del("knowledge:categories:active")
+	if err := cs.Del("knowledge:articles:active"); err != nil {
+		log.Printf("failed to delete knowledge articles cache: %v", err)
+	}
+	if err := cs.Del("knowledge:categories:active"); err != nil {
+		log.Printf("failed to delete knowledge categories cache: %v", err)
+	}
 	// 注意：这里无法清除所有分类的缓存，需要在具体操作时清除
 	return nil
 }

@@ -289,8 +289,8 @@ func GetAbnormalUsers(c *gin.Context) {
 	oneMonthAgo := now.AddDate(0, -1, 0)
 
 	var minSub, minReset int
-	fmt.Sscanf(subscriptionCountFilter, "%d", &minSub)
-	fmt.Sscanf(resetCountFilter, "%d", &minReset)
+	_, _ = fmt.Sscanf(subscriptionCountFilter, "%d", &minSub) // Ignore error, use default value
+	_, _ = fmt.Sscanf(resetCountFilter, "%d", &minReset)      // Ignore error, use default value
 
 	if minSub <= 0 {
 		minSub = 10
