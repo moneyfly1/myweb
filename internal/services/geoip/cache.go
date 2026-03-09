@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -39,7 +40,9 @@ func GetLocationWithCache(ipAddress string) sql.NullString {
 				cacheValue = loc.String
 			}
 			// 缓存 24 小时
-			cache.Set(cacheKey, cacheValue, 24*time.Hour)
+			if err := cache.Set(cacheKey, cacheValue, 24*time.Hour); err != nil {
+				log.Printf("failed to set geoip cache: %v", err)
+			}
 		}(ipAddress, location)
 	}
 
@@ -114,7 +117,9 @@ func GetLocationWithFallbackCached(ipAddress string) (*LocationInfo, error) {
 				}
 			}
 			// 缓存 24 小时
-			cache.Set(cacheKey, cacheValue, 24*time.Hour)
+			if err := cache.Set(cacheKey, cacheValue, 24*time.Hour); err != nil {
+				log.Printf("failed to set geoip detail cache: %v", err)
+			}
 		}(ipAddress, location, err)
 	}
 

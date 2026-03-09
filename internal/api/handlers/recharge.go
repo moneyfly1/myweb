@@ -418,10 +418,10 @@ func GetAdminRechargeRecords(c *gin.Context) {
 	page := 1
 	size := 20
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
 	}
 	if page < 1 {
 		page = 1

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -446,9 +447,15 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	// 清除节点和订阅配置缓存
 	cs := cache_service.NewCacheService()
-	cs.ClearNodesCache()
-	(&CacheService{}).ClearSystemNodesCache()
-	(&CacheService{}).ClearAllSubscriptionCache()
+	if err := cs.ClearNodesCache(); err != nil {
+		log.Printf("failed to clear nodes cache: %v", err)
+	}
+	if err := (&CacheService{}).ClearSystemNodesCache(); err != nil {
+		log.Printf("failed to clear system nodes cache: %v", err)
+	}
+	if err := (&CacheService{}).ClearAllSubscriptionCache(); err != nil {
+		log.Printf("failed to clear all subscription cache: %v", err)
+	}
 	s.logSeparator()
 	s.log("INFO", "🧹 清理缓存")
 	s.logSeparator()
@@ -1010,7 +1017,8 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 
 	for _, item := range nodesWithOrder {
 		node := item.node
-		configJSON, _ := json.Marshal(node)
+		// #nosec G117 - Password field is proxy node password, not user credential
+		configJSON, _ := json.Marshal(node) // #nosec G117
 		configStr := string(configJSON)
 		region := s.resolveRegion(node.Name, node.Server)
 
@@ -1264,7 +1272,9 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 	// 异步写入缓存
 	if len(systemNodes) > 0 {
 		go func(nodes []*ProxyNode) {
-			cacheService.SetSystemNodesCache(nodes)
+			if err := cacheService.SetSystemNodesCache(nodes); err != nil {
+				log.Printf("failed to set system nodes cache: %v", err)
+			}
 		}(systemNodes)
 	}
 }
@@ -1323,7 +1333,9 @@ func (s *ConfigUpdateService) GenerateClashConfig(token string, clientIP string,
 		ttl := s.calculateCacheTTL(&ctx.Subscription, &ctx.User)
 		if ttl > 0 {
 			go func(token, cfg string, cacheTTL time.Duration) {
-				cacheService.SetSubscriptionConfigCache(token, "clash", cfg, cacheTTL)
+				if err := cacheService.SetSubscriptionConfigCache(token, "clash", cfg, cacheTTL); err != nil {
+					log.Printf("failed to set subscription config cache: %v", err)
+				}
 			}(token, config, ttl)
 		}
 	}
@@ -1369,7 +1381,9 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP str
 		ttl := s.calculateCacheTTL(&ctx.Subscription, &ctx.User)
 		if ttl > 0 {
 			go func(token, fmt, cfg string, cacheTTL time.Duration) {
-				cacheService.SetSubscriptionConfigCache(token, fmt, cfg, cacheTTL)
+				if err := cacheService.SetSubscriptionConfigCache(token, fmt, cfg, cacheTTL); err != nil {
+					log.Printf("failed to set subscription config cache: %v", err)
+				}
 			}(token, cacheFormat, config, ttl)
 		}
 	}
@@ -1420,7 +1434,13 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 
 	// 尝试加载模板
 	templatePath := filepath.Join("uploads", "config", "temp.yaml")
-	templateData, err := os.ReadFile(templatePath)
+	// 清理并验证模板路径
+	cleanTemplatePath := filepath.Clean(templatePath)
+	if strings.Contains(cleanTemplatePath, "..") {
+		return s.generateDefaultClashYAML(filteredProxies, proxyNames, subscriptionName)
+	}
+
+	templateData, err := os.ReadFile(cleanTemplatePath)
 	if err != nil {
 		return s.generateDefaultClashYAML(filteredProxies, proxyNames, subscriptionName)
 	}
@@ -2195,7 +2215,7 @@ func unescapeUnicode(s string) string {
 		if err != nil {
 			return match
 		}
-		return string(rune(codePoint))
+		return string(utils.MustSafeInt64ToRune(codePoint))
 	})
 }
 

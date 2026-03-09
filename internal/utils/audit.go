@@ -60,7 +60,7 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 	var userID sql.NullInt64
 	if uid, exists := c.Get("user_id"); exists {
 		if u, ok := uid.(uint); ok {
-			userID = sql.NullInt64{Int64: int64(u), Valid: true}
+			userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 		}
 	}
 
@@ -98,7 +98,7 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 		UserID:            userID,
 		ActionType:        actionType,
 		ResourceType:      sql.NullString{String: resourceType, Valid: resourceType != ""},
-		ResourceID:        sql.NullInt64{Int64: int64(resourceID), Valid: resourceID > 0},
+		ResourceID:        sql.NullInt64{Int64: MustSafeUintToInt64(resourceID), Valid: resourceID > 0},
 		ActionDescription: sql.NullString{String: description, Valid: description != ""},
 		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
 		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
@@ -113,7 +113,7 @@ func CreateAuditLog(c *gin.Context, actionType, resourceType string, resourceID 
 
 	if err := db.Create(&auditLog).Error; err != nil {
 		if userID.Valid {
-			LogAudit(uint(userID.Int64), actionType, resourceType, resourceID, description)
+			LogAudit(MustSafeInt64ToUint(userID.Int64), actionType, resourceType, resourceID, description)
 		}
 		if AppLogger != nil {
 			AppLogger.Error("保存审计日志失败: %v", err)
@@ -164,7 +164,7 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 	var userID sql.NullInt64
 	if uid, exists := c.Get("user_id"); exists {
 		if u, ok := uid.(uint); ok {
-			userID = sql.NullInt64{Int64: int64(u), Valid: true}
+			userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 		}
 	}
 
@@ -278,7 +278,7 @@ func CreateBusinessLog(c *gin.Context, actionType, description, level string, da
 		}
 		if uid, exists := c.Get("user_id"); exists {
 			if u, ok := uid.(uint); ok {
-				userID = sql.NullInt64{Int64: int64(u), Valid: true}
+				userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 			}
 		}
 		requestParams = buildRequestParams(c)
@@ -346,7 +346,7 @@ func CreateBusinessLogFast(c *gin.Context, actionType, description, level string
 		path = c.Request.URL.Path
 		if uid, exists := c.Get("user_id"); exists {
 			if u, ok := uid.(uint); ok {
-				userID = sql.NullInt64{Int64: int64(u), Valid: true}
+				userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 			}
 		}
 		requestParams = buildRequestParams(c)
@@ -406,7 +406,7 @@ func CreateBusinessLogAsync(c *gin.Context, actionType, description, level strin
 		path = c.Request.URL.Path
 		if uid, exists := c.Get("user_id"); exists {
 			if u, ok := uid.(uint); ok {
-				userID = sql.NullInt64{Int64: int64(u), Valid: true}
+				userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 			}
 		}
 	}
@@ -478,7 +478,7 @@ func CreateAuditLogSimpleFast(c *gin.Context, actionType, resourceType string, r
 		userAgent = c.GetHeader("User-Agent")
 		if uid, exists := c.Get("user_id"); exists {
 			if u, ok := uid.(uint); ok {
-				userID = sql.NullInt64{Int64: int64(u), Valid: true}
+				userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 			}
 		}
 	}
@@ -487,7 +487,7 @@ func CreateAuditLogSimpleFast(c *gin.Context, actionType, resourceType string, r
 		UserID:            userID,
 		ActionType:        actionType,
 		ResourceType:      sql.NullString{String: resourceType, Valid: true},
-		ResourceID:        sql.NullInt64{Int64: int64(resourceID), Valid: resourceID > 0},
+		ResourceID:        sql.NullInt64{Int64: MustSafeUintToInt64(resourceID), Valid: resourceID > 0},
 		ActionDescription: sql.NullString{String: description, Valid: true},
 		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
 		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
@@ -579,7 +579,7 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 	var userID sql.NullInt64
 	if uid, exists := c.Get("user_id"); exists {
 		if u, ok := uid.(uint); ok {
-			userID = sql.NullInt64{Int64: int64(u), Valid: true}
+			userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
 		}
 	}
 

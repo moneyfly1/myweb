@@ -43,7 +43,7 @@ func CreateRegistrationLog(userID uint, username, email, ipAddress, userAgent st
 	}
 
 	if inviterID != nil {
-		log.InviterID = database.NullInt64(int64(*inviterID))
+		log.InviterID = database.NullInt64(MustSafeUintToInt64(*inviterID))
 	}
 
 	return db.Create(&log).Error
@@ -115,7 +115,7 @@ func CreateSubscriptionLog(subscriptionID, userID uint, actionType, actionBy str
 	}
 
 	if actionByUserID != nil {
-		log.ActionByUserID = database.NullInt64(int64(*actionByUserID))
+		log.ActionByUserID = database.NullInt64(MustSafeUintToInt64(*actionByUserID))
 	}
 
 	return db.Create(&log).Error
@@ -151,15 +151,15 @@ func CreateBalanceLog(userID uint, changeType string, amount, balanceBefore, bal
 	}
 
 	if relatedOrderID != nil {
-		log.RelatedOrderID = database.NullInt64(int64(*relatedOrderID))
+		log.RelatedOrderID = database.NullInt64(MustSafeUintToInt64(*relatedOrderID))
 	}
 
 	if relatedRecordID != nil {
-		log.RelatedRecordID = database.NullInt64(int64(*relatedRecordID))
+		log.RelatedRecordID = database.NullInt64(MustSafeUintToInt64(*relatedRecordID))
 	}
 
 	if operatorUserID != nil {
-		log.OperatorUserID = database.NullInt64(int64(*operatorUserID))
+		log.OperatorUserID = database.NullInt64(MustSafeUintToInt64(*operatorUserID))
 	}
 
 	return db.Create(&log).Error
@@ -186,11 +186,11 @@ func CreateCommissionLog(inviterID, inviteeID uint, commissionType string, amoun
 	}
 
 	if inviteRelationID != nil {
-		log.InviteRelationID = database.NullInt64(int64(*inviteRelationID))
+		log.InviteRelationID = database.NullInt64(MustSafeUintToInt64(*inviteRelationID))
 	}
 
 	if relatedOrderID != nil {
-		log.RelatedOrderID = database.NullInt64(int64(*relatedOrderID))
+		log.RelatedOrderID = database.NullInt64(MustSafeUintToInt64(*relatedOrderID))
 	}
 
 	return db.Create(&log).Error

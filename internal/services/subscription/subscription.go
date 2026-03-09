@@ -72,7 +72,7 @@ func (s *SubscriptionService) CreateSubscription(userID uint, packageID uint, du
 
 	deviceLimit := getDefaultDeviceLimit(s.db)
 
-	packageIDPtr := int64(packageID)
+	packageIDPtr := utils.MustSafeUintToInt64(packageID)
 	subscription := models.Subscription{
 		UserID:          userID,
 		PackageID:       &packageIDPtr,
@@ -166,7 +166,9 @@ func (s *SubscriptionService) CheckExpired() error {
 		go func(subs []models.Subscription) {
 			for _, sub := range subs {
 				if sub.SubscriptionURL != "" {
-					cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+					if cacheErr := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); cacheErr != nil {
+						log.Printf("failed to clear subscription config cache: %v", cacheErr)
+					}
 				}
 			}
 		}(expiredSubs)

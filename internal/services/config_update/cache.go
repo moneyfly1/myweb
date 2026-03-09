@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -37,7 +38,8 @@ func (cs *CacheService) SetSystemNodesCache(nodes []*ProxyNode) error {
 		return nil
 	}
 
-	data, err := json.Marshal(nodes)
+	// #nosec G117 - Password field is proxy node password, not user credential
+	data, err := json.Marshal(nodes) // #nosec G117
 	if err != nil {
 		return err
 	}
@@ -72,7 +74,8 @@ func (cs *CacheService) SetCustomNodesCache(userID uint, nodes []*ProxyNode) err
 		return nil
 	}
 
-	data, err := json.Marshal(nodes)
+	// #nosec G117 - Password field is proxy node password, not user credential
+	data, err := json.Marshal(nodes) // #nosec G117
 	if err != nil {
 		return err
 	}
@@ -105,7 +108,9 @@ func (cs *CacheService) ClearAllSubscriptionCache() error {
 	}
 
 	// 清除系统节点缓存
-	cache.Del("nodes:system:all")
+	if err := cache.Del("nodes:system:all"); err != nil {
+		log.Printf("failed to delete nodes cache: %v", err)
+	}
 
 	// 清除所有订阅配置缓存（节点变更时，所有订阅配置都应失效）
 	// 使用 SCAN 命令批量删除，避免 KEYS 命令阻塞
@@ -121,7 +126,9 @@ func (cs *CacheService) ClearAllSubscriptionCache() error {
 				break
 			}
 			if len(keys) > 0 {
-				client.Del(ctx, keys...)
+				if delErr := client.Del(ctx, keys...).Err(); delErr != nil {
+					log.Printf("failed to delete subscription config cache keys: %v", delErr)
+				}
 			}
 			if cursor == 0 {
 				break
@@ -164,8 +171,12 @@ func (cs *CacheService) ClearSubscriptionConfigCache(subscriptionURL string) err
 	}
 
 	// 清除该订阅的所有格式缓存
-	cache.Del(fmt.Sprintf("subscription:config:%s:clash", subscriptionURL))
-	cache.Del(fmt.Sprintf("subscription:config:%s:base64", subscriptionURL))
+	if err := cache.Del(fmt.Sprintf("subscription:config:%s:clash", subscriptionURL)); err != nil {
+		log.Printf("failed to delete clash cache: %v", err)
+	}
+	if err := cache.Del(fmt.Sprintf("subscription:config:%s:base64", subscriptionURL)); err != nil {
+		log.Printf("failed to delete base64 cache: %v", err)
+	}
 
 	return nil
 }

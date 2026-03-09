@@ -217,7 +217,7 @@ func GetStatistics(c *gin.Context) {
 func GetRevenueChart(c *gin.Context) {
 	days := 30
 	if daysParam := c.Query("days"); daysParam != "" {
-		fmt.Sscanf(daysParam, "%d", &days)
+		_, _ = fmt.Sscanf(daysParam, "%d", &days) // Ignore error, use default value
 	}
 
 	cacheService := cache_service.NewCacheService()
@@ -417,7 +417,7 @@ func GetRegionStats(c *gin.Context) {
 
 	for _, log := range auditLogs {
 		if log.UserID.Valid {
-			processEntry(uint(log.UserID.Int64), log.Location.String, log.IPAddress.String, log.CreatedAt)
+			processEntry(utils.MustSafeInt64ToUint(log.UserID.Int64), log.Location.String, log.IPAddress.String, log.CreatedAt)
 		}
 	}
 

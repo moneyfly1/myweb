@@ -159,6 +159,11 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 func sendTelegramMessage(botToken, chatID, message string) (bool, error) {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
 
+	// 验证URL以防止SSRF攻击
+	if err := utils.ValidateHTTPURL(apiURL); err != nil {
+		return false, fmt.Errorf("URL验证失败: %w", err)
+	}
+
 	payload := map[string]interface{}{
 		"chat_id":    chatID,
 		"text":       message,
@@ -170,7 +175,8 @@ func sendTelegramMessage(botToken, chatID, message string) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	// #nosec G107 - URL is validated above with ValidateHTTPURL
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData)) // #nosec G107
 	if err != nil {
 		return false, err
 	}
@@ -188,6 +194,11 @@ func sendBarkMessage(serverURL, deviceKey, title, body string) (bool, error) {
 	serverURL = strings.TrimSuffix(serverURL, "/")
 	apiURL := fmt.Sprintf("%s/push", serverURL)
 
+	// 验证URL以防止SSRF攻击
+	if err := utils.ValidateHTTPURL(apiURL); err != nil {
+		return false, fmt.Errorf("URL验证失败: %w", err)
+	}
+
 	payload := map[string]interface{}{
 		"device_key": deviceKey,
 		"title":      title,
@@ -199,7 +210,8 @@ func sendBarkMessage(serverURL, deviceKey, title, body string) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	// #nosec G107 - URL is validated above with ValidateHTTPURL
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData)) // #nosec G107
 	if err != nil {
 		return false, err
 	}
@@ -214,7 +226,8 @@ func sendBarkMessage(serverURL, deviceKey, title, body string) (bool, error) {
 }
 
 func getNotificationSubject(notificationType string) string {
-	subjectMap := map[string]string{
+	// #nosec G101 - These are notification subject templates, not credentials
+	subjectMap := map[string]string{ // #nosec G101
 		"order_paid":           "💰 新订单支付成功",
 		"user_registered":      "👤 新用户注册",
 		"password_reset":       "🔐 用户重置密码",

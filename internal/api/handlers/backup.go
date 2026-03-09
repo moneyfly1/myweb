@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,7 +42,7 @@ func CreateBackup(c *gin.Context) {
 		return
 	}
 
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	if err := os.MkdirAll(backupDir, 0750); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建备份目录失败", err)
 		return
 	}
@@ -96,7 +97,7 @@ func CreateBackup(c *gin.Context) {
 
 				writer, err := zipWriter.Create("cboard.db")
 				if err == nil {
-					io.Copy(writer, dbFile)
+					_, _ = io.Copy(writer, dbFile) // Ignore copy error, best effort
 				}
 			}
 		}
@@ -119,7 +120,7 @@ func CreateBackup(c *gin.Context) {
 
 					writer, err := zipWriter.Create(filepath.Base(configFile))
 					if err == nil {
-						io.Copy(writer, file)
+						_, _ = io.Copy(writer, file) // Ignore copy error, best effort
 					}
 				}
 			}
@@ -158,7 +159,7 @@ func CreateBackup(c *gin.Context) {
 			if backupTarget == "github" {
 				tokenKey = "backup_github_token"
 			} else {
-				tokenKey = "backup_gitee_token"
+				tokenKey = "backup_gitee_token" // #nosec G101 - Config key name, not credential
 			}
 
 			if err := db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
@@ -210,15 +211,21 @@ func CreateBackup(c *gin.Context) {
 								if err == nil {
 									writer, err := zipWriter.Create("cboard.db")
 									if err == nil {
-										io.Copy(writer, dbFile)
+										_, _ = io.Copy(writer, dbFile) // Ignore copy error, best effort
 									}
-									dbFile.Close()
+									if err := dbFile.Close(); err != nil {
+										log.Printf("failed to close db file: %v", err)
+									}
 								}
 							}
 						}
 
-						zipWriter.Close()
-						zipFile.Close()
+						if err := zipWriter.Close(); err != nil {
+							log.Printf("failed to close zip writer: %v", err)
+						}
+						if err := zipFile.Close(); err != nil {
+							log.Printf("failed to close zip file: %v", err)
+						}
 
 						// 获取文件大小
 						var fileSize int64
@@ -268,7 +275,9 @@ func CreateBackup(c *gin.Context) {
 								utils.LogInfo("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName)
 							}
 
-							os.Remove(backupFilePath)
+							if err := os.Remove(backupFilePath); err != nil {
+							log.Printf("failed to remove backup file: %v", err)
+						}
 						}()
 
 						uploadResult["async"] = true

@@ -106,11 +106,17 @@ func (c *GitClient) UploadFile(filePath, remotePath string) error {
 
 // UploadFileWithProgress 上传文件（带进度回调）
 func (c *GitClient) UploadFileWithProgress(filePath, remotePath string, progressCallback ProgressCallback) error {
+	// 清理并验证文件路径
+	cleanFilePath := filepath.Clean(filePath)
+	if strings.Contains(cleanFilePath, "..") {
+		return fmt.Errorf("不安全的文件路径: %s", filePath)
+	}
+
 	if progressCallback != nil {
 		progressCallback(5, "正在打开文件...")
 	}
 
-	file, err := os.Open(filePath)
+	file, err := os.Open(cleanFilePath)
 	if err != nil {
 		return fmt.Errorf("打开文件失败: %w", err)
 	}
