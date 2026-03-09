@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1059,7 +1060,9 @@ func CreateUser(c *gin.Context) {
 				"expire_time":     utils.FormatBeijingTime(subscription.ExpireTime),
 				"status":          subscription.Status,
 			}
-			utils.CreateSubscriptionLog(subscription.ID, user.ID, "create", actionBy, actionByUserID, ipAddress, nil, afterData, "管理员创建用户时自动创建订阅")
+			if err := utils.CreateSubscriptionLog(subscription.ID, user.ID, "create", actionBy, actionByUserID, ipAddress, nil, afterData, "管理员创建用户时自动创建订阅"); err != nil {
+				log.Printf("failed to create subscription log: %v", err)
+			}
 		}()
 	}
 
@@ -1251,12 +1254,16 @@ func UpdateUser(c *gin.Context) {
 						actionBy = adminUser.Username
 					}
 					ipAddress := utils.GetRealClientIP(c)
-					utils.CreateSubscriptionLog(subscription.ID, user.ID, "update", actionBy, actionByUserID, ipAddress, beforeSubData, afterSubData, "管理员通过编辑用户更新订阅信息")
+					if err := utils.CreateSubscriptionLog(subscription.ID, user.ID, "update", actionBy, actionByUserID, ipAddress, beforeSubData, afterSubData, "管理员通过编辑用户更新订阅信息"); err != nil {
+						log.Printf("failed to create subscription log: %v", err)
+					}
 				}()
 
 				// 清除订阅配置缓存
 				go func(subURL string) {
-					cache.ClearSubscriptionConfigCache(subURL)
+					if err := cache.ClearSubscriptionConfigCache(subURL); err != nil {
+						log.Printf("failed to clear subscription config cache: %v", err)
+					}
 				}(subscription.SubscriptionURL)
 			}
 		}
@@ -1289,7 +1296,7 @@ func UpdateUser(c *gin.Context) {
 			}
 			amount := user.Balance - oldBalance
 			ipAddress := utils.GetRealClientIP(c)
-			utils.CreateBalanceLog(
+			if err := utils.CreateBalanceLog(
 				user.ID,
 				"admin_adjust",
 				amount,
@@ -1301,7 +1308,9 @@ func UpdateUser(c *gin.Context) {
 				operator,
 				operatorUserID,
 				ipAddress,
-			)
+			); err != nil {
+				log.Printf("failed to create balance log: %v", err)
+			}
 		}()
 	}
 
@@ -1876,7 +1885,9 @@ func BatchEnableUsers(c *gin.Context) {
 		var subs []models.Subscription
 		db.Select("subscription_url").Where("user_id IN ?", userIDs).Find(&subs)
 		for _, sub := range subs {
-			cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
 		}
 	}(req.UserIDs)
 
@@ -1929,7 +1940,9 @@ func BatchDisableUsers(c *gin.Context) {
 		var subs []models.Subscription
 		db.Select("subscription_url").Where("user_id IN ?", userIDs).Find(&subs)
 		for _, sub := range subs {
-			cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
 		}
 	}(req.UserIDs)
 

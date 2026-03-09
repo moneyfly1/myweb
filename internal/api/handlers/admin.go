@@ -967,10 +967,10 @@ func GetPaymentConfig(c *gin.Context) {
 
 	page, size := 1, 100
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
 	}
 	if page < 1 {
 		page = 1
@@ -1054,7 +1054,7 @@ func GetUserTrend(c *gin.Context) {
 	db := database.GetDB()
 	days := 30
 	if daysStr := c.Query("days"); daysStr != "" {
-		fmt.Sscanf(daysStr, "%d", &days)
+		_, _ = fmt.Sscanf(daysStr, "%d", &days) // Ignore error, use default value
 	}
 	type UserTrend struct {
 		Date      string `json:"date"`
@@ -1390,10 +1390,10 @@ func UpdatePaymentConfig(c *gin.Context) {
 func getPagination(c *gin.Context) (page int, size int, offset int) {
 	page, size = 1, 20
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
 	}
 	if page < 1 {
 		page = 1

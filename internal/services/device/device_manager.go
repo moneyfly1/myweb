@@ -798,7 +798,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		return &existingDevice, nil
 	} else if err == gorm.ErrRecordNotFound {
 		now := utils.GetBeijingTime()
-		userIDInt64 := int64(userID)
+		userIDInt64 := utils.MustSafeUintToInt64(userID)
 		subscriptionTypeStr := subscriptionType
 
 		// 查询位置信息（使用缓存）

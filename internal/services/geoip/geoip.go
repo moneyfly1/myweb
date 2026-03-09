@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -88,7 +89,9 @@ func InitGeoIP(dbPath string) error {
 	defer geoipDBLock.Unlock()
 
 	if geoipDB != nil {
-		geoipDB.Close()
+		if err := geoipDB.Close(); err != nil {
+			log.Printf("failed to close geoip database: %v", err)
+		}
 		geoipDB = nil
 	}
 	if ip2locationDB != nil {
@@ -443,7 +446,9 @@ func Close() {
 	defer geoipDBLock.Unlock()
 
 	if geoipDB != nil {
-		geoipDB.Close()
+		if err := geoipDB.Close(); err != nil {
+			log.Printf("failed to close geoip database: %v", err)
+		}
 		geoipDB = nil
 	}
 	if ip2locationDB != nil {

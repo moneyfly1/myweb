@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"cboard-go/internal/models"
@@ -13,6 +14,49 @@ import (
 )
 
 // ========== URL相关 ==========
+
+// ValidateHTTPURL 验证HTTP URL以防止SSRF攻击
+// 检查URL格式、协议和主机地址，确保不访问内网资源
+func ValidateHTTPURL(rawURL string) error {
+	// 解析URL
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("无效的URL格式: %w", err)
+	}
+
+	// 验证协议只允许 http 或 https
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("不支持的协议: %s，仅允许 http 或 https", parsedURL.Scheme)
+	}
+
+	// 获取主机名
+	hostname := parsedURL.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("URL缺少主机名")
+	}
+
+	// 检查是否为localhost
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
+		return fmt.Errorf("禁止访问本地地址")
+	}
+
+	// 解析主机名为IP地址
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		// 如果无法解析，可能是无效的域名，但我们允许继续（可能是DNS问题）
+		// 在生产环境中，可以选择更严格的策略
+		return nil
+	}
+
+	// 检查所有解析出的IP地址
+	for _, ip := range ips {
+		if IsPrivateIP(ip) {
+			return fmt.Errorf("禁止访问内网地址: %s", ip.String())
+		}
+	}
+
+	return nil
+}
 
 func BuildBaseURL(r *http.Request, domainName string) string {
 	if domainName != "" {

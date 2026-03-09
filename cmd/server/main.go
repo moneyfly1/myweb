@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cboard-go/internal/api/router"
@@ -55,12 +56,12 @@ func main() {
 
 	ensureDefaultEmailTemplates()
 
-	if err := os.MkdirAll(cfg.UploadDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.UploadDir, 0750); err != nil {
 		log.Printf("创建上传目录失败: %v", err)
 	}
 
 	logDir := filepath.Join(cfg.UploadDir, "logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0750); err != nil {
 		log.Printf("创建日志目录失败: %v", err)
 	}
 
@@ -80,9 +81,16 @@ func main() {
 		}
 	}
 
-	if _, err := os.Stat(geoipPath); os.IsNotExist(err) {
+	// 验证 geoipPath 安全性
+	cleanGeoipPath := filepath.Clean(geoipPath)
+	if strings.Contains(cleanGeoipPath, "..") {
+		log.Printf("不安全的 GeoIP 路径: %s", geoipPath)
+		cleanGeoipPath = "./GeoLite2-City.mmdb"
+	}
+
+	if _, err := os.Stat(cleanGeoipPath); os.IsNotExist(err) {
 		log.Println("GeoIP 数据库文件不存在，尝试自动下载...")
-		if err := downloadGeoIPDatabase(geoipPath); err != nil {
+		if err := downloadGeoIPDatabase(cleanGeoipPath); err != nil {
 			log.Printf("自动下载 GeoIP 数据库失败: %v", err)
 			log.Println("提示: 如需启用地理位置解析，请手动下载 GeoLite2-City.mmdb 文件")
 			log.Println("下载地址: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
@@ -91,7 +99,7 @@ func main() {
 		}
 	}
 
-	if err := geoip.InitGeoIP(geoipPath); err != nil {
+	if err := geoip.InitGeoIP(cleanGeoipPath); err != nil {
 		log.Printf("GeoIP 初始化失败（地理位置解析功能已禁用）: %v", err)
 		log.Println("提示: 如需启用地理位置解析，请下载 GeoLite2-City.mmdb 文件")
 		log.Println("下载地址: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
@@ -128,9 +136,15 @@ func main() {
 }
 
 func downloadGeoIPDatabase(filePath string) error {
+	// 验证文件路径安全性
+	cleanPath := filepath.Clean(filePath)
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("不安全的文件路径: %s", filePath)
+	}
+
 	url := "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
 
-	out, err := os.Create(filePath)
+	out, err := os.Create(cleanPath)
 	if err != nil {
 		return fmt.Errorf("创建文件失败: %w", err)
 	}

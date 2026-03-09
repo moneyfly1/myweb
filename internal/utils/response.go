@@ -86,15 +86,21 @@ func ParsePagination(c *gin.Context) PaginationParams {
 	size := 20
 
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		if _, err := fmt.Sscanf(pageStr, "%d", &page); err != nil {
+			page = 1
+		}
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		if _, err := fmt.Sscanf(sizeStr, "%d", &size); err != nil {
+			size = 20
+		}
 	}
 
 	if skipStr := c.Query("skip"); skipStr != "" {
 		var skip int
-		fmt.Sscanf(skipStr, "%d", &skip)
+		if _, err := fmt.Sscanf(skipStr, "%d", &skip); err != nil {
+			skip = 0
+		}
 		if skip < 0 {
 			skip = 0
 		}
@@ -107,7 +113,9 @@ func ParsePagination(c *gin.Context) PaginationParams {
 	}
 	if limitStr := c.Query("limit"); limitStr != "" {
 		var limit int
-		fmt.Sscanf(limitStr, "%d", &limit)
+		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+			limit = 20
+		}
 		if size == 20 {
 			size = limit
 		}

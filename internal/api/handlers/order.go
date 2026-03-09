@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -242,7 +243,7 @@ func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *pa
 	// 解析支付宝返回的金额
 	var alipayAmount float64
 	if result.TotalAmount != "" {
-		fmt.Sscanf(result.TotalAmount, "%f", &alipayAmount)
+		_, _ = fmt.Sscanf(result.TotalAmount, "%f", &alipayAmount) // Ignore error, use default value
 	}
 
 	err = utils.WithTransaction(db, func(tx *gorm.DB) error {
@@ -1159,7 +1160,9 @@ func GetOrderStatusByNo(c *gin.Context) {
 				var processedOrder models.Order
 				if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&processedOrder).Error; err == nil && processedOrder.Status == "paid" {
 					svc := orderServicePkg.NewOrderService()
-					svc.ProcessPaidOrder(&processedOrder)
+					if _, err := svc.ProcessPaidOrder(&processedOrder); err != nil {
+						log.Printf("failed to process paid order: %v", err)
+					}
 					sendPaymentNotifications(db, orderNo)
 				}
 			}()
@@ -1362,7 +1365,7 @@ func UpgradeDevices(c *gin.Context) {
 			go func() {
 				orderID := uint(order.ID)
 				userID := user.ID
-				utils.CreateBalanceLog(
+				if err := utils.CreateBalanceLog(
 					user.ID,
 					"consume",
 					-balanceUsed,
@@ -1374,10 +1377,16 @@ func UpgradeDevices(c *gin.Context) {
 					"user",
 					&userID,
 					utils.GetRealClientIP(c),
-				)
+				); err != nil {
+					log.Printf("failed to create balance log: %v", err)
+				}
 			}()
 		}
-		orderServicePkg.NewOrderService().ProcessPaidOrder(&order)
+		go func() {
+			if _, err := orderServicePkg.NewOrderService().ProcessPaidOrder(&order); err != nil {
+				log.Printf("failed to process paid order: %v", err)
+			}
+		}()
 		db.Where("user_id = ?", user.ID).First(&subscription)
 		utils.SuccessResponse(c, http.StatusOK, "设备数量升级成功", gin.H{
 			"order_no":           order.OrderNo,
@@ -1685,7 +1694,7 @@ func CreateCustomOrder(c *gin.Context) {
 					couponDiscount = finalPrice
 				}
 				couponDiscount = utils.RoundFloat(couponDiscount, 2)
-				cid := int64(coupon.ID)
+				cid := utils.MustSafeUintToInt64(coupon.ID)
 				couponID = &cid
 			}
 		}
@@ -1742,7 +1751,7 @@ func CreateCustomOrder(c *gin.Context) {
 		db.Create(&models.CouponUsage{
 			CouponID:       uint(*couponID),
 			UserID:         user.ID,
-			OrderID:        database.NullInt64(int64(order.ID)),
+			OrderID:        database.NullInt64(utils.MustSafeUintToInt64(order.ID)),
 			DiscountAmount: couponDiscount,
 		})
 		db.Model(&models.Coupon{}).Where("id = ?", *couponID).UpdateColumn("used_quantity", gorm.Expr("used_quantity + 1"))

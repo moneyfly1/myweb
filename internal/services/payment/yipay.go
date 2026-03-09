@@ -2,7 +2,7 @@ package payment
 
 import (
 	"crypto"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 - MD5 required by Yipay API specification
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -506,9 +506,11 @@ func (s *YipayService) calculateMD5Sign(params map[string]string) string {
 	return s.calcMD5FromStr(signStr)
 }
 
+// calcMD5FromStr 计算MD5签名
+// #nosec G401 - MD5 is required by Yipay API specification, not used for security-critical operations
 func (s *YipayService) calcMD5FromStr(signStr string) string {
 	fullStr := signStr + s.Key
-	hash := md5.Sum([]byte(fullStr))
+	hash := md5.Sum([]byte(fullStr)) // #nosec G401
 	return strings.ToLower(fmt.Sprintf("%x", hash))
 }
 
@@ -658,7 +660,13 @@ func (s *YipayService) handleFormRedirect(htmlContent, paymentType string) (stri
 		data.Set(m[1], m[2])
 	}
 
-	resp, err := http.PostForm(actionURL, data)
+	// 验证URL以防止SSRF攻击
+	if err := utils.ValidateHTTPURL(actionURL); err != nil {
+		return "", fmt.Errorf("URL验证失败: %w", err)
+	}
+
+	// #nosec G107 - URL is validated above with ValidateHTTPURL
+	resp, err := http.PostForm(actionURL, data) // #nosec G107
 	if err != nil {
 		return "", err
 	}

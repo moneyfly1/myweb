@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -107,7 +108,9 @@ func CreatePackage(c *gin.Context) {
 
 	// 清除套餐列表缓存
 	cacheService := cache_service.NewCacheService()
-	cacheService.ClearPackagesCache()
+	if err := cacheService.ClearPackagesCache(); err != nil {
+		log.Printf("failed to clear packages cache: %v", err)
+	}
 
 	utils.CreateAuditLogSimple(c, "create_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 创建套餐 %s", pkg.Name))
 	utils.SuccessResponse(c, http.StatusCreated, "", pkg)
@@ -201,7 +204,9 @@ func UpdatePackage(c *gin.Context) {
 
 	// 清除套餐列表缓存
 	cacheService := cache_service.NewCacheService()
-	cacheService.ClearPackagesCache()
+	if err := cacheService.ClearPackagesCache(); err != nil {
+		log.Printf("failed to clear packages cache: %v", err)
+	}
 
 	utils.CreateAuditLogSimple(c, "update_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 更新套餐 %s", pkg.Name))
 	responseData := gin.H{
@@ -237,7 +242,9 @@ func DeletePackage(c *gin.Context) {
 
 	// 清除套餐列表缓存
 	cacheService := cache_service.NewCacheService()
-	cacheService.ClearPackagesCache()
+	if err := cacheService.ClearPackagesCache(); err != nil {
+		log.Printf("failed to clear packages cache: %v", err)
+	}
 
 	utils.CreateAuditLogSimple(c, "delete_package", "package", pkg.ID, fmt.Sprintf("管理员操作: 删除套餐 %s", pkg.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
@@ -250,10 +257,10 @@ func GetAdminPackages(c *gin.Context) {
 	page := 1
 	size := 20
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
 	}
 	if page < 1 {
 		page = 1

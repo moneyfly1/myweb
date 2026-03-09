@@ -3,6 +3,7 @@ package email
 import (
 	"crypto/tls"
 	"fmt"
+	"log"
 	"mime"
 	"net/smtp"
 	"strconv"
@@ -240,7 +241,9 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 		_, err = writer.Write([]byte(message))
 		if err != nil {
-			writer.Close()
+			if closeErr := writer.Close(); closeErr != nil {
+				log.Printf("failed to close writer: %v", closeErr)
+			}
 			return fmt.Errorf("写入邮件内容失败: %v", err)
 		}
 
@@ -288,7 +291,9 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 		_, err = writer.Write([]byte(message))
 		if err != nil {
-			writer.Close()
+			if closeErr := writer.Close(); closeErr != nil {
+				log.Printf("failed to close writer: %v", closeErr)
+			}
 			return fmt.Errorf("写入邮件内容失败: %v", err)
 		}
 

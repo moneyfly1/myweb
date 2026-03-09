@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -108,7 +109,9 @@ func asyncSubscriptionLog(
 	reason string,
 ) {
 	go func() {
-		utils.CreateSubscriptionLog(subID, userID, actionType, actionBy, actionByUserID, clientIP, beforeData, afterData, reason)
+		if err := utils.CreateSubscriptionLog(subID, userID, actionType, actionBy, actionByUserID, clientIP, beforeData, afterData, reason); err != nil {
+			log.Printf("failed to create subscription log: %v", err)
+		}
 	}()
 }
 
@@ -190,7 +193,11 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 	}
 
 	// 清除旧 token 的配置缓存
-	go cache.ClearSubscriptionConfigCache(oldURL)
+	go func() {
+		if err := cache.ClearSubscriptionConfigCache(oldURL); err != nil {
+			log.Printf("failed to clear subscription config cache: %v", err)
+		}
+	}()
 
 	reset := models.SubscriptionReset{
 		UserID:             sub.UserID,
@@ -613,7 +620,9 @@ func BatchClearDevices(c *gin.Context) {
 	db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0)
 	go func(subscriptions []models.Subscription) {
 		for _, sub := range subscriptions {
-			cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
 		}
 	}(subs)
 	utils.CreateAuditLogSimple(c, "batch_clear_devices", "subscription", 0, fmt.Sprintf("管理员操作: 批量清除订阅设备 %d 个", len(req.SubscriptionIDs)))
@@ -701,7 +710,11 @@ func UpdateSubscription(c *gin.Context) {
 	if actionBy == "admin" {
 		utils.CreateAuditLogSimple(c, "update_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 更新订阅 subscription_id=%d", sub.ID))
 	}
-	go cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+	go func() {
+		if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+			log.Printf("failed to clear subscription config cache: %v", err)
+		}
+	}()
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", nil)
 }
 
@@ -759,8 +772,10 @@ func ExtendSubscription(c *gin.Context) {
 				pkgName = pkg.Name
 			}
 		}
-		email.NewEmailService().QueueEmail(sub.User.Email, "续费成功",
-			email.NewEmailTemplateBuilder().GetRenewalConfirmationTemplate(sub.User.Username, pkgName, oldExp, sub.ExpireTime.Format(TimeLayout), utils.GetBeijingTime().Format(TimeLayout), 0), "renewal_confirmation")
+		if err := email.NewEmailService().QueueEmail(sub.User.Email, "续费成功",
+			email.NewEmailTemplateBuilder().GetRenewalConfirmationTemplate(sub.User.Username, pkgName, oldExp, sub.ExpireTime.Format(TimeLayout), utils.GetBeijingTime().Format(TimeLayout), 0), "renewal_confirmation"); err != nil {
+			log.Printf("failed to queue email: %v", err)
+		}
 	}()
 	utils.SuccessResponse(c, http.StatusOK, "订阅已延长", sub)
 }
@@ -820,7 +835,9 @@ func ClearUserDevices(c *gin.Context) {
 		db.Model(&models.Subscription{}).Where("id IN ?", subIDs).Update("current_devices", 0)
 		go func(subscriptions []models.Subscription) {
 			for _, sub := range subscriptions {
-				cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+				if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+					log.Printf("failed to clear subscription config cache: %v", err)
+				}
 			}
 		}(subs)
 	}
@@ -917,7 +934,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	// 记录余额日志
 	userID := user.ID
 	go func() {
-		utils.CreateBalanceLog(
+		if err := utils.CreateBalanceLog(
 			user.ID,
 			"refund",
 			convertedAmount,
@@ -929,7 +946,9 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 			"user",
 			&userID,
 			ipAddress,
-		)
+		); err != nil {
+			log.Printf("failed to create balance log: %v", err)
+		}
 	}()
 
 	// 记录订阅日志
@@ -1054,7 +1073,11 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 			"expire_time":     sub.ExpireTime.Format(TimeLayout),
 		}
 		asyncSubscriptionLog(sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
-		go cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+		go func() {
+			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
+		}()
 	}
 	utils.CreateAuditLogSimple(c, "batch_delete_subscriptions", "subscription", 0, fmt.Sprintf("管理员操作: 批量删除订阅 %d 个", len(req.SubscriptionIDs)))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)), nil)
@@ -1122,7 +1145,11 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 			"status":    status,
 		}
 		asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
-		go cache.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+		go func() {
+			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
+		}()
 	}
 	utils.CreateAuditLogSimple(c, "batch_update_subscriptions_status", "subscription", 0, fmt.Sprintf("管理员操作: 批量%s订阅 %d 个", actionName, res.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功操作 %d 个订阅", res.RowsAffected), nil)
@@ -1437,7 +1464,9 @@ func GetSubscriptionConfig(c *gin.Context) {
 	// 异步记录设备访问和更新计数（不阻塞配置返回）
 	if shouldRecord {
 		go func(subID, userID uint, ua, ip string) {
-			deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "clash")
+			if _, err := deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "clash"); err != nil {
+				log.Printf("failed to record device access: %v", err)
+			}
 		}(subscription.ID, subscription.UserID, userAgent, clientIP)
 
 		go func(subID uint) {
@@ -1642,7 +1671,9 @@ func GetUniversalSubscription(c *gin.Context) {
 		// 异步记录设备访问和更新计数（不阻塞配置返回）
 		if shouldRecord {
 			go func(subID, userID uint, ua, ip string) {
-				deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "universal")
+				if _, err := deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "universal"); err != nil {
+					log.Printf("failed to record device access: %v", err)
+				}
 			}(sub.ID, sub.UserID, deviceUA, deviceIP)
 
 			go func(subID uint) {
@@ -1711,7 +1742,7 @@ func GetConfigUpdateConfig(c *gin.Context) {
 			configMap[key] = value == "true" || value == "1"
 		case "schedule_interval":
 			var interval int
-			fmt.Sscanf(value, "%d", &interval)
+			_, _ = fmt.Sscanf(value, "%d", &interval) // Ignore error, use default value
 			configMap[key] = interval
 		default:
 			configMap[key] = value
@@ -1781,7 +1812,7 @@ func GetConfigUpdateFiles(c *gin.Context) {
 func GetConfigUpdateLogs(c *gin.Context) {
 	limit := 100
 	if limitStr := c.Query("limit"); limitStr != "" {
-		fmt.Sscanf(limitStr, "%d", &limit)
+		_, _ = fmt.Sscanf(limitStr, "%d", &limit) // Ignore error, use default value
 	}
 	service := config_update.NewConfigUpdateService()
 	utils.SuccessResponse(c, http.StatusOK, "", service.GetLogs(limit))

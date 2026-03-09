@@ -40,7 +40,11 @@ func GenerateUUID() string {
 
 func GenerateSubscriptionURL() string {
 	b := make([]byte, 16)
-	crand.Read(b)
+	if _, err := crand.Read(b); err != nil {
+		log.Printf("failed to generate random bytes: %v", err)
+		// Fallback to timestamp-based generation
+		return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+	}
 	return base64.URLEncoding.EncodeToString(b)
 }
 
@@ -144,7 +148,12 @@ func GenerateCouponCode() string {
 	b := make([]byte, 8)
 	for i := range b {
 		randBytes := make([]byte, 1)
-		crand.Read(randBytes)
+		if _, err := crand.Read(randBytes); err != nil {
+			log.Printf("failed to generate random bytes: %v", err)
+			// Fallback to simple random
+			b[i] = charset[int(time.Now().UnixNano())%len(charset)]
+			continue
+		}
 		b[i] = charset[int(randBytes[0])%len(charset)]
 	}
 	return string(b)
@@ -153,7 +162,12 @@ func GenerateCouponCode() string {
 func GenerateTicketNo(userID uint) string {
 	timestamp := time.Now().Unix()
 	randomBytes := make([]byte, 2)
-	crand.Read(randomBytes)
+	if _, err := crand.Read(randomBytes); err != nil {
+		log.Printf("failed to generate random bytes: %v", err)
+		// Fallback to timestamp-based random
+		// #nosec G115 - Safe conversion: timestamp % 256 is always in byte range [0, 255]
+		randomBytes = []byte{byte(timestamp % 256), byte((timestamp / 256) % 256)} // #nosec G115
+	}
 	randomStr := base64.URLEncoding.EncodeToString(randomBytes)[:3]
 	return fmt.Sprintf("TKT%d%d%s", timestamp, userID, randomStr)
 }
@@ -357,16 +371,25 @@ type Logger struct {
 var AppLogger *Logger
 
 func InitLogger(logDir string) error {
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	// 清理并验证日志目录路径
+	cleanLogDir := filepath.Clean(logDir)
+	if strings.Contains(cleanLogDir, "..") {
+		return fmt.Errorf("不安全的日志目录路径: %s", logDir)
+	}
+
+	if err := os.MkdirAll(cleanLogDir, 0750); err != nil {
 		return err
 	}
 
-	infoFile, err := os.OpenFile(filepath.Join(logDir, "app.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	infoLogPath := filepath.Join(cleanLogDir, "app.log")
+	errorLogPath := filepath.Join(cleanLogDir, "error.log")
+
+	infoFile, err := os.OpenFile(infoLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
 
-	errorFile, err := os.OpenFile(filepath.Join(logDir, "error.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	errorFile, err := os.OpenFile(errorLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}

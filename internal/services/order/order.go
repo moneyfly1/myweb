@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 
@@ -161,7 +162,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	}
 
 	if coupon != nil {
-		order.CouponID = database.NullInt64(int64(coupon.ID))
+		order.CouponID = database.NullInt64(utils.MustSafeUintToInt64(coupon.ID))
 	}
 
 	if finalAmount == 0 {
@@ -208,7 +209,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 			usage := models.CouponUsage{
 				CouponID:       coupon.ID,
 				UserID:         userID,
-				OrderID:        sql.NullInt64{Int64: int64(order.ID), Valid: true},
+				OrderID:        sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true},
 				DiscountAmount: couponDiscountAmount,
 			}
 			if err := tx.Create(&usage).Error; err != nil {
@@ -391,10 +392,16 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	if err == nil && result != nil {
 		go func(userID uint, subscriptionURL string) {
 			cs := cache_service.NewCacheService()
-			cs.ClearUserCache(userID)
-			cs.ClearUserSubscriptionCache(userID)
+			if cacheErr := cs.ClearUserCache(userID); cacheErr != nil {
+				log.Printf("failed to clear user cache: %v", cacheErr)
+			}
+			if cacheErr := cs.ClearUserSubscriptionCache(userID); cacheErr != nil {
+				log.Printf("failed to clear user subscription cache: %v", cacheErr)
+			}
 			// 清除订阅配置缓存，确保用户立即获得最新配置
-			cache.ClearSubscriptionConfigCache(subscriptionURL)
+			if cacheErr := cache.ClearSubscriptionConfigCache(subscriptionURL); cacheErr != nil {
+				log.Printf("failed to clear subscription config cache: %v", cacheErr)
+			}
 		}(user.ID, result.SubscriptionURL)
 	}
 
@@ -472,7 +479,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 		expireTime := now.AddDate(0, 0, totalDurationDays)
 		var pkgID *int64
 		if !isCustomPackage {
-			id := int64(pkg.ID)
+			id := utils.MustSafeUintToInt64(pkg.ID)
 			pkgID = &id
 		}
 		subscription = models.Subscription{
@@ -519,7 +526,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 		subscription.IsActive = true
 		subscription.Status = "active"
 		if !isCustomPackage {
-			pkgID := int64(pkg.ID)
+			pkgID := utils.MustSafeUintToInt64(pkg.ID)
 			subscription.PackageID = &pkgID
 		}
 
@@ -597,7 +604,7 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 		}
 
 		if targetLevel != nil {
-			if !user.UserLevelID.Valid || user.UserLevelID.Int64 != int64(targetLevel.ID) {
+			if !user.UserLevelID.Valid || user.UserLevelID.Int64 != utils.MustSafeUintToInt64(targetLevel.ID) {
 				var currentLevel models.UserLevel
 				shouldUpgrade := true
 				if user.UserLevelID.Valid {
@@ -608,7 +615,7 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 					}
 				}
 				if shouldUpgrade {
-					user.UserLevelID = sql.NullInt64{Int64: int64(targetLevel.ID), Valid: true}
+					user.UserLevelID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(targetLevel.ID), Valid: true}
 					if err := s.db.Save(user).Error; err != nil {
 						if utils.AppLogger != nil {
 							utils.AppLogger.Error("更新用户等级失败: %v", err)
@@ -664,7 +671,7 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 	}
 
 	// 记录首单
-	inviteRelation.InviteeFirstOrderID = sql.NullInt64{Int64: int64(order.ID), Valid: true}
+	inviteRelation.InviteeFirstOrderID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true}
 	inviteRelation.InviteeTotalConsumption += paidAmount
 
 	if !inviteRelation.InviterRewardGiven && inviteRelation.InviterRewardAmount > 0 {
@@ -686,18 +693,22 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 						inviter.ID, inviteRelation.InviterRewardAmount, order.ID)
 				}
 				go func() {
-					utils.CreateBalanceLog(
+					if err := utils.CreateBalanceLog(
 						inviter.ID, "commission", inviteRelation.InviterRewardAmount,
 						oldBalance, freshInviter.Balance, nil, nil,
 						fmt.Sprintf("邀请奖励: 邀请人奖励 (订单 %s)", order.OrderNo),
 						"system", nil, "",
-					)
+					); err != nil {
+						log.Printf("failed to create balance log: %v", err)
+					}
 					relationID := uint(inviteRelation.ID)
-					utils.CreateCommissionLog(
+					if err := utils.CreateCommissionLog(
 						inviter.ID, order.UserID, "order_reward",
 						inviteRelation.InviterRewardAmount, &relationID, nil,
 						fmt.Sprintf("邀请人奖励: 订单 %s", order.OrderNo),
-					)
+					); err != nil {
+						log.Printf("failed to create commission log: %v", err)
+					}
 				}()
 			} else {
 				utils.LogError("processInviteRewards: failed to give inviter reward", result.Error, map[string]interface{}{
@@ -722,18 +733,22 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 						invitee.ID, inviteRelation.InviteeRewardAmount, order.ID)
 				}
 				go func() {
-					utils.CreateBalanceLog(
+					if err := utils.CreateBalanceLog(
 						invitee.ID, "commission", inviteRelation.InviteeRewardAmount,
 						oldBalance, freshInvitee.Balance, nil, nil,
 						fmt.Sprintf("邀请奖励: 被邀请人奖励 (订单 %s)", order.OrderNo),
 						"system", nil, "",
-					)
+					); err != nil {
+						log.Printf("failed to create balance log: %v", err)
+					}
 					relationID := uint(inviteRelation.ID)
-					utils.CreateCommissionLog(
+					if err := utils.CreateCommissionLog(
 						inviteRelation.InviterID, invitee.ID, "order_reward",
 						inviteRelation.InviteeRewardAmount, &relationID, nil,
 						fmt.Sprintf("被邀请人奖励: 订单 %s", order.OrderNo),
-					)
+					); err != nil {
+						log.Printf("failed to create commission log: %v", err)
+					}
 				}()
 			} else {
 				utils.LogError("processInviteRewards: failed to give invitee reward", result.Error, map[string]interface{}{

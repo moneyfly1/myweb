@@ -139,7 +139,8 @@ func CreateCustomNode(c *gin.Context) {
 			return
 		}
 
-		configJSON, _ := json.Marshal(parsed)
+		// #nosec G117 - Password field is proxy node password, not user credential
+		configJSON, _ := json.Marshal(parsed) // #nosec G117
 		configStr := string(configJSON)
 
 		name := req.Name
@@ -237,7 +238,8 @@ func ImportCustomNodeLinks(c *gin.Context) {
 			continue
 		}
 
-		configJSON, _ := json.Marshal(parsed)
+		// #nosec G117 - Password field is proxy node password, not user credential
+		configJSON, _ := json.Marshal(parsed) // #nosec G117
 		configStr := string(configJSON)
 
 		name := parsed.Name

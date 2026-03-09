@@ -5,6 +5,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+	"log"
 	"time"
 )
 
@@ -50,7 +51,9 @@ func warmupPackages() {
 	}
 
 	cs := NewCacheService()
-	cs.SetPackagesCache(result)
+	if err := cs.SetPackagesCache(result); err != nil {
+		log.Printf("failed to set packages cache: %v", err)
+	}
 	utils.LogInfo("缓存预热: 套餐列表已预热 (%d 条)", len(result))
 }
 
@@ -75,7 +78,9 @@ func warmupAnnouncements() {
 	}
 
 	cs := NewCacheService()
-	cs.SetAnnouncementsCache(result)
+	if err := cs.SetAnnouncementsCache(result); err != nil {
+		log.Printf("failed to set announcements cache: %v", err)
+	}
 	utils.LogInfo("缓存预热: 公告列表已预热 (%d 条)", len(result))
 }
 
@@ -100,7 +105,9 @@ func warmupSystemConfig() {
 			})
 		}
 
-		cs.SetSystemConfigCache(category, result)
+		if err := cs.SetSystemConfigCache(category, result); err != nil {
+			log.Printf("failed to set system config cache for category %s: %v", category, err)
+		}
 	}
 	utils.LogInfo("缓存预热: 系统配置已预热")
 }

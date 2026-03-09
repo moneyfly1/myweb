@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -457,7 +458,7 @@ func UploadFile(c *gin.Context) {
 		uploadDir = cfg.UploadDir
 	}
 
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := os.MkdirAll(uploadDir, 0750); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "系统错误", err)
 		return
 	}
@@ -469,7 +470,7 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	_ = os.Chmod(fullPath, 0644) // Best effort chmod
+	_ = os.Chmod(fullPath, 0600) // Best effort chmod
 
 	utils.SuccessResponse(c, http.StatusOK, "上传成功", gin.H{
 		"url":      "/" + filepath.ToSlash(fullPath), // Ensure forward slashes for URLs
@@ -678,7 +679,16 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 
 	// 下载文件
 	tmpFile := filepath.Join(os.TempDir(), filename+".tmp")
-	resp, err := http.Get(url)
+
+	// 验证URL以防止SSRF攻击
+	if err := utils.ValidateHTTPURL(url); err != nil {
+		utils.LogError("UpdateGeoIPDatabase: URL validation failed", err, nil)
+		utils.ErrorResponse(c, http.StatusBadRequest, "URL验证失败", err)
+		return
+	}
+
+	// #nosec G107 - URL is validated above with ValidateHTTPURL
+	resp, err := http.Get(url) // #nosec G107
 	if err != nil {
 		utils.LogError("UpdateGeoIPDatabase: Download failed", err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "下载失败", err)
@@ -691,7 +701,14 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	out, err := os.Create(tmpFile)
+	// 清理并验证临时文件路径
+	cleanTmpFile := filepath.Clean(tmpFile)
+	if strings.Contains(cleanTmpFile, "..") {
+		utils.ErrorResponse(c, http.StatusBadRequest, "不安全的文件路径", nil)
+		return
+	}
+
+	out, err := os.Create(cleanTmpFile)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建临时文件失败", err)
 		return
@@ -712,16 +729,18 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 
 	written, err := io.Copy(out, reader)
 	if err != nil {
-		os.Remove(tmpFile)
+		_ = os.Remove(tmpFile) // Ignore error, best effort cleanup
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存文件失败", err)
 		return
 	}
-	out.Close()
+	if err := out.Close(); err != nil {
+		log.Printf("failed to close file: %v", err)
+	}
 
 	// 移动到目标位置
 	targetPath := filepath.Join(".", filename)
 	if err := os.Rename(tmpFile, targetPath); err != nil {
-		os.Remove(tmpFile)
+		_ = os.Remove(tmpFile) // Ignore error, best effort cleanup
 		utils.ErrorResponse(c, http.StatusInternalServerError, "替换文件失败", err)
 		return
 	}

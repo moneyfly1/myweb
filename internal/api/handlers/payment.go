@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -408,20 +409,20 @@ func PaymentNotify(c *gin.Context) {
 
 		if paymentType == "alipay" {
 			if amountStr, ok := params["total_amount"]; ok {
-				fmt.Sscanf(amountStr, "%f", &callbackAmount)
+				_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 				amountVerified = true
 			}
 		} else if paymentType == "wechat" {
 			// 微信支付金额单位是分
 			if amountStr, ok := params["total_fee"]; ok {
 				var amountInCents int
-				fmt.Sscanf(amountStr, "%d", &amountInCents)
+				_, _ = fmt.Sscanf(amountStr, "%d", &amountInCents) // Ignore error, use default value
 				callbackAmount = float64(amountInCents) / 100.0
 				amountVerified = true
 			}
 		} else if strings.HasPrefix(paymentType, "yipay") {
 			if amountStr, ok := params["money"]; ok {
-				fmt.Sscanf(amountStr, "%f", &callbackAmount)
+				_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 				amountVerified = true
 			}
 		}
@@ -488,7 +489,7 @@ func PaymentNotify(c *gin.Context) {
 				rechargeID := uint(recharge.ID)
 				ipAddress := utils.GetRealClientIP(c)
 				userID := user.ID
-				utils.CreateBalanceLog(
+				if err := utils.CreateBalanceLog(
 					user.ID,
 					"recharge",
 					recharge.Amount,
@@ -500,7 +501,9 @@ func PaymentNotify(c *gin.Context) {
 					"user",
 					&userID,
 					ipAddress,
-				)
+				); err != nil {
+					log.Printf("failed to create balance log: %v", err)
+				}
 			}
 			return nil
 		})
@@ -526,20 +529,20 @@ func PaymentNotify(c *gin.Context) {
 
 	if paymentType == "alipay" {
 		if amountStr, ok := params["total_amount"]; ok {
-			fmt.Sscanf(amountStr, "%f", &callbackAmount)
+			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 			amountVerified = true
 		}
 	} else if paymentType == "wechat" {
 		// 微信支付金额单位是分
 		if amountStr, ok := params["total_fee"]; ok {
 			var amountInCents int
-			fmt.Sscanf(amountStr, "%d", &amountInCents)
+			_, _ = fmt.Sscanf(amountStr, "%d", &amountInCents) // Ignore error, use default value
 			callbackAmount = float64(amountInCents) / 100.0
 			amountVerified = true
 		}
 	} else if strings.HasPrefix(paymentType, "yipay") {
 		if amountStr, ok := params["money"]; ok {
-			fmt.Sscanf(amountStr, "%f", &callbackAmount)
+			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 			amountVerified = true
 		}
 	}
@@ -732,7 +735,7 @@ func PaymentNotify(c *gin.Context) {
 						orderID := uint(order.ID)
 						ipAddress := utils.GetRealClientIP(c)
 						userID := user.ID
-						utils.CreateBalanceLog(
+						if err := utils.CreateBalanceLog(
 							user.ID,
 							"consume",
 							-balanceUsed,
@@ -744,7 +747,9 @@ func PaymentNotify(c *gin.Context) {
 							"user",
 							&userID,
 							ipAddress,
-						)
+						); err != nil {
+							log.Printf("failed to create balance log: %v", err)
+						}
 					}()
 				}
 			} else {

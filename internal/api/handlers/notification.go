@@ -36,10 +36,10 @@ func parsePaginationParams(c *gin.Context) (page, size int) {
 	page = 1
 	size = 20
 	if pageStr := c.Query("page"); pageStr != "" {
-		fmt.Sscanf(pageStr, "%d", &page)
+		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
 	}
 	if page < 1 {
 		page = 1
@@ -219,7 +219,7 @@ func GetUserNotifications(c *gin.Context) {
 
 	limit := 10
 	if limitStr := c.Query("limit"); limitStr != "" {
-		fmt.Sscanf(limitStr, "%d", &limit)
+		_, _ = fmt.Sscanf(limitStr, "%d", &limit) // Ignore error, use default value
 	}
 	if limit < 1 {
 		limit = 10
@@ -280,7 +280,7 @@ func CreateAdminNotification(c *gin.Context) {
 			errorResponse(c, http.StatusNotFound, "用户不存在")
 			return
 		}
-		notification.UserID = sql.NullInt64{Int64: int64(*req.UserID), Valid: true}
+		notification.UserID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(*req.UserID), Valid: true}
 	} else {
 		notification.UserID = sql.NullInt64{Valid: false}
 	}
@@ -348,7 +348,7 @@ func UpdateAdminNotification(c *gin.Context) {
 			errorResponse(c, http.StatusNotFound, "用户不存在")
 			return
 		}
-		notification.UserID = sql.NullInt64{Int64: int64(*req.UserID), Valid: true}
+		notification.UserID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(*req.UserID), Valid: true}
 	}
 
 	if err := db.Save(&notification).Error; err != nil {

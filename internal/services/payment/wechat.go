@@ -1,7 +1,7 @@
 package payment
 
 import (
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 - MD5 required by WeChat Pay API specification
 	"fmt"
 	"sort"
 	"strings"
@@ -107,6 +107,7 @@ func (s *WechatService) Sign(params map[string]string) string {
 	signStr.WriteString("&key=")
 	signStr.WriteString(s.APIKey)
 
-	hash := md5.Sum([]byte(signStr.String()))
+	// #nosec G401 - MD5 is required by WeChat Pay API specification
+	hash := md5.Sum([]byte(signStr.String())) // #nosec G401
 	return strings.ToUpper(fmt.Sprintf("%x", hash))
 }

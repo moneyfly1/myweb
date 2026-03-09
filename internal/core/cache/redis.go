@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -112,9 +113,11 @@ func ClearSubscriptionConfigCache(subscriptionURL string) error {
 	if !IsRedisEnabled() {
 		return nil
 	}
-	Del(
+	if err := Del(
 		fmt.Sprintf("subscription:config:%s:clash", subscriptionURL),
 		fmt.Sprintf("subscription:config:%s:base64", subscriptionURL),
-	)
+	); err != nil {
+		log.Printf("failed to delete subscription config cache: %v", err)
+	}
 	return nil
 }

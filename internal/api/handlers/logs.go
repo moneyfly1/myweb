@@ -42,7 +42,7 @@ func parsePagination(c *gin.Context) PaginationParams {
 
 	// 兼容旧参数 "size"
 	if pageSizeStr := c.Query("size"); pageSizeStr != "" {
-		fmt.Sscanf(pageSizeStr, "%d", &pageSize)
+		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize) // Ignore error, use default value
 	}
 
 	if page < 1 {
