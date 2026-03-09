@@ -348,11 +348,16 @@ func (c *GitClient) UploadBackup(filePath string) error {
 }
 
 // UploadBackupWithProgress 上传备份文件（带进度回调）
+// 按照年/月/日的文件夹结构组织: YYYY/MM/DD/filename.zip
 func (c *GitClient) UploadBackupWithProgress(filePath string, progressCallback ProgressCallback) error {
 	now := utils.GetBeijingTime()
-	dateFolder := utils.FormatBeijingDate(now)
+	year := now.Format("2006")
+	month := now.Format("01")
+	day := now.Format("02")
 	fileName := filepath.Base(filePath)
-	remotePath := fmt.Sprintf("%s/%s", dateFolder, fileName)
+
+	// 构建远程路径: 年/月/日/文件名
+	remotePath := fmt.Sprintf("%s/%s/%s/%s", year, month, day, fileName)
 
 	return c.UploadFileWithProgress(filePath, remotePath, progressCallback)
 }
