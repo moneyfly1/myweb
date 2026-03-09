@@ -63,12 +63,12 @@
   gap: 0.75rem; // 进一步减少间距
   margin-bottom: 0.75rem; // 进一步减少底部间距
   @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 1fr); // 手机端固定2列
     gap: 0.5rem;
     margin-bottom: 0.75rem;
   }
   @media (max-width: 480px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr); // 小屏手机也保持2列
     gap: 0.5rem;
   }
 }

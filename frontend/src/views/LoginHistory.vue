@@ -1,24 +1,35 @@
 <template>
-  <div class="login-history-container">
-    <div class="page-header">
-      <h1>登录历史</h1>
-      <p>查看您的账户登录记录</p>
+  <div class="list-container login-history-container">
+    <div class="stats-row" style="margin-top: 0;">
+      <div class="stat-card">
+        <div class="stat-number">{{ totalLogins }}</div>
+        <div class="stat-label">总登录次数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ uniqueIPs }}</div>
+        <div class="stat-label">不同IP数量</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ uniqueCountries }}</div>
+        <div class="stat-label">不同国家</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ lastLoginDays }}</div>
+        <div class="stat-label">距上次登录(天)</div>
+      </div>
     </div>
-    <el-card class="history-card">
+    <el-card class="list-card history-card">
       <template #header>
         <div class="card-header">
           <i class="el-icon-time"></i>
           登录记录
         </div>
       </template>
-      <div v-if="loading" class="loading-container">
-        <el-skeleton :rows="5" animated />
-      </div>
-      <div class="desktop-only table-wrapper">
-        <el-table 
+      <div class="table-wrapper">
+        <el-table
           ref="historyTableRef"
-          v-if="loginHistory.length > 0"
-          :data="loginHistory" 
+          :data="loginHistory"
+          v-loading="loading"
           stripe
           border
           style="width: 100%"
@@ -60,86 +71,46 @@
             </template>
           </el-table-column>
         </el-table>
-        <el-empty v-else description="暂无登录记录" />
       </div>
-      <div class="mobile-only">
-        <div v-if="loginHistory.length > 0" class="mobile-history-list">
-          <div 
-            v-for="(item, index) in loginHistory" 
-            :key="index"
-            class="mobile-history-card"
-          >
-            <div class="history-card-header">
+      <div class="mobile-card-list" v-if="loginHistory.length > 0 || !loading">
+        <div
+          v-for="(item, index) in loginHistory"
+          :key="index"
+          class="mobile-card"
+        >
+          <div class="card-row">
+            <span class="label">状态</span>
+            <span class="value">
               <el-tag :type="item.status === 'success' ? 'success' : 'danger'" size="small">
                 {{ item.status === 'success' ? '成功' : '失败' }}
               </el-tag>
-              <span class="history-time">{{ formatTime(item.login_time) }}</span>
-            </div>
-            <div class="history-card-body">
-              <div class="history-card-row">
-                <span class="history-label">IP地址：</span>
-                <el-tag type="info" size="small">{{ item.ip_address || '未知' }}</el-tag>
-              </div>
-              <div class="history-card-row" v-if="getLocationText(item.location, item.ip_address)">
-                <span class="history-label">地区：</span>
-                <el-tag type="success" size="small">
-                  {{ getLocationText(item.location, item.ip_address) }}
-                </el-tag>
-              </div>
-              <div class="history-card-row">
-                <span class="history-label">设备：</span>
-                <span class="history-value">{{ getDeviceInfo(item.user_agent) }}</span>
-              </div>
-            </div>
+            </span>
+          </div>
+          <div class="card-row">
+            <span class="label">登录时间</span>
+            <span class="value">{{ formatTime(item.login_time) }}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">IP地址</span>
+            <span class="value">
+              <el-tag type="info" size="small">{{ item.ip_address || '未知' }}</el-tag>
+            </span>
+          </div>
+          <div class="card-row" v-if="getLocationText(item.location, item.ip_address)">
+            <span class="label">地区</span>
+            <span class="value">
+              <el-tag type="success" size="small">
+                {{ getLocationText(item.location, item.ip_address) }}
+              </el-tag>
+            </span>
+          </div>
+          <div class="card-row">
+            <span class="label">设备</span>
+            <span class="value">{{ getDeviceInfo(item.user_agent) }}</span>
           </div>
         </div>
-        <el-empty v-else description="暂无登录记录" />
+        <el-empty v-if="loginHistory.length === 0 && !loading" description="暂无登录记录" />
       </div>
-      <div v-if="loginHistory.length > 0" class="pagination-container">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
-    </el-card>
-    <el-card class="stats-card">
-      <template #header>
-        <div class="card-header">
-          <i class="el-icon-data-analysis"></i>
-          登录统计
-        </div>
-      </template>
-      <el-row :gutter="20">
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-item">
-            <div class="stat-value">{{ totalLogins }}</div>
-            <div class="stat-label">总登录次数</div>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-item">
-            <div class="stat-value">{{ uniqueIPs }}</div>
-            <div class="stat-label">不同IP数量</div>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-item">
-            <div class="stat-value">{{ uniqueCountries }}</div>
-            <div class="stat-label">不同国家</div>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-item">
-            <div class="stat-value">{{ lastLoginDays }}</div>
-            <div class="stat-label">距上次登录(天)</div>
-          </div>
-        </el-col>
-      </el-row>
     </el-card>
   </div>
 </template>
@@ -327,158 +298,14 @@ export default {
   }
 }
 </script>
-<style scoped>
-.login-history-container {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.page-header {
-  margin-bottom: 2rem;
-  text-align: center;
-}
-.page-header h1 {
-  color: #303133;
-  margin-bottom: 0.5rem;
-}
-.page-header :is(p) {
-  color: #909399;
-  margin: 0;
-}
-.history-card,
-.stats-card {
-  margin-bottom: 20px;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  font-weight: 600;
-  color: #303133;
-}
-.card-header :is(i) {
-  margin-right: 8px;
-  color: #409eff;
-}
-.loading-container {
-  padding: 20px;
-}
+<style scoped lang="scss">
+@use '@/styles/list-common.scss';
+
 .user-agent-text {
   display: inline-block;
   max-width: 200px;
   overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-}
-.stat-item {
-  text-align: center;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 8px;
-}
-.stat-value {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #409eff;
-  margin-bottom: 8px;
-}
-.stat-label {
-  color: #909399;
-  font-size: 0.9rem;
-}
-.desktop-only {
-  @media (max-width: 768px) {
-    display: none !important;
-  }
-}
-.mobile-only {
-  display: none;
-  @media (max-width: 768px) {
-    display: block;
-  }
-}
-@media (max-width: 768px) {
-  .login-history-container {
-    padding: 10px;
-  }
-  .page-header {
-    margin-bottom: 16px;
-    :is(h1) {
-      font-size: 20px;
-    }
-    :is(p) {
-      font-size: 13px;
-    }
-  }
-  .stat-item {
-    padding: 15px;
-    margin-bottom: 12px;
-  }
-  .stat-value {
-    font-size: 1.5rem;
-  }
-  .stat-label {
-    font-size: 13px;
-  }
-  .mobile-history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .mobile-history-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  }
-  .history-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #f0f0f0;
-    .history-time {
-      font-size: 12px;
-      color: #909399;
-    }
-  }
-  .history-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .history-card-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    .history-label {
-      font-weight: 600;
-      color: #606266;
-      min-width: 70px;
-      flex-shrink: 0;
-    }
-    .history-value {
-      color: #303133;
-      flex: 1;
-    }
-  }
-  .pagination-container {
-    margin-top: 16px;
-    :deep(.el-pagination) {
-      justify-content: center;
-      flex-wrap: wrap;
-      .el-pagination__sizes,
-      .el-pagination__jump {
-        display: none;
-      }
-    }
-  }
 }
 </style>
