@@ -1,0 +1,79 @@
+internal/middleware/csrf.go:44:11: Error return value of `rand.Read` is not checked (errcheck)
+	rand.Read(b)
+	         ^
+internal/middleware/csrf.go:104:11: Error return value of `rand.Read` is not checked (errcheck)
+	rand.Read(b)
+	         ^
+internal/api/handlers/admin.go:1203:61: Error return value of `(*cboard-go/internal/services/cache_service.CacheService).ClearPaymentMethodsCache` is not checked (errcheck)
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+	                                                           ^
+internal/api/handlers/admin.go:1386:61: Error return value of `(*cboard-go/internal/services/cache_service.CacheService).ClearPaymentMethodsCache` is not checked (errcheck)
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+	                                                           ^
+internal/api/handlers/auth.go:974:11: Error return value of `rand.Read` is not checked (errcheck)
+	rand.Read(b)
+	         ^
+internal/api/handlers/config.go:203:60: Error return value of `(*cboard-go/internal/services/cache_service.CacheService).ClearSystemConfigCache` is not checked (errcheck)
+		go cache_service.NewCacheService().ClearSystemConfigCache(CatSystem)
+		                                                         ^
+internal/api/handlers/config.go:244:59: Error return value of `(*cboard-go/internal/services/cache_service.CacheService).ClearSystemConfigCache` is not checked (errcheck)
+	go cache_service.NewCacheService().ClearSystemConfigCache(config.Category)
+	                                                         ^
+internal/api/handlers/package.go:54:34: Error return value of `cacheService.SetPackagesCache` is not checked (errcheck)
+	go cacheService.SetPackagesCache(result)
+	                                ^
+internal/api/handlers/payment.go:101:40: Error return value of `cacheService.SetPaymentMethodsCache` is not checked (errcheck)
+	go cacheService.SetPaymentMethodsCache(cacheData)
+	                                      ^
+internal/api/handlers/statistics.go:212:36: Error return value of `cacheService.SetStatisticsCache` is not checked (errcheck)
+	go cacheService.SetStatisticsCache("overview", payload, 30*time.Second)
+	                                  ^
+internal/api/handlers/statistics.go:276:36: Error return value of `cacheService.SetStatisticsCache` is not checked (errcheck)
+	go cacheService.SetStatisticsCache(cacheKey, result, 5*time.Minute)
+	                                  ^
+internal/api/handlers/subscription.go:882:64: Error return value of `(*cboard-go/internal/services/notification.NotificationService).SendAdminNotification` is not checked (errcheck)
+	go notification.NewNotificationService().SendAdminNotification("subscription_sent", map[string]interface{}{"username": user.Username, "email": user.Email, "send_time": utils.GetBeijingTime().Format(TimeLayout)})
+	                                                              ^
+internal/services/email/email.go:209:17: G402: TLS MinVersion too low. (gosec)
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: false,
+			ServerName:         s.host,
+		}
+internal/services/email/email.go:267:17: G402: TLS MinVersion too low. (gosec)
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: false,
+			ServerName:         s.host,
+		}
+internal/api/handlers/auth.go:531:2: ineffectual assignment to notifContent (ineffassign)
+	notifContent := "检测到您的账户在新设备或新地点登录。如非本人操作请尽快修改密码。"
+	^
+internal/api/handlers/dashboard.go:416:3: ineffectual assignment to abnormalType (ineffassign)
+		abnormalType := "unknown"
+		^
+internal/api/handlers/payment.go:226:4: ineffectual assignment to queryPayType (ineffassign)
+			queryPayType = "yipay"
+			^
+internal/api/handlers/subscription.go:226:2: ineffectual assignment to actionBy (ineffassign)
+	actionBy := "user"
+	^
+internal/services/scheduler/scheduler.go:793:5: ineffectual assignment to owner (ineffassign)
+				owner := "moneyfly1"
+				^
+internal/services/scheduler/scheduler.go:794:5: ineffectual assignment to repo (ineffassign)
+				repo := "backup"
+				^
+internal/services/geoip/geoip.go:550:23: SA1000: error parsing regexp: invalid escape sequence: `\u` (staticcheck)
+			regexp.MustCompile(`(中国|China)\s+([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)`),
+			                   ^
+internal/services/geoip/geoip.go:551:23: SA1000: error parsing regexp: invalid escape sequence: `\u` (staticcheck)
+			regexp.MustCompile(`(中国|China)\s+([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)`),
+			                   ^
+internal/services/geoip/geoip.go:552:23: SA1000: error parsing regexp: invalid escape sequence: `\u` (staticcheck)
+			regexp.MustCompile(`(中国|China)[,，]\s*([\u4e00-\u9fa5]+)[,，]\s*([\u4e00-\u9fa5]+)[,，]\s*([\u4e00-\u9fa5]+)`),
+			                   ^
+internal/services/geoip/geoip.go:723:3: SA4006: this value of `ipAddress` is never used (staticcheck)
+		ipAddress = ipAddress[7:]
+		^
+internal/services/config_update/config_update.go:1132:33: SA4017: Before doesn't have side effects and its return value is ignored (staticcheck)
+	if !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(utils.GetBeijingTime()) {
+	                               ^

@@ -547,9 +547,9 @@ func GetLocationFromIPW(ipAddress string) (*LocationInfo, error) {
 
 	if location.Country == "" {
 		locationPatterns := []*regexp.Regexp{
-			regexp.MustCompile(`(中国|China)\s+([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)`),
-			regexp.MustCompile(`(中国|China)\s+([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)`),
-			regexp.MustCompile(`(中国|China)[,，]\s*([\u4e00-\u9fa5]+)[,，]\s*([\u4e00-\u9fa5]+)[,，]\s*([\u4e00-\u9fa5]+)`),
+			regexp.MustCompile(`(中国|China)\s+([\x{4e00}-\x{9fa5}]+)\s+([\x{4e00}-\x{9fa5}]+)\s+([\x{4e00}-\x{9fa5}]+)`),
+			regexp.MustCompile(`(中国|China)\s+([\x{4e00}-\x{9fa5}]+)\s+([\x{4e00}-\x{9fa5}]+)`),
+			regexp.MustCompile(`(中国|China)[,，]\s*([\x{4e00}-\x{9fa5}]+)[,，]\s*([\x{4e00}-\x{9fa5}]+)[,，]\s*([\x{4e00}-\x{9fa5}]+)`),
 		}
 
 		for _, pattern := range locationPatterns {

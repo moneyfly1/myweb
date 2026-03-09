@@ -482,9 +482,16 @@ func CreateNode(c *gin.Context) {
 		// 清除节点相关缓存
 		go func() {
 			cs := cache_service.NewCacheService()
-			cs.ClearNodesCache()
-			(&config_update.CacheService{}).ClearSystemNodesCache()
-			(&config_update.CacheService{}).ClearAllSubscriptionCache()
+			if err := cs.ClearNodesCache(); err != nil {
+				log.Printf("failed to clear nodes cache: %v", err)
+			}
+			cacheService := &config_update.CacheService{}
+			if err := cacheService.ClearSystemNodesCache(); err != nil {
+				log.Printf("failed to clear system nodes cache: %v", err)
+			}
+			if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+				log.Printf("failed to clear all subscription cache: %v", err)
+			}
 		}()
 
 		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
@@ -500,7 +507,9 @@ func CreateNode(c *gin.Context) {
 	// 清除节点相关缓存
 	go func() {
 		cs := cache_service.NewCacheService()
-		cs.ClearNodesCache()
+		if err := cs.ClearNodesCache(); err != nil {
+			log.Printf("failed to clear nodes cache: %v", err)
+		}
 		cacheService := &config_update.CacheService{}
 		if err := cacheService.ClearSystemNodesCache(); err != nil {
 			log.Printf("failed to clear system nodes cache: %v", err)
@@ -540,7 +549,9 @@ func ImportNodeLinks(c *gin.Context) {
 	// 清除节点相关缓存
 	go func() {
 		cs := cache_service.NewCacheService()
-		cs.ClearNodesCache()
+		if err := cs.ClearNodesCache(); err != nil {
+			log.Printf("failed to clear nodes cache: %v", err)
+		}
 		cacheService := &config_update.CacheService{}
 		if err := cacheService.ClearSystemNodesCache(); err != nil {
 			log.Printf("failed to clear system nodes cache: %v", err)
@@ -580,7 +591,9 @@ func UpdateNode(c *gin.Context) {
 	// 清除节点和订阅配置缓存
 	go func() {
 		cs := cache_service.NewCacheService()
-		cs.ClearNodesCache()
+		if err := cs.ClearNodesCache(); err != nil {
+			log.Printf("failed to clear nodes cache: %v", err)
+		}
 		cacheService := &config_update.CacheService{}
 		if err := cacheService.ClearSystemNodesCache(); err != nil {
 			log.Printf("failed to clear system nodes cache: %v", err)
@@ -613,7 +626,9 @@ func DeleteNode(c *gin.Context) {
 	// 清除节点和订阅配置缓存
 	go func() {
 		cs := cache_service.NewCacheService()
-		cs.ClearNodesCache()
+		if err := cs.ClearNodesCache(); err != nil {
+			log.Printf("failed to clear nodes cache: %v", err)
+		}
 		cacheService := &config_update.CacheService{}
 		if err := cacheService.ClearSystemNodesCache(); err != nil {
 			log.Printf("failed to clear system nodes cache: %v", err)

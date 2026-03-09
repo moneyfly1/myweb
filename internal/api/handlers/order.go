@@ -1430,7 +1430,7 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	var extraDataMap map[string]interface{}
-	json.Unmarshal([]byte(order.ExtraData.String), &extraDataMap)
+	_ = json.Unmarshal([]byte(order.ExtraData.String), &extraDataMap) // Ignore error, use empty if invalid
 	extraDataMap["type"] = "device_upgrade"
 	extraDataMap["additional_devices"] = req.AdditionalDevices
 	extraDataMap["additional_days"] = req.AdditionalDays
@@ -1644,7 +1644,7 @@ func CreateCustomOrder(c *gin.Context) {
 		Discount float64 `json:"discount"`
 	}
 	if discountsJSON := configMap["custom_package_duration_discounts"]; discountsJSON != "" {
-		json.Unmarshal([]byte(discountsJSON), &discountTiers)
+		_ = json.Unmarshal([]byte(discountsJSON), &discountTiers) // Ignore error, use empty if invalid
 	}
 
 	// 找到最佳折扣
@@ -1749,7 +1749,7 @@ func CreateCustomOrder(c *gin.Context) {
 	// 记录优惠券使用
 	if couponID != nil {
 		db.Create(&models.CouponUsage{
-			CouponID:       uint(*couponID),
+			CouponID:       utils.MustSafeInt64ToUint(*couponID),
 			UserID:         user.ID,
 			OrderID:        database.NullInt64(utils.MustSafeUintToInt64(order.ID)),
 			DiscountAmount: couponDiscount,

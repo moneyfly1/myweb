@@ -99,10 +99,14 @@ func updateSettingsCommon(c *gin.Context, category string) {
 	// 清除系统配置缓存
 	go func() {
 		cs := cache_service.NewCacheService()
-		cs.ClearSystemConfigCache(category)
+		if err := cs.ClearSystemConfigCache(category); err != nil {
+			log.Printf("failed to clear system config cache: %v", err)
+		}
 		// 如果修改的是公告设置，同时清除公告列表缓存
 		if category == CatAnnouncement {
-			cs.ClearAnnouncementsCache()
+			if err := cs.ClearAnnouncementsCache(); err != nil {
+				log.Printf("failed to clear announcements cache: %v", err)
+			}
 		}
 	}()
 
@@ -446,7 +450,7 @@ func UploadFile(c *gin.Context) {
 	}
 
 	// Reset pointer
-	f.Seek(0, 0)
+	_, _ = f.Seek(0, 0) // Reset pointer, ignore error
 
 	safeName := fmt.Sprintf("%d_%s", time.Now().Unix(), utils.SanitizeInput(file.Filename))
 	if utils.SanitizeInput(file.Filename) == "" {
@@ -650,7 +654,7 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 	var req struct {
 		Type string `json:"type"` // "dbip", "geolite2", 或空（默认 geolite2）
 	}
-	c.ShouldBindJSON(&req)
+	_ = c.ShouldBindJSON(&req) // Ignore error, use default values
 
 	if req.Type == "" {
 		req.Type = "geolite2"
