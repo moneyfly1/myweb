@@ -765,10 +765,10 @@ func GetSubscriptionLogs(c *gin.Context) {
 	for _, log := range logs {
 		var before, after map[string]interface{}
 		if log.BeforeData.Valid {
-			json.Unmarshal([]byte(log.BeforeData.String), &before)
+			_ = json.Unmarshal([]byte(log.BeforeData.String), &before) // Ignore error, use empty if invalid
 		}
 		if log.AfterData.Valid {
-			json.Unmarshal([]byte(log.AfterData.String), &after)
+			_ = json.Unmarshal([]byte(log.AfterData.String), &after) // Ignore error, use empty if invalid
 		}
 
 		// 获取操作人信息（操作人和执行账号）

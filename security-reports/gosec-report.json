@@ -1,0 +1,225 @@
+{
+	"Golang errors": {
+		"": [
+			{
+				"line": 0,
+				"column": 0,
+				"error": "# command-line-arguments\ninternal/api/handlers/node.go:560:3: syntax error: unexpected ( after top level declaration"
+			},
+			{
+				"line": 0,
+				"column": 0,
+				"error": "# command-line-arguments\ninternal/services/subscription/subscription.go:170:7: undefined: log"
+			}
+		],
+		"/Users/apple/Downloads/goweb/internal/api/handlers/node.go": [
+			{
+				"line": 8,
+				"column": 2,
+				"error": "\"os\" imported and not used"
+			},
+			{
+				"line": 9,
+				"column": 2,
+				"error": "\"path/filepath\" imported and not used"
+			},
+			{
+				"line": 10,
+				"column": 2,
+				"error": "\"regexp\" imported and not used"
+			},
+			{
+				"line": 12,
+				"column": 2,
+				"error": "\"strconv\" imported and not used"
+			},
+			{
+				"line": 21,
+				"column": 2,
+				"error": "\"cboard-go/internal/services/node_health\" imported and not used"
+			},
+			{
+				"line": 550,
+				"column": 13,
+				"error": "undefined: cs"
+			},
+			{
+				"line": 560,
+				"column": 3,
+				"error": "expected ';', found '('"
+			},
+			{
+				"line": 570,
+				"column": 6,
+				"error": "other declaration of node"
+			},
+			{
+				"line": 570,
+				"column": 6,
+				"error": "other declaration of node"
+			},
+			{
+				"line": 571,
+				"column": 2,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 610,
+				"column": 6,
+				"error": "node redeclared in this block"
+			},
+			{
+				"line": 611,
+				"column": 2,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 657,
+				"column": 3,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 667,
+				"column": 3,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 708,
+				"column": 6,
+				"error": "node redeclared in this block"
+			},
+			{
+				"line": 709,
+				"column": 2,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 730,
+				"column": 6,
+				"error": "other declaration of req"
+			},
+			{
+				"line": 730,
+				"column": 6,
+				"error": "other declaration of req"
+			},
+			{
+				"line": 733,
+				"column": 2,
+				"error": "expected declaration, found body"
+			},
+			{
+				"line": 735,
+				"column": 7,
+				"error": "other declaration of flex"
+			},
+			{
+				"line": 736,
+				"column": 3,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 763,
+				"column": 6,
+				"error": "req redeclared in this block"
+			},
+			{
+				"line": 766,
+				"column": 2,
+				"error": "expected declaration, found body"
+			},
+			{
+				"line": 768,
+				"column": 7,
+				"error": "flex redeclared in this block"
+			},
+			{
+				"line": 769,
+				"column": 3,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 791,
+				"column": 2,
+				"error": "expected declaration, found 'for'"
+			},
+			{
+				"line": 823,
+				"column": 6,
+				"error": "req redeclared in this block"
+			},
+			{
+				"line": 826,
+				"column": 2,
+				"error": "expected declaration, found 'if'"
+			},
+			{
+				"line": 861,
+				"column": 2,
+				"error": "expected declaration, found 'if'"
+			}
+		],
+		"/Users/apple/Downloads/goweb/internal/api/router/router.go": [
+			{
+				"line": 163,
+				"column": 41,
+				"error": "undefined: handlers.TestNode"
+			},
+			{
+				"line": 164,
+				"column": 43,
+				"error": "undefined: handlers.BatchTestNodes"
+			},
+			{
+				"line": 165,
+				"column": 50,
+				"error": "undefined: handlers.ImportFromClash"
+			},
+			{
+				"line": 367,
+				"column": 37,
+				"error": "undefined: handlers.UpdateNode"
+			},
+			{
+				"line": 368,
+				"column": 40,
+				"error": "undefined: handlers.DeleteNode"
+			},
+			{
+				"line": 369,
+				"column": 43,
+				"error": "undefined: handlers.TestNode"
+			},
+			{
+				"line": 370,
+				"column": 45,
+				"error": "undefined: handlers.BatchTestNodes"
+			},
+			{
+				"line": 371,
+				"column": 47,
+				"error": "undefined: handlers.BatchDeleteNodes"
+			},
+			{
+				"line": 372,
+				"column": 51,
+				"error": "undefined: handlers.ImportFromFile"
+			}
+		],
+		"/Users/apple/Downloads/goweb/internal/services/subscription/subscription.go": [
+			{
+				"line": 170,
+				"column": 7,
+				"error": "undefined: log"
+			}
+		]
+	},
+	"Issues": [],
+	"Stats": {
+		"files": 99,
+		"lines": 39082,
+		"nosec": 25,
+		"found": 0
+	},
+	"GosecVersion": "dev"
+}

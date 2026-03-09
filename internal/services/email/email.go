@@ -209,6 +209,7 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         s.host,
+			MinVersion:         tls.VersionTLS12, // #nosec G402 - TLS 1.2 is secure
 		}
 		conn, err := tls.Dial("tcp", addr, tlsConfig)
 		if err != nil {
@@ -267,6 +268,7 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         s.host,
+			MinVersion:         tls.VersionTLS12, // #nosec G402 - TLS 1.2 is secure
 		}
 		if err = client.StartTLS(tlsConfig); err != nil {
 			return fmt.Errorf("启动TLS失败: %v", err)

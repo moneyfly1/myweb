@@ -305,12 +305,12 @@
             <div v-if="!emailDetail.content || !sanitizedEmailContent" class="email-content-empty">
               <el-empty description="邮件内容为空" />
             </div>
-            <iframe 
+            <iframe
               v-else-if="isEmailFullHtml && sanitizedEmailContent"
-              :srcdoc="sanitizedEmailContent" 
+              :srcdoc="sanitizedEmailContent"
               class="email-html-iframe"
               frameborder="0"
-              sandbox="allow-same-origin"
+              sandbox=""
               @load="onIframeLoad"
             ></iframe>
             <div v-else-if="sanitizedEmailContent" v-html="sanitizedEmailContent" class="email-html-content"></div>
@@ -448,14 +448,14 @@ export default {
       }
       try {
         const sanitized = DOMPurify.sanitize(html, {
-          ALLOWED_TAGS: null, 
-          ALLOWED_ATTR: null, 
-          ALLOW_DATA_ATTR: true,
-          ALLOW_UNKNOWN_PROTOCOLS: true,
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'div', 'span', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'center'],
+          ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'id', 'src', 'alt', 'width', 'height', 'align', 'border', 'cellpadding', 'cellspacing', 'bgcolor', 'color'],
+          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+          ALLOW_DATA_ATTR: false,
           KEEP_CONTENT: true,
           SAFE_FOR_TEMPLATES: true,
-          FORBID_TAGS: ['script'], 
-          FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange', 'onsubmit'], 
+          FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+          FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onmouseenter', 'onmouseleave', 'onkeydown', 'onkeyup', 'onkeypress'],
           RETURN_DOM: false,
           RETURN_DOM_FRAGMENT: false,
           USE_PROFILES: { html: true }

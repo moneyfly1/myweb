@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 
 	"cboard-go/internal/core/cache"

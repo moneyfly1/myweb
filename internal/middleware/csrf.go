@@ -41,7 +41,9 @@ func GetCSRFManager() *CSRFManager {
 
 func generateSecretKey() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	return base64.URLEncoding.EncodeToString(b)
 }
 
@@ -101,7 +103,9 @@ func getSessionID(c *gin.Context) string {
 	}
 
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	sessionID := base64.URLEncoding.EncodeToString(b)
 
 	isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
