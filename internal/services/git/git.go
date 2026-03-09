@@ -348,16 +348,17 @@ func (c *GitClient) UploadBackup(filePath string) error {
 }
 
 // UploadBackupWithProgress 上传备份文件（带进度回调）
-// 按照年/月/日的文件夹结构组织: YYYY/MM/DD/filename.zip
+// 按照年/月的文件夹结构组织: YYYY/MM/filename.zip
+// 例如: 2026/03/backup_db_20260309_150405.zip
 func (c *GitClient) UploadBackupWithProgress(filePath string, progressCallback ProgressCallback) error {
 	now := utils.GetBeijingTime()
-	year := now.Format("2006")
-	month := now.Format("01")
-	day := now.Format("02")
+	year := now.Format("2006")   // 2026
+	month := now.Format("01")    // 03
 	fileName := filepath.Base(filePath)
 
-	// 构建远程路径: 年/月/日/文件名
-	remotePath := fmt.Sprintf("%s/%s/%s/%s", year, month, day, fileName)
+	// 构建远程路径: 年/月/文件名
+	// GitHub/Gitee 会自动创建不存在的文件夹
+	remotePath := fmt.Sprintf("%s/%s/%s", year, month, fileName)
 
 	return c.UploadFileWithProgress(filePath, remotePath, progressCallback)
 }
