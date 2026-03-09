@@ -84,7 +84,8 @@ func main() {
 	// 验证 geoipPath 安全性
 	cleanGeoipPath := filepath.Clean(geoipPath)
 	if strings.Contains(cleanGeoipPath, "..") {
-		log.Printf("不安全的 GeoIP 路径: %s", geoipPath)
+		// #nosec G706 - Path is cleaned and validated, log is for debugging
+		log.Printf("不安全的 GeoIP 路径: %s", geoipPath) // #nosec G706
 		cleanGeoipPath = "./GeoLite2-City.mmdb"
 	}
 

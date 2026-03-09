@@ -165,11 +165,11 @@ func Register(c *gin.Context) {
 	// 记录注册日志
 	var inviterID *uint
 	if user.InvitedBy.Valid {
-		id := uint(user.InvitedBy.Int64)
+		id := utils.MustSafeInt64ToUint(user.InvitedBy.Int64)
 		inviterID = &id
 	}
 	go func() {
-		utils.CreateRegistrationLog(
+		if err := utils.CreateRegistrationLog(
 			user.ID,
 			user.Username,
 			user.Email,
@@ -177,7 +177,9 @@ func Register(c *gin.Context) {
 			c.GetHeader("User-Agent"),
 			req.InviteCode,
 			inviterID,
-		)
+		); err != nil {
+			log.Printf("failed to create registration log: %v", err)
+		}
 	}()
 
 	handleRegisterNotification(user)
@@ -969,7 +971,10 @@ func ForgotPassword(c *gin.Context) {
 		map[string]interface{}{"email": req.Email, "ip": ipAddress})
 
 	b := make([]byte, 4)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "生成验证码失败", err)
+		return
+	}
 	codeInt := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
 	codeInt = 100000 + (codeInt % 900000)
 	code := fmt.Sprintf("%06d", codeInt)
