@@ -265,14 +265,15 @@
               </el-form-item>
             </el-col>
           </el-row>
-          <div v-if="editingNode && nodeLink" class="link-generator">
+          <div v-if="editingNode" class="link-generator">
             <div class="link-label">节点链接</div>
-            <div class="link-box">
+            <div class="link-box" v-if="nodeLink">
               <div class="link-text">{{ nodeLink }}</div>
-              <el-button type="primary" link @click="copyNodeLink">
+              <el-button class="link-copy-btn" type="primary" link @click="copyNodeLink">
                 <el-icon><DocumentCopy /></el-icon>
               </el-button>
             </div>
+            <div v-else class="link-loading">加载中...</div>
           </div>
         </el-form>
       </div>
@@ -522,7 +523,7 @@ export default {
     const formatLatency = (l) => l > 0 ? `${l}ms` : '-'
     const getLatencyClass = (l) => l <= 0 ? '' : l < 200 ? 'text-green' : l < 500 ? 'text-orange' : 'text-red'
     const nodeLink = computed(() => {
-      if (!editingNode.value || !nodeForm.config) return ''
+      if (!editingNode.value) return ''
       return nodeLinkValue.value || ''
     })
     const copyNodeLink = () => {
@@ -721,21 +722,36 @@ export default {
   border-radius: 4px;
   margin-top: 10px;
 }
+.link-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  margin-bottom: 6px;
+}
 .link-box {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  gap: 8px;
   background: #fff;
   border: 1px solid var(--el-border-color);
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 8px;
 }
 .link-text {
   flex: 1;
+  min-width: 0;
   font-family: monospace;
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  overflow: clip;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
+  line-height: 1.5;
+  user-select: all;
+}
+.link-copy-btn {
+  flex-shrink: 0;
+}
+.link-loading {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  padding: 4px 0;
 }
 </style>
