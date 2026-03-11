@@ -625,6 +625,40 @@ func GetNodeLink(c *gin.Context) {
 		return
 	}
 
+	// 如果直接解析失败（字段为空），尝试用通用 map 解析
+	if proxyNode.Server == "" || proxyNode.Type == "" {
+		var rawConfig map[string]interface{}
+		if err := json.Unmarshal([]byte(*node.Config), &rawConfig); err == nil {
+			if s, ok := rawConfig["Server"].(string); ok && s != "" {
+				proxyNode.Server = s
+			}
+			if t, ok := rawConfig["Type"].(string); ok && t != "" {
+				proxyNode.Type = t
+			}
+			if p, ok := rawConfig["Port"].(float64); ok {
+				proxyNode.Port = int(p)
+			}
+			if u, ok := rawConfig["UUID"].(string); ok {
+				proxyNode.UUID = u
+			}
+			if pw, ok := rawConfig["Password"].(string); ok {
+				proxyNode.Password = pw
+			}
+			if ci, ok := rawConfig["Cipher"].(string); ok {
+				proxyNode.Cipher = ci
+			}
+			if nw, ok := rawConfig["Network"].(string); ok {
+				proxyNode.Network = nw
+			}
+			if tls, ok := rawConfig["TLS"].(bool); ok {
+				proxyNode.TLS = tls
+			}
+			if opts, ok := rawConfig["Options"].(map[string]interface{}); ok && proxyNode.Options == nil {
+				proxyNode.Options = opts
+			}
+		}
+	}
+
 	if proxyNode.Name == "" {
 		proxyNode.Name = node.Name
 	}

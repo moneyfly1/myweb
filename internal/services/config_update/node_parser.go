@@ -11,17 +11,17 @@ import (
 
 // ProxyNode 代理节点结构体
 type ProxyNode struct {
-	Name     string                 `yaml:"name"`
-	Type     string                 `yaml:"type"`
-	Server   string                 `yaml:"server"`
-	Port     int                    `yaml:"port"`
-	UUID     string                 `yaml:"uuid,omitempty"`
-	Password string                 `yaml:"password,omitempty"`
-	Cipher   string                 `yaml:"cipher,omitempty"`
-	Network  string                 `yaml:"network,omitempty"`
-	TLS      bool                   `yaml:"tls,omitempty"`
-	UDP      bool                   `yaml:"udp,omitempty"`
-	Options  map[string]interface{} `yaml:",inline"`
+	Name     string                 `yaml:"name" json:"Name"`
+	Type     string                 `yaml:"type" json:"Type"`
+	Server   string                 `yaml:"server" json:"Server"`
+	Port     int                    `yaml:"port" json:"Port"`
+	UUID     string                 `yaml:"uuid,omitempty" json:"UUID,omitempty"`
+	Password string                 `yaml:"password,omitempty" json:"Password,omitempty"`
+	Cipher   string                 `yaml:"cipher,omitempty" json:"Cipher,omitempty"`
+	Network  string                 `yaml:"network,omitempty" json:"Network,omitempty"`
+	TLS      bool                   `yaml:"tls,omitempty" json:"TLS,omitempty"`
+	UDP      bool                   `yaml:"udp,omitempty" json:"UDP,omitempty"`
+	Options  map[string]interface{} `yaml:",inline" json:"Options,omitempty"`
 }
 
 type nodeParser func(string) (*ProxyNode, error)
