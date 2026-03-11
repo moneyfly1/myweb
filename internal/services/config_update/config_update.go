@@ -1720,6 +1720,13 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 		} else {
 			result["password"] = "" // 即使为空也要设置
 		}
+		// 处理 plugin 配置
+		if pluginName, ok := node.Options["plugin"].(string); ok && pluginName != "" {
+			result["plugin"] = pluginName
+			if pluginOpts, ok := node.Options["plugin-opts"].(map[string]interface{}); ok {
+				result["plugin-opts"] = pluginOpts
+			}
+		}
 	case "vmess":
 		setIfNotEmpty("uuid", node.UUID)
 		result["alterId"] = 0
@@ -2179,7 +2186,33 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
 	auth := fmt.Sprintf("%s:%s", proxy.Cipher, proxy.Password)
 	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
-	return s.buildStandardNodeURL("ss", encoded, "", proxy.Server, proxy.Port, proxy.Name, nil)
+
+	// 构建 plugin 查询参数
+	var query url.Values
+	if pluginName, ok := proxy.Options["plugin"].(string); ok && pluginName != "" {
+		query = url.Values{}
+		// 还原插件名称
+		linkPluginName := pluginName
+		switch pluginName {
+		case "obfs":
+			linkPluginName = "obfs-local"
+		}
+		pluginStr := linkPluginName
+		if pluginOpts, ok := proxy.Options["plugin-opts"].(map[string]interface{}); ok {
+			if mode, ok := pluginOpts["mode"].(string); ok && mode != "" {
+				pluginStr += ";obfs=" + mode
+			}
+			if host, ok := pluginOpts["host"].(string); ok && host != "" {
+				pluginStr += ";obfs-host=" + host
+			}
+			if path, ok := pluginOpts["path"].(string); ok && path != "" {
+				pluginStr += ";obfs-uri=" + path
+			}
+		}
+		query.Set("plugin", pluginStr)
+	}
+
+	return s.buildStandardNodeURL("ss", encoded, "", proxy.Server, proxy.Port, proxy.Name, query)
 }
 
 func (s *ConfigUpdateService) nodeToSSRLink(node *ProxyNode) string {

@@ -364,6 +364,7 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/nodes/stats", handlers.GetNodeStats)
 			admin.POST("/nodes", handlers.CreateNode)
 			admin.POST("/nodes/import-links", handlers.ImportNodeLinks)
+			admin.GET("/nodes/:id/link", handlers.GetNodeLink)
 			admin.PUT("/nodes/:id", handlers.UpdateNode)
 			admin.DELETE("/nodes/:id", handlers.DeleteNode)
 			admin.POST("/nodes/:id/test", handlers.TestNode)
