@@ -606,6 +606,39 @@ func UpdateNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
 }
 
+func GetNodeLink(c *gin.Context) {
+	db := database.GetDB()
+	var node models.Node
+	if err := db.First(&node, c.Param("id")).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", err)
+		return
+	}
+
+	if node.Config == nil || *node.Config == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "节点配置为空", nil)
+		return
+	}
+
+	var proxyNode config_update.ProxyNode
+	if err := json.Unmarshal([]byte(*node.Config), &proxyNode); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "解析节点配置失败", err)
+		return
+	}
+
+	if proxyNode.Name == "" {
+		proxyNode.Name = node.Name
+	}
+
+	service := config_update.NewConfigUpdateService()
+	link := service.NodeToLink(&proxyNode)
+	if link == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "不支持的节点类型", nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", map[string]string{"link": link})
+}
+
 func DeleteNode(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()

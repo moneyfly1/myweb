@@ -182,7 +182,7 @@ func parseShadowsocks(link string) (*ProxyNode, error) {
 		return nil, fmt.Errorf("SS 缺少认证信息")
 	}
 
-	return &ProxyNode{
+	node := &ProxyNode{
 		Name:     getFragment(parsed, fmt.Sprintf("SS-%s:%s", parsed.Hostname(), parsed.Port())),
 		Type:     "ss",
 		Server:   parsed.Hostname(),
@@ -190,7 +190,12 @@ func parseShadowsocks(link string) (*ProxyNode, error) {
 		Cipher:   method,
 		Password: password,
 		Options:  make(map[string]interface{}),
-	}, nil
+	}
+
+	// 解析 plugin 参数
+	parseSSPlugin(node, parsed.Query())
+
+	return node, nil
 }
 
 func parseSSR(link string) (*ProxyNode, error) {
@@ -480,6 +485,58 @@ func applyHysteriaBandwidth(node *ProxyNode, query url.Values, upKey, downKey st
 	}
 }
 
+// parseSSPlugin 解析 SS 链接中的 plugin 参数
+// 格式: plugin=simple-obfs;obfs=http;obfs-host=example.com
+// 或: plugin=obfs-local;obfs=http;obfs-host=example.com
+func parseSSPlugin(node *ProxyNode, query url.Values) {
+	pluginStr := query.Get("plugin")
+	if pluginStr == "" {
+		return
+	}
+
+	// plugin 参数格式: plugin-name;key=value;key=value
+	parts := strings.Split(pluginStr, ";")
+	if len(parts) == 0 {
+		return
+	}
+
+	pluginName := strings.TrimSpace(parts[0])
+	// 标准化插件名称: obfs-local -> obfs, simple-obfs -> obfs
+	switch pluginName {
+	case "simple-obfs", "obfs-local":
+		pluginName = "obfs"
+	case "v2ray-plugin":
+		pluginName = "v2ray-plugin"
+	}
+
+	node.Options["plugin"] = pluginName
+	pluginOpts := make(map[string]interface{})
+
+	for _, part := range parts[1:] {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) == 2 {
+			key := strings.TrimSpace(kv[0])
+			val := strings.TrimSpace(kv[1])
+			switch key {
+			case "obfs":
+				pluginOpts["mode"] = val
+			case "obfs-host":
+				pluginOpts["host"] = val
+			case "obfs-uri", "path":
+				pluginOpts["path"] = val
+			case "tls":
+				pluginOpts["tls"] = true
+			default:
+				pluginOpts[key] = val
+			}
+		}
+	}
+
+	if len(pluginOpts) > 0 {
+		node.Options["plugin-opts"] = pluginOpts
+	}
+}
+
 func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error) {
 	auth := strings.SplitN(authPart, ":", 2)
 	server := strings.SplitN(serverPart, ":", 2)
@@ -487,10 +544,19 @@ func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error)
 		return nil, fmt.Errorf("SS 格式解析失败")
 	}
 
-	port, _ := strconv.Atoi(server[1])
+	// serverPart 可能包含 ?plugin=... 和 #fragment
+	hostPort := server[1]
+	if idx := strings.Index(hostPort, "?"); idx != -1 {
+		hostPort = hostPort[:idx]
+	}
+	if idx := strings.Index(hostPort, "#"); idx != -1 {
+		hostPort = hostPort[:idx]
+	}
+
+	port, _ := strconv.Atoi(hostPort)
 	parsed, _ := url.Parse(originalLink)
 
-	return &ProxyNode{
+	node := &ProxyNode{
 		Name:     getFragment(parsed, fmt.Sprintf("SS-%s:%d", server[0], port)),
 		Type:     "ss",
 		Server:   server[0],
@@ -498,7 +564,14 @@ func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error)
 		Cipher:   auth[0],
 		Password: auth[1],
 		Options:  make(map[string]interface{}),
-	}, nil
+	}
+
+	// 解析 plugin 参数
+	if parsed != nil {
+		parseSSPlugin(node, parsed.Query())
+	}
+
+	return node, nil
 }
 
 // --- 基础工具函数 (Getter & Decoder) ---
