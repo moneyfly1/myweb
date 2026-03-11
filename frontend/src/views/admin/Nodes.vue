@@ -319,6 +319,7 @@ export default {
     const types = ref([])
     const addNodeTab = ref('link')
     const nodeLinkInput = ref('')
+    const nodeLinkValue = ref('')
     const parsedNode = ref(null)
     const filters = reactive({ status: '', is_active: '', region: '', type: '' })
     const pagination = reactive({ page: 1, size: 20, total: 0 })
@@ -385,7 +386,7 @@ export default {
       const actions = { refresh: loadNodes, test: batchTest, delete: batchDelete }
       actions[cmd] && actions[cmd]()
     }
-    const editNode = (node) => {
+    const editNode = async (node) => {
       editingNode.value = node
       Object.assign(nodeForm, {
         name: node.name || '',
@@ -396,7 +397,17 @@ export default {
         is_recommended: !!node.is_recommended,
         is_active: node.is_active !== false
       })
+      nodeLinkValue.value = ''
       showAddDialog.value = true
+      // 异步获取真实节点链接
+      try {
+        const res = await adminAPI.getNodeLink(node.id)
+        if (res.data?.success && res.data.data?.link) {
+          nodeLinkValue.value = res.data.data.link
+        }
+      } catch (e) {
+        console.warn('获取节点链接失败', e)
+      }
     }
     const saveNode = async () => {
       if (!nodeForm.name || !nodeForm.region) return ElMessage.warning('请填写必填项')
@@ -503,6 +514,7 @@ export default {
       editingNode.value = null
       Object.assign(nodeForm, { name: '', region: '', type: 'vmess', config: '', is_active: true })
       nodeLinkInput.value = ''
+      nodeLinkValue.value = ''
       parsedNode.value = null
     }
     const getStatusType = (s) => ({ online: 'success', offline: 'danger', timeout: 'warning' }[s] || 'info')
@@ -511,7 +523,7 @@ export default {
     const getLatencyClass = (l) => l <= 0 ? '' : l < 200 ? 'text-green' : l < 500 ? 'text-orange' : 'text-red'
     const nodeLink = computed(() => {
       if (!editingNode.value || !nodeForm.config) return ''
-      return `vmess://(预览链接)` 
+      return nodeLinkValue.value || ''
     })
     const copyNodeLink = () => {
       navigator.clipboard.writeText(nodeLink.value)

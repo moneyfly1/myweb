@@ -383,8 +383,28 @@ func (s *ConfigUpdateService) buildSSLink(proxy map[string]interface{}, name, se
 
 	auth := fmt.Sprintf("%s:%s", cipher, password)
 	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
-	link := fmt.Sprintf("ss://%s@%s:%d#%s", encoded, server, port, url.QueryEscape(name))
 
+	// 处理 plugin 参数
+	queryStr := ""
+	if pluginName, ok := proxy["plugin"].(string); ok && pluginName != "" {
+		linkPluginName := pluginName
+		switch pluginName {
+		case "obfs":
+			linkPluginName = "obfs-local"
+		}
+		pluginStr := linkPluginName
+		if pluginOpts, ok := proxy["plugin-opts"].(map[string]interface{}); ok {
+			if mode, ok := pluginOpts["mode"].(string); ok && mode != "" {
+				pluginStr += ";obfs=" + mode
+			}
+			if host, ok := pluginOpts["host"].(string); ok && host != "" {
+				pluginStr += ";obfs-host=" + host
+			}
+		}
+		queryStr = "?plugin=" + url.QueryEscape(pluginStr)
+	}
+
+	link := fmt.Sprintf("ss://%s@%s:%d%s#%s", encoded, server, port, queryStr, url.QueryEscape(name))
 	return link
 }
 
