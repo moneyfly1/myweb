@@ -724,6 +724,14 @@ export default {
   .link-generator {
     margin-top: 10px;
   }
+  .link-box {
+    padding: 6px;
+  }
+  .link-text {
+    font-size: 11px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
 }
 .link-generator {
   background: var(--el-fill-color-light);
