@@ -85,6 +85,11 @@
           <el-table-column type="selection" width="50" />
           <el-table-column prop="name" label="节点名称" min-width="180" show-overflow-tooltip />
           <el-table-column prop="region" label="地区" width="100" />
+          <el-table-column label="来源" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ row.is_manual ? '手动' : '采集' }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="type" label="类型" width="90">
             <template #default="{ row }">
               <el-tag effect="plain" size="small">{{ row.type?.toUpperCase() }}</el-tag>
@@ -143,6 +148,10 @@
               <div class="info-item">
                 <span class="label">类型</span>
                 <span class="value">{{ node.type?.toUpperCase() }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">来源</span>
+                <el-tag :type="node.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ node.is_manual ? '手动' : '采集' }}</el-tag>
               </div>
               <div class="info-item">
                 <span class="label">延迟</span>
