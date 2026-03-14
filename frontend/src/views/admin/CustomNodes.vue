@@ -776,7 +776,8 @@ export default {
       saving.value = true
       try {
         const res = await adminAPI.importCustomNodeLinks(links)
-        ElMessage.success(`导入成功: ${res.data.data?.imported || 0} 个`)
+        const imported = res.data.data?.imported ?? res.data.imported ?? 0
+        ElMessage.success(`导入成功: ${imported} 个`)
         showAddDialog.value = false
         loadCustomNodes()
       } catch { ElMessage.error('导入失败') }
