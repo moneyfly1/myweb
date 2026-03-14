@@ -21,6 +21,7 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 			"/api/v1/settings/public-settings", // 公开设置（包含维护状态）
 			"/api/v1/auth/login",               // 登录接口（需要在登录处理中检查维护模式）
 			"/api/v1/auth/login-json",          // 登录接口（需要在登录处理中检查维护模式）
+			"/api/v1/payment/notify/",          // 支付回调（维护模式下也必须处理）
 			"/health",                          // 健康检查
 			"/static",                          // 静态文件
 			"/uploads",                         // 上传文件

@@ -23,6 +23,12 @@ import (
 func CreateBackup(c *gin.Context) {
 	cfg := config.AppConfig
 
+	// WAL checkpoint: 将 WAL 文件内容刷入主数据库文件
+	if strings.Contains(cfg.DatabaseURL, "sqlite") {
+		db := database.GetDB()
+		db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	}
+
 	wd, err := os.Getwd()
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工作目录失败", err)

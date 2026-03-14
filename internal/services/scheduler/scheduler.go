@@ -285,7 +285,7 @@ func (s *Scheduler) checkUsersForDeletionWarning(now time.Time) {
 	var users []models.User
 	if err := s.db.Where("(last_login < ? OR last_login IS NULL)", thirtyDaysAgo).
 		Where("id NOT IN (SELECT DISTINCT user_id FROM subscriptions WHERE is_active = ? AND status = ? AND expire_time > ?)", true, "active", now).
-		Where("id NOT IN (SELECT DISTINCT user_id FROM email_queue WHERE email_type = ? AND created_at > ?)", "account_deletion_warning", sevenDaysAgo).
+		Where("LOWER(email) NOT IN (SELECT DISTINCT LOWER(to_email) FROM email_queue WHERE email_type = ? AND created_at > ?)", "account_deletion_warning", sevenDaysAgo).
 		Find(&users).Error; err != nil {
 		utils.LogErrorMsg("查询需要警告的用户失败: %v", err)
 		return
@@ -661,6 +661,11 @@ func (s *Scheduler) shouldRunAutoBackup(intervalHours int) bool {
 
 func (s *Scheduler) runAutoBackup() error {
 	cfg := config.AppConfig
+
+	// WAL checkpoint: 将 WAL 文件内容刷入主数据库文件
+	if strings.Contains(cfg.DatabaseURL, "sqlite") {
+		s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	}
 
 	wd, err := os.Getwd()
 	if err != nil {
