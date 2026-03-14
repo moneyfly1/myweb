@@ -73,6 +73,7 @@ var supportedClashTypes = map[string]bool{
 	"socks":     true,
 	"socks5":    true,
 	"http":      true,
+	"wireguard": true,
 	"direct":    true,
 }
 
@@ -1837,6 +1838,10 @@ func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} 
 		} else {
 			result["password"] = "" // 即使为空也要设置
 		}
+	case "wireguard":
+		// WireGuard 协议特殊处理
+		// 必需字段已经在 Options 中，这里不需要额外处理
+		// public-key, private-key, ip 等都会通过 Options 复制到 result
 	}
 
 	if node.TLS {

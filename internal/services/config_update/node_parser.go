@@ -42,6 +42,7 @@ var protocolParsers = map[string]nodeParser{
 	"socks://":       parseSOCKS,
 	"http://":        parseHTTP,
 	"https://":       parseHTTP,
+	"wg://":          parseWireGuard,
 }
 
 // ParseNodeLink 解析节点链接的主入口
@@ -334,37 +335,136 @@ func parseSOCKS(link string) (*ProxyNode, error) {
 	if strings.HasPrefix(link, "socks://") {
 		scheme = "socks"
 	}
-	return parseGenericNode(link, scheme, func(n *ProxyNode, q url.Values, p *url.URL) {
-		if p.User != nil {
-			username := p.User.Username()
-			password, hasPassword := p.User.Password()
 
-			// SOCKS 链接可能使用 base64 编码的 username:password 格式
-			// 尝试解码 username 部分
-			if decoded, err := DecodeBase64(username); err == nil {
-				// 如果解码成功，检查是否是 username:password 格式
-				if parts := strings.SplitN(decoded, ":", 2); len(parts) == 2 {
-					n.UUID = parts[0]
-					n.Password = parts[1]
-				} else {
-					// 解码后不是 username:password 格式，使用原始值
-					n.UUID = username
-					if hasPassword {
-						n.Password = password
-					}
-				}
+	// 提取查询参数和 fragment
+	var queryString, fragment string
+	if idx := strings.Index(link, "?"); idx != -1 {
+		queryString = link[idx+1:]
+		link = link[:idx]
+		if idx2 := strings.Index(queryString, "#"); idx2 != -1 {
+			fragment = queryString[idx2+1:]
+			queryString = queryString[:idx2]
+		}
+	} else if idx := strings.Index(link, "#"); idx != -1 {
+		fragment = link[idx+1:]
+		link = link[:idx]
+	}
+
+	// 移除协议前缀
+	linkWithoutScheme := strings.TrimPrefix(link, "socks://")
+	linkWithoutScheme = strings.TrimPrefix(linkWithoutScheme, "socks5://")
+
+	// 尝试 Base64 解码整个部分（GOST 格式）
+	var server, username, password string
+	var port int
+
+	if decoded, err := DecodeBase64(linkWithoutScheme); err == nil && strings.Contains(decoded, "@") {
+		// 解码成功，格式应该是 user:pass@host:port 或 user%3Apass@host:port
+		// 先进行 URL 解码
+		decodedURL, _ := url.QueryUnescape(decoded)
+
+		// 分离认证信息和服务器信息
+		parts := strings.SplitN(decodedURL, "@", 2)
+		if len(parts) == 2 {
+			// 解析认证信息 - 格式可能是 user:pass 或 user%3Apass:realpass
+			// 先尝试从最后一个冒号分割
+			authInfo := parts[0]
+			lastColonIdx := strings.LastIndex(authInfo, ":")
+			if lastColonIdx != -1 {
+				username = authInfo[:lastColonIdx]
+				password = authInfo[lastColonIdx+1:]
 			} else {
-				// 解码失败，使用原始值
-				n.UUID = username
-				if hasPassword {
-					n.Password = password
+				username = authInfo
+			}
+
+			// 解析服务器和端口
+			serverParts := strings.SplitN(parts[1], ":", 2)
+			server = serverParts[0]
+			if len(serverParts) == 2 {
+				port, _ = strconv.Atoi(serverParts[1])
+			}
+		}
+	} else {
+		// 不是 Base64 编码，使用标准 URL 解析
+		parsed, err := url.Parse(link)
+		if err != nil {
+			return nil, fmt.Errorf("SOCKS 链接解析失败: %v", err)
+		}
+		server = parsed.Hostname()
+		port = getPort(parsed)
+		if parsed.User != nil {
+			username = parsed.User.Username()
+			password, _ = parsed.User.Password()
+		}
+	}
+
+	if server == "" {
+		return nil, fmt.Errorf("SOCKS 链接缺少服务器地址")
+	}
+	if port == 0 {
+		port = 1080 // SOCKS 默认端口
+	}
+
+	// 解析查询参数
+	query, _ := url.ParseQuery(queryString)
+
+	// 获取节点名称
+	nodeName := fmt.Sprintf("SOCKS-%s:%d", server, port)
+	if remarks := query.Get("remarks"); remarks != "" {
+		if decodedRemarks, err := url.QueryUnescape(remarks); err == nil {
+			nodeName = decodedRemarks
+		} else {
+			nodeName = remarks
+		}
+	} else if fragment != "" {
+		if decodedFragment, err := url.QueryUnescape(fragment); err == nil {
+			nodeName = decodedFragment
+		} else {
+			nodeName = fragment
+		}
+	}
+
+	node := &ProxyNode{
+		Name:     nodeName,
+		Type:     scheme,
+		Server:   server,
+		Port:     port,
+		UUID:     username,
+		Password: password,
+		UDP:      true,
+		Options:  make(map[string]interface{}),
+	}
+
+	// 解析 GOST 参数（WebSocket 传输层）
+	if gostParam := query.Get("gost"); gostParam != "" {
+		if gostJSON, err := DecodeBase64(gostParam); err == nil {
+			var gostConfig map[string]interface{}
+			if err := json.Unmarshal([]byte(gostJSON), &gostConfig); err == nil {
+				// GOST 使用 WebSocket 传输
+				if route, ok := gostConfig["route"].(string); ok && route == "ws" {
+					node.Network = "ws"
+					wsOpts := make(map[string]interface{})
+
+					// 设置 WebSocket 路径
+					if path, ok := gostConfig["path"].(string); ok && path != "" {
+						wsOpts["path"] = path
+					}
+
+					// 设置 WebSocket Host 头
+					if host, ok := gostConfig["host"].(string); ok && host != "" {
+						wsOpts["headers"] = map[string]string{"Host": host}
+					}
+
+					if len(wsOpts) > 0 {
+						node.Options["ws-opts"] = wsOpts
+					}
 				}
 			}
 		}
-		n.UDP = true
-	})
-}
+	}
 
+	return node, nil
+}
 func parseHTTP(link string) (*ProxyNode, error) {
 	isTLS := strings.HasPrefix(link, "https://")
 	return parseGenericNode(link, "http", func(n *ProxyNode, q url.Values, p *url.URL) {
@@ -375,6 +475,81 @@ func parseHTTP(link string) (*ProxyNode, error) {
 			applyTLSOptions(n, q, n.Server)
 		}
 	})
+}
+
+func parseWireGuard(link string) (*ProxyNode, error) {
+	// WireGuard 链接格式: wg://server:port?publicKey=xxx&privateKey=xxx&ip=xxx&mtu=xxx#name
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, fmt.Errorf("WireGuard 链接解析失败: %v", err)
+	}
+
+	query := parsed.Query()
+	publicKey := query.Get("publicKey")
+	privateKey := query.Get("privateKey")
+	ipAddr := query.Get("ip")
+
+	if publicKey == "" || privateKey == "" {
+		return nil, fmt.Errorf("WireGuard 缺少必需参数 (publicKey/privateKey)")
+	}
+
+	node := &ProxyNode{
+		Name:    getFragment(parsed, fmt.Sprintf("WG-%s:%s", parsed.Hostname(), parsed.Port())),
+		Type:    "wireguard",
+		Server:  parsed.Hostname(),
+		Port:    getPort(parsed),
+		Options: make(map[string]interface{}),
+	}
+
+	// 设置 WireGuard 必需参数
+	node.Options["public-key"] = publicKey
+	node.Options["private-key"] = privateKey
+
+	// 设置 IP 地址（可能包含 IPv4 和 IPv6）
+	if ipAddr != "" {
+		ips := strings.Split(ipAddr, ",")
+		if len(ips) > 0 {
+			// 第一个 IP 作为主 IP
+			node.Options["ip"] = strings.TrimSpace(ips[0])
+			// 如果有多个 IP，保存为 ipv6（通常第二个是 IPv6）
+			if len(ips) > 1 {
+				node.Options["ipv6"] = strings.TrimSpace(ips[1])
+			}
+		}
+	}
+
+	// 设置 MTU（可选）
+	if mtu := query.Get("mtu"); mtu != "" {
+		if mtuInt, err := strconv.Atoi(mtu); err == nil {
+			node.Options["mtu"] = mtuInt
+		}
+	}
+
+	// 设置 UDP（可选，默认启用）
+	node.UDP = true
+	if udp := query.Get("udp"); udp != "" {
+		node.UDP = udp == "1" || udp == "true"
+	}
+	node.Options["udp"] = node.UDP
+
+	// 设置 Pre-shared Key（可选）
+	if presharedKey := query.Get("presharedKey"); presharedKey != "" {
+		node.Options["preshared-key"] = presharedKey
+	}
+
+	// 设置 Reserved（可选）
+	if reserved := query.Get("reserved"); reserved != "" {
+		node.Options["reserved"] = reserved
+	}
+
+	// 设置 Keepalive（可选）
+	if keepalive := query.Get("keepalive"); keepalive != "" {
+		if keepaliveInt, err := strconv.Atoi(keepalive); err == nil {
+			node.Options["keepalive"] = keepaliveInt
+		}
+	}
+
+	return node, nil
 }
 
 // --- 公共辅助工具函数 ---
