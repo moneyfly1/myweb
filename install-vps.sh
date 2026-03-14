@@ -522,23 +522,23 @@ menu_build_all() {
 menu_uninstall() {
     local pd
     pd=$(get_dir)
-    
+
     echo ""
     warn "即将卸载 CBoard 项目（可选择性保留运行环境）。"
     read -p "项目目录 (直接回车使用 $pd): " input_dir
     pd=${input_dir:-$pd}
-    
+
     if [ ! -d "$pd" ]; then
         warn "目录不存在: $pd，可能已卸载或路径错误"
         return 0
     fi
-    
+
     read -p "确定要卸载该项目吗？(y/N): " confirm
     if [[ ! "$confirm" =~ ^[yY]$ ]]; then
         log "已取消"
         return 0
     fi
-    
+
     # 1. 停止并删除 systemd 服务
     step "停止并移除 CBoard 服务..."
     systemctl stop cboard 2>/dev/null
@@ -547,12 +547,12 @@ menu_uninstall() {
     systemctl daemon-reload 2>/dev/null
     pkill -9 -f "$pd/server" 2>/dev/null
     log "服务已移除"
-    
+
     # 2. 删除项目目录
     step "删除项目目录: $pd"
     rm -rf "$pd"
     log "项目目录已删除"
-    
+
     # 3. 删除 Nginx 中本项目的配置（不卸载 Nginx 本身）
     local nginx_removed=0
     [ -f /etc/nginx/sites-enabled/cboard ] && rm -f /etc/nginx/sites-enabled/cboard && nginx_removed=1
@@ -561,7 +561,7 @@ menu_uninstall() {
     if [ "$nginx_removed" -eq 1 ]; then
         nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null && log "已移除 CBoard 的 Nginx 配置"
     fi
-    
+
     # 4. 是否同时卸载运行环境（Go、Node）
     read -p "是否同时卸载运行环境？(删除 Go、Node，保留 Nginx) [y/N]: " rm_env
     if [[ "$rm_env" =~ ^[yY]$ ]]; then
@@ -572,8 +572,108 @@ menu_uninstall() {
     else
         log "已保留 Go、Node 环境，可继续用于其他项目或重新安装。"
     fi
-    
+
     log "卸载完成。"
+}
+
+# --- 从 GitHub 同步代码并重新构建 ---
+sync_from_github() {
+    log "开始从 GitHub 同步代码..."
+    local pd=$(get_dir)
+
+    if [ ! -d "$pd" ]; then
+        error "项目目录不存在: $pd"
+        return 1
+    fi
+    cd "$pd" || { error "无法进入项目目录"; return 1; }
+
+    # 检查是否是 git 仓库，不是则自动初始化
+    if [ ! -d ".git" ]; then
+        log "项目目录不是 Git 仓库，正在初始化..."
+        git init
+        git remote add origin "https://github.com/moneyfly1/myweb.git"
+        git fetch origin || { error "拉取代码失败，请检查网络"; return 1; }
+        git checkout -b main
+        git reset --hard origin/main
+        log "✅ Git 仓库初始化完成"
+    fi
+
+    # 拉取最新代码（增量更新）
+    log "正在拉取最新代码..."
+    local branch=$(git rev-parse --abbrev-ref HEAD)
+    log "当前分支: $branch"
+
+    # 显示即将更新的文件
+    git fetch origin
+    local changed_files=$(git diff --name-only HEAD "origin/$branch" 2>/dev/null | wc -l)
+    if [ "$changed_files" -gt 0 ]; then
+        log "检测到 $changed_files 个文件有更新："
+        git diff --name-status HEAD "origin/$branch"
+    else
+        log "代码已是最新，无需更新"
+        return 0
+    fi
+
+    # 增量拉取（保留本地未提交的修改）
+    if ! git pull origin "$branch"; then
+        warn "自动合并失败，尝试强制覆盖..."
+        if ! git reset --hard "origin/$branch"; then
+            error "代码同步失败"
+            return 1
+        fi
+    fi
+    log "✅ 代码同步成功"
+
+    # 编译后端
+    export PATH="${PATH}:/usr/local/go/bin"
+    export CGO_ENABLED=1 GOGC=100 GOMAXPROCS=1
+    if run_with_progress "编译后端..." 120 go build -ldflags="-s -w" -trimpath -o server ./cmd/server/main.go; then
+        log "✅ Go 程序编译成功"
+    else
+        error "Go 程序编译失败"
+        return 1
+    fi
+
+    # 构建前端
+    log "正在构建前端..."
+    cd frontend || { error "前端目录不存在"; return 1; }
+    if [ ! -d "node_modules" ]; then
+        log "安装前端依赖..."
+        npm install --legacy-peer-deps || { error "前端依赖安装失败"; return 1; }
+    fi
+
+    export PATH="${PATH}:/usr/local/nodejs/bin"
+    local mem_limit=""
+    [ $(getconf _PHYS_PAGES 2>/dev/null) -lt 262144 ] && mem_limit="--max-old-space-size=512"
+    export NODE_OPTIONS="$mem_limit" PUPPETEER_SKIP_DOWNLOAD=true
+
+    if run_with_progress "构建前端..." 180 npm run build; then
+        log "✅ 前端构建成功"
+    else
+        error "前端构建失败"
+        return 1
+    fi
+    cd ..
+
+    # 重启服务
+    log "正在重启服务..."
+    if systemctl list-unit-files | grep -q "cboard.service"; then
+        systemctl stop cboard 2>/dev/null
+        pkill -9 -f "${pd}/server" 2>/dev/null
+        sleep 1
+        if systemctl start cboard; then
+            sleep 2
+            if systemctl is-active --quiet cboard; then
+                log "✅ 服务已成功重启，同步完成！"
+            else
+                error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
+            fi
+        else
+            error "服务启动失败"
+        fi
+    else
+        warn "服务 cboard 不存在，跳过重启。请先执行一键安装。"
+    fi
 }
 
 show_menu() {
@@ -596,6 +696,7 @@ show_menu() {
     echo "14. 仅构建后端（改 Go 后选此项）"
     echo "15. 构建前后端并重启"
     echo "16. 证书续期（手动续期，自动续期见下方说明）"
+    echo "17. 从 GitHub 同步代码并重新构建"
     echo "0. 退出"
     echo ""
     echo "说明: 选 16 可手动续期；自动续期由 certbot 定时任务完成，续期后会自动重载 Nginx。"
@@ -624,6 +725,7 @@ main() {
             14) menu_build_backend ;;
             15) menu_build_all ;;
             16) menu_renew_cert ;;
+            17) sync_from_github ;;
             0) exit 0 ;;
             *) warn "无效选项" ;;
         esac
