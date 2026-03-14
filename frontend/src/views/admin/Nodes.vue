@@ -513,11 +513,12 @@ export default {
       saving.value = true
       try {
         const res = await adminAPI.importNodeLinks(links)
-        ElMessage.success(`导入成功 ${res.data.imported} 个`)
+        const imported = res.data.data?.imported ?? res.data.imported ?? 0
+        ElMessage.success(`导入成功 ${imported} 个`)
         showAddDialog.value = false
         loadNodes()
       } catch(e) {
-        ElMessage.error('导入出错') 
+        ElMessage.error('导入出错')
       } finally { saving.value = false }
     }
     const resetForm = () => {
