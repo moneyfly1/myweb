@@ -54,8 +54,19 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/reset-password", handlers.ResetPasswordByCode)
 		}
 
-		api.POST("/payment/notify/:type", handlers.PaymentNotify)
-		api.GET("/payment/notify/:type", handlers.PaymentNotify)
+		// 支付回调路由（在CSRF中间件之前，添加专门的日志中间件）
+		api.POST("/payment/notify/:type", func(c *gin.Context) {
+			utils.LogInfo("========== 收到支付回调请求 ==========")
+			utils.LogInfo("路由中间件: method=%s, path=%s, type=%s, remote_addr=%s",
+				c.Request.Method, c.Request.URL.Path, c.Param("type"), c.ClientIP())
+			handlers.PaymentNotify(c)
+		})
+		api.GET("/payment/notify/:type", func(c *gin.Context) {
+			utils.LogInfo("========== 收到支付回调请求(GET) ==========")
+			utils.LogInfo("路由中间件: method=%s, path=%s, type=%s, remote_addr=%s",
+				c.Request.Method, c.Request.URL.Path, c.Param("type"), c.ClientIP())
+			handlers.PaymentNotify(c)
+		})
 
 		api.Use(middleware.CSRFMiddleware())
 
