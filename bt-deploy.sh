@@ -558,29 +558,129 @@ unlock_user() {
 deep_clean() {
     step "深度清理缓存..."
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
-    
+
     log "正在清理前端构建文件..."
     rm -rf "${PROJECT_DIR}/frontend/dist"
-    
+
     log "正在清理日志文件..."
     rm -rf "${PROJECT_DIR}/logs/*" 2>/dev/null
     rm -rf "${PROJECT_DIR}/*.log" 2>/dev/null
-    
+
     log "正在清理临时文件..."
     find "$PROJECT_DIR" -name "*.tmp" -delete 2>/dev/null
     find "$PROJECT_DIR" -name ".cache" -type d -exec rm -rf {} + 2>/dev/null
-    
+
     log "正在清理 npm 缓存..."
     if command -v npm &>/dev/null; then
         npm cache clean --force 2>/dev/null
     fi
-    
+
     log "正在清理 Go 缓存..."
     if command -v go &>/dev/null; then
         go clean -cache -modcache -i -r 2>/dev/null
     fi
-    
+
     log "✅ 缓存清理完毕"
+}
+
+# --- 从 GitHub 同步代码并重新构建 ---
+sync_from_github() {
+    log "开始从 GitHub 同步代码..."
+
+    if [ ! -d "$PROJECT_DIR" ]; then
+        error "项目目录不存在: $PROJECT_DIR"
+        return 1
+    fi
+    cd "$PROJECT_DIR" || { error "无法进入项目目录"; return 1; }
+
+    # 检查是否是 git 仓库，不是则自动初始化
+    if [ ! -d ".git" ]; then
+        log "项目目录不是 Git 仓库，正在初始化..."
+        git init
+        git remote add origin "https://github.com/moneyfly1/myweb.git"
+        git fetch origin || { error "拉取代码失败，请检查网络"; return 1; }
+        git checkout -b main
+        git reset --hard origin/main
+        log "✅ Git 仓库初始化完成"
+    fi
+
+    # 拉取最新代码（增量更新）
+    log "正在拉取最新代码..."
+    local branch=$(git rev-parse --abbrev-ref HEAD)
+    log "当前分支: $branch"
+
+    # 显示即将更新的文件
+    git fetch origin
+    local changed_files=$(git diff --name-only HEAD "origin/$branch" 2>/dev/null | wc -l)
+    if [ "$changed_files" -gt 0 ]; then
+        log "检测到 $changed_files 个文件有更新："
+        git diff --name-status HEAD "origin/$branch"
+    else
+        log "代码已是最新，无需更新"
+        return 0
+    fi
+
+    # 增量拉取（保留本地未提交的修改）
+    if ! git pull origin "$branch"; then
+        warn "自动合并失败，尝试强制覆盖..."
+        if ! git reset --hard "origin/$branch"; then
+            error "代码同步失败"
+            return 1
+        fi
+    fi
+    log "✅ 代码同步成功"
+
+    # 编译后端
+    step "编译后端..."
+    setup_go_env
+    setup_node_env
+    export PATH="${PATH}:/usr/local/go/bin"
+    export CGO_ENABLED=1
+    if go build -o server ./cmd/server/main.go; then
+        log "✅ Go 程序编译成功"
+    else
+        error "Go 程序编译失败"
+        return 1
+    fi
+
+    # 构建前端
+    step "构建前端..."
+    cd frontend || { error "前端目录不存在"; return 1; }
+    if [ ! -d "node_modules" ]; then
+        log "安装前端依赖..."
+        npm install --legacy-peer-deps || { error "前端依赖安装失败"; return 1; }
+    fi
+
+    export PATH="${PATH}:/usr/local/nodejs18/bin"
+    if npm run build; then
+        log "✅ 前端构建成功"
+    else
+        error "前端构建失败"
+        return 1
+    fi
+    cd ..
+
+    # 重启服务
+    log "正在重启服务..."
+    if systemctl list-unit-files | grep -q "cboard.service"; then
+        systemctl stop cboard 2>/dev/null
+        pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
+        sleep 1
+        if systemctl start cboard; then
+            sleep 2
+            if systemctl is-active --quiet cboard; then
+                log "✅ 服务已成功重启"
+                reload_nginx_force
+                log "✅ 同步完成！"
+            else
+                error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
+            fi
+        else
+            error "服务启动失败"
+        fi
+    else
+        warn "服务 cboard 不存在，跳过重启。请先执行全自动部署。"
+    fi
 }
 
 delete_all_configs() {
@@ -725,10 +825,11 @@ show_menu() {
     echo -e "  ${CYAN}7.${NC} 查看实时服务日志"
     echo -e "  ${CYAN}8.${NC} 标准重启服务 (Systemd)"
     echo -e "  ${CYAN}9.${NC} 停止服务"
+    echo -e "  ${CYAN}11.${NC} 从 GitHub 同步代码并重新构建"
     echo -e "  ${YELLOW}10.${NC} 卸载网站/删除配置"
     echo -e "  ${RED}0.${NC} 退出"
     echo -e "${BLUE}==========================================${NC}"
-    read -r -p "请选择操作 [0-10]: " choice
+    read -r -p "请选择操作 [0-11]: " choice
 }
 
 # --- 主程序 ---
@@ -746,6 +847,7 @@ main() {
             8) manage_service restart ;;
             9) manage_service stop ;;
             10) delete_all_configs ;;
+            11) sync_from_github ;;
             0) exit 0 ;;
             *) error "无效选择，请重新输入" ;;
         esac
