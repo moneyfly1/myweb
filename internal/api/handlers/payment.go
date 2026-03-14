@@ -139,6 +139,12 @@ func CreatePayment(c *gin.Context) {
 
 func PaymentNotify(c *gin.Context) {
 	paymentType := c.Param("type")
+
+	// 立即记录回调到达（用于诊断）
+	utils.LogInfo("========== PaymentNotify 函数被调用 ==========")
+	utils.LogInfo("PaymentNotify: 回调到达 - payment_type=%s, method=%s, remote_addr=%s, url=%s",
+		paymentType, c.Request.Method, c.ClientIP(), c.Request.URL.String())
+
 	db := database.GetDB()
 
 	params := make(map[string]string)
