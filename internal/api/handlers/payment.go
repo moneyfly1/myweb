@@ -525,6 +525,12 @@ func PaymentNotify(c *gin.Context) {
 		utils.LogInfo("PaymentNotify: 充值回调处理成功 - order_no=%s, user_id=%d, amount=%.2f, payment_type=%s",
 			orderNo, recharge.UserID, recharge.Amount, paymentType)
 
+		utils.CreateBusinessLog(c, "payment_callback_success", "支付回调处理成功（充值）", "info", map[string]interface{}{
+			"order_no":     orderNo,
+			"amount":       recharge.Amount,
+			"payment_type": paymentType,
+		})
+
 		c.String(http.StatusOK, "success")
 		return
 	}
@@ -807,6 +813,12 @@ func PaymentNotify(c *gin.Context) {
 
 		sendPaymentNotifications(db, orderNoParam)
 	}(orderNo)
+
+	utils.CreateBusinessLog(c, "payment_callback_success", "支付回调处理成功（订单）", "info", map[string]interface{}{
+		"order_no":     orderNo,
+		"order_id":     order.ID,
+		"payment_type": paymentType,
+	})
 
 	c.String(http.StatusOK, "success")
 }

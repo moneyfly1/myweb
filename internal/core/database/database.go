@@ -97,8 +97,11 @@ func InitDatabase() error {
 		return fmt.Errorf("获取数据库实例失败: %w", err)
 	}
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
-		sqlDB.SetMaxOpenConns(3)
-		sqlDB.SetMaxIdleConns(2)
+		DB.Exec("PRAGMA journal_mode=WAL")
+		DB.Exec("PRAGMA busy_timeout=5000")
+		DB.Exec("PRAGMA synchronous=NORMAL")
+		sqlDB.SetMaxOpenConns(10)
+		sqlDB.SetMaxIdleConns(5)
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	} else {
 		sqlDB.SetMaxOpenConns(25)

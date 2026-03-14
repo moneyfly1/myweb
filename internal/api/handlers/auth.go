@@ -255,22 +255,17 @@ func RefreshToken(c *gin.Context) {
 		RefreshToken string `json:"refresh_token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 refresh_token 参数", nil)
 		return
 	}
 
 	claims, err := utils.VerifyToken(req.RefreshToken)
 	if err != nil {
-		utils.CreateSecurityLog(c, "refresh_token_invalid", "MEDIUM",
-			"刷新令牌无效或已过期",
-			map[string]interface{}{"path": c.Request.URL.Path, "reason": err.Error()})
-		utils.ErrorResponse(c, http.StatusUnauthorized, "无效的刷新令牌", err)
+		// token 过期是正常客户端行为，不记录安全日志
+		utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌已过期", nil)
 		return
 	}
 	if claims.Type != "refresh" {
-		utils.CreateSecurityLog(c, "refresh_token_invalid", "MEDIUM",
-			"刷新令牌类型错误（非 refresh 类型）",
-			map[string]interface{}{"path": c.Request.URL.Path})
 		utils.ErrorResponse(c, http.StatusUnauthorized, "令牌类型错误", nil)
 		return
 	}
