@@ -1242,7 +1242,7 @@ export default {
         const dashboardUrl = window.location.origin + '/dashboard'
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
         ElMessage.success('正在跳转到用户后台...')
-        window.location.href = finalUrl
+        window.open(finalUrl, '_blank')
       } catch (error) {
         if (error !== 'cancel') {
           if (process.env.NODE_ENV === 'development') {

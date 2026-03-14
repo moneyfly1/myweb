@@ -745,6 +745,67 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 	var existingDevice models.Device
 	err := dm.db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscriptionID).First(&existingDevice).Error
 
+	// 如果通过 device_hash 找不到设备，尝试通过相同的 User-Agent 查找
+	if err == gorm.ErrRecordNotFound {
+		var sameUADevice models.Device
+		if uaErr := dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", subscriptionID, userAgent, true).
+			Order("last_access DESC").
+			First(&sameUADevice).Error; uaErr == nil {
+			// 找到相同 User-Agent 的设备，更新其 hash 和其他信息
+			now := utils.GetBeijingTime()
+			sameUADevice.DeviceHash = &deviceHash
+			sameUADevice.IPAddress = &ipAddress
+			sameUADevice.LastAccess = now
+			sameUADevice.LastSeen = &now
+			sameUADevice.AccessCount++
+			sameUADevice.UserAgent = &userAgent
+			sameUADevice.IsActive = true
+
+			// 查询并更新位置信息（使用缓存）
+			if ipAddress != "" {
+				location := geoip.GetLocationWithCache(ipAddress)
+				if location.Valid && location.String != "" {
+					sameUADevice.Location = &location.String
+				}
+			}
+
+			if subscriptionType != "" {
+				subscriptionTypeStr := subscriptionType
+				sameUADevice.SubscriptionType = &subscriptionTypeStr
+			}
+
+			if deviceInfo.DeviceName != "Unknown Device" && (sameUADevice.DeviceName == nil || *sameUADevice.DeviceName == "" || *sameUADevice.DeviceName == "Unknown Device") {
+				sameUADevice.DeviceName = &deviceInfo.DeviceName
+			}
+			if deviceInfo.DeviceType != "unknown" && (sameUADevice.DeviceType == nil || *sameUADevice.DeviceType == "" || *sameUADevice.DeviceType == "unknown") {
+				sameUADevice.DeviceType = &deviceInfo.DeviceType
+			}
+			if deviceInfo.DeviceModel != "" && (sameUADevice.DeviceModel == nil || *sameUADevice.DeviceModel == "") {
+				sameUADevice.DeviceModel = &deviceInfo.DeviceModel
+			}
+			if deviceInfo.DeviceBrand != "" && (sameUADevice.DeviceBrand == nil || *sameUADevice.DeviceBrand == "") {
+				sameUADevice.DeviceBrand = &deviceInfo.DeviceBrand
+			}
+			if deviceInfo.SoftwareName != "Unknown" && (sameUADevice.SoftwareName == nil || *sameUADevice.SoftwareName == "" || *sameUADevice.SoftwareName == "Unknown") {
+				sameUADevice.SoftwareName = &deviceInfo.SoftwareName
+			}
+			if deviceInfo.SoftwareVersion != "" && (sameUADevice.SoftwareVersion == nil || *sameUADevice.SoftwareVersion == "") {
+				sameUADevice.SoftwareVersion = &deviceInfo.SoftwareVersion
+			}
+			if deviceInfo.OSName != "Unknown" && (sameUADevice.OSName == nil || *sameUADevice.OSName == "" || *sameUADevice.OSName == "Unknown") {
+				sameUADevice.OSName = &deviceInfo.OSName
+			}
+			if deviceInfo.OSVersion != "" && (sameUADevice.OSVersion == nil || *sameUADevice.OSVersion == "") {
+				sameUADevice.OSVersion = &deviceInfo.OSVersion
+			}
+
+			if err := dm.db.Save(&sameUADevice).Error; err != nil {
+				return nil, err
+			}
+			return &sameUADevice, nil
+		}
+	}
+
 	if err == nil {
 		now := utils.GetBeijingTime()
 		existingDevice.LastAccess = now
