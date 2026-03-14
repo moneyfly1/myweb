@@ -625,19 +625,29 @@ sync_from_github() {
         log "✅ Git 仓库初始化完成"
     fi
 
-    # 拉取最新代码
+    # 拉取最新代码（增量更新）
     log "正在拉取最新代码..."
-    if ! git fetch origin; then
-        error "拉取代码失败，请检查网络和仓库配置"
-        return 1
-    fi
-
-    # 强制覆盖本地代码
     local branch=$(git rev-parse --abbrev-ref HEAD)
     log "当前分支: $branch"
-    if ! git reset --hard "origin/$branch"; then
-        error "代码同步失败"
-        return 1
+
+    # 显示即将更新的文件
+    git fetch origin
+    local changed_files=$(git diff --name-only HEAD "origin/$branch" | wc -l)
+    if [ "$changed_files" -gt 0 ]; then
+        log "检测到 $changed_files 个文件有更新："
+        git diff --name-status HEAD "origin/$branch"
+    else
+        log "代码已是最新，无需更新"
+        return 0
+    fi
+
+    # 增量拉取（保留本地未提交的修改）
+    if ! git pull origin "$branch"; then
+        warn "自动合并失败，尝试强制覆盖..."
+        if ! git reset --hard "origin/$branch"; then
+            error "代码同步失败"
+            return 1
+        fi
     fi
     log "✅ 代码同步成功"
 
