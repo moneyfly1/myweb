@@ -90,6 +90,12 @@
               <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ row.is_manual ? '手动' : '采集' }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="订阅#" width="70">
+            <template #default="{ row }">
+              <span v-if="!row.is_manual && row.source_index">#{{ row.source_index }}</span>
+              <span v-else style="color: var(--el-text-color-placeholder)">-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="type" label="类型" width="90">
             <template #default="{ row }">
               <el-tag effect="plain" size="small">{{ row.type?.toUpperCase() }}</el-tag>
@@ -151,7 +157,10 @@
               </div>
               <div class="info-item">
                 <span class="label">来源</span>
-                <el-tag :type="node.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ node.is_manual ? '手动' : '采集' }}</el-tag>
+                <el-tag :type="node.is_manual ? 'warning' : 'success'" size="small" effect="light">
+                  {{ node.is_manual ? '手动' : '采集' }}
+                  <span v-if="!node.is_manual && node.source_index"> #{{ node.source_index }}</span>
+                </el-tag>
               </div>
               <div class="info-item">
                 <span class="label">延迟</span>
