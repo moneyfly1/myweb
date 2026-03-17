@@ -101,8 +101,9 @@ type ConfigUpdateService struct {
 }
 
 type nodeWithOrder struct {
-	node       *ProxyNode
-	orderIndex int
+	node        *ProxyNode
+	orderIndex  int
+	sourceIndex int // 来源订阅编号（1开始）
 }
 
 type updateStats struct {
@@ -582,8 +583,9 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			usedNames[node.Name] = true
 
 			nodesWithOrder = append(nodesWithOrder, nodeWithOrder{
-				node:       node,
-				orderIndex: urlIndex*10000 + nodeIndexInURL,
+				node:        node,
+				orderIndex:  urlIndex*10000 + nodeIndexInURL,
+				sourceIndex: urlIndex + 1,
 			})
 			nodeIndexInURL++
 		}
@@ -1056,6 +1058,7 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 			existingNode.IsActive = true
 			existingNode.IsManual = false
 			existingNode.OrderIndex = item.orderIndex
+			existingNode.SourceIndex = item.sourceIndex
 			existingNode.Region = region
 			existingNode.Name = node.Name // 更新名称（可能不同）
 			if s.db.Save(existingNode).Error == nil {
@@ -1075,14 +1078,15 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 
 			// Create 新节点
 			newNode := models.Node{
-				Name:       node.Name,
-				Type:       node.Type,
-				Status:     "online",
-				IsActive:   true,
-				IsManual:   false,
-				Config:     &configStr,
-				Region:     region,
-				OrderIndex: item.orderIndex,
+				Name:        node.Name,
+				Type:        node.Type,
+				Status:      "online",
+				IsActive:    true,
+				IsManual:    false,
+				Config:      &configStr,
+				Region:      region,
+				OrderIndex:  item.orderIndex,
+				SourceIndex: item.sourceIndex,
 			}
 			if s.db.Create(&newNode).Error == nil {
 				stats.Created++
