@@ -643,13 +643,60 @@ sync_from_github() {
 
     # 增量拉取（保留本地未提交的修改）
     if ! git pull origin "$branch"; then
-        warn "自动合并失败，尝试强制覆盖..."
-        if ! git reset --hard "origin/$branch"; then
-            error "代码同步失败"
-            return 1
+        warn "自动合并失败，尝试保存本地修改后重新拉取..."
+
+        # 保存本地修改
+        if git stash save "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
+            log "本地修改已保存到 stash"
+
+            # 重新拉取
+            if git pull origin "$branch"; then
+                log "代码拉取成功，尝试恢复本地修改..."
+
+                # 尝试恢复本地修改
+                if git stash pop; then
+                    log "✅ 本地修改已恢复"
+                else
+                    warn "本地修改恢复失败（可能有冲突），已保存在 stash 中"
+                    warn "请手动执行: git stash list 查看，git stash pop 恢复"
+                fi
+            else
+                error "代码同步失败"
+                return 1
+            fi
+        else
+            warn "没有本地修改需要保存，尝试强制覆盖..."
+            if ! git reset --hard "origin/$branch"; then
+                error "代码同步失败"
+                return 1
+            fi
         fi
     fi
     log "✅ 代码同步成功"
+
+    # 推送到所有远程仓库
+    log "正在推送到所有远程仓库..."
+    local remotes=$(git remote)
+    local push_success=0
+    local push_failed=0
+
+    for remote in $remotes; do
+        log "推送到 $remote..."
+        if git push "$remote" "$branch" 2>/dev/null; then
+            log "✅ 推送到 $remote 成功"
+            ((push_success++))
+        else
+            warn "推送到 $remote 失败（可能需要认证或网络问题）"
+            ((push_failed++))
+        fi
+    done
+
+    if [ $push_success -gt 0 ]; then
+        log "✅ 成功推送到 $push_success 个远程仓库"
+    fi
+    if [ $push_failed -gt 0 ]; then
+        warn "有 $push_failed 个远程仓库推送失败"
+    fi
 
     # 编译后端
     log "正在编译 Go 程序..."
