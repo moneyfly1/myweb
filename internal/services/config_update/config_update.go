@@ -2177,6 +2177,12 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 		"id":   proxy.UUID,
 		"net":  network,
 		"type": obfsType,
+		"tls":  "",
+		"sni":  "",
+		"host": "",
+		"path": "",
+		"aid":  0,
+		"scy":  "auto",
 	}
 
 	if proxy.TLS {
@@ -2184,6 +2190,23 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 	}
 
 	if proxy.Options != nil {
+		// alterId
+		if aid, ok := proxy.Options["alterId"]; ok {
+			data["aid"] = aid
+		}
+		// cipher
+		if cipher, ok := proxy.Options["cipher"].(string); ok && cipher != "" {
+			data["scy"] = cipher
+		}
+		// sni / servername
+		if sni, ok := proxy.Options["servername"].(string); ok && sni != "" {
+			data["sni"] = sni
+		}
+		// skip-cert-verify (insecure)
+		if skip, ok := proxy.Options["skip-cert-verify"].(bool); ok && skip {
+			data["insecure"] = "1"
+		}
+
 		// ws-opts
 		if wsOpts, ok := proxy.Options["ws-opts"].(map[string]interface{}); ok {
 			if path, ok := wsOpts["path"].(string); ok {
@@ -2204,6 +2227,21 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 				if hosts, ok := headers["Host"].([]string); ok && len(hosts) > 0 {
 					data["host"] = hosts[0]
 				}
+			}
+		}
+		// h2-opts
+		if h2Opts, ok := proxy.Options["h2-opts"].(map[string]interface{}); ok {
+			if path, ok := h2Opts["path"].(string); ok {
+				data["path"] = path
+			}
+			if hosts, ok := h2Opts["host"].([]string); ok && len(hosts) > 0 {
+				data["host"] = hosts[0]
+			}
+		}
+		// grpc-opts
+		if grpcOpts, ok := proxy.Options["grpc-opts"].(map[string]interface{}); ok {
+			if sn, ok := grpcOpts["grpc-service-name"].(string); ok {
+				data["path"] = sn
 			}
 		}
 	}
