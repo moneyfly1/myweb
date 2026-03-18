@@ -636,43 +636,42 @@ sync_from_github() {
     if [ "$changed_files" -gt 0 ]; then
         log "检测到 $changed_files 个文件有更新："
         git diff --name-status HEAD "origin/$branch"
-    else
-        log "代码已是最新，无需更新"
-        return 0
-    fi
 
-    # 增量拉取（保留本地未提交的修改）
-    if ! git pull origin "$branch"; then
-        warn "自动合并失败，尝试保存本地修改后重新拉取..."
+        # 增量拉取（保留本地未提交的修改）
+        if ! git pull origin "$branch"; then
+            warn "自动合并失败，尝试保存本地修改后重新拉取..."
 
-        # 保存本地修改
-        if git stash save "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
-            log "本地修改已保存到 stash"
+            # 保存本地修改
+            if git stash save "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
+                log "本地修改已保存到 stash"
 
-            # 重新拉取
-            if git pull origin "$branch"; then
-                log "代码拉取成功，尝试恢复本地修改..."
+                # 重新拉取
+                if git pull origin "$branch"; then
+                    log "代码拉取成功，尝试恢复本地修改..."
 
-                # 尝试恢复本地修改
-                if git stash pop; then
-                    log "✅ 本地修改已恢复"
+                    # 尝试恢复本地修改
+                    if git stash pop; then
+                        log "✅ 本地修改已恢复"
+                    else
+                        warn "本地修改恢复失败（可能有冲突），已保存在 stash 中"
+                        warn "请手动执行: git stash list 查看，git stash pop 恢复"
+                    fi
                 else
-                    warn "本地修改恢复失败（可能有冲突），已保存在 stash 中"
-                    warn "请手动执行: git stash list 查看，git stash pop 恢复"
+                    error "代码同步失败"
+                    return 1
                 fi
             else
-                error "代码同步失败"
-                return 1
-            fi
-        else
-            warn "没有本地修改需要保存，尝试强制覆盖..."
-            if ! git reset --hard "origin/$branch"; then
-                error "代码同步失败"
-                return 1
+                warn "没有本地修改需要保存，尝试强制覆盖..."
+                if ! git reset --hard "origin/$branch"; then
+                    error "代码同步失败"
+                    return 1
+                fi
             fi
         fi
+        log "✅ 代码同步成功"
+    else
+        log "代码已是最新，跳过拉取，继续构建和重启..."
     fi
-    log "✅ 代码同步成功"
 
     # 编译后端
     log "正在编译 Go 程序..."
