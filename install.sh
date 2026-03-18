@@ -674,30 +674,6 @@ sync_from_github() {
     fi
     log "✅ 代码同步成功"
 
-    # 推送到所有远程仓库
-    log "正在推送到所有远程仓库..."
-    local remotes=$(git remote)
-    local push_success=0
-    local push_failed=0
-
-    for remote in $remotes; do
-        log "推送到 $remote..."
-        if git push "$remote" "$branch" 2>/dev/null; then
-            log "✅ 推送到 $remote 成功"
-            ((push_success++))
-        else
-            warn "推送到 $remote 失败（可能需要认证或网络问题）"
-            ((push_failed++))
-        fi
-    done
-
-    if [ $push_success -gt 0 ]; then
-        log "✅ 成功推送到 $push_success 个远程仓库"
-    fi
-    if [ $push_failed -gt 0 ]; then
-        warn "有 $push_failed 个远程仓库推送失败"
-    fi
-
     # 编译后端
     log "正在编译 Go 程序..."
     if ! command -v go &> /dev/null; then
