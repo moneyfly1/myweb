@@ -107,7 +107,8 @@ func parseVMess(link string) (*ProxyNode, error) {
 	// 映射传输层配置
 	path := getString(data, "path", "/")
 	host := getString(data, "host", server)
-	applyTransportMapping(node, network, path, host)
+	obfsType := getString(data, "type", "")
+	applyTransportMapping(node, network, path, host, obfsType)
 
 	return node, nil
 }
@@ -614,8 +615,23 @@ func applyTransportOptions(node *ProxyNode, query url.Values) {
 }
 
 // applyTransportMapping VMess 专用的传输层处理
-func applyTransportMapping(node *ProxyNode, network, path, host string) {
+func applyTransportMapping(node *ProxyNode, network, path, host, obfsType string) {
 	switch network {
+	case "tcp":
+		// TCP + HTTP 伪装：vmess 链接中 net=tcp, type=http
+		if obfsType == "http" {
+			node.Network = "http"
+			httpOpts := map[string]interface{}{
+				"method": "GET",
+				"path":   []string{path},
+			}
+			if host != "" {
+				httpOpts["headers"] = map[string]interface{}{
+					"Host": []string{host},
+				}
+			}
+			node.Options["http-opts"] = httpOpts
+		}
 	case "ws":
 		node.Options["ws-opts"] = map[string]interface{}{
 			"path":    path,
