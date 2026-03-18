@@ -2160,14 +2160,23 @@ func (s *ConfigUpdateService) getQueryFromOptions(node *ProxyNode) url.Values {
 }
 
 func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
+	network := proxy.Network
+	obfsType := "none"
+
+	// http 网络类型需要转回 tcp + http 伪装
+	if network == "http" {
+		network = "tcp"
+		obfsType = "http"
+	}
+
 	data := map[string]interface{}{
 		"v":    "2",
 		"ps":   proxy.Name,
 		"add":  proxy.Server,
 		"port": proxy.Port,
 		"id":   proxy.UUID,
-		"net":  proxy.Network,
-		"type": "none",
+		"net":  network,
+		"type": obfsType,
 	}
 
 	if proxy.TLS {
@@ -2175,6 +2184,7 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 	}
 
 	if proxy.Options != nil {
+		// ws-opts
 		if wsOpts, ok := proxy.Options["ws-opts"].(map[string]interface{}); ok {
 			if path, ok := wsOpts["path"].(string); ok {
 				data["path"] = path
@@ -2182,6 +2192,17 @@ func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
 			if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
 				if host, ok := headers["Host"].(string); ok {
 					data["host"] = host
+				}
+			}
+		}
+		// http-opts (TCP+HTTP 伪装)
+		if httpOpts, ok := proxy.Options["http-opts"].(map[string]interface{}); ok {
+			if paths, ok := httpOpts["path"].([]string); ok && len(paths) > 0 {
+				data["path"] = paths[0]
+			}
+			if headers, ok := httpOpts["headers"].(map[string]interface{}); ok {
+				if hosts, ok := headers["Host"].([]string); ok && len(hosts) > 0 {
+					data["host"] = hosts[0]
 				}
 			}
 		}
