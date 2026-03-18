@@ -2021,7 +2021,7 @@ func (s *ConfigUpdateService) nodeToLink(node *ProxyNode) string {
 	case "naive":
 		return s.buildStandardNodeURL("naive+https", node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "anytls":
-		return s.buildStandardNodeURL("anytls", node.UUID, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
+		return s.buildStandardNodeURL("anytls", node.Password, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
 	case "socks", "socks5":
 		scheme := "socks5"
 		if node.Type == "socks" {
@@ -2085,20 +2085,25 @@ func (s *ConfigUpdateService) getQueryFromOptions(node *ProxyNode) url.Values {
 		return false
 	}
 
-	// 1. 通用参数
+	// 1. 通用 TLS 参数
 	if sni := optStr("servername"); sni != "" {
 		q.Set("sni", sni)
 	}
 	if peer := optStr("peer"); peer != "" {
 		if q.Get("sni") == "" {
-			q.Set("peer", peer) // 部分协议优先用 sni，无 sni 用 peer
+			q.Set("peer", peer)
 		} else if node.Type == "anytls" {
-			q.Set("peer", peer) // anytls 可能同时需要
+			q.Set("peer", peer)
 		}
 	}
 	if optBool("skip-cert-verify") {
 		q.Set("insecure", "1")
-		q.Set("allow_insecure", "1") // 兼容不同客户端
+		q.Set("allow_insecure", "1")
+	}
+
+	// client-fingerprint (fp)
+	if fp := optStr("client-fingerprint"); fp != "" {
+		q.Set("fp", fp)
 	}
 
 	// ALPN 处理
@@ -2122,35 +2127,106 @@ func (s *ConfigUpdateService) getQueryFromOptions(node *ProxyNode) url.Values {
 		}
 	}
 
-	// 2. 协议特定参数
-	switch node.Type {
-	case "vless":
+	// 2. 传输层参数（vless/trojan 等）
+	if node.Type == "vless" || node.Type == "trojan" {
 		if node.Network != "" {
 			q.Set("type", node.Network)
 		}
-		if node.TLS {
-			q.Set("security", "tls")
+
+		// ws-opts
+		if wsOpts, ok := node.Options["ws-opts"].(map[string]interface{}); ok {
+			if path, ok := wsOpts["path"].(string); ok && path != "" {
+				q.Set("path", path)
+			}
+			if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
+				if host, ok := headers["Host"].(string); ok && host != "" {
+					q.Set("host", host)
+				}
+			}
+			// map[string]string 类型的 headers
+			if headers, ok := wsOpts["headers"].(map[string]string); ok {
+				if host, ok := headers["Host"]; ok && host != "" {
+					q.Set("host", host)
+				}
+			}
 		}
-	case "hysteria", "hysteria2":
+		// grpc-opts
+		if grpcOpts, ok := node.Options["grpc-opts"].(map[string]interface{}); ok {
+			if sn, ok := grpcOpts["grpc-service-name"].(string); ok && sn != "" {
+				q.Set("serviceName", sn)
+			}
+		}
+		// h2-opts
+		if h2Opts, ok := node.Options["h2-opts"].(map[string]interface{}); ok {
+			if path, ok := h2Opts["path"].(string); ok && path != "" {
+				q.Set("path", path)
+			}
+			if hosts, ok := h2Opts["host"].([]string); ok && len(hosts) > 0 {
+				q.Set("host", hosts[0])
+			}
+		}
+		// tcp header-type
+		if ht := optStr("header-type"); ht != "" {
+			q.Set("headerType", ht)
+		}
+	}
+
+	// 3. VLESS 特有参数
+	if node.Type == "vless" {
+		if node.TLS {
+			// 检查是否是 reality
+			if realityOpts, ok := node.Options["reality-opts"].(map[string]interface{}); ok {
+				q.Set("security", "reality")
+				if pbk, ok := realityOpts["public-key"].(string); ok && pbk != "" {
+					q.Set("pbk", pbk)
+				}
+				if sid, ok := realityOpts["short-id"].(string); ok && sid != "" {
+					q.Set("sid", sid)
+				}
+				if pqv, ok := realityOpts["pqv"].(string); ok && pqv != "" {
+					q.Set("pqv", pqv)
+				}
+			} else {
+				q.Set("security", "tls")
+			}
+		}
+		if flow := optStr("flow"); flow != "" {
+			q.Set("flow", flow)
+		}
+		if enc := optStr("encryption"); enc != "" {
+			q.Set("encryption", enc)
+		}
+	}
+
+	// 4. Hysteria / Hysteria2 参数
+	if node.Type == "hysteria" || node.Type == "hysteria2" {
 		if auth := optStr("auth"); auth != "" {
 			q.Set("auth", auth)
 		}
 		if up := optStr("up"); up != "" {
-			q.Set("upmbps", strings.TrimSuffix(up, " mbps"))
-			q.Set("mbpsUp", strings.TrimSuffix(up, " mbps"))
+			trimmed := strings.TrimSuffix(up, " mbps")
+			q.Set("upmbps", trimmed)
+			q.Set("mbpsUp", trimmed)
 		}
 		if down := optStr("down"); down != "" {
-			q.Set("downmbps", strings.TrimSuffix(down, " mbps"))
-			q.Set("mbpsDown", strings.TrimSuffix(down, " mbps"))
+			trimmed := strings.TrimSuffix(down, " mbps")
+			q.Set("downmbps", trimmed)
+			q.Set("mbpsDown", trimmed)
 		}
-	case "tuic":
+	}
+
+	// 5. TUIC 参数
+	if node.Type == "tuic" {
 		if cc := optStr("congestion_control"); cc != "" {
 			q.Set("congestion_control", cc)
 		}
 		if mode := optStr("udp_relay_mode"); mode != "" {
 			q.Set("udp_relay_mode", mode)
 		}
-	case "naive":
+	}
+
+	// 6. Naive 参数
+	if node.Type == "naive" {
 		if optBool("padding") {
 			q.Set("padding", "true")
 		}
@@ -2275,6 +2351,9 @@ func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
 			}
 			if path, ok := pluginOpts["path"].(string); ok && path != "" {
 				pluginStr += ";obfs-uri=" + path
+			}
+			if tls, ok := pluginOpts["tls"].(bool); ok && tls {
+				pluginStr += ";tls"
 			}
 		}
 		query.Set("plugin", pluginStr)
