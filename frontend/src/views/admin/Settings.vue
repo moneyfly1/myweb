@@ -474,7 +474,12 @@
                 <span class="switch-label">启用IP白名单</span>
                 <el-switch v-model="securitySettings.ip_whitelist_enabled" />
               </div>
+              <div class="switch-item">
+                <span class="switch-label">异常登录告警（全局）</span>
+                <el-switch v-model="securitySettings.abnormal_login_alert_enabled" />
+              </div>
             </div>
+            <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">开启后，用户在不同IP登录时会收到邮件与站内告警通知（用户个人设置中也可单独关闭）</div>
 
             <el-form-item label="IP白名单" v-if="securitySettings.ip_whitelist_enabled">
               <el-input v-model="securitySettings.ip_whitelist" type="textarea" :rows="3" placeholder="每行一个IP地址" />
