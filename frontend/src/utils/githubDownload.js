@@ -1,7 +1,7 @@
-const GITHUB_PROXY_PREFIXES = [
-  'https://ghproxy.com/https://github.com',
-  'https://ghproxy.net/https://github.com',
-  'https://github.com' // 备用，直接访问
+const DEFAULT_GITHUB_PROXY_PREFIXES = [
+  'https://ghproxy.com/{url}',
+  'https://ghproxy.net/{url}',
+  '{url}'
 ]
 const CLIENT_CONFIGS = {
   'clash-party': {
@@ -198,11 +198,107 @@ export function addGitHubProxy(url) {
   if (url.includes('ghproxy.com') || url.includes('ghproxy.net')) {
     return url
   }
-  const proxyPrefix = GITHUB_PROXY_PREFIXES[0] // https://ghproxy.com/https://github.com
-  return url.replace('https://github.com', proxyPrefix)
+  return applyProxyPrefix(url, DEFAULT_GITHUB_PROXY_PREFIXES[0])
 }
-export async function getGitHubDownloadUrl(repo, os, arch, configKey = null) {
+
+function normalizeProxyPrefixes(prefixes = []) {
+  const seen = new Set()
+  const out = []
+  prefixes.forEach((item) => {
+    const value = (item || '').trim()
+    if (!value || seen.has(value)) return
+    seen.add(value)
+    out.push(value)
+  })
+  if (!out.some((item) => item === '{url}' || item.toLowerCase() === 'direct')) {
+    out.push('{url}')
+  }
+  return out
+}
+
+function getProxyPrefixes(softwareConfig = {}) {
+  const raw = softwareConfig?.download_proxy_prefixes
+  if (!raw) return DEFAULT_GITHUB_PROXY_PREFIXES
+
+  if (Array.isArray(raw)) {
+    const normalized = normalizeProxyPrefixes(raw)
+    return normalized.length ? normalized : DEFAULT_GITHUB_PROXY_PREFIXES
+  }
+
+  const text = String(raw).trim()
+  if (!text) return DEFAULT_GITHUB_PROXY_PREFIXES
   try {
+    if (text.startsWith('[')) {
+      const parsed = JSON.parse(text)
+      if (Array.isArray(parsed)) {
+        const normalized = normalizeProxyPrefixes(parsed)
+        return normalized.length ? normalized : DEFAULT_GITHUB_PROXY_PREFIXES
+      }
+    }
+  } catch (error) {
+    // ignore parse error, fallback to split mode
+  }
+
+  const list = text.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)
+  const normalized = normalizeProxyPrefixes(list)
+  return normalized.length ? normalized : DEFAULT_GITHUB_PROXY_PREFIXES
+}
+
+function applyProxyPrefix(url, prefix) {
+  if (!prefix || prefix === '{url}' || String(prefix).toLowerCase() === 'direct') {
+    return url
+  }
+  if (prefix.includes('{url}')) {
+    return prefix.replaceAll('{url}', url)
+  }
+  const base = prefix.replace(/\/+$/, '')
+  return `${base}/${url}`
+}
+
+function buildCandidateUrls(url, prefixes) {
+  const seen = new Set()
+  const candidates = []
+  prefixes.forEach((prefix) => {
+    const candidate = applyProxyPrefix(url, prefix)
+    if (!seen.has(candidate)) {
+      seen.add(candidate)
+      candidates.push(candidate)
+    }
+  })
+  if (!seen.has(url)) {
+    candidates.push(url)
+  }
+  return candidates
+}
+
+async function fetchJSONWithCandidates(url, prefixes) {
+  const candidates = buildCandidateUrls(url, prefixes)
+  for (const candidate of candidates) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
+    try {
+      const response = await fetch(candidate, {
+        signal: controller.signal,
+        headers: { Accept: 'application/vnd.github.v3+json' }
+      })
+      clearTimeout(timeoutId)
+      if (response.ok) {
+        return await response.json()
+      }
+    } catch (error) {
+      clearTimeout(timeoutId)
+    }
+  }
+  throw new Error('获取发布信息失败，请稍后重试')
+}
+
+function toResolverURL(target) {
+  return `/api/v1/download/resolve?target=${encodeURIComponent(target)}`
+}
+
+export async function getGitHubDownloadUrl(repo, os, arch, configKey = null, softwareConfig = {}) {
+  try {
+    const prefixes = getProxyPrefixes(softwareConfig)
     let config = configKey ? CLIENT_CONFIGS[configKey] : null
     if (!config) {
       config = Object.values(CLIENT_CONFIGS).find(c => c.repo === repo)
@@ -210,29 +306,8 @@ export async function getGitHubDownloadUrl(repo, os, arch, configKey = null) {
     if (!config) {
       throw new Error(`未找到仓库配置: ${repo}`)
     }
-    const apiUrl = addGitHubProxy(`https://api.github.com/repos/${repo}/releases/latest`)
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
-    let response
-    try {
-      response = await fetch(apiUrl, { 
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      })
-      clearTimeout(timeoutId)
-    } catch (fetchError) {
-      clearTimeout(timeoutId)
-      if (fetchError.name === 'AbortError') {
-        throw new Error('请求超时，请稍后重试')
-      }
-      throw fetchError
-    }
-    if (!response.ok) {
-      throw new Error(`获取发布信息失败: ${response.status}`)
-    }
-    const data = await response.json()
+    const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`
+    const data = await fetchJSONWithCandidates(apiUrl, prefixes)
     const platformConfig = config.platforms[os]
     if (!platformConfig) {
       throw new Error(`不支持的操作系统: ${os}`)
@@ -244,7 +319,7 @@ export async function getGitHubDownloadUrl(repo, os, arch, configKey = null) {
         const fallbackConfig = platformConfig[firstArch]
         const asset = data.assets.find(asset => fallbackConfig.pattern.test(asset.name))
         if (asset) {
-          return addGitHubProxy(asset.browser_download_url)
+          return toResolverURL(asset.browser_download_url)
         }
       }
       throw new Error(`不支持的架构: ${arch}`)
@@ -268,14 +343,13 @@ export async function getGitHubDownloadUrl(repo, os, arch, configKey = null) {
         throw new Error(`未找到匹配的下载文件`)
       }
     }
-    const downloadUrl = addGitHubProxy(asset.browser_download_url)
-    return downloadUrl
+    return toResolverURL(asset.browser_download_url)
   } catch (error) {
     console.error('获取 GitHub 下载链接失败:', error)
-    return addGitHubProxy(`https://github.com/${repo}/releases/latest`)
+    return toResolverURL(`https://github.com/${repo}/releases/latest`)
   }
 }
-export async function getClientDownloadUrl(clientKey) {
+export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
   const { os, arch } = detectSystem()
   const clientMap = {
     'clash-party': { repo: 'mihomo-party-org/clash-party', name: 'Clash Party', configKey: 'clash-party' },
@@ -292,26 +366,24 @@ export async function getClientDownloadUrl(clientKey) {
   }
   if (os === 'android') {
     try {
-      const apiUrl = addGitHubProxy(`https://api.github.com/repos/${client.repo}/releases/latest`)
-      const response = await fetch(apiUrl)
-      if (response.ok) {
-        const data = await response.json()
-        let apkAsset = data.assets.find(asset => 
+      const data = await fetchJSONWithCandidates(`https://api.github.com/repos/${client.repo}/releases/latest`, getProxyPrefixes(softwareConfig))
+      if (data) {
+        let apkAsset = data.assets.find(asset =>
           asset.name.includes('arm64-v8a') && asset.name.endsWith('.apk')
         )
         if (!apkAsset) {
           apkAsset = data.assets.find(asset => asset.name.endsWith('.apk'))
         }
         if (apkAsset) {
-          return addGitHubProxy(apkAsset.browser_download_url)
+          return toResolverURL(apkAsset.browser_download_url)
         }
       }
     } catch (error) {
       console.error('获取 Android 下载链接失败:', error)
     }
-    return addGitHubProxy(`https://github.com/${client.repo}/releases/latest`)
+    return toResolverURL(`https://github.com/${client.repo}/releases/latest`)
   }
-  return await getGitHubDownloadUrl(client.repo, os, arch, client.configKey)
+  return await getGitHubDownloadUrl(client.repo, os, arch, client.configKey, softwareConfig)
 }
 export function getClientReleasesUrl(clientKey) {
   const clientMap = {
@@ -327,5 +399,5 @@ export function getClientReleasesUrl(clientKey) {
   if (!repo) {
     return null
   }
-  return addGitHubProxy(`https://github.com/${repo}/releases/latest`)
+  return toResolverURL(`https://github.com/${repo}/releases/latest`)
 }

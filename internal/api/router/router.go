@@ -291,6 +291,7 @@ func SetupRouter() *gin.Engine {
 		api.GET("/promotions/active", handlers.GetActivePromotions)
 
 		api.GET("/software-config", handlers.GetSoftwareConfig)
+		api.GET("/download/resolve", handlers.ResolveDownload)
 
 		api.GET("/mobile-config", handlers.GetMobileConfig)
 		softwareConfig := api.Group("/software-config")
