@@ -497,7 +497,7 @@ func CreateAccessToken(userID uint, email string, isAdmin bool) (string, error) 
 	return token.SignedString([]byte(cfg.SecretKey))
 }
 
-func CreateRefreshToken(userID uint, email string) (string, error) {
+func CreateRefreshToken(userID uint, email string, isAdmin bool) (string, error) {
 	cfg := config.AppConfig
 	if cfg == nil {
 		return "", errors.New("配置未初始化")
@@ -506,9 +506,10 @@ func CreateRefreshToken(userID uint, email string) (string, error) {
 	expiresAt := time.Now().Add(time.Duration(cfg.RefreshTokenExpireDays) * 24 * time.Hour)
 
 	claims := JWTClaims{
-		UserID: userID,
-		Email:  email,
-		Type:   "refresh",
+		UserID:  userID,
+		Email:   email,
+		IsAdmin: isAdmin,
+		Type:    "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
