@@ -187,6 +187,7 @@ configure_redis_cache() {
 
 # --- 检查并更新 Redis 配置（用于更新代码后）---
 check_and_update_redis_config() {
+    local non_interactive="${1:-false}"
     local env_file="${PROJECT_DIR}/.env"
 
     # 检查是否已配置 Redis
@@ -204,9 +205,13 @@ check_and_update_redis_config() {
                 return 0
             else
                 warn "Redis 连接失败，请检查 Redis 服务状态"
-                read -r -p "是否重新配置 Redis？(y/n，默认: n): " reconfig
-                if [[ "$reconfig" == "y" || "$reconfig" == "Y" ]]; then
-                    configure_redis_cache
+                if [[ "$non_interactive" == "true" ]]; then
+                    log "同步模式下跳过交互式 Redis 重配置（可在主菜单选择 12 手动配置）"
+                else
+                    read -r -p "是否重新配置 Redis？(y/n，默认: n): " reconfig
+                    if [[ "$reconfig" == "y" || "$reconfig" == "Y" ]]; then
+                        configure_redis_cache
+                    fi
                 fi
             fi
         else
@@ -216,13 +221,17 @@ check_and_update_redis_config() {
         log "检测到代码已更新，包含 Redis 缓存优化功能"
         echo ""
         echo -e "${CYAN}新功能：Redis 缓存可将 GeoIP 查询速度提升 50-100 倍！${NC}"
-        read -r -p "是否现在配置 Redis 缓存？(y/n，默认: y): " config_now
-        config_now=${config_now:-y}
-
-        if [[ "$config_now" == "y" || "$config_now" == "Y" ]]; then
-            configure_redis_cache
+        if [[ "$non_interactive" == "true" ]]; then
+            log "同步模式下跳过交互式 Redis 配置（可在主菜单选择 12 手动配置）"
         else
-            log "跳过 Redis 配置（可稍后运行脚本选择 '配置 Redis 缓存' 选项）"
+            read -r -p "是否现在配置 Redis 缓存？(y/n，默认: y): " config_now
+            config_now=${config_now:-y}
+
+            if [[ "$config_now" == "y" || "$config_now" == "Y" ]]; then
+                configure_redis_cache
+            else
+                log "跳过 Redis 配置（可稍后运行脚本选择 '配置 Redis 缓存' 选项）"
+            fi
         fi
     fi
 }
@@ -703,8 +712,9 @@ sync_from_github() {
     fi
     cd ..
 
-    # 检查并更新 Redis 配置
-    check_and_update_redis_config
+    # 检查并更新 Redis 配置（同步模式不阻塞等待输入）
+    log "检查 Redis 配置状态（非交互模式）..."
+    check_and_update_redis_config "true"
 
     # 清除 Redis 缓存（代码更新后必须清除）
     log "正在清除 Redis 缓存..."
