@@ -84,6 +84,7 @@
       :title="form.id ? '编辑活动' : '新建活动'"
       :size="isMobile ? '100%' : '600px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <el-form :model="form" label-width="100px" :rules="rules" ref="formRef">
         <el-form-item label="活动名称" prop="name">

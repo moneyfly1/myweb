@@ -256,6 +256,7 @@
       title="邮件详情"
       :size="isMobile ? '92%' : '600px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <div v-if="emailDetail" class="email-detail" v-loading="detailLoading">
         <el-descriptions :column="isMobile ? 1 : 2" border class="desktop-only">

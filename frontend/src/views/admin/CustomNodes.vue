@@ -293,6 +293,7 @@
       direction="rtl"
       destroy-on-close
       append-to-body
+      :lock-scroll="false"
     >
       <div class="dialog-scroll-content">
         <el-tabs v-model="addNodeTab" v-if="!editingNode" class="compact-tabs">
