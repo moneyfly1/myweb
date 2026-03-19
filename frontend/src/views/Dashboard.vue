@@ -1139,7 +1139,7 @@ const downloadApp = async (appName) => {
     try {
       ElMessage.info('正在获取最新下载链接...')
       const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
-      const downloadUrl = await getClientDownloadUrl(clientKey)
+      const downloadUrl = await getClientDownloadUrl(clientKey, softwareConfig.value || {})
       window.open(downloadUrl, '_blank')
       ElMessage.success('已打开下载页面')
     } catch (error) {
