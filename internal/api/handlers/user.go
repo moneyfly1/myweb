@@ -1555,7 +1555,7 @@ func LoginAsUser(c *gin.Context) {
 		return
 	}
 
-	refreshToken, err := utils.CreateRefreshToken(targetUser.ID, targetUser.Email)
+	refreshToken, err := utils.CreateRefreshToken(targetUser.ID, targetUser.Email, targetUser.IsAdmin)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return

@@ -81,13 +81,10 @@ export const useAuthStore = defineStore('auth', () => {
     secureStorage.set('user_data', userData, useSession, TOKEN_TTL)
   }
   const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    if (!refreshToken) return
-    const useSession = !remember
-    if (isAdmin) {
-      secureStorage.set('admin_refresh_token', refreshToken, useSession, REFRESH_TOKEN_TTL)
-      return
-    }
-    secureStorage.set('user_refresh_token', refreshToken, useSession, REFRESH_TOKEN_TTL)
+    // Refresh Token 由后端通过 HttpOnly Cookie 管理，不再存储到前端
+    void refreshToken
+    void remember
+    void isAdmin
   }
   const token = ref(getInitialToken())
   const user = ref(getInitialUser())
@@ -133,6 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       token.value = access_token
       user.value = userData
+      secureStorage.remove('logout_marker')
       const safeUserData = {
         id: userData.id,
         username: userData.username,
@@ -189,6 +187,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       token.value = access_token
       user.value = userData
+      secureStorage.remove('logout_marker')
       const safeUserData = {
         id: userData.id,
         username: userData.username,
@@ -231,6 +230,19 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
   const logout = () => {
+    const currentToken = token.value
+    secureStorage.set('logout_marker', true, false, 24 * 60 * 60 * 1000)
+    if (typeof window !== 'undefined' && currentToken) {
+      fetch('/api/v1/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`
+        }
+      }).catch(() => {})
+    }
+
     token.value = ''
     user.value = null
     secureStorage.remove('admin_token')
@@ -255,14 +267,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const refreshToken = async () => {
     const isAdmin = isAdminPath()
-    const refreshTokenKey = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
-    const refresh_token = secureStorage.get(refreshTokenKey)
-    if (!refresh_token) {
-      logout()
-      return false
-    }
     try {
-      const response = await api.post('/auth/refresh', { refresh_token }, { withCredentials: true })
+      const response = await api.post('/auth/refresh', {}, {
+        withCredentials: true,
+        headers: { 'X-Auth-Role': isAdmin ? 'admin' : 'user' }
+      })
       const responseData = response.data?.data || response.data
       const { access_token, refresh_token } = responseData
       token.value = access_token
@@ -312,6 +321,7 @@ export const useAuthStore = defineStore('auth', () => {
     saveRememberPreference(remember, isAdmin)
     saveToken(newToken, isAdmin, remember)
     saveUser(newUser, isAdmin, remember)
+    secureStorage.remove('logout_marker')
   }
   const setToken = (newToken) => {
     token.value = newToken

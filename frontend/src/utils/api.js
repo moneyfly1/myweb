@@ -322,6 +322,9 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
     if (error.response?.status === 401) {
+      if (secureStorage.get('logout_marker')) {
+        return Promise.reject(error)
+      }
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
       const isInAdminPanel = currentPath.startsWith('/admin')
       const isAdminAPI = error.config?.url && (
@@ -353,13 +356,11 @@ api.interceptors.response.use(
         error.config._retry = true
         isRefreshing[refreshKey] = true
         try {
-          const refreshToken = secureStorage.get(isAdminAPI ? 'admin_refresh_token' : 'user_refresh_token')
           const refreshCsrf = getCookie('csrf_token')
           const refreshHeaders = {}
           if (refreshCsrf) refreshHeaders['X-CSRF-Token'] = refreshCsrf
-          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', {
-            refresh_token: refreshToken
-          }, {
+          refreshHeaders['X-Auth-Role'] = isAdminAPI ? 'admin' : 'user'
+          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', {}, {
             withCredentials: true,
             timeout: TIMEOUT,
             headers: refreshHeaders
@@ -406,7 +407,7 @@ export const authAPI = {
   resendVerificationCode: (data) => api.post('/auth/verification/send', data),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
-  refreshToken: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken })
+  refreshToken: () => api.post('/auth/refresh', {})
 }
 export const userAPI = {
   getProfile: () => api.get('/users/me'),
