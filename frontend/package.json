@@ -7,8 +7,9 @@
     "clean": "rm -rf dist",
     "build": "npm run clean && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
-    "type-check": "vue-tsc --noEmit"
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --ignore-path ../.gitignore --quiet",
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "audit:clicks": "node scripts/audit-click-handlers.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.1.0",

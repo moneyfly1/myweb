@@ -8,7 +8,7 @@ import (
 type Promotion struct {
 	ID            uint           `gorm:"primaryKey" json:"id"`
 	Name          string         `gorm:"not null" json:"name"`
-	Type          string         `gorm:"not null;index" json:"type"` // flash_sale, new_user, recall, member_day
+	Type          string         `gorm:"not null;index" json:"type"`    // flash_sale, new_user, recall, member_day
 	DiscountType  string         `gorm:"not null" json:"discount_type"` // percentage, fixed, free_days
 	DiscountValue float64        `gorm:"not null" json:"discount_value"`
 	MinAmount     float64        `json:"min_amount"`

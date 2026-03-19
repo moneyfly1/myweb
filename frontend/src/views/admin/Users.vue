@@ -943,7 +943,7 @@ export default {
             if (user.id && !originalNotes.has(user.id)) {
               originalNotes.set(user.id, user.notes || '')
             }
-            if (!user.hasOwnProperty('savingNotes')) {
+            if (!Object.prototype.hasOwnProperty.call(user, 'savingNotes')) {
               user.savingNotes = false
               user.notesSaved = false
             }

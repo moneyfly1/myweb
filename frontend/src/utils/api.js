@@ -88,10 +88,8 @@ let visibilityHandlers = []
 let isPageVisible = true
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
-    const wasVisible = isPageVisible
     isPageVisible = !document.hidden
-    if (wasVisible && !isPageVisible) {
-    } else if (!wasVisible && isPageVisible) {
+    if (isPageVisible) {
       triggerVisibilityHandlers()
     }
   })
@@ -181,9 +179,8 @@ async function testConnection() {
       withCredentials: true
     })
   } catch (error) {
-    if (error.code !== 'ECONNABORTED') {
-      if (process.env.NODE_ENV === 'development') {
-      }
+    if (error.code !== 'ECONNABORTED' && process.env.NODE_ENV === 'development') {
+      console.debug('testConnection failed:', error?.message || error)
     }
   }
 }
@@ -198,6 +195,24 @@ const clearRoleTokens = (isAdmin) => {
   secureStorage.remove(`${prefix}_token`)
   secureStorage.remove(`${prefix}_${isAdmin ? 'user' : 'data'}`)
   secureStorage.remove(`${prefix}_refresh_token`)
+}
+const shouldRememberRole = (isAdmin) => {
+  const remember = secureStorage.get(isAdmin ? 'admin_remember' : 'user_remember')
+  if (remember === true || remember === 'true') return true
+  if (remember === false || remember === 'false') return false
+  const tokenKey = `${SECURE_STORAGE_KEY}${isAdmin ? 'admin_token' : 'user_token'}`
+  try {
+    const localValue = localStorage.getItem(tokenKey)
+    if (!localValue) return false
+    const parsed = JSON.parse(localValue)
+    if (parsed.expiry && Date.now() > parsed.expiry) {
+      localStorage.removeItem(tokenKey)
+      return false
+    }
+    return true
+  } catch (error) {
+    return false
+  }
 }
 const shouldHandleLogout = (isAdminAPI) => {
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
@@ -266,12 +281,10 @@ api.interceptors.response.use(
     if (!error.response) {
       if ((error.code === 'ECONNABORTED' || error.message?.includes('timeout')) && error.config && !error.config._retry) {
         error.config._retry = true
-        if (process.env.NODE_ENV === 'development') {
-        }
+        if (process.env.NODE_ENV === 'development') console.debug('request timeout, retry once')
         return api.request(error.config)
       } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
-        if (process.env.NODE_ENV === 'development') {
-        }
+        if (process.env.NODE_ENV === 'development') console.debug('network error:', error?.message || error)
         if (isVisible() && !reconnectTimer) {
           reconnectTimer = setTimeout(() => { testConnection(); reconnectTimer = null }, 2000)
         }
@@ -298,8 +311,7 @@ api.interceptors.response.use(
         if (['post', 'put', 'delete', 'patch'].includes(error.config?.method?.toLowerCase())) {
           error.config._csrfRetry = true
           error.config.headers['X-CSRF-Token'] = newCsrfToken
-          if (process.env.NODE_ENV === 'development') {
-          }
+          if (process.env.NODE_ENV === 'development') console.debug('retry request with refreshed csrf token')
           return api.request(error.config)
         }
       }
@@ -342,21 +354,26 @@ api.interceptors.response.use(
         isRefreshing[refreshKey] = true
         try {
           const refreshToken = secureStorage.get(isAdminAPI ? 'admin_refresh_token' : 'user_refresh_token')
-            const refreshCsrf = getCookie('csrf_token')
-            const refreshHeaders = refreshToken ? { Authorization: `Bearer ${refreshToken}` } : {}
-            if (refreshCsrf) refreshHeaders['X-CSRF-Token'] = refreshCsrf
-          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', {}, {
+          const refreshCsrf = getCookie('csrf_token')
+          const refreshHeaders = {}
+          if (refreshCsrf) refreshHeaders['X-CSRF-Token'] = refreshCsrf
+          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', {
+            refresh_token: refreshToken
+          }, {
             withCredentials: true,
             timeout: TIMEOUT,
             headers: refreshHeaders
           })
-          const { access_token, refresh_token } = refreshResponse.data || {}
+          const responseData = refreshResponse.data?.data || refreshResponse.data || {}
+          const { access_token, refresh_token } = responseData
           if (access_token) {
-            const TOKEN_TTL = 86400000 // 24h
-            const REFRESH_TTL = 604800000 // 7d
+            const TOKEN_TTL = 60 * 60 * 1000 // 1h
+            const REFRESH_TTL = 30 * 24 * 60 * 60 * 1000 // 30d
             const prefix = isAdminAPI ? 'admin' : 'user'
-            secureStorage.set(`${prefix}_token`, access_token, !isAdminAPI, TOKEN_TTL)
-            if (refresh_token) secureStorage.set(`${prefix}_refresh_token`, refresh_token, !isAdminAPI, REFRESH_TTL)
+            const remember = shouldRememberRole(isAdminAPI)
+            const useSession = !remember
+            secureStorage.set(`${prefix}_token`, access_token, useSession, TOKEN_TTL)
+            if (refresh_token) secureStorage.set(`${prefix}_refresh_token`, refresh_token, useSession, REFRESH_TTL)
             if (_useAuthStore && shouldHandleLogout(isAdminAPI)) _useAuthStore().setToken(access_token)
             error.config.headers.Authorization = `Bearer ${access_token}`
             processQueue(null, access_token, isAdminAPI)
@@ -389,7 +406,7 @@ export const authAPI = {
   resendVerificationCode: (data) => api.post('/auth/verification/send', data),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
-  refreshToken: () => api.post('/auth/refresh')
+  refreshToken: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken })
 }
 export const userAPI = {
   getProfile: () => api.get('/users/me'),

@@ -61,6 +61,9 @@ export const useThemeStore = defineStore('theme', () => {
       try {
         applyThemeLocally(theme)
       } catch (e) {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('applyThemeLocally failed:', e)
+        }
       }
       return {
         success: false,

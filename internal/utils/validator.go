@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -64,16 +65,37 @@ func ValidateUsername(username string) bool {
 }
 
 func ValidatePath(path string, baseDir string) bool {
-	cleaned := strings.TrimSpace(path)
-	if cleaned == "" {
+	target := strings.TrimSpace(path)
+	base := strings.TrimSpace(baseDir)
+	if target == "" || base == "" {
 		return false
 	}
+	return IsWithinBaseDir(base, target)
+}
 
-	if strings.Contains(cleaned, "..") || strings.Contains(cleaned, "~") {
+func IsWithinBaseDir(baseDir, targetPath string) bool {
+	baseAbs, err := filepath.Abs(filepath.Clean(baseDir))
+	if err != nil {
 		return false
 	}
+	targetAbs, err := filepath.Abs(filepath.Clean(targetPath))
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
 
-	return strings.HasPrefix(cleaned, baseDir)
+func JoinWithinBaseDir(baseDir string, elems ...string) (string, bool) {
+	joined := filepath.Join(append([]string{baseDir}, elems...)...)
+	cleaned := filepath.Clean(joined)
+	return cleaned, IsWithinBaseDir(baseDir, cleaned)
 }
 
 // EscapeLikePattern 转义LIKE查询中的特殊字符，防止注入
@@ -90,7 +112,7 @@ func SanitizeErrorPath(errMsg string) string {
 	if errMsg == "" {
 		return errMsg
 	}
-	
+
 	// 移除绝对路径，只保留文件名
 	// 例如: /Users/apple/Downloads/goweb/file.go -> file.go
 	parts := strings.Split(errMsg, "/")
@@ -105,7 +127,7 @@ func SanitizeErrorPath(errMsg string) string {
 			return lastPart
 		}
 	}
-	
+
 	// 移除常见的系统路径前缀
 	pathPrefixes := []string{
 		"/Users/",
@@ -116,7 +138,7 @@ func SanitizeErrorPath(errMsg string) string {
 		"C:\\",
 		"D:\\",
 	}
-	
+
 	result := errMsg
 	for _, prefix := range pathPrefixes {
 		if strings.Contains(result, prefix) {
@@ -133,6 +155,6 @@ func SanitizeErrorPath(errMsg string) string {
 			}
 		}
 	}
-	
+
 	return result
 }

@@ -771,7 +771,7 @@ const handleRegister = async () => {
           router.push('/login')
           return
         }
-        const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000
+        const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60 * 1000
         const safeUserData = {
           id: userData.id,
           username: userData.username,
@@ -782,9 +782,9 @@ const handleRegister = async () => {
           theme: userData.theme,
           language: userData.language
         }
-        authStore.setAuth(access_token, safeUserData, true)
+        authStore.setAuth(access_token, safeUserData, false)
         if (refresh_token) {
-          secureStorage.set('user_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
+          secureStorage.set('user_refresh_token', refresh_token, false, REFRESH_TOKEN_TTL)
         }
         resetRefreshFailed()
         setTimeout(() => {

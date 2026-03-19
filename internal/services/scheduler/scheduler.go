@@ -14,6 +14,7 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/backup_service"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/git"
@@ -675,11 +676,7 @@ func (s *Scheduler) runAutoBackup() error {
 	backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
 	backupDir = filepath.Clean(backupDir)
 
-	if !strings.HasPrefix(backupDir, wd) {
-		return fmt.Errorf("无效的备份路径")
-	}
-
-	if strings.Contains(backupDir, "..") || strings.Contains(backupDir, "~") {
+	if !utils.IsWithinBaseDir(wd, backupDir) {
 		return fmt.Errorf("无效的备份路径")
 	}
 
@@ -689,8 +686,10 @@ func (s *Scheduler) runAutoBackup() error {
 
 	// 使用固定文件名（覆盖模式）
 	backupFileName := "backup_auto.zip"
-	backupPath := filepath.Join(backupDir, backupFileName)
-	backupPath = filepath.Clean(backupPath)
+	backupPath, ok := utils.JoinWithinBaseDir(backupDir, backupFileName)
+	if !ok {
+		return fmt.Errorf("无效的备份路径")
+	}
 
 	// 删除旧文件
 	if _, err := os.Stat(backupPath); err == nil {
@@ -709,9 +708,8 @@ func (s *Scheduler) runAutoBackup() error {
 	defer zipWriter.Close()
 
 	// 备份数据库文件
-	dbPath := filepath.Join(wd, "cboard.db")
-	dbPath = filepath.Clean(dbPath)
-	if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
+	dbPath, ok := utils.JoinWithinBaseDir(wd, "cboard.db")
+	if ok {
 		if _, err := os.Stat(dbPath); err == nil {
 			dbFile, err := os.Open(dbPath)
 			if err == nil {
@@ -735,9 +733,8 @@ func (s *Scheduler) runAutoBackup() error {
 			continue
 		}
 
-		configPath := filepath.Join(wd, configFile)
-		configPath = filepath.Clean(configPath)
-		if strings.HasPrefix(configPath, wd) && !strings.Contains(configPath, "..") {
+		configPath, inBase := utils.JoinWithinBaseDir(wd, configFile)
+		if inBase {
 			if _, err := os.Stat(configPath); err == nil {
 				file, err := os.Open(configPath)
 				if err == nil {
@@ -754,125 +751,20 @@ func (s *Scheduler) runAutoBackup() error {
 		}
 	}
 
-	// 获取备份目标配置（gitee 或 github）
-	var targetConfig models.SystemConfig
-	backupTarget := "gitee" // 默认使用gitee
-	if err := s.db.Where("key = ? AND category = ?", "backup_target", "backup").First(&targetConfig).Error; err == nil {
-		if targetConfig.Value == "github" {
-			backupTarget = "github"
-		}
-	}
-
-	// 检查是否启用了远程备份
-	var enabledKey string
-	if backupTarget == "github" {
-		enabledKey = "backup_github_enabled"
-	} else {
-		enabledKey = "backup_gitee_enabled"
-	}
-
-	var backupConfig models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", enabledKey, "backup").First(&backupConfig).Error; err == nil {
-		if backupConfig.Value == "true" {
-			var tokenConfig models.SystemConfig
-			var tokenKey string
-			if backupTarget == "github" {
-				tokenKey = "backup_github_token"
+	remoteCfg := backup_service.LoadRemoteBackupConfig(s.db)
+	if remoteCfg.Enabled && remoteCfg.Token != "" {
+		_, backupFilePath, _, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime())
+		if err != nil {
+			utils.LogErrorMsg("创建数据库备份文件用于远程上传失败: %v", err)
+		} else {
+			client := git.NewClient(remoteCfg.PlatformType, remoteCfg.Token, remoteCfg.Owner, remoteCfg.Repo)
+			if err := client.UploadBackup(backupFilePath); err != nil {
+				utils.LogErrorMsg("上传备份到 %s 失败: %v", remoteCfg.PlatformName, err)
 			} else {
-			tokenKey = "backup_gitee_token" // #nosec G101 - Config key name, not credential
+				utils.LogInfo("数据库备份文件已成功上传到 %s（仅数据库文件）", remoteCfg.PlatformName)
 			}
-
-			if err := s.db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil && tokenConfig.Value != "" {
-				var ownerConfig models.SystemConfig
-				var repoConfig models.SystemConfig
-				var ownerKey, repoKey string
-
-				if backupTarget == "github" {
-					ownerKey = "backup_github_owner"
-					repoKey = "backup_github_repo"
-				} else {
-					ownerKey = "backup_gitee_owner"
-					repoKey = "backup_gitee_repo"
-				}
-
-				owner := "moneyfly1"
-				repo := "backup"
-				if backupTarget == "github" {
-					owner = "moneyfly1"
-					repo = "backup"
-				} else {
-					owner = "moneyfly"
-					repo = "backup"
-				}
-
-				if err := s.db.Where("key = ? AND category = ?", ownerKey, "backup").First(&ownerConfig).Error; err == nil {
-					owner = ownerConfig.Value
-				}
-				if err := s.db.Where("key = ? AND category = ?", repoKey, "backup").First(&repoConfig).Error; err == nil {
-					repo = repoConfig.Value
-				}
-
-				// 创建只包含数据库的临时备份文件
-				backupFileName := fmt.Sprintf("backup_db_%s.zip", utils.GetBeijingTime().Format("20060102_150405"))
-				backupFilePath := filepath.Join(backupDir, backupFileName)
-				backupFilePath = filepath.Clean(backupFilePath)
-
-				if strings.HasPrefix(backupFilePath, backupDir) {
-					zipFile, err := os.Create(backupFilePath)
-					if err == nil {
-						zipWriter := zip.NewWriter(zipFile)
-
-						// 只添加数据库文件
-						dbPath := filepath.Join(wd, "cboard.db")
-						dbPath = filepath.Clean(dbPath)
-						if strings.HasPrefix(dbPath, wd) && !strings.Contains(dbPath, "..") {
-							if _, err := os.Stat(dbPath); err == nil {
-								dbFile, err := os.Open(dbPath)
-								if err == nil {
-									writer, err := zipWriter.Create("cboard.db")
-									if err == nil {
-										if _, copyErr := io.Copy(writer, dbFile); copyErr != nil {
-											log.Printf("failed to copy database file: %v", copyErr)
-										}
-									}
-									if closeErr := dbFile.Close(); closeErr != nil {
-										log.Printf("failed to close database file: %v", closeErr)
-									}
-								}
-							}
-						}
-
-						if closeErr := zipWriter.Close(); closeErr != nil {
-							log.Printf("failed to close zip writer: %v", closeErr)
-						}
-						if closeErr := zipFile.Close(); closeErr != nil {
-							log.Printf("failed to close zip file: %v", closeErr)
-						}
-
-						// 根据目标选择平台类型并上传
-						var platformType git.PlatformType
-						var platformName string
-						if backupTarget == "github" {
-							platformType = git.PlatformGitHub
-							platformName = "GitHub"
-						} else {
-							platformType = git.PlatformGitee
-							platformName = "Gitee"
-						}
-
-						client := git.NewClient(platformType, tokenConfig.Value, owner, repo)
-						if err := client.UploadBackup(backupFilePath); err != nil {
-							utils.LogErrorMsg("上传备份到 %s 失败: %v", platformName, err)
-						} else {
-							utils.LogInfo("数据库备份文件已成功上传到 %s（仅数据库文件）", platformName)
-						}
-
-						// 删除临时的备份文件
-						if err := os.Remove(backupFilePath); err != nil {
-							log.Printf("failed to remove backup file: %v", err)
-						}
-					}
-				}
+			if err := os.Remove(backupFilePath); err != nil {
+				log.Printf("failed to remove backup file: %v", err)
 			}
 		}
 	}

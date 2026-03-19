@@ -16,6 +16,7 @@ import (
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/backup_service"
 	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/geoip"
@@ -247,6 +248,8 @@ func UpdateSystemConfig(c *gin.Context) {
 
 func GetAdminSettings(c *gin.Context) {
 	// Define defaults
+	giteeDefaults := backup_service.DefaultPlatformConfig("gitee")
+	githubDefaults := backup_service.DefaultPlatformConfig("github")
 	settings := map[string]map[string]interface{}{
 		CatGeneral: {
 			"site_name": "CBoard Modern", "site_description": "现代化的代理服务管理平台", "site_logo": "", "default_theme": "default",
@@ -288,10 +291,10 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"backup": {
 			"backup_target":        "gitee",
-			"backup_gitee_enabled": "false", "backup_gitee_token": "", "backup_gitee_owner": "",
-			"backup_gitee_repo":     "backup",
-			"backup_github_enabled": "false", "backup_github_token": "", "backup_github_owner": "",
-			"backup_github_repo":  "backup",
+			"backup_gitee_enabled": "false", "backup_gitee_token": "", "backup_gitee_owner": giteeDefaults.Owner,
+			"backup_gitee_repo":     giteeDefaults.Repo,
+			"backup_github_enabled": "false", "backup_github_token": "", "backup_github_owner": githubDefaults.Owner,
+			"backup_github_repo":  githubDefaults.Repo,
 			"backup_auto_enabled": "false", "backup_auto_interval": "24",
 		},
 	}

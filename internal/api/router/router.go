@@ -381,7 +381,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/nodes/:id/test", handlers.TestNode)
 			admin.POST("/nodes/batch-test", handlers.BatchTestNodes)
 			admin.POST("/nodes/batch-delete", handlers.BatchDeleteNodes)
-			admin.POST("/nodes/import-from-file", handlers.ImportFromFile)
 
 			admin.GET("/custom-nodes", handlers.GetCustomNodes)
 			admin.GET("/custom-nodes/:id/users", handlers.GetCustomNodeUsers)
@@ -461,7 +460,6 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/config-update/start", handlers.StartConfigUpdate)
 			admin.POST("/config-update/stop", handlers.StopConfigUpdate)
 			admin.POST("/config-update/test", handlers.TestConfigUpdate)
-			admin.GET("/config-update/files", handlers.GetConfigUpdateFiles)
 			admin.GET("/config-update/logs", handlers.GetConfigUpdateLogs)
 			admin.POST("/config-update/logs/clear", handlers.ClearConfigUpdateLogs)
 			admin.GET("/config-update/logs/stream", handlers.StreamConfigUpdateLogs)

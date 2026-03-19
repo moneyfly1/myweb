@@ -32,6 +32,16 @@
           />
         </div>
         <div class="form-item">
+          <label class="remember-row">
+            <input
+              v-model="loginForm.remember"
+              type="checkbox"
+              class="remember-checkbox"
+            />
+            <span>记住登录（30天）</span>
+          </label>
+        </div>
+        <div class="form-item">
           <button
             type="submit"
             :disabled="loading"
@@ -61,17 +71,18 @@ export default {
     const authStore = useAuthStore()
     const loginForm = reactive({
       username: '',
-      password: ''
+      password: '',
+      remember: true
     })
     const loading = ref(false)
     const handleLogin = async () => {
       loading.value = true
       try {
-        if (typeof window !== 'undefined') {
-          const { secureStorage } = await import('@/utils/api')
-          secureStorage.clear()
-        }
-        const result = await authStore.adminLogin(loginForm)
+        const result = await authStore.adminLogin({
+          username: loginForm.username,
+          password: loginForm.password,
+          remember: loginForm.remember
+        })
         if (result.success) {
           if (!authStore.isAdmin) {
             ElMessage.error('该账户不是管理员，请使用用户登录页面')
@@ -135,6 +146,18 @@ export default {
 }
 .form-item {
   margin-bottom: 20px;
+}
+.remember-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #606266;
+  font-size: 14px;
+  user-select: none;
+}
+.remember-checkbox {
+  width: 16px;
+  height: 16px;
 }
 .login-input {
   width: 100%;

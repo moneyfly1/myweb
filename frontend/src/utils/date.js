@@ -134,11 +134,12 @@ export function getDateRange(range) {
       start = now.startOf('day')
       end = now.endOf('day')
       break
-    case 'yesterday':
+    case 'yesterday': {
       const yesterday = now.subtract(1, 'day')
       start = yesterday.startOf('day')
       end = yesterday.endOf('day')
       break
+    }
     case 'week':
       start = now.startOf('week')
       end = now.endOf('week')
