@@ -369,6 +369,7 @@
       :size="isMobile ? '92%' : '600px'"
       direction="rtl"
       :before-close="closeLogDetails"
+      :lock-scroll="false"
     >
       <div v-if="selectedLog" class="log-details">
         <el-descriptions :column="isMobile ? 1 : 2" border>

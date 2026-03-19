@@ -222,6 +222,7 @@
       :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
+      :lock-scroll="false"
     >
       <el-form
         ref="formRef"
@@ -329,6 +330,7 @@
       :size="isMobile ? '95%' : '600px'"
       direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
+      :lock-scroll="false"
     >
       <el-form
         ref="customPackageFormRef"

@@ -7,6 +7,8 @@
     direction="rtl"
     class="user-detail-drawer"
     :close-on-click-modal="true"
+    :append-to-body="true"
+    :lock-scroll="false"
   >
     <div v-if="user" class="drawer-content">
       <!-- 用户基本信息 (始终可见) -->

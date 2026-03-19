@@ -78,6 +78,7 @@
       title="筛选条件"
       :size="isMobile ? '85%' : '400px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <div class="filter-drawer-content">
         <el-form label-width="100px">
@@ -250,6 +251,7 @@
       direction="rtl"
       @close="closeDetailDialog"
       class="ticket-detail-drawer"
+      :lock-scroll="false"
     >
       <div v-if="currentTicket" class="ticket-detail">
         <div class="mobile-ticket-header" v-if="isMobile">

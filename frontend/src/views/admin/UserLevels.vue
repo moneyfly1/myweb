@@ -52,6 +52,7 @@
         title="状态筛选"
         :size="isMobile ? '85%' : '400px'"
         direction="rtl"
+        :lock-scroll="false"
       >
         <div class="filter-drawer-content">
           <el-form label-width="100px">
@@ -222,6 +223,7 @@
       :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       :class="{ 'mobile-dialog': isMobile }"
+      :lock-scroll="false"
     >
       <el-form 
         :model="levelForm" 
