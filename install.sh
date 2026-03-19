@@ -650,15 +650,24 @@ sync_from_github() {
         if ! git pull origin "$branch"; then
             warn "自动合并失败，尝试保存本地修改后重新拉取..."
 
-            # 保存本地修改
-            if git stash save "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
-                log "本地修改已保存到 stash"
+            # 仅在存在已跟踪文件改动时保存（untracked 文件不影响 pull）
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+                if git stash push -m "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
+                    log "本地修改已保存到 stash"
+                else
+                    error "保存本地修改失败"
+                    return 1
+                fi
+            else
+                log "未检测到需要 stash 的已跟踪修改，继续拉取..."
+            fi
 
-                # 重新拉取
-                if git pull origin "$branch"; then
-                    log "代码拉取成功，尝试恢复本地修改..."
+            # 重新拉取
+            if git pull origin "$branch"; then
+                log "代码拉取成功，尝试恢复本地修改..."
 
-                    # 尝试恢复本地修改
+                # 仅在有 stash 项时恢复
+                if git stash list | grep -q "自动保存 - "; then
                     if git stash pop; then
                         log "✅ 本地修改已恢复"
                     else
@@ -666,15 +675,11 @@ sync_from_github() {
                         warn "请手动执行: git stash list 查看，git stash pop 恢复"
                     fi
                 else
-                    error "代码同步失败"
-                    return 1
+                    log "没有需要恢复的 stash 修改"
                 fi
             else
-                warn "没有本地修改需要保存，尝试强制覆盖..."
-                if ! git reset --hard "origin/$branch"; then
-                    error "代码同步失败"
-                    return 1
-                fi
+                error "代码同步失败"
+                return 1
             fi
         fi
         log "✅ 代码同步成功"
@@ -688,8 +693,13 @@ sync_from_github() {
         error "未找到 Go 命令，请先安装 Go"
         return 1
     fi
-    go mod download 2>/dev/null
-    go mod tidy 2>/dev/null
+    log "Go 版本: $(go version)"
+    if ! go mod download; then
+        warn "go mod download 失败，继续尝试构建..."
+    fi
+    if ! go mod tidy; then
+        warn "go mod tidy 失败，继续尝试构建..."
+    fi
     if go build -o server ./cmd/server/main.go; then
         log "✅ Go 程序编译成功"
     else
