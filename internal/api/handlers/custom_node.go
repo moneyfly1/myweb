@@ -338,6 +338,12 @@ func UpdateCustomNode(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "update_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 更新专线节点 %s", node.Name))
+	// 清除所有关联用户的缓存
+	var userIDs []uint
+	db.Model(&models.UserCustomNode{}).Where("custom_node_id = ?", node.ID).Pluck("user_id", &userIDs)
+	for _, uid := range userIDs {
+		clearUserCustomNodeCache(uid)
+	}
 	utils.SuccessResponse(c, http.StatusOK, "", node)
 }
 
@@ -351,6 +357,10 @@ func DeleteCustomNode(c *gin.Context) {
 		return
 	}
 
+	// 先获取关联用户，删除后就查不到了
+	var affectedUserIDs []uint
+	db.Model(&models.UserCustomNode{}).Where("custom_node_id = ?", nodeID).Pluck("user_id", &affectedUserIDs)
+
 	db.Where("custom_node_id = ?", nodeID).Delete(&models.UserCustomNode{})
 
 	if err := db.Delete(&node).Error; err != nil {
@@ -358,6 +368,9 @@ func DeleteCustomNode(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s", node.Name))
+	for _, uid := range affectedUserIDs {
+		clearUserCustomNodeCache(uid)
+	}
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
@@ -373,6 +386,10 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 
 	db := database.GetDB()
 
+	// 先获取关联用户
+	var batchAffectedUserIDs []uint
+	db.Model(&models.UserCustomNode{}).Where("custom_node_id IN ?", req.NodeIDs).Pluck("user_id", &batchAffectedUserIDs)
+
 	db.Where("custom_node_id IN ?", req.NodeIDs).Delete(&models.UserCustomNode{})
 
 	if err := db.Where("id IN ?", req.NodeIDs).Delete(&models.CustomNode{}).Error; err != nil {
@@ -380,6 +397,9 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个", len(req.NodeIDs)))
+	for _, uid := range batchAffectedUserIDs {
+		clearUserCustomNodeCache(uid)
+	}
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", len(req.NodeIDs)), nil)
 }
 
@@ -441,6 +461,10 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		}
 	}
 	utils.CreateAuditLogSimple(c, "batch_assign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量分配专线节点 节点 %d 个 用户 %d 个 分配关系 %d", len(req.NodeIDs), len(req.UserIDs), assignedCount))
+	// 清除所有相关用户的缓存
+	for _, userID := range req.UserIDs {
+		clearUserCustomNodeCache(userID)
+	}
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功分配 %d 个节点关系", assignedCount), nil)
 }
 
@@ -683,6 +707,7 @@ func AssignCustomNodeToUser(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "分配成功", userNode)
+	clearUserCustomNodeCache(parseUint(userID))
 }
 
 func UnassignCustomNodeFromUser(c *gin.Context) {
@@ -696,9 +721,25 @@ func UnassignCustomNodeFromUser(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "取消分配成功", nil)
+	clearUserCustomNodeCache(parseUint(userID))
 }
 
 func parseUint(s string) uint {
 	i, _ := strconv.ParseUint(s, 10, 32)
 	return uint(i)
+}
+
+// clearUserCustomNodeCache 清除用户专线节点相关缓存
+func clearUserCustomNodeCache(userID uint) {
+	cacheService := &config_update.CacheService{}
+	_ = cacheService.ClearCustomNodesCache(userID)
+
+	// 清除该用户的订阅配置缓存
+	db := database.GetDB()
+	var subscriptions []models.Subscription
+	if err := db.Where("user_id = ?", userID).Find(&subscriptions).Error; err == nil {
+		for _, sub := range subscriptions {
+			_ = cacheService.ClearSubscriptionConfigCache(sub.SubscriptionURL)
+		}
+	}
 }
