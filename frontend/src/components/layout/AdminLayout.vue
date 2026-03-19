@@ -533,12 +533,14 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   margin-left: var(--sidebar-width);
   margin-top: var(--header-height);
   width: calc(100% - var(--sidebar-width));
+  height: calc(100vh - var(--header-height));
+  overflow-y: auto;
   transition: 0.3s;
-  .sidebar-collapsed & { 
-    margin-left: var(--sidebar-collapsed-width); 
+  .sidebar-collapsed & {
+    margin-left: var(--sidebar-collapsed-width);
     width: calc(100% - var(--sidebar-collapsed-width));
   }
-  @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; }
+  @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; height: calc(100vh - 50px); }
   .content-wrapper {
     padding: var(--content-padding);
     @include respond-to(sm) { padding: 12px; padding-bottom: 72px; }
