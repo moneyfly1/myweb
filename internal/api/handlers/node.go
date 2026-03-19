@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -26,30 +24,24 @@ import (
 )
 
 var (
-	regionMap = map[string]string{
-		"中国": "中国", "CN": "中国", "China": "中国", "香港": "香港", "HK": "香港", "Hong Kong": "香港",
-		"台湾": "台湾", "TW": "台湾", "Taiwan": "台湾", "日本": "日本", "JP": "日本", "Japan": "日本",
-		"韩国": "韩国", "KR": "韩国", "Korea": "韩国", "新加坡": "新加坡", "SG": "新加坡", "Singapore": "新加坡",
-		"美国": "美国", "US": "美国", "USA": "美国", "英国": "英国", "UK": "英国", "德国": "德国", "DE": "德国",
-		"法国": "法国", "FR": "法国", "加拿大": "加拿大", "CA": "加拿大", "澳洲": "澳大利亚", "AU": "澳大利亚",
-		"印度": "印度", "IN": "印度", "俄罗斯": "俄罗斯", "RU": "俄罗斯", "荷兰": "荷兰", "NL": "荷兰",
-		"泰国": "泰国", "TH": "泰国", "马来西亚": "马来西亚", "MY": "马来西亚", "越南": "越南", "VN": "越南",
-		"菲律宾": "菲律宾", "PH": "菲律宾",
-	}
-	serverCodeMap = map[string]string{
-		"tokyo": "日本", "osaka": "日本", "seoul": "韩国", "london": "英国", "frankfurt": "德国",
-		"paris": "法国", "toronto": "加拿大", "sydney": "澳大利亚", "mumbai": "印度", "moscow": "俄罗斯",
-		"amsterdam": "荷兰", "taipei": "台湾", "bangkok": "泰国", "hanoi": "越南",
-	}
-	sortedRegionKeys = func() []string {
-		keys := make([]string, 0, len(regionMap))
-		for k := range regionMap {
-			keys = append(keys, k)
-		}
-		sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
-		return keys
-	}()
+	regionMatcherOnce sync.Once
+	regionMatcher     *config_update.RegionMatcher
 )
+
+func getRegionMatcher() *config_update.RegionMatcher {
+	regionMatcherOnce.Do(func() {
+		cfg, err := config_update.LoadRegionConfig()
+		if err != nil {
+			utils.LogWarn("node handlers 地区配置加载失败: %v", err)
+		}
+		if cfg == nil {
+			regionMatcher = config_update.NewRegionMatcher(map[string]string{}, map[string]string{})
+			return
+		}
+		regionMatcher = config_update.NewRegionMatcher(cfg.RegionMap, cfg.ServerMap)
+	})
+	return regionMatcher
+}
 
 func generateNodeKey(nodeType string, name string, config *string) string {
 	if config == nil || *config == "" {
@@ -69,19 +61,11 @@ func generateNodeKey(nodeType string, name string, config *string) string {
 }
 
 func resolveRegion(name, server string) string {
-	nameUpper := strings.ToUpper(name)
-	for _, kw := range sortedRegionKeys {
-		if strings.Contains(nameUpper, strings.ToUpper(kw)) {
-			return regionMap[kw]
-		}
+	matcher := getRegionMatcher()
+	if matcher == nil {
+		return "未知"
 	}
-	serverLower := strings.ToLower(server)
-	for kw, region := range serverCodeMap {
-		if strings.Contains(serverLower, kw) {
-			return region
-		}
-	}
-	return "未知"
+	return matcher.MatchRegion(name, server)
 }
 
 func buildNodeModel(node *config_update.ProxyNode, isManual bool) models.Node {
@@ -898,29 +882,6 @@ func ImportFromClash(c *gin.Context) {
 	}
 	count, _ := importNodesFromClashConfig(req.ClashConfig)
 	utils.CreateAuditLogSimple(c, "import_from_clash", "node", 0, fmt.Sprintf("管理员操作: 从 Clash 配置导入节点 %d 个", count))
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
-}
-
-func ImportFromFile(c *gin.Context) {
-	path := "./uploads/config/clash.yaml"
-	if !filepath.IsAbs(path) {
-		wd, _ := os.Getwd()
-		path = filepath.Join(wd, path)
-	}
-	// 清理并验证文件路径
-	cleanPath := filepath.Clean(path)
-	if strings.Contains(cleanPath, "..") {
-		utils.ErrorResponse(c, http.StatusBadRequest, "不安全的文件路径", nil)
-		return
-	}
-
-	content, err := os.ReadFile(cleanPath)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "文件不存在", err)
-		return
-	}
-	count, _ := importNodesFromClashConfig(string(content))
-	utils.CreateAuditLogSimple(c, "import_from_file", "node", 0, fmt.Sprintf("管理员操作: 从文件导入节点 %d 个", count))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
 }
 

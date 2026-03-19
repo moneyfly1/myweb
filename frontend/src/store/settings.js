@@ -4,7 +4,7 @@ const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
 const PASSWORD_PATTERNS = {
   letter: /[a-zA-Z]/,
   digit: /\d/,
-  special: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/
+  special: /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/
 }
 export const useSettingsStore = defineStore('settings', {
   state: () => ({

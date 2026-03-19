@@ -41,6 +41,11 @@
           </el-input>
         </el-form-item>
         <el-form-item>
+          <el-checkbox v-model="loginForm.remember">
+            记住登录（30天）
+          </el-checkbox>
+        </el-form-item>
+        <el-form-item>
           <el-button
             type="primary"
             size="large"
@@ -112,7 +117,8 @@ export default {
     const forgotFormRef = ref(null)
     const loginForm = reactive({
       username: '',
-      password: ''
+      password: '',
+      remember: true
     })
     onMounted(() => {
       if (route.query.username) {
@@ -156,7 +162,11 @@ export default {
 
       loading.value = true
       try {
-        const result = await authStore.login(loginForm)
+        const result = await authStore.login({
+          username: loginForm.username,
+          password: loginForm.password,
+          remember: loginForm.remember
+        })
         if (result.success) {
           ElMessage.success('登录成功')
           await nextTick()

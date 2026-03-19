@@ -19,11 +19,11 @@ import (
 )
 
 var (
-	geoipDB        *geoip2.Reader
-	ip2locationDB  *ip2location.DB
-	geoipDBLock    sync.RWMutex
-	geoipEnabled   bool
-	dbType         string // "geoip2" or "ip2location"
+	geoipDB       *geoip2.Reader
+	ip2locationDB *ip2location.DB
+	geoipDBLock   sync.RWMutex
+	geoipEnabled  bool
+	dbType        string // "geoip2" or "ip2location"
 )
 
 type ping0CacheEntry struct {

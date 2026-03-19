@@ -5,8 +5,35 @@ import { secureStorage } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 export const useAuthStore = defineStore('auth', () => {
   const isAdminPath = () => typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
-  const TOKEN_TTL = 24 * 60 * 60 * 1000
-  const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000
+  const TOKEN_TTL = 60 * 60 * 1000
+  const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60 * 1000
+  const SECURE_STORAGE_KEY = 'cboard_secure_'
+  const getRememberKey = (isAdmin = false) => (isAdmin ? 'admin_remember' : 'user_remember')
+  const hasValidLocalValue = (key) => {
+    if (typeof window === 'undefined') return false
+    try {
+      const item = localStorage.getItem(`${SECURE_STORAGE_KEY}${key}`)
+      if (!item) return false
+      const data = JSON.parse(item)
+      if (data.expiry && Date.now() > data.expiry) {
+        localStorage.removeItem(`${SECURE_STORAGE_KEY}${key}`)
+        return false
+      }
+      return true
+    } catch (error) {
+      return false
+    }
+  }
+  const getRememberPreference = (isAdmin = false) => {
+    const remember = secureStorage.get(getRememberKey(isAdmin))
+    if (remember === true || remember === 'true') return true
+    if (remember === false || remember === 'false') return false
+    return hasValidLocalValue(isAdmin ? 'admin_token' : 'user_token')
+  }
+  const saveRememberPreference = (remember, isAdmin = false) => {
+    // 偏好始终持久化，保证刷新时可读取正确的存储策略
+    secureStorage.set(getRememberKey(isAdmin), !!remember, false, REFRESH_TOKEN_TTL)
+  }
   const getInitialToken = () => {
     if (typeof window === 'undefined') return ''
     const path = window.location.pathname
@@ -37,19 +64,30 @@ export const useAuthStore = defineStore('auth', () => {
       return null
     }
   }
-  const saveToken = (accessToken, isAdmin = false) => {
+  const saveToken = (accessToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
+    const useSession = !remember
     if (isAdmin) {
-      secureStorage.set('admin_token', accessToken, true, TOKEN_TTL)
-    } else {
-      secureStorage.set('user_token', accessToken, true, TOKEN_TTL)
+      secureStorage.set('admin_token', accessToken, useSession, TOKEN_TTL)
+      return
     }
+    secureStorage.set('user_token', accessToken, useSession, TOKEN_TTL)
   }
-  const saveUser = (userData, isAdmin = false) => {
+  const saveUser = (userData, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
+    const useSession = !remember
     if (isAdmin) {
-      secureStorage.set('admin_user', userData, true, TOKEN_TTL)
-    } else {
-      secureStorage.set('user_data', userData, true, TOKEN_TTL)
+      secureStorage.set('admin_user', userData, useSession, TOKEN_TTL)
+      return
     }
+    secureStorage.set('user_data', userData, useSession, TOKEN_TTL)
+  }
+  const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
+    if (!refreshToken) return
+    const useSession = !remember
+    if (isAdmin) {
+      secureStorage.set('admin_refresh_token', refreshToken, useSession, REFRESH_TOKEN_TTL)
+      return
+    }
+    secureStorage.set('user_refresh_token', refreshToken, useSession, REFRESH_TOKEN_TTL)
   }
   const token = ref(getInitialToken())
   const user = ref(getInitialUser())
@@ -105,9 +143,11 @@ export const useAuthStore = defineStore('auth', () => {
         theme: userData.theme,
         language: userData.language
       }
-      secureStorage.set('user_token', access_token, true, TOKEN_TTL)
-      secureStorage.set('user_data', safeUserData, true, TOKEN_TTL)
-      secureStorage.set('user_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
+      const remember = !!credentials.remember
+      saveRememberPreference(remember, false)
+      saveToken(access_token, false, remember)
+      saveUser(safeUserData, false, remember)
+      saveRefreshToken(refresh_token, false, remember)
       resetRefreshFailed()
       setTimeout(() => {
         const themeStore = useThemeStore()
@@ -159,9 +199,11 @@ export const useAuthStore = defineStore('auth', () => {
         theme: userData.theme,
         language: userData.language
       }
-      secureStorage.set('admin_token', access_token, true, TOKEN_TTL)
-      secureStorage.set('admin_user', safeUserData, true, TOKEN_TTL)
-      secureStorage.set('admin_refresh_token', refresh_token, true, REFRESH_TOKEN_TTL)
+      const remember = !!credentials.remember
+      saveRememberPreference(remember, true)
+      saveToken(access_token, true, remember)
+      saveUser(safeUserData, true, remember)
+      saveRefreshToken(refresh_token, true, remember)
       resetRefreshFailed()
       setTimeout(() => {
         const themeStore = useThemeStore()
@@ -200,6 +242,8 @@ export const useAuthStore = defineStore('auth', () => {
     secureStorage.remove('token')
     secureStorage.remove('refresh_token')
     secureStorage.remove('user')
+    secureStorage.remove('admin_remember')
+    secureStorage.remove('user_remember')
     secureStorage.clear()
     resetRefreshFailed()
   }
@@ -219,9 +263,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
     try {
       const response = await api.post('/auth/refresh', { refresh_token }, { withCredentials: true })
-      const { access_token } = response.data
+      const responseData = response.data?.data || response.data
+      const { access_token, refresh_token } = responseData
       token.value = access_token
       saveToken(access_token, isAdmin)
+      saveRefreshToken(refresh_token, isAdmin)
       return true
     } catch (error) {
       logout()
@@ -262,13 +308,10 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = newToken
     user.value = newUser
     const isAdmin = newUser?.is_admin || false
-    if (useSessionStorage) {
-      secureStorage.set('user_token', newToken, true, TOKEN_TTL)
-      secureStorage.set('user_data', newUser, true, TOKEN_TTL)
-    } else {
-      secureStorage.set('admin_token', newToken, true, TOKEN_TTL)
-      secureStorage.set('admin_user', newUser, true, TOKEN_TTL)
-    }
+    const remember = !useSessionStorage
+    saveRememberPreference(remember, isAdmin)
+    saveToken(newToken, isAdmin, remember)
+    saveUser(newUser, isAdmin, remember)
   }
   const setToken = (newToken) => {
     token.value = newToken

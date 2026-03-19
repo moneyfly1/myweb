@@ -500,7 +500,6 @@ func CreateAuditLogSimpleFast(c *gin.Context, actionType, resourceType string, r
 	}
 }
 
-
 func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool, reason string) {
 	db := database.GetDB()
 	if db == nil {

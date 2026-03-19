@@ -613,13 +613,13 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 		}
 
 		loginHistory := models.LoginHistory{
-			UserID:             userID,
-			LoginTime:          loginTime,
-			IPAddress:          database.NullString(ip),
-			UserAgent:          database.NullString(userAgent),
-			Location:           location,
-			LoginStatus:        "success",
-			DeviceFingerprint:  database.NullString(devHash),
+			UserID:            userID,
+			LoginTime:         loginTime,
+			IPAddress:         database.NullString(ip),
+			UserAgent:         database.NullString(userAgent),
+			Location:          location,
+			LoginStatus:       "success",
+			DeviceFingerprint: database.NullString(devHash),
 		}
 		if err := database.GetDB().Create(&loginHistory).Error; err != nil {
 			utils.LogError("Login: 创建登录历史失败", err, map[string]interface{}{"user_id": userID, "ip": ip})

@@ -200,7 +200,6 @@ export default {
       flash_macos_url: '',
       mihomo_macos_url: '',
       clash_verge_macos_url: '',
-      clash_verge_macos_url: '',
       sparkle_macos_url: '',
       shadowrocket_url: ''
     })

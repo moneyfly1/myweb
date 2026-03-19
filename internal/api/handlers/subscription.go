@@ -9,8 +9,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -1769,46 +1767,6 @@ func GetConfigUpdateConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", configMap)
 }
 
-func GetConfigUpdateFiles(c *gin.Context) {
-	service := config_update.NewConfigUpdateService()
-	config, err := service.GetConfig()
-	if err != nil {
-		utils.SuccessResponse(c, http.StatusOK, "", []gin.H{})
-		return
-	}
-
-	targetDir, _ := config["target_dir"].(string)
-	v2rayFile, _ := config["v2ray_file"].(string)
-	clashFile, _ := config["clash_file"].(string)
-
-	if targetDir == "" {
-		targetDir = "./uploads/config"
-	}
-	if v2rayFile == "" {
-		v2rayFile = "xr"
-	}
-	clashFile = filepath.Base(clashFile)
-
-	targetDir = filepath.Clean(targetDir)
-	v2rayPath := filepath.Join(targetDir, v2rayFile)
-	clashPath := filepath.Join(targetDir, clashFile)
-
-	getFileInfo := func(name, path string) gin.H {
-		res := gin.H{"name": name, "path": path, "size": 0, "exists": false}
-		if info, err := os.Stat(path); err == nil {
-			res["size"] = info.Size()
-			res["modified"] = info.ModTime().Format(TimeLayout)
-			res["exists"] = true
-		}
-		return res
-	}
-
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"v2ray": getFileInfo(v2rayFile, v2rayPath),
-		"clash": getFileInfo(clashFile, clashPath),
-	})
-}
-
 func GetConfigUpdateLogs(c *gin.Context) {
 	limit := 100
 	if limitStr := c.Query("limit"); limitStr != "" {
@@ -1903,7 +1861,9 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 func StartConfigUpdate(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	go func() {
-		_ = service.RunUpdateTask()
+		if err := service.RunUpdateTask(); err != nil {
+			log.Printf("start config update task failed: %v", err)
+		}
 	}()
 	utils.CreateAuditLogSimple(c, "start_config_update", "config_update", 0, "管理员操作: 启动配置更新任务")
 	utils.SuccessResponse(c, http.StatusOK, "配置更新任务已启动", nil)
@@ -1918,7 +1878,9 @@ func StopConfigUpdate(c *gin.Context) {
 func TestConfigUpdate(c *gin.Context) {
 	service := config_update.NewConfigUpdateService()
 	go func() {
-		_ = service.RunUpdateTask()
+		if err := service.RunUpdateTask(); err != nil {
+			log.Printf("test config update task failed: %v", err)
+		}
 	}()
 	utils.SuccessResponse(c, http.StatusOK, "测试任务已启动", nil)
 }
