@@ -263,6 +263,7 @@
       :title="editingConfig ? '编辑支付配置' : '添加支付配置'"
       :size="isMobile ? '92%' : '500px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <el-form :model="configForm" :label-width="isMobile ? '0' : '120px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="支付类型">

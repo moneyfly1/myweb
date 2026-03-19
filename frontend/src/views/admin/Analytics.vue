@@ -174,6 +174,7 @@
       title="联系用户"
       :size="isMobile ? '100%' : '600px'"
       :close-on-click-modal="false"
+      :lock-scroll="false"
     >
       <el-form :model="contactForm" label-width="100px">
         <el-form-item label="用户">

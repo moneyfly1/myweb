@@ -176,6 +176,7 @@
       title="用户详细信息"
       :size="isMobile ? '92%' : '700px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <div v-if="userDetails" class="user-details">
         <el-card style="margin-bottom: 20px;" shadow="never">

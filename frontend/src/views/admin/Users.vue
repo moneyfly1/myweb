@@ -458,6 +458,7 @@
       direction="rtl"
       class="user-form-drawer"
       @closed="onFormDrawerClosed"
+      :lock-scroll="false"
     >
       <el-form
         :model="userForm"

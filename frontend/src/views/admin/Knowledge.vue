@@ -110,6 +110,7 @@
       :title="catForm.id ? '编辑分类' : '新建分类'"
       :size="isMobile ? '100%' : '500px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <el-form :model="catForm" label-width="80px" :rules="catRules" ref="catFormRef">
         <el-form-item label="名称" prop="name">
@@ -145,6 +146,7 @@
       :title="articleForm.id ? '编辑文章' : '新建文章'"
       :size="isMobile ? '100%' : '70%'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <el-form :model="articleForm" label-width="80px" :rules="articleRules" ref="articleFormRef">
         <el-form-item label="标题" prop="title">

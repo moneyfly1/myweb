@@ -297,6 +297,7 @@
       :size="isMobile ? '92%' : '500px'"
       direction="rtl"
       class="order-detail-drawer"
+      :lock-scroll="false"
     >
       <div class="order-detail-content">
         <div class="mobile-order-detail" v-if="isMobile">

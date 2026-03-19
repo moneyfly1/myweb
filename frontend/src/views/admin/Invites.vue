@@ -410,6 +410,7 @@
       title="邀请设置"
       :size="isMobile ? '92%' : '500px'"
       direction="rtl"
+      :lock-scroll="false"
     >
       <div class="settings-dialog-content">
         <el-alert
