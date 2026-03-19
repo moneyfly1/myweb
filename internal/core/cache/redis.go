@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	redisClient *redis.Client
-	ctx         = context.Background()
+	redisClient  *redis.Client
+	ctx          = context.Background()
 	redisEnabled bool
 )
 

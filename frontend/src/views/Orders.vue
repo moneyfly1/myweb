@@ -219,7 +219,6 @@
                   size="small" 
                   type="primary"
                   @click.stop="payOrder(scope.row)"
-                  :disabled="false"
                 >
                   立即支付
                 </el-button>
@@ -227,7 +226,6 @@
                   v-if="scope.row.status === 'pending'"
                   size="small" 
                   @click.stop="cancelOrder(scope.row)"
-                  :disabled="false"
                 >
                   取消订单
                 </el-button>
@@ -236,7 +234,6 @@
                   size="small" 
                   type="success"
                   @click.stop="viewOrderDetail(scope.row)"
-                  :disabled="false"
                 >
                   查看详情
                 </el-button>
@@ -247,7 +244,6 @@
                   size="small" 
                   type="primary"
                   @click.stop="payRecharge(scope.row)"
-                  :disabled="false"
                 >
                   立即支付
                 </el-button>
@@ -255,7 +251,6 @@
                   v-if="scope.row.status === 'pending'"
                   size="small" 
                   @click.stop="cancelRecharge(scope.row)"
-                  :disabled="false"
                 >
                   取消充值
                 </el-button>
@@ -338,7 +333,6 @@
               size="small" 
               type="primary"
               @click.stop="payOrder(record)"
-              :disabled="false"
             >
               立即支付
             </el-button>
@@ -346,7 +340,6 @@
               v-if="record.status === 'pending'"
               size="small" 
               @click.stop="cancelOrder(record)"
-              :disabled="false"
             >
               取消订单
             </el-button>
@@ -355,7 +348,6 @@
               size="small" 
               type="success"
               @click.stop="viewOrderDetail(record)"
-              :disabled="false"
             >
               查看详情
             </el-button>
@@ -366,7 +358,6 @@
               size="small" 
               type="primary"
               @click.stop="payRecharge(record)"
-              :disabled="false"
             >
               立即支付
             </el-button>
@@ -374,7 +365,6 @@
               v-if="record.status === 'pending'"
               size="small" 
               @click.stop="cancelRecharge(record)"
-              :disabled="false"
             >
               取消充值
             </el-button>
@@ -703,8 +693,6 @@ export default {
         id: recharge.id,
         order_no: recharge.order_no,
         amount: recharge.amount,
-        status: recharge.status || 'pending',
-        payment_method: recharge.payment_method || 'alipay',
         created_at: recharge.created_at,
         paid_at: recharge.paid_at
       }

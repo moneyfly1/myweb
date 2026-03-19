@@ -310,12 +310,12 @@ func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *pa
 
 			if alipayAmount < expectedPaymentAmount-0.01 || alipayAmount > expectedPaymentAmount+0.01 {
 				utils.LogError("performAlipayQuery: order amount mismatch", nil, map[string]interface{}{
-					"order_no":               orderNo,
-					"expected_amount":        expectedAmount,
-					"balance_used":           balanceUsed,
-					"expected_payment":       expectedPaymentAmount,
-					"alipay_amount":          alipayAmount,
-					"trade_no":               result.TradeNo,
+					"order_no":         orderNo,
+					"expected_amount":  expectedAmount,
+					"balance_used":     balanceUsed,
+					"expected_payment": expectedPaymentAmount,
+					"alipay_amount":    alipayAmount,
+					"trade_no":         result.TradeNo,
 				})
 				return fmt.Errorf("订单金额不匹配: 预期支付%.2f元, 支付宝返回%.2f元", expectedPaymentAmount, alipayAmount)
 			}

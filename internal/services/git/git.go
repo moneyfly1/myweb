@@ -108,7 +108,7 @@ func (c *GitClient) UploadFile(filePath, remotePath string) error {
 func (c *GitClient) UploadFileWithProgress(filePath, remotePath string, progressCallback ProgressCallback) error {
 	// 清理并验证文件路径
 	cleanFilePath := filepath.Clean(filePath)
-	if strings.Contains(cleanFilePath, "..") {
+	if !utils.IsWithinBaseDir(".", cleanFilePath) {
 		return fmt.Errorf("不安全的文件路径: %s", filePath)
 	}
 
@@ -358,8 +358,8 @@ func (c *GitClient) UploadBackup(filePath string) error {
 // 例如: 2026/03/backup_db_20260309_150405.zip
 func (c *GitClient) UploadBackupWithProgress(filePath string, progressCallback ProgressCallback) error {
 	now := utils.GetBeijingTime()
-	year := now.Format("2006")   // 2026
-	month := now.Format("01")    // 03
+	year := now.Format("2006") // 2026
+	month := now.Format("01")  // 03
 	fileName := filepath.Base(filePath)
 
 	// 构建远程路径: 年/月/文件名

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"cboard-go/internal/services/geoip"
+	"fmt"
 )
 
 func main() {
@@ -13,9 +13,9 @@ func main() {
 	defer geoip.Close()
 
 	testIPs := []string{
-		"61.242.235.58",      // 中国 IPv4
-		"182.37.160.182",     // 中国 IPv4
-		"8.8.8.8",            // 美国 Google DNS
+		"61.242.235.58",                          // 中国 IPv4
+		"182.37.160.182",                         // 中国 IPv4
+		"8.8.8.8",                                // 美国 Google DNS
 		"240e:47c:6a0e:e8a0:c5e9:e0e5:e0e5:e0e5", // 中国 IPv6
 	}
 

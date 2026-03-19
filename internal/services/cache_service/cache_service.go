@@ -68,12 +68,12 @@ func (cs *CacheService) Del(key string) error {
 func (cs *CacheService) GetUserCache(userID uint) (map[string]interface{}, bool) {
 	var user map[string]interface{}
 	key := fmt.Sprintf("user:info:%d", userID)
-	
+
 	ok, err := cs.Get(key, &user)
 	if err != nil || !ok {
 		return nil, false
 	}
-	
+
 	return user, true
 }
 
@@ -97,12 +97,12 @@ func (cs *CacheService) ClearUserCache(userID uint) error {
 func (cs *CacheService) GetPackagesCache() ([]map[string]interface{}, bool) {
 	var packages []map[string]interface{}
 	key := "packages:list:active"
-	
+
 	ok, err := cs.Get(key, &packages)
 	if err != nil || !ok {
 		return nil, false
 	}
-	
+
 	return packages, true
 }
 
@@ -126,12 +126,12 @@ func (cs *CacheService) ClearPackagesCache() error {
 func (cs *CacheService) GetAnnouncementsCache() ([]map[string]interface{}, bool) {
 	var announcements []map[string]interface{}
 	key := "announcements:list:active"
-	
+
 	ok, err := cs.Get(key, &announcements)
 	if err != nil || !ok {
 		return nil, false
 	}
-	
+
 	return announcements, true
 }
 
@@ -155,12 +155,12 @@ func (cs *CacheService) ClearAnnouncementsCache() error {
 func (cs *CacheService) GetSystemConfigCache(category string) ([]map[string]interface{}, bool) {
 	var configs []map[string]interface{}
 	key := fmt.Sprintf("system:config:%s", category)
-	
+
 	ok, err := cs.Get(key, &configs)
 	if err != nil || !ok {
 		return nil, false
 	}
-	
+
 	return configs, true
 }
 

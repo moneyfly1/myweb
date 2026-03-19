@@ -3,6 +3,8 @@ import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
 import { useApi } from '@/utils/api'
+const SECURE_STORAGE_KEY = 'cboard_secure_'
+const ACCESS_TOKEN_TTL = 60 * 60 * 1000
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
 let _unifiedAuthPromise = null
@@ -16,12 +18,6 @@ const getUnifiedAuthEnabled = () => {
       .catch(() => false)
   }
   return _unifiedAuthPromise
-}
-const getAuthComponent = async () => {
-  const unifiedAuthEnabled = await getUnifiedAuthEnabled()
-  return unifiedAuthEnabled
-    ? () => import('@/views/UnifiedAuth.vue')
-    : () => import('@/views/Login.vue')
 }
 const routes = [
   { path: '/', redirect: '/dashboard' },
@@ -117,23 +113,36 @@ const routes = [
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFound.vue') }
 ]
 const router = createRouter({ history: createWebHistory(), routes })
+const hasValidLocalSecureValue = (key) => {
+  try {
+    const item = localStorage.getItem(`${SECURE_STORAGE_KEY}${key}`)
+    if (!item) return false
+    const data = JSON.parse(item)
+    if (data.expiry && Date.now() > data.expiry) {
+      localStorage.removeItem(`${SECURE_STORAGE_KEY}${key}`)
+      return false
+    }
+    return true
+  } catch (e) {
+    return false
+  }
+}
 const saveAdminAuth = (adminToken, adminUser) => {
   try {
     const adminData = typeof adminUser === 'string' ? JSON.parse(adminUser) : adminUser
     if (adminData?.is_admin) {
-      secureStorage.set('admin_token', adminToken, false, 86400000)
-      secureStorage.set('admin_user', adminData, false, 86400000)
+      secureStorage.set('admin_token', adminToken, false, ACCESS_TOKEN_TTL)
+      secureStorage.set('admin_user', adminData, false, ACCESS_TOKEN_TTL)
     }
   } catch (e) {
-    if (process.env.NODE_ENV === 'development') {
-    }
+    if (process.env.NODE_ENV === 'development') console.debug('saveAdminAuth parse failed', e)
   }
 }
 router.beforeEach(async (to, from, next) => {
   if (to.meta.title) document.title = `${to.meta.title} - CBoard`
   try {
     const authStore = useAuthStore()
-    const { sessionKey, token, user } = to.query
+    const { sessionKey } = to.query
     if (sessionKey) {
       const loginData = JSON.parse(sessionStorage.getItem(sessionKey) || 'null')
       if (loginData) {
@@ -146,37 +155,24 @@ router.beforeEach(async (to, from, next) => {
         sessionStorage.removeItem(sessionKey)
         if (loginData.adminToken) saveAdminAuth(loginData.adminToken, loginData.adminUser)
         const userData = { ...loginData.user, is_admin: false }
-        secureStorage.set('user_token', loginData.token, true, 86400000)
-        secureStorage.set('user_data', userData, true, 86400000)
+        secureStorage.set('user_token', loginData.token, true, ACCESS_TOKEN_TTL)
+        secureStorage.set('user_data', userData, true, ACCESS_TOKEN_TTL)
         authStore.setAuth(loginData.token, userData, true)
         useThemeStore().loadUserTheme().catch(() => {})
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
       }
     }
-    if (token && user) {
-      let userData
-      try {
-        userData = JSON.parse(decodeURIComponent(user))
-      } catch {
-        return next({ path: to.path, query: { ...to.query, token: undefined, user: undefined }, replace: true })
-      }
-      if (userData._adminToken) saveAdminAuth(userData._adminToken, userData._adminUser)
-      const finalUser = { ...userData, is_admin: false }
-      delete finalUser._adminToken; delete finalUser._adminUser
-      secureStorage.set('user_token', token, true, 86400000)
-      secureStorage.set('user_data', finalUser, true, 86400000)
-      authStore.setAuth(token, finalUser, true)
-      useThemeStore().loadUserTheme().catch(() => {})
-      return next({ path: to.path, query: { ...to.query, token: undefined, user: undefined }, replace: true })
-    }
     const isAdminPath = to.path.startsWith('/admin')
-    const storedToken = secureStorage.get(isAdminPath ? 'admin_token' : 'user_token')
-    const storedUser = secureStorage.get(isAdminPath ? 'admin_user' : 'user_data')
+    const roleTokenKey = isAdminPath ? 'admin_token' : 'user_token'
+    const roleUserKey = isAdminPath ? 'admin_user' : 'user_data'
+    const storedToken = secureStorage.get(roleTokenKey)
+    const storedUser = secureStorage.get(roleUserKey)
     if (storedToken && storedUser) {
       const userData = typeof storedUser === 'string' ? JSON.parse(storedUser) : storedUser
       if ((isAdminPath && userData.is_admin) || (!isAdminPath && !userData.is_admin)) {
         if (!authStore.isAuthenticated || authStore.token !== storedToken) {
-          authStore.setAuth(storedToken, userData, !isAdminPath)
+          const useSessionStorage = !hasValidLocalSecureValue(roleTokenKey)
+          authStore.setAuth(storedToken, userData, useSessionStorage)
           useThemeStore().loadUserTheme().catch(() => {})
         }
       }

@@ -1,10 +1,7 @@
 package config_update
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -27,48 +24,16 @@ type RegionConfig struct {
 
 func LoadRegionConfig() (*RegionConfig, error) {
 	regionConfigOnce.Do(func() {
-		wd, _ := os.Getwd()
-
-		paths := []string{
-			"./internal/services/config_update/region_config.json",
-			"./region_config.json",
-			filepath.Join(wd, "internal/services/config_update/region_config.json"),
-			filepath.Join(wd, "region_config.json"),
-			filepath.Join(filepath.Dir(os.Args[0]), "region_config.json"),
-			filepath.Join(filepath.Dir(os.Args[0]), "internal/services/config_update/region_config.json"),
+		if len(builtInRegionMap) == 0 && len(builtInServerMap) == 0 {
+			regionConfigErr = fmt.Errorf("地区配置资源为空")
+			regionConfig = getDefaultRegionConfig()
+			return
 		}
 
-		var lastErr error
-		for _, path := range paths {
-			// 清理路径并验证安全性
-			cleanPath := filepath.Clean(path)
-			// 确保路径不包含路径遍历字符
-			if strings.Contains(cleanPath, "..") {
-				lastErr = fmt.Errorf("不安全的路径: %s", path)
-				continue
-			}
-
-			data, err := os.ReadFile(cleanPath)
-			if err == nil {
-				var config RegionConfig
-				if err := json.Unmarshal(data, &config); err == nil {
-					if len(config.RegionMap) > 0 || len(config.ServerMap) > 0 {
-						regionConfig = &config
-						return
-					}
-					lastErr = fmt.Errorf("配置文件为空: %s", path)
-				} else {
-					lastErr = fmt.Errorf("JSON解析失败 %s: %v", path, err)
-				}
-			} else {
-				lastErr = fmt.Errorf("文件读取失败 %s: %v", path, err)
-			}
+		regionConfig = &RegionConfig{
+			RegionMap: cloneStringMap(builtInRegionMap),
+			ServerMap: cloneStringMap(builtInServerMap),
 		}
-
-		if lastErr != nil {
-			regionConfigErr = fmt.Errorf("无法加载地区配置文件，尝试的路径都失败，最后错误: %v", lastErr)
-		}
-		regionConfig = getDefaultRegionConfig()
 	})
 
 	if regionConfig == nil {
@@ -83,6 +48,14 @@ func getDefaultRegionConfig() *RegionConfig {
 		RegionMap: make(map[string]string),
 		ServerMap: make(map[string]string),
 	}
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 // ==========================================

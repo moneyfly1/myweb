@@ -40,6 +40,7 @@ const (
 	StatusDeviceOverLimit
 	StatusOldAddress
 	StatusNotFound
+	StatusSystemError
 )
 
 var nodeLinkPatterns = []*regexp.Regexp{
@@ -551,7 +552,9 @@ func truncateString(s string, maxLen int) string {
 
 func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 	var configs []models.SystemConfig
-	s.db.Where("category = ?", "config_update").Find(&configs)
+	if err := s.db.Where("category = ?", "config_update").Find(&configs).Error; err != nil {
+		return nil, err
+	}
 
 	result := map[string]interface{}{
 		"urls":              []string{},
@@ -591,13 +594,17 @@ func (s *ConfigUpdateService) updateLastUpdateTime() {
 	now := utils.GetBeijingTime().Format("2006-01-02T15:04:05")
 	var config models.SystemConfig
 	if err := s.db.Where("key = ?", "config_update_last_update").First(&config).Error; err != nil {
-		s.db.Create(&models.SystemConfig{
+		if createErr := s.db.Create(&models.SystemConfig{
 			Key: "config_update_last_update", Value: now, Type: "string",
 			Category: "config_update", DisplayName: "最后更新时间", Description: "配置更新任务的最后执行时间",
-		})
+		}).Error; createErr != nil {
+			s.log("ERROR", fmt.Sprintf("写入更新时间失败: %v", createErr))
+		}
 	} else {
 		config.Value = now
-		s.db.Save(&config)
+		if saveErr := s.db.Save(&config).Error; saveErr != nil {
+			s.log("ERROR", fmt.Sprintf("保存更新时间失败: %v", saveErr))
+		}
 	}
 }
 
@@ -938,7 +945,15 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP stri
 		return ctx
 	}
 
-	ctx.Proxies, _ = s.fetchProxiesForUser(user, sub)
+	proxies, err := s.fetchProxiesForUser(user, sub)
+	if err != nil {
+		if utils.AppLogger != nil {
+			utils.AppLogger.Error("获取订阅节点失败: user_id=%d subscription_id=%d err=%v", user.ID, sub.ID, err)
+		}
+		ctx.Status = StatusSystemError
+		return ctx
+	}
+	ctx.Proxies = proxies
 
 	if len(ctx.Proxies) == 0 && !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(utils.GetBeijingTime()) {
 		ctx.Status = StatusExpired
@@ -1164,8 +1179,11 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 
 	subscriptionName := s.GenerateSubscriptionName(ctx)
 	templatePath := filepath.Clean(filepath.Join("uploads", "config", "temp.yaml"))
+	if cfg, err := s.getConfig(); err == nil {
+		templatePath = ResolveTemplatePath(cfg)
+	}
 
-	if !strings.Contains(templatePath, "..") {
+	if utils.IsWithinBaseDir(".", templatePath) {
 		if templateData, err := os.ReadFile(templatePath); err == nil {
 			var templateConfig map[string]interface{}
 			if yaml.Unmarshal(templateData, &templateConfig) == nil {
@@ -1235,6 +1253,8 @@ func (s *ConfigUpdateService) GenerateSubscriptionName(ctx *SubscriptionContext)
 			return "账户异常"
 		case StatusDeviceOverLimit:
 			return "设备超限"
+		case StatusSystemError:
+			return "系统繁忙"
 		default:
 			return "订阅异常"
 		}
@@ -1334,6 +1354,8 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 		reason, solution = "订阅地址已变更", "请登录官网获取最新的订阅地址"
 	case StatusNotFound:
 		reason, solution = "订阅不存在", "请检查订阅链接是否正确，或重新复制"
+	case StatusSystemError:
+		reason, solution = "系统异常", "节点加载失败，请稍后重试或联系管理员"
 	default:
 		reason, solution = "账户异常", "检测到账户异常，请联系管理员"
 	}

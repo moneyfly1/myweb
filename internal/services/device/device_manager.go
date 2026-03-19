@@ -525,12 +525,12 @@ func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo)
 	if strings.Contains(osName, "linux") {
 		// 如果是常见的桌面 Linux 发行版
 		if strings.Contains(uaLower, "ubuntu") || strings.Contains(uaLower, "debian") ||
-		   strings.Contains(uaLower, "fedora") || strings.Contains(uaLower, "arch") {
+			strings.Contains(uaLower, "fedora") || strings.Contains(uaLower, "arch") {
 			return "desktop"
 		}
 		// 如果有桌面浏览器特征
 		if strings.Contains(uaLower, "chrome") || strings.Contains(uaLower, "firefox") ||
-		   strings.Contains(uaLower, "electron") {
+			strings.Contains(uaLower, "electron") {
 			return "desktop"
 		}
 		// 否则可能是服务器或路由器
@@ -590,8 +590,8 @@ func (dm *DeviceManager) isRouter(userAgent, uaLower, osName string) bool {
 
 	// 软路由常见特征：clash/mihomo + mips/arm/aarch64 架构
 	if (strings.Contains(uaLower, "clash") || strings.Contains(uaLower, "mihomo")) &&
-	   (strings.Contains(uaLower, "mips") || strings.Contains(uaLower, "arm") ||
-	    strings.Contains(uaLower, "aarch64") || strings.Contains(uaLower, "armv7")) {
+		(strings.Contains(uaLower, "mips") || strings.Contains(uaLower, "arm") ||
+			strings.Contains(uaLower, "aarch64") || strings.Contains(uaLower, "armv7")) {
 		return true
 	}
 

@@ -200,10 +200,10 @@ func GetChurnWarning(c *gin.Context) {
 	sevenDaysLater := now.AddDate(0, 0, 7)
 
 	type ChurnUser struct {
-		ID       uint      `json:"id"`
-		Username string    `json:"username"`
-		Email    string    `json:"email"`
-		LastLogin time.Time `json:"last_login"`
+		ID         uint      `json:"id"`
+		Username   string    `json:"username"`
+		Email      string    `json:"email"`
+		LastLogin  time.Time `json:"last_login"`
 		ExpireTime time.Time `json:"expire_time"`
 	}
 
@@ -309,12 +309,12 @@ func GetRevenueAnalytics(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"current":      formatMoney(currentRevenue),
-		"previous":     formatMoney(previousRevenue),
-		"change_rate":  changeRate,
-		"order_count":  orderCount,
-		"avg_order":    formatMoney(avgOrder),
-		"time_range":   timeRange,
+		"current":       formatMoney(currentRevenue),
+		"previous":      formatMoney(previousRevenue),
+		"change_rate":   changeRate,
+		"order_count":   orderCount,
+		"avg_order":     formatMoney(avgOrder),
+		"time_range":    timeRange,
 		"current_start": currentStart.Format("2006-01-02 15:04:05"),
 		"current_end":   currentEnd.Format("2006-01-02 15:04:05"),
 	})
@@ -324,4 +324,3 @@ func GetRevenueAnalytics(c *gin.Context) {
 func formatMoney(amount float64) string {
 	return fmt.Sprintf("%.2f", amount)
 }
-

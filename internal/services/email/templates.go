@@ -107,7 +107,7 @@ func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string
 
 	var buf bytes.Buffer
 	data := map[string]interface{}{
-		"Title":   title,
+		"Title": title,
 		// #nosec G203 - content is system-generated template, not user input
 		"Content":     template.HTML(content), // #nosec G203
 		"FooterText":  footerText,
