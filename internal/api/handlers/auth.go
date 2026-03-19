@@ -488,6 +488,11 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, userID uint, current *models.Lo
 		isNewDevice = count == 0
 	}
 
+	// 同一个 IP 不触发告警（即使设备或地区不同）
+	if prev.IPAddress.Valid && prev.IPAddress.String == ipAddress {
+		return
+	}
+
 	if !isNewDevice && !isNewLocation {
 		return
 	}
