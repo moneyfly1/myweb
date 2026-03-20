@@ -147,7 +147,7 @@
             <div class="schedule-item interval-item">
               <span class="schedule-label">更新间隔</span>
               <div class="interval-inputs">
-                <el-select v-model="intervalUnit" class="unit-select" placeholder="单位">
+                <el-select v-model="intervalUnit" class="unit-select" placeholder="单位" @change="updateInterval">
                   <el-option label="分钟" value="minute" />
                   <el-option label="小时" value="hour" />
                   <el-option label="天" value="day" />
