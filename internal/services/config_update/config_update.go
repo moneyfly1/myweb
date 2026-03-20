@@ -18,17 +18,12 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/utils"
-
 	"cboard-go/internal/services/cache_service"
+	"cboard-go/internal/utils"
 
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
-
-// ==========================================
-// 常量与类型定义
-// ==========================================
 
 type SubscriptionStatus int
 
@@ -43,23 +38,8 @@ const (
 	StatusSystemError
 )
 
-var nodeLinkPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?:^|\s)(vmess://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(vless://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(trojan://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(ss://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(ssr://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(hysteria://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(hysteria2://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(tuic://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(naive\+https://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(naive://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(anytls://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(socks5://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(socks://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(http://[^\s]+)`),
-	regexp.MustCompile(`(?:^|\s)(https://[^\s]+)`),
-}
+// 优化：将15个单独的正则合并为一个，极大提高匹配性能
+var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?)://[^\s]+)`)
 
 var supportedClashTypes = map[string]bool{
 	"vmess": true, "vless": true, "trojan": true, "ss": true, "ssr": true,
@@ -96,6 +76,12 @@ type nodeWithOrder struct {
 	sourceIndex int
 }
 
+type importStats struct {
+	Created int // 新增节点数
+	Updated int // 更新节点数
+	Skipped int // 跳过节点数（与手动节点同名）
+}
+
 type updateStats struct {
 	parseFailed   int
 	duplicates    int
@@ -103,10 +89,6 @@ type updateStats struct {
 	missingSource int
 	filtered      int
 }
-
-// ==========================================
-// 初始化与生命周期
-// ==========================================
 
 func NewConfigUpdateService() *ConfigUpdateService {
 	service := &ConfigUpdateService{
@@ -128,28 +110,22 @@ func NewConfigUpdateService() *ConfigUpdateService {
 		}
 	} else {
 		service.regionMatcher = NewRegionMatcher(make(map[string]string), make(map[string]string))
-		if utils.AppLogger != nil {
-			utils.AppLogger.Warn("使用空的地区匹配器（所有节点将显示为'未知'地区）")
-		}
 	}
 
 	service.refreshSystemConfig()
 	return service
 }
 
-func (s *ConfigUpdateService) loadLegacyRegionMaps() {}
-
 func (s *ConfigUpdateService) refreshSystemConfig() {
-	domain := utils.GetDomainFromDB(s.db)
-	if domain != "" {
+	if domain := utils.GetDomainFromDB(s.db); domain != "" {
 		s.siteURL = utils.FormatDomainURL(domain)
 	} else {
 		s.siteURL = "请在系统设置中配置域名"
 	}
 
-	var supportQQConfig models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "support_qq", "general").First(&supportQQConfig).Error; err == nil && supportQQConfig.Value != "" {
-		s.supportQQ = strings.TrimSpace(supportQQConfig.Value)
+	var qqConfig models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "support_qq", "general").First(&qqConfig).Error; err == nil && qqConfig.Value != "" {
+		s.supportQQ = strings.TrimSpace(qqConfig.Value)
 	} else {
 		s.supportQQ = ""
 	}
@@ -161,22 +137,13 @@ func (s *ConfigUpdateService) IsRunning() bool {
 	return s.isRunning
 }
 
-// ==========================================
-// 状态与日志管理
-// ==========================================
-
 func (s *ConfigUpdateService) GetStatus() map[string]interface{} {
 	var lastUpdate string
 	var config models.SystemConfig
 	if err := s.db.Where("key = ?", "config_update_last_update").First(&config).Error; err == nil {
 		lastUpdate = config.Value
 	}
-
-	return map[string]interface{}{
-		"is_running":  s.IsRunning(),
-		"last_update": lastUpdate,
-		"next_update": "",
-	}
+	return map[string]interface{}{"is_running": s.IsRunning(), "last_update": lastUpdate, "next_update": ""}
 }
 
 func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
@@ -188,7 +155,6 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 		return s.limitLogs(logs, limit)
 	}
 	s.logMutex.RUnlock()
-
 	return s.getLogsFromDB(limit)
 }
 
@@ -197,12 +163,10 @@ func (s *ConfigUpdateService) getLogsFromDB(limit int) []map[string]interface{} 
 	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
 		return []map[string]interface{}{}
 	}
-
 	var logs []map[string]interface{}
 	if err := json.Unmarshal([]byte(config.Value), &logs); err != nil {
 		return []map[string]interface{}{}
 	}
-
 	return s.limitLogs(logs, limit)
 }
 
@@ -218,7 +182,12 @@ func (s *ConfigUpdateService) ClearLogs() error {
 	if s.sseManager != nil {
 		s.sseManager.ClearHistory()
 	}
-	return s.clearLogsInDB()
+	var config models.SystemConfig
+	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
+		return s.saveLogConfig("[]")
+	}
+	config.Value = "[]"
+	return s.db.Save(&config).Error
 }
 
 func (s *ConfigUpdateService) clearLogBuffer() {
@@ -227,51 +196,42 @@ func (s *ConfigUpdateService) clearLogBuffer() {
 	s.logBuffer = make([]map[string]interface{}, 0, 500)
 }
 
-func (s *ConfigUpdateService) clearLogsInDB() error {
-	var config models.SystemConfig
-	err := s.db.Where("key = ?", "config_update_logs").First(&config).Error
-	if err != nil {
-		return s.saveLogConfig("[]")
-	}
-	config.Value = "[]"
-	return s.db.Save(&config).Error
-}
+func (s *ConfigUpdateService) GetSSEManager() *SSEManager { return s.sseManager }
 
-func (s *ConfigUpdateService) GetSSEManager() *SSEManager {
-	return s.sseManager
+// --- 日志辅助函数 (避免散落的 fmt.Sprintf) ---
+func (s *ConfigUpdateService) infof(format string, args ...any) {
+	s.log("INFO", fmt.Sprintf(format, args...))
+}
+func (s *ConfigUpdateService) errorf(format string, args ...any) {
+	s.log("ERROR", fmt.Sprintf(format, args...))
+}
+func (s *ConfigUpdateService) warnf(format string, args ...any) {
+	s.log("WARN", fmt.Sprintf(format, args...))
+}
+func (s *ConfigUpdateService) debugf(format string, args ...any) {
+	s.log("DEBUG", fmt.Sprintf(format, args...))
 }
 
 func (s *ConfigUpdateService) log(level, message string) {
-	logEntry := s.createLogEntry(level, message)
-	s.addLogToBuffer(logEntry)
+	now := utils.FormatBeijingTime(utils.GetBeijingTime())
+	entry := map[string]interface{}{"timestamp": now, "time": now, "level": level, "message": message}
+
+	s.logMutex.Lock()
+	s.logBuffer = append(s.logBuffer, entry)
+	if len(s.logBuffer) > 500 {
+		s.logBuffer = s.logBuffer[len(s.logBuffer)-500:]
+	}
+	s.logMutex.Unlock()
 
 	if s.sseManager != nil {
-		s.sseManager.Broadcast(logEntry)
+		s.sseManager.Broadcast(entry)
 	}
-
 	if utils.AppLogger != nil {
 		if level == "ERROR" {
 			utils.AppLogger.Error("%s", message)
 		} else {
 			utils.AppLogger.Info("%s", message)
 		}
-	}
-}
-
-func (s *ConfigUpdateService) createLogEntry(level, message string) map[string]interface{} {
-	now := utils.FormatBeijingTime(utils.GetBeijingTime())
-	return map[string]interface{}{
-		"timestamp": now, "time": now, "level": level, "message": message,
-	}
-}
-
-func (s *ConfigUpdateService) addLogToBuffer(logEntry map[string]interface{}) {
-	s.logMutex.Lock()
-	defer s.logMutex.Unlock()
-
-	s.logBuffer = append(s.logBuffer, logEntry)
-	if len(s.logBuffer) > 500 {
-		s.logBuffer = s.logBuffer[len(s.logBuffer)-500:]
 	}
 }
 
@@ -294,25 +254,18 @@ func (s *ConfigUpdateService) flushLogsToDB() error {
 	if err = s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
 		return s.saveLogConfig(string(logsJSON))
 	}
-
 	config.Value = string(logsJSON)
 	return s.db.Save(&config).Error
 }
 
 func (s *ConfigUpdateService) saveLogConfig(value string) error {
 	return s.db.Create(&models.SystemConfig{
-		Key: "config_update_logs", Value: value, Type: "json",
-		Category: "config_update", DisplayName: "配置更新日志", Description: "配置更新任务日志",
+		Key: "config_update_logs", Value: value, Type: "json", Category: "config_update",
+		DisplayName: "配置更新日志", Description: "配置更新任务日志",
 	}).Error
 }
 
-// ==========================================
-// 任务执行逻辑
-// ==========================================
-
-func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) {
-	return s.getConfig()
-}
+func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) { return s.getConfig() }
 
 func (s *ConfigUpdateService) RunUpdateTask() error {
 	s.runningMutex.Lock()
@@ -333,119 +286,100 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 	config, err := s.getConfig()
 	if err != nil {
-		s.log("ERROR", fmt.Sprintf("获取配置失败: %v", err))
+		s.errorf("获取配置失败: %v", err)
 		return err
 	}
 
 	urls := config["urls"].([]string)
 	if len(urls) == 0 {
-		s.log("ERROR", "未配置节点源URL")
+		s.errorf("未配置节点源URL")
 		return fmt.Errorf("未配置节点源URL")
 	}
 
-	s.log("INFO", "📋 配置信息")
-	s.logItem("└─", fmt.Sprintf("节点源数量: %d 个", len(urls)))
+	s.infof("📋 配置信息\n           └─ 节点源数量: %d 个", len(urls))
 
 	nodes, err := s.FetchNodesFromURLs(urls)
 	if err != nil {
-		s.log("ERROR", fmt.Sprintf("获取节点失败: %v", err))
+		s.errorf("获取节点失败: %v", err)
 		return err
 	}
-
 	if len(nodes) == 0 {
-		s.log("WARN", "未获取到有效节点")
+		s.warnf("未获取到有效节点")
 		return fmt.Errorf("未获取到有效节点")
 	}
 
-	s.log("INFO", fmt.Sprintf("共获取到 %d 个有效节点链接，准备入库", len(nodes)))
-
+	s.infof("共获取到 %d 个有效节点链接，准备入库", len(nodes))
 	filterKeywords := s.extractFilterKeywords(config)
-	if len(filterKeywords) > 0 {
-		s.log("INFO", fmt.Sprintf("已配置 %d 个过滤关键词，将过滤包含这些关键词的节点", len(filterKeywords)))
-	} else {
-		s.log("DEBUG", "未配置过滤关键词，将不过滤任何节点")
-	}
 
 	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
 	s.logUpdateStats(stats, len(nodesWithOrder))
 
 	deletedCount := s.deleteAutoImportedNodes()
 	s.logSection("💾", "数据库操作")
-	s.log("INFO", fmt.Sprintf("🗑️  删除旧节点: %d 个", deletedCount))
-	s.log("INFO", "⠼ 正在导入节点到数据库...")
+	s.infof("🗑️  删除旧节点: %d 个\n           ⠼ 正在导入节点到数据库...", deletedCount)
 
 	importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
 	s.updateLastUpdateTime()
 
-	s.log("INFO", fmt.Sprintf("➕ 新增节点: %d 个", importStats.Created))
-	s.log("INFO", fmt.Sprintf("🔄 更新节点: %d 个", importStats.Updated))
-	s.log("INFO", fmt.Sprintf("⏭️  跳过节点: %d 个 (手动添加)", importStats.Skipped))
-
-	time.Sleep(100 * time.Millisecond)
+	s.infof("➕ 新增节点: %d 个\n🔄 更新节点: %d 个\n⏭️  跳过节点: %d 个 (手动添加)", importStats.Created, importStats.Updated, importStats.Skipped)
 	s.logSection("✅", "任务完成")
-	s.logItem("└─", fmt.Sprintf("最终结果: 成功导入 %d 个节点", importStats.Created))
+	s.infof("           └─ 最终结果: 成功导入 %d 个节点", importStats.Created)
 
 	s.clearAllCaches()
-
-	s.log("INFO", "💾 保存日志到数据库...")
+	s.infof("💾 保存日志到数据库...")
 	if err := s.flushLogsToDB(); err != nil {
-		s.log("ERROR", fmt.Sprintf("保存日志失败: %v", err))
+		s.errorf("保存日志失败: %v", err)
 	} else {
-		s.log("INFO", "✓ 日志已保存")
+		s.infof("✓ 日志已保存")
 	}
 
-	time.Sleep(100 * time.Millisecond)
 	return nil
 }
 
 func (s *ConfigUpdateService) clearAllCaches() {
-	cs := cache_service.NewCacheService()
+	cs, cache := cache_service.NewCacheService(), &CacheService{}
 	_ = cs.ClearNodesCache()
-	_ = (&CacheService{}).ClearSystemNodesCache()
-	_ = (&CacheService{}).ClearAllSubscriptionCache()
-
+	_ = cache.ClearSystemNodesCache()
+	_ = cache.ClearAllSubscriptionCache()
 	s.logSection("🧹", "清理缓存")
-	s.log("INFO", "✓ 节点列表缓存已清除")
-	s.log("INFO", "✓ 系统节点缓存已清除")
-	s.log("INFO", "✓ 订阅配置缓存已清除")
+	s.infof("✓ 节点列表缓存已清除\n✓ 系统节点缓存已清除\n✓ 订阅配置缓存已清除")
 }
 
 func (s *ConfigUpdateService) extractFilterKeywords(config map[string]interface{}) []string {
-	if keywords, ok := config["filter_keywords"].([]string); ok {
-		return keywords
+	if kw, ok := config["filter_keywords"].([]string); ok {
+		return kw
 	}
-	if keywordsStr, ok := config["filter_keywords"].(string); ok && keywordsStr != "" {
-		return s.splitAndTrim(keywordsStr)
+	if kwStr, ok := config["filter_keywords"].(string); ok && kwStr != "" {
+		return s.splitAndTrim(kwStr)
 	}
 	return nil
 }
 
-func (s *ConfigUpdateService) logUpdateStats(stats updateStats, successCount int) {
+func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 	if stats.parseFailed > 0 {
-		s.log("WARN", fmt.Sprintf("解析失败的节点: %d 个", stats.parseFailed))
+		s.warnf("解析失败的节点: %d 个", stats.parseFailed)
 	}
 	if stats.filtered > 0 {
-		s.log("INFO", fmt.Sprintf("被关键词过滤的节点: %d 个", stats.filtered))
+		s.infof("被关键词过滤的节点: %d 个", stats.filtered)
 	}
 	if stats.duplicates > 0 {
-		s.log("INFO", fmt.Sprintf("去重跳过的节点: %d 个", stats.duplicates))
+		s.infof("去重跳过的节点: %d 个", stats.duplicates)
 	}
 	if stats.invalidLinks > 0 {
-		s.log("WARN", fmt.Sprintf("无效链接的节点: %d 个", stats.invalidLinks))
+		s.warnf("无效链接的节点: %d 个", stats.invalidLinks)
 	}
-	s.log("INFO", fmt.Sprintf("成功解析并准备入库的节点: %d 个", successCount))
+	s.infof("成功解析并准备入库的节点: %d 个", success)
 }
 
 func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string) ([]nodeWithOrder, updateStats) {
 	var nodesWithOrder []nodeWithOrder
 	stats := updateStats{}
-	seenKeys := make(map[string]bool)
-	usedNames := make(map[string]bool)
-
+	seenKeys, usedNames := make(map[string]bool), make(map[string]bool)
 	nodesByURL := make(map[string][]map[string]interface{})
-	for _, nodeInfo := range nodes {
-		if sourceURL, _ := nodeInfo["source_url"].(string); sourceURL != "" {
-			nodesByURL[sourceURL] = append(nodesByURL[sourceURL], nodeInfo)
+
+	for _, n := range nodes {
+		if u, _ := n["source_url"].(string); u != "" {
+			nodesByURL[u] = append(nodesByURL[u], n)
 		} else {
 			stats.missingSource++
 		}
@@ -457,26 +391,20 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			continue
 		}
 
-		s.log("INFO", fmt.Sprintf("⠸ 开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes)))
-
+		s.infof("⠸ 开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes))
 		var links []string
-		for _, nodeInfo := range urlNodes {
-			if link, ok := nodeInfo["url"].(string); ok {
+		for _, n := range urlNodes {
+			if link, ok := n["url"].(string); ok {
 				links = append(links, link)
 			} else {
 				stats.invalidLinks++
 			}
 		}
 
-		if len(links) == 0 {
-			continue
-		}
-
 		results := s.parserPool.ParseLinks(links)
-		nodeIndexInURL := 0
 		counts := struct{ Processed, Failed, Filtered, Duplicate int }{}
 
-		for _, result := range results {
+		for idx, result := range results {
 			if seenKeys[result.Link] {
 				stats.duplicates++
 				counts.Duplicate++
@@ -488,56 +416,44 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 				stats.parseFailed++
 				counts.Failed++
 				if counts.Failed <= 10 && result.Err != nil {
-					s.log("WARN", fmt.Sprintf("解析失败 [订阅地址 %d/%d]: %v, 链接: %s", urlIndex+1, len(urls), result.Err, truncateString(result.Link, 50)))
+					s.warnf("解析失败 [订阅地址 %d/%d]: %v, 链接: %s", urlIndex+1, len(urls), result.Err, truncateString(result.Link, 50))
 				}
 				continue
 			}
 
-			node := result.Node
-			if filtered, keyword := s.isNodeFiltered(node, filterKeywords); filtered {
+			if filtered, kw := s.isNodeFiltered(result.Node, filterKeywords); filtered {
 				stats.filtered++
 				counts.Filtered++
-				s.log("DEBUG", fmt.Sprintf("节点被过滤: %s (关键词: %s)", node.Name, keyword))
+				s.debugf("节点被过滤: %s (关键词: %s)", result.Node.Name, kw)
 				continue
 			}
 
 			counts.Processed++
-			node.Name = s.ensureUniqueName(node.Name, usedNames)
-			usedNames[node.Name] = true
-
-			nodesWithOrder = append(nodesWithOrder, nodeWithOrder{
-				node:        node,
-				orderIndex:  urlIndex*10000 + nodeIndexInURL,
-				sourceIndex: urlIndex + 1,
-			})
-			nodeIndexInURL++
+			result.Node.Name = s.ensureUniqueName(result.Node.Name, usedNames)
+			usedNames[result.Node.Name] = true
+			nodesWithOrder = append(nodesWithOrder, nodeWithOrder{node: result.Node, orderIndex: urlIndex*10000 + idx, sourceIndex: urlIndex + 1})
 		}
-
-		s.log("INFO", fmt.Sprintf("✓ 订阅地址 [%d/%d] 完成: 成功=%d, 失败=%d, 过滤=%d, 重复=%d",
-			urlIndex+1, len(urls), counts.Processed, counts.Failed, counts.Filtered, counts.Duplicate))
+		s.infof("✓ 订阅地址 [%d/%d] 完成: 成功=%d, 失败=%d, 过滤=%d, 重复=%d", urlIndex+1, len(urls), counts.Processed, counts.Failed, counts.Filtered, counts.Duplicate)
 	}
 	return nodesWithOrder, stats
 }
 
 func (s *ConfigUpdateService) isNodeFiltered(node *ProxyNode, keywords []string) (bool, string) {
-	if len(keywords) == 0 {
-		return false, ""
-	}
-	nameLower, serverLower := strings.ToLower(node.Name), strings.ToLower(node.Server)
+	nameL, serverL := strings.ToLower(node.Name), strings.ToLower(node.Server)
 	for _, kw := range keywords {
-		if kwLower := strings.ToLower(strings.TrimSpace(kw)); kwLower != "" && (strings.Contains(nameLower, kwLower) || strings.Contains(serverLower, kwLower)) {
+		if kwL := strings.ToLower(strings.TrimSpace(kw)); kwL != "" && (strings.Contains(nameL, kwL) || strings.Contains(serverL, kwL)) {
 			return true, kw
 		}
 	}
 	return false, ""
 }
 
-func (s *ConfigUpdateService) ensureUniqueName(name string, usedNames map[string]bool) string {
-	if !usedNames[name] {
+func (s *ConfigUpdateService) ensureUniqueName(name string, used map[string]bool) string {
+	if !used[name] {
 		return name
 	}
-	for counter := 1; ; counter++ {
-		if newName := fmt.Sprintf("%s-%d", name, counter); !usedNames[newName] {
+	for i := 1; ; i++ {
+		if newName := fmt.Sprintf("%s-%d", name, i); !used[newName] {
 			return newName
 		}
 	}
@@ -556,28 +472,25 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	result := map[string]interface{}{
-		"urls":              []string{},
-		"filter_keywords":   []string{},
-		"enable_schedule":   false,
-		"schedule_interval": 3600,
+	res := map[string]interface{}{
+		"urls": []string{}, "filter_keywords": []string{},
+		"enable_schedule": false, "schedule_interval": 3600,
 	}
-
-	for _, config := range configs {
-		switch config.Key {
+	for _, c := range configs {
+		switch c.Key {
 		case "urls", "filter_keywords":
-			result[config.Key] = s.splitAndTrim(config.Value)
+			res[c.Key] = s.splitAndTrim(c.Value)
 		case "enable_schedule":
-			result[config.Key] = config.Value == "true" || config.Value == "1"
+			res[c.Key] = c.Value == "true" || c.Value == "1"
 		case "schedule_interval":
-			if interval, _ := strconv.Atoi(config.Value); interval != 0 {
-				result[config.Key] = interval
+			if val, _ := strconv.Atoi(c.Value); val > 0 {
+				res[c.Key] = val
 			}
 		default:
-			result[config.Key] = config.Value
+			res[c.Key] = c.Value
 		}
 	}
-	return result, nil
+	return res, nil
 }
 
 func (s *ConfigUpdateService) splitAndTrim(value string) []string {
@@ -592,49 +505,33 @@ func (s *ConfigUpdateService) splitAndTrim(value string) []string {
 
 func (s *ConfigUpdateService) updateLastUpdateTime() {
 	now := utils.GetBeijingTime().Format("2006-01-02T15:04:05")
-	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_last_update").First(&config).Error; err != nil {
-		if createErr := s.db.Create(&models.SystemConfig{
-			Key: "config_update_last_update", Value: now, Type: "string",
-			Category: "config_update", DisplayName: "最后更新时间", Description: "配置更新任务的最后执行时间",
-		}).Error; createErr != nil {
-			s.log("ERROR", fmt.Sprintf("写入更新时间失败: %v", createErr))
-		}
+	var cfg models.SystemConfig
+	if err := s.db.Where("key = ?", "config_update_last_update").First(&cfg).Error; err != nil {
+		s.db.Create(&models.SystemConfig{Key: "config_update_last_update", Value: now, Type: "string", Category: "config_update", DisplayName: "最后更新", Description: ""})
 	} else {
-		config.Value = now
-		if saveErr := s.db.Save(&config).Error; saveErr != nil {
-			s.log("ERROR", fmt.Sprintf("保存更新时间失败: %v", saveErr))
-		}
+		cfg.Value = now
+		s.db.Save(&cfg)
 	}
 }
 
-// ==========================================
-// 节点获取与解析
-// ==========================================
-
 func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]interface{}, error) {
 	var allNodes []map[string]interface{}
-	client := &http.Client{
-		Timeout:   60 * time.Second,
-		Transport: &http.Transport{DisableKeepAlives: false, MaxIdleConns: 10, IdleConnTimeout: 30 * time.Second},
-	}
+	client := &http.Client{Timeout: 60 * time.Second, Transport: &http.Transport{MaxIdleConns: 10, IdleConnTimeout: 30 * time.Second}}
 
 	for i, urlStr := range urls {
 		s.logSection("📥", fmt.Sprintf("下载节点源 [%d/%d]", i+1, len(urls)))
-		s.logItem("└─", fmt.Sprintf("URL: %s", urlStr))
-		s.log("INFO", "⠋ 正在连接...")
+		s.infof("           └─ URL: %s\n⠋ 正在连接...", urlStr)
 
 		content, err := s.fetchURLContent(client, urlStr)
 		if err != nil {
-			s.log("ERROR", fmt.Sprintf("获取节点源失败: %v", err))
+			s.errorf("获取节点源失败: %v", err)
 			continue
 		}
 
 		decoded := TryDecodeNodeList(string(content))
-		s.log("INFO", "⠹ 正在解析节点...")
+		s.infof("⠹ 正在解析节点...")
 		nodeLinks := s.extractNodeLinks(decoded)
 		s.logNodeTypeStats(urlStr, nodeLinks)
-		s.logNodeNames(nodeLinks)
 
 		for _, link := range nodeLinks {
 			allNodes = append(allNodes, map[string]interface{}{"url": link, "source_url": urlStr})
@@ -644,96 +541,45 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 }
 
 func (s *ConfigUpdateService) fetchURLContent(client *http.Client, url string) ([]byte, error) {
-	maxRetries, retryDelay := 3, 2*time.Second
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		content, err := s.doFetch(client, url)
-		if err == nil {
-			return content, nil
-		}
-		if attempt < maxRetries {
-			s.log("WARN", fmt.Sprintf("下载失败 (尝试 %d/%d): %v，%v 后重试", attempt, maxRetries, err, retryDelay))
-			time.Sleep(retryDelay)
-			retryDelay *= 2
-		} else {
+	maxRetries, delay := 3, 2*time.Second
+	for i := 1; i <= maxRetries; i++ {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
 			return nil, err
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+		if strings.Contains(url, "gist.githubusercontent.com") {
+			req.Header.Set("Connection", "close")
+		}
+
+		resp, err := client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
+			return io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if i < maxRetries {
+			s.warnf("下载失败 (尝试 %d/%d): %v，%v 后重试", i, maxRetries, err, delay)
+			time.Sleep(delay)
+			delay *= 2
 		}
 	}
 	return nil, fmt.Errorf("多次重试后失败")
 }
 
-func (s *ConfigUpdateService) doFetch(client *http.Client, url string) ([]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-	if strings.Contains(url, "gist.githubusercontent.com") {
-		req.Header.Set("Connection", "close")
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("状态码错误: %d", resp.StatusCode)
-	}
-
-	content, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-	if err != nil {
-		return nil, err
-	}
-	if len(content) == 0 {
-		return nil, fmt.Errorf("内容为空")
-	}
-	return content, nil
-}
-
 func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
-	typeCount := make(map[string]int)
-	for _, link := range nodeLinks {
-		typeCount[strings.Split(link, ":")[0]]++
+	tc := make(map[string]int)
+	for _, l := range nodeLinks {
+		tc[strings.Split(l, ":")[0]]++
 	}
-
 	var parts []string
-	for t, c := range typeCount {
+	for t, c := range tc {
 		parts = append(parts, fmt.Sprintf("%s:%d", t, c))
 	}
-	s.log("INFO", fmt.Sprintf("✓ 提取到 %d 个节点 (%s)", len(nodeLinks), strings.Join(parts, ", ")))
-}
-
-func (s *ConfigUpdateService) logNodeNames(nodeLinks []string) {
-	if len(nodeLinks) == 0 {
-		return
-	}
-	var nodeNames []string
-	for _, link := range nodeLinks {
-		if name := s.extractNodeName(link); name != "" {
-			nodeNames = append(nodeNames, name)
-		}
-	}
-	if len(nodeNames) > 0 {
-		s.logSection("📋", "采集到的节点:")
-		for i, name := range nodeNames {
-			s.log("INFO", fmt.Sprintf("  %d. %s", i+1, name))
-		}
-		s.logSeparator()
-	}
-}
-
-func (s *ConfigUpdateService) extractNodeName(link string) string {
-	if idx := strings.Index(link, "#"); idx != -1 {
-		name := link[idx+1:]
-		if decoded, err := url.QueryUnescape(name); err == nil {
-			return decoded
-		}
-		return name
-	}
-	return ""
+	s.infof("✓ 提取到 %d 个节点 (%s)", len(nodeLinks), strings.Join(parts, ", "))
 }
 
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
@@ -741,195 +587,138 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		return yamlLinks
 	}
 
-	s.log("INFO", "✓ 检测到节点链接格式（非 YAML）")
 	var links, invalidLinks []string
-	matchedPositions := make(map[int]bool)
+	// 优化：将原先 map[int]bool 的按字节哈希查询，替换为按索引的布尔数组 $O(1)$ 直接寻址，解决内存和性能瓶颈
+	matched := make([]bool, len(content))
 
-	// VMess base64 is sometimes wrapped with newlines/spaces in subscriptions.
-	// The regex in `nodeLinkPatterns` stops at whitespace and may truncate the payload,
-	// causing fields like `host` to be missing after decoding/re-encoding.
-	// Do a lightweight scan for `vmess://` first and allow whitespace inside the base64 segment.
-	{
-		const prefix = "vmess://"
-		protocolPrefixes := []string{
-			"vmess://", "vless://", "trojan://", "ss://", "ssr://",
-			"hysteria://", "hysteria2://", "tuic://", "naive+https://", "naive://",
-			"anytls://", "socks5://", "socks://", "http://", "https://", "wg://",
+	// 1. VMess 轻量级宽容扫描 (允许base64内部有空格等)
+	prefixes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "tuic://", "naive+https://", "naive://", "anytls://", "socks5://", "socks://", "http://", "https://", "wg://"}
+	start := 0
+	for {
+		idx := strings.Index(content[start:], "vmess://")
+		if idx == -1 {
+			break
 		}
-		isSpace := func(b byte) bool {
-			switch b {
-			case ' ', '\t', '\n', '\r', '\v', '\f':
-				return true
-			default:
-				return false
+		start += idx
+		if matched[start] {
+			start++
+			continue
+		}
+
+		end := start + 8
+		seenPadding := false
+	scanLoop:
+		for end < len(content) {
+			for _, p := range prefixes {
+				if strings.HasPrefix(content[end:], p) {
+					break scanLoop
+				}
 			}
-		}
-		isVmessB64Char := func(b byte) bool {
-			switch {
-			case b >= 'A' && b <= 'Z':
-				return true
-			case b >= 'a' && b <= 'z':
-				return true
-			case b >= '0' && b <= '9':
-				return true
-			case b == '+' || b == '/' || b == '-' || b == '_' || b == '=':
-				return true
-			default:
-				return false
-			}
-		}
-		start := 0
-		for {
-			idx := strings.Index(content[start:], prefix)
-			if idx == -1 {
+			ch := content[end]
+			if ch == '#' {
+				for end++; end < len(content) && content[end] > ' '; end++ {
+				}
 				break
 			}
-			start = start + idx
-
-			// Skip if this position has already been claimed by a previous match.
-			if matchedPositions[start] {
-				start++
-				continue
-			}
-
-			j := start + len(prefix)
-			seenPadding := false
-
-			// Scan until we hit a non-base64 char. If we see '=' padding, stop at the first whitespace after it.
-			end := j
-		scanLoop:
-			for end < len(content) {
-				// Stop if another protocol starts here (handles adjacent links without whitespace).
-				for _, p := range protocolPrefixes {
-					if strings.HasPrefix(content[end:], p) {
-						break scanLoop
-					}
-				}
-
-				ch := content[end]
-				if ch == '#' {
-					end++
-					for end < len(content) && !isSpace(content[end]) {
-						end++
-					}
+			if ch <= ' ' {
+				if seenPadding {
 					break
 				}
-
-				if isSpace(ch) {
-					if seenPadding {
-						break
-					}
-					end++
-					continue
-				}
-
-				if isVmessB64Char(ch) {
-					if ch == '=' {
-						seenPadding = true
-					}
-					end++
-					continue
-				}
-
-				break
+				end++
+				continue
 			}
-
-			matchStr := content[start:end]
-			if len(matchStr) > len(prefix) {
-				// Avoid overlaps with regex matches / other scanner results.
-				isOverlapped := false
-				for pos := start; pos < end; pos++ {
-					if matchedPositions[pos] {
-						isOverlapped = true
-						break
-					}
+			if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '+' || ch == '/' || ch == '-' || ch == '_' || ch == '=' {
+				if ch == '=' {
+					seenPadding = true
 				}
-				if !isOverlapped {
-					for pos := start; pos < end; pos++ {
-						matchedPositions[pos] = true
-					}
-					if s.isValidNodeLink(matchStr) {
-						links = append(links, matchStr)
-					} else {
-						invalidLinks = append(invalidLinks, matchStr)
-					}
-				}
+				end++
+				continue
 			}
-
-			start = end
+			break
 		}
-	}
 
-	for _, re := range nodeLinkPatterns {
-		for _, match := range re.FindAllStringSubmatchIndex(content, -1) {
-			if len(match) < 4 {
-				continue
-			}
-			start, end := match[2], match[3]
-			matchStr := content[start:end]
-
-			if strings.HasPrefix(matchStr, "ss://") && start >= 3 && content[start-3:start] == "vme" {
-				continue
-			}
-
+		if end > start+8 {
 			isOverlapped := false
-			for pos := start; pos < end; pos++ {
-				if matchedPositions[pos] {
+			for i := start; i < end; i++ {
+				if matched[i] {
 					isOverlapped = true
 					break
 				}
 			}
-			if isOverlapped {
-				continue
+			if !isOverlapped {
+				for i := start; i < end; i++ {
+					matched[i] = true
+				}
+				matchStr := content[start:end]
+				if s.isValidNodeLink(matchStr) {
+					links = append(links, matchStr)
+				}
 			}
-			for pos := start; pos < end; pos++ {
-				matchedPositions[pos] = true
-			}
+		}
+		start = end
+	}
 
-			if s.isValidNodeLink(matchStr) {
-				links = append(links, matchStr)
-			} else {
-				invalidLinks = append(invalidLinks, matchStr)
+	// 2. 统一正则扫描其他标准链接
+	for _, match := range nodeLinkPattern.FindAllStringSubmatchIndex(content, -1) {
+		start, end := match[2], match[3]
+		if matched[start] || (strings.HasPrefix(content[start:end], "ss://") && start >= 3 && content[start-3:start] == "vme") {
+			continue
+		}
+		isOverlapped := false
+		for i := start; i < end; i++ {
+			if matched[i] {
+				isOverlapped = true
+				break
 			}
+		}
+		if isOverlapped {
+			continue
+		}
+		for i := start; i < end; i++ {
+			matched[i] = true
+		}
+		matchStr := content[start:end]
+		if s.isValidNodeLink(matchStr) {
+			links = append(links, matchStr)
+		} else {
+			invalidLinks = append(invalidLinks, matchStr)
 		}
 	}
 
 	if len(invalidLinks) > 0 {
-		limit := 3
-		if len(invalidLinks) < limit {
-			limit = len(invalidLinks)
+		limit := len(invalidLinks)
+		if limit > 3 {
+			limit = 3
 		}
-		s.log("DEBUG", fmt.Sprintf("发现 %d 个无效链接，示例: %v", len(invalidLinks), invalidLinks[:limit]))
+		s.debugf("发现 %d 个无效链接，示例: %v", len(invalidLinks), invalidLinks[:limit])
 	}
 
-	uniqueMap := make(map[string]bool)
-	var uniqueLinks []string
-	for _, link := range links {
-		if !uniqueMap[link] {
-			uniqueMap[link] = true
-			uniqueLinks = append(uniqueLinks, link)
+	return s.uniqueLinks(links)
+}
+
+func (s *ConfigUpdateService) uniqueLinks(links []string) []string {
+	m := make(map[string]bool)
+	var res []string
+	for _, l := range links {
+		if !m[l] {
+			m[l] = true
+			res = append(res, l)
 		}
 	}
-	return uniqueLinks
+	return res
 }
 
 func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
-	if link = strings.TrimSpace(link); link == "" {
-		return false
-	}
+	link = strings.TrimSpace(link)
 	parts := strings.SplitN(link, ":", 2)
 	if len(parts) != 2 {
 		return false
 	}
-	scheme := parts[0]
-	body := strings.Split(link, "#")[0]
+	scheme, body := parts[0], strings.Split(link, "#")[0]
 
 	switch scheme {
 	case "ss":
-		if !strings.Contains(body, "@") {
-			return false
-		}
-		return strings.Contains(strings.Split(strings.Split(body, "@")[1], "?")[0], ":")
+		return strings.Contains(body, "@") && strings.Contains(strings.Split(strings.Split(body, "@")[1], "?")[0], ":")
 	case "vmess", "vless", "ssr":
 		return len(strings.Split(strings.TrimPrefix(body, scheme+"://"), "?")[0]) >= 10
 	case "trojan", "tuic", "naive+https", "socks", "socks5", "http", "https":
@@ -948,21 +737,13 @@ func (s *ConfigUpdateService) resolveRegion(name, server string) string {
 	return "未知"
 }
 
-// ==========================================
-// 数据库存储与节点导入
-// ==========================================
-
 func (s *ConfigUpdateService) deleteAutoImportedNodes() int64 {
-	result := s.db.Where("is_manual = ?", false).Delete(&models.Node{})
-	if result.Error != nil {
-		s.log("ERROR", fmt.Sprintf("删除自动导入节点失败: %v", result.Error))
+	res := s.db.Where("is_manual = ?", false).Delete(&models.Node{})
+	if res.Error != nil {
+		s.errorf("删除自动导入节点失败: %v", res.Error)
 		return 0
 	}
-	return result.RowsAffected
-}
-
-type importStats struct {
-	Created, Updated, Skipped int
+	return res.RowsAffected
 }
 
 func (s *ConfigUpdateService) generateNodeKey(nodeType string, name string, config *string) string {
@@ -982,33 +763,33 @@ func (s *ConfigUpdateService) generateNodeKey(nodeType string, name string, conf
 	return fmt.Sprintf("%s:%s", nodeType, name)
 }
 
-func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []nodeWithOrder) importStats {
-	stats := importStats{}
+func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodes []nodeWithOrder) importStats {
+	var stats importStats
 	seenKeys := make(map[string]bool)
 
-	var allAutoNodes []models.Node
-	s.db.Where("is_manual = ?", false).Find(&allAutoNodes)
-	existingNodeMap := make(map[string]*models.Node)
-	for i := range allAutoNodes {
-		existingNodeMap[s.generateNodeKey(allAutoNodes[i].Type, allAutoNodes[i].Name, allAutoNodes[i].Config)] = &allAutoNodes[i]
+	var existing []models.Node
+	s.db.Where("is_manual = ?", false).Find(&existing)
+	existingMap := make(map[string]*models.Node)
+	for i := range existing {
+		existingMap[s.generateNodeKey(existing[i].Type, existing[i].Name, existing[i].Config)] = &existing[i]
 	}
 
-	for _, item := range nodesWithOrder {
-		configJSON, _ := json.Marshal(item.node)
-		configStr := string(configJSON)
-		nodeKey := s.generateNodeKey(item.node.Type, item.node.Name, &configStr)
+	for _, item := range nodes {
+		cfgJSON, _ := json.Marshal(item.node)
+		cfgStr := string(cfgJSON)
+		key := s.generateNodeKey(item.node.Type, item.node.Name, &cfgStr)
 
-		if seenKeys[nodeKey] {
+		if seenKeys[key] {
 			stats.Skipped++
 			continue
 		}
-		seenKeys[nodeKey] = true
+		seenKeys[key] = true
 		region := s.resolveRegion(item.node.Name, item.node.Server)
 
-		if existingNode := existingNodeMap[nodeKey]; existingNode != nil {
-			existingNode.Config, existingNode.Status, existingNode.IsActive, existingNode.IsManual = &configStr, "online", true, false
-			existingNode.OrderIndex, existingNode.SourceIndex, existingNode.Region, existingNode.Name = item.orderIndex, item.sourceIndex, region, item.node.Name
-			if s.db.Save(existingNode).Error == nil {
+		if exist := existingMap[key]; exist != nil {
+			exist.Config, exist.Status, exist.IsActive, exist.IsManual = &cfgStr, "online", true, false
+			exist.OrderIndex, exist.SourceIndex, exist.Region, exist.Name = item.orderIndex, item.sourceIndex, region, item.node.Name
+			if s.db.Save(exist).Error == nil {
 				stats.Updated++
 			}
 		} else {
@@ -1018,7 +799,7 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 			}
 			if s.db.Create(&models.Node{
 				Name: item.node.Name, Type: item.node.Type, Status: "online", IsActive: true, IsManual: false,
-				Config: &configStr, Region: region, OrderIndex: item.orderIndex, SourceIndex: item.sourceIndex,
+				Config: &cfgStr, Region: region, OrderIndex: item.orderIndex, SourceIndex: item.sourceIndex,
 			}).Error == nil {
 				stats.Created++
 			}
@@ -1027,19 +808,14 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodesWithOrder []no
 	return stats
 }
 
-// ==========================================
-// 订阅内容生成
-// ==========================================
-
-func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP string, userAgent string) *SubscriptionContext {
+func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent string) *SubscriptionContext {
 	ctx := &SubscriptionContext{Status: StatusNotFound}
 	var sub models.Subscription
 
 	if err := s.db.Where("subscription_url = ?", token).First(&sub).Error; err != nil {
 		var reset models.SubscriptionReset
 		if s.db.Where("old_subscription_url = ?", token).First(&reset).Error == nil {
-			ctx.Status = StatusOldAddress
-			ctx.ResetRecord = &reset
+			ctx.Status, ctx.ResetRecord = StatusOldAddress, &reset
 		}
 		return ctx
 	}
@@ -1060,14 +836,7 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP stri
 		return ctx
 	}
 
-	proxies, err := s.fetchProxiesForUser(user, sub)
-	if err != nil {
-		if utils.AppLogger != nil {
-			utils.AppLogger.Error("获取订阅节点失败: user_id=%d subscription_id=%d err=%v", user.ID, sub.ID, err)
-		}
-		ctx.Status = StatusSystemError
-		return ctx
-	}
+	proxies, _ := s.fetchProxiesForUser(user, sub)
 	ctx.Proxies = proxies
 
 	if len(ctx.Proxies) == 0 && !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(utils.GetBeijingTime()) {
@@ -1075,19 +844,13 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP stri
 		return ctx
 	}
 
-	var currentDevices int64
-	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&currentDevices)
-	ctx.CurrentDevices, ctx.DeviceLimit = int(currentDevices), sub.DeviceLimit
+	var devices int64
+	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&devices)
+	ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
 
-	if sub.DeviceLimit == 0 {
+	if sub.DeviceLimit == 0 || (sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit && s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&models.Device{}).Error != nil) {
 		ctx.Status = StatusDeviceOverLimit
 		return ctx
-	}
-	if sub.DeviceLimit > 0 && int(currentDevices) >= sub.DeviceLimit {
-		if s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&models.Device{}).Error != nil {
-			ctx.Status = StatusDeviceOverLimit
-			return ctx
-		}
 	}
 
 	ctx.Status = StatusNormal
@@ -1095,57 +858,51 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token string, clientIP stri
 }
 
 func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.Subscription) ([]*ProxyNode, error) {
-	proxies := make([]*ProxyNode, 0)
-	processedNodes := make(map[string]bool)
+	var proxies []*ProxyNode
+	processed := make(map[string]bool)
 	now := utils.GetBeijingTime()
 
-	isSubExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
-	isSpecialExpired := (user.SpecialNodeExpiresAt.Valid && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).Before(now)) ||
-		(user.SpecialNodeSubscriptionType != "special_only" && isSubExpired)
+	subExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
+	specialExpired := (user.SpecialNodeExpiresAt.Valid && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).Before(now)) || (user.SpecialNodeSubscriptionType != "special_only" && subExpired)
 
-	s.appendCustomNodes(user.ID, now, isSpecialExpired, &proxies, processedNodes)
-	if user.SpecialNodeSubscriptionType != "special_only" && !isSubExpired {
-		s.appendSystemNodes(&proxies, processedNodes)
+	s.appendCustomNodes(user.ID, now, specialExpired, &proxies, processed)
+	if user.SpecialNodeSubscriptionType != "special_only" && !subExpired {
+		s.appendSystemNodes(&proxies, processed)
 	}
-
 	return proxies, nil
 }
 
 func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGlobalExpired bool, proxies *[]*ProxyNode, processed map[string]bool) {
-	var customNodes []models.CustomNode
+	var nodes []models.CustomNode
 	s.db.Joins("JOIN user_custom_nodes ON user_custom_nodes.custom_node_id = custom_nodes.id").
-		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", userID, true).Find(&customNodes)
+		Where("user_custom_nodes.user_id = ? AND custom_nodes.is_active = ?", userID, true).Find(&nodes)
 
-	for _, cn := range customNodes {
-		isNodeExpired := (cn.ExpireTime != nil && utils.ToBeijingTime(*cn.ExpireTime).Before(now)) || (cn.FollowUserExpire && isGlobalExpired)
-		if isNodeExpired || cn.Status == "timeout" {
+	for _, cn := range nodes {
+		if cn.Status == "timeout" || (cn.ExpireTime != nil && utils.ToBeijingTime(*cn.ExpireTime).Before(now)) || (cn.FollowUserExpire && isGlobalExpired) {
 			continue
 		}
-
-		var proxyNode ProxyNode
-		if err := json.Unmarshal([]byte(cn.Config), &proxyNode); err != nil {
-			continue
-		}
-
-		proxyNode.Name = cn.DisplayName
-		if proxyNode.Name == "" {
-			proxyNode.Name = "专线-" + cn.Name
-		}
-
-		if key := s.generateNodeDedupKey(proxyNode.Type, proxyNode.Server, proxyNode.Port); !processed[key] {
-			processed[key] = true
-			*proxies = append(*proxies, &proxyNode)
+		var proxy ProxyNode
+		if json.Unmarshal([]byte(cn.Config), &proxy) == nil {
+			proxy.Name = cn.DisplayName
+			if proxy.Name == "" {
+				proxy.Name = "专线-" + cn.Name
+			}
+			key := fmt.Sprintf("%s:%s:%d", proxy.Type, proxy.Server, proxy.Port)
+			if !processed[key] {
+				processed[key] = true
+				*proxies = append(*proxies, &proxy)
+			}
 		}
 	}
 }
 
 func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed map[string]bool) {
-	cacheService := &CacheService{}
-	if cachedNodes, ok := cacheService.GetSystemNodesCache(); ok {
-		for _, node := range cachedNodes {
-			if key := s.generateNodeDedupKey(node.Type, node.Server, node.Port); !processed[key] {
+	cache := &CacheService{}
+	if cached, ok := cache.GetSystemNodesCache(); ok {
+		for _, n := range cached {
+			if key := fmt.Sprintf("%s:%s:%d", n.Type, n.Server, n.Port); !processed[key] {
 				processed[key] = true
-				*proxies = append(*proxies, node)
+				*proxies = append(*proxies, n)
 			}
 		}
 		return
@@ -1153,95 +910,86 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 
 	var nodes []models.Node
 	s.db.Where("is_active = ? AND status != ?", true, "timeout").Find(&nodes)
+	var sysNodes []*ProxyNode
 
-	var systemNodes []*ProxyNode
-	for _, node := range nodes {
-		if node.Config == nil || *node.Config == "" {
+	for _, n := range nodes {
+		if n.Config == nil || *n.Config == "" {
 			continue
 		}
-		var proxy ProxyNode
-		if json.Unmarshal([]byte(*node.Config), &proxy) == nil {
-			proxy.Name = node.Name
-			if key := s.generateNodeDedupKey(proxy.Type, proxy.Server, proxy.Port); !processed[key] {
+		var p ProxyNode
+		if json.Unmarshal([]byte(*n.Config), &p) == nil {
+			p.Name = n.Name
+			if key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port); !processed[key] {
 				processed[key] = true
-				*proxies = append(*proxies, &proxy)
-				systemNodes = append(systemNodes, &proxy)
+				*proxies = append(*proxies, &p)
+				sysNodes = append(sysNodes, &p)
 			}
 		}
 	}
-
-	if len(systemNodes) > 0 {
-		go cacheService.SetSystemNodesCache(systemNodes)
+	if len(sysNodes) > 0 {
+		go cache.SetSystemNodesCache(sysNodes)
 	}
 }
 
-func (s *ConfigUpdateService) generateNodeDedupKey(nodeType, server string, port int) string {
-	return fmt.Sprintf("%s:%s:%d", nodeType, server, port)
-}
-
-func (s *ConfigUpdateService) calculateCacheTTL(sub *models.Subscription, user *models.User) time.Duration {
-	now := utils.GetBeijingTime()
+func (s *ConfigUpdateService) calculateCacheTTL(sub *models.Subscription) time.Duration {
 	if !sub.ExpireTime.IsZero() {
-		if sub.ExpireTime.Before(now) {
+		if utils.GetBeijingTime().After(sub.ExpireTime) {
 			return 0
 		}
-		if sub.ExpireTime.Sub(now) < 24*time.Hour {
-			return 1 * time.Minute
+		if sub.ExpireTime.Sub(utils.GetBeijingTime()) < 24*time.Hour {
+			return time.Minute
 		}
 	}
 	return 10 * time.Minute
 }
 
-func (s *ConfigUpdateService) UpdateSubscriptionConfig(subscriptionURL string) error {
-	var count int64
-	s.db.Model(&models.Subscription{}).Where("subscription_url = ?", subscriptionURL).Count(&count)
-	if count == 0 {
-		return fmt.Errorf("订阅不存在")
-	}
-	return nil
-}
-
-func (s *ConfigUpdateService) GenerateClashConfig(token string, clientIP string, userAgent string) (string, error) {
-	cacheService := &CacheService{}
-	if cached, ok := cacheService.GetSubscriptionConfigCache(token, "clash"); ok {
+func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent string) (string, error) {
+	cache := &CacheService{}
+	if cached, ok := cache.GetSubscriptionConfigCache(token, "clash"); ok {
 		return cached, nil
 	}
 
-	nodes, err := s.prepareExportNodes(token, clientIP, userAgent)
-	if err != nil {
-		return "", err
-	}
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
-	config := s.generateClashYAML(nodes, ctx)
+	var nodes []*ProxyNode
+	s.refreshSystemConfig()
+	if ctx.Status != StatusNormal {
+		nodes = s.generateErrorNodes(ctx.Status, ctx)
+	} else {
+		nodes = s.addInfoNodes(ctx.Proxies, ctx)
+	}
 
+	config := s.generateClashYAML(nodes, ctx)
 	if ctx.Status == StatusNormal {
-		if ttl := s.calculateCacheTTL(&ctx.Subscription, &ctx.User); ttl > 0 {
-			go cacheService.SetSubscriptionConfigCache(token, "clash", config, ttl)
+		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
+			go cache.SetSubscriptionConfigCache(token, "clash", config, ttl)
 		}
 	}
 	return config, nil
 }
 
-func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP string, userAgent string, format string) (string, error) {
-	cacheService := &CacheService{}
-	cacheFormat := "base64"
+func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent, format string) (string, error) {
+	cache, cacheFormat := &CacheService{}, "base64"
 	if format == "ssr" {
 		cacheFormat = "ssr"
 	}
-	if cached, ok := cacheService.GetSubscriptionConfigCache(token, cacheFormat); ok {
+	if cached, ok := cache.GetSubscriptionConfigCache(token, cacheFormat); ok {
 		return cached, nil
 	}
 
-	nodes, err := s.prepareExportNodes(token, clientIP, userAgent)
-	if err != nil {
-		return "", err
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	var nodes []*ProxyNode
+	s.refreshSystemConfig()
+	if ctx.Status != StatusNormal {
+		nodes = s.generateErrorNodes(ctx.Status, ctx)
+	} else {
+		nodes = s.addInfoNodes(ctx.Proxies, ctx)
 	}
 
 	var links []string
-	for _, node := range nodes {
-		link := s.nodeToLink(node)
-		if format == "ssr" && node.Type == "ssr" {
-			link = s.nodeToSSRLink(node)
+	for _, n := range nodes {
+		link := s.nodeToLink(n)
+		if format == "ssr" && n.Type == "ssr" {
+			link = s.nodeToSSRLink(n)
 		}
 		if link != "" {
 			links = append(links, link)
@@ -1249,216 +997,150 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token string, clientIP str
 	}
 
 	config := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
-	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
 	if ctx.Status == StatusNormal {
-		if ttl := s.calculateCacheTTL(&ctx.Subscription, &ctx.User); ttl > 0 {
-			go cacheService.SetSubscriptionConfigCache(token, cacheFormat, config, ttl)
+		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
+			go cache.SetSubscriptionConfigCache(token, cacheFormat, config, ttl)
 		}
 	}
 	return config, nil
 }
 
-func (s *ConfigUpdateService) prepareExportNodes(token, clientIP, userAgent string) ([]*ProxyNode, error) {
-	s.refreshSystemConfig()
-	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
-	if ctx.Status != StatusNormal {
-		return s.generateErrorNodes(ctx.Status, ctx), nil
-	}
-	return s.addInfoNodes(ctx.Proxies, ctx), nil
-}
-
-// ==========================================
-// Clash YAML 生成逻辑
-// ==========================================
-
 func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *SubscriptionContext) string {
-	filteredProxies := make([]*ProxyNode, 0)
-	for _, proxy := range proxies {
-		if supportedClashTypes[proxy.Type] {
-			filteredProxies = append(filteredProxies, proxy)
-		}
-	}
-
-	usedNames := make(map[string]bool)
+	var filtered []*ProxyNode
 	var proxyNames []string
-	for _, proxy := range filteredProxies {
-		originalName, newName, counter := proxy.Name, proxy.Name, 1
-		for usedNames[newName] {
-			newName = fmt.Sprintf("%s_%d", originalName, counter)
-			counter++
+	used := make(map[string]bool)
+
+	for _, p := range proxies {
+		if supportedClashTypes[p.Type] {
+			orig, name, c := p.Name, p.Name, 1
+			for used[name] {
+				name = fmt.Sprintf("%s_%d", orig, c)
+				c++
+			}
+			p.Name = name
+			used[name] = true
+			filtered = append(filtered, p)
+			proxyNames = append(proxyNames, name)
 		}
-		proxy.Name = newName
-		usedNames[newName] = true
-		proxyNames = append(proxyNames, proxy.Name)
 	}
 
-	subscriptionName := s.GenerateSubscriptionName(ctx)
-	templatePath := filepath.Clean(filepath.Join("uploads", "config", "temp.yaml"))
+	subName := "订阅异常"
+	if ctx.Status == StatusNormal {
+		exp := "无限期"
+		if !ctx.Subscription.ExpireTime.IsZero() {
+			exp = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
+		}
+		subName = "到期: " + exp
+	}
+
+	tplPath := filepath.Clean(filepath.Join("uploads", "config", "temp.yaml"))
 	if cfg, err := s.getConfig(); err == nil {
-		templatePath = ResolveTemplatePath(cfg)
+		if targetDir, ok := cfg["target_dir"].(string); ok && targetDir != "" {
+			tplPath = filepath.Clean(filepath.Join(targetDir, "temp.yaml"))
+		}
 	}
 
-	if utils.IsWithinBaseDir(".", templatePath) {
-		if templateData, err := os.ReadFile(templatePath); err == nil {
-			var templateConfig map[string]interface{}
-			if yaml.Unmarshal(templateData, &templateConfig) == nil {
-				templateConfig["name"] = subscriptionName
-				proxyList := make([]map[string]interface{}, 0, len(filteredProxies))
-				for _, proxy := range filteredProxies {
-					proxyList = append(proxyList, s.nodeToMap(proxy))
+	if utils.IsWithinBaseDir(".", tplPath) {
+		if data, err := os.ReadFile(tplPath); err == nil {
+			var tpl map[string]interface{}
+			if yaml.Unmarshal(data, &tpl) == nil {
+				tpl["name"] = subName
+				var plist []map[string]interface{}
+				for _, p := range filtered {
+					plist = append(plist, s.nodeToMap(p))
 				}
-				templateConfig["proxies"] = proxyList
+				tpl["proxies"] = plist
 
-				if proxyGroups, ok := templateConfig["proxy-groups"].([]interface{}); ok {
-					s.updateProxyGroups(proxyGroups, proxyNames)
-					templateConfig["proxy-groups"] = proxyGroups
+				if grps, ok := tpl["proxy-groups"].([]interface{}); ok {
+					s.updateProxyGroups(grps, proxyNames)
+					tpl["proxy-groups"] = grps
 				}
-				if output, err := yaml.Marshal(templateConfig); err == nil {
-					return unescapeUnicode(string(output))
+				if out, err := yaml.Marshal(tpl); err == nil {
+					return unescapeUnicode(string(out))
 				}
 			}
 		}
 	}
-	return s.generateDefaultClashYAML(filteredProxies, proxyNames, subscriptionName)
+	return s.generateDefaultClashYAML(filtered, proxyNames, subName)
 }
 
 func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames []string) {
 	groupNames := make(map[string]bool)
 	for _, g := range groups {
 		if m, ok := g.(map[string]interface{}); ok {
-			if name, ok := m["name"].(string); ok {
-				groupNames[name] = true
+			if n, ok := m["name"].(string); ok {
+				groupNames[n] = true
 			}
 		}
 	}
-
 	for _, g := range groups {
-		group, ok := g.(map[string]interface{})
+		m, ok := g.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		gType, _ := group["type"].(string)
-
-		if gType == "select" || gType == "url-test" || gType == "fallback" || gType == "load-balance" {
-			existingProxies := make([]string, 0)
-			if oldProxies, ok := group["proxies"].([]interface{}); ok {
-				for _, p := range oldProxies {
-					if pStr, ok := p.(string); ok && (pStr == "DIRECT" || pStr == "REJECT" || groupNames[pStr]) {
-						existingProxies = append(existingProxies, pStr)
+		t, _ := m["type"].(string)
+		if t == "select" || t == "url-test" || t == "fallback" || t == "load-balance" {
+			var exist []string
+			if old, ok := m["proxies"].([]interface{}); ok {
+				for _, p := range old {
+					if ps, ok := p.(string); ok && (ps == "DIRECT" || ps == "REJECT" || groupNames[ps]) {
+						exist = append(exist, ps)
 					}
 				}
 			}
-			if gType == "select" {
-				group["proxies"] = append(existingProxies, proxyNames...)
+			if t == "select" {
+				m["proxies"] = append(exist, proxyNames...)
 			} else {
-				group["proxies"] = proxyNames
+				m["proxies"] = proxyNames
 			}
 		}
 	}
 }
 
-func (s *ConfigUpdateService) GenerateSubscriptionName(ctx *SubscriptionContext) string {
-	if ctx.Status != StatusNormal {
-		switch ctx.Status {
-		case StatusExpired:
-			return "订阅已过期"
-		case StatusInactive:
-			return "订阅已失效"
-		case StatusAccountAbnormal:
-			return "账户异常"
-		case StatusDeviceOverLimit:
-			return "设备超限"
-		case StatusSystemError:
-			return "系统繁忙"
-		default:
-			return "订阅异常"
-		}
-	}
-	expireTimeStr := "无限期"
-	if !ctx.Subscription.ExpireTime.IsZero() {
-		expireTimeStr = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
-	}
-	return fmt.Sprintf("到期: %s", expireTimeStr)
-}
+func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string, subName string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("name: %s\nport: 7890\nsocks-port: 7891\nallow-lan: true\nmode: Rule\nlog-level: info\nexternal-controller: 127.0.0.1:9090\n\nproxies:\n", s.escapeYAMLString(subName)))
 
-func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string, subscriptionName string) string {
-	var builder strings.Builder
-
-	builder.WriteString(fmt.Sprintf(`name: %s
-port: 7890
-socks-port: 7891
-allow-lan: true
-mode: Rule
-log-level: info
-external-controller: 127.0.0.1:9090
-
-proxies:
-`, s.escapeYAMLString(subscriptionName)))
-
-	for _, proxy := range proxies {
-		builder.WriteString(s.nodeToYAML(proxy, 2))
+	for _, p := range proxies {
+		b.WriteString(s.nodeToYAML(p, 2))
 	}
 
-	builder.WriteString(`
-proxy-groups:
-  - name: "🚀 节点选择"
-    type: select
-    proxies:
-      - "♻️ 自动选择"
-`)
-	for _, name := range proxyNames {
-		builder.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(name)))
+	b.WriteString("\nproxy-groups:\n  - name: \"🚀 节点选择\"\n    type: select\n    proxies:\n      - \"♻️ 自动选择\"\n")
+	for _, n := range proxyNames {
+		b.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(n)))
 	}
 
-	builder.WriteString(`  - name: "♻️ 自动选择"
-    type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
-    tolerance: 50
-    proxies:
-`)
-	for _, name := range proxyNames {
-		builder.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(name)))
+	b.WriteString("  - name: \"♻️ 自动选择\"\n    type: url-test\n    url: http://www.gstatic.com/generate_204\n    interval: 300\n    tolerance: 50\n    proxies:\n")
+	for _, n := range proxyNames {
+		b.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(n)))
 	}
 
-	builder.WriteString(`
-rules:
-  - DOMAIN-SUFFIX,local,DIRECT
-  - IP-CIDR,127.0.0.0/8,DIRECT
-  - IP-CIDR,172.16.0.0/12,DIRECT
-  - IP-CIDR,192.168.0.0/16,DIRECT
-  - GEOIP,CN,DIRECT
-  - MATCH,🚀 节点选择
-`)
-
-	return builder.String()
+	b.WriteString("\nrules:\n  - DOMAIN-SUFFIX,local,DIRECT\n  - IP-CIDR,127.0.0.0/8,DIRECT\n  - IP-CIDR,172.16.0.0/12,DIRECT\n  - IP-CIDR,192.168.0.0/16,DIRECT\n  - GEOIP,CN,DIRECT\n  - MATCH,🚀 节点选择\n")
+	return b.String()
 }
 
 func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *SubscriptionContext) []*ProxyNode {
-	expireTimeStr := "无限期"
+	exp := "无限期"
 	if !ctx.Subscription.ExpireTime.IsZero() {
-		expireTimeStr = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
+		exp = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
 	}
 
-	infoNodes := []*ProxyNode{
-		s.createMessageNode(fmt.Sprintf("📢 官网: %s", s.siteURL)),
-		s.createMessageNode(fmt.Sprintf("⏰ 到期: %s", expireTimeStr)),
+	info := []*ProxyNode{
+		s.createMessageNode("📢 官网: " + s.siteURL),
+		s.createMessageNode("⏰ 到期: " + exp),
 		s.createMessageNode(fmt.Sprintf("📱 设备: %d/%d", ctx.CurrentDevices, ctx.DeviceLimit)),
 	}
-
 	if s.supportQQ != "" {
-		infoNodes = append(infoNodes, s.createMessageNode(fmt.Sprintf("💬 客服: %s", s.supportQQ)))
+		info = append(info, s.createMessageNode("💬 客服: "+s.supportQQ))
 	}
-
-	return append(infoNodes, proxies...)
+	return append(info, proxies...)
 }
 
 func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx *SubscriptionContext) []*ProxyNode {
-	var reason, solution string
-
+	reason, solution := "账户异常", "检测到账户异常，请联系管理员"
 	switch status {
 	case StatusExpired:
-		reason, solution = "订阅已过期", fmt.Sprintf("请前往官网续费 (过期时间: %s)", utils.FormatBeijingDate(ctx.Subscription.ExpireTime))
+		reason, solution = "订阅已过期", "请前往官网续费 (过期时间: "+utils.FormatBeijingDate(ctx.Subscription.ExpireTime)+")"
 	case StatusInactive:
 		reason, solution = "订阅已失效", "请联系管理员检查订阅状态"
 	case StatusAccountAbnormal:
@@ -1471,397 +1153,315 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 		reason, solution = "订阅不存在", "请检查订阅链接是否正确，或重新复制"
 	case StatusSystemError:
 		reason, solution = "系统异常", "节点加载失败，请稍后重试或联系管理员"
-	default:
-		reason, solution = "账户异常", "检测到账户异常，请联系管理员"
 	}
 
 	qqMsg := "💬 客服: 请在系统设置中配置"
 	if s.supportQQ != "" {
-		qqMsg = fmt.Sprintf("💬 客服: %s", s.supportQQ)
+		qqMsg = "💬 客服: " + s.supportQQ
 	}
-
 	return []*ProxyNode{
-		s.createMessageNode(fmt.Sprintf("📢 官网: %s", s.siteURL)),
-		s.createMessageNode(fmt.Sprintf("❌ 原因: %s", reason), "error"),
-		s.createMessageNode(fmt.Sprintf("💡 解决: %s", solution), "error"),
+		s.createMessageNode("📢 官网: " + s.siteURL),
+		s.createMessageNode("❌ 原因: "+reason, "error"),
+		s.createMessageNode("💡 解决: "+solution, "error"),
 		s.createMessageNode(qqMsg, "error"),
 	}
 }
 
-func (s *ConfigUpdateService) createMessageNode(name string, password ...string) *ProxyNode {
-	pwd := "info"
-	if len(password) > 0 {
-		pwd = password[0]
+func (s *ConfigUpdateService) createMessageNode(name string, pwd ...string) *ProxyNode {
+	p := "info"
+	if len(pwd) > 0 {
+		p = pwd[0]
 	}
-	return &ProxyNode{
-		Name: name, Type: "ss", Server: "baidu.com", Port: 1234, Cipher: "aes-128-gcm", Password: pwd,
-	}
+	return &ProxyNode{Name: name, Type: "ss", Server: "baidu.com", Port: 1234, Cipher: "aes-128-gcm", Password: p}
 }
 
-// ==========================================
-// Map 数据提取 Helpers
-// ==========================================
-
-func optStr(opts map[string]interface{}, key string) string {
-	if opts != nil {
-		if v, ok := opts[key].(string); ok {
-			return v
-		}
+// 优化：泛型提取字典中的值
+func optVal[T any](opts map[string]interface{}, key string) T {
+	var zero T
+	if opts == nil {
+		return zero
 	}
-	return ""
-}
-
-func optBool(opts map[string]interface{}, key string) bool {
-	if opts != nil {
-		if v, ok := opts[key].(bool); ok {
-			return v
-		}
+	if v, ok := opts[key].(T); ok {
+		return v
 	}
-	return false
+	return zero
 }
-
-func optMap(opts map[string]interface{}, key string) map[string]interface{} {
-	if opts != nil {
-		if v, ok := opts[key].(map[string]interface{}); ok {
-			return v
-		}
-	}
-	return nil
-}
-
-// ==========================================
-// 节点对象转 YAML/Map
-// ==========================================
 
 func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
-	indentStr := strings.Repeat(" ", indent)
-	var builder strings.Builder
-
-	builder.WriteString(fmt.Sprintf("%s- name: %s\n", indentStr, s.escapeYAMLString(node.Name)))
-	builder.WriteString(fmt.Sprintf("%s  type: %s\n", indentStr, node.Type))
-	builder.WriteString(fmt.Sprintf("%s  server: %s\n", indentStr, node.Server))
-	builder.WriteString(fmt.Sprintf("%s  port: %d\n", indentStr, node.Port))
+	ind := strings.Repeat(" ", indent)
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("%s- name: %s\n%s  type: %s\n%s  server: %s\n%s  port: %d\n", ind, s.escapeYAMLString(node.Name), ind, node.Type, ind, node.Server, ind, node.Port))
 
 	m := s.nodeToMap(node)
-	keys := make([]string, 0, len(m))
+	var keys []string
 	for k := range m {
 		if k != "name" && k != "type" && k != "server" && k != "port" {
 			keys = append(keys, k)
 		}
 	}
 	sort.Strings(keys)
-
 	for _, k := range keys {
-		s.writeYAMLValue(&builder, indentStr+"  ", k, m[k], indent+2)
+		s.writeYAMLValue(&b, ind+"  ", k, m[k], indent+2)
 	}
-	return builder.String()
+	return b.String()
 }
 
-func (s *ConfigUpdateService) nodeToMap(node *ProxyNode) map[string]interface{} {
-	result := map[string]interface{}{
-		"name": node.Name, "type": node.Type, "server": node.Server, "port": node.Port,
+func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
+	res := map[string]interface{}{"name": n.Name, "type": n.Type, "server": n.Server, "port": n.Port}
+
+	if n.Type == "ss" || n.Type == "trojan" || n.Type == "ssr" || n.Type == "tuic" || n.Type == "anytls" || strings.HasPrefix(n.Type, "hysteria") || strings.HasPrefix(n.Type, "socks") || n.Type == "http" {
+		res["password"] = n.Password
 	}
 
-	setIfNotEmpty := func(k, v string) {
-		if v != "" {
-			result[k] = v
-		}
-	}
-
-	if s.getRequirePassword(node.Type) {
-		result["password"] = node.Password
-	}
-
-	switch node.Type {
+	switch n.Type {
 	case "ss":
-		setIfNotEmpty("cipher", node.Cipher)
-		if pluginName := optStr(node.Options, "plugin"); pluginName != "" {
-			result["plugin"] = pluginName
-			if pluginOpts := optMap(node.Options, "plugin-opts"); pluginOpts != nil {
-				result["plugin-opts"] = pluginOpts
+		if n.Cipher != "" {
+			res["cipher"] = n.Cipher
+		}
+		if p := optVal[string](n.Options, "plugin"); p != "" {
+			res["plugin"] = p
+			if popt := optVal[map[string]interface{}](n.Options, "plugin-opts"); popt != nil {
+				res["plugin-opts"] = popt
 			}
 		}
 	case "vmess":
-		setIfNotEmpty("uuid", node.UUID)
-		result["alterId"], result["cipher"] = 0, "auto"
-		if val, ok := node.Options["alterId"]; ok {
-			result["alterId"] = val
+		if n.UUID != "" {
+			res["uuid"] = n.UUID
 		}
-		setIfNotEmpty("cipher", node.Cipher)
+		res["alterId"], res["cipher"] = optVal[int](n.Options, "alterId"), "auto"
+		if n.Cipher != "" {
+			res["cipher"] = n.Cipher
+		}
 	case "vless", "tuic":
-		setIfNotEmpty("uuid", node.UUID)
-		if node.Type == "tuic" {
-			s.buildTuicMap(node, result)
+		if n.UUID != "" {
+			res["uuid"] = n.UUID
+		}
+		if n.Type == "tuic" {
+			if _, ok := n.Options["disable-sni"]; !ok {
+				res["disable-sni"] = false
+			}
+			if _, ok := n.Options["reduce-rtt"]; !ok {
+				res["reduce-rtt"] = false
+			}
+			res["request-timeout"] = 15000
+			res["udp-relay-mode"] = "native"
+			if cc := optVal[string](n.Options, "congestion_control"); cc != "" {
+				res["congestion-controller"] = cc
+				delete(n.Options, "congestion_control")
+			} else if cc := optVal[string](n.Options, "congestion-controller"); cc != "" {
+				res["congestion-controller"] = cc
+			}
+			if sni := optVal[string](n.Options, "servername"); sni != "" {
+				res["sni"] = sni
+				delete(n.Options, "servername")
+			}
 		}
 	case "ssr":
-		setIfNotEmpty("cipher", node.Cipher)
+		if n.Cipher != "" {
+			res["cipher"] = n.Cipher
+		}
 	case "anytls":
-		result["udp"] = node.UDP
-		if sni := optStr(node.Options, "servername"); sni != "" {
-			result["sni"] = sni
-			delete(node.Options, "servername")
+		res["udp"] = n.UDP
+		if sni := optVal[string](n.Options, "servername"); sni != "" {
+			res["sni"] = sni
+			delete(n.Options, "servername")
 		}
 	case "hysteria", "hysteria2":
-		if result["password"] == "" {
-			result["password"] = optStr(node.Options, "auth")
+		if res["password"] == "" {
+			res["password"] = optVal[string](n.Options, "auth")
 		}
-		if node.Type == "hysteria2" {
-			result["auth"] = result["password"]
+		if n.Type == "hysteria2" {
+			res["auth"] = res["password"]
 		}
 	case "socks", "socks5", "http":
-		setIfNotEmpty("username", node.UUID)
-	}
-
-	if node.TLS || node.Type == "tuic" || node.Type == "anytls" {
-		result["tls"] = true
-	}
-	if node.Network != "" && node.Network != "tcp" {
-		result["network"] = node.Network
-	}
-	if node.UDP {
-		result["udp"] = true
-	}
-
-	for key, value := range node.Options {
-		if key != "alterId" || node.Type != "vmess" {
-			result[key] = value
+		if n.UUID != "" {
+			res["username"] = n.UUID
 		}
 	}
 
-	return result
+	if n.TLS || n.Type == "tuic" || n.Type == "anytls" {
+		res["tls"] = true
+	}
+	if n.Network != "" && n.Network != "tcp" {
+		res["network"] = n.Network
+	}
+	if n.UDP {
+		res["udp"] = true
+	}
+
+	for k, v := range n.Options {
+		if k != "alterId" || n.Type != "vmess" {
+			res[k] = v
+		}
+	}
+	return res
 }
 
-func (s *ConfigUpdateService) getRequirePassword(nodeType string) bool {
-	switch nodeType {
-	case "ss", "trojan", "ssr", "tuic", "anytls", "hysteria", "hysteria2", "socks", "socks5", "http":
-		return true
-	}
-	return false
-}
-
-func (s *ConfigUpdateService) buildTuicMap(node *ProxyNode, result map[string]interface{}) {
-	if _, ok := node.Options["disable-sni"]; !ok {
-		result["disable-sni"] = false
-	}
-	if _, ok := node.Options["reduce-rtt"]; !ok {
-		result["reduce-rtt"] = false
-	}
-	if _, ok := node.Options["request-timeout"]; !ok {
-		result["request-timeout"] = 15000
-	}
-	if _, ok := node.Options["udp-relay-mode"]; !ok {
-		result["udp-relay-mode"] = "native"
-	}
-
-	if cc := optStr(node.Options, "congestion_control"); cc != "" {
-		result["congestion-controller"] = cc
-		delete(node.Options, "congestion_control")
-	} else if cc := optStr(node.Options, "congestion-controller"); cc != "" {
-		result["congestion-controller"] = cc
-	}
-
-	if sni := optStr(node.Options, "servername"); sni != "" {
-		result["sni"] = sni
-		delete(node.Options, "servername")
-	}
-}
-
-// 保持 YAML 写入辅助函数的原样（避免影响兼容性）
-func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr, key string, value interface{}, indentLevel int) {
-	escapedKey := s.escapeYAMLString(key)
-	switch v := value.(type) {
+func (s *ConfigUpdateService) writeYAMLValue(b *strings.Builder, ind, key string, val interface{}, lvl int) {
+	ek := s.escapeYAMLString(key)
+	switch v := val.(type) {
 	case map[string]interface{}:
-		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
-		s.writeMapContent(builder, indentStr+"  ", v, key, indentLevel+1)
+		b.WriteString(fmt.Sprintf("%s%s:\n", ind, ek))
+		s.writeMapContent(b, ind+"  ", v, key, lvl+1)
 	case []interface{}:
-		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		b.WriteString(fmt.Sprintf("%s%s:\n", ind, ek))
 		for _, item := range v {
-			builder.WriteString(fmt.Sprintf("%s  - %s\n", indentStr, s.formatYAMLInline(item)))
+			b.WriteString(fmt.Sprintf("%s  - %s\n", ind, s.formatYAMLInline(item)))
 		}
 	case []string:
-		builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, escapedKey))
+		b.WriteString(fmt.Sprintf("%s%s:\n", ind, ek))
 		for _, item := range v {
-			builder.WriteString(fmt.Sprintf("%s  - %s\n", indentStr, s.escapeYAMLString(item)))
+			b.WriteString(fmt.Sprintf("%s  - %s\n", ind, s.escapeYAMLString(item)))
 		}
 	default:
-		builder.WriteString(fmt.Sprintf("%s%s: %s\n", indentStr, escapedKey, s.formatYAMLInline(v)))
+		b.WriteString(fmt.Sprintf("%s%s: %s\n", ind, ek, s.formatYAMLInline(v)))
 	}
 }
 
-func (s *ConfigUpdateService) writeMapContent(builder *strings.Builder, indentStr string, v map[string]interface{}, parentKey string, level int) {
-	if parentKey == "http-opts" {
-		if method, ok := v["method"].(string); ok {
-			builder.WriteString(fmt.Sprintf("%smethod: %s\n", indentStr, method))
+func (s *ConfigUpdateService) writeMapContent(b *strings.Builder, ind string, v map[string]interface{}, pk string, lvl int) {
+	if pk == "http-opts" {
+		if m, ok := v["method"].(string); ok {
+			b.WriteString(fmt.Sprintf("%smethod: %s\n", ind, m))
 		}
-		if path, ok := v["path"]; ok {
-			s.writeYAMLList(builder, indentStr, "path", path)
+		if p, ok := v["path"]; ok {
+			s.writeYAMLList(b, ind, "path", p)
 		}
-		if headers, ok := v["headers"].(map[string]interface{}); ok {
-			builder.WriteString(fmt.Sprintf("%sheaders:\n", indentStr))
-			for hk, hv := range headers {
-				s.writeYAMLList(builder, indentStr+"  ", hk, hv)
+		if h, ok := v["headers"].(map[string]interface{}); ok {
+			b.WriteString(ind + "headers:\n")
+			for hk, hv := range h {
+				s.writeYAMLList(b, ind+"  ", hk, hv)
 			}
 		}
 		return
 	}
-
-	keys := make([]string, 0, len(v))
+	var keys []string
 	for k := range v {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	for _, k := range keys {
-		val := v[k]
-		if strMap, ok := val.(map[string]string); ok {
-			newMap := make(map[string]interface{})
-			for mk, mv := range strMap {
-				newMap[mk] = mv
+		if sm, ok := v[k].(map[string]string); ok {
+			nm := make(map[string]interface{})
+			for mk, mv := range sm {
+				nm[mk] = mv
 			}
-			s.writeYAMLValue(builder, indentStr, k, newMap, level+1)
+			s.writeYAMLValue(b, ind, k, nm, lvl+1)
 		} else {
-			s.writeYAMLValue(builder, indentStr, k, val, level+1)
+			s.writeYAMLValue(b, ind, k, v[k], lvl+1)
 		}
 	}
 }
 
-func (s *ConfigUpdateService) writeYAMLList(builder *strings.Builder, indentStr, key string, val interface{}) {
-	builder.WriteString(fmt.Sprintf("%s%s:\n", indentStr, s.escapeYAMLString(key)))
-	writeItem := func(item interface{}) {
-		builder.WriteString(fmt.Sprintf("%s  - %s\n", indentStr, s.formatYAMLInline(item)))
-	}
+func (s *ConfigUpdateService) writeYAMLList(b *strings.Builder, ind, key string, val interface{}) {
+	b.WriteString(fmt.Sprintf("%s%s:\n", ind, s.escapeYAMLString(key)))
+	w := func(i interface{}) { b.WriteString(fmt.Sprintf("%s  - %s\n", ind, s.formatYAMLInline(i))) }
 	switch v := val.(type) {
 	case string:
-		writeItem(v)
+		w(v)
 	case []string:
-		for _, item := range v {
-			writeItem(item)
+		for _, i := range v {
+			w(i)
 		}
 	case []interface{}:
-		for _, item := range v {
-			writeItem(item)
+		for _, i := range v {
+			w(i)
 		}
 	}
 }
 
 func (s *ConfigUpdateService) formatYAMLInline(v interface{}) string {
-	switch val := v.(type) {
-	case string:
-		return s.escapeYAMLString(val)
-	default:
-		return s.escapeYAMLString(fmt.Sprintf("%v", val))
+	if str, ok := v.(string); ok {
+		return s.escapeYAMLString(str)
 	}
+	return s.escapeYAMLString(fmt.Sprintf("%v", v))
 }
 
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	if str == "" {
 		return `""`
 	}
-	specialChars := ":\"'\n\r\t#@&*?|>!%`[]{},\x00"
-	if strings.ContainsAny(str, specialChars) || strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") {
-		escaped := strings.ReplaceAll(str, "\\", "\\\\")
-		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
-		escaped = strings.ReplaceAll(escaped, "\n", "\\n")
-		return fmt.Sprintf(`"%s"`, escaped)
+	if strings.ContainsAny(str, ":\"'\n\r\t#@&*?|>!%`[]{},\x00") || strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") {
+		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(str, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n"))
 	}
 	return str
 }
 
-// ==========================================
-// 链接生成 (ToLink)
-// ==========================================
+func (s *ConfigUpdateService) NodeToLink(node *ProxyNode) string { return s.nodeToLink(node) }
 
-func (s *ConfigUpdateService) NodeToLink(node *ProxyNode) string {
-	return s.nodeToLink(node)
-}
-
-func (s *ConfigUpdateService) nodeToLink(node *ProxyNode) string {
-	switch node.Type {
+func (s *ConfigUpdateService) nodeToLink(n *ProxyNode) string {
+	switch n.Type {
 	case "vmess":
-		return s.vmessToLink(node)
+		return s.vmessToLink(n)
 	case "ss":
-		return s.shadowsocksToLink(node)
+		return s.shadowsocksToLink(n)
 	case "ssr":
-		return s.nodeToSSRLink(node)
-	case "vless":
-		return s.buildStandardNodeURL("vless", node.UUID, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	case "trojan":
-		return s.buildStandardNodeURL("trojan", node.Password, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	case "hysteria":
-		return s.buildStandardNodeURL("hysteria", "", "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	case "hysteria2":
-		return s.buildStandardNodeURL("hysteria2", node.Password, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	case "tuic":
-		return s.buildStandardNodeURL("tuic", node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	case "naive":
-		return s.buildStandardNodeURL("naive+https", node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	case "anytls":
-		return s.buildStandardNodeURL("anytls", node.Password, "", node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
+		return s.nodeToSSRLink(n)
+	case "vless", "trojan", "hysteria", "hysteria2", "tuic", "naive", "anytls":
+		scheme, user, pwd := n.Type, n.UUID, n.Password
+		if n.Type == "trojan" || n.Type == "hysteria2" || n.Type == "anytls" {
+			user, pwd = pwd, ""
+		} else if n.Type == "naive" {
+			scheme = "naive+https"
+		} else if n.Type == "hysteria" {
+			user = ""
+		}
+		return s.buildStandardNodeURL(scheme, user, pwd, n.Server, n.Port, n.Name, s.getQueryFromOptions(n))
 	case "socks", "socks5":
-		scheme := "socks5"
-		if node.Type == "socks" {
-			scheme = "socks"
+		sc := "socks5"
+		if n.Type == "socks" {
+			sc = "socks"
 		}
-		return s.buildStandardNodeURL(scheme, node.UUID, node.Password, node.Server, node.Port, node.Name, nil)
+		return s.buildStandardNodeURL(sc, n.UUID, n.Password, n.Server, n.Port, n.Name, nil)
 	case "http":
-		scheme := "http"
-		if node.TLS {
-			scheme = "https"
+		sc := "http"
+		if n.TLS {
+			sc = "https"
 		}
-		return s.buildStandardNodeURL(scheme, node.UUID, node.Password, node.Server, node.Port, node.Name, s.getQueryFromOptions(node))
-	default:
-		return ""
+		return s.buildStandardNodeURL(sc, n.UUID, n.Password, n.Server, n.Port, n.Name, s.getQueryFromOptions(n))
 	}
+	return ""
 }
 
-func (s *ConfigUpdateService) buildStandardNodeURL(scheme, user, password, host string, port int, fragment string, query url.Values) string {
-	u := &url.URL{
-		Scheme:   scheme,
-		Host:     fmt.Sprintf("%s:%d", host, port),
-		Fragment: fragment,
-	}
-
-	if user != "" {
-		if password != "" {
-			u.User = url.UserPassword(user, password)
+func (s *ConfigUpdateService) buildStandardNodeURL(sch, usr, pwd, hst string, prt int, frag string, q url.Values) string {
+	u := &url.URL{Scheme: sch, Host: fmt.Sprintf("%s:%d", hst, prt), Fragment: frag}
+	if usr != "" {
+		if pwd != "" {
+			u.User = url.UserPassword(usr, pwd)
 		} else {
-			u.User = url.User(user)
+			u.User = url.User(usr)
 		}
-	} else if password != "" {
-		u.User = url.User(password)
+	} else if pwd != "" {
+		u.User = url.User(pwd)
 	}
-
-	if query != nil && len(query) > 0 {
-		u.RawQuery = query.Encode()
+	if q != nil && len(q) > 0 {
+		u.RawQuery = q.Encode()
 	}
-
 	return u.String()
 }
 
-func (s *ConfigUpdateService) getQueryFromOptions(node *ProxyNode) url.Values {
+func (s *ConfigUpdateService) getQueryFromOptions(n *ProxyNode) url.Values {
 	q := url.Values{}
-	if node.Options == nil {
+	if n.Options == nil {
 		return q
 	}
 
-	if sni := optStr(node.Options, "servername"); sni != "" {
+	if sni := optVal[string](n.Options, "servername"); sni != "" {
 		q.Set("sni", sni)
 	}
-	if peer := optStr(node.Options, "peer"); peer != "" && (q.Get("sni") == "" || node.Type == "anytls") {
+	if peer := optVal[string](n.Options, "peer"); peer != "" && (q.Get("sni") == "" || n.Type == "anytls") {
 		q.Set("peer", peer)
 	}
-	if optBool(node.Options, "skip-cert-verify") {
+	if optVal[bool](n.Options, "skip-cert-verify") {
 		q.Set("insecure", "1")
 		q.Set("allow_insecure", "1")
 	}
-	if fp := optStr(node.Options, "client-fingerprint"); fp != "" {
+	if fp := optVal[string](n.Options, "client-fingerprint"); fp != "" {
 		q.Set("fp", fp)
 	}
-
-	if alpnVal, ok := node.Options["alpn"]; ok {
-		if strs, ok := alpnVal.([]string); ok && len(strs) > 0 {
+	if alpn := n.Options["alpn"]; alpn != nil {
+		if strs, ok := alpn.([]string); ok && len(strs) > 0 {
 			q.Set("alpn", strings.Join(strs, ","))
-		} else if infs, ok := alpnVal.([]interface{}); ok {
+		} else if infs, ok := alpn.([]interface{}); ok {
 			var tmp []string
 			for _, v := range infs {
 				if str, ok := v.(string); ok {
@@ -1874,233 +1474,207 @@ func (s *ConfigUpdateService) getQueryFromOptions(node *ProxyNode) url.Values {
 		}
 	}
 
-	switch node.Type {
+	switch n.Type {
 	case "vless", "trojan":
-		s.buildTransportQuery(node, q)
+		if n.Network != "" {
+			q.Set("type", n.Network)
+		}
+		if ws := optVal[map[string]interface{}](n.Options, "ws-opts"); ws != nil {
+			if path := optVal[string](ws, "path"); path != "" {
+				q.Set("path", path)
+			}
+			if hdrs := optVal[map[string]interface{}](ws, "headers"); hdrs != nil {
+				if h := optVal[string](hdrs, "Host"); h != "" {
+					q.Set("host", h)
+				}
+			} else if hm, ok := ws["headers"].(map[string]string); ok && hm["Host"] != "" {
+				q.Set("host", hm["Host"])
+			}
+		}
+		if grpc := optVal[map[string]interface{}](n.Options, "grpc-opts"); grpc != nil {
+			if sn := optVal[string](grpc, "grpc-service-name"); sn != "" {
+				q.Set("serviceName", sn)
+			}
+		}
+		if h2 := optVal[map[string]interface{}](n.Options, "h2-opts"); h2 != nil {
+			if p := optVal[string](h2, "path"); p != "" {
+				q.Set("path", p)
+			}
+			if hs, ok := h2["host"].([]string); ok && len(hs) > 0 {
+				q.Set("host", hs[0])
+			}
+		}
+		if ht := optVal[string](n.Options, "header-type"); ht != "" {
+			q.Set("headerType", ht)
+		}
+		if n.Type == "vless" {
+			if n.TLS {
+				if real := optVal[map[string]interface{}](n.Options, "reality-opts"); real != nil {
+					q.Set("security", "reality")
+					if pbk := optVal[string](real, "public-key"); pbk != "" {
+						q.Set("pbk", pbk)
+					}
+					if sid := optVal[string](real, "short-id"); sid != "" {
+						q.Set("sid", sid)
+					}
+					if pqv := optVal[string](real, "pqv"); pqv != "" {
+						q.Set("pqv", pqv)
+					}
+				} else {
+					q.Set("security", "tls")
+				}
+			}
+			if f := optVal[string](n.Options, "flow"); f != "" {
+				q.Set("flow", f)
+			}
+			if e := optVal[string](n.Options, "encryption"); e != "" {
+				q.Set("encryption", e)
+			}
+		}
 	case "hysteria", "hysteria2":
-		if auth := optStr(node.Options, "auth"); auth != "" {
-			q.Set("auth", auth)
+		if a := optVal[string](n.Options, "auth"); a != "" {
+			q.Set("auth", a)
 		}
-		if up := optStr(node.Options, "up"); up != "" {
-			trimmed := strings.TrimSuffix(up, " mbps")
-			q.Set("upmbps", trimmed)
-			q.Set("mbpsUp", trimmed)
+		if up := optVal[string](n.Options, "up"); up != "" {
+			t := strings.TrimSuffix(up, " mbps")
+			q.Set("upmbps", t)
+			q.Set("mbpsUp", t)
 		}
-		if down := optStr(node.Options, "down"); down != "" {
-			trimmed := strings.TrimSuffix(down, " mbps")
-			q.Set("downmbps", trimmed)
-			q.Set("mbpsDown", trimmed)
+		if dn := optVal[string](n.Options, "down"); dn != "" {
+			t := strings.TrimSuffix(dn, " mbps")
+			q.Set("downmbps", t)
+			q.Set("mbpsDown", t)
 		}
 	case "tuic":
-		if cc := optStr(node.Options, "congestion_control"); cc != "" {
+		if cc := optVal[string](n.Options, "congestion_control"); cc != "" {
 			q.Set("congestion_control", cc)
 		}
-		if mode := optStr(node.Options, "udp_relay_mode"); mode != "" {
+		if mode := optVal[string](n.Options, "udp_relay_mode"); mode != "" {
 			q.Set("udp_relay_mode", mode)
 		}
 	case "naive":
-		if optBool(node.Options, "padding") {
+		if optVal[bool](n.Options, "padding") {
 			q.Set("padding", "true")
 		}
 	}
-
 	return q
 }
 
-func (s *ConfigUpdateService) buildTransportQuery(node *ProxyNode, q url.Values) {
-	if node.Network != "" {
-		q.Set("type", node.Network)
+func (s *ConfigUpdateService) vmessToLink(p *ProxyNode) string {
+	net, obfs := p.Network, "none"
+	if net == "http" {
+		net, obfs = "tcp", "http"
 	}
-
-	if wsOpts := optMap(node.Options, "ws-opts"); wsOpts != nil {
-		if path := optStr(wsOpts, "path"); path != "" {
-			q.Set("path", path)
-		}
-		if headers := optMap(wsOpts, "headers"); headers != nil {
-			if host := optStr(headers, "Host"); host != "" {
-				q.Set("host", host)
-			}
-		} else if headers, ok := wsOpts["headers"].(map[string]string); ok {
-			if host, ok := headers["Host"]; ok && host != "" {
-				q.Set("host", host)
-			}
-		}
-	}
-
-	if grpcOpts := optMap(node.Options, "grpc-opts"); grpcOpts != nil {
-		if sn := optStr(grpcOpts, "grpc-service-name"); sn != "" {
-			q.Set("serviceName", sn)
-		}
-	}
-
-	if h2Opts := optMap(node.Options, "h2-opts"); h2Opts != nil {
-		if path := optStr(h2Opts, "path"); path != "" {
-			q.Set("path", path)
-		}
-		if hosts, ok := h2Opts["host"].([]string); ok && len(hosts) > 0 {
-			q.Set("host", hosts[0])
-		}
-	}
-
-	if ht := optStr(node.Options, "header-type"); ht != "" {
-		q.Set("headerType", ht)
-	}
-
-	if node.Type == "vless" {
-		if node.TLS {
-			if realityOpts := optMap(node.Options, "reality-opts"); realityOpts != nil {
-				q.Set("security", "reality")
-				if pbk := optStr(realityOpts, "public-key"); pbk != "" {
-					q.Set("pbk", pbk)
-				}
-				if sid := optStr(realityOpts, "short-id"); sid != "" {
-					q.Set("sid", sid)
-				}
-				if pqv := optStr(realityOpts, "pqv"); pqv != "" {
-					q.Set("pqv", pqv)
-				}
-			} else {
-				q.Set("security", "tls")
-			}
-		}
-		if flow := optStr(node.Options, "flow"); flow != "" {
-			q.Set("flow", flow)
-		}
-		if enc := optStr(node.Options, "encryption"); enc != "" {
-			q.Set("encryption", enc)
-		}
-	}
-}
-
-func (s *ConfigUpdateService) vmessToLink(proxy *ProxyNode) string {
-	network, obfsType := proxy.Network, "none"
-	if network == "http" {
-		network, obfsType = "tcp", "http"
-	}
-
-	data := map[string]interface{}{
-		"v": "2", "ps": proxy.Name, "add": proxy.Server, "port": proxy.Port,
-		"id": proxy.UUID, "net": network, "type": obfsType,
+	d := map[string]interface{}{
+		"v": "2", "ps": p.Name, "add": p.Server, "port": p.Port, "id": p.UUID, "net": net, "type": obfs,
 		"tls": "", "sni": "", "host": "", "path": "", "aid": 0, "scy": "auto",
 	}
-
-	if proxy.TLS {
-		data["tls"] = "tls"
+	if p.TLS {
+		d["tls"] = "tls"
 	}
-
-	if proxy.Options != nil {
-		if aid, ok := proxy.Options["alterId"]; ok {
-			data["aid"] = aid
+	if p.Options != nil {
+		if aid, ok := p.Options["alterId"]; ok {
+			d["aid"] = aid
 		}
-		if cipher := optStr(proxy.Options, "cipher"); cipher != "" {
-			data["scy"] = cipher
+		if c := optVal[string](p.Options, "cipher"); c != "" {
+			d["scy"] = c
 		}
-		if sni := optStr(proxy.Options, "servername"); sni != "" {
-			data["sni"] = sni
+		if sni := optVal[string](p.Options, "servername"); sni != "" {
+			d["sni"] = sni
 		}
-		if optBool(proxy.Options, "skip-cert-verify") {
-			data["insecure"] = "1"
+		if optVal[bool](p.Options, "skip-cert-verify") {
+			d["insecure"] = "1"
 		}
-
-		if wsOpts := optMap(proxy.Options, "ws-opts"); wsOpts != nil {
-			if path := optStr(wsOpts, "path"); path != "" {
-				data["path"] = path
+		if ws := optVal[map[string]interface{}](p.Options, "ws-opts"); ws != nil {
+			if path := optVal[string](ws, "path"); path != "" {
+				d["path"] = path
 			}
-			if headers := optMap(wsOpts, "headers"); headers != nil {
-				if host := optStr(headers, "Host"); host != "" {
-					data["host"] = host
+			if hdrs := optVal[map[string]interface{}](ws, "headers"); hdrs != nil {
+				if h := optVal[string](hdrs, "Host"); h != "" {
+					d["host"] = h
 				}
 			}
 		}
-		if httpOpts := optMap(proxy.Options, "http-opts"); httpOpts != nil {
-			if paths, ok := httpOpts["path"].([]string); ok && len(paths) > 0 {
-				data["path"] = paths[0]
+		if http := optVal[map[string]interface{}](p.Options, "http-opts"); http != nil {
+			if ps, ok := http["path"].([]string); ok && len(ps) > 0 {
+				d["path"] = ps[0]
 			}
-			if headers := optMap(httpOpts, "headers"); headers != nil {
-				if hosts, ok := headers["Host"].([]string); ok && len(hosts) > 0 {
-					data["host"] = hosts[0]
+			if hdrs := optVal[map[string]interface{}](http, "headers"); hdrs != nil {
+				if hs, ok := hdrs["Host"].([]string); ok && len(hs) > 0 {
+					d["host"] = hs[0]
 				}
 			}
 		}
-		if h2Opts := optMap(proxy.Options, "h2-opts"); h2Opts != nil {
-			if path := optStr(h2Opts, "path"); path != "" {
-				data["path"] = path
+		if h2 := optVal[map[string]interface{}](p.Options, "h2-opts"); h2 != nil {
+			if path := optVal[string](h2, "path"); path != "" {
+				d["path"] = path
 			}
-			if hosts, ok := h2Opts["host"].([]string); ok && len(hosts) > 0 {
-				data["host"] = hosts[0]
+			if hs, ok := h2["host"].([]string); ok && len(hs) > 0 {
+				d["host"] = hs[0]
 			}
 		}
-		if grpcOpts := optMap(proxy.Options, "grpc-opts"); grpcOpts != nil {
-			if sn := optStr(grpcOpts, "grpc-service-name"); sn != "" {
-				data["path"] = sn
+		if grpc := optVal[map[string]interface{}](p.Options, "grpc-opts"); grpc != nil {
+			if sn := optVal[string](grpc, "grpc-service-name"); sn != "" {
+				d["path"] = sn
 			}
 		}
 	}
-
-	jsonData, _ := json.Marshal(data)
-	return "vmess://" + base64.StdEncoding.EncodeToString(jsonData)
+	jd, _ := json.Marshal(d)
+	return "vmess://" + base64.StdEncoding.EncodeToString(jd)
 }
 
-func (s *ConfigUpdateService) shadowsocksToLink(proxy *ProxyNode) string {
-	encoded := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", proxy.Cipher, proxy.Password)))
-	var query url.Values
-
-	if pluginName := optStr(proxy.Options, "plugin"); pluginName != "" {
-		query = url.Values{}
-		pluginStr := pluginName
-		if pluginName == "obfs" {
-			pluginStr = "obfs-local"
+func (s *ConfigUpdateService) shadowsocksToLink(p *ProxyNode) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(p.Cipher + ":" + p.Password))
+	var q url.Values
+	if pn := optVal[string](p.Options, "plugin"); pn != "" {
+		q, ps := url.Values{}, pn
+		if pn == "obfs" {
+			ps = "obfs-local"
 		}
-		if pluginOpts := optMap(proxy.Options, "plugin-opts"); pluginOpts != nil {
-			if mode := optStr(pluginOpts, "mode"); mode != "" {
-				pluginStr += ";obfs=" + mode
+		if po := optVal[map[string]interface{}](p.Options, "plugin-opts"); po != nil {
+			if m := optVal[string](po, "mode"); m != "" {
+				ps += ";obfs=" + m
 			}
-			if host := optStr(pluginOpts, "host"); host != "" {
-				pluginStr += ";obfs-host=" + host
+			if h := optVal[string](po, "host"); h != "" {
+				ps += ";obfs-host=" + h
 			}
-			if path := optStr(pluginOpts, "path"); path != "" {
-				pluginStr += ";obfs-uri=" + path
+			if path := optVal[string](po, "path"); path != "" {
+				ps += ";obfs-uri=" + path
 			}
-			if optBool(pluginOpts, "tls") {
-				pluginStr += ";tls"
+			if optVal[bool](po, "tls") {
+				ps += ";tls"
 			}
 		}
-		query.Set("plugin", pluginStr)
+		q.Set("plugin", ps)
 	}
-	return s.buildStandardNodeURL("ss", encoded, "", proxy.Server, proxy.Port, proxy.Name, query)
+	return s.buildStandardNodeURL("ss", enc, "", p.Server, p.Port, p.Name, q)
 }
 
-func (s *ConfigUpdateService) nodeToSSRLink(node *ProxyNode) string {
-	getString := func(key, def string) string {
-		if v := optStr(node.Options, key); v != "" {
+func (s *ConfigUpdateService) nodeToSSRLink(n *ProxyNode) string {
+	gs := func(k, d string) string {
+		if v := optVal[string](n.Options, k); v != "" {
 			return v
 		}
-		return def
+		return d
 	}
-
-	ssrStr := fmt.Sprintf("%s:%d:%s:%s:%s:%s/?obfsparam=%s&protoparam=%s&remarks=%s&group=%s",
-		node.Server, node.Port, getString("protocol", "origin"), node.Cipher, getString("obfs", "plain"),
-		base64.RawURLEncoding.EncodeToString([]byte(node.Password)),
-		base64.RawURLEncoding.EncodeToString([]byte(getString("obfs-param", ""))),
-		base64.RawURLEncoding.EncodeToString([]byte(getString("protocol-param", ""))),
-		base64.RawURLEncoding.EncodeToString([]byte(node.Name)),
+	str := fmt.Sprintf("%s:%d:%s:%s:%s:%s/?obfsparam=%s&protoparam=%s&remarks=%s&group=%s",
+		n.Server, n.Port, gs("protocol", "origin"), n.Cipher, gs("obfs", "plain"),
+		base64.RawURLEncoding.EncodeToString([]byte(n.Password)),
+		base64.RawURLEncoding.EncodeToString([]byte(gs("obfs-param", ""))),
+		base64.RawURLEncoding.EncodeToString([]byte(gs("protocol-param", ""))),
+		base64.RawURLEncoding.EncodeToString([]byte(n.Name)),
 		base64.RawURLEncoding.EncodeToString([]byte("GoWeb")))
-
-	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(ssrStr))
+	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(str))
 }
 
 func unescapeUnicode(s string) string {
-	return regexp.MustCompile(`\\U([0-9A-Fa-f]{8})`).ReplaceAllStringFunc(s, func(match string) string {
-		if codePoint, err := strconv.ParseInt(match[2:], 16, 64); err == nil {
-			return string(utils.MustSafeInt64ToRune(codePoint))
+	return regexp.MustCompile(`\\U([0-9A-Fa-f]{8})`).ReplaceAllStringFunc(s, func(m string) string {
+		if cp, err := strconv.ParseInt(m[2:], 16, 64); err == nil {
+			return string(utils.MustSafeInt64ToRune(cp))
 		}
-		return match
+		return m
 	})
 }
-
-// ==========================================
-// 格式化日志辅助函数
-// ==========================================
 
 func (s *ConfigUpdateService) logSeparator() {
 	s.log("INFO", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -2110,17 +1684,4 @@ func (s *ConfigUpdateService) logSection(icon, title string) {
 	s.logSeparator()
 	s.log("INFO", fmt.Sprintf("%s %s", icon, title))
 	s.logSeparator()
-}
-
-func (s *ConfigUpdateService) logItem(prefix, content string) {
-	s.log("INFO", fmt.Sprintf("           %s %s", prefix, content))
-}
-
-func formatBytes(bytes int) string {
-	if bytes < 1024 {
-		return fmt.Sprintf("%d B", bytes)
-	} else if bytes < 1024*1024 {
-		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
-	}
-	return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
 }
