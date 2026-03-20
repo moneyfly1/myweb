@@ -1690,6 +1690,9 @@ func (s *ConfigUpdateService) writeYAMLValue(builder *strings.Builder, indentStr
 
 func (s *ConfigUpdateService) writeMapContent(builder *strings.Builder, indentStr string, v map[string]interface{}, parentKey string, level int) {
 	if parentKey == "http-opts" {
+		if method, ok := v["method"].(string); ok {
+			builder.WriteString(fmt.Sprintf("%smethod: %s\n", indentStr, method))
+		}
 		if path, ok := v["path"]; ok {
 			s.writeYAMLList(builder, indentStr, "path", path)
 		}
