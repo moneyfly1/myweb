@@ -364,12 +364,13 @@ export default {
         const response = await configUpdateAPI.getConfig()
         const data = response?.data?.data
         if (response?.data?.success && data && typeof data === 'object') {
-          // 后端返回 schedule_interval，前端使用 update_interval
-          const interval = data.update_interval ?? data.schedule_interval ?? 3600
+          // 后端存储键名为 schedule_interval
+          const rawInterval = data.schedule_interval ?? data.update_interval ?? 3600
+          const interval = typeof rawInterval === 'number' ? rawInterval : (parseInt(rawInterval) || 3600)
           config.urls = Array.isArray(data.urls) ? (data.urls.length ? data.urls : ['']) : ['']
           config.filter_keywords = Array.isArray(data.filter_keywords) ? data.filter_keywords : []
           config.enable_schedule = !!data.enable_schedule
-          config.update_interval = typeof interval === 'number' ? interval : 3600
+          config.update_interval = interval
           initIntervalSelector()
         }
       } catch (error) {
