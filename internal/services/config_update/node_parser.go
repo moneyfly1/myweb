@@ -292,8 +292,15 @@ func parseWireGuard(link string) (*ProxyNode, error) {
 		n.UDP = q.Get("udp") == "1" || q.Get("udp") == "true" || q.Get("udp") == ""
 
 		// 手动解析原始查询字符串以保留 Base64 中的 + 字符
-		n.Options["public-key"] = extractRawQueryParam(p.RawQuery, "publicKey")
-		n.Options["private-key"] = extractRawQueryParam(p.RawQuery, "privateKey")
+		publicKey := extractRawQueryParam(p.RawQuery, "publicKey")
+		privateKey := extractRawQueryParam(p.RawQuery, "privateKey")
+
+		// 清理 Base64 字符串中的空格（可能由 URL 解码错误导致）
+		publicKey = strings.ReplaceAll(publicKey, " ", "")
+		privateKey = strings.ReplaceAll(privateKey, " ", "")
+
+		n.Options["public-key"] = publicKey
+		n.Options["private-key"] = privateKey
 		n.Options["udp"] = n.UDP
 
 		if ipAddr := q.Get("ip"); ipAddr != "" {
