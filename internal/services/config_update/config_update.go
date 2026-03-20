@@ -1011,7 +1011,17 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 	used := make(map[string]bool)
 
 	for _, p := range proxies {
+		// 跳过不兼容的节点：SOCKS/SOCKS5 with WebSocket (Clash 不支持)
+		if (p.Type == "socks" || p.Type == "socks5") && p.Network == "ws" {
+			continue
+		}
+
 		if supportedClashTypes[p.Type] {
+			// 统一 socks 类型为 socks5 (Clash 标准)
+			if p.Type == "socks" {
+				p.Type = "socks5"
+			}
+
 			orig, name, c := p.Name, p.Name, 1
 			for used[name] {
 				name = fmt.Sprintf("%s_%d", orig, c)
