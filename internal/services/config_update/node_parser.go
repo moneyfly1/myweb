@@ -438,6 +438,8 @@ func splitURLComponents(raw string) (base, query, fragment string) {
 func parseSOCKSBase64Auth(decoded string) (server string, port int, username, password string) {
 	dec, _ := url.QueryUnescape(decoded)
 	if parts := strings.SplitN(dec, "@", 2); len(parts) == 2 {
+		// 使用 LastIndex 从右往左找最后一个冒号
+		// 这样可以正确处理用户名中包含冒号的情况（如 pro:u2025887）
 		if idx := strings.LastIndex(parts[0], ":"); idx != -1 {
 			username, password = parts[0][:idx], parts[0][idx+1:]
 		} else {
