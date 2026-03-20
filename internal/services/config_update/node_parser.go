@@ -9,19 +9,18 @@ import (
 	"strings"
 )
 
-// ProxyNode 代理节点结构体
 type ProxyNode struct {
-	Name     string                 `yaml:"name" json:"Name"`
-	Type     string                 `yaml:"type" json:"Type"`
-	Server   string                 `yaml:"server" json:"Server"`
-	Port     int                    `yaml:"port" json:"Port"`
-	UUID     string                 `yaml:"uuid,omitempty" json:"UUID,omitempty"`
-	Password string                 `yaml:"password,omitempty" json:"Password,omitempty"`
-	Cipher   string                 `yaml:"cipher,omitempty" json:"Cipher,omitempty"`
-	Network  string                 `yaml:"network,omitempty" json:"Network,omitempty"`
-	TLS      bool                   `yaml:"tls,omitempty" json:"TLS,omitempty"`
-	UDP      bool                   `yaml:"udp,omitempty" json:"UDP,omitempty"`
-	Options  map[string]interface{} `yaml:",inline" json:"Options,omitempty"`
+	Name     string         `yaml:"name" json:"Name"`
+	Type     string         `yaml:"type" json:"Type"`
+	Server   string         `yaml:"server" json:"Server"`
+	Port     int            `yaml:"port" json:"Port"`
+	UUID     string         `yaml:"uuid,omitempty" json:"UUID,omitempty"`
+	Password string         `yaml:"password,omitempty" json:"Password,omitempty"`
+	Cipher   string         `yaml:"cipher,omitempty" json:"Cipher,omitempty"`
+	Network  string         `yaml:"network,omitempty" json:"Network,omitempty"`
+	TLS      bool           `yaml:"tls,omitempty" json:"TLS,omitempty"`
+	UDP      bool           `yaml:"udp,omitempty" json:"UDP,omitempty"`
+	Options  map[string]any `yaml:",inline" json:"Options,omitempty"`
 }
 
 type nodeParser func(string) (*ProxyNode, error)
@@ -45,11 +44,6 @@ var protocolParsers = map[string]nodeParser{
 	"wg://":          parseWireGuard,
 }
 
-// ==========================================
-// 核心入口
-// ==========================================
-
-// ParseNodeLink 解析节点链接的主入口
 func ParseNodeLink(link string) (*ProxyNode, error) {
 	link = strings.TrimSpace(link)
 	for prefix, parser := range protocolParsers {
@@ -57,35 +51,26 @@ func ParseNodeLink(link string) (*ProxyNode, error) {
 			return parser(link)
 		}
 	}
-
 	if len(link) > 10 {
-		return nil, fmt.Errorf("不支持的协议: %s", link[:10])
+		return nil, fmt.Errorf("不支持的协议: %s...", link[:10])
 	}
 	return nil, fmt.Errorf("不支持的协议")
 }
 
-// ==========================================
-// 协议解析函数 (Protocol Parsers)
-// ==========================================
-
 func parseVMess(link string) (*ProxyNode, error) {
-	encoded := strings.TrimPrefix(link, "vmess://")
-	decoded, err := DecodeBase64(encoded)
+	decoded, err := DecodeBase64(strings.TrimPrefix(link, "vmess://"))
 	if err != nil {
-		return nil, fmt.Errorf("VMess Base64 解码失败: %v", err)
+		return nil, fmt.Errorf("VMess 解码失败: %v", err)
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(decoded), &data); err != nil {
-		return nil, fmt.Errorf("VMess JSON 解析失败: %v", err)
+		return nil, fmt.Errorf("VMess 解析失败: %v", err)
 	}
 
-	server := getString(data, "add", "")
-	port := getInt(data, "port")
-	uuid := getString(data, "id", "")
-
+	server, port, uuid := getString(data, "add", ""), getInt(data, "port"), getString(data, "id", "")
 	if port <= 0 || port > 65535 || uuid == "" || server == "" {
-		return nil, fmt.Errorf("VMess 配置信息不完整")
+		return nil, fmt.Errorf("VMess 配置不完整")
 	}
 
 	network := getString(data, "net", "tcp")
@@ -97,7 +82,7 @@ func parseVMess(link string) (*ProxyNode, error) {
 		UUID:    uuid,
 		Network: network,
 		UDP:     true,
-		Options: make(map[string]interface{}),
+		Options: map[string]any{"alterId": int(getFloat(data, "aid"))},
 	}
 
 	if getString(data, "tls", "") == "tls" {
@@ -107,8 +92,6 @@ func parseVMess(link string) (*ProxyNode, error) {
 			node.Options["servername"] = sni
 		}
 	}
-
-	node.Options["alterId"] = int(getFloat(data, "aid"))
 
 	applyTransportMapping(node, network, getString(data, "path", "/"), getString(data, "host", server), getString(data, "type", ""))
 	return node, nil
@@ -120,11 +103,11 @@ func parseVLESS(link string) (*ProxyNode, error) {
 		n.Network = firstNotEmpty(q.Get("type"), "tcp")
 		n.UDP = true
 
-		security := q.Get("security")
-		if security == "tls" || security == "xtls" || security == "reality" {
+		sec := q.Get("security")
+		if sec == "tls" || sec == "xtls" || sec == "reality" {
 			n.TLS = true
 			applyTLSOptions(n, q, p.Hostname())
-			if security == "reality" || q.Get("pbk") != "" {
+			if sec == "reality" || q.Get("pbk") != "" {
 				applyRealityOptions(n, q)
 			}
 			if flow := q.Get("flow"); flow != "" {
@@ -141,16 +124,13 @@ func parseVLESS(link string) (*ProxyNode, error) {
 func parseTrojan(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "trojan", func(n *ProxyNode, q url.Values, p *url.URL) {
 		n.Password = p.User.Username()
-		n.Network = firstNotEmpty(q.Get("type"), "tcp")
-		n.UDP = true
-		n.TLS = true
+		n.Network, n.UDP, n.TLS = firstNotEmpty(q.Get("type"), "tcp"), true, true
 		applyTLSOptions(n, q, p.Hostname())
 		applyTransportOptions(n, q)
 	})
 }
 
 func parseShadowsocks(link string) (*ProxyNode, error) {
-	// 处理 SS 特殊的 Base64 复合格式 (未包含 @ 时尝试解密前半部分)
 	if !strings.Contains(link, "@") {
 		encoded := strings.TrimPrefix(link, "ss://")
 		if idx := strings.Index(encoded, "#"); idx != -1 {
@@ -163,34 +143,14 @@ func parseShadowsocks(link string) (*ProxyNode, error) {
 		}
 	}
 
-	// 标准 URI 解析
-	parsed, err := url.Parse(link)
-	if err != nil {
-		return nil, err
-	}
-
-	method, password := extractSSAuth(parsed)
-	if method == "" || password == "" {
-		return nil, fmt.Errorf("SS 缺少认证信息")
-	}
-
-	node := &ProxyNode{
-		Name:     getFragment(parsed, fmt.Sprintf("SS-%s:%s", parsed.Hostname(), parsed.Port())),
-		Type:     "ss",
-		Server:   parsed.Hostname(),
-		Port:     getPort(parsed),
-		Cipher:   method,
-		Password: password,
-		Options:  make(map[string]interface{}),
-	}
-
-	parseSSPlugin(node, parsed.Query())
-	return node, nil
+	return parseGenericNode(link, "ss", func(n *ProxyNode, q url.Values, p *url.URL) {
+		n.Cipher, n.Password = extractSSAuth(p)
+		parseSSPlugin(n, q)
+	})
 }
 
 func parseSSR(link string) (*ProxyNode, error) {
-	encoded := strings.TrimPrefix(link, "ssr://")
-	decoded, err := DecodeBase64(encoded)
+	decoded, err := DecodeBase64(strings.TrimPrefix(link, "ssr://"))
 	if err != nil {
 		return nil, err
 	}
@@ -211,22 +171,18 @@ func parseSSR(link string) (*ProxyNode, error) {
 		Port:     port,
 		Password: password,
 		Cipher:   mainParts[3],
-		Options: map[string]interface{}{
-			"protocol": mainParts[2],
-			"obfs":     mainParts[4],
-		},
+		Options:  map[string]any{"protocol": mainParts[2], "obfs": mainParts[4]},
 	}
 
 	if len(parts) > 1 {
-		paramsPart := strings.SplitN(parts[1], "#", 2)[0]
-		if params, err := url.ParseQuery(paramsPart); err == nil {
-			if d, err := DecodeBase64(params.Get("remarks")); err == nil && d != "" {
+		if params, err := url.ParseQuery(strings.SplitN(parts[1], "#", 2)[0]); err == nil {
+			if d, _ := DecodeBase64(params.Get("remarks")); d != "" {
 				node.Name = d
 			}
-			if d, err := DecodeBase64(params.Get("protoparam")); err == nil && d != "" {
+			if d, _ := DecodeBase64(params.Get("protoparam")); d != "" {
 				node.Options["protocol-param"] = d
 			}
-			if d, err := DecodeBase64(params.Get("obfsparam")); err == nil && d != "" {
+			if d, _ := DecodeBase64(params.Get("obfsparam")); d != "" {
 				node.Options["obfs-param"] = d
 			}
 		}
@@ -246,12 +202,7 @@ func parseHysteria(link string) (*ProxyNode, error) {
 
 func parseHysteria2(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "hysteria2", func(n *ProxyNode, q url.Values, p *url.URL) {
-		if p.User != nil {
-			n.Password = p.User.Username()
-			if password, ok := p.User.Password(); ok && password != "" {
-				n.Password = password
-			}
-		}
+		extractAuthToNode(n, p, true)
 		n.TLS = true
 		applyHysteriaBandwidth(n, q, "mbpsUp", "mbpsDown")
 		applyTLSOptions(n, q, n.Server)
@@ -261,12 +212,11 @@ func parseHysteria2(link string) (*ProxyNode, error) {
 func parseTUIC(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "tuic", func(n *ProxyNode, q url.Values, p *url.URL) {
 		user, _ := url.QueryUnescape(p.User.Username())
-		if strings.Contains(user, ":") {
-			parts := strings.SplitN(user, ":", 2)
+		if parts := strings.SplitN(user, ":", 2); len(parts) == 2 {
 			n.UUID, n.Password = parts[0], parts[1]
 		} else {
 			n.UUID = user
-			n.Password, _ = p.User.Password()
+		n.Password, _ = p.User.Password()
 		}
 		n.UDP, n.TLS = true, true
 		applyTLSOptions(n, q, n.Server)
@@ -280,16 +230,9 @@ func parseTUIC(link string) (*ProxyNode, error) {
 }
 
 func parseNaive(link string) (*ProxyNode, error) {
-	normalized := link
-	for _, old := range []string{"naive+https://", "naive://"} {
-		if strings.HasPrefix(normalized, old) {
-			normalized = "https://" + strings.TrimPrefix(normalized, old)
-			break
-		}
-	}
-	return parseGenericNode(normalized, "naive", func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.UUID = p.User.Username()
-		n.Password, _ = p.User.Password()
+	link = "https://" + strings.TrimPrefix(strings.TrimPrefix(link, "naive+https://"), "naive://")
+	return parseGenericNode(link, "naive", func(n *ProxyNode, q url.Values, p *url.URL) {
+		extractAuthToNode(n, p, false)
 		n.TLS = true
 		applyTLSOptions(n, q, n.Server)
 		if pad := q.Get("padding"); pad != "" {
@@ -300,12 +243,7 @@ func parseNaive(link string) (*ProxyNode, error) {
 
 func parseAnytls(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "anytls", func(n *ProxyNode, q url.Values, p *url.URL) {
-		if p.User != nil {
-			n.Password = p.User.Username()
-			if password, ok := p.User.Password(); ok && password != "" {
-				n.Password = password
-			}
-		}
+		extractAuthToNode(n, p, true)
 		n.UDP, n.TLS = true, true
 		applyTLSOptions(n, q, n.Server)
 	})
@@ -317,190 +255,133 @@ func parseSOCKS(link string) (*ProxyNode, error) {
 		scheme = "socks"
 	}
 
-	linkWithoutScheme := strings.TrimPrefix(link, scheme+"://")
-	baseLink, queryString, fragment := splitURLComponents(linkWithoutScheme)
+	baseLink, queryString, fragment := splitURLComponents(strings.TrimPrefix(link, scheme+"://"))
 
-	var server, username, password string
-	var port int
-
-	// 尝试 Base64 解码 (处理 GOST 格式)
+	// 处理 GOST 格式的 Base64 编码
 	if decoded, err := DecodeBase64(baseLink); err == nil && strings.Contains(decoded, "@") {
-		server, port, username, password = parseSOCKSBase64Auth(decoded)
-	} else {
-		// 标准 URL 解析
-		parsed, err := url.Parse(scheme + "://" + linkWithoutScheme)
-		if err != nil {
-			return nil, fmt.Errorf("SOCKS 链接解析失败: %v", err)
+		server, port, username, password := parseSOCKSBase64Auth(decoded)
+		query, _ := url.ParseQuery(queryString)
+		node := &ProxyNode{
+			Name: extractSOCKSNodeName(server, port, fragment, query),
+			Type: scheme, Server: server, Port: port, UUID: username, Password: password,
+			UDP: true, Options: make(map[string]any),
 		}
-		server = parsed.Hostname()
-		port = getPort(parsed)
-		if parsed.User != nil {
-			username = parsed.User.Username()
-			password, _ = parsed.User.Password()
-		}
+		applySOCKSGOSTOptions(node, query.Get("gost"))
+		return node, nil
 	}
 
-	if server == "" {
-		return nil, fmt.Errorf("SOCKS 链接缺少服务器地址")
-	}
-	if port == 0 {
-		port = 1080
-	}
-
-	query, _ := url.ParseQuery(queryString)
-	nodeName := extractSOCKSNodeName(server, port, fragment, query)
-
-	node := &ProxyNode{
-		Name:     nodeName,
-		Type:     scheme,
-		Server:   server,
-		Port:     port,
-		UUID:     username,
-		Password: password,
-		UDP:      true,
-		Options:  make(map[string]interface{}),
-	}
-
-	applySOCKSGOSTOptions(node, query.Get("gost"))
-	return node, nil
+	// 走标准 URL 解析逻辑
+	return parseGenericNode(link, scheme, func(n *ProxyNode, q url.Values, p *url.URL) {
+		extractAuthToNode(n, p, false)
+		n.UDP = true
+		n.Name = extractSOCKSNodeName(n.Server, n.Port, getFragment(p, ""), q)
+	})
 }
 
 func parseHTTP(link string) (*ProxyNode, error) {
-	isTLS := strings.HasPrefix(link, "https://")
 	return parseGenericNode(link, "http", func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.UUID = p.User.Username()
-		n.Password, _ = p.User.Password()
-		n.TLS = isTLS
-		if isTLS {
+		extractAuthToNode(n, p, false)
+		if n.TLS = strings.HasPrefix(link, "https://"); n.TLS {
 			applyTLSOptions(n, q, n.Server)
 		}
 	})
 }
 
 func parseWireGuard(link string) (*ProxyNode, error) {
-	parsed, err := url.Parse(link)
-	if err != nil {
-		return nil, fmt.Errorf("WireGuard 链接解析失败: %v", err)
-	}
+	return parseGenericNode(link, "wireguard", func(n *ProxyNode, q url.Values, p *url.URL) {
+		n.UDP = q.Get("udp") == "1" || q.Get("udp") == "true" || q.Get("udp") == ""
+		n.Options["public-key"] = q.Get("publicKey")
+		n.Options["private-key"] = q.Get("privateKey")
+		n.Options["udp"] = n.UDP
 
-	query := parsed.Query()
-	publicKey := query.Get("publicKey")
-	privateKey := query.Get("privateKey")
-	ipAddr := query.Get("ip")
-
-	if publicKey == "" || privateKey == "" {
-		return nil, fmt.Errorf("WireGuard 缺少必需参数")
-	}
-
-	node := &ProxyNode{
-		Name:    getFragment(parsed, fmt.Sprintf("WG-%s:%s", parsed.Hostname(), parsed.Port())),
-		Type:    "wireguard",
-		Server:  parsed.Hostname(),
-		Port:    getPort(parsed),
-		UDP:     true, // WG 默认开启 UDP
-		Options: make(map[string]interface{}),
-	}
-
-	node.Options["public-key"] = publicKey
-	node.Options["private-key"] = privateKey
-
-	if ipAddr != "" {
-		ips := strings.Split(ipAddr, ",")
-		node.Options["ip"] = strings.TrimSpace(ips[0])
-		if len(ips) > 1 {
-			node.Options["ipv6"] = strings.TrimSpace(ips[1])
+		if ipAddr := q.Get("ip"); ipAddr != "" {
+			ips := strings.Split(ipAddr, ",")
+			n.Options["ip"] = strings.TrimSpace(ips[0])
+			if len(ips) > 1 {
+				n.Options["ipv6"] = strings.TrimSpace(ips[1])
+			}
 		}
-	}
 
-	if mtu := query.Get("mtu"); mtu != "" {
-		if mtuInt, err := strconv.Atoi(mtu); err == nil {
-			node.Options["mtu"] = mtuInt
+		if mtu, err := strconv.Atoi(q.Get("mtu")); err == nil {
+			n.Options["mtu"] = mtu
 		}
-	}
-
-	if udp := query.Get("udp"); udp != "" {
-		node.UDP = (udp == "1" || udp == "true")
-	}
-	node.Options["udp"] = node.UDP
-
-	if psk := query.Get("presharedKey"); psk != "" {
-		node.Options["preshared-key"] = psk
-	}
-	if reserved := query.Get("reserved"); reserved != "" {
-		node.Options["reserved"] = reserved
-	}
-	if keepalive := query.Get("keepalive"); keepalive != "" {
-		if k, err := strconv.Atoi(keepalive); err == nil {
-			node.Options["keepalive"] = k
+		if psk := q.Get("presharedKey"); psk != "" {
+			n.Options["preshared-key"] = psk
 		}
-	}
-
-	return node, nil
+		if reserved := q.Get("reserved"); reserved != "" {
+			n.Options["reserved"] = reserved
+		}
+		if k, err := strconv.Atoi(q.Get("keepalive")); err == nil {
+			n.Options["keepalive"] = k
+		}
+	})
 }
 
-// ==========================================
-// 协议专属解析辅助函数 (Protocol Helpers)
-// ==========================================
+func extractAuthToNode(n *ProxyNode, p *url.URL, preferPwd bool) {
+	if p.User == nil {
+		return
+	}
+	if preferPwd {
+		n.Password = p.User.Username()
+		if pwd, ok := p.User.Password(); ok && pwd != "" {
+			n.Password = pwd
+		}
+	} else {
+		n.UUID = p.User.Username()
+		n.Password, _ = p.User.Password()
+	}
+}
 
-func extractSSAuth(parsed *url.URL) (method, password string) {
-	if parsed.User != nil {
-		authInfo := parsed.User.String()
-		if parts := strings.SplitN(authInfo, ":", 2); len(parts) == 2 {
-			return parts[0], parts[1]
-		} else if decoded, err := DecodeBase64(authInfo); err == nil {
-			if dParts := strings.SplitN(decoded, ":", 2); len(dParts) == 2 {
-				return dParts[0], dParts[1]
-			}
+func extractSSAuth(parsed *url.URL) (string, string) {
+	if parsed.User == nil {
+		return "", ""
+	}
+	if parts := strings.SplitN(parsed.User.String(), ":", 2); len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	if decoded, err := DecodeBase64(parsed.User.String()); err == nil {
+		if dParts := strings.SplitN(decoded, ":", 2); len(dParts) == 2 {
+			return dParts[0], dParts[1]
 		}
 	}
 	return "", ""
 }
 
 func parseSSPlugin(node *ProxyNode, query url.Values) {
-	pluginStr := query.Get("plugin")
-	if pluginStr == "" {
-		return
-	}
+	if pluginStr := query.Get("plugin"); pluginStr != "" {
+		parts := strings.Split(pluginStr, ";")
+		name := strings.TrimSpace(parts[0])
+		if name == "simple-obfs" || name == "obfs-local" {
+			name = "obfs"
+		}
 
-	parts := strings.Split(pluginStr, ";")
-	pluginName := strings.TrimSpace(parts[0])
-	switch pluginName {
-	case "simple-obfs", "obfs-local":
-		pluginName = "obfs"
-	case "v2ray-plugin":
-		pluginName = "v2ray-plugin"
-	}
-
-	node.Options["plugin"] = pluginName
-	pluginOpts := make(map[string]interface{})
-
-	for _, part := range parts[1:] {
-		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if len(kv) == 2 {
-			key, val := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
-			switch key {
-			case "obfs":
-				pluginOpts["mode"] = val
-			case "obfs-host":
-				pluginOpts["host"] = val
-			case "obfs-uri", "path":
-				pluginOpts["path"] = val
-			case "tls":
-				pluginOpts["tls"] = true
-			default:
-				pluginOpts[key] = val
+		node.Options["plugin"] = name
+		opts := make(map[string]any)
+		for _, part := range parts[1:] {
+			if kv := strings.SplitN(strings.TrimSpace(part), "=", 2); len(kv) == 2 {
+				k, v := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
+				switch k {
+				case "obfs":
+					opts["mode"] = v
+				case "obfs-host":
+					opts["host"] = v
+				case "obfs-uri", "path":
+					opts["path"] = v
+				case "tls":
+					opts["tls"] = true
+				default:
+					opts[k] = v
+				}
 			}
 		}
-	}
-
-	if len(pluginOpts) > 0 {
-		node.Options["plugin-opts"] = pluginOpts
+		if len(opts) > 0 {
+			node.Options["plugin-opts"] = opts
+		}
 	}
 }
 
 func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error) {
-	auth := strings.SplitN(authPart, ":", 2)
-	server := strings.SplitN(serverPart, ":", 2)
+	auth, server := strings.SplitN(authPart, ":", 2), strings.SplitN(serverPart, ":", 2)
 	if len(auth) != 2 || len(server) != 2 {
 		return nil, fmt.Errorf("SS 格式解析失败")
 	}
@@ -517,15 +398,10 @@ func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error)
 	parsed, _ := url.Parse(originalLink)
 
 	node := &ProxyNode{
-		Name:     getFragment(parsed, fmt.Sprintf("SS-%s:%d", server[0], port)),
-		Type:     "ss",
-		Server:   server[0],
-		Port:     port,
-		Cipher:   auth[0],
-		Password: auth[1],
-		Options:  make(map[string]interface{}),
+		Name: getFragment(parsed, fmt.Sprintf("SS-%s:%d", server[0], port)),
+		Type: "ss", Server: server[0], Port: port, Cipher: auth[0], Password: auth[1],
+		Options: make(map[string]any),
 	}
-
 	if parsed != nil {
 		parseSSPlugin(node, parsed.Query())
 	}
@@ -535,49 +411,44 @@ func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error)
 func splitURLComponents(raw string) (base, query, fragment string) {
 	base = raw
 	if idx := strings.Index(base, "?"); idx != -1 {
-		query = base[idx+1:]
-		base = base[:idx]
-		if idx2 := strings.Index(query, "#"); idx2 != -1 {
-			fragment = query[idx2+1:]
-			query = query[:idx2]
+		query, base = base[idx+1:], base[:idx]
+		if i2 := strings.Index(query, "#"); i2 != -1 {
+			fragment, query = query[i2+1:], query[:i2]
 		}
 	} else if idx := strings.Index(base, "#"); idx != -1 {
-		fragment = base[idx+1:]
-		base = base[:idx]
+		fragment, base = base[idx+1:], base[:idx]
 	}
 	return
 }
 
 func parseSOCKSBase64Auth(decoded string) (server string, port int, username, password string) {
-	decodedURL, _ := url.QueryUnescape(decoded)
-	parts := strings.SplitN(decodedURL, "@", 2)
-	if len(parts) == 2 {
-		authInfo := parts[0]
-		if lastColonIdx := strings.LastIndex(authInfo, ":"); lastColonIdx != -1 {
-			username, password = authInfo[:lastColonIdx], authInfo[lastColonIdx+1:]
+	dec, _ := url.QueryUnescape(decoded)
+	if parts := strings.SplitN(dec, "@", 2); len(parts) == 2 {
+		if idx := strings.LastIndex(parts[0], ":"); idx != -1 {
+			username, password = parts[0][:idx], parts[0][idx+1:]
 		} else {
-			username = authInfo
+			username = parts[0]
 		}
 
-		serverParts := strings.SplitN(parts[1], ":", 2)
-		server = serverParts[0]
-		if len(serverParts) == 2 {
-			port, _ = strconv.Atoi(serverParts[1])
+		sp := strings.SplitN(parts[1], ":", 2)
+		server = sp[0]
+		if len(sp) == 2 {
+			port, _ = strconv.Atoi(sp[1])
 		}
 	}
 	return
 }
 
-func extractSOCKSNodeName(server string, port int, fragment string, query url.Values) string {
-	if remarks := query.Get("remarks"); remarks != "" {
-		if dec, err := url.QueryUnescape(remarks); err == nil {
-			return dec
+func extractSOCKSNodeName(server string, port int, fragment string, q url.Values) string {
+	if rm := q.Get("remarks"); rm != "" {
+		if d, err := url.QueryUnescape(rm); err == nil {
+			return d
 		}
-		return remarks
+		return rm
 	}
 	if fragment != "" {
-		if dec, err := url.QueryUnescape(fragment); err == nil {
-			return dec
+		if d, err := url.QueryUnescape(fragment); err == nil {
+			return d
 		}
 		return fragment
 	}
@@ -588,23 +459,16 @@ func applySOCKSGOSTOptions(node *ProxyNode, gostParam string) {
 	if gostParam == "" {
 		return
 	}
-	gostJSON, err := DecodeBase64(gostParam)
-	if err != nil {
-		return
-	}
-
-	var gostConfig map[string]interface{}
-	if err := json.Unmarshal([]byte(gostJSON), &gostConfig); err == nil {
-		if route, ok := gostConfig["route"].(string); ok && route == "ws" {
+	if gj, err := DecodeBase64(gostParam); err == nil {
+		var cfg map[string]any
+		if json.Unmarshal([]byte(gj), &cfg) == nil && cfg["route"] == "ws" {
 			node.Network = "ws"
-			wsOpts := make(map[string]interface{})
-			if path, ok := gostConfig["path"].(string); ok && path != "" {
-				wsOpts["path"] = path
+			wsOpts := make(map[string]any)
+			if p, ok := cfg["path"].(string); ok && p != "" {
+				wsOpts["path"] = p
 			}
-			if host, ok := gostConfig["host"].(string); ok && host != "" {
-				// Keep types consistent with optMap/optStr (map[string]interface{}), otherwise
-				// vmessToLink() won't see the Host header.
-				wsOpts["headers"] = map[string]interface{}{"Host": host}
+			if h, ok := cfg["host"].(string); ok && h != "" {
+				wsOpts["headers"] = map[string]any{"Host": h}
 			}
 			if len(wsOpts) > 0 {
 				node.Options["ws-opts"] = wsOpts
@@ -613,10 +477,6 @@ func applySOCKSGOSTOptions(node *ProxyNode, gostParam string) {
 	}
 }
 
-// ==========================================
-// 节点公共修饰函数 (Modifiers)
-// ==========================================
-
 func parseGenericNode(link, nodeType string, modifier func(*ProxyNode, url.Values, *url.URL)) (*ProxyNode, error) {
 	parsed, err := url.Parse(link)
 	if err != nil {
@@ -624,95 +484,82 @@ func parseGenericNode(link, nodeType string, modifier func(*ProxyNode, url.Value
 	}
 
 	node := &ProxyNode{
-		Name:    getFragment(parsed, fmt.Sprintf("%s-%s:%s", strings.ToUpper(nodeType), parsed.Hostname(), parsed.Port())),
-		Type:    nodeType,
-		Server:  parsed.Hostname(),
-		Port:    getPort(parsed),
-		Options: make(map[string]interface{}),
+		Name: getFragment(parsed, fmt.Sprintf("%s-%s:%s", strings.ToUpper(nodeType), parsed.Hostname(), parsed.Port())),
+		Type: nodeType, Server: parsed.Hostname(), Port: getPort(parsed),
+		Options: make(map[string]any),
 	}
-
 	modifier(node, parsed.Query(), parsed)
 	return node, nil
 }
 
-func applyTLSOptions(node *ProxyNode, query url.Values, defaultSNI string) {
-	node.Options["skip-cert-verify"] = isTrue(query.Get("allowInsecure")) || isTrue(query.Get("insecure")) || isTrue(query.Get("allow_insecure"))
-	node.Options["servername"] = firstNotEmpty(query.Get("sni"), query.Get("peer"), defaultSNI)
-
-	if fp := query.Get("fp"); fp != "" {
+func applyTLSOptions(node *ProxyNode, q url.Values, defSNI string) {
+	node.Options["skip-cert-verify"] = isTrue(q.Get("allowInsecure")) || isTrue(q.Get("insecure")) || isTrue(q.Get("allow_insecure"))
+	node.Options["servername"] = firstNotEmpty(q.Get("sni"), q.Get("peer"), defSNI)
+	if fp := q.Get("fp"); fp != "" {
 		node.Options["client-fingerprint"] = fp
 	}
-	if alpn := query.Get("alpn"); alpn != "" {
+	if alpn := q.Get("alpn"); alpn != "" {
 		node.Options["alpn"] = strings.Split(alpn, ",")
 	}
 }
 
-func applyTransportOptions(node *ProxyNode, query url.Values) {
-	path, host := query.Get("path"), query.Get("host")
-
+func applyTransportOptions(node *ProxyNode, q url.Values) {
+	path, host := q.Get("path"), q.Get("host")
 	switch node.Network {
 	case "ws":
-		wsOpts := make(map[string]interface{})
+		opts := make(map[string]any)
 		if path != "" {
-			wsOpts["path"] = path
+			opts["path"] = path
 		}
 		if host != "" {
-			// Keep types consistent with optMap/optStr (map[string]interface{}).
-			wsOpts["headers"] = map[string]interface{}{"Host": host}
+			opts["headers"] = map[string]any{"Host": host}
 		}
-		if len(wsOpts) > 0 {
-			node.Options["ws-opts"] = wsOpts
+		if len(opts) > 0 {
+			node.Options["ws-opts"] = opts
 		}
 	case "grpc":
-		if serviceName := firstNotEmpty(query.Get("serviceName"), path); serviceName != "" {
-			node.Options["grpc-opts"] = map[string]interface{}{"grpc-service-name": serviceName}
+		if srv := firstNotEmpty(q.Get("serviceName"), path); srv != "" {
+			node.Options["grpc-opts"] = map[string]any{"grpc-service-name": srv}
 		}
 	case "tcp":
-		if hType := query.Get("headerType"); hType != "" {
+		if hType := q.Get("headerType"); hType != "" {
 			node.Options["header-type"] = hType
 		}
 	}
 }
 
-func applyTransportMapping(node *ProxyNode, network, path, host, obfsType string) {
+func applyTransportMapping(node *ProxyNode, network, path, host, obfs string) {
 	switch network {
 	case "tcp":
-		if obfsType == "http" {
+		if obfs == "http" {
 			node.Network = "http"
-			httpOpts := map[string]interface{}{"method": "GET", "path": []string{path}}
+			opts := map[string]any{"method": "GET", "path": []string{path}}
 			if host != "" {
-				httpOpts["headers"] = map[string]interface{}{"Host": []string{host}}
+				opts["headers"] = map[string]any{"Host": []string{host}}
 			}
-			node.Options["http-opts"] = httpOpts
+			node.Options["http-opts"] = opts
 		}
 	case "ws":
-		node.Options["ws-opts"] = map[string]interface{}{
-			"path":    path,
-			"headers": map[string]interface{}{"Host": host},
-		}
+		node.Options["ws-opts"] = map[string]any{"path": path, "headers": map[string]any{"Host": host}}
 	case "grpc":
-		node.Options["grpc-opts"] = map[string]interface{}{"grpc-service-name": path}
+		node.Options["grpc-opts"] = map[string]any{"grpc-service-name": path}
 	case "h2":
-		node.Options["h2-opts"] = map[string]interface{}{"path": path, "host": []string{host}}
+		node.Options["h2-opts"] = map[string]any{"path": path, "host": []string{host}}
 	case "httpupgrade":
 		node.Network = "ws"
-		node.Options["ws-opts"] = map[string]interface{}{
-			"path":               path,
-			"headers":            map[string]interface{}{"Host": host},
-			"v2ray-http-upgrade": true,
-		}
+		node.Options["ws-opts"] = map[string]any{"path": path, "headers": map[string]any{"Host": host}, "v2ray-http-upgrade": true}
 	}
 }
 
-func applyRealityOptions(node *ProxyNode, query url.Values) {
-	reality := make(map[string]interface{})
-	if pbk := query.Get("pbk"); pbk != "" {
+func applyRealityOptions(node *ProxyNode, q url.Values) {
+	reality := make(map[string]any)
+	if pbk := q.Get("pbk"); pbk != "" {
 		reality["public-key"] = pbk
 	}
-	if sid := query.Get("sid"); sid != "" {
+	if sid := q.Get("sid"); sid != "" {
 		reality["short-id"] = sid
 	}
-	if pqv := query.Get("pqv"); pqv != "" {
+	if pqv := q.Get("pqv"); pqv != "" {
 		reality["pqv"] = pqv
 	}
 	if len(reality) > 0 {
@@ -720,102 +567,61 @@ func applyRealityOptions(node *ProxyNode, query url.Values) {
 	}
 }
 
-func applyHysteriaBandwidth(node *ProxyNode, query url.Values, upKey, downKey string) {
-	if up := query.Get(upKey); up != "" {
+func applyHysteriaBandwidth(node *ProxyNode, q url.Values, upK, downK string) {
+	if up := q.Get(upK); up != "" {
 		node.Options["up"] = strings.TrimSuffix(up, " mbps") + " mbps"
 	}
-	if down := query.Get(downKey); down != "" {
+	if down := q.Get(downK); down != "" {
 		node.Options["down"] = strings.TrimSuffix(down, " mbps") + " mbps"
 	}
 }
 
-// ==========================================
-// 基础工具函数 (Base Utilities)
-// ==========================================
+func isTrue(s string) bool { return s == "1" || s == "true" }
 
-func isTrue(s string) bool {
-	return s == "1" || s == "true"
-}
-
-// DecodeBase64 经过优化的 Base64 解码器，自动处理 URL 编码变体和缺失的 Padding
 func DecodeBase64(s string) (string, error) {
 	s = strings.TrimSpace(s)
-	// Subscriptions sometimes insert whitespace or other invisible characters
-	// into base64 payloads (newlines/spaces/NBSP/etc). To make parsing robust,
-	// keep ONLY base64-allowed characters and drop everything else.
-	//
-	// Allowed:
-	// - A-Z a-z 0-9
-	// - + / (Std base64)
-	// - - _ (URL-safe base64)
-	// - = (padding)
-	s = strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'A' && r <= 'Z':
+	clean := strings.Map(func(r rune) rune {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '+' || r == '/' || r == '-' || r == '_' || r == '=' {
 			return r
-		case r >= 'a' && r <= 'z':
-			return r
-		case r >= '0' && r <= '9':
-			return r
-		case r == '+' || r == '/' || r == '-' || r == '_' || r == '=':
-			return r
-		default:
-			return -1
 		}
+		return -1
 	}, s)
-	if s == "" {
+
+	if clean == "" {
 		return "", nil
 	}
 
-	// 支持的解码器
-	encodings := []*base64.Encoding{
-		base64.StdEncoding,
-		base64.URLEncoding,
-		base64.RawStdEncoding,
-		base64.RawURLEncoding,
+	// 统一转为标准 Base64 字典并补全 Padding，避免多次使用不同 Encoder 重试
+	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "-", "+"), "_", "/")
+	if pad := len(clean) % 4; pad != 0 {
+		clean += strings.Repeat("=", 4-pad)
 	}
 
-	// 1. 尝试直接解码
-	for _, enc := range encodings {
-		if b, err := enc.DecodeString(s); err == nil {
-			return string(b), nil
-		}
+	b, err := base64.StdEncoding.DecodeString(clean)
+	if err != nil {
+		return "", fmt.Errorf("Base64 解析失败")
 	}
-
-	// 2. 尝试修复字符并补充 Padding 后解码
-	clean := strings.ReplaceAll(strings.ReplaceAll(s, "-", "+"), "_", "/")
-	if m := len(clean) % 4; m != 0 {
-		clean += strings.Repeat("=", 4-m)
-	}
-
-	if b, err := base64.StdEncoding.DecodeString(clean); err == nil {
-		return string(b), nil
-	}
-
-	return "", fmt.Errorf("Base64 解码失败")
+	return string(b), nil
 }
 
 func TryDecodeNodeList(content string) string {
 	if containsNodeLinks(content) {
 		return content
 	}
-	if decoded, err := DecodeBase64(content); err == nil && containsNodeLinks(decoded) {
-		return decoded
+	if d, err := DecodeBase64(content); err == nil && containsNodeLinks(d) {
+		return d
 	}
 
-	lines := strings.Split(content, "\n")
 	var result []string
 	changed := false
-	for _, line := range lines {
+	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
-		if decoded, err := DecodeBase64(line); err == nil && (containsNodeLinks(decoded) || strings.Contains(decoded, "://")) {
-			result = append(result, decoded)
-			changed = true
+		if d, err := DecodeBase64(line); err == nil && (containsNodeLinks(d) || strings.Contains(d, "://")) {
+			result, changed = append(result, d), true
 		} else {
 			result = append(result, line)
 		}
 	}
-
 	if changed {
 		return strings.Join(result, "\n")
 	}
@@ -823,8 +629,7 @@ func TryDecodeNodeList(content string) string {
 }
 
 func containsNodeLinks(s string) bool {
-	protocols := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://"}
-	for _, p := range protocols {
+	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://"} {
 		if strings.Contains(s, p) {
 			return true
 		}
@@ -832,14 +637,14 @@ func containsNodeLinks(s string) bool {
 	return false
 }
 
-func getString(m map[string]interface{}, key, def string) string {
+func getString(m map[string]any, key, def string) string {
 	if v, ok := m[key].(string); ok {
 		return v
 	}
 	return def
 }
 
-func getInt(m map[string]interface{}, key string) int {
+func getInt(m map[string]any, key string) int {
 	switch v := m[key].(type) {
 	case float64:
 		return int(v)
@@ -850,7 +655,7 @@ func getInt(m map[string]interface{}, key string) int {
 	return 0
 }
 
-func getFloat(m map[string]interface{}, key string) float64 {
+func getFloat(m map[string]any, key string) float64 {
 	switch v := m[key].(type) {
 	case float64:
 		return v
@@ -865,7 +670,7 @@ func getFloat(m map[string]interface{}, key string) float64 {
 	return 0
 }
 
-func getBool(m map[string]interface{}, key string, def bool) bool {
+func getBool(m map[string]any, key string, def bool) bool {
 	if v, ok := m[key].(bool); ok {
 		return v
 	}
@@ -875,29 +680,29 @@ func getBool(m map[string]interface{}, key string, def bool) bool {
 	return def
 }
 
-func getFragment(parsed *url.URL, def string) string {
-	if parsed.Fragment != "" {
-		if d, err := url.QueryUnescape(parsed.Fragment); err == nil {
+func getFragment(p *url.URL, def string) string {
+	if p.Fragment != "" {
+		if d, err := url.QueryUnescape(p.Fragment); err == nil {
 			return d
 		}
-		return parsed.Fragment
+		return p.Fragment
 	}
 	return def
 }
 
-func getPort(parsed *url.URL) int {
-	if p := parsed.Port(); p != "" {
-		i, _ := strconv.Atoi(p)
+func getPort(p *url.URL) int {
+	if port := p.Port(); port != "" {
+		i, _ := strconv.Atoi(port)
 		return i
 	}
-	if parsed.Scheme == "ss" || parsed.Scheme == "ssr" {
+	if p.Scheme == "ss" || p.Scheme == "ssr" {
 		return 8388
 	}
 	return 443
 }
 
-func firstNotEmpty(values ...string) string {
-	for _, v := range values {
+func firstNotEmpty(vals ...string) string {
+	for _, v := range vals {
 		if v != "" {
 			return v
 		}
