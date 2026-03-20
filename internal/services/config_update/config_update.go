@@ -1097,6 +1097,30 @@ func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames
 	}
 }
 
+func (s *ConfigUpdateService) GenerateSubscriptionName(ctx *SubscriptionContext) string {
+	if ctx.Status != StatusNormal {
+		switch ctx.Status {
+		case StatusExpired:
+			return "订阅已过期"
+		case StatusInactive:
+			return "订阅已失效"
+		case StatusAccountAbnormal:
+			return "账户异常"
+		case StatusDeviceOverLimit:
+			return "设备超限"
+		case StatusSystemError:
+			return "系统繁忙"
+		default:
+			return "订阅异常"
+		}
+	}
+	expireTimeStr := "无限期"
+	if !ctx.Subscription.ExpireTime.IsZero() {
+		expireTimeStr = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
+	}
+	return fmt.Sprintf("到期: %s", expireTimeStr)
+}
+
 func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string, subName string) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("name: %s\nport: 7890\nsocks-port: 7891\nallow-lan: true\nmode: Rule\nlog-level: info\nexternal-controller: 127.0.0.1:9090\n\nproxies:\n", s.escapeYAMLString(subName)))
