@@ -290,8 +290,10 @@ func parseHTTP(link string) (*ProxyNode, error) {
 func parseWireGuard(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "wireguard", func(n *ProxyNode, q url.Values, p *url.URL) {
 		n.UDP = q.Get("udp") == "1" || q.Get("udp") == "true" || q.Get("udp") == ""
-		n.Options["public-key"] = q.Get("publicKey")
-		n.Options["private-key"] = q.Get("privateKey")
+
+		// 手动解析原始查询字符串以保留 Base64 中的 + 字符
+		n.Options["public-key"] = extractRawQueryParam(p.RawQuery, "publicKey")
+		n.Options["private-key"] = extractRawQueryParam(p.RawQuery, "privateKey")
 		n.Options["udp"] = n.UDP
 
 		if ipAddr := q.Get("ip"); ipAddr != "" {
@@ -315,6 +317,18 @@ func parseWireGuard(link string) (*ProxyNode, error) {
 			n.Options["keepalive"] = k
 		}
 	})
+}
+
+// extractRawQueryParam 从原始查询字符串中提取参数值，保留 + 字符
+func extractRawQueryParam(rawQuery, key string) string {
+	params := strings.Split(rawQuery, "&")
+	prefix := key + "="
+	for _, param := range params {
+		if strings.HasPrefix(param, prefix) {
+			return strings.TrimPrefix(param, prefix)
+		}
+	}
+	return ""
 }
 
 func extractAuthToNode(n *ProxyNode, p *url.URL, preferPwd bool) {
