@@ -745,6 +745,121 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	var links, invalidLinks []string
 	matchedPositions := make(map[int]bool)
 
+	// VMess base64 is sometimes wrapped with newlines/spaces in subscriptions.
+	// The regex in `nodeLinkPatterns` stops at whitespace and may truncate the payload,
+	// causing fields like `host` to be missing after decoding/re-encoding.
+	// Do a lightweight scan for `vmess://` first and allow whitespace inside the base64 segment.
+	{
+		const prefix = "vmess://"
+		protocolPrefixes := []string{
+			"vmess://", "vless://", "trojan://", "ss://", "ssr://",
+			"hysteria://", "hysteria2://", "tuic://", "naive+https://", "naive://",
+			"anytls://", "socks5://", "socks://", "http://", "https://", "wg://",
+		}
+		isSpace := func(b byte) bool {
+			switch b {
+			case ' ', '\t', '\n', '\r', '\v', '\f':
+				return true
+			default:
+				return false
+			}
+		}
+		isVmessB64Char := func(b byte) bool {
+			switch {
+			case b >= 'A' && b <= 'Z':
+				return true
+			case b >= 'a' && b <= 'z':
+				return true
+			case b >= '0' && b <= '9':
+				return true
+			case b == '+' || b == '/' || b == '-' || b == '_' || b == '=':
+				return true
+			default:
+				return false
+			}
+		}
+		start := 0
+		for {
+			idx := strings.Index(content[start:], prefix)
+			if idx == -1 {
+				break
+			}
+			start = start + idx
+
+			// Skip if this position has already been claimed by a previous match.
+			if matchedPositions[start] {
+				start++
+				continue
+			}
+
+			j := start + len(prefix)
+			seenPadding := false
+
+			// Scan until we hit a non-base64 char. If we see '=' padding, stop at the first whitespace after it.
+			end := j
+		scanLoop:
+			for end < len(content) {
+				// Stop if another protocol starts here (handles adjacent links without whitespace).
+				for _, p := range protocolPrefixes {
+					if strings.HasPrefix(content[end:], p) {
+						break scanLoop
+					}
+				}
+
+				ch := content[end]
+				if ch == '#' {
+					end++
+					for end < len(content) && !isSpace(content[end]) {
+						end++
+					}
+					break
+				}
+
+				if isSpace(ch) {
+					if seenPadding {
+						break
+					}
+					end++
+					continue
+				}
+
+				if isVmessB64Char(ch) {
+					if ch == '=' {
+						seenPadding = true
+					}
+					end++
+					continue
+				}
+
+				break
+			}
+
+			matchStr := content[start:end]
+			if len(matchStr) > len(prefix) {
+				// Avoid overlaps with regex matches / other scanner results.
+				isOverlapped := false
+				for pos := start; pos < end; pos++ {
+					if matchedPositions[pos] {
+						isOverlapped = true
+						break
+					}
+				}
+				if !isOverlapped {
+					for pos := start; pos < end; pos++ {
+						matchedPositions[pos] = true
+					}
+					if s.isValidNodeLink(matchStr) {
+						links = append(links, matchStr)
+					} else {
+						invalidLinks = append(invalidLinks, matchStr)
+					}
+				}
+			}
+
+			start = end
+		}
+	}
+
 	for _, re := range nodeLinkPatterns {
 		for _, match := range re.FindAllStringSubmatchIndex(content, -1) {
 			if len(match) < 4 {

@@ -602,7 +602,9 @@ func applySOCKSGOSTOptions(node *ProxyNode, gostParam string) {
 				wsOpts["path"] = path
 			}
 			if host, ok := gostConfig["host"].(string); ok && host != "" {
-				wsOpts["headers"] = map[string]string{"Host": host}
+				// Keep types consistent with optMap/optStr (map[string]interface{}), otherwise
+				// vmessToLink() won't see the Host header.
+				wsOpts["headers"] = map[string]interface{}{"Host": host}
 			}
 			if len(wsOpts) > 0 {
 				node.Options["ws-opts"] = wsOpts
@@ -655,7 +657,8 @@ func applyTransportOptions(node *ProxyNode, query url.Values) {
 			wsOpts["path"] = path
 		}
 		if host != "" {
-			wsOpts["headers"] = map[string]string{"Host": host}
+			// Keep types consistent with optMap/optStr (map[string]interface{}).
+			wsOpts["headers"] = map[string]interface{}{"Host": host}
 		}
 		if len(wsOpts) > 0 {
 			node.Options["ws-opts"] = wsOpts
@@ -685,7 +688,7 @@ func applyTransportMapping(node *ProxyNode, network, path, host, obfsType string
 	case "ws":
 		node.Options["ws-opts"] = map[string]interface{}{
 			"path":    path,
-			"headers": map[string]string{"Host": host},
+			"headers": map[string]interface{}{"Host": host},
 		}
 	case "grpc":
 		node.Options["grpc-opts"] = map[string]interface{}{"grpc-service-name": path}
@@ -695,7 +698,7 @@ func applyTransportMapping(node *ProxyNode, network, path, host, obfsType string
 		node.Network = "ws"
 		node.Options["ws-opts"] = map[string]interface{}{
 			"path":               path,
-			"headers":            map[string]string{"Host": host},
+			"headers":            map[string]interface{}{"Host": host},
 			"v2ray-http-upgrade": true,
 		}
 	}
@@ -737,7 +740,29 @@ func isTrue(s string) bool {
 // DecodeBase64 经过优化的 Base64 解码器，自动处理 URL 编码变体和缺失的 Padding
 func DecodeBase64(s string) (string, error) {
 	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(strings.ReplaceAll(s, "\n", ""), "\r", "")
+	// Subscriptions sometimes insert whitespace or other invisible characters
+	// into base64 payloads (newlines/spaces/NBSP/etc). To make parsing robust,
+	// keep ONLY base64-allowed characters and drop everything else.
+	//
+	// Allowed:
+	// - A-Z a-z 0-9
+	// - + / (Std base64)
+	// - - _ (URL-safe base64)
+	// - = (padding)
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '+' || r == '/' || r == '-' || r == '_' || r == '=':
+			return r
+		default:
+			return -1
+		}
+	}, s)
 	if s == "" {
 		return "", nil
 	}
