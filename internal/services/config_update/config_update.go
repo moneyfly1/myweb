@@ -39,7 +39,7 @@ const (
 )
 
 // 优化：将15个单独的正则合并为一个，极大提高匹配性能
-var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?)://[^\s]+)`)
+var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
 
 var supportedClashTypes = map[string]bool{
 	"vmess": true, "vless": true, "trojan": true, "ss": true, "ssr": true,
