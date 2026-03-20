@@ -546,12 +546,17 @@ func (s *Scheduler) shouldRunNodeUpdate(intervalSeconds int) (string, bool) {
 		return "从未更新", true
 	}
 
-	lastUpdateTime, err := time.Parse("2006-01-02T15:04:05", config.Value)
+	// 修复时区问题：存储的时间字符串是北京时间，需要在北京时区中解析
+	beijingLoc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		return config.Value, true
 	}
 
-	lastUpdateTime = utils.ToBeijingTime(lastUpdateTime)
+	lastUpdateTime, err := time.ParseInLocation("2006-01-02T15:04:05", config.Value, beijingLoc)
+	if err != nil {
+		return config.Value, true
+	}
+
 	now := utils.GetBeijingTime()
 
 	elapsed := now.Sub(lastUpdateTime)
