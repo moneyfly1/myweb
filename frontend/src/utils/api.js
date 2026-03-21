@@ -552,7 +552,7 @@ export const adminAPI = {
   getEmailDetail: (id) => api.get(`/admin/email-queue/${id}`),
   retryEmail: (id) => api.post(`/admin/email-queue/${id}/retry`),
   deleteEmailFromQueue: (id) => api.delete(`/admin/email-queue/${id}`),
-  clearEmailQueue: (status) => api.post(`/admin/email-queue/clear${status ? `?status=${status}` : ''}`),
+  clearEmailQueue: (status) => api.post('/admin/email-queue/clear', null, { params: status ? { status } : {} }),
   getEmailQueueStatistics: () => api.get('/admin/email-queue/statistics'),
   getProfile: () => api.get('/admin/profile'),
   updateProfile: (data) => api.put('/admin/profile', data),
