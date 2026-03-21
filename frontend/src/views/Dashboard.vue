@@ -11,7 +11,26 @@
         </div>
       </div>
     </div>
-    <div class="stats-grid">
+    <!-- 到期预警横幅 -->
+    <el-alert
+      v-if="getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) > 0 && getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) <= 7"
+      :title="`您的订阅将在 ${getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate)} 天后到期，请及时续费！`"
+      type="warning"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px;"
+    >
+      <template #default>
+        <router-link to="/packages">
+          <el-button type="warning" size="small" style="margin-top:4px;">立即续费</el-button>
+        </router-link>
+      </template>
+    </el-alert>
+    <!-- 骨架屏 -->
+    <div v-if="dashboardLoading" class="stats-grid">
+      <el-skeleton v-for="i in 4" :key="i" :rows="3" animated style="padding:20px;background:#fff;border-radius:12px;" />
+    </div>
+    <div v-else class="stats-grid">
       <div class="stat-card level-card" :style="{ 
         borderColor: userInfo.user_level?.color || '#409eff',
         background: userInfo.user_level?.color ? `linear-gradient(135deg, ${userInfo.user_level.color}12 0%, ${userInfo.user_level.color}05 50%, ${userInfo.user_level.color}08 100%)` : 'linear-gradient(135deg, rgba(64, 158, 255, 0.08) 0%, rgba(64, 158, 255, 0.03) 50%, rgba(64, 158, 255, 0.05) 100%)',
@@ -545,6 +564,7 @@ const subscriptionInfo = ref({
   status: 'inactive'
 })
 const checkinLoading = ref(false)
+const dashboardLoading = ref(true)
 const checkedIn = ref(false)
 const handleCheckin = async () => {
   checkinLoading.value = true
@@ -782,6 +802,7 @@ const formatDate = (dateString) => {
   return date.toLocaleString('zh-CN')
 }
 const loadUserInfo = async () => {
+  dashboardLoading.value = true
   try {
     const dashboardResponse = await userAPI.getUserInfo()
     if (dashboardResponse.data && dashboardResponse.data.success) {
@@ -839,6 +860,8 @@ const loadUserInfo = async () => {
     } catch (fallbackError) {
       ElMessage.error('加载用户信息失败，请刷新页面重试')
     }
+  } finally {
+    dashboardLoading.value = false
   }
 }
 const handleAnnouncement = (notice) => {

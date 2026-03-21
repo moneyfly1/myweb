@@ -80,6 +80,9 @@
               <span class="currency">¥</span>
               <span class="amount" style="color: #f56c6c;">{{ (pkg.price * levelDiscountRate).toFixed(2) }}</span>
               <span class="period">/{{ pkg.duration_days }}天</span>
+              <el-tooltip :content="`原价 ¥${pkg.price}，${userLevel.name}等级享 ${(levelDiscountRate * 10).toFixed(1)} 折优惠`" placement="top">
+                <el-icon style="color:#909399;cursor:pointer;font-size:13px;"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
             <el-tag :type="userLevel.color ? 'info' : 'success'" size="small" :style="{ backgroundColor: userLevel.color || '#67c23a', color: '#fff', border: 'none', alignSelf: 'flex-start' }">
               {{ userLevel.name }} {{ (levelDiscountRate * 10).toFixed(1) }}折
@@ -562,7 +565,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion } from '@element-plus/icons-vue'
+import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion, QuestionFilled } from '@element-plus/icons-vue'
 import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods } from '@/utils/api'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
