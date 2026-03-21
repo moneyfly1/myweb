@@ -1,5 +1,20 @@
 <template>
   <div class="list-container subscription-container">
+    <!-- 到期预警横幅 -->
+    <el-alert
+      v-if="subscription && getRemainingDays(subscription) > 0 && getRemainingDays(subscription) <= 7"
+      :title="`订阅将在 ${getRemainingDays(subscription)} 天后到期，请及时续费！`"
+      type="warning"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px;"
+    >
+      <template #default>
+        <router-link to="/packages">
+          <el-button type="warning" size="small" style="margin-top:4px;">立即续费</el-button>
+        </router-link>
+      </template>
+    </el-alert>
     <el-card class="subscription-card">
       <template #header>
         <div class="card-header">
@@ -38,6 +53,12 @@
                 <el-tooltip content="在线设备数 / 允许最大设备数" placement="top">
                   <span>{{ subscription.onlineDevices || subscription.current_devices || 0 }}/{{ subscription.device_limit || subscription.maxDevices || 0 }}</span>
                 </el-tooltip>
+                <el-progress
+                  :percentage="Math.min(100, Math.round(((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) * 100))"
+                  :color="((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) >= 0.9 ? '#f56c6c' : ((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) >= 0.7 ? '#e6a23c' : '#67c23a'"
+                  :show-text="false"
+                  style="margin-top:4px;"
+                />
               </div>
             </div>
           </el-col>
@@ -120,7 +141,7 @@
         >
           发送到邮箱
         </el-button>
-        <router-link to="/packages" v-if="!isSubscriptionActive(subscription)">
+        <router-link to="/packages">
           <el-button
             type="warning"
             class="action-btn renew-btn"
