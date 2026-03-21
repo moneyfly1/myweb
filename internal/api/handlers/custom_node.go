@@ -43,7 +43,7 @@ func GetCustomNodes(c *gin.Context) {
 			db.Model(&models.UserCustomNode{}).Where("user_id IN ?", userIDs).Pluck("custom_node_id", &userNodeIDs)
 		}
 
-		searchPattern := "%" + search + "%"
+		searchPattern := "%" + escapedSearch + "%"
 		if len(userNodeIDs) > 0 {
 			query = query.Where("name LIKE ? OR display_name LIKE ? OR domain LIKE ? OR id IN ?",
 				searchPattern, searchPattern, searchPattern, userNodeIDs)
