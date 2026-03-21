@@ -77,6 +77,7 @@
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       class="payment-qr-dialog"
+      @close="() => { if (statusCheckTimer) { clearInterval(statusCheckTimer); statusCheckTimer = null; } }"
     >
       <div class="payment-qr-container">
         <div class="order-info-compact">
@@ -282,6 +283,7 @@ export default {
           }
         }
       } catch (error) {
+        console.error('支付状态查询失败', error)
       } finally {
         isCheckingStatus.value = false
       }
