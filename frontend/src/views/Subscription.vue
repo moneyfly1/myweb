@@ -419,25 +419,20 @@ export default {
         }
       })
     })
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
-      if (paymentStatusCheckTimer.value) {
-        clearInterval(paymentStatusCheckTimer.value)
-        paymentStatusCheckTimer.value = null
-      }
-    })
     const fetchSubscription = async () => {
       try {
         let subscriptionResponse
         try {
           subscriptionResponse = await subscriptionAPI.getUserSubscription()
         } catch (subscriptionError) {
+          console.error('获取订阅信息失败', subscriptionError)
           subscriptionResponse = null
         }
         let userResponse
         try {
           userResponse = await userAPI.getUserInfo()
         } catch (userError) {
+          console.error('获取用户信息失败', userError)
           userResponse = null
         }
         if (subscriptionResponse && subscriptionResponse.data && subscriptionResponse.data.success) {
