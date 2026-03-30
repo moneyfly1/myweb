@@ -12,41 +12,8 @@ import (
 	"cboard-go/internal/utils"
 )
 
-type EmailTemplateBuilder struct{}
-
-func NewEmailTemplateBuilder() *EmailTemplateBuilder {
-	return &EmailTemplateBuilder{}
-}
-
-func (b *EmailTemplateBuilder) GetBaseURL() string {
-	return b.getBaseURL()
-}
-
-func (b *EmailTemplateBuilder) getBaseURL() string {
-	db := database.GetDB()
-	if db != nil {
-		domain := utils.GetDomainFromDB(db)
-		if domain != "" {
-			return utils.FormatDomainURL(domain)
-		}
-	}
-
-	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
-		return baseURL
-	}
-
-	if config.AppConfig.BaseURL != "" {
-		return config.AppConfig.BaseURL
-	}
-
-	return "http://localhost:5173"
-}
-
-func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string) string {
-	currentYear := utils.GetBeijingTime().Year()
-	siteName := "网络服务"
-
-	baseTemplate := `<!DOCTYPE html>
+var (
+	baseTemplateStr = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -100,10 +67,67 @@ func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string
 </body>
 </html>`
 
-	tmpl, err := template.New("base").Parse(baseTemplate)
-	if err != nil {
-		return fmt.Sprintf(`<html><body><h2>%s</h2>%s</body></html>`, title, content)
+	// 全局单例解析，提升性能
+	parsedBaseTemplate = template.Must(template.New("base").Parse(baseTemplateStr))
+)
+
+// --- 公共 UI 生成函数 ---
+
+func buildActionBtn(url, text string) string {
+	return fmt.Sprintf(`<div style="text-align: center; margin: 30px 0;">
+                <a href="%s" class="btn">%s</a>
+            </div>`, url, text)
+}
+
+func buildCodeBlock(code string) string {
+	return fmt.Sprintf(`<div style="text-align: center; margin: 30px 0;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 20px 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                    <div style="font-size: 32px; font-weight: bold; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace;">%s</div>
+                </div>
+            </div>`, code)
+}
+
+func buildConfigURLItem(title, desc, url string) string {
+	if url == "" {
+		return ""
 	}
+	return fmt.Sprintf(`<div class="url-item">
+                        <strong>%s</strong>
+                        <p style="margin: 5px 0; color: #666; font-size: 12px;">%s</p>
+                        <code class="url-code">%s</code>
+                    </div>`, title, desc, url)
+}
+
+// --- 邮件模板构建器 ---
+
+type EmailTemplateBuilder struct{}
+
+func NewEmailTemplateBuilder() *EmailTemplateBuilder {
+	return &EmailTemplateBuilder{}
+}
+
+func (b *EmailTemplateBuilder) GetBaseURL() string {
+	db := database.GetDB()
+	if db != nil {
+		if domain := utils.GetDomainFromDB(db); domain != "" {
+			return utils.FormatDomainURL(domain)
+		}
+	}
+
+	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
+		return baseURL
+	}
+
+	if config.AppConfig.BaseURL != "" {
+		return config.AppConfig.BaseURL
+	}
+
+	return "http://localhost:5173"
+}
+
+func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string) string {
+	currentYear := utils.GetBeijingTime().Year()
+	siteName := "网络服务"
 
 	var buf bytes.Buffer
 	data := map[string]interface{}{
@@ -114,7 +138,8 @@ func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string
 		"SiteName":    siteName,
 		"CurrentYear": currentYear,
 	}
-	if err := tmpl.Execute(&buf, data); err != nil {
+
+	if err := parsedBaseTemplate.Execute(&buf, data); err != nil {
 		return fmt.Sprintf(`<html><body><h2>%s</h2>%s</body></html>`, title, content)
 	}
 
@@ -126,11 +151,7 @@ func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificatio
 	content := fmt.Sprintf(`<h2>📧 您的注册验证码</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
             <p>感谢您注册我们的服务！请使用以下验证码完成注册：</p>
-            <div style="text-align: center; margin: 30px 0;">
-                <div style="display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 20px 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                    <div style="font-size: 32px; font-weight: bold; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace;">%s</div>
-                </div>
-            </div>
+            %s
             <div class="info-box">
                 <p><strong>📋 使用说明：</strong></p>
                 <ul>
@@ -143,7 +164,7 @@ func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificatio
             <div class="warning-box">
                 <p><strong>⚠️ 安全提示：</strong></p>
                 <p>请勿将验证码告知他人。如果这不是您本人的操作，请忽略此邮件。您的账户安全对我们非常重要。</p>
-            </div>`, username, verificationCode)
+            </div>`, username, buildCodeBlock(verificationCode))
 
 	return b.GetBaseTemplate(title, content, "完成注册，开启您的专属网络体验")
 }
@@ -161,9 +182,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink stri
                     <tr><th>链接使用次数</th><td>仅可使用一次</td></tr>
                 </table>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s" class="btn">重置密码</a>
-            </div>
+            %s
             <div class="warning-box">
                 <h3>⚠️ 安全提醒</h3>
                 <ul>
@@ -185,7 +204,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink stri
                     <li>定期更换密码以确保账户安全</li>
                 </ul>
             </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如果您没有请求重置密码，请忽略此邮件</p>`, username, username, resetLink, resetLink)
+            <p style="text-align: center; color: #666; font-size: 14px;">如果您没有请求重置密码，请忽略此邮件</p>`, username, username, buildActionBtn(resetLink, "重置密码"), resetLink)
 
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
@@ -195,11 +214,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 	content := fmt.Sprintf(`<h2>🔐 您的密码重置验证码</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
             <p>您正在重置账户密码，请使用以下验证码完成重置：</p>
-            <div style="text-align: center; margin: 30px 0;">
-                <div style="display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 20px 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                    <div style="font-size: 32px; font-weight: bold; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace;">%s</div>
-                </div>
-            </div>
+            %s
             <div class="info-box">
                 <p><strong>📋 使用说明：</strong></p>
                 <ul>
@@ -212,7 +227,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
             <div class="warning-box">
                 <p><strong>⚠️ 安全提示：</strong></p>
                 <p>请勿将验证码告知他人。如果这不是您本人的操作，请立即忽略此邮件并联系客服。您的账户安全对我们非常重要。</p>
-            </div>`, username, verificationCode)
+            </div>`, username, buildCodeBlock(verificationCode))
 
 	return b.GetBaseTemplate(title, content, "安全重置您的账户密码")
 }
@@ -220,21 +235,8 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
 	title := "服务配置信息"
 
-	urlList := ""
-	if universalURL != "" {
-		urlList += fmt.Sprintf(`<div class="url-item">
-                        <strong>🔗 通用配置地址（推荐）：</strong>
-                        <p style="margin: 5px 0; color: #666; font-size: 12px;">适用于大部分客户端，包括手机和电脑</p>
-                        <code class="url-code">%s</code>
-                    </div>`, universalURL)
-	}
-	if clashURL != "" {
-		urlList += fmt.Sprintf(`<div class="url-item">
-                        <strong>⚡ Clash 类型软件专用地址：</strong>
-                        <p style="margin: 5px 0; color: #666; font-size: 12px;">适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件</p>
-                        <code class="url-code">%s</code>
-                    </div>`, clashURL)
-	}
+	urlList := buildConfigURLItem("🔗 通用配置地址（推荐）：", "适用于大部分客户端，包括手机和电脑", universalURL) +
+		buildConfigURLItem("⚡ Clash 类型软件专用地址：", "适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件", clashURL)
 
 	remainingColor := "#e74c3c"
 	if remainingDays > 7 {
@@ -333,7 +335,7 @@ func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, pack
 // GetAbnormalLoginAlertTemplate 异常登录/新设备/异地登录告警邮件
 func (b *EmailTemplateBuilder) GetAbnormalLoginAlertTemplate(username, loginTime, ipAddress, locationStr string, isNewDevice, isNewLocation bool) string {
 	title := "账户登录安全提醒"
-	reasons := []string{}
+	reasons := make([]string, 0, 2)
 	if isNewDevice {
 		reasons = append(reasons, "检测到新设备登录")
 	}
@@ -392,16 +394,14 @@ func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL stri
                     <li>不要将密码泄露给他人，避免账户被盗用</li>
                 </ul>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s" class="btn">立即登录</a>
-            </div>`, username, username, email, passwordRow, loginURL, loginURL, loginURL)
+            %s`, username, username, email, passwordRow, loginURL, loginURL, buildActionBtn(loginURL, "立即登录"))
 
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }
 
 func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password, expireTime string, deviceLimit int) string {
 	title := "账户创建通知"
-	loginURL := fmt.Sprintf("%s/login", b.getBaseURL())
+	loginURL := fmt.Sprintf("%s/login", b.GetBaseURL())
 
 	expireDisplay := expireTime
 	if expireTime == "" || expireTime == "未设置" {
@@ -437,9 +437,7 @@ func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password,
                     <li>您最多可以同时使用 <strong>%d 台设备</strong>连接服务</li>
                 </ul>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s" class="btn">立即登录</a>
-            </div>`, username, username, email, password, loginURL, loginURL, expireDisplay, deviceLimit, expireDisplay, deviceLimit, loginURL)
+            %s`, username, username, email, password, loginURL, loginURL, expireDisplay, deviceLimit, expireDisplay, deviceLimit, buildActionBtn(loginURL, "立即登录"))
 
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }
@@ -466,9 +464,7 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
                     <li>如发现账户异常，请及时联系客服</li>
                 </ul>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s" class="btn">立即登录</a>
-            </div>
+            %s
             <div class="info-box">
                 <p><strong>💡 温馨提示：</strong></p>
                 <ul>
@@ -477,7 +473,7 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
                     <li>妥善保管您的账户信息，不要泄露给他人</li>
                 </ul>
             </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, changeTime, loginURL)
+            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, changeTime, buildActionBtn(loginURL, "立即登录"))
 
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
@@ -485,23 +481,10 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
 	title := "订阅重置通知"
 
-	urlList := ""
-	if universalURL != "" {
-		urlList += fmt.Sprintf(`<div class="url-item">
-                        <strong>🔗 通用配置地址（推荐）：</strong>
-                        <p style="margin: 5px 0; color: #666; font-size: 12px;">适用于大部分客户端，包括手机和电脑</p>
-                        <code class="url-code">%s</code>
-                    </div>`, universalURL)
-	}
-	if clashURL != "" {
-		urlList += fmt.Sprintf(`<div class="url-item">
-                        <strong>⚡ 移动端专用地址：</strong>
-                        <p style="margin: 5px 0; color: #666; font-size: 12px;">专为移动设备优化，支持规则分流</p>
-                        <code class="url-code">%s</code>
-                    </div>`, clashURL)
-	}
+	urlList := buildConfigURLItem("🔗 通用配置地址（推荐）：", "适用于大部分客户端，包括手机和电脑", universalURL) +
+		buildConfigURLItem("⚡ 移动端专用地址：", "专为移动设备优化，支持规则分流", clashURL)
 
-	baseURL := b.getBaseURL()
+	baseURL := b.GetBaseURL()
 
 	content := fmt.Sprintf(`<h2>🔄 您的订阅已重置</h2>
             <p>亲爱的 %s，</p>
@@ -538,10 +521,8 @@ func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalU
                     <li>更新并测试连接</li>
                 </ol>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s/dashboard" class="btn">查看订阅详情</a>
-            </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, resetTime, resetReason, expireTime, urlList, baseURL)
+            %s
+            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, resetTime, resetReason, expireTime, urlList, buildActionBtn(baseURL+"/dashboard", "查看订阅详情"))
 
 	return b.GetBaseTemplate(title, content, "请及时更新您的客户端配置")
 }
@@ -573,7 +554,7 @@ func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate
 
 func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email, lastLogin string, daysUntilDeletion int) string {
 	title := "账号删除提醒"
-	baseURL := b.getBaseURL()
+	baseURL := b.GetBaseURL()
 	loginURL := fmt.Sprintf("%s/login", baseURL)
 
 	content := fmt.Sprintf(`<h2>⚠️ 账号删除提醒</h2>
@@ -598,9 +579,7 @@ func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email
                     <li>账号将自动保留</li>
                 </ol>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s" class="btn">立即登录</a>
-            </div>
+            %s
             <div class="info-box">
                 <p><strong>💡 温馨提示：</strong></p>
                 <ul>
@@ -609,7 +588,7 @@ func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email
                     <li>如有任何疑问，请及时联系客服</li>
                 </ul>
             </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, email, lastLogin, daysUntilDeletion, loginURL, loginURL)
+            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, email, lastLogin, daysUntilDeletion, loginURL, buildActionBtn(loginURL, "立即登录"))
 
 	return b.GetBaseTemplate(title, content, "请及时登录以保留您的账号")
 }
@@ -620,7 +599,7 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
 		title = "订阅即将到期"
 	}
 
-	baseURL := b.getBaseURL()
+	baseURL := b.GetBaseURL()
 
 	var headerContent string
 	if isExpired {
@@ -684,9 +663,7 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
                 </table>
             </div>
             %s
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s/dashboard" class="btn">%s</a>
-            </div>
+            %s
             <div class="info-box">
                 <p><strong>💡 续费说明：</strong></p>
                 <ul>
@@ -695,14 +672,14 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
                     <li>支持多种支付方式，支付成功后自动激活</li>
                 </ul>
             </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, headerContent, username, packageName, expireDate, remainingDaysRow, deviceLimit, currentDevices, deviceLimit, warningBox, baseURL, buttonText)
+            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, headerContent, username, packageName, expireDate, remainingDaysRow, deviceLimit, currentDevices, deviceLimit, warningBox, buildActionBtn(baseURL+"/dashboard", buttonText))
 
 	return b.GetBaseTemplate(title, content, "我们期待继续为您服务")
 }
 
 func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageName, oldExpiryDate, newExpiryDate, renewalDate string, amount float64) string {
 	title := "续费成功"
-	baseURL := b.getBaseURL()
+	baseURL := b.GetBaseURL()
 
 	content := fmt.Sprintf(`<h2>🎉 续费成功！</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
@@ -726,25 +703,21 @@ func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageN
                     <li>💡 建议定期更新订阅配置以获取最新节点信息</li>
                 </ul>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s/dashboard" class="btn">查看订阅详情</a>
-            </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">感谢您的续费，祝您使用愉快！</p>`, username, packageName, oldExpiryDate, newExpiryDate, amount, renewalDate, baseURL)
+            %s
+            <p style="text-align: center; color: #666; font-size: 14px;">感谢您的续费，祝您使用愉快！</p>`, username, packageName, oldExpiryDate, newExpiryDate, amount, renewalDate, buildActionBtn(baseURL+"/dashboard", "查看订阅详情"))
 
 	return b.GetBaseTemplate(title, content, "开启您的专属网络体验")
 }
 
 func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) string {
-	baseURL := b.getBaseURL()
+	baseURL := b.GetBaseURL()
 
 	emailContent := fmt.Sprintf(`<h2>%s</h2>
             <div class="info-box">
                 <div style="line-height: 1.8; color: #555;">%s</div>
             </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="%s/dashboard" class="btn">查看详情</a>
-            </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">此邮件来自 网络服务</p>`, title, strings.ReplaceAll(content, "\n", "<br>"), baseURL)
+            %s
+            <p style="text-align: center; color: #666; font-size: 14px;">此邮件来自 网络服务</p>`, title, strings.ReplaceAll(content, "\n", "<br>"), buildActionBtn(baseURL+"/dashboard", "查看详情"))
 
 	return b.GetBaseTemplate(title, emailContent, "感谢您的关注")
 }
@@ -761,10 +734,13 @@ func (b *EmailTemplateBuilder) GetBroadcastNotificationTemplate(title, content s
 func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, title, body string, data map[string]interface{}) string {
 	var content string
 
+	// 大多数情况都需要读取 username 和 email，将其提取到 switch 外部以减少冗余
+	username := getStringFromData(data, "username", "N/A")
+	email := getStringFromData(data, "email", "N/A")
+
 	switch notificationType {
 	case "order_paid":
 		orderNo := getStringFromData(data, "order_no", "N/A")
-		username := getStringFromData(data, "username", "N/A")
 		amount := getFloatFromData(data, "amount", 0)
 		packageName := getStringFromData(data, "package_name", "未知套餐")
 		paymentMethod := getStringFromData(data, "payment_method", "未知")
@@ -787,8 +763,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
 
 	case "user_registered":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		registerTime := getStringFromData(data, "register_time", "N/A")
 		content = fmt.Sprintf(`<h2>👤 新用户注册</h2>
             <p>系统检测到新用户注册，详情如下：</p>
@@ -805,8 +779,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, registerTime)
 
 	case "password_reset":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		resetTime := getStringFromData(data, "reset_time", "N/A")
 		content = fmt.Sprintf(`<h2>🔐 用户重置密码</h2>
             <p>系统检测到用户重置密码操作，详情如下：</p>
@@ -823,8 +795,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, resetTime)
 
 	case "subscription_sent":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		sendTime := getStringFromData(data, "send_time", "N/A")
 		content = fmt.Sprintf(`<h2>📧 用户发送订阅</h2>
             <p>系统检测到用户发送订阅邮件，详情如下：</p>
@@ -838,8 +808,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, sendTime)
 
 	case "subscription_reset":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		resetTime := getStringFromData(data, "reset_time", "N/A")
 		content = fmt.Sprintf(`<h2>🔄 用户重置订阅</h2>
             <p>系统检测到用户重置订阅地址，详情如下：</p>
@@ -856,8 +824,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, resetTime)
 
 	case "subscription_expired":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		expireTime := getStringFromData(data, "expire_time", "N/A")
 		content = fmt.Sprintf(`<h2>⏰ 订阅已过期</h2>
             <p>系统检测到用户订阅已过期，详情如下：</p>
@@ -874,8 +840,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, expireTime)
 
 	case "user_created":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		createdBy := getStringFromData(data, "created_by", "N/A")
 		createTime := getStringFromData(data, "create_time", "N/A")
 		content = fmt.Sprintf(`<h2>📋 管理员创建用户</h2>
@@ -894,8 +858,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, createdBy, createTime)
 
 	case "subscription_created":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		packageName := getStringFromData(data, "package_name", "未知套餐")
 		createTime := getStringFromData(data, "create_time", "N/A")
 		content = fmt.Sprintf(`<h2>📦 订阅创建</h2>
@@ -914,8 +876,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, packageName, createTime)
 
 	case "ticket_created":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		ticketNo := getStringFromData(data, "ticket_no", "N/A")
 		ticketTitle := getStringFromData(data, "title", "N/A")
 		ticketType := getStringFromData(data, "type", "N/A")
@@ -945,8 +905,6 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             </div>`, username, email, ticketNo, ticketTitle, ticketType, priority, createTime)
 
 	case "ticket_replied":
-		username := getStringFromData(data, "username", "N/A")
-		email := getStringFromData(data, "email", "N/A")
 		ticketNo := getStringFromData(data, "ticket_no", "N/A")
 		ticketTitle := getStringFromData(data, "title", "N/A")
 		replyTime := getStringFromData(data, "reply_time", "N/A")

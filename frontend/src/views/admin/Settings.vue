@@ -234,6 +234,10 @@
                     <span class="switch-label">新订单通知</span>
                     <el-switch v-model="notificationSettings.new_order_notifications" />
                   </div>
+                  <div class="switch-item">
+                    <span class="switch-label">工单回复通知</span>
+                    <el-switch v-model="notificationSettings.ticket_reply_notifications" />
+                  </div>
                 </div>
 
                 <el-form-item style="margin-top: 24px;">
@@ -704,7 +708,8 @@ export default {
       subscription_expiry_notifications: true,
       subscription_expiry_reminder_cooldown_hours: 24,
       subscription_expiry_reminder_daily_limit: 1,
-      new_user_notifications: true, new_order_notifications: true
+      new_user_notifications: true, new_order_notifications: true,
+      ticket_reply_notifications: true
     })
     const securitySettings = reactive({
       login_fail_limit: 5, login_lock_time: 30, session_timeout: 120,
