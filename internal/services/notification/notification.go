@@ -80,6 +80,8 @@ func (s *NotificationService) SendAdminNotification(notificationType string, dat
 		"subscription_expired": "admin_notify_subscription_expired",
 		"user_created":         "admin_notify_user_created",
 		"subscription_created": "admin_notify_subscription_created",
+		"ticket_created":       "admin_notify_ticket_created",
+		"ticket_replied":       "admin_notify_ticket_replied",
 	}
 
 	if key, ok := notificationKeyMap[notificationType]; ok {
@@ -236,6 +238,8 @@ func getNotificationSubject(notificationType string) string {
 		"subscription_expired": "⏰ 订阅已过期",
 		"user_created":         "📋 管理员创建用户",
 		"subscription_created": "📦 订阅创建",
+		"ticket_created":       "🎫 用户提交工单",
+		"ticket_replied":       "💬 工单新回复",
 	}
 	if subject, ok := subjectMap[notificationType]; ok {
 		return subject

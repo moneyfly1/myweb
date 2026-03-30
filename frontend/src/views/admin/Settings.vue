@@ -315,40 +315,56 @@
                   </el-form-item>
                 </template>
 
-                <el-divider content-position="left">通知事件开关</el-divider>
+                <el-divider content-position="left">用户行为</el-divider>
                 <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                   <div class="switch-item">
-                     <span class="switch-label">订单支付成功</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_order_paid" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">新用户注册</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_user_registered" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">重置密码</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_password_reset" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">发送订阅</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_sent" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">重置订阅</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_reset" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">订阅到期</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_expired" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">管理员创建用户</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_user_created" />
-                   </div>
-                   <div class="switch-item">
-                     <span class="switch-label">订阅创建</span>
-                     <el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" />
-                   </div>
+                  <div class="switch-item">
+                    <span class="switch-label">新用户注册</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_user_registered" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">重置密码</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_password_reset" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">管理员创建用户</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_user_created" />
+                  </div>
+                </div>
+
+                <el-divider content-position="left">订单与订阅</el-divider>
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item">
+                    <span class="switch-label">订单支付成功</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_order_paid" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">订阅创建</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">发送订阅</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_sent" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">重置订阅</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_reset" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">订阅到期</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_expired" />
+                  </div>
+                </div>
+
+                <el-divider content-position="left">工单</el-divider>
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                  <div class="switch-item">
+                    <span class="switch-label">用户提交工单</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_ticket_created" />
+                  </div>
+                  <div class="switch-item">
+                    <span class="switch-label">工单新回复</span>
+                    <el-switch v-model="adminNotificationSettings.admin_notify_ticket_replied" />
+                  </div>
                 </div>
 
                 <el-divider content-position="left">安全告警</el-divider>
@@ -708,6 +724,7 @@ export default {
       admin_notify_password_reset: false, admin_notify_subscription_sent: false,
       admin_notify_subscription_reset: false, admin_notify_subscription_expired: false,
       admin_notify_user_created: false, admin_notify_subscription_created: false,
+      admin_notify_ticket_created: false, admin_notify_ticket_replied: false,
       admin_abnormal_login_alert_enabled: true
     })
     const announcementSettings = reactive({ announcement_enabled: false, announcement_content: '' })
