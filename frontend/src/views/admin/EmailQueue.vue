@@ -113,6 +113,14 @@
                 <el-icon><Refresh /></el-icon>
                 刷新
               </el-button>
+              <el-button v-if="selectedEmails.length > 0" type="warning" @click="batchRetry">
+                <el-icon><Refresh /></el-icon>
+                批量重试({{ selectedEmails.length }})
+              </el-button>
+              <el-button v-if="selectedEmails.length > 0" type="danger" @click="batchDelete">
+                <el-icon><Delete /></el-icon>
+                批量删除({{ selectedEmails.length }})
+              </el-button>
               <el-button type="warning" @click="clearFailedEmails">
                 <el-icon><Delete /></el-icon>
                 清空失败邮件
@@ -126,7 +134,8 @@
         </div>
       </template>
       <div class="table-wrapper desktop-only">
-        <el-table :data="emailList" v-loading="loading" stripe border empty-text="暂无数据">
+        <el-table :data="emailList" v-loading="loading" stripe border empty-text="暂无数据" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="55" />
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="to_email" label="收件人" min-width="200" />
           <el-table-column prop="subject" label="主题" min-width="250" />
@@ -184,12 +193,20 @@
         </el-table>
       </div>
       <div class="mobile-card-list mobile-only" v-if="emailList.length > 0">
-        <div 
-          v-for="email in emailList" 
+        <div
+          v-for="email in emailList"
           :key="email.id"
           class="mobile-card"
+          :class="{ 'selected': isSelected(email.id) }"
+          @click="toggleSelection(email)"
         >
-          <div class="card-row"><span class="label">ID</span><span class="value">#{{ email.id }}</span></div>
+          <div class="card-row">
+            <span class="label">
+              <el-checkbox :model-value="isSelected(email.id)" @click.stop />
+              ID
+            </span>
+            <span class="value">#{{ email.id }}</span>
+          </div>
           <div class="card-row"><span class="label">收件人</span><span class="value">{{ email.to_email }}</span></div>
           <div class="card-row"><span class="label">主题</span><span class="value">{{ email.subject }}</span></div>
           <div class="card-row"><span class="label">邮件类型</span><span class="value">{{ getEmailTypeText(email.email_type) }}</span></div>
@@ -238,6 +255,16 @@
           <i class="el-icon-message"></i>
           <p>暂无邮件数据</p>
         </div>
+      </div>
+      <div class="mobile-batch-actions mobile-only" v-if="selectedEmails.length > 0">
+        <el-button type="warning" @click="batchRetry">
+          <el-icon><Refresh /></el-icon>
+          批量重试({{ selectedEmails.length }})
+        </el-button>
+        <el-button type="danger" @click="batchDelete">
+          <el-icon><Delete /></el-icon>
+          批量删除({{ selectedEmails.length }})
+        </el-button>
       </div>
       <div class="pagination">
         <el-pagination
@@ -427,6 +454,7 @@ export default {
       pages: 0
     })
     const emailList = ref([])
+    const selectedEmails = ref([])
     const statistics = reactive({
       total: 0,
       pending: 0,
@@ -649,6 +677,44 @@ export default {
     const clearAllEmails = () => {
       clearEmails('', '确认清空所有邮件', '确定要清空所有邮件吗？此操作不可恢复！', 'error')
     }
+    const handleSelectionChange = (selection) => {
+      selectedEmails.value = selection
+    }
+    const isSelected = (id) => {
+      return selectedEmails.value.some(email => email.id === id)
+    }
+    const toggleSelection = (email) => {
+      const index = selectedEmails.value.findIndex(e => e.id === email.id)
+      if (index > -1) {
+        selectedEmails.value.splice(index, 1)
+      } else {
+        selectedEmails.value.push(email)
+      }
+    }
+    const batchRetry = async () => {
+      try {
+        await ElMessageBox.confirm(`确定要重试发送选中的 ${selectedEmails.value.length} 封邮件吗？`, '确认批量重试', { type: 'warning' })
+        const promises = selectedEmails.value.map(email => adminAPI.retryEmail(email.id))
+        await Promise.all(promises)
+        ElMessage.success('批量重试成功')
+        selectedEmails.value = []
+        refreshQueue()
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量重试失败')
+      }
+    }
+    const batchDelete = async () => {
+      try {
+        await ElMessageBox.confirm(`确定要删除选中的 ${selectedEmails.value.length} 封邮件吗？`, '确认批量删除', { type: 'warning' })
+        const promises = selectedEmails.value.map(email => adminAPI.deleteEmailFromQueue(email.id))
+        await Promise.all(promises)
+        ElMessage.success('批量删除成功')
+        selectedEmails.value = []
+        refreshQueue()
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量删除失败')
+      }
+    }
     const handleSizeChange = (size) => {
       pagination.size = size
       pagination.page = 1
@@ -723,6 +789,7 @@ export default {
       filterForm,
       pagination,
       emailList,
+      selectedEmails,
       statistics,
       isMobile,
       onIframeLoad,
@@ -736,6 +803,11 @@ export default {
       deleteEmail,
       clearFailedEmails,
       clearAllEmails,
+      handleSelectionChange,
+      isSelected,
+      toggleSelection,
+      batchRetry,
+      batchDelete,
       handleSizeChange,
       handleCurrentChange,
       getStatusTagType,
@@ -965,6 +1037,12 @@ export default {
     border-radius: 8px;
     padding: 16px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    transition: all 0.2s;
+    &.selected {
+      border-color: #409eff;
+      background: #ecf5ff;
+    }
   }
   .card-row {
     display: flex;
@@ -994,6 +1072,16 @@ export default {
     gap: 12px;
     width: 100%;
     margin-top: 12px;
+  }
+}
+.mobile-batch-actions {
+  display: none;
+  @media (max-width: 768px) {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 16px 0;
+    padding: 0 10px;
   }
 }
 @media (max-width: 768px) {
