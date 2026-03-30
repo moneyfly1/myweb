@@ -357,8 +357,8 @@ const showDrawer = (row) => {
       discount_value: 10,
       min_amount: 0,
       max_discount: 0,
-      start_time: tomorrow.toISOString().slice(0, 19).replace('T', ' '),
-      end_time: nextWeek.toISOString().slice(0, 19).replace('T', ' '),
+      start_time: tomorrow.toISOString(),
+      end_time: nextWeek.toISOString(),
       description: '',
       is_active: true
     }
@@ -382,6 +382,9 @@ const save = async () => {
     if (typeof data.description === 'string') {
       data.description = { String: data.description, Valid: !!data.description }
     }
+    // 确保时间字段为ISO 8601格式
+    if (data.start_time) data.start_time = new Date(data.start_time).toISOString()
+    if (data.end_time) data.end_time = new Date(data.end_time).toISOString()
 
     if (data.id) {
       await promotionAPI.update(data.id, data)
