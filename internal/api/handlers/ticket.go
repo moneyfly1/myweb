@@ -7,6 +7,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -111,6 +112,16 @@ func CreateTicket(c *gin.Context) {
 
 	utils.SetResponseStatus(c, http.StatusCreated)
 	utils.CreateAuditLogSimple(c, "create_ticket", "ticket", ticket.ID, fmt.Sprintf("创建工单: %s", ticket.Title))
+
+	go notification.NewNotificationService().SendAdminNotification("ticket_created", map[string]interface{}{
+		"username":    user.Username,
+		"email":       user.Email,
+		"ticket_no":   ticket.TicketNo,
+		"title":       ticket.Title,
+		"type":        ticket.Type,
+		"priority":    ticket.Priority,
+		"create_time": utils.FormatBeijingTime(utils.GetBeijingTime()),
+	})
 
 	utils.SuccessResponse(c, http.StatusCreated, "", ticket)
 }
@@ -475,6 +486,16 @@ func ReplyTicket(c *gin.Context) {
 	if ticket.Status == "pending" {
 		ticket.Status = "processing"
 		db.Save(&ticket)
+	}
+
+	if !isAdmin {
+		go notification.NewNotificationService().SendAdminNotification("ticket_replied", map[string]interface{}{
+			"username":    user.Username,
+			"email":       user.Email,
+			"ticket_no":   ticket.TicketNo,
+			"title":       ticket.Title,
+			"reply_time":  utils.FormatBeijingTime(utils.GetBeijingTime()),
+		})
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "", reply)
