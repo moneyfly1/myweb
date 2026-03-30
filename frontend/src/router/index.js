@@ -162,19 +162,73 @@ router.beforeEach(async (to, from, next) => {
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
       }
     }
-    const isAdminPath = to.path.startsWith('/admin')
+    const isAdminPath = to.path.startsWith('/admin') && to.path !== '/admin/login'
+
+    // 优先检查对应角色的token
     const roleTokenKey = isAdminPath ? 'admin_token' : 'user_token'
     const roleUserKey = isAdminPath ? 'admin_user' : 'user_data'
-    const storedToken = secureStorage.get(roleTokenKey)
-    const storedUser = secureStorage.get(roleUserKey)
+    let storedToken = secureStorage.get(roleTokenKey)
+    let storedUser = secureStorage.get(roleUserKey)
+
+    // 如果当前路径需要的角色token不存在，检查是否有另一个角色的token
+    if (!storedToken || !storedUser) {
+      const altTokenKey = isAdminPath ? 'user_token' : 'admin_token'
+      const altUserKey = isAdminPath ? 'user_data' : 'admin_user'
+      const altToken = secureStorage.get(altTokenKey)
+      const altUser = secureStorage.get(altUserKey)
+
+      // 如果访问管理员路径但admin_token不存在，直接跳转到管理员登录页
+      // 不应跌落到用户界面，否则管理员token过期后会意外进入用户界面
+      if (isAdminPath) {
+        // 先尝试用 refresh cookie 静默刷新 admin token
+        try {
+          const { default: axios } = await import('axios')
+          const refreshResponse = await axios.post(
+            '/api/v1/auth/refresh',
+            {},
+            { withCredentials: true, timeout: 5000, headers: { 'X-Auth-Role': 'admin' } }
+          )
+          const { access_token } = refreshResponse.data?.data || refreshResponse.data || {}
+          if (access_token) {
+            secureStorage.set('admin_token', access_token, false, ACCESS_TOKEN_TTL)
+            storedToken = access_token
+            // 重新获取用户数据（可能 admin_user 也过期了）
+            storedUser = secureStorage.get('admin_user')
+            if (!storedUser) {
+              return next('/admin/login')
+            }
+          } else {
+            return next('/admin/login')
+          }
+        } catch {
+          return next('/admin/login')
+        }
+      }
+      // 如果访问用户路径但只有管理员token，使用管理员token
+      if (!isAdminPath && altToken && altUser) {
+        const altUserData = typeof altUser === 'string' ? JSON.parse(altUser) : altUser
+        if (altUserData.is_admin) {
+          storedToken = altToken
+          storedUser = altUser
+        }
+      }
+    }
+
     if (storedToken && storedUser) {
       const userData = typeof storedUser === 'string' ? JSON.parse(storedUser) : storedUser
-      if ((isAdminPath && userData.is_admin) || (!isAdminPath && !userData.is_admin)) {
-        if (!authStore.isAuthenticated || authStore.token !== storedToken) {
-          const useSessionStorage = !hasValidLocalSecureValue(roleTokenKey)
-          authStore.setAuth(storedToken, userData, useSessionStorage)
-          useThemeStore().loadUserTheme().catch(() => {})
-        }
+
+      // 验证token和路径的角色是否匹配
+      const tokenIsAdmin = userData.is_admin === true
+
+      if (isAdminPath && !tokenIsAdmin) {
+        // 访问管理员路径但token不是管理员，重定向到用户页面
+        return next('/dashboard')
+      }
+
+      if (!authStore.isAuthenticated || authStore.token !== storedToken) {
+        const useSessionStorage = !hasValidLocalSecureValue(roleTokenKey)
+        authStore.setAuth(storedToken, userData, useSessionStorage)
+        useThemeStore().loadUserTheme().catch(() => {})
       }
     }
     if (to.meta.requiresAuth && !authStore.isAuthenticated) return next(isAdminPath ? '/admin/login' : '/login')
