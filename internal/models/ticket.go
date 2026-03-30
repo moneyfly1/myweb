@@ -63,7 +63,7 @@ type TicketReply struct {
 	TicketID  uint       `gorm:"index;not null" json:"ticket_id"`
 	UserID    uint       `gorm:"index;not null" json:"user_id"`
 	Content   string     `gorm:"type:text;not null" json:"content"`
-	IsAdmin   string     `gorm:"type:varchar(10);default:false" json:"is_admin"`
+	IsAdmin   bool       `gorm:"default:false" json:"is_admin"`
 	IsRead    bool       `gorm:"default:false" json:"is_read"`   // 是否已读（对应用户或管理员）
 	ReadBy    *uint      `gorm:"index" json:"read_by,omitempty"` // 被谁已读（用户ID或管理员ID）
 	ReadAt    *time.Time `json:"read_at,omitempty"`              // 已读时间

@@ -981,6 +981,26 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
 	return b.GetBaseTemplate(title, content, "此邮件由系统自动发送，请勿回复。")
 }
 
+func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title, replyContent string) string {
+	content := fmt.Sprintf(`<h2>💬 您的工单有新回复</h2>
+            <p>您提交的工单已收到管理员回复，请登录查看详情。</p>
+            <div class="info-box">
+                <h3>📋 工单信息</h3>
+                <table class="info-table">
+                    <tr><th>工单编号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>工单标题</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <h3>📝 回复内容</h3>
+                <p style="line-height:1.8; color:#555;">%s</p>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>请登录用户中心查看完整回复并继续沟通。</p>
+            </div>`, ticketNo, title, strings.ReplaceAll(replyContent, "\n", "<br>"))
+	return b.GetBaseTemplate("工单新回复", content, "此邮件由系统自动发送，请勿回复。")
+}
+
 func getStringFromData(data map[string]interface{}, key string, defaultValue string) string {
 	if val, ok := data[key]; ok {
 		if str, ok := val.(string); ok {
