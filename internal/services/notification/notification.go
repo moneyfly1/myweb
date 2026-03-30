@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
@@ -42,10 +44,12 @@ func ShouldSendCustomerNotification(notificationType string) bool {
 		return configMap["new_user_notifications"] == "true"
 	case "new_order":
 		return configMap["new_order_notifications"] == "true"
+	case "ticket_reply":
+		return configMap["ticket_reply_notifications"] != "false" // 默认开启
 	case "system", "email":
 		return true
 	default:
-		return true // 默认发送
+		return true
 	}
 }
 
@@ -57,14 +61,29 @@ func NewNotificationService() *NotificationService {
 }
 
 func (s *NotificationService) SendAdminNotification(notificationType string, data map[string]interface{}) error {
-	db := database.GetDB()
+	const cacheKey = "admin_notification_config"
+	const cacheTTL = 2 * time.Minute
 
-	var configs []models.SystemConfig
-	db.Where("category = ?", "admin_notification").Find(&configs)
+	var configMap map[string]string
+	if cache.IsRedisEnabled() {
+		if cached, err := cache.Get(cacheKey); err == nil && cached != "" {
+			_ = json.Unmarshal([]byte(cached), &configMap)
+		}
+	}
 
-	configMap := make(map[string]string)
-	for _, config := range configs {
-		configMap[config.Key] = config.Value
+	if configMap == nil {
+		db := database.GetDB()
+		var configs []models.SystemConfig
+		db.Where("category = ?", "admin_notification").Find(&configs)
+		configMap = make(map[string]string, len(configs))
+		for _, config := range configs {
+			configMap[config.Key] = config.Value
+		}
+		if cache.IsRedisEnabled() {
+			if b, err := json.Marshal(configMap); err == nil {
+				_ = cache.Set(cacheKey, string(b), cacheTTL)
+			}
+		}
 	}
 
 	if configMap["admin_notification_enabled"] != "true" {
