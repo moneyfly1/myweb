@@ -65,19 +65,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
   const saveToken = (accessToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    const useSession = !remember
     if (isAdmin) {
-      secureStorage.set('admin_token', accessToken, useSession, TOKEN_TTL)
+      // 管理员token始终存localStorage，确保新标签页和刷新后可恢复
+      secureStorage.set('admin_token', accessToken, false, TOKEN_TTL)
       return
     }
+    const useSession = !remember
     secureStorage.set('user_token', accessToken, useSession, TOKEN_TTL)
   }
   const saveUser = (userData, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    const useSession = !remember
     if (isAdmin) {
-      secureStorage.set('admin_user', userData, useSession, TOKEN_TTL)
+      // 管理员user始终存localStorage，TTL延长到30天（依赖refresh cookie续期）
+      secureStorage.set('admin_user', userData, false, REFRESH_TOKEN_TTL)
       return
     }
+    const useSession = !remember
     secureStorage.set('user_data', userData, useSession, TOKEN_TTL)
   }
   const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
