@@ -407,7 +407,7 @@ func GetAdminTicket(c *gin.Context) {
 			"is_admin":   reply.IsAdmin,
 			"created_at": utils.FormatBeijingTime(reply.CreatedAt),
 		}
-		if reply.IsAdmin != "true" {
+		if !reply.IsAdmin {
 			isUnread := !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != adminUserID)
 			replyData["is_unread"] = isUnread
 			replyData["is_user_reply"] = true

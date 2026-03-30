@@ -7,6 +7,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -34,13 +35,13 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 		db.Model(&models.TicketReply{}).
 			Joins("JOIN tickets ON ticket_replies.ticket_id = tickets.id").
 			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_replies.is_read = ? OR ticket_replies.read_by != ? OR ticket_replies.read_by IS NULL)",
-				user.ID, "true", false, user.ID).
+				user.ID, true, false, user.ID).
 			Count(&totalUnread)
 	} else {
 		var unreadReplies int64
 		db.Model(&models.TicketReply{}).
-			Where("is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
-				"true", false, user.ID).
+			Where("is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
+				false, false, user.ID).
 			Count(&unreadReplies)
 
 		var newTickets int64
@@ -88,11 +89,11 @@ func CreateTicket(c *gin.Context) {
 	title := utils.SanitizeInput(req.Title)
 	content := utils.SanitizeInput(req.Content)
 
-	if len(title) > 200 {
-		title = title[:200]
+	if titleRunes := []rune(title); len(titleRunes) > 200 {
+		title = string(titleRunes[:200])
 	}
-	if len(content) > 5000 {
-		content = content[:5000]
+	if contentRunes := []rune(content); len(contentRunes) > 5000 {
+		content = string(contentRunes[:5000])
 	}
 
 	ticket := models.Ticket{
@@ -193,14 +194,14 @@ func GetTickets(c *gin.Context) {
 			db.Model(&models.TicketReply{}).
 				Select("ticket_id, COUNT(*) as count").
 				Where("ticket_id IN ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
-					ticketIDs, "true", false, user.ID).
+					ticketIDs, true, false, user.ID).
 				Group("ticket_id").
 				Scan(&unreadRepliesStats)
 		} else {
 			db.Model(&models.TicketReply{}).
 				Select("ticket_id, COUNT(*) as count").
-				Where("ticket_id IN ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
-					ticketIDs, "true", false, user.ID).
+				Where("ticket_id IN ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
+					ticketIDs, false, false, user.ID).
 				Group("ticket_id").
 				Scan(&unreadRepliesStats)
 		}
@@ -331,21 +332,19 @@ func GetTicket(c *gin.Context) {
 	replies := make([]gin.H, 0)
 	for _, reply := range ticket.Replies {
 		replyData := gin.H{
-			"id":         reply.ID,
-			"ticket_id":  reply.TicketID,
-			"user_id":    reply.UserID,
-			"content":    reply.Content,
-			"is_admin":   reply.IsAdmin,
-			"created_at": utils.FormatBeijingTime(reply.CreatedAt),
-		}
-		if reply.IsAdmin == "true" {
-			replyData["is_admin_reply"] = true
+			"id":            reply.ID,
+			"ticket_id":     reply.TicketID,
+			"user_id":       reply.UserID,
+			"content":       reply.Content,
+			"is_admin":      reply.IsAdmin,
+			"is_admin_reply": reply.IsAdmin,
+			"created_at":    utils.FormatBeijingTime(reply.CreatedAt),
 		}
 
 		isUnread := false
-		if !isAdmin && reply.IsAdmin == "true" {
+		if !isAdmin && reply.IsAdmin {
 			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
-		} else if isAdmin && reply.IsAdmin != "true" {
+		} else if isAdmin && !reply.IsAdmin {
 			isUnread = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID)
 		}
 		replyData["is_unread"] = isUnread
@@ -395,21 +394,28 @@ func GetTicket(c *gin.Context) {
 
 	nowTime := utils.GetBeijingTime()
 	userID := user.ID
+	var toMarkReadIDs []uint
 	for i := range ticket.Replies {
 		reply := &ticket.Replies[i]
 		shouldMarkAsRead := false
-		if !isAdmin && reply.IsAdmin == "true" {
+		if !isAdmin && reply.IsAdmin {
 			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
-		} else if isAdmin && reply.IsAdmin != "true" {
+		} else if isAdmin && !reply.IsAdmin {
 			shouldMarkAsRead = !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID)
 		}
-
 		if shouldMarkAsRead {
 			reply.IsRead = true
 			reply.ReadBy = &userID
 			reply.ReadAt = &nowTime
-			db.Save(reply)
+			toMarkReadIDs = append(toMarkReadIDs, reply.ID)
 		}
+	}
+	if len(toMarkReadIDs) > 0 {
+		db.Model(&models.TicketReply{}).Where("id IN ?", toMarkReadIDs).Updates(map[string]interface{}{
+			"is_read":  true,
+			"read_by":  userID,
+			"read_at":  nowTime,
+		})
 	}
 
 	var ticketRead models.TicketRead
@@ -474,8 +480,8 @@ func ReplyTicket(c *gin.Context) {
 		TicketID: ticket.ID,
 		UserID:   user.ID,
 		Content:  req.Content,
-		IsAdmin:  fmt.Sprintf("%v", isAdmin),
-		IsRead:   false, // 新回复默认未读
+		IsAdmin:  isAdmin,
+		IsRead:   false,
 	}
 
 	if err := db.Create(&reply).Error; err != nil {
@@ -489,13 +495,27 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	if !isAdmin {
+		// 用户回复 → 通知管理员
 		go notification.NewNotificationService().SendAdminNotification("ticket_replied", map[string]interface{}{
-			"username":    user.Username,
-			"email":       user.Email,
-			"ticket_no":   ticket.TicketNo,
-			"title":       ticket.Title,
-			"reply_time":  utils.FormatBeijingTime(utils.GetBeijingTime()),
+			"username":   user.Username,
+			"email":      user.Email,
+			"ticket_no":  ticket.TicketNo,
+			"title":      ticket.Title,
+			"reply_time": utils.FormatBeijingTime(utils.GetBeijingTime()),
 		})
+	} else {
+		// 管理员回复 → 通知工单所有者
+		var ticketOwner models.User
+		if err := db.First(&ticketOwner, ticket.UserID).Error; err == nil && ticketOwner.Email != "" {
+			go func() {
+				emailService := email.NewEmailService()
+				templateBuilder := email.NewEmailTemplateBuilder()
+				content := templateBuilder.GetAdminReplyNotificationTemplate(ticket.TicketNo, ticket.Title, req.Content)
+				if err := emailService.QueueEmail(ticketOwner.Email, "您的工单有新回复", content, "ticket_reply"); err != nil {
+					utils.LogErrorMsg("发送工单回复邮件失败: ticket=%s, email=%s, error=%v", ticket.TicketNo, ticketOwner.Email, err)
+				}
+			}()
+		}
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "", reply)
