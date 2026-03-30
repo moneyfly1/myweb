@@ -135,6 +135,7 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+        
         <el-tab-pane label="注册设置" name="registration">
           <el-form :model="registrationSettings" v-bind="formLayout" class="settings-form">
             <!-- 注册开关组 -->
@@ -174,69 +175,53 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
         <el-tab-pane label="通知设置" name="notification">
+          <!-- 左右布局容器 -->
           <div class="notification-container">
-            <!-- 客户通知部分 -->
+            
+            <!-- ====== 客户通知部分 ====== -->
             <el-card class="notification-section" shadow="never">
               <template #header>
                 <div class="section-header">
                   <span class="section-title">客户通知</span>
-                  <el-tag type="info" size="small">控制发送给客户的邮件通知</el-tag>
+                  <el-tag type="info" size="small">发送给终端用户的通知</el-tag>
                 </div>
               </template>
               <el-form :model="notificationSettings" v-bind="formLayout" class="settings-form">
-                <!-- 开关按钮组 - 移动端横排显示 -->
+                
+                <el-divider content-position="left">全局与方式</el-divider>
                 <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">系统通知</span>
-                    <el-switch v-model="notificationSettings.system_notifications" />
+                  <div v-for="item in customerMethodSwitches" :key="item.key" class="switch-item">
+                    <span class="switch-label">{{ item.label }}</span>
+                    <el-switch v-model="notificationSettings[item.key]" />
                   </div>
-                  <div class="switch-item">
-                    <span class="switch-label">邮件通知</span>
-                    <el-switch v-model="notificationSettings.email_notifications" />
-                  </div>
+                </div>
+
+                <el-divider content-position="left">到期提醒设置</el-divider>
+                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
                   <div class="switch-item">
                     <span class="switch-label">订阅到期提醒</span>
                     <el-switch v-model="notificationSettings.subscription_expiry_notifications" />
                   </div>
                 </div>
+                <!-- 隐藏不必要的输入框，提升UI整洁度 -->
+                <template v-if="notificationSettings.subscription_expiry_notifications">
+                  <el-form-item label="提醒冷却(小时)">
+                    <el-input-number v-model="notificationSettings.subscription_expiry_reminder_cooldown_hours" :min="0" :max="720" :step="1" />
+                    <div class="form-tip">同一用户同主题到期提醒的最小发送间隔，0 表示不限制。</div>
+                  </el-form-item>
+                  <el-form-item label="单用户每日上限">
+                    <el-input-number v-model="notificationSettings.subscription_expiry_reminder_daily_limit" :min="0" :max="20" :step="1" />
+                    <div class="form-tip">同一用户每天最多接收多少封到期提醒，0 表示不限制。</div>
+                  </el-form-item>
+                </template>
 
-                <el-divider />
-
-                <el-form-item label="提醒冷却(小时)">
-                  <el-input-number
-                    v-model="notificationSettings.subscription_expiry_reminder_cooldown_hours"
-                    :min="0"
-                    :max="720"
-                    :step="1"
-                  />
-                  <div class="form-tip">同一用户同主题到期提醒的最小发送间隔，0 表示不限制。</div>
-                </el-form-item>
-                <el-form-item label="单用户每日上限">
-                  <el-input-number
-                    v-model="notificationSettings.subscription_expiry_reminder_daily_limit"
-                    :min="0"
-                    :max="20"
-                    :step="1"
-                  />
-                  <div class="form-tip">同一用户每天最多接收多少封到期提醒，0 表示不限制。</div>
-                </el-form-item>
-
-                <el-divider />
-
-                <!-- 其他通知开关 -->
+                <el-divider content-position="left">事件触发通知</el-divider>
                 <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">新用户注册通知</span>
-                    <el-switch v-model="notificationSettings.new_user_notifications" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">新订单通知</span>
-                    <el-switch v-model="notificationSettings.new_order_notifications" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">工单回复通知</span>
-                    <el-switch v-model="notificationSettings.ticket_reply_notifications" />
+                  <div v-for="item in customerEventSwitches" :key="item.key" class="switch-item">
+                    <span class="switch-label">{{ item.label }}</span>
+                    <el-switch v-model="notificationSettings[item.key]" />
                   </div>
                 </div>
 
@@ -246,15 +231,16 @@
               </el-form>
             </el-card>
 
-            <!-- 管理员通知部分 -->
+            <!-- ====== 管理员通知部分 ====== -->
             <el-card class="notification-section" shadow="never">
               <template #header>
                 <div class="section-header">
                   <span class="section-title">管理员通知</span>
-                  <el-tag type="warning" size="small">支持邮件、Telegram 和 Bark 三种方式</el-tag>
+                  <el-tag type="warning" size="small">后台监控与管理告警</el-tag>
                 </div>
               </template>
               <el-form :model="adminNotificationSettings" v-bind="formLayout" class="settings-form">
+                
                 <!-- 主开关 -->
                 <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
                   <div class="switch-item primary-switch">
@@ -263,130 +249,100 @@
                   </div>
                 </div>
 
-                <el-divider content-position="left">通知方式</el-divider>
+                <!-- 仅在主开关启用时展示详细配置，避免UI臃肿 -->
+                <div v-show="adminNotificationSettings.admin_notification_enabled">
+                  <el-divider content-position="left">通知渠道配置</el-divider>
+                  <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                    <div v-for="item in adminChannelSwitches" :key="item.key" class="switch-item">
+                      <span class="switch-label">{{ item.label }}</span>
+                      <el-switch v-model="adminNotificationSettings[item.key]" />
+                    </div>
+                  </div>
 
-                <!-- 通知方式开关组 -->
-                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">邮件通知</span>
-                    <el-switch v-model="adminNotificationSettings.admin_email_notification" />
+                  <!-- 邮件通知配置 -->
+                  <template v-if="adminNotificationSettings.admin_email_notification">
+                    <el-form-item label="管理员邮箱">
+                      <el-input v-model="adminNotificationSettings.admin_notification_email" placeholder="请输入接收邮箱" />
+                    </el-form-item>
+                    <el-form-item>
+                      <el-button type="primary" @click="testNotification('email')" :loading="testingStates.email" :class="{ 'full-width': isMobile }">测试邮件通知</el-button>
+                    </el-form-item>
+                  </template>
+
+                  <!-- Telegram 通知配置 -->
+                  <template v-if="adminNotificationSettings.admin_telegram_notification">
+                    <el-form-item label="Bot Token">
+                      <el-input v-model="adminNotificationSettings.admin_telegram_bot_token" type="password" show-password />
+                      <div class="form-tip">在 @BotFather 获取</div>
+                    </el-form-item>
+                    <el-form-item label="Chat ID">
+                      <el-input v-model="adminNotificationSettings.admin_telegram_chat_id" type="password" show-password />
+                      <div class="form-tip">发送消息给 @userinfobot 获取</div>
+                    </el-form-item>
+                    <el-form-item>
+                      <el-button type="primary" @click="testNotification('telegram')" :loading="testingStates.telegram" :class="{ 'full-width': isMobile }">测试 Telegram 通知</el-button>
+                    </el-form-item>
+                  </template>
+
+                  <!-- Bark 通知配置 -->
+                  <template v-if="adminNotificationSettings.admin_bark_notification">
+                    <el-form-item label="服务器地址">
+                      <el-input v-model="adminNotificationSettings.admin_bark_server_url" placeholder="默认: https://api.day.app" />
+                    </el-form-item>
+                    <el-form-item label="Device Key">
+                      <el-input v-model="adminNotificationSettings.admin_bark_device_key" type="password" show-password />
+                    </el-form-item>
+                    <el-form-item>
+                      <el-button type="primary" @click="testNotification('bark')" :loading="testingStates.bark" :class="{ 'full-width': isMobile }">测试 Bark 通知</el-button>
+                    </el-form-item>
+                  </template>
+
+                  <!-- 利用 v-for 渲染各类事件开关组 -->
+                  <el-divider content-position="left">用户行为提醒</el-divider>
+                  <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                    <div v-for="item in adminUserEventSwitches" :key="item.key" class="switch-item">
+                      <span class="switch-label">{{ item.label }}</span>
+                      <el-switch v-model="adminNotificationSettings[item.key]" />
+                    </div>
                   </div>
-                  <div class="switch-item">
-                    <span class="switch-label">Telegram 通知</span>
-                    <el-switch v-model="adminNotificationSettings.admin_telegram_notification" />
+
+                  <el-divider content-position="left">订单与订阅提醒</el-divider>
+                  <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                    <div v-for="item in adminOrderEventSwitches" :key="item.key" class="switch-item">
+                      <span class="switch-label">{{ item.label }}</span>
+                      <el-switch v-model="adminNotificationSettings[item.key]" />
+                    </div>
                   </div>
-                  <div class="switch-item">
-                    <span class="switch-label">Bark 通知</span>
-                    <el-switch v-model="adminNotificationSettings.admin_bark_notification" />
+
+                  <el-divider content-position="left">工单提醒</el-divider>
+                  <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                    <div v-for="item in adminTicketEventSwitches" :key="item.key" class="switch-item">
+                      <span class="switch-label">{{ item.label }}</span>
+                      <el-switch v-model="adminNotificationSettings[item.key]" />
+                    </div>
+                  </div>
+
+                  <el-divider content-position="left">安全告警</el-divider>
+                  <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
+                    <div class="switch-item">
+                      <span class="switch-label">异常登录告警</span>
+                      <el-switch v-model="adminNotificationSettings.admin_abnormal_login_alert_enabled" />
+                    </div>
+                  </div>
+                  <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">
+                    开启后，管理员在新设备或异地登录时会收到告警（需管理员个人通知中同时开启）
                   </div>
                 </div>
-
-                <!-- 邮件通知配置 -->
-                <template v-if="adminNotificationSettings.admin_email_notification">
-                  <el-form-item label="管理员邮箱">
-                    <el-input v-model="adminNotificationSettings.admin_notification_email" placeholder="请输入接收邮箱" />
-                  </el-form-item>
-                  <el-form-item>
-                    <el-button type="primary" @click="testNotification('email')" :loading="testingStates.email" :class="{ 'full-width': isMobile }">测试邮件通知</el-button>
-                  </el-form-item>
-                </template>
-
-                <!-- Telegram 通知配置 -->
-                <template v-if="adminNotificationSettings.admin_telegram_notification">
-                  <el-form-item label="Bot Token">
-                    <el-input v-model="adminNotificationSettings.admin_telegram_bot_token" type="password" show-password />
-                    <div class="form-tip">在 @BotFather 获取</div>
-                  </el-form-item>
-                  <el-form-item label="Chat ID">
-                    <el-input v-model="adminNotificationSettings.admin_telegram_chat_id" type="password" show-password />
-                    <div class="form-tip">发送消息给 @userinfobot 获取</div>
-                  </el-form-item>
-                  <el-form-item>
-                    <el-button type="primary" @click="testNotification('telegram')" :loading="testingStates.telegram" :class="{ 'full-width': isMobile }">测试 Telegram 通知</el-button>
-                  </el-form-item>
-                </template>
-
-                <!-- Bark 通知配置 -->
-                <template v-if="adminNotificationSettings.admin_bark_notification">
-                  <el-form-item label="服务器地址">
-                    <el-input v-model="adminNotificationSettings.admin_bark_server_url" placeholder="默认: https://api.day.app" />
-                  </el-form-item>
-                  <el-form-item label="Device Key">
-                    <el-input v-model="adminNotificationSettings.admin_bark_device_key" type="password" show-password />
-                  </el-form-item>
-                  <el-form-item>
-                    <el-button type="primary" @click="testNotification('bark')" :loading="testingStates.bark" :class="{ 'full-width': isMobile }">测试 Bark 通知</el-button>
-                  </el-form-item>
-                </template>
-
-                <el-divider content-position="left">用户行为</el-divider>
-                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">新用户注册</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_user_registered" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">重置密码</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_password_reset" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">管理员创建用户</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_user_created" />
-                  </div>
-                </div>
-
-                <el-divider content-position="left">订单与订阅</el-divider>
-                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">订单支付成功</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_order_paid" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">订阅创建</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_created" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">发送订阅</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_sent" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">重置订阅</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_reset" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">订阅到期</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_subscription_expired" />
-                  </div>
-                </div>
-
-                <el-divider content-position="left">工单</el-divider>
-                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">用户提交工单</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_ticket_created" />
-                  </div>
-                  <div class="switch-item">
-                    <span class="switch-label">工单新回复</span>
-                    <el-switch v-model="adminNotificationSettings.admin_notify_ticket_replied" />
-                  </div>
-                </div>
-
-                <el-divider content-position="left">安全告警</el-divider>
-                <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-                  <div class="switch-item">
-                    <span class="switch-label">管理员账户异常登录告警</span>
-                    <el-switch v-model="adminNotificationSettings.admin_abnormal_login_alert_enabled" />
-                  </div>
-                </div>
-                <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">开启后，管理员在新设备或异地登录时会收到邮件与站内告警（管理员个人通知设置中需同时开启「异常登录/设备告警」）</div>
 
                 <el-form-item style="margin-top: 24px;">
                   <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">保存管理员通知设置</el-button>
                 </el-form-item>
               </el-form>
             </el-card>
+
           </div>
         </el-tab-pane>
+
         <el-tab-pane label="公告管理" name="announcement">
           <el-form :model="announcementSettings" v-bind="formLayout" class="settings-form">
             <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
@@ -406,6 +362,7 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
         <el-tab-pane label="主题设置" name="theme">
           <el-form :model="themeSettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="默认主题" prop="default_theme">
@@ -447,6 +404,7 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
         <el-tab-pane label="节点健康检查" name="node-health">
           <el-alert title="节点健康检查设置" description="配置自动健康检查参数。默认使用TCP连接测试。" type="info" :closable="false" class="mb-20" />
           <el-form :model="nodeHealthSettings" v-bind="formLayout" class="settings-form">
@@ -475,6 +433,7 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
         <el-tab-pane label="安全设置" name="security">
           <el-form :model="securitySettings" v-bind="formLayout" class="settings-form">
             <el-form-item label="登录失败限制" prop="login_fail_limit">
@@ -510,6 +469,7 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
         <el-tab-pane label="备份设置" name="backup">
           <el-alert title="数据库自动备份" description="配置数据库自动备份到 Gitee 或 GitHub。" type="info" :closable="false" class="mb-20" />
           <el-form :model="backupSettings" v-bind="formLayout" class="settings-form">
@@ -521,6 +481,7 @@
               </el-radio-group>
               <div class="form-tip">选择备份上传的目标平台。</div>
             </el-form-item>
+
             <el-divider content-position="left">Gitee 配置</el-divider>
             <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
               <div class="switch-item">
@@ -554,6 +515,7 @@
                 </el-button>
               </el-form-item>
             </template>
+
             <el-divider content-position="left">GitHub 配置</el-divider>
             <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
               <div class="switch-item">
@@ -587,6 +549,7 @@
                 </el-button>
               </el-form-item>
             </template>
+
             <el-divider content-position="left">自动备份设置</el-divider>
             <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
               <div class="switch-item">
@@ -598,6 +561,7 @@
               <el-input v-model.number="backupSettings.backup_auto_interval" type="number" :min="1" class="short-input" />
               <div class="form-tip">建议12-24小时。</div>
             </el-form-item>
+
             <el-divider content-position="left">手动备份</el-divider>
             <el-form-item>
               <el-button type="success" @click="createManualBackup" :loading="creatingBackup" :class="{ 'full-width': isMobile }">
@@ -635,6 +599,7 @@
                 </template>
               </el-alert>
             </el-form-item>
+
             <el-form-item>
               <el-button type="primary" @click="saveBackupSettings" :class="{ 'full-width': isMobile }">保存备份设置</el-button>
             </el-form-item>
@@ -644,12 +609,14 @@
     </el-card>
   </div>
 </template>
+
 <script>
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
+
 const THEME_OPTIONS = [
   { label: '浅色主题', value: 'light', color: '#409EFF' },
   { label: '深色主题', value: 'dark', color: '#1a1a1a' },
@@ -663,6 +630,39 @@ const THEME_OPTIONS = [
   { label: 'Aurora主题', value: 'aurora', color: '#7B68EE' },
   { label: '跟随系统', value: 'auto', color: '#909399' }
 ]
+
+// 提取静态开关配置，减少模板冗余代码
+const customerMethodSwitches = [
+  { label: '系统通知', key: 'system_notifications' },
+  { label: '邮件通知', key: 'email_notifications' }
+]
+const customerEventSwitches = [
+  { label: '新用户注册通知', key: 'new_user_notifications' },
+  { label: '新订单通知', key: 'new_order_notifications' },
+  { label: '工单回复通知', key: 'ticket_reply_notifications' }
+]
+const adminChannelSwitches = [
+  { label: '邮件通知', key: 'admin_email_notification' },
+  { label: 'Telegram 通知', key: 'admin_telegram_notification' },
+  { label: 'Bark 通知', key: 'admin_bark_notification' }
+]
+const adminUserEventSwitches = [
+  { label: '新用户注册', key: 'admin_notify_user_registered' },
+  { label: '重置密码', key: 'admin_notify_password_reset' },
+  { label: '管理员创建用户', key: 'admin_notify_user_created' }
+]
+const adminOrderEventSwitches = [
+  { label: '订单支付成功', key: 'admin_notify_order_paid' },
+  { label: '订阅创建', key: 'admin_notify_subscription_created' },
+  { label: '发送订阅', key: 'admin_notify_subscription_sent' },
+  { label: '重置订阅', key: 'admin_notify_subscription_reset' },
+  { label: '订阅到期', key: 'admin_notify_subscription_expired' }
+]
+const adminTicketEventSwitches = [
+  { label: '用户提交工单', key: 'admin_notify_ticket_created' },
+  { label: '工单新回复', key: 'admin_notify_ticket_replied' }
+]
+
 export default {
   name: 'AdminSettings',
   components: { Plus },
@@ -674,26 +674,26 @@ export default {
     const generalFormRef = ref()
     const uploadUrl = '/api/v1/admin/upload'
     const testingStates = reactive({
-      email: false,
-      telegram: false,
-      bark: false,
-      gitee: false,
-      github: false
+      email: false, telegram: false, bark: false, gitee: false, github: false
     })
+    
     const creatingBackup = ref(false)
     const geoipStatus = ref(null)
     const geoipUpdating = ref(false)
     const geoipDatabaseType = ref('dbip')
     const switchingDatabase = ref(false)
     const cacheClearing = ref(false)
+    
     const uploadStatus = ref(null)
     const uploadTaskId = ref(null)
     const uploadTarget = ref('gitee')
     const uploadStatusInterval = ref(null)
+
     const formLayout = computed(() => ({
       labelWidth: isMobile.value ? '0' : '120px',
       labelPosition: isMobile.value ? 'top' : 'right'
     }))
+
     const generalSettings = reactive({
       site_name: '', site_description: '', domain_name: '', site_logo: '',
       default_theme: 'default', support_qq: '', support_email: '', unified_auth_enabled: false
@@ -744,9 +744,11 @@ export default {
       backup_github_owner: 'moneyfly1', backup_github_repo: 'backup',
       backup_auto_enabled: false, backup_auto_interval: 24
     })
+    
     const generalRules = {
       site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }]
     }
+
     const formatFileSize = (bytes) => {
       if (!bytes) return '0 B'
       const k = 1024
@@ -754,17 +756,21 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k))
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
     }
+    
     const toBool = (val) => val === true || val === 'true'
+
     const loadGeoIPStatus = async () => {
       try {
         const res = await api.get('/admin/settings/geoip/status')
         geoipStatus.value = res.data?.data || res.data || {}
       } catch (e) { console.error('GeoIP Status Error', e) }
     }
+
     const loadSettings = async () => {
       try {
         const { data: res } = await api.get('/admin/settings')
         const data = res?.data || res || {}
+        
         if (data.general) {
           Object.assign(generalSettings, data.general)
           generalSettings.unified_auth_enabled = toBool(data.general.unified_auth_enabled)
@@ -813,6 +819,7 @@ export default {
         ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message))
       }
     }
+
     const handleSave = async (apiCall, successMsg, validationRef = null) => {
       try {
         if (validationRef) await validationRef.validate()
@@ -828,6 +835,7 @@ export default {
         return false
       }
     }
+
     const saveGeneralSettings = async () => {
       const data = { ...generalSettings, unified_auth_enabled: generalSettings.unified_auth_enabled }
       const success = await handleSave(
@@ -837,15 +845,18 @@ export default {
       )
       if (success) await loadSettings()
     }
+
     const saveRegistrationSettings = () => handleSave(() => api.put('/admin/settings/registration', registrationSettings), '注册设置保存成功')
     const saveNotificationSettings = () => handleSave(() => api.put('/admin/settings/notification', notificationSettings), '通知设置保存成功')
     const saveSecuritySettings = () => handleSave(() => api.put('/admin/settings/security', securitySettings), '安全设置保存成功')
     const saveAnnouncementSettings = () => handleSave(() => api.put('/admin/settings/announcement', announcementSettings), '公告设置保存成功')
     const saveBackupSettings = () => handleSave(() => api.put('/admin/settings/backup', backupSettings), '备份设置保存成功')
+    
     const saveThemeSettings = async () => {
       const success = await handleSave(() => api.put('/admin/settings/theme', themeSettings), '主题设置保存成功')
       if (success && themeSettings.default_theme) await themeStore.setTheme(themeSettings.default_theme)
     }
+
     const saveNodeHealthSettings = () => {
       const data = {
         node_health_check_interval: String(nodeHealthSettings.check_interval),
@@ -855,6 +866,7 @@ export default {
       }
       return handleSave(() => api.put('/admin/settings/node_health', data), '节点健康检查设置保存成功')
     }
+
     const saveAdminNotificationSettings = () => {
       const data = {}
       for (const [key, val] of Object.entries(adminNotificationSettings)) {
@@ -862,6 +874,7 @@ export default {
       }
       return handleSave(() => adminAPI.updateAdminNotificationSettings(data), '管理员通知设置保存成功')
     }
+
     const updateGeoIPDatabase = async () => {
       geoipUpdating.value = true
       await handleSave(
@@ -923,6 +936,7 @@ export default {
         testingStates[type] = false
       }
     }
+
     const testGiteeConnection = async () => {
       const { backup_gitee_token: token, backup_gitee_owner: owner, backup_gitee_repo: repo } = backupSettings
       if (!token || !owner || !repo) return ElMessage.error('请填写完整的 Gitee 配置')
@@ -938,6 +952,7 @@ export default {
         testingStates.gitee = false
       }
     }
+
     const testGitHubConnection = async () => {
       const { backup_github_token: token, backup_github_owner: owner, backup_github_repo: repo } = backupSettings
       if (!token || !owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
@@ -953,6 +968,7 @@ export default {
         testingStates.github = false
       }
     }
+
     const checkUploadStatus = async (taskId, target) => {
       try {
         const res = await api.get(`/admin/backup/upload-status/${taskId}?target=${target || 'gitee'}`)
@@ -975,6 +991,7 @@ export default {
         console.error('查询上传状态失败:', e)
       }
     }
+
     const startStatusPolling = (taskId, target) => {
       if (uploadStatusInterval.value) {
         clearInterval(uploadStatusInterval.value)
@@ -984,6 +1001,7 @@ export default {
         checkUploadStatus(taskId, target)
       }, 2000)
     }
+
     const stopStatusPolling = () => {
       if (uploadStatusInterval.value) {
         clearInterval(uploadStatusInterval.value)
@@ -992,12 +1010,12 @@ export default {
       uploadStatus.value = null
       uploadTaskId.value = null
     }
+
     const createManualBackup = async () => {
       creatingBackup.value = true
       uploadStatus.value = null
       uploadTaskId.value = null
       try {
-        // 先保存备份设置，确保后端使用最新的备份目标
         await api.put('/admin/settings/backup', backupSettings)
         const res = await api.post('/admin/backup', {}, { timeout: 60000 })
         if (res.data?.success !== false) {
@@ -1005,6 +1023,7 @@ export default {
           let msg = '备份文件创建成功！'
           if (d.filename) msg += ` 文件: ${d.filename}`
           if (d.size) msg += ` (${(d.size/1024/1024).toFixed(2)} MB)`
+          
           const uploadInfo = d.github || d.gitee || {}
           if (uploadInfo.async && uploadInfo.task_id) {
             uploadTaskId.value = uploadInfo.task_id
@@ -1019,7 +1038,7 @@ export default {
             }
             const platformName = uploadTarget.value === 'github' ? 'GitHub' : 'Gitee'
             msg += ' | ' + (uploadInfo.message || `正在后台上传到${platformName}...`)
-          ElMessage.success(msg)
+            ElMessage.success(msg)
             startStatusPolling(uploadInfo.task_id, uploadTarget.value)
           } else if (d.github?.uploaded || d.gitee?.uploaded) {
             const platformName = d.github ? 'GitHub' : 'Gitee'
@@ -1046,6 +1065,7 @@ export default {
         creatingBackup.value = false
       }
     }
+
     const handleLogoSuccess = (res) => {
       const url = res?.data?.url || res?.url
       if (res?.success || url) {
@@ -1053,21 +1073,26 @@ export default {
         ElMessage.success('Logo上传成功')
       } else ElMessage.error('Logo上传失败')
     }
+
     const beforeLogoUpload = (file) => {
       if (!file.type.startsWith('image/')) return ElMessage.error('只能上传图片!') && false
       if (file.size / 1024 / 1024 >= 2) return ElMessage.error('大小不能超过 2MB!') && false
       return true
     }
+
     const handleResize = () => isMobile.value = window.innerWidth <= 768
+
     onMounted(() => {
       loadSettings()
       loadGeoIPStatus()
       window.addEventListener('resize', handleResize)
     })
+
     onBeforeUnmount(() => {
       window.removeEventListener('resize', handleResize)
       stopStatusPolling()
     })
+
     return {
       activeTab, isMobile, formLayout,
       generalSettings, generalRules, generalFormRef,
@@ -1075,17 +1100,26 @@ export default {
       themeSettings, adminNotificationSettings, announcementSettings,
       nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS,
+      
+      // 导出开关配置数组供模板使用
+      customerMethodSwitches, customerEventSwitches,
+      adminChannelSwitches, adminUserEventSwitches, 
+      adminOrderEventSwitches, adminTicketEventSwitches,
+
       testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, switchingDatabase, creatingBackup, cacheClearing,
       uploadStatus, uploadTaskId, stopStatusPolling,
+      
       saveGeneralSettings, saveRegistrationSettings, saveNotificationSettings,
       saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings,
+      
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup,
       updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize
     }
   }
 }
 </script>
+
 <style scoped>
 .admin-settings { padding: 20px; }
 .avatar-uploader { text-align: center; }
