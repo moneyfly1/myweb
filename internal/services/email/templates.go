@@ -913,6 +913,64 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
                 <p><strong>💡 提示：</strong>订阅已创建并激活，用户可立即使用服务。</p>
             </div>`, username, email, packageName, createTime)
 
+	case "ticket_created":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		ticketNo := getStringFromData(data, "ticket_no", "N/A")
+		ticketTitle := getStringFromData(data, "title", "N/A")
+		ticketType := getStringFromData(data, "type", "N/A")
+		priority := getStringFromData(data, "priority", "N/A")
+		createTime := getStringFromData(data, "create_time", "N/A")
+		content = fmt.Sprintf(`<h2>🎫 用户提交工单</h2>
+            <p>系统检测到用户提交新工单，详情如下：</p>
+            <div class="info-box">
+                <h3>👤 用户信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <h3>📋 工单信息</h3>
+                <table class="info-table">
+                    <tr><th>工单编号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>工单标题</th><td>%s</td></tr>
+                    <tr><th>工单类型</th><td>%s</td></tr>
+                    <tr><th>优先级</th><td>%s</td></tr>
+                    <tr><th>提交时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>请及时登录后台处理用户工单。</p>
+            </div>`, username, email, ticketNo, ticketTitle, ticketType, priority, createTime)
+
+	case "ticket_replied":
+		username := getStringFromData(data, "username", "N/A")
+		email := getStringFromData(data, "email", "N/A")
+		ticketNo := getStringFromData(data, "ticket_no", "N/A")
+		ticketTitle := getStringFromData(data, "title", "N/A")
+		replyTime := getStringFromData(data, "reply_time", "N/A")
+		content = fmt.Sprintf(`<h2>💬 工单新回复</h2>
+            <p>系统检测到用户回复工单，详情如下：</p>
+            <div class="info-box">
+                <h3>👤 用户信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <h3>📋 工单信息</h3>
+                <table class="info-table">
+                    <tr><th>工单编号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>工单标题</th><td>%s</td></tr>
+                    <tr><th>回复时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>请及时登录后台查看用户回复内容。</p>
+            </div>`, username, email, ticketNo, ticketTitle, replyTime)
+
 	default:
 		content = fmt.Sprintf(`<div class="content">
                 <h2>%s</h2>

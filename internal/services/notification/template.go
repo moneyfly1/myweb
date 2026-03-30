@@ -29,6 +29,10 @@ func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, d
 		return b.buildUserCreatedTelegram(data)
 	case "subscription_created":
 		return b.buildSubscriptionCreatedTelegram(data)
+	case "ticket_created":
+		return b.buildTicketCreatedTelegram(data)
+	case "ticket_replied":
+		return b.buildTicketRepliedTelegram(data)
 	case "test":
 		return b.buildTestTelegram(data)
 	default:
@@ -54,6 +58,10 @@ func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data 
 		return b.buildUserCreatedBark(data)
 	case "subscription_created":
 		return b.buildSubscriptionCreatedBark(data)
+	case "ticket_created":
+		return b.buildTicketCreatedBark(data)
+	case "ticket_replied":
+		return b.buildTicketRepliedBark(data)
 	case "test":
 		return b.buildTestBark(data)
 	default:
@@ -554,4 +562,116 @@ func (b *MessageTemplateBuilder) buildDefaultBark(data map[string]interface{}) (
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, message)
 
 	return title, body
+}
+
+func (b *MessageTemplateBuilder) buildTicketCreatedTelegram(data map[string]interface{}) string {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	ticketNo := getString(data, "ticket_no", "N/A")
+	title := getString(data, "title", "N/A")
+	ticketType := getString(data, "type", "N/A")
+	priority := getString(data, "priority", "N/A")
+	createTime := getString(data, "create_time", "N/A")
+
+	return fmt.Sprintf(`🎫 <b>用户提交工单</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  👤 <b>用户信息</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 <b>用户账号</b>: <code>%s</code>
+📧 <b>用户邮箱</b>: %s
+🕐 <b>提交时间</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 <b>工单信息</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🎫 <b>工单编号</b>: <code>%s</code>
+📝 <b>工单标题</b>: %s
+🏷️ <b>工单类型</b>: %s
+⚡ <b>优先级</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 <b>请及时处理用户工单</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, createTime, ticketNo, title, ticketType, priority)
+}
+
+func (b *MessageTemplateBuilder) buildTicketRepliedTelegram(data map[string]interface{}) string {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	ticketNo := getString(data, "ticket_no", "N/A")
+	title := getString(data, "title", "N/A")
+	replyTime := getString(data, "reply_time", "N/A")
+
+	return fmt.Sprintf(`💬 <b>工单新回复</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  👤 <b>用户信息</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 <b>用户账号</b>: <code>%s</code>
+📧 <b>用户邮箱</b>: %s
+🕐 <b>回复时间</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 <b>工单信息</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🎫 <b>工单编号</b>: <code>%s</code>
+📝 <b>工单标题</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 <b>请及时查看用户回复</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, replyTime, ticketNo, title)
+}
+
+func (b *MessageTemplateBuilder) buildTicketCreatedBark(data map[string]interface{}) (string, string) {
+	username := getString(data, "username", "N/A")
+	ticketNo := getString(data, "ticket_no", "N/A")
+	title := getString(data, "title", "N/A")
+	ticketType := getString(data, "type", "N/A")
+	priority := getString(data, "priority", "N/A")
+	createTime := getString(data, "create_time", "N/A")
+
+	barkTitle := "🎫 用户提交工单"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 工单信息
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 用户账号: %s
+🎫 工单编号: %s
+📝 工单标题: %s
+🏷️ 工单类型: %s
+⚡ 优先级: %s
+🕐 提交时间: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 请及时处理用户工单
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, ticketNo, title, ticketType, priority, createTime)
+
+	return barkTitle, body
+}
+
+func (b *MessageTemplateBuilder) buildTicketRepliedBark(data map[string]interface{}) (string, string) {
+	username := getString(data, "username", "N/A")
+	ticketNo := getString(data, "ticket_no", "N/A")
+	title := getString(data, "title", "N/A")
+	replyTime := getString(data, "reply_time", "N/A")
+
+	barkTitle := "💬 工单新回复"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 工单信息
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 用户账号: %s
+🎫 工单编号: %s
+📝 工单标题: %s
+🕐 回复时间: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 请及时查看用户回复
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, ticketNo, title, replyTime)
+
+	return barkTitle, body
 }

@@ -287,6 +287,7 @@ func GetAdminSettings(c *gin.Context) {
 			"admin_notify_order_paid": "false", "admin_notify_user_registered": "false", "admin_notify_password_reset": "false",
 			"admin_notify_subscription_sent": "false", "admin_notify_subscription_reset": "false", "admin_notify_subscription_expired": "false",
 			"admin_notify_user_created": "false", "admin_notify_subscription_created": "false",
+			"admin_notify_ticket_created": "false", "admin_notify_ticket_replied": "false",
 			"admin_abnormal_login_alert_enabled": true, // 管理员账户异常登录告警开关，默认开启
 		},
 		"backup": {

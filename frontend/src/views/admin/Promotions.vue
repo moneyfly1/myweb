@@ -450,6 +450,7 @@ onMounted(() => {
 .filter-bar {
   display: flex;
   gap: 12px;
+  margin-top: 16px;
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
