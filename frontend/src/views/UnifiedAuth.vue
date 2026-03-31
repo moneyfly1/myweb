@@ -12,9 +12,15 @@
       />
     </transition>
     <div class="auth-wrapper">
+      <!-- 左侧品牌展示区 - 现代化极光 + 网格毛玻璃特效 -->
       <div class="auth-brand-section">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+        <div class="glass-grid"></div>
+
         <div class="brand-content">
-          <div class="brand-header">
+          <div class="brand-header stagger-brand">
             <div class="brand-logo">
               <img v-if="settings.siteLogo" :src="settings.siteLogo" :alt="settings.siteName" class="logo-img" />
               <div v-else class="logo-placeholder">
@@ -24,12 +30,12 @@
             </div>
           </div>
           <div class="brand-body">
-            <div class="brand-badge">
+            <div class="brand-badge stagger-brand">
               <span class="badge-dot"></span>
               IEPL 专线全线升级
             </div>
-            <h2 class="brand-title">畅享全球网络<br>解锁流媒体限制</h2>
-            <div class="brand-features">
+            <h2 class="brand-title stagger-brand">畅享全球网络<br>解锁流媒体限制</h2>
+            <div class="brand-features stagger-brand">
               <div class="feature-item">
                 <i class="ph-fill ph-check-circle"></i>
                 <span>支持 Netflix, Disney+, ChatGPT</span>
@@ -43,24 +49,29 @@
                 <span>全平台客户端支持</span>
               </div>
             </div>
-            <div class="brand-stats">
+            <div class="brand-stats stagger-brand">
               <div class="stat-item">
                 <span class="stat-value">80+</span>
-                <span class="stat-label">全球节点</span>
+                <span class="stat-label">全球优质节点</span>
               </div>
               <div class="stat-divider"></div>
               <div class="stat-item">
                 <span class="stat-value">10Gbps</span>
-                <span class="stat-label">骨干带宽</span>
+                <span class="stat-label">骨干冗余带宽</span>
               </div>
             </div>
           </div>
-          <div class="brand-footer">
+          <div class="brand-footer stagger-brand">
             <span>&copy; 2026 {{ settings.siteName || 'TurboCloud' }} Network.</span>
-            <a href="#" class="footer-link">服务条款</a>
+            <div class="footer-links">
+              <a href="#" class="footer-link">服务条款</a>
+              <a href="#" class="footer-link">隐私政策</a>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- 右侧表单区 -->
       <div class="auth-form-section">
         <div class="mobile-header">
           <div class="mobile-logo">
@@ -75,10 +86,20 @@
             下载APP
           </a>
         </div>
+
         <div class="form-container">
-          <transition name="fade" mode="out-in">
+          <transition name="slide-fade" mode="out-in">
+            
+            <!-- ====== 登录视图 ====== -->
             <div v-if="currentView === 'login'" key="login" class="auth-form">
-              <div class="form-header">
+              <div class="stagger-item">
+                <AnimatedCharacter
+                  :username-length="loginForm.username.length"
+                  :is-password-focused="isPasswordFocused"
+                  :is-password-visible="isPasswordVisible"
+                />
+              </div>
+              <div class="form-header stagger-item">
                 <h1 class="form-title">登录控制台</h1>
                 <p class="form-subtitle">欢迎回来，连接从未如此简单。</p>
               </div>
@@ -89,7 +110,7 @@
                 @submit.prevent="handleLogin"
                 label-position="top"
               >
-                <el-form-item prop="username">
+                <el-form-item prop="username" class="stagger-item">
                   <el-input
                     v-model="loginForm.username"
                     placeholder="用户名或邮箱"
@@ -99,20 +120,28 @@
                     autocomplete="username"
                   />
                 </el-form-item>
-                <el-form-item prop="password">
+                <el-form-item prop="password" class="stagger-item">
                   <el-input
                     v-model="loginForm.password"
-                    type="password"
+                    :type="isPasswordVisible ? 'text' : 'password'"
                     placeholder="输入密码"
                     size="large"
                     prefix-icon="Lock"
-                    show-password
                     clearable
                     autocomplete="current-password"
                     @keyup.enter="handleLogin"
-                  />
+                    @focus="isPasswordFocused = true"
+                    @blur="isPasswordFocused = false"
+                  >
+                    <template #suffix>
+                      <el-icon style="cursor:pointer" @click="isPasswordVisible = !isPasswordVisible">
+                        <View v-if="!isPasswordVisible" />
+                        <Hide v-else />
+                      </el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
-                <el-form-item>
+                <el-form-item class="stagger-item">
                   <div class="form-options">
                     <el-checkbox v-model="rememberMe">记住我</el-checkbox>
                     <el-link type="primary" @click="switchView('forgot')" :underline="false">
@@ -120,7 +149,7 @@
                     </el-link>
                   </div>
                 </el-form-item>
-                <el-form-item>
+                <el-form-item class="stagger-item">
                   <el-button
                     type="primary"
                     size="large"
@@ -132,16 +161,27 @@
                   </el-button>
                 </el-form-item>
               </el-form>
-              <div class="form-footer">
+              <div class="form-footer stagger-item">
                 <span class="footer-text">新用户？</span>
                 <el-link type="primary" @click="switchView('register')" :underline="false">
                   注册免费试用
                 </el-link>
               </div>
             </div>
+
+            <!-- ====== 注册视图 ====== -->
             <div v-else-if="currentView === 'register'" key="register" class="auth-form">
-              <div class="form-header">
+              <div class="stagger-item">
+                <!-- 统一使用可爱的交互组件 -->
+                <AnimatedCharacter
+                  :username-length="registerForm.username.length"
+                  :is-password-focused="isRegPasswordFocused"
+                  :is-password-visible="isRegPasswordVisible"
+                />
+              </div>
+              <div class="form-header stagger-item">
                 <h1 class="form-title">注册账号</h1>
+                <p class="form-subtitle">加入我们，体验极致网络。</p>
               </div>
               <el-alert
                 v-if="!registrationEnabled"
@@ -150,6 +190,7 @@
                 :closable="false"
                 show-icon
                 style="margin-bottom: 20px;"
+                class="stagger-item"
               >
                 <template #default>
                   <p>系统管理员已关闭用户注册功能，请联系管理员获取账户。</p>
@@ -163,7 +204,7 @@
                 @submit.prevent="handleRegister"
                 label-position="top"
               >
-                <el-form-item prop="username">
+                <el-form-item prop="username" class="stagger-item">
                   <el-input
                     v-model="registerForm.username"
                     placeholder="用户名"
@@ -173,7 +214,7 @@
                     autocomplete="username"
                   />
                 </el-form-item>
-                <el-form-item prop="email">
+                <el-form-item prop="email" class="stagger-item">
                   <el-input
                     v-model="registerForm.email"
                     type="email"
@@ -187,7 +228,7 @@
                     <i class="ph-fill ph-info"></i> 推荐使用 QQ 邮箱注册，接收验证码更稳定
                   </div>
                 </el-form-item>
-                <el-form-item prop="verificationCode" :required="emailVerificationRequired">
+                <el-form-item prop="verificationCode" :required="emailVerificationRequired" class="stagger-item">
                   <div class="verification-code-group">
                     <el-input
                       v-model="registerForm.verificationCode"
@@ -211,7 +252,7 @@
                     </el-button>
                   </div>
                 </el-form-item>
-                <el-form-item prop="inviteCode" :required="inviteCodeRequired">
+                <el-form-item prop="inviteCode" :required="inviteCodeRequired" class="stagger-item">
                   <el-input
                     v-model="registerForm.inviteCode"
                     :placeholder="inviteCodeRequired ? '邀请码（必填）' : '邀请码（选填，填写可获得注册奖励）'"
@@ -228,32 +269,48 @@
                     </span>
                   </div>
                 </el-form-item>
-                <el-form-item prop="password">
+                <el-form-item prop="password" class="stagger-item">
                   <el-input
                     v-model="registerForm.password"
-                    type="password"
+                    :type="isRegPasswordVisible ? 'text' : 'password'"
                     placeholder="8位以上字符"
                     size="large"
                     prefix-icon="Lock"
-                    show-password
                     clearable
                     autocomplete="new-password"
-                  />
+                    @focus="isRegPasswordFocused = true"
+                    @blur="isRegPasswordFocused = false"
+                  >
+                    <template #suffix>
+                      <el-icon style="cursor:pointer" @click="isRegPasswordVisible = !isRegPasswordVisible">
+                        <View v-if="!isRegPasswordVisible" />
+                        <Hide v-else />
+                      </el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
-                <el-form-item prop="confirmPassword">
+                <el-form-item prop="confirmPassword" class="stagger-item">
                   <el-input
                     v-model="registerForm.confirmPassword"
-                    type="password"
+                    :type="isRegPasswordVisible ? 'text' : 'password'"
                     placeholder="确认密码"
                     size="large"
                     prefix-icon="Lock"
-                    show-password
                     clearable
                     autocomplete="new-password"
                     @keyup.enter="handleRegister"
-                  />
+                    @focus="isRegPasswordFocused = true"
+                    @blur="isRegPasswordFocused = false"
+                  >
+                    <template #suffix>
+                      <el-icon style="cursor:pointer" @click="isRegPasswordVisible = !isRegPasswordVisible">
+                        <View v-if="!isRegPasswordVisible" />
+                        <Hide v-else />
+                      </el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
-                <el-form-item>
+                <el-form-item class="stagger-item">
                   <el-button
                     type="primary"
                     size="large"
@@ -265,7 +322,7 @@
                   </el-button>
                 </el-form-item>
               </el-form>
-              <div class="form-footer">
+              <div class="form-footer stagger-item">
                 <span class="footer-text">已有账号？</span>
                 <el-link type="primary" @click="switchView('login')" :underline="false">
                   立即登录
@@ -276,19 +333,28 @@
                 </el-link>
               </div>
             </div>
+
+            <!-- ====== 忘记密码视图 ====== -->
             <div v-else-if="currentView === 'forgot'" key="forgot" class="auth-form">
               <el-button
                 text
                 @click="switchView('login')"
-                class="back-button"
+                class="back-button stagger-item"
               >
                 <i class="ph-bold ph-arrow-left"></i>
                 返回登录
               </el-button>
-              <div class="form-header">
-                <div class="forgot-icon">
-                  <i class="ph-fill ph-lock-key-open"></i>
-                </div>
+              
+              <!-- 统一使用可爱的交互组件代替原先的锁形 Icon -->
+              <div class="stagger-item">
+                <AnimatedCharacter
+                  :username-length="forgotForm.email.length"
+                  :is-password-focused="isForgotPasswordFocused"
+                  :is-password-visible="isForgotPasswordVisible"
+                />
+              </div>
+              
+              <div class="form-header stagger-item">
                 <h1 class="form-title">重置密码</h1>
                 <p class="form-subtitle">验证邮箱后即可设置新密码。</p>
               </div>
@@ -299,7 +365,7 @@
                 @submit.prevent="handleReset"
                 label-position="top"
               >
-                <el-form-item prop="email">
+                <el-form-item prop="email" class="stagger-item">
                   <el-input
                     v-model="forgotForm.email"
                     type="email"
@@ -310,18 +376,18 @@
                     autocomplete="email"
                   />
                 </el-form-item>
-                  <el-form-item prop="verificationCode" required>
-                    <div class="verification-code-group">
-                      <el-input
-                        v-model="forgotForm.verificationCode"
-                        placeholder="6位验证码（必填）"
-                        size="large"
-                        prefix-icon="Message"
-                        maxlength="6"
-                        class="verification-code-input"
-                        clearable
-                        autocomplete="off"
-                      />
+                <el-form-item prop="verificationCode" required class="stagger-item">
+                  <div class="verification-code-group">
+                    <el-input
+                      v-model="forgotForm.verificationCode"
+                      placeholder="6位验证码（必填）"
+                      size="large"
+                      prefix-icon="Message"
+                      maxlength="6"
+                      class="verification-code-input"
+                      clearable
+                      autocomplete="off"
+                    />
                     <el-button
                       type="primary"
                       size="large"
@@ -334,32 +400,48 @@
                     </el-button>
                   </div>
                 </el-form-item>
-                <el-form-item prop="newPassword">
+                <el-form-item prop="newPassword" class="stagger-item">
                   <el-input
                     v-model="forgotForm.newPassword"
-                    type="password"
+                    :type="isForgotPasswordVisible ? 'text' : 'password'"
                     placeholder="输入新密码"
                     size="large"
                     prefix-icon="Lock"
-                    show-password
                     clearable
                     autocomplete="new-password"
-                  />
+                    @focus="isForgotPasswordFocused = true"
+                    @blur="isForgotPasswordFocused = false"
+                  >
+                    <template #suffix>
+                      <el-icon style="cursor:pointer" @click="isForgotPasswordVisible = !isForgotPasswordVisible">
+                        <View v-if="!isForgotPasswordVisible" />
+                        <Hide v-else />
+                      </el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
-                <el-form-item prop="confirmPassword">
+                <el-form-item prop="confirmPassword" class="stagger-item">
                   <el-input
                     v-model="forgotForm.confirmPassword"
-                    type="password"
+                    :type="isForgotPasswordVisible ? 'text' : 'password'"
                     placeholder="确认新密码"
                     size="large"
                     prefix-icon="Lock"
-                    show-password
                     clearable
                     autocomplete="new-password"
                     @keyup.enter="handleReset"
-                  />
+                    @focus="isForgotPasswordFocused = true"
+                    @blur="isForgotPasswordFocused = false"
+                  >
+                    <template #suffix>
+                      <el-icon style="cursor:pointer" @click="isForgotPasswordVisible = !isForgotPasswordVisible">
+                        <View v-if="!isForgotPasswordVisible" />
+                        <Hide v-else />
+                      </el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
-                <el-form-item>
+                <el-form-item class="stagger-item">
                   <el-button
                     type="primary"
                     size="large"
@@ -381,9 +463,11 @@
     </div>
   </div>
 </template>
+
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import AnimatedCharacter from '@/components/AnimatedCharacter.vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { useSettingsStore } from '@/store/settings'
@@ -391,28 +475,47 @@ import { authAPI, inviteAPI, settingsAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
 import { resetRefreshFailed } from '@/utils/api'
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
+
 const currentView = ref('login')
 const isLoading = ref(false)
 const sendingCode = ref(false)
 const codeTimer = ref(0)
 const rememberMe = ref(false)
+
+// Login States
+const isPasswordFocused = ref(false)
+const isPasswordVisible = ref(false)
+
+// Register States
+const isRegPasswordFocused = ref(false)
+const isRegPasswordVisible = ref(false)
+
+// Forgot Password States
+const isForgotPasswordFocused = ref(false)
+const isForgotPasswordVisible = ref(false)
+
 const registrationEnabled = ref(true)
 const inviteCodeRequired = ref(false)
 const emailVerificationRequired = ref(true)
 const minPasswordLength = ref(8)
 const inviteCodeInfo = ref(null)
+
 let countdownTimer = null
+
 const loginFormRef = ref()
 const registerFormRef = ref()
 const forgotFormRef = ref()
+
 const loginForm = reactive({
   username: '',
   password: ''
 })
+
 const registerForm = reactive({
   username: '',
   email: '',
@@ -421,18 +524,22 @@ const registerForm = reactive({
   verificationCode: '',
   inviteCode: ''
 })
+
 const forgotForm = reactive({
   email: '',
   verificationCode: '',
   newPassword: '',
   confirmPassword: ''
 })
+
 const notification = reactive({
   show: false,
   message: '',
   type: 'success'
 })
+
 const settings = computed(() => settingsStore)
+
 const showNotification = (message, type = 'success') => {
   notification.message = message
   notification.type = type
@@ -441,21 +548,26 @@ const showNotification = (message, type = 'success') => {
     notification.show = false
   }, 3000)
 }
+
 const switchView = (view) => {
   currentView.value = view
   if (view === 'login') {
     loginForm.password = ''
+    isPasswordVisible.value = false
   } else if (view === 'register') {
     registerForm.password = ''
     registerForm.confirmPassword = ''
     registerForm.verificationCode = ''
+    isRegPasswordVisible.value = false
   } else if (view === 'forgot') {
     forgotForm.newPassword = ''
     forgotForm.confirmPassword = ''
     forgotForm.verificationCode = ''
+    isForgotPasswordVisible.value = false
   }
   notification.show = false
 }
+
 const loginRules = {
   username: [
     { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
@@ -465,6 +577,7 @@ const loginRules = {
     { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
   ]
 }
+
 const registerRules = computed(() => ({
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -542,6 +655,7 @@ const registerRules = computed(() => ({
     { required: true, message: '请输入邀请码', trigger: 'blur' }
   ] : []
 }))
+
 const forgotRules = computed(() => ({
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
@@ -611,6 +725,7 @@ const forgotRules = computed(() => ({
     }
   ]
 }))
+
 const sendVerificationCode = async (type) => {
   const email = type === 'register' ? registerForm.email : forgotForm.email
   if (!email) {
@@ -655,6 +770,7 @@ const sendVerificationCode = async (type) => {
     sendingCode.value = false
   }
 }
+
 const handleLogin = async () => {
   if (!loginFormRef.value) return
   try {
@@ -676,9 +792,9 @@ const handleLogin = async () => {
     }
   } catch (error) {
     let errorMessage = error.response?.data?.detail || 
-                      error.response?.data?.message || 
-                      error.message || 
-                      '登录失败，请重试'
+                       error.response?.data?.message || 
+                       error.message || 
+                       '登录失败，请重试'
     if (error.response?.status === 403) {
       if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
         ElMessage({
@@ -739,6 +855,7 @@ const handleLogin = async () => {
     isLoading.value = false
   }
 }
+
 const handleRegister = async () => {
   if (!registerFormRef.value) return
   try {
@@ -807,14 +924,15 @@ const handleRegister = async () => {
     }
   } catch (error) {
     const errorMessage = error.response?.data?.detail || 
-                        error.response?.data?.message || 
-                        error.message || 
-                        '注册失败，请重试'
+                         error.response?.data?.message || 
+                         error.message || 
+                         '注册失败，请重试'
     ElMessage.error(errorMessage)
   } finally {
     isLoading.value = false
   }
 }
+
 const handleReset = async () => {
   if (!forgotFormRef.value) return
   try {
@@ -840,14 +958,15 @@ const handleReset = async () => {
     }, 1500)
   } catch (error) {
     const errorMessage = error.response?.data?.detail || 
-                        error.response?.data?.message || 
-                        error.message || 
-                        '重置密码失败，请重试'
+                         error.response?.data?.message || 
+                         error.message || 
+                         '重置密码失败，请重试'
     ElMessage.error(errorMessage)
   } finally {
     isLoading.value = false
   }
 }
+
 const validateInviteCode = async (code) => {
   if (!code || code.trim() === '') {
     inviteCodeInfo.value = null
@@ -863,6 +982,7 @@ const validateInviteCode = async (code) => {
     }
   }
 }
+
 let validateTimeout = null
 watch(() => registerForm.inviteCode, (newCode) => {
   if (validateTimeout) {
@@ -876,6 +996,7 @@ watch(() => registerForm.inviteCode, (newCode) => {
     inviteCodeInfo.value = null
   }
 })
+
 const checkRegistrationSettings = async () => {
   try {
     const response = await settingsAPI.getPublicSettings()
@@ -916,6 +1037,7 @@ const checkRegistrationSettings = async () => {
     minPasswordLength.value = 8
   }
 }
+
 onMounted(async () => {
   await checkRegistrationSettings()
   await settingsStore.loadSettings()
@@ -937,6 +1059,7 @@ onMounted(async () => {
     currentView.value = 'login'
   }
 })
+
 onUnmounted(() => {
   if (countdownTimer) {
     clearInterval(countdownTimer)
@@ -947,13 +1070,15 @@ onUnmounted(() => {
   }
 })
 </script>
+
 <style scoped lang="scss">
 .unified-auth-container {
   min-height: 100vh;
   width: 100%;
   overflow: clip;
-  background-color: #f3f4f6;
+  background-color: #f8fafc;
 }
+
 .notification-alert {
   position: fixed;
   top: 20px;
@@ -962,130 +1087,223 @@ onUnmounted(() => {
   z-index: 9999;
   max-width: 500px;
   width: 90%;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
+
 .auth-wrapper {
   display: flex;
   min-height: 100vh;
   width: 100%;
 }
+
+/* ================== 左侧超现代 UI 重构 ================== */
 .auth-brand-section {
   display: none;
   @media (min-width: 1024px) {
     display: flex;
     width: 50%;
     position: relative;
-    overflow: clip;
-    background: linear-gradient(135deg, rgba(10, 10, 30, 0.92) 0%, rgba(37, 99, 235, 0.85) 100%);
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background-image: url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop');
-      background-size: cover;
-      background-position: center;
-      opacity: 0.4;
-      z-index: 0;
-    }
+    overflow: hidden;
+    background-color: #0b0f19; /* 极简的深夜色调 */
   }
 }
+
+/* 极光模糊球体 */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+  z-index: 0;
+}
+.orb-1 {
+  top: -15%; left: -10%;
+  width: 50vw; height: 50vw;
+  background: #3b82f6;
+  animation: drift 20s ease-in-out infinite alternate;
+}
+.orb-2 {
+  bottom: -20%; right: -15%;
+  width: 60vw; height: 60vw;
+  background: #8b5cf6;
+  animation: drift 25s ease-in-out infinite alternate-reverse;
+}
+.orb-3 {
+  top: 30%; left: 30%;
+  width: 40vw; height: 40vw;
+  background: #06b6d4;
+  animation: drift 22s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(60px, 40px) scale(1.1); }
+}
+
+/* 科技网格背景层 */
+.glass-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  z-index: 1;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 100%);
+}
+
 .brand-content {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 48px;
+  padding: 60px; /* 增加留白更透气 */
   width: 100%;
   color: white;
 }
+
+/* 左侧元素的错位渐显效果 */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.stagger-brand {
+  animation: slideInLeft 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  &:nth-child(1) { animation-delay: 0.1s; }
+  &:nth-child(2) { animation-delay: 0.2s; }
+  &:nth-child(3) { animation-delay: 0.3s; }
+  &:nth-child(4) { animation-delay: 0.4s; }
+  &:nth-child(5) { animation-delay: 0.5s; }
+}
+
 .brand-header {
   .brand-logo {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     margin-bottom: 32px;
     .logo-img {
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     }
     .logo-placeholder {
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.1);
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
-      font-size: 20px;
+      font-size: 24px;
     }
     .brand-name {
-      font-size: 20px;
-      font-weight: 600;
+      font-size: 24px;
+      font-weight: 800;
       color: white;
+      letter-spacing: 0.5px;
     }
   }
 }
+
 .brand-body {
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
+
 .brand-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
+  padding: 6px 16px;
+  background: rgba(16, 185, 129, 0.1); 
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 100px;
+  color: #34d399;
   font-size: 14px;
+  font-weight: 600;
   margin-bottom: 24px;
   width: fit-content;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  backdrop-filter: blur(10px);
+  
   .badge-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: #10b981;
+    background: #34d399;
+    box-shadow: 0 0 10px #34d399;
     animation: pulse 2s infinite;
   }
 }
+
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); box-shadow: 0 0 15px #34d399; }
 }
+
 .brand-title {
-  font-size: 36px;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 46px;
+  font-weight: 800;
+  line-height: 1.25;
   margin-bottom: 32px;
-  color: white;
+  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -1px;
 }
+
+/* 特性胶囊条列设计 */
 .brand-features {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   .feature-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 16px;
-    color: rgba(255, 255, 255, 0.9);
+    gap: 8px;
+    padding: 10px 18px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 100px;
+    backdrop-filter: blur(12px);
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.95);
+    transition: all 0.3s ease;
+    
+    &:hover {
+      background: rgba(255, 255, 255, 0.12);
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    
     i {
-      font-size: 20px;
-      color: #10b981;
+      font-size: 18px;
+      color: #34d399;
     }
   }
 }
+
 .brand-footer {
   margin-top: auto;
   padding-top: 32px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  
   .brand-stats {
     display: flex;
     gap: 32px;
@@ -1094,27 +1312,35 @@ onUnmounted(() => {
       display: flex;
       flex-direction: column;
       .stat-value {
-        font-size: 24px;
-        font-weight: 700;
+        font-size: 28px;
+        font-weight: 800;
         color: white;
       }
       .stat-label {
-        font-size: 14px;
+        font-size: 13px;
         color: rgba(255, 255, 255, 0.7);
         margin-top: 4px;
       }
     }
   }
+
+  .footer-links {
+    display: flex;
+    gap: 16px;
+  }
+
   .footer-link {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.6);
     text-decoration: none;
-    font-size: 14px;
-    transition: color 0.3s;
+    transition: all 0.3s ease;
     &:hover {
       color: white;
+      text-shadow: 0 0 8px rgba(255,255,255,0.4);
     }
   }
 }
+
+/* ================== 右侧表单区 ================== */
 .auth-form-section {
   flex: 1;
   display: flex;
@@ -1125,12 +1351,18 @@ onUnmounted(() => {
     width: 50%;
   }
 }
+
 .mobile-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
   border-bottom: 1px solid #e5e7eb;
+  background: rgba(255,255,255,0.9);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
   @media (min-width: 1024px) {
     display: none;
   }
@@ -1147,7 +1379,7 @@ onUnmounted(() => {
       width: 32px;
       height: 32px;
       border-radius: 8px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1156,8 +1388,8 @@ onUnmounted(() => {
     }
     .mobile-brand-name {
       font-size: 18px;
-      font-weight: 600;
-      color: #1f2937;
+      font-weight: 700;
+      color: #0f172a;
     }
   }
   .download-app-btn {
@@ -1165,18 +1397,20 @@ onUnmounted(() => {
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    background: #f3f4f6;
+    background: #f1f5f9;
     border-radius: 8px;
-    color: #4b5563;
+    color: #334155;
     text-decoration: none;
     font-size: 14px;
+    font-weight: 500;
     transition: all 0.3s;
     &:hover {
-      background: #e5e7eb;
-      color: #1f2937;
+      background: #e2e8f0;
+      color: #0f172a;
     }
   }
 }
+
 .form-container {
   flex: 1;
   display: flex;
@@ -1187,45 +1421,88 @@ onUnmounted(() => {
     padding: 48px;
   }
 }
+
 .auth-form {
   width: 100%;
   max-width: 400px;
 }
+
+/* 右侧表单元素的阶梯渐显动画 */
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stagger-item {
+  animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.auth-form > .stagger-item:nth-child(1) { animation-delay: 0.05s; }
+.auth-form > .stagger-item:nth-child(2) { animation-delay: 0.1s; }
+.auth-form .el-form-item:nth-child(1) { animation-delay: 0.15s; }
+.auth-form .el-form-item:nth-child(2) { animation-delay: 0.2s; }
+.auth-form .el-form-item:nth-child(3) { animation-delay: 0.25s; }
+.auth-form .el-form-item:nth-child(4) { animation-delay: 0.3s; }
+.auth-form .el-form-item:nth-child(5) { animation-delay: 0.35s; }
+.auth-form > .stagger-item:last-child { animation-delay: 0.4s; }
+
 .form-header {
   text-align: center;
   margin-bottom: 32px;
   .form-title {
     font-size: 28px;
-    font-weight: 700;
-    color: #1f2937;
+    font-weight: 800;
+    color: #0f172a;
     margin-bottom: 8px;
   }
   .form-subtitle {
-    font-size: 14px;
-    color: #6b7280;
+    font-size: 15px;
+    color: #64748b;
   }
 }
+
 .form-options {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
 }
+
+/* 更高级质感的按钮 */
 .submit-button {
   width: 100%;
-  height: 44px;
+  height: 48px;
   font-size: 16px;
   font-weight: 600;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.25);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  }
+  
+  &:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  }
 }
+
 .form-footer {
   text-align: center;
   margin-top: 24px;
   font-size: 14px;
-  color: #6b7280;
+  color: #64748b;
   .footer-text {
     margin-right: 8px;
   }
 }
+
 .verification-code-group {
   display: flex;
   gap: 12px;
@@ -1234,66 +1511,74 @@ onUnmounted(() => {
   }
   .send-code-button {
     white-space: nowrap;
+    border-radius: 12px;
+    height: 46px; /* 对齐输入框高度 */
+    transition: all 0.3s;
+    &:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    }
   }
 }
+
 .invite-code-tip {
   margin-top: 8px;
   font-size: 12px;
-  .tip-success {
-    color: #10b981;
-  }
-  .tip-error {
-    color: #ef4444;
-  }
+  .tip-success { color: #10b981; }
+  .tip-error { color: #ef4444; }
 }
+
 .back-button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #6b7280;
+  color: #64748b;
   text-decoration: none;
-  font-size: 14px;
-  margin-bottom: 24px;
-  transition: color 0.3s;
+  font-size: 15px;
+  margin-bottom: 20px;
+  transition: all 0.3s;
+  padding: 8px 0;
   &:hover {
-    color: #1f2937;
+    color: #0f172a;
+    transform: translateX(-4px);
   }
 }
-.forgot-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #fef3c7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 24px;
-  color: #f59e0b;
-  font-size: 32px;
+
+/* 页面切换动画 */
+.slide-fade-enter-active {
+  transition: all 0.4s ease-out;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s;
+.slide-fade-leave-active {
+  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
 }
-.fade-enter-from,
-.fade-leave-to {
+.slide-fade-enter-from {
+  transform: translateX(20px);
   opacity: 0;
 }
+.slide-fade-leave-to {
+  transform: translateX(-20px);
+  opacity: 0;
+}
+
+/* 深度定制 El-Input 增强现代丝滑感 */
 :deep(.el-input) {
   .el-input__wrapper {
-    box-shadow: none !important;
-    border: 1px solid #dcdfe6 !important;
-    border-radius: 0 !important;
-    background-color: #ffffff !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    background-color: #f8fafc !important;
     padding: 0 15px !important;
-    min-height: 44px !important;
+    min-height: 48px !important;
+    transition: all 0.3s ease;
+    
     &:hover {
-      box-shadow: none !important;
-      border-color: #c0c4cc !important;
+      background-color: #ffffff !important;
+      border-color: #cbd5e1 !important;
     }
     &.is-focus {
-      box-shadow: none !important;
-      border-color: #409eff !important;
+      background-color: #ffffff !important;
+      border-color: #3b82f6 !important;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
     }
   }
   .el-input__inner {
@@ -1301,123 +1586,64 @@ onUnmounted(() => {
     box-shadow: none !important;
     background: transparent !important;
     padding: 0 !important;
-    height: 42px !important;
-    line-height: 42px !important;
-    font-size: 14px !important;
+    height: 46px !important;
+    line-height: 46px !important;
+    font-size: 15px !important;
+    color: #1e293b;
+    &::placeholder {
+      color: #94a3b8;
+    }
   }
-  .el-input__prefix {
-    left: 15px !important;
-  }
-  .el-input__suffix {
-    right: 15px !important;
-  }
+  .el-input__prefix { left: 15px !important; color: #64748b; }
+  .el-input__suffix { right: 15px !important; color: #64748b; }
 }
+
 :deep(.el-form-item) {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   .el-form-item__content {
     line-height: normal;
   }
 }
-:deep(.el-input--large) {
-  .el-input__wrapper {
-    min-height: 44px !important;
-  }
-  .el-input__inner {
-    height: 42px !important;
-    line-height: 42px !important;
-  }
+
+.mobile-footer {
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+  color: #94a3b8;
+  @media (min-width: 1024px) { display: none; }
 }
+
 @media (max-width: 768px) {
   .verification-code-group {
     gap: 8px;
     flex-wrap: nowrap;
     .verification-code-input {
       flex: 1;
-      min-width: 0; /* 允许缩小 */
+      min-width: 0;
     }
     .send-code-button {
       min-width: 90px;
       max-width: 120px;
-      flex-shrink: 0; /* 防止按钮被压缩 */
+      flex-shrink: 0;
       white-space: nowrap;
       font-size: 14px;
       padding: 0 12px;
     }
   }
-  :deep(.verification-code-input) {
-    -webkit-user-select: auto !important;
-    user-select: auto !important;
-    pointer-events: auto !important;
-    touch-action: manipulation !important;
-    -webkit-tap-highlight-color: transparent !important;
-  }
+  /* 移动端特殊处理防缩放 */
   :deep(.verification-code-input .el-input__wrapper) {
-    pointer-events: auto !important;
-    touch-action: manipulation !important;
-    -webkit-tap-highlight-color: transparent !important;
-    background-color: #ffffff !important;
-    min-height: 48px !important; /* 手机端增大高度，防止iOS自动缩放 */
+    min-height: 48px !important; 
   }
   :deep(.verification-code-input .el-input__inner) {
-    color: #303133 !important;
-    -webkit-text-fill-color: #303133 !important;
-    font-size: 16px !important; /* 防止iOS自动缩放 */
-    opacity: 1 !important;
-    caret-color: #1677ff !important;
-    -webkit-user-select: auto !important;
-    user-select: auto !important;
-    pointer-events: auto !important;
-    touch-action: manipulation !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
-    background-color: transparent !important;
-    height: 46px !important;
-    line-height: 46px !important;
-  }
-  :deep(.verification-code-input .el-input__wrapper .el-input__inner) {
-    color: #303133 !important;
-    -webkit-text-fill-color: #303133 !important;
-    font-size: 16px !important;
-    opacity: 1 !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
-    background-color: transparent !important;
-  }
-  :deep(.verification-code-input .el-input__wrapper.is-focus .el-input__inner) {
-    color: #303133 !important;
-    -webkit-text-fill-color: #303133 !important;
-    font-size: 16px !important;
-    opacity: 1 !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
-    background-color: transparent !important;
-  }
-  :deep(.verification-code-input .el-input__wrapper:hover .el-input__inner) {
-    color: #303133 !important;
-    -webkit-text-fill-color: #303133 !important;
-    font-size: 16px !important;
-    opacity: 1 !important;
-  }
-  :deep(.verification-code-input input) {
-    color: #303133 !important;
-    -webkit-text-fill-color: #303133 !important;
-    font-size: 16px !important;
-    opacity: 1 !important;
-    caret-color: #1677ff !important;
-    -webkit-user-select: auto !important;
-    user-select: auto !important;
-    pointer-events: auto !important;
-    touch-action: manipulation !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
+    font-size: 16px !important; 
   }
 }
+
 @media (max-width: 480px) {
   .verification-code-group {
     gap: 6px;
     .verification-code-input {
-      flex: 2; /* 增加输入框占比，让它更长 */
-      min-width: 0;
+      flex: 2;
     }
     .send-code-button {
       min-width: 80px;
