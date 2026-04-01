@@ -1511,19 +1511,21 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 	// 3. 订阅信息头部（某些客户端可能使用）
 	// 设置流量为无限（0 表示无限制）
+	// 不设置 expire 字段，让客户端显示相对更新时间（如"3天前"）
 	userinfoParts := []string{
 		"upload=0",
 		"download=0",
 		"total=0",
 	}
-	if !subscription.ExpireTime.IsZero() {
-		expireUnix := subscription.ExpireTime.Unix()
-		userinfoParts = append(userinfoParts, fmt.Sprintf("expire=%d", expireUnix))
-	}
 	c.Header("Subscription-Userinfo", strings.Join(userinfoParts, "; "))
 
 	// 4. 更新间隔头部（部分客户端可能使用）
 	c.Header("Profile-Update-Interval", "24")
+
+	// 5. 最后更新时间（Unix 时间戳）
+	if !subscription.UpdatedAt.IsZero() {
+		c.Header("Profile-Update-Time", fmt.Sprintf("%d", subscription.UpdatedAt.Unix()))
+	}
 
 	c.String(200, config)
 }
