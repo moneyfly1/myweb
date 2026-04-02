@@ -2279,9 +2279,6 @@ onUnmounted(() => {
 }
 .card-header {
   padding: 20px 24px 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 .card-title {
   font-size: 1.25rem;

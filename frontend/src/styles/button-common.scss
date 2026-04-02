@@ -1,0 +1,229 @@
+/**
+ * 统一的按钮样式类
+ * 规范所有按钮的样式和使用方式
+ */
+
+/* ========================================
+   按钮组样式
+   ======================================== */
+
+/* 操作按钮组（表格操作列等） */
+.action-button-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    width: 100%;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+}
+
+/* 按钮组（Element Plus button-group 增强） */
+:deep(.el-button-group) {
+  @media (max-width: 768px) {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+      border-radius: 6px !important;
+    }
+  }
+}
+
+/* 操作按钮网格（多按钮场景） */
+.action-buttons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 6px;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========================================
+   筛选按钮组
+   ======================================== */
+
+.filter-button-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    width: 100%;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+}
+
+/* ========================================
+   表单操作按钮（提交、取消等）
+   ======================================== */
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--theme-border, #DCDFE6);
+  
+  @media (max-width: 768px) {
+    flex-direction: column-reverse;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+}
+
+/* ========================================
+   页面头部操作按钮
+   ======================================== */
+
+.page-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    width: 100%;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+}
+
+/* ========================================
+   工具栏按钮组
+   ======================================== */
+
+.toolbar-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 16px;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    width: 100%;
+    margin-bottom: 12px;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+}
+
+/* ========================================
+   移动端优化按钮
+   ======================================== */
+
+@media (max-width: 768px) {
+  /* 所有按钮最小点击区域 */
+  .el-button {
+    min-height: 36px;
+    font-size: 14px;
+  }
+  
+  .el-button--small {
+    min-height: 32px;
+    font-size: 13px;
+  }
+  
+  .el-button--mini {
+    min-height: 28px;
+    font-size: 12px;
+  }
+  
+  /* 图标按钮增强 */
+  .el-button.is-circle {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .el-button--small.is-circle {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* ========================================
+   按钮颜色语义化类
+   ======================================== */
+
+/* 主要操作按钮 */
+.btn-primary-action {
+  @extend .el-button--primary !optional;
+}
+
+/* 成功操作按钮 */
+.btn-success-action {
+  @extend .el-button--success !optional;
+}
+
+/* 警告操作按钮 */
+.btn-warning-action {
+  @extend .el-button--warning !optional;
+}
+
+/* 危险操作按钮 */
+.btn-danger-action {
+  @extend .el-button--danger !optional;
+}
+
+/* 次要操作按钮 */
+.btn-secondary-action {
+  @extend .el-button--default !optional;
+}
+
+/* 链接样式按钮 */
+.btn-link-action {
+  @extend .el-button--text !optional;
+}
+
+/* ========================================
+   按钮加载状态
+   ======================================== */
+
+.btn-loading {
+  position: relative;
+  pointer-events: none;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: inherit;
+  }
+}

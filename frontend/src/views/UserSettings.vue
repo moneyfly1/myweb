@@ -1,5 +1,5 @@
 <template>
-  <div class="user-settings-container">
+  <div class="list-container user-settings">
     <div class="page-header">
       <h1>用户设置</h1>
       <p>管理您的账户设置和偏好</p>
@@ -431,7 +431,7 @@ export default {
     const profileRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
-        { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' }
+        { min: 2, max: 20, message: '用户名长度在 2 到 20 个字符', trigger: 'blur' }
       ],
       nickname: [
         { max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }
@@ -836,15 +836,6 @@ export default {
 }
 .setting-content {
   margin-bottom: 20px;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  font-weight: bold;
-}
-.card-header :is(i) {
-  margin-right: 8px;
-  color: #409eff;
 }
 :deep(.el-input__wrapper) {
   border-radius: 0 !important;

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -203,23 +204,34 @@ func getStringSlice(key string, defaultValue []string) []string {
 
 func getSecretKey() string {
 	key := strings.TrimSpace(viper.GetString("SECRET_KEY"))
-	if !isWeakSecretKey(key) {
-		return key
+	
+	// 首先检查环境变量（优先级最高）
+	if envKey := os.Getenv("JWT_SECRET_KEY"); envKey != "" {
+		key = envKey
 	}
-
-	// 生产环境必须显式配置强密钥，避免服务重启后自动换 key 导致令牌全部失效
-	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
-	if env == "production" || env == "prod" {
-		return key
+	
+	// 验证密钥强度
+	if isWeakSecretKey(key) {
+		env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+		if env == "production" || env == "prod" {
+			// 生产环境必须使用强密钥
+			log.Fatal("生产环境必须设置强密钥 (JWT_SECRET_KEY 或 SECRET_KEY，长度至少32字节且不是弱口令)")
+		}
+		
+		// 开发/测试环境可以自动生成，但会警告
+		log.Println("警告: SECRET_KEY 未设置或使用弱口令，建议设置强密钥")
+		if key == "" {
+			// 仅在完全未设置时生成临时密钥
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				panic(fmt.Errorf("生成 SECRET_KEY 失败: %w", err))
+			}
+			key = base64.URLEncoding.EncodeToString(b)
+			log.Println("已生成临时开发密钥（注意：重启后所有JWT令牌将失效）")
+		}
 	}
-
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Errorf("生成 SECRET_KEY 失败: %w", err))
-	}
-	generatedKey := base64.URLEncoding.EncodeToString(b)
-	fmt.Println("警告: SECRET_KEY 未设置或使用弱口令，已自动生成临时强密钥，请尽快在 .env 中设置固定强密钥")
-	return generatedKey
+	
+	return key
 }
 
 func isWeakSecretKey(key string) bool {

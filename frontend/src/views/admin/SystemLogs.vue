@@ -1,5 +1,5 @@
 <template>
-  <div class="system-logs-container">
+  <div class="list-container admin-system-logs">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -773,21 +773,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
 <style scoped>
 .system-logs-container {
   padding: 20px;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.card-header h2 {
-  margin: 0;
-  color: #333;
-  font-size: 1.5rem;
-}
-.card-header :is(p) {
-  margin: 0;
-  color: #666;
-  font-size: 0.9rem;
 }
 .logs-filter {
   margin-bottom: 20px;

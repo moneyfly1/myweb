@@ -432,11 +432,6 @@ export default {
 .detail-card {
   margin-bottom: 20px;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 .template-data {
   position: relative;
 }

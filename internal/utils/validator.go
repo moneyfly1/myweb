@@ -59,7 +59,7 @@ func SanitizeSearchKeyword(keyword string) string {
 }
 
 func ValidateUsername(username string) bool {
-	pattern := `^[a-zA-Z0-9_]{3,20}$`
+	pattern := `^[a-zA-Z0-9_\x{4e00}-\x{9fa5}]{2,20}$`
 	matched, _ := regexp.MatchString(pattern, username)
 	return matched
 }

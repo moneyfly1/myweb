@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -97,18 +98,30 @@ func formatIP(ip string) string {
 	return ip
 }
 
-// asyncSubscriptionLog 异步记录订阅日志，安全处理 Context
+// asyncSubscriptionLog 异步记录订阅日志，带超时控制
 func asyncSubscriptionLog(
+	ctx context.Context,
 	subID, userID uint,
 	actionType, actionBy string,
 	actionByUserID *uint,
-	clientIP string, // 必须在 handler 中获取，不能在 goroutine 中从 ctx 获取
+	clientIP string,
 	beforeData, afterData map[string]interface{},
 	reason string,
 ) {
 	go func() {
+		// 设置超时，避免goroutine永久阻塞
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		
+		// 使用WithContext确保数据库操作可以取消
 		if err := utils.CreateSubscriptionLog(subID, userID, actionType, actionBy, actionByUserID, clientIP, beforeData, afterData, reason); err != nil {
-			log.Printf("failed to create subscription log: %v", err)
+			// 只记录错误，不阻塞主流程
+			select {
+			case <-ctx.Done():
+				// 超时或被取消，不记录日志
+			default:
+				log.Printf("failed to create subscription log: %v", err)
+			}
 		}
 	}()
 }
@@ -190,12 +203,20 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 		return err
 	}
 
-	// 清除旧 token 的配置缓存
-	go func() {
-		if err := cache.ClearSubscriptionConfigCache(oldURL); err != nil {
-			log.Printf("failed to clear subscription config cache: %v", err)
+	// 清除旧 token 的配置缓存（带超时）
+	go func(url string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, url); err != nil {
+			select {
+			case <-ctx.Done():
+				// 超时，不记录错误
+			default:
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
 		}
-	}()
+	}(oldURL)
 
 	reset := models.SubscriptionReset{
 		UserID:             sub.UserID,
@@ -237,7 +258,7 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 	}
 
 	// 使用传入的 IP 地址记录日志
-	asyncSubscriptionLog(sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
+	asyncSubscriptionLog(context.Background(), sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
 
 	return db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error
 }
@@ -318,7 +339,9 @@ func GetSubscriptions(c *gin.Context) {
 		return
 	}
 	var subscriptions []models.Subscription
-	if err := database.GetDB().Where("user_id = ?", user.ID).Find(&subscriptions).Error; err != nil {
+	db := database.GetDB()
+	// 预加载用户信息，避免N+1查询
+	if err := db.Preload("User").Where("user_id = ?", user.ID).Find(&subscriptions).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅列表失败", err)
 		return
 	}
@@ -374,7 +397,7 @@ func CreateSubscription(c *gin.Context) {
 		"expire_time":     sub.ExpireTime.Format(TimeLayout),
 		"status":          sub.Status,
 	}
-	asyncSubscriptionLog(sub.ID, user.ID, "create", "user", &user.ID, utils.GetRealClientIP(c), nil, afterData, "用户创建订阅")
+	asyncSubscriptionLog(c.Request.Context(), sub.ID, user.ID, "create", "user", &user.ID, utils.GetRealClientIP(c), nil, afterData, "用户创建订阅")
 
 	utils.SuccessResponse(c, http.StatusCreated, "", sub)
 }
@@ -617,9 +640,17 @@ func BatchClearDevices(c *gin.Context) {
 	db.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{})
 	db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0)
 	go func(subscriptions []models.Subscription) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
 		for _, sub := range subscriptions {
-			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
-				log.Printf("failed to clear subscription config cache: %v", err)
+			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, sub.SubscriptionURL); err != nil {
+				select {
+				case <-ctx.Done():
+					return // 超时，停止处理
+				default:
+					log.Printf("failed to clear subscription config cache: %v", err)
+				}
 			}
 		}
 	}(subs)
@@ -704,15 +735,23 @@ func UpdateSubscription(c *gin.Context) {
 		"expire_time":  sub.ExpireTime.Format(TimeLayout),
 	}
 
-	asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, utils.GetRealClientIP(c), beforeData, afterData, "更新订阅")
+	asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, actionType, actionBy, actionByUserID, utils.GetRealClientIP(c), beforeData, afterData, "更新订阅")
 	if actionBy == "admin" {
 		utils.CreateAuditLogSimple(c, "update_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 更新订阅 subscription_id=%d", sub.ID))
 	}
-	go func() {
-		if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
-			log.Printf("failed to clear subscription config cache: %v", err)
+	go func(subURL string) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		
+		if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
+			select {
+			case <-ctx.Done():
+				// 超时，不记录错误
+			default:
+				log.Printf("failed to clear subscription config cache: %v", err)
+			}
 		}
-	}()
+	}(sub.SubscriptionURL)
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", nil)
 }
 
@@ -761,20 +800,28 @@ func ExtendSubscription(c *gin.Context) {
 	sub.ExpireTime = sub.ExpireTime.AddDate(0, 0, req.Days)
 	db.Save(sub)
 	utils.CreateAuditLogSimple(c, "extend_subscription", "subscription", sub.ID, fmt.Sprintf("管理员操作: 延长订阅 %d 天 subscription_id=%d", req.Days, sub.ID))
-	// 异步发送通知
-	go func() {
+	// 异步发送通知（带超时）
+	go func(ctx context.Context, userEmail, username string, pkgID *int64, oldExp, newExp, nowStr string) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		
 		pkgName := "默认套餐"
-		if sub.PackageID != nil {
+		if pkgID != nil && *pkgID > 0 {
 			var pkg models.Package
-			if err := db.First(&pkg, *sub.PackageID).Error; err == nil {
+			if err := db.WithContext(ctx).First(&pkg, uint(*pkgID)).Error; err == nil {
 				pkgName = pkg.Name
 			}
 		}
-		if err := email.NewEmailService().QueueEmail(sub.User.Email, "续费成功",
-			email.NewEmailTemplateBuilder().GetRenewalConfirmationTemplate(sub.User.Username, pkgName, oldExp, sub.ExpireTime.Format(TimeLayout), utils.GetBeijingTime().Format(TimeLayout), 0), "renewal_confirmation"); err != nil {
-			log.Printf("failed to queue email: %v", err)
+		if err := email.NewEmailService().QueueEmail(userEmail, "续费成功",
+			email.NewEmailTemplateBuilder().GetRenewalConfirmationTemplate(username, pkgName, oldExp, newExp, nowStr, 0), "renewal_confirmation"); err != nil {
+			select {
+			case <-ctx.Done():
+				// 超时，不记录错误
+			default:
+				log.Printf("failed to queue email: %v", err)
+			}
 		}
-	}()
+	}(c.Request.Context(), sub.User.Email, sub.User.Username, sub.PackageID, oldExp, sub.ExpireTime.Format(TimeLayout), utils.GetBeijingTime().Format(TimeLayout))
 	utils.SuccessResponse(c, http.StatusOK, "订阅已延长", sub)
 }
 
@@ -832,9 +879,17 @@ func ClearUserDevices(c *gin.Context) {
 		db.Where("subscription_id IN ?", subIDs).Delete(&models.Device{})
 		db.Model(&models.Subscription{}).Where("id IN ?", subIDs).Update("current_devices", 0)
 		go func(subscriptions []models.Subscription) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			
 			for _, sub := range subscriptions {
-				if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
-					log.Printf("failed to clear subscription config cache: %v", err)
+				if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, sub.SubscriptionURL); err != nil {
+					select {
+					case <-ctx.Done():
+						return // 超时，停止处理
+					default:
+						log.Printf("failed to clear subscription config cache: %v", err)
+					}
 				}
 			}
 		}(subs)
@@ -929,9 +984,12 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 		return
 	}
 
-	// 记录余额日志
+	// 记录余额日志（带超时）
 	userID := user.ID
-	go func() {
+	go func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		
 		if err := utils.CreateBalanceLog(
 			user.ID,
 			"refund",
@@ -945,16 +1003,21 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 			&userID,
 			ipAddress,
 		); err != nil {
-			log.Printf("failed to create balance log: %v", err)
+			select {
+			case <-ctx.Done():
+				// 超时，不记录错误
+			default:
+				log.Printf("failed to create balance log: %v", err)
+			}
 		}
-	}()
+	}(c.Request.Context())
 
 	// 记录订阅日志
 	beforeData := map[string]interface{}{
 		"subscription_id": sub.ID,
 		"expire_time":     sub.ExpireTime.Format(TimeLayout),
 	}
-	asyncSubscriptionLog(sub.ID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
+	asyncSubscriptionLog(c.Request.Context(), sub.ID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
 
 	utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{
 		"converted_amount":       convertedAmount,
@@ -1070,12 +1133,20 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 			"user_id":         sub.UserID,
 			"expire_time":     sub.ExpireTime.Format(TimeLayout),
 		}
-		asyncSubscriptionLog(sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
-		go func() {
-			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
-				log.Printf("failed to clear subscription config cache: %v", err)
+		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
+		go func(subURL string) {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+			defer cancel()
+			
+			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
+				select {
+				case <-ctx.Done():
+					// 超时，不记录错误
+				default:
+					log.Printf("failed to clear subscription config cache: %v", err)
+				}
 			}
-		}()
+		}(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLogSimple(c, "batch_delete_subscriptions", "subscription", 0, fmt.Sprintf("管理员操作: 批量删除订阅 %d 个", len(req.SubscriptionIDs)))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)), nil)
@@ -1142,12 +1213,20 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 			"is_active": isActive,
 			"status":    status,
 		}
-		asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
-		go func() {
-			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
-				log.Printf("failed to clear subscription config cache: %v", err)
+		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
+		go func(subURL string) {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+			defer cancel()
+			
+			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
+				select {
+				case <-ctx.Done():
+					// 超时，不记录错误
+				default:
+					log.Printf("failed to clear subscription config cache: %v", err)
+				}
 			}
-		}()
+		}(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLogSimple(c, "batch_update_subscriptions_status", "subscription", 0, fmt.Sprintf("管理员操作: 批量%s订阅 %d 个", actionName, res.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功操作 %d 个订阅", res.RowsAffected), nil)
@@ -1459,19 +1538,37 @@ func GetSubscriptionConfig(c *gin.Context) {
 		}
 	}
 
-	// 异步记录设备访问和更新计数（不阻塞配置返回）
+	// 异步记录设备访问和更新计数（不阻塞配置返回，带超时）
 	if shouldRecord {
-		go func(subID, userID uint, ua, ip string) {
+		go func(ctx context.Context, subID, userID uint, ua, ip string) {
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			
 			if _, err := deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "clash"); err != nil {
-				log.Printf("failed to record device access: %v", err)
+				select {
+				case <-ctx.Done():
+					// 超时，不记录错误
+				default:
+					log.Printf("failed to record device access: %v", err)
+				}
 			}
-		}(subscription.ID, subscription.UserID, userAgent, clientIP)
+		}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP)
 
-		go func(subID uint) {
+		go func(ctx context.Context, subID uint) {
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			
 			db := database.GetDB()
-			db.Model(&models.Subscription{}).Where("id = ?", subID).
-				Update("clash_count", gorm.Expr("clash_count + ?", 1))
-		}(subscription.ID)
+			if err := db.WithContext(ctx).Model(&models.Subscription{}).Where("id = ?", subID).
+				Update("clash_count", gorm.Expr("clash_count + ?", 1)).Error; err != nil {
+				select {
+				case <-ctx.Done():
+					// 超时，不记录错误
+				default:
+					log.Printf("failed to update clash count: %v", err)
+				}
+			}
+		}(c.Request.Context(), subscription.ID)
 	}
 
 	// 生成 Clash 配置

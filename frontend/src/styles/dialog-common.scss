@@ -1,0 +1,104 @@
+/**
+ * 公共弹窗样式
+ * 统一所有 el-dialog 的样式规范
+ */
+
+// 弹窗基础样式
+:deep(.el-dialog) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  
+  .el-dialog__header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--theme-border, #DCDFE6);
+    margin: 0;
+    
+    .el-dialog__title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--theme-text, #303133);
+    }
+    
+    .el-dialog__headerbtn {
+      top: 16px;
+      right: 20px;
+      width: 32px;
+      height: 32px;
+      
+      .el-dialog__close {
+        font-size: 18px;
+        color: var(--theme-text, #909399);
+        
+        &:hover {
+          color: var(--theme-primary, #409EFF);
+        }
+      }
+    }
+  }
+  
+  .el-dialog__body {
+    padding: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  
+  .el-dialog__footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--theme-border, #DCDFE6);
+  }
+}
+
+// 弹窗尺寸类
+.dialog-xs { width: 320px !important; }
+.dialog-sm { width: 480px !important; }
+.dialog-md { width: 640px !important; }
+.dialog-lg { width: 800px !important; }
+.dialog-xl { width: 1000px !important; }
+
+// 移动端适配
+@media (max-width: 768px) {
+  :deep(.el-dialog) {
+    width: 92% !important;
+    margin: 5vh auto !important;
+    max-height: 90vh;
+    
+    .el-dialog__body {
+      max-height: 60vh;
+      padding: 16px;
+    }
+    
+    .el-dialog__header {
+      padding: 12px 16px;
+    }
+    
+    .el-dialog__footer {
+      padding: 10px 16px;
+    }
+  }
+  
+  .dialog-xs,
+  .dialog-sm,
+  .dialog-md,
+  .dialog-lg,
+  .dialog-xl {
+    width: 92% !important;
+  }
+}
+
+// 弹窗底部按钮统一样式
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  
+  @media (max-width: 768px) {
+    flex-direction: column-reverse;
+    gap: 8px;
+    
+    .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+}

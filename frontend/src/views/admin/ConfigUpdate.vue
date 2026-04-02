@@ -678,30 +678,6 @@ $primary-color: #409eff;
 }
 
 .card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  
-  .header-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2f3d;
-    position: relative;
-    padding-left: 12px;
-    
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 4px;
-      height: 16px;
-      background-color: $primary-color;
-      border-radius: 2px;
-    }
-  }
-
   .header-left {
     display: flex;
     align-items: center;

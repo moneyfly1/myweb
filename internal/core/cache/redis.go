@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -110,14 +109,22 @@ func FlushAll() error {
 
 // ClearSubscriptionConfigCache 清除指定订阅的配置缓存（所有格式）
 func ClearSubscriptionConfigCache(subscriptionURL string) error {
+	return ClearSubscriptionConfigCacheWithContext(ctx, subscriptionURL)
+}
+
+// ClearSubscriptionConfigCacheWithContext 带上下文的缓存清除
+func ClearSubscriptionConfigCacheWithContext(ctx context.Context, subscriptionURL string) error {
 	if !IsRedisEnabled() {
 		return nil
 	}
-	if err := Del(
+	
+	keys := []string{
 		fmt.Sprintf("subscription:config:%s:clash", subscriptionURL),
 		fmt.Sprintf("subscription:config:%s:base64", subscriptionURL),
-	); err != nil {
-		log.Printf("failed to delete subscription config cache: %v", err)
+	}
+	
+	if err := redisClient.Del(ctx, keys...).Err(); err != nil {
+		return fmt.Errorf("failed to delete subscription config cache: %w", err)
 	}
 	return nil
 }
