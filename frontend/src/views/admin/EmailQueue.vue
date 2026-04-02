@@ -874,16 +874,6 @@ export default {
 .queue-list {
   margin-bottom: 20px;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  @media (max-width: 768px) {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-}
 .header-info {
   color: #666;
   font-size: 0.9rem;

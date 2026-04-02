@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-dashboard">
+  <div class="list-container admin-dashboard">
     <el-row :gutter="20" class="stat-row">
       <el-col :xs="12" :sm="6">
         <el-card class="stat-card">
@@ -851,9 +851,6 @@ export default {
   flex-direction: column;
 }
 .card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 0 4px;
 }
 .card-title {

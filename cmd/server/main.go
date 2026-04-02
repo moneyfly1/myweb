@@ -81,11 +81,10 @@ func main() {
 		}
 	}
 
-	// 验证 geoipPath 安全性
-	cleanGeoipPath := filepath.Clean(geoipPath)
-	if strings.Contains(cleanGeoipPath, "..") {
-		// #nosec G706 - Path is cleaned and validated, log is for debugging
-		log.Printf("不安全的 GeoIP 路径: %s", geoipPath) // #nosec G706
+	// 验证 geoipPath 安全性（防止路径遍历攻击）
+	cleanGeoipPath, err := safePathJoin(".", geoipPath)
+	if err != nil {
+		log.Printf("GeoIP 路径不安全 (%v)，使用默认路径", err)
 		cleanGeoipPath = "./GeoLite2-City.mmdb"
 	}
 
@@ -310,4 +309,36 @@ func ensureDefaultEmailTemplates() {
 			}
 		}
 	}
+}
+
+// 安全的路径验证，防止路径遍历攻击
+func safePathJoin(baseDir, userPath string) (string, error) {
+	// 清理路径
+	cleaned := filepath.Clean(userPath)
+
+	// 检查是否包含 .. 或绝对路径
+	if strings.Contains(cleaned, "..") || filepath.IsAbs(cleaned) {
+		return "", fmt.Errorf("非法路径: 包含禁止的组件")
+	}
+
+	// 转换为绝对路径
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("无法解析基础目录: %w", err)
+	}
+
+	absPath := filepath.Join(absBase, cleaned)
+
+	// 确保结果在基础目录内
+	rel, err := filepath.Rel(absBase, absPath)
+	if err != nil {
+		return "", fmt.Errorf("路径计算失败: %w", err)
+	}
+
+	// 如果相对路径以 .. 开头，说明试图访问基础目录之外
+	if strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("路径超出允许范围")
+	}
+
+	return absPath, nil
 }

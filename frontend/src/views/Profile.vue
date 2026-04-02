@@ -1,5 +1,5 @@
 <template>
-  <div class="profile-container">
+  <div class="list-container profile">
     <div class="page-header">
       <h1>个人资料</h1>
       <p>管理您的账户信息</p>
@@ -736,17 +736,6 @@ export default {
     :deep(.el-card__body) {
       padding: 10px 12px;
     }
-  }
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  @media (max-width: 768px) {
-    font-size: 0.875rem;
-    gap: 0.375rem;
   }
 }
 .form-tip {

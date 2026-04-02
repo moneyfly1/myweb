@@ -762,12 +762,6 @@ onUnmounted(() => {
   height: 32px !important;
   line-height: 32px !important;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
 .card-title {
   font-size: 16px;
   font-weight: 600;

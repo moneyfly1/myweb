@@ -585,16 +585,6 @@ export default {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.title-text {
-  font-size: 16px;
-  font-weight: 600;
-  margin-right: 8px;
-}
 .header-actions {
   display: flex;
   gap: 8px;

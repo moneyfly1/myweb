@@ -1,5 +1,5 @@
 <template>
-  <div class="coupons-container">
+  <div class="list-container admin-coupons">
     <div class="page-header">
       <h1>优惠券管理</h1>
       <el-button type="primary" @click="showCreateDialog = true" class="create-btn">

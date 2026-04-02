@@ -936,18 +936,6 @@ export default {
   }
 }
 .card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-
-  .header-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #303133;
-  }
-
   .header-actions {
     display: flex;
     gap: 10px;
@@ -959,12 +947,6 @@ export default {
       }
     }
   }
-}
-
-.card-header h2 {
-  margin: 0;
-  color: #333;
-  font-size: 1.5rem;
 }
 .form-tip {
   font-size: 12px;

@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-payment-config">
+  <div class="list-container admin-payment-config">
     <el-card>
       <template #header>
         <div class="header-content">

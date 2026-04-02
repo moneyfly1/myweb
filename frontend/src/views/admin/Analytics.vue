@@ -578,18 +578,6 @@ const exportData = async () => {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-header span {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-}
-
 .header-actions {
   display: flex;
   gap: 12px;

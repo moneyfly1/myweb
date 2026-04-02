@@ -1,5 +1,5 @@
 <template>
-  <div class="logs-container">
+  <div class="list-container admin-logs">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -46,14 +46,5 @@ const handleTabChange = (tabName) => {
 <style scoped>
 .logs-container {
   padding: 20px;
-}
-.card-header h2 {
-  margin: 0;
-  color: #333;
-}
-.card-header p {
-  margin: 5px 0 0 0;
-  color: #666;
-  font-size: 14px;
 }
 </style>

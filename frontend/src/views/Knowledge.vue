@@ -203,21 +203,8 @@ onMounted(() => {
 }
 
 .list-card {
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.card-header span {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
 .search-input {

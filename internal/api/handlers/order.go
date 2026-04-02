@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func resolveUserInfo(db *gorm.DB, userID uint, user models.User) gin.H {
+func resolveUserInfo(user models.User) gin.H {
 	if user.ID > 0 {
 		return gin.H{
 			"id":       user.ID,
@@ -29,22 +29,14 @@ func resolveUserInfo(db *gorm.DB, userID uint, user models.User) gin.H {
 			"email":    user.Email,
 		}
 	}
-	var u models.User
-	if err := db.First(&u, userID).Error; err == nil {
-		return gin.H{
-			"id":       u.ID,
-			"username": u.Username,
-			"email":    u.Email,
-		}
-	}
 	return gin.H{
-		"id":       userID,
+		"id":       0,
 		"username": "已删除",
 		"email":    "deleted",
 	}
 }
 
-func resolvePackageInfo(db *gorm.DB, order models.Order) (uint, string, interface{}) {
+func resolvePackageInfo(order models.Order) (uint, string, interface{}) {
 	if order.PackageID == 0 {
 		name := "设备升级"
 		if order.ExtraData.Valid && order.ExtraData.String != "" {
@@ -78,19 +70,11 @@ func resolvePackageInfo(db *gorm.DB, order models.Order) (uint, string, interfac
 		}
 	}
 
-	var pkg models.Package
-	if err := db.First(&pkg, order.PackageID).Error; err == nil {
-		return pkg.ID, pkg.Name, gin.H{
-			"id":           pkg.ID,
-			"name":         pkg.Name,
-			"price":        pkg.Price,
-			"device_limit": pkg.DeviceLimit,
-		}
-	}
-	return order.PackageID, "未知套餐", gin.H{"id": order.PackageID, "name": "未知套餐"}
+	// 如果Package未预加载，返回基本 info
+	return order.PackageID, "套餐未加载", gin.H{"id": order.PackageID, "name": "套餐未加载"}
 }
 
-func formatOrderData(db *gorm.DB, order models.Order) gin.H {
+func formatOrderData(order models.Order) gin.H {
 	amount := order.Amount
 	if order.FinalAmount.Valid {
 		amount = order.FinalAmount.Float64
@@ -106,8 +90,8 @@ func formatOrderData(db *gorm.DB, order models.Order) gin.H {
 		paymentTime = utils.FormatBeijingTime(order.PaymentTime.Time)
 	}
 
-	userInfo := resolveUserInfo(db, order.UserID, order.User)
-	pkgID, pkgName, pkgInfo := resolvePackageInfo(db, order)
+	userInfo := resolveUserInfo(order.User)
+	pkgID, pkgName, pkgInfo := resolvePackageInfo(order)
 
 	return gin.H{
 		"id":                     order.ID,
@@ -492,7 +476,7 @@ func GetOrders(c *gin.Context) {
 	pages := (int(total) + size - 1) / size
 	formattedOrders := make([]gin.H, len(orders))
 	for i, order := range orders {
-		formattedOrders[i] = formatOrderData(db, order)
+		formattedOrders[i] = formatOrderData(order)
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
@@ -639,7 +623,7 @@ func GetAdminOrders(c *gin.Context) {
 		var orders []models.Order
 		if err := orderQuery.Preload("User").Preload("Package").Order("orders.created_at DESC").Limit(limit).Find(&orders).Error; err == nil {
 			for _, order := range orders {
-				formatted := formatOrderData(db, order)
+				formatted := formatOrderData(order)
 				allRecords = append(allRecords, gin.H{
 					"record_type": "order",
 					"created_at":  formatted["created_at"],
@@ -651,7 +635,7 @@ func GetAdminOrders(c *gin.Context) {
 		var recharges []models.RechargeRecord
 		if err := rechargeQuery.Order("created_at DESC").Limit(limit).Find(&recharges).Error; err == nil {
 			for _, record := range recharges {
-				userInfo := resolveUserInfo(db, record.UserID, record.User)
+				userInfo := resolveUserInfo(record.User)
 				rechargeData := gin.H{
 					"id":                     record.ID,
 					"user_id":                record.UserID,
@@ -730,7 +714,7 @@ func GetAdminOrders(c *gin.Context) {
 
 	orderList := make([]gin.H, len(orders))
 	for i, order := range orders {
-		orderList[i] = formatOrderData(db, order)
+		orderList[i] = formatOrderData(order)
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
@@ -1044,7 +1028,7 @@ func ExportOrders(c *gin.Context) {
 	csvContent.WriteString("订单号,用户ID,用户名,邮箱,套餐ID,套餐名称,订单金额,支付方式,订单状态,创建时间,支付时间,更新时间\n")
 
 	for _, order := range orders {
-		formatted := formatOrderData(db, order)
+		formatted := formatOrderData(order)
 		userMap := formatted["user"].(gin.H)
 		statusText := order.Status
 		switch order.Status {

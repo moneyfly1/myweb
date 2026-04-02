@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-tickets-container">
+  <div class="list-container admin-tickets">
     <div class="page-header">
       <h1>工单管理</h1>
       <div class="header-actions">
@@ -745,11 +745,6 @@ onUnmounted(() => {
   .ticket-notes-card,
   .ticket-replies-card {
     margin-bottom: 20px;
-  }
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
   }
   .ticket-status-badges {
     display: flex;

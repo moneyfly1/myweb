@@ -137,7 +137,7 @@ export default {
     const loginRules = {
       username: [
         { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
-        { min: 3, message: '用户名长度不能少于3位', trigger: 'blur' }
+        { min: 2, message: '用户名长度不能少于2位', trigger: 'blur' }
       ],
       password: [
         { required: true, message: '请输入密码', trigger: 'blur' },

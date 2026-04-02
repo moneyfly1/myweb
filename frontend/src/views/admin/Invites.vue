@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-invites">
+  <div class="list-container admin-invites">
     <el-card>
       <template #header>
         <div class="card-header-wrapper">

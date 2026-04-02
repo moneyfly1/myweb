@@ -1655,8 +1655,8 @@ export default {
 }
 .search-form {
   margin-bottom: 20px;
-  padding: 20px;
-  background: #f5f7fa;
+  padding: 16px;
+  background: #fafafa;
   border-radius: 8px;
   &.desktop-only {
     @media (max-width: 768px) {
