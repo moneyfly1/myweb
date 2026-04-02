@@ -5,6 +5,9 @@
 
 set +e
 
+# 禁用 Git 自动分页，防止更新文件过多时卡在 less 界面等待按键（解决更新卡住问题）
+export GIT_PAGER=cat 
+
 # --- 基础配置 (自动检测) ---
 # 脚本所在目录即为项目目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -236,7 +239,7 @@ check_and_update_redis_config() {
     fi
 }
 
-# --- 1. 核心部署逻辑 (融合之前的完美版) ---
+# --- 1. 核心部署逻辑 ---
 
 reload_nginx_force() {
     log "正在配置 Nginx..."
@@ -412,7 +415,7 @@ EOF
     log "查看日志: journalctl -u cboard -f"
 }
 
-# --- 2. 运维管理功能 (参考原脚本融合) ---
+# --- 2. 运维管理功能 ---
 
 manage_admin() {
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
@@ -639,19 +642,19 @@ sync_from_github() {
     local branch=$(git rev-parse --abbrev-ref HEAD)
     log "当前分支: $branch"
 
-    # 显示即将更新的文件
+    # 显示即将更新的文件（使用 --no-pager 避免因文件列表过长被卡住）
     git fetch origin
-    local changed_files=$(git diff --name-only HEAD "origin/$branch" | wc -l)
+    local changed_files=$(git --no-pager diff --name-only HEAD "origin/$branch" | wc -l)
     if [ "$changed_files" -gt 0 ]; then
         log "检测到 $changed_files 个文件有更新："
-        git diff --name-status HEAD "origin/$branch"
+        git --no-pager diff --name-status HEAD "origin/$branch"
 
         # 增量拉取（保留本地未提交的修改）
         if ! git pull origin "$branch"; then
             warn "自动合并失败，尝试保存本地修改后重新拉取..."
 
             # 仅在存在已跟踪文件改动时保存（untracked 文件不影响 pull）
-            if ! git diff --quiet || ! git diff --cached --quiet; then
+            if ! git --no-pager diff --quiet || ! git --no-pager diff --cached --quiet; then
                 if git stash push -m "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
                     log "本地修改已保存到 stash"
                 else
@@ -667,7 +670,7 @@ sync_from_github() {
                 log "代码拉取成功，尝试恢复本地修改..."
 
                 # 仅在有 stash 项时恢复
-                if git stash list | grep -q "自动保存 - "; then
+                if git --no-pager stash list | grep -q "自动保存 - "; then
                     if git stash pop; then
                         log "✅ 本地修改已恢复"
                     else
