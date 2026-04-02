@@ -256,7 +256,7 @@
   
   .mc-header {
     padding: 12px 16px;
-    background: linear-gradient(135deg, var(--theme-primary, #409EFF) 0%, lighten(#409EFF, 10%) 100%);
+    background: linear-gradient(135deg, var(--theme-primary, #409EFF) 0%, color.adjust(#409EFF, $lightness: 10%) 100%);
     color: white;
     display: flex;
     justify-content: space-between;
