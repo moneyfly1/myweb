@@ -395,7 +395,14 @@ EOF
     # 7. 配置 Redis 缓存（可选）
     configure_redis_cache
 
-    # 8. 启动服务
+    # 8. 重启 Redis 服务确保缓存正常
+    log "正在重启 Redis 服务..."
+    systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
+    if redis-cli ping &> /dev/null; then
+        log "✅ Redis 服务已重启"
+    fi
+
+    # 9. 启动服务
     log "正在启动服务..."
     systemctl enable cboard
     systemctl restart cboard
@@ -498,13 +505,20 @@ force_kill() {
         sleep 1
     fi
     
+    # 重启 Redis 服务确保缓存清除
+    log "正在重启 Redis 服务..."
+    systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
+    if redis-cli ping &> /dev/null; then
+        log "✅ Redis 服务已重启"
+    fi
+    
     log "✅ 进程已全部清理"
 }
 
 deep_clean() {
     log "正在清理深度缓存..."
 
-    # 清理 Redis 缓存
+    # 清理 Redis 缓存并重启
     if command -v redis-cli &> /dev/null; then
         local redis_addr=$(grep "^REDIS_ADDR=" "${PROJECT_DIR}/.env" 2>/dev/null | cut -d'=' -f2)
         if [[ -n "$redis_addr" ]]; then
@@ -515,6 +529,14 @@ deep_clean() {
             else
                 warn "Redis 缓存清除失败（可能未连接）"
             fi
+        fi
+        # 重启 Redis 服务
+        log "正在重启 Redis 服务..."
+        systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
+        if redis-cli ping &> /dev/null; then
+            log "✅ Redis 服务已重启并运行正常"
+        else
+            warn "Redis 重启失败，但服务可能仍在运行"
         fi
     fi
 
@@ -730,7 +752,7 @@ sync_from_github() {
     check_and_update_redis_config "true"
 
     # 清除 Redis 缓存（代码更新后必须清除）
-    log "正在清除 Redis 缓存..."
+    log "正在清除 Redis 缓存并重启服务..."
     if command -v redis-cli &> /dev/null; then
         local redis_addr=$(grep "^REDIS_ADDR=" "${PROJECT_DIR}/.env" 2>/dev/null | cut -d'=' -f2)
         if [[ -n "$redis_addr" ]]; then
@@ -739,6 +761,14 @@ sync_from_github() {
             if redis-cli -h "$redis_host" -p "$redis_port" FLUSHDB &> /dev/null; then
                 log "✅ Redis 缓存已清空（避免旧数据）"
             fi
+        fi
+        # 重启 Redis 服务确保缓存完全清除
+        log "正在重启 Redis 服务..."
+        systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
+        if redis-cli ping &> /dev/null; then
+            log "✅ Redis 服务已重启并运行正常"
+        else
+            warn "Redis 重启失败，但服务可能仍在运行"
         fi
     fi
 
@@ -809,6 +839,12 @@ main() {
             3) 
                 force_kill
                 sleep 1
+                # 重启 Redis 服务
+                log "正在重启 Redis 服务..."
+                systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
+                if redis-cli ping &> /dev/null; then
+                    log "✅ Redis 服务已重启"
+                fi
                 if systemctl start cboard; then
                     sleep 2
                     if systemctl is-active --quiet cboard; then
@@ -840,6 +876,12 @@ main() {
                         error "仍有残留进程，尝试再次强制终止..."
                         pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
                         sleep 1
+                    fi
+                    # 重启 Redis 服务
+                    log "正在重启 Redis 服务..."
+                    systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
+                    if redis-cli ping &> /dev/null; then
+                        log "✅ Redis 服务已重启"
                     fi
                     log "正在启动服务..."
                     if systemctl start cboard; then
