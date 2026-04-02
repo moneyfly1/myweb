@@ -528,13 +528,6 @@ export default {
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-weight: 600;
-}
 .header-actions {
   display: flex;
   gap: 1rem;

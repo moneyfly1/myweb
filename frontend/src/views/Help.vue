@@ -1448,17 +1448,6 @@ export default {
     }
   }
 }
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  @media (max-width: 768px) {
-    font-size: 0.875rem;
-    gap: 0.375rem;
-  }
-}
 .nav-links {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-settings">
+  <div class="list-container admin-settings">
     <el-card>
       <template #header>
         <span>系统设置</span>

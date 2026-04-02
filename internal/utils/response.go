@@ -7,14 +7,41 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-type ResponseBase struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
+// APIResponse 统一API响应格式
+type APIResponse struct {
+	Success    bool        `json:"success"`
+	Code       int         `json:"code"`
+	Message    string      `json:"message"`
+	Data       interface{} `json:"data,omitempty"`
+	Timestamp  int64       `json:"timestamp"`
+	RequestID  string      `json:"request_id,omitempty"`
+}
+
+// Standard error codes
+const (
+	ErrCodeSuccess = 0
+	ErrCodeBadRequest = 400
+	ErrCodeUnauthorized = 401
+	ErrCodeForbidden = 403
+	ErrCodeNotFound = 404
+	ErrCodeInternal = 500
+	ErrCodeValidation = 1000
+	ErrCodeDatabase = 2000
+)
+
+// GetRequestID 从上下文中获取请求ID
+func GetRequestID(c *gin.Context) string {
+	if rid, exists := c.Get("request_id"); exists {
+		if s, ok := rid.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // IsProduction 检查是否为生产环境
@@ -24,19 +51,28 @@ func IsProduction() bool {
 }
 
 func SuccessResponse(c *gin.Context, code int, message string, data interface{}) {
-	c.JSON(code, ResponseBase{
-		Success: true,
-		Message: message,
-		Data:    data,
-	})
+	resp := APIResponse{
+		Success:   true,
+		Code:      ErrCodeSuccess,
+		Message:   message,
+		Data:      data,
+		Timestamp: time.Now().Unix(),
+		RequestID: GetRequestID(c),
+	}
+	c.JSON(code, resp)
 }
 
 func ErrorResponse(c *gin.Context, code int, message string, err error) {
+	// 确定错误码
+	errCode := getErrorCode(code)
+
 	// 记录详细错误到日志
 	if err != nil {
 		LogError(message, err, map[string]interface{}{
 			"path":   c.Request.URL.Path,
 			"method": c.Request.Method,
+			"code":   code,
+			"err_code": errCode,
 		})
 	}
 
@@ -68,10 +104,32 @@ func ErrorResponse(c *gin.Context, code int, message string, err error) {
 		}
 	}
 
-	c.JSON(code, ResponseBase{
-		Success: false,
-		Message: userMessage,
-	})
+	resp := APIResponse{
+		Success:   false,
+		Code:      errCode,
+		Message:   userMessage,
+		Timestamp: time.Now().Unix(),
+		RequestID: GetRequestID(c),
+	}
+	c.JSON(code, resp)
+}
+
+// getErrorCode 根据HTTP状态码返回对应的业务错误码
+func getErrorCode(statusCode int) int {
+	switch statusCode {
+	case http.StatusBadRequest:
+		return ErrCodeBadRequest
+	case http.StatusUnauthorized:
+		return ErrCodeUnauthorized
+	case http.StatusForbidden:
+		return ErrCodeForbidden
+	case http.StatusNotFound:
+		return ErrCodeNotFound
+	case http.StatusInternalServerError:
+		return ErrCodeInternal
+	default:
+		return statusCode
+	}
 }
 
 // ========== 分页相关 ==========

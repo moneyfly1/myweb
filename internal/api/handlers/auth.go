@@ -85,6 +85,12 @@ func Register(c *gin.Context) {
 	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
 
+	// 验证用户名格式（2-20个字符，支持字母、数字、下划线和中文）
+	if !utils.ValidateUsername(req.Username) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "用户名格式不正确，长度为2-20个字符，只能包含字母、数字、下划线和中文", nil)
+		return
+	}
+
 	var count int64
 	if db.Model(&models.User{}).Where("LOWER(email) = ?", req.Email).Count(&count); count > 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已注册，请直接登录。如忘记密码，请点击找回密码。", nil)

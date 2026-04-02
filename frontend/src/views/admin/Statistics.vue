@@ -1,5 +1,5 @@
 <template>
-    <div class="statistics-admin-container">
+  <div class="list-container admin-statistics">
       <el-row :gutter="20" class="stats-cards">
         <el-col :xs="24" :sm="12" :md="6">
           <el-card class="stat-card">

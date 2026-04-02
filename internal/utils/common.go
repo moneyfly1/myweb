@@ -43,26 +43,89 @@ func GenerateSubscriptionURL() string {
 	if _, err := crand.Read(b); err != nil {
 		log.Printf("failed to generate random bytes: %v", err)
 		// Fallback to timestamp-based generation
-		return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+		return fmt.Sprintf("%032x", time.Now().UnixNano())
 	}
-	return base64.URLEncoding.EncodeToString(b)
+	// 使用十六进制编码生成32位随机字符串，例如: a8f3c9e1b7d4f6a2c8e9d0b1a3c5e7f9
+	return hex.EncodeToString(b)
 }
 
-func findMaxSequenceFromTable(db *gorm.DB, tableName string, prefix string) int {
-	var maxSeq int
-	dateStr := GetBeijingTime().Format("20060102")
-	fullPrefix := fmt.Sprintf("%s%s", prefix, dateStr)
+// 订单号生成器接口
+type orderNoGenerator interface {
+	getMaxSequence() int
+	checkExists(orderNo string) bool
+	getTableName() string
+	getPrefix() string
+}
 
-	validTableNames := map[string]bool{
-		"orders":           true,
-		"recharge_records": true,
-	}
-	if !validTableNames[tableName] {
+// 订单生成器
+type orderGenerator struct {
+	db *gorm.DB
+}
+
+func (og *orderGenerator) getTableName() string { return "orders" }
+func (og *orderGenerator) getPrefix() string    { return "ORD" }
+func (og *orderGenerator) getMaxSequence() int {
+	if og.db == nil {
 		return 0
 	}
+	return findMaxOrderSequence(og.db)
+}
+func (og *orderGenerator) checkExists(orderNo string) bool {
+	if og.db == nil {
+		return false
+	}
+	return checkOrderNoExists(og.db, orderNo)
+}
+
+// 充值订单生成器
+type rechargeOrderGenerator struct {
+	db *gorm.DB
+}
+
+func (og *rechargeOrderGenerator) getTableName() string { return "recharge_records" }
+func (og *rechargeOrderGenerator) getPrefix() string    { return "RCH" }
+func (og *rechargeOrderGenerator) getMaxSequence() int {
+	if og.db == nil {
+		return 0
+	}
+	return findMaxRechargeOrderSequence(og.db)
+}
+func (og *rechargeOrderGenerator) checkExists(orderNo string) bool {
+	if og.db == nil {
+		return false
+	}
+	return checkRechargeOrderNoExists(og.db, orderNo)
+}
+
+// 设备升级订单生成器
+type deviceUpgradeOrderGenerator struct {
+	db *gorm.DB
+}
+
+func (og *deviceUpgradeOrderGenerator) getTableName() string { return "orders" }
+func (og *deviceUpgradeOrderGenerator) getPrefix() string    { return "UPG" }
+func (og *deviceUpgradeOrderGenerator) getMaxSequence() int {
+	if og.db == nil {
+		return 0
+	}
+	return findMaxOrderSequence(og.db)
+}
+func (og *deviceUpgradeOrderGenerator) checkExists(orderNo string) bool {
+	if og.db == nil {
+		return false
+	}
+	return checkOrderNoExists(og.db, orderNo)
+}
+
+// 专门查询订单序列号（硬编码表名，避免SQL注入）
+func findMaxOrderSequence(db *gorm.DB) int {
+	var maxSeq int
+	dateStr := GetBeijingTime().Format("20060102")
+	fullPrefix := fmt.Sprintf("ORD%s", dateStr)
 
 	var orderNos []string
-	if err := db.Table(tableName).Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
+	// 使用硬编码表名，无SQL注入风险
+	if err := db.Table("orders").Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
 		return 0
 	}
 
@@ -77,17 +140,42 @@ func findMaxSequenceFromTable(db *gorm.DB, tableName string, prefix string) int 
 	return maxSeq
 }
 
-func checkOrderNoExistsInTable(db *gorm.DB, tableName string, orderNo string) bool {
-	validTableNames := map[string]bool{
-		"orders":           true,
-		"recharge_records": true,
-	}
-	if !validTableNames[tableName] {
-		return false
+// 专门查询充值订单序列号（硬编码表名）
+func findMaxRechargeOrderSequence(db *gorm.DB) int {
+	var maxSeq int
+	dateStr := GetBeijingTime().Format("20060102")
+	fullPrefix := fmt.Sprintf("RCH%s", dateStr)
+
+	var orderNos []string
+	// 使用硬编码表名，无SQL注入风险
+	if err := db.Table("recharge_records").Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
+		return 0
 	}
 
+	for _, orderNo := range orderNos {
+		if len(orderNo) >= len(fullPrefix)+3 {
+			var seq int
+			if _, err := fmt.Sscanf(orderNo[len(fullPrefix):], "%d", &seq); err == nil && seq > maxSeq {
+				maxSeq = seq
+			}
+		}
+	}
+	return maxSeq
+}
+
+// 检查订单号是否存在（硬编码表名）
+func checkOrderNoExists(db *gorm.DB, orderNo string) bool {
 	var count int64
-	if err := db.Table(tableName).Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
+	if err := db.Table("orders").Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
+// 检查充值订单号是否存在（硬编码表名）
+func checkRechargeOrderNoExists(db *gorm.DB, orderNo string) bool {
+	var count int64
+	if err := db.Table("recharge_records").Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
 		return false
 	}
 	return count > 0
@@ -101,46 +189,64 @@ func incrementSequence(seq int) int {
 	return seq
 }
 
-func generateOrderNoWithPrefix(prefix string, tableName string, db interface{}) (string, error) {
+func generateOrderNo(gen orderNoGenerator) (string, error) {
 	now := GetBeijingTime()
 	dateStr := now.Format("20060102")
-	fullPrefix := fmt.Sprintf("%s%s", prefix, dateStr)
+	fullPrefix := fmt.Sprintf("%s%s", gen.getPrefix(), dateStr)
 
-	maxSeq := 0
-	if db != nil {
-		if gormDB, ok := db.(*gorm.DB); ok {
-			maxSeq = findMaxSequenceFromTable(gormDB, tableName, prefix)
-		}
-	}
-
+	maxSeq := gen.getMaxSequence()
 	maxSeq = incrementSequence(maxSeq)
 	orderNo := fmt.Sprintf("%s%03d", fullPrefix, maxSeq)
 
-	if db != nil {
-		if gormDB, ok := db.(*gorm.DB); ok {
-			for i := 0; i < 10; i++ {
-				if !checkOrderNoExistsInTable(gormDB, tableName, orderNo) {
-					break
-				}
-				maxSeq = incrementSequence(maxSeq)
-				orderNo = fmt.Sprintf("%s%03d", fullPrefix, maxSeq)
-			}
+	// 最多重试10次避免重复
+	for i := 0; i < 10; i++ {
+		if !gen.checkExists(orderNo) {
+			break
 		}
+		maxSeq = incrementSequence(maxSeq)
+		orderNo = fmt.Sprintf("%s%03d", fullPrefix, maxSeq)
 	}
 
 	return orderNo, nil
 }
 
 func GenerateOrderNo(db interface{}) (string, error) {
-	return generateOrderNoWithPrefix("ORD", "orders", db)
+	var gen orderNoGenerator
+	if db != nil {
+		if gormDB, ok := db.(*gorm.DB); ok {
+			gen = &orderGenerator{db: gormDB}
+		}
+	}
+	if gen == nil {
+		gen = &orderGenerator{}
+	}
+	return generateOrderNo(gen)
 }
 
 func GenerateRechargeOrderNo(userID uint, db interface{}) (string, error) {
-	return generateOrderNoWithPrefix("RCH", "recharge_records", db)
+	var gen orderNoGenerator
+	if db != nil {
+		if gormDB, ok := db.(*gorm.DB); ok {
+			gen = &rechargeOrderGenerator{db: gormDB}
+		}
+	}
+	if gen == nil {
+		gen = &rechargeOrderGenerator{}
+	}
+	return generateOrderNo(gen)
 }
 
 func GenerateDeviceUpgradeOrderNo(db interface{}) (string, error) {
-	return generateOrderNoWithPrefix("UPG", "orders", db)
+	var gen orderNoGenerator
+	if db != nil {
+		if gormDB, ok := db.(*gorm.DB); ok {
+			gen = &deviceUpgradeOrderGenerator{db: gormDB}
+		}
+	}
+	if gen == nil {
+		gen = &deviceUpgradeOrderGenerator{}
+	}
+	return generateOrderNo(gen)
 }
 
 func GenerateCouponCode() string {

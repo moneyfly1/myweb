@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
+	"os"
 	"strings"
 )
 
@@ -164,7 +166,27 @@ func FormatPEMKey(key, keyType string) string {
 
 // ========== AES加密相关 ==========
 
-var aesKey = []byte("cboard-secret-key-32-bytes!!") // 32字节密钥
+var aesKey []byte
+
+func init() {
+	// 从环境变量读取AES密钥，生产环境必须设置
+	key := os.Getenv("AES_ENCRYPTION_KEY")
+	if key == "" {
+		// 开发环境使用默认密钥（仅用于开发测试）
+		if os.Getenv("ENV") != "production" {
+			key = "cboard-dev-secret-key-32-bytes!!"
+			log.Println("警告: 使用开发环境默认AES密钥，生产环境请设置 AES_ENCRYPTION_KEY 环境变量")
+		} else {
+			log.Fatal("生产环境必须设置 AES_ENCRYPTION_KEY 环境变量")
+		}
+	}
+	
+	if len(key) < 32 {
+		log.Fatalf("AES_ENCRYPTION_KEY 必须至少 32 字节，当前为 %d 字节", len(key))
+	}
+	
+	aesKey = []byte(key)[:32] // 确保只取前32字节
+}
 
 func EncryptAES(plaintext string) (string, error) {
 	key := make([]byte, 32)

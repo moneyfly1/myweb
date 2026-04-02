@@ -638,21 +638,6 @@ export default {
 .admin-profile-container {
   padding: 20px;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.card-header h2 {
-  margin: 0;
-  color: #333;
-  font-size: 1.5rem;
-}
-.card-header :is(p) {
-  margin: 0;
-  color: #666;
-  font-size: 0.9rem;
-}
 .profile-form {
   max-width: 600px;
   margin-top: 20px;

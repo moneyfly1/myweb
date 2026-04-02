@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -104,9 +105,30 @@ func InitDatabase() error {
 		sqlDB.SetMaxIdleConns(5)
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	} else {
-		sqlDB.SetMaxOpenConns(25)
-		sqlDB.SetMaxIdleConns(5)
-		sqlDB.SetConnMaxLifetime(5 * time.Minute)
+		// 根据CPU核心数动态调整连接池配置
+		numCPU := runtime.NumCPU()
+		maxOpenConns := numCPU * 5
+		if maxOpenConns < 25 {
+			maxOpenConns = 25
+		}
+		if maxOpenConns > 100 {
+			maxOpenConns = 100
+		}
+		
+		maxIdleConns := numCPU * 2
+		if maxIdleConns < 5 {
+			maxIdleConns = 5
+		}
+		if maxIdleConns > 20 {
+			maxIdleConns = 20
+		}
+		
+		sqlDB.SetMaxOpenConns(maxOpenConns)
+		sqlDB.SetMaxIdleConns(maxIdleConns)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+		
+		log.Printf("数据库连接池配置: MaxOpenConns=%d, MaxIdleConns=%d, ConnMaxLifetime=30m (CPU核心数: %d)", 
+			maxOpenConns, maxIdleConns, numCPU)
 	}
 	if err := sqlDB.Ping(); err != nil {
 		return fmt.Errorf("数据库连接测试失败: %w", err)

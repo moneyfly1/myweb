@@ -870,14 +870,6 @@ export default {
   margin-bottom: 20px;
 }
 .card-header {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  :is(h2) {
-    margin: 0;
-    color: #333;
-    font-size: 1.5rem;
-  }
   :is(p) {
     margin: 0;
     color: #666;
