@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// ProxyNode 统一代理节点结构体
 type ProxyNode struct {
 	Name     string         `yaml:"name" json:"Name"`
 	Type     string         `yaml:"type" json:"Type"`
@@ -44,6 +45,7 @@ var protocolParsers = map[string]nodeParser{
 	"wg://":          parseWireGuard,
 }
 
+// ParseNodeLink 解析任意支持的代理链接
 func ParseNodeLink(link string) (*ProxyNode, error) {
 	link = strings.TrimSpace(link)
 	for prefix, parser := range protocolParsers {
@@ -67,31 +69,22 @@ func parseVMess(link string) (*ProxyNode, error) {
 	if strings.Contains(decoded, "@") && !strings.HasPrefix(decoded, "{") {
 		parts := strings.Split(decoded, "@")
 		if len(parts) == 2 {
-			uuid := parts[0]
-			if strings.Contains(uuid, ":") {
-				uuid = strings.Split(uuid, ":")[1]
-			}
+			uuidParts := strings.Split(parts[0], ":")
+			uuid := uuidParts[len(uuidParts)-1]
 
-			serverPort := parts[1]
-			var server string
-			var port int
-			if strings.Contains(serverPort, ":") {
-				sp := strings.Split(serverPort, ":")
-				server = sp[0]
-				port, _ = strconv.Atoi(sp[1])
-			}
+			serverPort := strings.Split(parts[1], ":")
+			if len(serverPort) >= 2 {
+				server := serverPort[0]
+				port, _ := strconv.Atoi(serverPort[1])
 
-			if server != "" && port > 0 && uuid != "" {
-				return &ProxyNode{
-					Name:    fmt.Sprintf("VMess-%s:%d", server, port),
-					Type:    "vmess",
-					Server:  server,
-					Port:    port,
-					UUID:    uuid,
-					Network: "tcp",
-					UDP:     true,
-					Options: map[string]any{"alterId": 0},
-				}, nil
+				if server != "" && port > 0 && uuid != "" {
+					return &ProxyNode{
+						Name: fmt.Sprintf("VMess-%s:%d", server, port),
+						Type: "vmess", Server: server, Port: port, UUID: uuid,
+						Network: "tcp", UDP: true,
+						Options: map[string]any{"alterId": 0},
+					}, nil
+				}
 			}
 		}
 	}
@@ -109,21 +102,20 @@ func parseVMess(link string) (*ProxyNode, error) {
 
 	network := getString(data, "net", "tcp")
 	node := &ProxyNode{
-		Name:    getString(data, "ps", fmt.Sprintf("VMess-%s:%d", server, port)),
-		Type:    "vmess",
-		Server:  server,
-		Port:    port,
-		UUID:    uuid,
-		Network: network,
-		UDP:     true,
+		Name: getString(data, "ps", fmt.Sprintf("VMess-%s:%d", server, port)),
+		Type: "vmess", Server: server, Port: port, UUID: uuid, Network: network, UDP: true,
+		Cipher:  getString(data, "scy", "auto"),
 		Options: map[string]any{"alterId": int(getFloat(data, "aid"))},
 	}
 
 	if getString(data, "tls", "") == "tls" {
 		node.TLS = true
 		node.Options["skip-cert-verify"] = getBool(data, "allowInsecure", false)
-		if sni := getString(data, "sni", ""); sni != "" {
+		if sni := firstNotEmpty(getString(data, "sni", ""), getString(data, "host", "")); sni != "" {
 			node.Options["servername"] = sni
+		}
+		if alpn := getString(data, "alpn", ""); alpn != "" {
+			node.Options["alpn"] = strings.Split(alpn, ",")
 		}
 	}
 
@@ -132,30 +124,15 @@ func parseVMess(link string) (*ProxyNode, error) {
 }
 
 func parseVLESS(link string) (*ProxyNode, error) {
-	// 预处理：检查是否是 Base64 编码的格式
-	// 格式：vless://Base64(auto:UUID@Server:Port)?params
+	// 偶尔会有 vless://[base64]?params... 的包装格式，预先做个提取容错
 	if strings.HasPrefix(link, "vless://") {
 		parts := strings.SplitN(link[8:], "?", 2)
-		hostPart := parts[0]
-		if idx := strings.Index(hostPart, "#"); idx != -1 {
-			hostPart = hostPart[:idx]
-		}
+		hostPart := strings.Split(parts[0], "#")[0]
 
-		// 尝试解码，如果成功且包含 @，则重构 URL
 		if decoded, err := DecodeBase64(hostPart); err == nil && strings.Contains(decoded, "@") {
-			uuidAndServer := strings.Split(decoded, "@")
-			if len(uuidAndServer) == 2 {
-				uuid := uuidAndServer[0]
-				if strings.Contains(uuid, ":") {
-					uuid = strings.Split(uuid, ":")[1]
-				}
-				serverPort := uuidAndServer[1]
-
-				// 重构为标准格式
-				link = "vless://" + uuid + "@" + serverPort
-				if len(parts) > 1 {
-					link += "?" + parts[1]
-				}
+			link = "vless://" + decoded
+			if len(parts) > 1 {
+				link += "?" + parts[1]
 			}
 		}
 	}
@@ -165,66 +142,38 @@ func parseVLESS(link string) (*ProxyNode, error) {
 		n.Network = firstNotEmpty(q.Get("type"), "tcp")
 		n.UDP = true
 
-		// 支持标准参数和非标准参数
 		sec := q.Get("security")
-		hasTLS := sec == "tls" || sec == "xtls" || sec == "reality" || q.Get("tls") == "1"
-
-		if hasTLS {
+		if sec == "tls" || sec == "xtls" || sec == "reality" || isTrue(q.Get("tls")) {
 			n.TLS = true
+			applyTLSOptions(n, q, p.Hostname())
 
-			// servername/sni
-			sni := firstNotEmpty(q.Get("sni"), q.Get("peer"), p.Hostname())
-			if sni != "" {
-				n.Options["servername"] = sni
-			}
-
-			// skip-cert-verify
-			n.Options["skip-cert-verify"] = false
-
-			// client-fingerprint: 默认 chrome
+			// 指纹默认 fallback
 			if fp := q.Get("fp"); fp != "" {
 				n.Options["client-fingerprint"] = fp
 			} else {
 				n.Options["client-fingerprint"] = "chrome"
 			}
 
-			// Reality 参数
+			// Reality 处理
 			if sec == "reality" || q.Get("pbk") != "" {
-				reality := make(map[string]any)
-				if pbk := q.Get("pbk"); pbk != "" {
-					reality["public-key"] = pbk
-				}
-				if sid := q.Get("sid"); sid != "" {
-					reality["short-id"] = sid
-				}
-				if len(reality) > 0 {
-					n.Options["reality-opts"] = reality
-				}
+				applyRealityOptions(n, q)
 			}
 
-			// flow: 支持标准 flow 参数和 xtls 参数
+			// XTLS/流控处理
 			flow := q.Get("flow")
 			if flow == "" && q.Get("xtls") != "" {
-				// 非标准格式：xtls=2 表示 xtls-rprx-vision
-				xtls := q.Get("xtls")
-				if xtls == "2" {
+				if q.Get("xtls") == "2" {
 					flow = "xtls-rprx-vision"
-				} else if xtls == "1" {
+				} else if q.Get("xtls") == "1" {
 					flow = "xtls-rprx-direct"
 				}
 			}
 			if flow != "" {
 				n.Options["flow"] = flow
 			}
-
-			// encryption
-			if enc := q.Get("encryption"); enc != "" {
-				n.Options["encryption"] = enc
-			} else {
-				// 默认 none
-				n.Options["encryption"] = "none"
-			}
 		}
+
+		n.Options["encryption"] = firstNotEmpty(q.Get("encryption"), "none")
 		applyTransportOptions(n, q)
 	})
 }
@@ -239,11 +188,10 @@ func parseTrojan(link string) (*ProxyNode, error) {
 }
 
 func parseShadowsocks(link string) (*ProxyNode, error) {
+	// 处理不包含 @ 的纯 Base64 的旧版 SS 链接
 	if !strings.Contains(link, "@") {
 		encoded := strings.TrimPrefix(link, "ss://")
-		if idx := strings.Index(encoded, "#"); idx != -1 {
-			encoded = encoded[:idx]
-		}
+		encoded = strings.SplitN(encoded, "#", 2)[0]
 		if decoded, err := DecodeBase64(encoded); err == nil && !strings.HasPrefix(decoded, "{") {
 			if parts := strings.Split(decoded, "@"); len(parts) == 2 {
 				return parseSSParts(parts[0], parts[1], link)
@@ -273,13 +221,9 @@ func parseSSR(link string) (*ProxyNode, error) {
 	password, _ := DecodeBase64(strings.Join(mainParts[5:], ":"))
 
 	node := &ProxyNode{
-		Name:     fmt.Sprintf("SSR-%s:%d", mainParts[0], port),
-		Type:     "ssr",
-		Server:   mainParts[0],
-		Port:     port,
-		Password: password,
-		Cipher:   mainParts[3],
-		Options:  map[string]any{"protocol": mainParts[2], "obfs": mainParts[4]},
+		Name: fmt.Sprintf("SSR-%s:%d", mainParts[0], port),
+		Type: "ssr", Server: mainParts[0], Port: port, Password: password, Cipher: mainParts[3],
+		Options: map[string]any{"protocol": mainParts[2], "obfs": mainParts[4]},
 	}
 
 	if len(parts) > 1 {
@@ -304,7 +248,7 @@ func parseHysteria(link string) (*ProxyNode, error) {
 			n.Options["auth"] = auth
 		}
 		applyHysteriaBandwidth(n, q, "upmbps", "downmbps")
-		n.Options["skip-cert-verify"] = isTrue(q.Get("insecure"))
+		applyTLSOptions(n, q, n.Server) // Hysteria v1 也有可能含 SNI 和 Insecure
 	})
 }
 
@@ -314,6 +258,17 @@ func parseHysteria2(link string) (*ProxyNode, error) {
 		n.TLS = true
 		applyHysteriaBandwidth(n, q, "mbpsUp", "mbpsDown")
 		applyTLSOptions(n, q, n.Server)
+
+		// Hysteria2 特定混淆参数
+		if obfs := q.Get("obfs"); obfs != "" {
+			n.Options["obfs"] = obfs
+		}
+		if obfsPwd := q.Get("obfs-password"); obfsPwd != "" {
+			n.Options["obfs-password"] = obfsPwd
+		}
+		if pin := q.Get("pinSHA256"); pin != "" {
+			n.Options["pinSHA256"] = pin
+		}
 	})
 }
 
@@ -324,10 +279,11 @@ func parseTUIC(link string) (*ProxyNode, error) {
 			n.UUID, n.Password = parts[0], parts[1]
 		} else {
 			n.UUID = user
-		n.Password, _ = p.User.Password()
+			n.Password, _ = p.User.Password()
 		}
 		n.UDP, n.TLS = true, true
 		applyTLSOptions(n, q, n.Server)
+
 		if cc := q.Get("congestion_control"); cc != "" {
 			n.Options["congestion_control"] = cc
 		}
@@ -378,7 +334,6 @@ func parseSOCKS(link string) (*ProxyNode, error) {
 		return node, nil
 	}
 
-	// 走标准 URL 解析逻辑
 	return parseGenericNode(link, scheme, func(n *ProxyNode, q url.Values, p *url.URL) {
 		extractAuthToNode(n, p, false)
 		n.UDP = true
@@ -397,18 +352,11 @@ func parseHTTP(link string) (*ProxyNode, error) {
 
 func parseWireGuard(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "wireguard", func(n *ProxyNode, q url.Values, p *url.URL) {
-		n.UDP = q.Get("udp") == "1" || q.Get("udp") == "true" || q.Get("udp") == ""
+		n.UDP = q.Get("udp") == "1" || isTrue(q.Get("udp")) || q.Get("udp") == ""
 
-		// 手动解析原始查询字符串以保留 Base64 中的 + 字符
-		publicKey := extractRawQueryParam(p.RawQuery, "publicKey")
-		privateKey := extractRawQueryParam(p.RawQuery, "privateKey")
-
-		// 清理 Base64 字符串中的空格（可能由 URL 解码错误导致）
-		publicKey = strings.ReplaceAll(publicKey, " ", "")
-		privateKey = strings.ReplaceAll(privateKey, " ", "")
-
-		n.Options["public-key"] = publicKey
-		n.Options["private-key"] = privateKey
+		// URL Query 会将 Base64 里的 '+' 变成 ' ' (空格)，这里直接替换回去即可
+		n.Options["public-key"] = getBase64Query(q, "publicKey")
+		n.Options["private-key"] = getBase64Query(q, "privateKey")
 		n.Options["udp"] = n.UDP
 
 		if ipAddr := q.Get("ip"); ipAddr != "" {
@@ -434,16 +382,10 @@ func parseWireGuard(link string) (*ProxyNode, error) {
 	})
 }
 
-// extractRawQueryParam 从原始查询字符串中提取参数值，保留 + 字符
-func extractRawQueryParam(rawQuery, key string) string {
-	params := strings.Split(rawQuery, "&")
-	prefix := key + "="
-	for _, param := range params {
-		if strings.HasPrefix(param, prefix) {
-			return strings.TrimPrefix(param, prefix)
-		}
-	}
-	return ""
+// ---------------------- 辅助工具函数 ----------------------
+
+func getBase64Query(q url.Values, key string) string {
+	return strings.ReplaceAll(q.Get(key), " ", "+")
 }
 
 func extractAuthToNode(n *ProxyNode, p *url.URL, preferPwd bool) {
@@ -515,15 +457,10 @@ func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error)
 		return nil, fmt.Errorf("SS 格式解析失败")
 	}
 
-	hostPort := server[1]
-	if idx := strings.Index(hostPort, "?"); idx != -1 {
-		hostPort = hostPort[:idx]
-	}
-	if idx := strings.Index(hostPort, "#"); idx != -1 {
-		hostPort = hostPort[:idx]
-	}
-
+	hostPort := strings.SplitN(server[1], "?", 2)[0]
+	hostPort = strings.SplitN(hostPort, "#", 2)[0]
 	port, _ := strconv.Atoi(hostPort)
+
 	parsed, _ := url.Parse(originalLink)
 
 	node := &ProxyNode{
@@ -553,8 +490,6 @@ func splitURLComponents(raw string) (base, query, fragment string) {
 func parseSOCKSBase64Auth(decoded string) (server string, port int, username, password string) {
 	dec, _ := url.QueryUnescape(decoded)
 	if parts := strings.SplitN(dec, "@", 2); len(parts) == 2 {
-		// 使用 LastIndex 从右往左找最后一个冒号
-		// 这样可以正确处理用户名中包含冒号的情况（如 pro:u2025887）
 		if idx := strings.LastIndex(parts[0], ":"); idx != -1 {
 			username, password = parts[0][:idx], parts[0][idx+1:]
 		} else {
@@ -625,7 +560,9 @@ func parseGenericNode(link, nodeType string, modifier func(*ProxyNode, url.Value
 
 func applyTLSOptions(node *ProxyNode, q url.Values, defSNI string) {
 	node.Options["skip-cert-verify"] = isTrue(q.Get("allowInsecure")) || isTrue(q.Get("insecure")) || isTrue(q.Get("allow_insecure"))
-	node.Options["servername"] = firstNotEmpty(q.Get("sni"), q.Get("peer"), defSNI)
+	if sni := firstNotEmpty(q.Get("sni"), q.Get("peer"), defSNI); sni != "" {
+		node.Options["servername"] = sni
+	}
 	if fp := q.Get("fp"); fp != "" {
 		node.Options["client-fingerprint"] = fp
 	}
@@ -649,7 +586,7 @@ func applyTransportOptions(node *ProxyNode, q url.Values) {
 			node.Options["ws-opts"] = opts
 		}
 	case "grpc":
-		if srv := firstNotEmpty(q.Get("serviceName"), path); srv != "" {
+		if srv := firstNotEmpty(q.Get("serviceName"), q.Get("authority"), path); srv != "" {
 			node.Options["grpc-opts"] = map[string]any{"grpc-service-name": srv}
 		}
 	case "tcp":
@@ -707,32 +644,41 @@ func applyHysteriaBandwidth(node *ProxyNode, q url.Values, upK, downK string) {
 	}
 }
 
-func isTrue(s string) bool { return s == "1" || s == "true" }
+func isTrue(s string) bool {
+	s = strings.ToLower(s)
+	return s == "1" || s == "true" || s == "yes"
+}
 
+// DecodeBase64 智能且健壮的 Base64 解码器
 func DecodeBase64(s string) (string, error) {
 	s = strings.TrimSpace(s)
-	clean := strings.Map(func(r rune) rune {
-		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '+' || r == '/' || r == '-' || r == '_' || r == '=' {
-			return r
-		}
-		return -1
-	}, s)
-
-	if clean == "" {
+	if s == "" {
 		return "", nil
 	}
 
-	// 统一转为标准 Base64 字典并补全 Padding，避免多次使用不同 Encoder 重试
-	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "-", "+"), "_", "/")
-	if pad := len(clean) % 4; pad != 0 {
-		clean += strings.Repeat("=", 4-pad)
+	// 优先尝试各种标准/原始/URL编码组合，防止破坏 JSON 内的特殊符号
+	encodings := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.URLEncoding,
+		base64.RawStdEncoding,
+		base64.RawURLEncoding,
+	}
+	for _, enc := range encodings {
+		if b, err := enc.DecodeString(s); err == nil {
+			return string(b), nil
+		}
 	}
 
-	b, err := base64.StdEncoding.DecodeString(clean)
-	if err != nil {
-		return "", fmt.Errorf("Base64 解析失败")
+	// 失败后尝试手动修复非标编码（常用于不严谨的订阅环境）
+	alt := strings.ReplaceAll(strings.ReplaceAll(s, "-", "+"), "_", "/")
+	if pad := len(alt) % 4; pad != 0 {
+		alt += strings.Repeat("=", 4-pad)
 	}
-	return string(b), nil
+	if b, err := base64.StdEncoding.DecodeString(alt); err == nil {
+		return string(b), nil
+	}
+
+	return "", fmt.Errorf("Base64 解析失败")
 }
 
 func TryDecodeNodeList(content string) string {
@@ -760,7 +706,7 @@ func TryDecodeNodeList(content string) string {
 }
 
 func containsNodeLinks(s string) bool {
-	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://"} {
+	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "tuic://"} {
 		if strings.Contains(s, p) {
 			return true
 		}
@@ -769,7 +715,7 @@ func containsNodeLinks(s string) bool {
 }
 
 func getString(m map[string]any, key, def string) string {
-	if v, ok := m[key].(string); ok {
+	if v, ok := m[key].(string); ok && v != "" {
 		return v
 	}
 	return def
