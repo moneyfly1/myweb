@@ -419,8 +419,11 @@ const handleResize = () => {
 }
 
 onMounted(() => {
-  loadCategories()
-  loadArticles()
+  // 并发加载分类和文章，提高页面加载速度
+  Promise.all([
+    loadCategories(),
+    loadArticles()
+  ])
   window.addEventListener('resize', handleResize)
 })
 </script>
