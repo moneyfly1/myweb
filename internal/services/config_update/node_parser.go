@@ -67,29 +67,27 @@ func parseVMess(link string) (*ProxyNode, error) {
 	if strings.Contains(decoded, "@") && !strings.HasPrefix(decoded, "{") {
 		parts := strings.Split(decoded, "@")
 		if len(parts) == 2 {
-			// 提取 UUID
-			uuidPart := parts[0]
-			if strings.Contains(uuidPart, ":") {
-				uuidPart = strings.Split(uuidPart, ":")[1]
+			uuid := parts[0]
+			if strings.Contains(uuid, ":") {
+				uuid = strings.Split(uuid, ":")[1]
 			}
 
-			// 提取 Server 和 Port
-			serverPart := parts[1]
+			serverPort := parts[1]
 			var server string
 			var port int
-			if strings.Contains(serverPart, ":") {
-				serverPort := strings.Split(serverPart, ":")
-				server = serverPort[0]
-				port, _ = strconv.Atoi(serverPort[1])
+			if strings.Contains(serverPort, ":") {
+				sp := strings.Split(serverPort, ":")
+				server = sp[0]
+				port, _ = strconv.Atoi(sp[1])
 			}
 
-			if server != "" && port > 0 && uuidPart != "" {
+			if server != "" && port > 0 && uuid != "" {
 				return &ProxyNode{
 					Name:    fmt.Sprintf("VMess-%s:%d", server, port),
 					Type:    "vmess",
 					Server:  server,
 					Port:    port,
-					UUID:    uuidPart,
+					UUID:    uuid,
 					Network: "tcp",
 					UDP:     true,
 					Options: map[string]any{"alterId": 0},
@@ -98,7 +96,7 @@ func parseVMess(link string) (*ProxyNode, error) {
 		}
 	}
 
-	// 标准 JSON 格式解析
+	// 标准 JSON 格式
 	var data map[string]any
 	if err := json.Unmarshal([]byte(decoded), &data); err != nil {
 		return nil, fmt.Errorf("VMess 解析失败: %v", err)
@@ -134,34 +132,36 @@ func parseVMess(link string) (*ProxyNode, error) {
 }
 
 func parseVLESS(link string) (*ProxyNode, error) {
-	return parseGenericNode(link, "vless", func(n *ProxyNode, q url.Values, p *url.URL) {
-		username := p.User.Username()
-
-		// 尝试解码 Base64 编码的用户名（格式：auto:UUID@Server:Port）
-		if decoded, err := DecodeBase64(username); err == nil && strings.Contains(decoded, "@") {
-			parts := strings.Split(decoded, "@")
-			if len(parts) == 2 {
-				// 提取 UUID
-				uuidPart := parts[0]
-				if strings.Contains(uuidPart, ":") {
-					uuidPart = strings.Split(uuidPart, ":")[1]
-				}
-				n.UUID = uuidPart
-
-				// 提取真实的 Server 和 Port
-				serverPart := parts[1]
-				if strings.Contains(serverPart, ":") {
-					serverPort := strings.Split(serverPart, ":")
-					n.Server = serverPort[0]
-					if port, err := strconv.Atoi(serverPort[1]); err == nil {
-						n.Port = port
-					}
-				}
-			}
-		} else {
-			n.UUID = username
+	// 预处理：检查是否是 Base64 编码的格式
+	// 格式：vless://Base64(auto:UUID@Server:Port)?params
+	if strings.HasPrefix(link, "vless://") {
+		parts := strings.SplitN(link[8:], "?", 2)
+		hostPart := parts[0]
+		if idx := strings.Index(hostPart, "#"); idx != -1 {
+			hostPart = hostPart[:idx]
 		}
 
+		// 尝试解码，如果成功且包含 @，则重构 URL
+		if decoded, err := DecodeBase64(hostPart); err == nil && strings.Contains(decoded, "@") {
+			uuidAndServer := strings.Split(decoded, "@")
+			if len(uuidAndServer) == 2 {
+				uuid := uuidAndServer[0]
+				if strings.Contains(uuid, ":") {
+					uuid = strings.Split(uuid, ":")[1]
+				}
+				serverPort := uuidAndServer[1]
+
+				// 重构为标准格式
+				link = "vless://" + uuid + "@" + serverPort
+				if len(parts) > 1 {
+					link += "?" + parts[1]
+				}
+			}
+		}
+	}
+
+	return parseGenericNode(link, "vless", func(n *ProxyNode, q url.Values, p *url.URL) {
+		n.UUID = p.User.Username()
 		n.Network = firstNotEmpty(q.Get("type"), "tcp")
 		n.UDP = true
 
