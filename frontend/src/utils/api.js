@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { apiCache } from './apiCache'
+
 const SECURE_STORAGE_KEY = 'cboard_secure_'
 const MAX_STORAGE_AGE = 24 * 60 * 60 * 1000
 function isSecureContext() {
@@ -774,6 +776,57 @@ export const userLevelAPI = {
   deleteLevel: (id) => api.delete(`/admin/user-levels/${id}`),
   upgradeUsers: (id, userIds) => api.post(`/admin/user-levels/${id}/upgrade-users`, userIds)
 }
+
+// 带缓存的 API 包装器
+export const cachedAPI = {
+  // 用户信息 - 5分钟缓存
+  getUserInfo: () => apiCache.wrap(
+    'user:info',
+    () => userAPI.getUserInfo(),
+    300000 // 5分钟
+  ),
+
+  // 公共设置 - 1小时缓存
+  getPublicSettings: () => apiCache.wrap(
+    'settings:public',
+    () => settingsAPI.getPublicSettings(),
+    3600000 // 1小时
+  ),
+
+  // 订阅信息 - 5分钟缓存
+  getUserSubscription: () => apiCache.wrap(
+    'subscription:user',
+    () => subscriptionAPI.getUserSubscription(),
+    300000 // 5分钟
+  ),
+
+  // 软件配置 - 10分钟缓存
+  getSoftwareConfig: () => apiCache.wrap(
+    'software:config',
+    () => softwareConfigAPI.getSoftwareConfig(),
+    600000 // 10分钟
+  ),
+
+  // 用户等级 - 10分钟缓存
+  getMyLevel: () => apiCache.wrap(
+    'user:level',
+    () => userAPI.getMyLevel(),
+    600000 // 10分钟
+  ),
+
+  // 清除特定缓存
+  clearUserCache: () => {
+    apiCache.delete('user:info')
+    apiCache.delete('subscription:user')
+    apiCache.delete('user:level')
+  },
+
+  // 清除所有缓存
+  clearAllCache: () => {
+    apiCache.clear()
+  }
+}
+
 export function parsePaymentMethods(response) {
   if (!response || !response.data) {
     return []

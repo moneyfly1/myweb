@@ -442,7 +442,7 @@
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
+          :page-sizes="[20, 50, 100, 200]"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
@@ -701,7 +701,7 @@ export default {
     const users = ref([])
     const selectedUsers = ref([])
     const currentPage = ref(1)
-    const pageSize = ref(20)
+    const pageSize = ref(50) // 增加默认分页大小，提升列表加载体验
     const total = ref(0)
     const showAddUserDialog = ref(false)
     const showUserDialog = ref(false)
@@ -1006,7 +1006,7 @@ export default {
       currentPage.value = 1
       loadUsers()
     }
-    watch(() => searchForm.date_range, (newVal) => {
+    watch(() => searchForm.date_range, debounce((newVal) => {
       if (Array.isArray(newVal) && newVal.length === 2) {
         searchForm.start_date = newVal[0]
         searchForm.end_date = newVal[1]
@@ -1014,7 +1014,8 @@ export default {
         searchForm.start_date = ''
         searchForm.end_date = ''
       }
-    }, { immediate: true })
+      searchUsers() // 日期变化后自动搜索
+    }, 300), { immediate: true })
     const handleSizeChange = (val) => {
       pageSize.value = val
       loadUsers()
