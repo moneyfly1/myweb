@@ -2,7 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { fileURLToPath, URL } from 'node:url'
+
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
+
 export default defineConfig({
   root: resolve(__dirname),
   publicDir: resolve(__dirname, 'public'),
@@ -44,10 +46,21 @@ export default defineConfig({
         entryFileNames: 'assets/[name].[hash].js',
         chunkFileNames: 'assets/[name].[hash].js',
         assetFileNames: 'assets/[name].[hash].[ext]',
+        // 代码分割策略 - 优化加载性能
+        manualChunks: {
+          // Vue 核心库
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          // Element Plus 单独打包
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          // 图表库
+          'charts': ['chart.js'],
+          // 工具库
+          'utils': ['axios', 'dayjs', 'clipboard', 'qrcode', 'dompurify']
+        }
       },
     },
-    chunkSizeWarningLimit: 2000,
-    reportCompressedSize: false, 
+    chunkSizeWarningLimit: 1000, // 降低警告阈值，鼓励更好的代码分割
+    reportCompressedSize: false,
   },
   css: {
     preprocessorOptions: {

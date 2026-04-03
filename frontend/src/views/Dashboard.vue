@@ -525,7 +525,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, parsePaymentMethods } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, parsePaymentMethods, cachedAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import DOMPurify from 'dompurify'
@@ -804,7 +804,8 @@ const formatDate = (dateString) => {
 const loadUserInfo = async () => {
   dashboardLoading.value = true
   try {
-    const dashboardResponse = await userAPI.getUserInfo()
+    // 使用缓存的 API，减少重复请求
+    const dashboardResponse = await cachedAPI.getUserInfo()
     if (dashboardResponse.data && dashboardResponse.data.success) {
       const dashboardData = dashboardResponse.data.data
       userInfo.value = {
@@ -1095,14 +1096,6 @@ const checkRechargeStatus = async () => {
       ElMessage.success('充值成功！余额已到账')
       await loadUserInfo()
       window.dispatchEvent(new CustomEvent('user-info-updated'))
-      setTimeout(async () => {
-        await loadUserInfo()
-        window.dispatchEvent(new CustomEvent('user-info-updated'))
-      }, 300)
-      setTimeout(async () => {
-        await loadUserInfo()
-        window.dispatchEvent(new CustomEvent('user-info-updated'))
-      }, 1000)
       closeRechargeDialog()
     } else if (rechargeData.status === 'cancelled' || rechargeData.status === 'failed') {
       if (rechargeStatusInterval) {
@@ -1123,7 +1116,8 @@ const checkRechargeStatus = async () => {
 }
 const loadSoftwareConfig = async () => {
   try {
-    const response = await softwareConfigAPI.getSoftwareConfig()
+    // 使用缓存的 API，减少重复请求
+    const response = await cachedAPI.getSoftwareConfig()
     if (response.data && response.data.success) {
       softwareConfig.value = response.data.data
     }
@@ -1391,15 +1385,17 @@ onMounted(() => {
     isMobile.value = window.innerWidth <= 768
     window.addEventListener('resize', handleResize)
   }
-  // 并发加载用户信息、软件配置和签到状态，提高首页加载速度
+
+  // 并发加载所有初始化任务，提高首页加载速度
   Promise.all([
     loadUserInfo(),
     loadSoftwareConfig(),
-    loadCheckinStatus()
-  ])
-  setTimeout(() => {
-    checkAndShowAnnouncement()
-  }, 1000)
+    loadCheckinStatus(),
+    checkAndShowAnnouncement() // 移除延迟，直接并发执行
+  ]).catch(err => {
+    console.error('Dashboard 初始化失败:', err)
+  })
+
   const handleSubscriptionUpdate = async () => {
     // 并发更新订阅和用户信息
     await Promise.all([

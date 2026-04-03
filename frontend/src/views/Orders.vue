@@ -381,7 +381,7 @@
         <el-pagination
           v-model:current-page="pagination.current"
           v-model:page-size="pagination.size"
-          :page-sizes="[10, 20, 50, 100]"
+          :page-sizes="[20, 50, 100, 200]"
           :total="pagination.total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
@@ -499,7 +499,7 @@ export default {
     })
     const pagination = reactive({
       current: 1,
-      size: 20,
+      size: 50, // 增加默认分页大小
       total: 0
     })
     const detailDialogVisible = ref(false)
