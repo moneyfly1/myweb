@@ -1039,8 +1039,11 @@ const checkRegistrationSettings = async () => {
 }
 
 onMounted(async () => {
-  await checkRegistrationSettings()
-  await settingsStore.loadSettings()
+  // 并发加载注册设置和应用设置，提高登录页加载速度
+  await Promise.all([
+    checkRegistrationSettings(),
+    settingsStore.loadSettings()
+  ])
   if (route.query.username) {
     loginForm.username = route.query.username
     if (route.query.registered === 'true') {
