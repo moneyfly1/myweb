@@ -1,16 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { secureStorage } from '@/utils/api'
+import { secureStorage, cachedAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
+
 const SECURE_STORAGE_KEY = 'cboard_secure_'
 const ACCESS_TOKEN_TTL = 60 * 60 * 1000
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
+
 let _unifiedAuthPromise = null
 const getUnifiedAuthEnabled = () => {
   if (!_unifiedAuthPromise) {
-    _unifiedAuthPromise = useApi().get('/settings/public-settings')
+    // 使用缓存的公共设置 API
+    _unifiedAuthPromise = cachedAPI.getPublicSettings()
       .then(response => {
         const settings = response.data?.data || response.data || {}
         return settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'

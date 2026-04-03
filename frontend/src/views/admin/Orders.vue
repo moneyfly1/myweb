@@ -281,7 +281,7 @@
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
+          :page-sizes="[20, 50, 100, 200]"
           :total="activeTab === 'recharges' ? rechargeTotal : total"
           :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
           @size-change="handleSizeChange"
@@ -432,10 +432,10 @@ export default {
     const loading = ref(false)
     const orders = ref([])
     const recharges = ref([]) 
-    const allRecords = ref([]) 
+    const allRecords = ref([])
     const activeTab = ref('orders')
     const currentPage = ref(1)
-    const pageSize = ref(20)
+    const pageSize = ref(50) // 增加默认分页大小
     const total = ref(0)
     const rechargeTotal = ref(0)
     
