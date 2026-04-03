@@ -65,26 +65,21 @@ func parseVMess(link string) (*ProxyNode, error) {
 		return nil, fmt.Errorf("VMess 解码失败: %v", err)
 	}
 
-	// 检查是否是非标准格式：auto:UUID@Server:Port
+	// 检查是否是非标准格式：auto:UUID@Server:Port (支持 IPv6)
 	if strings.Contains(decoded, "@") && !strings.HasPrefix(decoded, "{") {
-		parts := strings.Split(decoded, "@")
+		parts := strings.SplitN(decoded, "@", 2)
 		if len(parts) == 2 {
 			uuidParts := strings.Split(parts[0], ":")
 			uuid := uuidParts[len(uuidParts)-1]
 
-			serverPort := strings.Split(parts[1], ":")
-			if len(serverPort) >= 2 {
-				server := serverPort[0]
-				port, _ := strconv.Atoi(serverPort[1])
-
-				if server != "" && port > 0 && uuid != "" {
-					return &ProxyNode{
-						Name: fmt.Sprintf("VMess-%s:%d", server, port),
-						Type: "vmess", Server: server, Port: port, UUID: uuid,
-						Network: "tcp", UDP: true,
-						Options: map[string]any{"alterId": 0},
-					}, nil
-				}
+			server, port := parseHostPort(parts[1])
+			if server != "" && port > 0 && uuid != "" {
+				return &ProxyNode{
+					Name: fmt.Sprintf("VMess-%s:%d", server, port),
+					Type: "vmess", Server: server, Port: port, UUID: uuid,
+					Network: "tcp", UDP: true,
+					Options: map[string]any{"alterId": 0},
+				}, nil
 			}
 		}
 	}
@@ -139,6 +134,15 @@ func parseVLESS(link string) (*ProxyNode, error) {
 
 	return parseGenericNode(link, "vless", func(n *ProxyNode, q url.Values, p *url.URL) {
 		n.UUID = p.User.Username()
+
+		// 兼容类似 auto:UUID 的异常格式，此时真正的 UUID 会被 url.Parse 识别为 Password
+		if pwd, ok := p.User.Password(); ok && pwd != "" && n.UUID == "auto" {
+			n.UUID = pwd
+		} else if strings.Contains(n.UUID, ":") {
+			parts := strings.Split(n.UUID, ":")
+			n.UUID = parts[len(parts)-1]
+		}
+
 		n.Network = firstNotEmpty(q.Get("type"), "tcp")
 		n.UDP = true
 
@@ -193,7 +197,7 @@ func parseShadowsocks(link string) (*ProxyNode, error) {
 		encoded := strings.TrimPrefix(link, "ss://")
 		encoded = strings.SplitN(encoded, "#", 2)[0]
 		if decoded, err := DecodeBase64(encoded); err == nil && !strings.HasPrefix(decoded, "{") {
-			if parts := strings.Split(decoded, "@"); len(parts) == 2 {
+			if parts := strings.SplitN(decoded, "@", 2); len(parts) == 2 {
 				return parseSSParts(parts[0], parts[1], link)
 			}
 		}
@@ -213,17 +217,20 @@ func parseSSR(link string) (*ProxyNode, error) {
 
 	parts := strings.SplitN(decoded, "/?", 2)
 	mainParts := strings.Split(parts[0], ":")
-	if len(mainParts) < 6 {
+	l := len(mainParts)
+	// 逆向取值，防止 IPv6 地址内的冒号破坏解析
+	if l < 6 {
 		return nil, fmt.Errorf("SSR 格式错误")
 	}
 
-	port, _ := strconv.Atoi(mainParts[1])
-	password, _ := DecodeBase64(strings.Join(mainParts[5:], ":"))
+	port, _ := strconv.Atoi(mainParts[l-5])
+	password, _ := DecodeBase64(mainParts[l-1])
+	host := strings.Join(mainParts[:l-5], ":") // 如果是 IPv6，组合回原来的样子
 
 	node := &ProxyNode{
-		Name: fmt.Sprintf("SSR-%s:%d", mainParts[0], port),
-		Type: "ssr", Server: mainParts[0], Port: port, Password: password, Cipher: mainParts[3],
-		Options: map[string]any{"protocol": mainParts[2], "obfs": mainParts[4]},
+		Name: fmt.Sprintf("SSR-%s:%d", host, port),
+		Type: "ssr", Server: host, Port: port, Password: password, Cipher: mainParts[l-3],
+		Options: map[string]any{"protocol": mainParts[l-4], "obfs": mainParts[l-2]},
 	}
 
 	if len(parts) > 1 {
@@ -249,6 +256,10 @@ func parseHysteria(link string) (*ProxyNode, error) {
 		}
 		applyHysteriaBandwidth(n, q, "upmbps", "downmbps")
 		applyTLSOptions(n, q, n.Server) // Hysteria v1 也有可能含 SNI 和 Insecure
+
+		if obfs := firstNotEmpty(q.Get("obfsParam"), q.Get("obfs")); obfs != "" {
+			n.Options["obfs"] = obfs
+		}
 	})
 }
 
@@ -384,6 +395,25 @@ func parseWireGuard(link string) (*ProxyNode, error) {
 
 // ---------------------- 辅助工具函数 ----------------------
 
+// parseHostPort 手动分割 Host 和 Port 以完美兼容 IPv6 的中括号模式
+func parseHostPort(s string) (host string, port int) {
+	if strings.HasPrefix(s, "[") {
+		if end := strings.LastIndex(s, "]"); end != -1 {
+			host = s[1:end]
+			if end+2 < len(s) && s[end+1] == ':' {
+				port, _ = strconv.Atoi(s[end+2:])
+			}
+			return
+		}
+	}
+	if idx := strings.LastIndex(s, ":"); idx != -1 {
+		host = s[:idx]
+		port, _ = strconv.Atoi(s[idx+1:])
+		return
+	}
+	return s, 0
+}
+
 func getBase64Query(q url.Values, key string) string {
 	return strings.ReplaceAll(q.Get(key), " ", "+")
 }
@@ -452,20 +482,20 @@ func parseSSPlugin(node *ProxyNode, query url.Values) {
 }
 
 func parseSSParts(authPart, serverPart, originalLink string) (*ProxyNode, error) {
-	auth, server := strings.SplitN(authPart, ":", 2), strings.SplitN(serverPart, ":", 2)
-	if len(auth) != 2 || len(server) != 2 {
+	auth := strings.SplitN(authPart, ":", 2)
+	if len(auth) != 2 {
 		return nil, fmt.Errorf("SS 格式解析失败")
 	}
 
-	hostPort := strings.SplitN(server[1], "?", 2)[0]
+	hostPort := strings.SplitN(serverPart, "?", 2)[0]
 	hostPort = strings.SplitN(hostPort, "#", 2)[0]
-	port, _ := strconv.Atoi(hostPort)
+	serverHost, port := parseHostPort(hostPort)
 
 	parsed, _ := url.Parse(originalLink)
 
 	node := &ProxyNode{
-		Name: getFragment(parsed, fmt.Sprintf("SS-%s:%d", server[0], port)),
-		Type: "ss", Server: server[0], Port: port, Cipher: auth[0], Password: auth[1],
+		Name: getFragment(parsed, fmt.Sprintf("SS-%s:%d", serverHost, port)),
+		Type: "ss", Server: serverHost, Port: port, Cipher: auth[0], Password: auth[1],
 		Options: make(map[string]any),
 	}
 	if parsed != nil {
@@ -495,12 +525,7 @@ func parseSOCKSBase64Auth(decoded string) (server string, port int, username, pa
 		} else {
 			username = parts[0]
 		}
-
-		sp := strings.SplitN(parts[1], ":", 2)
-		server = sp[0]
-		if len(sp) == 2 {
-			port, _ = strconv.Atoi(sp[1])
-		}
+		server, port = parseHostPort(parts[1])
 	}
 	return
 }
@@ -591,7 +616,19 @@ func applyTransportOptions(node *ProxyNode, q url.Values) {
 		}
 	case "tcp":
 		if hType := q.Get("headerType"); hType != "" {
-			node.Options["header-type"] = hType
+			if hType == "http" {
+				node.Network = "http"
+				opts := map[string]any{"method": "GET"}
+				if path != "" {
+					opts["path"] = strings.Split(path, ",")
+				}
+				if host != "" {
+					opts["headers"] = map[string]any{"Host": strings.Split(host, ",")}
+				}
+				node.Options["http-opts"] = opts
+			} else {
+				node.Options["header-type"] = hType
+			}
 		}
 	}
 }
@@ -629,6 +666,9 @@ func applyRealityOptions(node *ProxyNode, q url.Values) {
 	}
 	if pqv := q.Get("pqv"); pqv != "" {
 		reality["pqv"] = pqv
+	}
+	if spx := q.Get("spx"); spx != "" {
+		reality["spider-x"] = spx
 	}
 	if len(reality) > 0 {
 		node.Options["reality-opts"] = reality
