@@ -177,22 +177,11 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		order.PaymentMethodName = database.NullString(methodName)
 	}
 
-	// --- 事务：创建订单 + 扣余额 + 记录优惠券使用 + 递增计数器 ---
+	// --- 事务：创建订单 + 记录优惠券使用 + 递增计数器 ---
+	// 注意：余额不在此处扣除，而是在支付成功回调时扣除
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&order).Error; err != nil {
 			return fmt.Errorf("创建订单失败: %v", err)
-		}
-
-		// 扣除余额（事务内）
-		if balanceUsed > 0 {
-			result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
-				Update("balance", gorm.Expr("balance - ?", balanceUsed))
-			if result.Error != nil {
-				return fmt.Errorf("扣除余额失败: %v", result.Error)
-			}
-			if result.RowsAffected == 0 {
-				return fmt.Errorf("余额不足")
-			}
 		}
 
 		// 记录优惠券使用 + 原子递增 used_quantity（事务内二次校验防并发超卖）
@@ -353,6 +342,33 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	var user models.User
 	if err := s.db.First(&user, order.UserID).Error; err != nil {
 		return nil, fmt.Errorf("用户不存在: %v", err)
+	}
+
+	// 从订单的 ExtraData 中提取余额使用金额
+	var balanceUsed float64
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if balance, ok := extraData["balance_used"].(float64); ok {
+				balanceUsed = balance
+			}
+		}
+	}
+
+	// 如果订单使用了余额，在支付成功时扣除
+	if balanceUsed > 0 {
+		result := s.db.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
+			Update("balance", gorm.Expr("balance - ?", balanceUsed))
+		if result.Error != nil {
+			return nil, fmt.Errorf("扣除余额失败: %v", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return nil, fmt.Errorf("余额不足，无法完成支付")
+		}
+		// 重新加载用户信息
+		if err := s.db.First(&user, order.UserID).Error; err != nil {
+			return nil, fmt.Errorf("重新加载用户信息失败: %v", err)
+		}
 	}
 
 	paidAmount := order.Amount
