@@ -25,6 +25,50 @@ log() { echo -e "${GREEN}[$(date +'%H:%M:%S')] $1${NC}"; }
 warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
 error() { echo -e "${RED}[ERROR] $1${NC}"; }
 
+# --- 带超时的 Redis 重启函数 ---
+restart_redis_with_timeout() {
+    local timeout_seconds=10
+
+    log "正在重启 Redis 服务..."
+
+    # 在后台执行重启命令
+    (systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null) &
+    local restart_pid=$!
+
+    # 等待最多 timeout_seconds 秒
+    local count=0
+    while kill -0 $restart_pid 2>/dev/null; do
+        if [ $count -ge $timeout_seconds ]; then
+            # 超时，杀死进程
+            kill -9 $restart_pid 2>/dev/null
+            warn "⚠️  Redis 重启超时（10秒），继续执行后续步骤"
+            warn "💡 请稍后手动重启 Redis: sudo systemctl restart redis"
+            return 1
+        fi
+        sleep 1
+        ((count++))
+    done
+
+    # 等待进程结束并获取退出码
+    wait $restart_pid 2>/dev/null
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
+        # 等待 Redis 启动
+        sleep 2
+        if redis-cli ping &> /dev/null; then
+            log "✅ Redis 服务已重启并运行正常"
+            return 0
+        else
+            warn "⚠️  Redis 重启完成但无法连接，请手动检查: systemctl status redis"
+            return 1
+        fi
+    else
+        warn "⚠️  Redis 重启失败，继续执行。请稍后手动重启: sudo systemctl restart redis"
+        return 1
+    fi
+}
+
 # --- Redis 缓存配置函数 ---
 configure_redis_cache() {
     log "========================================="
@@ -395,12 +439,8 @@ EOF
     # 7. 配置 Redis 缓存（可选）
     configure_redis_cache
 
-    # 8. 重启 Redis 服务确保缓存正常
-    log "正在重启 Redis 服务..."
-    systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
-    if redis-cli ping &> /dev/null; then
-        log "✅ Redis 服务已重启"
-    fi
+    # 8. 重启 Redis 服务确保缓存正常（使用带超时的函数避免卡住）
+    restart_redis_with_timeout
 
     # 9. 启动服务
     log "正在启动服务..."
@@ -504,14 +544,10 @@ force_kill() {
         pkill -9 -f "server|node" 2>/dev/null
         sleep 1
     fi
-    
-    # 重启 Redis 服务确保缓存清除
-    log "正在重启 Redis 服务..."
-    systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
-    if redis-cli ping &> /dev/null; then
-        log "✅ Redis 服务已重启"
-    fi
-    
+
+    # 重启 Redis 服务确保缓存清除（使用带超时的函数避免卡住）
+    restart_redis_with_timeout
+
     log "✅ 进程已全部清理"
 }
 
@@ -530,14 +566,8 @@ deep_clean() {
                 warn "Redis 缓存清除失败（可能未连接）"
             fi
         fi
-        # 重启 Redis 服务
-        log "正在重启 Redis 服务..."
-        systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
-        if redis-cli ping &> /dev/null; then
-            log "✅ Redis 服务已重启并运行正常"
-        else
-            warn "Redis 重启失败，但服务可能仍在运行"
-        fi
+        # 重启 Redis 服务（使用带超时的函数避免卡住）
+        restart_redis_with_timeout
     fi
 
     # 清理前端构建文件
@@ -762,14 +792,8 @@ sync_from_github() {
                 log "✅ Redis 缓存已清空（避免旧数据）"
             fi
         fi
-        # 重启 Redis 服务确保缓存完全清除
-        log "正在重启 Redis 服务..."
-        systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
-        if redis-cli ping &> /dev/null; then
-            log "✅ Redis 服务已重启并运行正常"
-        else
-            warn "Redis 重启失败，但服务可能仍在运行"
-        fi
+        # 重启 Redis 服务确保缓存完全清除（使用带超时的函数避免卡住）
+        restart_redis_with_timeout
     fi
 
     # 重启服务
@@ -836,15 +860,11 @@ main() {
         case $choice in
             1) full_deploy ;;
             2) manage_admin ;;
-            3) 
+            3)
                 force_kill
                 sleep 1
-                # 重启 Redis 服务
-                log "正在重启 Redis 服务..."
-                systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
-                if redis-cli ping &> /dev/null; then
-                    log "✅ Redis 服务已重启"
-                fi
+                # 重启 Redis 服务（使用带超时的函数避免卡住）
+                restart_redis_with_timeout
                 if systemctl start cboard; then
                     sleep 2
                     if systemctl is-active --quiet cboard; then
@@ -877,12 +897,8 @@ main() {
                         pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
                         sleep 1
                     fi
-                    # 重启 Redis 服务
-                    log "正在重启 Redis 服务..."
-                    systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null
-                    if redis-cli ping &> /dev/null; then
-                        log "✅ Redis 服务已重启"
-                    fi
+                    # 重启 Redis 服务（使用带超时的函数避免卡住）
+                    restart_redis_with_timeout
                     log "正在启动服务..."
                     if systemctl start cboard; then
                         sleep 2
