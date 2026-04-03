@@ -115,6 +115,15 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 		return "", fmt.Errorf("支付金额必须大于0，当前金额: %.2f", amount)
 	}
 
+	// 优先使用 TradePagePay（电脑网站支付），权限要求更低
+	pageURL, err := s.createPagePayURL(order, amount)
+	if err == nil {
+		return pageURL, nil
+	}
+
+	utils.LogWarn("TradePagePay 失败，尝试使用 TradePreCreate: %v", err)
+
+	// 备选方案：使用 TradePreCreate（当面付）
 	var param = alipay.TradePreCreate{}
 
 	if s.notifyURL != "" {
@@ -140,12 +149,7 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 	rsp, err := s.client.TradePreCreate(ctx, param)
 	if err != nil {
 		utils.LogErrorMsg("支付宝TradePreCreate请求失败: %v (订单号: %s, 金额: %.2f)", err, order.OrderNo, amount)
-		pageURL, pageErr := s.createPagePayURL(order, amount)
-		if pageErr != nil {
-			return "", fmt.Errorf("支付宝预创建失败: %v, 页面支付也失败: %v", err, pageErr)
-		}
-		utils.LogInfo("使用页面支付作为备选方案 (订单号: %s)", order.OrderNo)
-		return pageURL, nil
+		return "", fmt.Errorf("支付宝支付创建失败: %v", err)
 	}
 
 	if rsp.IsFailure() {
@@ -160,8 +164,8 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 		} else if rsp.Code == "40001" {
 			errorMsg += "。提示：请检查签名是否正确，确保私钥格式正确（PKCS1或PKCS8格式的PEM）"
 		} else if rsp.Code == "40006" {
-			errorMsg += "。提示：ISV权限不足，应用未签约相应产品。请登录支付宝开放平台，在应用管理中签约\"当面付\"产品，并确保应用已上线。详细步骤请查看支付配置页面的说明。"
-			return "", fmt.Errorf("%s。解决方案：1) 登录 https://open.alipay.com 2) 进入应用管理 3) 签约\"当面付\"产品 4) 确保应用状态为\"已上线\"", errorMsg)
+			errorMsg += "。提示：ISV权限不足，应用未签约相应产品。请登录支付宝开放平台，在应用管理中签约\"当面付\"或\"电脑网站支付\"产品，并确保应用已上线。"
+			return "", fmt.Errorf("%s。解决方案：1) 登录 https://open.alipay.com 2) 进入应用管理 3) 签约\"电脑网站支付\"产品 4) 确保应用状态为\"已上线\"", errorMsg)
 		}
 
 		if rsp.Code != "40006" {
