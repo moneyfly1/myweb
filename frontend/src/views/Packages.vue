@@ -833,48 +833,55 @@ export default {
         validateCoupon()
       }
     }
+    
+    // --- 核心优化：并发加载设置和套餐 ---
     const loadPackages = async () => {
       try {
         isLoading.value = true
         errorMessage.value = ''
 
-        // 加载公开配置（包含自定义套餐配置）
-        try {
-          const settingsResponse = await api.get('/settings/public-settings')
-          if (settingsResponse && settingsResponse.data && settingsResponse.data.data) {
-            const settings = settingsResponse.data.data
-            customPackageEnabled.value = settings.custom_package_enabled === true
-            if (customPackageEnabled.value) {
-              customPackageConfig.price_per_device_year = parseFloat(settings.custom_package_price_per_device_year || 40)
-              customPackageConfig.min_devices = parseInt(settings.custom_package_min_devices || 5)
-              customPackageConfig.max_devices = parseInt(settings.custom_package_max_devices || 100)
-              customPackageConfig.min_months = parseInt(settings.custom_package_min_months || 6)
+        // 利用 Promise.all 机制，使获取公共设置和获取套餐列表这两个互相不依赖的请求并发执行，
+        // 且不会因为 settings 接口失败而阻断 packages 接口。
+        const settingsPromise = api.get('/settings/public-settings').catch(error => {
+            console.error('加载自定义套餐配置失败:', error);
+            return null;
+        });
+        const packagesPromise = api.get('/packages/');
 
-              // 解析折扣配置
-              if (settings.custom_package_duration_discounts) {
-                try {
-                  const discounts = typeof settings.custom_package_duration_discounts === 'string'
-                    ? JSON.parse(settings.custom_package_duration_discounts)
-                    : settings.custom_package_duration_discounts
-                  if (Array.isArray(discounts)) {
-                    customPackageConfig.duration_discounts = discounts
-                  }
-                } catch (e) {
-                  console.error('解析折扣配置失败:', e)
+        // 1. 等待并处理设置接口数据
+        const settingsResponse = await settingsPromise;
+        if (settingsResponse && settingsResponse.data && settingsResponse.data.data) {
+          const settings = settingsResponse.data.data
+          customPackageEnabled.value = settings.custom_package_enabled === true
+          if (customPackageEnabled.value) {
+            customPackageConfig.price_per_device_year = parseFloat(settings.custom_package_price_per_device_year || 40)
+            customPackageConfig.min_devices = parseInt(settings.custom_package_min_devices || 5)
+            customPackageConfig.max_devices = parseInt(settings.custom_package_max_devices || 100)
+            customPackageConfig.min_months = parseInt(settings.custom_package_min_months || 6)
+
+            // 解析折扣配置
+            if (settings.custom_package_duration_discounts) {
+              try {
+                const discounts = typeof settings.custom_package_duration_discounts === 'string'
+                  ? JSON.parse(settings.custom_package_duration_discounts)
+                  : settings.custom_package_duration_discounts
+                if (Array.isArray(discounts)) {
+                  customPackageConfig.duration_discounts = discounts
                 }
+              } catch (e) {
+                console.error('解析折扣配置失败:', e)
               }
-
-              // 初始化表单默认值
-              customPackageForm.devices = customPackageConfig.min_devices
-              customPackageForm.months = customPackageConfig.min_months
-              calculateCustomPrice()
             }
+
+            // 初始化表单默认值
+            customPackageForm.devices = customPackageConfig.min_devices
+            customPackageForm.months = customPackageConfig.min_months
+            calculateCustomPrice()
           }
-        } catch (error) {
-          console.error('加载自定义套餐配置失败:', error)
         }
 
-        const response = await api.get('/packages/')
+        // 2. 等待并处理套餐接口数据
+        const response = await packagesPromise;
         let packagesList = []
         if (response && response.data) {
           const responseData = response.data
@@ -964,6 +971,8 @@ export default {
     }
     const handlePaymentMethodChange = (value) => {
     }
+    
+    // --- 优化弹窗时的请求阻塞 ---
     const selectPackage = async (pkg) => {
       try {
         if (!pkg) {
@@ -976,8 +985,13 @@ export default {
         }
         selectedPackage.value = pkg
         selectedQuantity.value = 1
-        await loadUserBalance()
-        await loadPaymentMethods()
+        
+        // 并发获取最新余额和支付方式，减少弹窗显示前的等待时间
+        await Promise.all([
+          loadUserBalance(),
+          loadPaymentMethods()
+        ]);
+        
         const finalPrice = finalAmount.value
         if (userBalance.value >= finalPrice && userBalance.value > 0) {
           paymentMethod.value = 'balance'
@@ -1630,9 +1644,13 @@ export default {
     const handleUserInfoUpdate = async () => {
       await loadUserBalance()
     }
-    onMounted(async () => {
-      await loadUserBalance()
-      await loadPackages()
+    
+    // --- 核心优化：解除 onMounted 的阻塞，改用并发 ---
+    onMounted(() => {
+      // 不再使用 await 阻塞组件的生命周期
+      loadUserBalance()
+      loadPackages()
+      
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
         window.addEventListener('resize', handleResize)
@@ -1640,6 +1658,7 @@ export default {
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
     })
+    
     onUnmounted(() => {
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
@@ -1772,9 +1791,11 @@ export default {
           couponCode.value = ''
           couponInfo.value = null
 
-          // 加载支付方式和余额
-          await loadPaymentMethods()
-          await loadUserBalance()
+          // 并发加载支付方式和余额
+          await Promise.all([
+            loadPaymentMethods(),
+            loadUserBalance()
+          ])
 
           // 设置默认支付方式
           const finalPrice = order.final_amount || order.amount || 0
