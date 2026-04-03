@@ -1442,8 +1442,24 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	if str == "" {
 		return `""`
 	}
-	if strings.ContainsAny(str, ":\"'\n\r\t#@&*?|>!%`[]{},\x00") || strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") {
-		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(str, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n"))
+	// 检查是否需要引用：包含特殊字符、以空格开头/结尾、或看起来像数字/布尔值
+	needQuote := strings.ContainsAny(str, ":\"'\n\r\t#@&*?|>!%`[]{},\x00") ||
+		strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") ||
+		strings.HasPrefix(str, "-") || strings.HasPrefix(str, "0x")
+
+	// 检查是否看起来像布尔值或 null
+	lower := strings.ToLower(strings.TrimSpace(str))
+	if lower == "true" || lower == "false" || lower == "null" || lower == "~" {
+		needQuote = true
+	}
+
+	if needQuote {
+		// 转义反斜杠、双引号和换行符
+		escaped := strings.ReplaceAll(str, "\\", "\\\\")
+		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
+		escaped = strings.ReplaceAll(escaped, "\n", "\\n")
+		escaped = strings.ReplaceAll(escaped, "\r", "\\r")
+		return fmt.Sprintf(`"%s"`, escaped)
 	}
 	return str
 }
