@@ -40,7 +40,7 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 
 	privateKey = utils.NormalizePrivateKey(privateKey)
 	if privateKey == "" {
-		return nil, fmt.Errorf("支付宝应用私钥格式错误：无法识别私钥格式。请确保私钥是完整的PEM格式（包含BEGIN和END标记）")
+		return nil, fmt.Errorf("支付宝应用私钥格式错误：无法识别私钥格式。请确保私钥是完整的PEM格式")
 	}
 
 	isProduction := false
@@ -69,20 +69,20 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 
 	client, err := alipay.New(appID, privateKey, isProduction, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("初始化支付宝客户端失败: %v。请检查：1) AppID是否正确 2) 应用私钥是否为完整的PEM格式（PKCS1或PKCS8）3) 私钥是否与AppID匹配 4) 私钥长度是否为2048位（推荐）", err)
+		return nil, fmt.Errorf("初始化支付宝客户端失败: %v", err)
 	}
 
 	if paymentConfig.AlipayPublicKey.Valid && paymentConfig.AlipayPublicKey.String != "" {
 		publicKey := utils.NormalizePublicKey(paymentConfig.AlipayPublicKey.String)
 		if publicKey != "" {
 			if err := client.LoadAliPayPublicKey(publicKey); err != nil {
-				return nil, fmt.Errorf("加载支付宝公钥失败: %v。请检查支付宝公钥格式是否正确（需要完整的PEM格式）", err)
+				return nil, fmt.Errorf("加载支付宝公钥失败: %v", err)
 			}
 		} else {
 			return nil, fmt.Errorf("支付宝公钥格式无法识别，请提供完整的PEM格式公钥")
 		}
 	} else {
-		return nil, fmt.Errorf("未配置支付宝公钥，无法验证回调签名。请在支付配置中添加支付宝公钥以确保支付安全")
+		return nil, fmt.Errorf("未配置支付宝公钥，无法验证回调签名")
 	}
 
 	service := &AlipayService{
@@ -104,6 +104,10 @@ func NewAlipayService(paymentConfig *models.PaymentConfig) (*AlipayService, erro
 	return service, nil
 }
 
+// CreatePayment 创建支付请求
+// 注意：对于个人开发者，这里返回的字符串不再是一个可以直接在浏览器打开的网页URL！
+// 返回的是一个二维码字符串 (例如: https://qr.alipay.com/bax00...)
+// 你的前端拿到这个字符串后，必须使用二维码库将其渲染成图片让用户扫码。
 func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (string, error) {
 	if order == nil {
 		return "", fmt.Errorf("订单信息不能为空")
@@ -115,124 +119,53 @@ func (s *AlipayService) CreatePayment(order *models.Order, amount float64) (stri
 		return "", fmt.Errorf("支付金额必须大于0，当前金额: %.2f", amount)
 	}
 
-	// 优先使用 TradePagePay（电脑网站支付），权限要求更低
-	pageURL, err := s.createPagePayURL(order, amount)
-	if err == nil {
-		return pageURL, nil
+	// 个人账号专属：使用当面付 (alipay.trade.precreate)
+	qrCodeStr, err := s.createPrecreatePay(order, amount)
+	if err != nil {
+		utils.LogWarn("当面付(TradePreCreate)调用失败: %v", err)
+		return "", fmt.Errorf("创建支付宝扫码支付失败: %v", err)
 	}
 
-	utils.LogWarn("TradePagePay 失败，尝试使用 TradePreCreate: %v", err)
+	return qrCodeStr, nil
+}
 
-	// 备选方案：使用 TradePreCreate（当面付）
+// createPrecreatePay 调用当面付接口获取二维码字符串
+func (s *AlipayService) createPrecreatePay(order *models.Order, amount float64) (string, error) {
 	var param = alipay.TradePreCreate{}
 
+	param.OutTradeNo = order.OrderNo
+	param.Subject = fmt.Sprintf("订单支付-%s", order.OrderNo)
+	param.TotalAmount = fmt.Sprintf("%.2f", amount)
+
+	// 当面付不需要 ReturnURL (因为是扫码，不会跳转前端页面)
+	// 只需要异步通知 NotifyURL
 	if s.notifyURL != "" {
 		param.NotifyURL = s.notifyURL
-		utils.LogInfo("支付宝回调地址(NotifyURL)已设置: %s", s.notifyURL)
-	} else {
-		utils.LogWarn("支付宝回调地址未配置，将使用支付宝后台配置的地址（如果后台也未配置，将无法收到回调）")
 	}
 
-	if s.returnURL != "" {
-		param.ReturnURL = s.returnURL
-	}
+	utils.LogInfo("支付宝当面付请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s",
+		param.OutTradeNo, param.TotalAmount, param.Subject)
 
-	param.Subject = fmt.Sprintf("订单支付-%s", order.OrderNo)
-	param.OutTradeNo = order.OrderNo
-	param.TotalAmount = fmt.Sprintf("%.2f", amount)
-	param.ProductCode = "" // 明确设置为空，避免使用默认值
-
-	utils.LogInfo("支付宝TradePreCreate请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s",
-		param.OutTradeNo, param.TotalAmount, param.Subject, param.NotifyURL)
-
+	// 注意：V3版本的 API 发起网络请求需要传入 Context
 	ctx := context.Background()
 	rsp, err := s.client.TradePreCreate(ctx, param)
 	if err != nil {
-		utils.LogErrorMsg("支付宝TradePreCreate请求失败: %v (订单号: %s, 金额: %.2f)", err, order.OrderNo, amount)
-		return "", fmt.Errorf("支付宝支付创建失败: %v", err)
+		return "", err
 	}
 
+	// 检查业务是否成功
 	if rsp.IsFailure() {
-		errorMsg := fmt.Sprintf("支付宝返回错误: Code=%s, Msg=%s", rsp.Code, rsp.Msg)
-		if rsp.SubMsg != "" {
-			errorMsg += fmt.Sprintf(", SubMsg=%s", rsp.SubMsg)
-		}
-		utils.LogErrorMsg("支付宝TradePreCreate业务失败: %s (订单号: %s, 金额: %.2f)", errorMsg, order.OrderNo, amount)
-
-		if rsp.Code == "40004" {
-			errorMsg += "。提示：请检查 AppID 和应用私钥是否匹配，以及是否在支付宝后台正确配置了应用公钥"
-		} else if rsp.Code == "40001" {
-			errorMsg += "。提示：请检查签名是否正确，确保私钥格式正确（PKCS1或PKCS8格式的PEM）"
-		} else if rsp.Code == "40006" {
-			errorMsg += "。提示：ISV权限不足，应用未签约相应产品。请登录支付宝开放平台，在应用管理中签约\"当面付\"或\"电脑网站支付\"产品，并确保应用已上线。"
-			return "", fmt.Errorf("%s。解决方案：1) 登录 https://open.alipay.com 2) 进入应用管理 3) 签约\"电脑网站支付\"产品 4) 确保应用状态为\"已上线\"", errorMsg)
-		}
-
-		if rsp.Code != "40006" {
-			pageURL, pageErr := s.createPagePayURL(order, amount)
-			if pageErr != nil {
-				return "", fmt.Errorf("%s, 页面支付也失败: %v", errorMsg, pageErr)
-			}
-			utils.LogInfo("使用页面支付作为备选方案 (订单号: %s)", order.OrderNo)
-			return pageURL, nil
-		}
-
-		return "", fmt.Errorf("%s", errorMsg)
+		// 如果这里依然报 40006 权限不足，说明你在开放平台还没有签约“当面付”，或者应用未上线
+		return "", fmt.Errorf("支付宝返回失败: Code=%s, Msg=%s, SubCode=%s, SubMsg=%s",
+			rsp.Code, rsp.Msg, rsp.SubCode, rsp.SubMsg)
 	}
 
-	if rsp.QRCode != "" {
-		utils.LogInfo("支付宝TradePreCreate成功，二维码URL: %s (订单号: %s, 金额: %.2f, 环境: %s)",
-			rsp.QRCode, order.OrderNo, amount, map[bool]string{true: "生产", false: "沙箱"}[s.isProduction])
-		return rsp.QRCode, nil
+	if rsp.QRCode == "" {
+		return "", fmt.Errorf("支付宝未返回二维码信息")
 	}
 
-	utils.LogWarn("支付宝返回的二维码为空，使用页面支付作为备选 (订单号: %s)", order.OrderNo)
-	pageURL, pageErr := s.createPagePayURL(order, amount)
-	if pageErr != nil {
-		return "", fmt.Errorf("支付宝返回的二维码为空，且页面支付失败: %v", pageErr)
-	}
-	return pageURL, nil
-}
-
-func (s *AlipayService) createPagePayURL(order *models.Order, amount float64) (string, error) {
-	if order.OrderNo == "" {
-		return "", fmt.Errorf("订单号不能为空")
-	}
-	if amount <= 0 {
-		return "", fmt.Errorf("支付金额必须大于0")
-	}
-
-	var param = alipay.TradePagePay{}
-
-	if s.notifyURL != "" {
-		param.NotifyURL = s.notifyURL
-	}
-	if s.returnURL != "" {
-		param.ReturnURL = s.returnURL
-	}
-
-	param.Subject = fmt.Sprintf("订单支付-%s", order.OrderNo)
-	param.OutTradeNo = order.OrderNo
-	param.TotalAmount = fmt.Sprintf("%.2f", amount)
-	param.ProductCode = "FAST_INSTANT_TRADE_PAY"
-
-	utils.LogInfo("支付宝TradePagePay请求参数: OutTradeNo=%s, TotalAmount=%s, Subject=%s, NotifyURL=%s",
-		param.OutTradeNo, param.TotalAmount, param.Subject, param.NotifyURL)
-
-	payURL, err := s.client.TradePagePay(param)
-	if err != nil {
-		if strings.Contains(err.Error(), "40006") || strings.Contains(err.Error(), "insufficient") || strings.Contains(err.Error(), "权限") {
-			return "", fmt.Errorf("生成支付页面URL失败: %v。提示：ISV权限不足，请登录支付宝开放平台签约\"当面付\"产品并确保应用已上线", err)
-		}
-		return "", fmt.Errorf("生成支付页面URL失败: %v", err)
-	}
-
-	if payURL == nil {
-		return "", fmt.Errorf("支付页面URL为空")
-	}
-
-	utils.LogInfo("支付宝TradePagePay成功，支付页面URL已生成 (订单号: %s, 金额: %.2f)", order.OrderNo, amount)
-	return payURL.String(), nil
+	utils.LogInfo("支付宝当面付创建成功，返回二维码数据 (订单号: %s)", order.OrderNo)
+	return rsp.QRCode, nil
 }
 
 func (s *AlipayService) ParseNotification(req *http.Request) (*AlipayNotification, error) {
@@ -310,7 +243,7 @@ func (s *AlipayService) QueryOrder(orderNo string) (*AlipayQueryResult, error) {
 	}
 
 	if rsp.IsFailure() {
-		return nil, fmt.Errorf("支付宝返回错误: Code=%s, Msg=%s", rsp.Code, rsp.Msg)
+		return nil, fmt.Errorf("支付宝返回错误: Code=%s, Msg=%s, SubCode=%s", rsp.Code, rsp.Msg, rsp.SubCode)
 	}
 
 	result := &AlipayQueryResult{
