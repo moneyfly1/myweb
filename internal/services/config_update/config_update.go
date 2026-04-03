@@ -595,13 +595,43 @@ func (s *ConfigUpdateService) fetchURLContent(client *http.Client, url string) (
 func (s *ConfigUpdateService) logNodeTypeStats(index int, nodeLinks []string) {
 	tc := make(map[string]int)
 	for _, l := range nodeLinks {
-		tc[strings.Split(l, ":")[0]]++
+		protocol := strings.Split(l, ":")[0]
+		tc[protocol]++
 	}
+
+	// 按常见协议顺序输出，确保显示清晰
+	protocols := []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "naive", "socks5", "http", "https"}
 	var parts []string
-	for t, c := range tc {
-		parts = append(parts, fmt.Sprintf("%s: %d", t, c))
+	totalCounted := 0
+
+	for _, proto := range protocols {
+		if count, ok := tc[proto]; ok && count > 0 {
+			parts = append(parts, fmt.Sprintf("%s: %d", proto, count))
+			totalCounted += count
+		}
 	}
+
+	// 添加其他未知协议
+	for t, c := range tc {
+		found := false
+		for _, proto := range protocols {
+			if t == proto {
+				found = true
+				break
+			}
+		}
+		if !found {
+			parts = append(parts, fmt.Sprintf("%s: %d", t, c))
+			totalCounted += c
+		}
+	}
+
 	s.successf("✔️ 节点源 [%d] 下载解析完成: 共提取 %d 个节点 (%s)", index, len(nodeLinks), strings.Join(parts, ", "))
+
+	// 如果统计数量不匹配，输出警告
+	if totalCounted != len(nodeLinks) {
+		s.warnf("⚠️  节点统计异常: 统计 %d 个，实际 %d 个", totalCounted, len(nodeLinks))
+	}
 }
 
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
@@ -704,7 +734,38 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		}
 	}
 
-	return s.uniqueLinks(links)
+	uniqueLinks := s.uniqueLinks(links)
+
+	// 添加详细的节点提取日志（调试模式）
+	if len(uniqueLinks) > 0 {
+		s.log("DEBUG", fmt.Sprintf("📋 提取节点详情（共 %d 个）:", len(uniqueLinks)))
+		protocolCount := make(map[string]int)
+		for i, link := range uniqueLinks {
+			protocol := strings.Split(link, ":")[0]
+			protocolCount[protocol]++
+
+			// 只显示前10个节点的详情，避免日志过长
+			if i < 10 {
+				preview := link
+				if len(link) > 100 {
+					preview = link[:100] + "..."
+				}
+				s.log("DEBUG", fmt.Sprintf("  %d. [%s] %s", i+1, strings.ToUpper(protocol), preview))
+			}
+		}
+		if len(uniqueLinks) > 10 {
+			s.log("DEBUG", fmt.Sprintf("  ... 还有 %d 个节点未显示", len(uniqueLinks)-10))
+		}
+
+		// 显示协议统计
+		var protocolStats []string
+		for proto, count := range protocolCount {
+			protocolStats = append(protocolStats, fmt.Sprintf("%s:%d", proto, count))
+		}
+		s.log("DEBUG", fmt.Sprintf("📊 协议统计: %s", strings.Join(protocolStats, ", ")))
+	}
+
+	return uniqueLinks
 }
 
 func (s *ConfigUpdateService) uniqueLinks(links []string) []string {
