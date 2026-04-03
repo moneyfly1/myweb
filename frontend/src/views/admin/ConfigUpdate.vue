@@ -105,11 +105,14 @@
           <div class="section-title">
             <el-icon><Connection /></el-icon> 节点源列表
           </div>
-          <div class="url-list">
+          <div class="url-list" ref="urlListRef">
             <div v-for="(url, index) in config.urls" :key="index" class="list-item-wrapper">
               <div class="input-with-action">
-                <el-input 
-                  v-model="config.urls[index]" 
+                <div class="drag-handle">
+                  <el-icon><Rank /></el-icon>
+                </div>
+                <el-input
+                  v-model="config.urls[index]"
                   placeholder="请输入订阅/节点源 URL"
                   class="styled-input"
                 >
@@ -117,9 +120,9 @@
                     <span class="index-badge">{{ index + 1 }}</span>
                   </template>
                 </el-input>
-                <el-button 
-                  type="danger" 
-                  plain 
+                <el-button
+                  type="danger"
+                  plain
                   @click="removeUrl(index)"
                   :disabled="config.urls.length <= 1"
                   class="action-btn-side"
@@ -259,17 +262,18 @@
 <script>
 import { ref, reactive, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus, 
-  Connection, Filter, Warning, Document
+import {
+  VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
+  Connection, Filter, Warning, Document, Rank
 } from '@element-plus/icons-vue'
 import { configUpdateAPI } from '@/utils/api'
+import Sortable from 'sortablejs'
 
 export default {
   name: 'ConfigUpdate',
   components: {
     VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
-    Connection, Filter, Warning, Document
+    Connection, Filter, Warning, Document, Rank
   },
   setup() {
     // 状态定义
@@ -291,6 +295,7 @@ export default {
     const logs = ref([])
     const isLogPolling = ref(false)
     const isMobile = ref(false)
+    const urlListRef = ref(null)
     
     const loading = reactive({
       start: false,
@@ -614,6 +619,22 @@ export default {
         startStatusPolling()
         startLogPolling()
       }
+
+      // 初始化拖拽排序
+      if (urlListRef.value) {
+        Sortable.create(urlListRef.value, {
+          animation: 150,
+          handle: '.drag-handle',
+          ghostClass: 'sortable-ghost',
+          onEnd: (evt) => {
+            const { oldIndex, newIndex } = evt
+            if (oldIndex !== newIndex) {
+              const movedItem = config.urls.splice(oldIndex, 1)[0]
+              config.urls.splice(newIndex, 0, movedItem)
+            }
+          }
+        })
+      }
     })
 
     onUnmounted(() => {
@@ -625,7 +646,7 @@ export default {
 
     return {
       status, config, logs, loading, isLogPolling, isMobile,
-      intervalUnit, intervalValue,
+      intervalUnit, intervalValue, urlListRef,
       startUpdate, stopUpdate, testUpdate, refreshStatus, saveConfig,
       refreshLogs, clearLogs, addUrl, removeUrl, addKeyword, removeKeyword,
       updateInterval, formatInterval, handleScheduleChange, formatLogTime
@@ -1098,6 +1119,36 @@ $primary-color: #409eff;
     transform: translateY(0);
   }
 }
+
+// 拖拽排序样式
+.drag-handle {
+  cursor: move;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  color: #909399;
+  font-size: 18px;
+
+  &:hover {
+    color: #409eff;
+  }
+}
+
+.sortable-ghost {
+  opacity: 0.4;
+  background: #f5f7fa;
+}
+
+.list-item-wrapper {
+  transition: transform 0.2s;
+}
+
+.input-with-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 
 .status-badge.pulse {
   animation: pulse 2s infinite;
