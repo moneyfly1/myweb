@@ -316,8 +316,15 @@ export default {
 
     const formatLogTime = (timeStr) => {
       if (!timeStr) return ''
-      const date = new Date(timeStr)
-      return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+      try {
+        const date = new Date(timeStr)
+        const h = date.getHours().toString().padStart(2, '0')
+        const m = date.getMinutes().toString().padStart(2, '0')
+        const s = date.getSeconds().toString().padStart(2, '0')
+        return `${h}:${m}:${s}`
+      } catch {
+        return ''
+      }
     }
 
     const formatInterval = (seconds) => {
@@ -521,7 +528,22 @@ export default {
       try {
         const response = await configUpdateAPI.startUpdate()
         if (response.data.success) {
-          ElMessage.success('更新任务已启动')
+          ElMessage.success('更新任务已启动，正在采集中...')
+
+          // 立即获取一次日志
+          await getLogs()
+
+          // 启动快速轮询（每秒一次，持续10秒）
+          let fastPollCount = 0
+          const fastPollInterval = setInterval(async () => {
+            await getLogs()
+            await getStatus()
+            fastPollCount++
+            if (fastPollCount >= 10) {
+              clearInterval(fastPollInterval)
+            }
+          }, 1000)
+
           startStatusPolling()
           startLogPolling()
         } else {
