@@ -390,9 +390,12 @@ onMounted(async () => {
   handleResize()
   loadInviteSettings()
   loadRecentSettings()
-  await loadInviteRewardSettings()
-  await loadInviteCodes()
-  await loadStats()
+  // 并发加载三个独立的数据源，提高页面加载速度
+  await Promise.all([
+    loadInviteRewardSettings(),
+    loadInviteCodes(),
+    loadStats()
+  ])
 })
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)

@@ -621,8 +621,12 @@ export default {
       checkMobile()
       window.addEventListener('resize', checkMobile)
       
-      await getConfig()
-      await Promise.all([getStatus(), getLogs()])
+      // 并发加载配置、状态和日志，提高页面加载速度
+      await Promise.all([
+        getConfig(),
+        getStatus(),
+        getLogs()
+      ])
       
       // 如果进入页面时就在运行，接管轮询
       if (status.value.is_running) {
