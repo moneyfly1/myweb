@@ -1083,8 +1083,11 @@ export default {
     const handleResize = () => isMobile.value = window.innerWidth <= 768
 
     onMounted(() => {
-      loadSettings()
-      loadGeoIPStatus()
+      // 并发加载设置和GeoIP状态，提高页面加载速度
+      Promise.all([
+        loadSettings(),
+        loadGeoIPStatus()
+      ])
       window.addEventListener('resize', handleResize)
     })
 

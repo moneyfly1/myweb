@@ -422,8 +422,11 @@ export default {
       fetchSubscription()
       fetchUserInfo()
       const handleSubscriptionUpdate = async () => {
-        await fetchSubscription()
-        await fetchUserInfo()
+        // 并发更新订阅和用户信息
+        await Promise.all([
+          fetchSubscription(),
+          fetchUserInfo()
+        ])
       }
       const handleUserInfoUpdate = async () => {
         await fetchUserInfo()
@@ -442,20 +445,20 @@ export default {
     })
     const fetchSubscription = async () => {
       try {
-        let subscriptionResponse
-        try {
-          subscriptionResponse = await subscriptionAPI.getUserSubscription()
-        } catch (subscriptionError) {
-          console.error('获取订阅信息失败', subscriptionError)
-          subscriptionResponse = null
-        }
-        let userResponse
-        try {
-          userResponse = await userAPI.getUserInfo()
-        } catch (userError) {
-          console.error('获取用户信息失败', userError)
-          userResponse = null
-        }
+        // 并发加载订阅和用户信息，提高页面加载速度
+        let [subscriptionResponse, userResponse] = await Promise.allSettled([
+          subscriptionAPI.getUserSubscription().catch(subscriptionError => {
+            console.error('获取订阅信息失败', subscriptionError)
+            return null
+          }),
+          userAPI.getUserInfo().catch(userError => {
+            console.error('获取用户信息失败', userError)
+            return null
+          })
+        ]).then(results => [
+          results[0].status === 'fulfilled' ? results[0].value : null,
+          results[1].status === 'fulfilled' ? results[1].value : null
+        ])
         if (subscriptionResponse && subscriptionResponse.data && subscriptionResponse.data.success) {
           const subscriptionData = subscriptionResponse.data.data
           let onlineDevices = subscriptionData.current_devices || subscriptionData.currentDevices || 0

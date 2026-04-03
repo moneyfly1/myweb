@@ -628,9 +628,12 @@ watch(() => registerForm.inviteCode, (newCode) => {
 })
 onMounted(async () => {
   await checkRegistrationEnabled()
+  // 邀请码验证可以在后台进行，不阻塞UI加载
   if (route.query.invite) {
     registerForm.inviteCode = route.query.invite
-    await validateInviteCode(route.query.invite)
+    validateInviteCode(route.query.invite).catch(() => {
+      // 邀请码验证失败会自动处理
+    })
   }
 })
 onUnmounted(() => {

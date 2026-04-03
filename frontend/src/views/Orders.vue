@@ -1418,8 +1418,11 @@ export default {
     }
     onMounted(async () => {
       loadOrderTableSettings()
-      await loadOrderStats()
-      await loadOrders()
+      // 并发加载订单统计和订单列表，提高页面加载速度
+      await Promise.all([
+        loadOrderStats(),
+        loadOrders()
+      ])
       if (activeTab.value === 'all') {
         await loadRecharges()
         mergeRecords()
