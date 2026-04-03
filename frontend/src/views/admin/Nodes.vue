@@ -53,13 +53,18 @@
             <el-option label="已激活" value="true" />
             <el-option label="已禁用" value="false" />
           </el-select>
+          <el-select v-model="filters.is_manual" placeholder="来源" clearable @change="loadNodes">
+            <el-option label="所有来源" value="" />
+            <el-option label="手动添加" value="true" />
+            <el-option label="自动采集" value="false" />
+          </el-select>
           <el-select v-model="filters.region" placeholder="地区" clearable @change="loadNodes">
             <el-option label="所有地区" value="" />
             <el-option v-for="r in regions" :key="r" :label="r" :value="r" />
           </el-select>
           <el-select v-model="filters.type" placeholder="类型" clearable @change="loadNodes">
             <el-option label="所有类型" value="" />
-            <el-option v-for="t in types" :key="t" :label="t" :value="t" />
+            <el-option v-for="t in allNodeTypes" :key="t" :label="t" :value="t" />
           </el-select>
           <div class="search-box">
             <el-input
@@ -254,12 +259,29 @@
             </el-col>
             <el-col :span="24">
               <el-form-item label="类型" required>
-                <el-radio-group v-model="nodeForm.type" size="small" class="type-radio">
-                  <el-radio-button label="vmess">VMess</el-radio-button>
-                  <el-radio-button label="vless">VLESS</el-radio-button>
-                  <el-radio-button label="trojan">Trojan</el-radio-button>
-                  <el-radio-button label="ss">SS</el-radio-button>
-                </el-radio-group>
+                <el-select v-model="nodeForm.type" placeholder="选择节点类型" style="width: 100%">
+                  <el-optgroup label="代理协议">
+                    <el-option label="VMess" value="vmess" />
+                    <el-option label="VLESS" value="vless" />
+                    <el-option label="Trojan" value="trojan" />
+                    <el-option label="Shadowsocks (SS)" value="ss" />
+                    <el-option label="ShadowsocksR (SSR)" value="ssr" />
+                  </el-optgroup>
+                  <el-optgroup label="现代协议">
+                    <el-option label="Hysteria" value="hysteria" />
+                    <el-option label="Hysteria2" value="hysteria2" />
+                    <el-option label="TUIC" value="tuic" />
+                    <el-option label="Naive" value="naive" />
+                    <el-option label="AnyTLS" value="anytls" />
+                  </el-optgroup>
+                  <el-optgroup label="其他协议">
+                    <el-option label="SOCKS" value="socks" />
+                    <el-option label="SOCKS5" value="socks5" />
+                    <el-option label="HTTP" value="http" />
+                    <el-option label="HTTPS" value="https" />
+                    <el-option label="WireGuard (WG)" value="wg" />
+                  </el-optgroup>
+                </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="24">
@@ -324,6 +346,13 @@ export default {
     DocumentCopy, Edit, MoreFilled 
   },
   setup() {
+    // 所有支持的节点类型（完整列表）
+    const allNodeTypes = [
+      'vmess', 'vless', 'trojan', 'ss', 'ssr',
+      'hysteria', 'hysteria2', 'tuic', 'naive', 'anytls',
+      'socks', 'socks5', 'http', 'https', 'wg', 'wireguard'
+    ]
+    
     const isMobile = ref(false)
     const loading = ref(false)
     const testing = ref(false)
@@ -341,7 +370,7 @@ export default {
     const nodeLinkInput = ref('')
     const nodeLinkValue = ref('')
     const parsedNode = ref(null)
-    const filters = reactive({ status: '', is_active: '', region: '', type: '' })
+    const filters = reactive({ status: '', is_active: '', is_manual: '', region: '', type: '' })
     const pagination = reactive({ page: 1, size: 20, total: 0 })
     const nodeForm = reactive({
       name: '', region: '', type: 'vmess', config: '',
@@ -366,8 +395,11 @@ export default {
           const list = Array.isArray(raw) ? raw : (raw.nodes || raw.data || [])
           nodes.value = list.map(n => ({ ...n, testing: false }))
           pagination.total = raw.total || list.length
-          const rSet = new Set(), tSet = new Set()
-          list.forEach(n => { if(n.region) rSet.add(n.region); if(n.type) tSet.add(n.type) })
+          const rSet = new Set(), tSet = new Set(allNodeTypes)
+          list.forEach(n => { 
+            if(n.region) rSet.add(n.region)
+            if(n.type) tSet.add(n.type) // 补充任何新的协议类型
+          })
           regions.value = Array.from(rSet).sort()
           types.value = Array.from(tSet).sort()
         }
@@ -559,7 +591,7 @@ export default {
     return {
       isMobile, loading, testing, deleting, saving, parsing,
       nodes, selectedNodes, showAddDialog, editingNode,
-      filters, pagination, nodeForm, regions, types,
+      filters, pagination, nodeForm, regions, types, allNodeTypes,
       searchKeyword, addNodeTab, nodeLinkInput, parsedNode,
       loadNodes, handleSelectionChange, handleMobileSelect,
       handleAdd, handleCommand, editNode, saveNode, deleteNode,
