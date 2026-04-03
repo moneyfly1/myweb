@@ -38,7 +38,7 @@ const (
 	StatusSystemError
 )
 
-// 优化：将15个单独的正则合并为一个，极大提高匹配性能
+// 将15个单独的正则合并为一个，极大提高匹配性能
 var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
 
 var supportedClashTypes = map[string]bool{
@@ -63,6 +63,7 @@ type ConfigUpdateService struct {
 	runningMutex  sync.Mutex
 	siteURL       string
 	supportQQ     string
+	configMutex   sync.RWMutex // 新增配置锁，保障并发安全
 	regionMatcher *RegionMatcher
 	parserPool    *ParserPool
 	sseManager    *SSEManager
@@ -77,9 +78,9 @@ type nodeWithOrder struct {
 }
 
 type importStats struct {
-	Created int // 新增节点数
-	Updated int // 更新节点数
-	Skipped int // 跳过节点数（与手动节点同名）
+	Created int
+	Updated int
+	Skipped int
 }
 
 type updateStats struct {
@@ -90,41 +91,69 @@ type updateStats struct {
 	filtered      int
 }
 
+// 【核心修复】：使用单例模式，保障轮询、SSE流、后台任务使用的是同一个内存实例
+var (
+	globalService *ConfigUpdateService
+	serviceOnce   sync.Once
+)
+
 func NewConfigUpdateService() *ConfigUpdateService {
-	service := &ConfigUpdateService{
-		db:         database.GetDB(),
-		parserPool: NewParserPool(10),
-		sseManager: NewSSEManager(),
-		logBuffer:  make([]map[string]interface{}, 0, 500),
-	}
-
-	regionConfig, err := LoadRegionConfig()
-	if err != nil && utils.AppLogger != nil {
-		utils.AppLogger.Warn("地区配置加载失败: %v，将使用空配置", err)
-	}
-
-	if regionConfig != nil && (len(regionConfig.RegionMap) > 0 || len(regionConfig.ServerMap) > 0) {
-		service.regionMatcher = NewRegionMatcher(regionConfig.RegionMap, regionConfig.ServerMap)
-		if utils.AppLogger != nil {
-			utils.AppLogger.Info("地区配置加载成功: region_map=%d, server_map=%d", len(regionConfig.RegionMap), len(regionConfig.ServerMap))
+	serviceOnce.Do(func() {
+		globalService = &ConfigUpdateService{
+			db:         database.GetDB(),
+			parserPool: NewParserPool(10),
+			sseManager: NewSSEManager(),
+			logBuffer:  make([]map[string]interface{}, 0, 500),
 		}
-	} else {
-		service.regionMatcher = NewRegionMatcher(make(map[string]string), make(map[string]string))
-	}
 
-	service.refreshSystemConfig()
-	return service
+		// 启动时仅加载一次历史日志，提升极速体验
+		var logConfig models.SystemConfig
+		if err := globalService.db.Where("key = ?", "config_update_logs").First(&logConfig).Error; err == nil && logConfig.Value != "" {
+			var logs []map[string]interface{}
+			if err := json.Unmarshal([]byte(logConfig.Value), &logs); err == nil {
+				if len(logs) > 500 {
+					logs = logs[len(logs)-500:]
+				}
+				globalService.logBuffer = logs
+			}
+		}
+
+		regionConfig, err := LoadRegionConfig()
+		if err != nil && utils.AppLogger != nil {
+			utils.AppLogger.Warn("地区配置加载失败: %v，将使用空配置", err)
+		}
+
+		if regionConfig != nil && (len(regionConfig.RegionMap) > 0 || len(regionConfig.ServerMap) > 0) {
+			globalService.regionMatcher = NewRegionMatcher(regionConfig.RegionMap, regionConfig.ServerMap)
+			if utils.AppLogger != nil {
+				utils.AppLogger.Info("地区配置加载成功: region_map=%d, server_map=%d", len(regionConfig.RegionMap), len(regionConfig.ServerMap))
+			}
+		} else {
+			globalService.regionMatcher = NewRegionMatcher(make(map[string]string), make(map[string]string))
+		}
+	})
+
+	// 每次调用自动刷新并同步最新系统配置
+	globalService.db = database.GetDB()
+	globalService.refreshSystemConfig()
+	return globalService
 }
 
 func (s *ConfigUpdateService) refreshSystemConfig() {
-	if domain := utils.GetDomainFromDB(s.db); domain != "" {
+	domain := utils.GetDomainFromDB(s.db)
+	var qqConfig models.SystemConfig
+	err := s.db.Where("key = ? AND category = ?", "support_qq", "general").First(&qqConfig).Error
+
+	s.configMutex.Lock()
+	defer s.configMutex.Unlock()
+
+	if domain != "" {
 		s.siteURL = utils.FormatDomainURL(domain)
 	} else {
 		s.siteURL = "请在系统设置中配置域名"
 	}
 
-	var qqConfig models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "support_qq", "general").First(&qqConfig).Error; err == nil && qqConfig.Value != "" {
+	if err == nil && qqConfig.Value != "" {
 		s.supportQQ = strings.TrimSpace(qqConfig.Value)
 	} else {
 		s.supportQQ = ""
@@ -146,31 +175,19 @@ func (s *ConfigUpdateService) GetStatus() map[string]interface{} {
 	return map[string]interface{}{"is_running": s.IsRunning(), "last_update": lastUpdate, "next_update": ""}
 }
 
+// 获取 SSE 管理器，供外部 API 订阅流式日志
+func (s *ConfigUpdateService) GetSSEManager() *SSEManager {
+	return s.sseManager
+}
+
+// 高频无缝轮询：直接读内存 Buffer
 func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 	s.logMutex.RLock()
-	if len(s.logBuffer) > 0 {
-		logs := make([]map[string]interface{}, len(s.logBuffer))
-		copy(logs, s.logBuffer)
-		s.logMutex.RUnlock()
-		return s.limitLogs(logs, limit)
-	}
-	s.logMutex.RUnlock()
-	return s.getLogsFromDB(limit)
-}
+	defer s.logMutex.RUnlock()
 
-func (s *ConfigUpdateService) getLogsFromDB(limit int) []map[string]interface{} {
-	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
-		return []map[string]interface{}{}
-	}
-	var logs []map[string]interface{}
-	if err := json.Unmarshal([]byte(config.Value), &logs); err != nil {
-		return []map[string]interface{}{}
-	}
-	return s.limitLogs(logs, limit)
-}
+	logs := make([]map[string]interface{}, len(s.logBuffer))
+	copy(logs, s.logBuffer)
 
-func (s *ConfigUpdateService) limitLogs(logs []map[string]interface{}, limit int) []map[string]interface{} {
 	if len(logs) > limit {
 		return logs[len(logs)-limit:]
 	}
@@ -178,7 +195,10 @@ func (s *ConfigUpdateService) limitLogs(logs []map[string]interface{}, limit int
 }
 
 func (s *ConfigUpdateService) ClearLogs() error {
-	s.clearLogBuffer()
+	s.logMutex.Lock()
+	s.logBuffer = make([]map[string]interface{}, 0, 500)
+	s.logMutex.Unlock()
+
 	if s.sseManager != nil {
 		s.sseManager.ClearHistory()
 	}
@@ -190,15 +210,7 @@ func (s *ConfigUpdateService) ClearLogs() error {
 	return s.db.Save(&config).Error
 }
 
-func (s *ConfigUpdateService) clearLogBuffer() {
-	s.logMutex.Lock()
-	defer s.logMutex.Unlock()
-	s.logBuffer = make([]map[string]interface{}, 0, 500)
-}
-
-func (s *ConfigUpdateService) GetSSEManager() *SSEManager { return s.sseManager }
-
-// --- 日志辅助函数 (避免散落的 fmt.Sprintf) ---
+// --- 日志格式化与输出 ---
 func (s *ConfigUpdateService) infof(format string, args ...any) {
 	s.log("INFO", fmt.Sprintf(format, args...))
 }
@@ -211,9 +223,12 @@ func (s *ConfigUpdateService) warnf(format string, args ...any) {
 func (s *ConfigUpdateService) debugf(format string, args ...any) {
 	s.log("DEBUG", fmt.Sprintf(format, args...))
 }
+func (s *ConfigUpdateService) successf(format string, args ...any) {
+	s.log("SUCCESS", fmt.Sprintf(format, args...))
+}
 
 func (s *ConfigUpdateService) log(level, message string) {
-	now := utils.FormatBeijingTime(utils.GetBeijingTime())
+	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 	entry := map[string]interface{}{"timestamp": now, "time": now, "level": level, "message": message}
 
 	s.logMutex.Lock()
@@ -224,7 +239,7 @@ func (s *ConfigUpdateService) log(level, message string) {
 	s.logMutex.Unlock()
 
 	if s.sseManager != nil {
-		s.sseManager.Broadcast(entry)
+		s.sseManager.Broadcast(entry) // 直接推送给前端SSE长连接
 	}
 	if utils.AppLogger != nil {
 		if level == "ERROR" {
@@ -267,71 +282,82 @@ func (s *ConfigUpdateService) saveLogConfig(value string) error {
 
 func (s *ConfigUpdateService) GetConfig() (map[string]interface{}, error) { return s.getConfig() }
 
+// 【跑马灯效果引擎】增加协程和微小延迟，制造流式动态加载终端体验
 func (s *ConfigUpdateService) RunUpdateTask() error {
 	s.runningMutex.Lock()
 	if s.isRunning {
 		s.runningMutex.Unlock()
 		return fmt.Errorf("任务已在运行中")
 	}
-	s.isRunning = true
-	s.runningMutex.Unlock()
-
-	defer func() {
-		s.runningMutex.Lock()
-		s.isRunning = false
-		s.runningMutex.Unlock()
-	}()
-
-	s.logSection("🚀", "开始执行配置更新任务")
 
 	config, err := s.getConfig()
 	if err != nil {
+		s.runningMutex.Unlock()
 		s.errorf("获取配置失败: %v", err)
 		return err
 	}
 
-	urls := config["urls"].([]string)
+	urls, _ := config["urls"].([]string)
 	if len(urls) == 0 {
-		s.errorf("未配置节点源URL")
+		s.runningMutex.Unlock()
+		s.errorf("未配置节点源URL，无法启动")
 		return fmt.Errorf("未配置节点源URL")
 	}
 
-	s.infof("📋 配置信息\n           └─ 节点源数量: %d 个", len(urls))
+	s.isRunning = true
+	s.runningMutex.Unlock()
 
-	nodes, err := s.FetchNodesFromURLs(urls)
-	if err != nil {
-		s.errorf("获取节点失败: %v", err)
-		return err
-	}
-	if len(nodes) == 0 {
-		s.warnf("未获取到有效节点")
-		return fmt.Errorf("未获取到有效节点")
-	}
+	// 完全脱离主线程异步跑，响应API秒回成功
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.errorf("任务发生严重崩溃: %v", r)
+			}
+			s.runningMutex.Lock()
+			s.isRunning = false
+			s.runningMutex.Unlock()
+			s.flushLogsToDB()
+		}()
 
-	s.infof("共获取到 %d 个有效节点链接，准备入库", len(nodes))
-	filterKeywords := s.extractFilterKeywords(config)
+		s.logSeparator()
+		s.infof("🚀 开始执行配置更新任务 (节点源: %d 个)", len(urls))
+		time.Sleep(300 * time.Millisecond) // 制造动态加载感
 
-	nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
-	s.logUpdateStats(stats, len(nodesWithOrder))
+		nodes, err := s.FetchNodesFromURLs(urls)
+		if err != nil {
+			s.errorf("❌ 获取节点失败中止: %v", err)
+			return
+		}
+		if len(nodes) == 0 {
+			s.warnf("⚠️ 未获取到任何有效节点链接，任务中止")
+			return
+		}
 
-	deletedCount := s.deleteAutoImportedNodes()
-	s.logSection("💾", "数据库操作")
-	s.infof("🗑️  删除旧节点: %d 个\n           ⠼ 正在导入节点到数据库...", deletedCount)
+		s.infof("✅ 成功提取 %d 个订阅节点链接，准备并行解析", len(nodes))
+		time.Sleep(300 * time.Millisecond)
 
-	importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
-	s.updateLastUpdateTime()
+		filterKeywords := s.extractFilterKeywords(config)
+		nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
 
-	s.infof("➕ 新增节点: %d 个\n🔄 更新节点: %d 个\n⏭️  跳过节点: %d 个 (手动添加)", importStats.Created, importStats.Updated, importStats.Skipped)
-	s.logSection("✅", "任务完成")
-	s.infof("           └─ 最终结果: 成功导入 %d 个节点", importStats.Created)
+		time.Sleep(300 * time.Millisecond)
+		s.logUpdateStats(stats, len(nodesWithOrder))
 
-	s.clearAllCaches()
-	s.infof("💾 保存日志到数据库...")
-	if err := s.flushLogsToDB(); err != nil {
-		s.errorf("保存日志失败: %v", err)
-	} else {
-		s.infof("✓ 日志已保存")
-	}
+		time.Sleep(400 * time.Millisecond)
+		deletedCount := s.deleteAutoImportedNodes()
+		s.infof("💾 数据库清理: 移除旧节点 %d 个，开始入库新节点...", deletedCount)
+
+		importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
+		s.updateLastUpdateTime()
+
+		time.Sleep(300 * time.Millisecond)
+		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 手动跳过: %d", importStats.Created, importStats.Updated, importStats.Skipped)
+
+		s.clearAllCaches()
+
+		time.Sleep(200 * time.Millisecond)
+		s.logSeparator()
+		s.successf("🎉 配置更新任务已圆满完成！")
+	}()
 
 	return nil
 }
@@ -341,8 +367,7 @@ func (s *ConfigUpdateService) clearAllCaches() {
 	_ = cs.ClearNodesCache()
 	_ = cache.ClearSystemNodesCache()
 	_ = cache.ClearAllSubscriptionCache()
-	s.logSection("🧹", "清理缓存")
-	s.infof("✓ 节点列表缓存已清除\n✓ 系统节点缓存已清除\n✓ 订阅配置缓存已清除")
+	s.infof("🧹 缓存清理完毕 (节点/系统/订阅缓存已重置)")
 }
 
 func (s *ConfigUpdateService) extractFilterKeywords(config map[string]interface{}) []string {
@@ -357,18 +382,15 @@ func (s *ConfigUpdateService) extractFilterKeywords(config map[string]interface{
 
 func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 	if stats.parseFailed > 0 {
-		s.warnf("解析失败的节点: %d 个", stats.parseFailed)
+		s.warnf("⚠️ 节点解析失败: %d 个 (格式错误/不兼容)", stats.parseFailed)
 	}
 	if stats.filtered > 0 {
-		s.infof("被关键词过滤的节点: %d 个", stats.filtered)
+		s.warnf("🛑 被关键词过滤: %d 个", stats.filtered)
 	}
 	if stats.duplicates > 0 {
-		s.infof("去重跳过的节点: %d 个", stats.duplicates)
+		s.infof("♻️ 自动去重跳过: %d 个", stats.duplicates)
 	}
-	if stats.invalidLinks > 0 {
-		s.warnf("无效链接的节点: %d 个", stats.invalidLinks)
-	}
-	s.infof("成功解析并准备入库的节点: %d 个", success)
+	s.successf("✨ 最终成功解析并等待入库节点数: %d 个", success)
 }
 
 func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string) ([]nodeWithOrder, updateStats) {
@@ -391,7 +413,9 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			continue
 		}
 
-		s.infof("⠸ 开始处理订阅地址 [%d/%d] 的节点，共 %d 个链接", urlIndex+1, len(urls), len(urlNodes))
+		s.infof("⏳ 开始处理订阅源 [%d/%d]: 包含 %d 个链接", urlIndex+1, len(urls), len(urlNodes))
+		time.Sleep(200 * time.Millisecond) // 跑马灯加载节奏
+
 		var links []string
 		for _, n := range urlNodes {
 			if link, ok := n["url"].(string); ok {
@@ -415,16 +439,13 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			if result.Err != nil || result.Node == nil {
 				stats.parseFailed++
 				counts.Failed++
-				if counts.Failed <= 10 && result.Err != nil {
-					s.warnf("解析失败 [订阅地址 %d/%d]: %v, 链接: %s", urlIndex+1, len(urls), result.Err, truncateString(result.Link, 50))
-				}
 				continue
 			}
 
-			if filtered, kw := s.isNodeFiltered(result.Node, filterKeywords); filtered {
+			// 修复点：忽略了未使用的 kw 变量
+			if filtered, _ := s.isNodeFiltered(result.Node, filterKeywords); filtered {
 				stats.filtered++
 				counts.Filtered++
-				s.debugf("节点被过滤: %s (关键词: %s)", result.Node.Name, kw)
 				continue
 			}
 
@@ -432,8 +453,16 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			result.Node.Name = s.ensureUniqueName(result.Node.Name, usedNames)
 			usedNames[result.Node.Name] = true
 			nodesWithOrder = append(nodesWithOrder, nodeWithOrder{node: result.Node, orderIndex: urlIndex*10000 + idx, sourceIndex: urlIndex + 1})
+
+			// 长列表的内部跑马灯状态提示
+			if counts.Processed > 0 && counts.Processed%50 == 0 {
+				s.infof("   ⠼ 正在深度解析... 已验证提取 %d 个有效节点", counts.Processed)
+				time.Sleep(100 * time.Millisecond)
+			}
 		}
-		s.infof("✓ 订阅地址 [%d/%d] 完成: 成功=%d, 失败=%d, 过滤=%d, 重复=%d", urlIndex+1, len(urls), counts.Processed, counts.Failed, counts.Filtered, counts.Duplicate)
+
+		time.Sleep(200 * time.Millisecond)
+		s.successf("✔️ 订阅源 [%d/%d] 校验完成 -> 成功: %d, 过滤: %d, 重复/失败: %d", urlIndex+1, len(urls), counts.Processed, counts.Filtered, counts.Duplicate+counts.Failed)
 	}
 	return nodesWithOrder, stats
 }
@@ -457,13 +486,6 @@ func (s *ConfigUpdateService) ensureUniqueName(name string, used map[string]bool
 			return newName
 		}
 	}
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen] + "..."
-	}
-	return s
 }
 
 func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
@@ -504,7 +526,7 @@ func (s *ConfigUpdateService) splitAndTrim(value string) []string {
 }
 
 func (s *ConfigUpdateService) updateLastUpdateTime() {
-	now := utils.GetBeijingTime().Format("2006-01-02T15:04:05")
+	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 	var cfg models.SystemConfig
 	if err := s.db.Where("key = ?", "config_update_last_update").First(&cfg).Error; err != nil {
 		s.db.Create(&models.SystemConfig{Key: "config_update_last_update", Value: now, Type: "string", Category: "config_update", DisplayName: "最后更新", Description: ""})
@@ -519,19 +541,19 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 	client := &http.Client{Timeout: 60 * time.Second, Transport: &http.Transport{MaxIdleConns: 10, IdleConnTimeout: 30 * time.Second}}
 
 	for i, urlStr := range urls {
-		s.logSection("📥", fmt.Sprintf("下载节点源 [%d/%d]", i+1, len(urls)))
-		s.infof("           └─ URL: %s\n⠋ 正在连接...", urlStr)
+		s.infof("🌐 正在连接订阅源 [%d/%d]...", i+1, len(urls))
+		time.Sleep(200 * time.Millisecond) // 制造动态加载感
 
 		content, err := s.fetchURLContent(client, urlStr)
 		if err != nil {
-			s.errorf("获取节点源失败: %v", err)
+			s.errorf("❌ 节点源 [%d] 下载失败: %v", i+1, err)
 			continue
 		}
 
 		decoded := TryDecodeNodeList(string(content))
-		s.infof("⠹ 正在解析节点...")
 		nodeLinks := s.extractNodeLinks(decoded)
-		s.logNodeTypeStats(urlStr, nodeLinks)
+		s.logNodeTypeStats(i+1, nodeLinks)
+		time.Sleep(150 * time.Millisecond) // 制造动态加载感
 
 		for _, link := range nodeLinks {
 			allNodes = append(allNodes, map[string]interface{}{"url": link, "source_url": urlStr})
@@ -562,24 +584,24 @@ func (s *ConfigUpdateService) fetchURLContent(client *http.Client, url string) (
 		}
 
 		if i < maxRetries {
-			s.warnf("下载失败 (尝试 %d/%d): %v，%v 后重试", i, maxRetries, err, delay)
+			s.warnf("⚠️ 节点源连接异常 (尝试 %d/%d)，%v 后重试...", i, maxRetries, delay)
 			time.Sleep(delay)
 			delay *= 2
 		}
 	}
-	return nil, fmt.Errorf("多次重试后失败")
+	return nil, fmt.Errorf("达到最大重试次数")
 }
 
-func (s *ConfigUpdateService) logNodeTypeStats(url string, nodeLinks []string) {
+func (s *ConfigUpdateService) logNodeTypeStats(index int, nodeLinks []string) {
 	tc := make(map[string]int)
 	for _, l := range nodeLinks {
 		tc[strings.Split(l, ":")[0]]++
 	}
 	var parts []string
 	for t, c := range tc {
-		parts = append(parts, fmt.Sprintf("%s:%d", t, c))
+		parts = append(parts, fmt.Sprintf("%s: %d", t, c))
 	}
-	s.infof("✓ 提取到 %d 个节点 (%s)", len(nodeLinks), strings.Join(parts, ", "))
+	s.successf("✔️ 节点源 [%d] 下载解析完成: 共提取 %d 个节点 (%s)", index, len(nodeLinks), strings.Join(parts, ", "))
 }
 
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
@@ -588,10 +610,8 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	}
 
 	var links, invalidLinks []string
-	// 优化：将原先 map[int]bool 的按字节哈希查询，替换为按索引的布尔数组 $O(1)$ 直接寻址，解决内存和性能瓶颈
 	matched := make([]bool, len(content))
 
-	// 1. VMess 轻量级宽容扫描 (允许base64内部有空格等)
 	prefixes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "tuic://", "naive+https://", "naive://", "anytls://", "socks5://", "socks://", "http://", "https://", "wg://"}
 	start := 0
 	for {
@@ -658,7 +678,6 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		start = end
 	}
 
-	// 2. 统一正则扫描其他标准链接
 	for _, match := range nodeLinkPattern.FindAllStringSubmatchIndex(content, -1) {
 		start, end := match[2], match[3]
 		if matched[start] || (strings.HasPrefix(content[start:end], "ss://") && start >= 3 && content[start-3:start] == "vme") {
@@ -683,14 +702,6 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 		} else {
 			invalidLinks = append(invalidLinks, matchStr)
 		}
-	}
-
-	if len(invalidLinks) > 0 {
-		limit := len(invalidLinks)
-		if limit > 3 {
-			limit = 3
-		}
-		s.debugf("发现 %d 个无效链接，示例: %v", len(invalidLinks), invalidLinks[:limit])
 	}
 
 	return s.uniqueLinks(links)
@@ -740,7 +751,7 @@ func (s *ConfigUpdateService) resolveRegion(name, server string) string {
 func (s *ConfigUpdateService) deleteAutoImportedNodes() int64 {
 	res := s.db.Where("is_manual = ?", false).Delete(&models.Node{})
 	if res.Error != nil {
-		s.errorf("删除自动导入节点失败: %v", res.Error)
+		s.errorf("删除旧节点失败: %v", res.Error)
 		return 0
 	}
 	return res.RowsAffected
@@ -1011,17 +1022,14 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 	used := make(map[string]bool)
 
 	for _, p := range proxies {
-		// 跳过不兼容的节点：SOCKS/SOCKS5 with WebSocket (Clash 不支持)
 		if (p.Type == "socks" || p.Type == "socks5") && p.Network == "ws" {
 			continue
 		}
 
 		if supportedClashTypes[p.Type] {
-			// 统一 socks 类型为 socks5 (Clash 标准)
 			if p.Type == "socks" {
 				p.Type = "socks5"
 			}
-
 			orig, name, c := p.Name, p.Name, 1
 			for used[name] {
 				name = fmt.Sprintf("%s_%d", orig, c)
@@ -1159,13 +1167,19 @@ func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *Subscripti
 		exp = utils.FormatBeijingDate(ctx.Subscription.ExpireTime)
 	}
 
+	// 增加并发安全读取配置
+	s.configMutex.RLock()
+	site := s.siteURL
+	qq := s.supportQQ
+	s.configMutex.RUnlock()
+
 	info := []*ProxyNode{
-		s.createMessageNode("📢 官网: " + s.siteURL),
+		s.createMessageNode("📢 官网: " + site),
 		s.createMessageNode("⏰ 到期: " + exp),
 		s.createMessageNode(fmt.Sprintf("📱 设备: %d/%d", ctx.CurrentDevices, ctx.DeviceLimit)),
 	}
-	if s.supportQQ != "" {
-		info = append(info, s.createMessageNode("💬 客服: "+s.supportQQ))
+	if qq != "" {
+		info = append(info, s.createMessageNode("💬 客服: "+qq))
 	}
 	return append(info, proxies...)
 }
@@ -1189,12 +1203,18 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 		reason, solution = "系统异常", "节点加载失败，请稍后重试或联系管理员"
 	}
 
+	// 增加并发安全读取配置
+	s.configMutex.RLock()
+	site := s.siteURL
+	qq := s.supportQQ
+	s.configMutex.RUnlock()
+
 	qqMsg := "💬 客服: 请在系统设置中配置"
-	if s.supportQQ != "" {
-		qqMsg = "💬 客服: " + s.supportQQ
+	if qq != "" {
+		qqMsg = "💬 客服: " + qq
 	}
 	return []*ProxyNode{
-		s.createMessageNode("📢 官网: " + s.siteURL),
+		s.createMessageNode("📢 官网: " + site),
 		s.createMessageNode("❌ 原因: "+reason, "error"),
 		s.createMessageNode("💡 解决: "+solution, "error"),
 		s.createMessageNode(qqMsg, "error"),
@@ -1209,7 +1229,7 @@ func (s *ConfigUpdateService) createMessageNode(name string, pwd ...string) *Pro
 	return &ProxyNode{Name: name, Type: "ss", Server: "baidu.com", Port: 1234, Cipher: "aes-128-gcm", Password: p}
 }
 
-// 优化：泛型提取字典中的值
+// 泛型提取字典中的值
 func optVal[T any](opts map[string]interface{}, key string) T {
 	var zero T
 	if opts == nil {
@@ -1241,23 +1261,19 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 }
 
 func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
-	// 修复：如果 Server 是 Base64 编码的，尝试解码并提取真实的 server 和 uuid
 	server, uuid := n.Server, n.UUID
 	if n.UUID == "" && (n.Type == "vless" || n.Type == "vmess" || n.Type == "tuic") {
 		if decoded, err := base64.StdEncoding.DecodeString(n.Server); err == nil {
 			decodedStr := string(decoded)
-			// 格式: auto:UUID@Server:Port 或 UUID@Server:Port
 			if strings.Contains(decodedStr, "@") {
 				parts := strings.Split(decodedStr, "@")
 				if len(parts) == 2 {
-					// 提取 UUID (可能有 auto: 前缀)
 					uuidPart := parts[0]
 					if strings.Contains(uuidPart, ":") {
 						uuidPart = strings.Split(uuidPart, ":")[1]
 					}
 					uuid = uuidPart
 
-					// 提取 Server (可能有 :Port 后缀)
 					serverPart := parts[1]
 					if strings.Contains(serverPart, ":") {
 						server = strings.Split(serverPart, ":")[0]
@@ -1442,19 +1458,16 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	if str == "" {
 		return `""`
 	}
-	// 检查是否需要引用：包含特殊字符、以空格开头/结尾、或看起来像数字/布尔值
 	needQuote := strings.ContainsAny(str, ":\"'\n\r\t#@&*?|>!%`[]{},\x00") ||
 		strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") ||
 		strings.HasPrefix(str, "-") || strings.HasPrefix(str, "0x")
 
-	// 检查是否看起来像布尔值或 null
 	lower := strings.ToLower(strings.TrimSpace(str))
 	if lower == "true" || lower == "false" || lower == "null" || lower == "~" {
 		needQuote = true
 	}
 
 	if needQuote {
-		// 转义反斜杠、双引号和换行符
 		escaped := strings.ReplaceAll(str, "\\", "\\\\")
 		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
 		escaped = strings.ReplaceAll(escaped, "\n", "\\n")
@@ -1756,10 +1769,4 @@ func unescapeUnicode(s string) string {
 
 func (s *ConfigUpdateService) logSeparator() {
 	s.log("INFO", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-}
-
-func (s *ConfigUpdateService) logSection(icon, title string) {
-	s.logSeparator()
-	s.log("INFO", fmt.Sprintf("%s %s", icon, title))
-	s.logSeparator()
 }
