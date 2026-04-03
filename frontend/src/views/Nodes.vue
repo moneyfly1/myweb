@@ -40,6 +40,10 @@
                 :value="type"
               />
             </el-select>
+            <el-select v-model="filterSource" placeholder="选择来源" clearable>
+              <el-option label="手动添加" value="manual" />
+              <el-option label="自动采集" value="collect" />
+            </el-select>
             <el-button 
               type="primary" 
               size="small" 
@@ -89,6 +93,13 @@
             <template #default="{ row }">
               <el-tag :type="getTypeColor(row.type)">
                 {{ row.type || '未知' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="来源" :width="columnWidths.source" resizable>
+            <template #default="{ row }">
+              <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">
+                {{ row.is_manual ? '手动' : '采集' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -159,6 +170,14 @@
           </span>
         </div>
         <div class="card-row">
+          <span class="label">来源</span>
+          <span class="value">
+            <el-tag :type="node.is_manual ? 'warning' : 'success'" size="small" effect="light">
+              {{ node.is_manual ? '手动' : '采集' }}
+            </el-tag>
+          </span>
+        </div>
+        <div class="card-row">
           <span class="label">状态</span>
           <span class="value">
             <el-tag :type="getStatusType(node.status)" size="small">
@@ -197,6 +216,7 @@ export default {
       name: 200,
       region: 120,
       type: 120,
+      source: 100,
       status: 120
     })
     const loadNodeTableSettings = () => {
@@ -217,7 +237,7 @@ export default {
         console.warn('保存节点表设置失败:', e)
       }
     }
-    const NODE_COLUMN_KEYS = ['name', 'region', 'type', 'status']
+    const NODE_COLUMN_KEYS = ['name', 'region', 'type', 'source', 'status']
     let nodeResizeTimer = null
     const handleNodeColumnResize = () => {
       if (nodeResizeTimer) clearTimeout(nodeResizeTimer)
@@ -233,6 +253,7 @@ export default {
     }
     const filterRegion = ref('')
     const filterType = ref('')
+    const filterSource = ref('')
     const isMobile = ref(window.innerWidth <= 768)
     const pagination = reactive({
       page: 1,
@@ -253,6 +274,13 @@ export default {
       if (filterType.value) {
         result = result.filter(node => node.type === filterType.value)
       }
+      if (filterSource.value) {
+        if (filterSource.value === 'manual') {
+          result = result.filter(node => node.is_manual === true)
+        } else if (filterSource.value === 'collect') {
+          result = result.filter(node => node.is_manual === false || node.is_manual === undefined)
+        }
+      }
       return result
     })
     const paginatedNodes = computed(() => {
@@ -260,7 +288,7 @@ export default {
       const end = start + pagination.size
       return filteredNodes.value.slice(start, end)
     })
-    watch([filterRegion, filterType], () => {
+    watch([filterRegion, filterType, filterSource], () => {
       pagination.page = 1
     })
     const handleSizeChange = (size) => {
@@ -351,15 +379,26 @@ export default {
     }
     const getNodeIcon = (type) => {
       const icons = {
-        ssr: 'el-icon-connection',
-        ss: 'el-icon-connection',
-        v2ray: 'el-icon-connection',
+        // 代理协议
         vmess: 'el-icon-connection',
-        trojan: 'el-icon-connection',
         vless: 'el-icon-connection',
+        trojan: 'el-icon-connection',
+        ss: 'el-icon-connection',
+        ssr: 'el-icon-connection',
         hysteria: 'el-icon-connection',
         hysteria2: 'el-icon-connection',
-        tuic: 'el-icon-connection'
+        tuic: 'el-icon-connection',
+        naive: 'el-icon-connection',
+        anytls: 'el-icon-connection',
+        // SOCKS 代理
+        socks: 'el-icon-connection',
+        socks5: 'el-icon-connection',
+        // HTTP 代理
+        http: 'el-icon-connection',
+        https: 'el-icon-connection',
+        // VPN 协议
+        wg: 'el-icon-connection',
+        wireguard: 'el-icon-connection'
       }
       return icons[type] || 'el-icon-connection'
     }
@@ -375,15 +414,28 @@ export default {
     }
     const getTypeColor = (type) => {
       const colors = {
-        ssr: 'success',
-        ss: 'success',
-        v2ray: 'primary',
+        // 代理协议
         vmess: 'primary',
-        trojan: 'warning',
         vless: 'info',
+        trojan: 'warning',
+        ss: 'success',
+        ssr: 'success',
         hysteria: 'danger',
         hysteria2: 'danger',
-        tuic: 'warning'
+        tuic: 'warning',
+        naive: 'primary',
+        anytls: 'info',
+        // SOCKS 代理
+        socks: 'warning',
+        socks5: 'warning',
+        // HTTP 代理
+        http: 'info',
+        https: 'info',
+        // VPN 协议
+        wg: 'success',
+        wireguard: 'success',
+        // 兼容性
+        v2ray: 'primary'
       }
       return colors[type] || 'info'
     }
@@ -427,6 +479,7 @@ export default {
       nodes,
       filterRegion,
       filterType,
+      filterSource,
       nodeStats,
       filteredNodes,
       paginatedNodes,
