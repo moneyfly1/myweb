@@ -1241,7 +1241,35 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 }
 
 func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
-	res := map[string]interface{}{"name": n.Name, "type": n.Type, "server": n.Server, "port": n.Port}
+	// 修复：如果 Server 是 Base64 编码的，尝试解码并提取真实的 server 和 uuid
+	server, uuid := n.Server, n.UUID
+	if n.UUID == "" && (n.Type == "vless" || n.Type == "vmess" || n.Type == "tuic") {
+		if decoded, err := base64.StdEncoding.DecodeString(n.Server); err == nil {
+			decodedStr := string(decoded)
+			// 格式: auto:UUID@Server:Port 或 UUID@Server:Port
+			if strings.Contains(decodedStr, "@") {
+				parts := strings.Split(decodedStr, "@")
+				if len(parts) == 2 {
+					// 提取 UUID (可能有 auto: 前缀)
+					uuidPart := parts[0]
+					if strings.Contains(uuidPart, ":") {
+						uuidPart = strings.Split(uuidPart, ":")[1]
+					}
+					uuid = uuidPart
+
+					// 提取 Server (可能有 :Port 后缀)
+					serverPart := parts[1]
+					if strings.Contains(serverPart, ":") {
+						server = strings.Split(serverPart, ":")[0]
+					} else {
+						server = serverPart
+					}
+				}
+			}
+		}
+	}
+
+	res := map[string]interface{}{"name": n.Name, "type": n.Type, "server": server, "port": n.Port}
 
 	if n.Type == "ss" || n.Type == "trojan" || n.Type == "ssr" || n.Type == "tuic" || n.Type == "anytls" || strings.HasPrefix(n.Type, "hysteria") || strings.HasPrefix(n.Type, "socks") || n.Type == "http" {
 		res["password"] = n.Password
@@ -1259,16 +1287,16 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 			}
 		}
 	case "vmess":
-		if n.UUID != "" {
-			res["uuid"] = n.UUID
+		if uuid != "" {
+			res["uuid"] = uuid
 		}
 		res["alterId"], res["cipher"] = optVal[int](n.Options, "alterId"), "auto"
 		if n.Cipher != "" {
 			res["cipher"] = n.Cipher
 		}
 	case "vless", "tuic":
-		if n.UUID != "" {
-			res["uuid"] = n.UUID
+		if uuid != "" {
+			res["uuid"] = uuid
 		}
 		if n.Type == "tuic" {
 			if _, ok := n.Options["disable-sni"]; !ok {
