@@ -181,9 +181,11 @@ func parseVLESS(link string) (*ProxyNode, error) {
 			// skip-cert-verify
 			n.Options["skip-cert-verify"] = false
 
-			// client-fingerprint
+			// client-fingerprint: 默认 chrome
 			if fp := q.Get("fp"); fp != "" {
 				n.Options["client-fingerprint"] = fp
+			} else {
+				n.Options["client-fingerprint"] = "chrome"
 			}
 
 			// Reality 参数
