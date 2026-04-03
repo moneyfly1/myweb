@@ -165,18 +165,62 @@ func parseVLESS(link string) (*ProxyNode, error) {
 		n.Network = firstNotEmpty(q.Get("type"), "tcp")
 		n.UDP = true
 
+		// 支持标准参数和非标准参数
 		sec := q.Get("security")
-		if sec == "tls" || sec == "xtls" || sec == "reality" {
+		hasTLS := sec == "tls" || sec == "xtls" || sec == "reality" || q.Get("tls") == "1"
+
+		if hasTLS {
 			n.TLS = true
-			applyTLSOptions(n, q, p.Hostname())
-			if sec == "reality" || q.Get("pbk") != "" {
-				applyRealityOptions(n, q)
+
+			// servername/sni
+			sni := firstNotEmpty(q.Get("sni"), q.Get("peer"), p.Hostname())
+			if sni != "" {
+				n.Options["servername"] = sni
 			}
-			if flow := q.Get("flow"); flow != "" {
+
+			// skip-cert-verify
+			n.Options["skip-cert-verify"] = false
+
+			// client-fingerprint
+			if fp := q.Get("fp"); fp != "" {
+				n.Options["client-fingerprint"] = fp
+			}
+
+			// Reality 参数
+			if sec == "reality" || q.Get("pbk") != "" {
+				reality := make(map[string]any)
+				if pbk := q.Get("pbk"); pbk != "" {
+					reality["public-key"] = pbk
+				}
+				if sid := q.Get("sid"); sid != "" {
+					reality["short-id"] = sid
+				}
+				if len(reality) > 0 {
+					n.Options["reality-opts"] = reality
+				}
+			}
+
+			// flow: 支持标准 flow 参数和 xtls 参数
+			flow := q.Get("flow")
+			if flow == "" && q.Get("xtls") != "" {
+				// 非标准格式：xtls=2 表示 xtls-rprx-vision
+				xtls := q.Get("xtls")
+				if xtls == "2" {
+					flow = "xtls-rprx-vision"
+				} else if xtls == "1" {
+					flow = "xtls-rprx-direct"
+				}
+			}
+			if flow != "" {
 				n.Options["flow"] = flow
 			}
+
+			// encryption
 			if enc := q.Get("encryption"); enc != "" {
 				n.Options["encryption"] = enc
+			} else {
+				// 默认 none
+				n.Options["encryption"] = "none"
 			}
 		}
 		applyTransportOptions(n, q)
