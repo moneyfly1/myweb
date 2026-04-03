@@ -1391,15 +1391,21 @@ onMounted(() => {
     isMobile.value = window.innerWidth <= 768
     window.addEventListener('resize', handleResize)
   }
-  loadUserInfo() // 这个接口现在返回所有数据（包括订阅和公告）
-  loadSoftwareConfig()
-  loadCheckinStatus()
+  // 并发加载用户信息、软件配置和签到状态，提高首页加载速度
+  Promise.all([
+    loadUserInfo(),
+    loadSoftwareConfig(),
+    loadCheckinStatus()
+  ])
   setTimeout(() => {
     checkAndShowAnnouncement()
   }, 1000)
   const handleSubscriptionUpdate = async () => {
-    await loadSubscriptionInfo()
-    await loadUserInfo()
+    // 并发更新订阅和用户信息
+    await Promise.all([
+      loadSubscriptionInfo(),
+      loadUserInfo()
+    ])
   }
   const handleUserInfoUpdate = async () => {
     await loadUserInfo()
