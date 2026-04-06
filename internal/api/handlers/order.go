@@ -149,6 +149,16 @@ func extractYipayPaymentType(payType string, orderPaymentMethodName string) stri
 	return "alipay"
 }
 
+func extractCodepayPaymentType(payType string, reqMethod string) string {
+	if reqMethod != "" && strings.HasPrefix(reqMethod, "codepay_") {
+		return strings.TrimPrefix(reqMethod, "codepay_")
+	}
+	if strings.HasPrefix(payType, "codepay_") {
+		return strings.TrimPrefix(payType, "codepay_")
+	}
+	return "alipay"
+}
+
 func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.PaymentConfig, reqMethod string) (string, error) {
 	amount := order.Amount
 	if order.FinalAmount.Valid {
@@ -180,6 +190,14 @@ func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.
 			} else if order.PaymentMethodName.Valid {
 				pType = extractYipayPaymentType(paymentConfig.PayType, order.PaymentMethodName.String)
 			}
+			return service.CreatePayment(order, amount, pType)
+		}
+		if paymentConfig.PayType == "codepay" || strings.HasPrefix(paymentConfig.PayType, "codepay_") {
+			service, err := payment.NewCodepayService(paymentConfig)
+			if err != nil {
+				return "", err
+			}
+			pType := extractCodepayPaymentType(paymentConfig.PayType, reqMethod)
 			return service.CreatePayment(order, amount, pType)
 		}
 		return "", fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
@@ -1389,6 +1407,8 @@ func UpgradeDevices(c *gin.Context) {
 			queryPayType = "alipay"
 		} else if strings.HasPrefix(queryPayType, "yipay_") {
 			queryPayType = "yipay"
+		} else if strings.HasPrefix(queryPayType, "codepay_") {
+			queryPayType = "codepay"
 		}
 
 		var paymentConfig models.PaymentConfig

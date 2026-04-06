@@ -285,6 +285,11 @@
               <el-option label="易支付-微信（兼容旧配置）" value="yipay_wxpay" />
               <el-option label="易支付-QQ钱包（兼容旧配置）" value="yipay_qqpay" />
             </el-option-group>
+            <el-option-group label="码支付">
+              <el-option label="码支付（统一配置，推荐）" value="codepay" />
+              <el-option label="码支付-支付宝" value="codepay_alipay" />
+              <el-option label="码支付-微信" value="codepay_wxpay" />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <template v-if="['alipay', 'wechat'].includes(configForm.pay_type)">
@@ -376,6 +381,46 @@
             <el-input v-model="configForm.yipay_gateway_url" placeholder="例如：https://pay.example.com" />
           </el-form-item>
         </template>
+        <template v-if="configForm.pay_type === 'codepay'">
+          <el-form-item label="商户ID">
+            <template v-if="isMobile"><div class="mobile-label">商户ID</div></template>
+            <el-input v-model="configForm.app_id" placeholder="请输入码支付商户ID (pid)" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="商户密钥">
+            <template v-if="isMobile"><div class="mobile-label">商户密钥</div></template>
+            <el-input
+              v-model="configForm.merchant_private_key"
+              type="password"
+              show-password
+              placeholder="请输入码支付商户密钥 (key)"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item label="网关地址">
+            <template v-if="isMobile"><div class="mobile-label">网关地址</div></template>
+            <el-input v-model="configForm.codepay_gateway_url" placeholder="请输入码支付网关地址" style="width: 100%" />
+            <div class="form-tip">填写官网地址，系统自动拼接 API 路径（/xpay/epay/mapi.php）。</div>
+          </el-form-item>
+          <el-form-item label="支持支付方式">
+            <template v-if="isMobile"><div class="mobile-label">支持支付方式</div></template>
+            <el-checkbox-group v-model="configForm.codepay_supported_types">
+              <el-checkbox label="alipay">支付宝</el-checkbox>
+              <el-checkbox label="wxpay">微信支付</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+        </template>
+        <template v-if="['codepay_alipay', 'codepay_wxpay'].includes(configForm.pay_type)">
+          <el-form-item label="商户ID">
+            <el-input v-model="configForm.app_id" placeholder="请输入码支付商户ID (pid)" />
+          </el-form-item>
+          <el-form-item label="商户密钥">
+            <el-input v-model="configForm.merchant_private_key" type="password" show-password placeholder="请输入码支付商户密钥 (key)" />
+          </el-form-item>
+          <el-form-item label="网关地址">
+            <el-input v-model="configForm.codepay_gateway_url" placeholder="例如：https://pay.example.com" />
+            <div class="form-tip">填写官网地址，系统自动拼接 API 路径。</div>
+          </el-form-item>
+        </template>
         <template v-if="configForm.pay_type === 'alipay'">
           <el-form-item label="支付宝公钥">
             <template v-if="isMobile"><div class="mobile-label">支付宝公钥</div></template>
@@ -407,7 +452,7 @@
           <template v-if="isMobile"><div class="mobile-label">异步回调地址</div></template>
           <el-input v-model="configForm.notify_url" placeholder="支付状态通知地址" />
           <div class="form-tip">
-            例如：{{ baseUrl }}/api/v1/payment/notify/{{ configForm.pay_type === 'alipay' ? 'alipay' : 'yipay' }}
+            例如：{{ baseUrl }}/api/v1/payment/notify/{{ configForm.pay_type === 'alipay' ? 'alipay' : configForm.pay_type.startsWith('codepay') ? 'codepay' : 'yipay' }}
           </div>
         </el-form-item>
         <el-form-item label="状态">
@@ -470,7 +515,10 @@ const PAYMENT_TYPES = {
   'yipay': { label: '易支付', tag: 'warning' },
   'yipay_alipay': { label: '易支付-支付宝', tag: 'warning' },
   'yipay_wxpay': { label: '易支付-微信', tag: 'warning' },
-  'yipay_qqpay': { label: '易支付-QQ钱包', tag: 'warning' }
+  'yipay_qqpay': { label: '易支付-QQ钱包', tag: 'warning' },
+  'codepay': { label: '码支付', tag: 'danger' },
+  'codepay_alipay': { label: '码支付-支付宝', tag: 'danger' },
+  'codepay_wxpay': { label: '码支付-微信', tag: 'danger' }
 }
 const DEFAULT_FORM_STATE = {
   pay_type: '',
@@ -490,6 +538,8 @@ const DEFAULT_FORM_STATE = {
   yipay_private_key: '',
   yipay_public_key: '',
   yipay_md5_key: '',
+  codepay_gateway_url: '',
+  codepay_supported_types: ['alipay', 'wxpay'],
   return_url: '',
   notify_url: '',
   status: 1,
@@ -697,6 +747,25 @@ export default {
           yipay_gateway: configForm.yipay_gateway_url || '',
           yipay_md5_key: configForm.yipay_md5_key || ''
         }
+      } else if (configForm.pay_type === 'codepay') {
+        const gatewayUrl = (configForm.codepay_gateway_url || '').trim().replace(/\/$/, '')
+        const apiUrl = gatewayUrl.endsWith('/xpay/epay') ? `${gatewayUrl}/mapi.php` : `${gatewayUrl}/xpay/epay/mapi.php`
+        data.app_id = configForm.app_id || ''
+        data.merchant_private_key = configForm.merchant_private_key || ''
+        data.config_json = {
+          gateway_url: gatewayUrl,
+          api_url: apiUrl,
+          supported_types: configForm.codepay_supported_types
+        }
+      } else if (['codepay_alipay', 'codepay_wxpay'].includes(configForm.pay_type)) {
+        const gatewayUrl = (configForm.codepay_gateway_url || '').trim().replace(/\/$/, '')
+        const apiUrl = gatewayUrl.endsWith('/xpay/epay') ? `${gatewayUrl}/mapi.php` : `${gatewayUrl}/xpay/epay/mapi.php`
+        data.app_id = configForm.app_id || ''
+        data.merchant_private_key = configForm.merchant_private_key || ''
+        data.config_json = {
+          gateway_url: gatewayUrl,
+          api_url: apiUrl
+        }
       }
       return data
     }
@@ -705,6 +774,9 @@ export default {
       try {
         if (configForm.pay_type === 'yipay' && !configForm.yipay_gateway_url) {
           throw new Error('请填写易支付网关地址')
+        }
+        if (configForm.pay_type === 'codepay' && !configForm.codepay_gateway_url) {
+          throw new Error('请填写码支付网关地址')
         }
         const requestData = buildRequestData()
         if (editingConfig.value) {
@@ -749,6 +821,11 @@ export default {
         specificData.yipay_platform_public_key = json.platform_public_key || config.alipay_public_key
         specificData.yipay_merchant_private_key = json.merchant_private_key
         specificData.yipay_supported_types = json.supported_types || ['alipay', 'wxpay']
+      } else if (config.pay_type === 'codepay') {
+        specificData.codepay_gateway_url = json.gateway_url || (json.api_url ? json.api_url.replace('/xpay/epay/mapi.php', '') : '')
+        specificData.codepay_supported_types = json.supported_types || ['alipay', 'wxpay']
+      } else if (['codepay_alipay', 'codepay_wxpay'].includes(config.pay_type)) {
+        specificData.codepay_gateway_url = json.gateway_url || (json.api_url ? json.api_url.replace('/xpay/epay/mapi.php', '') : '')
       } else {
         specificData.yipay_type = json.yipay_type
         specificData.yipay_pid = json.yipay_pid
