@@ -36,18 +36,25 @@ func GetPaymentMethods(c *gin.Context) {
 	db.Where("status = ?", 1).Order("sort_order ASC").Find(&cfg)
 	res := make([]gin.H, 0)
 	mMap := map[string]string{
-		"alipay":       "支付宝",
-		"wechat":       "微信支付",
-		"yipay_alipay": "易支付-支付宝",
-		"yipay_wxpay":  "易支付-微信",
-		"yipay_qqpay":  "易支付-QQ钱包",
-		"applepay":     "Apple Pay",
+		"alipay":         "支付宝",
+		"wechat":         "微信支付",
+		"yipay_alipay":   "易支付-支付宝",
+		"yipay_wxpay":    "易支付-微信",
+		"yipay_qqpay":    "易支付-QQ钱包",
+		"applepay":       "Apple Pay",
+		"codepay_alipay": "码支付-支付宝",
+		"codepay_wxpay":  "码支付-微信",
 	}
 
 	yipaySubTypeMap := map[string]string{
 		"alipay": "支付宝",
 		"wxpay":  "微信支付",
 		"qqpay":  "QQ钱包",
+	}
+
+	codepaySubTypeMap := map[string]string{
+		"alipay": "支付宝",
+		"wxpay":  "微信支付",
 	}
 
 	for _, m := range cfg {
@@ -67,6 +74,32 @@ func GetPaymentMethods(c *gin.Context) {
 				})
 			}
 		} else if strings.HasPrefix(m.PayType, "yipay_") {
+			name := mMap[m.PayType]
+			if name == "" {
+				name = m.PayType
+			}
+			res = append(res, gin.H{
+				"id":     m.ID,
+				"key":    m.PayType,
+				"name":   name,
+				"status": m.Status,
+			})
+		} else if m.PayType == "codepay" {
+			supportedTypes := payment.GetCodepaySupportedTypes(&m)
+			for _, t := range supportedTypes {
+				subTypeKey := fmt.Sprintf("codepay_%s", t)
+				subTypeName := codepaySubTypeMap[t]
+				if subTypeName == "" {
+					subTypeName = t
+				}
+				res = append(res, gin.H{
+					"id":     m.ID,
+					"key":    subTypeKey,
+					"name":   fmt.Sprintf("码支付-%s", subTypeName),
+					"status": m.Status,
+				})
+			}
+		} else if strings.HasPrefix(m.PayType, "codepay_") {
 			name := mMap[m.PayType]
 			if name == "" {
 				name = m.PayType
@@ -240,6 +273,19 @@ func PaymentNotify(c *gin.Context) {
 				return
 			}
 		}
+	} else if paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).First(&paymentConfig).Error; err == nil {
+			queryPayType = "codepay"
+		} else {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+				utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
+					"payment_type": paymentType,
+					"query_type":   queryPayType,
+				})
+				c.String(http.StatusBadRequest, "支付配置不存在")
+				return
+			}
+		}
 	} else {
 		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
 			utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
@@ -280,6 +326,16 @@ func PaymentNotify(c *gin.Context) {
 			verified = yipayService.VerifyNotify(params)
 			utils.LogInfo("PaymentNotify: 易支付签名验证结果 - verified=%v, payment_type=%s", verified, paymentType)
 		}
+	case "codepay", "codepay_alipay", "codepay_wxpay":
+		codepayService, err := payment.NewCodepayService(&paymentConfig)
+		if err != nil {
+			utils.LogError("PaymentNotify: 创建码支付服务失败", err, map[string]interface{}{
+				"payment_type": paymentType,
+			})
+		} else {
+			verified = codepayService.VerifyNotify(params)
+			utils.LogInfo("PaymentNotify: 码支付签名验证结果 - verified=%v, payment_type=%s", verified, paymentType)
+		}
 	}
 
 	if !verified {
@@ -292,7 +348,8 @@ func PaymentNotify(c *gin.Context) {
 			"payment_type": paymentType,
 			"order_no":     params["out_trade_no"],
 		})
-		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
+			paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
 			c.String(http.StatusOK, "fail")
 		} else {
 			c.String(http.StatusBadRequest, "签名验证失败")
@@ -314,7 +371,8 @@ func PaymentNotify(c *gin.Context) {
 		utils.LogWarn("PaymentNotify: 检测到重复的交易号参数，已修正为: %s", externalTransactionID)
 	}
 
-	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
+		paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
 		tradeStatus := params["trade_status"]
 		if tradeStatus == "" {
 			tradeStatus = params["status"]
@@ -350,7 +408,7 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 
-		utils.LogInfo("PaymentNotify: 易支付订单状态为TRADE_SUCCESS，继续处理 - order_no=%s, trade_status=%s", orderNo, tradeStatus)
+		utils.LogInfo("PaymentNotify: 支付订单状态为TRADE_SUCCESS，继续处理 - order_no=%s, trade_status=%s", orderNo, tradeStatus)
 	}
 
 	if paymentType == "alipay" {
@@ -391,7 +449,8 @@ func PaymentNotify(c *gin.Context) {
 			utils.CreateBusinessLog(c, "payment_callback_order_not_found", "支付回调订单或充值记录不存在", "error", map[string]interface{}{
 				"order_no": orderNo, "payment_type": paymentType,
 			})
-			if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+			if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
+				paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
 				c.String(http.StatusOK, "success")
 			} else {
 				c.String(http.StatusBadRequest, "订单或充值记录不存在")
@@ -426,7 +485,7 @@ func PaymentNotify(c *gin.Context) {
 				callbackAmount = float64(amountInCents) / 100.0
 				amountVerified = true
 			}
-		} else if strings.HasPrefix(paymentType, "yipay") {
+		} else if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
 			if amountStr, ok := params["money"]; ok {
 				_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 				amountVerified = true
@@ -552,7 +611,7 @@ func PaymentNotify(c *gin.Context) {
 			callbackAmount = float64(amountInCents) / 100.0
 			amountVerified = true
 		}
-	} else if strings.HasPrefix(paymentType, "yipay") {
+	} else if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
 		if amountStr, ok := params["money"]; ok {
 			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 			amountVerified = true
@@ -707,7 +766,8 @@ func PaymentNotify(c *gin.Context) {
 		utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（更新订单/事务失败）", "error", map[string]interface{}{
 			"order_no": orderNo, "payment_type": paymentType, "reason": err.Error(),
 		})
-		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
+			paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
 			c.String(http.StatusOK, "fail")
 		} else {
 			c.String(http.StatusInternalServerError, "处理失败")

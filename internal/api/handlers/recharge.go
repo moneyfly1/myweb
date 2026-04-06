@@ -74,6 +74,15 @@ func CreateRecharge(c *gin.Context) {
 				return
 			}
 		}
+	} else if strings.HasPrefix(paymentMethod, "codepay_") {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).First(&paymentConfig).Error; err == nil {
+			queryPayType = "codepay"
+		} else {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+				return
+			}
+		}
 	} else {
 		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
@@ -112,6 +121,17 @@ func CreateRecharge(c *gin.Context) {
 					paymentType = strings.TrimPrefix(paymentMethod, "yipay_")
 				}
 				paymentURL, paymentError = yipayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
+			}
+		} else if queryPayType == "codepay" || strings.HasPrefix(paymentMethod, "codepay_") {
+			codepayService, err := payment.NewCodepayService(&paymentConfig)
+			if err != nil {
+				paymentError = err
+			} else {
+				paymentType := "alipay"
+				if strings.HasPrefix(paymentMethod, "codepay_") {
+					paymentType = strings.TrimPrefix(paymentMethod, "codepay_")
+				}
+				paymentURL, paymentError = codepayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
 			}
 		} else {
 			utils.ErrorResponse(c, http.StatusBadRequest, "不支持的支付方式", nil)
