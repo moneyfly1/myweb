@@ -259,6 +259,13 @@ func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType str
 				return "", fmt.Errorf("未找到启用的支付配置")
 			}
 		}
+	} else if strings.HasPrefix(payType, "codepay_") {
+		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
+		} else {
+			if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
+				return "", fmt.Errorf("未找到启用的支付配置")
+			}
+		}
 	} else {
 		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 			return "", fmt.Errorf("未找到启用的支付配置")
@@ -306,6 +313,14 @@ func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType str
 			return svc.CreatePaymentWithDevice(order, amount, paymentType, userAgent)
 		}
 		return svc.CreatePayment(order, amount, paymentType)
+	case "codepay", "codepay_alipay", "codepay_wxpay":
+		svc, err := payment.NewCodepayService(&paymentConfig)
+		if err != nil {
+			return "", err
+		}
+		codepayType := extractCodepayType(payType)
+		utils.LogInfo("码支付生成支付链接: payType=%s, extracted_paymentType=%s, order_no=%s", payType, codepayType, order.OrderNo)
+		return svc.CreatePayment(order, amount, codepayType)
 	default:
 		return "", fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
 	}
@@ -314,6 +329,13 @@ func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType str
 func extractYipayType(payType string) string {
 	if strings.HasPrefix(payType, "yipay_") {
 		return strings.TrimPrefix(payType, "yipay_")
+	}
+	return "alipay"
+}
+
+func extractCodepayType(payType string) string {
+	if strings.HasPrefix(payType, "codepay_") {
+		return strings.TrimPrefix(payType, "codepay_")
 	}
 	return "alipay"
 }

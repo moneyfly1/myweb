@@ -84,6 +84,15 @@ func (p *PaymentConfig) GetConfig() map[string]interface{} {
 			config["key"] = p.MerchantPrivateKey.String
 			config["merchant_private_key"] = p.MerchantPrivateKey.String
 		}
+	case "codepay", "codepay_alipay", "codepay_wxpay":
+		if p.AppID.Valid {
+			config["pid"] = p.AppID.String
+			config["app_id"] = p.AppID.String
+		}
+		if p.MerchantPrivateKey.Valid {
+			config["key"] = p.MerchantPrivateKey.String
+			config["merchant_private_key"] = p.MerchantPrivateKey.String
+		}
 	}
 
 	if p.ConfigJSON.Valid {
