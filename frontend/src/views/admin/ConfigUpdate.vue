@@ -88,13 +88,10 @@
       <template #header>
         <div class="card-header">
           <span class="header-title">参数配置</span>
-          <div class="header-actions">
-            <el-button type="primary" @click="saveConfig" :loading="loading.save">
-              <el-icon><Check /></el-icon>
-              <span class="desktop-only">保存配置</span>
-              <span class="mobile-only">保存</span>
-            </el-button>
-          </div>
+          <el-button type="primary" @click="saveConfig" :loading="loading.save" class="save-config-btn">
+            <el-icon><Check /></el-icon>
+            <span>保存配置</span>
+          </el-button>
         </div>
       </template>
 
@@ -263,6 +260,14 @@
         </template>
       </div>
     </el-card>
+
+    <!-- 移动端底部固定保存按钮 -->
+    <div class="mobile-save-bar mobile-only">
+      <el-button type="primary" @click="saveConfig" :loading="loading.save" size="large" style="width: 100%;">
+        <el-icon><Check /></el-icon>
+        <span>保存配置</span>
+      </el-button>
+    </div>
 
   </div>
 </template>
@@ -686,6 +691,7 @@ $primary-color: #409eff;
   
   @media (max-width: $mobile-break) {
     padding: 12px;
+    padding-bottom: 80px;
     background-color: $bg-color;
     min-height: 100vh;
   }
@@ -700,6 +706,7 @@ $primary-color: #409eff;
     padding: 16px 20px;
     border-bottom: 1px solid #f0f2f5;
     background: #fff;
+    overflow: visible;
     @media (max-width: $mobile-break) { padding: 12px 16px; }
   }
   
@@ -710,8 +717,19 @@ $primary-color: #409eff;
 }
 
 .card-header {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap;
   .header-left { display: flex; align-items: center; gap: 10px; }
   .header-actions { display: flex; gap: 10px; &.compact { gap: 6px; } }
+  .save-config-btn {
+    flex-shrink: 0;
+    @media (max-width: $mobile-break) {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+  }
+  .header-title {
+    flex-shrink: 1; min-width: 0;
+  }
 }
 
 /* --- 1. 面板样式 --- */
@@ -898,4 +916,15 @@ $primary-color: #409eff;
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
 .desktop-only { @media (max-width: $mobile-break) { display: none !important; } }
 .mobile-only { @media (min-width: 769px) { display: none !important; } }
+
+.mobile-save-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  background: #fff;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
+  z-index: 999;
+}
 </style>
