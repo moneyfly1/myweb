@@ -1561,6 +1561,9 @@ func LoginAsUser(c *gin.Context) {
 		return
 	}
 
+	// 设置用户的 refresh token cookie，确保用户 token 过期后能自动刷新
+	setRefreshTokenCookie(c, false, refreshToken)
+
 	utils.CreateSecurityLog(c, "admin_login_as", "MEDIUM",
 		fmt.Sprintf("管理员以用户身份登录: %s (ID: %d)", targetUser.Username, targetUser.ID),
 		map[string]interface{}{"target_user_id": targetUser.ID, "target_username": targetUser.Username})
