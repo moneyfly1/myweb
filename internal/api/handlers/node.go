@@ -868,6 +868,22 @@ func BatchDeleteNodes(c *gin.Context) {
 		}
 		deletedCount += int(result.RowsAffected)
 	}
+
+	// 清理所有节点和订阅缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		if err := cs.ClearNodesCache(); err != nil {
+			log.Printf("failed to clear nodes cache: %v", err)
+		}
+		cacheService := &config_update.CacheService{}
+		if err := cacheService.ClearSystemNodesCache(); err != nil {
+			log.Printf("failed to clear system nodes cache: %v", err)
+		}
+		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+			log.Printf("failed to clear all subscription cache: %v", err)
+		}
+	}()
+
 	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个", deletedCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
 }
@@ -881,6 +897,22 @@ func ImportFromClash(c *gin.Context) {
 		return
 	}
 	count, _ := importNodesFromClashConfig(req.ClashConfig)
+
+	// 清理所有节点和订阅缓存
+	go func() {
+		cs := cache_service.NewCacheService()
+		if err := cs.ClearNodesCache(); err != nil {
+			log.Printf("failed to clear nodes cache: %v", err)
+		}
+		cacheService := &config_update.CacheService{}
+		if err := cacheService.ClearSystemNodesCache(); err != nil {
+			log.Printf("failed to clear system nodes cache: %v", err)
+		}
+		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+			log.Printf("failed to clear all subscription cache: %v", err)
+		}
+	}()
+
 	utils.CreateAuditLogSimple(c, "import_from_clash", "node", 0, fmt.Sprintf("管理员操作: 从 Clash 配置导入节点 %d 个", count))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
 }
