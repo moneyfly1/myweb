@@ -130,12 +130,13 @@ const hasValidLocalSecureValue = (key) => {
     return false
   }
 }
+const ADMIN_USER_TTL = 30 * 24 * 60 * 60 * 1000 // 30天
 const saveAdminAuth = (adminToken, adminUser) => {
   try {
     const adminData = typeof adminUser === 'string' ? JSON.parse(adminUser) : adminUser
     if (adminData?.is_admin) {
       secureStorage.set('admin_token', adminToken, false, ACCESS_TOKEN_TTL)
-      secureStorage.set('admin_user', adminData, false, ACCESS_TOKEN_TTL)
+      secureStorage.set('admin_user', adminData, false, ADMIN_USER_TTL)
     }
   } catch (e) {
     if (process.env.NODE_ENV === 'development') console.debug('saveAdminAuth parse failed', e)
@@ -159,7 +160,7 @@ router.beforeEach(async (to, from, next) => {
         if (loginData.adminToken) saveAdminAuth(loginData.adminToken, loginData.adminUser)
         const userData = { ...loginData.user, is_admin: false }
         secureStorage.set('user_token', loginData.token, true, ACCESS_TOKEN_TTL)
-        secureStorage.set('user_data', userData, true, ACCESS_TOKEN_TTL)
+        secureStorage.set('user_data', userData, true, ADMIN_USER_TTL)
         authStore.setAuth(loginData.token, userData, true)
         useThemeStore().loadUserTheme().catch(() => {})
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
@@ -173,17 +174,10 @@ router.beforeEach(async (to, from, next) => {
     let storedToken = secureStorage.get(roleTokenKey)
     let storedUser = secureStorage.get(roleUserKey)
 
-    // 如果当前路径需要的角色token不存在，检查是否有另一个角色的token
+    // 如果当前路径需要的角色token不存在，尝试用对应角色的refresh cookie刷新
     if (!storedToken || !storedUser) {
-      const altTokenKey = isAdminPath ? 'user_token' : 'admin_token'
-      const altUserKey = isAdminPath ? 'user_data' : 'admin_user'
-      const altToken = secureStorage.get(altTokenKey)
-      const altUser = secureStorage.get(altUserKey)
-
-      // 如果访问管理员路径但admin_token不存在，直接跳转到管理员登录页
-      // 不应跌落到用户界面，否则管理员token过期后会意外进入用户界面
+      // 如果访问管理员路径但admin_token不存在，尝试刷新admin token
       if (isAdminPath) {
-        // 先尝试用 refresh cookie 静默刷新 admin token
         try {
           const { default: axios } = await import('axios')
           const refreshResponse = await axios.post(
@@ -195,7 +189,6 @@ router.beforeEach(async (to, from, next) => {
           if (access_token) {
             secureStorage.set('admin_token', access_token, false, ACCESS_TOKEN_TTL)
             storedToken = access_token
-            // 重新获取用户数据（可能 admin_user 也过期了）
             storedUser = secureStorage.get('admin_user')
             if (!storedUser) {
               return next('/admin/login')
@@ -206,13 +199,27 @@ router.beforeEach(async (to, from, next) => {
         } catch {
           return next('/admin/login')
         }
-      }
-      // 如果访问用户路径但只有管理员token，使用管理员token
-      if (!isAdminPath && altToken && altUser) {
-        const altUserData = typeof altUser === 'string' ? JSON.parse(altUser) : altUser
-        if (altUserData.is_admin) {
-          storedToken = altToken
-          storedUser = altUser
+      } else {
+        // 访问用户路径但user_token不存在，尝试用用户refresh cookie刷新
+        try {
+          const { default: axios } = await import('axios')
+          const refreshResponse = await axios.post(
+            '/api/v1/auth/refresh',
+            {},
+            { withCredentials: true, timeout: 5000, headers: { 'X-Auth-Role': 'user' } }
+          )
+          const { access_token } = refreshResponse.data?.data || refreshResponse.data || {}
+          if (access_token) {
+            secureStorage.set('user_token', access_token, false, ACCESS_TOKEN_TTL)
+            storedToken = access_token
+            storedUser = secureStorage.get('user_data')
+            if (!storedUser) {
+              // user_data也过期了，无法恢复身份
+              // 不做跳转，让后续的 requiresAuth 检查处理
+            }
+          }
+        } catch {
+          // 用户refresh也失败，不做跳转，让后续的 requiresAuth 检查处理
         }
       }
     }

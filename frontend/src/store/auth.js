@@ -80,7 +80,7 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
     const useSession = !remember
-    secureStorage.set('user_data', userData, useSession, TOKEN_TTL)
+    secureStorage.set('user_data', userData, useSession, REFRESH_TOKEN_TTL)
   }
   const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
     // Refresh Token 由后端通过 HttpOnly Cookie 管理，不再存储到前端
