@@ -288,7 +288,7 @@ const handleAdminCommand = (command) => {
   const routes = { profile: '/admin/profile', settings: '/admin/settings' }
   if (command === 'logout') {
     authStore.logout()
-    router.push('/admin/login')
+    router.push('/login')
   } else {
     router.push(routes[command])
   }

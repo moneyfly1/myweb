@@ -170,7 +170,7 @@ export default {
         if (result.success) {
           ElMessage.success('登录成功')
           await nextTick()
-          await router.push('/dashboard')
+          await router.push(result.isAdmin ? '/admin/dashboard' : '/dashboard')
         } else {
           const errorMessage = result.message || '登录失败，请重试'
           ElMessage.error(errorMessage)

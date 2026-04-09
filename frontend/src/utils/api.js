@@ -225,7 +225,7 @@ const handleLogout = () => {
   if (_router) {
     const currentPath = _router.currentRoute.value.path
     if (currentPath.startsWith('/admin')) {
-      if (currentPath !== '/admin/login') _router.push('/admin/login')
+      if (currentPath !== '/login') _router.push('/login')
     } else {
       if (currentPath !== '/login' && currentPath !== '/forgot-password') _router.push('/login')
     }

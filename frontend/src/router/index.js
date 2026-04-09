@@ -57,7 +57,7 @@ const routes = [
     },
     meta: { requiresGuest: true }
   },
-  { path: '/admin/login', name: 'AdminLogin', component: () => import('@/views/admin/AdminLogin.vue'), meta: { requiresGuest: true } },
+  { path: '/admin/login', redirect: '/login' },
   {
     path: '/',
     component: UserLayout,
@@ -151,7 +151,7 @@ router.beforeEach(async (to, from, next) => {
     if (to.meta.requiresGuest) {
       if (authStore.isAuthenticated) {
         if (to.path === '/admin/login') return next(authStore.isAdmin ? '/admin/dashboard' : '/login')
-        if (to.path === '/login') return next(authStore.isAdmin ? '/admin/login' : '/dashboard')
+        if (to.path === '/login') return next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
         return next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       }
       return next()
@@ -183,7 +183,7 @@ router.beforeEach(async (to, from, next) => {
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
       }
     }
-    const isAdminPath = to.path.startsWith('/admin') && to.path !== '/admin/login'
+    const isAdminPath = to.path.startsWith('/admin')
 
     // 优先检查对应角色的token
     const roleTokenKey = isAdminPath ? 'admin_token' : 'user_token'
@@ -198,7 +198,7 @@ router.beforeEach(async (to, from, next) => {
         try {
           const storedRefresh = secureStorage.get('admin_refresh_token')
           if (!storedRefresh) {
-            return next('/admin/login')
+            return next('/login')
           }
           const { default: axios } = await import('axios')
           const refreshResponse = await axios.post(
@@ -213,13 +213,13 @@ router.beforeEach(async (to, from, next) => {
             storedToken = access_token
             storedUser = secureStorage.get('admin_user')
             if (!storedUser) {
-              return next('/admin/login')
+              return next('/login')
             }
           } else {
-            return next('/admin/login')
+            return next('/login')
           }
         } catch {
-          return next('/admin/login')
+          return next('/login')
         }
       } else {
         // 访问用户路径但user_token不存在，尝试用用户 refresh token 刷新
@@ -269,8 +269,8 @@ router.beforeEach(async (to, from, next) => {
         useThemeStore().loadUserTheme().catch(() => {})
       }
     }
-    if (to.meta.requiresAuth && !authStore.isAuthenticated) return next(isAdminPath ? '/admin/login' : '/login')
-    if (to.meta.requiresAdmin && !authStore.isAdmin) return next(authStore.isAuthenticated ? '/dashboard' : '/admin/login')
+    if (to.meta.requiresAuth && !authStore.isAuthenticated) return next('/login')
+    if (to.meta.requiresAdmin && !authStore.isAdmin) return next(authStore.isAuthenticated ? '/dashboard' : '/login')
     if (to.path === '/') return next(authStore.isAuthenticated ? (authStore.isAdmin ? '/admin/dashboard' : '/dashboard') : '/login')
     next()
   } catch (error) {
