@@ -75,7 +75,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const saveUser = (userData, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
     if (isAdmin) {
-      // 管理员user始终存localStorage，TTL延长到30天（依赖refresh cookie续期）
+      // 管理员user始终存localStorage，TTL延长到30天
       secureStorage.set('admin_user', userData, false, REFRESH_TOKEN_TTL)
       return
     }
@@ -83,10 +83,15 @@ export const useAuthStore = defineStore('auth', () => {
     secureStorage.set('user_data', userData, useSession, REFRESH_TOKEN_TTL)
   }
   const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    // Refresh Token 由后端通过 HttpOnly Cookie 管理，不再存储到前端
-    void refreshToken
-    void remember
-    void isAdmin
+    if (!refreshToken) return
+    const key = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
+    if (isAdmin) {
+      // 管理员 refresh token 始终存 localStorage，与 admin_token 策略一致
+      secureStorage.set(key, refreshToken, false, REFRESH_TOKEN_TTL)
+    } else {
+      const useSession = !remember
+      secureStorage.set(key, refreshToken, useSession, REFRESH_TOKEN_TTL)
+    }
   }
   const token = ref(getInitialToken())
   const user = ref(getInitialUser())
@@ -233,6 +238,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const logout = () => {
     const currentToken = token.value
+    const isAdmin = isAdminPath()
+    const refreshKey = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
+    const storedRefresh = secureStorage.get(refreshKey)
     secureStorage.set('logout_marker', true, false, 24 * 60 * 60 * 1000)
     if (typeof window !== 'undefined' && currentToken) {
       fetch('/api/v1/auth/logout', {
@@ -241,7 +249,8 @@ export const useAuthStore = defineStore('auth', () => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${currentToken}`
-        }
+        },
+        body: JSON.stringify({ refresh_token: storedRefresh || '' })
       }).catch(() => {})
     }
 
@@ -269,16 +278,19 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const refreshToken = async () => {
     const isAdmin = isAdminPath()
+    const refreshKey = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
+    const storedRefresh = secureStorage.get(refreshKey)
+    if (!storedRefresh) {
+      logout()
+      return false
+    }
     try {
-      const response = await api.post('/auth/refresh', {}, {
-        withCredentials: true,
-        headers: { 'X-Auth-Role': isAdmin ? 'admin' : 'user' }
-      })
+      const response = await api.post('/auth/refresh', { refresh_token: storedRefresh })
       const responseData = response.data?.data || response.data
-      const { access_token, refresh_token } = responseData
+      const { access_token, refresh_token: newRefresh } = responseData
       token.value = access_token
       saveToken(access_token, isAdmin)
-      saveRefreshToken(refresh_token, isAdmin)
+      saveRefreshToken(newRefresh, isAdmin)
       return true
     } catch (error) {
       logout()

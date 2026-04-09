@@ -358,12 +358,15 @@ api.interceptors.response.use(
         error.config._retry = true
         isRefreshing[refreshKey] = true
         try {
+          const refreshStorageKey = isAdminAPI ? 'admin_refresh_token' : 'user_refresh_token'
+          const storedRefresh = secureStorage.get(refreshStorageKey)
+          if (!storedRefresh) {
+            throw new Error('无刷新令牌')
+          }
           const refreshCsrf = getCookie('csrf_token')
-          const refreshHeaders = {}
+          const refreshHeaders = { 'Content-Type': 'application/json' }
           if (refreshCsrf) refreshHeaders['X-CSRF-Token'] = refreshCsrf
-          refreshHeaders['X-Auth-Role'] = isAdminAPI ? 'admin' : 'user'
-          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', {}, {
-            withCredentials: true,
+          const refreshResponse = await axios.post(BASE_URL + '/auth/refresh', { refresh_token: storedRefresh }, {
             timeout: TIMEOUT,
             headers: refreshHeaders
           })
@@ -409,7 +412,7 @@ export const authAPI = {
   resendVerificationCode: (data) => api.post('/auth/verification/send', data),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
-  refreshToken: () => api.post('/auth/refresh', {})
+  refreshToken: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken })
 }
 export const userAPI = {
   getProfile: () => api.get('/users/me'),
