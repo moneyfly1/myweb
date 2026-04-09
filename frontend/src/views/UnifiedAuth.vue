@@ -20,15 +20,6 @@
         <div class="glass-grid"></div>
 
         <div class="brand-content">
-          <div class="brand-header stagger-brand">
-            <div class="brand-logo">
-              <img v-if="settings.siteLogo" :src="settings.siteLogo" :alt="settings.siteName" class="logo-img" />
-              <div v-else class="logo-placeholder">
-                <i class="ph-bold ph-rocket-launch"></i>
-              </div>
-              <span class="brand-name">{{ settings.siteName || 'TurboCloud' }}</span>
-            </div>
-          </div>
           <div class="brand-body">
             <div class="brand-badge stagger-brand">
               <span class="badge-dot"></span>
