@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"cboard-go/internal/core/auth"
-	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -44,35 +43,11 @@ type LoginJSONRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func refreshCookieName(isAdmin bool) string {
-	if isAdmin {
-		return "cboard_admin_refresh_token"
-	}
-	return "cboard_user_refresh_token"
-}
-
 func isSecureRequest(c *gin.Context) bool {
 	if c.Request != nil && c.Request.TLS != nil {
 		return true
 	}
 	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
-}
-
-func setRefreshTokenCookie(c *gin.Context, isAdmin bool, token string) {
-	days := 30
-	if cfg := config.AppConfig; cfg != nil && cfg.RefreshTokenExpireDays > 0 {
-		days = cfg.RefreshTokenExpireDays
-	}
-	maxAge := days * 24 * 3600
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(refreshCookieName(isAdmin), token, maxAge, "/", "", isSecureRequest(c), true)
-}
-
-func clearRefreshTokenCookies(c *gin.Context) {
-	c.SetSameSite(http.SameSiteLaxMode)
-	secure := isSecureRequest(c)
-	c.SetCookie(refreshCookieName(false), "", -1, "/", "", secure, true)
-	c.SetCookie(refreshCookieName(true), "", -1, "/", "", secure, true)
 }
 
 func Register(c *gin.Context) {
@@ -169,8 +144,6 @@ func Register(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
-	setRefreshTokenCookie(c, user.IsAdmin, rtk)
-
 	now := utils.GetBeijingTime()
 	user.LastLogin = database.NullTime(now)
 	if saveErr := db.Save(user).Error; saveErr != nil {
@@ -300,25 +273,6 @@ func RefreshToken(c *gin.Context) {
 
 	refreshToken := strings.TrimSpace(req.RefreshToken)
 	if refreshToken == "" {
-		role := strings.ToLower(strings.TrimSpace(c.GetHeader("X-Auth-Role")))
-		if role == "admin" {
-			if cookie, err := c.Cookie(refreshCookieName(true)); err == nil && cookie != "" {
-				refreshToken = cookie
-			}
-		} else if role == "user" {
-			if cookie, err := c.Cookie(refreshCookieName(false)); err == nil && cookie != "" {
-				refreshToken = cookie
-			}
-		}
-		if refreshToken == "" {
-			if cookie, err := c.Cookie(refreshCookieName(true)); err == nil && cookie != "" {
-				refreshToken = cookie
-			} else if cookie, err := c.Cookie(refreshCookieName(false)); err == nil && cookie != "" {
-				refreshToken = cookie
-			}
-		}
-	}
-	if refreshToken == "" {
 		utils.ErrorResponse(c, http.StatusUnauthorized, "缺少刷新令牌", nil)
 		return
 	}
@@ -365,8 +319,6 @@ func RefreshToken(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
-	setRefreshTokenCookie(c, user.IsAdmin, newRefreshToken)
-
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"access_token":  accessToken,
 		"refresh_token": newRefreshToken,
@@ -396,7 +348,6 @@ func Logout(c *gin.Context) {
 	token := parts[1]
 	claims, err := utils.VerifyToken(token)
 	if err != nil {
-		clearRefreshTokenCookies(c)
 		utils.SuccessResponse(c, http.StatusOK, "登出成功", nil)
 		return
 	}
@@ -409,12 +360,16 @@ func Logout(c *gin.Context) {
 	if err := models.AddToBlacklist(database.GetDB(), utils.HashToken(token), user.ID, expiresAt); err != nil {
 		utils.LogError("Logout: failed to add token to blacklist", err, map[string]interface{}{"user_id": user.ID})
 	}
-	if refreshCookie, err := c.Cookie(refreshCookieName(user.IsAdmin)); err == nil && refreshCookie != "" {
-		if refreshClaims, verifyErr := utils.VerifyToken(refreshCookie); verifyErr == nil && refreshClaims.ExpiresAt != nil {
-			_ = models.AddToBlacklist(database.GetDB(), utils.HashToken(refreshCookie), user.ID, refreshClaims.ExpiresAt.Time)
+
+	// 从请求体读取 refresh_token 并加入黑名单
+	var logoutReq struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if bindErr := c.ShouldBindJSON(&logoutReq); bindErr == nil && logoutReq.RefreshToken != "" {
+		if refreshClaims, verifyErr := utils.VerifyToken(logoutReq.RefreshToken); verifyErr == nil && refreshClaims.ExpiresAt != nil {
+			_ = models.AddToBlacklist(database.GetDB(), utils.HashToken(logoutReq.RefreshToken), user.ID, refreshClaims.ExpiresAt.Time)
 		}
 	}
-	clearRefreshTokenCookies(c)
 
 	utils.SuccessResponse(c, http.StatusOK, "登出成功", nil)
 }
@@ -692,7 +647,6 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
-	setRefreshTokenCookie(c, user.IsAdmin, rtk)
 
 	now := utils.GetBeijingTime()
 	user.LastLogin = database.NullTime(now)
