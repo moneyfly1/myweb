@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroLuxe | 尊享航站</title>
+    
+    <!-- 引入字体: 优美的无衬线字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- 引入 FontAwesome 图标 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- 引入 Tailwind CSS 并进行高端化配置 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans SC"', 'sans-serif'],
+                        serif: ['"Cinzel"', 'serif'],
+                    },
+                    colors: {
+                        gold: {
+                            DEFAULT: '#D4AF37',
+                            dark: '#AA8825',
+                            light: '#F3E5AB'
+                        },
+                        dark: {
+                            800: '#1a1a1a',
+                            900: '#0a0a0a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 自定义样式 -->
+    <style>
+        body {
+            margin: 0;
+            overflow-x: hidden;
+            background-color: #000;
+        }
+
+        /* 动态背景图片与叠加层 */
+        .bg-lux {
+            background-image: url('https://images.unsplash.com/photo-1540339832862-474599807836?q=80&w=2000&auto=format&fit=crop'); /* 高端机场候机室/建筑图 */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        
+        .bg-overlay {
+            background: linear-gradient(135deg, rgba(10, 10, 10, 0.8) 0%, rgba(20, 25, 35, 0.6) 100%);
+        }
+
+        /* 高级玻璃拟物化效果 */
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.5);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+        }
+
+        /* 输入框高级质感 */
+        .input-lux {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            transition: all 0.3s ease;
+        }
+        
+        .input-lux:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: #D4AF37;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
+            outline: none;
+        }
+
+        /* Vue 动画过渡 */
+        .fade-enter-active,
+        .fade-leave-active {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .fade-enter-from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .fade-leave-to {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+
+        /* 隐藏滚动条但保留功能 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(212, 175, 55, 0.5); 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(212, 175, 55, 0.8); 
+        }
+    </style>
+</head>
+<body class="text-gray-200 antialiased selection:bg-gold selection:text-black">
+
+    <div id="app" class="min-h-screen w-full flex items-center justify-center bg-lux relative">
+        <!-- 黑色渐变遮罩让文字更清晰 -->
+        <div class="absolute inset-0 bg-overlay"></div>
+
+        <!-- 主要容器 -->
+        <div class="relative w-full max-w-5xl mx-4 md:mx-auto flex flex-col md:flex-row glass-panel rounded-3xl overflow-hidden z-10 min-h-[600px]">
+            
+            <!-- 左侧品牌展示区 -->
+            <div class="w-full md:w-5/12 p-10 flex flex-col justify-between relative overflow-hidden border-b md:border-b-0 md:border-r border-white/10 hidden md:flex">
+                <div class="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent"></div>
+                
+                <div class="relative z-10">
+                    <h1 class="font-serif text-3xl text-gold tracking-widest uppercase mb-2">AeroLuxe</h1>
+                    <p class="text-sm font-light tracking-wider text-gray-400">INTERNATIONAL AIRPORT</p>
+                </div>
+
+                <div class="relative z-10 mt-12 mb-8">
+                    <transition name="fade" mode="out-in">
+                        <div :key="currentView">
+                            <h2 class="text-4xl font-light leading-tight mb-4 text-white">
+                                {{ getGreeting.title }}
+                            </h2>
+                            <p class="text-gray-400 text-sm font-light leading-relaxed">
+                                {{ getGreeting.desc }}
+                            </p>
+                        </div>
+                    </transition>
+                </div>
+
+                <div class="relative z-10 flex items-center space-x-6 text-sm text-gray-500 font-light">
+                    <a href="#" class="hover:text-gold transition">隐私政策</a>
+                    <a href="#" class="hover:text-gold transition">服务条款</a>
+                    <a href="#" class="hover:text-gold transition">贵宾室服务</a>
+                </div>
+            </div>
+
+            <!-- 右侧动态表单区 -->
+            <div class="w-full md:w-7/12 p-8 md:p-14 flex flex-col justify-center relative bg-black/20">
+                
+                <!-- 移动端 Logo 展示 -->
+                <div class="md:hidden text-center mb-8">
+                    <h1 class="font-serif text-2xl text-gold tracking-widest uppercase">AeroLuxe</h1>
+                    <p class="text-xs font-light tracking-wider text-gray-400">INTERNATIONAL AIRPORT</p>
+                </div>
+
+                <transition name="fade" mode="out-in">
+                    
+                    <!-- ================= 登录表单 ================= -->
+                    <div v-if="currentView === 'login'" key="login" class="w-full max-w-md mx-auto">
+                        <h3 class="text-2xl font-medium text-white mb-8 tracking-wide">贵宾登录</h3>
+                        
+                        <form @submit.prevent="handleLogin" class="space-y-5">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-regular fa-envelope text-gray-400"></i>
+                                </div>
+                                <input type="email" v-model="form.email" required
+                                    class="w-full input-lux py-3 pl-12 pr-4 rounded-xl text-sm" 
+                                    placeholder="请输入您的电子邮箱">
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-solid fa-lock text-gray-400"></i>
+                                </div>
+                                <input type="password" v-model="form.password" required
+                                    class="w-full input-lux py-3 pl-12 pr-4 rounded-xl text-sm" 
+                                    placeholder="请输入密码">
+                            </div>
+
+                            <div class="flex items-center justify-between mt-2">
+                                <label class="flex items-center text-xs text-gray-400 cursor-pointer hover:text-white transition">
+                                    <input type="checkbox" class="mr-2 accent-gold rounded border-gray-600 bg-transparent">
+                                    保持登录状态
+                                </label>
+                                <a href="#" @click.prevent="switchView('forgot')" class="text-xs text-gold hover:text-gold-light transition">
+                                    忘记密码？
+                                </a>
+                            </div>
+
+                            <button type="submit" :disabled="loading" 
+                                class="w-full bg-gradient-to-r from-gold-dark to-gold hover:from-gold hover:to-gold-light text-black font-medium py-3.5 rounded-xl shadow-[0_0_15px_rgba(212,175,55,0.3)] hover:shadow-[0_0_25px_rgba(212,175,55,0.5)] transition-all duration-300 mt-6 tracking-wider">
+                                <span v-if="!loading">登 录</span>
+                                <i v-else class="fa-solid fa-circle-notch fa-spin"></i>
+                            </button>
+                        </form>
+
+                        <div class="mt-8 text-center text-sm text-gray-400 font-light">
+                            尚未成为尊享会员？ 
+                            <a href="#" @click.prevent="switchView('register')" class="text-gold hover:text-gold-light font-medium ml-1 transition">
+                                立即申请
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- ================= 注册表单 ================= -->
+                    <div v-else-if="currentView === 'register'" key="register" class="w-full max-w-md mx-auto">
+                        <h3 class="text-2xl font-medium text-white mb-8 tracking-wide">申请尊享会籍</h3>
+                        
+                        <form @submit.prevent="handleRegister" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fa-regular fa-user text-gray-400"></i>
+                                    </div>
+                                    <input type="text" v-model="form.firstName" required
+                                        class="w-full input-lux py-3 pl-11 pr-3 rounded-xl text-sm" 
+                                        placeholder="名 (First Name)">
+                                </div>
+                                <div class="relative">
+                                    <input type="text" v-model="form.lastName" required
+                                        class="w-full input-lux py-3 px-4 rounded-xl text-sm" 
+                                        placeholder="姓 (Last Name)">
+                                </div>
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-regular fa-envelope text-gray-400"></i>
+                                </div>
+                                <input type="email" v-model="form.email" required
+                                    class="w-full input-lux py-3 pl-12 pr-4 rounded-xl text-sm" 
+                                    placeholder="电子邮箱">
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-solid fa-shield-halved text-gray-400"></i>
+                                </div>
+                                <input type="password" v-model="form.password" required
+                                    class="w-full input-lux py-3 pl-12 pr-4 rounded-xl text-sm" 
+                                    placeholder="设置密码 (至少8位)">
+                            </div>
+                            
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-solid fa-check text-gray-400"></i>
+                                </div>
+                                <input type="password" v-model="form.confirmPassword" required
+                                    class="w-full input-lux py-3 pl-12 pr-4 rounded-xl text-sm" 
+                                    placeholder="确认密码">
+                            </div>
+
+                            <button type="submit" :disabled="loading" 
+                                class="w-full bg-transparent border border-gold text-gold hover:bg-gold hover:text-black font-medium py-3.5 rounded-xl transition-all duration-300 mt-6 tracking-wider">
+                                <span v-if="!loading">提 交 申 请</span>
+                                <i v-else class="fa-solid fa-circle-notch fa-spin"></i>
+                            </button>
+                        </form>
+
+                        <div class="mt-8 text-center text-sm text-gray-400 font-light">
+                            已有尊享会籍？ 
+                            <a href="#" @click.prevent="switchView('login')" class="text-gold hover:text-gold-light font-medium ml-1 transition">
+                                返回登录
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- ================= 忘记密码表单 ================= -->
+                    <div v-else-if="currentView === 'forgot'" key="forgot" class="w-full max-w-md mx-auto">
+                        <div class="mb-8">
+                            <h3 class="text-2xl font-medium text-white mb-3 tracking-wide">重置通行凭证</h3>
+                            <p class="text-sm text-gray-400 font-light">请输入您注册时使用的电子邮箱，我们将向您发送密码重置安全链接。</p>
+                        </div>
+                        
+                        <form @submit.prevent="handleForgot" class="space-y-5">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-regular fa-envelope text-gray-400"></i>
+                                </div>
+                                <input type="email" v-model="form.email" required
+                                    class="w-full input-lux py-3 pl-12 pr-4 rounded-xl text-sm" 
+                                    placeholder="请输入注册电子邮箱">
+                            </div>
+
+                            <button type="submit" :disabled="loading" 
+                                class="w-full bg-white text-black hover:bg-gray-200 font-medium py-3.5 rounded-xl transition-all duration-300 mt-4 tracking-wider shadow-lg">
+                                <span v-if="!loading">发 送 重 置 邮 件</span>
+                                <i v-else class="fa-solid fa-circle-notch fa-spin text-black"></i>
+                            </button>
+                        </form>
+
+                        <div class="mt-10 text-center text-sm text-gray-400 font-light">
+                            <a href="#" @click.prevent="switchView('login')" class="inline-flex items-center hover:text-white transition">
+                                <i class="fa-solid fa-arrow-left-long mr-2"></i>
+                                返回登录界面
+                            </a>
+                        </div>
+                    </div>
+
+                </transition>
+            </div>
+        </div>
+        
+        <!-- 底部版权 (移动端可见或作为整体点缀) -->
+        <div class="absolute bottom-4 text-center w-full text-xs text-gray-500 font-light">
+            &copy; 2026 AeroLuxe International. All rights reserved.
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed } = Vue;
+
+        createApp({
+            setup() {
+                // 当前视图: 'login', 'register', 'forgot'
+                const currentView = ref('login');
+                const loading = ref(false);
+
+                // 统一的表单数据对象
+                const form = reactive({
+                    email: '',
+                    password: '',
+                    firstName: '',
+                    lastName: '',
+                    confirmPassword: ''
+                });
+
+                // 根据当前视图动态改变左侧的文案
+                const getGreeting = computed(() => {
+                    switch(currentView.value) {
+                        case 'login':
+                            return {
+                                title: '欢迎回来，\n尊贵的旅客。',
+                                desc: '登入您的专属门户，管理您的航班行程、贵宾休息室预约以及享受无与伦比的专属礼遇。AeroLuxe 为您提供超越期待的飞行体验。'
+                            };
+                        case 'register':
+                            return {
+                                title: '开启您的\n奢华之旅。',
+                                desc: '加入 AeroLuxe 尊享俱乐部。从私人专车接送到全球顶级候机厅，成为我们的会员，重新定义您的每一次起飞与降落。'
+                            };
+                        case 'forgot':
+                            return {
+                                title: '重置您的\n专属权限。',
+                                desc: '不用担心，安全是我们的首要原则。通过验证您的邮箱，我们将快速且安全地帮助您恢复账户访问权限。'
+                            };
+                        default:
+                            return { title: '', desc: '' };
+                    }
+                });
+
+                // 切换视图方法并清空表单
+                const switchView = (view) => {
+                    currentView.value = view;
+                    form.password = '';
+                    form.confirmPassword = '';
+                    // 实际应用中可能需要保留 email 方便用户
+                };
+
+                // 模拟API调用：登录
+                const handleLogin = () => {
+                    loading.value = true;
+                    setTimeout(() => {
+                        loading.value = false;
+                        alert(`欢迎回来, ${form.email}。系统已验证您的贵宾身份。`);
+                    }, 1500);
+                };
+
+                // 模拟API调用：注册
+                const handleRegister = () => {
+                    if (form.password !== form.confirmPassword) {
+                        alert("两次输入的密码不一致，请重新确认。");
+                        return;
+                    }
+                    loading.value = true;
+                    setTimeout(() => {
+                        loading.value = false;
+                        alert(`尊敬的 ${form.lastName} 先生/女士，您的会籍申请已提交，我们将通过邮件发送确认函。`);
+                        switchView('login');
+                    }, 1500);
+                };
+
+                // 模拟API调用：忘记密码
+                const handleForgot = () => {
+                    loading.value = true;
+                    setTimeout(() => {
+                        loading.value = false;
+                        alert(`重置链接已发送至：${form.email}。请查收并按照指示重置密码。`);
+                        switchView('login');
+                    }, 1500);
+                };
+
+                return {
+                    currentView,
+                    form,
+                    loading,
+                    getGreeting,
+                    switchView,
+                    handleLogin,
+                    handleRegister,
+                    handleForgot
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
