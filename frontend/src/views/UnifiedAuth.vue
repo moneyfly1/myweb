@@ -21,39 +21,51 @@
 
         <div class="brand-content">
           <div class="brand-body">
-            <div class="brand-badge stagger-brand">
-              <span class="badge-dot"></span>
-              IEPL 专线全线升级
+            <div class="brand-hero stagger-brand">
+              <h2 class="brand-title">安全 · 极速 · 稳定</h2>
+              <p class="brand-subtitle">您的全球网络加速专家</p>
             </div>
-            <h2 class="brand-title stagger-brand">畅享全球网络<br>解锁流媒体限制</h2>
             <div class="brand-features stagger-brand">
-              <div class="feature-item">
-                <i class="ph-fill ph-check-circle"></i>
-                <span>支持 Netflix, Disney+, ChatGPT</span>
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <i class="ph-fill ph-globe-hemisphere-west"></i>
+                </div>
+                <div class="feature-text">
+                  <span class="feature-title">80+ 全球节点</span>
+                  <span class="feature-desc">覆盖主流地区，智能选路</span>
+                </div>
               </div>
-              <div class="feature-item">
-                <i class="ph-fill ph-check-circle"></i>
-                <span>晚高峰 4K/8K 极速秒开</span>
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <i class="ph-fill ph-lightning"></i>
+                </div>
+                <div class="feature-text">
+                  <span class="feature-title">10Gbps 骨干带宽</span>
+                  <span class="feature-desc">4K/8K 流媒体秒开</span>
+                </div>
               </div>
-              <div class="feature-item">
-                <i class="ph-fill ph-check-circle"></i>
-                <span>全平台客户端支持</span>
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <i class="ph-fill ph-shield-check"></i>
+                </div>
+                <div class="feature-text">
+                  <span class="feature-title">IEPL 专线</span>
+                  <span class="feature-desc">企业级链路，稳定不掉线</span>
+                </div>
               </div>
             </div>
-            <div class="brand-stats stagger-brand">
-              <div class="stat-item">
-                <span class="stat-value">80+</span>
-                <span class="stat-label">全球优质节点</span>
-              </div>
-              <div class="stat-divider"></div>
-              <div class="stat-item">
-                <span class="stat-value">10Gbps</span>
-                <span class="stat-label">骨干冗余带宽</span>
+            <div class="brand-platforms stagger-brand">
+              <span class="platform-label">全平台支持</span>
+              <div class="platform-icons">
+                <i class="ph-fill ph-windows-logo"></i>
+                <i class="ph-fill ph-apple-logo"></i>
+                <i class="ph-fill ph-android-logo"></i>
+                <i class="ph-fill ph-linux-logo"></i>
               </div>
             </div>
           </div>
           <div class="brand-footer stagger-brand">
-            <span>&copy; 2026 {{ settings.siteName || 'TurboCloud' }} Network.</span>
+            <span>&copy; {{ new Date().getFullYear() }} {{ settings.siteName || 'TurboCloud' }}</span>
             <div class="footer-links">
               <a href="#" class="footer-link">服务条款</a>
               <a href="#" class="footer-link">隐私政策</a>
@@ -1213,77 +1225,109 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 48px;
 }
 
-.brand-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  background: rgba(16, 185, 129, 0.1); 
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  border-radius: 100px;
-  color: #34d399;
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 24px;
-  width: fit-content;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  backdrop-filter: blur(10px);
-  
-  .badge-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #34d399;
-    box-shadow: 0 0 10px #34d399;
-    animation: pulse 2s infinite;
+.brand-hero {
+  .brand-title {
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.7) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+  .brand-subtitle {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 400;
+    letter-spacing: 1px;
   }
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.3); box-shadow: 0 0 15px #34d399; }
-}
-
-.brand-title {
-  font-size: 46px;
-  font-weight: 800;
-  line-height: 1.25;
-  margin-bottom: 32px;
-  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: -1px;
-}
-
-/* 特性胶囊条列设计 */
 .brand-features {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  .feature-item {
+  flex-direction: column;
+  gap: 16px;
+
+  .feature-card {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 18px;
+    gap: 16px;
+    padding: 16px 20px;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 100px;
+    border-radius: 16px;
     backdrop-filter: blur(12px);
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.95);
     transition: all 0.3s ease;
-    
+
     &:hover {
-      background: rgba(255, 255, 255, 0.12);
-      transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateX(4px);
+      border-color: rgba(255, 255, 255, 0.15);
     }
-    
+  }
+
+  .feature-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(99, 102, 241, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
     i {
-      font-size: 18px;
-      color: #34d399;
+      font-size: 22px;
+      color: #a5b4fc;
+    }
+  }
+
+  .feature-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .feature-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .feature-desc {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+}
+
+.brand-platforms {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+
+  .platform-label {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 500;
+  }
+
+  .platform-icons {
+    display: flex;
+    gap: 12px;
+
+    i {
+      font-size: 22px;
+      color: rgba(255, 255, 255, 0.4);
+      transition: color 0.2s;
+
+      &:hover {
+        color: rgba(255, 255, 255, 0.8);
+      }
     }
   }
 }
@@ -1297,26 +1341,6 @@ onUnmounted(() => {
   align-items: center;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
-  
-  .brand-stats {
-    display: flex;
-    gap: 32px;
-    margin-bottom: 24px;
-    .stat-item {
-      display: flex;
-      flex-direction: column;
-      .stat-value {
-        font-size: 28px;
-        font-weight: 800;
-        color: white;
-      }
-      .stat-label {
-        font-size: 13px;
-        color: rgba(255, 255, 255, 0.7);
-        margin-top: 4px;
-      }
-    }
-  }
 
   .footer-links {
     display: flex;
