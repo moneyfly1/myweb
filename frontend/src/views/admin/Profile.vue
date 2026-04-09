@@ -390,7 +390,7 @@ export default {
           passwordFormRef.value?.clearValidate()
           setTimeout(() => {
             authStore.logout()
-            router.push('/admin/login')
+            router.push('/login')
           }, 1500)
         } else {
           ElMessage.error(message)
