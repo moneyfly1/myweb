@@ -129,11 +129,15 @@ export const useAuthStore = defineStore('auth', () => {
           message: '登录响应格式错误'
         }
       }
-      if (userData.is_admin) {
-        return {
-          success: false,
-          message: '管理员账户请使用管理员登录页面登录'
-        }
+      const isAdminUser = !!userData.is_admin
+      // 管理员登录时清除所有旧 token，避免残留
+      if (isAdminUser) {
+        secureStorage.remove('admin_token')
+        secureStorage.remove('admin_user')
+        secureStorage.remove('admin_refresh_token')
+        secureStorage.remove('user_token')
+        secureStorage.remove('user_data')
+        secureStorage.remove('user_refresh_token')
       }
       token.value = access_token
       user.value = userData
@@ -149,82 +153,23 @@ export const useAuthStore = defineStore('auth', () => {
         language: userData.language
       }
       const remember = !!credentials.remember
-      saveRememberPreference(remember, false)
-      saveToken(access_token, false, remember)
-      saveUser(safeUserData, false, remember)
-      saveRefreshToken(refresh_token, false, remember)
+      saveRememberPreference(remember, isAdminUser)
+      saveToken(access_token, isAdminUser, remember)
+      saveUser(safeUserData, isAdminUser, remember)
+      saveRefreshToken(refresh_token, isAdminUser, remember)
       resetRefreshFailed()
       setTimeout(() => {
         const themeStore = useThemeStore()
         themeStore.loadUserTheme().catch(() => {})
       }, 500)
-      return { success: true }
+      return { success: true, isAdmin: isAdminUser }
     } catch (error) {
       return handleApiError(error, '登录失败')
     } finally {
       loading.value = false
     }
   }
-  const adminLogin = async (credentials) => {
-    loading.value = true
-    try {
-      secureStorage.remove('admin_token')
-      secureStorage.remove('admin_user')
-      secureStorage.remove('admin_refresh_token')
-      secureStorage.remove('user_token')
-      secureStorage.remove('user_data')
-      secureStorage.remove('user_refresh_token')
-      const response = await api.post('/auth/login-json', {
-        username: credentials.username,
-        password: credentials.password
-      })
-      const responseData = response.data?.data || response.data
-      const { access_token, refresh_token, user: userData } = responseData
-      if (!userData) {
-        return {
-          success: false,
-          message: '登录响应格式错误'
-        }
-      }
-      if (!userData.is_admin) {
-        return {
-          success: false,
-          message: '该账户不是管理员，请使用用户登录页面'
-        }
-      }
-      token.value = access_token
-      user.value = userData
-      secureStorage.remove('logout_marker')
-      const safeUserData = {
-        id: userData.id,
-        username: userData.username,
-        email: userData.email,
-        is_admin: userData.is_admin,
-        is_verified: userData.is_verified,
-        is_active: userData.is_active,
-        theme: userData.theme,
-        language: userData.language
-      }
-      const remember = !!credentials.remember
-      saveRememberPreference(remember, true)
-      saveToken(access_token, true, remember)
-      saveUser(safeUserData, true, remember)
-      saveRefreshToken(refresh_token, true, remember)
-      resetRefreshFailed()
-      setTimeout(() => {
-        const themeStore = useThemeStore()
-        themeStore.loadUserTheme().catch(() => {})
-      }, 500)
-      return { success: true }
-    } catch (error) {
-      secureStorage.remove('admin_token')
-      secureStorage.remove('admin_user')
-      secureStorage.remove('admin_refresh_token')
-      return handleApiError(error, '登录失败')
-    } finally {
-      loading.value = false
-    }
-  }
+  const adminLogin = async (credentials) => login(credentials)
   const register = async (userData) => {
     loading.value = true
     try {
