@@ -146,6 +146,17 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.title) document.title = `${to.meta.title} - CBoard`
   try {
     const authStore = useAuthStore()
+
+    // 访客页面（登录/注册等）快速通过，跳过所有 token 检查
+    if (to.meta.requiresGuest) {
+      if (authStore.isAuthenticated) {
+        if (to.path === '/admin/login') return next(authStore.isAdmin ? '/admin/dashboard' : '/login')
+        if (to.path === '/login') return next(authStore.isAdmin ? '/admin/login' : '/dashboard')
+        return next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      }
+      return next()
+    }
+
     const { sessionKey } = to.query
     if (sessionKey) {
       const loginData = JSON.parse(sessionStorage.getItem(sessionKey) || 'null')
@@ -260,11 +271,6 @@ router.beforeEach(async (to, from, next) => {
     }
     if (to.meta.requiresAuth && !authStore.isAuthenticated) return next(isAdminPath ? '/admin/login' : '/login')
     if (to.meta.requiresAdmin && !authStore.isAdmin) return next(authStore.isAuthenticated ? '/dashboard' : '/admin/login')
-    if (to.meta.requiresGuest && authStore.isAuthenticated) {
-      if (to.path === '/admin/login') return next(authStore.isAdmin ? '/admin/dashboard' : '/login')
-      if (to.path === '/login') return next(authStore.isAdmin ? '/admin/login' : '/dashboard')
-      return next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-    }
     if (to.path === '/') return next(authStore.isAuthenticated ? (authStore.isAdmin ? '/admin/dashboard' : '/dashboard') : '/login')
     next()
   } catch (error) {
