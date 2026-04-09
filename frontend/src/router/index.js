@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { secureStorage, cachedAPI } from '@/utils/api'
+import { secureStorage } from '@/utils/api'
 import { useApi } from '@/utils/api'
 
 const SECURE_STORAGE_KEY = 'cboard_secure_'
@@ -9,52 +9,24 @@ const ACCESS_TOKEN_TTL = 60 * 60 * 1000
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
 
-let _unifiedAuthPromise = null
-const getUnifiedAuthEnabled = () => {
-  if (!_unifiedAuthPromise) {
-    // 使用缓存的公共设置 API
-    _unifiedAuthPromise = cachedAPI.getPublicSettings()
-      .then(response => {
-        const settings = response.data?.data || response.data || {}
-        return settings.unified_auth_enabled === true || settings.unified_auth_enabled === 'true'
-      })
-      .catch(() => false)
-  }
-  return _unifiedAuthPromise
-}
 const routes = [
   { path: '/', redirect: '/dashboard' },
   {
     path: '/login',
     name: 'Login',
-    component: async () => {
-      const unifiedAuthEnabled = await getUnifiedAuthEnabled()
-      return unifiedAuthEnabled
-        ? (await import('@/views/UnifiedAuth.vue')).default
-        : (await import('@/views/Login.vue')).default
-    },
+    component: () => import('@/views/UnifiedAuth.vue'),
     meta: { requiresGuest: true }
   },
   {
     path: '/register',
     name: 'Register',
-    component: async () => {
-      const unifiedAuthEnabled = await getUnifiedAuthEnabled()
-      return unifiedAuthEnabled
-        ? (await import('@/views/UnifiedAuth.vue')).default
-        : (await import('@/views/Register.vue')).default
-    },
+    component: () => import('@/views/UnifiedAuth.vue'),
     meta: { requiresGuest: true }
   },
   {
     path: '/forgot-password',
     name: 'ForgotPassword',
-    component: async () => {
-      const unifiedAuthEnabled = await getUnifiedAuthEnabled()
-      return unifiedAuthEnabled
-        ? (await import('@/views/UnifiedAuth.vue')).default
-        : (await import('@/views/ForgotPassword.vue')).default
-    },
+    component: () => import('@/views/UnifiedAuth.vue'),
     meta: { requiresGuest: true }
   },
   { path: '/admin/login', redirect: '/login' },

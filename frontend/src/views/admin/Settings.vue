@@ -48,13 +48,6 @@
             </el-form-item>
 
             <el-divider content-position="left">用户界面设置</el-divider>
-            <div class="notification-switches" :class="{ 'mobile-switches': isMobile }">
-              <div class="switch-item">
-                <span class="switch-label">统一认证页面</span>
-                <el-switch v-model="generalSettings.unified_auth_enabled" />
-              </div>
-            </div>
-            <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">开启后使用集成登录页；关闭后使用传统分离页面。</div>
 
             <el-form-item>
               <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
