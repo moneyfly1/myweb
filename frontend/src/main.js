@@ -9,11 +9,14 @@ import router from './router'
 import { useSettingsStore } from './store/settings'
 import { useAuthStore } from './store/auth'
 import { useThemeStore } from './store/theme'
-import { initApi } from './utils/api'
+import { initApi, cachedAPI } from './utils/api'
 import './styles/global.scss'
 import './styles/mobile-buttons.scss'
 import './styles/text-selection.css'
 import { initTextSelection } from './utils/textSelection'
+
+// 尽早预热公共设置缓存，让路由守卫直接命中缓存
+cachedAPI.getPublicSettings().catch(() => {})
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -42,16 +45,6 @@ app.mount('#app')
 Promise.all([
   // 初始化文本选择功能
   Promise.resolve().then(() => initTextSelection()),
-
-  // 预加载公共设置
-  typeof window !== 'undefined'
-    ? import('axios').then(({ default: axios }) =>
-        axios.get('/api/v1/settings/public-settings', {
-          withCredentials: true,
-          timeout: 5000
-        }).catch(() => {})
-      )
-    : Promise.resolve(),
 
   // 加载设置并应用主题
   (async () => {
