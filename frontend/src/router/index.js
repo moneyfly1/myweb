@@ -158,9 +158,15 @@ router.beforeEach(async (to, from, next) => {
         }
         sessionStorage.removeItem(sessionKey)
         if (loginData.adminToken) saveAdminAuth(loginData.adminToken, loginData.adminUser)
+        if (loginData.adminRefreshToken) {
+          secureStorage.set('admin_refresh_token', loginData.adminRefreshToken, false, ADMIN_USER_TTL)
+        }
         const userData = { ...loginData.user, is_admin: false }
         secureStorage.set('user_token', loginData.token, true, ACCESS_TOKEN_TTL)
         secureStorage.set('user_data', userData, true, ADMIN_USER_TTL)
+        if (loginData.refreshToken) {
+          secureStorage.set('user_refresh_token', loginData.refreshToken, true, ADMIN_USER_TTL)
+        }
         authStore.setAuth(loginData.token, userData, true)
         useThemeStore().loadUserTheme().catch(() => {})
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
@@ -179,15 +185,20 @@ router.beforeEach(async (to, from, next) => {
       // 如果访问管理员路径但admin_token不存在，尝试刷新admin token
       if (isAdminPath) {
         try {
+          const storedRefresh = secureStorage.get('admin_refresh_token')
+          if (!storedRefresh) {
+            return next('/admin/login')
+          }
           const { default: axios } = await import('axios')
           const refreshResponse = await axios.post(
             '/api/v1/auth/refresh',
-            {},
-            { withCredentials: true, timeout: 5000, headers: { 'X-Auth-Role': 'admin' } }
+            { refresh_token: storedRefresh },
+            { timeout: 5000 }
           )
-          const { access_token } = refreshResponse.data?.data || refreshResponse.data || {}
+          const { access_token, refresh_token: newRefresh } = refreshResponse.data?.data || refreshResponse.data || {}
           if (access_token) {
             secureStorage.set('admin_token', access_token, false, ACCESS_TOKEN_TTL)
+            if (newRefresh) secureStorage.set('admin_refresh_token', newRefresh, false, ADMIN_USER_TTL)
             storedToken = access_token
             storedUser = secureStorage.get('admin_user')
             if (!storedUser) {
@@ -200,22 +211,28 @@ router.beforeEach(async (to, from, next) => {
           return next('/admin/login')
         }
       } else {
-        // 访问用户路径但user_token不存在，尝试用用户refresh cookie刷新
+        // 访问用户路径但user_token不存在，尝试用用户 refresh token 刷新
         try {
-          const { default: axios } = await import('axios')
-          const refreshResponse = await axios.post(
-            '/api/v1/auth/refresh',
-            {},
-            { withCredentials: true, timeout: 5000, headers: { 'X-Auth-Role': 'user' } }
-          )
-          const { access_token } = refreshResponse.data?.data || refreshResponse.data || {}
-          if (access_token) {
-            secureStorage.set('user_token', access_token, false, ACCESS_TOKEN_TTL)
-            storedToken = access_token
-            storedUser = secureStorage.get('user_data')
-            if (!storedUser) {
-              // user_data也过期了，无法恢复身份
-              // 不做跳转，让后续的 requiresAuth 检查处理
+          const storedRefresh = secureStorage.get('user_refresh_token')
+          if (!storedRefresh) {
+            // 无 refresh token，让后续的 requiresAuth 检查处理
+          } else {
+            const { default: axios } = await import('axios')
+            const refreshResponse = await axios.post(
+              '/api/v1/auth/refresh',
+              { refresh_token: storedRefresh },
+              { timeout: 5000 }
+            )
+            const { access_token, refresh_token: newRefresh } = refreshResponse.data?.data || refreshResponse.data || {}
+            if (access_token) {
+              secureStorage.set('user_token', access_token, false, ACCESS_TOKEN_TTL)
+              if (newRefresh) secureStorage.set('user_refresh_token', newRefresh, false, ADMIN_USER_TTL)
+              storedToken = access_token
+              storedUser = secureStorage.get('user_data')
+              if (!storedUser) {
+                // user_data也过期了，无法恢复身份
+                // 不做跳转，让后续的 requiresAuth 检查处理
+              }
             }
           }
         } catch {

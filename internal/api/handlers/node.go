@@ -23,6 +23,21 @@ import (
 	"gorm.io/gorm"
 )
 
+// clearNodeCaches 同步清除所有节点相关缓存，确保管理员操作后客户立即获取最新数据
+func clearNodeCaches() {
+	cs := cache_service.NewCacheService()
+	if err := cs.ClearNodesCache(); err != nil {
+		log.Printf("failed to clear nodes cache: %v", err)
+	}
+	cacheService := &config_update.CacheService{}
+	if err := cacheService.ClearSystemNodesCache(); err != nil {
+		log.Printf("failed to clear system nodes cache: %v", err)
+	}
+	if err := cacheService.ClearAllSubscriptionCache(); err != nil {
+		log.Printf("failed to clear all subscription cache: %v", err)
+	}
+}
+
 var (
 	regionMatcherOnce sync.Once
 	regionMatcher     *config_update.RegionMatcher
@@ -464,19 +479,7 @@ func CreateNode(c *gin.Context) {
 		utils.CreateAuditLogSimple(c, "create_node", "node", newNode.ID, fmt.Sprintf("管理员操作: 创建节点 %s", newNode.Name))
 
 		// 清除节点相关缓存
-		go func() {
-			cs := cache_service.NewCacheService()
-			if err := cs.ClearNodesCache(); err != nil {
-				log.Printf("failed to clear nodes cache: %v", err)
-			}
-			cacheService := &config_update.CacheService{}
-			if err := cacheService.ClearSystemNodesCache(); err != nil {
-				log.Printf("failed to clear system nodes cache: %v", err)
-			}
-			if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-				log.Printf("failed to clear all subscription cache: %v", err)
-			}
-		}()
+		clearNodeCaches()
 
 		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
 		return
@@ -489,19 +492,7 @@ func CreateNode(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "create_node", "node", req.Node.ID, fmt.Sprintf("管理员操作: 创建节点 %s", req.Node.Name))
 
 	// 清除节点相关缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearNodesCache(); err != nil {
-			log.Printf("failed to clear nodes cache: %v", err)
-		}
-		cacheService := &config_update.CacheService{}
-		if err := cacheService.ClearSystemNodesCache(); err != nil {
-			log.Printf("failed to clear system nodes cache: %v", err)
-		}
-		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-			log.Printf("failed to clear all subscription cache: %v", err)
-		}
-	}()
+	clearNodeCaches()
 
 	utils.SuccessResponse(c, http.StatusCreated, "", req.Node)
 }
@@ -531,19 +522,7 @@ func ImportNodeLinks(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d", imp, skp))
 
 	// 清除节点相关缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearNodesCache(); err != nil {
-			log.Printf("failed to clear nodes cache: %v", err)
-		}
-		cacheService := &config_update.CacheService{}
-		if err := cacheService.ClearSystemNodesCache(); err != nil {
-			log.Printf("failed to clear system nodes cache: %v", err)
-		}
-		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-			log.Printf("failed to clear all subscription cache: %v", err)
-		}
-	}()
+	clearNodeCaches()
 
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d", imp, skp), gin.H{
 		"imported": imp,
@@ -573,19 +552,7 @@ func UpdateNode(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "update_node", "node", node.ID, fmt.Sprintf("管理员操作: 更新节点 %s", node.Name))
 
 	// 清除节点和订阅配置缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearNodesCache(); err != nil {
-			log.Printf("failed to clear nodes cache: %v", err)
-		}
-		cacheService := &config_update.CacheService{}
-		if err := cacheService.ClearSystemNodesCache(); err != nil {
-			log.Printf("failed to clear system nodes cache: %v", err)
-		}
-		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-			log.Printf("failed to clear all subscription cache: %v", err)
-		}
-	}()
+	clearNodeCaches()
 
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", node)
 }
@@ -675,19 +642,7 @@ func DeleteNode(c *gin.Context) {
 	}
 
 	// 清除节点和订阅配置缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearNodesCache(); err != nil {
-			log.Printf("failed to clear nodes cache: %v", err)
-		}
-		cacheService := &config_update.CacheService{}
-		if err := cacheService.ClearSystemNodesCache(); err != nil {
-			log.Printf("failed to clear system nodes cache: %v", err)
-		}
-		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-			log.Printf("failed to clear all subscription cache: %v", err)
-		}
-	}()
+	clearNodeCaches()
 
 	utils.CreateAuditLogSimple(c, "delete_node", "node", node.ID, fmt.Sprintf("管理员操作: 删除节点 %s", node.Name))
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
@@ -870,19 +825,7 @@ func BatchDeleteNodes(c *gin.Context) {
 	}
 
 	// 清理所有节点和订阅缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearNodesCache(); err != nil {
-			log.Printf("failed to clear nodes cache: %v", err)
-		}
-		cacheService := &config_update.CacheService{}
-		if err := cacheService.ClearSystemNodesCache(); err != nil {
-			log.Printf("failed to clear system nodes cache: %v", err)
-		}
-		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-			log.Printf("failed to clear all subscription cache: %v", err)
-		}
-	}()
+	clearNodeCaches()
 
 	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个", deletedCount))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
@@ -899,19 +842,7 @@ func ImportFromClash(c *gin.Context) {
 	count, _ := importNodesFromClashConfig(req.ClashConfig)
 
 	// 清理所有节点和订阅缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearNodesCache(); err != nil {
-			log.Printf("failed to clear nodes cache: %v", err)
-		}
-		cacheService := &config_update.CacheService{}
-		if err := cacheService.ClearSystemNodesCache(); err != nil {
-			log.Printf("failed to clear system nodes cache: %v", err)
-		}
-		if err := cacheService.ClearAllSubscriptionCache(); err != nil {
-			log.Printf("failed to clear all subscription cache: %v", err)
-		}
-	}()
+	clearNodeCaches()
 
 	utils.CreateAuditLogSimple(c, "import_from_clash", "node", 0, fmt.Sprintf("管理员操作: 从 Clash 配置导入节点 %d 个", count))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})

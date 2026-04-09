@@ -1226,17 +1226,21 @@ export default {
         }
         const adminToken = secureStorage.get('admin_token')
         const adminUser = secureStorage.get('admin_user')
+        const adminRefreshToken = secureStorage.get('admin_refresh_token')
         const userToken = response.data.data.access_token
+        const userRefreshToken = response.data.data.refresh_token
         const userData = response.data.data.user
         const sessionKey = `user_login_${Date.now()}`
         const sessionData = {
           token: userToken,
+          refreshToken: userRefreshToken,
           user: userData,
           timestamp: Date.now()
         }
         if (adminToken && adminUser) {
           sessionData.adminToken = adminToken
           sessionData.adminUser = typeof adminUser === 'string' ? adminUser : JSON.stringify(adminUser)
+          sessionData.adminRefreshToken = adminRefreshToken
         }
         sessionStorage.setItem(sessionKey, JSON.stringify(sessionData))
         const dashboardUrl = window.location.origin + '/dashboard'
