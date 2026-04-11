@@ -141,6 +141,7 @@ func GetCurrentUser(c *gin.Context) {
 		responseData["avatar_url"] = user.Avatar.String
 	}
 
+	c.Header("Cache-Control", "private, max-age=60, must-revalidate")
 	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
