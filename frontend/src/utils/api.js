@@ -133,7 +133,7 @@ let isRefreshing = { admin: false, user: false }
 let failedQueue = []
 let refreshFailed = { admin: false, user: false }
 const BASE_URL = '/api/v1'
-const TIMEOUT = 60000 // 60秒
+const TIMEOUT = 10000 // 10秒
 const TEST_CONNECTION_TIMEOUT = 10000 // 10秒
 const PUBLIC_APIS = [
   '/settings/public-settings',

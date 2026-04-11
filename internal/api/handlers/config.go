@@ -585,6 +585,7 @@ func GetPublicSettings(c *gin.Context) {
 		}
 	}
 
+	c.Header("Cache-Control", "public, max-age=600")
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 

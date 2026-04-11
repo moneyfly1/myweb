@@ -17,6 +17,8 @@ func SetupRouter() *gin.Engine {
 		utils.LogErrorMsg("failed to set trusted proxies: %v", err)
 	}
 
+	// Brotli 压缩（优先，现代浏览器支持，比 gzip 小 20-30%）
+	r.Use(middleware.BrotliMiddleware())
 	// 启用 Gzip 压缩（性能优化：传输大小减少 70-80%）
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
@@ -26,7 +28,10 @@ func SetupRouter() *gin.Engine {
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(middleware.RequestIDMiddleware())
 
-	r.Static("/static", "./frontend/dist/assets")
+	r.GET("/static/*filepath", func(c *gin.Context) {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.File("./frontend/dist/assets" + c.Param("filepath"))
+	})
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
 
