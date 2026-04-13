@@ -55,7 +55,7 @@ export default defineConfig({
           // 图表库
           'charts': ['chart.js'],
           // 工具库
-          'utils': ['axios', 'dayjs', 'clipboard', 'qrcode', 'dompurify']
+          'utils': ['axios', 'dayjs', 'dompurify']
         }
       },
     },

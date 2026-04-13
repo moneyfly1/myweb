@@ -1040,7 +1040,7 @@ const startRechargeStatusCheck = () => {
   checkRechargeStatus()
   rechargeStatusInterval = setInterval(async () => {
     await checkRechargeStatus()
-  }, 2000)
+  }, 5000)
   const handleVisibilityChange = async () => {
     if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
       await checkRechargeStatus()

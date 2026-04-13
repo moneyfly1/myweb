@@ -353,7 +353,6 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Wallet, DocumentCopy, InfoFilled } from '@element-plus/icons-vue'
-import QRCode from 'qrcode'
 import { subscriptionAPI, userAPI, orderAPI, userLevelAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { useRouter } from 'vue-router'
 import { formatDateTime, formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
@@ -535,6 +534,7 @@ export default {
         await nextTick()
         const qrElement = document.getElementById('subscription-qrcode')
         if (qrElement && qrData) {
+          const QRCode = (await import('qrcode')).default
           await QRCode.toCanvas(qrElement, qrData, {
             width: 200,
             margin: 2,
@@ -775,7 +775,8 @@ export default {
           color: { dark: '#000000', light: '#FFFFFF' },
           errorCorrectionLevel: 'M'
         }
-        paymentQRCode.value = await QRCode.toDataURL(url, qrOptions)
+        const QRCodeLib = (await import('qrcode')).default
+        paymentQRCode.value = await QRCodeLib.toDataURL(url, qrOptions)
         paymentQRVisible.value = true
         startPaymentStatusCheck()
       } catch (error) {

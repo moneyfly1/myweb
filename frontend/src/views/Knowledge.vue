@@ -38,7 +38,7 @@
             :class="{ active: selectedCategory === cat.id }"
             @click="selectCategory(cat.id)"
           >
-            <el-icon><component :is="cat.icon || 'Folder'" /></el-icon>
+            <el-icon><component :is="resolveIcon(cat.icon)" /></el-icon>
             <span>{{ cat.name }}</span>
           </div>
         </div>
@@ -108,9 +108,12 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Folder, View, Clock } from '@element-plus/icons-vue'
+import { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
 import DOMPurify from 'dompurify'
+
+const iconMap = { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook }
+const resolveIcon = (name) => iconMap[name] || Folder
 
 const isMobile = ref(window.innerWidth <= 768)
 const categories = ref([])

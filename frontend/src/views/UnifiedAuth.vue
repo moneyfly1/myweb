@@ -35,10 +35,10 @@
             <h3 class="form-heading">登录</h3>
             <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" @submit.prevent="handleLogin" label-position="top">
               <el-form-item prop="username">
-                <el-input v-model="loginForm.username" placeholder="用户名或邮箱" size="large" prefix-icon="User" clearable autocomplete="username" />
+                <el-input v-model="loginForm.username" placeholder="用户名或邮箱" size="large" :prefix-icon="User" clearable autocomplete="username" />
               </el-form-item>
               <el-form-item prop="password">
-                <el-input v-model="loginForm.password" :type="isPasswordVisible ? 'text' : 'password'" placeholder="输入密码" size="large" prefix-icon="Lock" clearable autocomplete="current-password" @keyup.enter="handleLogin" @focus="isPasswordFocused = true" @blur="isPasswordFocused = false">
+                <el-input v-model="loginForm.password" :type="isPasswordVisible ? 'text' : 'password'" placeholder="输入密码" size="large" :prefix-icon="Lock" clearable autocomplete="current-password" @keyup.enter="handleLogin" @focus="isPasswordFocused = true" @blur="isPasswordFocused = false">
                   <template #suffix>
                     <el-icon style="cursor:pointer" @click="isPasswordVisible = !isPasswordVisible"><View v-if="!isPasswordVisible" /><Hide v-else /></el-icon>
                   </template>
@@ -65,31 +65,31 @@
             </el-alert>
             <el-form v-if="registrationEnabled" ref="registerFormRef" :model="registerForm" :rules="registerRules" @submit.prevent="handleRegister" label-position="top">
               <el-form-item prop="username">
-                <el-input v-model="registerForm.username" placeholder="用户名" size="large" prefix-icon="User" clearable autocomplete="username" />
+                <el-input v-model="registerForm.username" placeholder="用户名" size="large" :prefix-icon="User" clearable autocomplete="username" />
               </el-form-item>
               <el-form-item prop="email">
-                <el-input v-model="registerForm.email" type="email" placeholder="电子邮箱（推荐 QQ 邮箱）" size="large" prefix-icon="Message" clearable autocomplete="email" />
+                <el-input v-model="registerForm.email" type="email" placeholder="电子邮箱（推荐 QQ 邮箱）" size="large" :prefix-icon="Message" clearable autocomplete="email" />
               </el-form-item>
               <el-form-item prop="verificationCode" :required="emailVerificationRequired">
                 <div class="code-group">
-                  <el-input v-model="registerForm.verificationCode" :placeholder="emailVerificationRequired ? '6位验证码（必填）' : '6位验证码（选填）'" size="large" prefix-icon="Message" maxlength="6" clearable autocomplete="off" class="code-input" />
+                  <el-input v-model="registerForm.verificationCode" :placeholder="emailVerificationRequired ? '6位验证码（必填）' : '6位验证码（选填）'" size="large" :prefix-icon="Message" maxlength="6" clearable autocomplete="off" class="code-input" />
                   <el-button type="primary" size="large" :disabled="codeTimer > 0 || !registerForm.email || sendingCode" :loading="sendingCode" @click="sendVerificationCode('register')" class="code-btn">{{ codeTimer > 0 ? `${codeTimer}s` : '获取验证码' }}</el-button>
                 </div>
               </el-form-item>
               <el-form-item prop="inviteCode" :required="inviteCodeRequired">
-                <el-input v-model="registerForm.inviteCode" :placeholder="inviteCodeRequired ? '邀请码（必填）' : '邀请码（选填）'" size="large" prefix-icon="Ticket" clearable />
+                <el-input v-model="registerForm.inviteCode" :placeholder="inviteCodeRequired ? '邀请码（必填）' : '邀请码（选填）'" size="large" :prefix-icon="Ticket" clearable />
                 <div v-if="inviteCodeInfo" class="invite-tip">
                   <span v-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" class="tip-ok">✓ 邀请码有效，注册后可获得 {{ inviteCodeInfo.invitee_reward || inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励</span>
                   <span v-else class="tip-err">✗ {{ inviteCodeInfo.message }}</span>
                 </div>
               </el-form-item>
               <el-form-item prop="password">
-                <el-input v-model="registerForm.password" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="设置密码（8位以上）" size="large" prefix-icon="Lock" clearable autocomplete="new-password" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
+                <el-input v-model="registerForm.password" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="设置密码（8位以上）" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
                   <template #suffix><el-icon style="cursor:pointer" @click="isRegPasswordVisible = !isRegPasswordVisible"><View v-if="!isRegPasswordVisible" /><Hide v-else /></el-icon></template>
                 </el-input>
               </el-form-item>
               <el-form-item prop="confirmPassword">
-                <el-input v-model="registerForm.confirmPassword" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="确认密码" size="large" prefix-icon="Lock" clearable autocomplete="new-password" @keyup.enter="handleRegister" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
+                <el-input v-model="registerForm.confirmPassword" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="确认密码" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @keyup.enter="handleRegister" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
                   <template #suffix><el-icon style="cursor:pointer" @click="isRegPasswordVisible = !isRegPasswordVisible"><View v-if="!isRegPasswordVisible" /><Hide v-else /></el-icon></template>
                 </el-input>
               </el-form-item>
@@ -107,21 +107,21 @@
             <p class="form-desc">请输入注册邮箱，通过验证码重置密码。</p>
             <el-form ref="forgotFormRef" :model="forgotForm" :rules="forgotRules" @submit.prevent="handleReset" label-position="top">
               <el-form-item prop="email">
-                <el-input v-model="forgotForm.email" type="email" placeholder="注册邮箱" size="large" prefix-icon="Message" clearable autocomplete="email" />
+                <el-input v-model="forgotForm.email" type="email" placeholder="注册邮箱" size="large" :prefix-icon="Message" clearable autocomplete="email" />
               </el-form-item>
               <el-form-item prop="verificationCode" required>
                 <div class="code-group">
-                  <el-input v-model="forgotForm.verificationCode" placeholder="6位验证码" size="large" prefix-icon="Message" maxlength="6" clearable autocomplete="off" class="code-input" />
+                  <el-input v-model="forgotForm.verificationCode" placeholder="6位验证码" size="large" :prefix-icon="Message" maxlength="6" clearable autocomplete="off" class="code-input" />
                   <el-button type="primary" size="large" :disabled="codeTimer > 0 || !forgotForm.email || sendingCode" :loading="sendingCode" @click="sendVerificationCode('forgot')" class="code-btn">{{ codeTimer > 0 ? `${codeTimer}s` : '获取验证码' }}</el-button>
                 </div>
               </el-form-item>
               <el-form-item prop="newPassword">
-                <el-input v-model="forgotForm.newPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="新密码（8位以上）" size="large" prefix-icon="Lock" clearable autocomplete="new-password" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
+                <el-input v-model="forgotForm.newPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="新密码（8位以上）" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
                   <template #suffix><el-icon style="cursor:pointer" @click="isForgotPasswordVisible = !isForgotPasswordVisible"><View v-if="!isForgotPasswordVisible" /><Hide v-else /></el-icon></template>
                 </el-input>
               </el-form-item>
               <el-form-item prop="confirmPassword">
-                <el-input v-model="forgotForm.confirmPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="确认新密码" size="large" prefix-icon="Lock" clearable autocomplete="new-password" @keyup.enter="handleReset" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
+                <el-input v-model="forgotForm.confirmPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="确认新密码" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @keyup.enter="handleReset" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
                   <template #suffix><el-icon style="cursor:pointer" @click="isForgotPasswordVisible = !isForgotPasswordVisible"><View v-if="!isForgotPasswordVisible" /><Hide v-else /></el-icon></template>
                 </el-input>
               </el-form-item>
@@ -143,6 +143,7 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { User, Lock, Message, Ticket, View, Hide } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useSettingsStore } from '@/store/settings'
 import { authAPI, inviteAPI, settingsAPI } from '@/utils/api'
