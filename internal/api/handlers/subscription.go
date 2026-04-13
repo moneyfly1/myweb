@@ -1505,44 +1505,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
 
-	// 检查设备限制
-	if subscription.DeviceLimit == 0 {
-		c.String(200, generateErrorConfigBase64("设备限制", "设备数量限制为0，无法使用服务", baseURL))
-		return
-	}
-
+	// 检查设备限制（不拦截请求，交由 GenerateClashConfig 返回 YAML 格式错误节点）
 	shouldRecord := true
 	if !deviceExists {
-		if (subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit) || subscription.DeviceLimit == 0 {
+		if subscription.DeviceLimit == 0 || (subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit) {
 			shouldRecord = false
-		}
-	}
-
-	// 如果设备数量超过限制且当前设备不在允许范围内
-	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
-		if !deviceExists {
-			// 设备不存在且已达到限制，不允许添加新设备
-			c.String(200, generateErrorConfigBase64("设备限制", fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备", count, subscription.DeviceLimit), baseURL))
-			return
-		}
-		// 设备存在，检查是否在允许的设备列表中
-		var allowedDevices []models.Device
-		db.Where("subscription_id = ? AND is_active = ?", subscription.ID, true).
-			Order("last_access DESC").
-			Limit(subscription.DeviceLimit).
-			Find(&allowedDevices)
-
-		isAllowed := false
-		for _, allowedDevice := range allowedDevices {
-			if allowedDevice.ID == currentDevice.ID {
-				isAllowed = true
-				break
-			}
-		}
-
-		if !isAllowed {
-			c.String(200, generateErrorConfigBase64("设备限制", fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，此设备不在允许范围内", count, subscription.DeviceLimit), baseURL))
-			return
 		}
 	}
 
