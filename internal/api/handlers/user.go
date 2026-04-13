@@ -1649,6 +1649,7 @@ func UpdateUserStatus(c *gin.Context) {
 		}
 	}
 	utils.CreateAuditLogSimple(c, "update_user_status", "user", user.ID, fmt.Sprintf("管理员操作: 更新用户状态 %s (ID=%d)", user.Username, user.ID))
+	middleware.InvalidateAuthUserCache(user.ID)
 	utils.SuccessResponse(c, http.StatusOK, "用户状态已更新", user)
 }
 
@@ -1975,12 +1976,20 @@ func BatchSendSubEmail(c *gin.Context) {
 		return
 	}
 
+	// 批量查询所有用户的订阅
+	var subs []models.Subscription
+	db.Where("user_id IN ?", req.UserIDs).Find(&subs)
+	subMap := make(map[uint]models.Subscription)
+	for _, s := range subs {
+		subMap[s.UserID] = s
+	}
+
 	successCount := 0
 	failCount := 0
 
 	for _, user := range users {
-		var sub models.Subscription
-		if err := db.Where("user_id = ?", user.ID).First(&sub).Error; err != nil {
+		sub, ok := subMap[user.ID]
+		if !ok {
 			failCount++
 			continue
 		}
@@ -2026,6 +2035,22 @@ func BatchSendExpireReminder(c *gin.Context) {
 	failCount := 0
 	now := utils.GetBeijingTime()
 
+	// 批量查询所有相关的 Package
+	pkgIDs := make([]int64, 0)
+	for _, user := range users {
+		if len(user.Subscriptions) > 0 && user.Subscriptions[0].PackageID != nil {
+			pkgIDs = append(pkgIDs, *user.Subscriptions[0].PackageID)
+		}
+	}
+	pkgMap := make(map[int64]string)
+	if len(pkgIDs) > 0 {
+		var pkgs []models.Package
+		db.Where("id IN ?", pkgIDs).Select("id, name").Find(&pkgs)
+		for _, p := range pkgs {
+			pkgMap[int64(p.ID)] = p.Name
+		}
+	}
+
 	for _, user := range users {
 		if len(user.Subscriptions) == 0 {
 			failCount++
@@ -2046,9 +2071,8 @@ func BatchSendExpireReminder(c *gin.Context) {
 		subject := "订阅即将到期提醒"
 		pkgName := "默认套餐"
 		if sub.PackageID != nil {
-			var pkg models.Package
-			if err := db.First(&pkg, *sub.PackageID).Error; err == nil {
-				pkgName = pkg.Name
+			if name, ok := pkgMap[*sub.PackageID]; ok {
+				pkgName = name
 			}
 		}
 		isExpired := daysUntilExpire <= 0

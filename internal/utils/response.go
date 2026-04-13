@@ -153,6 +153,12 @@ func ParsePagination(c *gin.Context) PaginationParams {
 			size = 20
 		}
 	}
+	// 兼容 page_size 参数
+	if pageSizeStr := c.Query("page_size"); pageSizeStr != "" {
+		if _, err := fmt.Sscanf(pageSizeStr, "%d", &size); err == nil {
+			// page_size 优先
+		}
+	}
 
 	if skipStr := c.Query("skip"); skipStr != "" {
 		var skip int

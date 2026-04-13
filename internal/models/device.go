@@ -7,7 +7,7 @@ import (
 type Device struct {
 	ID                uint       `gorm:"primaryKey" json:"id"`
 	UserID            *int64     `gorm:"index" json:"user_id,omitempty"`
-	SubscriptionID    uint       `gorm:"index;not null" json:"subscription_id"`
+	SubscriptionID    uint       `gorm:"index;not null;index:idx_device_sub_active,priority:1" json:"subscription_id"`
 	DeviceFingerprint string     `gorm:"type:varchar(255);not null" json:"device_fingerprint"`
 	DeviceHash        *string    `gorm:"type:varchar(255)" json:"device_hash,omitempty"`
 	DeviceUA          *string    `gorm:"type:varchar(255)" json:"device_ua,omitempty"`
@@ -23,7 +23,7 @@ type Device struct {
 	DeviceModel       *string    `gorm:"type:varchar(100)" json:"device_model,omitempty"`
 	DeviceBrand       *string    `gorm:"type:varchar(50)" json:"device_brand,omitempty"`
 	SubscriptionType  *string    `gorm:"type:varchar(20);index" json:"subscription_type,omitempty"` // 订阅类型: clash, v2ray, ssr
-	IsActive          bool       `gorm:"default:true;index" json:"is_active"`
+	IsActive          bool       `gorm:"default:true;index;index:idx_device_sub_active,priority:2" json:"is_active"`
 	IsAllowed         bool       `gorm:"default:true" json:"is_allowed"`
 	FirstSeen         *time.Time `json:"first_seen,omitempty"`
 	LastAccess        time.Time  `gorm:"autoCreateTime" json:"last_access"`

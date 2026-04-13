@@ -357,9 +357,11 @@ func Logout(c *gin.Context) {
 		expiresAt = claims.ExpiresAt.Time
 	}
 
-	if err := models.AddToBlacklist(database.GetDB(), utils.HashToken(token), user.ID, expiresAt); err != nil {
+	accessTokenHash := utils.HashToken(token)
+	if err := models.AddToBlacklist(database.GetDB(), accessTokenHash, user.ID, expiresAt); err != nil {
 		utils.LogError("Logout: failed to add token to blacklist", err, map[string]interface{}{"user_id": user.ID})
 	}
+	middleware.AddTokenToBlacklistCache(accessTokenHash)
 
 	// 从请求体读取 refresh_token 并加入黑名单
 	var logoutReq struct {
@@ -367,7 +369,9 @@ func Logout(c *gin.Context) {
 	}
 	if bindErr := c.ShouldBindJSON(&logoutReq); bindErr == nil && logoutReq.RefreshToken != "" {
 		if refreshClaims, verifyErr := utils.VerifyToken(logoutReq.RefreshToken); verifyErr == nil && refreshClaims.ExpiresAt != nil {
-			_ = models.AddToBlacklist(database.GetDB(), utils.HashToken(logoutReq.RefreshToken), user.ID, refreshClaims.ExpiresAt.Time)
+			refreshTokenHash := utils.HashToken(logoutReq.RefreshToken)
+			_ = models.AddToBlacklist(database.GetDB(), refreshTokenHash, user.ID, refreshClaims.ExpiresAt.Time)
+			middleware.AddTokenToBlacklistCache(refreshTokenHash)
 		}
 	}
 

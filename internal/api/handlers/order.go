@@ -632,20 +632,27 @@ func GetAdminOrders(c *gin.Context) {
 		rechargeQuery.Count(&rechargeCount)
 		total := orderCount + rechargeCount
 
-		limit := page*size + size
-		if limit > 500 {
-			limit = 500
+		// 只取当前页需要的最大数据量（page*size），而非固定500
+		limit := page * size
+		if limit > 200 {
+			limit = 200
 		}
 
-		allRecords := make([]gin.H, 0)
+		type mergedRecord struct {
+			recordType string
+			createdAt  time.Time
+			data       gin.H
+		}
+		allRecords := make([]mergedRecord, 0, limit*2)
+
 		var orders []models.Order
 		if err := orderQuery.Preload("User").Preload("Package").Order("orders.created_at DESC").Limit(limit).Find(&orders).Error; err == nil {
 			for _, order := range orders {
 				formatted := formatOrderData(order)
-				allRecords = append(allRecords, gin.H{
-					"record_type": "order",
-					"created_at":  formatted["created_at"],
-					"data":        formatted,
+				allRecords = append(allRecords, mergedRecord{
+					recordType: "order",
+					createdAt:  order.CreatedAt,
+					data:       formatted,
 				})
 			}
 		}
@@ -666,18 +673,17 @@ func GetAdminOrders(c *gin.Context) {
 					"paid_at":                utils.GetNullTimeValue(record.PaidAt),
 					"created_at":             utils.FormatBeijingTime(record.CreatedAt),
 				}
-				allRecords = append(allRecords, gin.H{
-					"record_type": "recharge",
-					"created_at":  rechargeData["created_at"],
-					"data":        rechargeData,
+				allRecords = append(allRecords, mergedRecord{
+					recordType: "recharge",
+					createdAt:  record.CreatedAt,
+					data:       rechargeData,
 				})
 			}
 		}
 
+		// 用 time.Time 直接比较，避免重复字符串解析
 		sort.Slice(allRecords, func(i, j int) bool {
-			timeI, _ := time.Parse("2006-01-02 15:04:05", allRecords[i]["created_at"].(string))
-			timeJ, _ := time.Parse("2006-01-02 15:04:05", allRecords[j]["created_at"].(string))
-			return timeI.After(timeJ)
+			return allRecords[i].createdAt.After(allRecords[j].createdAt)
 		})
 
 		offset := (page - 1) * size
@@ -686,11 +692,11 @@ func GetAdminOrders(c *gin.Context) {
 			end = len(allRecords)
 		}
 
-		mergedList := make([]gin.H, 0)
+		mergedList := make([]gin.H, 0, size)
 		if offset < len(allRecords) {
 			for i := offset; i < end; i++ {
-				record := allRecords[i]["data"].(gin.H)
-				record["record_type"] = allRecords[i]["record_type"]
+				record := allRecords[i].data
+				record["record_type"] = allRecords[i].recordType
 				mergedList = append(mergedList, record)
 			}
 		}

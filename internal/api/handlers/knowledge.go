@@ -25,7 +25,7 @@ func GetKnowledgeArticles(c *gin.Context) {
 	categoryID := c.Query("category_id")
 	keyword := c.Query("keyword")
 
-	query := db.Where("is_active = ?", true)
+	query := db.Model(&models.KnowledgeArticle{}).Where("is_active = ?", true)
 	if categoryID != "" {
 		query = query.Where("category_id = ?", categoryID)
 	}
@@ -38,7 +38,7 @@ func GetKnowledgeArticles(c *gin.Context) {
 	}
 
 	var articles []models.KnowledgeArticle
-	query.Preload("Category").Order("sort_order ASC, id DESC").Find(&articles)
+	query.Preload("Category").Order("sort_order ASC, id DESC").Limit(200).Find(&articles)
 	utils.SuccessResponse(c, http.StatusOK, "", articles)
 }
 

@@ -32,17 +32,17 @@ func (RegistrationLog) TableName() string {
 // SubscriptionLog 订阅日志
 type SubscriptionLog struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
-	SubscriptionID uint           `gorm:"index;not null" json:"subscription_id"`
-	UserID         uint           `gorm:"index;not null" json:"user_id"`
-	ActionType     string         `gorm:"type:varchar(50);not null;index" json:"action_type"` // create, update, delete, activate, deactivate, reset
-	ActionBy       sql.NullString `gorm:"type:varchar(50)" json:"action_by,omitempty"`        // user, admin, system
+	SubscriptionID uint           `gorm:"index;not null;index:idx_sublog_sub_created,priority:1" json:"subscription_id"`
+	UserID         uint           `gorm:"index;not null;index:idx_sublog_user_created,priority:1" json:"user_id"`
+	ActionType     string         `gorm:"type:varchar(50);not null;index;index:idx_sublog_action_created,priority:1" json:"action_type"`
+	ActionBy       sql.NullString `gorm:"type:varchar(50)" json:"action_by,omitempty"`
 	ActionByUserID sql.NullInt64  `gorm:"index" json:"action_by_user_id,omitempty"`
 	BeforeData     sql.NullString `gorm:"type:json" json:"before_data,omitempty"`
 	AfterData      sql.NullString `gorm:"type:json" json:"after_data,omitempty"`
 	Description    sql.NullString `gorm:"type:text" json:"description,omitempty"`
 	IPAddress      sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
-	Location       sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"` // 地理位置信息（JSON格式）
-	CreatedAt      time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
+	Location       sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"`
+	CreatedAt      time.Time      `gorm:"autoCreateTime;index;index:idx_sublog_user_created,priority:2;index:idx_sublog_sub_created,priority:2;index:idx_sublog_action_created,priority:2" json:"created_at"`
 
 	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"-"`
 	User         User         `gorm:"foreignKey:UserID" json:"-"`
@@ -56,19 +56,19 @@ func (SubscriptionLog) TableName() string {
 // BalanceLog 余额日志
 type BalanceLog struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`
-	UserID          uint           `gorm:"index;not null" json:"user_id"`
-	ChangeType      string         `gorm:"type:varchar(50);not null;index" json:"change_type"` // recharge, consume, refund, commission, gift, admin_adjust
-	Amount          float64        `gorm:"type:decimal(10,2);not null" json:"amount"`          // 变更金额（正数为增加，负数为减少）
-	BalanceBefore   float64        `gorm:"type:decimal(10,2);not null" json:"balance_before"`  // 变更前余额
-	BalanceAfter    float64        `gorm:"type:decimal(10,2);not null" json:"balance_after"`   // 变更后余额
+	UserID          uint           `gorm:"index;not null;index:idx_ballog_user_created,priority:1" json:"user_id"`
+	ChangeType      string         `gorm:"type:varchar(50);not null;index" json:"change_type"`
+	Amount          float64        `gorm:"type:decimal(10,2);not null" json:"amount"`
+	BalanceBefore   float64        `gorm:"type:decimal(10,2);not null" json:"balance_before"`
+	BalanceAfter    float64        `gorm:"type:decimal(10,2);not null" json:"balance_after"`
 	RelatedOrderID  sql.NullInt64  `gorm:"index" json:"related_order_id,omitempty"`
-	RelatedRecordID sql.NullInt64  `gorm:"index" json:"related_record_id,omitempty"` // 关联的充值记录ID或订单ID
+	RelatedRecordID sql.NullInt64  `gorm:"index" json:"related_record_id,omitempty"`
 	Description     sql.NullString `gorm:"type:text" json:"description,omitempty"`
-	Operator        sql.NullString `gorm:"type:varchar(50)" json:"operator,omitempty"` // 操作人（admin username 或 system）
+	Operator        sql.NullString `gorm:"type:varchar(50)" json:"operator,omitempty"`
 	OperatorUserID  sql.NullInt64  `gorm:"index" json:"operator_user_id,omitempty"`
 	IPAddress       sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
-	Location        sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"` // 地理位置信息（JSON格式）
-	CreatedAt       time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
+	Location        sql.NullString `gorm:"type:varchar(255)" json:"location,omitempty"`
+	CreatedAt       time.Time      `gorm:"autoCreateTime;index;index:idx_ballog_user_created,priority:2" json:"created_at"`
 
 	User         User   `gorm:"foreignKey:UserID" json:"-"`
 	RelatedOrder *Order `gorm:"foreignKey:RelatedOrderID" json:"-"`
