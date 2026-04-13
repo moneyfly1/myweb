@@ -371,7 +371,7 @@ export default {
     const nodeLinkValue = ref('')
     const parsedNode = ref(null)
     const filters = reactive({ status: '', is_active: '', is_manual: '', region: '', type: '' })
-    const pagination = reactive({ page: 1, size: 20, total: 0 })
+    const pagination = reactive({ page: 1, size: 10, total: 0 })
     const nodeForm = reactive({
       name: '', region: '', type: 'vmess', config: '',
       description: '', is_recommended: false, is_active: true

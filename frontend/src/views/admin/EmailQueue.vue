@@ -449,7 +449,7 @@ export default {
     })
     const pagination = reactive({
       page: 1,
-      size: 20,
+      size: 10,
       total: 0,
       pages: 0
     })

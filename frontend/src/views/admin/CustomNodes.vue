@@ -598,7 +598,7 @@ export default {
     const addNodeTab = ref('link')
     const searchKeyword = ref('')
     const filters = reactive({ status: '', is_active: '' })
-    const pagination = reactive({ page: 1, size: 20, total: 0 })
+    const pagination = reactive({ page: 1, size: 10, total: 0 })
     const nodeFormRef = ref(null)
     const nodeForm = reactive({
       name: '', display_name: '', protocol: 'vmess', config: '', 

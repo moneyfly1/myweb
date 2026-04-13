@@ -354,7 +354,7 @@
           <el-pagination
             v-model:current-page="pagination.page"
             v-model:page-size="pagination.size"
-            :page-sizes="[20, 50, 100, 200]"
+            :page-sizes="[10, 20, 50, 100]"
             :total="pagination.total"
             layout="total, sizes, prev, pager, next, jumper"
             @size-change="handleSizeChange"
@@ -469,7 +469,7 @@ export default {
     })
     const pagination = reactive({
       page: 1,
-      size: 20,
+      size: 10,
       total: 0
     })
     const loadLogs = async () => {

@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	DefaultPageSize = 20
+	DefaultPageSize = 10
 )
 
 const systemLogsBaseWhere = "(audit_logs.action_type = ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type = ? OR audit_logs.resource_type = ?)"
