@@ -166,7 +166,7 @@ export default {
       }, 300)
     }
     const currentPage = ref(1)
-    const pageSize = ref(20)
+    const pageSize = ref(10)
     const total = ref(0)
     const fetchLoginHistory = async () => {
       loading.value = true
