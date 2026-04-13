@@ -410,9 +410,12 @@ func GetAdminSubscriptions(c *gin.Context) {
 
 	if keyword := utils.SanitizeSearchKeyword(c.DefaultQuery("search", c.Query("keyword"))); keyword != "" {
 		likeKey := "%" + keyword + "%"
+		// 用子查询匹配用户，避免 JOIN 影响 Count 和 Preload
+		userSubQuery := db.Model(&models.User{}).Select("id").Where("username LIKE ? OR email LIKE ? OR notes LIKE ?", likeKey, likeKey, likeKey)
+		resetSubQuery := db.Model(&models.SubscriptionReset{}).Select("DISTINCT user_id").Where("old_subscription_url LIKE ?", likeKey)
 		query = query.Where(
-			"subscription_url LIKE ? OR user_id IN (SELECT id FROM users WHERE username LIKE ? OR email LIKE ? OR notes LIKE ?) OR user_id IN (SELECT DISTINCT user_id FROM subscription_resets WHERE old_subscription_url LIKE ?)",
-			likeKey, likeKey, likeKey, likeKey, likeKey)
+			"subscriptions.subscription_url LIKE ? OR subscriptions.user_id IN (?) OR subscriptions.user_id IN (?)",
+			likeKey, userSubQuery, resetSubQuery)
 	}
 
 	if status := c.Query("status"); status != "" {
@@ -426,10 +429,18 @@ func GetAdminSubscriptions(c *gin.Context) {
 		}
 	}
 
+	var total int64
+	query.Count(&total)
+
 	sort := c.DefaultQuery("sort", "add_time_desc")
+	needOnlineJoin := sort == "online_devices_desc" || sort == "online_devices_asc"
+	if needOnlineJoin {
+		query = query.Joins("LEFT JOIN (SELECT subscription_id, COUNT(*) as online_count FROM devices WHERE is_active = 1 GROUP BY subscription_id) AS od ON od.subscription_id = subscriptions.id")
+	}
+
 	sortMap := map[string]string{
-		"add_time_desc":       "created_at DESC",
-		"add_time_asc":        "created_at ASC",
+		"add_time_desc":       "subscriptions.created_at DESC",
+		"add_time_asc":        "subscriptions.created_at ASC",
 		"expire_time_desc":    "expire_time DESC",
 		"expire_time_asc":     "expire_time ASC",
 		"device_count_desc":   "current_devices DESC",
@@ -440,18 +451,15 @@ func GetAdminSubscriptions(c *gin.Context) {
 		"apple_count_asc":     "universal_count ASC",
 		"clash_count_desc":    "clash_count DESC",
 		"clash_count_asc":     "clash_count ASC",
-		"online_devices_desc": "(SELECT COUNT(*) FROM devices WHERE devices.subscription_id = subscriptions.id AND devices.is_active = 1) DESC",
-		"online_devices_asc":  "(SELECT COUNT(*) FROM devices WHERE devices.subscription_id = subscriptions.id AND devices.is_active = 1) ASC",
+		"online_devices_desc": "COALESCE(od.online_count, 0) DESC",
+		"online_devices_asc":  "COALESCE(od.online_count, 0) ASC",
 	}
 
 	if order, ok := sortMap[sort]; ok {
 		query = query.Order(order)
 	} else {
-		query = query.Order("created_at DESC")
+		query = query.Order("subscriptions.created_at DESC")
 	}
-
-	var total int64
-	query.Count(&total)
 
 	var subscriptions []models.Subscription
 	if err := query.Preload("User").Preload("Package").Offset((page - 1) * size).Limit(size).Find(&subscriptions).Error; err != nil {

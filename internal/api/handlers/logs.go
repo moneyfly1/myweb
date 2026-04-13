@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -37,25 +36,11 @@ type PaginationParams struct {
 
 // parsePagination 解析分页参数
 func parsePagination(c *gin.Context) PaginationParams {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(DefaultPageSize)))
-
-	// 兼容旧参数 "size"
-	if pageSizeStr := c.Query("size"); pageSizeStr != "" {
-		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize) // Ignore error, use default value
-	}
-
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = DefaultPageSize
-	}
-
+	p := utils.ParsePagination(c)
 	return PaginationParams{
-		Page:     page,
-		PageSize: pageSize,
-		Offset:   (page - 1) * pageSize,
+		Page:     p.Page,
+		PageSize: p.Size,
+		Offset:   p.GetOffset(),
 	}
 }
 
@@ -360,17 +345,40 @@ func getLogLevel(log models.AuditLog, useCN bool) string {
 	return ret("信息", "info")
 }
 
-func formatAuditLogForAPI(db *gorm.DB, log models.AuditLog) gin.H {
-	// 获取用户名 (如果 log.User 未预加载，且 UserID 有效，则查询)
-	username := ""
-	if log.User.ID > 0 {
-		username = log.User.Username
-	} else if log.UserID.Valid {
-		var u models.User
-		if db.Select("username").First(&u, log.UserID.Int64).Error == nil {
-			username = u.Username
+// batchFormatAuditLogs 批量格式化审计日志，避免逐条查用户名的 N+1 问题
+func batchFormatAuditLogs(db *gorm.DB, logs []models.AuditLog) []gin.H {
+	// 收集未预加载的 UserID
+	missingIDs := make([]int64, 0)
+	for _, log := range logs {
+		if log.User.ID == 0 && log.UserID.Valid {
+			missingIDs = append(missingIDs, log.UserID.Int64)
 		}
 	}
+
+	// 批量查询用户名
+	usernameMap := make(map[int64]string)
+	if len(missingIDs) > 0 {
+		var users []models.User
+		db.Select("id, username").Where("id IN ?", missingIDs).Find(&users)
+		for _, u := range users {
+			usernameMap[int64(u.ID)] = u.Username
+		}
+	}
+
+	result := make([]gin.H, 0, len(logs))
+	for _, log := range logs {
+		username := ""
+		if log.User.ID > 0 {
+			username = log.User.Username
+		} else if log.UserID.Valid {
+			username = usernameMap[log.UserID.Int64]
+		}
+		result = append(result, formatAuditLogForAPIWithUsername(log, username))
+	}
+	return result
+}
+
+func formatAuditLogForAPIWithUsername(log models.AuditLog, username string) gin.H {
 
 	level := getLogLevel(log, false)
 	message := getNullableString(log.ActionDescription)
@@ -560,11 +568,8 @@ func GetSystemLogs(c *gin.Context) {
 		return
 	}
 
-	// 3. 格式化
-	logList := make([]gin.H, 0, len(logs))
-	for _, log := range logs {
-		logList = append(logList, formatAuditLogForAPI(db, log))
-	}
+	// 3. 批量格式化
+	logList := batchFormatAuditLogs(db, logs)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"logs":  logList,
@@ -763,14 +768,6 @@ func GetSubscriptionLogs(c *gin.Context) {
 
 	var logList []gin.H
 	for _, log := range logs {
-		var before, after map[string]interface{}
-		if log.BeforeData.Valid {
-			_ = json.Unmarshal([]byte(log.BeforeData.String), &before) // Ignore error, use empty if invalid
-		}
-		if log.AfterData.Valid {
-			_ = json.Unmarshal([]byte(log.AfterData.String), &after) // Ignore error, use empty if invalid
-		}
-
 		// 获取操作人信息（操作人和执行账号）
 		actionByUser := ""
 		actionByEmail := ""
@@ -819,15 +816,13 @@ func GetSubscriptionLogs(c *gin.Context) {
 			"subscription_id": log.SubscriptionID,
 			"user_id":         log.UserID,
 			"username":        getCommonUserName(&log.User),
-			"user_email":      log.User.Email, // 添加用户邮箱
+			"user_email":      log.User.Email,
 			"action_type":     log.ActionType,
-			"action_by":       getNullableString(log.ActionBy), // 操作类型：user, admin, system
-			"action_by_user":  actionByUser,                    // 操作人用户名
-			"action_by_email": actionByEmail,                   // 操作人邮箱
-			"before_data":     before,
-			"after_data":      after,
+			"action_by":       getNullableString(log.ActionBy),
+			"action_by_user":  actionByUser,
+			"action_by_email": actionByEmail,
 			"description":     description,
-			"ip_address":      ipWithLocation, // IP 地址 + 地区
+			"ip_address":      ipWithLocation,
 			"created_at":      formatTime(log.CreatedAt),
 		})
 	}

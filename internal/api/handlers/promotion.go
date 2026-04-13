@@ -17,7 +17,7 @@ func GetActivePromotions(c *gin.Context) {
 	now := utils.GetBeijingTime()
 	var promotions []models.Promotion
 	db.Where("is_active = ? AND start_time <= ? AND end_time >= ?", true, now, now).
-		Order("created_at DESC").Find(&promotions)
+		Order("created_at DESC").Limit(100).Find(&promotions)
 	utils.SuccessResponse(c, http.StatusOK, "", promotions)
 }
 

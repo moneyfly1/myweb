@@ -1450,7 +1450,7 @@ export default {
       checkPaymentStatus()
       paymentStatusCheckInterval = setInterval(async () => {
         await checkPaymentStatus()
-      }, 1000)
+      }, 5000)
       visibilityChangeHandler = async () => {
         if (document.visibilityState === 'visible' && paymentQRVisible.value) {
           await checkPaymentStatus()

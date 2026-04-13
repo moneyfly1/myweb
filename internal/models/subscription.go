@@ -31,7 +31,7 @@ func (Subscription) TableName() string {
 
 type SubscriptionReset struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
-	UserID             uint      `gorm:"index;not null" json:"user_id"`
+	UserID             uint      `gorm:"index;not null;index:idx_subreset_user_created,priority:1" json:"user_id"`
 	SubscriptionID     uint      `gorm:"index;not null" json:"subscription_id"`
 	ResetType          string    `gorm:"type:varchar(50);not null" json:"reset_type"`
 	Reason             string    `gorm:"type:text" json:"reason"`
@@ -40,7 +40,7 @@ type SubscriptionReset struct {
 	DeviceCountBefore  int       `gorm:"default:0" json:"device_count_before"`
 	DeviceCountAfter   int       `gorm:"default:0" json:"device_count_after"`
 	ResetBy            *string   `gorm:"type:varchar(50)" json:"reset_by,omitempty"`
-	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
+	CreatedAt          time.Time `gorm:"autoCreateTime;index:idx_subreset_user_created,priority:2" json:"created_at"`
 
 	User         User         `gorm:"foreignKey:UserID" json:"-"`
 	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"-"`

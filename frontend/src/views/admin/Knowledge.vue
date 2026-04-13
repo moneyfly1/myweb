@@ -78,7 +78,7 @@
             <el-table-column prop="name" label="名称" min-width="150" />
             <el-table-column prop="icon" label="图标" width="150">
               <template #default="{ row }">
-                <el-icon><component :is="row.icon || 'Folder'" /></el-icon>
+                <el-icon><component :is="resolveIcon(row.icon)" /></el-icon>
                 <span style="margin-left: 8px">{{ row.icon || 'Folder' }}</span>
               </template>
             </el-table-column>
@@ -198,8 +198,11 @@
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { FolderAdd, DocumentAdd, Search, Folder } from '@element-plus/icons-vue'
+import { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
+
+const iconMap = { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View }
+const resolveIcon = (name) => iconMap[name] || Folder
 
 const isMobile = ref(window.innerWidth <= 768)
 const activeTab = ref('articles')

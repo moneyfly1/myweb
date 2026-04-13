@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
@@ -343,6 +344,7 @@ func MarkUserNormal(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户失败", err)
 		return
 	}
+	middleware.InvalidateAuthUserCache(user.ID)
 	utils.SuccessResponse(c, http.StatusOK, "已标记为正常", nil)
 }
 
@@ -354,10 +356,58 @@ func buildAbnormalUserData(db *gorm.DB, users []models.User) []gin.H {
 }
 
 func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startTime, endTime time.Time, minSub, minReset int) []gin.H {
+	if len(users) == 0 {
+		return []gin.H{}
+	}
+
 	now := utils.GetBeijingTime()
 	oneMonthAgo := now.AddDate(0, -1, 0)
-	userList := make([]gin.H, 0, len(users))
 
+	// 收集所有用户ID
+	userIDs := make([]uint, len(users))
+	for i, u := range users {
+		userIDs[i] = u.ID
+	}
+
+	// 批量查询重置次数
+	type UserCount struct {
+		UserID uint  `gorm:"column:user_id"`
+		Count  int64 `gorm:"column:count"`
+	}
+	var resetCounts []UserCount
+	db.Model(&models.SubscriptionReset{}).
+		Select("user_id, COUNT(*) as count").
+		Where("user_id IN ? AND created_at >= ? AND created_at <= ?", userIDs, startTime, endTime).
+		Group("user_id").Scan(&resetCounts)
+	resetMap := make(map[uint]int64)
+	for _, rc := range resetCounts {
+		resetMap[rc.UserID] = rc.Count
+	}
+
+	// 批量查询订阅次数
+	var subCounts []UserCount
+	db.Model(&models.Subscription{}).
+		Select("user_id, COUNT(*) as count").
+		Where("user_id IN ? AND created_at >= ? AND created_at <= ?", userIDs, startTime, endTime).
+		Group("user_id").Scan(&subCounts)
+	subMap := make(map[uint]int64)
+	for _, sc := range subCounts {
+		subMap[sc.UserID] = sc.Count
+	}
+
+	// 批量查询最后活动时间
+	type UserActivity struct {
+		UserID    uint      `gorm:"column:user_id"`
+		CreatedAt time.Time `gorm:"column:created_at"`
+	}
+	var activities []UserActivity
+	db.Raw("SELECT user_id, MAX(created_at) as created_at FROM user_activities WHERE user_id IN ? GROUP BY user_id", userIDs).Scan(&activities)
+	activityMap := make(map[uint]time.Time)
+	for _, a := range activities {
+		activityMap[a.UserID] = a.CreatedAt
+	}
+
+	userList := make([]gin.H, 0, len(users))
 	for _, user := range users {
 		lastLogin := "从未登录"
 		if user.LastLogin.Valid {
@@ -369,58 +419,41 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 			status = "active"
 		}
 
-		var resetCount int64
-		db.Model(&models.SubscriptionReset{}).
-			Where("user_id = ? AND created_at >= ? AND created_at <= ?", user.ID, startTime, endTime).
-			Count(&resetCount)
+		resetCount := resetMap[user.ID]
+		subscriptionCount := subMap[user.ID]
 
-		var subscriptionCount int64
-		db.Model(&models.Subscription{}).
-			Where("user_id = ? AND created_at >= ? AND created_at <= ?", user.ID, startTime, endTime).
-			Count(&subscriptionCount)
-
-		// 收集所有异常类型
 		var abnormalTypes []string
 		var abnormalDescriptions []string
 		abnormalCount := 0
 
-		// 检查账户禁用
 		if !user.IsActive {
 			abnormalTypes = append(abnormalTypes, "账户已禁用")
 			abnormalDescriptions = append(abnormalDescriptions, "账户已被禁用")
 			abnormalCount++
 		}
-
-		// 检查频繁重置
 		if resetCount >= int64(minReset) {
 			abnormalTypes = append(abnormalTypes, "频繁重置")
 			abnormalDescriptions = append(abnormalDescriptions, fmt.Sprintf("频繁重置订阅 %d 次", resetCount))
 			abnormalCount++
 		}
-
-		// 检查频繁创建订阅
 		if subscriptionCount >= int64(minSub) {
 			abnormalTypes = append(abnormalTypes, "频繁创建订阅")
 			abnormalDescriptions = append(abnormalDescriptions, fmt.Sprintf("频繁创建订阅 %d 次", subscriptionCount))
 			abnormalCount++
 		}
-
-		// 检查长期未登录
 		if !user.LastLogin.Valid && user.CreatedAt.Before(oneMonthAgo) {
 			abnormalTypes = append(abnormalTypes, "长期未登录")
 			abnormalDescriptions = append(abnormalDescriptions, "注册超过1个月且从未登录")
 			abnormalCount++
 		}
 
-		// 根据异常数量确定类型和描述
+		if abnormalCount == 0 {
+			continue
+		}
+
 		abnormalType := "unknown"
 		description := ""
-
-		if abnormalCount == 0 {
-			// 没有异常，跳过此用户
-			continue
-		} else if abnormalCount == 1 {
-			// 单一异常
+		if abnormalCount == 1 {
 			if !user.IsActive {
 				abnormalType = "disabled"
 			} else if resetCount >= int64(minReset) {
@@ -432,17 +465,13 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 			}
 			description = abnormalDescriptions[0]
 		} else {
-			// 多重异常
 			abnormalType = "multiple_abnormal"
 			description = fmt.Sprintf("存在 %d 种异常：%s", abnormalCount, strings.Join(abnormalTypes, "、"))
 		}
 
-		var lastActivity string
-		var lastActivityRecord models.UserActivity
-		if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastActivityRecord).Error; err != nil {
-			lastActivity = utils.FormatBeijingTime(user.CreatedAt)
-		} else {
-			lastActivity = utils.FormatBeijingTime(lastActivityRecord.CreatedAt)
+		lastActivity := utils.FormatBeijingTime(user.CreatedAt)
+		if t, ok := activityMap[user.ID]; ok {
+			lastActivity = utils.FormatBeijingTime(t)
 		}
 
 		userList = append(userList, gin.H{

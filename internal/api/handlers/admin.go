@@ -1388,20 +1388,8 @@ func UpdatePaymentConfig(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "支付配置更新成功", responseData)
 }
 func getPagination(c *gin.Context) (page int, size int, offset int) {
-	page, size = 1, 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	return page, size, (page - 1) * size
+	p := utils.ParsePagination(c)
+	return p.Page, p.Size, p.GetOffset()
 }
 
 func parseBatchUintIDs(c *gin.Context, keys ...string) ([]uint, error) {
