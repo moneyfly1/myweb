@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -32,11 +33,25 @@ func ResolveDownload(c *gin.Context) {
 	}
 
 	candidates := buildDownloadCandidates(target, loadDownloadProxyPrefixes())
+
+	// 并行检测所有候选 URL，第一个可达的立即返回
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	resultCh := make(chan string, len(candidates))
 	for _, candidate := range candidates {
-		if isDownloadURLReachable(candidate) {
-			c.Redirect(http.StatusFound, candidate)
-			return
-		}
+		go func(url string) {
+			if isDownloadURLReachable(url) {
+				resultCh <- url
+			}
+		}(candidate)
+	}
+
+	select {
+	case url := <-resultCh:
+		c.Redirect(http.StatusFound, url)
+		return
+	case <-ctx.Done():
 	}
 
 	// 所有代理不可用时回退原始地址

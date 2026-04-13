@@ -432,12 +432,28 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		return
 	}
 
+	// 批量查出已存在的分配关系
+	var existingNodes []models.UserCustomNode
+	db.Where("user_id IN ? AND custom_node_id IN ?", req.UserIDs, req.NodeIDs).Find(&existingNodes)
+	existingSet := make(map[string]bool)
+	for _, en := range existingNodes {
+		existingSet[fmt.Sprintf("%d-%d", en.UserID, en.CustomNodeID)] = true
+	}
+
+	// 批量查出所有相关用户
+	var users []models.User
+	db.Where("id IN ?", req.UserIDs).Find(&users)
+	userMap := make(map[uint]*models.User)
+	for i := range users {
+		userMap[users[i].ID] = &users[i]
+	}
+
 	assignedCount := 0
 	for _, userID := range req.UserIDs {
 		for _, nodeID := range req.NodeIDs {
-			var existing models.UserCustomNode
-			if err := db.Where("user_id = ? AND custom_node_id = ?", userID, nodeID).First(&existing).Error; err == nil {
-				continue // 已存在，跳过
+			key := fmt.Sprintf("%d-%d", userID, nodeID)
+			if existingSet[key] {
+				continue
 			}
 
 			userNode := models.UserCustomNode{
@@ -447,16 +463,21 @@ func BatchAssignCustomNodes(c *gin.Context) {
 			if err := db.Create(&userNode).Error; err == nil {
 				assignedCount++
 			}
+		}
 
-			var user models.User
-			if err := db.First(&user, userID).Error; err == nil {
-				if req.SubscriptionType != "" {
-					user.SpecialNodeSubscriptionType = req.SubscriptionType
-				}
-				if req.ExpiresAt != nil {
-					user.SpecialNodeExpiresAt = sql.NullTime{Time: *req.ExpiresAt, Valid: true}
-				}
-				db.Save(&user)
+		// 更新用户专线配置
+		if u, ok := userMap[userID]; ok {
+			needSave := false
+			if req.SubscriptionType != "" {
+				u.SpecialNodeSubscriptionType = req.SubscriptionType
+				needSave = true
+			}
+			if req.ExpiresAt != nil {
+				u.SpecialNodeExpiresAt = sql.NullTime{Time: *req.ExpiresAt, Valid: true}
+				needSave = true
+			}
+			if needSave {
+				db.Save(u)
 			}
 		}
 	}
@@ -524,9 +545,17 @@ func BatchTestCustomNodes(c *gin.Context) {
 	db := database.GetDB()
 	results := make([]gin.H, 0)
 
+	// 批量查出所有节点
+	var nodes []models.CustomNode
+	db.Where("id IN ?", req.NodeIDs).Find(&nodes)
+	nodeMap := make(map[uint]*models.CustomNode)
+	for i := range nodes {
+		nodeMap[nodes[i].ID] = &nodes[i]
+	}
+
 	for _, nodeID := range req.NodeIDs {
-		var node models.CustomNode
-		if err := db.First(&node, nodeID).Error; err != nil {
+		node, ok := nodeMap[nodeID]
+		if !ok {
 			results = append(results, gin.H{
 				"node_id": nodeID,
 				"status":  "error",
@@ -558,7 +587,7 @@ func BatchTestCustomNodes(c *gin.Context) {
 		}
 
 		node.Status = "active"
-		db.Save(&node)
+		db.Save(node)
 
 		results = append(results, gin.H{
 			"node_id": nodeID,
