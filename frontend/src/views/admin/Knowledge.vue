@@ -219,7 +219,7 @@ const articleFilter = reactive({
 
 const articlePagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: 10,
   total: 0
 })
 

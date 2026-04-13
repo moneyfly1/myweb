@@ -398,7 +398,7 @@ const filters = reactive({
 })
 const pagination = reactive({
   page: 1,
-  size: 20,
+  size: 10,
   total: 0
 })
 const ticketForm = reactive({

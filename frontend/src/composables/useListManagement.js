@@ -9,7 +9,7 @@ import { debounce } from './useDebounce'
  */
 export function useListManagement(fetchFn, options = {}) {
   const {
-    pageSize: initialPageSize = 20,
+    pageSize: initialPageSize = 10,
     searchDelay = 500,
     autoLoad = true
   } = options

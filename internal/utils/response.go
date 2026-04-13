@@ -141,7 +141,7 @@ type PaginationParams struct {
 
 func ParsePagination(c *gin.Context) PaginationParams {
 	page := 1
-	size := 20
+	size := 10
 
 	if pageStr := c.Query("page"); pageStr != "" {
 		if _, err := fmt.Sscanf(pageStr, "%d", &page); err != nil {
@@ -150,7 +150,7 @@ func ParsePagination(c *gin.Context) PaginationParams {
 	}
 	if sizeStr := c.Query("size"); sizeStr != "" {
 		if _, err := fmt.Sscanf(sizeStr, "%d", &size); err != nil {
-			size = 20
+			size = 10
 		}
 	}
 	// 兼容 page_size 参数

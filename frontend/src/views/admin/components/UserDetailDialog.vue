@@ -583,7 +583,7 @@ export default {
       exportingCheckins: false,
       checkinPagination: {
         page: 1,
-        size: 20,
+        size: 10,
         total: 0
       }
     }
