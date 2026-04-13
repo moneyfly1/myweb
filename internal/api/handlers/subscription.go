@@ -1448,7 +1448,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 	if err := db.Where("subscription_url = ?", clashURL).First(&subscription).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.CreateBusinessLogAsync(c, "subscription_pull_not_found", "订阅拉取: token 无效或订阅不存在", "warning", nil)
-			c.String(200, generateErrorConfigBase64("错误", "订阅不存在", baseURL))
+			c.String(200, generateErrorConfigBase64("订阅不存在", "请检查订阅地址是否正确，或登录官网重新获取", baseURL))
 			return
 		}
 		utils.CreateBusinessLogAsync(c, "subscription_pull_query_failed", "订阅拉取: 查询订阅失败", "error", map[string]interface{}{"reason": err.Error()})
@@ -1799,7 +1799,7 @@ func GetUniversalSubscription(c *gin.Context) {
 	}
 
 	// 订阅未找到
-	c.String(200, generateErrorConfigBase64("错误", "订阅不存在", baseURL))
+	c.String(200, generateErrorConfigBase64("订阅不存在", "请检查订阅地址是否正确，或登录官网重新获取", baseURL))
 }
 
 func GetConfigUpdateStatus(c *gin.Context) {
