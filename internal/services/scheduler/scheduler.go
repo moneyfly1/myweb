@@ -298,48 +298,35 @@ func (s *Scheduler) checkUsersForDeletionWarning(now time.Time) {
 	templateBuilder := email.NewEmailTemplateBuilder()
 
 	for _, user := range users {
-		var currentUser models.User
-		if err := s.db.First(&currentUser, user.ID).Error; err != nil {
-			continue
-		}
-
-		var activeSubscriptionCount int64
-		s.db.Model(&models.Subscription{}).
-			Where("user_id = ? AND is_active = ? AND status = ? AND expire_time > ?",
-				currentUser.ID, true, "active", now).
-			Count(&activeSubscriptionCount)
-		if activeSubscriptionCount > 0 {
-			continue
-		}
-
+		// users 已通过 SQL 过滤掉有活跃订阅的用户，无需再查
 		shouldWarn := false
-		if !currentUser.LastLogin.Valid {
+		if !user.LastLogin.Valid {
 			shouldWarn = true
-		} else if currentUser.LastLogin.Time.Before(thirtyDaysAgo) {
+		} else if user.LastLogin.Time.Before(thirtyDaysAgo) {
 			shouldWarn = true
 		}
 
 		if !shouldWarn {
-			continue // 用户已登录，跳过
+			continue
 		}
 
 		lastLogin := "从未登录"
-		if currentUser.LastLogin.Valid {
-			lastLogin = utils.FormatBeijingTime(currentUser.LastLogin.Time)
+		if user.LastLogin.Valid {
+			lastLogin = utils.FormatBeijingTime(user.LastLogin.Time)
 		}
 
 		content := templateBuilder.GetAccountDeletionWarningTemplate(
-			currentUser.Username,
-			currentUser.Email,
+			user.Username,
+			user.Email,
 			lastLogin,
 			7, // 7天后删除
 		)
 		subject := "账号删除提醒"
 
-		if err := emailService.QueueEmail(currentUser.Email, subject, content, "account_deletion_warning"); err != nil {
-			utils.LogErrorMsg("发送账户删除警告邮件失败: 用户 %s, 错误: %v", currentUser.Email, err)
+		if err := emailService.QueueEmail(user.Email, subject, content, "account_deletion_warning"); err != nil {
+			utils.LogErrorMsg("发送账户删除警告邮件失败: 用户 %s, 错误: %v", user.Email, err)
 		} else {
-			utils.LogInfo("已发送账户删除警告邮件给用户: %s (%s)", currentUser.Username, currentUser.Email)
+			utils.LogInfo("已发送账户删除警告邮件给用户: %s (%s)", user.Username, user.Email)
 		}
 	}
 }
@@ -358,21 +345,50 @@ func (s *Scheduler) checkUsersForDeletion(now time.Time) {
 
 	utils.LogInfo("找到 %d 封7天前发送的账户删除警告邮件", len(warningEmails))
 
+	if len(warningEmails) == 0 {
+		return
+	}
+
+	// 批量查出所有相关用户
+	emails := make([]string, 0, len(warningEmails))
+	for _, we := range warningEmails {
+		emails = append(emails, strings.ToLower(strings.TrimSpace(we.ToEmail)))
+	}
+	var users []models.User
+	s.db.Where("LOWER(email) IN ?", emails).Find(&users)
+	userByEmail := make(map[string]*models.User)
+	for i := range users {
+		userByEmail[strings.ToLower(users[i].Email)] = &users[i]
+	}
+
+	// 批量查有活跃订阅的用户ID
+	userIDs := make([]uint, 0, len(users))
+	for _, u := range users {
+		userIDs = append(userIDs, u.ID)
+	}
+	type IDRow struct{ UserID uint }
+	var activeSubUsers []IDRow
+	if len(userIDs) > 0 {
+		s.db.Model(&models.Subscription{}).Select("DISTINCT user_id").
+			Where("user_id IN ? AND is_active = ? AND status = ? AND expire_time > ?", userIDs, true, "active", now).
+			Scan(&activeSubUsers)
+	}
+	activeSet := make(map[uint]bool)
+	for _, r := range activeSubUsers {
+		activeSet[r.UserID] = true
+	}
+
 	emailService := email.NewEmailService()
 	templateBuilder := email.NewEmailTemplateBuilder()
 
 	for _, warningEmail := range warningEmails {
-		var user models.User
-		if err := s.db.Where("LOWER(email) = ?", strings.ToLower(strings.TrimSpace(warningEmail.ToEmail))).First(&user).Error; err != nil {
+		emailKey := strings.ToLower(strings.TrimSpace(warningEmail.ToEmail))
+		user, ok := userByEmail[emailKey]
+		if !ok {
 			continue
 		}
 
-		var activeSubscriptionCount int64
-		s.db.Model(&models.Subscription{}).
-			Where("user_id = ? AND is_active = ? AND status = ? AND expire_time > ?",
-				user.ID, true, "active", now).
-			Count(&activeSubscriptionCount)
-		if activeSubscriptionCount > 0 {
+		if activeSet[user.ID] {
 			utils.LogInfo("用户 %s (%s) 已有有效订阅，跳过删除", user.Username, user.Email)
 			continue
 		}

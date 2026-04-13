@@ -88,23 +88,27 @@ func warmupSystemConfig() {
 	db := database.GetDB()
 	categories := []string{"general", "payment", "email", "security"}
 
+	// 一次查出所有分类的配置
+	var allConfigs []models.SystemConfig
+	db.Where("category IN ?", categories).Find(&allConfigs)
+
+	// 按分类分组
+	grouped := make(map[string][]map[string]interface{})
+	for _, cfg := range allConfigs {
+		grouped[cfg.Category] = append(grouped[cfg.Category], map[string]interface{}{
+			"id":       cfg.ID,
+			"key":      cfg.Key,
+			"value":    cfg.Value,
+			"category": cfg.Category,
+		})
+	}
+
 	cs := NewCacheService()
 	for _, category := range categories {
-		var configs []models.SystemConfig
-		if err := db.Where("category = ?", category).Find(&configs).Error; err != nil {
-			continue
+		result := grouped[category]
+		if result == nil {
+			result = make([]map[string]interface{}, 0)
 		}
-
-		result := make([]map[string]interface{}, 0)
-		for _, cfg := range configs {
-			result = append(result, map[string]interface{}{
-				"id":       cfg.ID,
-				"key":      cfg.Key,
-				"value":    cfg.Value,
-				"category": cfg.Category,
-			})
-		}
-
 		if err := cs.SetSystemConfigCache(category, result); err != nil {
 			log.Printf("failed to set system config cache for category %s: %v", category, err)
 		}

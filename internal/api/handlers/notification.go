@@ -81,7 +81,7 @@ func sendNotificationEmail(db *gorm.DB, userID *uint, title, content string) {
 			}
 		} else {
 			var users []models.User
-			if err := db.Where("is_active = ?", true).Find(&users).Error; err == nil {
+			if err := db.Select("id, email").Where("is_active = ?", true).Find(&users).Error; err == nil {
 				for _, user := range users {
 					_ = emailService.QueueEmail(user.Email, title, emailContent, "marketing")
 				}
