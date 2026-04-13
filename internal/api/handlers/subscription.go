@@ -1933,14 +1933,29 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 		req["urls"] = formatConfigValue(urlsValue)
 	}
 
+	// 批量查出已有的配置
+	keys := make([]string, 0, len(req))
+	for key := range req {
+		keys = append(keys, key)
+	}
+	var existingConfigs []models.SystemConfig
+	db.Where("key IN ? AND category = ?", keys, "config_update").Find(&existingConfigs)
+	configMap := make(map[string]*models.SystemConfig)
+	for i := range existingConfigs {
+		configMap[existingConfigs[i].Key] = &existingConfigs[i]
+	}
+
 	for key, value := range req {
 		valueStr := formatConfigValue(value)
 
-		var config models.SystemConfig
-		err := db.Where("key = ? AND category = ?", key, "config_update").First(&config).Error
-
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			config = models.SystemConfig{
+		if config, ok := configMap[key]; ok {
+			config.Value = valueStr
+			if err := db.Save(config).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新配置 %s 失败", key), err)
+				return
+			}
+		} else {
+			config := models.SystemConfig{
 				Key:      key,
 				Value:    valueStr,
 				Category: "config_update",
@@ -1950,15 +1965,6 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("保存配置 %s 失败", key), err)
 				return
 			}
-		} else if err == nil {
-			config.Value = valueStr
-			if err := db.Save(&config).Error; err != nil {
-				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新配置 %s 失败", key), err)
-				return
-			}
-		} else {
-			// 其他 DB 错误
-			continue
 		}
 	}
 	utils.CreateAuditLogSimple(c, "update_config_update_config", "config_update", 0, "管理员操作: 更新配置更新设置")

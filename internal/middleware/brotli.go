@@ -1,8 +1,8 @@
 package middleware
 
 import (
+	"compress/gzip"
 	"io"
-	"net/http"
 	"strings"
 	"sync"
 
@@ -16,54 +16,69 @@ var brotliWriterPool = sync.Pool{
 	},
 }
 
-type brotliResponseWriter struct {
-	gin.ResponseWriter
-	writer *brotli.Writer
+var gzipWriterPool = sync.Pool{
+	New: func() interface{} {
+		w, _ := gzip.NewWriterLevel(io.Discard, gzip.DefaultCompression)
+		return w
+	},
 }
 
-func (w *brotliResponseWriter) Write(b []byte) (int, error) {
+type compressResponseWriter struct {
+	gin.ResponseWriter
+	writer io.Writer
+}
+
+func (w *compressResponseWriter) Write(b []byte) (int, error) {
 	return w.writer.Write(b)
 }
 
-func (w *brotliResponseWriter) WriteString(s string) (int, error) {
+func (w *compressResponseWriter) WriteString(s string) (int, error) {
 	return w.writer.Write([]byte(s))
 }
 
-// BrotliMiddleware compresses responses with Brotli when the client supports it.
-// Falls back to the next middleware (gzip) if the client doesn't send Accept-Encoding: br.
-func BrotliMiddleware() gin.HandlerFunc {
+// CompressionMiddleware Brotli 优先，fallback Gzip，互斥不会双重压缩
+func CompressionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !strings.Contains(c.GetHeader("Accept-Encoding"), "br") {
+		ae := c.GetHeader("Accept-Encoding")
+
+		// Skip WebSocket
+		if strings.EqualFold(c.GetHeader("Upgrade"), "websocket") {
 			c.Next()
 			return
 		}
 
-		// Skip small or already-compressed content types
-		ct := c.GetHeader("Content-Type")
-		if strings.HasPrefix(ct, "image/") || strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
-			c.Next()
-			return
-		}
+		if strings.Contains(ae, "br") {
+			bw := brotliWriterPool.Get().(*brotli.Writer)
+			bw.Reset(c.Writer)
 
-		bw := brotliWriterPool.Get().(*brotli.Writer)
-		bw.Reset(c.Writer)
-		defer func() {
+			c.Header("Content-Encoding", "br")
+			c.Header("Vary", "Accept-Encoding")
+			c.Writer.Header().Del("Content-Length")
+
+			c.Writer = &compressResponseWriter{ResponseWriter: c.Writer, writer: bw}
+			c.Next()
+
 			bw.Close()
 			brotliWriterPool.Put(bw)
-		}()
+			return
+		}
 
-		c.Header("Content-Encoding", "br")
-		c.Header("Vary", "Accept-Encoding")
-		c.Writer.Header().Del("Content-Length")
+		if strings.Contains(ae, "gzip") {
+			gw := gzipWriterPool.Get().(*gzip.Writer)
+			gw.Reset(c.Writer)
 
-		brw := &brotliResponseWriter{ResponseWriter: c.Writer, writer: bw}
-		c.Writer = brw
+			c.Header("Content-Encoding", "gzip")
+			c.Header("Vary", "Accept-Encoding")
+			c.Writer.Header().Del("Content-Length")
+
+			c.Writer = &compressResponseWriter{ResponseWriter: c.Writer, writer: gw}
+			c.Next()
+
+			gw.Close()
+			gzipWriterPool.Put(gw)
+			return
+		}
 
 		c.Next()
-
-		// Ensure status is written
-		if c.Writer.Status() == 0 {
-			c.Writer.WriteHeader(http.StatusOK)
-		}
 	}
 }

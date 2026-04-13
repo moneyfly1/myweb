@@ -6,7 +6,6 @@ import (
 	"cboard-go/internal/utils"
 	"net/http"
 
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,10 +16,8 @@ func SetupRouter() *gin.Engine {
 		utils.LogErrorMsg("failed to set trusted proxies: %v", err)
 	}
 
-	// Brotli 压缩（优先，现代浏览器支持，比 gzip 小 20-30%）
-	r.Use(middleware.BrotliMiddleware())
-	// 启用 Gzip 压缩（性能优化：传输大小减少 70-80%）
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	// 压缩中间件：Brotli 优先，不支持 br 的客户端 fallback 到 Gzip
+	r.Use(middleware.CompressionMiddleware())
 
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.SecurityHeadersMiddleware())

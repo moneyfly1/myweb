@@ -5,7 +5,6 @@ go 1.24.0
 require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/gin-contrib/cors v1.7.6
-	github.com/gin-contrib/gzip v1.2.5
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-playground/validator/v10 v10.29.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -71,6 +70,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/arch v0.23.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect

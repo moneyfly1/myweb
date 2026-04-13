@@ -493,12 +493,31 @@ func GetUserDetails(c *gin.Context) {
 	}
 
 	var subs []models.Subscription
-	db.Where("user_id = ?", u.ID).Find(&subs)
+	db.Where("user_id = ?", u.ID).Preload("Package").Find(&subs)
+
+	// 批量查询在线设备数
+	subIDs := make([]uint, len(subs))
+	for i, s := range subs {
+		subIDs[i] = s.ID
+	}
+	type SubCount struct {
+		SubscriptionID uint  `gorm:"column:subscription_id"`
+		Count          int64 `gorm:"column:count"`
+	}
+	var onlineCounts []SubCount
+	if len(subIDs) > 0 {
+		db.Model(&models.Device{}).Select("subscription_id, COUNT(*) as count").
+			Where("subscription_id IN ? AND is_active = ?", subIDs, true).
+			Group("subscription_id").Scan(&onlineCounts)
+	}
+	onlineMap := make(map[uint]int64)
+	for _, oc := range onlineCounts {
+		onlineMap[oc.SubscriptionID] = oc.Count
+	}
 
 	formattedSubs := make([]gin.H, 0, len(subs))
 	for _, sub := range subs {
-		var online int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&online)
+		online := onlineMap[sub.ID]
 
 		daysUntilExpire := 0
 		isExpired := false
@@ -698,10 +717,6 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
-	var subIDs []uint
-	for _, sub := range subs {
-		subIDs = append(subIDs, sub.ID)
-	}
 	uaRecords := make([]gin.H, 0)
 	getString := func(ptr *string) string {
 		if ptr != nil {

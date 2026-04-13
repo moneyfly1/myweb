@@ -970,14 +970,22 @@ func BulkMarkOrdersPaid(c *gin.Context) {
 	successCount := 0
 	failCount := 0
 
+	// 批量查出所有待处理订单
+	var orders []models.Order
+	db.Where("id IN ? AND status = ?", req.OrderIDs, "pending").Find(&orders)
+	orderMap := make(map[uint]*models.Order)
+	for i := range orders {
+		orderMap[orders[i].ID] = &orders[i]
+	}
+
 	for _, orderID := range req.OrderIDs {
-		var order models.Order
-		if err := db.Where("id = ? AND status = ?", orderID, "pending").First(&order).Error; err != nil {
+		order, ok := orderMap[orderID]
+		if !ok {
 			failCount++
 			continue
 		}
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		if _, err := svc.ProcessPaidOrder(&order); err != nil {
+		if _, err := svc.ProcessPaidOrder(order); err != nil {
 			utils.LogError("BulkMarkOrdersPaid: process order failed", err, map[string]interface{}{"order_id": orderID})
 			failCount++
 		} else {
