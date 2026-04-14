@@ -743,7 +743,6 @@ export default {
       admin_notification: '管理员通知',
       admin_manual: '管理员手动邮件',
       account_deletion: '账号删除',
-      account_deletion_warning: '账号删除警告',
       user_created: '账户创建',
       abnormal_login_alert: '异常登录提醒',
       marketing: '营销推广'
