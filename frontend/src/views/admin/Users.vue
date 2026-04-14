@@ -794,7 +794,7 @@ export default {
           is_verified: Boolean(user.is_verified),
           note: user.notes || '', password: '',
           balance: user.balance || 0,
-          device_limit: 5, expire_time: getDefaultExpireTime()
+          device_limit: 5, expire_time: ''
         })
 
         // 加载用户详情以获取订阅信息
