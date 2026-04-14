@@ -428,11 +428,11 @@
           </template>
         </el-alert>
         <el-form :model="inviteSettings" label-width="0" class="invite-settings-form">
-          <el-form-item prop="invite_inviter_reward" class="settings-form-item">
+          <el-form-item prop="inviter_reward" class="settings-form-item">
             <div class="form-item-wrapper">
               <div class="form-item-label">邀请人奖励（元）</div>
-              <el-input-number 
-                v-model="inviteSettings.invite_inviter_reward" 
+              <el-input-number
+                v-model="inviteSettings.inviter_reward"
                 :min="0" 
                 :max="10000"
                 :precision="2"
@@ -442,11 +442,11 @@
               />
             </div>
           </el-form-item>
-          <el-form-item prop="invite_invitee_reward" class="settings-form-item">
+          <el-form-item prop="invitee_reward" class="settings-form-item">
             <div class="form-item-wrapper">
               <div class="form-item-label">被邀请人奖励（元）</div>
-              <el-input-number 
-                v-model="inviteSettings.invite_invitee_reward" 
+              <el-input-number
+                v-model="inviteSettings.invitee_reward"
                 :min="0" 
                 :max="10000"
                 :precision="2"
@@ -491,8 +491,8 @@ const selectedCodes = ref([])
 const selectedRelations = ref([])
 const batchDeleting = ref(false)
 const inviteSettings = reactive({
-  invite_inviter_reward: 0.0,
-  invite_invitee_reward: 0.0
+  inviter_reward: 0.0,
+  invitee_reward: 0.0
 })
 const loadInviteSettings = async () => {
   try {
