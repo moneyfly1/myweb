@@ -50,8 +50,10 @@ export default defineConfig({
         manualChunks: {
           // Vue 核心库
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          // Element Plus 单独打包
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          // Element Plus 组件库
+          'element-plus': ['element-plus'],
+          // Element Plus 图标单独打包
+          'el-icons': ['@element-plus/icons-vue'],
           // 图表库
           'charts': ['chart.js'],
           // 工具库
