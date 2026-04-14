@@ -101,7 +101,7 @@ const EMAIL_TYPE_MAP = {
   welcome: '欢迎注册', subscription: '订阅配置', subscription_reset: '订阅重置',
   expiration_reminder: '到期提醒', expiry_reminder: '到期提醒(旧)', payment_success: '支付成功',
   admin_notification: '管理员通知', admin_manual: '管理员手动邮件', account_deletion: '账号删除',
-  account_deletion_warning: '账号删除警告', user_created: '账户创建',
+  user_created: '账户创建',
   abnormal_login_alert: '异常登录提醒', marketing: '营销推广'
 }
 const getEmailTypeText = (type) => EMAIL_TYPE_MAP[type] || type || '-'
