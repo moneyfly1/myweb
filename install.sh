@@ -27,44 +27,32 @@ error() { echo -e "${RED}[ERROR] $1${NC}"; }
 
 # --- 带超时的 Redis 重启函数 ---
 restart_redis_with_timeout() {
-    local timeout_seconds=10
-
     log "正在重启 Redis 服务..."
 
-    # 在后台执行重启命令
-    (systemctl restart redis 2>/dev/null || systemctl restart redis-server 2>/dev/null || service redis restart 2>/dev/null || service redis-server restart 2>/dev/null) &
-    local restart_pid=$!
+    # 检测 Redis 服务名称
+    local svc_name=""
+    if systemctl list-units --type=service --all 2>/dev/null | grep -q "redis-server"; then
+        svc_name="redis-server"
+    elif systemctl list-units --type=service --all 2>/dev/null | grep -q "redis\.service"; then
+        svc_name="redis"
+    fi
 
-    # 等待最多 timeout_seconds 秒
-    local count=0
-    while kill -0 $restart_pid 2>/dev/null; do
-        if [ $count -ge $timeout_seconds ]; then
-            # 超时，杀死进程
-            kill -9 $restart_pid 2>/dev/null
-            warn "⚠️  Redis 重启超时（10秒），继续执行后续步骤"
-            warn "💡 请稍后手动重启 Redis: sudo systemctl restart redis"
-            return 1
-        fi
-        sleep 1
-        ((count++))
-    done
+    if [ -z "$svc_name" ]; then
+        warn "⚠️  未检测到 Redis 服务，跳过重启"
+        return 1
+    fi
 
-    # 等待进程结束并获取退出码
-    wait $restart_pid 2>/dev/null
-    local exit_code=$?
+    # 先优雅停止（给 20 秒持久化时间），再启动
+    timeout 20 systemctl stop "$svc_name" 2>/dev/null
+    sleep 1
+    timeout 10 systemctl start "$svc_name" 2>/dev/null
 
-    if [ $exit_code -eq 0 ]; then
-        # 等待 Redis 启动
-        sleep 2
-        if redis-cli ping &> /dev/null; then
-            log "✅ Redis 服务已重启并运行正常"
-            return 0
-        else
-            warn "⚠️  Redis 重启完成但无法连接，请手动检查: systemctl status redis"
-            return 1
-        fi
+    sleep 2
+    if redis-cli ping &> /dev/null; then
+        log "✅ Redis 服务已重启并运行正常"
+        return 0
     else
-        warn "⚠️  Redis 重启失败，继续执行。请稍后手动重启: sudo systemctl restart redis"
+        warn "⚠️  Redis 重启后无法连接，请手动检查: systemctl status $svc_name"
         return 1
     fi
 }
