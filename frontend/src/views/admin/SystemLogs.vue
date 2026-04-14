@@ -76,7 +76,6 @@
                   <el-option label="节点更新" value="auto_node_update" />
                   <el-option label="节点健康检查" value="node_health_check" />
                   <el-option label="订阅到期检查" value="expiring_subscriptions" />
-                  <el-option label="账户删除" value="account_deletion" />
                   <el-option label="系统错误" value="system_error" />
                 </el-select>
               </el-form-item>
@@ -672,8 +671,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
         'scheduler_node_health_check': '节点健康检查',
         'expiring_subscriptions': '订阅到期检查',
         'scheduler_expiring_subscriptions': '订阅到期检查',
-        'account_deletion': '账户删除',
-        'scheduler_account_deletion': '账户删除',
         'system_error': '系统错误',
         'security_login_success': '用户登录成功',
         'security_admin_login_success': '管理员登录',

@@ -552,47 +552,6 @@ func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate
 	return b.GetBaseTemplate(title, content, "感谢您曾经选择我们的服务")
 }
 
-func (b *EmailTemplateBuilder) GetAccountDeletionWarningTemplate(username, email, lastLogin string, daysUntilDeletion int) string {
-	title := "账号删除提醒"
-	baseURL := b.GetBaseURL()
-	loginURL := fmt.Sprintf("%s/login", baseURL)
-
-	content := fmt.Sprintf(`<h2>⚠️ 账号删除提醒</h2>
-            <p>亲爱的 %s，</p>
-            <p>我们注意到您的账号已经<strong>30天未登录</strong>，且<strong>没有有效的付费套餐</strong>。</p>
-            <div class="warning-box">
-                <h3>📋 账号状态</h3>
-                <table class="info-table">
-                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
-                    <tr><th>注册邮箱</th><td>%s</td></tr>
-                    <tr><th>最后登录</th><td>%s</td></tr>
-                    <tr><th>订阅状态</th><td style="color: #e74c3c; font-weight: bold;">无有效套餐</td></tr>
-                </table>
-            </div>
-            <div class="warning-box">
-                <h3>⚠️ 重要通知</h3>
-                <p>根据我们的账号管理政策，您的账号将在<strong style="color: #e74c3c;">%d天后</strong>被自动删除。</p>
-                <p>如果您希望保留账号，请：</p>
-                <ol style="line-height: 2;">
-                    <li>立即登录账号（<a href="%s">点击登录</a>）</li>
-                    <li>购买并激活有效的服务套餐</li>
-                    <li>账号将自动保留</li>
-                </ol>
-            </div>
-            %s
-            <div class="info-box">
-                <p><strong>💡 温馨提示：</strong></p>
-                <ul>
-                    <li>账号删除后，所有数据将无法恢复</li>
-                    <li>包括订阅记录、订单记录、设备记录等</li>
-                    <li>如有任何疑问，请及时联系客服</li>
-                </ul>
-            </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, username, email, lastLogin, daysUntilDeletion, loginURL, buildActionBtn(loginURL, "立即登录"))
-
-	return b.GetBaseTemplate(title, content, "请及时登录以保留您的账号")
-}
-
 func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageName, expireDate string, remainingDays, deviceLimit, currentDevices int, isExpired bool) string {
 	title := "订阅已到期"
 	if !isExpired {
