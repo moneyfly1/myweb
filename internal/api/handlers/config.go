@@ -298,6 +298,9 @@ func GetAdminSettings(c *gin.Context) {
 			"backup_github_repo":  githubDefaults.Repo,
 			"backup_auto_enabled": "false", "backup_auto_interval": "24",
 		},
+		"invite": {
+			"inviter_reward": 0.0, "invitee_reward": 0.0, "min_order_amount": 0.0, "new_user_only": true,
+		},
 	}
 
 	// Fetch all relevant configs
