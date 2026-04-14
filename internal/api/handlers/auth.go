@@ -130,6 +130,11 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// 事务提交后发放即时邀请奖励
+	if req.InviteCode != "" {
+		go distributeInviteRewardAfterCommit(db, user.ID)
+	}
+
 	db.Where("id = ?", user.ID).First(&user)
 
 	ipAddress := utils.GetRealClientIP(c)
@@ -768,14 +773,8 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 			tx.Save(&newUser)
 		}
 
-		// 无最低消费要求时立即发放奖励（事务外异步处理）
-		if inviteCode.MinOrderAmount == 0 {
-			go func() {
-				freshDB := database.GetDB()
-				distributeReward(freshDB, inviteCode.UserID, inviteCode.InviterReward, newUserID, &inviteRelation, true)
-				distributeReward(freshDB, newUserID, inviteCode.InviteeReward, newUserID, &inviteRelation, false)
-			}()
-		} else if utils.AppLogger != nil {
+		// 无最低消费要求时，由事务外 distributeInviteRewardAfterCommit 发放奖励
+		if inviteCode.MinOrderAmount > 0 && utils.AppLogger != nil {
 			utils.AppLogger.Info("processInviteCode: ⏳ 等待订单支付后发放奖励 - invitee_id=%d, min_order_amount=%.2f", newUserID, inviteCode.MinOrderAmount)
 		}
 
@@ -785,6 +784,28 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 	if txErr != nil {
 		utils.LogError("processInviteCode: transaction failed", txErr, map[string]interface{}{"invite_code": inviteCodeStr, "new_user_id": newUserID})
 	}
+}
+
+// distributeInviteRewardAfterCommit 在注册事务提交后发放即时邀请奖励
+func distributeInviteRewardAfterCommit(db *gorm.DB, inviteeID uint) {
+	var relation models.InviteRelation
+	if err := db.Where("invitee_id = ? AND inviter_reward_given = ? AND invitee_reward_given = ?",
+		inviteeID, false, false).First(&relation).Error; err != nil {
+		return
+	}
+
+	var inviteCode models.InviteCode
+	if err := db.First(&inviteCode, relation.InviteCodeID).Error; err != nil {
+		return
+	}
+
+	// 仅处理无最低消费要求的即时奖励
+	if inviteCode.MinOrderAmount > 0 {
+		return
+	}
+
+	distributeReward(db, relation.InviterID, relation.InviterRewardAmount, inviteeID, &relation, true)
+	distributeReward(db, inviteeID, relation.InviteeRewardAmount, inviteeID, &relation, false)
 }
 
 func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID uint, relation *models.InviteRelation, isInviter bool) {
