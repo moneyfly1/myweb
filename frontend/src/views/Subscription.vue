@@ -84,23 +84,6 @@
               </el-input>
             </div>
           </div>
-          <div class="url-item">
-            <div class="url-label">通用订阅地址：</div>
-            <div class="url-content">
-              <el-input
-                v-model="subscription.universal_url"
-                readonly
-                size="large"
-              >
-                <template #append>
-                  <el-button @click="copyUrl(subscription.universal_url)">
-                    <el-icon><DocumentCopy /></el-icon>
-                    复制
-                  </el-button>
-                </template>
-              </el-input>
-            </div>
-          </div>
         </div>
         <div class="qr-code-section">
           <h4>订阅二维码（Shadowrocket扫码）</h4>

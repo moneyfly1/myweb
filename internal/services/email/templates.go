@@ -235,8 +235,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
 	title := "服务配置信息"
 
-	urlList := buildConfigURLItem("🔗 通用配置地址（推荐）：", "适用于大部分客户端，包括手机和电脑", universalURL) +
-		buildConfigURLItem("⚡ Clash 类型软件专用地址：", "适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件", clashURL)
+	urlList := buildConfigURLItem("⚡ Clash 订阅地址：", "适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件", clashURL)
 
 	remainingColor := "#e74c3c"
 	if remainingDays > 7 {
@@ -481,8 +480,7 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
 	title := "订阅重置通知"
 
-	urlList := buildConfigURLItem("🔗 通用配置地址（推荐）：", "适用于大部分客户端，包括手机和电脑", universalURL) +
-		buildConfigURLItem("⚡ 移动端专用地址：", "专为移动设备优化，支持规则分流", clashURL)
+	urlList := buildConfigURLItem("⚡ Clash 订阅地址：", "专为移动设备优化，支持规则分流", clashURL)
 
 	baseURL := b.GetBaseURL()
 
