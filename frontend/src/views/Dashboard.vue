@@ -337,25 +337,6 @@
                     </el-button>
                   </div>
                 </div>
-                <div class="url-item">
-                  <label>通用订阅地址</label>
-                  <div class="url-input-wrapper">
-                    <el-input 
-                      :value="userInfo.universalUrl" 
-                      readonly 
-                      size="small"
-                      class="url-input"
-                    />
-                    <el-button 
-                      @click="copyUniversalSubscription" 
-                      size="small"
-                      class="copy-btn"
-                    >
-                      <i class="fas fa-copy"></i>
-                      <span>复制</span>
-                    </el-button>
-                  </div>
-                </div>
               </div>
             </div>
             <div class="qr-code-section">
