@@ -383,6 +383,23 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
 		s.updateLastUpdateTime()
 
+		// 根据 manual_node_position 更新手动节点的 order_index
+		// manual_node_position 表示手动节点在URL列表中的位置（0=最前，N=第N个订阅源之后）
+		// 订阅源的 orderIndex = urlIndex * 10000 + idx
+		// 手动节点放在 position * 10000 - 5000 的位置，确保在对应订阅源之间
+		manualPos := -1
+		if pos, ok := config["manual_node_position"].(int); ok {
+			manualPos = pos
+		}
+		if manualPos >= 0 {
+			manualOrderIndex := manualPos*10000 - 5000
+			if manualPos == 0 {
+				manualOrderIndex = -500
+			}
+			s.db.Model(&models.Node{}).Where("is_manual = ?", true).
+				Update("order_index", manualOrderIndex)
+		}
+
 		time.Sleep(300 * time.Millisecond)
 		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 手动跳过: %d", importStats.Created, importStats.Updated, importStats.Skipped)
 
@@ -531,6 +548,7 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 	res := map[string]interface{}{
 		"urls": []string{}, "filter_keywords": []string{},
 		"enable_schedule": false, "schedule_interval": 3600,
+		"manual_node_position": -1,
 	}
 	for _, c := range configs {
 		switch c.Key {
@@ -538,8 +556,8 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 			res[c.Key] = s.splitAndTrim(c.Value)
 		case "enable_schedule":
 			res[c.Key] = c.Value == "true" || c.Value == "1"
-		case "schedule_interval":
-			if val, _ := strconv.Atoi(c.Value); val > 0 {
+		case "schedule_interval", "manual_node_position":
+			if val, err := strconv.Atoi(c.Value); err == nil {
 				res[c.Key] = val
 			}
 		default:
