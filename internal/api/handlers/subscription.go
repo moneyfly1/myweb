@@ -1954,6 +1954,25 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 			}
 		}
 	}
+	// 如果 manual_node_position 有变化，立即更新手动节点的 order_index
+	if posValue, ok := req["manual_node_position"]; ok {
+		var pos int
+		switch v := posValue.(type) {
+		case float64:
+			pos = int(v)
+		case string:
+			pos, _ = strconv.Atoi(v)
+		}
+		if pos >= 0 {
+			orderIndex := pos*10000 - 5000
+			if pos == 0 {
+				orderIndex = -500
+			}
+			db.Model(&models.Node{}).Where("is_manual = ?", true).Update("order_index", orderIndex)
+			clearNodeCaches()
+		}
+	}
+
 	utils.CreateAuditLogSimple(c, "update_config_update_config", "config_update", 0, "管理员操作: 更新配置更新设置")
 	utils.SuccessResponse(c, http.StatusOK, "配置保存成功", nil)
 }
