@@ -104,28 +104,40 @@
           </div>
           <div class="url-list" ref="urlListRef">
             <div v-for="(item, index) in config.urls" :key="item.uid" class="list-item-wrapper">
-              <div class="input-with-action">
+              <div class="input-with-action" :class="{ 'manual-node-item': item.isManual }">
                 <div class="drag-handle">
                   <el-icon><Rank /></el-icon>
                 </div>
-                <el-input
-                  v-model="item.value"
-                  placeholder="请输入订阅/节点源 URL"
-                  class="styled-input"
-                >
-                  <template #prefix v-if="!isMobile">
-                    <span class="index-badge">{{ index + 1 }}</span>
-                  </template>
-                </el-input>
+                <template v-if="item.isManual">
+                  <div class="manual-node-label styled-input">
+                    <span class="index-badge" v-if="!isMobile">{{ index + 1 }}</span>
+                    <el-icon><User /></el-icon>
+                    <span>手动节点</span>
+                    <el-tag size="small" type="warning" style="margin-left: 8px;">固定</el-tag>
+                  </div>
+                </template>
+                <template v-else>
+                  <el-input
+                    v-model="item.value"
+                    placeholder="请输入订阅/节点源 URL"
+                    class="styled-input"
+                  >
+                    <template #prefix v-if="!isMobile">
+                      <span class="index-badge">{{ index + 1 }}</span>
+                    </template>
+                  </el-input>
+                </template>
                 <el-button
+                  v-if="!item.isManual"
                   type="danger"
                   plain
                   @click="removeUrl(index)"
-                  :disabled="config.urls.length <= 1"
+                  :disabled="realUrlCount <= 1"
                   class="action-btn-side"
                 >
                   <el-icon><Delete /></el-icon>
                 </el-button>
+                <div v-else class="action-btn-side placeholder-btn"></div>
               </div>
             </div>
             <el-button type="primary" plain @click="addUrl" class="add-item-btn">
@@ -273,11 +285,11 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
-  Connection, Filter, Warning, Document, Rank, Monitor
+  Connection, Filter, Warning, Document, Rank, Monitor, User
 } from '@element-plus/icons-vue'
 import { configUpdateAPI } from '@/utils/api'
 import Sortable from 'sortablejs'
@@ -286,7 +298,7 @@ export default {
   name: 'ConfigUpdate',
   components: {
     VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
-    Connection, Filter, Warning, Document, Rank, Monitor
+    Connection, Filter, Warning, Document, Rank, Monitor, User
   },
   setup() {
     // 状态定义
@@ -318,6 +330,9 @@ export default {
 
     let pollingTimer = null // 统一的轮询定时器
     let sortableInstance = null
+    const MANUAL_NODE_UID = '__manual_node__'
+
+    const realUrlCount = computed(() => config.urls.filter(item => !item.isManual).length)
 
     const checkMobile = () => {
       isMobile.value = window.innerWidth <= 768
@@ -428,10 +443,15 @@ export default {
         if (response?.data?.success && data && typeof data === 'object') {
           const rawInterval = data.schedule_interval ?? data.update_interval ?? 3600
           const interval = typeof rawInterval === 'number' ? rawInterval : (parseInt(rawInterval) || 3600)
-          
+
           const rawUrls = Array.isArray(data.urls) ? (data.urls.length ? data.urls : ['']) : ['']
           config.urls = rawUrls.map(url => ({ uid: generateUid(), value: url }))
-          
+
+          // 插入手动节点固定项
+          const manualPos = typeof data.manual_node_position === 'number' ? data.manual_node_position : config.urls.length
+          const clampedPos = Math.min(Math.max(0, manualPos), config.urls.length)
+          config.urls.splice(clampedPos, 0, { uid: MANUAL_NODE_UID, value: '', isManual: true })
+
           config.filter_keywords = Array.isArray(data.filter_keywords) ? data.filter_keywords : []
           config.enable_schedule = !!data.enable_schedule
           config.update_interval = interval
@@ -557,20 +577,25 @@ export default {
       loading.save = true
       try {
         updateInterval()
-        const urls = (config.urls || []).map(item => item.value).filter(val => val && String(val).trim())
+        const urls = (config.urls || []).filter(item => !item.isManual).map(item => item.value).filter(val => val && String(val).trim())
         const filter_keywords = (config.filter_keywords || []).filter(keyword => keyword && String(keyword).trim())
-        
+
+        // 计算手动节点在纯URL列表中的位置
+        const manualIndex = (config.urls || []).findIndex(item => item.isManual)
+        const manual_node_position = manualIndex >= 0 ? (config.urls || []).slice(0, manualIndex).filter(item => !item.isManual).length : urls.length
+
         if (!urls.length) {
           ElMessage.warning('至少需要配置一个节点源URL')
           loading.save = false
           return
         }
-        
+
         const configToSave = {
           urls,
           filter_keywords,
           enable_schedule: config.enable_schedule,
-          schedule_interval: config.update_interval
+          schedule_interval: config.update_interval,
+          manual_node_position
         }
 
         const response = await configUpdateAPI.updateConfig(configToSave)
@@ -606,7 +631,8 @@ export default {
       config.urls.push({ uid: generateUid(), value: '' })
     }
     const removeUrl = (index) => {
-      if (config.urls.length > 1) config.urls.splice(index, 1)
+      if (config.urls[index]?.isManual) return
+      if (realUrlCount.value > 1) config.urls.splice(index, 1)
       else ElMessage.warning('至少保留一个URL')
     }
     const addKeyword = () => {
@@ -667,11 +693,11 @@ export default {
 
 
     return {
-      status, config, logs, loading, isLogPolling, isMobile,
+      status, config, logs, loading, isLogPolling, isMobile, realUrlCount,
       intervalUnit, intervalValue, urlListRef, logViewerRef,
       startUpdate, stopUpdate, testUpdate, refreshStatus, saveConfig,
       refreshLogs, clearLogs, addUrl, removeUrl, addKeyword, removeKeyword,
-      updateInterval, formatInterval, handleScheduleChange, 
+      updateInterval, formatInterval, handleScheduleChange,
       extractLogTime, extractLogLevelClass, extractLogLevelText, extractLogMessage
     }
   }
@@ -909,6 +935,15 @@ $primary-color: #409eff;
   cursor: grab; padding: 0 8px; display: flex; align-items: center; color: #909399; font-size: 18px;
   &:hover { color: #409eff; }
   &:active { cursor: grabbing; }
+}
+.manual-node-item {
+  background: #fdf6ec;
+  .manual-node-label {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    font-size: 14px; color: #e6a23c; font-weight: 500;
+    .index-badge { color: #909399; font-size: 12px; margin-right: 4px; font-weight: 600; }
+  }
+  .placeholder-btn { width: 44px; flex-shrink: 0; }
 }
 
 .sortable-ghost { opacity: 0.4; background: #e6f7ff !important; border: 1px dashed #409eff; }
