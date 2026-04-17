@@ -746,7 +746,7 @@ func TryDecodeNodeList(content string) string {
 }
 
 func containsNodeLinks(s string) bool {
-	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "tuic://"} {
+	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "tuic://", "socks://", "socks5://", "hysteria://", "naive+https://", "naive://", "anytls://", "wg://"} {
 		if strings.Contains(s, p) {
 			return true
 		}
