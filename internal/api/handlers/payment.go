@@ -261,10 +261,10 @@ func PaymentNotify(c *gin.Context) {
 	var paymentConfig models.PaymentConfig
 	queryPayType := paymentType
 	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).First(&paymentConfig).Error; err == nil {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 			queryPayType = "yipay"
 		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 				utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
 					"payment_type": paymentType,
 					"query_type":   queryPayType,
@@ -274,10 +274,10 @@ func PaymentNotify(c *gin.Context) {
 			}
 		}
 	} else if paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).First(&paymentConfig).Error; err == nil {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 			queryPayType = "codepay"
 		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 				utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
 					"payment_type": paymentType,
 					"query_type":   queryPayType,
@@ -287,7 +287,7 @@ func PaymentNotify(c *gin.Context) {
 			}
 		}
 	} else {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).First(&paymentConfig).Error; err != nil {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 			utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
 				"payment_type": paymentType,
 			})

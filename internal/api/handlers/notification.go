@@ -15,6 +15,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	notifTypeAnnouncement = "announcement"
+	notifStatusPublished  = "published"
+	notifStatusDraft      = "draft"
+	emailCategoryMarketing = "marketing"
+)
+
 func requireAuth(c *gin.Context) (*models.User, bool) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -77,13 +84,13 @@ func sendNotificationEmail(db *gorm.DB, userID *uint, title, content string) {
 		if userID != nil {
 			var user models.User
 			if err := db.First(&user, *userID).Error; err == nil {
-				_ = emailService.QueueEmail(user.Email, title, emailContent, "marketing")
+				_ = emailService.QueueEmail(user.Email, title, emailContent, emailCategoryMarketing)
 			}
 		} else {
 			var users []models.User
 			if err := db.Select("id, email").Where("is_active = ?", true).Find(&users).Error; err == nil {
 				for _, user := range users {
-					_ = emailService.QueueEmail(user.Email, title, emailContent, "marketing")
+					_ = emailService.QueueEmail(user.Email, title, emailContent, emailCategoryMarketing)
 				}
 			}
 		}
@@ -264,10 +271,10 @@ func CreateAdminNotification(c *gin.Context) {
 	}
 
 	if req.Type == "" {
-		notification.Type = "announcement"
+		notification.Type = notifTypeAnnouncement
 	}
 
-	if req.Status == "published" || (req.IsActive != nil && *req.IsActive) {
+	if req.Status == notifStatusPublished || (req.IsActive != nil && *req.IsActive) {
 		notification.IsActive = true
 	} else if req.IsActive != nil {
 		notification.IsActive = *req.IsActive
@@ -334,9 +341,9 @@ func UpdateAdminNotification(c *gin.Context) {
 		notification.Type = req.Type
 	}
 	if req.Status != "" {
-		if req.Status == "published" {
+		if req.Status == notifStatusPublished {
 			notification.IsActive = true
-		} else if req.Status == "draft" {
+		} else if req.Status == notifStatusDraft {
 			notification.IsActive = false
 		}
 	}

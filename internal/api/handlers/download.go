@@ -166,7 +166,7 @@ func isDownloadURLReachable(url string) bool {
 	}
 	resp, err := client.Do(req)
 	if err == nil {
-		defer resp.Body.Close()
+		resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 			return true
 		}

@@ -66,25 +66,25 @@ func CreateRecharge(c *gin.Context) {
 	var paymentConfig models.PaymentConfig
 	queryPayType := paymentMethod
 	if strings.HasPrefix(paymentMethod, "yipay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).First(&paymentConfig).Error; err == nil {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 			queryPayType = "yipay"
 		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
 				return
 			}
 		}
 	} else if strings.HasPrefix(paymentMethod, "codepay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).First(&paymentConfig).Error; err == nil {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 			queryPayType = "codepay"
 		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
 				return
 			}
 		}
 	} else {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err != nil {
+		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
 			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
 			return
 		}
@@ -343,7 +343,7 @@ func GetRechargeStatusByNo(c *gin.Context) {
 			}
 
 			var paymentConfig models.PaymentConfig
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).First(&paymentConfig).Error; err == nil {
+			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
 				if paymentConfig.PayType == "alipay" {
 					alipayService, err := payment.NewAlipayService(&paymentConfig)
 					if err == nil {

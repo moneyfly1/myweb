@@ -1440,7 +1440,10 @@ func UpgradeDevices(c *gin.Context) {
 			Currency:        "CNY",
 			Status:          "pending",
 		}
-		db.Create(&transaction)
+		if err := db.Create(&transaction).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付记录失败", err)
+			return
+		}
 		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod)
 		if err != nil {
 			utils.LogError("UpgradeDevices: create payment failed", err, nil)
@@ -1457,7 +1460,9 @@ func UpgradeDevices(c *gin.Context) {
 	}
 	extraDataBytes, _ := json.Marshal(extraDataMap)
 	order.ExtraData = database.NullString(string(extraDataBytes))
-	db.Save(&order)
+	if err := db.Save(&order).Error; err != nil {
+		log.Printf("failed to update order extra data: %v", err)
+	}
 
 	responseData := gin.H{
 		"order_no":           order.OrderNo,
