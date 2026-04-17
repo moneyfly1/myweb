@@ -1044,7 +1044,7 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 	}
 
 	var nodes []models.Node
-	s.db.Where("is_active = ? AND status != ?", true, "timeout").Find(&nodes)
+	s.db.Where("is_active = ? AND status != ?", true, "timeout").Order("order_index ASC, created_at ASC").Find(&nodes)
 	var sysNodes []*ProxyNode
 
 	for _, n := range nodes {
