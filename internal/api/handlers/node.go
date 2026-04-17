@@ -354,6 +354,10 @@ func GetAdminNodes(c *gin.Context) {
 		query = query.Where("type = ?", t)
 	}
 
+	if m := c.Query("is_manual"); m != "" {
+		query = query.Where("is_manual = ?", m == "true")
+	}
+
 	if search := c.Query("search"); search != "" {
 		search = utils.SanitizeSearchKeyword(search)
 		if search != "" {

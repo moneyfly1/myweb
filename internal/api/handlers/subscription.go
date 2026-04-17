@@ -1895,9 +1895,23 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 特殊处理 urls 字段
+	// 特殊处理 urls 字段，并在 urls 变化时清理旧的采集节点
 	if urlsValue, ok := req["urls"]; ok {
-		req["urls"] = formatConfigValue(urlsValue)
+		newUrlsStr := formatConfigValue(urlsValue)
+		req["urls"] = newUrlsStr
+
+		// 读取旧的 urls 配置
+		var oldConfig models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "urls", "config_update").First(&oldConfig).Error; err == nil {
+			oldUrlsStr := oldConfig.Value
+			if oldUrlsStr != newUrlsStr {
+				// urls 发生了变化，清理所有非手动节点（采集节点）
+				res := db.Where("is_manual = ?", false).Delete(&models.Node{})
+				if res.Error == nil && res.RowsAffected > 0 {
+					log.Printf("订阅源配置变更，已清理 %d 个旧采集节点", res.RowsAffected)
+				}
+			}
+		}
 	}
 
 	// 批量查出已有的配置
