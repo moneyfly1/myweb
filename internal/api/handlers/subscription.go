@@ -1909,6 +1909,7 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 				res := db.Where("is_manual = ?", false).Delete(&models.Node{})
 				if res.Error == nil && res.RowsAffected > 0 {
 					log.Printf("订阅源配置变更，已清理 %d 个旧采集节点", res.RowsAffected)
+					clearNodeCaches()
 				}
 			}
 		}
