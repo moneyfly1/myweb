@@ -274,6 +274,10 @@ func GetAdminSettings(c *gin.Context) {
 		"node_health": {
 			"node_health_check_interval": "300", "node_max_latency": "3000", "node_test_timeout": "5", "test_url": "https://ping.pe",
 		},
+		"protocol_filter": {
+			"clash_protocols":     []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks5", "http", "wireguard"},
+			"universal_protocols": []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks", "socks5", "http", "wireguard"},
+		},
 		"custom_node": {},
 		"notification": {
 			"system_notifications": "true", "email_notifications": "true", "subscription_expiry_notifications": "true",
@@ -386,6 +390,7 @@ func UpdateAdminNotificationSystemSettings(c *gin.Context) {
 }
 func UpdateNodeHealthSettings(c *gin.Context) { updateSettingsCommon(c, "node_health") }
 func UpdateBackupSettings(c *gin.Context)     { updateSettingsCommon(c, "backup") }
+func UpdateProtocolFilterSettings(c *gin.Context) { updateSettingsCommon(c, "protocol_filter") }
 
 func UploadFile(c *gin.Context) {
 	file, err := c.FormFile("file")

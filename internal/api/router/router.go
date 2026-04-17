@@ -424,6 +424,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/settings/admin-notification/test/bark", handlers.TestAdminBarkNotification)
 			admin.PUT("/settings/node_health", handlers.UpdateNodeHealthSettings)
 			admin.PUT("/settings/backup", handlers.UpdateBackupSettings)
+			admin.PUT("/settings/protocol-filter", handlers.UpdateProtocolFilterSettings)
 			admin.GET("/settings/geoip/status", handlers.GetGeoIPStatus)
 			admin.POST("/settings/geoip/update", handlers.UpdateGeoIPDatabase)
 			admin.POST("/settings/geoip/switch", handlers.SwitchGeoIPDatabase)
