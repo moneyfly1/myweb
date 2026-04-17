@@ -712,6 +712,7 @@ func TestNode(c *gin.Context) {
 		if err := db.Save(&customNode).Error; err != nil {
 			utils.LogError("TestNode: save custom node failed", err, nil)
 		}
+		clearNodeCaches()
 
 		utils.SuccessResponse(c, http.StatusOK, "", res)
 		return
@@ -735,6 +736,7 @@ func TestNode(c *gin.Context) {
 	if err := svc.UpdateNodeStatus(res); err != nil {
 		log.Printf("failed to update node status: %v", err)
 	}
+	clearNodeCaches()
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
@@ -768,6 +770,7 @@ func BatchTestNodes(c *gin.Context) {
 			log.Printf("failed to update node status: %v", err)
 		}
 	}
+	clearNodeCaches()
 	utils.SuccessResponse(c, http.StatusOK, "", results)
 }
 
