@@ -28,7 +28,7 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item 
+              <el-dropdown-item
                 v-for="theme in themes" :key="theme.value" :command="theme.value"
                 :class="{ active: currentTheme === theme.value }">
                 <i class="el-icon-check" v-if="currentTheme === theme.value"></i>
@@ -37,6 +37,16 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button
+          type="text"
+          class="cache-btn"
+          :loading="cacheClearing"
+          @click="flushCache"
+          title="清理缓存"
+        >
+          <i class="el-icon-delete" v-if="!cacheClearing"></i>
+          <span class="cache-btn-text">清理缓存</span>
+        </el-button>
         <el-dropdown @command="handleAdminCommand" class="admin-dropdown">
           <div class="admin-info">
             <el-avatar :size="32" :src="adminAvatar">{{ adminInitials }}</el-avatar>
@@ -155,10 +165,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { adminAPI, ticketAPI } from '@/utils/api'
+import { adminAPI, ticketAPI, api } from '@/utils/api'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -178,6 +188,7 @@ const adminMenuOptions = [
   { label: '退出登录', icon: 'el-icon-switch-button', command: 'logout', divided: true }
 ]
 const unreadTicketCount = ref(0)
+const cacheClearing = ref(false)
 const collapsedSections = ref({})
 let unreadCheckInterval = null
 const toggleSection = (title) => {
@@ -294,6 +305,21 @@ const handleAdminCommand = (command) => {
   }
 }
 const formatMoney = (val) => isNaN(parseFloat(val)) ? '0.00' : parseFloat(val).toFixed(2)
+const flushCache = async () => {
+  try {
+    await ElMessageBox.confirm('确定要清除所有缓存吗？', '警告', {
+      confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
+    })
+    cacheClearing.value = true
+    const res = await api.post('/admin/settings/cache/flush')
+    if (res.data.success) ElMessage.success('缓存已清除')
+    else ElMessage.error(res.data.message || '清除失败')
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('清除失败: ' + (e.response?.data?.message || e.message))
+  } finally {
+    cacheClearing.value = false
+  }
+}
 const loadStats = async () => {
   if (!authStore.isAuthenticated) return
   try {
@@ -388,6 +414,19 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
         :is(i) { color: var(--theme-primary); font-size: 20px; }
         :is(span) { font-size: 18px; font-weight: 600; }
         :is(small) { font-size: 12px; opacity: 0.7; }
+    }
+  }
+  .header-right {
+    display: flex; align-items: center; gap: 16px;
+    .cache-btn {
+      color: var(--theme-text); font-size: 14px; padding: 6px 12px;
+      border: 1px solid var(--theme-border); border-radius: 6px;
+      &:hover { color: var(--theme-primary); border-color: var(--theme-primary); }
+      .cache-btn-text { margin-left: 4px; }
+    }
+    @include respond-to(sm) {
+      gap: 8px;
+      .cache-btn-text { display: none; }
     }
   }
 }

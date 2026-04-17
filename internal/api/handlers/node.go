@@ -487,6 +487,19 @@ func CreateNode(c *gin.Context) {
 		return
 	}
 	req.Node.Status, req.Node.IsManual, req.Node.IsActive = "offline", true, true
+
+	// 读取 manual_node_position 配置，设置手动节点的 order_index
+	var posConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "manual_node_position", "config_update").First(&posConfig).Error; err == nil {
+		if pos, err := strconv.Atoi(posConfig.Value); err == nil && pos >= 0 {
+			orderIndex := pos*10000 - 5000
+			if pos == 0 {
+				orderIndex = -500
+			}
+			req.Node.OrderIndex = orderIndex
+		}
+	}
+
 	if err := db.Create(&req.Node).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败", err)
 		return

@@ -1786,10 +1786,11 @@ func GetConfigUpdateConfig(c *gin.Context) {
 
 	configMap := make(map[string]interface{})
 	defaultConfig := map[string]interface{}{
-		"urls":              []string{},
-		"filter_keywords":   []string{},
-		"enable_schedule":   false,
-		"schedule_interval": 3600,
+		"urls":                 []string{},
+		"filter_keywords":      []string{},
+		"enable_schedule":      false,
+		"schedule_interval":    3600,
+		"manual_node_position": -1,
 	}
 
 	var urlsConfig *models.SystemConfig
@@ -1816,6 +1817,10 @@ func GetConfigUpdateConfig(c *gin.Context) {
 			var interval int
 			_, _ = fmt.Sscanf(value, "%d", &interval) // Ignore error, use default value
 			configMap[key] = interval
+		case "manual_node_position":
+			var pos int
+			_, _ = fmt.Sscanf(value, "%d", &pos)
+			configMap[key] = pos
 		default:
 			configMap[key] = value
 		}
