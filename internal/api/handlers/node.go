@@ -342,8 +342,6 @@ func GetAdminNodes(c *gin.Context) {
 
 	if a := c.Query("is_active"); a != "" {
 		query = query.Where("is_active = ?", a == "true")
-	} else {
-		query = query.Where("is_active = ?", true)
 	}
 
 	if r := c.Query("region"); r != "" {
@@ -488,7 +486,7 @@ func CreateNode(c *gin.Context) {
 		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
 		return
 	}
-	req.Node.Status, req.Node.IsManual = "offline", true
+	req.Node.Status, req.Node.IsManual, req.Node.IsActive = "offline", true, true
 	if err := db.Create(&req.Node).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建节点失败", err)
 		return

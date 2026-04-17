@@ -160,6 +160,40 @@ func (s *ConfigUpdateService) refreshSystemConfig() {
 	}
 }
 
+// getProtocolFilter reads allowed protocols for a subscription type from DB.
+// filterType: "clash_protocols" or "universal_protocols"
+func (s *ConfigUpdateService) getProtocolFilter(filterType string) map[string]bool {
+	var cfg models.SystemConfig
+	err := s.db.Where("category = ? AND key = ?", "protocol_filter", filterType).First(&cfg).Error
+	if err != nil || cfg.Value == "" {
+		return nil // nil means no filter, allow all
+	}
+	var protocols []string
+	if json.Unmarshal([]byte(cfg.Value), &protocols) != nil {
+		return nil
+	}
+	m := make(map[string]bool, len(protocols))
+	for _, p := range protocols {
+		m[p] = true
+	}
+	return m
+}
+
+// filterProxiesByProtocol filters proxies based on allowed protocol set.
+// If allowed is nil, all proxies pass through.
+func (s *ConfigUpdateService) filterProxiesByProtocol(proxies []*ProxyNode, allowed map[string]bool) []*ProxyNode {
+	if allowed == nil {
+		return proxies
+	}
+	var result []*ProxyNode
+	for _, p := range proxies {
+		if allowed[p.Type] {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 func (s *ConfigUpdateService) IsRunning() bool {
 	s.runningMutex.Lock()
 	defer s.runningMutex.Unlock()
@@ -793,7 +827,18 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 		return strings.Contains(body, "@") && strings.Contains(strings.Split(strings.Split(body, "@")[1], "?")[0], ":")
 	case "vmess", "vless", "ssr":
 		return len(strings.Split(strings.TrimPrefix(body, scheme+"://"), "?")[0]) >= 10
-	case "trojan", "tuic", "naive+https", "socks", "socks5", "http", "https":
+	case "socks", "socks5":
+		if strings.Contains(body, "@") {
+			return true
+		}
+		// GOST Base64 format: socks://Base64==?remarks=...&gost=...
+		trimmed := strings.TrimPrefix(body, scheme+"://")
+		base64Part := strings.SplitN(trimmed, "?", 2)[0]
+		if decoded, err := DecodeBase64(base64Part); err == nil && strings.Contains(decoded, "@") {
+			return true
+		}
+		return false
+	case "trojan", "tuic", "naive+https", "http", "https":
 		return strings.Contains(body, "@")
 	case "hysteria", "hysteria2":
 		return strings.Contains(body, ":")
@@ -1030,7 +1075,7 @@ func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent str
 		nodes = s.addInfoNodes(ctx.Proxies, ctx)
 	}
 
-	config := s.generateClashYAML(nodes, ctx)
+	config := s.generateClashYAML(s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols")), ctx)
 	if ctx.Status == StatusNormal {
 		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
 			go cache.SetSubscriptionConfigCache(token, "clash", config, ttl)
@@ -1056,6 +1101,8 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	} else {
 		nodes = s.addInfoNodes(ctx.Proxies, ctx)
 	}
+
+	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
 
 	var links []string
 	for _, n := range nodes {
@@ -1563,6 +1610,10 @@ func (s *ConfigUpdateService) nodeToLink(n *ProxyNode) string {
 		if n.Type == "socks" {
 			sc = "socks"
 		}
+		// GOST format: socks://base64(user:pass@host:port)?remarks=...&gost=base64(json)
+		if n.Network == "ws" {
+			return s.socksGOSTToLink(n, sc)
+		}
 		return s.buildStandardNodeURL(sc, n.UUID, n.Password, n.Server, n.Port, n.Name, nil)
 	case "http":
 		sc := "http"
@@ -1589,6 +1640,33 @@ func (s *ConfigUpdateService) buildStandardNodeURL(sch, usr, pwd, hst string, pr
 		u.RawQuery = q.Encode()
 	}
 	return u.String()
+}
+
+func (s *ConfigUpdateService) socksGOSTToLink(n *ProxyNode, scheme string) string {
+	// Rebuild: socks://base64(user%3Apass@host:port)?remarks=name&gost=base64(json)
+	auth := url.QueryEscape(n.UUID) + ":" + n.Password + "@" + n.Server + ":" + fmt.Sprintf("%d", n.Port)
+	encoded := base64.StdEncoding.EncodeToString([]byte(auth))
+
+	q := url.Values{}
+	q.Set("remarks", n.Name)
+
+	// Rebuild gost JSON from ws-opts
+	gostCfg := map[string]string{"route": "ws"}
+	if wsOpts := optVal[map[string]interface{}](n.Options, "ws-opts"); wsOpts != nil {
+		if p := optVal[string](wsOpts, "path"); p != "" {
+			gostCfg["path"] = p
+		}
+		if hdrs := optVal[map[string]interface{}](wsOpts, "headers"); hdrs != nil {
+			if h := optVal[string](hdrs, "Host"); h != "" {
+				gostCfg["host"] = h
+			}
+		}
+	}
+	if gj, err := json.Marshal(gostCfg); err == nil {
+		q.Set("gost", base64.StdEncoding.EncodeToString(gj))
+	}
+
+	return scheme + "://" + encoded + "?" + q.Encode()
 }
 
 func (s *ConfigUpdateService) getQueryFromOptions(n *ProxyNode) url.Values {

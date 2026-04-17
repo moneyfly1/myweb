@@ -598,6 +598,32 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
+        <el-tab-pane label="协议过滤" name="protocol-filter">
+          <el-form v-bind="formLayout" class="settings-form">
+            <div class="form-tip" style="margin-bottom: 20px;">
+              控制每种订阅格式包含哪些代理协议。取消勾选的协议将不会出现在对应的订阅配置中。
+            </div>
+
+            <el-divider content-position="left">Clash 订阅协议</el-divider>
+            <el-form-item>
+              <el-checkbox-group v-model="protocolFilterSettings.clash_protocols">
+                <el-checkbox v-for="p in allProtocols" :key="'clash-'+p" :label="p">{{ p }}</el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+
+            <el-divider content-position="left">通用订阅协议 (Shadowrocket/V2Ray等)</el-divider>
+            <el-form-item>
+              <el-checkbox-group v-model="protocolFilterSettings.universal_protocols">
+                <el-checkbox v-for="p in allProtocols" :key="'uni-'+p" :label="p">{{ p }}</el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button type="primary" @click="saveProtocolFilterSettings" :class="{ 'full-width': isMobile }">保存协议过滤设置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -609,6 +635,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
+
+const ALL_PROTOCOLS = [
+  'vmess', 'vless', 'trojan', 'ss', 'ssr', 'hysteria', 'hysteria2',
+  'tuic', 'anytls', 'socks', 'socks5', 'http', 'wireguard'
+]
 
 const THEME_OPTIONS = [
   { label: '浅色主题', value: 'light', color: '#409EFF' },
@@ -737,6 +768,10 @@ export default {
       backup_github_owner: 'moneyfly1', backup_github_repo: 'backup',
       backup_auto_enabled: false, backup_auto_interval: 24
     })
+    const protocolFilterSettings = reactive({
+      clash_protocols: [...ALL_PROTOCOLS],
+      universal_protocols: [...ALL_PROTOCOLS]
+    })
     
     const generalRules = {
       site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }]
@@ -808,6 +843,17 @@ export default {
           backupSettings.backup_auto_enabled = toBool(backupSettings.backup_auto_enabled)
           backupSettings.backup_auto_interval = parseInt(backupSettings.backup_auto_interval) || 24
         }
+        if (data.protocol_filter) {
+          const pf = data.protocol_filter
+          if (pf.clash_protocols) {
+            try { protocolFilterSettings.clash_protocols = typeof pf.clash_protocols === 'string' ? JSON.parse(pf.clash_protocols) : pf.clash_protocols }
+            catch { protocolFilterSettings.clash_protocols = [...ALL_PROTOCOLS] }
+          }
+          if (pf.universal_protocols) {
+            try { protocolFilterSettings.universal_protocols = typeof pf.universal_protocols === 'string' ? JSON.parse(pf.universal_protocols) : pf.universal_protocols }
+            catch { protocolFilterSettings.universal_protocols = [...ALL_PROTOCOLS] }
+          }
+        }
       } catch (error) {
         ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message))
       }
@@ -844,6 +890,7 @@ export default {
     const saveSecuritySettings = () => handleSave(() => api.put('/admin/settings/security', securitySettings), '安全设置保存成功')
     const saveAnnouncementSettings = () => handleSave(() => api.put('/admin/settings/announcement', announcementSettings), '公告设置保存成功')
     const saveBackupSettings = () => handleSave(() => api.put('/admin/settings/backup', backupSettings), '备份设置保存成功')
+    const saveProtocolFilterSettings = () => handleSave(() => api.put('/admin/settings/protocol-filter', protocolFilterSettings), '协议过滤设置保存成功')
     
     const saveThemeSettings = async () => {
       const success = await handleSave(() => api.put('/admin/settings/theme', themeSettings), '主题设置保存成功')
@@ -1108,6 +1155,7 @@ export default {
       saveGeneralSettings, saveRegistrationSettings, saveNotificationSettings,
       saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings,
+      saveProtocolFilterSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
       
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup,
       updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize
