@@ -180,6 +180,7 @@ func CreateCustomNode(c *gin.Context) {
 			return
 		}
 		utils.CreateAuditLogSimple(c, "create_custom_node", "custom_node", customNode.ID, fmt.Sprintf("管理员操作: 创建专线节点 %s", customNode.Name))
+		clearNodeCaches()
 		utils.SuccessResponse(c, http.StatusCreated, "", customNode)
 		return
 	}
@@ -207,6 +208,7 @@ func CreateCustomNode(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "create_custom_node", "custom_node", customNode.ID, fmt.Sprintf("管理员操作: 创建专线节点 %s", customNode.Name))
+	clearNodeCaches()
 	utils.SuccessResponse(c, http.StatusCreated, "", customNode)
 }
 
@@ -266,6 +268,9 @@ func ImportCustomNodeLinks(c *gin.Context) {
 		imported++
 	}
 	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
+	if imported > 0 {
+		clearNodeCaches()
+	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"imported":    imported,
 		"error_count": errorCount,
@@ -520,6 +525,7 @@ func TestCustomNode(c *gin.Context) {
 
 	node.Status = "active"
 	db.Save(&node)
+	clearNodeCaches()
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"status":  "active",
@@ -596,6 +602,7 @@ func BatchTestCustomNodes(c *gin.Context) {
 		})
 	}
 
+	clearNodeCaches()
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"results": results,
 		"total":   len(req.NodeIDs),
