@@ -38,6 +38,12 @@ const (
 	StatusSystemError
 )
 
+const (
+	configCategory   = "config_update"
+	configKeyLogs    = "config_update_logs"
+	configKeyLastUpd = "config_update_last_update"
+)
+
 // 将15个单独的正则合并为一个，极大提高匹配性能
 var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
 
@@ -63,12 +69,17 @@ type ConfigUpdateService struct {
 	runningMutex  sync.Mutex
 	siteURL       string
 	supportQQ     string
-	configMutex   sync.RWMutex // 新增配置锁，保障并发安全
+	configMutex   sync.RWMutex
 	regionMatcher *RegionMatcher
 	parserPool    *ParserPool
 	sseManager    *SSEManager
 	logBuffer     []map[string]interface{}
 	logMutex      sync.RWMutex
+	// Clash 模板缓存
+	tplCache    []byte
+	tplPath     string
+	tplModTime  time.Time
+	tplMutex    sync.RWMutex
 }
 
 type nodeWithOrder struct {
@@ -108,7 +119,7 @@ func NewConfigUpdateService() *ConfigUpdateService {
 
 		// 启动时仅加载一次历史日志，提升极速体验
 		var logConfig models.SystemConfig
-		if err := globalService.db.Where("key = ?", "config_update_logs").First(&logConfig).Error; err == nil && logConfig.Value != "" {
+		if err := globalService.db.Where("key = ?", configKeyLogs).First(&logConfig).Error; err == nil && logConfig.Value != "" {
 			var logs []map[string]interface{}
 			if err := json.Unmarshal([]byte(logConfig.Value), &logs); err == nil {
 				if len(logs) > 500 {
@@ -133,8 +144,7 @@ func NewConfigUpdateService() *ConfigUpdateService {
 		}
 	})
 
-	// 每次调用自动刷新并同步最新系统配置
-	globalService.db = database.GetDB()
+	// 每次调用自动刷新并同步最新系统配置（configMutex 保护）
 	globalService.refreshSystemConfig()
 	return globalService
 }
@@ -203,7 +213,7 @@ func (s *ConfigUpdateService) IsRunning() bool {
 func (s *ConfigUpdateService) GetStatus() map[string]interface{} {
 	var lastUpdate string
 	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_last_update").First(&config).Error; err == nil {
+	if err := s.db.Where("key = ?", configKeyLastUpd).First(&config).Error; err == nil {
 		lastUpdate = config.Value
 	}
 	return map[string]interface{}{"is_running": s.IsRunning(), "last_update": lastUpdate, "next_update": ""}
@@ -237,7 +247,7 @@ func (s *ConfigUpdateService) ClearLogs() error {
 		s.sseManager.ClearHistory()
 	}
 	var config models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
+	if err := s.db.Where("key = ?", configKeyLogs).First(&config).Error; err != nil {
 		return s.saveLogConfig("[]")
 	}
 	config.Value = "[]"
@@ -300,7 +310,7 @@ func (s *ConfigUpdateService) flushLogsToDB() error {
 	}
 
 	var config models.SystemConfig
-	if err = s.db.Where("key = ?", "config_update_logs").First(&config).Error; err != nil {
+	if err = s.db.Where("key = ?", configKeyLogs).First(&config).Error; err != nil {
 		return s.saveLogConfig(string(logsJSON))
 	}
 	config.Value = string(logsJSON)
@@ -309,7 +319,7 @@ func (s *ConfigUpdateService) flushLogsToDB() error {
 
 func (s *ConfigUpdateService) saveLogConfig(value string) error {
 	return s.db.Create(&models.SystemConfig{
-		Key: "config_update_logs", Value: value, Type: "json", Category: "config_update",
+		Key: configKeyLogs, Value: value, Type: "json", Category: configCategory,
 		DisplayName: "配置更新日志", Description: "配置更新任务日志",
 	}).Error
 }
@@ -377,10 +387,24 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		s.logUpdateStats(stats, len(nodesWithOrder))
 
 		time.Sleep(400 * time.Millisecond)
-		deletedCount := s.deleteAutoImportedNodes()
-		s.infof("💾 数据库清理: 移除旧节点 %d 个，开始入库新节点...", deletedCount)
 
-		importStats := s.importNodesToDatabaseWithOrder(nodesWithOrder)
+		// 事务保护：删除旧节点 + 导入新节点，避免中间崩溃导致节点全空
+		var importResult importStats
+		var deletedCount int64
+		txErr := s.db.Transaction(func(tx *gorm.DB) error {
+			res := tx.Where("is_manual = ?", false).Delete(&models.Node{})
+			if res.Error != nil {
+				return res.Error
+			}
+			deletedCount = res.RowsAffected
+			s.infof("💾 数据库清理: 移除旧节点 %d 个，开始入库新节点...", deletedCount)
+			importResult = s.importNodesToDatabaseWithOrderTx(tx, nodesWithOrder)
+			return nil
+		})
+		if txErr != nil {
+			s.errorf("❌ 数据库事务失败: %v", txErr)
+			return
+		}
 		s.updateLastUpdateTime()
 
 		// 根据 manual_node_position 更新手动节点的 order_index
@@ -401,7 +425,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 手动跳过: %d", importStats.Created, importStats.Updated, importStats.Skipped)
+		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 手动跳过: %d", importResult.Created, importResult.Updated, importResult.Skipped)
 
 		s.clearAllCaches()
 
@@ -541,7 +565,7 @@ func (s *ConfigUpdateService) ensureUniqueName(name string, used map[string]bool
 
 func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 	var configs []models.SystemConfig
-	if err := s.db.Where("category = ?", "config_update").Find(&configs).Error; err != nil {
+	if err := s.db.Where("category = ?", configCategory).Find(&configs).Error; err != nil {
 		return nil, err
 	}
 
@@ -580,8 +604,8 @@ func (s *ConfigUpdateService) splitAndTrim(value string) []string {
 func (s *ConfigUpdateService) updateLastUpdateTime() {
 	now := utils.GetBeijingTime().Format("2006-01-02 15:04:05")
 	var cfg models.SystemConfig
-	if err := s.db.Where("key = ?", "config_update_last_update").First(&cfg).Error; err != nil {
-		s.db.Create(&models.SystemConfig{Key: "config_update_last_update", Value: now, Type: "string", Category: "config_update", DisplayName: "最后更新", Description: ""})
+	if err := s.db.Where("key = ?", configKeyLastUpd).First(&cfg).Error; err != nil {
+		s.db.Create(&models.SystemConfig{Key: configKeyLastUpd, Value: now, Type: "string", Category: configCategory, DisplayName: "最后更新", Description: ""})
 	} else {
 		cfg.Value = now
 		s.db.Save(&cfg)
@@ -614,27 +638,37 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 	return allNodes, nil
 }
 
-func (s *ConfigUpdateService) fetchURLContent(client *http.Client, url string) ([]byte, error) {
+func (s *ConfigUpdateService) fetchURLContent(client *http.Client, rawURL string) ([]byte, error) {
 	maxRetries, delay := 3, 2*time.Second
 	for i := 1; i <= maxRetries; i++ {
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", rawURL, nil)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-		if strings.Contains(url, "gist.githubusercontent.com") {
+		if strings.Contains(rawURL, "gist.githubusercontent.com") {
 			req.Header.Set("Connection", "close")
 		}
 
 		resp, err := client.Do(req)
-		if err == nil && resp.StatusCode == http.StatusOK {
+		if err != nil {
+			if i < maxRetries {
+				s.warnf("⚠️ 节点源连接异常 (尝试 %d/%d)，%v 后重试...", i, maxRetries, delay)
+				time.Sleep(delay)
+				delay *= 2
+			}
+			continue
+		}
+		body, readErr := func() ([]byte, error) {
 			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("status %d", resp.StatusCode)
+			}
 			return io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		}()
+		if readErr == nil {
+			return body, nil
 		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-
 		if i < maxRetries {
 			s.warnf("⚠️ 节点源连接异常 (尝试 %d/%d)，%v 后重试...", i, maxRetries, delay)
 			time.Sleep(delay)
@@ -887,32 +921,50 @@ func (s *ConfigUpdateService) generateNodeKey(nodeType string, name string, conf
 	}
 	var p ProxyNode
 	if err := json.Unmarshal([]byte(*config), &p); err == nil {
-		key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port)
-		if p.UUID != "" {
-			return key + ":" + p.UUID
-		} else if p.Password != "" {
-			return key + ":" + p.Password
-		}
-		return key
+		return s.generateNodeKeyFromProxy(&p)
 	}
 	return fmt.Sprintf("%s:%s", nodeType, name)
 }
 
+func (s *ConfigUpdateService) generateNodeKeyFromProxy(p *ProxyNode) string {
+	key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port)
+	if p.UUID != "" {
+		return key + ":" + p.UUID
+	} else if p.Password != "" {
+		return key + ":" + p.Password
+	}
+	return key
+}
+
 func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodes []nodeWithOrder) importStats {
+	return s.importNodesToDatabaseWithOrderTx(s.db, nodes)
+}
+
+func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, nodes []nodeWithOrder) importStats {
 	var stats importStats
 	seenKeys := make(map[string]bool)
 
 	var existing []models.Node
-	s.db.Where("is_manual = ?", false).Find(&existing)
+	db.Where("is_manual = ?", false).Find(&existing)
 	existingMap := make(map[string]*models.Node)
 	for i := range existing {
 		existingMap[s.generateNodeKey(existing[i].Type, existing[i].Name, existing[i].Config)] = &existing[i]
 	}
 
+	// 预加载所有手动节点的 type+name 用于去重检查
+	var manualNodes []models.Node
+	db.Where("is_manual = ?", true).Select("type", "name").Find(&manualNodes)
+	manualKeys := make(map[string]bool)
+	for _, mn := range manualNodes {
+		manualKeys[mn.Type+":"+mn.Name] = true
+	}
+
+	var newNodes []models.Node
+
 	for _, item := range nodes {
 		cfgJSON, _ := json.Marshal(item.node)
 		cfgStr := string(cfgJSON)
-		key := s.generateNodeKey(item.node.Type, item.node.Name, &cfgStr)
+		key := s.generateNodeKeyFromProxy(item.node)
 
 		if seenKeys[key] {
 			stats.Skipped++
@@ -924,20 +976,24 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodes []nodeWithOrd
 		if exist := existingMap[key]; exist != nil {
 			exist.Config, exist.Status, exist.IsActive, exist.IsManual = &cfgStr, "online", true, false
 			exist.OrderIndex, exist.SourceIndex, exist.Region, exist.Name = item.orderIndex, item.sourceIndex, region, item.node.Name
-			if s.db.Save(exist).Error == nil {
+			if db.Save(exist).Error == nil {
 				stats.Updated++
 			}
 		} else {
-			if s.db.Where("type = ? AND name = ? AND is_manual = ?", item.node.Type, item.node.Name, true).First(&models.Node{}).Error == nil {
+			if manualKeys[item.node.Type+":"+item.node.Name] {
 				stats.Skipped++
 				continue
 			}
-			if s.db.Create(&models.Node{
+			newNodes = append(newNodes, models.Node{
 				Name: item.node.Name, Type: item.node.Type, Status: "online", IsActive: true, IsManual: false,
 				Config: &cfgStr, Region: region, OrderIndex: item.orderIndex, SourceIndex: item.sourceIndex,
-			}).Error == nil {
-				stats.Created++
-			}
+			})
+		}
+	}
+
+	if len(newNodes) > 0 {
+		if err := db.CreateInBatches(newNodes, 100).Error; err == nil {
+			stats.Created = len(newNodes)
 		}
 	}
 	return stats
@@ -1142,6 +1198,34 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	return config, nil
 }
 
+func (s *ConfigUpdateService) loadTemplateFile(path string) []byte {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	modTime := info.ModTime()
+
+	s.tplMutex.RLock()
+	if s.tplPath == path && s.tplModTime.Equal(modTime) && s.tplCache != nil {
+		cached := s.tplCache
+		s.tplMutex.RUnlock()
+		return cached
+	}
+	s.tplMutex.RUnlock()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	s.tplMutex.Lock()
+	s.tplCache = data
+	s.tplPath = path
+	s.tplModTime = modTime
+	s.tplMutex.Unlock()
+	return data
+}
+
 func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *SubscriptionContext) string {
 	var filtered []*ProxyNode
 	var proxyNames []string
@@ -1185,7 +1269,7 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 	}
 
 	if utils.IsWithinBaseDir(".", tplPath) {
-		if data, err := os.ReadFile(tplPath); err == nil {
+		if data := s.loadTemplateFile(tplPath); data != nil {
 			var tpl map[string]interface{}
 			if yaml.Unmarshal(data, &tpl) == nil {
 				tpl["name"] = subName

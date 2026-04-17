@@ -112,8 +112,19 @@ func findExistingNode(db *gorm.DB, targetKey string, nodeType string) *models.No
 }
 
 func processAndImportLinks(db *gorm.DB, links []string) int {
+	// 预加载所有活跃节点到 map，避免循环内 N+1 查询
+	var allActive []models.Node
+	db.Where("is_active = ?", true).Find(&allActive)
+	existingMap := make(map[string]*models.Node)
+	for i := range allActive {
+		key := generateNodeKey(allActive[i].Type, allActive[i].Name, allActive[i].Config)
+		existingMap[key] = &allActive[i]
+	}
+
 	importedCount := 0
 	seenKeys := make(map[string]bool)
+	var newNodes []models.Node
+
 	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(link)
 		if err != nil {
@@ -125,11 +136,9 @@ func processAndImportLinks(db *gorm.DB, links []string) int {
 			continue
 		}
 		seenKeys[key] = true
-		if existing := findExistingNode(db, key, newNode.Type); existing == nil {
+		if existing := existingMap[key]; existing == nil {
 			newNode.Status = "online"
-			if db.Create(&newNode).Error == nil {
-				importedCount++
-			}
+			newNodes = append(newNodes, newNode)
 		} else {
 			existing.Config, existing.Region, existing.Type, existing.Name = newNode.Config, newNode.Region, newNode.Type, newNode.Name
 			existing.IsActive = true
@@ -137,6 +146,12 @@ func processAndImportLinks(db *gorm.DB, links []string) int {
 				existing.Status = "online"
 			}
 			db.Save(existing)
+		}
+	}
+
+	if len(newNodes) > 0 {
+		if err := db.CreateInBatches(newNodes, 100).Error; err == nil {
+			importedCount = len(newNodes)
 		}
 	}
 	return importedCount
