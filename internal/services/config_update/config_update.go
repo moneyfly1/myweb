@@ -1178,6 +1178,17 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
 
+	// v2rayN 不支持 socks 节点，自动过滤
+	if strings.Contains(strings.ToLower(userAgent), "v2rayn") {
+		filtered := nodes[:0]
+		for _, n := range nodes {
+			if n.Type != "socks" && n.Type != "socks5" {
+				filtered = append(filtered, n)
+			}
+		}
+		nodes = filtered
+	}
+
 	var links []string
 	for _, n := range nodes {
 		link := s.nodeToLink(n)
