@@ -1163,6 +1163,12 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	if format == "ssr" {
 		cacheFormat = "ssr"
 	}
+	// v2rayN 需要过滤 socks，使用独立缓存 key
+	uaLower := strings.ToLower(userAgent)
+	isV2rayN := strings.Contains(uaLower, "v2rayn")
+	if isV2rayN {
+		cacheFormat = cacheFormat + "_v2rayn"
+	}
 	if cached, ok := cache.GetSubscriptionConfigCache(token, cacheFormat); ok {
 		return cached, nil
 	}
@@ -1179,7 +1185,7 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
 
 	// v2rayN 不支持 socks 节点，自动过滤
-	if strings.Contains(strings.ToLower(userAgent), "v2rayn") {
+	if isV2rayN {
 		filtered := nodes[:0]
 		for _, n := range nodes {
 			if n.Type != "socks" && n.Type != "socks5" {
