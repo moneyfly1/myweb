@@ -720,7 +720,45 @@ func (s *ConfigUpdateService) logNodeTypeStats(index int, nodeLinks []string) {
 	}
 }
 
+// parseJSONNodeListAPI 解析形如 {"code":200,"data":[{"vmessLink":"...","listAll":[{"vmessLink":"..."}]}]} 的 JSON API 响应
+func (s *ConfigUpdateService) parseJSONNodeListAPI(content string) []string {
+	var resp struct {
+		Code int `json:"code"`
+		Data []struct {
+			VmessLink string `json:"vmessLink"`
+			ListAll   []struct {
+				VmessLink string `json:"vmessLink"`
+			} `json:"listAll"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(content), &resp); err != nil || resp.Code != 200 || len(resp.Data) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var links []string
+	add := func(l string) {
+		l = strings.TrimSpace(l)
+		if l != "" && !seen[l] {
+			seen[l] = true
+			links = append(links, l)
+		}
+	}
+	for _, item := range resp.Data {
+		add(item.VmessLink)
+		for _, sub := range item.ListAll {
+			add(sub.VmessLink)
+		}
+	}
+	if len(links) > 0 {
+		s.log("INFO", fmt.Sprintf("✓ 检测到 JSON API 格式，提取 %d 个节点", len(links)))
+	}
+	return links
+}
+
 func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
+	if jsonLinks := s.parseJSONNodeListAPI(content); len(jsonLinks) > 0 {
+		return jsonLinks
+	}
 	if yamlLinks := s.parseClashYAML(content); len(yamlLinks) > 0 {
 		return yamlLinks
 	}
