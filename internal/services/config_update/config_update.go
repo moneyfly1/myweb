@@ -1035,13 +1035,20 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 		return ctx
 	}
 
-	var devices int64
-	s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&devices)
-	ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
+	now := utils.GetBeijingTime()
+	hasSpecialExpire := user.SpecialNodeExpiresAt.Valid
+	specialActive := hasSpecialExpire && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).After(now)
 
-	if sub.DeviceLimit == 0 || (sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit && s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&models.Device{}).Error != nil) {
-		ctx.Status = StatusDeviceOverLimit
-		return ctx
+	// 设置了专线到期时间且未过期，跳过设备数量限制
+	if !specialActive {
+		var devices int64
+		s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&devices)
+		ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
+
+		if sub.DeviceLimit == 0 || (sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit && s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&models.Device{}).Error != nil) {
+			ctx.Status = StatusDeviceOverLimit
+			return ctx
+		}
 	}
 
 	ctx.Status = StatusNormal
@@ -1054,10 +1061,16 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 	now := utils.GetBeijingTime()
 
 	subExpired := !sub.ExpireTime.IsZero() && sub.ExpireTime.Before(now)
-	specialExpired := (user.SpecialNodeExpiresAt.Valid && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).Before(now)) || (user.SpecialNodeSubscriptionType != "special_only" && subExpired)
+	hasSpecialExpire := user.SpecialNodeExpiresAt.Valid
+	specialExpired := hasSpecialExpire && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).Before(now)
 
-	s.appendCustomNodes(user.ID, now, specialExpired, &proxies, processed)
-	if user.SpecialNodeSubscriptionType != "special_only" && !subExpired {
+	// 专线到期判断：设置了专线时间则用专线时间，否则跟随订阅到期
+	customExpired := specialExpired || (!hasSpecialExpire && subExpired)
+	s.appendCustomNodes(user.ID, now, customExpired, &proxies, processed)
+
+	// 设置了专线到期时间且未过期 → 只显示专线节点；否则同时显示普通节点
+	specialActive := hasSpecialExpire && !specialExpired
+	if !specialActive && !subExpired {
 		s.appendSystemNodes(&proxies, processed)
 	}
 	return proxies, nil
