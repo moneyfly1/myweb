@@ -65,6 +65,12 @@ func (s *EmailTemplateService) SendTemplatedEmail(templateName string, to string
 		return err
 	}
 
+	// 如果内容不是完整 HTML，套入 base 模板
+	if !strings.Contains(content, "<html") && !strings.Contains(content, "<!DOCTYPE") {
+		builder := NewEmailTemplateBuilder()
+		content = builder.GetBaseTemplate(subject, content, "此邮件由系统自动发送，请勿回复。")
+	}
+
 	emailService := NewEmailService()
 	return emailService.QueueEmail(to, subject, content, templateName)
 }

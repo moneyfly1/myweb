@@ -312,10 +312,15 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 func (s *EmailService) getTemplateContent(templateName string, variables map[string]string, fallbackBuilder func() (string, string)) (string, string) {
 	templateService := NewEmailTemplateService()
-	template, err := templateService.GetTemplate(templateName)
+	tmpl, err := templateService.GetTemplate(templateName)
 	if err == nil {
-		subject, content, err := templateService.RenderTemplate(template, variables)
+		subject, content, err := templateService.RenderTemplate(tmpl, variables)
 		if err == nil {
+			// 如果 DB 模板内容不是完整 HTML，套入 base 模板
+			if !strings.Contains(content, "<html") && !strings.Contains(content, "<!DOCTYPE") {
+				builder := NewEmailTemplateBuilder()
+				content = builder.GetBaseTemplate(subject, content, "此邮件由系统自动发送，请勿回复。")
+			}
 			return subject, content
 		}
 	}
