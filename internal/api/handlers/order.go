@@ -1234,7 +1234,7 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	var req struct {
-		AdditionalDevices int     `json:"additional_devices" binding:"required,min=5"`
+		AdditionalDevices int     `json:"additional_devices" binding:"required,min=1"`
 		AdditionalDays    int     `json:"additional_days"`
 		PaymentMethod     string  `json:"payment_method"`
 		UseBalance        bool    `json:"use_balance"`
