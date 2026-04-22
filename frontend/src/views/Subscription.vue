@@ -107,6 +107,21 @@
           </router-link>
         </el-empty>
       </div>
+      <!-- 设备满载提示 -->
+      <el-alert
+        v-if="subscription && isDeviceFull(subscription)"
+        title="设备数量已达上限，无法连接新设备"
+        type="error"
+        show-icon
+        :closable="false"
+        style="margin-bottom: 16px;"
+      >
+        <template #default>
+          <el-button type="danger" size="small" style="margin-top:4px;" @click="showUpgradeDrawer = true">
+            立即升级设备数量
+          </el-button>
+        </template>
+      </el-alert>
       <div class="subscription-actions" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
         <el-button
           type="primary"
@@ -135,19 +150,20 @@
         <el-button
           type="primary"
           class="action-btn upgrade-btn"
-          @click="showUpgradeDialog = true"
+          @click="showUpgradeDrawer = true"
           v-if="isSubscriptionActive(subscription)"
         >
           升级设备数量
         </el-button>
       </div>
-      <el-dialog
-        v-model="showUpgradeDialog"
+      <!-- 升级设备数量右侧抽屉 -->
+      <el-drawer
+        v-model="showUpgradeDrawer"
         title="升级设备数量"
-        width="90%"
+        direction="rtl"
+        size="420px"
         :close-on-click-modal="false"
-        class="upgrade-dialog"
-        :max-width="600"
+        class="upgrade-drawer"
         @open="handleUpgradeDialogOpen"
       >
         <div class="upgrade-content" v-if="subscription">
@@ -160,23 +176,25 @@
           </div>
           <div class="upgrade-options">
             <h4>升级选项</h4>
-            <el-form-item label="增加设备数量">
-              <el-select
-                v-model="upgradeForm.additionalDevices"
-                @change="calculateUpgradeCost"
-                style="width: 100%"
-                placeholder="请选择增加的设备数量"
-              >
-                <el-option
-                  v-for="count in deviceOptions"
-                  :key="count"
-                  :label="`${count} 个设备`"
-                  :value="count"
+            <div class="form-item-block">
+              <div class="form-label">增加设备数量</div>
+              <div class="device-input-row">
+                <el-button @click="changeDeviceCount(-1)" :disabled="upgradeForm.additionalDevices <= 1" circle size="small"><el-icon><Minus /></el-icon></el-button>
+                <el-input-number
+                  v-model="upgradeForm.additionalDevices"
+                  :min="1"
+                  :max="500"
+                  :controls="false"
+                  style="width: 90px; text-align: center;"
+                  @change="calculateUpgradeCost"
                 />
-              </el-select>
-              <div class="form-hint">将增加 {{ upgradeForm.additionalDevices || 0 }} 个设备（只能按5个递增）</div>
-            </el-form-item>
-            <el-form-item label="延长到期时间（可选）">
+                <el-button @click="changeDeviceCount(1)" circle size="small"><el-icon><Plus /></el-icon></el-button>
+                <span class="device-input-hint">个设备</span>
+              </div>
+              <div class="form-hint">升级后共 {{ (subscription.device_limit || subscription.maxDevices || 0) + (upgradeForm.additionalDevices || 0) }} 个设备</div>
+            </div>
+            <div class="form-item-block">
+              <div class="form-label">延长到期时间（可选）</div>
               <el-select
                 v-model="upgradeForm.additionalDays"
                 @change="calculateUpgradeCost"
@@ -191,8 +209,8 @@
                   :value="months * 30"
                 />
               </el-select>
-              <div class="form-hint">将延长 {{ upgradeForm.additionalDays || 0 }} 天（只能按月递增，1个月=30天）</div>
-            </el-form-item>
+              <div class="form-hint" v-if="upgradeForm.additionalDays > 0">将延长 {{ upgradeForm.additionalDays }} 天</div>
+            </div>
           </div>
           <div class="cost-calculation" v-if="upgradeCost > 0">
             <h4>费用明细</h4>
@@ -206,7 +224,7 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-          <div class="payment-method" v-if="finalAmount > 0 || upgradeForm.additionalDevices >= 5">
+          <div class="payment-method" v-if="finalAmount > 0 || upgradeForm.additionalDevices >= 1">
             <h4>支付方式</h4>
             <div class="balance-info">
               <span>账户余额：¥{{ userBalance.toFixed(2) }}</span>
@@ -221,7 +239,7 @@
                 <span v-else-if="finalAmount > 0 && userBalance > 0" style="color: #f56c6c; margin-left: 5px">（余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）</span>
               </el-radio>
               <template v-for="method in availableUpgradePaymentMethods" :key="method.key">
-                <el-radio 
+                <el-radio
                   v-if="method && method.key && method.key !== 'balance' && method.key !== 'mixed'"
                   :label="method.key"
                 >
@@ -237,25 +255,23 @@
               <p>余额支付：¥{{ Math.min(userBalance, finalAmount).toFixed(2) }}</p>
               <p>支付宝支付：¥{{ Math.max(0, finalAmount - userBalance).toFixed(2) }}</p>
             </div>
-            <div style="margin-top: 10px; color: #909399; font-size: 12px;" v-if="availableUpgradePaymentMethods">
-              可用支付方式数量: {{ availableUpgradePaymentMethods.length }}
-            </div>
           </div>
         </div>
         <template #footer>
-          <div class="dialog-footer">
-            <el-button @click="showUpgradeDialog = false">取消</el-button>
-            <el-button 
-              type="primary" 
+          <div class="drawer-footer">
+            <el-button @click="showUpgradeDrawer = false" style="width:48%">取消</el-button>
+            <el-button
+              type="primary"
+              style="width:48%"
               @click="confirmUpgrade"
               :loading="upgradeLoading"
-              :disabled="!upgradeForm.additionalDevices || upgradeForm.additionalDevices < 5"
+              :disabled="!upgradeForm.additionalDevices || upgradeForm.additionalDevices < 1"
             >
-              确认升级设备数量并支付
+              确认升级并支付
             </el-button>
           </div>
         </template>
-      </el-dialog>
+      </el-drawer>
       <div class="renewal-prompt" v-if="subscription && !isSubscriptionActive(subscription)">
         <el-alert
           title="订阅已过期"
@@ -335,7 +351,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, Wallet, DocumentCopy, InfoFilled } from '@element-plus/icons-vue'
+import { Loading, Wallet, DocumentCopy, InfoFilled, Plus, Minus } from '@element-plus/icons-vue'
 import { subscriptionAPI, userAPI, orderAPI, userLevelAPI, useApi, parsePaymentMethods } from '@/utils/api'
 import { useRouter } from 'vue-router'
 import { formatDateTime, formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
@@ -350,7 +366,9 @@ export default {
     Loading,
     Wallet,
     DocumentCopy,
-    InfoFilled
+    InfoFilled,
+    Plus,
+    Minus
   },
   setup() {
     const router = useRouter()
@@ -359,7 +377,7 @@ export default {
     const resetLoading = ref(false)
     const sendEmailLoading = ref(false)
     const sendEmailRequesting = ref(false)
-    const showUpgradeDialog = ref(false)
+    const showUpgradeDrawer = ref(false)
     const upgradeLoading = ref(false)
     const userBalance = ref(0)
     const levelDiscountRate = ref(1.0)
@@ -623,7 +641,7 @@ export default {
       }
     }
     const handleUpgradeDialogOpen = async () => {
-      upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
+      upgradeForm.value = { additionalDevices: 1, additionalDays: 0 }
       upgradeCost.value = 0
       levelDiscount.value = 0
       finalAmount.value = 0
@@ -674,8 +692,8 @@ export default {
       if (finalAmount.value > 0) calculateUpgradeCost()
     }
     const confirmUpgrade = async () => {
-      if (!upgradeForm.value.additionalDevices || upgradeForm.value.additionalDevices < 5) {
-        ElMessage.warning('请选择要增加的设备数量（至少5个）')
+      if (!upgradeForm.value.additionalDevices || upgradeForm.value.additionalDevices < 1) {
+        ElMessage.warning('请选择要增加的设备数量（至少1个）')
         return
       }
       try {
@@ -692,7 +710,7 @@ export default {
           const data = response.data.data
           if (data.status === 'paid') {
             ElMessage.success('设备数量升级成功！')
-            showUpgradeDialog.value = false
+            showUpgradeDrawer.value = false
             await fetchSubscription()
             await fetchUserInfo()
           } else {
@@ -719,7 +737,7 @@ export default {
                 additional_devices: upgradeForm.value.additionalDevices,
                 additional_days: upgradeForm.value.additionalDays || 0
               }
-              showUpgradeDialog.value = false
+              showUpgradeDrawer.value = false
               await showPaymentQRCode(data)
             }
           }
@@ -806,11 +824,24 @@ export default {
     }
     const onImageError = () => ElMessage.error('二维码加载失败')
     const onImageLoad = () => {}
+    const changeDeviceCount = (delta) => {
+      const next = (upgradeForm.value.additionalDevices || 1) + delta
+      if (next >= 1 && next <= 500) {
+        upgradeForm.value.additionalDevices = next
+        calculateUpgradeCost()
+      }
+    }
+    const isDeviceFull = (sub) => {
+      if (!sub) return false
+      const online = sub.onlineDevices || sub.current_devices || 0
+      const limit = sub.device_limit || sub.maxDevices || 0
+      return limit > 0 && online >= limit
+    }
     return {
       subscription,
       resetLoading,
       sendEmailLoading,
-      showUpgradeDialog,
+      showUpgradeDrawer,
       upgradeLoading,
       upgradeForm,
       upgradeCost,
@@ -828,10 +859,12 @@ export default {
       getStatusType,
       getStatusText,
       isSubscriptionActive,
+      isDeviceFull,
       calculateUpgradeCost,
       handlePaymentMethodChange,
       confirmUpgrade,
       handleUpgradeDialogOpen,
+      changeDeviceCount,
       paymentQRVisible,
       paymentQRCode,
       paymentUrl,
@@ -840,7 +873,6 @@ export default {
       onImageError,
       onImageLoad,
       isMobile,
-      deviceOptions,
       monthOptions
     }
   }
@@ -1203,30 +1235,76 @@ export default {
       }
     }
   }
-  .upgrade-dialog {
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 5vh auto !important;
-      max-height: 90vh; /* 限制最大高度 */
-      display: flex;
-      flex-direction: column;
-    }
-    :deep(.el-dialog__body) {
-      overflow-y: auto; /* 内容区可滚动 */
-      flex: 1;
-      padding: 10px 15px;
-    }
-    .dialog-footer {
-      flex-direction: column;
-      gap: 12px;
-      padding-top: 10px; /* 增加底部内边距 */
-      .el-button {
-        width: 100%;
-        height: 44px;
-        margin: 0 !important;
-        font-size: 16px;
-      }
+  .upgrade-drawer {
+  :deep(.el-drawer__body) {
+    padding: 20px;
+    overflow-y: auto;
+  }
+  :deep(.el-drawer__footer) {
+    padding: 16px 20px;
+    border-top: 1px solid #eee;
+  }
+  .drawer-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+  }
+  .upgrade-content {
+    h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin: 0 0 12px 0;
     }
   }
+  .current-subscription-info {
+    margin-bottom: 20px;
+  }
+  .upgrade-options {
+    margin-bottom: 20px;
+  }
+  .form-item-block {
+    margin-bottom: 16px;
+    .form-label {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 8px;
+    }
+  }
+  .device-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    .device-input-hint {
+      font-size: 13px;
+      color: #606266;
+    }
+  }
+  .form-hint {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 6px;
+  }
+  .cost-calculation {
+    margin-bottom: 20px;
+  }
+  .final-amount {
+    color: #f56c6c;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .payment-method {
+    h4 { margin-bottom: 10px; }
+    .balance-info {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 10px;
+    }
+    .el-radio {
+      display: block;
+      margin-bottom: 8px;
+    }
+  }
+}
 }
 </style>
