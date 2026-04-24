@@ -701,7 +701,7 @@ export default {
     const users = ref([])
     const selectedUsers = ref([])
     const currentPage = ref(1)
-    const pageSize = ref(50) // 增加默认分页大小，提升列表加载体验
+    const pageSize = ref(10)
     const total = ref(0)
     const showAddUserDialog = ref(false)
     const showUserDialog = ref(false)

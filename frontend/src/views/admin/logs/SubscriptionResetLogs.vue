@@ -102,7 +102,7 @@ const loading = ref(false)
 const list = ref([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 
 const RESET_TYPE_MAP = {
   user_reset: '用户重置', admin_reset: '管理员重置', admin_batch_reset: '批量重置'

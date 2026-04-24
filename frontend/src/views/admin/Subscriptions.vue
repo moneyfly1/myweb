@@ -678,7 +678,7 @@ export default {
     const selectedSubscriptions = ref([])
     const batchOperating = ref(false)
     const currentPage = ref(1)
-    const pageSize = ref(50) // 增加默认分页大小
+    const pageSize = ref(10)
     const total = ref(0)
     const searchQuery = ref('')
     const currentSort = ref('add_time_desc')
