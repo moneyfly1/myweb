@@ -677,55 +677,21 @@ sync_from_github() {
         log "✅ Git 仓库初始化完成"
     fi
 
-    # 拉取最新代码（增量更新）
+    # 拉取最新代码（强制同步，完全镜像 GitHub）
     log "正在拉取最新代码..."
     local branch=$(git rev-parse --abbrev-ref HEAD)
     log "当前分支: $branch"
 
-    # 显示即将更新的文件（使用 --no-pager 避免因文件列表过长被卡住）
     git fetch origin
     local changed_files=$(git --no-pager diff --name-only HEAD "origin/$branch" | wc -l)
     if [ "$changed_files" -gt 0 ]; then
         log "检测到 $changed_files 个文件有更新："
         git --no-pager diff --name-status HEAD "origin/$branch"
 
-        # 增量拉取（保留本地未提交的修改）
-        if ! git pull origin "$branch"; then
-            warn "自动合并失败，尝试保存本地修改后重新拉取..."
-
-            # 仅在存在已跟踪文件改动时保存（untracked 文件不影响 pull）
-            if ! git --no-pager diff --quiet || ! git --no-pager diff --cached --quiet; then
-                if git stash push -m "自动保存 - $(date +'%Y-%m-%d %H:%M:%S')"; then
-                    log "本地修改已保存到 stash"
-                else
-                    error "保存本地修改失败"
-                    return 1
-                fi
-            else
-                log "未检测到需要 stash 的已跟踪修改，继续拉取..."
-            fi
-
-            # 重新拉取
-            if git pull origin "$branch"; then
-                log "代码拉取成功，尝试恢复本地修改..."
-
-                # 仅在有 stash 项时恢复
-                if git --no-pager stash list | grep -q "自动保存 - "; then
-                    if git stash pop; then
-                        log "✅ 本地修改已恢复"
-                    else
-                        warn "本地修改恢复失败（可能有冲突），已保存在 stash 中"
-                        warn "请手动执行: git stash list 查看，git stash pop 恢复"
-                    fi
-                else
-                    log "没有需要恢复的 stash 修改"
-                fi
-            else
-                error "代码同步失败"
-                return 1
-            fi
-        fi
-        log "✅ 代码同步成功"
+        # 强制同步：完全匹配 GitHub 状态，删除多余文件
+        git reset --hard "origin/$branch"
+        git clean -fd
+        log "✅ 代码同步成功（已完全匹配 GitHub）"
     else
         log "代码已是最新，跳过拉取，继续构建和重启..."
     fi
