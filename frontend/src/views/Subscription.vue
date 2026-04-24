@@ -240,21 +240,13 @@
               </el-radio>
               <template v-for="method in availableUpgradePaymentMethods" :key="method.key">
                 <el-radio
-                  v-if="method && method.key && method.key !== 'balance' && method.key !== 'mixed'"
+                  v-if="method && method.key && method.key !== 'balance'"
                   :label="method.key"
                 >
                   {{ method.name || method.key }}
                 </el-radio>
               </template>
-              <el-radio label="mixed" :disabled="userBalance <= 0 || userBalance >= finalAmount" v-if="finalAmount > 0 && userBalance > 0 && userBalance < finalAmount">
-                余额+支付宝
-                <span style="color: #409eff; margin-left: 5px">（余额 ¥{{ userBalance.toFixed(2) }} + 支付宝 ¥{{ (finalAmount - userBalance).toFixed(2) }}）</span>
-              </el-radio>
             </el-radio-group>
-            <div class="payment-amount" v-if="paymentMethod === 'mixed'">
-              <p>余额支付：¥{{ Math.min(userBalance, finalAmount).toFixed(2) }}</p>
-              <p>支付宝支付：¥{{ Math.max(0, finalAmount - userBalance).toFixed(2) }}</p>
-            </div>
           </div>
         </div>
         <template #footer>
@@ -398,7 +390,7 @@ export default {
         const methods = parsePaymentMethods(response)
         availableUpgradePaymentMethods.value = methods
         if (methods.length > 0) {
-          const firstMethod = methods.find(m => m.key && m.key !== 'balance' && m.key !== 'mixed') || methods[0]
+          const firstMethod = methods.find(m => m.key && m.key !== 'balance') || methods[0]
           if (firstMethod && firstMethod.key) {
             paymentMethod.value = firstMethod.key
           }
@@ -655,8 +647,6 @@ export default {
         setTimeout(() => {
           if (userBalance.value >= finalAmount.value && finalAmount.value > 0) {
             paymentMethod.value = 'balance'
-          } else if (userBalance.value > 0 && userBalance.value < finalAmount.value && finalAmount.value > 0) {
-            paymentMethod.value = 'mixed'
           } else if (availableUpgradePaymentMethods.value.length > 0) {
             paymentMethod.value = availableUpgradePaymentMethods.value[0]?.key || 'alipay'
           } else {
@@ -698,15 +688,11 @@ export default {
       }
       try {
         upgradeLoading.value = true
-        const availableBalance = paymentMethod.value === 'mixed'
-          ? Math.max(0, Math.min(userBalance.value, finalAmount.value))
-          : (paymentMethod.value === 'balance' ? finalAmount.value : null)
         const upgradeData = {
           additional_devices: upgradeForm.value.additionalDevices,
           additional_days: upgradeForm.value.additionalDays || 0,
           payment_method: paymentMethod.value,
-          use_balance: paymentMethod.value === 'balance' || (paymentMethod.value === 'mixed' && availableBalance > 0),
-          balance_amount: availableBalance
+          use_balance: paymentMethod.value === 'balance'
         }
         const response = await orderAPI.upgradeDevices(upgradeData)
         if (response?.data?.success) {

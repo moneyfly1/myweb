@@ -357,7 +357,6 @@ type CreateOrderRequest struct {
 	PaymentMethod  string  `json:"payment_method"`
 	Amount         float64 `json:"amount"`
 	UseBalance     bool    `json:"use_balance"`
-	BalanceAmount  float64 `json:"balance_amount"`
 	Currency       string  `json:"currency"`
 	DurationMonths int     `json:"duration_months"`
 }
@@ -1252,12 +1251,11 @@ func UpgradeDevices(c *gin.Context) {
 	}
 
 	var req struct {
-		AdditionalDevices int     `json:"additional_devices" binding:"required,min=1"`
-		AdditionalDays    int     `json:"additional_days"`
-		PaymentMethod     string  `json:"payment_method"`
-		UseBalance        bool    `json:"use_balance"`
-		BalanceAmount     float64 `json:"balance_amount"`
-		PreviewOnly       bool    `json:"preview_only"`
+		AdditionalDevices int    `json:"additional_devices" binding:"required,min=1"`
+		AdditionalDays    int    `json:"additional_days"`
+		PaymentMethod     string `json:"payment_method"`
+		UseBalance        bool   `json:"use_balance"`
+		PreviewOnly       bool   `json:"preview_only"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
@@ -1323,17 +1321,13 @@ func UpgradeDevices(c *gin.Context) {
 
 	balanceUsed := 0.0
 	finalAmount := totalAmount
-	if req.UseBalance {
+	if req.UseBalance && user.Balance > 0 {
 		availableBalance := math.Round(user.Balance*100) / 100
-		requestedBalance := math.Round(req.BalanceAmount*100) / 100
-		if requestedBalance <= 0 || requestedBalance > availableBalance {
-			requestedBalance = availableBalance
+		if availableBalance > finalAmount {
+			availableBalance = finalAmount
 		}
-		if requestedBalance > finalAmount {
-			requestedBalance = finalAmount
-		}
-		if requestedBalance > 0 {
-			balanceUsed = requestedBalance
+		if availableBalance > 0 {
+			balanceUsed = availableBalance
 			finalAmount -= balanceUsed
 		}
 	}
@@ -1433,9 +1427,7 @@ func UpgradeDevices(c *gin.Context) {
 	var paymentURL string
 	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
 		queryPayType := req.PaymentMethod
-		if queryPayType == "mixed" {
-			queryPayType = "alipay"
-		} else if strings.HasPrefix(queryPayType, "yipay_") {
+		if strings.HasPrefix(queryPayType, "yipay_") {
 			queryPayType = "yipay"
 		} else if strings.HasPrefix(queryPayType, "codepay_") {
 			queryPayType = "codepay"

@@ -20,14 +20,13 @@ import (
 )
 
 type CreateOrderParams struct {
-	PackageID      uint    `json:"package_id"`
-	CouponCode     string  `json:"coupon_code"`
-	PaymentMethod  string  `json:"payment_method"`
-	UseBalance     bool    `json:"use_balance"`
-	BalanceAmount  float64 `json:"balance_amount"`
-	DurationMonths int     `json:"duration_months"`
-	UserAgent      string  `json:"-"`
-	ClientIP       string  `json:"-"`
+	PackageID      uint   `json:"package_id"`
+	CouponCode     string `json:"coupon_code"`
+	PaymentMethod  string `json:"payment_method"`
+	UseBalance     bool   `json:"use_balance"`
+	DurationMonths int    `json:"duration_months"`
+	UserAgent      string `json:"-"`
+	ClientIP       string `json:"-"`
 }
 
 type OrderService struct {
@@ -119,22 +118,14 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 
 	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount
 	balanceUsed := 0.0
-	providerPaymentMethod := params.PaymentMethod
-	if providerPaymentMethod == "mixed" {
-		providerPaymentMethod = "alipay"
-	}
 
-	if params.UseBalance && params.BalanceAmount > 0 {
-		requestedBalance := math.Round(params.BalanceAmount*100) / 100
+	if params.UseBalance && user.Balance > 0 {
 		availableBalance := math.Round(user.Balance*100) / 100
-		if requestedBalance > availableBalance {
-			requestedBalance = availableBalance
+		if availableBalance > finalAmount {
+			availableBalance = finalAmount
 		}
-		if requestedBalance > finalAmount {
-			requestedBalance = finalAmount
-		}
-		if requestedBalance > 0 {
-			balanceUsed = requestedBalance
+		if availableBalance > 0 {
+			balanceUsed = availableBalance
 			finalAmount -= balanceUsed
 		}
 	}
@@ -178,9 +169,9 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
 		order.PaymentMethodName = database.NullString("余额支付")
 	} else {
-		methodName := providerPaymentMethod
+		methodName := params.PaymentMethod
 		if balanceUsed > 0 {
-			methodName = fmt.Sprintf("余额支付(%.2f元)+%s", balanceUsed, providerPaymentMethod)
+			methodName = fmt.Sprintf("余额支付(%.2f元)+%s", balanceUsed, params.PaymentMethod)
 		}
 		order.PaymentMethodName = database.NullString(methodName)
 	}
@@ -234,20 +225,20 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	}
 
 	var paymentURL string
-	if providerPaymentMethod != "" && providerPaymentMethod != "balance" {
+	if params.PaymentMethod != "" && params.PaymentMethod != "balance" {
 		utils.LogInfo("CreateOrder: 开始生成支付链接 - payment_method=%s, order_no=%s, amount=%.2f",
-			providerPaymentMethod, order.OrderNo, finalAmount)
-		url, err := s.generatePaymentURLWithUA(&order, providerPaymentMethod, finalAmount, params.UserAgent)
+			params.PaymentMethod, order.OrderNo, finalAmount)
+		url, err := s.generatePaymentURLWithUA(&order, params.PaymentMethod, finalAmount, params.UserAgent)
 		if err != nil {
 			utils.LogError("CreateOrder: 生成支付链接失败", err, map[string]interface{}{
-				"payment_method": providerPaymentMethod,
+				"payment_method": params.PaymentMethod,
 				"order_no":       order.OrderNo,
 			})
 			return &order, "", fmt.Errorf("生成支付链接失败: %v", err)
 		}
 		paymentURL = url
 		utils.LogInfo("CreateOrder: 支付链接生成成功 - payment_method=%s, order_no=%s, payment_url=%s",
-			providerPaymentMethod, order.OrderNo, paymentURL)
+			params.PaymentMethod, order.OrderNo, paymentURL)
 	}
 
 	return &order, paymentURL, nil
