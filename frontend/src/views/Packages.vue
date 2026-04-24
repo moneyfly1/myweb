@@ -1017,7 +1017,7 @@ export default {
             method => method.key === paymentMethod.value || method.pay_type === paymentMethod.value
           )
 
-          if (!selectedPaymentMethod && paymentMethod.value !== 'balance') {
+          if (!selectedPaymentMethod && paymentMethod.value !== 'balance' && paymentMethod.value !== 'mixed') {
             ElMessage.error('请选择有效的支付方式')
             isProcessing.value = false
             return
@@ -1027,8 +1027,13 @@ export default {
             payment_method: paymentMethod.value
           }
 
+          if (paymentMethod.value === 'mixed') {
+            payData.use_balance = true
+            payData.balance_amount = userBalance.value
+          }
+
           // 如果不是余额支付，需要传payment_method_id
-          if (paymentMethod.value !== 'balance' && selectedPaymentMethod) {
+          if (paymentMethod.value !== 'balance' && paymentMethod.value !== 'mixed' && selectedPaymentMethod) {
             payData.payment_method_id = selectedPaymentMethod.id
           }
 
