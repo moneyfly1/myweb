@@ -578,7 +578,7 @@
               <span v-else-if="upgradePreviewFinal > 0 && parseFloat(userInfo.balance||0) > 0" style="color:#f56c6c;margin-left:5px;">（余额不足）</span>
             </el-radio>
             <template v-for="method in upgradePaymentMethods" :key="method.key">
-              <el-radio v-if="method.key !== 'balance' && method.key !== 'mixed'" :label="method.key" style="display:block;margin-bottom:8px;">
+              <el-radio v-if="method.key !== 'balance'" :label="method.key" style="display:block;margin-bottom:8px;">
                 {{ method.name || method.key }}
               </el-radio>
             </template>
@@ -893,7 +893,7 @@ const handleUpgradeDrawerOpen = async () => {
   try {
     const res = await api.get('/payment-methods/active')
     upgradePaymentMethods.value = parsePaymentMethods(res)
-    const first = upgradePaymentMethods.value.find(m => m.key !== 'balance' && m.key !== 'mixed')
+    const first = upgradePaymentMethods.value.find(m => m.key !== 'balance')
     if (first) upgradePaymentMethod.value = first.key
   } catch (e) {
     upgradePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
@@ -930,8 +930,7 @@ const submitUpgrade = async () => {
       additional_devices: upgradeDeviceCount.value,
       additional_days: upgradeAdditionalDays.value || 0,
       payment_method: upgradePaymentMethod.value,
-      use_balance: upgradePaymentMethod.value === 'balance',
-      balance_amount: upgradePaymentMethod.value === 'balance' ? parseFloat(userInfo.value.balance || 0) : null
+      use_balance: upgradePaymentMethod.value === 'balance'
     })
     if (res?.data?.success) {
       const data = res.data.data
