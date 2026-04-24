@@ -125,14 +125,18 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	}
 
 	if params.UseBalance && params.BalanceAmount > 0 {
-		if user.Balance < params.BalanceAmount {
-			return nil, "", fmt.Errorf("余额不足")
+		requestedBalance := math.Round(params.BalanceAmount*100) / 100
+		availableBalance := math.Round(user.Balance*100) / 100
+		if requestedBalance > availableBalance {
+			requestedBalance = availableBalance
 		}
-		if params.BalanceAmount > finalAmount {
-			params.BalanceAmount = finalAmount
+		if requestedBalance > finalAmount {
+			requestedBalance = finalAmount
 		}
-		balanceUsed = params.BalanceAmount
-		finalAmount -= balanceUsed
+		if requestedBalance > 0 {
+			balanceUsed = requestedBalance
+			finalAmount -= balanceUsed
+		}
 	}
 
 	if finalAmount <= 0.01 {
