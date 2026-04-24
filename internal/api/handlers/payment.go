@@ -625,47 +625,19 @@ func PaymentNotify(c *gin.Context) {
 			expectedAmount = order.FinalAmount.Float64
 		}
 
-		var balanceUsedInOrder float64 = 0
-		if order.ExtraData.Valid && order.ExtraData.String != "" {
-			var extraData map[string]interface{}
-			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-				if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
-					balanceUsedInOrder = balanceUsedVal
-				}
-			}
-		}
-
-		expectedCallbackAmount := expectedAmount - balanceUsedInOrder
-		if balanceUsedInOrder > 0 {
-			if callbackAmount < expectedCallbackAmount-0.01 || callbackAmount > expectedCallbackAmount+0.01 {
-				utils.LogError("PaymentNotify: amount mismatch (mixed payment)", nil, map[string]interface{}{
-					"order_no":              orderNo,
-					"payment_type":          paymentType,
-					"expected_callback":     expectedCallbackAmount,
-					"callback_amount":       callbackAmount,
-					"balance_used":          balanceUsedInOrder,
-					"total_expected_amount": expectedAmount,
-				})
-				utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致（混合支付）", "error", map[string]interface{}{
-					"order_no": orderNo, "payment_type": paymentType, "expected": expectedCallbackAmount, "callback_amount": callbackAmount,
-				})
-				c.String(http.StatusBadRequest, "订单金额不匹配")
-				return
-			}
-		} else {
-			if callbackAmount < expectedAmount-0.01 || callbackAmount > expectedAmount+0.01 {
-				utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
-					"order_no":        orderNo,
-					"payment_type":    paymentType,
-					"expected_amount": expectedAmount,
-					"callback_amount": callbackAmount,
-				})
-				utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致", "error", map[string]interface{}{
-					"order_no": orderNo, "payment_type": paymentType, "expected": expectedAmount, "callback_amount": callbackAmount,
-				})
-				c.String(http.StatusBadRequest, "订单金额不匹配")
-				return
-			}
+		expectedCallbackAmount := expectedAmount
+		if callbackAmount < expectedCallbackAmount-0.01 || callbackAmount > expectedCallbackAmount+0.01 {
+			utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
+				"order_no":        orderNo,
+				"payment_type":    paymentType,
+				"expected_amount": expectedAmount,
+				"callback_amount": callbackAmount,
+			})
+			utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调订单金额与实付不一致", "error", map[string]interface{}{
+				"order_no": orderNo, "payment_type": paymentType, "expected": expectedAmount, "callback_amount": callbackAmount,
+			})
+			c.String(http.StatusBadRequest, "订单金额不匹配")
+			return
 		}
 	} else {
 		// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
@@ -776,63 +748,6 @@ func PaymentNotify(c *gin.Context) {
 	}
 
 	utils.LogInfo("PaymentNotify: 订单状态已更新为paid - order_no=%s, order_id=%d, status=%s", orderNo, order.ID, order.Status)
-
-	var balanceUsed float64 = 0
-	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
-				balanceUsed = balanceUsedVal
-			}
-		}
-	}
-
-	if balanceUsed > 0 {
-		var user models.User
-		if err := db.First(&user, order.UserID).Error; err == nil {
-			if user.Balance >= balanceUsed {
-				oldBalance := user.Balance
-				user.Balance -= balanceUsed
-				if err := db.Save(&user).Error; err != nil {
-					utils.LogError("PaymentNotify: failed to deduct balance", err, map[string]interface{}{
-						"order_id":     order.ID,
-						"balance_used": balanceUsed,
-					})
-				} else {
-					utils.LogInfo("PaymentNotify: balance deducted - order_no=%s, user_id=%d, balance_used=%.2f, old_balance=%.2f, new_balance=%.2f",
-						orderNo, user.ID, balanceUsed, oldBalance, user.Balance)
-
-					// 记录余额日志
-					go func() {
-						orderID := uint(order.ID)
-						ipAddress := utils.GetRealClientIP(c)
-						userID := user.ID
-						if err := utils.CreateBalanceLog(
-							user.ID,
-							"consume",
-							-balanceUsed,
-							oldBalance,
-							user.Balance,
-							&orderID,
-							nil,
-							fmt.Sprintf("订单支付扣除余额，订单号: %s", orderNo),
-							"user",
-							&userID,
-							ipAddress,
-						); err != nil {
-							log.Printf("failed to create balance log: %v", err)
-						}
-					}()
-				}
-			} else {
-				utils.LogError("PaymentNotify: insufficient balance", nil, map[string]interface{}{
-					"order_id":     order.ID,
-					"balance_used": balanceUsed,
-					"user_balance": user.Balance,
-				})
-			}
-		}
-	}
 
 	utils.LogInfo("PaymentNotify: 订单状态已更新为paid，开始处理订单 - order_no=%s, order_id=%d", orderNo, order.ID)
 
