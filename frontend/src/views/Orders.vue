@@ -1391,7 +1391,6 @@ export default {
         wechat: '微信支付',
         wxpay: '微信支付',
         balance: '余额支付',
-        mixed: '余额+支付宝',
         yipay_alipay: '易支付-支付宝',
         yipay_wxpay: '易支付-微信',
         yipay_qqpay: '易支付-QQ钱包',
@@ -1405,8 +1404,7 @@ export default {
       const typeMap = {
         alipay: 'primary',
         wechat: 'success',
-        balance: 'warning',
-        mixed: 'info'
+        balance: 'warning'
       }
       return typeMap[method] || 'info'
     }

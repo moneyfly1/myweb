@@ -289,10 +289,10 @@
                 <span v-else class="payment-status disabled">（余额为0）</span>
               </div>
             </el-radio>
-            <el-radio 
-              v-for="method in availablePaymentMethods" 
+            <el-radio
+              v-for="method in availablePaymentMethods"
               :key="method.key"
-              :label="method.key" 
+              :label="method.key"
               class="payment-option"
             >
               <div class="payment-option-content">
@@ -302,9 +302,9 @@
                 </span>
               </div>
             </el-radio>
-            <el-radio 
+            <el-radio
               v-if="availablePaymentMethods.length === 0"
-              label="alipay" 
+              label="alipay"
               class="payment-option"
             >
               <div class="payment-option-content">
@@ -314,40 +314,8 @@
                 </span>
               </div>
             </el-radio>
-            <el-radio 
-              v-if="userBalance > 0 && userBalance < finalAmount" 
-              label="mixed" 
-              class="payment-option"
-            >
-              <div class="payment-option-content">
-                <span class="payment-option-label">
-                  <el-icon class="payment-icon"><Money /></el-icon>
-                  余额+支付宝
-                </span>
-                <span class="payment-status info">
-                  （余额 ¥{{ userBalance.toFixed(2) }} + 支付宝 ¥{{ (finalAmount - userBalance).toFixed(2) }}）
-                </span>
-              </div>
-            </el-radio>
           </el-radio-group>
           <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 8px; padding: 8px; background: #e1f3d8; border-radius: 4px">
-            <el-alert
-              title="将使用余额全额支付"
-              type="success"
-              :closable="false"
-              show-icon
-              :effect="'plain'"
-            />
-          </div>
-          <div v-else-if="paymentMethod === 'mixed'" style="margin-top: 8px; padding: 8px; background: #ecf5ff; border-radius: 4px">
-            <el-alert
-              :title="`将使用余额 ¥${userBalance.toFixed(2)} 和支付宝 ¥${(finalAmount - userBalance).toFixed(2)} 合并支付`"
-              type="info"
-              :closable="false"
-              show-icon
-              :effect="'plain'"
-            />
-          </div>
         </div>
           <div class="purchase-actions" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e4e7ed;">
             <el-button @click="purchaseDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
@@ -995,8 +963,6 @@ export default {
         const finalPrice = finalAmount.value
         if (userBalance.value >= finalPrice && userBalance.value > 0) {
           paymentMethod.value = 'balance'
-        } else if (userBalance.value > 0 && userBalance.value < finalPrice) {
-          paymentMethod.value = 'mixed'
         } else {
           paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
         }
@@ -1017,7 +983,7 @@ export default {
             method => method.key === paymentMethod.value || method.pay_type === paymentMethod.value
           )
 
-          if (!selectedPaymentMethod && paymentMethod.value !== 'balance' && paymentMethod.value !== 'mixed') {
+          if (!selectedPaymentMethod && paymentMethod.value !== 'balance') {
             ElMessage.error('请选择有效的支付方式')
             isProcessing.value = false
             return
@@ -1027,14 +993,8 @@ export default {
             payment_method: paymentMethod.value
           }
 
-          if (paymentMethod.value === 'mixed') {
-            const availableBalance = Math.max(0, Math.min(userBalance.value, currentOrder.value.final_amount || currentOrder.value.amount || 0))
-            payData.use_balance = availableBalance > 0
-            payData.balance_amount = availableBalance
-          }
-
           // 如果不是余额支付，需要传payment_method_id
-          if (paymentMethod.value !== 'balance' && paymentMethod.value !== 'mixed' && selectedPaymentMethod) {
+          if (paymentMethod.value !== 'balance' && selectedPaymentMethod) {
             payData.payment_method_id = selectedPaymentMethod.id
           }
 
@@ -1068,10 +1028,6 @@ export default {
         ElMessage.error(`余额不足，当前余额：¥${userBalance.value.toFixed(2)}，需要：¥${finalAmount.value.toFixed(2)}`)
         return
       }
-      if (paymentMethod.value === 'mixed' && userBalance.value <= 0) {
-        ElMessage.error('当前余额为0，无法使用混合支付，请选择其他支付方式')
-        return
-      }
       try {
         if (isProcessing.value) {
           return
@@ -1089,12 +1045,6 @@ export default {
         }
         if (paymentMethod.value === 'balance') {
           orderData.use_balance = true
-          orderData.balance_amount = finalAmount.value
-        } else if (paymentMethod.value === 'mixed') {
-          const availableBalance = Math.max(0, Math.min(userBalance.value, finalAmount.value))
-          orderData.use_balance = availableBalance > 0
-          orderData.balance_amount = availableBalance
-          orderData.amount = Math.max(0, finalAmount.value - availableBalance)
         }
         const response = await api.post('/orders/', orderData, {
           timeout: 25000  // 25秒超时，与后端20秒读取超时+5秒缓冲匹配
@@ -1808,8 +1758,6 @@ export default {
           const finalPrice = order.final_amount || order.amount || 0
           if (userBalance.value >= finalPrice) {
             paymentMethod.value = 'balance'
-          } else if (userBalance.value > 0 && userBalance.value < finalPrice) {
-            paymentMethod.value = 'mixed'
           } else {
             paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
           }
