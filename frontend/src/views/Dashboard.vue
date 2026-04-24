@@ -512,96 +512,20 @@
     </el-dialog>
 
     <!-- 升级设备数量抽屉 -->
-    <el-drawer
+    <UpgradeDevicesDrawer
       v-model="showUpgradeDrawer"
-      title="升级设备数量"
-      direction="rtl"
-      size="420px"
-      :close-on-click-modal="false"
-      @open="handleUpgradeDrawerOpen"
-    >
-      <div class="upgrade-content">
-        <div class="current-subscription-info" style="margin-bottom:20px;">
-          <h4 style="font-size:14px;font-weight:600;margin:0 0 12px 0;">当前订阅信息</h4>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="当前设备数">{{ userInfo.total_devices || subscriptionInfo.maxDevices || 0 }} 个</el-descriptions-item>
-            <el-descriptions-item label="剩余天数">{{ getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time) }} 天</el-descriptions-item>
-          </el-descriptions>
-        </div>
-        <div style="margin-bottom:16px;">
-          <div style="font-size:13px;color:#606266;margin-bottom:8px;">增加设备数量</div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <el-button @click="upgradeDeviceCount > 1 && upgradeDeviceCount--; calcUpgradeCost()" circle size="small">
-              <el-icon><Minus /></el-icon>
-            </el-button>
-            <el-input-number
-              v-model="upgradeDeviceCount"
-              :min="1"
-              :max="500"
-              :controls="false"
-              style="width:90px;"
-              @change="calcUpgradeCost"
-            />
-            <el-button @click="upgradeDeviceCount++; calcUpgradeCost()" circle size="small">
-              <el-icon><Plus /></el-icon>
-            </el-button>
-            <span style="font-size:13px;color:#606266;">个设备</span>
-          </div>
-          <div style="font-size:12px;color:#909399;margin-top:6px;">
-            升级后共 {{ (userInfo.total_devices || subscriptionInfo.maxDevices || 0) + upgradeDeviceCount }} 个设备
-          </div>
-        </div>
-        <div style="margin-bottom:16px;">
-          <div style="font-size:13px;color:#606266;margin-bottom:8px;">延长到期时间（可选）</div>
-          <el-select v-model="upgradeAdditionalDays" style="width:100%;" @change="calcUpgradeCost">
-            <el-option label="不延长" :value="0" />
-            <el-option v-for="m in 12" :key="m" :label="`${m} 个月（${m*30} 天）`" :value="m*30" />
-          </el-select>
-        </div>
-        <div v-if="upgradePreviewCost > 0" style="margin-bottom:20px;">
-          <h4 style="font-size:14px;font-weight:600;margin:0 0 12px 0;">费用明细</h4>
-          <el-descriptions :column="1" border size="small">
-            <el-descriptions-item label="升级费用">¥{{ upgradePreviewCost.toFixed(2) }}</el-descriptions-item>
-            <el-descriptions-item label="等级折扣" v-if="upgradePreviewDiscount > 0">-¥{{ upgradePreviewDiscount.toFixed(2) }}</el-descriptions-item>
-            <el-descriptions-item label="应付金额">
-              <span style="color:#f56c6c;font-weight:700;font-size:16px;">¥{{ upgradePreviewFinal.toFixed(2) }}</span>
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
-        <div v-if="upgradePreviewFinal > 0 || upgradeDeviceCount >= 1">
-          <h4 style="font-size:14px;font-weight:600;margin:0 0 10px 0;">支付方式</h4>
-          <div style="font-size:13px;color:#606266;margin-bottom:10px;">账户余额：¥{{ parseFloat(userInfo.balance || 0).toFixed(2) }}</div>
-          <el-radio-group v-model="upgradePaymentMethod">
-            <el-radio label="balance" :disabled="parseFloat(userInfo.balance||0) < upgradePreviewFinal" style="display:block;margin-bottom:8px;">
-              余额支付
-              <span v-if="parseFloat(userInfo.balance||0) >= upgradePreviewFinal && upgradePreviewFinal > 0" style="color:#67c23a;margin-left:5px;">（余额充足）</span>
-              <span v-else-if="upgradePreviewFinal > 0 && parseFloat(userInfo.balance||0) > 0" style="color:#f56c6c;margin-left:5px;">（余额不足）</span>
-            </el-radio>
-            <template v-for="method in upgradePaymentMethods" :key="method.key">
-              <el-radio v-if="method.key !== 'balance'" :label="method.key" style="display:block;margin-bottom:8px;">
-                {{ method.name || method.key }}
-              </el-radio>
-            </template>
-          </el-radio-group>
-        </div>
-      </div>
-      <template #footer>
-        <div style="display:flex;gap:12px;justify-content:flex-end;">
-          <el-button @click="showUpgradeDrawer = false" style="width:48%">取消</el-button>
-          <el-button type="primary" style="width:48%" :loading="upgradeLoading" @click="submitUpgrade">
-            确认升级并支付
-          </el-button>
-        </div>
-      </template>
-    </el-drawer>
+      :subscription="dashboardUpgradeSubscription"
+      :on-success="handleUpgradeSuccess"
+    />
   </div>
 </template>
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
-import { Wallet, Plus, Minus } from '@element-plus/icons-vue'
+import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, parsePaymentMethods, cachedAPI, orderAPI } from '@/utils/api'
+import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import DOMPurify from 'dompurify'
@@ -867,96 +791,17 @@ const isDeviceOverlimit = computed(() => {
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
   return deviceLimit > 0 && onlineDevices > deviceLimit
 })
-const isDeviceWarning = computed(() => {
-  const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
-  const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
-  return deviceLimit > 0 && onlineDevices >= deviceLimit * 0.8 && onlineDevices <= deviceLimit
-})
+const dashboardUpgradeSubscription = computed(() => ({
+  device_limit: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
+  maxDevices: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
+  expire_time: subscriptionInfo.value.expiryDate || userInfo.value.expire_time,
+  expiryDate: subscriptionInfo.value.expiryDate || userInfo.value.expire_time
+}))
 
-// 升级设备数量抽屉
-const showUpgradeDrawer = ref(false)
-const upgradeDeviceCount = ref(1)
-const upgradeAdditionalDays = ref(0)
-const upgradePreviewCost = ref(0)
-const upgradePreviewDiscount = ref(0)
-const upgradePreviewFinal = ref(0)
-const upgradePaymentMethod = ref('alipay')
-const upgradePaymentMethods = ref([])
-const upgradeLoading = ref(false)
-
-const handleUpgradeDrawerOpen = async () => {
-  upgradeDeviceCount.value = 1
-  upgradeAdditionalDays.value = 0
-  upgradePreviewCost.value = 0
-  upgradePreviewDiscount.value = 0
-  upgradePreviewFinal.value = 0
-  try {
-    const res = await api.get('/payment-methods/active')
-    upgradePaymentMethods.value = parsePaymentMethods(res)
-    const first = upgradePaymentMethods.value.find(m => m.key !== 'balance')
-    if (first) upgradePaymentMethod.value = first.key
-  } catch (e) {
-    upgradePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
-  }
-  calcUpgradeCost()
+const handleUpgradeSuccess = async () => {
+  await Promise.all([loadUserInfo(), loadSubscriptionInfo()])
 }
 
-const calcUpgradeCost = async () => {
-  if (!upgradeDeviceCount.value) return
-  try {
-    const res = await orderAPI.upgradeDevices({
-      additional_devices: upgradeDeviceCount.value,
-      additional_days: upgradeAdditionalDays.value || 0,
-      payment_method: upgradePaymentMethod.value,
-      use_balance: false,
-      preview_only: true
-    })
-    if (res?.data?.success) {
-      upgradePreviewCost.value = parseFloat(res.data.data.upgrade_cost || 0)
-      upgradePreviewDiscount.value = parseFloat(res.data.data.level_discount || 0)
-      upgradePreviewFinal.value = parseFloat(res.data.data.amount || 0)
-    }
-  } catch (e) {}
-}
-
-const submitUpgrade = async () => {
-  if (!upgradeDeviceCount.value || upgradeDeviceCount.value < 1) {
-    ElMessage.warning('请选择要增加的设备数量')
-    return
-  }
-  upgradeLoading.value = true
-  try {
-    const res = await orderAPI.upgradeDevices({
-      additional_devices: upgradeDeviceCount.value,
-      additional_days: upgradeAdditionalDays.value || 0,
-      payment_method: upgradePaymentMethod.value,
-      use_balance: upgradePaymentMethod.value === 'balance'
-    })
-    if (res?.data?.success) {
-      const data = res.data.data
-      if (data.status === 'paid') {
-        ElMessage.success('设备数量升级成功！')
-        showUpgradeDrawer.value = false
-        await loadUserInfo()
-      } else {
-        const payUrl = data.payment_url || data.payment_qr_code
-        if (payUrl) {
-          showUpgradeDrawer.value = false
-          ElMessage.info('正在跳转到支付页面...')
-          window.location.href = payUrl
-        } else {
-          ElMessage.error('支付链接生成失败，请稍后重试')
-        }
-      }
-    } else {
-      ElMessage.error(res?.data?.message || '升级失败')
-    }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.message || '升级失败')
-  } finally {
-    upgradeLoading.value = false
-  }
-}
 const formatDate = (dateString) => {
   if (!dateString) return '未知'
   const date = new Date(dateString)
