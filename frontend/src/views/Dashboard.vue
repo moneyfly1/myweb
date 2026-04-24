@@ -647,6 +647,7 @@ const softwareConfig = ref({
 })
 const activePlatform = ref('Windows')
 const showQRCode = ref(false)
+const showUpgradeDrawer = ref(false)
 const platforms = ref([
   {
     name: 'Windows',
