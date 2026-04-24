@@ -1446,7 +1446,8 @@ func UpgradeDevices(c *gin.Context) {
 		}
 		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod)
 		if err != nil {
-			utils.LogError("UpgradeDevices: create payment failed", err, nil)
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
+			return
 		}
 	}
 

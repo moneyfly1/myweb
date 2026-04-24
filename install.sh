@@ -364,7 +364,10 @@ server {
     listen 80;
     server_name ${DOMAIN};
     root ${PROJECT_DIR}/frontend/dist;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
     location /.well-known/acme-challenge/ { root ${PROJECT_DIR}; }
+    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
     location / { try_files \$uri \$uri/ /index.html; }
 }
 EOF
@@ -388,6 +391,8 @@ server {
     ssl_certificate ${cert_root}/fullchain.pem;
     ssl_certificate_key ${cert_root}/privkey.pem;
     root ${PROJECT_DIR}/frontend/dist;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
@@ -397,6 +402,7 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
     location / { try_files \$uri \$uri/ /index.html; }
 }
 EOF
@@ -409,6 +415,8 @@ server {
     listen 80;
     server_name ${DOMAIN};
     root ${PROJECT_DIR}/frontend/dist;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
@@ -418,6 +426,7 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
     location / { try_files \$uri \$uri/ /index.html; }
 }
 EOF
@@ -748,6 +757,24 @@ sync_from_github() {
         fi
         # 重启 Redis 服务确保缓存完全清除（使用带超时的函数避免卡住）
         restart_redis_with_timeout
+    fi
+
+    # 更新 nginx 配置（确保 MIME 类型正确）
+    local bt_path="/www/server/panel/vhost/nginx/${DOMAIN}.conf"
+    if [ -f "$bt_path" ]; then
+        if ! grep -q "mime.types" "$bt_path"; then
+            log "检测到 nginx 配置缺少 mime.types，正在修复..."
+            sed -i '/root .*frontend\/dist;/a\    include /etc/nginx/mime.types;\n    default_type application/octet-stream;' "$bt_path"
+            if ! grep -q "location /assets/" "$bt_path"; then
+                sed -i '/location \/ {/i\    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }' "$bt_path"
+            fi
+            if nginx -t 2>/dev/null; then
+                nginx -s reload 2>/dev/null
+                log "✅ nginx 配置已更新并重载"
+            else
+                warn "nginx 配置测试失败，请手动检查: $bt_path"
+            fi
+        fi
     fi
 
     # 重启服务
