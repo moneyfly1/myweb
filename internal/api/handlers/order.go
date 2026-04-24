@@ -1323,20 +1323,18 @@ func UpgradeDevices(c *gin.Context) {
 	balanceUsed := 0.0
 	finalAmount := totalAmount
 	if req.UseBalance {
-		if user.Balance <= 0 {
-			utils.ErrorResponse(c, http.StatusBadRequest, "余额不足", nil)
-			return
+		availableBalance := math.Round(user.Balance*100) / 100
+		requestedBalance := math.Round(req.BalanceAmount*100) / 100
+		if requestedBalance <= 0 || requestedBalance > availableBalance {
+			requestedBalance = availableBalance
 		}
-		availableBalance := user.Balance
-		if req.BalanceAmount > 0 && req.BalanceAmount < user.Balance {
-			availableBalance = req.BalanceAmount
+		if requestedBalance > finalAmount {
+			requestedBalance = finalAmount
 		}
-		if availableBalance > finalAmount {
-			balanceUsed = finalAmount
-		} else {
-			balanceUsed = availableBalance
+		if requestedBalance > 0 {
+			balanceUsed = requestedBalance
+			finalAmount -= balanceUsed
 		}
-		finalAmount -= balanceUsed
 	}
 
 	orderNo, err := utils.GenerateDeviceUpgradeOrderNo(db)
