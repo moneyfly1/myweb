@@ -264,59 +264,67 @@
             </div>
           </div>
           <div class="payment-method-section" style="margin-top: 12px;">
-          <h4 class="payment-section-title">支付方式</h4>
-          <div class="balance-info">
-            <div class="balance-row">
-              <span class="balance-label">账户余额：</span>
-              <span class="balance-amount">¥{{ userBalance.toFixed(2) }}</span>
+            <h4 class="payment-section-title">支付方式</h4>
+            <div class="balance-info">
+              <div class="balance-row">
+                <span class="balance-label">账户余额：</span>
+                <span class="balance-amount">¥{{ userBalance.toFixed(2) }}</span>
+              </div>
+            </div>
+            <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" style="width: 100%">
+              <el-radio
+                label="balance"
+                :disabled="userBalance < finalAmount"
+                class="payment-option"
+              >
+                <div class="payment-option-content">
+                  <span class="payment-option-label">
+                    <el-icon class="payment-icon"><Wallet /></el-icon>
+                    余额支付
+                  </span>
+                  <span v-if="userBalance >= finalAmount" class="payment-status success">（余额充足）</span>
+                  <span v-else-if="userBalance > 0" class="payment-status error">
+                    （余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）
+                  </span>
+                  <span v-else class="payment-status disabled">（余额为0）</span>
+                </div>
+              </el-radio>
+              <el-radio
+                v-for="method in availablePaymentMethods"
+                :key="method.key"
+                :label="method.key"
+                class="payment-option"
+              >
+                <div class="payment-option-content">
+                  <span class="payment-option-label">
+                    <el-icon class="payment-icon"><CreditCard /></el-icon>
+                    {{ method.name || method.key }}
+                  </span>
+                </div>
+              </el-radio>
+              <el-radio
+                v-if="availablePaymentMethods.length === 0"
+                label="alipay"
+                class="payment-option"
+              >
+                <div class="payment-option-content">
+                  <span class="payment-option-label">
+                    <el-icon class="payment-icon"><CreditCard /></el-icon>
+                    支付宝支付
+                  </span>
+                </div>
+              </el-radio>
+            </el-radio-group>
+            <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 8px; padding: 8px; background: #e1f3d8; border-radius: 4px">
+              <el-alert
+                title="将使用余额全额支付"
+                type="success"
+                :closable="false"
+                show-icon
+                :effect="'plain'"
+              />
             </div>
           </div>
-          <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" style="width: 100%">
-            <el-radio 
-              label="balance" 
-              :disabled="userBalance < finalAmount" 
-              class="payment-option"
-            >
-              <div class="payment-option-content">
-                <span class="payment-option-label">
-                  <el-icon class="payment-icon"><Wallet /></el-icon>
-                  余额支付
-                </span>
-                <span v-if="userBalance >= finalAmount" class="payment-status success">（余额充足）</span>
-                <span v-else-if="userBalance > 0" class="payment-status error">
-                  （余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）
-                </span>
-                <span v-else class="payment-status disabled">（余额为0）</span>
-              </div>
-            </el-radio>
-            <el-radio
-              v-for="method in availablePaymentMethods"
-              :key="method.key"
-              :label="method.key"
-              class="payment-option"
-            >
-              <div class="payment-option-content">
-                <span class="payment-option-label">
-                  <el-icon class="payment-icon"><CreditCard /></el-icon>
-                  {{ method.name || method.key }}
-                </span>
-              </div>
-            </el-radio>
-            <el-radio
-              v-if="availablePaymentMethods.length === 0"
-              label="alipay"
-              class="payment-option"
-            >
-              <div class="payment-option-content">
-                <span class="payment-option-label">
-                  <el-icon class="payment-icon"><CreditCard /></el-icon>
-                  支付宝支付
-                </span>
-              </div>
-            </el-radio>
-          </el-radio-group>
-          <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 8px; padding: 8px; background: #e1f3d8; border-radius: 4px">
-        </div>
           <div class="purchase-actions" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e4e7ed;">
             <el-button @click="purchaseDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
             <el-button type="primary" @click="confirmPurchase" :loading="isProcessing" :size="isMobile ? 'large' : 'default'">
