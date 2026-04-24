@@ -66,7 +66,7 @@ export const PAGINATION_CONFIG = {
   pageSizes: [10, 20, 50, 100],
   layout: 'total, sizes, prev, pager, next, jumper',
   mobileLayout: 'total, prev, pager, next',
-  defaultPageSize: 20,
+  defaultPageSize: 10,
   defaultPage: 1
 }
 

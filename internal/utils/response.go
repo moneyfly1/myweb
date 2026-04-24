@@ -171,14 +171,14 @@ func ParsePagination(c *gin.Context) PaginationParams {
 		if skip > 100000 {
 			skip = 100000
 		}
-		if page == 1 && size == 20 {
+		if page == 1 && size == 10 {
 			page = (skip / size) + 1
 		}
 	}
 	if limitStr := c.Query("limit"); limitStr != "" {
 		var limit int
 		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
-			limit = 20
+			limit = 10
 		}
 		if size == 20 {
 			size = limit
