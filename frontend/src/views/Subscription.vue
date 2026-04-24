@@ -247,7 +247,7 @@
                 </el-radio>
               </template>
               <el-radio label="mixed" :disabled="userBalance <= 0 || userBalance >= finalAmount" v-if="finalAmount > 0 && userBalance > 0 && userBalance < finalAmount">
-                余额+支付宝（余额不足时）
+                余额+支付宝
                 <span style="color: #409eff; margin-left: 5px">（余额 ¥{{ userBalance.toFixed(2) }} + 支付宝 ¥{{ (finalAmount - userBalance).toFixed(2) }}）</span>
               </el-radio>
             </el-radio-group>
@@ -698,12 +698,15 @@ export default {
       }
       try {
         upgradeLoading.value = true
+        const availableBalance = paymentMethod.value === 'mixed'
+          ? Math.max(0, Math.min(userBalance.value, finalAmount.value))
+          : (paymentMethod.value === 'balance' ? finalAmount.value : null)
         const upgradeData = {
           additional_devices: upgradeForm.value.additionalDevices,
           additional_days: upgradeForm.value.additionalDays || 0,
           payment_method: paymentMethod.value,
-          use_balance: paymentMethod.value === 'balance' || paymentMethod.value === 'mixed',
-          balance_amount: paymentMethod.value === 'mixed' ? userBalance.value : (paymentMethod.value === 'balance' ? userBalance.value : null)
+          use_balance: paymentMethod.value === 'balance' || (paymentMethod.value === 'mixed' && availableBalance > 0),
+          balance_amount: availableBalance
         }
         const response = await orderAPI.upgradeDevices(upgradeData)
         if (response?.data?.success) {

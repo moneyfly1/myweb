@@ -1028,8 +1028,9 @@ export default {
           }
 
           if (paymentMethod.value === 'mixed') {
-            payData.use_balance = true
-            payData.balance_amount = userBalance.value
+            const availableBalance = Math.max(0, Math.min(userBalance.value, currentOrder.value.final_amount || currentOrder.value.amount || 0))
+            payData.use_balance = availableBalance > 0
+            payData.balance_amount = availableBalance
           }
 
           // 如果不是余额支付，需要传payment_method_id
@@ -1068,7 +1069,7 @@ export default {
         return
       }
       if (paymentMethod.value === 'mixed' && userBalance.value <= 0) {
-        ElMessage.error('余额不足，无法使用混合支付，请选择其他支付方式')
+        ElMessage.error('当前余额为0，无法使用混合支付，请选择其他支付方式')
         return
       }
       try {
@@ -1090,9 +1091,10 @@ export default {
           orderData.use_balance = true
           orderData.balance_amount = finalAmount.value
         } else if (paymentMethod.value === 'mixed') {
-          orderData.use_balance = true
-          orderData.balance_amount = userBalance.value
-          orderData.amount = finalAmount.value - userBalance.value
+          const availableBalance = Math.max(0, Math.min(userBalance.value, finalAmount.value))
+          orderData.use_balance = availableBalance > 0
+          orderData.balance_amount = availableBalance
+          orderData.amount = Math.max(0, finalAmount.value - availableBalance)
         }
         const response = await api.post('/orders/', orderData, {
           timeout: 25000  // 25秒超时，与后端20秒读取超时+5秒缓冲匹配
