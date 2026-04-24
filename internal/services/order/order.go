@@ -156,7 +156,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		Amount:         baseAmount,
 		Status:         "pending",
 		DiscountAmount: database.NullFloat64(totalDiscountAmount),
-		FinalAmount:    database.NullFloat64(balanceUsed + finalAmount),
+		FinalAmount:    database.NullFloat64(finalAmount),
 		ExtraData:      database.NullString(string(extraDataJSON)),
 		CreatedAt:      now,
 	}
@@ -368,8 +368,8 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 
 	// 从订单的 ExtraData 中提取余额使用金额
 	var balanceUsed float64
+	var extraData map[string]interface{}
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
 			if balance, ok := extraData["balance_used"].(float64); ok {
 				balanceUsed = balance
@@ -378,6 +378,30 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	}
 
 	// 如果订单使用了余额，在支付成功时扣除
+	orderType := ""
+	if extraData != nil {
+		if rawType, ok := extraData["type"].(string); ok {
+			orderType = rawType
+		}
+	}
+
+	if orderType == "device_upgrade" {
+		var existingSubscription models.Subscription
+		if err := s.db.Where("user_id = ?", user.ID).First(&existingSubscription).Error; err == nil {
+			additionalDevices := 0
+			additionalDays := 0
+			if devices, ok := extraData["additional_devices"].(float64); ok {
+				additionalDevices = int(devices)
+			}
+			if days, ok := extraData["additional_days"].(float64); ok {
+				additionalDays = int(days)
+			}
+			if additionalDevices <= 0 && additionalDays <= 0 {
+				return &existingSubscription, nil
+			}
+		}
+	}
+
 	if balanceUsed > 0 {
 		result := s.db.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
 			Update("balance", gorm.Expr("balance - ?", balanceUsed))
