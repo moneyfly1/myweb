@@ -119,6 +119,10 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 
 	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount
 	balanceUsed := 0.0
+	providerPaymentMethod := params.PaymentMethod
+	if providerPaymentMethod == "mixed" {
+		providerPaymentMethod = "alipay"
+	}
 
 	if params.UseBalance && params.BalanceAmount > 0 {
 		if user.Balance < params.BalanceAmount {
@@ -170,9 +174,9 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
 		order.PaymentMethodName = database.NullString("余额支付")
 	} else {
-		methodName := params.PaymentMethod
+		methodName := providerPaymentMethod
 		if balanceUsed > 0 {
-			methodName = fmt.Sprintf("余额支付(%.2f元)+%s", balanceUsed, params.PaymentMethod)
+			methodName = fmt.Sprintf("余额支付(%.2f元)+%s", balanceUsed, providerPaymentMethod)
 		}
 		order.PaymentMethodName = database.NullString(methodName)
 	}
@@ -226,20 +230,20 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	}
 
 	var paymentURL string
-	if params.PaymentMethod != "" && params.PaymentMethod != "balance" {
+	if providerPaymentMethod != "" && providerPaymentMethod != "balance" {
 		utils.LogInfo("CreateOrder: 开始生成支付链接 - payment_method=%s, order_no=%s, amount=%.2f",
-			params.PaymentMethod, order.OrderNo, finalAmount)
-		url, err := s.generatePaymentURLWithUA(&order, params.PaymentMethod, finalAmount, params.UserAgent)
+			providerPaymentMethod, order.OrderNo, finalAmount)
+		url, err := s.generatePaymentURLWithUA(&order, providerPaymentMethod, finalAmount, params.UserAgent)
 		if err != nil {
 			utils.LogError("CreateOrder: 生成支付链接失败", err, map[string]interface{}{
-				"payment_method": params.PaymentMethod,
+				"payment_method": providerPaymentMethod,
 				"order_no":       order.OrderNo,
 			})
 			return &order, "", fmt.Errorf("生成支付链接失败: %v", err)
 		}
 		paymentURL = url
 		utils.LogInfo("CreateOrder: 支付链接生成成功 - payment_method=%s, order_no=%s, payment_url=%s",
-			params.PaymentMethod, order.OrderNo, paymentURL)
+			providerPaymentMethod, order.OrderNo, paymentURL)
 	}
 
 	return &order, paymentURL, nil
