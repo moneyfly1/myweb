@@ -39,11 +39,11 @@ func resolveUserInfo(user models.User) gin.H {
 func resolvePackageInfo(order models.Order) (uint, string, interface{}) {
 	if order.PackageID == 0 {
 		name := "设备升级"
+		itemType := "device_upgrade"
 		if order.ExtraData.Valid && order.ExtraData.String != "" {
 			var extraData map[string]interface{}
 			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
 				if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
-					// 自定义套餐
 					devices := 0
 					months := 0
 					if devicesVal, ok := extraData["devices"].(float64); ok {
@@ -53,12 +53,13 @@ func resolvePackageInfo(order models.Order) (uint, string, interface{}) {
 						months = int(monthsVal)
 					}
 					name = fmt.Sprintf("自定义套餐 (%d设备/%d月)", devices, months)
-					return 0, name, gin.H{"id": 0, "name": name, "type": "custom_package"}
+					itemType = "custom_package"
+					return 0, name, gin.H{"id": 0, "name": name, "type": itemType}
 				}
 			}
 			name = "设备升级订单"
 		}
-		return 0, name, gin.H{"id": 0, "name": name}
+		return 0, name, gin.H{"id": 0, "name": name, "type": itemType}
 	}
 
 	if order.Package.ID > 0 && order.Package.ID == order.PackageID {
@@ -78,6 +79,19 @@ func formatOrderData(order models.Order) gin.H {
 	amount := order.Amount
 	if order.FinalAmount.Valid {
 		amount = order.FinalAmount.Float64
+	}
+
+	var balanceUsed float64
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+				balanceUsed = balanceUsedVal
+			}
+		}
+	}
+	if balanceUsed > 0 {
+		amount = utils.RoundFloat(amount+balanceUsed, 2)
 	}
 
 	paymentMethod := ""
@@ -159,12 +173,7 @@ func extractCodepayPaymentType(payType string, reqMethod string) string {
 	return "alipay"
 }
 
-func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.PaymentConfig, reqMethod string) (string, error) {
-	amount := order.Amount
-	if order.FinalAmount.Valid {
-		amount = order.FinalAmount.Float64
-	}
-
+func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.PaymentConfig, reqMethod string, amount float64) (string, error) {
 	switch paymentConfig.PayType {
 	case "alipay":
 		service, err := payment.NewAlipayService(paymentConfig)
@@ -307,8 +316,8 @@ func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *pa
 				}
 			}
 
-			// 如果使用了余额，实际支付金额应该是订单金额减去余额
-			expectedPaymentAmount := expectedAmount - balanceUsed
+			// FinalAmount 仅表示第三方应付金额
+			expectedPaymentAmount := expectedAmount
 
 			if alipayAmount < expectedPaymentAmount-0.01 || alipayAmount > expectedPaymentAmount+0.01 {
 				utils.LogError("performAlipayQuery: order amount mismatch", nil, map[string]interface{}{
@@ -1189,6 +1198,14 @@ func GetOrderStatusByNo(c *gin.Context) {
 	orderType := "order"
 	if order.PackageID == 0 {
 		orderType = "device_upgrade"
+		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if extraType, ok := extraData["type"].(string); ok && extraType != "" {
+					orderType = extraType
+				}
+			}
+		}
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"order_no": order.OrderNo,
@@ -1335,7 +1352,7 @@ func UpgradeDevices(c *gin.Context) {
 		UserID:            user.ID,
 		PackageID:         0,
 		Amount:            totalAmount,
-		FinalAmount:       database.NullFloat64(actualPaidAmount),
+		FinalAmount:       database.NullFloat64(finalAmount),
 		DiscountAmount:    database.NullFloat64(totalAmount - actualPaidAmount),
 		Status:            "pending",
 		ExtraData:         database.NullString(extraData),
@@ -1444,7 +1461,7 @@ func UpgradeDevices(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付记录失败", err)
 			return
 		}
-		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod)
+		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, finalAmount)
 		if err != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
 			return
@@ -1465,16 +1482,18 @@ func UpgradeDevices(c *gin.Context) {
 		log.Printf("failed to update order extra data: %v", err)
 	}
 
-	responseData := gin.H{
-		"order_no":           order.OrderNo,
-		"id":                 order.ID,
-		"status":             order.Status,
-		"amount":             totalAmount,
-		"final_amount":       finalAmount,
-		"balance_used":       balanceUsed,
-		"additional_devices": req.AdditionalDevices,
-		"additional_days":    req.AdditionalDays,
-	}
+		actualTotalAmount := utils.RoundFloat(balanceUsed+finalAmount, 2)
+		responseData := gin.H{
+			"order_no":            order.OrderNo,
+			"id":                  order.ID,
+			"status":              order.Status,
+			"amount":              totalAmount,
+			"final_amount":        finalAmount,
+			"actual_total_amount": actualTotalAmount,
+			"balance_used":        balanceUsed,
+			"additional_devices":  req.AdditionalDevices,
+			"additional_days":     req.AdditionalDays,
+		}
 	if paymentURL != "" {
 		responseData["payment_url"] = paymentURL
 		responseData["payment_qr_code"] = paymentURL
@@ -1590,7 +1609,7 @@ func PayOrder(c *gin.Context) {
 		return
 	}
 
-	paymentURL, err := generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod)
+	paymentURL, err := generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, amount)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付失败", err)
 		return
