@@ -521,7 +521,7 @@ const saveInviteSettings = async () => {
 }
 const inviteCodes = ref([])
 const codePage = ref(1)
-const codePageSize = ref(20)
+const codePageSize = ref(10)
 const codeTotal = ref(0)
 const codeFilterForm = reactive({
   user_query: '',
@@ -530,7 +530,7 @@ const codeFilterForm = reactive({
 })
 const inviteRelations = ref([])
 const relationPage = ref(1)
-const relationPageSize = ref(20)
+const relationPageSize = ref(10)
 const relationTotal = ref(0)
 const relationFilterForm = reactive({
   inviter_query: '',

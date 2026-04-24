@@ -123,7 +123,7 @@ const loading = ref(false)
 const list = ref([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 const reasonColWidth = ref(160)
 const filter = ref({
   keyword: '',
