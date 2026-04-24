@@ -109,7 +109,7 @@
   <el-dialog
     v-model="paymentQRVisible"
     title="扫码支付"
-    :width="isMobile ? '90%' : '500px'"
+    :width="isMobile ? '92%' : '520px'"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     class="payment-qr-dialog"
@@ -117,46 +117,63 @@
     append-to-body
   >
     <div class="payment-qr-container" v-if="upgradeOrder">
-      <div class="order-info">
-        <el-descriptions :column="1" border size="small" direction="horizontal">
-          <el-descriptions-item label="订单号">{{ upgradeOrder.order_no }}</el-descriptions-item>
-          <el-descriptions-item label="金额">
-            <span class="amount">¥{{ parseFloat(upgradeOrder.actual_payment_amount || upgradeOrder.amount || 0).toFixed(2) }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="内容" v-if="upgradeOrder.additional_devices">
-             +{{ upgradeOrder.additional_devices }}个设备
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-      <div class="qr-code-wrapper">
-        <div v-if="paymentQRCode" class="qr-code">
-          <img
-            :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
-            alt="支付二维码"
-            title="支付宝二维码"
-            @error="onImageError"
-            @load="onImageLoad"
-          />
+      <div class="payment-summary-card">
+        <div class="summary-header">
+          <div>
+            <div class="summary-label">支付金额</div>
+            <div class="summary-amount">¥{{ parseFloat(upgradeOrder.actual_payment_amount || upgradeOrder.amount || 0).toFixed(2) }}</div>
+          </div>
+          <div class="summary-badge" v-if="upgradeOrder.additional_devices">
+            +{{ upgradeOrder.additional_devices }}个设备
+          </div>
         </div>
-        <div v-else class="qr-loading">
-          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-          <p>正在生成二维码...</p>
+        <div class="summary-meta">
+          <div class="meta-item">
+            <span class="meta-key">订单号</span>
+            <span class="meta-value">{{ upgradeOrder.order_no }}</span>
+          </div>
+          <div class="meta-item" v-if="upgradeOrder.additional_devices">
+            <span class="meta-key">升级内容</span>
+            <span class="meta-value">增加 {{ upgradeOrder.additional_devices }} 个设备</span>
+          </div>
         </div>
       </div>
-      <div class="payment-tips">
-        <p class="tip-text"><el-icon><InfoFilled /></el-icon> 请使用支付宝扫码支付</p>
-      </div>
-      <div class="payment-actions-container" v-if="isMobile && paymentUrl">
-        <el-button
-          type="success"
-          size="large"
-          class="payment-btn alipay-btn"
-          @click="openAlipayApp"
-          style="width: 100%;"
-        >
-          <el-icon class="btn-icon"><Wallet /></el-icon>
-          跳转支付宝App支付
-        </el-button>
+
+      <div class="qr-panel">
+        <div class="qr-panel-header">
+          <h4>请使用支付宝扫码</h4>
+          <p>支付完成后会自动刷新升级结果</p>
+        </div>
+        <div class="qr-code-wrapper">
+          <div v-if="paymentQRCode" class="qr-code">
+            <img
+              :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
+              alt="支付二维码"
+              title="支付宝二维码"
+              @error="onImageError"
+              @load="onImageLoad"
+            />
+          </div>
+          <div v-else class="qr-loading">
+            <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+            <p>正在生成二维码...</p>
+          </div>
+        </div>
+        <div class="payment-tips">
+          <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用支付宝扫码支付</span></p>
+        </div>
+        <div class="payment-actions-container" v-if="isMobile && paymentUrl">
+          <el-button
+            type="success"
+            size="large"
+            class="payment-btn alipay-btn"
+            @click="openAlipayApp"
+            style="width: 100%;"
+          >
+            <el-icon class="btn-icon"><Wallet /></el-icon>
+            跳转支付宝App支付
+          </el-button>
+        </div>
       </div>
     </div>
   </el-dialog>
@@ -450,3 +467,264 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.upgrade-drawer {
+  :deep(.el-drawer__body) {
+    padding: 20px;
+  }
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.final-amount {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.payment-qr-dialog {
+  :deep(.el-dialog) {
+    border-radius: 24px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+  }
+
+  :deep(.el-dialog__header) {
+    margin-right: 0;
+    padding: 22px 24px 12px;
+    border-bottom: 1px solid rgba(37, 99, 235, 0.08);
+  }
+
+  :deep(.el-dialog__title) {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: 0.02em;
+  }
+
+  :deep(.el-dialog__headerbtn) {
+    top: 22px;
+    right: 20px;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0 24px 24px;
+  }
+}
+
+.payment-qr-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.payment-summary-card {
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+}
+
+.summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.summary-amount {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 800;
+  color: #111827;
+}
+
+.summary-badge {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.summary-meta {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.meta-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.meta-key {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.meta-value {
+  color: #0f172a;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
+
+.qr-panel {
+  padding: 20px;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.qr-panel-header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.qr-panel-header h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.qr-panel-header p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.qr-code-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.qr-code,
+.qr-loading {
+  width: 280px;
+  min-height: 280px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #dbeafe;
+  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-code img {
+  width: 232px;
+  height: 232px;
+  display: block;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.qr-loading {
+  flex-direction: column;
+  gap: 12px;
+  color: #64748b;
+}
+
+.payment-tips {
+  margin-top: 16px;
+}
+
+.tip-text {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tip-text :deep(svg) {
+  color: #2563eb;
+}
+
+.payment-actions-container {
+  margin-top: 18px;
+}
+
+.alipay-btn {
+  height: 46px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+
+.btn-icon {
+  margin-right: 6px;
+}
+
+@media (max-width: 768px) {
+  .payment-qr-dialog {
+    :deep(.el-dialog) {
+      border-radius: 20px;
+    }
+
+    :deep(.el-dialog__header) {
+      padding: 18px 18px 10px;
+    }
+
+    :deep(.el-dialog__title) {
+      font-size: 20px;
+    }
+
+    :deep(.el-dialog__body) {
+      padding: 0 18px 18px;
+    }
+  }
+
+  .payment-summary-card,
+  .qr-panel {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .summary-header,
+  .meta-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .meta-value {
+    text-align: left;
+  }
+
+  .summary-amount {
+    font-size: 28px;
+  }
+
+  .qr-code,
+  .qr-loading {
+    width: 100%;
+    min-height: 252px;
+  }
+
+  .qr-code img {
+    width: min(220px, 100% - 32px);
+    height: min(220px, 100% - 32px);
+  }
+}
+</style>

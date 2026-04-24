@@ -337,67 +337,82 @@
     <el-dialog
       v-model="paymentQRVisible"
       title="扫码支付"
-      :width="isMobile ? '92%' : '450px'"
+      :width="isMobile ? '92%' : '520px'"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       class="payment-qr-dialog"
     >
       <div class="payment-qr-container">
-        <div class="order-info-compact">
-          <div class="info-row">
-            <span class="label">订单号</span>
-            <span class="value">{{ currentOrder?.order_no || orderInfo.orderNo }}</span>
+        <div class="payment-summary-card">
+          <div class="summary-header">
+            <div>
+              <div class="summary-label">支付金额</div>
+              <div class="summary-amount">¥{{ parseFloat(currentOrder?.amount || orderInfo.amount || 0).toFixed(2) }}</div>
+            </div>
+            <div class="summary-badge">
+              {{ currentOrder?.package_name || orderInfo.packageName }}
+            </div>
           </div>
-          <div class="info-row">
-            <span class="label">套餐名称</span>
-            <span class="value">{{ currentOrder?.package_name || orderInfo.packageName }}</span>
-          </div>
-          <div class="info-row">
-            <span class="label">支付金额</span>
-            <span class="value amount">¥{{ parseFloat(currentOrder?.amount || orderInfo.amount || 0).toFixed(2) }}</span>
-          </div>
-          <div class="info-row">
-            <span class="label">支付方式</span>
-            <span class="value">{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}</span>
-          </div>
-        </div>
-        <div class="qr-code-wrapper-compact">
-          <div v-if="isPaymentPageUrl && paymentUrl" class="payment-page-iframe">
-            <iframe 
-              ref="paymentIframe"
-              :src="paymentUrl" 
-              frameborder="0"
-              scrolling="auto"
-              style="width: 100%; min-height: 600px; border: none;"
-              @load="onIframeLoad"
-            ></iframe>
-          </div>
-          <div v-else-if="paymentQRCode" class="qr-code">
-            <img 
-              :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())" 
-              alt="支付二维码" 
-              :title="getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) + '二维码'"
-              @error="onImageError"
-              @load="onImageLoad"
-            />
-          </div>
-          <div v-else class="qr-loading">
-            <el-icon class="is-loading"><Loading /></el-icon>
-            <p>生成中...</p>
+          <div class="summary-meta">
+            <div class="meta-item">
+              <span class="meta-key">订单号</span>
+              <span class="meta-value">{{ currentOrder?.order_no || orderInfo.orderNo }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-key">支付方式</span>
+              <span class="meta-value">{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}</span>
+            </div>
           </div>
         </div>
-        <div class="payment-actions-compact" v-if="isMobile && paymentUrl && (currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
-          <el-button
-            type="success"
-            size="default"
-            @click="openAlipayApp"
-            style="width: 100%;"
-          >
-            <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
-            打开支付宝App
-          </el-button>
+
+        <div class="qr-panel">
+          <div class="qr-panel-header">
+            <h4 v-if="isPaymentPageUrl && paymentUrl">请在页面中完成支付</h4>
+            <h4 v-else>请使用支付宝扫码</h4>
+            <p>支付完成后会自动刷新购买结果</p>
+          </div>
+          <div class="qr-code-wrapper" :class="{ 'iframe-mode': isPaymentPageUrl && paymentUrl }">
+            <div v-if="isPaymentPageUrl && paymentUrl" class="payment-page-iframe">
+              <iframe
+                ref="paymentIframe"
+                :src="paymentUrl"
+                frameborder="0"
+                scrolling="auto"
+                style="width: 100%; min-height: 600px; border: none;"
+                @load="onIframeLoad"
+              ></iframe>
+            </div>
+            <div v-else-if="paymentQRCode" class="qr-code">
+              <img
+                :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
+                alt="支付二维码"
+                :title="getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) + '二维码'"
+                @error="onImageError"
+                @load="onImageLoad"
+              />
+            </div>
+            <div v-else class="qr-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <p>正在生成二维码...</p>
+            </div>
+          </div>
+          <div class="payment-tips" v-if="!isPaymentPageUrl">
+            <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用支付宝扫码支付</span></p>
+          </div>
+          <div class="payment-actions-container" v-if="isMobile && paymentUrl && (currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
+            <el-button
+              type="success"
+              size="default"
+              class="payment-btn alipay-btn"
+              @click="openAlipayApp"
+              style="width: 100%;"
+            >
+              <el-icon class="btn-icon"><Wallet /></el-icon>
+              打开支付宝App
+            </el-button>
+          </div>
         </div>
-        </div>
+      </div>
     </el-dialog>
     <el-dialog
       v-model="successDialogVisible"
@@ -2688,107 +2703,213 @@ export default {
 }
 .payment-qr-dialog {
   :deep(.el-dialog) {
-    border-radius: 12px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
   }
   :deep(.el-dialog__header) {
-    padding: 16px 20px;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 22px 24px 12px;
+    border-bottom: 1px solid rgba(37, 99, 235, 0.08);
+  }
+  :deep(.el-dialog__title) {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: 0.02em;
+  }
+  :deep(.el-dialog__headerbtn) {
+    top: 22px;
+    right: 20px;
   }
   :deep(.el-dialog__body) {
-    padding: 16px 20px;
+    padding: 0 24px 24px;
   }
 }
 
 .payment-qr-container {
   display: flex;
   flex-direction: column;
+  gap: 18px;
+}
+
+.payment-summary-card {
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+}
+
+.summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.summary-amount {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 800;
+  color: #111827;
+}
+
+.summary-badge {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-meta {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.meta-item {
+  display: flex;
+  justify-content: space-between;
   gap: 16px;
+  font-size: 14px;
+}
 
-  .order-info-compact {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 12px;
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid #e9ecef;
-      &:last-child {
-        border-bottom: none;
-      }
-      .label {
-        color: #666;
-        font-size: 14px;
-        font-weight: 500;
-      }
-      .value {
-        color: #333;
-        font-size: 14px;
-        font-weight: 600;
-        text-align: right;
-        word-break: break-all;
-        &.amount {
-          color: #f56c6c;
-          font-size: 18px;
-        }
-      }
-    }
-  }
+.meta-key {
+  color: #64748b;
+  flex-shrink: 0;
+}
 
-  .qr-code-wrapper-compact {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 16px 0;
-    .qr-code {
-      display: inline-block;
-      padding: 12px;
-      background: #fff;
-      border: 1px solid #e4e7ed;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      img {
-        display: block;
-        width: 200px;
-        height: 200px;
-        max-width: 100%;
-      }
-    }
-    .qr-loading {
-      text-align: center;
-      padding: 40px 20px;
-      color: #909399;
-      .el-icon {
-        font-size: 32px;
-        margin-bottom: 12px;
-      }
-      p {
-        margin: 0;
-        font-size: 14px;
-      }
-    }
-    .payment-page-iframe {
-      width: 100%;
-      min-height: 600px;
-      border: 1px solid #e4e7ed;
-      border-radius: 8px;
-      overflow: clip;
-      background: #fff;
-      iframe {
-        width: 100%;
-        min-height: 600px;
-        border: none;
-        display: block;
-      }
-    }
-  }
+.meta-value {
+  color: #0f172a;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
 
-  .payment-actions-compact {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+.qr-panel {
+  padding: 20px;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.qr-panel-header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.qr-panel-header h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.qr-panel-header p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.qr-code-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.qr-code-wrapper.iframe-mode {
+  display: block;
+}
+
+.qr-code,
+.qr-loading {
+  width: 280px;
+  min-height: 280px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #dbeafe;
+  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-code img {
+  width: 232px;
+  height: 232px;
+  display: block;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.qr-loading {
+  flex-direction: column;
+  gap: 12px;
+  color: #64748b;
+}
+
+.payment-page-iframe {
+  width: 100%;
+  min-height: 600px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
+}
+
+.payment-page-iframe iframe {
+  width: 100%;
+  min-height: 600px;
+  border: none;
+  display: block;
+}
+
+.payment-tips {
+  margin-top: 16px;
+}
+
+.tip-text {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tip-text :deep(svg) {
+  color: #2563eb;
+}
+
+.payment-actions-container {
+  margin-top: 18px;
+}
+
+.alipay-btn {
+  height: 46px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+
+.btn-icon {
+  margin-right: 6px;
 }
 
 @media (max-width: 768px) {
@@ -2796,45 +2917,57 @@ export default {
     :deep(.el-dialog) {
       width: 92% !important;
       margin: 5vh auto !important;
-      border-radius: 12px;
+      border-radius: 20px;
     }
     :deep(.el-dialog__header) {
-      padding: 12px 16px;
+      padding: 18px 18px 10px;
+    }
+    :deep(.el-dialog__title) {
+      font-size: 20px;
     }
     :deep(.el-dialog__body) {
-      padding: 12px 16px;
+      padding: 0 18px 18px;
     }
   }
 
-  .payment-qr-container {
-    gap: 12px;
+  .payment-summary-card,
+  .qr-panel {
+    padding: 16px;
+    border-radius: 18px;
+  }
 
-    .order-info-compact {
-      padding: 8px;
-      .info-row {
-        padding: 6px 0;
-        .label {
-          font-size: 13px;
-        }
-        .value {
-          font-size: 13px;
-          &.amount {
-            font-size: 16px;
-          }
-        }
-      }
-    }
+  .summary-header,
+  .meta-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-    .qr-code-wrapper-compact {
-      padding: 8px 0;
-      .qr-code {
-        padding: 8px;
-        img {
-          width: 180px;
-          height: 180px;
-        }
-      }
-    }
+  .summary-badge {
+    max-width: 100%;
+  }
+
+  .meta-value {
+    text-align: left;
+  }
+
+  .summary-amount {
+    font-size: 28px;
+  }
+
+  .qr-code,
+  .qr-loading {
+    width: 100%;
+    min-height: 252px;
+  }
+
+  .qr-code img {
+    width: min(220px, calc(100% - 32px));
+    height: min(220px, calc(100% - 32px));
+  }
+
+  .payment-page-iframe,
+  .payment-page-iframe iframe {
+    min-height: 420px;
   }
 }
 
