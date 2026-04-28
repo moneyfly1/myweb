@@ -291,6 +291,9 @@ func SetupRouter() *gin.Engine {
 
 		// 促销活动 - 用户端
 		api.GET("/promotions/active", handlers.GetActivePromotions)
+		api.POST("/promotions/:id/participate", middleware.AuthMiddleware(), handlers.ParticipatePromotion)
+		api.GET("/promotions/my-participations", middleware.AuthMiddleware(), handlers.GetMyPromotionParticipations)
+		api.GET("/promotions/available-discounts", middleware.AuthMiddleware(), handlers.GetAvailablePromotionDiscounts)
 
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 		api.GET("/download/resolve", handlers.ResolveDownload)
