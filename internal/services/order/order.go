@@ -65,6 +65,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	baseAmount := pkg.Price * float64(durationMonths)
 	levelDiscountAmount := 0.0
 	couponDiscountAmount := 0.0
+	promotionDiscountAmount := 0.0
 	finalAmount := baseAmount
 
 	if user.UserLevelID.Valid {
@@ -116,7 +117,19 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		coupon = &c
 	}
 
-	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount
+	// --- 营销活动折扣 ---
+	var promotionParticipation *models.PromotionParticipation
+	if params.CouponCode == "" {
+		// 只有在没有使用优惠券时才应用营销活动折扣
+		discount, participation, err := s.applyPromotionDiscount(userID, params.PackageID, finalAmount)
+		if err == nil && discount > 0 && participation != nil {
+			promotionDiscountAmount = discount
+			finalAmount = math.Round((finalAmount-promotionDiscountAmount)*100) / 100
+			promotionParticipation = participation
+		}
+	}
+
+	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount + promotionDiscountAmount
 	balanceUsed := 0.0
 
 	if params.UseBalance && user.Balance > 0 {
@@ -206,6 +219,14 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 			if err := tx.Model(&models.Coupon{}).Where("id = ?", coupon.ID).
 				Update("used_quantity", gorm.Expr("used_quantity + 1")).Error; err != nil {
 				return fmt.Errorf("更新优惠券使用次数失败: %v", err)
+			}
+		}
+
+		// 关联营销活动参与记录到订单
+		if promotionParticipation != nil {
+			if err := tx.Model(&models.PromotionParticipation{}).Where("id = ?", promotionParticipation.ID).
+				Update("order_id", sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true}).Error; err != nil {
+				return fmt.Errorf("关联营销活动失败: %v", err)
 			}
 		}
 
@@ -429,6 +450,18 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	s.updateUserLevel(&user)
 
 	s.processInviteRewards(order, paidAmount)
+
+	// 更新营销活动参与记录状态为已完成
+	if err := s.db.Model(&models.PromotionParticipation{}).
+		Where("order_id = ? AND status = ?", order.ID, "pending").
+		Updates(map[string]interface{}{
+			"status":     "completed",
+			"applied_at": database.NullTime(utils.GetBeijingTime()),
+		}).Error; err != nil {
+		utils.LogError("ProcessPaidOrder: 更新营销活动参与记录失败", err, map[string]interface{}{
+			"order_id": order.ID,
+		})
+	}
 
 	// 检查是否是自定义套餐订单
 	isCustomPackage := false
@@ -1027,4 +1060,61 @@ func (s *OrderService) rollbackInviteRewards(order *models.Order, paidAmount flo
 			"invite_relation_id": inviteRelation.ID,
 		})
 	}
+}
+
+// applyPromotionDiscount 应用营销活动折扣
+func (s *OrderService) applyPromotionDiscount(userID uint, packageID uint, baseAmount float64) (float64, *models.PromotionParticipation, error) {
+	now := utils.GetBeijingTime()
+
+	// 查找可用的折扣
+	var participation models.PromotionParticipation
+	query := s.db.Where("user_id = ? AND status = ? AND reward_type = ? AND (expire_at IS NULL OR expire_at > ?)",
+		userID, "pending", "discount", now).
+		Preload("Promotion")
+
+	if err := query.Order("created_at ASC").First(&participation).Error; err != nil {
+		// 没有可用折扣
+		return 0, nil, nil
+	}
+
+	// 检查活动是否适用于该套餐
+	if participation.Promotion.PackageIDs.Valid && participation.Promotion.PackageIDs.String != "" {
+		packageIDsStr := participation.Promotion.PackageIDs.String
+		var packageIDs []uint
+		if err := json.Unmarshal([]byte(packageIDsStr), &packageIDs); err == nil {
+			found := false
+			for _, pid := range packageIDs {
+				if pid == packageID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				// 该活动不适用于此套餐
+				return 0, nil, nil
+			}
+		}
+	}
+
+	// 检查最低金额
+	if participation.Promotion.MinAmount > 0 && baseAmount < participation.Promotion.MinAmount {
+		return 0, nil, nil
+	}
+
+	// 计算折扣
+	var discountAmount float64
+	if participation.Promotion.DiscountType == "percentage" {
+		discountAmount = baseAmount * (participation.RewardValue / 100)
+		if participation.Promotion.MaxDiscount > 0 && discountAmount > participation.Promotion.MaxDiscount {
+			discountAmount = participation.Promotion.MaxDiscount
+		}
+	} else if participation.Promotion.DiscountType == "fixed" {
+		discountAmount = participation.RewardValue
+		if discountAmount > baseAmount {
+			discountAmount = baseAmount
+		}
+	}
+
+	discountAmount = utils.RoundFloat(discountAmount, 2)
+	return discountAmount, &participation, nil
 }
