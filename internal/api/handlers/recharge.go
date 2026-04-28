@@ -91,6 +91,23 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	if paymentConfig.Status == 1 {
+		// 创建支付交易记录
+		amt := int(recharge.Amount * 100) // 转换为分
+		paymentTx := models.PaymentTransaction{
+			OrderID:         0, // 充值订单没有 order_id，使用 0
+			UserID:          user.ID,
+			PaymentMethodID: paymentConfig.ID,
+			Amount:          amt,
+			Status:          "pending",
+		}
+		if err := db.Create(&paymentTx).Error; err != nil {
+			utils.LogError("CreateRecharge: failed to create payment transaction", err, map[string]interface{}{
+				"order_no": recharge.OrderNo,
+			})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付交易记录失败", err)
+			return
+		}
+
 		tempOrder := &models.Order{
 			OrderNo: recharge.OrderNo,
 			UserID:  user.ID,
@@ -363,6 +380,22 @@ func GetRechargeStatusByNo(c *gin.Context) {
 									if err := tx.Save(&latestRecord).Error; err != nil {
 										return err
 									}
+
+									// 更新支付交易记录状态
+									var paymentTx models.PaymentTransaction
+									if err := tx.Where("user_id = ? AND amount = ? AND status = ?", latestRecord.UserID, int(latestRecord.Amount*100), "pending").
+										Order("created_at DESC").First(&paymentTx).Error; err == nil {
+										paymentTx.Status = "success"
+										if queryResult.TradeNo != "" {
+											paymentTx.ExternalTransactionID = database.NullString(queryResult.TradeNo)
+										}
+										if err := tx.Save(&paymentTx).Error; err != nil {
+											utils.LogError("GetRechargeStatusByNo: failed to update payment transaction", err, map[string]interface{}{
+												"order_no": orderNo,
+											})
+										}
+									}
+
 									var user models.User
 									if err := tx.First(&user, latestRecord.UserID).Error; err == nil {
 										user.Balance += latestRecord.Amount
