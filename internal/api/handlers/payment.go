@@ -752,6 +752,11 @@ func PaymentNotify(c *gin.Context) {
 				})
 				return err
 			}
+		} else {
+			utils.LogWarn("PaymentNotify: payment transaction not found for order: %+v", map[string]interface{}{
+				"order_no": orderNo,
+				"order_id": order.ID,
+			})
 		}
 		return nil
 	})
