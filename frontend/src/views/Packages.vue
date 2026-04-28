@@ -656,18 +656,21 @@ export default {
       }
       validatingCoupon.value = true
       try {
+        // 传递原价，让后端统一计算等级折扣和优惠券折扣
         const totalPrice = totalOriginalPrice.value
-        const levelDiscountedPrice = totalPrice * levelDiscountRate.value
         const response = await couponAPI.validateCoupon({
           code: couponCode.value.trim(),
           package_id: selectedPackage.value.id,
-          amount: levelDiscountedPrice
+          amount: totalPrice  // 传递原价，后端会自动应用等级折扣
         })
         if (response.data && response.data.success) {
+          const data = response.data.data
           couponInfo.value = {
             valid: true,
             message: '优惠券验证成功',
-            discount_amount: response.data.data?.discount_amount || 0
+            discount_amount: data?.coupon_discount_amount || 0,
+            level_discount_amount: data?.level_discount_amount || 0,
+            total_discount_amount: data?.total_discount_amount || 0
           }
           ElMessage.success('优惠券验证成功')
         } else {
@@ -812,12 +815,17 @@ export default {
     })
     const finalAmount = computed(() => {
       if (!selectedPackage.value || !selectedQuantity.value) return 0
+
+      // 如果有优惠券验证结果，使用后端返回的准确金额
+      if (couponInfo.value && couponInfo.value.valid && couponInfo.value.total_discount_amount !== undefined) {
+        const totalPrice = totalOriginalPrice.value
+        return Math.max(0, totalPrice - couponInfo.value.total_discount_amount)
+      }
+
+      // 否则只计算等级折扣
       const totalPrice = totalOriginalPrice.value
       const levelDiscount = calculateLevelDiscount(totalPrice)
-      const couponDiscount = (couponInfo.value && couponInfo.value.valid && couponInfo.value.discount_amount) 
-        ? couponInfo.value.discount_amount 
-        : 0
-      return Math.max(0, totalPrice - levelDiscount - couponDiscount)
+      return Math.max(0, totalPrice - levelDiscount)
     })
     const handleQuantityChange = () => {
       if (couponCode.value && couponInfo.value && couponInfo.value.valid) {
