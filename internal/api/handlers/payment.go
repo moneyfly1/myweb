@@ -536,6 +536,31 @@ func PaymentNotify(c *gin.Context) {
 				return err
 			}
 
+			// 更新支付交易记录状态
+			var paymentTx models.PaymentTransaction
+			if err := tx.Where("user_id = ? AND amount = ? AND status = ?", recharge.UserID, int(recharge.Amount*100), "pending").
+				Order("created_at DESC").First(&paymentTx).Error; err == nil {
+				paymentTx.Status = "success"
+				if externalTransactionID != "" {
+					paymentTx.ExternalTransactionID = database.NullString(externalTransactionID)
+				}
+				if callbackData, err := json.Marshal(params); err == nil {
+					paymentTx.CallbackData = database.NullString(string(callbackData))
+				}
+				if err := tx.Save(&paymentTx).Error; err != nil {
+					utils.LogError("PaymentNotify: failed to update payment transaction for recharge", err, map[string]interface{}{
+						"order_no": orderNo,
+					})
+					// 不返回错误，因为充值记录已更新成功
+				}
+			} else {
+				utils.LogWarn("PaymentNotify: payment transaction not found for recharge: %+v", map[string]interface{}{
+					"order_no": orderNo,
+					"user_id":  recharge.UserID,
+					"amount":   recharge.Amount,
+				})
+			}
+
 			var user models.User
 			if err := tx.First(&user, recharge.UserID).Error; err == nil {
 				oldBalance := user.Balance
