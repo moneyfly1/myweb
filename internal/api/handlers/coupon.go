@@ -51,6 +51,9 @@ func VerifyCoupon(c *gin.Context) {
 		return
 	}
 
+	// 获取当前用户（如果已登录）
+	user, userExists := middleware.GetCurrentUser(c)
+
 	db := database.GetDB()
 	var coupon models.Coupon
 	if err := db.Where("code = ?", req.Code).First(&coupon).Error; err != nil {
@@ -69,34 +72,78 @@ func VerifyCoupon(c *gin.Context) {
 		return
 	}
 
-	if coupon.MinAmount.Valid && req.Amount < coupon.MinAmount.Float64 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "订单金额不满足优惠券使用条件", nil)
+	// 检查优惠券总量
+	if coupon.TotalQuantity.Valid && coupon.UsedQuantity >= int(coupon.TotalQuantity.Int64) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "优惠券已被领完", nil)
 		return
 	}
 
-	discountAmount := 0.0
-	if coupon.Type == "discount" {
-		if coupon.DiscountValue > 100 {
-			coupon.DiscountValue = 100
-		}
-		discountAmount = req.Amount * (coupon.DiscountValue / 100)
-		if coupon.MaxDiscount.Valid && discountAmount > coupon.MaxDiscount.Float64 {
-			discountAmount = coupon.MaxDiscount.Float64
-		}
-		if discountAmount > req.Amount {
-			discountAmount = req.Amount
-		}
-	} else if coupon.Type == "fixed" {
-		discountAmount = coupon.DiscountValue
-		if discountAmount > req.Amount {
-			discountAmount = req.Amount
+	// 检查用户使用次数（如果已登录）
+	if userExists && coupon.MaxUsesPerUser > 0 {
+		var usageCount int64
+		db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", coupon.ID, user.ID).Count(&usageCount)
+		if int(usageCount) >= coupon.MaxUsesPerUser {
+			utils.ErrorResponse(c, http.StatusBadRequest, "您已达到该优惠券的使用上限", nil)
+			return
 		}
 	}
 
+	// 应用用户等级折扣（如果已登录且有等级）
+	baseAmount := req.Amount
+	amountAfterLevelDiscount := baseAmount
+	levelDiscountAmount := 0.0
+
+	if userExists && user.UserLevelID.Valid {
+		var userLevel models.UserLevel
+		if err := db.First(&userLevel, user.UserLevelID.Int64).Error; err == nil {
+			if userLevel.DiscountRate > 0 && userLevel.DiscountRate < 1.0 {
+				levelDiscountAmount = utils.RoundFloat(baseAmount*(1.0-userLevel.DiscountRate), 2)
+				amountAfterLevelDiscount = utils.RoundFloat(baseAmount*userLevel.DiscountRate, 2)
+			}
+		}
+	}
+
+	// 检查最低金额（使用应用等级折扣后的金额）
+	if coupon.MinAmount.Valid && amountAfterLevelDiscount < coupon.MinAmount.Float64 {
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("订单金额不满足优惠券使用条件（最低%.2f元）", coupon.MinAmount.Float64), nil)
+		return
+	}
+
+	// 计算优惠券折扣（基于应用等级折扣后的金额）
+	couponDiscountAmount := 0.0
+	if coupon.Type == "discount" {
+		discountRate := coupon.DiscountValue
+		if discountRate > 100 {
+			discountRate = 100
+		}
+		couponDiscountAmount = utils.RoundFloat(amountAfterLevelDiscount*(discountRate/100), 2)
+		if coupon.MaxDiscount.Valid && couponDiscountAmount > coupon.MaxDiscount.Float64 {
+			couponDiscountAmount = coupon.MaxDiscount.Float64
+		}
+		if couponDiscountAmount > amountAfterLevelDiscount {
+			couponDiscountAmount = amountAfterLevelDiscount
+		}
+	} else if coupon.Type == "fixed" {
+		couponDiscountAmount = coupon.DiscountValue
+		if couponDiscountAmount > amountAfterLevelDiscount {
+			couponDiscountAmount = amountAfterLevelDiscount
+		}
+	}
+
+	finalAmount := utils.RoundFloat(amountAfterLevelDiscount-couponDiscountAmount, 2)
+	if finalAmount < 0 {
+		finalAmount = 0
+	}
+
+	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"coupon":          coupon,
-		"discount_amount": discountAmount,
-		"final_amount":    req.Amount - discountAmount,
+		"coupon":                 coupon,
+		"base_amount":            baseAmount,
+		"level_discount_amount":  levelDiscountAmount,
+		"coupon_discount_amount": couponDiscountAmount,
+		"total_discount_amount":  totalDiscountAmount,
+		"final_amount":           finalAmount,
 	})
 }
 
