@@ -107,7 +107,10 @@ func (s *CodepayService) codepaySign(params map[string]string) string {
 	}
 	sb.WriteString(s.Key)
 
-	hash := md5.Sum([]byte(sb.String())) // #nosec G401
+	signStr := sb.String()
+	utils.LogInfo("码支付签名字符串(隐藏密钥): %s", strings.Replace(signStr, s.Key, "***KEY***", 1))
+
+	hash := md5.Sum([]byte(signStr)) // #nosec G401
 	return fmt.Sprintf("%x", hash)
 }
 
@@ -224,9 +227,20 @@ func GetCodepaySupportedTypes(paymentConfig *models.PaymentConfig) []string {
 func (s *CodepayService) VerifyNotify(params map[string]string) bool {
 	sign, ok := params["sign"]
 	if !ok || sign == "" {
-		utils.LogError("码支付回调缺少签名", nil, nil)
+		utils.LogError("码支付回调缺少签名", nil, map[string]interface{}{
+			"params": params,
+		})
 		return false
 	}
+
+	// 记录回调参数（隐藏敏感信息）
+	safeParams := make(map[string]string)
+	for k, v := range params {
+		if k != "sign" {
+			safeParams[k] = v
+		}
+	}
+	utils.LogInfo("码支付回调参数验证: %+v", safeParams)
 
 	calcSign := s.codepaySign(params)
 	match := strings.EqualFold(sign, calcSign)
@@ -235,6 +249,8 @@ func (s *CodepayService) VerifyNotify(params map[string]string) bool {
 			"received":   sign,
 			"calculated": calcSign,
 		})
+	} else {
+		utils.LogInfo("码支付签名验证成功")
 	}
 	return match
 }

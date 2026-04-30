@@ -334,7 +334,7 @@ func PaymentNotify(c *gin.Context) {
 			})
 		} else {
 			verified = codepayService.VerifyNotify(params)
-			utils.LogInfo("PaymentNotify: 码支付签名验证结果 - verified=%v, payment_type=%s", verified, paymentType)
+			utils.LogInfo("PaymentNotify: 码支付签名验证结果 - verified=%v, payment_type=%s, order_no=%s", verified, paymentType, params["out_trade_no"])
 		}
 	}
 
