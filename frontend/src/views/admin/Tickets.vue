@@ -169,7 +169,12 @@
           <el-tag :type="getPriorityTagType(row.priority)">{{ getPriorityText(row.priority) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="user_id" label="用户ID" width="100" />
+      <el-table-column label="提交用户" min-width="160">
+        <template #default="{ row }">
+          <span v-if="row.user && row.user.email">{{ row.user.email }}</span>
+          <span v-else>用户ID: {{ row.user_id }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="replies_count" label="回复数" width="80" />
       <el-table-column prop="created_at" label="创建时间" width="180" />
       <el-table-column label="操作" width="200" fixed="right">
@@ -214,7 +219,7 @@
         <div class="ticket-card-info">
           <span class="info-item">
             <el-icon><User /></el-icon>
-            {{ ticket.user_id }}
+            {{ ticket.user && ticket.user.email ? ticket.user.email : '用户ID: ' + ticket.user_id }}
           </span>
           <span class="info-item">
             <el-icon><ChatLineRound /></el-icon>
@@ -275,7 +280,10 @@
           </template>
           <el-descriptions :column="isMobile ? 1 : 2" border>
             <el-descriptions-item label="工单编号">{{ currentTicket.ticket_no }}</el-descriptions-item>
-            <el-descriptions-item label="用户ID">{{ currentTicket.user_id }}</el-descriptions-item>
+            <el-descriptions-item label="用户邮箱">
+              <span v-if="currentTicket.user && currentTicket.user.email">{{ currentTicket.user.email }}</span>
+              <span v-else>用户ID: {{ currentTicket.user_id }}</span>
+            </el-descriptions-item>
             <el-descriptions-item :label="isMobile ? '' : '标题'" :span="isMobile ? 1 : 2">
               <span v-if="isMobile" class="mobile-label">标题：</span>{{ currentTicket.title }}
             </el-descriptions-item>
