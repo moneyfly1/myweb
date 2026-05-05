@@ -216,22 +216,20 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	// 处理 GET 请求参数（包括同步回调）
-	if len(params) == 0 || c.Request.Method == "GET" {
-		for k, v := range c.Request.URL.Query() {
-			if len(v) > 0 {
-				paramValue := v[0]
-				// 如果参数值包含逗号，说明可能是重复参数，取第一个
-				if strings.Contains(paramValue, ",") {
-					paramValue = strings.Split(paramValue, ",")[0]
-					utils.LogWarn("PaymentNotify: 检测到参数 %s 包含逗号，已修正为: %s", k, paramValue)
-				}
-				// 如果参数已存在且值不同，取第一个（避免重复参数）
-				if existingVal, exists := params[k]; exists && existingVal != paramValue {
-					utils.LogWarn("PaymentNotify: 检测到重复参数 %s，原值=%s，新值=%s，使用原值", k, existingVal, paramValue)
-				} else if !exists {
-					params[k] = paramValue
-				}
+	// 处理 GET 请求参数（包括同步回调以及附带在URL上的参数）
+	for k, v := range c.Request.URL.Query() {
+		if len(v) > 0 {
+			paramValue := v[0]
+			// 如果参数值包含逗号，说明可能是重复参数，取第一个
+			if strings.Contains(paramValue, ",") {
+				paramValue = strings.Split(paramValue, ",")[0]
+				utils.LogWarn("PaymentNotify: 检测到参数 %s 包含逗号，已修正为: %s", k, paramValue)
+			}
+			// 如果参数已存在且值不同，取第一个（避免重复参数，优先使用POST Body中的参数）
+			if existingVal, exists := params[k]; exists && existingVal != paramValue {
+				utils.LogWarn("PaymentNotify: 检测到重复参数 %s，原值=%s，新值=%s，使用原值", k, existingVal, paramValue)
+			} else if !exists {
+				params[k] = paramValue
 			}
 		}
 	}
@@ -358,6 +356,13 @@ func PaymentNotify(c *gin.Context) {
 	}
 
 	orderNo := params["out_trade_no"]
+	if orderNo == "" {
+		orderNo = params["order_id"] // 兼容部分码支付平台
+	}
+	if orderNo == "" {
+		orderNo = params["out_trade_id"]
+	}
+
 	// 处理订单号参数重复的情况（易支付平台可能会在 return_url 中自动添加参数）
 	if orderNo != "" && strings.Contains(orderNo, ",") {
 		// 如果订单号包含逗号，说明参数重复了，取第一个
@@ -365,6 +370,9 @@ func PaymentNotify(c *gin.Context) {
 		utils.LogWarn("PaymentNotify: 检测到重复的订单号参数，已修正为: %s", orderNo)
 	}
 	externalTransactionID := params["trade_no"]
+	if externalTransactionID == "" {
+		externalTransactionID = params["pay_no"] // 兼容部分码支付平台
+	}
 	// 处理交易号参数重复的情况
 	if externalTransactionID != "" && strings.Contains(externalTransactionID, ",") {
 		externalTransactionID = strings.Split(externalTransactionID, ",")[0]
@@ -398,7 +406,8 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 
-		if tradeStatus != "TRADE_SUCCESS" {
+		// 兼容不同平台的成功状态标识：TRADE_SUCCESS, SUCCESS, 1, 2, 200，或者如果平台不传状态字段也视为成功（依赖签名）
+		if tradeStatus != "TRADE_SUCCESS" && tradeStatus != "SUCCESS" && tradeStatus != "1" && tradeStatus != "2" && tradeStatus != "200" && tradeStatus != "" {
 			utils.LogWarn("PaymentNotify: yipay trade status not success: %+v", map[string]interface{}{
 				"payment_type": paymentType,
 				"order_no":     orderNo,
@@ -408,7 +417,7 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 
-		utils.LogInfo("PaymentNotify: 支付订单状态为TRADE_SUCCESS，继续处理 - order_no=%s, trade_status=%s", orderNo, tradeStatus)
+		utils.LogInfo("PaymentNotify: 支付订单状态为成功，继续处理 - order_no=%s, trade_status=%s", orderNo, tradeStatus)
 	}
 
 	if paymentType == "alipay" {
@@ -486,7 +495,14 @@ func PaymentNotify(c *gin.Context) {
 				amountVerified = true
 			}
 		} else if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
-			if amountStr, ok := params["money"]; ok {
+			amountStr := params["money"]
+			if amountStr == "" {
+				amountStr = params["price"]
+			}
+			if amountStr == "" {
+				amountStr = params["amount"]
+			}
+			if amountStr != "" {
 				_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 				amountVerified = true
 			}
@@ -637,7 +653,14 @@ func PaymentNotify(c *gin.Context) {
 			amountVerified = true
 		}
 	} else if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
-		if amountStr, ok := params["money"]; ok {
+		amountStr := params["money"]
+		if amountStr == "" {
+			amountStr = params["price"]
+		}
+		if amountStr == "" {
+			amountStr = params["amount"]
+		}
+		if amountStr != "" {
 			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
 			amountVerified = true
 		}
