@@ -1318,32 +1318,32 @@ export default {
 .overview-card {
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  padding: 16px 20px;
+  border-radius: 8px;
+  padding: 10px 16px;
   box-shadow: var(--el-box-shadow-light);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .overview-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: var(--el-box-shadow);
 }
 .overview-label {
   color: var(--el-text-color-secondary);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
 }
 .overview-value {
-  margin: 10px 0;
+  margin: 4px 0;
   color: var(--el-text-color-primary);
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
 }
 .overview-note {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--el-text-color-regular);
-  font-size: 12px;
+  font-size: 11px;
 }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
