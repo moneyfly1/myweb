@@ -1,8 +1,14 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import { ElLoading } from 'element-plus/es/components/loading/index.mjs'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
+import { ElNotification } from 'element-plus/es/components/notification/index.mjs'
+import { provideGlobalConfig } from 'element-plus/es/components/config-provider/src/hooks/use-global-config.mjs'
+import 'element-plus/es/components/loading/style/css'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+import 'element-plus/es/components/notification/style/css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import App from './App.vue'
 import router from './router'
@@ -11,7 +17,6 @@ import { useAuthStore } from './store/auth'
 import { useThemeStore } from './store/theme'
 import { initApi, cachedAPI } from './utils/api'
 import './styles/global.scss'
-import './styles/mobile-buttons.scss'
 import './styles/text-selection.css'
 import { initTextSelection } from './utils/textSelection'
 
@@ -23,14 +28,11 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 initApi(router, useAuthStore)
-app.use(ElementPlus, {
-  locale: zhCn,
-})
-
-// 注册所有图标（多处组件使用字符串形式引用图标，需要全局注册）
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
+provideGlobalConfig({ locale: zhCn }, app, true)
+app.use(ElLoading)
+app.use(ElMessage)
+app.use(ElMessageBox)
+app.use(ElNotification)
 
 app.config.errorHandler = (err, vm, info) => {
   if (process.env.NODE_ENV === 'development') {

@@ -310,6 +310,13 @@
             placeholder="留空表示所有套餐"
             style="width: 100%"
           >
+            <el-option label="自定义套餐" value="custom_package" />
+            <el-option
+              v-for="pkg in packageOptions"
+              :key="pkg.id"
+              :label="pkg.name"
+              :value="String(pkg.id)"
+            />
           </el-select>
         </el-form-item>
       </el-form>
@@ -324,9 +331,9 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
-import { couponAPI } from '@/utils/api'
+import { couponAPI, packageAPI } from '@/utils/api'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import { formatTime as formatTimeUtil } from '@/utils/date'
@@ -334,6 +341,7 @@ dayjs.extend(timezone)
 const loading = ref(false)
 const saving = ref(false)
 const coupons = ref([])
+const packageOptions = ref([])
 const showCreateDialog = ref(false)
 const showFilterDrawer = ref(false)
 const editingCoupon = ref(null)
@@ -394,6 +402,37 @@ const loadCoupons = async () => {
     loading.value = false
   }
 }
+const loadPackages = async () => {
+  try {
+    const response = await packageAPI.getPackages({ size: 200 })
+    const data = response.data?.data || response.data || {}
+    const list = Array.isArray(data.packages)
+      ? data.packages
+      : Array.isArray(data)
+        ? data
+        : []
+    packageOptions.value = list.map(pkg => ({
+      id: pkg.id,
+      name: pkg.name || `套餐 ${pkg.id}`
+    })).filter(pkg => pkg.id)
+  } catch (error) {
+    packageOptions.value = []
+  }
+}
+const parseApplicablePackages = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) return value.map(item => String(item))
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return []
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return parsed.map(item => String(item))
+    } catch (error) {}
+    return trimmed.split(',').map(item => item.trim()).filter(Boolean)
+  }
+  return []
+}
 const saveCoupon = async () => {
   if (!couponFormRef.value) return
   await couponFormRef.value.validate(async (valid) => {
@@ -416,6 +455,9 @@ const saveCoupon = async () => {
         if (formData.max_discount === null || formData.max_discount === undefined) {
           delete formData.max_discount
         }
+        if (formData.max_discount === 0) {
+          delete formData.max_discount
+        }
         if (formData.total_quantity === null || formData.total_quantity === undefined) {
           delete formData.total_quantity
         }
@@ -428,6 +470,10 @@ const saveCoupon = async () => {
           }
         } else {
           formData.applicable_packages = ''
+        }
+        if (formData.type === 'free_days') {
+          formData.min_amount = 0
+          delete formData.max_discount
         }
         let response
         if (editingCoupon.value) {
@@ -466,7 +512,7 @@ const editCoupon = (coupon) => {
     valid_until: coupon.valid_until ? dayjs(coupon.valid_until).tz('Asia/Shanghai').toDate() : null,
     total_quantity: coupon.total_quantity,
     max_uses_per_user: coupon.max_uses_per_user,
-    applicable_packages: coupon.applicable_packages || []
+    applicable_packages: parseApplicablePackages(coupon.applicable_packages)
   })
   showCreateDialog.value = true
 }
@@ -555,6 +601,7 @@ const handleResize = () => {
 }
 onMounted(() => {
   loadCoupons()
+  loadPackages()
   window.addEventListener('resize', handleResize)
 })
 onUnmounted(() => {

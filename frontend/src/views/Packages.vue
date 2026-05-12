@@ -203,6 +203,9 @@
               <div v-if="couponInfo.valid && couponInfo.discount_amount" style="margin-top: 6px; color: #67c23a; font-weight: bold; font-size: 13px;">
                 优惠金额：¥{{ couponInfo.discount_amount.toFixed(2) }}
               </div>
+              <div v-if="couponInfo.valid && couponInfo.free_days" style="margin-top: 6px; color: #67c23a; font-weight: bold; font-size: 13px;">
+                赠送时长：{{ couponInfo.free_days }} 天
+              </div>
             </div>
           </div>
         </div>
@@ -233,6 +236,9 @@
               </el-descriptions-item>
               <el-descriptions-item label="优惠券折扣" v-if="couponInfo && couponInfo.valid && couponInfo.discount_amount">
                 <span class="discount-amount">-¥{{ couponInfo.discount_amount.toFixed(2) }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="优惠券赠送" v-if="couponInfo && couponInfo.valid && couponInfo.free_days">
+                <span class="discount-amount">+{{ couponInfo.free_days }} 天</span>
               </el-descriptions-item>
               <el-descriptions-item label="实付金额">
                 <span class="final-amount">
@@ -347,7 +353,7 @@
           <div class="summary-header">
             <div>
               <div class="summary-label">支付金额</div>
-              <div class="summary-amount">¥{{ parseFloat(currentOrder?.amount || orderInfo.amount || 0).toFixed(2) }}</div>
+              <div class="summary-amount">¥{{ getOrderPayAmount(currentOrder || orderInfo).toFixed(2) }}</div>
             </div>
             <div class="summary-badge">
               {{ currentOrder?.package_name || orderInfo.packageName }}
@@ -448,7 +454,7 @@
               :min="customPackageConfig.min_devices"
               :max="customPackageConfig.max_devices"
               :step="1"
-              @change="calculateCustomPrice"
+              @change="handleCustomPackageAmountChange"
               :size="isMobile ? 'large' : 'default'"
               style="width: 100%"
             />
@@ -464,7 +470,7 @@
               :min="customPackageConfig.min_months"
               :max="120"
               :step="1"
-              @change="calculateCustomPrice"
+              @change="handleCustomPackageAmountChange"
               :size="isMobile ? 'large' : 'default'"
               style="width: 100%"
             />
@@ -527,6 +533,9 @@
               <el-descriptions-item label="优惠券折扣" v-if="customCouponInfo && customCouponInfo.valid && customPackagePrice.couponDiscount > 0">
                 <span class="discount-amount">-¥{{ customPackagePrice.couponDiscount.toFixed(2) }}</span>
               </el-descriptions-item>
+              <el-descriptions-item label="优惠券赠送" v-if="customCouponInfo && customCouponInfo.valid && customCouponInfo.free_days">
+                <span class="discount-amount">+{{ customCouponInfo.free_days }} 天</span>
+              </el-descriptions-item>
               <el-descriptions-item label="实付金额">
                 <span class="final-amount">¥{{ customPackagePrice.finalPrice.toFixed(2) }}</span>
               </el-descriptions-item>
@@ -555,9 +564,10 @@
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion, QuestionFilled } from '@element-plus/icons-vue'
-import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods, cachedAPI } from '@/utils/api'
+import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods, cachedAPI, pendingPaymentStorage } from '@/utils/api'
+import { safeNavigate } from '@/utils/safeOpen'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import ErrorState from '@/components/ErrorState.vue'
@@ -599,6 +609,10 @@ export default {
     })
     const isCheckingPayment = ref(false)
     let paymentStatusCheckInterval = null
+    let paymentStatusTimeoutId = null
+    let paymentStatusRequest = null
+    let paymentManualVisibilityHandler = null
+    let paymentManualFocusHandler = null
     const couponCode = ref('')
     const validatingCoupon = ref(false)
     const couponInfo = ref(null)
@@ -635,10 +649,48 @@ export default {
     const isMobile = computed(() => {
       return windowWidth.value <= 768
     })
+    let resizeRafId = null
     const handleResize = () => {
-      if (typeof window !== 'undefined') {
+      if (resizeRafId !== null || typeof window === 'undefined') return
+      resizeRafId = window.requestAnimationFrame(() => {
+        resizeRafId = null
         windowWidth.value = window.innerWidth
+      })
+    }
+    const getOrderPayAmount = (order) => {
+      if (!order) return 0
+      const raw = order.final_amount ?? order.actual_payment_amount ?? order.actual_total_amount ?? order.amount ?? 0
+      const amount = parseFloat(raw)
+      return Number.isFinite(amount) ? amount : 0
+    }
+    const setCurrentOrderForPayment = (order) => {
+      const orderPaymentMethod = order.payment_method || paymentMethod.value
+      orderInfo.orderNo = order.order_no || order.orderNo || order.order_id || orderInfo.orderNo
+      orderInfo.amount = getOrderPayAmount(order) || orderInfo.amount
+      orderInfo.paymentUrl = order.payment_url || order.payment_qr_code || orderInfo.paymentUrl
+      currentOrder.value = {
+        ...order,
+        order_no: order.order_no || order.orderNo || order.order_id || orderInfo.orderNo,
+        amount: getOrderPayAmount(order) || orderInfo.amount,
+        package_name: order.package_name || orderInfo.packageName || selectedPackage.value?.name,
+        payment_method: orderPaymentMethod
       }
+      if (currentOrder.value.order_no) {
+        pendingPaymentStorage.save(currentOrder.value.order_no, 'order')
+      }
+    }
+    const updatePaidUserState = async () => {
+      const results = await cachedAPI.refreshUserState()
+      const userResponse = results?.[0]?.status === 'fulfilled' ? results[0].value : null
+      if (userResponse?.data?.success) {
+        const data = userResponse.data.data || {}
+        userBalance.value = parseFloat(data.balance || 0)
+        if (data.user_level) {
+          userLevel.value = data.user_level
+          levelDiscountRate.value = parseFloat(data.user_level.discount_rate || 1.0)
+        }
+      }
+      return results
     }
     const handleCouponInput = (value) => {
       couponCode.value = value
@@ -669,8 +721,10 @@ export default {
             valid: true,
             message: '优惠券验证成功',
             discount_amount: data?.coupon_discount_amount || 0,
+            free_days: data?.free_days || 0,
             level_discount_amount: data?.level_discount_amount || 0,
-            total_discount_amount: data?.total_discount_amount || 0
+            total_discount_amount: data?.total_discount_amount || 0,
+            final_amount: data?.final_amount
           }
           ElMessage.success('优惠券验证成功')
         } else {
@@ -819,6 +873,10 @@ export default {
       // 如果有优惠券验证结果，使用后端返回的准确金额
       if (couponInfo.value && couponInfo.value.valid && couponInfo.value.total_discount_amount !== undefined) {
         const totalPrice = totalOriginalPrice.value
+        const backendFinalAmount = parseFloat(couponInfo.value.final_amount)
+        if (Number.isFinite(backendFinalAmount)) {
+          return Math.max(0, backendFinalAmount)
+        }
         return Math.max(0, totalPrice - couponInfo.value.total_discount_amount)
       }
 
@@ -931,31 +989,38 @@ export default {
         isLoading.value = false
       }
     }
-    const loadUserBalance = async () => {
-      try {
-        const response = await userAPI.getUserInfo()
-        if (response.data && response.data.success && response.data.data) {
-          userBalance.value = parseFloat(response.data.data.balance || 0)
-          if (response.data.data.user_level) {
-            userLevel.value = response.data.data.user_level
-            levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
-          } else {
-            try {
-              const levelResponse = await userLevelAPI.getMyLevel()
-              if (levelResponse?.data?.data?.current_level) {
-                userLevel.value = levelResponse.data.data.current_level
-                levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
+    let balanceLoadPromise = null
+    const loadUserBalance = async ({ force = false } = {}) => {
+      if (!force && balanceLoadPromise) return balanceLoadPromise
+      balanceLoadPromise = (async () => {
+        try {
+          const response = force ? await cachedAPI.getUserInfo() : await userAPI.getUserInfo()
+          if (response.data && response.data.success && response.data.data) {
+            userBalance.value = parseFloat(response.data.data.balance || 0)
+            if (response.data.data.user_level) {
+              userLevel.value = response.data.data.user_level
+              levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
+            } else {
+              try {
+                const levelResponse = await userLevelAPI.getMyLevel()
+                if (levelResponse?.data?.data?.current_level) {
+                  userLevel.value = levelResponse.data.data.current_level
+                  levelDiscountRate.value = parseFloat(userLevel.value.discount_rate || 1.0)
+                }
+              } catch (e) {
+                // 用户等级信息加载失败，使用默认折扣率
               }
-            } catch (e) {
-              // 用户等级信息加载失败，使用默认折扣率
             }
           }
+        } catch (error) {
+          userBalance.value = 0
+          userLevel.value = null
+          levelDiscountRate.value = 1.0
         }
-      } catch (error) {
-        userBalance.value = 0
-        userLevel.value = null
-        levelDiscountRate.value = 1.0
-      }
+      })().finally(() => {
+        balanceLoadPromise = null
+      })
+      return balanceLoadPromise
     }
     const loadPaymentMethods = async () => {
       try {
@@ -984,7 +1049,10 @@ export default {
         }
         selectedPackage.value = pkg
         selectedQuantity.value = 1
-        
+        couponCode.value = ''
+        couponInfo.value = null
+        currentOrder.value = null
+
         // 并发获取最新余额和支付方式，减少弹窗显示前的等待时间
         await Promise.all([
           loadUserBalance(),
@@ -1036,9 +1104,7 @@ export default {
 
             if (order.status === 'paid') {
               purchaseDialogVisible.value = false
-              ElMessage.success('支付成功！')
-              successDialogVisible.value = true
-              await loadPackages()
+              await markOrderPaid('支付成功！')
             } else if (order.payment_url || order.payment_qr_code) {
               purchaseDialogVisible.value = false
               await showPaymentQRCode(order)
@@ -1115,23 +1181,21 @@ export default {
         }
         orderInfo.orderNo = order.order_no || order.orderNo || order.order_id || ''
         orderInfo.packageName = selectedPackage.value.name
-        orderInfo.amount = order.amount
+        orderInfo.amount = getOrderPayAmount(order)
         orderInfo.duration = selectedPackage.value.duration_days
         const orderPaymentMethod = order.payment_method || paymentMethod.value
         order.payment_method = orderPaymentMethod
         if (order.status === 'paid') {
           purchaseDialogVisible.value = false
-          ElMessage.success('购买成功！订单已支付')
           if (order.remaining_balance !== undefined) {
             userBalance.value = order.remaining_balance
           }
-          successDialogVisible.value = true
-          await loadPackages()
+          await markOrderPaid('购买成功！订单已支付')
         } else if (order.payment_url || order.payment_qr_code) {
           purchaseDialogVisible.value = false
           orderInfo.orderNo = order.order_no || order.orderNo
           orderInfo.packageName = selectedPackage.value.name
-          orderInfo.amount = order.amount
+          orderInfo.amount = getOrderPayAmount(order)
           orderInfo.duration = selectedPackage.value.duration_days
           orderInfo.paymentUrl = order.payment_url || order.payment_qr_code
           if (!order.payment_method) {
@@ -1140,11 +1204,14 @@ export default {
           const paymentMethodName = order.payment_method || paymentMethod.value
           const isYipay = paymentMethodName && (
             paymentMethodName.includes('yipay') ||
-            paymentMethodName.includes('易支付')
+            paymentMethodName.includes('易支付') ||
+            paymentMethodName.includes('codepay') ||
+            paymentMethodName.includes('码支付')
           )
           if (isYipay) {
             const paymentUrl = order.payment_url || order.payment_qr_code
             if (paymentUrl) {
+              setCurrentOrderForPayment(order)
               const isInWeChat = /MicroMessenger/i.test(navigator.userAgent)
               const isWxpayMethod = paymentMethodName && (
                 paymentMethodName.includes('wxpay') || 
@@ -1152,23 +1219,25 @@ export default {
               )
               if (isInWeChat && isWxpayMethod && (paymentUrl.startsWith('http://') || paymentUrl.startsWith('https://'))) {
                 ElMessage.info('正在跳转到微信支付页面...')
-                window.location.href = paymentUrl
+                safeNavigate(paymentUrl)
                 return
               }
               if (paymentUrl.startsWith('weixin://') || paymentUrl.startsWith('wxp://')) {
                 ElMessage.info('正在唤起微信支付...')
-                window.location.href = paymentUrl
-                const handleVisibilityChange = async () => {
+                safeNavigate(paymentUrl, { allowAppProtocols: true })
+                cleanupPaymentManualWatchers()
+                paymentManualVisibilityHandler = async () => {
                   if (document.visibilityState === 'visible') {
                     await checkPaymentStatus()
-                    document.removeEventListener('visibilitychange', handleVisibilityChange)
+                    cleanupPaymentManualWatchers()
                   }
                 }
-                document.addEventListener('visibilitychange', handleVisibilityChange)
+                document.addEventListener('visibilitychange', paymentManualVisibilityHandler)
                 startPaymentStatusCheck()
               } else {
                 ElMessage.info('正在跳转到支付页面...')
-                window.location.href = paymentUrl
+                safeNavigate(paymentUrl)
+                startPaymentStatusCheck()
               }
             } else {
               ElMessage.error('支付链接不存在')
@@ -1182,10 +1251,10 @@ export default {
             }
           }
         } else {
-          const errorMsg = order.payment_error || order.note || '支付链接生成失败，可能是网络问题或支付宝配置问题'
+          const errorMsg = order.payment_error || order.note || '支付链接生成失败，订单已自动标记为失败，优惠券和活动占用已释放'
           const orderNo = order.order_no || order.orderNo || '未知'
           ElMessageBox.confirm(
-            `${errorMsg}。订单已创建成功（订单号：${orderNo}），您可以：\n\n1. 前往订单页面重新生成支付链接\n2. 稍后重试`,
+            `${errorMsg}（订单号：${orderNo}）。您可以重新下单，或前往订单页面查看记录。`,
             '支付链接生成失败',
             {
               confirmButtonText: '前往订单页面',
@@ -1283,21 +1352,22 @@ export default {
       }
       const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
       try {
-        const handleVisibilityChange = async () => {
-          if (document.visibilityState === 'visible' && paymentQRVisible.value) {
+        cleanupPaymentManualWatchers()
+        paymentManualVisibilityHandler = async () => {
+          if (document.visibilityState === 'visible' && currentOrder.value?.order_no) {
             await checkPaymentStatus()
-            document.removeEventListener('visibilitychange', handleVisibilityChange)
+            cleanupPaymentManualWatchers()
           }
         }
-        document.addEventListener('visibilitychange', handleVisibilityChange)
-        const handleFocus = async () => {
-          if (paymentQRVisible.value) {
+        document.addEventListener('visibilitychange', paymentManualVisibilityHandler)
+        paymentManualFocusHandler = async () => {
+          if (currentOrder.value?.order_no) {
             await checkPaymentStatus()
-            window.removeEventListener('focus', handleFocus)
+            cleanupPaymentManualWatchers()
           }
         }
-        window.addEventListener('focus', handleFocus)
-        window.location.href = alipayAppUrl
+        window.addEventListener('focus', paymentManualFocusHandler)
+        safeNavigate(alipayAppUrl, { allowAppProtocols: true })
         setTimeout(() => {
           ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
         }, 3000)
@@ -1314,14 +1384,7 @@ export default {
         }
         paymentUrl.value = url
         const orderPaymentMethod = order.payment_method || paymentMethod.value
-        currentOrder.value = {
-          order_no: order.order_no || orderInfo.orderNo,
-          amount: order.amount || orderInfo.amount,
-          package_name: orderInfo.packageName || selectedPackage.value?.name,
-          payment_method: orderPaymentMethod
-        }
-        const paymentMethodForQR = orderPaymentMethod
-      try {
+        setCurrentOrderForPayment({ ...order, payment_method: orderPaymentMethod })
         if (!url || url.trim() === '') {
           ElMessage.error('支付链接为空，请联系管理员检查配置')
           return
@@ -1340,7 +1403,8 @@ export default {
         if (isAlipayPagePay) {
           // 支付宝页面支付，直接跳转
           ElMessage.info('正在跳转到支付宝支付页面...')
-          window.location.href = urlString
+          safeNavigate(urlString)
+          startPaymentStatusCheck()
           return
         } else if (isYipayPaymentPage) {
           // 易支付页面，使用iframe
@@ -1361,11 +1425,6 @@ export default {
           const qrCodeDataURL = await QRCode.toDataURL(urlString, qrOptions)
           paymentQRCode.value = qrCodeDataURL
         }
-      } catch (error) {
-        console.error('处理支付链接失败:', error)
-        ElMessage.error('处理支付链接失败: ' + (error.message || '未知错误'))
-        return
-      }
         paymentQRVisible.value = true
         await new Promise(resolve => setTimeout(resolve, 100))
         startPaymentStatusCheck()
@@ -1424,167 +1483,127 @@ export default {
     }
     let visibilityChangeHandler = null
     let focusHandler = null
-    const startPaymentStatusCheck = () => {
+    const closePaymentStatusWatchers = () => {
       if (paymentStatusCheckInterval) {
         clearInterval(paymentStatusCheckInterval)
         paymentStatusCheckInterval = null
       }
+      if (paymentStatusTimeoutId) {
+        clearTimeout(paymentStatusTimeoutId)
+        paymentStatusTimeoutId = null
+      }
       if (visibilityChangeHandler) {
         document.removeEventListener('visibilitychange', visibilityChangeHandler)
+        visibilityChangeHandler = null
       }
       if (focusHandler) {
         window.removeEventListener('focus', focusHandler)
+        focusHandler = null
       }
+      cleanupPaymentManualWatchers()
+    }
+    const cleanupPaymentManualWatchers = () => {
+      if (paymentManualVisibilityHandler) {
+        document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
+        paymentManualVisibilityHandler = null
+      }
+      if (paymentManualFocusHandler) {
+        window.removeEventListener('focus', paymentManualFocusHandler)
+        paymentManualFocusHandler = null
+      }
+    }
+    const markOrderPaid = async (successText = '支付成功！您的订阅已激活') => {
+      closePaymentStatusWatchers()
+      paymentQRVisible.value = false
+      successDialogVisible.value = true
+      isCheckingPayment.value = false
+      ElMessage.success(successText)
+      pendingPaymentStorage.clear()
+      await updatePaidUserState()
+      paymentStatusTimeoutId = setTimeout(() => {
+        successDialogVisible.value = false
+        loadPackages()
+      }, 3000)
+    }
+    const startPaymentStatusCheck = () => {
+      closePaymentStatusWatchers()
       checkPaymentStatus()
       paymentStatusCheckInterval = setInterval(async () => {
         await checkPaymentStatus()
       }, 5000)
       visibilityChangeHandler = async () => {
-        if (document.visibilityState === 'visible' && paymentQRVisible.value) {
+        if (document.visibilityState === 'visible' && currentOrder.value?.order_no) {
           await checkPaymentStatus()
         }
       }
       document.addEventListener('visibilitychange', visibilityChangeHandler)
       focusHandler = async () => {
-        if (paymentQRVisible.value) {
+        if (currentOrder.value?.order_no) {
           await checkPaymentStatus()
         }
       }
       window.addEventListener('focus', focusHandler)
-      setTimeout(() => {
-        if (paymentStatusCheckInterval) {
-          clearInterval(paymentStatusCheckInterval)
-          paymentStatusCheckInterval = null
-        }
-        if (visibilityChangeHandler) {
-          document.removeEventListener('visibilitychange', visibilityChangeHandler)
-          visibilityChangeHandler = null
-        }
-        if (focusHandler) {
-          window.removeEventListener('focus', focusHandler)
-          focusHandler = null
-        }
+      paymentStatusTimeoutId = setTimeout(() => {
+        closePaymentStatusWatchers()
       }, 30 * 60 * 1000)
     }
     const checkPaymentStatus = async () => {
       if (!currentOrder.value || !currentOrder.value.order_no) {
         return
       }
-      if (!paymentQRVisible.value) {
-        return
-      }
-      try {
-        isCheckingPayment.value = true
-        const response = await api.get(`/orders/${currentOrder.value.order_no}/status`, {
-          timeout: 10000
-        })
-        if (process.env.NODE_ENV === 'development') {
-          console.log('订单状态检查:', {
-            order_no: currentOrder.value.order_no,
-            response: response.data,
-            status: response.data?.data?.status
+      if (paymentStatusRequest) return paymentStatusRequest
+      paymentStatusRequest = (async () => {
+        try {
+          isCheckingPayment.value = true
+          const response = await api.get(`/orders/${currentOrder.value.order_no}/status`, {
+            timeout: 10000
           })
-        }
-        if (!response || !response.data) {
-          return
-        }
-        if (response.data.success === false) {
-          return
-        }
-        const orderData = response.data.data
-        if (!orderData) {
-          return
-        }
-        if (orderData.status === 'paid') {
-          if (paymentStatusCheckInterval) {
-            clearInterval(paymentStatusCheckInterval)
-            paymentStatusCheckInterval = null
+          if (process.env.NODE_ENV === 'development') {
+            console.log('订单状态检查:', {
+              order_no: currentOrder.value.order_no,
+              response: response.data,
+              status: response.data?.data?.status
+            })
           }
-          if (visibilityChangeHandler) {
-            document.removeEventListener('visibilitychange', visibilityChangeHandler)
-            visibilityChangeHandler = null
+          if (!response || !response.data) {
+            return
           }
-          if (focusHandler) {
-            window.removeEventListener('focus', focusHandler)
-            focusHandler = null
+          if (response.data.success === false) {
+            return
           }
-          paymentQRVisible.value = false
-          successDialogVisible.value = true
-          ElMessage.success('支付成功！您的订阅已激活')
+          const orderData = response.data.data
+          if (!orderData) {
+            return
+          }
+          if (orderData.status === 'paid') {
+            await markOrderPaid()
+            return
+          } else if (orderData.status === 'cancelled') {
+            closePaymentStatusWatchers()
+            paymentQRVisible.value = false
+            pendingPaymentStorage.clear()
+            ElMessage.info('订单已取消')
+          } else if (orderData.status === 'failed' || orderData.status === 'expired') {
+            closePaymentStatusWatchers()
+            paymentQRVisible.value = false
+            pendingPaymentStorage.clear()
+            ElMessage.warning('订单支付失败或已过期')
+          }
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error('检查支付状态出错:', {
+              error: error,
+              message: error.message,
+              response: error.response?.data,
+              order_no: currentOrder.value?.order_no
+            })
+          }
+        } finally {
           isCheckingPayment.value = false
-          const refreshUserInfo = async () => {
-            try {
-              const userResponse = await userAPI.getUserInfo()
-              if (userResponse?.data?.success) {
-                userBalance.value = parseFloat(userResponse.data.data.balance || 0)
-              }
-            } catch (refreshError) {
-              if (process.env.NODE_ENV === 'development') {
-                console.error('刷新用户信息失败:', refreshError)
-              }
-            }
-          }
-          const refreshSubscription = async () => {
-            try {
-              const { subscriptionAPI } = await import('@/utils/api')
-              const subscriptionResponse = await subscriptionAPI.getUserSubscription()
-              if (subscriptionResponse?.data?.success) {
-                window.dispatchEvent(new CustomEvent('subscription-updated', {
-                  detail: subscriptionResponse.data.data
-                }))
-              }
-            } catch (refreshError) {
-              if (process.env.NODE_ENV === 'development') {
-                console.error('刷新订阅信息失败:', refreshError)
-              }
-            }
-          }
-          Promise.all([refreshUserInfo(), refreshSubscription()]).then(() => {
-            setTimeout(async () => {
-              await Promise.all([refreshUserInfo(), refreshSubscription()])
-            }, 500)
-          })
-          setTimeout(() => {
-            successDialogVisible.value = false
-            loadPackages()
-            Promise.all([refreshUserInfo(), refreshSubscription()])
-            if (router.currentRoute.value.path === '/subscription') {
-              router.go(0)
-            }
-            if (router.currentRoute.value.path === '/dashboard') {
-              router.go(0)
-            }
-          }, 3000)
-          return
-        } else if (orderData.status === 'cancelled') {
-          if (paymentStatusCheckInterval) {
-            clearInterval(paymentStatusCheckInterval)
-            paymentStatusCheckInterval = null
-          }
-          if (visibilityChangeHandler) {
-            document.removeEventListener('visibilitychange', visibilityChangeHandler)
-            visibilityChangeHandler = null
-          }
-          if (focusHandler) {
-            window.removeEventListener('focus', focusHandler)
-            focusHandler = null
-          }
-          paymentQRVisible.value = false
-          ElMessage.info('订单已取消')
+          paymentStatusRequest = null
         }
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('检查支付状态出错:', {
-            error: error,
-            message: error.message,
-            response: error.response?.data,
-            order_no: currentOrder.value?.order_no
-          })
-        }
-        // 超时错误已在上面的 catch 中处理
-      } finally {
-        isCheckingPayment.value = false
-      }
+      })()
+      return paymentStatusRequest
     }
     const onImageLoad = () => {
     }
@@ -1627,10 +1646,16 @@ export default {
     const onPaymentError = (error) => {
     }
     const handleSubscriptionUpdate = async (event) => {
-      await loadUserBalance()
+      if (event?.detail?.refreshed) {
+        return
+      }
+      await loadUserBalance({ force: true })
     }
-    const handleUserInfoUpdate = async () => {
-      await loadUserBalance()
+    const handleUserInfoUpdate = async (event) => {
+      if (event?.detail?.refreshed) {
+        return
+      }
+      await loadUserBalance({ force: true })
     }
     
     // --- 核心优化：解除 onMounted 的阻塞，改用并发 ---
@@ -1641,7 +1666,7 @@ export default {
       
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
-        window.addEventListener('resize', handleResize)
+        window.addEventListener('resize', handleResize, { passive: true })
       }
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
@@ -1652,8 +1677,13 @@ export default {
         clearInterval(paymentStatusCheckInterval)
         paymentStatusCheckInterval = null
       }
+      closePaymentStatusWatchers()
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)
+        if (resizeRafId !== null) {
+          window.cancelAnimationFrame(resizeRafId)
+          resizeRafId = null
+        }
       }
       window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
       window.removeEventListener('user-info-updated', handleUserInfoUpdate)
@@ -1669,7 +1699,10 @@ export default {
       calculateCustomPrice()
     }
 
-    const calculateCustomPrice = () => {
+    const calculateCustomPrice = ({ keepCoupon = true } = {}) => {
+      if (!keepCoupon) {
+        customCouponInfo.value = null
+      }
       // 计算基础价格
       const basePrice = customPackageConfig.price_per_device_year *
                        customPackageForm.devices *
@@ -1694,7 +1727,7 @@ export default {
       // 应用优惠券折扣
       let couponDiscount = 0
       if (customCouponInfo.value && customCouponInfo.value.valid && customCouponInfo.value.discount_amount) {
-        couponDiscount = customCouponInfo.value.discount_amount
+        couponDiscount = Math.min(customCouponInfo.value.discount_amount, priceAfterDiscount)
       }
       customPackagePrice.couponDiscount = couponDiscount
 
@@ -1709,6 +1742,10 @@ export default {
       calculateCustomPrice()
     }
 
+    const handleCustomPackageAmountChange = () => {
+      calculateCustomPrice({ keepCoupon: false })
+    }
+
     const validateCustomCoupon = async () => {
       if (!customPackageForm.couponCode) {
         return
@@ -1718,15 +1755,18 @@ export default {
       try {
         const response = await couponAPI.validateCoupon({
           code: customPackageForm.couponCode,
-          amount: customPackagePrice.basePrice * (1 - customPackagePrice.discountPercent / 100)
+          amount: customPackagePrice.basePrice * (1 - customPackagePrice.discountPercent / 100),
+          package_id: 0,
+          apply_level_discount: false
         })
 
         if (response.data && response.data.success) {
           const data = response.data.data
           customCouponInfo.value = {
-            valid: data.valid,
-            message: data.message,
-            discount_amount: data.discount_amount || 0
+            valid: data.valid !== false,
+            message: data.message || '优惠券验证成功',
+            discount_amount: data.coupon_discount_amount || data.discount_amount || 0,
+            free_days: data.free_days || 0
           }
           calculateCustomPrice()
         }
@@ -1758,6 +1798,16 @@ export default {
 
           // 关闭自定义套餐对话框
           customPackageDialogVisible.value = false
+          if (order.status === 'paid') {
+            currentOrder.value = {
+              ...order,
+              order_no: order.order_no || order.orderNo || order.order_id,
+              package_name: order.package_name || `自定义套餐 (${customPackageForm.devices}设备/${customPackageForm.months}月)`,
+              amount: getOrderPayAmount(order)
+            }
+            await markOrderPaid('支付成功！自定义套餐已开通')
+            return
+          }
 
           // 构建虚拟套餐对象用于显示
           selectedPackage.value = {
@@ -1771,9 +1821,6 @@ export default {
 
           // 设置数量为1
           selectedQuantity.value = 1
-
-          // 设置当前订单信息
-          currentOrder.value = order
 
           // 清空优惠券信息
           couponCode.value = ''
@@ -1792,6 +1839,11 @@ export default {
           } else {
             paymentMethod.value = availablePaymentMethods.value[0]?.key || 'alipay'
           }
+          setCurrentOrderForPayment({
+            ...order,
+            package_name: order.package_name || `自定义套餐 (${customPackageForm.devices}设备/${customPackageForm.months}月)`,
+            payment_method: paymentMethod.value
+          })
 
           // 显示支付对话框
           purchaseDialogVisible.value = true
@@ -1852,6 +1904,7 @@ export default {
       userLevel,
       levelDiscountRate,
       calculateLevelDiscount,
+      getOrderPayAmount,
       selectedQuantity,
       packageType,
       durationOptions,
@@ -1867,6 +1920,7 @@ export default {
       openCustomPackageDialog,
       calculateCustomPrice,
       handleCustomCouponInput,
+      handleCustomPackageAmountChange,
       validateCustomCoupon,
       confirmCustomPackage,
       durationHint,
@@ -1879,7 +1933,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
 .packages-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

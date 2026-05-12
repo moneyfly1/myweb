@@ -217,9 +217,9 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, User, TrendCharts, DataAnalysis, Monitor, Download, Top, Bottom } from '@element-plus/icons-vue'
-import { analyticsAPI, api } from '@/utils/api'
+import { api } from '@/utils/api'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -251,6 +251,7 @@ const churnUsers = ref([])
 const deviceStats = ref([])
 const osStats = ref([])
 const revenueStats = ref({})
+let loadSeq = 0
 const contactForm = ref({
   userId: null,
   username: '',
@@ -450,29 +451,21 @@ const contactUser = (user) => {
   router.push(`/admin/users?search=${user.email}`)
 }
 
-const loadRevenueStats = async () => {
-  try {
-    const res = await api.get(`/admin/analytics/revenue?range=${timeRange.value}`)
-    revenueStats.value = res.data?.data || {}
-  } catch (e) {
-    console.error('加载收入统计失败:', e)
-  }
-}
-
 const loadData = async () => {
+  const seq = ++loadSeq
+  const range = timeRange.value
   loading.value = true
   try {
-    // 先加载收入统计
-    await loadRevenueStats()
-
-    // 并行加载其他数据，都带上时间范围参数
-    const [uRes, rRes, cRes, dRes] = await Promise.all([
-      api.get(`/admin/analytics/users?range=${timeRange.value}`),
-      api.get(`/admin/analytics/retention?range=${timeRange.value}`),
-      api.get(`/admin/analytics/churn?range=${timeRange.value}`),
-      api.get(`/admin/analytics/devices?range=${timeRange.value}`)
+    const [revenueRes, uRes, rRes, cRes, dRes] = await Promise.all([
+      api.get(`/admin/analytics/revenue?range=${range}`),
+      api.get(`/admin/analytics/users?range=${range}`),
+      api.get(`/admin/analytics/retention?range=${range}`),
+      api.get(`/admin/analytics/churn?range=${range}`),
+      api.get(`/admin/analytics/devices?range=${range}`)
     ])
+    if (seq !== loadSeq) return
 
+    revenueStats.value = revenueRes.data?.data || {}
     userAnalytics.value = uRes.data?.data || {}
     retention.value = rRes.data?.data || []
     churnUsers.value = cRes.data?.data || []
@@ -485,7 +478,7 @@ const loadData = async () => {
     console.error('错误详情:', e.response?.data)
     ElMessage.error(e.response?.data?.message || '加载数据失败')
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -576,11 +569,6 @@ const exportData = async () => {
 .list-card {
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
 }
 
 .time-range-selector {

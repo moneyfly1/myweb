@@ -189,7 +189,6 @@
               style="margin-left: 4px;"
             />
           </el-button>
-          <el-button size="small" type="primary" @click="assignTicket(row)" v-if="!row.assigned_to">分配</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -232,7 +231,6 @@
         </div>
         <div class="ticket-card-actions">
           <el-button size="small" @click.stop="viewTicket(ticket.id)">查看</el-button>
-          <el-button size="small" type="primary" @click.stop="assignTicket(ticket)" v-if="!ticket.assigned_to">分配</el-button>
         </div>
       </div>
       <div v-if="tickets.length === 0" class="empty-state">
@@ -289,9 +287,6 @@
             </el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(currentTicket.created_at) }}</el-descriptions-item>
             <el-descriptions-item label="更新时间">{{ formatTime(currentTicket.updated_at) }}</el-descriptions-item>
-            <el-descriptions-item label="分配给" v-if="currentTicket.assigned_to">
-              {{ currentTicket.assigned_to }}
-            </el-descriptions-item>
             <el-descriptions-item label="解决时间" v-if="currentTicket.resolved_at">
               {{ formatTime(currentTicket.resolved_at) }}
             </el-descriptions-item>
@@ -321,8 +316,8 @@
               :key="reply.id" 
               class="reply-item" 
               :class="{ 
-                'admin-reply': reply.is_admin === 'true', 
-                'user-reply': reply.is_admin !== 'true',
+                'admin-reply': isAdminReply(reply), 
+                'user-reply': !isAdminReply(reply),
                 'unread-reply': reply.is_unread,
                 'mobile-reply': isMobile 
               }"
@@ -330,11 +325,11 @@
               <div class="reply-header">
                 <div class="reply-author">
                   <el-tag 
-                    :type="reply.is_admin === 'true' ? 'success' : 'info'" 
+                    :type="isAdminReply(reply) ? 'success' : 'info'" 
                     size="small"
                     effect="dark"
                   >
-                    {{ reply.is_admin === 'true' ? '管理员' : '用户' }}
+                    {{ isAdminReply(reply) ? '管理员' : '用户' }}
                   </el-tag>
                   <el-badge 
                     v-if="reply.is_unread" 
@@ -361,7 +356,6 @@
             </template>
             <div class="action-buttons">
               <el-button @click="showStatusDialog = true">更新状态</el-button>
-              <el-button @click="showAssignDialog = true">分配工单</el-button>
               <el-button @click="showNotesDialog = true">添加备注</el-button>
             </div>
           </el-card>
@@ -372,12 +366,6 @@
               class="mobile-action-btn"
             >
               更新状态
-            </el-button>
-            <el-button 
-              @click="showAssignDialog = true" 
-              class="mobile-action-btn"
-            >
-              分配工单
             </el-button>
             <el-button 
               @click="showNotesDialog = true" 
@@ -427,15 +415,6 @@
         </div>
       </template>
     </el-dialog>
-    <el-dialog v-model="showAssignDialog" title="分配工单" :width="isMobile ? '90%' : '400px'">
-      <el-input-number v-model="assignToUserId" placeholder="输入管理员用户ID" style="width: 100%" />
-      <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showAssignDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="assignTicketConfirm" class="mobile-action-btn">确定</el-button>
-        </div>
-      </template>
-    </el-dialog>
     <el-dialog v-model="showNotesDialog" title="添加管理员备注" :width="isMobile ? '90%' : '500px'">
       <el-input
         v-model="adminNotes"
@@ -454,7 +433,7 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search, Filter, User, ChatLineRound, Clock } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 const loading = ref(false)
@@ -462,13 +441,11 @@ const replying = ref(false)
 const tickets = ref([])
 const showDetailDialog = ref(false)
 const showStatusDialog = ref(false)
-const showAssignDialog = ref(false)
 const showNotesDialog = ref(false)
 const showFilterDrawer = ref(false)
 const currentTicket = ref(null)
 const replyContent = ref('')
 const newStatus = ref('')
-const assignToUserId = ref(null)
 const adminNotes = ref('')
 const statistics = ref(null)
 const isMobile = ref(window.innerWidth <= 768)
@@ -523,14 +500,27 @@ const viewTicket = async (ticketId) => {
     if (response.data.success) {
       currentTicket.value = response.data.data?.ticket || response.data.data
       showDetailDialog.value = true
-      setTimeout(async () => {
-        await loadTickets()
-        window.dispatchEvent(new CustomEvent('ticket-viewed'))
-      }, 500)
+      markTicketReadLocally(ticketId)
+      window.dispatchEvent(new CustomEvent('ticket-viewed'))
+      await loadTickets()
     }
   } catch (error) {
     ElMessage.error('加载工单详情失败: ' + (error.response?.data?.message || error.message))
   }
+}
+const isAdminReply = (reply) => {
+  return reply?.is_admin === true || reply?.is_admin === 'true' || reply?.is_admin_reply === true
+}
+const markTicketReadLocally = (ticketId) => {
+  tickets.value = tickets.value.map(ticket => {
+    if (ticket.id !== ticketId) return ticket
+    return {
+      ...ticket,
+      has_unread: false,
+      has_new_ticket: false,
+      unread_replies: 0
+    }
+  })
 }
 const addReply = async () => {
   if (!replyContent.value.trim()) {
@@ -548,7 +538,8 @@ const addReply = async () => {
     if (response.data && response.data.success) {
       ElMessage.success('回复成功')
       replyContent.value = ''
-      viewTicket(currentTicket.value.id)
+      await viewTicket(currentTicket.value.id)
+      await loadStatistics()
     } else {
       console.error('[前端] 回复失败，响应数据:', response.data)
       ElMessage.error(response.data?.message || '回复失败')
@@ -569,32 +560,11 @@ const updateStatus = async () => {
       ElMessage.success('状态更新成功')
       showStatusDialog.value = false
       newStatus.value = ''
-      viewTicket(currentTicket.value.id)
+      await viewTicket(currentTicket.value.id)
+      await loadStatistics()
     }
   } catch (error) {
     ElMessage.error('更新状态失败')
-  }
-}
-const assignTicket = (ticket) => {
-  currentTicket.value = ticket
-  assignToUserId.value = null
-  showAssignDialog.value = true
-}
-const assignTicketConfirm = async () => {
-  if (!currentTicket.value || !assignToUserId.value) {
-    ElMessage.warning('请输入管理员用户ID')
-    return
-  }
-  try {
-    const response = await ticketAPI.updateTicket(currentTicket.value.id, { assigned_to: assignToUserId.value })
-    if (response.data.success) {
-      ElMessage.success('分配成功')
-      showAssignDialog.value = false
-      assignToUserId.value = null
-      viewTicket(currentTicket.value.id)
-    }
-  } catch (error) {
-    ElMessage.error('分配失败')
   }
 }
 const updateNotes = async () => {
@@ -605,7 +575,7 @@ const updateNotes = async () => {
       ElMessage.success('备注添加成功')
       showNotesDialog.value = false
       adminNotes.value = ''
-      viewTicket(currentTicket.value.id)
+      await viewTicket(currentTicket.value.id)
     }
   } catch (error) {
     ElMessage.error('添加备注失败')
@@ -615,7 +585,6 @@ const closeDetailDialog = () => {
   currentTicket.value = null
   replyContent.value = ''
   newStatus.value = ''
-  assignToUserId.value = null
   adminNotes.value = ''
 }
 const formatTime = (timeStr) => {
@@ -873,23 +842,6 @@ onUnmounted(() => {
     padding: 16px;
   }
 }
-.mobile-action-buttons {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  width: 100%;
-  box-sizing: border-box;
-  .mobile-action-btn,
-  .el-button {
-    width: 100%;
-    height: 44px;
-    margin: 0;
-    font-size: 16px;
-    border-radius: 6px;
-    font-weight: 500;
-  }
-}
 .mobile-reply {
   padding: 12px !important;
   margin-bottom: 12px !important;
@@ -1041,23 +993,6 @@ onUnmounted(() => {
         margin-top: 4px;
       }
     }
-  }
-}
-.mobile-action-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
-  .search-input-wrapper {
-    display: flex;
-    gap: 8px;
-    .mobile-search-input {
-      flex: 1;
-    }
-  }
-  .mobile-filter-buttons {
-    display: flex;
-    gap: 8px;
   }
 }
 .desktop-only {

@@ -114,7 +114,7 @@ func InitDatabase() error {
 		if maxOpenConns > 100 {
 			maxOpenConns = 100
 		}
-		
+
 		maxIdleConns := numCPU * 2
 		if maxIdleConns < 5 {
 			maxIdleConns = 5
@@ -122,12 +122,12 @@ func InitDatabase() error {
 		if maxIdleConns > 20 {
 			maxIdleConns = 20
 		}
-		
+
 		sqlDB.SetMaxOpenConns(maxOpenConns)
 		sqlDB.SetMaxIdleConns(maxIdleConns)
 		sqlDB.SetConnMaxLifetime(30 * time.Minute)
-		
-		log.Printf("数据库连接池配置: MaxOpenConns=%d, MaxIdleConns=%d, ConnMaxLifetime=30m (CPU核心数: %d)", 
+
+		log.Printf("数据库连接池配置: MaxOpenConns=%d, MaxIdleConns=%d, ConnMaxLifetime=30m (CPU核心数: %d)",
 			maxOpenConns, maxIdleConns, numCPU)
 	}
 	if err := sqlDB.Ping(); err != nil {
@@ -150,7 +150,23 @@ func AutoMigrate() error {
 	if DB == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
+	fulfilledAtExisted := DB.Migrator().HasColumn(&models.Order{}, "FulfilledAt")
+	fulfilledAtAdded := false
 	if strings.Contains(DB.Dialector.Name(), "sqlite") {
+		var ordersExists int64
+		DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='orders'").Scan(&ordersExists)
+		if ordersExists > 0 {
+			var hasFulfilledAt int64
+			DB.Raw("SELECT COUNT(*) FROM pragma_table_info('orders') WHERE name='fulfilled_at'").Scan(&hasFulfilledAt)
+			if hasFulfilledAt == 0 {
+				if err := DB.Exec("ALTER TABLE orders ADD COLUMN fulfilled_at datetime").Error; err != nil {
+					log.Printf("警告: 添加 orders.fulfilled_at 列失败（可能已存在）: %v", err)
+				} else {
+					fulfilledAtAdded = true
+				}
+			}
+		}
+
 		var tableExists int64
 		DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='custom_nodes'").Scan(&tableExists)
 		if tableExists > 0 {
@@ -212,6 +228,9 @@ func AutoMigrate() error {
 				}
 			}
 		}
+		if err := repairSQLitePromotionParticipationsDDL(); err != nil {
+			return err
+		}
 	}
 	err := DB.AutoMigrate(
 		&models.User{},
@@ -256,6 +275,7 @@ func AutoMigrate() error {
 		&models.KnowledgeCategory{},
 		&models.KnowledgeArticle{},
 		&models.Promotion{},
+		&models.PromotionParticipation{},
 	)
 
 	if err != nil {
@@ -265,8 +285,131 @@ func AutoMigrate() error {
 			return fmt.Errorf("数据库迁移失败: %w", err)
 		}
 	}
+	if !fulfilledAtExisted && DB.Migrator().HasColumn(&models.Order{}, "FulfilledAt") {
+		fulfilledAtAdded = true
+	}
+
+	if fulfilledAtAdded {
+		if err := DB.Exec("UPDATE orders SET fulfilled_at = COALESCE(payment_time, updated_at, created_at) WHERE status = ? AND fulfilled_at IS NULL", "paid").Error; err != nil {
+			log.Printf("警告: 回填 orders.fulfilled_at 失败: %v", err)
+		}
+	}
 
 	log.Println("数据库迁移成功")
+	return nil
+}
+
+func repairSQLitePromotionParticipationsDDL() error {
+	const tableName = "promotion_participations"
+
+	var tableExists int64
+	if err := DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&tableExists).Error; err != nil {
+		return fmt.Errorf("检查 promotion_participations 表失败: %w", err)
+	}
+	if tableExists == 0 {
+		return nil
+	}
+
+	var createSQL string
+	if err := DB.Raw("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&createSQL).Error; err != nil {
+		return fmt.Errorf("读取 promotion_participations 表结构失败: %w", err)
+	}
+	if strings.Contains(createSQL, "`reward_type`") &&
+		strings.Contains(createSQL, "CONSTRAINT `fk_promotion_participations_promotion`") &&
+		strings.Contains(createSQL, "DEFAULT \"pending\"") {
+		return nil
+	}
+
+	requiredColumns := []string{
+		"id",
+		"promotion_id",
+		"user_id",
+		"order_id",
+		"reward_type",
+		"reward_value",
+		"status",
+		"applied_at",
+		"expire_at",
+		"created_at",
+		"updated_at",
+	}
+	for _, column := range requiredColumns {
+		var columnExists int64
+		if err := DB.Raw("SELECT COUNT(*) FROM pragma_table_info('promotion_participations') WHERE name=?", column).Scan(&columnExists).Error; err != nil {
+			return fmt.Errorf("检查 promotion_participations.%s 列失败: %w", column, err)
+		}
+		if columnExists == 0 {
+			return nil
+		}
+	}
+
+	log.Println("检测到旧版 promotion_participations 表结构，开始修复 SQLite DDL...")
+
+	var foreignKeys int
+	if err := DB.Raw("PRAGMA foreign_keys").Scan(&foreignKeys).Error; err != nil {
+		return fmt.Errorf("读取 SQLite foreign_keys 设置失败: %w", err)
+	}
+	if foreignKeys == 1 {
+		if err := DB.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+			return fmt.Errorf("关闭 SQLite foreign_keys 失败: %w", err)
+		}
+		defer func() {
+			if err := DB.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+				log.Printf("警告: 恢复 SQLite foreign_keys 失败: %v", err)
+			}
+		}()
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		statements := []string{
+			"DROP TABLE IF EXISTS `promotion_participations__repair`",
+			`CREATE TABLE ` + "`promotion_participations__repair`" + ` (
+				` + "`id`" + ` integer PRIMARY KEY AUTOINCREMENT,
+				` + "`promotion_id`" + ` integer NOT NULL,
+				` + "`user_id`" + ` integer NOT NULL,
+				` + "`order_id`" + ` integer,
+				` + "`reward_type`" + ` varchar(50) NOT NULL,
+				` + "`reward_value`" + ` decimal(10,2) NOT NULL,
+				` + "`status`" + ` varchar(20) NOT NULL DEFAULT "pending",
+				` + "`applied_at`" + ` datetime,
+				` + "`expire_at`" + ` datetime,
+				` + "`created_at`" + ` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				` + "`updated_at`" + ` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT ` + "`fk_promotion_participations_promotion`" + ` FOREIGN KEY (` + "`promotion_id`" + `) REFERENCES ` + "`promotions`" + `(` + "`id`" + `) ON DELETE CASCADE,
+				CONSTRAINT ` + "`fk_promotion_participations_user`" + ` FOREIGN KEY (` + "`user_id`" + `) REFERENCES ` + "`users`" + `(` + "`id`" + `) ON DELETE CASCADE,
+				CONSTRAINT ` + "`fk_promotion_participations_order`" + ` FOREIGN KEY (` + "`order_id`" + `) REFERENCES ` + "`orders`" + `(` + "`id`" + `) ON DELETE SET NULL
+			)`,
+			`INSERT INTO ` + "`promotion_participations__repair`" + ` (
+				` + "`id`" + `, ` + "`promotion_id`" + `, ` + "`user_id`" + `, ` + "`order_id`" + `,
+				` + "`reward_type`" + `, ` + "`reward_value`" + `, ` + "`status`" + `,
+				` + "`applied_at`" + `, ` + "`expire_at`" + `, ` + "`created_at`" + `, ` + "`updated_at`" + `
+			)
+			SELECT
+				` + "`id`" + `, ` + "`promotion_id`" + `, ` + "`user_id`" + `, ` + "`order_id`" + `,
+				COALESCE(` + "`reward_type`" + `, ''), COALESCE(` + "`reward_value`" + `, 0), COALESCE(` + "`status`" + `, 'pending'),
+				` + "`applied_at`" + `, ` + "`expire_at`" + `, COALESCE(` + "`created_at`" + `, CURRENT_TIMESTAMP), COALESCE(` + "`updated_at`" + `, CURRENT_TIMESTAMP)
+			FROM ` + "`promotion_participations`",
+			"DROP TABLE `promotion_participations`",
+			"ALTER TABLE `promotion_participations__repair` RENAME TO `promotion_participations`",
+			"DELETE FROM sqlite_sequence WHERE name='promotion_participations'",
+			"INSERT INTO sqlite_sequence(name, seq) SELECT 'promotion_participations', COALESCE(MAX(`id`), 0) FROM `promotion_participations`",
+			"CREATE INDEX IF NOT EXISTS `idx_promotion_participations_promotion_id` ON `promotion_participations`(`promotion_id`)",
+			"CREATE INDEX IF NOT EXISTS `idx_promotion_participations_user_id` ON `promotion_participations`(`user_id`)",
+			"CREATE INDEX IF NOT EXISTS `idx_promotion_participations_order_id` ON `promotion_participations`(`order_id`)",
+			"CREATE INDEX IF NOT EXISTS `idx_promotion_participations_status` ON `promotion_participations`(`status`)",
+		}
+		for _, statement := range statements {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("修复 promotion_participations 表结构失败: %w", err)
+	}
+
+	log.Println("promotion_participations 表结构修复完成")
 	return nil
 }
 

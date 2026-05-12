@@ -151,7 +151,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { secureStorage } from '@/utils/api'
 import { ticketAPI } from '@/utils/api'
 const router = useRouter()
@@ -163,6 +163,7 @@ const sidebarCollapsed = ref(true)
 const mobileNavExpanded = ref(false)
 const unreadTicketReplies = ref(0)
 let unreadCheckInterval = null
+let unreadRepliesRequest = null
 const user = computed(() => authStore.user)
 const currentTheme = computed(() => themeStore.currentTheme)
 const themes = computed(() => themeStore.availableThemes)
@@ -256,13 +257,17 @@ const handleUserCommand = (command) => {
 const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentTheme.value)?.label || '主题'
 const getCurrentThemeColor = () => themes.value.find(t => t.value === currentTheme.value)?.color || '#409EFF'
 const loadUnreadTicketReplies = async () => {
+  if (unreadRepliesRequest) return unreadRepliesRequest
   try {
-    const response = await ticketAPI.getUnreadCount()
+    unreadRepliesRequest = ticketAPI.getUnreadCount()
+    const response = await unreadRepliesRequest
     if (response.data && response.data.success) {
       unreadTicketReplies.value = response.data.data?.count || 0
     }
   } catch (error) {
     // 未读消息数加载失败，不影响主功能
+  } finally {
+    unreadRepliesRequest = null
   }
 }
 const returnToAdmin = () => {

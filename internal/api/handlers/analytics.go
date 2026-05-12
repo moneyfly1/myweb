@@ -21,7 +21,13 @@ func GetUserAnalytics(c *gin.Context) {
 
 	var currentStart, currentEnd time.Time
 	var weekStart, monthStart time.Time
-	var dau, wau, mau int64
+	var activityStats struct {
+		ActivityCount int64
+		DAU           int64
+		WAU           int64
+		MAU           int64
+		TotalUsers    int64
+	}
 
 	switch timeRange {
 	case "month":
@@ -46,70 +52,43 @@ func GetUserAnalytics(c *gin.Context) {
 		monthStart = now.AddDate(0, -1, 0)
 	}
 
-	// 优先使用 user_activities 表，如果为空则使用 users.last_login
-	var activityCount int64
-	db.Model(&models.UserActivity{}).Count(&activityCount)
+	// 优先使用 user_activities 表，如果为空则使用 users.last_login。
+	db.Raw(`
+		SELECT
+			COUNT(*) AS activity_count,
+			COUNT(DISTINCT CASE WHEN created_at >= ? AND created_at < ? THEN user_id END) AS dau,
+			COUNT(DISTINCT CASE WHEN created_at >= ? THEN user_id END) AS wau,
+			COUNT(DISTINCT CASE WHEN created_at >= ? THEN user_id END) AS mau,
+			(SELECT COUNT(*) FROM users) AS total_users
+		FROM user_activities
+	`, currentStart, currentEnd, weekStart, monthStart).Scan(&activityStats)
 
-	if activityCount > 0 {
-		// 使用 user_activities 表统计
-		// DAU - 当前期间活跃用户
-		db.Model(&models.UserActivity{}).
-			Where("created_at >= ? AND created_at < ?", currentStart, currentEnd).
-			Distinct("user_id").Count(&dau)
-
-		// WAU - 根据时间范围计算
-		if timeRange == "day" {
-			// 今日模式：最近7天活跃用户
-			db.Model(&models.UserActivity{}).Where("created_at >= ?", weekStart).
-				Distinct("user_id").Count(&wau)
-		} else {
-			// 本月/本年模式：当前期间活跃用户（与DAU相同）
-			wau = dau
-		}
-
-		// MAU - 根据时间范围计算
-		if timeRange == "day" {
-			// 今日模式：最近30天活跃用户
-			db.Model(&models.UserActivity{}).Where("created_at >= ?", monthStart).
-				Distinct("user_id").Count(&mau)
-		} else {
-			// 本月/本年模式：当前期间活跃用户（与DAU相同）
-			mau = dau
+	if activityStats.ActivityCount > 0 {
+		if timeRange != "day" {
+			activityStats.WAU = activityStats.DAU
+			activityStats.MAU = activityStats.DAU
 		}
 	} else {
-		// 使用 users.last_login 统计（备用方案）
-		// DAU - 当前期间登录的用户
-		db.Model(&models.User{}).
-			Where("last_login >= ? AND last_login < ?", currentStart, currentEnd).
-			Count(&dau)
-
-		// WAU - 根据时间范围计算
-		if timeRange == "day" {
-			// 今日模式：最近7天登录的用户
-			db.Model(&models.User{}).Where("last_login >= ?", weekStart).Count(&wau)
-		} else {
-			// 本月/本年模式：当前期间登录的用户（与DAU相同）
-			wau = dau
-		}
-
-		// MAU - 根据时间范围计算
-		if timeRange == "day" {
-			// 今日模式：最近30天登录的用户
-			db.Model(&models.User{}).Where("last_login >= ?", monthStart).Count(&mau)
-		} else {
-			// 本月/本年模式：当前期间登录的用户（与DAU相同）
-			mau = dau
+		db.Raw(`
+			SELECT
+				0 AS activity_count,
+				COALESCE(SUM(CASE WHEN last_login >= ? AND last_login < ? THEN 1 ELSE 0 END), 0) AS dau,
+				COALESCE(SUM(CASE WHEN last_login >= ? THEN 1 ELSE 0 END), 0) AS wau,
+				COALESCE(SUM(CASE WHEN last_login >= ? THEN 1 ELSE 0 END), 0) AS mau,
+				COUNT(*) AS total_users
+			FROM users
+		`, currentStart, currentEnd, weekStart, monthStart).Scan(&activityStats)
+		if timeRange != "day" {
+			activityStats.WAU = activityStats.DAU
+			activityStats.MAU = activityStats.DAU
 		}
 	}
 
-	var totalUsers int64
-	db.Model(&models.User{}).Count(&totalUsers)
-
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"dau":         dau,
-		"wau":         wau,
-		"mau":         mau,
-		"total_users": totalUsers,
+		"dau":         activityStats.DAU,
+		"wau":         activityStats.WAU,
+		"mau":         activityStats.MAU,
+		"total_users": activityStats.TotalUsers,
 		"time_range":  timeRange,
 	})
 }
@@ -126,66 +105,51 @@ func GetRetentionAnalytics(c *gin.Context) {
 		Rate     float64 `json:"rate"`
 	}
 
-	var result []RetentionData
-
 	// 1. 7日留存：7天前注册的用户中，之后仍登录过的比例
 	d7Start := now.AddDate(0, 0, -8)
 	d7End := now.AddDate(0, 0, -7)
-	var total7 int64
-	db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", d7Start, d7End).Count(&total7)
-	var retained7 int64
-	if total7 > 0 {
-		db.Model(&models.User{}).Where("created_at >= ? AND created_at < ? AND last_login >= ?", d7Start, d7End, d7End).Count(&retained7)
-	}
-	rate7 := float64(0)
-	if total7 > 0 {
-		rate7 = float64(retained7) / float64(total7) * 100
-	}
-	result = append(result, RetentionData{Label: "7日留存", Retained: retained7, Total: total7, Rate: rate7})
-
 	// 2. 30日留存：30天前注册的用户中，之后仍登录过的比例
 	d30Start := now.AddDate(0, 0, -31)
 	d30End := now.AddDate(0, 0, -30)
-	var total30 int64
-	db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", d30Start, d30End).Count(&total30)
-	var retained30 int64
-	if total30 > 0 {
-		db.Model(&models.User{}).Where("created_at >= ? AND created_at < ? AND last_login >= ?", d30Start, d30End, d30End).Count(&retained30)
-	}
-	rate30 := float64(0)
-	if total30 > 0 {
-		rate30 = float64(retained30) / float64(total30) * 100
-	}
-	result = append(result, RetentionData{Label: "30日留存", Retained: retained30, Total: total30, Rate: rate30})
 
-	// 3. 付费转化率：总用户中有过付费订单的比例
-	var totalUsers int64
-	db.Model(&models.User{}).Count(&totalUsers)
-	var paidUsers int64
-	db.Model(&models.Order{}).Where("status = ?", "paid").Distinct("user_id").Count(&paidUsers)
-	paidRate := float64(0)
-	if totalUsers > 0 {
-		paidRate = float64(paidUsers) / float64(totalUsers) * 100
+	var stats struct {
+		Total7     int64
+		Retained7  int64
+		Total30    int64
+		Retained30 int64
+		TotalUsers int64
+		PaidUsers  int64
+		ActiveSubs int64
+		RenewUsers int64
 	}
-	result = append(result, RetentionData{Label: "付费转化", Retained: paidUsers, Total: totalUsers, Rate: paidRate})
 
-	// 4. 订阅活跃率：有活跃订阅的用户占总用户比例
-	var activeSubs int64
-	db.Model(&models.Subscription{}).Where("is_active = ? AND expire_time > ?", true, now).Distinct("user_id").Count(&activeSubs)
-	activeRate := float64(0)
-	if totalUsers > 0 {
-		activeRate = float64(activeSubs) / float64(totalUsers) * 100
-	}
-	result = append(result, RetentionData{Label: "订阅活跃", Retained: activeSubs, Total: totalUsers, Rate: activeRate})
+	db.Raw(`
+		SELECT
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS total7,
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? AND last_login >= ? THEN 1 ELSE 0 END), 0) AS retained7,
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS total30,
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? AND last_login >= ? THEN 1 ELSE 0 END), 0) AS retained30,
+			COUNT(*) AS total_users,
+			(SELECT COUNT(DISTINCT user_id) FROM orders WHERE status = ?) AS paid_users,
+			(SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE is_active = ? AND expire_time > ?) AS active_subs,
+			(SELECT COUNT(*) FROM (SELECT user_id FROM orders WHERE status = ? GROUP BY user_id HAVING COUNT(*) >= 2) renew_user_set) AS renew_users
+		FROM users
+	`, d7Start, d7End, d7Start, d7End, d7End, d30Start, d30End, d30Start, d30End, d30End, "paid", true, now, "paid").Scan(&stats)
 
-	// 5. 续费率：有2笔及以上付费订单的用户占付费用户比例
-	var renewUsers int64
-	db.Raw("SELECT COUNT(*) FROM (SELECT user_id FROM orders WHERE status = 'paid' GROUP BY user_id HAVING COUNT(*) >= 2)").Scan(&renewUsers)
-	renewRate := float64(0)
-	if paidUsers > 0 {
-		renewRate = float64(renewUsers) / float64(paidUsers) * 100
+	rate := func(retained int64, total int64) float64 {
+		if total <= 0 {
+			return 0
+		}
+		return float64(retained) / float64(total) * 100
 	}
-	result = append(result, RetentionData{Label: "续费率", Retained: renewUsers, Total: paidUsers, Rate: renewRate})
+
+	result := []RetentionData{
+		{Label: "7日留存", Retained: stats.Retained7, Total: stats.Total7, Rate: rate(stats.Retained7, stats.Total7)},
+		{Label: "30日留存", Retained: stats.Retained30, Total: stats.Total30, Rate: rate(stats.Retained30, stats.Total30)},
+		{Label: "付费转化", Retained: stats.PaidUsers, Total: stats.TotalUsers, Rate: rate(stats.PaidUsers, stats.TotalUsers)},
+		{Label: "订阅活跃", Retained: stats.ActiveSubs, Total: stats.TotalUsers, Rate: rate(stats.ActiveSubs, stats.TotalUsers)},
+		{Label: "续费率", Retained: stats.RenewUsers, Total: stats.PaidUsers, Rate: rate(stats.RenewUsers, stats.PaidUsers)},
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
@@ -274,25 +238,39 @@ func GetRevenueAnalytics(c *gin.Context) {
 		previousStart, previousEnd = utils.GetDayRange(yesterday)
 	}
 
-	// 当前期间收入 - 使用 final_amount（实际支付金额），如果为空则使用 amount
-	var currentRevenue float64
-	db.Model(&models.Order{}).
-		Where("status = ? AND created_at >= ? AND created_at < ?", "paid", currentStart, currentEnd).
-		Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END), 0)").
-		Scan(&currentRevenue)
+	var revenueStats struct {
+		CurrentRevenue  float64
+		CurrentOrders   int64
+		PreviousRevenue float64
+	}
+	db.Raw(`
+		SELECT
+			COALESCE(SUM(current_revenue), 0) AS current_revenue,
+			COALESCE(SUM(current_orders), 0) AS current_orders,
+			COALESCE(SUM(previous_revenue), 0) AS previous_revenue
+		FROM (
+			SELECT
+				COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN
+					CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END
+				ELSE 0 END), 0) AS current_revenue,
+				COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS current_orders,
+				COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN
+					CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END
+				ELSE 0 END), 0) AS previous_revenue
+			FROM orders
+			UNION ALL
+			SELECT
+				COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN amount ELSE 0 END), 0) AS current_revenue,
+				COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS current_orders,
+				COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN amount ELSE 0 END), 0) AS previous_revenue
+			FROM recharge_records
+		) revenue_summary
+	`, "paid", currentStart, currentEnd, "paid", currentStart, currentEnd, "paid", previousStart, previousEnd,
+		"paid", currentStart, currentEnd, "paid", currentStart, currentEnd, "paid", previousStart, previousEnd).Scan(&revenueStats)
 
-	// 上期收入
-	var previousRevenue float64
-	db.Model(&models.Order{}).
-		Where("status = ? AND created_at >= ? AND created_at < ?", "paid", previousStart, previousEnd).
-		Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END), 0)").
-		Scan(&previousRevenue)
-
-	// 订单数量
-	var orderCount int64
-	db.Model(&models.Order{}).
-		Where("status = ? AND created_at >= ? AND created_at < ?", "paid", currentStart, currentEnd).
-		Count(&orderCount)
+	currentRevenue := utils.RoundFloat(revenueStats.CurrentRevenue, 2)
+	previousRevenue := utils.RoundFloat(revenueStats.PreviousRevenue, 2)
+	orderCount := revenueStats.CurrentOrders
 
 	// 平均订单金额
 	avgOrder := float64(0)

@@ -323,10 +323,9 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
-import '@/styles/list-common.scss'
 
 const TICKETS_TABLE_STORAGE_KEY = 'user_tickets_table_settings'
 const ticketTableRef = ref(null)
@@ -470,10 +469,9 @@ const viewTicket = async (ticketId) => {
       }
       currentTicket.value = ticketData
       showDetailDialog.value = true
-      setTimeout(async () => {
-        await loadTickets()
-        window.dispatchEvent(new CustomEvent('ticket-viewed'))
-      }, 500)
+      markTicketReadLocally(ticketId)
+      window.dispatchEvent(new CustomEvent('ticket-viewed'))
+      await loadTickets()
     } else {
       ElMessage.error(response.data?.message || '加载工单详情失败')
     }
@@ -482,6 +480,16 @@ const viewTicket = async (ticketId) => {
     console.error('[用户前端] 错误详情:', error.response?.data)
     ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载工单详情失败')
   }
+}
+const markTicketReadLocally = (ticketId) => {
+  tickets.value = tickets.value.map(ticket => {
+    if (ticket.id !== ticketId) return ticket
+    return {
+      ...ticket,
+      has_unread: false,
+      unread_replies: 0
+    }
+  })
 }
 const addReply = async () => {
   if (!replyContent.value.trim()) {

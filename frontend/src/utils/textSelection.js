@@ -1,4 +1,5 @@
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
+import { safeOpen } from './safeOpen'
 const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 export const isMobile = () => isMobileDevice
 export const copyToClipboard = async (text, successMessage = '已复制到剪贴板') => {
@@ -76,12 +77,12 @@ function showMenu(e, text, cell) {
   const items = []
   items.push({ label: '📋 复制内容', fn: () => copyToClipboard(text) })
   if (text.length < 50) {
-    items.push({ label: '🔍 Google 搜索', fn: () => window.open('https://www.google.com/search?q=' + encodeURIComponent(text), '_blank') })
+    items.push({ label: '🔍 Google 搜索', fn: () => safeOpen('https://www.google.com/search?q=' + encodeURIComponent(text)) })
   }
   const link = cell.querySelector('a[href]')
   const href = link ? link.getAttribute('href') : null
   if (href) {
-    items.push({ label: '🔗 新标签页打开', fn: () => window.open(href, '_blank') })
+    items.push({ label: '🔗 新标签页打开', fn: () => safeOpen(href) })
   }
   const menu = document.createElement('div')
   menu.id = '_ctx'

@@ -142,7 +142,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { User, Lock, Message, Ticket, View, Hide } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useSettingsStore } from '@/store/settings'

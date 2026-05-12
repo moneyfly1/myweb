@@ -141,11 +141,20 @@
 
       <div class="qr-panel">
         <div class="qr-panel-header">
-          <h4>请使用支付宝扫码</h4>
+          <h4 v-if="isPaymentPageUrl">请在页面中完成支付</h4>
+          <h4 v-else>请使用支付宝扫码</h4>
           <p>支付完成后会自动刷新升级结果</p>
         </div>
-        <div class="qr-code-wrapper">
-          <div v-if="paymentQRCode" class="qr-code">
+        <div class="qr-code-wrapper" :class="{ 'iframe-mode': isPaymentPageUrl }">
+          <div v-if="isPaymentPageUrl" class="payment-page-iframe">
+            <iframe
+              :src="paymentUrl"
+              frameborder="0"
+              scrolling="auto"
+              @load="startPaymentStatusCheck"
+            ></iframe>
+          </div>
+          <div v-else-if="paymentQRCode" class="qr-code">
             <img
               :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
               alt="支付二维码"
@@ -159,7 +168,7 @@
             <p>正在生成二维码...</p>
           </div>
         </div>
-        <div class="payment-tips">
+        <div class="payment-tips" v-if="!isPaymentPageUrl">
           <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用支付宝扫码支付</span></p>
         </div>
         <div class="payment-actions-container" v-if="isMobile && paymentUrl">
@@ -181,10 +190,11 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Loading, Wallet, InfoFilled, Plus, Minus } from '@element-plus/icons-vue'
-import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI } from '@/utils/api'
+import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
+import { safeNavigate } from '@/utils/safeOpen'
 
 const props = defineProps({
   modelValue: {
@@ -223,10 +233,24 @@ const paymentQRVisible = ref(false)
 const paymentQRCode = ref(null)
 const paymentUrl = ref('')
 const paymentStatusCheckTimer = ref(null)
+const paymentStatusRequest = ref(null)
+let paymentManualVisibilityHandler = null
 const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+let resizeRafId = null
+const isPaymentPageUrl = computed(() => {
+  if (!paymentUrl.value) return false
+  const url = String(paymentUrl.value).toLowerCase()
+  return url.includes('payapi/pay/payment') ||
+         url.includes('submit.php') ||
+         (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
+})
 
 const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
+  if (resizeRafId !== null || typeof window === 'undefined') return
+  resizeRafId = window.requestAnimationFrame(() => {
+    resizeRafId = null
+    isMobile.value = window.innerWidth <= 768
+  })
 }
 
 const getRemainingDays = (subscription) => getRemainingDaysUtil(subscription?.expire_time)
@@ -300,7 +324,7 @@ const calculateUpgradeCost = async () => {
     if (response?.data?.success) {
       upgradeCost.value = parseFloat(response.data.data.upgrade_cost || 0)
       levelDiscount.value = parseFloat(response.data.data.level_discount || 0)
-      finalAmount.value = parseFloat(response.data.data.amount || 0)
+      finalAmount.value = parseFloat(response.data.data.final_amount ?? response.data.data.amount ?? 0)
     }
   } catch (error) {
     console.error('计算升级费用失败:', error)
@@ -314,6 +338,12 @@ const handlePaymentMethodChange = () => {
 const showPaymentQRCode = async (order) => {
   const url = order.payment_url || order.payment_qr_code
   paymentUrl.value = url
+  if (isPaymentPageUrl.value) {
+    paymentQRCode.value = ''
+    paymentQRVisible.value = true
+    startPaymentStatusCheck()
+    return
+  }
   try {
     const qrOptions = {
       width: isMobile.value ? 200 : 256,
@@ -331,43 +361,67 @@ const showPaymentQRCode = async (order) => {
 }
 
 const startPaymentStatusCheck = () => {
-  if (paymentStatusCheckTimer.value) clearInterval(paymentStatusCheckTimer.value)
+  cleanupPaymentStatusCheck()
+  checkUpgradeOrderStatus(true)
   paymentStatusCheckTimer.value = setInterval(async () => {
     if (!upgradeOrder.value?.order_no) {
-      clearInterval(paymentStatusCheckTimer.value)
+      cleanupPaymentStatusCheck()
       return
     }
     await checkUpgradeOrderStatus(true)
   }, 2000)
 }
 
+const cleanupPaymentStatusCheck = () => {
+  if (paymentStatusCheckTimer.value) {
+    clearInterval(paymentStatusCheckTimer.value)
+    paymentStatusCheckTimer.value = null
+  }
+  cleanupPaymentManualWatcher()
+}
+
+const cleanupPaymentManualWatcher = () => {
+  if (paymentManualVisibilityHandler) {
+    document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
+    paymentManualVisibilityHandler = null
+  }
+}
+
 const checkUpgradeOrderStatus = async (isAutoCheck = false) => {
   if (!upgradeOrder.value?.order_no) return
-  try {
-    const response = await orderAPI.getOrderStatus(upgradeOrder.value.order_no)
-    if (response?.data?.success && response.data.data?.status === 'paid') {
-      if (paymentStatusCheckTimer.value) clearInterval(paymentStatusCheckTimer.value)
-      paymentQRVisible.value = false
-      ElMessage.success('支付成功，设备已升级！')
-      await props.onSuccess?.()
-      window.dispatchEvent(new CustomEvent('subscription-updated'))
-      window.dispatchEvent(new CustomEvent('user-info-updated'))
-      setTimeout(async () => {
+  if (paymentStatusRequest.value) return paymentStatusRequest.value
+  paymentStatusRequest.value = (async () => {
+    try {
+      const response = await orderAPI.getOrderStatus(upgradeOrder.value.order_no)
+      if (response?.data?.success && response.data.data?.status === 'paid') {
+        cleanupPaymentStatusCheck()
+        paymentQRVisible.value = false
+        ElMessage.success('支付成功，设备已升级！')
+        pendingPaymentStorage.clear()
+        await cachedAPI.refreshUserState()
         await props.onSuccess?.()
         window.dispatchEvent(new CustomEvent('subscription-updated'))
         window.dispatchEvent(new CustomEvent('user-info-updated'))
-      }, 500)
-      upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
-      upgradeCost.value = 0
-      finalAmount.value = 0
-      upgradeOrder.value = null
-      paymentQRCode.value = null
-    } else if (!isAutoCheck) {
-      ElMessage.warning('订单尚未支付，请完成支付')
+        upgradeForm.value = { additionalDevices: 5, additionalDays: 0 }
+        upgradeCost.value = 0
+        finalAmount.value = 0
+        upgradeOrder.value = null
+        paymentQRCode.value = null
+      } else if (response?.data?.success && ['cancelled', 'failed', 'expired'].includes(response.data.data?.status)) {
+        cleanupPaymentStatusCheck()
+        paymentQRVisible.value = false
+        pendingPaymentStorage.clear()
+        ElMessage.warning('升级订单已取消或支付失败')
+      } else if (!isAutoCheck) {
+        ElMessage.warning('订单尚未支付，请完成支付')
+      }
+    } catch (error) {
+      if (!isAutoCheck) ElMessage.error('检查订单状态失败: ' + (error.response?.data?.message || error.message))
+    } finally {
+      paymentStatusRequest.value = null
     }
-  } catch (error) {
-    if (!isAutoCheck) ElMessage.error('检查订单状态失败: ' + (error.response?.data?.message || error.message))
-  }
+  })()
+  return paymentStatusRequest.value
 }
 
 const confirmUpgrade = async () => {
@@ -387,8 +441,12 @@ const confirmUpgrade = async () => {
       const data = response.data.data
       if (data.status === 'paid') {
         ElMessage.success('设备数量升级成功！')
+        pendingPaymentStorage.clear()
+        await cachedAPI.refreshUserState()
         drawerVisible.value = false
         await props.onSuccess?.()
+        window.dispatchEvent(new CustomEvent('subscription-updated'))
+        window.dispatchEvent(new CustomEvent('user-info-updated'))
       } else {
         const paymentUrlVal = data.payment_url || data.payment_qr_code
         if (!paymentUrlVal) {
@@ -398,17 +456,27 @@ const confirmUpgrade = async () => {
         const paymentMethodName = data.payment_method || paymentMethod.value
         const isYipay = paymentMethodName && (
           paymentMethodName.includes('yipay') ||
-          paymentMethodName.includes('易支付')
+          paymentMethodName.includes('易支付') ||
+          paymentMethodName.includes('codepay') ||
+          paymentMethodName.includes('码支付')
         )
         if (isYipay) {
+          upgradeOrder.value = {
+            ...data,
+            additional_devices: upgradeForm.value.additionalDevices,
+            additional_days: upgradeForm.value.additionalDays || 0
+          }
+          pendingPaymentStorage.save(upgradeOrder.value.order_no, 'device_upgrade')
           ElMessage.info('正在跳转到支付页面...')
-          window.location.href = paymentUrlVal
+          safeNavigate(paymentUrlVal, { allowAppProtocols: true })
+          startPaymentStatusCheck()
         } else {
           upgradeOrder.value = {
             ...data,
             additional_devices: upgradeForm.value.additionalDevices,
             additional_days: upgradeForm.value.additionalDays || 0
           }
+          pendingPaymentStorage.save(upgradeOrder.value.order_no, 'device_upgrade')
           drawerVisible.value = false
           await showPaymentQRCode(data)
         }
@@ -429,14 +497,15 @@ const openAlipayApp = () => {
     return
   }
   const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
-  const checkStatus = async () => {
-    if (document.visibilityState === 'visible' && paymentQRVisible.value && upgradeOrder.value?.order_no) {
+  cleanupPaymentManualWatcher()
+  paymentManualVisibilityHandler = async () => {
+    if (document.visibilityState === 'visible' && upgradeOrder.value?.order_no) {
       await checkUpgradeOrderStatus()
-      document.removeEventListener('visibilitychange', checkStatus)
+      cleanupPaymentManualWatcher()
     }
   }
-  document.addEventListener('visibilitychange', checkStatus)
-  window.location.href = alipayAppUrl
+  document.addEventListener('visibilitychange', paymentManualVisibilityHandler)
+  safeNavigate(alipayAppUrl, { allowAppProtocols: true })
   setTimeout(() => ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付'), 3000)
 }
 
@@ -453,18 +522,19 @@ const changeDeviceCount = (delta) => {
 
 onMounted(() => {
   if (typeof window !== 'undefined') {
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', handleResize, { passive: true })
   }
 })
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', handleResize)
+    if (resizeRafId !== null) {
+      window.cancelAnimationFrame(resizeRafId)
+      resizeRafId = null
+    }
   }
-  if (paymentStatusCheckTimer.value) {
-    clearInterval(paymentStatusCheckTimer.value)
-    paymentStatusCheckTimer.value = null
-  }
+  cleanupPaymentStatusCheck()
 })
 </script>
 
@@ -615,6 +685,25 @@ onUnmounted(() => {
 .qr-code-wrapper {
   display: flex;
   justify-content: center;
+}
+
+.qr-code-wrapper.iframe-mode {
+  display: block;
+}
+
+.payment-page-iframe {
+  width: 100%;
+  min-height: 560px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.payment-page-iframe iframe {
+  width: 100%;
+  min-height: 560px;
+  border: none;
 }
 
 .qr-code,

@@ -186,7 +186,6 @@ export const useAuthStore = defineStore('auth', () => {
     const isAdmin = isAdminPath()
     const refreshKey = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
     const storedRefresh = secureStorage.get(refreshKey)
-    secureStorage.set('logout_marker', true, false, 24 * 60 * 60 * 1000)
     if (typeof window !== 'undefined' && currentToken) {
       fetch('/api/v1/auth/logout', {
         method: 'POST',
@@ -213,6 +212,7 @@ export const useAuthStore = defineStore('auth', () => {
     secureStorage.remove('admin_remember')
     secureStorage.remove('user_remember')
     secureStorage.clear()
+    secureStorage.set('logout_marker', true, false, 24 * 60 * 60 * 1000)
     resetRefreshFailed()
   }
   const clearAuthCache = () => {

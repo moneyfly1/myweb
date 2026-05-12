@@ -168,7 +168,6 @@
           </div>
           <el-button
             v-if="userInfo.total_devices || subscriptionInfo.maxDevices"
-            type="primary"
             size="small"
             class="upgrade-device-btn"
             :type="isDeviceOverlimit ? 'danger' : isDeviceWarning ? 'warning' : 'primary'"
@@ -521,24 +520,18 @@
 </template>
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from '@/utils/elementPlusServices'
 import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
-import DOMPurify from 'dompurify'
+import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
+import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 const router = useRouter()
 const api = useApi()
-const sanitizeHtml = (html) => {
-  if (!html) return ''
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'div', 'span', 'blockquote', 'pre', 'code'],
-    ALLOWED_ATTR: ['href', 'target', 'style', 'class', 'id'],
-    ALLOW_DATA_ATTR: false
-  })
-}
+const sanitizeHtml = sanitizeBasicHtml
 const userInfo = ref({
   username: '用户',
   email: '',
@@ -603,7 +596,8 @@ const rechargeQRCode = ref('')
 const rechargePaymentUrl = ref('') // 保存支付URL，用于跳转支付宝App
 const rechargePaymentMethod = ref('alipay')
 const rechargePaymentMethods = ref([])
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+let resizeRafId = null
 const quickAmounts = [20, 50, 100, 200, 500, 1000]
 const loadRechargePaymentMethods = async () => {
   try {
@@ -800,6 +794,7 @@ const dashboardUpgradeSubscription = computed(() => ({
 }))
 
 const handleUpgradeSuccess = async () => {
+  cachedAPI.clearUserCache()
   await Promise.all([loadUserInfo(), loadSubscriptionInfo()])
 }
 
@@ -880,7 +875,7 @@ const handleAnnouncement = (notice) => {
   if (!content) {
     return
   }
-  const sanitizedContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
+  const sanitizedContent = sanitizePlainText(content)
   ElNotification({
     title: '系统公告',
     message: sanitizedContent,
@@ -893,7 +888,7 @@ const handleAnnouncement = (notice) => {
 }
 const loadSubscriptionInfo = async () => {
   try {
-    const response = await subscriptionAPI.getUserSubscription()
+    const response = await cachedAPI.getUserSubscription()
     if (response.data && response.data.success) {
       subscriptionInfo.value = response.data.data
       } else {
@@ -922,10 +917,7 @@ const showRechargeDialog = () => {
   rechargePaymentUrl.value = ''
   currentRechargeOrderNo.value = null
   loadRechargePaymentMethods()
-  if (rechargeStatusInterval) {
-    clearInterval(rechargeStatusInterval)
-    rechargeStatusInterval = null
-  }
+  cleanupRechargeStatusCheck()
 }
 const openAlipayAppForRecharge = () => {
   if (!rechargePaymentUrl.value) {
@@ -934,21 +926,22 @@ const openAlipayAppForRecharge = () => {
   }
   const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(rechargePaymentUrl.value)}`
   try {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
+    cleanupRechargeManualWatchers()
+    rechargeManualVisibilityHandler = async () => {
+      if (document.visibilityState === 'visible' && currentRechargeOrderNo.value) {
         await checkRechargeStatus()
-        document.removeEventListener('visibilitychange', handleVisibilityChange)
+        cleanupRechargeManualWatchers()
       }
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    const handleFocus = async () => {
-      if (rechargeDialogVisible.value) {
+    document.addEventListener('visibilitychange', rechargeManualVisibilityHandler)
+    rechargeManualFocusHandler = async () => {
+      if (currentRechargeOrderNo.value) {
         await checkRechargeStatus()
-        window.removeEventListener('focus', handleFocus)
+        cleanupRechargeManualWatchers()
       }
     }
-    window.addEventListener('focus', handleFocus)
-    window.location.href = alipayAppUrl
+    window.addEventListener('focus', rechargeManualFocusHandler)
+    safeNavigate(alipayAppUrl, { allowAppProtocols: true })
     setTimeout(() => {
       ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
     }, 3000)
@@ -993,14 +986,20 @@ const createRecharge = async () => {
         ElMessage.error('充值订单创建失败，订单信息缺失')
         return
       }
+      pendingPaymentStorage.save(rechargeOrderNo, 'recharge')
       const isYipay = rechargePaymentMethod.value && (
         rechargePaymentMethod.value.includes('yipay') || 
-        rechargePaymentMethod.value.includes('易支付')
+        rechargePaymentMethod.value.includes('易支付') ||
+        rechargePaymentMethod.value.includes('codepay') ||
+        rechargePaymentMethod.value.includes('码支付')
       )
       if (isYipay) {
         if (paymentUrl) {
+          currentRechargeOrderNo.value = rechargeOrderNo
+          rechargePaymentUrl.value = paymentUrl
           ElMessage.info('正在跳转到支付页面...')
-          window.location.href = paymentUrl
+          safeNavigate(paymentUrl, { allowAppProtocols: true })
+          startRechargeStatusCheck()
         } else {
           ElMessage.error('支付链接不存在')
         }
@@ -1038,42 +1037,66 @@ const createRecharge = async () => {
   }
 }
 let rechargeStatusInterval = null
+let rechargeVisibilityHandler = null
+let rechargeFocusHandler = null
+let rechargeStatusTimeoutId = null
+let rechargeStatusRequest = null
+let rechargeManualVisibilityHandler = null
+let rechargeManualFocusHandler = null
 const currentRechargeOrderNo = ref(null)
-const startRechargeStatusCheck = () => {
+const cleanupRechargeManualWatchers = () => {
+  if (rechargeManualVisibilityHandler) {
+    document.removeEventListener('visibilitychange', rechargeManualVisibilityHandler)
+    rechargeManualVisibilityHandler = null
+  }
+  if (rechargeManualFocusHandler) {
+    window.removeEventListener('focus', rechargeManualFocusHandler)
+    rechargeManualFocusHandler = null
+  }
+}
+const cleanupRechargeStatusCheck = () => {
   if (rechargeStatusInterval) {
     clearInterval(rechargeStatusInterval)
     rechargeStatusInterval = null
   }
+  if (rechargeVisibilityHandler) {
+    document.removeEventListener('visibilitychange', rechargeVisibilityHandler)
+    rechargeVisibilityHandler = null
+  }
+  if (rechargeFocusHandler) {
+    window.removeEventListener('focus', rechargeFocusHandler)
+    rechargeFocusHandler = null
+  }
+  if (rechargeStatusTimeoutId) {
+    clearTimeout(rechargeStatusTimeoutId)
+    rechargeStatusTimeoutId = null
+  }
+  cleanupRechargeManualWatchers()
+}
+const startRechargeStatusCheck = () => {
+  cleanupRechargeStatusCheck()
   checkRechargeStatus()
   rechargeStatusInterval = setInterval(async () => {
     await checkRechargeStatus()
   }, 5000)
-  const handleVisibilityChange = async () => {
-    if (document.visibilityState === 'visible' && rechargeDialogVisible.value) {
+  rechargeVisibilityHandler = async () => {
+    if (document.visibilityState === 'visible' && currentRechargeOrderNo.value) {
       await checkRechargeStatus()
     }
   }
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  const handleFocus = async () => {
-    if (rechargeDialogVisible.value) {
+  document.addEventListener('visibilitychange', rechargeVisibilityHandler)
+  rechargeFocusHandler = async () => {
+    if (currentRechargeOrderNo.value) {
       await checkRechargeStatus()
     }
   }
-  window.addEventListener('focus', handleFocus)
-  setTimeout(() => {
-    if (rechargeStatusInterval) {
-      clearInterval(rechargeStatusInterval)
-      rechargeStatusInterval = null
-    }
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
-    window.removeEventListener('focus', handleFocus)
+  window.addEventListener('focus', rechargeFocusHandler)
+  rechargeStatusTimeoutId = setTimeout(() => {
+    cleanupRechargeStatusCheck()
   }, 30 * 60 * 1000)
 }
 const closeRechargeDialog = () => {
-  if (rechargeStatusInterval) {
-    clearInterval(rechargeStatusInterval)
-    rechargeStatusInterval = null
-  }
+  cleanupRechargeStatusCheck()
   rechargeDialogVisible.value = false
   rechargeQRCode.value = ''
   rechargePaymentUrl.value = ''
@@ -1083,6 +1106,8 @@ const checkRechargeStatus = async () => {
   if (!currentRechargeOrderNo.value) {
     return
   }
+  if (rechargeStatusRequest) return rechargeStatusRequest
+  rechargeStatusRequest = (async () => {
   try {
     const response = await rechargeAPI.getRechargeStatus(currentRechargeOrderNo.value)
     if (!response || !response.data) {
@@ -1096,30 +1121,28 @@ const checkRechargeStatus = async () => {
       return
     }
     if (rechargeData.status === 'paid') {
-      if (rechargeStatusInterval) {
-        clearInterval(rechargeStatusInterval)
-        rechargeStatusInterval = null
-      }
+      cleanupRechargeStatusCheck()
       ElMessage.success('充值成功！余额已到账')
+      pendingPaymentStorage.clear()
+      await cachedAPI.refreshUserState({ includeSubscription: false })
       await loadUserInfo()
       window.dispatchEvent(new CustomEvent('user-info-updated'))
       closeRechargeDialog()
     } else if (rechargeData.status === 'cancelled' || rechargeData.status === 'failed') {
-      if (rechargeStatusInterval) {
-        clearInterval(rechargeStatusInterval)
-        rechargeStatusInterval = null
-      }
+      cleanupRechargeStatusCheck()
+      pendingPaymentStorage.clear()
       closeRechargeDialog()
       ElMessage.warning('充值订单已取消或失败')
     }
   } catch (error) {
     if (error.response?.status === 404) {
-      if (rechargeStatusInterval) {
-        clearInterval(rechargeStatusInterval)
-        rechargeStatusInterval = null
-      }
+      cleanupRechargeStatusCheck()
     }
+  } finally {
+    rechargeStatusRequest = null
   }
+  })()
+  return rechargeStatusRequest
 }
 const loadSoftwareConfig = async () => {
   try {
@@ -1152,11 +1175,11 @@ const downloadApp = async (appName) => {
   const clientKey = clientKeyMap[appName]
   const configUrl = softwareConfig.value[appName]
   if (configUrl) {
-    window.open(configUrl, '_blank')
+    safeOpen(configUrl)
     return
   }
   if (appName === 'shadowrocket_url') {
-    window.open('https://apps.apple.com/app/shadowrocket/id932747118', '_blank')
+    safeOpen('https://apps.apple.com/app/shadowrocket/id932747118')
     return
   }
   if (clientKey) {
@@ -1164,7 +1187,7 @@ const downloadApp = async (appName) => {
       ElMessage.info('正在获取最新下载链接...')
       const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
       const downloadUrl = await getClientDownloadUrl(clientKey, softwareConfig.value || {})
-      window.open(downloadUrl, '_blank')
+      safeOpen(downloadUrl)
       ElMessage.success('已打开下载页面')
     } catch (error) {
       console.error('获取下载链接失败:', error)
@@ -1172,7 +1195,7 @@ const downloadApp = async (appName) => {
         const { getClientReleasesUrl } = await import('@/utils/githubDownload')
         const releasesUrl = getClientReleasesUrl(clientKey)
         if (releasesUrl) {
-          window.open(releasesUrl, '_blank')
+          safeOpen(releasesUrl)
           ElMessage.warning('已打开发布页面，请手动选择下载')
         } else {
           ElMessage.error('无法获取下载链接，请联系管理员')
@@ -1333,7 +1356,7 @@ const oneclickImport = (client, url, name = '') => {
     if (clashCompatibleClients.has(client)) {
       const baseUrl = `clash://install-config?url=${encodeURIComponent(url)}`
       const targetUrl = name ? `${baseUrl}&name=${encodeURIComponent(name)}` : baseUrl
-      window.open(targetUrl, '_blank')
+      safeOpenApp(targetUrl)
       return
     }
     switch (client) {
@@ -1342,25 +1365,25 @@ const oneclickImport = (client, url, name = '') => {
         if (name) {
           shadowrocketUrl += `#${encodeURIComponent(name)}`
         }
-        window.open(shadowrocketUrl, '_blank')
+        safeOpenApp(shadowrocketUrl)
         break
       case 'ssr':
-        window.open(`ssr://${btoa(url)}`, '_blank')
+        safeOpenApp(`ssr://${btoa(url)}`)
         break
       case 'quantumult':
-        window.open(`quantumult://resource?url=${encodeURIComponent(url)}`, '_blank')
+        safeOpenApp(`quantumult://resource?url=${encodeURIComponent(url)}`)
         break
       case 'quantumult_v2':
-        window.open(`quantumult-x://resource?url=${encodeURIComponent(url)}`, '_blank')
+        safeOpenApp(`quantumult-x://resource?url=${encodeURIComponent(url)}`)
         break
       case 'v2rayng':
-        window.open(`v2rayng://install-config?url=${encodeURIComponent(url)}`, '_blank')
+        safeOpenApp(`v2rayng://install-config?url=${encodeURIComponent(url)}`)
         break
       case 'hiddify':
-        window.open(`hiddify://install-config?url=${encodeURIComponent(url)}`, '_blank')
+        safeOpenApp(`hiddify://install-config?url=${encodeURIComponent(url)}`)
         break
       default:
-        window.open(url, '_blank')
+        safeOpen(url)
     }
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
@@ -1383,14 +1406,16 @@ const checkAndShowAnnouncement = async () => {
   }
 }
 const handleResize = () => {
-  if (typeof window !== 'undefined') {
+  if (resizeRafId !== null || typeof window === 'undefined') return
+  resizeRafId = window.requestAnimationFrame(() => {
+    resizeRafId = null
     isMobile.value = window.innerWidth <= 768
-  }
+  })
 }
 onMounted(() => {
   if (typeof window !== 'undefined') {
     isMobile.value = window.innerWidth <= 768
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', handleResize, { passive: true })
   }
 
   // 并发加载所有初始化任务，提高首页加载速度
@@ -1403,14 +1428,18 @@ onMounted(() => {
     console.error('Dashboard 初始化失败:', err)
   })
 
-  const handleSubscriptionUpdate = async () => {
+  const handleSubscriptionUpdate = async (event) => {
+    if (event?.detail?.refreshed) return
+    cachedAPI.clearUserCache()
     // 并发更新订阅和用户信息
     await Promise.all([
       loadSubscriptionInfo(),
       loadUserInfo()
     ])
   }
-  const handleUserInfoUpdate = async () => {
+  const handleUserInfoUpdate = async (event) => {
+    if (event?.detail?.refreshed) return
+    cachedAPI.clearUserCache()
     await loadUserInfo()
   }
   window.addEventListener('subscription-updated', handleSubscriptionUpdate)
@@ -1418,18 +1447,16 @@ onMounted(() => {
   onUnmounted(() => {
     window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
     window.removeEventListener('user-info-updated', handleUserInfoUpdate)
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('resize', handleResize)
-    }
   })
 })
 onUnmounted(() => {
-  if (rechargeStatusInterval) {
-    clearInterval(rechargeStatusInterval)
-    rechargeStatusInterval = null
-  }
+  cleanupRechargeStatusCheck()
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', handleResize)
+    if (resizeRafId !== null) {
+      window.cancelAnimationFrame(resizeRafId)
+      resizeRafId = null
+    }
   }
 })
 </script>

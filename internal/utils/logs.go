@@ -8,6 +8,8 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/geoip"
+
+	"gorm.io/gorm"
 )
 
 // ==========================================
@@ -131,7 +133,10 @@ func CreateBalanceLog(userID uint, changeType string, amount, balanceBefore, bal
 	if db == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
+	return CreateBalanceLogWithDB(db, userID, changeType, amount, balanceBefore, balanceAfter, relatedOrderID, relatedRecordID, description, operator, operatorUserID, ipAddress)
+}
 
+func CreateBalanceLogWithDB(db *gorm.DB, userID uint, changeType string, amount, balanceBefore, balanceAfter float64, relatedOrderID, relatedRecordID *uint, description, operator string, operatorUserID *uint, ipAddress string) error {
 	// 获取地理位置信息（如果 GeoIP 已启用）
 	var location sql.NullString
 	if ipAddress != "" && geoip.IsEnabled() {
@@ -175,7 +180,10 @@ func CreateCommissionLog(inviterID, inviteeID uint, commissionType string, amoun
 	if db == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
+	return CreateCommissionLogWithDB(db, inviterID, inviteeID, commissionType, amount, inviteRelationID, relatedOrderID, description)
+}
 
+func CreateCommissionLogWithDB(db *gorm.DB, inviterID, inviteeID uint, commissionType string, amount float64, inviteRelationID, relatedOrderID *uint, description string) error {
 	log := models.CommissionLog{
 		InviterID:      inviterID,
 		InviteeID:      inviteeID,

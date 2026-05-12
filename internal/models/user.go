@@ -15,9 +15,9 @@ type User struct {
 	IsAdmin    bool           `gorm:"default:false" json:"is_admin"`
 	Nickname   sql.NullString `gorm:"type:varchar(50)" json:"nickname,omitempty"`
 	Avatar     sql.NullString `gorm:"type:varchar(255)" json:"avatar,omitempty"`
-	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	CreatedAt  time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
 	UpdatedAt  time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	LastLogin  sql.NullTime   `json:"last_login,omitempty"`
+	LastLogin  sql.NullTime   `gorm:"index" json:"last_login,omitempty"`
 
 	VerificationToken   sql.NullString `gorm:"type:varchar(255)" json:"-"`
 	VerificationExpires sql.NullTime   `json:"-"`
@@ -33,6 +33,7 @@ type User struct {
 	NotificationTypes         string `gorm:"type:text" json:"notification_types"`
 	SMSNotifications          bool   `gorm:"default:false" json:"sms_notifications"`
 	PushNotifications         bool   `gorm:"default:true" json:"push_notifications"`
+	BarkDeviceKey             string `gorm:"type:varchar(255)" json:"bark_device_key,omitempty"`
 
 	DataSharing bool `gorm:"default:true" json:"data_sharing"`
 	Analytics   bool `gorm:"default:true" json:"analytics"`

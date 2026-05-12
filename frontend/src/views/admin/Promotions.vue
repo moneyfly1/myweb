@@ -204,12 +204,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, onMounted, reactive } from 'vue'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { promotionAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const loading = ref(false)
 const saving = ref(false)
 const promotions = ref([])
@@ -316,7 +317,9 @@ const getDiscountUnit = () => {
   return ''
 }
 
+let loadSeq = 0
 const loadData = async () => {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const params = {
@@ -327,13 +330,17 @@ const loadData = async () => {
     if (filter.is_active !== null) params.is_active = filter.is_active
 
     const res = await promotionAPI.getAll(params)
+    if (seq !== loadSeq) return
     const data = res.data?.data || {}
     promotions.value = data.list || []
     pagination.total = data.total || 0
   } catch (e) {
+    if (seq !== loadSeq) return
     ElMessage.error('加载数据失败')
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
 
@@ -415,13 +422,8 @@ const remove = async (id) => {
   }
 }
 
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
-
 onMounted(() => {
   loadData()
-  window.addEventListener('resize', handleResize)
 })
 </script>
 
@@ -448,12 +450,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
-}
-
-.pagination-wrapper {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .drawer-footer {

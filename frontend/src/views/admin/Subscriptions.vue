@@ -138,7 +138,7 @@
           </div>
         </div>
       </div>
-      <el-form :inline="true" :model="searchForm" class="search-form desktop-only">
+      <el-form :inline="true" :model="searchForm" class="search-form list-filter-form desktop-only">
         <el-form-item label="搜索">
           <el-input 
             v-model="searchForm.keyword" 
@@ -649,21 +649,24 @@
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
   Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
   Check, Close
 } from '@element-plus/icons-vue'
-import '@/styles/list-common.scss'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
+import { safeNavigate, safeOpen } from '@/utils/safeOpen'
 import { formatLocation } from '@/utils/date'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import UserDetailDialog from './components/UserDetailDialog.vue'
 dayjs.extend(timezone)
+
+const LOGIN_HANDOFF_STORAGE_PREFIX = 'cboard_login_handoff_'
+
 export default {
   name: 'AdminSubscriptions',
   components: {
@@ -992,7 +995,7 @@ export default {
           expiryDisplayName = '订阅'
         }
         const subLink = `sub://${encodedUrl}#${encodeURIComponent(expiryDisplayName)}`
-        window.location.href = subLink
+        safeNavigate(subLink, { allowAppProtocols: true })
         setTimeout(() => {
           copyToClipboard(subscriptionUrl)
           ElMessage.success('已复制订阅链接到剪贴板，请在 Shadowrocket 中手动添加')
@@ -1242,11 +1245,19 @@ export default {
           sessionData.adminUser = typeof adminUser === 'string' ? adminUser : JSON.stringify(adminUser)
           sessionData.adminRefreshToken = adminRefreshToken
         }
-        sessionStorage.setItem(sessionKey, JSON.stringify(sessionData))
+        const handoffPayload = JSON.stringify(sessionData)
+        sessionStorage.setItem(sessionKey, handoffPayload)
+        localStorage.setItem(`${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`, handoffPayload)
+        window.setTimeout(() => {
+          localStorage.removeItem(`${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`)
+        }, 5 * 60 * 1000)
         const dashboardUrl = window.location.origin + '/dashboard'
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
         ElMessage.success('正在跳转到用户后台...')
-        window.open(finalUrl, '_blank')
+        const opened = safeOpen(finalUrl)
+        if (!opened) {
+          safeNavigate(finalUrl)
+        }
       } catch (error) {
         if (error !== 'cancel') {
           if (process.env.NODE_ENV === 'development') {
@@ -1821,120 +1832,10 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
-.batch-actions {
-  margin: 20px 0;
-  padding: 15px;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  @media (max-width: 768px) {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-}
-.batch-info {
-  font-weight: 600;
-  color: #303133;
-  font-size: 14px;
-  @media (max-width: 768px) {
-    text-align: center;
-    font-size: 13px;
-  }
-}
-.batch-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  @media (max-width: 768px) {
-    justify-content: center;
-    flex-wrap: wrap;
-    .el-button {
-      flex: 1;
-      min-width: 120px;
-    }
-  }
-}
-.admin-subscriptions {
-  @extend .list-container;
-}
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-.header-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  &.desktop-only {
-    @media (max-width: 768px) {
-      display: none !important;
-    }
-  }
-}
-.desktop-only {
-  @media (max-width: 768px) {
-    display: none !important;
-  }
-}
-.mobile-action-bar {
-  .mobile-quick-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    .quick-sort-buttons {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      .el-button {
-        flex: 1;
-        min-width: 0;
-        font-size: 0.85rem;
-        padding: 8px 12px;
-        min-height: 36px;
-        :deep(.el-icon) {
-          margin-right: 4px;
-          font-size: 14px;
-        }
-      }
-    }
-    .action-buttons-group {
-      display: flex;
-      justify-content: flex-end;
-      .el-button {
-        font-size: 0.85rem;
-        padding: 8px 16px;
-        min-height: 36px;
-        :deep(.el-icon) {
-          margin-right: 4px;
-          font-size: 14px;
-        }
-      }
-    }
-  }
-  .mobile-sort-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 12px;
-    padding: 8px 12px;
-    background: white;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    .sort-label {
-      color: #666;
-      font-weight: 500;
-    }
-    .sort-value {
-      color: #303133;
-      flex: 1;
-    }
-  }
 }
 :deep(.el-card) {
   width: 100%;
@@ -2078,10 +1979,6 @@ export default {
   font-size: 11px;
   flex: 1;
   min-width: 0;
-}
-.pagination {
-  margin-top: 20px;
-  text-align: right;
 }
 .user-detail-drawer {
   :deep(.el-drawer__header) {

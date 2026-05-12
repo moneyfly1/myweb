@@ -476,7 +476,7 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
@@ -903,30 +903,12 @@ onUnmounted(() => {
     display: none !important;
   }
 }
-.batch-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  margin-bottom: 16px;
-}
 .batch-info {
   font-size: 14px;
   color: #606266;
   font-weight: 500;
 }
-.batch-buttons {
-  display: flex;
-  gap: 10px;
-}
 @media (max-width: 768px) {
-  .batch-actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
   .batch-buttons {
     width: 100%;
     flex-direction: column;
@@ -987,46 +969,6 @@ onUnmounted(() => {
     padding: 12px 0;
   }
 }
-.mobile-action-bar {
-  display: none;
-  padding: 16px;
-  box-sizing: border-box;
-  background: #f5f7fa;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-.mobile-search-section {
-  margin-bottom: 12px;
-  width: 100%;
-  box-sizing: border-box;
-}
-.search-input-wrapper {
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-}
-.mobile-search-input {
-  flex: 1;
-  width: 100%;
-  box-sizing: border-box;
-  min-width: 0;
-}
-.search-button-inside {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.98);
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  color: #667eea;
-  border-radius: 8px;
-  font-weight: 600;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-  padding: 8px 12px;
-  height: auto;
-}
 .mobile-filter-form {
   width: 100%;
   margin-bottom: 12px;
@@ -1048,31 +990,6 @@ onUnmounted(() => {
 .mobile-filter-input,
 .mobile-filter-select {
   width: 100% !important;
-  :deep(.el-input__wrapper) {
-    border-radius: 6px;
-  }
-  :deep(.el-select__wrapper) {
-    border-radius: 6px;
-  }
-}
-.mobile-action-buttons {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-  box-sizing: border-box;
-}
-.mobile-search-btn,
-.mobile-reset-btn {
-  flex: 1;
-  height: 44px;
-  font-size: 15px;
-  font-weight: 500;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-sizing: border-box;
 }
 .desktop-only {
   @media (max-width: 768px) {
@@ -1569,16 +1486,6 @@ onUnmounted(() => {
   .refresh-button {
     height: 38px;
     font-size: 13px;
-    padding: 0 10px;
-  }
-  .mobile-action-bar {
-    padding: 10px 8px;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .mobile-filter-buttons .el-button {
-    height: 38px;
-    font-size: 12px;
     padding: 0 10px;
   }
   .settings-dialog {

@@ -69,7 +69,6 @@ export {
   TrendCharts as IconTrendCharts,
   PieChart as IconPieChart,
   Histogram as IconHistogram,
-  Monitor as IconMonitor,
   Cpu as IconCpu
 } from '@element-plus/icons-vue'
 
@@ -155,12 +154,9 @@ export {
 // 编辑和文本图标
 export {
   EditPen as IconEditPen,
-  Edit as IconEdit,
-  Document as IconDocument,
   NoteBook as IconNoteBook,
   Reading as IconReading,
   ReadingLamp as IconReadingLamp,
-  Notebook as IconNotebook,
   Collection as IconCollection,
   CollectionTag as IconCollectionTag,
   Star as IconStar,
@@ -169,13 +165,9 @@ export {
 
 // 安全和保护图标
 export {
-  Lock as IconLock,
-  Unlock as IconUnlock,
-  Key as IconKey,
   Safe as IconSafe,
   Shield as IconShield,
-  ShieldCheck as IconShieldCheck,
-  Warning as IconWarning
+  ShieldCheck as IconShieldCheck
 } from '@element-plus/icons-vue'
 
 // 视图和显示图标
@@ -197,16 +189,5 @@ export {
   Help as IconHelp,
   HelpFilled as IconHelpFilled,
   Service as IconService,
-  CustomerService as IconCustomerService,
-  ChatDotRound as IconChatDotRound,
-  QuestionFilled as IconQuestionFilled
-} from '@element-plus/icons-vue'
-
-// 邮件图标
-export {
-  Message as IconMessage,
-  ChatLineRound as IconChatLineRound,
-  ChatLineSquare as IconChatLineSquare,
-  ChatDotRound as IconChatDotRound,
-  ChatDotSquare as IconChatDotSquare
+  CustomerService as IconCustomerService
 } from '@element-plus/icons-vue'

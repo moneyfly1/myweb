@@ -240,7 +240,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Refresh } from '@element-plus/icons-vue'
 import { subscriptionAPI } from '@/utils/api'
 import { formatDateTime as formatTimeUtil } from '@/utils/date'
@@ -468,7 +468,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
 .device-name {
   display: flex;
   align-items: flex-start;

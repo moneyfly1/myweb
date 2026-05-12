@@ -169,7 +169,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { configAPI, softwareConfigAPI } from '@/utils/api'
 export default {
   name: 'AdminConfig',
@@ -365,10 +365,6 @@ export default {
   color: #333;
   font-size: 1.2rem;
 }
-.header-actions {
-  display: flex;
-  gap: 10px;
-}
 .queue-stats {
   margin-bottom: 20px;
 }
@@ -387,10 +383,6 @@ export default {
 }
 .queue-filter {
   margin-bottom: 20px;
-}
-.pagination-wrapper {
-  text-align: right;
-  margin-top: 20px;
 }
 @media (max-width: 768px) {
   .config-admin-container {

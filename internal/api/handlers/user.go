@@ -684,11 +684,7 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
-	var totalOrders int64
-	db.Model(&models.Order{}).Where("user_id = ?", u.ID).Count(&totalOrders)
-
-	var totalSpent float64
-	db.Model(&models.Order{}).Where("user_id = ? AND status = 'paid'", u.ID).Select("COALESCE(SUM(final_amount), SUM(amount), 0)").Scan(&totalSpent)
+	paymentSummary := utils.CalculateUserPaymentSummary(db, u.ID)
 
 	var totalResets int64
 	db.Model(&models.SubscriptionReset{}).Where("user_id = ?", u.ID).Count(&totalResets)
@@ -822,9 +818,9 @@ func GetUserDetails(c *gin.Context) {
 		"checkin_records":  formattedCheckins,
 		"statistics": gin.H{
 			"total_subscriptions": len(subs),
-			"total_orders":        totalOrders,
+			"total_orders":        paymentSummary.Total,
 			"total_resets":        totalResets,
-			"total_spent":         totalSpent,
+			"total_spent":         paymentSummary.PaidAmount,
 		},
 		"subscription_resets": formattedResets,
 		"ua_records":          uaRecords,

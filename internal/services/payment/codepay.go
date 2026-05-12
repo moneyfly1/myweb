@@ -20,6 +20,7 @@ type CodepayService struct {
 	Key       string
 	APIURL    string // mapi.php 地址
 	SubmitURL string // submit.php 地址
+	QueryURL  string
 	NotifyURL string
 	ReturnURL string
 }
@@ -67,6 +68,10 @@ func NewCodepayService(paymentConfig *models.PaymentConfig) (*CodepayService, er
 	if apiURL == "" {
 		return nil, fmt.Errorf("码支付API地址未配置")
 	}
+	queryURL := getConfigString(configData, "query_url")
+	if queryURL == "" {
+		queryURL = buildEpayOrderQueryURL(apiURL)
+	}
 
 	// 从 mapi.php 地址推导 submit.php 地址
 	submitURL := strings.Replace(apiURL, "/mapi.php", "/submit.php", 1)
@@ -76,6 +81,7 @@ func NewCodepayService(paymentConfig *models.PaymentConfig) (*CodepayService, er
 		Key:       key,
 		APIURL:    apiURL,
 		SubmitURL: submitURL,
+		QueryURL:  queryURL,
 		NotifyURL: resolveCallbackURL(paymentConfig.NotifyURL, getConfigString(configData, "notify_url"), "/api/v1/payment/notify/codepay", true),
 		ReturnURL: resolveCallbackURL(paymentConfig.ReturnURL, "", "/payment/return", false),
 	}, nil
@@ -202,6 +208,10 @@ func (s *CodepayService) CreatePayment(order *models.Order, amount float64, paym
 	submitURL := fmt.Sprintf("%s?%s", s.SubmitURL, submitParams.Encode())
 	utils.LogInfo("码支付submit URL: %s", submitURL)
 	return submitURL, nil
+}
+
+func (s *CodepayService) QueryOrder(orderNo string) (*EpayQueryResult, error) {
+	return queryEpayOrder("码支付", s.QueryURL, s.PID, s.Key, orderNo)
 }
 
 func GetCodepaySupportedTypes(paymentConfig *models.PaymentConfig) []string {
