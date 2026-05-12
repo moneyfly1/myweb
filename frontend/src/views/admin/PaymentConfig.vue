@@ -503,7 +503,7 @@
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Operation, Plus, Edit, Delete, Check, Close, Loading } from '@element-plus/icons-vue'
 import { paymentAPI } from '@/utils/api'
 import dayjs from 'dayjs'
@@ -953,7 +953,6 @@ export default {
 <style scoped>
 .admin-payment-config { padding: 20px; }
 .header-content { display: flex; justify-content: space-between; align-items: center; }
-.header-actions { display: flex; gap: 10px; align-items: center; }
 .view-mode-group { margin-right: 8px; }
 .grid-orientation-group { margin-right: 8px; }
 .grid-size-group { margin-right: 8px; }

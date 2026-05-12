@@ -283,7 +283,7 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, DocumentCopy, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
@@ -615,8 +615,6 @@ const getIsValid = (row) => {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
-
 .mobile-only {
   display: none !important;
   @media (max-width: 768px) {

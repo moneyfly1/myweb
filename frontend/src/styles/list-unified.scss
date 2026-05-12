@@ -1,347 +1,16 @@
 /**
- * 统一列表页面样式规范
- * 适用于所有列表页面（用户端和管理端）
- * 包括电脑端和移动端的统一样式
+ * 列表页补充工具类。
+ * 基础列表结构统一由 list-common.scss 负责，避免两个全局样式文件覆盖同一批类名。
  */
-
-@use "sass:color";
-
-/* ========================================
-   1. 列表容器样式
-   ======================================== */
-
-.list-container {
-  padding: 20px;
-  width: 100%;
-  box-sizing: border-box;
-  background: var(--theme-background, #f5f7fa);
-  min-height: calc(100vh - 70px);
-  
-  @media (max-width: 768px) {
-    padding: 12px;
-    min-height: calc(100vh - 60px);
-  }
-}
-
-/* ========================================
-   2. 卡片容器样式
-   ======================================== */
-
-.list-card {
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  border: none;
-  
-  :deep(.el-card__header) {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--theme-border, #EBEEF5);
-    background: #fff;
-  }
-  
-  :deep(.el-card__body) {
-    padding: 20px;
-    
-    @media (max-width: 768px) {
-      padding: 16px;
-    }
-  }
-}
-
-/* ========================================
-   3. 卡片头部样式
-   ======================================== */
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  
-  > span,
-  .header-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--theme-text, #303133);
-    
-    @media (max-width: 768px) {
-      font-size: 16px;
-    }
-  }
-  
-  .header-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-    
-    @media (max-width: 768px) {
-      width: 100%;
-      justify-content: flex-start;
-    }
-  }
-}
-
-/* ========================================
-   4. 搜索表单样式（电脑端）
-   ======================================== */
-
-.search-form {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #fafafa;
-  border-radius: 8px;
-  
-  :deep(.el-form-item) {
-    margin-bottom: 0;
-    
-    .el-form-item__label {
-      font-size: 14px;
-      color: #606266;
-    }
-    
-    .el-input__inner,
-    .el-select .el-input__inner {
-      height: 36px;
-      line-height: 36px;
-    }
-  }
-  
-  @media (max-width: 768px) {
-    display: none;
-  }
-}
-
-/* ========================================
-   5. 移动端操作栏样式
-   ======================================== */
-
-.mobile-action-bar {
-  display: none;
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #fafafa;
-  border-radius: 8px;
-  
-  @media (max-width: 768px) {
-    display: block;
-  }
-}
-
-.mobile-search-section {
-  margin-bottom: 12px;
-}
-
-.search-input-wrapper {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  
-  .mobile-search-input {
-    flex: 1;
-    
-    :deep(.el-input__inner) {
-      height: 36px;
-      border-radius: 6px;
-    }
-  }
-  
-  .search-button-inside {
-    height: 36px;
-    min-width: 40px;
-    border-radius: 6px;
-  }
-}
-
-.mobile-filter-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  
-  .el-button {
-    flex: 1;
-    min-width: 0;
-    height: 36px;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-}
-
-.mobile-action-buttons {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-  
-  .el-button {
-    flex: 1;
-    height: 36px;
-    border-radius: 6px;
-  }
-}
-
-/* ========================================
-   6. 表格样式（电脑端）
-   ======================================== */
-
-.table-wrapper {
-  margin-top: 16px;
-  
-  :deep(.el-table) {
-    border-radius: 8px;
-    overflow: hidden;
-    font-size: 14px;
-    
-    th.el-table__cell {
-      background: #fafafa;
-      color: #303133;
-      font-weight: 600;
-      font-size: 14px;
-      padding: 12px 0;
-    }
-    
-    td.el-table__cell {
-      padding: 12px 0;
-      color: #606266;
-    }
-    
-    .el-table__row {
-      &:hover {
-        background: #f5f7fa;
-      }
-    }
-  }
-}
-
-/* ========================================
-   7. 操作按钮网格样式
-   ======================================== */
-
-.action-buttons-grid {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-  
-  .action-btn {
-    height: 28px;
-    padding: 0 8px;
-    font-size: 12px;
-    border-radius: 4px;
-  }
-}
-
-/* ========================================
-   8. 移动端卡片列表样式
-   ======================================== */
-
-.mobile-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
-  
-  @media (min-width: 769px) {
-    display: none;
-  }
-}
-
-.mobile-card-optimized {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-  transition: all 0.3s ease;
-  
-  &:active {
-    transform: scale(0.98);
-  }
-  
-  .mc-header {
-    padding: 12px 16px;
-    background: linear-gradient(135deg, var(--theme-primary, #409EFF) 0%, color.adjust(#409EFF, $lightness: 10%) 100%);
-    color: white;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    
-    .mc-id {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      
-      .label {
-        opacity: 0.8;
-      }
-      
-      .value {
-        font-family: monospace;
-      }
-    }
-  }
-  
-  .mc-body {
-    padding: 12px 16px;
-    
-    .mc-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding: 8px 0;
-      border-bottom: 1px solid #f0f0f0;
-      
-      &:last-child {
-        border-bottom: none;
-      }
-      
-      .mc-label {
-        font-size: 13px;
-        color: #909399;
-        flex-shrink: 0;
-        margin-right: 12px;
-        min-width: 70px;
-      }
-      
-      .mc-value {
-        font-size: 14px;
-        color: #303133;
-        text-align: right;
-        flex: 1;
-        word-break: break-all;
-      }
-    }
-  }
-  
-  .mc-footer {
-    padding: 12px 16px;
-    border-top: 1px solid #f0f0f0;
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    
-    .el-button {
-      flex: 1;
-      min-width: 0;
-      height: 32px;
-      font-size: 12px;
-      border-radius: 6px;
-    }
-  }
-}
-
-/* ========================================
-   9. 分页组件样式
-   ======================================== */
 
 .pagination-wrapper {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
-  
+
   @media (max-width: 768px) {
     justify-content: center;
-    
+
     :deep(.el-pagination) {
       .el-pagination__sizes,
       .el-pagination__jump {
@@ -349,7 +18,7 @@
       }
     }
   }
-  
+
   :deep(.el-pagination) {
     .el-pager li {
       min-width: 32px;
@@ -358,13 +27,14 @@
       font-size: 13px;
       border-radius: 4px;
       margin: 0 2px;
-      
+
+      &.is-active,
       &.active {
-        background: var(--theme-primary, #409EFF);
-        color: white;
+        background: var(--theme-primary, #409eff);
+        color: #fff;
       }
     }
-    
+
     .btn-prev,
     .btn-next {
       min-width: 32px;
@@ -375,63 +45,99 @@
   }
 }
 
-/* ========================================
-   10. 批量操作栏样式
-   ======================================== */
+.mobile-card-optimized {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 
-.batch-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  background: #f0f9ff;
-  border-radius: 8px;
-  border: 1px solid #d9ecff;
-  
-  .batch-info {
-    font-size: 14px;
-    color: #409EFF;
-    font-weight: 500;
+  &:active {
+    transform: scale(0.98);
   }
-  
-  .batch-buttons {
+
+  .mc-header {
+    padding: 12px 16px;
+    background: var(--theme-primary, #409eff);
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .mc-id {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 500;
+
+      .label {
+        opacity: 0.82;
+      }
+
+      .value {
+        font-family: monospace;
+      }
+    }
+  }
+
+  .mc-body {
+    padding: 12px 16px;
+
+    .mc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      .mc-label {
+        font-size: 13px;
+        color: #909399;
+        flex-shrink: 0;
+        margin-right: 12px;
+        min-width: 70px;
+      }
+
+      .mc-value {
+        font-size: 14px;
+        color: #303133;
+        text-align: right;
+        flex: 1;
+        word-break: break-word;
+      }
+    }
+  }
+
+  .mc-footer,
+  .mc-footer-info {
+    padding: 12px 16px;
+    border-top: 1px solid #f0f0f0;
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    
+
     .el-button {
+      flex: 1;
+      min-width: 0;
       height: 32px;
-      font-size: 13px;
-    }
-  }
-  
-  @media (max-width: 768px) {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-    
-    .batch-buttons {
-      justify-content: stretch;
-      
-      .el-button {
-        flex: 1;
-      }
+      font-size: 12px;
+      border-radius: 6px;
     }
   }
 }
 
-/* ========================================
-   11. 标签页样式
-   ======================================== */
-
 .records-tabs {
   margin-bottom: 16px;
-  
+
   :deep(.el-tabs__header) {
     margin-bottom: 16px;
   }
-  
+
   :deep(.el-tabs__item) {
     font-size: 14px;
     height: 40px;
@@ -439,61 +145,10 @@
   }
 }
 
-/* ========================================
-   12. 统计卡片样式
-   ======================================== */
-
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-  
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-}
-
-.stat-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  }
-  
-  .stat-number {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--theme-primary, #409EFF);
-    margin-bottom: 4px;
-    
-    @media (max-width: 768px) {
-      font-size: 20px;
-    }
-  }
-  
-  .stat-label {
-    font-size: 13px;
-    color: #909399;
-  }
-}
-
-/* ========================================
-   13. 空状态样式
-   ======================================== */
-
 .empty-state {
   padding: 60px 0;
   text-align: center;
-  
+
   :deep(.el-empty) {
     .el-empty__description {
       font-size: 14px;
@@ -502,10 +157,6 @@
   }
 }
 
-/* ========================================
-   14. 加载状态样式
-   ======================================== */
-
 .loading-wrapper {
   min-height: 400px;
   display: flex;
@@ -513,25 +164,11 @@
   justify-content: center;
 }
 
-/* ========================================
-   15. 响应式工具类
-   ======================================== */
-
-.desktop-only {
-  @media (max-width: 768px) {
-    display: none !important;
-  }
-}
-
 .mobile-only {
   @media (min-width: 769px) {
     display: none !important;
   }
 }
-
-/* ========================================
-   16. 文字大小统一规范
-   ======================================== */
 
 .text-xs { font-size: 12px; }
 .text-sm { font-size: 13px; }
@@ -541,17 +178,6 @@
 .text-2xl { font-size: 20px; }
 .text-3xl { font-size: 24px; }
 
-/* ========================================
-   17. 间距统一规范
-   ======================================== */
-
-.space-1 { margin: 4px; }
-.space-2 { margin: 8px; }
-.space-3 { margin: 12px; }
-.space-4 { margin: 16px; }
-.space-5 { margin: 20px; }
-.space-6 { margin: 24px; }
-
 .gap-1 { gap: 4px; }
 .gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
@@ -559,39 +185,26 @@
 .gap-5 { gap: 20px; }
 .gap-6 { gap: 24px; }
 
-/* ========================================
-   18. 颜色统一规范
-   ======================================== */
-
-.text-primary { color: var(--theme-primary, #409EFF); }
-.text-success { color: var(--theme-success, #67C23A); }
-.text-warning { color: var(--theme-warning, #E6A23C); }
-.text-danger { color: var(--theme-danger, #F56C6C); }
+.text-primary { color: var(--theme-primary, #409eff); }
+.text-success { color: var(--theme-success, #67c23a); }
+.text-warning { color: var(--theme-warning, #e6a23c); }
+.text-danger { color: var(--theme-danger, #f56c6c); }
 .text-info { color: var(--theme-info, #909399); }
-
 .text-muted { color: #909399; }
 .text-secondary { color: #606266; }
-
-/* ========================================
-   19. 金额样式
-   ======================================== */
 
 .amount {
   font-weight: 600;
   font-family: 'Courier New', monospace;
-  
+
   &.positive {
-    color: var(--theme-success, #67C23A);
+    color: var(--theme-success, #67c23a);
   }
-  
+
   &.negative {
-    color: var(--theme-danger, #F56C6C);
+    color: var(--theme-danger, #f56c6c);
   }
 }
-
-/* ========================================
-   20. 状态标签样式
-   ======================================== */
 
 .status-tag {
   font-size: 12px;

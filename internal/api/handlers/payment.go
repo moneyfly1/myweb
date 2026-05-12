@@ -2,8 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
-	"log"
+	"io"
 	"math"
 	"net/http"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func GetPaymentMethods(c *gin.Context) {
@@ -161,13 +163,365 @@ func CreatePayment(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "支付方式无效", err)
 		return
 	}
-	amt := int(math.Round(order.Amount * 100))
+	amount := order.Amount
 	if order.FinalAmount.Valid {
-		amt = int(math.Round(order.FinalAmount.Float64 * 100))
+		amount = order.FinalAmount.Float64
 	}
-	tx := models.PaymentTransaction{OrderID: order.ID, UserID: u.ID, PaymentMethodID: cfg.ID, Amount: amt, Status: "pending"}
-	db.Create(&tx)
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"transaction_id": tx.ID, "amount": float64(amt) / 100})
+	if amount <= 0.01 {
+		if _, err := orderServicePkg.NewOrderService().FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
+			PaymentMethodName: "优惠抵扣",
+			IPAddress:         utils.GetRealClientIP(c),
+		}); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "处理订单失败", err)
+			return
+		}
+		utils.SuccessResponse(c, http.StatusOK, "支付成功", gin.H{
+			"order_no": order.OrderNo,
+			"status":   "paid",
+			"amount":   0,
+		})
+		return
+	}
+	if cfg.PayType != "" && !order.PaymentMethodID.Valid {
+		order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(cfg.ID))
+		if !order.PaymentMethodName.Valid || strings.TrimSpace(order.PaymentMethodName.String) == "" {
+			order.PaymentMethodName = database.NullString(cfg.PayType)
+		}
+		if err := db.Model(&order).Updates(map[string]interface{}{
+			"payment_method_id":   order.PaymentMethodID,
+			"payment_method_name": order.PaymentMethodName,
+		}).Error; err != nil {
+			utils.LogError("CreatePayment: update order payment method failed", err, map[string]interface{}{"order_no": order.OrderNo})
+		}
+	}
+
+	amt := int(math.Round(amount * 100))
+	tx := models.PaymentTransaction{
+		OrderID:         order.ID,
+		UserID:          u.ID,
+		PaymentMethodID: cfg.ID,
+		Amount:          amt,
+		Currency:        "CNY",
+		Status:          "pending",
+	}
+	if err := db.Create(&tx).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付交易失败", err)
+		return
+	}
+
+	paymentURL, err := generatePaymentURL(db, &order, &cfg, cfg.PayType, amount)
+	if err != nil {
+		if failedOrder, markErr := orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, u.ID, "failed"); markErr != nil {
+			utils.LogError("CreatePayment: mark order failed after payment link error", markErr, map[string]interface{}{
+				"order_no": order.OrderNo,
+			})
+		} else if failedOrder != nil {
+			order = *failedOrder
+		}
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"transaction_id":        tx.ID,
+		"amount":                amount,
+		"final_amount":          amount,
+		"actual_payment_amount": amount,
+		"order_no":              order.OrderNo,
+		"status":                order.Status,
+		"payment_url":           paymentURL,
+		"payment_qr_code":       paymentURL,
+		"payment_method":        cfg.PayType,
+	})
+}
+
+func parseCallbackAmount(paymentType string, params map[string]string) (float64, bool) {
+	var callbackAmount float64
+	if paymentType == "alipay" || paymentType == "applepay" {
+		if amountStr := params["total_amount"]; amountStr != "" {
+			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount)
+			return callbackAmount, true
+		}
+		if amountStr := params["amount"]; amountStr != "" {
+			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount)
+			return callbackAmount, true
+		}
+		return 0, false
+	}
+
+	if paymentType == "wechat" {
+		if amountStr := params["total_fee"]; amountStr != "" {
+			var amountInCents int
+			_, _ = fmt.Sscanf(amountStr, "%d", &amountInCents)
+			return float64(amountInCents) / 100.0, true
+		}
+		return 0, false
+	}
+
+	if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
+		amountStr := params["money"]
+		if amountStr == "" {
+			amountStr = params["price"]
+		}
+		if amountStr == "" {
+			amountStr = params["amount"]
+		}
+		if amountStr != "" {
+			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount)
+			return callbackAmount, true
+		}
+	}
+
+	return 0, false
+}
+
+func amountMatches(expected, actual float64) bool {
+	return actual >= expected-0.01 && actual <= expected+0.01
+}
+
+func isAsyncAckPaymentType(paymentType string) bool {
+	return paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
+		paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_")
+}
+
+func paymentCallbackAck(c *gin.Context, paymentType string, success bool, message string) {
+	if paymentType == "wechat" {
+		returnCode := "SUCCESS"
+		returnMsg := "OK"
+		if !success {
+			returnCode = "FAIL"
+			returnMsg = message
+			if returnMsg == "" {
+				returnMsg = "处理失败"
+			}
+		}
+		c.Header("Content-Type", "text/xml; charset=utf-8")
+		c.String(http.StatusOK, "<xml><return_code><![CDATA[%s]]></return_code><return_msg><![CDATA[%s]]></return_msg></xml>", returnCode, returnMsg)
+		return
+	}
+	if isAsyncAckPaymentType(paymentType) {
+		if success {
+			c.String(http.StatusOK, "success")
+		} else {
+			c.String(http.StatusOK, "fail")
+		}
+		return
+	}
+	if success {
+		c.String(http.StatusOK, "success")
+		return
+	}
+	c.String(http.StatusInternalServerError, message)
+}
+
+func parseXMLPaymentParams(body []byte) (map[string]string, error) {
+	params := make(map[string]string)
+	decoder := xml.NewDecoder(strings.NewReader(string(body)))
+	var currentKey string
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			currentKey = t.Name.Local
+		case xml.CharData:
+			if currentKey != "" && currentKey != "xml" {
+				value := strings.TrimSpace(string(t))
+				if value != "" {
+					params[currentKey] = value
+				}
+			}
+		case xml.EndElement:
+			if currentKey == t.Name.Local {
+				currentKey = ""
+			}
+		}
+	}
+	return params, nil
+}
+
+func updatePaymentTransactionTx(tx *gorm.DB, orderID uint, userID uint, amountCents int, externalTransactionID string, paymentMethodID uint, callbackData string, transactionID string) error {
+	var paymentTx models.PaymentTransaction
+	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("status = ?", "pending")
+	if orderID > 0 {
+		query = query.Where("order_id = ?", orderID)
+	} else if transactionID != "" {
+		query = query.Where("order_id = ? AND transaction_id = ?", 0, transactionID)
+	} else {
+		query = query.Where("order_id = ? AND user_id = ? AND amount = ?", 0, userID, amountCents)
+	}
+	if paymentMethodID > 0 {
+		query = query.Where("payment_method_id = ?", paymentMethodID)
+	}
+	if err := query.Order("created_at DESC").First(&paymentTx).Error; err != nil {
+		return err
+	}
+	paymentTx.Status = "success"
+	if externalTransactionID != "" {
+		paymentTx.ExternalTransactionID = database.NullString(externalTransactionID)
+	}
+	if callbackData != "" {
+		paymentTx.CallbackData = database.NullString(callbackData)
+	}
+	return tx.Save(&paymentTx).Error
+}
+
+func processPaidRecharge(db *gorm.DB, orderNo string, paymentType string, paymentConfigID uint, externalTransactionID string, params map[string]string, ipAddress string) (*models.RechargeRecord, error) {
+	var result models.RechargeRecord
+	var freshUser models.User
+	paidNow := false
+	callbackData := ""
+	if data, err := json.Marshal(params); err == nil {
+		callbackData = string(data)
+	}
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var recharge models.RechargeRecord
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_no = ?", orderNo).First(&recharge).Error; err != nil {
+			return err
+		}
+
+		if recharge.Status == "paid" {
+			result = recharge
+			return nil
+		}
+		if recharge.Status != "pending" {
+			return fmt.Errorf("充值订单状态不允许入账: %s", recharge.Status)
+		}
+
+		if callbackAmount, ok := parseCallbackAmount(paymentType, params); ok {
+			if !amountMatches(recharge.Amount, callbackAmount) {
+				return fmt.Errorf("充值金额不匹配: 预期%.2f元, 回调%.2f元", recharge.Amount, callbackAmount)
+			}
+		} else {
+			utils.LogWarn("PaymentNotify: unable to verify recharge amount for payment type: %+v", map[string]interface{}{
+				"order_no":     orderNo,
+				"payment_type": paymentType,
+			})
+		}
+
+		recharge.Status = "paid"
+		recharge.PaidAt = database.NullTime(utils.GetBeijingTime())
+		if externalTransactionID != "" {
+			recharge.PaymentTransactionID = database.NullString(externalTransactionID)
+		}
+		if !recharge.PaymentMethod.Valid || recharge.PaymentMethod.String == "" {
+			recharge.PaymentMethod = database.NullString(paymentType)
+		}
+		if err := tx.Save(&recharge).Error; err != nil {
+			return err
+		}
+
+		if err := updatePaymentTransactionTx(tx, 0, recharge.UserID, int(math.Round(recharge.Amount*100)), externalTransactionID, paymentConfigID, callbackData, orderNo); err != nil {
+			if fallbackErr := updatePaymentTransactionTx(tx, 0, recharge.UserID, int(math.Round(recharge.Amount*100)), externalTransactionID, paymentConfigID, callbackData, ""); fallbackErr != nil {
+				utils.LogWarn("PaymentNotify: payment transaction not found for recharge: %+v", map[string]interface{}{
+					"order_no": orderNo,
+					"user_id":  recharge.UserID,
+					"amount":   recharge.Amount,
+				})
+			}
+		}
+
+		var user models.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, recharge.UserID).Error; err != nil {
+			return err
+		}
+		oldBalance := user.Balance
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
+			Update("balance", gorm.Expr("balance + ?", recharge.Amount)).Error; err != nil {
+			return err
+		}
+		if err := tx.First(&freshUser, user.ID).Error; err != nil {
+			return err
+		}
+
+		rechargeID := uint(recharge.ID)
+		userID := user.ID
+		if err := utils.CreateBalanceLogWithDB(
+			tx,
+			user.ID,
+			"recharge",
+			recharge.Amount,
+			oldBalance,
+			freshUser.Balance,
+			nil,
+			&rechargeID,
+			fmt.Sprintf("充值成功，订单号: %s", orderNo),
+			"user",
+			&userID,
+			ipAddress,
+		); err != nil {
+			return err
+		}
+
+		result = recharge
+		paidNow = true
+		return nil
+	})
+
+	if err == nil && paidNow && result.ID > 0 && result.Status == "paid" {
+		sendRechargePaidNotifications(db, &result, &freshUser, paymentType)
+	}
+
+	return &result, err
+}
+
+func sendRechargePaidNotifications(db *gorm.DB, recharge *models.RechargeRecord, user *models.User, paymentType string) {
+	if recharge == nil || recharge.ID == 0 || user == nil || user.ID == 0 {
+		return
+	}
+
+	paymentMethod := paymentType
+	if recharge.PaymentMethod.Valid && recharge.PaymentMethod.String != "" {
+		paymentMethod = recharge.PaymentMethod.String
+	}
+	if paymentMethod == "" {
+		paymentMethod = "在线支付"
+	}
+	paymentTime := utils.FormatBeijingTime(utils.GetBeijingTime())
+	if recharge.PaidAt.Valid {
+		paymentTime = utils.FormatBeijingTime(recharge.PaidAt.Time)
+	}
+
+	data := map[string]interface{}{
+		"order_no":       recharge.OrderNo,
+		"username":       user.Username,
+		"email":          user.Email,
+		"amount":         recharge.Amount,
+		"balance":        user.Balance,
+		"payment_method": paymentMethod,
+		"payment_time":   paymentTime,
+	}
+
+	emailService := email.NewEmailService()
+	templateBuilder := email.NewEmailTemplateBuilder()
+	if notification.ShouldSendCustomerNotificationToUser(user, "recharge_paid", notification.ChannelEmail) {
+		content := templateBuilder.GetAdminNotificationTemplate("recharge_paid", "充值到账通知", "您的充值已到账。", data)
+		if err := emailService.QueueEmail(user.Email, "充值到账通知", content, "recharge_success"); err != nil {
+			utils.LogErrorMsg("sendRechargePaidNotifications: 充值到账邮件失败: order_no=%s, email=%s, error=%v", recharge.OrderNo, user.Email, err)
+		}
+	}
+
+	notificationService := notification.NewNotificationService()
+	if notification.ShouldSendCustomerNotificationToUser(user, "recharge_paid", notification.ChannelSystem) {
+		content := fmt.Sprintf("您的充值 ¥%.2f 已到账，当前余额 ¥%.2f。", recharge.Amount, user.Balance)
+		if err := notificationService.CreateUserSystemNotification(user, "recharge_paid", "充值到账", content); err != nil {
+			utils.LogErrorMsg("sendRechargePaidNotifications: 充值站内通知失败: order_no=%s, user_id=%d, error=%v", recharge.OrderNo, user.ID, err)
+		}
+	}
+
+	if err := notificationService.SendAdminNotification("recharge_paid", data); err != nil {
+		utils.LogErrorMsg("sendRechargePaidNotifications: 管理员充值通知失败: order_no=%s, error=%v", recharge.OrderNo, err)
+	}
+
+	if db != nil {
+		utils.LogInfo("sendRechargePaidNotifications: 充值通知处理完成: order_no=%s", recharge.OrderNo)
+	}
 }
 
 func PaymentNotify(c *gin.Context) {
@@ -213,6 +567,18 @@ func PaymentNotify(c *gin.Context) {
 					}
 				}
 			}
+		} else if strings.Contains(contentType, "xml") {
+			if body, err := io.ReadAll(c.Request.Body); err == nil && len(body) > 0 {
+				if xmlParams, parseErr := parseXMLPaymentParams(body); parseErr == nil {
+					for k, v := range xmlParams {
+						params[k] = v
+					}
+				} else {
+					utils.LogError("PaymentNotify: XML参数解析失败", parseErr, map[string]interface{}{
+						"payment_type": paymentType,
+					})
+				}
+			}
 		}
 	}
 
@@ -256,42 +622,13 @@ func PaymentNotify(c *gin.Context) {
 	}
 	utils.LogInfo("PaymentNotify: 回调参数 - %+v", safeParams)
 
-	var paymentConfig models.PaymentConfig
-	queryPayType := paymentType
-	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-			queryPayType = "yipay"
-		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
-					"payment_type": paymentType,
-					"query_type":   queryPayType,
-				})
-				c.String(http.StatusBadRequest, "支付配置不存在")
-				return
-			}
-		}
-	} else if paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-			queryPayType = "codepay"
-		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
-					"payment_type": paymentType,
-					"query_type":   queryPayType,
-				})
-				c.String(http.StatusBadRequest, "支付配置不存在")
-				return
-			}
-		}
-	} else {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-			utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
-				"payment_type": paymentType,
-			})
-			c.String(http.StatusBadRequest, "支付配置不存在")
-			return
-		}
+	paymentConfig, err := utils.FindEnabledPaymentConfig(db, paymentType)
+	if err != nil {
+		utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
+			"payment_type": paymentType,
+		})
+		c.String(http.StatusBadRequest, "支付配置不存在")
+		return
 	}
 
 	utils.LogInfo("PaymentNotify: 找到支付配置 - payment_type=%s, config_id=%d, config_pay_type=%s",
@@ -346,12 +683,7 @@ func PaymentNotify(c *gin.Context) {
 			"payment_type": paymentType,
 			"order_no":     params["out_trade_no"],
 		})
-		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
-			paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
-			c.String(http.StatusOK, "fail")
-		} else {
-			c.String(http.StatusBadRequest, "签名验证失败")
-		}
+		paymentCallbackAck(c, paymentType, false, "签名验证失败")
 		return
 	}
 
@@ -372,6 +704,9 @@ func PaymentNotify(c *gin.Context) {
 	externalTransactionID := params["trade_no"]
 	if externalTransactionID == "" {
 		externalTransactionID = params["pay_no"] // 兼容部分码支付平台
+	}
+	if externalTransactionID == "" {
+		externalTransactionID = params["transaction_id"] // 微信支付交易号
 	}
 	// 处理交易号参数重复的情况
 	if externalTransactionID != "" && strings.Contains(externalTransactionID, ",") {
@@ -433,6 +768,21 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
+	if paymentType == "wechat" {
+		returnCode := params["return_code"]
+		resultCode := params["result_code"]
+		if (returnCode != "" && returnCode != "SUCCESS") || (resultCode != "" && resultCode != "SUCCESS") {
+			utils.LogWarn("PaymentNotify: wechat trade status not success: %+v", map[string]interface{}{
+				"payment_type": paymentType,
+				"order_no":     orderNo,
+				"return_code":  returnCode,
+				"result_code":  resultCode,
+			})
+			paymentCallbackAck(c, paymentType, true, "OK")
+			return
+		}
+	}
+
 	if orderNo == "" {
 		utils.LogError("PaymentNotify: missing order number", nil, map[string]interface{}{
 			"payment_type": paymentType,
@@ -458,223 +808,44 @@ func PaymentNotify(c *gin.Context) {
 			utils.CreateBusinessLog(c, "payment_callback_order_not_found", "支付回调订单或充值记录不存在", "error", map[string]interface{}{
 				"order_no": orderNo, "payment_type": paymentType,
 			})
-			if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
-				paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
-				c.String(http.StatusOK, "success")
-			} else {
-				c.String(http.StatusBadRequest, "订单或充值记录不存在")
-			}
+			paymentCallbackAck(c, paymentType, false, "订单或充值记录不存在")
 			return
 		}
 	}
 
 	if isRecharge {
-		if externalTransactionID != "" {
-			var existingTransaction models.PaymentTransaction
-			if err := db.Where("external_transaction_id = ? AND status = ?", externalTransactionID, "success").First(&existingTransaction).Error; err == nil {
-				c.String(http.StatusOK, "success")
-				return
-			}
-		}
-
-		// 验证充值金额（所有支付方式都需要验证）
-		var callbackAmount float64
-		amountVerified := false
-
-		if paymentType == "alipay" {
-			if amountStr, ok := params["total_amount"]; ok {
-				_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
-				amountVerified = true
-			}
-		} else if paymentType == "wechat" {
-			// 微信支付金额单位是分
-			if amountStr, ok := params["total_fee"]; ok {
-				var amountInCents int
-				_, _ = fmt.Sscanf(amountStr, "%d", &amountInCents) // Ignore error, use default value
-				callbackAmount = float64(amountInCents) / 100.0
-				amountVerified = true
-			}
-		} else if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
-			amountStr := params["money"]
-			if amountStr == "" {
-				amountStr = params["price"]
-			}
-			if amountStr == "" {
-				amountStr = params["amount"]
-			}
-			if amountStr != "" {
-				_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
-				amountVerified = true
-			}
-		}
-
-		// 如果成功解析到金额，则验证
-		if amountVerified {
-			if callbackAmount < recharge.Amount-0.01 || callbackAmount > recharge.Amount+0.01 {
-				utils.LogError("PaymentNotify: recharge amount mismatch", nil, map[string]interface{}{
-					"order_no":        orderNo,
-					"payment_type":    paymentType,
-					"expected_amount": recharge.Amount,
-					"callback_amount": callbackAmount,
-				})
-				utils.CreateBusinessLog(c, "payment_callback_amount_mismatch", "支付回调充值金额与订单不一致", "error", map[string]interface{}{
-					"order_no": orderNo, "payment_type": paymentType, "expected": recharge.Amount, "callback_amount": callbackAmount,
-				})
-				c.String(http.StatusBadRequest, "充值金额不匹配")
-				return
-			}
-		} else {
-			// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
-			utils.LogWarn("PaymentNotify: unable to verify recharge amount for payment type: %+v", map[string]interface{}{
-				"order_no":     orderNo,
-				"payment_type": paymentType,
-			})
-		}
-
-		if recharge.Status == "paid" {
-			c.String(http.StatusOK, "success")
-			return
-		}
-
-		err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-			recharge.Status = "paid"
-			recharge.PaidAt = database.NullTime(utils.GetBeijingTime())
-			if externalTransactionID != "" {
-				recharge.PaymentTransactionID = database.NullString(externalTransactionID)
-			}
-			if !recharge.PaymentMethod.Valid || recharge.PaymentMethod.String == "" {
-				recharge.PaymentMethod = database.NullString(paymentType)
-			}
-			if err := tx.Save(&recharge).Error; err != nil {
-				utils.LogError("PaymentNotify: failed to update recharge", err, map[string]interface{}{
-					"order_no": orderNo,
-				})
-				return err
-			}
-
-			// 更新支付交易记录状态
-			var paymentTx models.PaymentTransaction
-			if err := tx.Where("user_id = ? AND amount = ? AND status = ?", recharge.UserID, int(recharge.Amount*100), "pending").
-				Order("created_at DESC").First(&paymentTx).Error; err == nil {
-				paymentTx.Status = "success"
-				if externalTransactionID != "" {
-					paymentTx.ExternalTransactionID = database.NullString(externalTransactionID)
-				}
-				if callbackData, err := json.Marshal(params); err == nil {
-					paymentTx.CallbackData = database.NullString(string(callbackData))
-				}
-				if err := tx.Save(&paymentTx).Error; err != nil {
-					utils.LogError("PaymentNotify: failed to update payment transaction for recharge", err, map[string]interface{}{
-						"order_no": orderNo,
-					})
-					// 不返回错误，因为充值记录已更新成功
-				}
-			} else {
-				utils.LogWarn("PaymentNotify: payment transaction not found for recharge: %+v", map[string]interface{}{
-					"order_no": orderNo,
-					"user_id":  recharge.UserID,
-					"amount":   recharge.Amount,
-				})
-			}
-
-			var user models.User
-			if err := tx.First(&user, recharge.UserID).Error; err == nil {
-				oldBalance := user.Balance
-				user.Balance += recharge.Amount
-				if err := tx.Save(&user).Error; err != nil {
-					utils.LogError("PaymentNotify: failed to update user balance", err, map[string]interface{}{
-						"order_no": orderNo,
-						"user_id":  user.ID,
-					})
-					return err
-				}
-				utils.LogInfo("PaymentNotify: 充值成功 - order_no=%s, user_id=%d, amount=%.2f, old_balance=%.2f, new_balance=%.2f",
-					orderNo, user.ID, recharge.Amount, oldBalance, user.Balance)
-
-				// 记录余额日志
-				rechargeID := uint(recharge.ID)
-				ipAddress := utils.GetRealClientIP(c)
-				userID := user.ID
-				if err := utils.CreateBalanceLog(
-					user.ID,
-					"recharge",
-					recharge.Amount,
-					oldBalance,
-					user.Balance,
-					nil,
-					&rechargeID,
-					fmt.Sprintf("充值成功，订单号: %s", orderNo),
-					"user",
-					&userID,
-					ipAddress,
-				); err != nil {
-					log.Printf("failed to create balance log: %v", err)
-				}
-			}
-			return nil
-		})
-
+		processedRecharge, err := processPaidRecharge(db, orderNo, paymentType, paymentConfig.ID, externalTransactionID, params, utils.GetRealClientIP(c))
 		if err != nil {
 			utils.LogError("PaymentNotify: failed to process recharge transaction", err, map[string]interface{}{
 				"order_no": orderNo,
 			})
-			c.String(http.StatusInternalServerError, "处理失败")
+			utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（充值入账失败）", "error", map[string]interface{}{
+				"order_no": orderNo, "payment_type": paymentType, "reason": err.Error(),
+			})
+			paymentCallbackAck(c, paymentType, false, "处理失败")
 			return
 		}
 
 		utils.LogInfo("PaymentNotify: 充值回调处理成功 - order_no=%s, user_id=%d, amount=%.2f, payment_type=%s",
-			orderNo, recharge.UserID, recharge.Amount, paymentType)
+			orderNo, processedRecharge.UserID, processedRecharge.Amount, paymentType)
 
 		utils.CreateBusinessLog(c, "payment_callback_success", "支付回调处理成功（充值）", "info", map[string]interface{}{
 			"order_no":     orderNo,
-			"amount":       recharge.Amount,
+			"amount":       processedRecharge.Amount,
 			"payment_type": paymentType,
 		})
 
-		c.String(http.StatusOK, "success")
+		paymentCallbackAck(c, paymentType, true, "OK")
 		return
 	}
 
-	// 验证订单金额（所有支付方式都需要验证）
-	var callbackAmount float64
-	amountVerified := false
-
-	if paymentType == "alipay" {
-		if amountStr, ok := params["total_amount"]; ok {
-			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
-			amountVerified = true
-		}
-	} else if paymentType == "wechat" {
-		// 微信支付金额单位是分
-		if amountStr, ok := params["total_fee"]; ok {
-			var amountInCents int
-			_, _ = fmt.Sscanf(amountStr, "%d", &amountInCents) // Ignore error, use default value
-			callbackAmount = float64(amountInCents) / 100.0
-			amountVerified = true
-		}
-	} else if strings.HasPrefix(paymentType, "yipay") || strings.HasPrefix(paymentType, "codepay") {
-		amountStr := params["money"]
-		if amountStr == "" {
-			amountStr = params["price"]
-		}
-		if amountStr == "" {
-			amountStr = params["amount"]
-		}
-		if amountStr != "" {
-			_, _ = fmt.Sscanf(amountStr, "%f", &callbackAmount) // Ignore error, use default value
-			amountVerified = true
-		}
-	}
-
-	// 如果成功解析到金额，则验证
-	if amountVerified {
+	if callbackAmount, amountVerified := parseCallbackAmount(paymentType, params); amountVerified {
 		expectedAmount := order.Amount
 		if order.FinalAmount.Valid {
 			expectedAmount = order.FinalAmount.Float64
 		}
 
-		expectedCallbackAmount := expectedAmount
-		if callbackAmount < expectedCallbackAmount-0.01 || callbackAmount > expectedCallbackAmount+0.01 {
+		if !amountMatches(expectedAmount, callbackAmount) {
 			utils.LogError("PaymentNotify: amount mismatch", nil, map[string]interface{}{
 				"order_no":        orderNo,
 				"payment_type":    paymentType,
@@ -688,159 +859,38 @@ func PaymentNotify(c *gin.Context) {
 			return
 		}
 	} else {
-		// 如果无法解析金额，记录警告但不阻止（某些支付方式可能不返回金额）
 		utils.LogWarn("PaymentNotify: unable to verify order amount for payment type: %+v", map[string]interface{}{
 			"order_no":     orderNo,
 			"payment_type": paymentType,
 		})
 	}
 
-	if order.Status == "paid" {
-		utils.LogInfo("PaymentNotify: order already paid, ensuring subscription is activated - order_no=%s", orderNo)
-		go func(orderNoParam string) {
-			defer func() {
-				if r := recover(); r != nil {
-					utils.LogError("PaymentNotify: panic in async processing (already paid)", fmt.Errorf("%v", r), map[string]interface{}{
-						"order_no": orderNoParam,
-					})
-				}
-			}()
-
-			var freshOrder models.Order
-			if err := db.Preload("Package").Where("order_no = ?", orderNoParam).First(&freshOrder).Error; err != nil {
-				utils.LogError("PaymentNotify: 重新加载订单失败 (already paid)", err, map[string]interface{}{
-					"order_no": orderNoParam,
-				})
-				return
-			}
-
-			var subscription models.Subscription
-			if err := db.Where("user_id = ?", freshOrder.UserID).First(&subscription).Error; err != nil {
-				utils.LogInfo("PaymentNotify: subscription not found, reprocessing order to activate - order_no=%s", orderNoParam)
-				orderService := orderServicePkg.NewOrderService()
-				if _, err := orderService.ProcessPaidOrder(&freshOrder); err != nil {
-					utils.LogError("PaymentNotify: failed to reprocess order for subscription activation", err, map[string]interface{}{
-						"order_no": orderNoParam,
-					})
-				} else {
-					utils.LogInfo("PaymentNotify: subscription activated successfully - order_no=%s, package_id=%d", orderNoParam, freshOrder.PackageID)
-				}
-			} else {
-				utils.LogInfo("PaymentNotify: subscription already exists, sending notifications - order_no=%s", orderNoParam)
-			}
-
-			sendPaymentNotifications(db, orderNoParam)
-		}(orderNo)
-		c.String(http.StatusOK, "success")
-		return
+	callbackData := ""
+	if data, err := json.Marshal(params); err == nil {
+		callbackData = string(data)
 	}
-
-	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-		var freshOrder models.Order
-		if err := tx.Preload("Package").Where("order_no = ?", orderNo).First(&freshOrder).Error; err != nil {
-			utils.LogError("PaymentNotify: 事务中重新加载订单失败", err, map[string]interface{}{
-				"order_no": orderNo,
-			})
-			return err
-		}
-
-		if freshOrder.Status == "paid" {
-			utils.LogInfo("PaymentNotify: 订单已经是paid状态，跳过更新 - order_no=%s", orderNo)
-			order = freshOrder
-			return nil
-		}
-
-		freshOrder.Status = "paid"
-		freshOrder.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		if err := tx.Save(&freshOrder).Error; err != nil {
-			utils.LogError("PaymentNotify: failed to update order", err, map[string]interface{}{
-				"order_no": orderNo,
-			})
-			return err
-		}
-		order = freshOrder
-
-		var transaction models.PaymentTransaction
-		if err := tx.Where("order_id = ?", order.ID).First(&transaction).Error; err == nil {
-			transaction.Status = "success"
-			if externalTransactionID != "" {
-				transaction.ExternalTransactionID = database.NullString(externalTransactionID)
-			}
-			if callbackData, err := json.Marshal(params); err == nil {
-				transaction.CallbackData = database.NullString(string(callbackData))
-			}
-			if err := tx.Save(&transaction).Error; err != nil {
-				utils.LogError("PaymentNotify: failed to update transaction", err, map[string]interface{}{
-					"order_no": orderNo,
-				})
-				return err
-			}
-		} else {
-			utils.LogWarn("PaymentNotify: payment transaction not found for order: %+v", map[string]interface{}{
-				"order_no": orderNo,
-				"order_id": order.ID,
-			})
-		}
-		return nil
+	orderService := orderServicePkg.NewOrderService()
+	_, err = orderService.FinalizePaidOrder(orderNo, orderServicePkg.FinalizePaidOrderOptions{
+		PaymentMethodName:     paymentType,
+		PaymentMethodID:       paymentConfig.ID,
+		ExternalTransactionID: externalTransactionID,
+		CallbackData:          callbackData,
+		IPAddress:             utils.GetRealClientIP(c),
 	})
-
 	if err != nil {
-		utils.LogError("PaymentNotify: failed to process payment transaction", err, map[string]interface{}{
+		utils.LogError("PaymentNotify: failed to finalize paid order", err, map[string]interface{}{
 			"order_no": orderNo,
 		})
-		utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（更新订单/事务失败）", "error", map[string]interface{}{
+		utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（订单履约失败）", "error", map[string]interface{}{
 			"order_no": orderNo, "payment_type": paymentType, "reason": err.Error(),
 		})
-		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
-			paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
-			c.String(http.StatusOK, "fail")
-		} else {
-			c.String(http.StatusInternalServerError, "处理失败")
-		}
+		paymentCallbackAck(c, paymentType, false, "处理失败")
 		return
 	}
 
 	utils.LogInfo("PaymentNotify: 订单状态已更新为paid - order_no=%s, order_id=%d, status=%s", orderNo, order.ID, order.Status)
 
-	utils.LogInfo("PaymentNotify: 订单状态已更新为paid，开始处理订单 - order_no=%s, order_id=%d", orderNo, order.ID)
-
-	go func(orderNoParam string) {
-		defer func() {
-			if r := recover(); r != nil {
-				utils.LogError("PaymentNotify: panic in async processing", fmt.Errorf("%v", r), map[string]interface{}{
-					"order_no": orderNoParam,
-				})
-			}
-		}()
-
-		utils.LogInfo("PaymentNotify: 开始处理已支付订单 - order_no=%s", orderNoParam)
-
-		var freshOrder models.Order
-		if err := db.Preload("Package").Where("order_no = ?", orderNoParam).First(&freshOrder).Error; err != nil {
-			utils.LogError("PaymentNotify: 重新加载订单失败", err, map[string]interface{}{
-				"order_no": orderNoParam,
-			})
-			return
-		}
-
-		if freshOrder.Status != "paid" {
-			utils.LogWarn("PaymentNotify: 订单状态不是paid，跳过处理 - order_no=%s, status=%s", orderNoParam, freshOrder.Status)
-			return
-		}
-
-		orderService := orderServicePkg.NewOrderService()
-		_, processErr := orderService.ProcessPaidOrder(&freshOrder)
-		if processErr != nil {
-			utils.LogError("PaymentNotify: process paid order failed", processErr, map[string]interface{}{
-				"order_id": freshOrder.ID,
-				"order_no": orderNoParam,
-			})
-		} else {
-			utils.LogInfo("PaymentNotify: 订单处理成功，套餐已开通 - order_no=%s, package_id=%d", orderNoParam, freshOrder.PackageID)
-		}
-
-		sendPaymentNotifications(db, orderNoParam)
-	}(orderNo)
+	sendPaymentNotifications(db, orderNo)
 
 	utils.CreateBusinessLog(c, "payment_callback_success", "支付回调处理成功（订单）", "info", map[string]interface{}{
 		"order_no":     orderNo,
@@ -848,7 +898,7 @@ func PaymentNotify(c *gin.Context) {
 		"payment_type": paymentType,
 	})
 
-	c.String(http.StatusOK, "success")
+	paymentCallbackAck(c, paymentType, true, "OK")
 }
 
 func sendPaymentNotifications(db *gorm.DB, orderNo string) {
@@ -880,7 +930,7 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 		packageName = "设备/时长升级"
 	}
 
-	if notification.ShouldSendCustomerNotification("new_order") {
+	if notification.ShouldSendCustomerNotificationToUser(&latestUser, "order_paid", notification.ChannelEmail) {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
 
@@ -938,6 +988,13 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 	}
 
 	notificationService := notification.NewNotificationService()
+	if notification.ShouldSendCustomerNotificationToUser(&latestUser, "order_paid", notification.ChannelSystem) {
+		content := fmt.Sprintf("您的订单 %s 已支付成功，金额 ¥%.2f。", latestOrder.OrderNo, paidAmount)
+		if err := notificationService.CreateUserSystemNotification(&latestUser, "order_paid", "支付成功", content); err != nil {
+			utils.LogErrorMsg("sendPaymentNotifications: 创建站内支付通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
+		}
+	}
+
 	if err := notificationService.SendAdminNotification("order_paid", map[string]interface{}{
 		"order_no":       latestOrder.OrderNo,
 		"username":       latestUser.Username,
@@ -965,6 +1022,31 @@ func GetPaymentStatus(c *gin.Context) {
 	if err := db.Where("id = ? AND user_id = ?", transactionID, user.ID).First(&transaction).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "支付交易不存在", err)
 		return
+	}
+
+	if transaction.Status == "pending" && shouldQueryPaymentStatus(transaction.CreatedAt) {
+		orderNo := ""
+		isRecharge := false
+		if transaction.OrderID > 0 {
+			var order models.Order
+			if err := db.Where("id = ? AND user_id = ?", transaction.OrderID, user.ID).First(&order).Error; err == nil {
+				orderNo = order.OrderNo
+			}
+		} else if transaction.TransactionID.Valid && transaction.TransactionID.String != "" {
+			orderNo = transaction.TransactionID.String
+			isRecharge = true
+		}
+		if orderNo != "" {
+			if success, err := performPaymentStatusQuery(db, orderNo, isRecharge); success {
+				db.Where("id = ? AND user_id = ?", transactionID, user.ID).First(&transaction)
+			} else if err != nil {
+				utils.LogWarn("GetPaymentStatus: active payment query failed: %+v", map[string]interface{}{
+					"transaction_id": transactionID,
+					"order_no":       orderNo,
+					"error":          err.Error(),
+				})
+			}
+		}
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{

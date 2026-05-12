@@ -185,7 +185,7 @@
 </template>
 <script>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { subscriptionAPI, userAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
@@ -194,7 +194,6 @@ import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
-import '@/styles/list-common.scss'
 export default {
   name: 'Subscription',
   components: {
@@ -207,20 +206,21 @@ export default {
     const sendEmailLoading = ref(false)
     const sendEmailRequesting = ref(false)
     const showUpgradeDrawer = ref(false)
+    let refreshPromise = null
     const handleUpgradeSuccess = async () => {
-      await Promise.all([fetchSubscription(), fetchUserInfo()])
+      await refreshSubscription()
     }
     onMounted(() => {
-      fetchSubscription()
-      fetchUserInfo()
+      refreshSubscription()
       const handleSubscriptionUpdate = async () => {
-        await Promise.all([
-          fetchSubscription(),
-          fetchUserInfo()
-        ])
+        if (!refreshPromise) {
+          await refreshSubscription()
+        }
       }
       const handleUserInfoUpdate = async () => {
-        await fetchUserInfo()
+        if (!refreshPromise) {
+          await refreshSubscription()
+        }
       }
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
@@ -229,6 +229,13 @@ export default {
         window.removeEventListener('user-info-updated', handleUserInfoUpdate)
       })
     })
+    const refreshSubscription = async () => {
+      if (refreshPromise) return refreshPromise
+      refreshPromise = fetchSubscription().finally(() => {
+        refreshPromise = null
+      })
+      return refreshPromise
+    }
     const fetchSubscription = async () => {
       try {
         // 并发加载订阅和用户信息，提高页面加载速度
@@ -354,7 +361,7 @@ export default {
           return
         }
         ElMessage.success('订阅地址已重置')
-        await fetchSubscription()
+        await refreshSubscription()
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error(error.response?.data?.message || '重置失败')
@@ -407,16 +414,6 @@ export default {
       if (subscription.status) return subscription.status === 'active'
       if (!subscription.expire_time) return false
       return !isExpiredUtil(subscription.expire_time)
-    }
-    const fetchUserInfo = async () => {
-      try {
-        const userResponse = await userAPI.getUserInfo()
-        if (userResponse?.data?.success) {
-          // no-op: shared upgrade drawer loads balance itself
-        }
-      } catch (error) {
-        console.error('获取用户信息失败:', error)
-      }
     }
     const isDeviceFull = (sub) => {
       if (!sub) return false

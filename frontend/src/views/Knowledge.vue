@@ -106,11 +106,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
-import DOMPurify from 'dompurify'
+import { sanitizeArticleHtml } from '@/utils/sanitizeHtml'
 
 const iconMap = { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook }
 const resolveIcon = (name) => iconMap[name] || Folder
@@ -140,14 +140,7 @@ const getSummary = (article) => {
   return '暂无摘要'
 }
 
-const sanitizeContent = (html) => {
-  if (!html) return ''
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'div', 'span', 'blockquote', 'pre', 'code', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
-    ALLOWED_ATTR: ['href', 'target', 'style', 'class', 'id', 'src', 'alt', 'width', 'height'],
-    ALLOW_DATA_ATTR: false
-  })
-}
+const sanitizeContent = sanitizeArticleHtml
 
 const loadCategories = async () => {
   try {
@@ -200,6 +193,10 @@ onMounted(() => {
     loadArticles()
   ])
   window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 

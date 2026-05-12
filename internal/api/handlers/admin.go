@@ -23,7 +23,7 @@ import (
 
 func GetAdminInvites(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Model(&models.InviteCode{}).Preload("User").Preload("InviteRelations")
+	query := db.Model(&models.InviteCode{})
 	page, size, offset := getPagination(c)
 
 	if userQuery := utils.SanitizeSearchKeyword(c.Query("user_query")); userQuery != "" {
@@ -88,7 +88,7 @@ func GetAdminInvites(c *gin.Context) {
 
 func GetAdminInviteRelations(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Model(&models.InviteRelation{}).Preload("Inviter").Preload("Invitee").Preload("InviteCode")
+	query := db.Model(&models.InviteRelation{})
 	page, size, offset := getPagination(c)
 
 	if inviterQuery := utils.SanitizeSearchKeyword(c.Query("inviter_query")); inviterQuery != "" {
@@ -153,12 +153,16 @@ func GetAdminInviteStatistics(c *gin.Context) {
 		TotalInviteRelations int64   `json:"total_invite_relations"`
 		TotalInviteReward    float64 `json:"total_invite_reward"`
 	}
-	db.Model(&models.InviteCode{}).Count(&stats.TotalInviteCodes)
-	db.Model(&models.InviteCode{}).Where("is_active = ?", true).Count(&stats.ActiveInviteCodes)
-	db.Model(&models.InviteRelation{}).Count(&stats.TotalInviteRelations)
-	var totalReward float64
-	db.Model(&models.User{}).Select("COALESCE(SUM(total_invite_reward), 0)").Scan(&totalReward)
-	stats.TotalInviteReward = totalReward
+	if err := db.Raw(`
+		SELECT
+			(SELECT COUNT(*) FROM invite_codes) AS total_invite_codes,
+			(SELECT COUNT(*) FROM invite_codes WHERE is_active = ?) AS active_invite_codes,
+			(SELECT COUNT(*) FROM invite_relations) AS total_invite_relations,
+			(SELECT COALESCE(SUM(total_invite_reward), 0) FROM users) AS total_invite_reward
+	`, true).Scan(&stats).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请统计失败", err)
+		return
+	}
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
@@ -251,7 +255,7 @@ func BatchDeleteInviteRelations(c *gin.Context) {
 
 func GetAdminTickets(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Model(&models.Ticket{}).Preload("User").Preload("Assignee")
+	query := db.Model(&models.Ticket{}).Preload("User")
 	page, size, offset := getPagination(c)
 
 	if keyword := utils.SanitizeSearchKeyword(c.Query("keyword")); keyword != "" {
@@ -309,26 +313,22 @@ func GetAdminTickets(c *gin.Context) {
 		if adminUserID > 0 {
 			var unreadCounts []CountResult
 			db.Model(&models.TicketReply{}).Select("ticket_id, COUNT(*) as cnt").
-				Where("ticket_id IN ? AND is_admin != ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
-					ticketIDs, "true", false, adminUserID).
+				Joins(ticketReadJoin(adminUserID)).
+				Where("ticket_replies.ticket_id IN ? AND ticket_replies.is_admin = ? AND (ticket_read_state.read_at IS NULL OR ticket_replies.created_at > ticket_read_state.read_at)",
+					ticketIDs, false).
 				Group("ticket_id").Find(&unreadCounts)
 			for _, r := range unreadCounts {
 				unreadMap[r.TicketID] = r.Cnt
 			}
 		}
 
-		// 批量获取 ticketRead
-		var ticketReads []models.TicketRead
-		db.Where("ticket_id IN ? AND user_id = ?", ticketIDs, adminUserID).Find(&ticketReads)
-		readMap := make(map[uint]bool)
-		for _, tr := range ticketReads {
-			readMap[tr.TicketID] = true
-		}
+		readMap := getTicketReadAtMap(db, ticketIDs, adminUserID)
 
 		for _, ticket := range tickets {
 			repliesCount := repliesMap[ticket.ID]
 			unreadRepliesCount := unreadMap[ticket.ID]
-			hasNewTicket := !readMap[ticket.ID]
+			_, hasRead := readMap[ticket.ID]
+			hasNewTicket := !hasRead
 			hasUnread := unreadRepliesCount > 0 || hasNewTicket
 
 			ticketList = append(ticketList, gin.H{
@@ -341,8 +341,6 @@ func GetAdminTickets(c *gin.Context) {
 				"type":           ticket.Type,
 				"status":         ticket.Status,
 				"priority":       ticket.Priority,
-				"assigned_to":    ticket.AssignedTo,
-				"assignee":       ticket.Assignee,
 				"admin_notes":    ticket.AdminNotes,
 				"replies_count":  repliesCount,
 				"unread_replies": unreadRepliesCount,
@@ -365,11 +363,15 @@ func GetAdminTicketStatistics(c *gin.Context) {
 		Resolved   int64 `json:"resolved"`
 		Closed     int64 `json:"closed"`
 	}
-	db.Model(&models.Ticket{}).Count(&stats.Total)
-	db.Model(&models.Ticket{}).Where("status = ?", "pending").Count(&stats.Pending)
-	db.Model(&models.Ticket{}).Where("status = ?", "processing").Count(&stats.Processing)
-	db.Model(&models.Ticket{}).Where("status = ?", "resolved").Count(&stats.Resolved)
-	db.Model(&models.Ticket{}).Where("status = ?", "closed").Count(&stats.Closed)
+	db.Raw(`
+		SELECT
+			COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS pending,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS processing,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS resolved,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS closed
+		FROM tickets
+	`, "pending", "processing", "resolved", "closed").Scan(&stats)
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
@@ -377,7 +379,7 @@ func GetAdminTicket(c *gin.Context) {
 	id := c.Param("id")
 	db := database.GetDB()
 	var ticket models.Ticket
-	if err := db.Preload("User").Preload("Assignee").
+	if err := db.Preload("User").
 		Preload("Replies", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC") }).
 		Preload("Attachments").First(&ticket, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -396,8 +398,11 @@ func GetAdminTicket(c *gin.Context) {
 		adminUserID = adminUser.ID
 	}
 
+	if adminUserID > 0 {
+		processTicketReadStatus(db, &ticket, adminUserID, true)
+	}
+
 	replies := make([]gin.H, 0)
-	now := utils.GetBeijingTime()
 	for _, reply := range ticket.Replies {
 		replyData := gin.H{
 			"id":         reply.ID,
@@ -408,31 +413,12 @@ func GetAdminTicket(c *gin.Context) {
 			"created_at": utils.FormatBeijingTime(reply.CreatedAt),
 		}
 		if !reply.IsAdmin {
-			isUnread := !reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != adminUserID)
-			replyData["is_unread"] = isUnread
+			replyData["is_unread"] = false
 			replyData["is_user_reply"] = true
-			if isUnread && adminUserID > 0 {
-				reply.IsRead = true
-				reply.ReadBy = &adminUserID
-				reply.ReadAt = &now
-				db.Save(&reply)
-			}
 		} else {
 			replyData["is_admin_reply"] = true
 		}
 		replies = append(replies, replyData)
-	}
-
-	if adminUserID > 0 {
-		var ticketRead models.TicketRead
-		err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, adminUserID).First(&ticketRead).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ticketRead = models.TicketRead{TicketID: ticket.ID, UserID: adminUserID, ReadAt: now}
-			db.Create(&ticketRead)
-		} else if err == nil {
-			ticketRead.ReadAt = now
-			db.Save(&ticketRead)
-		}
 	}
 
 	attachments := make([]gin.H, 0)
@@ -467,8 +453,6 @@ func GetAdminTicket(c *gin.Context) {
 		"type":          ticket.Type,
 		"status":        ticket.Status,
 		"priority":      ticket.Priority,
-		"assigned_to":   ticket.AssignedTo,
-		"assignee":      ticket.Assignee,
 		"admin_notes":   ticket.AdminNotes,
 		"replies":       replies,
 		"replies_count": repliesCount,
@@ -844,10 +828,14 @@ func GetEmailQueueStatistics(c *gin.Context) {
 		SentEmails    int64 `json:"sent_emails"`
 		FailedEmails  int64 `json:"failed_emails"`
 	}
-	db.Model(&models.EmailQueue{}).Count(&stats.TotalEmails)
-	db.Model(&models.EmailQueue{}).Where("status = ?", "pending").Count(&stats.PendingEmails)
-	db.Model(&models.EmailQueue{}).Where("status = ?", "sent").Count(&stats.SentEmails)
-	db.Model(&models.EmailQueue{}).Where("status = ?", "failed").Count(&stats.FailedEmails)
+	db.Raw(`
+		SELECT
+			COUNT(*) AS total_emails,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS pending_emails,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS sent_emails,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS failed_emails
+		FROM email_queue
+	`, "pending", "sent", "failed").Scan(&stats)
 	stats.Total = stats.TotalEmails
 	stats.Pending = stats.PendingEmails
 	stats.Sent = stats.SentEmails
@@ -1387,6 +1375,90 @@ func UpdatePaymentConfig(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "支付配置更新成功", responseData)
 }
+
+func DeletePaymentConfig(c *gin.Context) {
+	id := c.Param("id")
+	db := database.GetDB()
+	var paymentConfig models.PaymentConfig
+	if err := db.First(&paymentConfig, id).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "支付配置不存在", err)
+		return
+	}
+	if err := db.Delete(&paymentConfig).Error; err != nil {
+		utils.LogError("DeletePaymentConfig", err, map[string]interface{}{"id": id})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除支付配置失败", err)
+		return
+	}
+	utils.CreateAuditLogSimple(c, "delete_payment_config", "payment_config", paymentConfig.ID, fmt.Sprintf("管理员操作: 删除支付配置 id=%s %s", id, paymentConfig.PayType))
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+	utils.SuccessResponse(c, http.StatusOK, "支付配置删除成功", gin.H{"id": paymentConfig.ID})
+}
+
+func BulkEnablePaymentConfigs(c *gin.Context) {
+	bulkUpdatePaymentConfigStatus(c, 1, "bulk_enable_payment_configs", "批量启用支付配置成功")
+}
+
+func BulkDisablePaymentConfigs(c *gin.Context) {
+	bulkUpdatePaymentConfigStatus(c, 0, "bulk_disable_payment_configs", "批量禁用支付配置成功")
+}
+
+func BulkDeletePaymentConfigs(c *gin.Context) {
+	ids, err := parseBatchUintIDs(c, "ids", "payment_config_ids", "config_ids")
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误: 需提供支付配置ID数组", err)
+		return
+	}
+
+	db := database.GetDB()
+	result := db.Where("id IN ?", ids).Delete(&models.PaymentConfig{})
+	if result.Error != nil {
+		utils.LogError("BulkDeletePaymentConfigs", result.Error, map[string]interface{}{"ids": ids})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除支付配置失败", result.Error)
+		return
+	}
+	if result.RowsAffected == 0 {
+		utils.ErrorResponse(c, http.StatusNotFound, "未找到可删除的支付配置", gorm.ErrRecordNotFound)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, "bulk_delete_payment_configs", "payment_config", 0,
+		fmt.Sprintf("管理员批量删除支付配置: request_count=%d, deleted=%d", len(ids), result.RowsAffected))
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+	utils.SuccessResponse(c, http.StatusOK, "批量删除支付配置成功", gin.H{
+		"requested_count": len(ids),
+		"deleted_count":   result.RowsAffected,
+	})
+}
+
+func bulkUpdatePaymentConfigStatus(c *gin.Context, status int, action string, message string) {
+	ids, err := parseBatchUintIDs(c, "ids", "payment_config_ids", "config_ids")
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误: 需提供支付配置ID数组", err)
+		return
+	}
+
+	db := database.GetDB()
+	result := db.Model(&models.PaymentConfig{}).Where("id IN ?", ids).Update("status", status)
+	if result.Error != nil {
+		utils.LogError(action, result.Error, map[string]interface{}{"ids": ids, "status": status})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量更新支付配置失败", result.Error)
+		return
+	}
+	if result.RowsAffected == 0 {
+		utils.ErrorResponse(c, http.StatusNotFound, "未找到可更新的支付配置", gorm.ErrRecordNotFound)
+		return
+	}
+
+	utils.CreateAuditLogSimple(c, action, "payment_config", 0,
+		fmt.Sprintf("管理员批量更新支付配置状态: request_count=%d, updated=%d, status=%d", len(ids), result.RowsAffected, status))
+	go cache_service.NewCacheService().ClearPaymentMethodsCache()
+	utils.SuccessResponse(c, http.StatusOK, message, gin.H{
+		"requested_count": len(ids),
+		"updated_count":   result.RowsAffected,
+		"status":          status,
+	})
+}
+
 func getPagination(c *gin.Context) (page int, size int, offset int) {
 	p := utils.ParsePagination(c)
 	return p.Page, p.Size, p.GetOffset()

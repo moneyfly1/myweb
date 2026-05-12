@@ -116,7 +116,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { userAPI } from '@/utils/api'
 import dayjs from 'dayjs'
 import { formatLocation } from '@/utils/date'
@@ -299,8 +299,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
-
 .user-agent-text {
   display: inline-block;
   max-width: 200px;

@@ -1,8 +1,10 @@
 import axios from 'axios'
 import { apiCache } from './apiCache'
+import { ElMessage } from './elementPlusServices'
 
 const SECURE_STORAGE_KEY = 'cboard_secure_'
 const MAX_STORAGE_AGE = 24 * 60 * 60 * 1000
+const PENDING_PAYMENT_KEY = 'pending_payment_order'
 function isSecureContext() {
   return typeof window !== 'undefined' && window.isSecureContext
 }
@@ -86,6 +88,25 @@ export const secureStorage = {
   clear: clearSecureStorage,
   isSecureContext
 }
+
+export const pendingPaymentStorage = {
+  save: (orderNo, type = 'order') => {
+    if (!orderNo) return
+    setStorageItem(PENDING_PAYMENT_KEY, {
+      order_no: String(orderNo),
+      type,
+      timestamp: Date.now()
+    }, true, 30 * 60 * 1000)
+  },
+  get: () => {
+    const data = getStorageItem(PENDING_PAYMENT_KEY)
+    if (!data?.order_no) return null
+    return data
+  },
+  clear: () => {
+    removeStorageItem(PENDING_PAYMENT_KEY)
+  }
+}
 let visibilityHandlers = []
 let isPageVisible = true
 if (typeof document !== 'undefined') {
@@ -128,6 +149,8 @@ function isVisible() {
 let _router = null
 let _useAuthStore = null
 let reconnectTimer = null
+let lastConnectionTestAt = 0
+let connectionTestPromise = null
 let csrfTokenCache = null
 let isRefreshing = { admin: false, user: false }
 let failedQueue = []
@@ -135,6 +158,7 @@ let refreshFailed = { admin: false, user: false }
 const BASE_URL = '/api/v1'
 const TIMEOUT = 10000 // 10秒
 const TEST_CONNECTION_TIMEOUT = 10000 // 10秒
+const VISIBILITY_CONNECTION_MIN_INTERVAL = 30000 // 页面切回时最多30秒探测一次
 const PUBLIC_APIS = [
   '/settings/public-settings',
   '/auth/login',
@@ -142,7 +166,13 @@ const PUBLIC_APIS = [
   '/auth/login-json',
   '/auth/refresh',
   '/auth/forgot-password',
-  '/auth/reset-password'
+  '/auth/reset-password',
+  '/coupons/verify',
+  '/coupons/validate'
+]
+const OPTIONAL_AUTH_APIS = [
+  '/coupons/verify',
+  '/coupons/validate'
 ]
 const ADMIN_PATHS = [
   '/admin',
@@ -172,8 +202,22 @@ onPageVisible(() => {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
-  testConnection()
+  scheduleConnectionTest()
 })
+function scheduleConnectionTest(force = false) {
+  const now = Date.now()
+  if (!force && now - lastConnectionTestAt < VISIBILITY_CONNECTION_MIN_INTERVAL) {
+    return connectionTestPromise || Promise.resolve()
+  }
+  if (connectionTestPromise) {
+    return connectionTestPromise
+  }
+  lastConnectionTestAt = now
+  connectionTestPromise = testConnection().finally(() => {
+    connectionTestPromise = null
+  })
+  return connectionTestPromise
+}
 async function testConnection() {
   try {
     await axios.get(`${BASE_URL}/settings/public-settings`, {
@@ -240,7 +284,8 @@ api.interceptors.request.use(
   config => {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
     const isInAdminPanel = currentPath.startsWith('/admin')
-    if (config.url && PUBLIC_APIS.some(api => config.url.startsWith(api))) {
+    const isOptionalAuthAPI = config.url && OPTIONAL_AUTH_APIS.some(api => config.url.startsWith(api))
+    if (config.url && PUBLIC_APIS.some(api => config.url.startsWith(api)) && !isOptionalAuthAPI) {
       return config
     }
     const isAdminAPI = config.url && (
@@ -288,7 +333,7 @@ api.interceptors.response.use(
       } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
         if (process.env.NODE_ENV === 'development') console.debug('network error:', error?.message || error)
         if (isVisible() && !reconnectTimer) {
-          reconnectTimer = setTimeout(() => { testConnection(); reconnectTimer = null }, 2000)
+          reconnectTimer = setTimeout(() => { scheduleConnectionTest(true); reconnectTimer = null }, 2000)
         }
       }
       return Promise.reject(error)
@@ -302,7 +347,6 @@ api.interceptors.response.use(
       }
     }
     if (error.response?.status === 503 && error.response?.data?.maintenance_mode) {
-      const { ElMessage } = await import('element-plus')
       ElMessage.error(error.response.data.message || '系统维护中，请稍后再试')
       return Promise.reject(error)
     }
@@ -318,7 +362,6 @@ api.interceptors.response.use(
         }
       }
       if (!error.config?._csrfRetry) {
-        const { ElMessage } = await import('element-plus')
         ElMessage.error(error.response?.data?.message || 'CSRF验证失败，请刷新页面后重试')
       }
       return Promise.reject(error)
@@ -422,8 +465,6 @@ export const userAPI = {
   getUserActivities: () => api.get('/users/activities'),
   getSubscriptionResets: () => api.get('/users/subscription-resets'),
   getUserInfo: () => api.get('/users/dashboard-info'),
-  getUserStatistics: () => api.get('/user/stat'), // 用户统计信息
-  getUserDashboard: () => api.get('/user/dashboard'), // 聚合接口
   getUserDevices: () => api.get('/users/devices'),
   getMyLevel: () => api.get('/users/my-level'),
   getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
@@ -433,9 +474,9 @@ export const userAPI = {
 }
 export const rechargeAPI = {
   createRecharge: (data) => api.post('/recharge', data), // 通用创建充值（兼容）
-  createRechargeWithMethod: (amount, method = 'alipay') => api.post('/recharge/', { amount, payment_method: method }),
-  getRechargeRecords: () => api.get('/recharge/records'), // 充值记录
-  getRecharges: (params) => api.get('/recharge/', { params }),
+  createRechargeWithMethod: (amount, method = 'alipay') => api.post('/recharge', { amount, payment_method: method }),
+  getRechargeRecords: () => api.get('/recharge'), // 充值记录
+  getRecharges: (params) => api.get('/recharge', { params }),
   getRechargeDetail: (id) => api.get(`/recharge/${id}`),
   getRechargeStatus: (orderNo) => api.get(`/recharge/status/${orderNo}`),
   cancelRecharge: (id) => api.post(`/recharge/${id}/cancel`)
@@ -578,8 +619,6 @@ export const adminAPI = {
   getUserDevices: (id) => api.get(`/admin/users/${id}/devices`),
   getSubscriptionDevices: (id) => api.get(`/admin/subscriptions/${id}/devices`),
   getAdminRechargeRecords: (params) => api.get('/recharge/admin', { params }),
-  getDeviceDetail: (id) => api.get(`/admin/devices/devices/${id}`),
-  updateDeviceStatus: (id, data) => api.put(`/admin/devices/devices/${id}`, data),
   removeDevice: (id) => api.delete(`/admin/devices/${id}`),
   deleteUserDevice: (userId, deviceId) => api.delete(`/admin/users/${userId}/devices/${deviceId}`),
   getAdminNodes: (params) => api.get('/admin/nodes', { params }),
@@ -655,10 +694,6 @@ export const statisticsAPI = {
   getUserTrend: () => api.get('/admin/statistics/user-trend'),
   getRevenueTrend: () => api.get('/admin/statistics/revenue-trend'),
   getUserStatistics: (params) => api.get('/admin/statistics/users', { params }),
-  getSubscriptionStatistics: () => api.get('/admin/statistics/subscriptions'),
-  getOrderStatistics: (params) => api.get('/admin/statistics/orders', { params }),
-  getStatisticsOverview: () => api.get('/admin/statistics/overview'),
-  exportStatistics: (type, format) => api.get('/admin/statistics/export', { params: { type, format } }),
   getRegionStats: () => api.get('/admin/statistics/regions')
 }
 export const paymentAPI = {
@@ -669,11 +704,9 @@ export const paymentAPI = {
   createPaymentConfig: (data) => api.post('/payment-config/', data),
   updatePaymentConfig: (id, data) => api.put(`/payment-config/${id}`, data),
   deletePaymentConfig: (id) => api.delete(`/payment-config/${id}`),
-  bulkEnablePaymentConfigs: (ids) => api.post('/payment-config/bulk-enable', ids),
-  bulkDisablePaymentConfigs: (ids) => api.post('/payment-config/bulk-disable', ids),
-  bulkDeletePaymentConfigs: (ids) => api.post('/payment-config/bulk-delete', ids),
-  getPaymentTransactions: (params) => api.get('/admin/payment-transactions', { params }),
-  getPaymentTransactionDetail: (id) => api.get(`/admin/payment-transactions/${id}`),
+  bulkEnablePaymentConfigs: (ids) => api.post('/payment-config/bulk-enable', { ids }),
+  bulkDisablePaymentConfigs: (ids) => api.post('/payment-config/bulk-disable', { ids }),
+  bulkDeletePaymentConfigs: (ids) => api.post('/payment-config/bulk-delete', { ids }),
   getPaymentStats: () => api.get('/admin/payment-stats'),
   getConfigUpdateStatus: () => api.get('/admin/config-update/status'),
   startConfigUpdate: () => api.post('/admin/config-update/start'),
@@ -761,8 +794,8 @@ export const inviteAPI = {
   getAllInviteCodes: (params) => api.get('/admin/invites', { params }),
   getInviteRelations: (params) => api.get('/admin/invite-relations', { params }),
   getAdminInviteStatistics: () => api.get('/admin/invite-statistics'),
-  batchDeleteInviteCodes: (ids) => api.post('/admin/invites/batch-delete', ids),
-  batchDeleteInviteRelations: (ids) => api.post('/admin/invite-relations/batch-delete', ids)
+  batchDeleteInviteCodes: (ids) => api.post('/admin/invites/batch-delete', { ids }),
+  batchDeleteInviteRelations: (ids) => api.post('/admin/invite-relations/batch-delete', { ids })
 }
 export const userLevelAPI = {
   getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
@@ -822,6 +855,32 @@ export const cachedAPI = {
     apiCache.delete('user:info')
     apiCache.delete('subscription:user')
     apiCache.delete('user:level')
+  },
+
+  refreshUserState: async ({ includeSubscription = true } = {}) => {
+    cachedAPI.clearUserCache()
+    const tasks = [userAPI.getUserInfo()]
+    if (includeSubscription) {
+      tasks.push(subscriptionAPI.getUserSubscription())
+    }
+    const results = await Promise.allSettled(tasks)
+    results.forEach(result => {
+      if (result.status !== 'fulfilled' || !result.value) return
+      const url = result.value.config?.url || ''
+      if (url.includes('/users/')) {
+        apiCache.set('user:info', result.value, 300000)
+      } else if (url.includes('/subscriptions/')) {
+        apiCache.set('subscription:user', result.value, 300000)
+      }
+    })
+    if (typeof window !== 'undefined') {
+      const detail = { refreshed: true }
+      window.dispatchEvent(new CustomEvent('user-info-updated', { detail }))
+      if (includeSubscription) {
+        window.dispatchEvent(new CustomEvent('subscription-updated', { detail }))
+      }
+    }
+    return results
   },
 
   // 清除所有缓存

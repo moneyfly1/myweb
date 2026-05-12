@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -51,32 +52,76 @@ func truncateString(s string, maxRunes int) string {
 	return s
 }
 
-// processTicketReadStatus 提取的副作用函数：处理查看工单详情时的"已读状态"更新
-func processTicketReadStatus(db *gorm.DB, ticket *models.Ticket, userID uint, isAdmin bool) {
-	nowTime := utils.GetBeijingTime()
-	var toMarkReadIDs []uint
+func isValidTicketType(ticketType string) bool {
+	switch ticketType {
+	case "technical", "billing", "account", "other":
+		return true
+	default:
+		return false
+	}
+}
 
-	// 找出需要标记为已读的回复
-	for i := range ticket.Replies {
-		reply := &ticket.Replies[i]
-		isFromOtherSide := reply.IsAdmin != isAdmin
-		shouldMarkAsRead := isFromOtherSide && (!reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != userID))
+func isValidTicketPriority(priority string) bool {
+	switch priority {
+	case "low", "normal", "high", "urgent":
+		return true
+	default:
+		return false
+	}
+}
 
-		if shouldMarkAsRead {
-			toMarkReadIDs = append(toMarkReadIDs, reply.ID)
-		}
+func isValidTicketStatus(status string) bool {
+	switch status {
+	case "pending", "processing", "resolved", "closed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+type ticketReadAtResult struct {
+	TicketID uint
+	ReadAt   time.Time
+}
+
+func getTicketReadAtMap(db *gorm.DB, ticketIDs []uint, userID uint) map[uint]time.Time {
+	readMap := make(map[uint]time.Time)
+	if len(ticketIDs) == 0 || userID == 0 {
+		return readMap
 	}
 
-	// 批量更新回复表
-	if len(toMarkReadIDs) > 0 {
-		db.Model(&models.TicketReply{}).Where("id IN ?", toMarkReadIDs).Updates(map[string]interface{}{
+	var reads []ticketReadAtResult
+	db.Model(&models.TicketRead{}).
+		Select("ticket_id, MAX(read_at) AS read_at").
+		Where("ticket_id IN ? AND user_id = ?", ticketIDs, userID).
+		Group("ticket_id").
+		Scan(&reads)
+	for _, read := range reads {
+		readMap[read.TicketID] = read.ReadAt
+	}
+	return readMap
+}
+
+func ticketReadJoin(userID uint) string {
+	return fmt.Sprintf(
+		"LEFT JOIN (SELECT ticket_id, MAX(read_at) AS read_at FROM ticket_reads WHERE user_id = %d GROUP BY ticket_id) ticket_read_state ON ticket_read_state.ticket_id = ticket_replies.ticket_id",
+		userID,
+	)
+}
+
+// processTicketReadStatus 处理查看工单详情时的已读状态更新。
+// ticket_reads 是按用户维度的真实已读依据，ticket_replies 的 read 字段仅保留兼容旧逻辑。
+func processTicketReadStatus(db *gorm.DB, ticket *models.Ticket, userID uint, isAdmin bool) {
+	nowTime := utils.GetBeijingTime()
+
+	db.Model(&models.TicketReply{}).
+		Where("ticket_id = ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", ticket.ID, !isAdmin, false, userID).
+		Updates(map[string]interface{}{
 			"is_read": true,
 			"read_by": userID,
 			"read_at": nowTime,
 		})
-	}
 
-	// 维护工单主体的已读记录表
 	var ticketRead models.TicketRead
 	err := db.Where("ticket_id = ? AND user_id = ?", ticket.ID, userID).First(&ticketRead).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -107,11 +152,20 @@ func asyncNotifyTicketReply(db *gorm.DB, ticket *models.Ticket, user *models.Use
 		var ticketOwner models.User
 		if err := db.First(&ticketOwner, ticket.UserID).Error; err == nil && ticketOwner.Email != "" {
 			go func() {
+				notificationService := notification.NewNotificationService()
+				if notification.ShouldSendCustomerNotificationToUser(&ticketOwner, "ticket_reply", notification.ChannelSystem) {
+					content := fmt.Sprintf("您的工单「%s」有新的管理员回复。", ticket.Title)
+					if err := notificationService.CreateUserSystemNotification(&ticketOwner, "ticket_reply", "工单新回复", content); err != nil {
+						utils.LogErrorMsg("创建工单回复站内通知失败: ticket=%s, user_id=%d, error=%v", ticket.TicketNo, ticketOwner.ID, err)
+					}
+				}
 				emailService := email.NewEmailService()
 				templateBuilder := email.NewEmailTemplateBuilder()
-				content := templateBuilder.GetAdminReplyNotificationTemplate(ticket.TicketNo, ticket.Title, replyContent)
-				if err := emailService.QueueEmail(ticketOwner.Email, "您的工单有新回复", content, "ticket_reply"); err != nil {
-					utils.LogErrorMsg("发送工单回复邮件失败: ticket=%s, email=%s, error=%v", ticket.TicketNo, ticketOwner.Email, err)
+				emailContent := templateBuilder.GetAdminReplyNotificationTemplate(ticket.TicketNo, ticket.Title, replyContent)
+				if notification.ShouldSendCustomerNotificationToUser(&ticketOwner, "ticket_reply", notification.ChannelEmail) {
+					if err := emailService.QueueEmail(ticketOwner.Email, "您的工单有新回复", emailContent, "ticket_reply"); err != nil {
+						utils.LogErrorMsg("发送工单回复邮件失败: ticket=%s, email=%s, error=%v", ticket.TicketNo, ticketOwner.Email, err)
+					}
 				}
 			}()
 		}
@@ -135,21 +189,17 @@ func GetUnreadTicketRepliesCount(c *gin.Context) {
 	if !isAdmin {
 		db.Model(&models.TicketReply{}).
 			Joins("JOIN tickets ON ticket_replies.ticket_id = tickets.id").
-			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_replies.is_read = ? OR ticket_replies.read_by != ? OR ticket_replies.read_by IS NULL)",
-				user.ID, true, false, user.ID).
+			Joins(ticketReadJoin(user.ID)).
+			Where("tickets.user_id = ? AND ticket_replies.is_admin = ? AND (ticket_read_state.read_at IS NULL OR ticket_replies.created_at > ticket_read_state.read_at)",
+				user.ID, true).
 			Count(&totalUnread)
 	} else {
-		var unreadReplies int64
-		db.Model(&models.TicketReply{}).
-			Where("is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)", false, false, user.ID).
-			Count(&unreadReplies)
-
-		var newTickets int64
 		db.Model(&models.Ticket{}).
-			Where("id NOT IN (SELECT ticket_id FROM ticket_reads WHERE user_id = ?)", user.ID).
-			Count(&newTickets)
-
-		totalUnread = unreadReplies + newTickets
+			Joins("LEFT JOIN ticket_replies ON ticket_replies.ticket_id = tickets.id AND ticket_replies.is_admin = ?", false).
+			Joins("LEFT JOIN (SELECT ticket_id, MAX(read_at) AS read_at FROM ticket_reads WHERE user_id = ? GROUP BY ticket_id) ticket_read_state ON ticket_read_state.ticket_id = tickets.id", user.ID).
+			Where("ticket_read_state.read_at IS NULL OR ticket_replies.created_at > ticket_read_state.read_at").
+			Distinct("tickets.id").
+			Count(&totalUnread)
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"count": totalUnread})
@@ -180,9 +230,21 @@ func CreateTicket(c *gin.Context) {
 	if req.Priority == "" {
 		req.Priority = "normal"
 	}
+	if !isValidTicketType(req.Type) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的工单类型", nil)
+		return
+	}
+	if !isValidTicketPriority(req.Priority) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的工单优先级", nil)
+		return
+	}
 
 	title := truncateString(utils.SanitizeInput(req.Title), 200)
 	content := truncateString(utils.SanitizeInput(req.Content), 5000)
+	if title == "" || content == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "工单标题和内容不能为空", nil)
+		return
+	}
 
 	ticket := models.Ticket{
 		TicketNo: utils.GenerateTicketNo(user.ID),
@@ -223,7 +285,7 @@ func GetTickets(c *gin.Context) {
 
 	isAdmin := getIsAdmin(c)
 	db := database.GetDB()
-	query := db.Model(&models.Ticket{}).Preload("User").Preload("Assignee")
+	query := db.Model(&models.Ticket{}).Preload("User")
 
 	if !isAdmin {
 		query = query.Where("user_id = ?", user.ID)
@@ -269,24 +331,17 @@ func GetTickets(c *gin.Context) {
 			Group("ticket_id").
 			Scan(&totalRepliesStats)
 
-		// 统一处理未读回复统计逻辑：查询来自"对方"的未读回复 (若为Admin，找普通用户的；若为普通用户，找Admin的)
+		// 统一处理未读回复统计逻辑：查询来自对方且晚于当前用户最后阅读时间的回复。
 		db.Model(&models.TicketReply{}).
 			Select("ticket_id, COUNT(*) as count").
-			Where("ticket_id IN ? AND is_admin = ? AND (is_read = ? OR read_by != ? OR read_by IS NULL)",
-				ticketIDs, !isAdmin, false, user.ID).
+			Joins(ticketReadJoin(user.ID)).
+			Where("ticket_replies.ticket_id IN ? AND ticket_replies.is_admin = ? AND (ticket_read_state.read_at IS NULL OR ticket_replies.created_at > ticket_read_state.read_at)",
+				ticketIDs, !isAdmin).
 			Group("ticket_id").
 			Scan(&unreadRepliesStats)
 	}
 
-	// 获取管理员的工单已读记录表
-	ticketReadMap := make(map[uint]bool)
-	if isAdmin && len(ticketIDs) > 0 {
-		var ticketReads []models.TicketRead
-		db.Where("ticket_id IN ? AND user_id = ?", ticketIDs, user.ID).Find(&ticketReads)
-		for _, tr := range ticketReads {
-			ticketReadMap[tr.TicketID] = true
-		}
-	}
+	ticketReadMap := getTicketReadAtMap(db, ticketIDs, user.ID)
 
 	// 转换为快速映射表
 	totalRepliesMap := make(map[uint]int64)
@@ -304,7 +359,8 @@ func GetTickets(c *gin.Context) {
 		unreadRepliesCount := unreadRepliesMap[ticket.ID]
 		hasUnread := unreadRepliesCount > 0
 		if isAdmin {
-			hasUnread = !ticketReadMap[ticket.ID] || hasUnread
+			_, hasRead := ticketReadMap[ticket.ID]
+			hasUnread = !hasRead || hasUnread
 		}
 
 		ticketList = append(ticketList, gin.H{
@@ -342,7 +398,7 @@ func GetTicket(c *gin.Context) {
 	db := database.GetDB()
 	var ticket models.Ticket
 
-	query := db.Preload("User").Preload("Assignee").
+	query := db.Preload("User").
 		Preload("Replies", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC") }).
 		Preload("Attachments").
 		Where("id = ?", id)
@@ -370,9 +426,6 @@ func GetTicket(c *gin.Context) {
 	}
 
 	// 补充可选字段
-	if ticket.AssignedTo != nil {
-		responseData["assigned_to"] = *ticket.AssignedTo
-	}
 	if ticket.AdminNotes != nil {
 		responseData["admin_notes"] = *ticket.AdminNotes
 	}
@@ -392,16 +445,13 @@ func GetTicket(c *gin.Context) {
 	if ticket.User.ID > 0 {
 		responseData["user"] = gin.H{"id": ticket.User.ID, "username": ticket.User.Username, "email": ticket.User.Email}
 	}
-	if ticket.Assignee.ID > 0 {
-		responseData["assignee"] = gin.H{"id": ticket.Assignee.ID, "username": ticket.Assignee.Username, "email": ticket.Assignee.Email}
+	if user.ID > 0 {
+		processTicketReadStatus(db, &ticket, user.ID, isAdmin)
 	}
 
-	// 2. 梳理回复列表 (同时判断未读状态)
+	// 2. 梳理回复列表。打开详情即标记已读，响应中不再显示“新”。
 	replies := make([]gin.H, 0, len(ticket.Replies))
 	for _, reply := range ticket.Replies {
-		isFromOtherSide := reply.IsAdmin != isAdmin
-		isUnread := isFromOtherSide && (!reply.IsRead || (reply.ReadBy != nil && *reply.ReadBy != user.ID))
-
 		replies = append(replies, gin.H{
 			"id":             reply.ID,
 			"ticket_id":      reply.TicketID,
@@ -410,7 +460,7 @@ func GetTicket(c *gin.Context) {
 			"is_admin":       reply.IsAdmin,
 			"is_admin_reply": reply.IsAdmin, // 兼容原代码字段
 			"created_at":     utils.FormatBeijingTime(reply.CreatedAt),
-			"is_unread":      isUnread,
+			"is_unread":      false,
 		})
 	}
 	responseData["replies"] = replies
@@ -438,9 +488,6 @@ func GetTicket(c *gin.Context) {
 		attachments = append(attachments, att)
 	}
 	responseData["attachments"] = attachments
-
-	// 4. 执行更新已读状态的副作用动作
-	go processTicketReadStatus(db, &ticket, user.ID, isAdmin)
 
 	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
@@ -473,10 +520,15 @@ func ReplyTicket(c *gin.Context) {
 		return
 	}
 
+	content := truncateString(utils.SanitizeInput(req.Content), 5000)
+	if content == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "回复内容不能为空", nil)
+		return
+	}
 	reply := models.TicketReply{
 		TicketID: ticket.ID,
 		UserID:   user.ID,
-		Content:  req.Content,
+		Content:  content,
 		IsAdmin:  isAdmin,
 		IsRead:   false,
 	}
@@ -486,13 +538,23 @@ func ReplyTicket(c *gin.Context) {
 		return
 	}
 
-	if ticket.Status == "pending" {
+	shouldSaveTicket := false
+	if isAdmin && ticket.Status == "pending" {
 		ticket.Status = "processing"
+		shouldSaveTicket = true
+	}
+	if !isAdmin && (ticket.Status == "pending" || ticket.Status == "resolved" || ticket.Status == "closed") {
+		ticket.Status = "processing"
+		ticket.ResolvedAt = nil
+		ticket.ClosedAt = nil
+		shouldSaveTicket = true
+	}
+	if shouldSaveTicket {
 		db.Save(&ticket)
 	}
 
 	// 异步执行通知机制
-	asyncNotifyTicketReply(db, &ticket, user, req.Content, isAdmin)
+	asyncNotifyTicketReply(db, &ticket, user, content, isAdmin)
 
 	utils.SuccessResponse(c, http.StatusCreated, "", reply)
 }
@@ -500,8 +562,7 @@ func ReplyTicket(c *gin.Context) {
 func UpdateTicketStatus(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		Status     string `json:"status" binding:"required"`
-		AssignedTo uint   `json:"assigned_to"`
+		Status     string `json:"status"`
 		AdminNotes string `json:"admin_notes"`
 	}
 
@@ -516,21 +577,34 @@ func UpdateTicketStatus(c *gin.Context) {
 		return
 	}
 
-	ticket.Status = req.Status
-	if req.AssignedTo > 0 {
-		assignedTo := utils.MustSafeUintToInt64(req.AssignedTo)
-		ticket.AssignedTo = &assignedTo
+	if req.Status == "" && req.AdminNotes == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "没有需要更新的内容", nil)
+		return
+	}
+
+	oldStatus := ticket.Status
+	if req.Status != "" {
+		if !isValidTicketStatus(req.Status) {
+			utils.ErrorResponse(c, http.StatusBadRequest, "无效的工单状态", nil)
+			return
+		}
+		ticket.Status = req.Status
 	}
 	if req.AdminNotes != "" {
-		ticket.AdminNotes = &req.AdminNotes
+		notes := truncateString(utils.SanitizeInput(req.AdminNotes), 5000)
+		ticket.AdminNotes = &notes
 	}
 
 	// 统一获取时间设置完成/关闭时间
 	now := utils.GetBeijingTime()
 	if req.Status == "resolved" {
 		ticket.ResolvedAt = &now
+		ticket.ClosedAt = nil
 	} else if req.Status == "closed" {
 		ticket.ClosedAt = &now
+	} else if req.Status == "pending" || req.Status == "processing" {
+		ticket.ResolvedAt = nil
+		ticket.ClosedAt = nil
 	}
 
 	if err := db.Save(&ticket).Error; err != nil {
@@ -538,7 +612,7 @@ func UpdateTicketStatus(c *gin.Context) {
 		return
 	}
 
-	utils.CreateAuditLogSimple(c, "update_ticket_status", "ticket", ticket.ID, fmt.Sprintf("管理员操作: 更新工单状态 %s -> %s", ticket.Title, req.Status))
+	utils.CreateAuditLogSimple(c, "update_ticket_status", "ticket", ticket.ID, fmt.Sprintf("管理员操作: 更新工单 %s 状态 %s -> %s", ticket.Title, oldStatus, ticket.Status))
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", ticket)
 }
 

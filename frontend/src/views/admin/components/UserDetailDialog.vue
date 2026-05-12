@@ -517,7 +517,7 @@
 <script>
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import {
   Wallet,
   ShoppingCart,

@@ -437,7 +437,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatLocation } from '@/utils/date'
@@ -850,10 +850,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
 }
 .location-details div {
   margin: 4px 0;
-}
-.pagination-wrapper {
-  text-align: right;
-  margin-top: 20px;
 }
 .log-details {
   max-height: 600px;

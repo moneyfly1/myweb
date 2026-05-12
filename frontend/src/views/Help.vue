@@ -160,19 +160,13 @@
 </template>
 <script>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import DOMPurify from 'dompurify'
+import { ElMessage } from '@/utils/elementPlusServices'
+import { safeOpen } from '@/utils/safeOpen'
+import { sanitizeBasicHtml } from '@/utils/sanitizeHtml'
 export default {
   name: 'Help',
   setup() {
-    const sanitizeHtml = (html) => {
-      if (!html) return ''
-      return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'div', 'span', 'blockquote', 'pre', 'code'],
-        ALLOWED_ATTR: ['href', 'target', 'style', 'class', 'id'],
-        ALLOW_DATA_ATTR: false
-      })
-    }
+    const sanitizeHtml = sanitizeBasicHtml
     const activeNames = ref(['guide-1'])
     const activeFAQ = ref(['faq-1'])
     const showGuideDialog = ref(false)
@@ -1257,7 +1251,7 @@ export default {
     const downloadClient = async (client) => {
       try {
         if (client.name === 'Shadowrocket') {
-          window.open('https://apps.apple.com/app/shadowrocket/id932747118', '_blank')
+          safeOpen('https://apps.apple.com/app/shadowrocket/id932747118')
           return
         }
         if (client.githubKey) {
@@ -1268,7 +1262,7 @@ export default {
             const isAccelerated = downloadUrl.includes('ghproxy.com') || downloadUrl.includes('ghproxy.net')
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
             if (isMobile) {
-              window.open(downloadUrl, '_blank')
+              safeOpen(downloadUrl)
               ElMessage.success(isAccelerated ? '已打开下载页面（已启用加速）' : '已打开下载页面')
             } else {
               const link = document.createElement('a')
@@ -1294,7 +1288,7 @@ export default {
               const releasesUrl = getClientReleasesUrl(client.githubKey)
               if (releasesUrl) {
                 setTimeout(() => {
-                  window.open(releasesUrl, '_blank')
+                  safeOpen(releasesUrl)
                   ElMessage.warning('已打开发布页面，请手动选择下载')
                 }, 1000)
               } else {
@@ -1308,7 +1302,7 @@ export default {
         } else if (client.downloadUrl) {
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
           if (isMobile) {
-            window.open(client.downloadUrl, '_blank')
+            safeOpen(client.downloadUrl)
             ElMessage.success('已打开下载页面')
           } else {
             const link = document.createElement('a')
@@ -1340,7 +1334,7 @@ export default {
         currentGuideContent.value = sanitizeHtml(client.guide)
         showGuideDialog.value = true
       } else if (client && client.guideUrl && client.guideUrl !== '#') {
-        window.open(client.guideUrl, '_blank')
+        safeOpen(client.guideUrl)
       }
     }
     const sanitizedGuides = computed(() => {
@@ -1943,4 +1937,4 @@ export default {
     }
   }
 }
-</style> 
+</style>

@@ -165,7 +165,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { adminAPI, ticketAPI, api } from '@/utils/api'
@@ -191,17 +191,22 @@ const unreadTicketCount = ref(0)
 const cacheClearing = ref(false)
 const collapsedSections = ref({})
 let unreadCheckInterval = null
+let unreadCountRequest = null
 const toggleSection = (title) => {
   collapsedSections.value[title] = !collapsedSections.value[title]
 }
 const loadUnreadTicketCount = async () => {
+  if (unreadCountRequest) return unreadCountRequest
   try {
-    const response = await ticketAPI.getUnreadCount()
+    unreadCountRequest = ticketAPI.getUnreadCount()
+    const response = await unreadCountRequest
     if (response.data && response.data.success) {
       unreadTicketCount.value = response.data.data?.count || 0
     }
   } catch (error) {
     // 未读消息数加载失败，不影响主功能
+  } finally {
+    unreadCountRequest = null
   }
 }
 const menuSections = computed(() => {

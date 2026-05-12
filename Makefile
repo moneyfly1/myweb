@@ -6,8 +6,8 @@ run:
 
 # 测试
 test:
-	@echo "运行全部模块测试..."
-	go test ./...
+	@echo "运行核心模块测试..."
+	go test ./cmd/... ./internal/...
 
 # 兼容旧命令
 test-all:

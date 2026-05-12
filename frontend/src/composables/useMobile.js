@@ -7,18 +7,32 @@ import { ref, onMounted, onUnmounted } from 'vue'
  */
 export function useMobile(breakpoint = 768) {
   const isMobile = ref(false)
+  let rafId = null
   
   const checkMobile = () => {
+    if (typeof window === 'undefined') return
     isMobile.value = window.innerWidth <= breakpoint
+  }
+
+  const scheduleCheckMobile = () => {
+    if (rafId !== null) return
+    rafId = window.requestAnimationFrame(() => {
+      rafId = null
+      checkMobile()
+    })
   }
   
   onMounted(() => {
     checkMobile()
-    window.addEventListener('resize', checkMobile)
+    window.addEventListener('resize', scheduleCheckMobile, { passive: true })
   })
   
   onUnmounted(() => {
-    window.removeEventListener('resize', checkMobile)
+    window.removeEventListener('resize', scheduleCheckMobile)
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId)
+      rafId = null
+    }
   })
   
   return isMobile

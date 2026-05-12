@@ -1,6 +1,6 @@
 module.exports = {
   root: true,
-  ignorePatterns: ['src/utils/geoip-example.js'],
+  ignorePatterns: ['src/utils/geoip-example.js', 'auto-imports.d.ts', 'components.d.ts'],
   env: {
     browser: true,
     es2021: true,

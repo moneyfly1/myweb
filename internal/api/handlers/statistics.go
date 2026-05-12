@@ -40,31 +40,49 @@ func GetStatistics(c *gin.Context) {
 		TodayOrders         int64   `json:"today_orders"`
 	}
 
-	db.Model(&models.User{}).Count(&stats.TotalUsers)
-	db.Model(&models.User{}).Where("is_active = ?", true).Count(&stats.ActiveUsers)
-
-	db.Model(&models.Order{}).Count(&stats.TotalOrders)
-	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&stats.PaidOrders)
-
-	stats.TotalRevenue = utils.CalculateTotalRevenue(db, "paid")
+	var userAggregate struct {
+		Total      int64
+		Active     int64
+		Inactive   int64
+		Verified   int64
+		Unverified int64
+	}
+	db.Raw(`
+		SELECT
+			COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS active,
+			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS inactive,
+			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS verified,
+			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS unverified
+		FROM users
+	`, true, false, true, false).Scan(&userAggregate)
+	stats.TotalUsers = userAggregate.Total
+	stats.ActiveUsers = userAggregate.Active
 
 	dayStart, dayEnd := utils.GetDayRange(now)
-	db.Model(&models.Order{}).Where("status = ? AND created_at >= ? AND created_at < ?", "paid", dayStart, dayEnd).Count(&stats.TodayOrders)
-	stats.TodayRevenue = utils.CalculateTodayRevenue(db, "paid")
+	paymentSummary := utils.CalculatePaymentSummary(db, dayStart, dayEnd)
+	stats.TotalOrders = paymentSummary.Total
+	stats.PaidOrders = paymentSummary.Paid
+	stats.TotalRevenue = paymentSummary.PaidRevenue
+	stats.TodayOrders = paymentSummary.RangePaid
+	stats.TodayRevenue = paymentSummary.RangeRevenue
 
-	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
-	db.Model(&models.Subscription{}).
-		Where("is_active = ?", true).
-		Where("(status = ? OR status = '' OR status IS NULL)", "active").
-		Where("expire_time > ?", now).
-		Count(&stats.ActiveSubscriptions)
-
-	var inactiveUsers int64
-	db.Model(&models.User{}).Where("is_active = ?", false).Count(&inactiveUsers)
-	var verifiedUsers int64
-	db.Model(&models.User{}).Where("is_verified = ?", true).Count(&verifiedUsers)
-	var unverifiedUsers int64
-	db.Model(&models.User{}).Where("is_verified = ?", false).Count(&unverifiedUsers)
+	var subscriptionAggregate struct {
+		Total    int64
+		Active   int64
+		Expired  int64
+		Inactive int64
+	}
+	db.Raw(`
+		SELECT
+			COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN is_active = ? AND (status = ? OR status = '' OR status IS NULL) AND expire_time > ? THEN 1 ELSE 0 END), 0) AS active,
+			COALESCE(SUM(CASE WHEN expire_time <= ? THEN 1 ELSE 0 END), 0) AS expired,
+			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS inactive
+		FROM subscriptions
+	`, true, "active", now, now, false).Scan(&subscriptionAggregate)
+	stats.TotalSubscriptions = subscriptionAggregate.Total
+	stats.ActiveSubscriptions = subscriptionAggregate.Active
 
 	userStatsList := []gin.H{
 		{
@@ -84,44 +102,35 @@ func GetStatistics(c *gin.Context) {
 		},
 		{
 			"name":  "未激活用户",
-			"value": inactiveUsers,
+			"value": userAggregate.Inactive,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
-					return float64(inactiveUsers) / float64(stats.TotalUsers) * 100
+					return float64(userAggregate.Inactive) / float64(stats.TotalUsers) * 100
 				}
 				return 0
 			}(),
 		},
 		{
 			"name":  "已验证用户",
-			"value": verifiedUsers,
+			"value": userAggregate.Verified,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
-					return float64(verifiedUsers) / float64(stats.TotalUsers) * 100
+					return float64(userAggregate.Verified) / float64(stats.TotalUsers) * 100
 				}
 				return 0
 			}(),
 		},
 		{
 			"name":  "未验证用户",
-			"value": unverifiedUsers,
+			"value": userAggregate.Unverified,
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
-					return float64(unverifiedUsers) / float64(stats.TotalUsers) * 100
+					return float64(userAggregate.Unverified) / float64(stats.TotalUsers) * 100
 				}
 				return 0
 			}(),
 		},
 	}
-
-	var expiredSubscriptions int64
-	db.Model(&models.Subscription{}).
-		Where("expire_time <= ?", now).
-		Count(&expiredSubscriptions)
-	var inactiveSubscriptions int64
-	db.Model(&models.Subscription{}).
-		Where("is_active = ?", false).
-		Count(&inactiveSubscriptions)
 
 	subscriptionStatsList := []gin.H{
 		{
@@ -141,20 +150,20 @@ func GetStatistics(c *gin.Context) {
 		},
 		{
 			"name":  "已过期订阅",
-			"value": expiredSubscriptions,
+			"value": subscriptionAggregate.Expired,
 			"percentage": func() float64 {
 				if stats.TotalSubscriptions > 0 {
-					return float64(expiredSubscriptions) / float64(stats.TotalSubscriptions) * 100
+					return float64(subscriptionAggregate.Expired) / float64(stats.TotalSubscriptions) * 100
 				}
 				return 0
 			}(),
 		},
 		{
 			"name":  "未激活订阅",
-			"value": inactiveSubscriptions,
+			"value": subscriptionAggregate.Inactive,
 			"percentage": func() float64 {
 				if stats.TotalSubscriptions > 0 {
-					return float64(inactiveSubscriptions) / float64(stats.TotalSubscriptions) * 100
+					return float64(subscriptionAggregate.Inactive) / float64(stats.TotalSubscriptions) * 100
 				}
 				return 0
 			}(),
@@ -238,17 +247,26 @@ func GetRevenueChart(c *gin.Context) {
 	db := database.GetDB()
 	startTime := utils.GetBeijingTime().AddDate(0, 0, -days)
 	rows, err := db.Raw(`
-		SELECT DATE(created_at) as date, COALESCE(SUM(
-			CASE
-				WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount
-				ELSE amount
-			END
-		), 0) as revenue
-		FROM orders
-		WHERE status = ? AND created_at >= ?
-		GROUP BY DATE(created_at)
+		SELECT date, COALESCE(SUM(revenue), 0) AS revenue
+		FROM (
+			SELECT DATE(created_at) AS date, COALESCE(SUM(
+				CASE
+					WHEN final_amount IS NOT NULL THEN final_amount
+					ELSE amount
+				END
+			), 0) AS revenue
+			FROM orders
+			WHERE status = ? AND created_at >= ?
+			GROUP BY DATE(created_at)
+			UNION ALL
+			SELECT DATE(created_at) AS date, COALESCE(SUM(amount), 0) AS revenue
+			FROM recharge_records
+			WHERE status = ? AND created_at >= ?
+			GROUP BY DATE(created_at)
+		) revenue_records
+		GROUP BY date
 		ORDER BY date ASC
-	`, "paid", startTime).Rows()
+	`, "paid", startTime, "paid", startTime).Rows()
 
 	if err == nil {
 		defer rows.Close()
@@ -290,13 +308,8 @@ func GetUserStatistics(c *gin.Context) {
 		UnverifiedUsers   int64 `json:"unverified_users"`
 	}
 
-	db.Model(&models.User{}).Count(&stats.TotalUsers)
-	db.Model(&models.User{}).Where("is_verified = ?", true).Count(&stats.VerifiedUsers)
-	db.Model(&models.User{}).Where("is_verified = ?", false).Count(&stats.UnverifiedUsers)
-
 	now := utils.GetBeijingTime()
 	dayStart, dayEnd := utils.GetDayRange(now)
-	db.Model(&models.User{}).Where("created_at >= ? AND created_at < ?", dayStart, dayEnd).Count(&stats.NewUsersToday)
 
 	weekday := int(now.Weekday())
 	if weekday == 0 {
@@ -304,10 +317,21 @@ func GetUserStatistics(c *gin.Context) {
 	}
 	weekStart := now.AddDate(0, 0, -weekday+1)
 	weekStart = time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, weekStart.Location())
-	db.Model(&models.User{}).Where("created_at >= ?", weekStart).Count(&stats.NewUsersThisWeek)
 
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	db.Model(&models.User{}).Where("created_at >= ?", monthStart).Count(&stats.NewUsersThisMonth)
+	if err := db.Raw(`
+		SELECT
+			COUNT(*) AS total_users,
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS new_users_today,
+			COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS new_users_this_week,
+			COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS new_users_this_month,
+			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS verified_users,
+			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS unverified_users
+		FROM users
+	`, dayStart, dayEnd, weekStart, monthStart, true, false).Scan(&stats).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户统计失败", err)
+		return
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }

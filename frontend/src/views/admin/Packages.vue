@@ -14,8 +14,8 @@
           </div>
         </div>
       </template>
-      <div class="search-section desktop-only">
-        <el-form :inline="true" :model="searchForm">
+      <div class="search-section list-filters desktop-only">
+        <el-form :inline="true" :model="searchForm" class="list-filter-form">
           <el-form-item label="套餐名称">
             <el-input
               v-model="searchForm.name"
@@ -486,7 +486,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, HomeFilled, Search, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { adminAPI, configAPI } from '@/utils/api'
 export default {
@@ -916,7 +916,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
 .packages-admin-container {
   padding: 20px;
 }
@@ -986,62 +985,16 @@ export default {
   }
 }
 
-.search-section {
-  margin-bottom: 20px;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  :deep(.status-select-item) {
-    .status-select {
-      min-width: 180px;
-      width: 180px;
-      .el-input__wrapper {
-        width: 100%;
-      }
-    }
-  }
-}
-.pagination-section {
-  margin-top: 20px;
-  text-align: right;
-}
 @media (max-width: 768px) {
   .packages-admin-container {
     padding: 12px;
   }
   .card-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-
     .header-title {
       font-size: 1.125rem;
-      text-align: left;
     }
 
     .header-actions {
-      width: 100%;
-      flex-direction: column;
-      gap: 10px;
-
-      .custom-package-btn,
-      .add-package-btn {
-        width: 100%;
-        height: 44px;
-        font-size: 15px;
-        justify-content: center;
-        padding: 0 16px;
-
-        :deep(.el-icon) {
-          font-size: 18px;
-        }
-
-        .btn-text {
-          margin-left: 6px;
-          font-weight: 500;
-        }
-      }
-
       .custom-package-btn {
         order: 2;
       }

@@ -286,7 +286,7 @@
 
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import {
   VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
   Connection, Filter, Warning, Document, Rank, Monitor, User

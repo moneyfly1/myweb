@@ -316,7 +316,7 @@
 </template>
 <script>
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
@@ -857,11 +857,6 @@ export default {
   font-weight: 600;
   color: #303133;
   font-size: 16px;
-}
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .item-count {
   margin-right: 8px;

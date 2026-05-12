@@ -4,8 +4,8 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	promotionService "cboard-go/internal/services/promotion"
 	"cboard-go/internal/utils"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -272,7 +272,7 @@ func GetAvailablePromotionDiscounts(c *gin.Context) {
 
 	// 查询用户未使用的折扣券
 	var participations []models.PromotionParticipation
-	if err := db.Where("user_id = ? AND status = ? AND reward_type = ? AND (expire_at IS NULL OR expire_at > ?)",
+	if err := db.Where("user_id = ? AND status = ? AND reward_type = ? AND (order_id IS NULL OR order_id = 0) AND (expire_at IS NULL OR expire_at > ?)",
 		user.ID, "pending", "discount", now).
 		Preload("Promotion").
 		Order("created_at DESC").
@@ -286,59 +286,5 @@ func GetAvailablePromotionDiscounts(c *gin.Context) {
 
 // 应用活动折扣到订单（内部函数，在创建订单时调用）
 func ApplyPromotionDiscount(userID uint, packageID uint, baseAmount float64) (float64, *models.PromotionParticipation, error) {
-	db := database.GetDB()
-	now := utils.GetBeijingTime()
-
-	// 查找可用的折扣
-	var participation models.PromotionParticipation
-	query := db.Where("user_id = ? AND status = ? AND reward_type = ? AND (expire_at IS NULL OR expire_at > ?)",
-		userID, "pending", "discount", now).
-		Preload("Promotion")
-
-	if err := query.Order("created_at ASC").First(&participation).Error; err != nil {
-		// 没有可用折扣
-		return 0, nil, nil
-	}
-
-	// 检查活动是否适用于该套餐
-	if participation.Promotion.PackageIDs.Valid && participation.Promotion.PackageIDs.String != "" {
-		packageIDsStr := participation.Promotion.PackageIDs.String
-		var packageIDs []uint
-		if err := json.Unmarshal([]byte(packageIDsStr), &packageIDs); err == nil {
-			found := false
-			for _, pid := range packageIDs {
-				if pid == packageID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				// 该活动不适用于此套餐
-				return 0, nil, nil
-			}
-		}
-	}
-
-	// 检查最低金额
-	if participation.Promotion.MinAmount > 0 && baseAmount < participation.Promotion.MinAmount {
-		return 0, nil, nil
-	}
-
-	// 计算折扣
-	var discountAmount float64
-	if participation.Promotion.DiscountType == "percentage" {
-		discountAmount = baseAmount * (participation.RewardValue / 100)
-		if participation.Promotion.MaxDiscount > 0 && discountAmount > participation.Promotion.MaxDiscount {
-			discountAmount = participation.Promotion.MaxDiscount
-		}
-	} else if participation.Promotion.DiscountType == "fixed" {
-		discountAmount = participation.RewardValue
-		if discountAmount > baseAmount {
-			discountAmount = baseAmount
-		}
-	}
-
-	discountAmount = utils.RoundFloat(discountAmount, 2)
-	return discountAmount, &participation, nil
+	return promotionService.NewService(database.GetDB()).ApplyDiscount(userID, packageID, baseAmount)
 }
-

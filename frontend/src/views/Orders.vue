@@ -18,9 +18,9 @@
         <div class="stat-label">总金额(元)</div>
       </div>
     </div>
-    <el-card class="filter-card">
+    <el-card class="filter-card list-filters">
       <div class="filter-desktop">
-        <el-row :gutter="16" align="middle">
+        <el-row class="list-filter-form" :gutter="16" align="middle">
           <el-col :span="5">
             <el-select v-model="filters.status" placeholder="订单状态" clearable>
               <el-option label="全部状态" value="" />
@@ -49,7 +49,7 @@
               style="width: 100%"
             />
           </el-col>
-          <el-col :span="4" class="filter-buttons-col">
+          <el-col :span="4" class="filter-buttons-col list-filter-actions">
             <el-button type="primary" @click="applyFilters" size="default">筛选</el-button>
             <el-button @click="resetFilters" size="default">重置</el-button>
           </el-col>
@@ -94,7 +94,7 @@
             class="filter-date"
           />
         </div>
-        <div class="filter-actions">
+        <div class="filter-actions list-filter-actions">
           <el-button 
             type="primary" 
             @click="applyFilters" 
@@ -466,10 +466,11 @@
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Loading, Refresh, Wallet, ShoppingCart } from '@element-plus/icons-vue'
-import { useApi, rechargeAPI, paymentAPI } from '@/utils/api'
+import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
+import { safeNavigate } from '@/utils/safeOpen'
 export default {
   name: 'Orders',
   components: {
@@ -512,6 +513,10 @@ export default {
     let paymentVisibilityHandler = null
     let paymentFocusHandler = null
     let paymentTimeoutId = null
+    let paymentStatusRequest = null
+    let orderLoadPromise = null
+    let paymentManualVisibilityHandler = null
+    let paymentManualFocusHandler = null
     const orderTableRef = ref(null)
     const ORDER_TABLE_STORAGE_KEY = 'user_orders_table_settings'
     const orderColumnWidths = reactive({
@@ -726,6 +731,13 @@ export default {
       }
     }
     const loadOrders = async () => {
+      if (orderLoadPromise) return orderLoadPromise
+      orderLoadPromise = loadOrdersInternal().finally(() => {
+        orderLoadPromise = null
+      })
+      return orderLoadPromise
+    }
+    const loadOrdersInternal = async () => {
       try {
         isLoading.value = true
         const params = {
@@ -756,7 +768,6 @@ export default {
           }
         })
         pagination.total = response.data.data?.total || response.data.total || 0
-        await loadOrderStats()
         if (activeTab.value === 'all') {
           await loadRecharges()
           mergeRecords()
@@ -835,14 +846,15 @@ export default {
       loadOrders()
     }
     const refreshOrders = async () => {
-      await loadOrders() // loadOrders 内部会调用 loadOrderStats
-      if (activeTab.value === 'all' || activeTab.value === 'recharges') {
-        await loadRecharges()
-        if (activeTab.value === 'all') {
-          mergeRecords()
-        }
+      await Promise.all([loadOrders(), loadOrderStats()])
+    }
+    const refreshAccountAfterPayment = async (recordType) => {
+      try {
+        await cachedAPI.refreshUserState({
+          includeSubscription: recordType !== 'recharge'
+        })
+      } catch (error) {
       }
-      await loadOrderStats()
     }
     const handleSizeChange = (size) => {
       pagination.size = size
@@ -858,7 +870,14 @@ export default {
       支付宝: 'alipay',
       wechat: 'wechat',
       微信支付: 'wechat',
-      weixin: 'wechat'
+      weixin: 'wechat',
+      yipay: 'yipay',
+      yipay_alipay: 'yipay_alipay',
+      yipay_wxpay: 'yipay_wxpay',
+      yipay_qqpay: 'yipay_qqpay',
+      codepay: 'codepay',
+      codepay_alipay: 'codepay_alipay',
+      codepay_wxpay: 'codepay_wxpay'
     })
     const normalizePaymentMethodValue = (method) => {
       let value = method
@@ -947,6 +966,17 @@ export default {
         clearTimeout(paymentTimeoutId)
         paymentTimeoutId = null
       }
+      cleanupPaymentManualWatchers()
+    }
+    const cleanupPaymentManualWatchers = () => {
+      if (paymentManualVisibilityHandler) {
+        document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
+        paymentManualVisibilityHandler = null
+      }
+      if (paymentManualFocusHandler) {
+        window.removeEventListener('focus', paymentManualFocusHandler)
+        paymentManualFocusHandler = null
+      }
     }
     const generateQRCode = async (url) => {
       try {
@@ -964,6 +994,13 @@ export default {
         throw new Error('生成二维码失败')
       }
     }
+    const isPaymentPageUrl = (url) => {
+      const value = String(url || '').toLowerCase()
+      return value.includes('payapi/pay/payment') ||
+        value.includes('submit.php') ||
+        value.includes('alipay.com') ||
+        (value.startsWith('http') && !value.includes('qrcode') && !value.includes('qr.alipay'))
+    }
     const payOrder = async (order) => {
       try {
         const orderNo = order.order_no || order.display_no
@@ -977,7 +1014,8 @@ export default {
           return
         }
         const response = await api.post(`/orders/${orderNo}/pay`, {
-          payment_method_id: paymentMethodId
+          payment_method_id: paymentMethodId,
+          payment_method: normalizePaymentMethodValue(order.payment_method)
         })
         if (response.data && response.data.success !== false) {
           const paymentUrl = response.data.data?.payment_url || response.data.data?.payment_qr_code
@@ -985,7 +1023,9 @@ export default {
             await showPaymentQR({
               ...order,
               order_no: orderNo,
-              payment_method_id: paymentMethodId
+              payment_method_id: paymentMethodId,
+              payment_method: response.data.data?.payment_method || normalizePaymentMethodValue(order.payment_method),
+              amount: response.data.data?.actual_payment_amount ?? response.data.data?.final_amount ?? response.data.data?.amount ?? order.amount
             }, paymentUrl)
           } else {
             const errorMsg = response.data.message || response.data.detail || '支付链接生成失败'
@@ -1010,21 +1050,22 @@ export default {
       }
       const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
       try {
-        const handleVisibilityChange = async () => {
-          if (document.visibilityState === 'visible' && paymentQRVisible.value) {
+        cleanupPaymentManualWatchers()
+        paymentManualVisibilityHandler = async () => {
+          if (document.visibilityState === 'visible' && selectedOrder.value?.order_no) {
             await checkPaymentStatus()
-            document.removeEventListener('visibilitychange', handleVisibilityChange)
+            cleanupPaymentManualWatchers()
           }
         }
-        document.addEventListener('visibilitychange', handleVisibilityChange)
-        const handleFocus = async () => {
-          if (paymentQRVisible.value) {
+        document.addEventListener('visibilitychange', paymentManualVisibilityHandler)
+        paymentManualFocusHandler = async () => {
+          if (selectedOrder.value?.order_no) {
             await checkPaymentStatus()
-            window.removeEventListener('focus', handleFocus)
+            cleanupPaymentManualWatchers()
           }
         }
-        window.addEventListener('focus', handleFocus)
-        window.location.href = alipayAppUrl
+        window.addEventListener('focus', paymentManualFocusHandler)
+        safeNavigate(alipayAppUrl, { allowAppProtocols: true })
         setTimeout(() => {
           ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付')
         }, 3000)
@@ -1041,21 +1082,38 @@ export default {
       selectedOrder.value = order
       const paymentMethod = order.payment_method || 'alipay'
 
-      try {
-        // 所有URL都生成二维码
-        paymentQRCode.value = await generateQRCode(url)
-      } catch (error) {
-        console.error('生成二维码失败:', error)
-        ElMessage.error('生成二维码失败，请刷新页面重试')
-        return
-      }
-
       selectedOrder.value = {
         ...order,
         order_no: order.order_no || order.display_no,
         package_name: order.package_name || '账户充值',
         amount: order.amount || order.display_amount,
         payment_method: paymentMethod
+      }
+      if (isPaymentPageUrl(url)) {
+        paymentQRCode.value = ''
+        paymentQRVisible.value = false
+        pendingPaymentStorage.save(
+          selectedOrder.value.order_no,
+          selectedOrder.value.record_type === 'recharge' ? 'recharge' : 'order'
+        )
+        ElMessage.info('正在跳转到支付页面...')
+        safeNavigate(url, { allowAppProtocols: true })
+        startPaymentStatusCheck()
+        return
+      }
+
+      try {
+        paymentQRCode.value = await generateQRCode(url)
+      } catch (error) {
+        console.error('生成二维码失败:', error)
+        ElMessage.error('生成二维码失败，请刷新页面重试')
+        return
+      }
+      if (selectedOrder.value.order_no) {
+        pendingPaymentStorage.save(
+          selectedOrder.value.order_no,
+          selectedOrder.value.record_type === 'recharge' ? 'recharge' : 'order'
+        )
       }
       paymentQRVisible.value = true
       await new Promise(resolve => setTimeout(resolve, 200))
@@ -1085,7 +1143,8 @@ export default {
               return
             }
             const response = await api.post(`/orders/${selectedOrder.value.order_no}/pay`, {
-              payment_method_id: paymentMethodId
+              payment_method_id: paymentMethodId,
+              payment_method: normalizePaymentMethodValue(selectedOrder.value.payment_method)
             })
             const paymentUrl = response.data.data?.payment_url || response.data.data?.payment_qr_code
             if (paymentUrl) {
@@ -1112,7 +1171,7 @@ export default {
 
       // 添加页面可见性监听
       paymentVisibilityHandler = async () => {
-        if (document.visibilityState === 'visible' && paymentQRVisible.value) {
+        if (document.visibilityState === 'visible' && selectedOrder.value?.order_no) {
           await checkPaymentStatus()
         }
       }
@@ -1120,7 +1179,7 @@ export default {
 
       // 添加窗口焦点监听
       paymentFocusHandler = async () => {
-        if (paymentQRVisible.value) {
+        if (selectedOrder.value?.order_no) {
           await checkPaymentStatus()
         }
       }
@@ -1144,30 +1203,32 @@ export default {
     }
     const checkPaymentStatus = async () => {
       if (!selectedOrder.value) return
+      if (paymentStatusRequest) return paymentStatusRequest
+      paymentStatusRequest = (async () => {
       try {
         isCheckingPayment.value = true
-        const isRecharge = selectedOrder.value.record_type === 'recharge' || selectedOrder.value.id && !selectedOrder.value.order_no
+        const isRecharge = selectedOrder.value.record_type === 'recharge' ||
+          (selectedOrder.value.order_no && String(selectedOrder.value.order_no).startsWith('RCH'))
         if (isRecharge) {
-          const response = await rechargeAPI.getRechargeDetail(selectedOrder.value.id)
+          const response = selectedOrder.value.order_no
+            ? await rechargeAPI.getRechargeStatus(selectedOrder.value.order_no)
+            : await rechargeAPI.getRechargeDetail(selectedOrder.value.id)
           const rechargeData = response.data.data
           if (rechargeData.status === 'paid') {
-            if (paymentStatusCheckInterval) {
-              clearInterval(paymentStatusCheckInterval)
-              paymentStatusCheckInterval = null
-            }
+            cleanupPaymentStatusCheck()
             paymentQRVisible.value = false
             ElMessage.success('支付成功！')
+            pendingPaymentStorage.clear()
+            await refreshAccountAfterPayment('recharge')
             await loadRecharges()
             if (activeTab.value === 'all') {
               mergeRecords()
             }
           } else if (rechargeData.status === 'cancelled') {
-            if (paymentStatusCheckInterval) {
-              clearInterval(paymentStatusCheckInterval)
-              paymentStatusCheckInterval = null
-            }
+            cleanupPaymentStatusCheck()
             paymentQRVisible.value = false
             ElMessage.info('充值订单已取消')
+            pendingPaymentStorage.clear()
             await loadRecharges()
             if (activeTab.value === 'all') {
               mergeRecords()
@@ -1186,25 +1247,32 @@ export default {
             return
           }
           if (orderData.status === 'paid') {
-            if (paymentStatusCheckInterval) {
-              clearInterval(paymentStatusCheckInterval)
-              paymentStatusCheckInterval = null
-            }
+            cleanupPaymentStatusCheck()
             paymentQRVisible.value = false
             ElMessage.success('支付成功！')
-            loadOrders()
+            pendingPaymentStorage.clear()
+            await refreshAccountAfterPayment(orderData.type || 'order')
+            await loadOrders()
             if (activeTab.value === 'all') {
               await loadRecharges()
               mergeRecords()
             }
           } else if (orderData.status === 'cancelled') {
-            if (paymentStatusCheckInterval) {
-              clearInterval(paymentStatusCheckInterval)
-              paymentStatusCheckInterval = null
-            }
+            cleanupPaymentStatusCheck()
             paymentQRVisible.value = false
             ElMessage.info('订单已取消')
-            loadOrders()
+            pendingPaymentStorage.clear()
+            await loadOrders()
+            if (activeTab.value === 'all') {
+              await loadRecharges()
+              mergeRecords()
+            }
+          } else if (orderData.status === 'failed' || orderData.status === 'expired') {
+            cleanupPaymentStatusCheck()
+            paymentQRVisible.value = false
+            ElMessage.warning(orderData.status === 'expired' ? '订单已过期' : '订单支付失败')
+            pendingPaymentStorage.clear()
+            await loadOrders()
             if (activeTab.value === 'all') {
               await loadRecharges()
               mergeRecords()
@@ -1214,25 +1282,13 @@ export default {
       } catch (error) {
         } finally {
         isCheckingPayment.value = false
+        paymentStatusRequest = null
       }
+      })()
+      return paymentStatusRequest
     }
     const closePaymentQR = () => {
-      if (paymentStatusCheckInterval) {
-        clearInterval(paymentStatusCheckInterval)
-        paymentStatusCheckInterval = null
-      }
-      if (paymentVisibilityHandler) {
-        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
-        paymentVisibilityHandler = null
-      }
-      if (paymentFocusHandler) {
-        window.removeEventListener('focus', paymentFocusHandler)
-        paymentFocusHandler = null
-      }
-      if (paymentTimeoutId) {
-        clearTimeout(paymentTimeoutId)
-        paymentTimeoutId = null
-      }
+      cleanupPaymentStatusCheck()
       paymentQRVisible.value = false
       paymentQRCode.value = ''
       selectedOrder.value = null
@@ -1250,7 +1306,8 @@ export default {
         )
         await api.post(`/orders/${order.order_no}/cancel`)
         ElMessage.success('订单已取消')
-        loadOrders()
+        pendingPaymentStorage.clear()
+        await Promise.all([loadOrders(), loadOrderStats()])
       } catch (error) {
         if (error !== 'cancel') {
           ElMessage.error('取消订单失败')
@@ -1305,13 +1362,12 @@ export default {
         )
         await rechargeAPI.cancelRecharge(rechargeId)
         ElMessage.success('充值订单已取消')
+        pendingPaymentStorage.clear()
         await loadRecharges()
         if (activeTab.value === 'all') {
           mergeRecords()
         }
-        if (activeTab.value === 'orders') {
-          await loadOrders()
-        }
+        await loadOrderStats()
       } catch (error) {
         if (error !== 'cancel') {
           const errorMsg = error.response?.data?.detail || 
@@ -1391,9 +1447,13 @@ export default {
         wechat: '微信支付',
         wxpay: '微信支付',
         balance: '余额支付',
+        yipay: '易支付',
         yipay_alipay: '易支付-支付宝',
         yipay_wxpay: '易支付-微信',
         yipay_qqpay: '易支付-QQ钱包',
+        codepay: '码支付',
+        codepay_alipay: '码支付-支付宝',
+        codepay_wxpay: '码支付-微信',
         '支付宝': '支付宝',
         '微信支付': '微信支付',
         '余额支付': '余额支付'
@@ -1404,7 +1464,14 @@ export default {
       const typeMap = {
         alipay: 'primary',
         wechat: 'success',
-        balance: 'warning'
+        balance: 'warning',
+        yipay: 'primary',
+        yipay_alipay: 'primary',
+        yipay_wxpay: 'success',
+        yipay_qqpay: 'info',
+        codepay: 'primary',
+        codepay_alipay: 'primary',
+        codepay_wxpay: 'success'
       }
       return typeMap[method] || 'info'
     }
@@ -1416,15 +1483,7 @@ export default {
     }
     onMounted(async () => {
       loadOrderTableSettings()
-      // 并发加载订单统计和订单列表，提高页面加载速度
-      await Promise.all([
-        loadOrderStats(),
-        loadOrders()
-      ])
-      if (activeTab.value === 'all') {
-        await loadRecharges()
-        mergeRecords()
-      }
+      await Promise.all([loadOrderStats(), loadOrders()])
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
         window.addEventListener('resize', handleResize)
@@ -1435,23 +1494,7 @@ export default {
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)
       }
-      // 清理支付状态检查相关资源
-      if (paymentStatusCheckInterval) {
-        clearInterval(paymentStatusCheckInterval)
-        paymentStatusCheckInterval = null
-      }
-      if (paymentVisibilityHandler) {
-        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
-        paymentVisibilityHandler = null
-      }
-      if (paymentFocusHandler) {
-        window.removeEventListener('focus', paymentFocusHandler)
-        paymentFocusHandler = null
-      }
-      if (paymentTimeoutId) {
-        clearTimeout(paymentTimeoutId)
-        paymentTimeoutId = null
-      }
+      cleanupPaymentStatusCheck()
     })
     return {
       orders,
@@ -1508,7 +1551,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
 .amount {
   color: #f56c6c;
   font-weight: bold;
@@ -1867,146 +1909,6 @@ export default {
     .button-group {
       display: flex;
       gap: 8px;
-    }
-  }
-}
-.filter-card {
-  padding: 12px;
-  margin-bottom: 12px;
-  @media (max-width: 768px) {
-    padding: 10px;
-    margin-bottom: 10px;
-  }
-}
-.filter-desktop {
-  display: block;
-  @media (max-width: 768px) {
-    display: none;
-  }
-}
-.filter-mobile {
-  display: none;
-  @media (max-width: 768px) {
-    display: block;
-  }
-  .filter-row {
-    margin-bottom: 6px;
-    &:last-of-type {
-      margin-bottom: 8px;
-    }
-    .filter-select,
-    .filter-date {
-      width: 100%;
-      :deep(.el-input__wrapper) {
-        border-radius: 6px;
-        min-height: 36px;
-        padding: 0 10px;
-        font-size: 13px;
-        box-shadow: none;
-        border: 1px solid #dcdfe6;
-        background-color: #fff;
-        &:hover {
-          border-color: #c0c4cc;
-        }
-        &.is-focus {
-          border-color: #409eff;
-        }
-      }
-      :deep(.el-input__inner) {
-        font-size: 13px;
-        height: 36px;
-        line-height: 36px;
-        color: #606266;
-        &::placeholder {
-          color: #c0c4cc;
-          font-size: 13px;
-        }
-      }
-      :deep(.el-input__suffix) {
-        .el-input__suffix-inner {
-          .el-icon {
-            font-size: 14px;
-            color: #c0c4cc;
-          }
-        }
-      }
-    }
-    .filter-date {
-      :deep(.el-range-input) {
-        font-size: 13px;
-        color: #606266;
-        &::placeholder {
-          color: #c0c4cc;
-          font-size: 13px;
-        }
-      }
-      :deep(.el-range-separator) {
-        font-size: 13px;
-        color: #606266;
-        padding: 0 4px;
-      }
-    }
-  }
-  .filter-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 6px;
-    .filter-btn {
-      flex: 1;
-      min-height: 36px;
-      font-size: 13px;
-      border-radius: 6px;
-      font-weight: 500;
-      margin: 0;
-      padding: 8px 12px;
-      border: 1px solid;
-      transition: all 0.2s;
-      &:first-child {
-        flex: 1.3;
-        background-color: #409eff;
-        border-color: #409eff;
-        color: #fff;
-        &:active {
-          background-color: #3a8ee6;
-          border-color: #3a8ee6;
-          transform: scale(0.98);
-        }
-      }
-      &:last-child {
-        background-color: #fff;
-        border-color: #dcdfe6;
-        color: #606266;
-        &:active {
-          background-color: #f5f7fa;
-          border-color: #c0c4cc;
-          transform: scale(0.98);
-        }
-      }
-    }
-  }
-}
-.pagination {
-  @media (max-width: 768px) {
-    :deep(.el-pagination) {
-      .el-pagination__sizes,
-      .el-pagination__jump {
-        display: none;
-      }
-      .el-pagination__total {
-        display: none;
-      }
-      .btn-prev,
-      .btn-next {
-        padding: 8px 12px;
-        min-width: 40px;
-        min-height: 40px;
-      }
-      .number {
-        min-width: 36px;
-        height: 36px;
-        line-height: 36px;
-        font-size: 14px;
-      }
     }
   }
 }

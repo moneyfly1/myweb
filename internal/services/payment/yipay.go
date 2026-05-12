@@ -31,6 +31,8 @@ type YipayService struct {
 	PlatformPublicKey  string
 	MerchantPrivateKey string
 	APIURL             string
+	SubmitURL          string
+	QueryURL           string
 	NotifyURL          string
 	ReturnURL          string
 	Adapter            YipayPlatformAdapter
@@ -199,16 +201,23 @@ func buildSignString(params map[string]string, excludeKeys ...string) string {
 }
 
 func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error) {
+	configData := parseConfigData(paymentConfig.ConfigJSON)
+
 	pid := ""
 	if paymentConfig.AppID.Valid {
 		pid = strings.TrimSpace(paymentConfig.AppID.String)
 	}
 	if pid == "" {
+		pid = getConfigString(configData, "yipay_pid")
+	}
+	if pid == "" {
 		return nil, fmt.Errorf("易支付商户ID未配置")
 	}
 
-	configData := parseConfigData(paymentConfig.ConfigJSON)
 	signType := getConfigString(configData, "sign_type")
+	if signType == "" {
+		signType = getConfigString(configData, "yipay_sign_type")
+	}
 	if signType == "" {
 		signType = "MD5"
 	}
@@ -221,6 +230,9 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 	key := ""
 	if paymentConfig.MerchantPrivateKey.Valid {
 		key = strings.TrimSpace(paymentConfig.MerchantPrivateKey.String)
+	}
+	if key == "" {
+		key = getConfigString(configData, "yipay_md5_key")
 	}
 	if key == "" && (signType == "MD5" || signType == "MD5+RSA") {
 		return nil, fmt.Errorf("易支付MD5密钥未配置")
@@ -246,6 +258,9 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 	}
 
 	gatewayURL := getConfigString(configData, "gateway_url")
+	if gatewayURL == "" {
+		gatewayURL = getConfigString(configData, "yipay_gateway")
+	}
 	apiURL := getConfigString(configData, "api_url")
 	if apiURL == "" {
 		if gatewayURL != "" {
@@ -256,8 +271,17 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 	if apiURL == "" {
 		return nil, fmt.Errorf("易支付API地址未配置")
 	}
+	queryURL := getConfigString(configData, "query_url")
+	if queryURL == "" {
+		queryURL = buildEpayOrderQueryURL(apiURL)
+	}
 
-	utils.LogInfo("易支付初始化: platform=%s, api_url=%s, pid=%s, sign_type=%s", platformName, apiURL, pid, signType)
+	submitURL := adapter.GetSubmitURL(gatewayURL)
+	if submitURL == "" {
+		submitURL = strings.Replace(apiURL, "/mapi.php", "/submit.php", 1)
+	}
+
+	utils.LogInfo("易支付初始化: platform=%s, api_url=%s, submit_url=%s, pid=%s, sign_type=%s", platformName, apiURL, submitURL, pid, signType)
 
 	return &YipayService{
 		PID:                pid,
@@ -266,6 +290,8 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 		PlatformPublicKey:  platformPublicKey,
 		MerchantPrivateKey: merchantPrivateKey,
 		APIURL:             apiURL,
+		SubmitURL:          submitURL,
+		QueryURL:           queryURL,
 		NotifyURL:          resolveCallbackURL(paymentConfig.NotifyURL, getConfigString(configData, "notify_url"), "/api/v1/payment/notify/yipay", true),
 		ReturnURL:          resolveCallbackURL(paymentConfig.ReturnURL, "", "/payment/return", false),
 		Adapter:            adapter,
@@ -275,6 +301,10 @@ func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error)
 
 func (s *YipayService) CreatePayment(order *models.Order, amount float64, paymentType string) (string, error) {
 	return s.CreatePaymentWithDevice(order, amount, paymentType, "")
+}
+
+func (s *YipayService) QueryOrder(orderNo string) (*EpayQueryResult, error) {
+	return queryEpayOrder("易支付", s.QueryURL, s.PID, s.Key, orderNo)
 }
 
 func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float64, paymentType string, userAgent string) (string, error) {
@@ -359,15 +389,14 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 
 	respBytes, err := s.postForm(s.APIURL, params)
 	if err != nil {
-		return "", err
+		utils.LogWarn("易支付mapi请求失败，回退到submit.php: %v", err)
+		return s.buildSubmitURL(params), nil
 	}
 
 	respStr := string(respBytes)
 	if strings.HasPrefix(respStr, "<!DOCTYPE") || strings.HasPrefix(respStr, "<html") {
-		if strings.Contains(respStr, "404") || strings.Contains(respStr, "Not Found") {
-			return "", fmt.Errorf("易支付API 404错误，请检查网关地址")
-		}
-		return "", fmt.Errorf("易支付返回HTML页面而非JSON，可能配置错误或被拦截")
+		utils.LogWarn("易支付mapi返回HTML页面，回退到submit.php")
+		return s.buildSubmitURL(params), nil
 	}
 	if strings.HasPrefix(respStr, "http://") || strings.HasPrefix(respStr, "https://") {
 		return respStr, nil
@@ -375,8 +404,8 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 
 	var rawResp map[string]interface{}
 	if err := json.Unmarshal(respBytes, &rawResp); err != nil {
-		utils.LogError("易支付解析响应失败", err, map[string]interface{}{"resp": respStr})
-		return "", fmt.Errorf("易支付解析失败: %v", err)
+		utils.LogWarn("易支付mapi响应解析失败，回退到submit.php: %v", err)
+		return s.buildSubmitURL(params), nil
 	}
 
 	var yipayResp *YipayResponse
@@ -387,7 +416,8 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 		if err := json.Unmarshal(respBytes, &standardResp); err == nil {
 			yipayResp = &standardResp
 		} else {
-			return "", fmt.Errorf("易支付解析失败: %v", err)
+			utils.LogWarn("易支付标准响应解析失败，回退到submit.php: %v", err)
+			return s.buildSubmitURL(params), nil
 		}
 	}
 
@@ -395,7 +425,8 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 		s.PlatformName, yipayResp.Code, yipayResp.Msg, yipayResp.TradeNo, deviceType, yipayResp.PayURL, yipayResp.QRCode, yipayResp.URLScheme)
 
 	if yipayResp.Code != 1 {
-		return "", fmt.Errorf("易支付API错误: %s (code: %d)", yipayResp.Msg, yipayResp.Code)
+		utils.LogWarn("易支付mapi返回错误(code=%d, msg=%s)，回退到submit.php", yipayResp.Code, yipayResp.Msg)
+		return s.buildSubmitURL(params), nil
 	}
 
 	if yipayResp.URLScheme != "" {
@@ -413,7 +444,18 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 		return yipayResp.QRCode, nil
 	}
 
-	return "", fmt.Errorf("易支付未返回有效支付链接")
+	utils.LogWarn("易支付mapi未返回有效支付链接，回退到submit.php")
+	return s.buildSubmitURL(params), nil
+}
+
+func (s *YipayService) buildSubmitURL(params map[string]string) string {
+	submitParams := url.Values{}
+	for k, v := range params {
+		submitParams.Set(k, v)
+	}
+	submitURL := fmt.Sprintf("%s?%s", s.SubmitURL, submitParams.Encode())
+	utils.LogInfo("易支付submit.php回退URL: %s", submitURL)
+	return submitURL
 }
 
 func (s *YipayService) postForm(apiURL string, params map[string]string) ([]byte, error) {

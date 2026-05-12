@@ -2,20 +2,75 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
-	"strings"
 	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/geoip"
-	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
+
+func formatRechargeIP(rawIP string) string {
+	ip := utils.ParseIP(rawIP)
+	if ip == "" {
+		return "-"
+	}
+	return ip
+}
+
+func rechargeIPAddress(record models.RechargeRecord) string {
+	if !record.IPAddress.Valid {
+		return "-"
+	}
+	return formatRechargeIP(record.IPAddress.String)
+}
+
+func rechargePaidAt(record models.RechargeRecord) interface{} {
+	if record.PaidAt.Valid {
+		return utils.FormatBeijingTime(record.PaidAt.Time)
+	}
+	return nil
+}
+
+func formatRechargeRecord(record models.RechargeRecord, includeUser bool, includeLocation bool) gin.H {
+	ipAddress := rechargeIPAddress(record)
+	location := ""
+	if includeLocation && ipAddress != "-" && geoip.IsEnabled() {
+		locationStr := geoip.GetLocationWithCache(ipAddress)
+		if locationStr.Valid {
+			location = locationStr.String
+		}
+	}
+
+	data := gin.H{
+		"id":                     record.ID,
+		"user_id":                record.UserID,
+		"order_no":               record.OrderNo,
+		"amount":                 record.Amount,
+		"status":                 record.Status,
+		"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
+		"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
+		"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
+		"payment_url":            utils.GetNullStringValue(record.PaymentURL),
+		"ip_address":             ipAddress,
+		"location":               location,
+		"user_agent":             utils.GetNullStringValue(record.UserAgent),
+		"paid_at":                rechargePaidAt(record),
+		"created_at":             utils.FormatBeijingTime(record.CreatedAt),
+		"updated_at":             utils.FormatBeijingTime(record.UpdatedAt),
+	}
+
+	if includeUser {
+		data["user"] = resolveUserInfo(record.User)
+	}
+
+	return data
+}
 
 func CreateRecharge(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
@@ -56,54 +111,38 @@ func CreateRecharge(c *gin.Context) {
 		return
 	}
 
-	var paymentURL string
-	var paymentError error
 	paymentMethod := req.PaymentMethod
 	if paymentMethod == "" {
 		paymentMethod = "alipay"
 	}
 
-	var paymentConfig models.PaymentConfig
-	queryPayType := paymentMethod
-	if strings.HasPrefix(paymentMethod, "yipay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-			queryPayType = "yipay"
-		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
-				return
-			}
-		}
-	} else if strings.HasPrefix(paymentMethod, "codepay_") {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-			queryPayType = "codepay"
-		} else {
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
-				return
-			}
-		}
-	} else {
-		if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
-			return
-		}
+	paymentConfig, err := utils.FindEnabledPaymentConfig(db, paymentMethod)
+	if err != nil {
+		db.Model(&models.RechargeRecord{}).Where("id = ? AND status = ?", recharge.ID, "pending").Update("status", "failed")
+		utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+		return
 	}
 
+	var paymentURL string
 	if paymentConfig.Status == 1 {
 		// 创建支付交易记录
-		amt := int(recharge.Amount * 100) // 转换为分
+		amt := int(math.Round(recharge.Amount * 100)) // 转换为分
 		paymentTx := models.PaymentTransaction{
 			OrderID:         0, // 充值订单没有 order_id，使用 0
 			UserID:          user.ID,
 			PaymentMethodID: paymentConfig.ID,
 			Amount:          amt,
+			Currency:        "CNY",
+			TransactionID:   database.NullString(recharge.OrderNo),
 			Status:          "pending",
+			CreatedAt:       beijingTime,
+			UpdatedAt:       beijingTime,
 		}
 		if err := db.Create(&paymentTx).Error; err != nil {
 			utils.LogError("CreateRecharge: failed to create payment transaction", err, map[string]interface{}{
 				"order_no": recharge.OrderNo,
 			})
+			db.Model(&models.RechargeRecord{}).Where("id = ? AND status = ?", recharge.ID, "pending").Update("status", "failed")
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付交易记录失败", err)
 			return
 		}
@@ -114,56 +153,17 @@ func CreateRecharge(c *gin.Context) {
 			Amount:  recharge.Amount,
 		}
 
-		if paymentMethod == "alipay" {
-			alipayService, err := payment.NewAlipayService(&paymentConfig)
-			if err != nil {
-				paymentError = err
-			} else {
-				paymentURL, paymentError = alipayService.CreatePayment(tempOrder, recharge.Amount)
-			}
-		} else if paymentMethod == "wechat" {
-			wechatService, err := payment.NewWechatService(&paymentConfig)
-			if err != nil {
-				paymentError = err
-			} else {
-				paymentURL, paymentError = wechatService.CreatePayment(tempOrder, recharge.Amount)
-			}
-		} else if queryPayType == "yipay" || strings.HasPrefix(paymentMethod, "yipay_") {
-			yipayService, err := payment.NewYipayService(&paymentConfig)
-			if err != nil {
-				paymentError = err
-			} else {
-				paymentType := "alipay"
-				if strings.HasPrefix(paymentMethod, "yipay_") {
-					paymentType = strings.TrimPrefix(paymentMethod, "yipay_")
-				}
-				paymentURL, paymentError = yipayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
-			}
-		} else if queryPayType == "codepay" || strings.HasPrefix(paymentMethod, "codepay_") {
-			codepayService, err := payment.NewCodepayService(&paymentConfig)
-			if err != nil {
-				paymentError = err
-			} else {
-				paymentType := "alipay"
-				if strings.HasPrefix(paymentMethod, "codepay_") {
-					paymentType = strings.TrimPrefix(paymentMethod, "codepay_")
-				}
-				paymentURL, paymentError = codepayService.CreatePayment(tempOrder, recharge.Amount, paymentType)
-			}
-		} else {
-			utils.ErrorResponse(c, http.StatusBadRequest, "不支持的支付方式", nil)
-			return
-		}
-
-		if paymentError != nil {
-			utils.LogError("CreateRecharge: create payment failed", paymentError, map[string]interface{}{
+		paymentURL, err = generatePaymentURL(db, tempOrder, &paymentConfig, paymentMethod, recharge.Amount)
+		if err != nil {
+			utils.LogError("CreateRecharge: create payment failed", err, map[string]interface{}{
 				"payment_method": paymentMethod,
 				"order_no":       recharge.OrderNo,
 			})
 			utils.CreateBusinessLog(c, "recharge_payment_url_failed", "充值生成支付链接失败", "error", map[string]interface{}{
-				"user_id": user.ID, "order_no": recharge.OrderNo, "payment_method": paymentMethod, "reason": paymentError.Error(),
+				"user_id": user.ID, "order_no": recharge.OrderNo, "payment_method": paymentMethod, "reason": err.Error(),
 			})
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败: "+paymentError.Error(), nil)
+			db.Model(&models.RechargeRecord{}).Where("id = ? AND status = ?", recharge.ID, "pending").Update("status", "failed")
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败: "+err.Error(), nil)
 			return
 		}
 
@@ -173,10 +173,12 @@ func CreateRecharge(c *gin.Context) {
 				utils.LogError("CreateRecharge: save payment URL failed", err, nil)
 			}
 		} else {
+			db.Model(&models.RechargeRecord{}).Where("id = ? AND status = ?", recharge.ID, "pending").Update("status", "failed")
 			utils.ErrorResponse(c, http.StatusInternalServerError, "支付链接生成失败", nil)
 			return
 		}
 	} else {
+		db.Model(&models.RechargeRecord{}).Where("id = ? AND status = ?", recharge.ID, "pending").Update("status", "failed")
 		utils.ErrorResponse(c, http.StatusBadRequest, "支付配置未启用", nil)
 		return
 	}
@@ -197,66 +199,61 @@ func GetRechargeRecords(c *gin.Context) {
 		return
 	}
 
+	page, size, offset := getPagination(c)
+	status := c.Query("status")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
 	db := database.GetDB()
 	var records []models.RechargeRecord
-	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").Find(&records).Error; err != nil {
+	var total int64
+	query := db.Model(&models.RechargeRecord{}).Where("user_id = ?", user.ID)
+
+	if status != "" && status != "all" {
+		query = query.Where("status = ?", status)
+	}
+
+	var startParsed time.Time
+	if startDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", startDate, utils.BeijingTZ)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "start_date格式错误，应为YYYY-MM-DD", err)
+			return
+		}
+		startParsed = parsed
+		query = query.Where("created_at >= ?", startParsed)
+	}
+	if endDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", endDate, utils.BeijingTZ)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "end_date格式错误，应为YYYY-MM-DD", err)
+			return
+		}
+		if !startParsed.IsZero() && parsed.Before(startParsed) {
+			utils.ErrorResponse(c, http.StatusBadRequest, "end_date不能早于start_date", nil)
+			return
+		}
+		query = query.Where("created_at < ?", parsed.AddDate(0, 0, 1))
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取充值记录失败", err)
+		return
+	}
+
+	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&records).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取充值记录失败", err)
 		return
 	}
 
 	formattedRecords := make([]gin.H, 0, len(records))
-	formatIP := func(ip string) string {
-		if ip == "" {
-			return "-"
-		}
-		if ip == "::1" {
-			return "127.0.0.1"
-		}
-		if strings.HasPrefix(ip, "::ffff:") {
-			return strings.TrimPrefix(ip, "::ffff:")
-		}
-		return ip
-	}
 	for _, record := range records {
-		ipValue := utils.GetNullStringValue(record.IPAddress)
-		var ipStr string
-		if ipValue != nil {
-			ipStr = ipValue.(string)
-		}
-		ipAddress := formatIP(ipStr)
-		// 列表查询不查询 GeoIP，提升性能
-		location := ""
-		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-		// 	locationStr := geoip.GetLocationString(ipAddress)
-		// 	if locationStr.Valid {
-		// 		location = locationStr.String
-		// 	}
-		// }
-
-		formattedRecords = append(formattedRecords, gin.H{
-			"id":                     record.ID,
-			"user_id":                record.UserID,
-			"order_no":               record.OrderNo,
-			"amount":                 record.Amount,
-			"status":                 record.Status,
-			"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
-			"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
-			"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
-			"payment_url":            utils.GetNullStringValue(record.PaymentURL),
-			"ip_address":             ipAddress,
-			"location":               location,
-			"user_agent":             utils.GetNullStringValue(record.UserAgent),
-			"paid_at": func() interface{} {
-				if record.PaidAt.Valid {
-					return utils.FormatBeijingTime(record.PaidAt.Time)
-				}
-				return nil
-			}(),
-			"created_at": utils.FormatBeijingTime(record.CreatedAt),
-			"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
-		})
+		formattedRecords = append(formattedRecords, formatRechargeRecord(record, false, false))
 	}
 
+	c.Header("X-Total-Count", fmt.Sprintf("%d", total))
+	c.Header("X-Page", fmt.Sprintf("%d", page))
+	c.Header("X-Page-Size", fmt.Sprintf("%d", size))
 	utils.SuccessResponse(c, http.StatusOK, "", formattedRecords)
 }
 
@@ -275,56 +272,7 @@ func GetRechargeRecord(c *gin.Context) {
 		return
 	}
 
-	formatIP := func(ip string) string {
-		if ip == "" {
-			return "-"
-		}
-		if ip == "::1" {
-			return "127.0.0.1"
-		}
-		if strings.HasPrefix(ip, "::ffff:") {
-			return strings.TrimPrefix(ip, "::ffff:")
-		}
-		return ip
-	}
-	ipValue := utils.GetNullStringValue(record.IPAddress)
-	var ipStr string
-	if ipValue != nil {
-		ipStr = ipValue.(string)
-	}
-	ipAddress := formatIP(ipStr)
-	location := ""
-	if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-		locationStr := geoip.GetLocationWithCache(ipAddress)
-		if locationStr.Valid {
-			location = locationStr.String
-		}
-	}
-
-	formattedRecord := gin.H{
-		"id":                     record.ID,
-		"user_id":                record.UserID,
-		"order_no":               record.OrderNo,
-		"amount":                 record.Amount,
-		"status":                 record.Status,
-		"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
-		"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
-		"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
-		"payment_url":            utils.GetNullStringValue(record.PaymentURL),
-		"ip_address":             ipAddress,
-		"location":               location,
-		"user_agent":             utils.GetNullStringValue(record.UserAgent),
-		"paid_at": func() interface{} {
-			if record.PaidAt.Valid {
-				return utils.FormatBeijingTime(record.PaidAt.Time)
-			}
-			return nil
-		}(),
-		"created_at": utils.FormatBeijingTime(record.CreatedAt),
-		"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
-	}
-
-	utils.SuccessResponse(c, http.StatusOK, "", formattedRecord)
+	utils.SuccessResponse(c, http.StatusOK, "", formatRechargeRecord(record, false, true))
 }
 
 func GetRechargeStatusByNo(c *gin.Context) {
@@ -342,78 +290,14 @@ func GetRechargeStatusByNo(c *gin.Context) {
 		return
 	}
 
-	if record.Status == "pending" {
-		timeSinceCreated := time.Since(record.CreatedAt)
-		var shouldQuery bool
-		if timeSinceCreated >= 3*time.Second && timeSinceCreated < 10*time.Second {
-			shouldQuery = true
-		} else if timeSinceCreated >= 10*time.Second && timeSinceCreated < 60*time.Second {
-			shouldQuery = int(timeSinceCreated.Seconds())%5 < 2
-		} else if timeSinceCreated >= 60*time.Second {
-			shouldQuery = int(timeSinceCreated.Seconds())%30 < 2
-		}
-
-		if shouldQuery {
-			paymentMethod := "alipay"
-			if record.PaymentMethod.Valid {
-				paymentMethod = record.PaymentMethod.String
-			}
-
-			var paymentConfig models.PaymentConfig
-			if err := db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", paymentMethod, 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-				if paymentConfig.PayType == "alipay" {
-					alipayService, err := payment.NewAlipayService(&paymentConfig)
-					if err == nil {
-						queryResult, err := alipayService.QueryOrder(orderNo)
-						if err == nil && queryResult != nil && queryResult.IsPaid() {
-							err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-								var latestRecord models.RechargeRecord
-								if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&latestRecord).Error; err == nil {
-									latestRecord.Status = "paid"
-									latestRecord.PaidAt = database.NullTime(utils.GetBeijingTime())
-									if queryResult.TradeNo != "" {
-										latestRecord.PaymentTransactionID = database.NullString(queryResult.TradeNo)
-									}
-									if !latestRecord.PaymentMethod.Valid || latestRecord.PaymentMethod.String == "" {
-										latestRecord.PaymentMethod = database.NullString(paymentMethod)
-									}
-									if err := tx.Save(&latestRecord).Error; err != nil {
-										return err
-									}
-
-									// 更新支付交易记录状态
-									var paymentTx models.PaymentTransaction
-									if err := tx.Where("user_id = ? AND amount = ? AND status = ?", latestRecord.UserID, int(latestRecord.Amount*100), "pending").
-										Order("created_at DESC").First(&paymentTx).Error; err == nil {
-										paymentTx.Status = "success"
-										if queryResult.TradeNo != "" {
-											paymentTx.ExternalTransactionID = database.NullString(queryResult.TradeNo)
-										}
-										if err := tx.Save(&paymentTx).Error; err != nil {
-											utils.LogError("GetRechargeStatusByNo: failed to update payment transaction", err, map[string]interface{}{
-												"order_no": orderNo,
-											})
-										}
-									}
-
-									var user models.User
-									if err := tx.First(&user, latestRecord.UserID).Error; err == nil {
-										user.Balance += latestRecord.Amount
-										if err := tx.Save(&user).Error; err != nil {
-											return err
-										}
-									}
-								}
-								return nil
-							})
-
-							if err == nil {
-								db.Where("order_no = ?", orderNo).First(&record)
-							}
-						}
-					}
-				}
-			}
+	if record.Status == "pending" && shouldQueryPaymentStatus(record.CreatedAt) {
+		if success, err := performPaymentStatusQuery(db, orderNo, true); success {
+			db.Where("order_no = ?", orderNo).First(&record)
+		} else if err != nil {
+			utils.LogWarn("GetRechargeStatusByNo: active payment query failed: %+v", map[string]interface{}{
+				"order_no": orderNo,
+				"error":    err.Error(),
+			})
 		}
 	}
 
@@ -425,13 +309,8 @@ func GetRechargeStatusByNo(c *gin.Context) {
 		"status":                 record.Status,
 		"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
 		"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
-		"paid_at": func() interface{} {
-			if record.PaidAt.Valid {
-				return utils.FormatBeijingTime(record.PaidAt.Time)
-			}
-			return nil
-		}(),
-		"created_at": utils.FormatBeijingTime(record.CreatedAt),
+		"paid_at":                rechargePaidAt(record),
+		"created_at":             utils.FormatBeijingTime(record.CreatedAt),
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", formattedRecord)
@@ -461,6 +340,13 @@ func CancelRecharge(c *gin.Context) {
 	if err := db.Save(&record).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "取消充值订单失败", err)
 		return
+	}
+	if err := db.Model(&models.PaymentTransaction{}).
+		Where("order_id = ? AND transaction_id = ? AND status = ?", 0, record.OrderNo, "pending").
+		Update("status", "cancelled").Error; err != nil {
+		utils.LogError("CancelRecharge: mark payment transaction cancelled", err, map[string]interface{}{
+			"order_no": record.OrderNo,
+		})
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "充值订单已取消", record)
@@ -516,15 +402,32 @@ func GetAdminRechargeRecords(c *gin.Context) {
 		findQuery = findQuery.Where(statusCondition, status)
 	}
 
+	var startParsed time.Time
 	if startDate != "" {
-		dateCondition := "DATE(recharge_records.created_at) >= ?"
-		countQuery = countQuery.Where(dateCondition, startDate)
-		findQuery = findQuery.Where(dateCondition, startDate)
+		parsed, err := time.ParseInLocation("2006-01-02", startDate, utils.BeijingTZ)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "start_date格式错误，应为YYYY-MM-DD", err)
+			return
+		}
+		startParsed = parsed
+		dateCondition := "recharge_records.created_at >= ?"
+		countQuery = countQuery.Where(dateCondition, startParsed)
+		findQuery = findQuery.Where(dateCondition, startParsed)
 	}
 	if endDate != "" {
-		dateCondition := "DATE(recharge_records.created_at) <= ?"
-		countQuery = countQuery.Where(dateCondition, endDate)
-		findQuery = findQuery.Where(dateCondition, endDate)
+		parsed, err := time.ParseInLocation("2006-01-02", endDate, utils.BeijingTZ)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "end_date格式错误，应为YYYY-MM-DD", err)
+			return
+		}
+		if !startParsed.IsZero() && parsed.Before(startParsed) {
+			utils.ErrorResponse(c, http.StatusBadRequest, "end_date不能早于start_date", nil)
+			return
+		}
+		endTime := parsed.AddDate(0, 0, 1)
+		dateCondition := "recharge_records.created_at < ?"
+		countQuery = countQuery.Where(dateCondition, endTime)
+		findQuery = findQuery.Where(dateCondition, endTime)
 	}
 
 	var total int64
@@ -538,66 +441,8 @@ func GetAdminRechargeRecords(c *gin.Context) {
 	}
 
 	formattedRecords := make([]gin.H, 0, len(records))
-	formatIP := func(ip string) string {
-		if ip == "" {
-			return "-"
-		}
-		if ip == "::1" {
-			return "127.0.0.1"
-		}
-		if strings.HasPrefix(ip, "::ffff:") {
-			return strings.TrimPrefix(ip, "::ffff:")
-		}
-		return ip
-	}
 	for _, record := range records {
-		ipValue := utils.GetNullStringValue(record.IPAddress)
-		var ipStr string
-		if ipValue != nil {
-			ipStr = ipValue.(string)
-		}
-		ipAddress := formatIP(ipStr)
-		// 列表查询不查询 GeoIP，提升性能
-		location := ""
-		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-		// 	locationStr := geoip.GetLocationString(ipAddress)
-		// 	if locationStr.Valid {
-		// 		location = locationStr.String
-		// 	}
-		// }
-
-		userInfo := gin.H{}
-		if record.User.ID > 0 {
-			userInfo = gin.H{
-				"id":       record.User.ID,
-				"username": record.User.Username,
-				"email":    record.User.Email,
-			}
-		}
-
-		formattedRecords = append(formattedRecords, gin.H{
-			"id":                     record.ID,
-			"user_id":                record.UserID,
-			"user":                   userInfo,
-			"order_no":               record.OrderNo,
-			"amount":                 record.Amount,
-			"status":                 record.Status,
-			"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
-			"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
-			"payment_qr_code":        utils.GetNullStringValue(record.PaymentQRCode),
-			"payment_url":            utils.GetNullStringValue(record.PaymentURL),
-			"ip_address":             ipAddress,
-			"location":               location,
-			"user_agent":             utils.GetNullStringValue(record.UserAgent),
-			"paid_at": func() interface{} {
-				if record.PaidAt.Valid {
-					return utils.FormatBeijingTime(record.PaidAt.Time)
-				}
-				return nil
-			}(),
-			"created_at": utils.FormatBeijingTime(record.CreatedAt),
-			"updated_at": utils.FormatBeijingTime(record.UpdatedAt),
-		})
+		formattedRecords = append(formattedRecords, formatRechargeRecord(record, true, false))
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{

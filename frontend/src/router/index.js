@@ -2,10 +2,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
-import { useApi } from '@/utils/api'
+import { ElMessage } from '@/utils/elementPlusServices'
 
 const SECURE_STORAGE_KEY = 'cboard_secure_'
 const ACCESS_TOKEN_TTL = 60 * 60 * 1000
+const LOGIN_HANDOFF_STORAGE_PREFIX = 'cboard_login_handoff_'
 const UserLayout = () => import('@/components/layout/UserLayout.vue')
 const AdminLayout = () => import('@/components/layout/AdminLayout.vue')
 
@@ -114,6 +115,20 @@ const saveAdminAuth = (adminToken, adminUser) => {
     if (process.env.NODE_ENV === 'development') console.debug('saveAdminAuth parse failed', e)
   }
 }
+const readLoginHandoff = (sessionKey) => {
+  if (!sessionKey) return null
+  const localStorageKey = `${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`
+  const raw = sessionStorage.getItem(sessionKey) || localStorage.getItem(localStorageKey)
+  sessionStorage.removeItem(sessionKey)
+  localStorage.removeItem(localStorageKey)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') console.debug('readLoginHandoff parse failed', e)
+    return null
+  }
+}
 router.beforeEach(async (to, from, next) => {
   if (to.meta.title) document.title = `${to.meta.title} - CBoard`
   try {
@@ -131,15 +146,12 @@ router.beforeEach(async (to, from, next) => {
 
     const { sessionKey } = to.query
     if (sessionKey) {
-      const loginData = JSON.parse(sessionStorage.getItem(sessionKey) || 'null')
+      const loginData = readLoginHandoff(sessionKey)
       if (loginData) {
         if (Date.now() - loginData.timestamp > 300000) {
-          sessionStorage.removeItem(sessionKey)
-          const { ElMessage } = await import('element-plus')
           ElMessage.error('登录信息已过期')
           return next('/login')
         }
-        sessionStorage.removeItem(sessionKey)
         if (loginData.adminToken) saveAdminAuth(loginData.adminToken, loginData.adminUser)
         if (loginData.adminRefreshToken) {
           secureStorage.set('admin_refresh_token', loginData.adminRefreshToken, false, ADMIN_USER_TTL)

@@ -271,7 +271,7 @@
 <script>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 const abnormalTypeMap = {
@@ -449,10 +449,6 @@ export default {
     align-items: flex-start;
     gap: 12px;
   }
-}
-.header-actions {
-  display: flex;
-  gap: 10px;
 }
 .filter-section {
   margin-bottom: 20px;

@@ -29,7 +29,12 @@ func Checkin(c *gin.Context) {
 
 	// 使用事务和数据库锁防止重复签到
 	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
-		// 在事务内再次检查，使用 FOR UPDATE 锁定用户记录
+		// 先锁定用户记录，再检查签到记录，避免并发请求同时通过当天检查。
+		var user models.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+			return fmt.Errorf("用户不存在")
+		}
+
 		var count int64
 		if err := tx.Model(&models.CheckinRecord{}).
 			Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, dayStart, dayEnd).
@@ -60,12 +65,6 @@ func Checkin(c *gin.Context) {
 		// 兜底限制：签到奖励不能超过 2 元
 		if amount > 2.0 {
 			amount = 2.0
-		}
-
-		// 锁定用户记录并更新余额
-		var user models.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
-			return fmt.Errorf("用户不存在")
 		}
 
 		balanceBefore := user.Balance
@@ -143,14 +142,19 @@ func GetCheckinStatus(c *gin.Context) {
 	now := utils.GetBeijingTime()
 	dayStart, dayEnd := utils.GetDayRange(now)
 
-	var count int64
-	db.Model(&models.CheckinRecord{}).Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, dayStart, dayEnd).Count(&count)
-
-	var totalCheckins int64
-	db.Model(&models.CheckinRecord{}).Where("user_id = ?", userID).Count(&totalCheckins)
-
-	var totalReward float64
-	db.Model(&models.CheckinRecord{}).Where("user_id = ?", userID).Select("COALESCE(SUM(amount), 0)").Scan(&totalReward)
+	var checkinStats struct {
+		Today       int64
+		Total       int64
+		TotalReward float64
+	}
+	db.Raw(`
+		SELECT
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS today,
+			COUNT(*) AS total,
+			COALESCE(SUM(amount), 0) AS total_reward
+		FROM checkin_records
+		WHERE user_id = ?
+	`, dayStart, dayEnd, userID).Scan(&checkinStats)
 
 	// 连续签到天数：单次查询近10年的签到记录，避免按天N次查询
 	streak := 0
@@ -182,9 +186,9 @@ func GetCheckinStatus(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"checked_in":     count > 0,
-		"total_checkins": totalCheckins,
-		"total_reward":   totalReward,
+		"checked_in":     checkinStats.Today > 0,
+		"total_checkins": checkinStats.Total,
+		"total_reward":   checkinStats.TotalReward,
 		"streak":         streak,
 	})
 }

@@ -55,13 +55,16 @@
             <el-option label="待支付" value="pending" />
             <el-option label="已支付" value="paid" />
             <el-option label="已取消" value="cancelled" />
+            <el-option label="支付失败" value="failed" />
+            <el-option label="已过期" value="expired" />
+            <el-option label="已退款" value="refunded" />
           </el-select>
           <el-button @click="resetSearch" icon="Refresh" circle class="mobile-reset-btn"></el-button>
         </div>
       </div>
 
       <!-- 电脑端搜索表单 (保持不变) -->
-      <el-form :inline="true" :model="searchForm" class="search-form" v-else>
+      <el-form :inline="true" :model="searchForm" class="search-form list-filter-form" v-else>
         <el-form-item label="搜索">
           <el-input 
             v-model="searchForm.keyword" 
@@ -77,6 +80,9 @@
             <el-option label="待支付" value="pending" />
             <el-option label="已支付" value="paid" />
             <el-option label="已取消" value="cancelled" />
+            <el-option label="支付失败" value="failed" />
+            <el-option label="已过期" value="expired" />
+            <el-option label="已退款" value="refunded" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -107,7 +113,7 @@
           border
           @selection-change="handleSelectionChange"
         >
-          <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" />
+          <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" :selectable="isOrderSelectable" />
           <el-table-column prop="order_no" label="订单号" width="180" />
           <el-table-column label="用户邮箱">
             <template #default="scope">
@@ -158,6 +164,15 @@
                   class="action-btn"
                 >
                   <el-icon><Check /></el-icon> 标记已付
+                </el-button>
+                <el-button 
+                  size="small" 
+                  type="warning" 
+                  @click="refundOrder(scope.row)"
+                  v-if="scope.row.status === 'paid' && canRefundOrder(scope.row)"
+                  class="action-btn"
+                >
+                  <el-icon><Money /></el-icon> 退款
                 </el-button>
                 <el-button 
                   size="small" 
@@ -234,6 +249,15 @@
             <el-button-group class="mc-actions">
               <el-button size="small" @click="viewOrder(item)">
                  详情
+              </el-button>
+              <el-button 
+                v-if="item.status === 'paid' && canRefundOrder(item)"
+                size="small" 
+                type="warning" 
+                plain
+                @click="refundOrder(item)"
+              >
+                退款
               </el-button>
               <el-button 
                 v-if="item.status === 'pending'"
@@ -386,6 +410,14 @@
           </el-col>
           <el-col :span="12">
             <el-card class="stat-card">
+              <div class="stat-number">{{ statistics.cancelledOrders }}</div>
+              <div class="stat-label">已取消</div>
+            </el-card>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20" style="margin-top: 20px;">
+          <el-col :span="12">
+            <el-card class="stat-card">
               <div class="stat-number">¥{{ formatMoney(statistics.totalRevenue) }}</div>
               <div class="stat-label">总收入</div>
             </el-card>
@@ -406,7 +438,7 @@
 <script>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
   Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
@@ -457,6 +489,7 @@ export default {
       totalOrders: 0,
       pendingOrders: 0,
       paidOrders: 0,
+      cancelledOrders: 0,
       totalRevenue: 0
     })
 
@@ -613,10 +646,24 @@ export default {
       })
     }
 
+    const canRefundOrder = (order) => {
+      if (!order || order.record_type === 'recharge' || order.status !== 'paid') return false
+      const method = String(order.payment_method || '').toLowerCase()
+      return method.includes('yipay') || method.includes('易支付')
+    }
+
+    const refundOrder = (order) => {
+      confirmAction('确定要退款此订单吗？退款后会回退订阅/设备数量和相关优惠占用。', async () => {
+        await api.post(`/admin/orders/${order.id}/refund`)
+      })
+    }
+
     // Bulk Actions
     const handleSelectionChange = (selection) => {
-      selectedOrders.value = selection
+      selectedOrders.value = selection.filter(item => item.record_type !== 'recharge')
     }
+
+    const isOrderSelectable = (row) => row.record_type !== 'recharge'
 
     const handleBulkAction = async (actionType, apiPath, confirmMsg) => {
       if (selectedOrders.value.length === 0) return
@@ -624,7 +671,13 @@ export default {
       try {
         await ElMessageBox.confirm(confirmMsg, '提示', { type: 'warning' })
         bulkLoading.value = true
-        const orderIds = selectedOrders.value.map(o => o.id)
+        const orderIds = selectedOrders.value
+          .filter(o => o.record_type !== 'recharge')
+          .map(o => o.id)
+        if (orderIds.length === 0) {
+          ElMessage.warning('请选择订单记录，充值记录不能执行此操作')
+          return
+        }
         await api.post(apiPath, { order_ids: orderIds })
         ElMessage.success('批量操作成功')
         selectedOrders.value = []
@@ -686,6 +739,7 @@ export default {
             totalOrders: s.total_orders || 0,
             pendingOrders: s.pending_orders || 0,
             paidOrders: s.paid_orders || 0,
+            cancelledOrders: s.cancelled || s.cancelled_orders || 0,
             totalRevenue: s.total_revenue || 0
           })
         }
@@ -698,13 +752,19 @@ export default {
     const getStatusType = (status) => ({
       'pending': 'warning',
       'paid': 'success',
-      'cancelled': 'danger'
+      'cancelled': 'info',
+      'failed': 'danger',
+      'expired': 'info',
+      'refunded': 'warning'
     }[status] || 'info')
 
     const getStatusText = (status) => ({
       'pending': '待支付',
       'paid': '已支付',
-      'cancelled': '已取消'
+      'cancelled': '已取消',
+      'failed': '支付失败',
+      'expired': '已过期',
+      'refunded': '已退款'
     }[status] || status)
 
     const formatDateTime = (d) => formatDateTimeUtil(d) || '-'
@@ -736,7 +796,8 @@ export default {
       // Actions
       searchOrders, resetSearch, handleTabChange,
       handleSizeChange, handleCurrentChange, handleSelectionChange,
-      viewOrder, previewImage, markAsPaid, cancelOrder, deleteOrder,
+      isOrderSelectable,
+      viewOrder, previewImage, markAsPaid, cancelOrder, deleteOrder, refundOrder, canRefundOrder,
       exportOrders, bulkMarkAsPaid, bulkCancel, bulkDelete,
       
       // Utils
@@ -747,75 +808,16 @@ export default {
 </script>
 
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
-
 // 通用样式
 .positive-amount { color: #67c23a; font-weight: 600; }
-.records-tabs { margin-bottom: 20px; }
 .text-muted { color: #909399; font-size: 12px; }
 .ml-1 { margin-left: 4px; }
 
-// 电脑端样式保留
-.bulk-actions, .normal-actions, .header-actions { display: flex; gap: 10px; align-items: center; }
 .selected-count { color: #409eff; font-weight: 600; font-size: 14px; }
 .action-buttons-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 
-// 手机端优化样式
 @media (max-width: 768px) {
-  // 1. 搜索与筛选栏优化
-  .mobile-action-bar {
-    padding: 12px;
-    background: #f8fafc;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-
-    .mobile-search-row {
-      display: flex;
-      gap: 8px;
-      .mobile-search-input {
-        flex: 1;
-        --el-input-border-radius: 20px;
-      }
-      .mobile-search-btn {
-        border-radius: 20px;
-        padding: 0 20px;
-      }
-    }
-
-    .mobile-filter-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      .mobile-filter-select {
-        flex: 1;
-        :deep(.el-input__wrapper) {
-          border-radius: 20px;
-        }
-      }
-      .mobile-reset-btn {
-        flex-shrink: 0;
-      }
-    }
-  }
-
-  // 2. 手机端卡片深度优化
-  .mobile-card-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
   .mobile-card-optimized {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
-    overflow: hidden;
-    border: 1px solid #ebeef5;
-    
-    // 头部：ID与状态
     .mc-header {
       padding: 12px 16px;
       background: #f8f9fa;
@@ -834,7 +836,6 @@ export default {
       }
     }
 
-    // 主体：关键信息
     .mc-body {
       padding: 16px;
       display: flex;
@@ -887,7 +888,6 @@ export default {
       }
     }
 
-    // 底部：操作按钮
     .mc-footer {
       padding: 10px 16px;
       border-top: 1px solid #f0f2f5;
@@ -910,25 +910,6 @@ export default {
     }
   }
 
-  // 3. 空状态与分页
-  .empty-state {
-    padding: 40px 0;
-    text-align: center;
-    color: #909399;
-    .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.5; }
-    p { margin: 0; font-size: 14px; }
-  }
-  
-  .pagination {
-    margin-top: 20px;
-    display: flex;
-    justify-content: center;
-    :deep(.el-pagination) {
-      .el-pagination__jump { display: none; }
-    }
-  }
-
-  // 4. 详情弹窗优化
   .mobile-order-detail {
     .detail-header-block {
       text-align: center;

@@ -7,6 +7,7 @@ class ApiCache {
   constructor() {
     this.cache = new Map()
     this.expiryTimes = new Map()
+    this.pending = new Map()
   }
 
   /**
@@ -51,6 +52,7 @@ class ApiCache {
   delete(key) {
     this.cache.delete(key)
     this.expiryTimes.delete(key)
+    this.pending.delete(key)
   }
 
   /**
@@ -59,6 +61,7 @@ class ApiCache {
   clear() {
     this.cache.clear()
     this.expiryTimes.clear()
+    this.pending.clear()
   }
 
   /**
@@ -87,14 +90,23 @@ class ApiCache {
       return Promise.resolve(cached)
     }
 
-    // 调用 API 并缓存结果
-    try {
-      const result = await apiCall()
-      this.set(key, result, ttl)
-      return result
-    } catch (error) {
-      throw error
+    const existingRequest = this.pending.get(key)
+    if (existingRequest) {
+      return existingRequest
     }
+
+    const request = Promise.resolve()
+      .then(apiCall)
+      .then(result => {
+        this.set(key, result, ttl)
+        return result
+      })
+      .finally(() => {
+        this.pending.delete(key)
+      })
+
+    this.pending.set(key, request)
+    return request
   }
 }
 

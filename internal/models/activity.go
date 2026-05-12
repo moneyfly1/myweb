@@ -9,14 +9,14 @@ import (
 
 type UserActivity struct {
 	ID               uint           `gorm:"primaryKey" json:"id"`
-	UserID           uint           `gorm:"index;not null" json:"user_id"`
+	UserID           uint           `gorm:"index;index:idx_user_activities_user_created_at,priority:1;not null" json:"user_id"`
 	ActivityType     string         `gorm:"type:varchar(50);not null" json:"activity_type"`
 	Description      sql.NullString `gorm:"type:text" json:"description,omitempty"`
 	IPAddress        sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
 	UserAgent        sql.NullString `gorm:"type:text" json:"user_agent,omitempty"`
 	Location         sql.NullString `gorm:"type:varchar(100)" json:"location,omitempty"`
 	ActivityMetadata sql.NullString `gorm:"type:json" json:"activity_metadata,omitempty"`
-	CreatedAt        time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	CreatedAt        time.Time      `gorm:"autoCreateTime;index;index:idx_user_activities_user_created_at,priority:2" json:"created_at"`
 
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
