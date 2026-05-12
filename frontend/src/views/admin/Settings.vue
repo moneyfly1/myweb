@@ -12,18 +12,6 @@
       </div>
     </div>
 
-    <!-- 数据概览卡片 -->
-    <div class="settings-overview">
-      <div v-for="item in overviewCards" :key="item.label" class="overview-card">
-        <div class="overview-label">{{ item.label }}</div>
-        <div class="overview-value">{{ item.value }}</div>
-        <div class="overview-note">
-          <span class="status-dot" :class="item.status"></span>
-          {{ item.note }}
-        </div>
-      </div>
-    </div>
-
     <!-- 主体设置区域 -->
     <el-card class="settings-shell list-card" shadow="never">
       <el-tabs v-model="activeTab" class="settings-tabs" :tab-position="settingsTabPosition">
@@ -893,30 +881,6 @@ export default {
     })
     
     const generalRules = { site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }] }
-    const enabledText = (enabled) => enabled ? '已启用' : '未启用'
-
-    const overviewCards = computed(() => [
-      {
-        label: '站点', value: generalSettings.site_name || '未设置',
-        note: generalSettings.domain_name ? `域名 ${generalSettings.domain_name}` : '使用请求域名',
-        status: generalSettings.site_name ? 'success' : 'warning'
-      },
-      {
-        label: '注册', value: enabledText(registrationSettings.registration_enabled),
-        note: registrationSettings.invite_code_required ? '邀请码注册' : '公开注册策略',
-        status: registrationSettings.registration_enabled ? 'success' : 'warning'
-      },
-      {
-        label: '通知', value: enabledText(notificationSettings.email_notifications),
-        note: adminNotificationSettings.admin_notification_enabled ? '管理员告警已开' : '管理员告警未开',
-        status: notificationSettings.email_notifications ? 'success' : 'muted'
-      },
-      {
-        label: '备份', value: enabledText(backupSettings.backup_auto_enabled),
-        note: backupSettings.backup_target === 'github' ? '目标 GitHub' : '目标 Gitee',
-        status: backupSettings.backup_auto_enabled ? 'success' : 'muted'
-      }
-    ])
 
     const formatFileSize = (bytes) => {
       if (!bytes) return '0 B'
@@ -1264,7 +1228,7 @@ export default {
     onBeforeUnmount(() => stopStatusPolling())
 
     return {
-      activeTab, isMobile, formLayout, settingsTabPosition, pageLoading, savingCurrent, overviewCards, Refresh, Check,
+      activeTab, isMobile, formLayout, settingsTabPosition, pageLoading, savingCurrent, Refresh, Check,
       generalSettings, generalRules, generalFormRef, registrationSettings, inviteSettings, notificationSettings, securitySettings,
       themeSettings, adminNotificationSettings, announcementSettings, nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS,
@@ -1306,52 +1270,6 @@ export default {
   font-size: 13px;
   margin: 0;
 }
-
-/* ========== 概览数据卡片 ========== */
-.settings-overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.overview-card {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  padding: 10px 16px;
-  box-shadow: var(--el-box-shadow-light);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-.overview-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--el-box-shadow);
-}
-.overview-label {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-.overview-value {
-  margin: 4px 0;
-  color: var(--el-text-color-primary);
-  font-size: 16px;
-  font-weight: 700;
-}
-.overview-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--el-text-color-regular);
-  font-size: 11px;
-}
-.status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--el-color-info-light-5);
-}
-.status-dot.success { background: var(--el-color-success); }
-.status-dot.warning { background: var(--el-color-warning); }
-.status-dot.danger { background: var(--el-color-danger); }
 
 /* ========== Tabs 与主体表单容器 ========== */
 .settings-shell {
