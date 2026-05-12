@@ -411,7 +411,7 @@
                     <el-button type="primary" size="small" @click="downloadApp(app.downloadKey)">
                       立即下载
                     </el-button>
-                    <el-button type="default" size="small" @click="openTutorial(app.tutorialUrl)">
+                    <el-button type="default" size="small" @click="openTutorial(app)">
                       安装教程
                     </el-button>
                   </div>
@@ -651,41 +651,41 @@ const platforms = ref([
         name: 'Clash for Windows',
         version: 'Latest',
         downloadKey: 'clash_windows_url',
-        tutorialUrl: '/help#clash-windows'
+        clientId: 'clash-windows'
       },
       {
         name: 'V2rayN',
         version: 'Latest',
         downloadKey: 'v2rayn_url',
-        tutorialUrl: '/help#v2rayn',
+        clientId: 'v2rayn',
         githubKey: 'v2rayn'
       },
       {
         name: 'Clash Party',
         version: 'Latest',
         downloadKey: 'mihomo_windows_url',
-        tutorialUrl: '/help#clash-party',
+        clientId: 'clash-party',
         githubKey: 'clash-party'
       },
       {
         name: 'Clash Verge',
         version: 'Latest',
         downloadKey: 'clash_verge_windows_url',
-        tutorialUrl: '/help#clash-verge',
+        clientId: 'clash-verge',
         githubKey: 'clash-verge'
       },
       {
         name: 'Hiddify',
         version: 'Latest',
         downloadKey: 'hiddify_windows_url',
-        tutorialUrl: '/help#hiddify',
+        clientId: 'hiddify',
         githubKey: 'hiddify'
       },
       {
         name: 'FlClash',
         version: 'Latest',
         downloadKey: 'flash_windows_url',
-        tutorialUrl: '/help#flclash',
+        clientId: 'flclash',
         githubKey: 'flclash'
       }
     ]
@@ -698,20 +698,20 @@ const platforms = ref([
         name: 'Clash Meta',
         version: 'Latest',
         downloadKey: 'clash_android_url',
-        tutorialUrl: '/help#clash-meta'
+        clientId: 'clash-meta'
       },
       {
         name: 'V2rayNG',
         version: 'Latest',
         downloadKey: 'v2rayng_url',
-        tutorialUrl: '/help#v2rayng',
+        clientId: 'v2rayng',
         githubKey: 'v2rayng'
       },
       {
         name: 'Hiddify',
         version: 'Latest',
         downloadKey: 'hiddify_android_url',
-        tutorialUrl: '/help#hiddify',
+        clientId: 'hiddify',
         githubKey: 'hiddify'
       }
     ]
@@ -724,21 +724,21 @@ const platforms = ref([
         name: 'FlClash',
         version: 'Latest',
         downloadKey: 'flash_macos_url',
-        tutorialUrl: '/help#flclash',
+        clientId: 'flclash',
         githubKey: 'flclash'
       },
       {
         name: 'Clash Party',
         version: 'Latest',
         downloadKey: 'mihomo_macos_url',
-        tutorialUrl: '/help#clash-party',
+        clientId: 'clash-party',
         githubKey: 'clash-party'
       },
       {
         name: 'Clash Verge',
         version: 'Latest',
         downloadKey: 'clash_verge_macos_url',
-        tutorialUrl: '/help#clash-verge',
+        clientId: 'clash-verge',
         githubKey: 'clash-verge'
       }
     ]
@@ -751,7 +751,7 @@ const platforms = ref([
         name: 'Shadowrocket',
         version: 'Latest',
         downloadKey: 'shadowrocket_url',
-        tutorialUrl: '/help#shadowrocket'
+        clientId: 'shadowrocket'
       }
     ]
   }
@@ -1208,9 +1208,12 @@ const downloadApp = async (appName) => {
     ElMessage.error('下载链接未配置，请联系管理员')
   }
 }
-const openTutorial = (url) => {
-  if (url) {
-    router.push(url)
+const openTutorial = (app) => {
+  const clientId = typeof app === 'string'
+    ? app.replace(/^\/help#?/, '').replace(/^#/, '')
+    : app?.clientId
+  if (clientId) {
+    router.push({ path: '/help', query: { client: clientId } })
     return
   }
   router.push('/help')

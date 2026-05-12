@@ -101,7 +101,7 @@
               <el-button 
                 type="info" 
                 size="small"
-                @click="viewClientGuide(client)"
+                @click="openClientGuide(client.id)"
               >
                 教程
               </el-button>
@@ -109,21 +109,30 @@
           </div>
         </div>
       </el-card>
-      <el-dialog
-        v-model="showGuideDialog"
-        :title="currentGuideClient?.name + ' 使用教程'"
-        width="80%"
-        :close-on-click-modal="false"
-        class="client-guide-dialog"
-      >
-        <div class="guide-dialog-content" v-html="sanitizeHtml(currentGuideContent)"></div>
-        <template #footer>
-          <el-button @click="showGuideDialog = false">关闭</el-button>
-          <el-button type="primary" @click="downloadClient(currentGuideClient)">
-            前往下载
-          </el-button>
+      <el-card class="client-guides-card" id="client-guides">
+        <template #header>
+          <div class="card-header">
+            <i class="el-icon-document"></i>
+            客户端安装教程
+          </div>
         </template>
-      </el-dialog>
+        <el-collapse v-model="activeClientGuides">
+          <el-collapse-item
+            v-for="client in clients"
+            :key="client.id"
+            :name="client.id"
+            :id="`client-guide-${client.id}`"
+          >
+            <template #title>
+              <span class="client-guide-title">{{ client.name }}</span>
+            </template>
+            <div class="client-guide-actions">
+              <el-button type="primary" size="small" @click.stop="downloadClient(client)">下载 {{ client.name }}</el-button>
+            </div>
+            <div class="guide-content" v-html="sanitizeHtml(client.guide)"></div>
+          </el-collapse-item>
+        </el-collapse>
+      </el-card>
       <el-card class="contact-card" id="contact">
         <template #header>
           <div class="card-header">
@@ -159,21 +168,24 @@
   </div>
 </template>
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { safeOpen } from '@/utils/safeOpen'
 import { sanitizeBasicHtml } from '@/utils/sanitizeHtml'
+import { cachedAPI } from '@/utils/api'
 export default {
   name: 'Help',
   setup() {
+    const route = useRoute()
+    const router = useRouter()
     const sanitizeHtml = sanitizeBasicHtml
     const activeNames = ref(['guide-1'])
     const activeFAQ = ref(['faq-1'])
-    const showGuideDialog = ref(false)
-    const currentGuideClient = ref(null)
-    const currentGuideContent = ref('')
+    const activeClientGuides = ref([])
     const contactEmail = ref('')
     const contactQQ = ref('')
+    const softwareConfig = ref({})
     const loadContactInfo = async () => {
       try {
         const api = (await import('@/utils/api')).default
@@ -204,13 +216,11 @@ export default {
         console.error('获取联系信息失败:', error)
       }
     }
-    onMounted(() => {
-      loadContactInfo()
-    })
     const sections = [
       { id: 'guide', title: '使用指南' },
       { id: 'faq', title: '常见问题' },
       { id: 'clients', title: '客户端下载' },
+      { id: 'client-guides', title: '安装教程' },
       { id: 'contact', title: '联系我们' }
     ]
     const guides = [
@@ -768,14 +778,54 @@ export default {
         `
       }
     ]
-    const clients = [
+    const baseClients = [
       {
-        id: 1,
+        id: 'clash-windows',
+        aliases: ['clash_windows', 'clash-for-windows'],
+        name: 'Clash for Windows',
+        description: 'Windows 平台 Clash 客户端',
+        icon: 'el-icon-monitor',
+        platforms: ['Windows'],
+        githubKey: null,
+        downloadKeys: ['clash_windows_url'],
+        downloadUrl: '',
+        guideUrl: '#',
+        guide: `
+          <div style="line-height: 1.8;">
+            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash for Windows 使用教程</h3>
+            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+            <ol>
+              <li>点击下载按钮，打开管理员配置的 Clash for Windows 下载链接</li>
+              <li>下载完成后，双击安装包并按提示安装</li>
+              <li>安装完成后打开 Clash for Windows</li>
+            </ol>
+            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、导入订阅</h4>
+            <ol>
+              <li>复制仪表盘中的 Clash 订阅地址</li>
+              <li>打开 Profiles 页面</li>
+              <li>在输入框粘贴订阅地址并点击 Download</li>
+              <li>下载完成后选择刚添加的配置</li>
+            </ol>
+            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、开启代理</h4>
+            <ol>
+              <li>进入 Proxies 页面选择节点</li>
+              <li>回到 General 页面开启 System Proxy</li>
+              <li>需要接管全部流量时，可按需开启 TUN Mode</li>
+            </ol>
+            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
+              <strong>💡 提示：</strong>Clash for Windows 已停止维护，如遇兼容问题，建议改用 Clash Verge、Clash Party 或 FlClash。
+            </p>
+          </div>
+        `
+      },
+      {
+        id: 'clash-party',
         name: 'Clash Party',
         description: 'Windows/Mac/Linux平台功能强大的代理客户端，基于Mihomo内核',
         icon: 'el-icon-monitor',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-party',
+        downloadKeys: ['mihomo_windows_url', 'mihomo_macos_url', 'clash_windows_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -835,17 +885,19 @@ export default {
         `
       },
       {
-        id: 2,
-        name: 'Clash Verge Rev',
+        id: 'clash-verge',
+        aliases: ['clash-verge-rev'],
+        name: 'Clash Verge',
         description: 'Windows/Mac/Linux平台优秀的代理客户端，界面现代化',
         icon: 'el-icon-monitor',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-verge',
+        downloadKeys: ['clash_verge_windows_url', 'clash_verge_macos_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
           <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Verge Rev 使用教程</h3>
+            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Verge 使用教程</h3>
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
             <ol>
               <li>点击下载按钮，根据您的系统（Windows/Mac/Linux）和芯片架构自动下载对应版本</li>
@@ -899,39 +951,40 @@ export default {
         `
       },
       {
-        id: 3,
-        name: 'Clash Verge',
-        description: 'Windows/Mac平台轻量级代理客户端，性能优异',
+        id: 'clash-meta',
+        aliases: ['clash-android'],
+        name: 'Clash Meta',
+        description: 'Android 平台代理客户端',
         icon: 'el-icon-monitor',
-        platforms: ['Windows', 'Mac'],
-        githubKey: 'clash-verge',
+        platforms: ['Android'],
+        githubKey: null,
+        downloadKeys: ['clash_android_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
           <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Verge 使用教程</h3>
+            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Meta 使用教程</h3>
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
             <ol>
-              <li>点击下载按钮，根据您的系统（Windows/Mac）和芯片架构自动下载对应版本</li>
-              <li>Windows：下载 .exe 安装包，双击运行安装</li>
-              <li>Mac：下载 .dmg 文件，双击打开后将 Clash Verge 拖拽到"应用程序"文件夹</li>
-              <li>首次运行可能需要授予权限，按照系统提示操作</li>
+              <li>点击下载按钮，下载管理员配置的 Android 安装包或下载页面</li>
+              <li>下载完成后，在手机上打开 APK 文件</li>
+              <li>如果系统提示禁止安装未知来源应用，请先允许当前浏览器安装应用</li>
+              <li>安装完成后打开 Clash Meta</li>
             </ol>
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
             <ol>
-              <li>打开 Clash Verge 应用</li>
-              <li>在设置中找到"订阅"或"配置"选项</li>
+              <li>打开 Clash Meta 应用</li>
+              <li>进入配置或订阅页面</li>
               <li>点击"添加订阅"或"从URL导入"</li>
               <li>粘贴您的订阅地址</li>
               <li>输入订阅名称（可自定义）</li>
-              <li>点击"确定"或"保存"</li>
-              <li>等待配置下载完成</li>
+              <li>保存后等待配置下载完成</li>
             </ol>
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
             <ol>
               <li>在应用主界面可以看到所有可用节点</li>
               <li>选择一个节点（可以测试延迟选择最快的）</li>
-              <li>开启系统代理或TUN模式</li>
+              <li>开启 VPN 或代理连接</li>
               <li>连接成功后，状态会显示为已连接</li>
             </ol>
             <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
@@ -956,19 +1009,20 @@ export default {
                 <li>建议开启"开机自启"功能</li>
                 <li>可以使用"延迟测试"功能选择最快的节点</li>
                 <li>定期更新订阅以获取最新节点</li>
-                <li>Clash Verge 是轻量级客户端，资源占用低</li>
+                <li>优先复制 Clash 订阅地址导入</li>
               </ul>
             </p>
           </div>
         `
       },
       {
-        id: 4,
+        id: 'hiddify',
         name: 'Hiddify',
         description: '跨平台代理客户端，支持Windows/Mac/Android',
         icon: 'el-icon-monitor',
         platforms: ['Windows', 'Mac', 'Android'],
         githubKey: 'hiddify',
+        downloadKeys: ['hiddify_windows_url', 'hiddify_android_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -1028,12 +1082,13 @@ export default {
         `
       },
       {
-        id: 5,
+        id: 'flclash',
         name: 'FlClash',
         description: 'Windows/Mac/Android平台Flutter开发的代理客户端',
         icon: 'el-icon-monitor',
         platforms: ['Windows', 'Mac', 'Android'],
         githubKey: 'flclash',
+        downloadKeys: ['flash_windows_url', 'flash_macos_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -1076,12 +1131,13 @@ export default {
         `
       },
       {
-        id: 6,
+        id: 'v2rayn',
         name: 'V2rayN',
         description: 'Windows平台轻量级代理客户端，资源占用低',
         icon: 'el-icon-monitor',
         platforms: ['Windows'],
         githubKey: 'v2rayn',
+        downloadKeys: ['v2rayn_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -1133,12 +1189,13 @@ export default {
         `
       },
       {
-        id: 7,
+        id: 'v2rayng',
         name: 'V2rayNG',
         description: 'Android平台轻量级代理客户端，简单易用',
         icon: 'el-icon-mobile-phone',
         platforms: ['Android'],
         githubKey: 'v2rayng',
+        downloadKeys: ['v2rayng_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -1184,12 +1241,13 @@ export default {
         `
       },
       {
-        id: 8,
+        id: 'shadowrocket',
         name: 'Shadowrocket',
         description: 'iOS平台优秀的代理客户端，界面简洁，操作便捷',
         icon: 'el-icon-iphone',
         platforms: ['iOS'],
         githubKey: null,
+        downloadKeys: ['shadowrocket_url'],
         downloadUrl: 'https://apps.apple.com/app/shadowrocket/id932747118',
         guideUrl: '#',
         guide: `
@@ -1242,6 +1300,56 @@ export default {
         `
       }
     ]
+    const clients = computed(() => baseClients)
+    const clientAliasMap = computed(() => {
+      const map = new Map()
+      clients.value.forEach(client => {
+        map.set(client.id, client.id)
+        ;(client.aliases || []).forEach(alias => map.set(alias, client.id))
+      })
+      return map
+    })
+    const normalizeClientId = (clientId) => clientAliasMap.value.get(String(clientId || '').trim()) || ''
+    const getConfiguredDownloadUrl = (client) => {
+      for (const key of client.downloadKeys || []) {
+        const value = softwareConfig.value?.[key]
+        if (value && String(value).trim()) {
+          return String(value).trim()
+        }
+      }
+      return ''
+    }
+    const openClientGuide = async (clientId, { updateUrl = true } = {}) => {
+      const normalizedId = normalizeClientId(clientId)
+      if (!normalizedId) return
+      if (!activeClientGuides.value.includes(normalizedId)) {
+        activeClientGuides.value = [...activeClientGuides.value, normalizedId]
+      }
+      if (updateUrl && route.query.client !== normalizedId) {
+        router.replace({ path: '/help', query: { ...route.query, client: normalizedId } })
+      }
+      await nextTick()
+      const element = document.getElementById(`client-guide-${normalizedId}`) || document.getElementById('client-guides')
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+    const applyRouteClientGuide = () => {
+      const clientId = route.query.client || (route.hash ? route.hash.replace(/^#/, '') : '')
+      if (clientId) {
+        openClientGuide(clientId, { updateUrl: false })
+      }
+    }
+    const loadSoftwareConfig = async () => {
+      try {
+        const response = await cachedAPI.getSoftwareConfig()
+        if (response.data?.success !== false) {
+          softwareConfig.value = response.data?.data || response.data || {}
+        }
+      } catch (error) {
+        softwareConfig.value = {}
+      }
+    }
     const scrollToSection = (sectionId) => {
       const element = document.getElementById(sectionId)
       if (element) {
@@ -1250,15 +1358,21 @@ export default {
     }
     const downloadClient = async (client) => {
       try {
+        const configuredUrl = getConfiguredDownloadUrl(client)
+        if (configuredUrl) {
+          safeOpen(configuredUrl)
+          ElMessage.success('已打开下载页面')
+          return
+        }
         if (client.name === 'Shadowrocket') {
-          safeOpen('https://apps.apple.com/app/shadowrocket/id932747118')
+          safeOpen(client.downloadUrl || 'https://apps.apple.com/app/shadowrocket/id932747118')
           return
         }
         if (client.githubKey) {
           ElMessage.info('正在获取最新下载链接...')
           const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
           try {
-            const downloadUrl = await getClientDownloadUrl(client.githubKey)
+            const downloadUrl = await getClientDownloadUrl(client.githubKey, softwareConfig.value || {})
             const isAccelerated = downloadUrl.includes('ghproxy.com') || downloadUrl.includes('ghproxy.net')
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
             if (isMobile) {
@@ -1328,15 +1442,13 @@ export default {
         ElMessage.error('下载失败: ' + (error.message || '请稍后重试'))
       }
     }
-    const viewClientGuide = (client) => {
-      if (client && client.guide) {
-        currentGuideClient.value = client
-        currentGuideContent.value = sanitizeHtml(client.guide)
-        showGuideDialog.value = true
-      } else if (client && client.guideUrl && client.guideUrl !== '#') {
-        safeOpen(client.guideUrl)
-      }
-    }
+    onMounted(async () => {
+      await Promise.all([loadContactInfo(), loadSoftwareConfig()])
+      applyRouteClientGuide()
+    })
+    watch(() => [route.query.client, route.hash], () => {
+      applyRouteClientGuide()
+    })
     const sanitizedGuides = computed(() => {
       return guides.map(guide => ({
         ...guide,
@@ -1358,12 +1470,10 @@ export default {
       clients,
       contactEmail,
       contactQQ,
-      showGuideDialog,
-      currentGuideClient,
-      currentGuideContent,
+      activeClientGuides,
       scrollToSection,
       downloadClient,
-      viewClientGuide,
+      openClientGuide,
       sanitizeHtml
     }
   }
@@ -1486,6 +1596,31 @@ export default {
   line-height: 1.6;
   color: #333;
 }
+.client-guides-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+
+  :deep(.el-card__header) {
+    padding: 12px 16px;
+    font-size: 0.9375rem;
+  }
+
+  :deep(.el-card__body) {
+    padding: 12px 16px;
+  }
+}
+
+.client-guide-title {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.client-guide-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .guide-content :is(ol),
 .faq-content :is(ol) {
   padding-left: 1.25rem;
@@ -1638,6 +1773,7 @@ export default {
   .guide-card,
   .faq-card,
   .clients-card,
+  .client-guides-card,
   .contact-card {
     margin-bottom: 0.75rem;
     border-radius: 12px;
