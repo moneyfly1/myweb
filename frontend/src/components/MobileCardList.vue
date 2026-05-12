@@ -5,14 +5,12 @@
       :key="item[idField] || index" 
       class="mobile-card"
     >
-      <!-- 卡片头部 -->
       <div class="mobile-card-header" v-if="$slots.header || titleField">
         <slot name="header" :item="item" :index="index">
           <div class="card-title">{{ item[titleField] }}</div>
         </slot>
       </div>
       
-      <!-- 卡片内容 -->
       <div class="mobile-card-body">
         <slot :item="item" :index="index">
           <div 
@@ -47,13 +45,11 @@
         </slot>
       </div>
       
-      <!-- 卡片操作按钮 -->
       <div class="mobile-card-actions" v-if="$slots.actions">
         <slot name="actions" :item="item" :index="index"></slot>
       </div>
     </div>
     
-    <!-- 空状态 -->
     <div v-if="data.length === 0" class="mobile-card-empty">
       <slot name="empty">
         <el-empty description="暂无数据" />
@@ -63,32 +59,26 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import dayjs from 'dayjs'
 
 const props = defineProps({
-  // 数据列表
   data: {
     type: Array,
     required: true,
     default: () => []
   },
-  // ID字段名
   idField: {
     type: String,
     default: 'id'
   },
-  // 标题字段名
   titleField: {
     type: String,
     default: 'name'
   },
-  // 字段配置
   fields: {
     type: Array,
     default: () => []
   },
-  // 日期格式
   dateFormat: {
     type: String,
     default: 'YYYY-MM-DD HH:mm:ss'
@@ -111,25 +101,28 @@ const formatMoney = (value) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 4px;
+  padding: 0;
 }
 
 .mobile-card {
   background: var(--card-bg, #fff);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: none;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
   
   &:active {
-    transform: scale(0.98);
+    border-color: #c6e2ff;
+    box-shadow: 0 1px 4px rgba(64, 158, 255, 0.12);
   }
 }
 
 .mobile-card-header {
   padding: 12px 16px;
-  background: linear-gradient(135deg, var(--theme-primary, #409EFF) 0%, lighten(#409EFF, 10%) 100%);
-  color: white;
+  background: #f8fafc;
+  border-bottom: 1px solid #ebeef5;
+  color: var(--theme-text, #303133);
   
   .card-title {
     font-size: 15px;

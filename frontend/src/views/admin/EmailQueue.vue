@@ -403,11 +403,11 @@
 </template>
 <script>
 import { ref, reactive, onMounted, computed, onUnmounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Refresh, Search, View, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
-import DOMPurify from 'dompurify'
+import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
 const STATUS_MAP = {
   pending: { tag: 'warning', text: '待发送' },
   sending: { tag: 'info', text: '发送中' },
@@ -470,26 +470,14 @@ export default {
              (htmlLower.includes('<html') && htmlLower.includes('<head') && htmlLower.includes('<body'))
     }
     const sanitizeHtml = (html) => {
-      if (!html || typeof html !== 'string') return String(html || '')
+      if (!html || typeof html !== 'string') return ''
       const cacheKey = html.substring(0, 100) + html.length
       if (sanitizeCache.has(cacheKey) && sanitizeCache.get(cacheKey).original === html) {
         return sanitizeCache.get(cacheKey).sanitized
       }
       try {
-        const sanitized = DOMPurify.sanitize(html, {
-          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'div', 'span', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'center'],
-          ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'id', 'src', 'alt', 'width', 'height', 'align', 'border', 'cellpadding', 'cellspacing', 'bgcolor', 'color'],
-          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-          ALLOW_DATA_ATTR: false,
-          KEEP_CONTENT: true,
-          SAFE_FOR_TEMPLATES: true,
-          FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
-          FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onmouseenter', 'onmouseleave', 'onkeydown', 'onkeyup', 'onkeypress'],
-          RETURN_DOM: false,
-          RETURN_DOM_FRAGMENT: false,
-          USE_PROFILES: { html: true }
-        })
-        if (!sanitized || sanitized.trim() === '') return html
+        const sanitized = sanitizeEmailHtml(html)
+        if (!sanitized || sanitized.trim() === '') return ''
         if (sanitizeCache.size > 10) {
           sanitizeCache.delete(sanitizeCache.keys().next().value)
         }
@@ -497,7 +485,7 @@ export default {
         return sanitized
       } catch (error) {
         console.error('sanitizeHtml 错误:', error)
-        return html
+        return ''
       }
     }
     const sanitizedEmailContent = computed(() => {
@@ -819,7 +807,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
@@ -876,10 +863,6 @@ export default {
 .header-info {
   color: #666;
   font-size: 0.9rem;
-}
-.header-actions {
-  display: flex;
-  gap: 10px;
 }
 .email-detail {
   display: flex;

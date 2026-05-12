@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	discountService "cboard-go/internal/services/discount"
 	orderServicePkg "cboard-go/internal/services/order"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
@@ -131,6 +131,80 @@ func formatOrderData(order models.Order) gin.H {
 	}
 }
 
+type adminMergedOrderRef struct {
+	RecordType string
+	ID         uint
+	CreatedAt  time.Time
+}
+
+func buildAdminMergedOrderWhere(keyword string, status string) (string, string, []interface{}, []interface{}) {
+	orderWhere := "1 = 1"
+	rechargeWhere := "1 = 1"
+	orderArgs := make([]interface{}, 0, 5)
+	rechargeArgs := make([]interface{}, 0, 5)
+
+	if keyword != "" {
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			orderWhere += " AND (orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?)"
+			rechargeWhere += " AND (recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?)"
+			orderArgs = append(orderArgs, "%"+sanitizedKeyword+"%", "%ORD%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+			rechargeArgs = append(rechargeArgs, "%"+sanitizedKeyword+"%", "%RCH%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
+	}
+
+	if status != "" && status != "all" {
+		orderWhere += " AND orders.status = ?"
+		rechargeWhere += " AND recharge_records.status = ?"
+		orderArgs = append(orderArgs, status)
+		rechargeArgs = append(rechargeArgs, status)
+	}
+
+	return orderWhere, rechargeWhere, orderArgs, rechargeArgs
+}
+
+func scanAdminMergedOrderRefs(db *gorm.DB, keyword string, status string, offset int, size int) ([]adminMergedOrderRef, int64, error) {
+	orderWhere, rechargeWhere, orderArgs, rechargeArgs := buildAdminMergedOrderWhere(keyword, status)
+
+	var orderCount, rechargeCount int64
+	orderCountQuery := fmt.Sprintf("SELECT COUNT(*) FROM orders LEFT JOIN users ON orders.user_id = users.id WHERE %s", orderWhere)
+	if err := db.Raw(orderCountQuery, orderArgs...).Scan(&orderCount).Error; err != nil {
+		return nil, 0, err
+	}
+	rechargeCountQuery := fmt.Sprintf("SELECT COUNT(*) FROM recharge_records LEFT JOIN users ON recharge_records.user_id = users.id WHERE %s", rechargeWhere)
+	if err := db.Raw(rechargeCountQuery, rechargeArgs...).Scan(&rechargeCount).Error; err != nil {
+		return nil, 0, err
+	}
+
+	args := make([]interface{}, 0, len(orderArgs)+len(rechargeArgs)+2)
+	args = append(args, orderArgs...)
+	args = append(args, rechargeArgs...)
+	args = append(args, size, offset)
+	listQuery := fmt.Sprintf(`
+		SELECT record_type, id, created_at
+		FROM (
+			SELECT 'order' AS record_type, orders.id AS id, orders.created_at AS created_at
+			FROM orders
+			LEFT JOIN users ON orders.user_id = users.id
+			WHERE %s
+			UNION ALL
+			SELECT 'recharge' AS record_type, recharge_records.id AS id, recharge_records.created_at AS created_at
+			FROM recharge_records
+			LEFT JOIN users ON recharge_records.user_id = users.id
+			WHERE %s
+		) merged_records
+		ORDER BY created_at DESC, id DESC
+		LIMIT ? OFFSET ?
+	`, orderWhere, rechargeWhere)
+
+	var refs []adminMergedOrderRef
+	if err := db.Raw(listQuery, args...).Scan(&refs).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return refs, orderCount + rechargeCount, nil
+}
+
 func extractYipayPaymentType(payType string, orderPaymentMethodName string) string {
 	if strings.HasPrefix(payType, "yipay_") {
 		return strings.TrimPrefix(payType, "yipay_")
@@ -175,24 +249,54 @@ func extractCodepayPaymentType(payType string, reqMethod string) string {
 }
 
 func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.PaymentConfig, reqMethod string, amount float64) (string, error) {
+	markPendingTransactionsFailed := func(err error) (string, error) {
+		if order != nil && order.ID > 0 {
+			if updateErr := db.Model(&models.PaymentTransaction{}).
+				Where("order_id = ? AND status = ?", order.ID, "pending").
+				Update("status", "failed").Error; updateErr != nil {
+				utils.LogError("generatePaymentURL: mark order payment transactions failed", updateErr, map[string]interface{}{
+					"order_no": order.OrderNo,
+					"order_id": order.ID,
+				})
+			}
+		} else if order != nil && order.OrderNo != "" {
+			if updateErr := db.Model(&models.PaymentTransaction{}).
+				Where("order_id = ? AND transaction_id = ? AND status = ?", 0, order.OrderNo, "pending").
+				Update("status", "failed").Error; updateErr != nil {
+				utils.LogError("generatePaymentURL: mark recharge payment transactions failed", updateErr, map[string]interface{}{
+					"order_no": order.OrderNo,
+				})
+			}
+		}
+		return "", err
+	}
+
 	switch paymentConfig.PayType {
 	case "alipay":
 		service, err := payment.NewAlipayService(paymentConfig)
 		if err != nil {
-			return "", err
+			return markPendingTransactionsFailed(err)
 		}
-		return service.CreatePayment(order, amount)
+		url, err := service.CreatePayment(order, amount)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		return url, nil
 	case "wechat":
 		service, err := payment.NewWechatService(paymentConfig)
 		if err != nil {
-			return "", err
+			return markPendingTransactionsFailed(err)
 		}
-		return service.CreatePayment(order, amount)
+		url, err := service.CreatePayment(order, amount)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		return url, nil
 	default:
 		if paymentConfig.PayType == "yipay" || strings.HasPrefix(paymentConfig.PayType, "yipay_") {
 			service, err := payment.NewYipayService(paymentConfig)
 			if err != nil {
-				return "", err
+				return markPendingTransactionsFailed(err)
 			}
 			pType := extractYipayPaymentType(paymentConfig.PayType, "")
 			if reqMethod != "" && strings.HasPrefix(reqMethod, "yipay_") {
@@ -200,17 +304,25 @@ func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.
 			} else if order.PaymentMethodName.Valid {
 				pType = extractYipayPaymentType(paymentConfig.PayType, order.PaymentMethodName.String)
 			}
-			return service.CreatePayment(order, amount, pType)
+			url, err := service.CreatePayment(order, amount, pType)
+			if err != nil {
+				return markPendingTransactionsFailed(err)
+			}
+			return url, nil
 		}
 		if paymentConfig.PayType == "codepay" || strings.HasPrefix(paymentConfig.PayType, "codepay_") {
 			service, err := payment.NewCodepayService(paymentConfig)
 			if err != nil {
-				return "", err
+				return markPendingTransactionsFailed(err)
 			}
 			pType := extractCodepayPaymentType(paymentConfig.PayType, reqMethod)
-			return service.CreatePayment(order, amount, pType)
+			url, err := service.CreatePayment(order, amount, pType)
+			if err != nil {
+				return markPendingTransactionsFailed(err)
+			}
+			return url, nil
 		}
-		return "", fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
+		return markPendingTransactionsFailed(fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType))
 	}
 }
 
@@ -227,12 +339,15 @@ func shouldQueryPaymentStatus(createdAt time.Time) bool {
 }
 
 func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *payment.AlipayQueryResult, error) {
-	var configModel models.PaymentConfig
-	if err := db.Where("LOWER(pay_type) = 'alipay' AND status = 1").First(&configModel).Error; err != nil {
+	configModel, err := paymentConfigForOrderStatusQuery(db, orderNo, "alipay")
+	if err != nil {
 		return false, nil, err
 	}
+	if !strings.EqualFold(configModel.PayType, "alipay") {
+		return false, nil, nil
+	}
 
-	service, err := payment.NewAlipayService(&configModel)
+	service, err := payment.NewAlipayService(configModel)
 	if err != nil {
 		return false, nil, err
 	}
@@ -252,103 +367,286 @@ func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *pa
 		return false, result, fmt.Errorf("订单号不匹配")
 	}
 
-	// 解析支付宝返回的金额
-	var alipayAmount float64
-	if result.TotalAmount != "" {
-		_, _ = fmt.Sscanf(result.TotalAmount, "%f", &alipayAmount) // Ignore error, use default value
+	params := map[string]string{
+		"out_trade_no":   orderNo,
+		"trade_no":       result.TradeNo,
+		"total_amount":   result.TotalAmount,
+		"trade_status":   result.TradeStatus,
+		"query_fallback": "true",
 	}
 
-	err = utils.WithTransaction(db, func(tx *gorm.DB) error {
-		if isRecharge {
-			var record models.RechargeRecord
-			if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&record).Error; err != nil {
-				return err
-			}
-
-			// 验证充值金额（防止金额篡改）
-			if alipayAmount > 0 {
-				if alipayAmount < record.Amount-0.01 || alipayAmount > record.Amount+0.01 {
-					utils.LogError("performAlipayQuery: recharge amount mismatch", nil, map[string]interface{}{
-						"order_no":        orderNo,
-						"expected_amount": record.Amount,
-						"alipay_amount":   alipayAmount,
-						"trade_no":        result.TradeNo,
-					})
-					return fmt.Errorf("充值金额不匹配: 预期%.2f元, 支付宝返回%.2f元", record.Amount, alipayAmount)
-				}
-			}
-
-			record.Status = "paid"
-			record.PaidAt = database.NullTime(utils.GetBeijingTime())
-			if result.TradeNo != "" {
-				record.PaymentTransactionID = database.NullString(result.TradeNo)
-			}
-			if err := tx.Save(&record).Error; err != nil {
-				return err
-			}
-			var user models.User
-			if err := tx.First(&user, record.UserID).Error; err == nil {
-				user.Balance += record.Amount
-				return tx.Save(&user).Error
-			}
-			return nil
-		}
-
-		var order models.Order
-		if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&order).Error; err != nil {
-			return err
-		}
-
-		// 验证订单金额（防止金额篡改）
-		if alipayAmount > 0 {
-			expectedAmount := order.Amount
-			if order.FinalAmount.Valid {
-				expectedAmount = order.FinalAmount.Float64
-			}
-
-			// 检查是否使用了余额支付
-			var balanceUsed float64 = 0
-			if order.ExtraData.Valid && order.ExtraData.String != "" {
-				var extraData map[string]interface{}
-				if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-					if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
-						balanceUsed = balanceUsedVal
-					}
-				}
-			}
-
-			// FinalAmount 仅表示第三方应付金额
-			expectedPaymentAmount := expectedAmount
-
-			if alipayAmount < expectedPaymentAmount-0.01 || alipayAmount > expectedPaymentAmount+0.01 {
-				utils.LogError("performAlipayQuery: order amount mismatch", nil, map[string]interface{}{
-					"order_no":         orderNo,
-					"expected_amount":  expectedAmount,
-					"balance_used":     balanceUsed,
-					"expected_payment": expectedPaymentAmount,
-					"alipay_amount":    alipayAmount,
-					"trade_no":         result.TradeNo,
-				})
-				return fmt.Errorf("订单金额不匹配: 预期支付%.2f元, 支付宝返回%.2f元", expectedPaymentAmount, alipayAmount)
-			}
-		}
-
-		order.Status = "paid"
-		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		if err := tx.Save(&order).Error; err != nil {
-			return err
-		}
-
-		var transaction models.PaymentTransaction
-		if err := tx.Where("order_id = ?", order.ID).First(&transaction).Error; err == nil {
-			transaction.Status = "success"
-			transaction.ExternalTransactionID = database.NullString(result.TradeNo)
-			tx.Save(&transaction)
-		}
-		return nil
-	})
+	err = finalizeStatusQueriedPayment(db, orderNo, isRecharge, "alipay", configModel.ID, result.TradeNo, params)
 
 	return err == nil, result, err
+}
+
+func performPaymentStatusQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, error) {
+	configModel, err := paymentConfigForOrderStatusQuery(db, orderNo, "")
+	if err != nil {
+		return false, err
+	}
+	if configModel == nil {
+		return false, nil
+	}
+	paymentType := statusQueryPaymentType(db, orderNo, isRecharge, configModel.PayType)
+	configPayType := strings.ToLower(strings.TrimSpace(configModel.PayType))
+
+	switch {
+	case configPayType == "alipay":
+		success, _, err := performAlipayQuery(db, orderNo, isRecharge)
+		return success, err
+	case configPayType == "wechat":
+		return performWechatPaymentQuery(db, orderNo, isRecharge, configModel, paymentType)
+	case configPayType == "yipay" || strings.HasPrefix(configPayType, "yipay_"):
+		return performYipayPaymentQuery(db, orderNo, isRecharge, configModel, paymentType)
+	case configPayType == "codepay" || strings.HasPrefix(configPayType, "codepay_"):
+		return performCodepayPaymentQuery(db, orderNo, isRecharge, configModel, paymentType)
+	case paymentType == "alipay":
+		success, _, err := performAlipayQuery(db, orderNo, isRecharge)
+		return success, err
+	case paymentType == "wechat":
+		return performWechatPaymentQuery(db, orderNo, isRecharge, configModel, paymentType)
+	case strings.HasPrefix(paymentType, "yipay"):
+		return performYipayPaymentQuery(db, orderNo, isRecharge, configModel, paymentType)
+	case strings.HasPrefix(paymentType, "codepay"):
+		return performCodepayPaymentQuery(db, orderNo, isRecharge, configModel, paymentType)
+	default:
+		return false, nil
+	}
+}
+
+func statusQueryPaymentType(db *gorm.DB, orderNo string, isRecharge bool, fallback string) string {
+	if isRecharge {
+		var recharge models.RechargeRecord
+		if err := db.Where("order_no = ?", orderNo).First(&recharge).Error; err == nil && recharge.PaymentMethod.Valid {
+			return normalizeStatusPaymentType(recharge.PaymentMethod.String, fallback)
+		}
+		return normalizeStatusPaymentType(fallback, fallback)
+	}
+
+	var order models.Order
+	if err := db.Where("order_no = ?", orderNo).First(&order).Error; err == nil && order.PaymentMethodName.Valid {
+		return normalizeStatusPaymentType(order.PaymentMethodName.String, fallback)
+	}
+	return normalizeStatusPaymentType(fallback, fallback)
+}
+
+func normalizeStatusPaymentType(method string, fallback string) string {
+	normalized := strings.ToLower(strings.TrimSpace(method))
+	fallback = strings.ToLower(strings.TrimSpace(fallback))
+	if normalized == "" {
+		return fallback
+	}
+	if strings.HasPrefix(normalized, "yipay_") || normalized == "yipay" ||
+		strings.HasPrefix(normalized, "codepay_") || normalized == "codepay" ||
+		normalized == "alipay" || normalized == "wechat" {
+		return normalized
+	}
+
+	if strings.Contains(normalized, "易支付") || strings.Contains(normalized, "yipay") {
+		if strings.Contains(normalized, "微信") || strings.Contains(normalized, "wxpay") {
+			return "yipay_wxpay"
+		}
+		if strings.Contains(normalized, "qq") {
+			return "yipay_qqpay"
+		}
+		return "yipay_alipay"
+	}
+	if strings.Contains(normalized, "码支付") || strings.Contains(normalized, "codepay") {
+		if strings.Contains(normalized, "微信") || strings.Contains(normalized, "wxpay") {
+			return "codepay_wxpay"
+		}
+		return "codepay_alipay"
+	}
+	if strings.Contains(normalized, "微信") {
+		return "wechat"
+	}
+	if strings.Contains(normalized, "支付宝") {
+		return "alipay"
+	}
+	return fallback
+}
+
+func performWechatPaymentQuery(db *gorm.DB, orderNo string, isRecharge bool, configModel *models.PaymentConfig, paymentType string) (bool, error) {
+	service, err := payment.NewWechatService(configModel)
+	if err != nil {
+		return false, err
+	}
+	result, err := service.QueryOrder(orderNo)
+	if err != nil || result == nil || !result.IsPaid() {
+		return false, err
+	}
+	if result.OutTradeNo != "" && result.OutTradeNo != orderNo {
+		return false, fmt.Errorf("微信支付订单号不匹配: expected=%s, actual=%s", orderNo, result.OutTradeNo)
+	}
+
+	params := copyPaymentParams(result.Raw)
+	params["out_trade_no"] = orderNo
+	params["transaction_id"] = result.TransactionID
+	params["total_fee"] = result.TotalFee
+	params["return_code"] = result.ReturnCode
+	params["result_code"] = result.ResultCode
+	params["trade_state"] = result.TradeState
+	params["query_fallback"] = "true"
+	if paymentType == "" {
+		paymentType = "wechat"
+	}
+
+	err = finalizeStatusQueriedPayment(db, orderNo, isRecharge, paymentType, configModel.ID, result.TransactionID, params)
+	return err == nil, err
+}
+
+func performYipayPaymentQuery(db *gorm.DB, orderNo string, isRecharge bool, configModel *models.PaymentConfig, paymentType string) (bool, error) {
+	service, err := payment.NewYipayService(configModel)
+	if err != nil {
+		return false, err
+	}
+	result, err := service.QueryOrder(orderNo)
+	if err != nil || result == nil || !result.IsPaid() {
+		return false, err
+	}
+	if result.OutTradeNo != "" && result.OutTradeNo != orderNo {
+		return false, fmt.Errorf("易支付订单号不匹配: expected=%s, actual=%s", orderNo, result.OutTradeNo)
+	}
+	if paymentType == "" || !strings.HasPrefix(paymentType, "yipay") {
+		paymentType = "yipay"
+	}
+
+	params := epayQueryParams(orderNo, result)
+	err = finalizeStatusQueriedPayment(db, orderNo, isRecharge, paymentType, configModel.ID, result.TradeNo, params)
+	return err == nil, err
+}
+
+func performCodepayPaymentQuery(db *gorm.DB, orderNo string, isRecharge bool, configModel *models.PaymentConfig, paymentType string) (bool, error) {
+	service, err := payment.NewCodepayService(configModel)
+	if err != nil {
+		return false, err
+	}
+	result, err := service.QueryOrder(orderNo)
+	if err != nil || result == nil || !result.IsPaid() {
+		return false, err
+	}
+	if result.OutTradeNo != "" && result.OutTradeNo != orderNo {
+		return false, fmt.Errorf("码支付订单号不匹配: expected=%s, actual=%s", orderNo, result.OutTradeNo)
+	}
+	if paymentType == "" || !strings.HasPrefix(paymentType, "codepay") {
+		paymentType = "codepay"
+	}
+
+	params := epayQueryParams(orderNo, result)
+	err = finalizeStatusQueriedPayment(db, orderNo, isRecharge, paymentType, configModel.ID, result.TradeNo, params)
+	return err == nil, err
+}
+
+func copyPaymentParams(raw map[string]string) map[string]string {
+	params := make(map[string]string, len(raw)+4)
+	for k, v := range raw {
+		params[k] = v
+	}
+	return params
+}
+
+func epayQueryParams(orderNo string, result *payment.EpayQueryResult) map[string]string {
+	params := copyPaymentParams(result.Raw)
+	params["out_trade_no"] = orderNo
+	if result.TradeNo != "" {
+		params["trade_no"] = result.TradeNo
+	}
+	if result.Amount != "" {
+		params["money"] = result.Amount
+	}
+	if result.Status != "" {
+		params["trade_status"] = result.Status
+		params["status"] = result.Status
+	}
+	params["query_fallback"] = "true"
+	return params
+}
+
+func finalizeStatusQueriedPayment(db *gorm.DB, orderNo string, isRecharge bool, paymentType string, paymentConfigID uint, externalTransactionID string, params map[string]string) error {
+	if isRecharge {
+		_, err := processPaidRecharge(db, orderNo, paymentType, paymentConfigID, externalTransactionID, params, "system-query")
+		return err
+	}
+
+	var order models.Order
+	if err := db.Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+		return err
+	}
+	if callbackAmount, ok := parseCallbackAmount(paymentType, params); ok {
+		expectedAmount := order.Amount
+		if order.FinalAmount.Valid {
+			expectedAmount = order.FinalAmount.Float64
+		}
+		if !amountMatches(expectedAmount, callbackAmount) {
+			return fmt.Errorf("订单金额不匹配: 预期支付%.2f元, 支付渠道返回%.2f元", expectedAmount, callbackAmount)
+		}
+	} else {
+		utils.LogWarn("performPaymentStatusQuery: unable to verify order amount for payment type: %+v", map[string]interface{}{
+			"order_no":     orderNo,
+			"payment_type": paymentType,
+		})
+	}
+
+	callbackData := ""
+	if data, err := json.Marshal(params); err == nil {
+		callbackData = string(data)
+	}
+	_, err := orderServicePkg.NewOrderService().FinalizePaidOrder(orderNo, orderServicePkg.FinalizePaidOrderOptions{
+		PaymentMethodName:     paymentType,
+		PaymentMethodID:       paymentConfigID,
+		ExternalTransactionID: externalTransactionID,
+		CallbackData:          callbackData,
+		IPAddress:             "system-query",
+	})
+	if err == nil && order.Status == "pending" {
+		sendPaymentNotifications(db, orderNo)
+	}
+	return err
+}
+
+func paymentConfigForOrderStatusQuery(db *gorm.DB, orderNo string, fallbackPayType string) (*models.PaymentConfig, error) {
+	var order models.Order
+	if err := db.Where("order_no = ?", orderNo).First(&order).Error; err == nil {
+		if order.PaymentMethodID.Valid && order.PaymentMethodID.Int64 > 0 {
+			var paymentConfig models.PaymentConfig
+			if err := db.First(&paymentConfig, order.PaymentMethodID.Int64).Error; err == nil && paymentConfig.Status == 1 {
+				return &paymentConfig, nil
+			}
+		}
+		if order.PaymentMethodName.Valid && order.PaymentMethodName.String != "" {
+			if paymentConfig, err := utils.FindEnabledPaymentConfig(db, order.PaymentMethodName.String); err == nil {
+				return &paymentConfig, nil
+			}
+		}
+	}
+
+	var recharge models.RechargeRecord
+	if err := db.Where("order_no = ?", orderNo).First(&recharge).Error; err == nil {
+		if recharge.PaymentMethod.Valid && recharge.PaymentMethod.String != "" {
+			if paymentConfig, err := utils.FindEnabledPaymentConfig(db, recharge.PaymentMethod.String); err == nil {
+				return &paymentConfig, nil
+			}
+		}
+		var paymentTx models.PaymentTransaction
+		if err := db.Where("order_id = ? AND transaction_id = ?", 0, orderNo).
+			Order("created_at DESC").First(&paymentTx).Error; err == nil {
+			var paymentConfig models.PaymentConfig
+			if err := db.First(&paymentConfig, paymentTx.PaymentMethodID).Error; err == nil && paymentConfig.Status == 1 {
+				return &paymentConfig, nil
+			}
+		}
+	}
+
+	if strings.TrimSpace(fallbackPayType) == "" {
+		return nil, nil
+	}
+
+	paymentConfig, err := utils.FindEnabledPaymentConfig(db, fallbackPayType)
+	if err != nil {
+		return nil, err
+	}
+	return &paymentConfig, nil
 }
 
 type CreateOrderRequest struct {
@@ -381,8 +679,12 @@ func CreateOrder(c *gin.Context) {
 	order, paymentURL, err := svc.CreateOrder(user.ID, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "生成支付链接失败") {
+			orderNo := ""
+			if order != nil {
+				orderNo = order.OrderNo
+			}
 			utils.CreateBusinessLog(c, "order_payment_url_failed", "创建订单生成支付链接失败", "error", map[string]interface{}{
-				"user_id": user.ID, "order_no": order.OrderNo, "reason": err.Error(),
+				"user_id": user.ID, "order_no": orderNo, "reason": err.Error(),
 			})
 		}
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
@@ -561,18 +863,13 @@ func CancelOrder(c *gin.Context) {
 		return
 	}
 
-	if order.Status != "pending" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "订单状态不允许取消", nil)
+	cancelledOrder, err := orderServicePkg.NewOrderService().CancelPendingOrder(order.OrderNo, user.ID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
-	order.Status = "cancelled"
-	if err := db.Save(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "取消订单失败", err)
-		return
-	}
-
-	utils.SuccessResponse(c, http.StatusOK, "订单已取消", order)
+	utils.SuccessResponse(c, http.StatusOK, "订单已取消", cancelledOrder)
 }
 
 func CancelOrderByNo(c *gin.Context) {
@@ -583,21 +880,9 @@ func CancelOrderByNo(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var order models.Order
-	if err := db.Where("order_no = ? AND user_id = ?", orderNo, user.ID).First(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", err)
-		return
-	}
-
-	if order.Status != "pending" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "订单状态不允许取消", nil)
-		return
-	}
-
-	order.Status = "cancelled"
-	if err := db.Save(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "取消订单失败", err)
+	order, err := orderServicePkg.NewOrderService().CancelPendingOrder(orderNo, user.ID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -615,65 +900,49 @@ func GetAdminOrders(c *gin.Context) {
 	status := c.Query("status")
 
 	if includeRecharges {
-		var orderCount, rechargeCount int64
-		orderQuery := db.Model(&models.Order{}).Joins("LEFT JOIN users ON orders.user_id = users.id")
-		rechargeQuery := db.Model(&models.RechargeRecord{}).Joins("LEFT JOIN users ON recharge_records.user_id = users.id")
+		offset := (page - 1) * size
+		refs, total, err := scanAdminMergedOrderRefs(db, keyword, status, offset, size)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
+			return
+		}
 
-		if keyword != "" {
-			sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
-			if sanitizedKeyword != "" {
-				orderClause := "orders.order_no LIKE ? OR orders.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?"
-				rechargeClause := "recharge_records.order_no LIKE ? OR recharge_records.order_no LIKE ? OR users.username LIKE ? OR users.email LIKE ?"
-				params := []interface{}{"%" + sanitizedKeyword + "%", "%ORD%" + sanitizedKeyword + "%", "%" + sanitizedKeyword + "%", "%" + sanitizedKeyword + "%"}
-				rParams := []interface{}{"%" + sanitizedKeyword + "%", "%RCH%" + sanitizedKeyword + "%", "%" + sanitizedKeyword + "%", "%" + sanitizedKeyword + "%"}
-
-				orderQuery = orderQuery.Where(orderClause, params...)
-				rechargeQuery = rechargeQuery.Where(rechargeClause, rParams...)
+		orderIDs := make([]uint, 0, len(refs))
+		rechargeIDs := make([]uint, 0, len(refs))
+		for _, ref := range refs {
+			if ref.RecordType == "order" {
+				orderIDs = append(orderIDs, ref.ID)
+			} else if ref.RecordType == "recharge" {
+				rechargeIDs = append(rechargeIDs, ref.ID)
 			}
 		}
 
-		if status != "" && status != "all" {
-			orderQuery = orderQuery.Where("orders.status = ?", status)
-			rechargeQuery = rechargeQuery.Where("recharge_records.status = ?", status)
-		}
-
-		orderQuery.Count(&orderCount)
-		rechargeQuery.Count(&rechargeCount)
-		total := orderCount + rechargeCount
-
-		// 只取当前页需要的最大数据量（page*size），而非固定500
-		limit := page * size
-		if limit > 200 {
-			limit = 200
-		}
-
-		type mergedRecord struct {
-			recordType string
-			createdAt  time.Time
-			data       gin.H
-		}
-		allRecords := make([]mergedRecord, 0, limit*2)
-
-		var orders []models.Order
-		if err := orderQuery.Preload("User").Preload("Package").Order("orders.created_at DESC").Limit(limit).Find(&orders).Error; err == nil {
+		orderMap := make(map[uint]gin.H, len(orderIDs))
+		if len(orderIDs) > 0 {
+			var orders []models.Order
+			if err := db.Preload("User").Preload("Package").Where("id IN ?", orderIDs).Find(&orders).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
+				return
+			}
 			for _, order := range orders {
 				formatted := formatOrderData(order)
-				allRecords = append(allRecords, mergedRecord{
-					recordType: "order",
-					createdAt:  order.CreatedAt,
-					data:       formatted,
-				})
+				formatted["record_type"] = "order"
+				orderMap[order.ID] = formatted
 			}
 		}
 
-		var recharges []models.RechargeRecord
-		if err := rechargeQuery.Order("created_at DESC").Limit(limit).Find(&recharges).Error; err == nil {
+		rechargeMap := make(map[uint]gin.H, len(rechargeIDs))
+		if len(rechargeIDs) > 0 {
+			var recharges []models.RechargeRecord
+			if err := db.Preload("User").Where("id IN ?", rechargeIDs).Find(&recharges).Error; err != nil {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
+				return
+			}
 			for _, record := range recharges {
-				userInfo := resolveUserInfo(record.User)
-				rechargeData := gin.H{
+				formatted := gin.H{
 					"id":                     record.ID,
 					"user_id":                record.UserID,
-					"user":                   userInfo,
+					"user":                   resolveUserInfo(record.User),
 					"order_no":               record.OrderNo,
 					"amount":                 record.Amount,
 					"status":                 record.Status,
@@ -681,31 +950,21 @@ func GetAdminOrders(c *gin.Context) {
 					"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
 					"paid_at":                utils.GetNullTimeValue(record.PaidAt),
 					"created_at":             utils.FormatBeijingTime(record.CreatedAt),
+					"record_type":            "recharge",
 				}
-				allRecords = append(allRecords, mergedRecord{
-					recordType: "recharge",
-					createdAt:  record.CreatedAt,
-					data:       rechargeData,
-				})
+				rechargeMap[record.ID] = formatted
 			}
 		}
 
-		// 用 time.Time 直接比较，避免重复字符串解析
-		sort.Slice(allRecords, func(i, j int) bool {
-			return allRecords[i].createdAt.After(allRecords[j].createdAt)
-		})
-
-		offset := (page - 1) * size
-		end := offset + size
-		if end > len(allRecords) {
-			end = len(allRecords)
-		}
-
-		mergedList := make([]gin.H, 0, size)
-		if offset < len(allRecords) {
-			for i := offset; i < end; i++ {
-				record := allRecords[i].data
-				record["record_type"] = allRecords[i].recordType
+		mergedList := make([]gin.H, 0, len(refs))
+		for _, ref := range refs {
+			if ref.RecordType == "order" {
+				if record, ok := orderMap[ref.ID]; ok {
+					mergedList = append(mergedList, record)
+				}
+				continue
+			}
+			if record, ok := rechargeMap[ref.ID]; ok {
 				mergedList = append(mergedList, record)
 			}
 		}
@@ -779,24 +1038,51 @@ func UpdateAdminOrder(c *gin.Context) {
 		return
 	}
 
-	oldStatus := order.Status
-	order.Status = req.Status
+	if req.Status == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "订单状态不能为空", nil)
+		return
+	}
 
-	if oldStatus != "paid" && req.Status == "paid" {
-		now := utils.GetBeijingTime()
-		order.PaymentTime = database.NullTime(now)
+	if order.Status != "paid" && req.Status == "paid" {
 		svc := orderServicePkg.NewOrderService()
-		if _, err := svc.ProcessPaidOrder(&order); err != nil {
-			utils.LogError("BulkMarkOrdersPaid: process paid order", err, map[string]interface{}{"order_id": order.ID})
+		if _, err := svc.FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
+			PaymentMethodName: "admin_manual",
+			IPAddress:         utils.GetRealClientIP(c),
+		}); err != nil {
+			utils.LogError("UpdateAdminOrder: finalize paid order", err, map[string]interface{}{"order_id": order.ID})
 			utils.ErrorResponse(c, http.StatusInternalServerError, "处理订单失败，请稍后重试", nil)
+			return
+		}
+		if err := db.Preload("Package").Preload("User").First(&order, id).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单失败", err)
+			return
+		}
+	} else if order.Status == "pending" && (req.Status == "cancelled" || req.Status == "expired") {
+		updatedOrder, err := orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, 0, req.Status)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+		if err := db.Preload("Package").Preload("User").First(&order, updatedOrder.ID).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单失败", err)
+			return
+		}
+	} else {
+		if order.Status == "paid" && req.Status != "paid" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "已支付订单请使用退款流程，不能直接改状态", nil)
+			return
+		}
+		if order.Status != req.Status {
+			utils.ErrorResponse(c, http.StatusBadRequest, "当前订单状态不允许直接修改", nil)
+			return
+		}
+		order.Status = req.Status
+		if err := db.Save(&order).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单失败", err)
 			return
 		}
 	}
 
-	if err := db.Save(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单失败", err)
-		return
-	}
 	utils.CreateAuditLogSimple(c, "update_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 更新订单 %s 状态为 %s", order.OrderNo, order.Status))
 	utils.SuccessResponse(c, http.StatusOK, "订单已更新", order)
 }
@@ -925,7 +1211,7 @@ func DeleteAdminOrder(c *gin.Context) {
 		return
 	}
 
-	if err := db.Delete(&order).Error; err != nil {
+	if _, err := orderServicePkg.NewOrderService().DeleteOrders([]uint{order.ID}); err != nil {
 		utils.LogError("DeleteOrder: delete order failed", err, map[string]interface{}{"order_id": order.ID})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订单失败", err)
 		return
@@ -936,32 +1222,15 @@ func DeleteAdminOrder(c *gin.Context) {
 
 func GetOrderStatistics(c *gin.Context) {
 	db := database.GetDB()
-	var orderTotal, orderPending, orderPaid int64
-	var orderRevenue float64
-
-	db.Model(&models.Order{}).Count(&orderTotal)
-	db.Model(&models.Order{}).Where("status = ?", "pending").Count(&orderPending)
-	db.Model(&models.Order{}).Where("status = ?", "paid").Count(&orderPaid)
-	orderRevenue = utils.CalculateTotalRevenue(db, "paid")
-
-	var rechargeTotal, rechargePending, rechargePaid int64
-	var rechargeRevenue float64
-	db.Model(&models.RechargeRecord{}).Count(&rechargeTotal)
-	db.Model(&models.RechargeRecord{}).Where("status = ?", "pending").Count(&rechargePending)
-	db.Model(&models.RechargeRecord{}).Where("status = ?", "paid").Count(&rechargePaid)
-
-	var paidRecharges []models.RechargeRecord
-	if err := db.Model(&models.RechargeRecord{}).Where("status = ?", "paid").Find(&paidRecharges).Error; err == nil {
-		for _, recharge := range paidRecharges {
-			rechargeRevenue += recharge.Amount
-		}
-	}
+	dayStart, dayEnd := utils.GetDayRange(utils.GetBeijingTime())
+	paymentSummary := utils.CalculatePaymentSummary(db, dayStart, dayEnd)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"total_orders":   orderTotal + rechargeTotal,
-		"pending_orders": orderPending + rechargePending,
-		"paid_orders":    orderPaid + rechargePaid,
-		"total_revenue":  orderRevenue + rechargeRevenue,
+		"total_orders":   paymentSummary.Total,
+		"pending_orders": paymentSummary.Pending,
+		"paid_orders":    paymentSummary.Paid,
+		"cancelled":      paymentSummary.Cancelled,
+		"total_revenue":  paymentSummary.PaidRevenue,
 	})
 }
 
@@ -993,8 +1262,10 @@ func BulkMarkOrdersPaid(c *gin.Context) {
 			failCount++
 			continue
 		}
-		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		if _, err := svc.ProcessPaidOrder(order); err != nil {
+		if _, err := svc.FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
+			PaymentMethodName: "admin_manual",
+			IPAddress:         utils.GetRealClientIP(c),
+		}); err != nil {
 			utils.LogError("BulkMarkOrdersPaid: process order failed", err, map[string]interface{}{"order_id": orderID})
 			failCount++
 		} else {
@@ -1014,13 +1285,13 @@ func BulkCancelOrders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
-	db := database.GetDB()
-	if err := db.Model(&models.Order{}).Where("id IN ? AND status = ?", req.OrderIDs, "pending").Update("status", "cancelled").Error; err != nil {
+	cancelledCount, err := orderServicePkg.NewOrderService().CancelPendingOrders(req.OrderIDs)
+	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量取消失败", err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "bulk_cancel_orders", "order", 0, fmt.Sprintf("管理员操作: 批量取消订单 %d 个", len(req.OrderIDs)))
-	utils.SuccessResponse(c, http.StatusOK, "批量取消成功", nil)
+	utils.CreateAuditLogSimple(c, "bulk_cancel_orders", "order", 0, fmt.Sprintf("管理员操作: 批量取消订单 %d 个", cancelledCount))
+	utils.SuccessResponse(c, http.StatusOK, "批量取消成功", gin.H{"cancelled": cancelledCount})
 }
 
 func BatchDeleteOrders(c *gin.Context) {
@@ -1031,13 +1302,13 @@ func BatchDeleteOrders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
-	db := database.GetDB()
-	if err := db.Delete(&models.Order{}, req.OrderIDs).Error; err != nil {
+	deletedCount, err := orderServicePkg.NewOrderService().DeleteOrders(req.OrderIDs)
+	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败", err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "batch_delete_orders", "order", 0, fmt.Sprintf("管理员操作: 批量删除订单 %d 个", len(req.OrderIDs)))
-	utils.SuccessResponse(c, http.StatusOK, "批量删除成功", nil)
+	utils.CreateAuditLogSimple(c, "batch_delete_orders", "order", 0, fmt.Sprintf("管理员操作: 批量删除订单 %d 个", deletedCount))
+	utils.SuccessResponse(c, http.StatusOK, "批量删除成功", gin.H{"deleted": deletedCount})
 }
 
 func ExportOrders(c *gin.Context) {
@@ -1110,35 +1381,15 @@ func GetOrderStats(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	var orderTotal, orderPending, orderPaid, orderCancelled int64
-	var orderPaidAmount float64
-
-	db.Model(&models.Order{}).Where("user_id = ?", user.ID).Count(&orderTotal)
-	db.Model(&models.Order{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "pending").Count(&orderPending)
-	db.Model(&models.Order{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "paid").Count(&orderPaid)
-	db.Model(&models.Order{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "cancelled").Count(&orderCancelled)
-	orderPaidAmount = utils.CalculateUserOrderAmount(db, user.ID, "paid", true)
-
-	var rechargeTotal, rechargePending, rechargePaid int64
-	var rechargePaidAmount float64
-	db.Model(&models.RechargeRecord{}).Where("user_id = ?", user.ID).Count(&rechargeTotal)
-	db.Model(&models.RechargeRecord{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "pending").Count(&rechargePending)
-	db.Model(&models.RechargeRecord{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "paid").Count(&rechargePaid)
-
-	var paidRecharges []models.RechargeRecord
-	if err := db.Model(&models.RechargeRecord{}).Where("user_id = ? AND LOWER(status) = ?", user.ID, "paid").Find(&paidRecharges).Error; err == nil {
-		for _, recharge := range paidRecharges {
-			rechargePaidAmount += recharge.Amount
-		}
-	}
+	summary := utils.CalculateUserPaymentSummary(db, user.ID)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"total":       orderTotal + rechargeTotal,
-		"pending":     orderPending + rechargePending,
-		"paid":        orderPaid + rechargePaid,
-		"cancelled":   orderCancelled,
-		"totalAmount": orderPaidAmount + rechargePaidAmount,
-		"paidAmount":  orderPaidAmount + rechargePaidAmount,
+		"total":       summary.Total,
+		"pending":     summary.Pending,
+		"paid":        summary.Paid,
+		"cancelled":   summary.Cancelled,
+		"totalAmount": summary.PaidAmount,
+		"paidAmount":  summary.PaidAmount,
 	})
 }
 
@@ -1158,9 +1409,13 @@ func GetOrderStatusByNo(c *gin.Context) {
 			return
 		}
 		if recharge.Status == "pending" && shouldQueryPaymentStatus(recharge.CreatedAt) {
-			success, _, _ := performAlipayQuery(db, orderNo, true)
-			if success {
+			if success, err := performPaymentStatusQuery(db, orderNo, true); success {
 				db.Where("order_no = ?", orderNo).First(&recharge)
+			} else if err != nil {
+				utils.LogWarn("GetOrderStatusByNo: active recharge payment query failed: %+v", map[string]interface{}{
+					"order_no": orderNo,
+					"error":    err.Error(),
+				})
 			}
 		}
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
@@ -1179,25 +1434,29 @@ func GetOrderStatusByNo(c *gin.Context) {
 	}
 
 	if order.Status == "pending" && shouldQueryPaymentStatus(order.CreatedAt) {
-		success, _, _ := performAlipayQuery(db, orderNo, false)
-		if success {
-			go func() {
-				var processedOrder models.Order
-				if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&processedOrder).Error; err == nil && processedOrder.Status == "paid" {
-					svc := orderServicePkg.NewOrderService()
-					if _, err := svc.ProcessPaidOrder(&processedOrder); err != nil {
-						log.Printf("failed to process paid order: %v", err)
-					}
-					sendPaymentNotifications(db, orderNo)
-				}
-			}()
+		if success, err := performPaymentStatusQuery(db, orderNo, false); success {
+			db.Where("order_no = ?", orderNo).First(&order)
+		} else if err != nil {
+			utils.LogWarn("GetOrderStatusByNo: active order payment query failed: %+v", map[string]interface{}{
+				"order_no": orderNo,
+				"error":    err.Error(),
+			})
+		}
+	}
+	if order.Status == "pending" && order.ExpireTime.Valid && utils.GetBeijingTime().After(order.ExpireTime.Time) {
+		if expiredOrder, err := orderServicePkg.NewOrderService().MarkPendingOrderStatus(orderNo, user.ID, "expired"); err == nil && expiredOrder != nil {
+			order = *expiredOrder
+		}
+	} else if order.Status == "paid" && !order.FulfilledAt.Valid {
+		if _, err := orderServicePkg.NewOrderService().FinalizePaidOrder(orderNo, orderServicePkg.FinalizePaidOrderOptions{
+			IPAddress: utils.GetRealClientIP(c),
+		}); err == nil {
 			db.Where("order_no = ?", orderNo).First(&order)
 		}
 	}
 
 	orderType := "order"
 	if order.PackageID == 0 {
-		orderType = "device_upgrade"
 		if order.ExtraData.Valid && order.ExtraData.String != "" {
 			var extraData map[string]interface{}
 			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
@@ -1208,10 +1467,11 @@ func GetOrderStatusByNo(c *gin.Context) {
 		}
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"order_no": order.OrderNo,
-		"status":   order.Status,
-		"amount":   order.Amount,
-		"type":     orderType,
+		"order_no":     order.OrderNo,
+		"status":       order.Status,
+		"amount":       order.Amount,
+		"final_amount": utils.GetNullFloat64Value(order.FinalAmount),
+		"type":         orderType,
 	})
 }
 
@@ -1299,28 +1559,38 @@ func UpgradeDevices(c *gin.Context) {
 		}
 		totalAmount = (float64(req.AdditionalDevices) * devicePricePerMonth) + (float64(req.AdditionalDays) * (devicePricePerMonth / 30.0))
 	}
+	totalAmount = utils.RoundFloat(totalAmount, 2)
 
 	var userLevel models.UserLevel
 	levelDiscount := 1.0
+	levelDiscountAmount := 0.0
+	payableAmount := totalAmount
 	if user.UserLevelID.Valid {
 		if err := db.First(&userLevel, user.UserLevelID.Int64).Error; err == nil && userLevel.DiscountRate > 0 && userLevel.DiscountRate < 1.0 {
 			levelDiscount = userLevel.DiscountRate
-			totalAmount *= userLevel.DiscountRate
+			levelDiscountAmount = utils.RoundFloat(totalAmount*(1-userLevel.DiscountRate), 2)
+			payableAmount = utils.RoundFloat(totalAmount-levelDiscountAmount, 2)
+			if payableAmount < 0 {
+				payableAmount = 0
+			}
 		}
 	}
 
 	// 仅预览：返回费用不创建订单
 	if req.PreviewOnly {
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-			"upgrade_cost":   totalAmount,
-			"level_discount": levelDiscount,
-			"amount":         totalAmount,
+			"upgrade_cost":          totalAmount,
+			"level_discount":        levelDiscountAmount,
+			"level_discount_rate":   levelDiscount,
+			"amount":                totalAmount,
+			"final_amount":          payableAmount,
+			"actual_payment_amount": payableAmount,
 		})
 		return
 	}
 
 	balanceUsed := 0.0
-	finalAmount := totalAmount
+	finalAmount := payableAmount
 	if req.UseBalance && user.Balance > 0 {
 		availableBalance := math.Round(user.Balance*100) / 100
 		if availableBalance > finalAmount {
@@ -1337,16 +1607,19 @@ func UpgradeDevices(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订单号失败", err)
 		return
 	}
-	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d,"balance_used":%.2f}`, req.AdditionalDevices, req.AdditionalDays, balanceUsed)
+	balanceDeductedStr := "false"
+	if balanceUsed > 0 {
+		balanceDeductedStr = "true"
+	}
+	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d,"balance_used":%.2f,"balance_deducted":%s,"level_discount":%.2f,"level_discount_rate":%.4f,"payable_amount":%.2f}`, req.AdditionalDevices, req.AdditionalDays, balanceUsed, balanceDeductedStr, levelDiscountAmount, levelDiscount, payableAmount)
 
-	actualPaidAmount := balanceUsed + finalAmount
 	order := models.Order{
 		OrderNo:           orderNo,
 		UserID:            user.ID,
 		PackageID:         0,
 		Amount:            totalAmount,
 		FinalAmount:       database.NullFloat64(finalAmount),
-		DiscountAmount:    database.NullFloat64(totalAmount - actualPaidAmount),
+		DiscountAmount:    database.NullFloat64(levelDiscountAmount),
 		Status:            "pending",
 		ExtraData:         database.NullString(extraData),
 		PaymentMethodName: database.NullString(req.PaymentMethod),
@@ -1360,60 +1633,58 @@ func UpgradeDevices(c *gin.Context) {
 		}
 	}
 
-	if err := db.Create(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
-		return
-	}
-
-	if finalAmount <= 0.01 {
-		// --- 事务：扣余额 + 创建订单 + 标记已支付 ---
-		txErr := db.Transaction(func(tx *gorm.DB) error {
-			if balanceUsed > 0 {
-				result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
-					Update("balance", gorm.Expr("balance - ?", balanceUsed))
-				if result.Error != nil {
-					return fmt.Errorf("扣除余额失败: %v", result.Error)
-				}
-				if result.RowsAffected == 0 {
-					return fmt.Errorf("余额不足")
-				}
-			}
-			order.Status = "paid"
-			order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-			return tx.Save(&order).Error
-		})
-		if txErr != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, txErr.Error(), txErr)
+	var paymentURL string
+	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+		paymentConfig, err := utils.FindEnabledPaymentConfig(db, req.PaymentMethod)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
+			return
+		}
+		order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(paymentConfig.ID))
+		if err := db.Create(&order).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
 			return
 		}
 
-		if balanceUsed > 0 {
-			go func() {
-				orderID := uint(order.ID)
-				userID := user.ID
-				if err := utils.CreateBalanceLog(
-					user.ID,
-					"consume",
-					-balanceUsed,
-					user.Balance,
-					user.Balance-balanceUsed,
-					&orderID,
-					nil,
-					fmt.Sprintf("订单支付扣除余额，订单号: %s", order.OrderNo),
-					"user",
-					&userID,
-					utils.GetRealClientIP(c),
-				); err != nil {
-					log.Printf("failed to create balance log: %v", err)
-				}
-			}()
+		transaction := models.PaymentTransaction{
+			OrderID:         order.ID,
+			UserID:          user.ID,
+			PaymentMethodID: paymentConfig.ID,
+			Amount:          int(math.Round(finalAmount * 100)),
+			Currency:        "CNY",
+			Status:          "pending",
 		}
-		go func() {
-			if _, err := orderServicePkg.NewOrderService().ProcessPaidOrder(&order); err != nil {
-				log.Printf("failed to process paid order: %v", err)
-			}
-		}()
+		if err := db.Create(&transaction).Error; err != nil {
+			_, _ = orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, user.ID, "failed")
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付记录失败", err)
+			return
+		}
+		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, finalAmount)
+		if err != nil {
+			_, _ = orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, user.ID, "failed")
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
+			return
+		}
+	} else {
+		if err := db.Create(&order).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
+			return
+		}
+	}
+
+	if finalAmount <= 0.01 {
+		processedSubscription, err := orderServicePkg.NewOrderService().FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
+			PaymentMethodName: "余额支付",
+			IPAddress:         utils.GetRealClientIP(c),
+		})
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, err.Error(), err)
+			return
+		}
 		db.Where("user_id = ?", user.ID).First(&subscription)
+		if processedSubscription != nil {
+			subscription = *processedSubscription
+		}
 		utils.SuccessResponse(c, http.StatusOK, "设备数量升级成功", gin.H{
 			"order_no":           order.OrderNo,
 			"status":             "paid",
@@ -1424,67 +1695,44 @@ func UpgradeDevices(c *gin.Context) {
 		return
 	}
 
-	var paymentURL string
-	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
-		queryPayType := req.PaymentMethod
-		if strings.HasPrefix(queryPayType, "yipay_") {
-			queryPayType = "yipay"
-		} else if strings.HasPrefix(queryPayType, "codepay_") {
-			queryPayType = "codepay"
-		}
-
-		var paymentConfig models.PaymentConfig
-		escapedPayType := utils.EscapeLikePattern(queryPayType)
-		if err := db.Where("LOWER(pay_type) LIKE ? AND status = 1", "%"+escapedPayType+"%").Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
-			return
-		}
-
-		transaction := models.PaymentTransaction{
-			OrderID:         order.ID,
-			UserID:          user.ID,
-			PaymentMethodID: paymentConfig.ID,
-			Amount:          int(finalAmount * 100),
-			Currency:        "CNY",
-			Status:          "pending",
-		}
-		if err := db.Create(&transaction).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付记录失败", err)
-			return
-		}
-		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, finalAmount)
-		if err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
-			return
-		}
-	}
-
 	var extraDataMap map[string]interface{}
 	_ = json.Unmarshal([]byte(order.ExtraData.String), &extraDataMap) // Ignore error, use empty if invalid
+	if extraDataMap == nil {
+		extraDataMap = make(map[string]interface{})
+	}
 	extraDataMap["type"] = "device_upgrade"
 	extraDataMap["additional_devices"] = req.AdditionalDevices
 	extraDataMap["additional_days"] = req.AdditionalDays
 	if balanceUsed > 0 {
 		extraDataMap["balance_used"] = balanceUsed
 	}
+	if levelDiscountAmount > 0 {
+		extraDataMap["level_discount"] = levelDiscountAmount
+		extraDataMap["level_discount_rate"] = levelDiscount
+	}
+	extraDataMap["payable_amount"] = payableAmount
 	extraDataBytes, _ := json.Marshal(extraDataMap)
 	order.ExtraData = database.NullString(string(extraDataBytes))
 	if err := db.Save(&order).Error; err != nil {
 		log.Printf("failed to update order extra data: %v", err)
 	}
 
-		actualTotalAmount := utils.RoundFloat(balanceUsed+finalAmount, 2)
-		responseData := gin.H{
-			"order_no":            order.OrderNo,
-			"id":                  order.ID,
-			"status":              order.Status,
-			"amount":              totalAmount,
-			"final_amount":        finalAmount,
-			"actual_total_amount": actualTotalAmount,
-			"balance_used":        balanceUsed,
-			"additional_devices":  req.AdditionalDevices,
-			"additional_days":     req.AdditionalDays,
-		}
+	actualTotalAmount := utils.RoundFloat(balanceUsed+finalAmount, 2)
+	responseData := gin.H{
+		"order_no":              order.OrderNo,
+		"id":                    order.ID,
+		"status":                order.Status,
+		"amount":                totalAmount,
+		"final_amount":          finalAmount,
+		"actual_payment_amount": finalAmount,
+		"actual_total_amount":   actualTotalAmount,
+		"level_discount":        levelDiscountAmount,
+		"level_discount_rate":   levelDiscount,
+		"payable_amount":        payableAmount,
+		"balance_used":          balanceUsed,
+		"additional_devices":    req.AdditionalDevices,
+		"additional_days":       req.AdditionalDays,
+	}
 	if paymentURL != "" {
 		responseData["payment_url"] = paymentURL
 		responseData["payment_qr_code"] = paymentURL
@@ -1527,43 +1775,21 @@ func PayOrder(c *gin.Context) {
 
 	// 余额支付
 	if req.PaymentMethod == "balance" {
-		// 检查余额是否充足
-		if user.Balance < amount {
-			utils.ErrorResponse(c, http.StatusBadRequest, "余额不足", nil)
+		var freshUser models.User
+		if err := db.First(&freshUser, user.ID).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 			return
 		}
-
-		// 扣除余额
-		tx := db.Begin()
-		if err := tx.Model(user).UpdateColumn("balance", gorm.Expr("balance - ?", amount)).Error; err != nil {
-			tx.Rollback()
-			utils.ErrorResponse(c, http.StatusInternalServerError, "扣减余额失败", err)
+		if freshUser.Balance+0.001 < amount {
+			utils.ErrorResponse(c, http.StatusBadRequest, "余额不足，无法完成支付", nil)
 			return
 		}
-
-		// 更新订单状态
-		now := time.Now()
-		balanceStr := "balance"
-		if err := tx.Model(&order).Updates(map[string]interface{}{
-			"status":              "paid",
-			"payment_method_name": &balanceStr,
-			"payment_time":        &now,
-		}).Error; err != nil {
-			tx.Rollback()
-			utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单状态失败", err)
-			return
-		}
-
-		// 激活订阅
-		orderService := orderServicePkg.NewOrderService()
-		if _, err := orderService.ProcessPaidOrder(&order); err != nil {
-			tx.Rollback()
-			utils.ErrorResponse(c, http.StatusInternalServerError, "激活订阅失败", err)
-			return
-		}
-
-		if err := tx.Commit().Error; err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "支付事务提交失败", err)
+		if _, err := orderServicePkg.NewOrderService().FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
+			PaymentMethodName: "余额支付",
+			IPAddress:         utils.GetRealClientIP(c),
+			BalanceAmount:     amount,
+		}); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, err.Error(), err)
 			return
 		}
 
@@ -1575,23 +1801,29 @@ func PayOrder(c *gin.Context) {
 		return
 	}
 
-	// 第三方支付
-	if req.PaymentMethodID == 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请选择支付方式", nil)
-		return
-	}
-
 	var paymentConfig models.PaymentConfig
-	if err := db.First(&paymentConfig, req.PaymentMethodID).Error; err != nil || paymentConfig.Status != 1 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "支付方式无效", nil)
+	if req.PaymentMethodID > 0 {
+		if err := db.First(&paymentConfig, req.PaymentMethodID).Error; err != nil || paymentConfig.Status != 1 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "支付方式无效", nil)
+			return
+		}
+	} else if req.PaymentMethod != "" {
+		var err error
+		paymentConfig, err = utils.FindEnabledPaymentConfig(db, req.PaymentMethod)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "支付方式无效", nil)
+			return
+		}
+	} else {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择支付方式", nil)
 		return
 	}
 
 	transaction := models.PaymentTransaction{
 		OrderID:         order.ID,
 		UserID:          user.ID,
-		PaymentMethodID: req.PaymentMethodID,
-		Amount:          int(amount * 100),
+		PaymentMethodID: paymentConfig.ID,
+		Amount:          int(math.Round(amount * 100)),
 		Currency:        "CNY",
 		Status:          "pending",
 	}
@@ -1599,18 +1831,39 @@ func PayOrder(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付交易失败", err)
 		return
 	}
+	if req.PaymentMethod != "" {
+		order.PaymentMethodName = database.NullString(req.PaymentMethod)
+	}
+	order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(paymentConfig.ID))
+	if err := db.Model(&order).Updates(map[string]interface{}{
+		"payment_method_id":   order.PaymentMethodID,
+		"payment_method_name": order.PaymentMethodName,
+	}).Error; err != nil {
+		utils.LogError("PayOrder: update order payment method id failed", err, map[string]interface{}{"order_no": order.OrderNo})
+	}
 
 	paymentURL, err := generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, amount)
 	if err != nil {
+		if failedOrder, markErr := orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, user.ID, "failed"); markErr != nil {
+			utils.LogError("PayOrder: mark order failed after payment link error", markErr, map[string]interface{}{
+				"order_no": order.OrderNo,
+			})
+		} else if failedOrder != nil {
+			order = *failedOrder
+		}
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付失败", err)
 		return
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "支付订单已创建", gin.H{
-		"payment_url":    paymentURL,
-		"order_no":       order.OrderNo,
-		"amount":         amount,
-		"transaction_id": transaction.ID,
+		"payment_url":           paymentURL,
+		"payment_qr_code":       paymentURL,
+		"order_no":              order.OrderNo,
+		"amount":                amount,
+		"final_amount":          amount,
+		"actual_payment_amount": amount,
+		"payment_method":        req.PaymentMethod,
+		"transaction_id":        transaction.ID,
 	})
 }
 
@@ -1694,51 +1947,22 @@ func CreateCustomOrder(c *gin.Context) {
 
 	// 应用优惠券
 	var couponDiscount float64
-	var couponID *int64
-	if req.CouponCode != "" {
-		var coupon models.Coupon
-		if err := db.Where("code = ? AND status = ?", req.CouponCode, "active").First(&coupon).Error; err == nil {
-			now := time.Now()
-			if now.After(coupon.ValidFrom) && now.Before(coupon.ValidUntil) {
-				// 检查总数量
-				if coupon.TotalQuantity.Valid && coupon.UsedQuantity >= int(coupon.TotalQuantity.Int64) {
-					utils.ErrorResponse(c, http.StatusBadRequest, "优惠券已被领完", nil)
-					return
-				}
-				// 检查用户使用次数
-				var usageCount int64
-				db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", coupon.ID, user.ID).Count(&usageCount)
-				if int(usageCount) >= coupon.MaxUsesPerUser {
-					utils.ErrorResponse(c, http.StatusBadRequest, "您已达到该优惠券的使用上限", nil)
-					return
-				}
-
-				// 计算折扣
-				switch coupon.Type {
-				case "discount":
-					couponDiscount = utils.RoundFloat(finalPrice*coupon.DiscountValue/100, 2)
-				case "fixed":
-					couponDiscount = coupon.DiscountValue
-				}
-
-				if coupon.MaxDiscount.Valid && couponDiscount > coupon.MaxDiscount.Float64 {
-					couponDiscount = coupon.MaxDiscount.Float64
-				}
-				if couponDiscount > finalPrice {
-					couponDiscount = finalPrice
-				}
-				couponDiscount = utils.RoundFloat(couponDiscount, 2)
-				cid := utils.MustSafeUintToInt64(coupon.ID)
-				couponID = &cid
-			}
+	var coupon *models.Coupon
+	couponFreeDays := 0
+	if strings.TrimSpace(req.CouponCode) != "" {
+		quote, err := discountService.QuoteCouponForPreparedAmount(db, req.CouponCode, user.ID, 0, finalPrice)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+			return
 		}
+		couponDiscount = quote.CouponDiscountAmount
+		couponFreeDays = quote.FreeDays
+		coupon = quote.Coupon
+		finalPrice = quote.FinalAmount
 	}
-
-	finalPrice = finalPrice - couponDiscount
-	if finalPrice < 0 {
+	if finalPrice <= 0.01 {
 		finalPrice = 0
 	}
-	finalPrice = utils.RoundFloat(finalPrice, 2)
 
 	// 构建额外数据
 	extraData := map[string]interface{}{
@@ -1746,6 +1970,9 @@ func CreateCustomOrder(c *gin.Context) {
 		"devices":          req.Devices,
 		"months":           req.Months,
 		"discount_percent": discountPercent,
+	}
+	if couponFreeDays > 0 {
+		extraData["coupon_free_days"] = couponFreeDays
 	}
 	extraDataJSON, _ := json.Marshal(extraData)
 	extraStr := string(extraDataJSON)
@@ -1770,41 +1997,59 @@ func CreateCustomOrder(c *gin.Context) {
 		FinalAmount:    database.NullFloat64(finalPrice),
 		ExtraData:      database.NullString(extraStr),
 	}
-
-	if couponID != nil {
-		order.CouponID = database.NullInt64(*couponID)
+	if finalPrice == 0 {
+		order.PaymentMethodName = database.NullString("优惠抵扣")
 	}
 
-	if err := db.Create(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
+	if coupon != nil {
+		order.CouponID = database.NullInt64(utils.MustSafeUintToInt64(coupon.ID))
+	}
+
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&order).Error; err != nil {
+			return fmt.Errorf("创建订单失败: %v", err)
+		}
+		if coupon != nil {
+			if err := discountService.ReserveCouponUsageTx(tx, coupon.ID, user.ID, order.ID, couponDiscount); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, err.Error(), err)
 		return
-	}
-
-	// 记录优惠券使用
-	if couponID != nil {
-		db.Create(&models.CouponUsage{
-			CouponID:       utils.MustSafeInt64ToUint(*couponID),
-			UserID:         user.ID,
-			OrderID:        database.NullInt64(utils.MustSafeUintToInt64(order.ID)),
-			DiscountAmount: couponDiscount,
-		})
-		db.Model(&models.Coupon{}).Where("id = ?", *couponID).UpdateColumn("used_quantity", gorm.Expr("used_quantity + 1"))
 	}
 
 	// 创建审计日志
 	pkgName := fmt.Sprintf("自定义套餐 (%d设备/%d月)", req.Devices, req.Months)
 	utils.CreateAuditLogSimple(c, "create_custom_order", "order", order.ID, fmt.Sprintf("用户创建自定义套餐订单: %s, 金额: %.2f", pkgName, finalPrice))
 
+	if finalPrice == 0 {
+		if _, err := orderServicePkg.NewOrderService().FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
+			PaymentMethodName: "优惠抵扣",
+			IPAddress:         utils.GetRealClientIP(c),
+		}); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "处理自定义套餐订单失败", err)
+			return
+		}
+		if err := db.First(&order, order.ID).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "刷新订单状态失败", err)
+			return
+		}
+	}
+
 	utils.SuccessResponse(c, http.StatusCreated, "订单创建成功", gin.H{
-		"order_no":        order.OrderNo,
-		"id":              order.ID,
-		"user_id":         order.UserID,
-		"package_id":      0,
-		"package_name":    pkgName,
-		"amount":          basePrice,
-		"final_amount":    finalPrice,
-		"discount_amount": totalDiscount,
-		"status":          order.Status,
-		"created_at":      utils.FormatBeijingTime(order.CreatedAt),
+		"order_no":         order.OrderNo,
+		"id":               order.ID,
+		"user_id":          order.UserID,
+		"package_id":       0,
+		"package_name":     pkgName,
+		"amount":           basePrice,
+		"final_amount":     finalPrice,
+		"discount_amount":  totalDiscount,
+		"coupon_id":        utils.GetNullInt64Value(order.CouponID),
+		"coupon_free_days": couponFreeDays,
+		"status":           order.Status,
+		"created_at":       utils.FormatBeijingTime(order.CreatedAt),
 	})
 }

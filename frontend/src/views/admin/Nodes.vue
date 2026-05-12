@@ -260,27 +260,27 @@
             <el-col :span="24">
               <el-form-item label="类型" required>
                 <el-select v-model="nodeForm.type" placeholder="选择节点类型" style="width: 100%">
-                  <el-optgroup label="代理协议">
+                  <el-option-group label="代理协议">
                     <el-option label="VMess" value="vmess" />
                     <el-option label="VLESS" value="vless" />
                     <el-option label="Trojan" value="trojan" />
                     <el-option label="Shadowsocks (SS)" value="ss" />
                     <el-option label="ShadowsocksR (SSR)" value="ssr" />
-                  </el-optgroup>
-                  <el-optgroup label="现代协议">
+                  </el-option-group>
+                  <el-option-group label="现代协议">
                     <el-option label="Hysteria" value="hysteria" />
                     <el-option label="Hysteria2" value="hysteria2" />
                     <el-option label="TUIC" value="tuic" />
                     <el-option label="Naive" value="naive" />
                     <el-option label="AnyTLS" value="anytls" />
-                  </el-optgroup>
-                  <el-optgroup label="其他协议">
+                  </el-option-group>
+                  <el-option-group label="其他协议">
                     <el-option label="SOCKS" value="socks" />
                     <el-option label="SOCKS5" value="socks5" />
                     <el-option label="HTTP" value="http" />
                     <el-option label="HTTPS" value="https" />
                     <el-option label="WireGuard (WG)" value="wg" />
-                  </el-optgroup>
+                  </el-option-group>
                 </el-select>
               </el-form-item>
             </el-col>
@@ -333,7 +333,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
   DocumentCopy, Edit, MoreFilled 
@@ -617,43 +617,9 @@ export default {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-.filter-wrapper {
-  background: var(--el-fill-color-light);
-  padding: 16px;
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-.filter-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.filter-grid .el-select {
-  width: 140px;
-}
-.search-box {
-  flex: 1;
-  min-width: 200px;
-}
 @media (max-width: 768px) {
-  .filter-wrapper {
-    padding: 12px;
-  }
-  .filter-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr; /* 两列布局 */
-    gap: 8px;
-  }
-  .filter-grid .el-select {
-    width: 100%;
-  }
   .search-box {
-    grid-column: 1 / -1; /* 搜索框独占一行 */
-    width: 100%;
+    grid-column: 1 / -1;
   }
 }
 .desktop-table .status-badge {
@@ -733,11 +699,6 @@ export default {
 .right-buttons {
   display: flex;
   gap: 4px;
-}
-.pagination-wrapper {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
 }
 .responsive-dialog :deep(.el-dialog__body) {
   padding: 10px 20px;

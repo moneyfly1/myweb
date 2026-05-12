@@ -14,11 +14,11 @@ type Promotion struct {
 	MinAmount     float64        `json:"min_amount"`
 	MaxDiscount   float64        `json:"max_discount"`
 	PackageIDs    sql.NullString `json:"package_ids"`
-	StartTime     time.Time      `gorm:"not null" json:"start_time"`
-	EndTime       time.Time      `gorm:"not null" json:"end_time"`
-	IsActive      bool           `json:"is_active"`
+	StartTime     time.Time      `gorm:"not null;index:idx_promotion_active_window,priority:2" json:"start_time"`
+	EndTime       time.Time      `gorm:"not null;index:idx_promotion_active_window,priority:3" json:"end_time"`
+	IsActive      bool           `gorm:"index;index:idx_promotion_active_window,priority:1" json:"is_active"`
 	Description   sql.NullString `json:"description"`
-	CreatedAt     time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	CreatedAt     time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
 	UpdatedAt     time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 }
 

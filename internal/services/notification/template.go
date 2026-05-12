@@ -15,10 +15,16 @@ func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, d
 	switch notificationType {
 	case "order_paid":
 		return b.buildOrderPaidTelegram(data)
+	case "recharge_paid":
+		return b.buildRechargePaidTelegram(data)
 	case "user_registered":
 		return b.buildUserRegisteredTelegram(data)
 	case "password_reset":
 		return b.buildPasswordResetTelegram(data)
+	case "password_changed":
+		return b.buildPasswordChangedTelegram(data)
+	case "abnormal_login":
+		return b.buildAbnormalLoginTelegram(data)
 	case "subscription_sent":
 		return b.buildSubscriptionSentTelegram(data)
 	case "subscription_reset":
@@ -44,10 +50,16 @@ func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data 
 	switch notificationType {
 	case "order_paid":
 		return b.buildOrderPaidBark(data)
+	case "recharge_paid":
+		return b.buildRechargePaidBark(data)
 	case "user_registered":
 		return b.buildUserRegisteredBark(data)
 	case "password_reset":
 		return b.buildPasswordResetBark(data)
+	case "password_changed":
+		return b.buildPasswordChangedBark(data)
+	case "abnormal_login":
+		return b.buildAbnormalLoginBark(data)
 	case "subscription_sent":
 		return b.buildSubscriptionSentBark(data)
 	case "subscription_reset":
@@ -97,6 +109,32 @@ func (b *MessageTemplateBuilder) buildOrderPaidTelegram(data map[string]interfac
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
 }
 
+func (b *MessageTemplateBuilder) buildRechargePaidTelegram(data map[string]interface{}) string {
+	orderNo := getString(data, "order_no", "N/A")
+	username := getString(data, "username", "N/A")
+	amount := getFloat(data, "amount", 0)
+	balance := getFloat(data, "balance", 0)
+	paymentMethod := getString(data, "payment_method", "未知")
+	paymentTime := getString(data, "payment_time", "N/A")
+
+	return fmt.Sprintf(`💳 <b>用户充值成功</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💰 <b>充值详情</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🆔 <b>充值单号</b>: <code>%s</code>
+👤 <b>用户账号</b>: <code>%s</code>
+💰 <b>充值金额</b>: <b>¥%.2f</b>
+💼 <b>当前余额</b>: <b>¥%.2f</b>
+💳 <b>支付方式</b>: %s
+🕐 <b>到账时间</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ✅ <b>充值金额已到账</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, orderNo, username, amount, balance, paymentMethod, paymentTime)
+}
+
 func (b *MessageTemplateBuilder) buildUserRegisteredTelegram(data map[string]interface{}) string {
 	username := getString(data, "username", "N/A")
 	email := getString(data, "email", "N/A")
@@ -138,6 +176,50 @@ func (b *MessageTemplateBuilder) buildPasswordResetTelegram(data map[string]inte
 ┃  <b>请及时检查账户安全</b>
 ┃  💡 <b>建议联系用户确认</b>
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, resetTime)
+}
+
+func (b *MessageTemplateBuilder) buildPasswordChangedTelegram(data map[string]interface{}) string {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	changeTime := getString(data, "change_time", "N/A")
+
+	return fmt.Sprintf(`🔐 <b>用户修改密码</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️ <b>安全提醒</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 <b>用户账号</b>: <code>%s</code>
+📧 <b>用户邮箱</b>: %s
+🕐 <b>修改时间</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 <b>如非本人操作，请及时处理</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, changeTime)
+}
+
+func (b *MessageTemplateBuilder) buildAbnormalLoginTelegram(data map[string]interface{}) string {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	ipAddress := getString(data, "ip_address", "N/A")
+	location := getString(data, "location", "未知")
+	loginTime := getString(data, "login_time", "N/A")
+
+	return fmt.Sprintf(`⚠️ <b>异常登录告警</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🔐 <b>登录信息</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 <b>用户账号</b>: <code>%s</code>
+📧 <b>用户邮箱</b>: %s
+🌐 <b>登录 IP</b>: <code>%s</code>
+📍 <b>登录位置</b>: %s
+🕐 <b>登录时间</b>: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️ <b>请确认是否为用户本人操作</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, ipAddress, location, loginTime)
 }
 
 func (b *MessageTemplateBuilder) buildSubscriptionSentTelegram(data map[string]interface{}) string {
@@ -341,6 +423,33 @@ func (b *MessageTemplateBuilder) buildOrderPaidBark(data map[string]interface{})
 	return title, body
 }
 
+func (b *MessageTemplateBuilder) buildRechargePaidBark(data map[string]interface{}) (string, string) {
+	orderNo := getString(data, "order_no", "N/A")
+	username := getString(data, "username", "N/A")
+	amount := getFloat(data, "amount", 0)
+	balance := getFloat(data, "balance", 0)
+	paymentMethod := getString(data, "payment_method", "未知")
+	paymentTime := getString(data, "payment_time", "N/A")
+
+	title := "💳 用户充值成功"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💰 充值详情
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🆔 充值单号: %s
+👤 用户账号: %s
+💰 充值金额: ¥%.2f
+💼 当前余额: ¥%.2f
+💳 支付方式: %s
+🕐 到账时间: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ✅ 充值金额已到账
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, orderNo, username, amount, balance, paymentMethod, paymentTime)
+
+	return title, body
+}
+
 func (b *MessageTemplateBuilder) buildUserRegisteredBark(data map[string]interface{}) (string, string) {
 	username := getString(data, "username", "N/A")
 	email := getString(data, "email", "N/A")
@@ -382,6 +491,52 @@ func (b *MessageTemplateBuilder) buildPasswordResetBark(data map[string]interfac
 ┃  请及时检查账户安全
 ┃  💡 建议联系用户确认
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, resetTime)
+
+	return title, body
+}
+
+func (b *MessageTemplateBuilder) buildPasswordChangedBark(data map[string]interface{}) (string, string) {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	changeTime := getString(data, "change_time", "N/A")
+
+	title := "🔐 用户修改密码"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️ 安全提醒
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 用户账号: %s
+📧 用户邮箱: %s
+🕐 修改时间: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 如非本人操作，请及时处理
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, changeTime)
+
+	return title, body
+}
+
+func (b *MessageTemplateBuilder) buildAbnormalLoginBark(data map[string]interface{}) (string, string) {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	ipAddress := getString(data, "ip_address", "N/A")
+	location := getString(data, "location", "未知")
+	loginTime := getString(data, "login_time", "N/A")
+
+	title := "⚠️ 异常登录告警"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🔐 登录信息
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 用户账号: %s
+📧 用户邮箱: %s
+🌐 登录 IP: %s
+📍 登录位置: %s
+🕐 登录时间: %s
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️ 请确认是否为用户本人操作
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, ipAddress, location, loginTime)
 
 	return title, body
 }

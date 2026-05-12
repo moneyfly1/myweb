@@ -47,7 +47,7 @@ type EmailQueue struct {
 	ContentType  string         `gorm:"type:varchar(20);default:plain" json:"content_type"`
 	EmailType    string         `gorm:"type:varchar(50)" json:"email_type"`
 	Attachments  string         `gorm:"type:text" json:"attachments"`
-	Status       string         `gorm:"type:varchar(20);default:pending" json:"status"`
+	Status       string         `gorm:"type:varchar(20);default:pending;index" json:"status"`
 	RetryCount   int            `gorm:"default:0" json:"retry_count"`
 	MaxRetries   int            `gorm:"default:3" json:"max_retries"`
 	SentAt       sql.NullTime   `json:"sent_at,omitempty"`

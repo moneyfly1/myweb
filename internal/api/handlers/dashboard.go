@@ -107,24 +107,20 @@ func GetUserDashboard(c *gin.Context) {
 		membershipName = nil
 	}
 
-	var orderCount int64
-	var totalSpent float64
-	db.Model(&models.Order{}).Where("user_id = ? AND status = ?", user.ID, "paid").Count(&orderCount)
-	db.Model(&models.Order{}).
-		Where("user_id = ? AND status = ?", user.ID, "paid").
-		Select("COALESCE(SUM(final_amount), SUM(amount), 0)").
-		Scan(&totalSpent)
+	userPaymentSummary := utils.CalculateUserPaymentSummary(db, user.ID)
 
-	var announcementConfig models.SystemConfig
 	var announcementEnabled bool
 	var announcementContent string
-	if err := db.Where("key = ? AND category = ?", "announcement_enabled", "system").First(&announcementConfig).Error; err == nil {
-		announcementEnabled = announcementConfig.Value == "true"
-	}
-	if announcementEnabled {
-		var contentConfig models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", "announcement_content", "system").First(&contentConfig).Error; err == nil {
-			announcementContent = contentConfig.Value
+	var announcementConfigs []models.SystemConfig
+	if err := db.Where("category = ? AND key IN ?", "system", []string{"announcement_enabled", "announcement_content"}).
+		Find(&announcementConfigs).Error; err == nil {
+		for _, cfg := range announcementConfigs {
+			switch cfg.Key {
+			case "announcement_enabled":
+				announcementEnabled = cfg.Value == "true"
+			case "announcement_content":
+				announcementContent = cfg.Value
+			}
 		}
 	}
 
@@ -160,8 +156,8 @@ func GetUserDashboard(c *gin.Context) {
 			"qrcodeUrl":        qrcodeURL,
 		},
 		"stat": gin.H{
-			"order_count":  orderCount,
-			"total_spent":  totalSpent,
+			"order_count":  userPaymentSummary.Paid,
+			"total_spent":  userPaymentSummary.PaidAmount,
 			"device_count": deviceCount,
 		},
 		"notice": gin.H{
@@ -176,27 +172,25 @@ func GetUserDashboard(c *gin.Context) {
 func GetDashboard(c *gin.Context) {
 	db := database.GetDB()
 
-	var totalUsers int64
-	db.Model(&models.User{}).Count(&totalUsers)
-
-	var activeSubscriptions int64
 	now := utils.GetBeijingTime()
-	db.Model(&models.Subscription{}).
-		Where("is_active = ?", true).
-		Where("(status = ? OR status = '' OR status IS NULL)", "active").
-		Where("expire_time > ?", now).
-		Count(&activeSubscriptions)
+	var dashboardStats struct {
+		TotalUsers          int64
+		ActiveSubscriptions int64
+	}
+	db.Raw(`
+		SELECT
+			(SELECT COUNT(*) FROM users) AS total_users,
+			(SELECT COUNT(*) FROM subscriptions WHERE is_active = ? AND (status = ? OR status = '' OR status IS NULL) AND expire_time > ?) AS active_subscriptions
+	`, true, "active", now).Scan(&dashboardStats)
 
-	var totalOrders int64
-	db.Model(&models.Order{}).Count(&totalOrders)
-
-	totalRevenue := utils.CalculateTotalRevenue(db, "paid")
+	dayStart, dayEnd := utils.GetDayRange(now)
+	paymentSummary := utils.CalculatePaymentSummary(db, dayStart, dayEnd)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"totalUsers":          totalUsers,
-		"activeSubscriptions": activeSubscriptions,
-		"totalOrders":         totalOrders,
-		"totalRevenue":        totalRevenue,
+		"totalUsers":          dashboardStats.TotalUsers,
+		"activeSubscriptions": dashboardStats.ActiveSubscriptions,
+		"totalOrders":         paymentSummary.Total,
+		"totalRevenue":        paymentSummary.PaidRevenue,
 	})
 }
 

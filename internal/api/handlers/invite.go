@@ -83,8 +83,10 @@ func CreateInviteCode(c *gin.Context) {
 	for i := 0; i < maxAttempts; i++ {
 		code = strings.ToUpper(GenerateInviteCode())
 		var existing models.InviteCode
-		if err := db.Where("UPPER(code) = ?", code).First(&existing).Error; err == gorm.ErrRecordNotFound {
-			break
+		if err := db.Where("code = ?", code).First(&existing).Error; err == gorm.ErrRecordNotFound {
+			if err := db.Where("UPPER(code) = ?", code).First(&existing).Error; err == gorm.ErrRecordNotFound {
+				break
+			}
 		}
 		if i == maxAttempts-1 {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "生成唯一邀请码失败，请重试", nil)
@@ -143,7 +145,7 @@ func GetInviteCodes(c *gin.Context) {
 
 	db := database.GetDB()
 	var inviteCodes []models.InviteCode
-	if err := db.Where("user_id = ?", user.ID).Preload("InviteRelations").Find(&inviteCodes).Error; err != nil {
+	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").Find(&inviteCodes).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请码列表失败", err)
 		return
 	}
@@ -207,14 +209,30 @@ func GetInviteStats(c *gin.Context) {
 		TotalInviteRelations int64   `json:"total_invite_relations"`
 	}
 
-	var u models.User
-	db.First(&u, user.ID)
-	stats.TotalInviteCount = u.TotalInviteCount
-	stats.TotalInviteReward = u.TotalInviteReward
-
-	db.Model(&models.InviteCode{}).Where("user_id = ? AND is_active = ?", user.ID, true).Count(&stats.ActiveInviteCodes)
-
-	db.Model(&models.InviteRelation{}).Where("inviter_id = ?", user.ID).Count(&stats.TotalInviteRelations)
+	if err := db.Raw(`
+		SELECT
+			COALESCE(u.total_invite_count, 0) AS total_invite_count,
+			COALESCE(u.total_invite_reward, 0) AS total_invite_reward,
+			COALESCE(ic.active_invite_codes, 0) AS active_invite_codes,
+			COALESCE(ir.total_invite_relations, 0) AS total_invite_relations
+		FROM users u
+		LEFT JOIN (
+			SELECT user_id, COUNT(*) AS active_invite_codes
+			FROM invite_codes
+			WHERE user_id = ? AND is_active = ?
+			GROUP BY user_id
+		) ic ON ic.user_id = u.id
+		LEFT JOIN (
+			SELECT inviter_id, COUNT(*) AS total_invite_relations
+			FROM invite_relations
+			WHERE inviter_id = ?
+			GROUP BY inviter_id
+		) ir ON ir.inviter_id = u.id
+		WHERE u.id = ?
+	`, user.ID, true, user.ID, user.ID).Scan(&stats).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请统计失败", err)
+		return
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
@@ -273,9 +291,11 @@ func ValidateInviteCode(c *gin.Context) {
 	db := database.GetDB()
 
 	var inviteCode models.InviteCode
-	if err := db.Where("UPPER(code) = ?", code).First(&inviteCode).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在", err)
-		return
+	if err := db.Where("code = ?", code).First(&inviteCode).Error; err != nil {
+		if err := db.Where("UPPER(code) = ?", code).First(&inviteCode).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在", err)
+			return
+		}
 	}
 
 	now := utils.GetBeijingTime()
@@ -318,7 +338,7 @@ func UpdateInviteCode(c *gin.Context) {
 
 	db := database.GetDB()
 	var inviteCode models.InviteCode
-	if err := db.Where("id = ? AND created_by = ?", id, user.ID).First(&inviteCode).Error; err != nil {
+	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&inviteCode).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "邀请码不存在或无权限", err)
 		return
 	}

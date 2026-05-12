@@ -23,7 +23,7 @@
         <div class="card-header">
           <i class="el-icon-connection"></i>
           节点列表
-          <div class="header-actions">
+          <div class="header-actions list-filter-form">
             <el-select v-model="filterRegion" placeholder="选择地区" clearable>
               <el-option
                 v-for="region in regions"
@@ -202,9 +202,8 @@
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { nodeAPI } from '@/utils/api'
-import '@/styles/list-common.scss'
 const NODES_TABLE_STORAGE_KEY = 'user_nodes_table_settings'
 export default {
   name: 'Nodes',
@@ -581,11 +580,6 @@ export default {
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
-.header-actions {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-}
 .node-name {
   display: flex;
   align-items: center;
@@ -646,51 +640,10 @@ export default {
     display: none;
   }
 }
-.pagination-wrapper {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-  padding: 20px 0;
-}
-.mobile-pagination {
-  margin-top: 20px;
-  padding: 20px 0;
-  display: flex;
-  justify-content: center;
-}
-.mobile-card-list {
-  display: none;
-  @media (max-width: 768px) {
-    display: block;
-  }
-}
 .mobile-node-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border-left: 4px solid #409eff;
   .card-row {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid #f0f0f0;
-    &:last-child {
-      border-bottom: none;
-    }
-    .label {
-      color: #909399;
-      font-size: 14px;
-      font-weight: 500;
-      min-width: 80px;
-    }
     .value {
-      flex: 1;
-      text-align: right;
-      color: #303133;
-      font-size: 14px;
       display: flex;
       align-items: center;
       justify-content: flex-end;
@@ -704,50 +657,6 @@ export default {
   }
 }
 @media (max-width: 768px) {
-  .nodes-container {
-    padding: 10px;
-  }
-  .stats-row {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-  .stat-card {
-    padding: 12px;
-    .stat-number {
-      font-size: 1.5rem;
-    }
-    .stat-label {
-      font-size: 12px;
-    }
-  }
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .header-actions {
-    width: 100%;
-    flex-wrap: wrap;
-    flex-direction: column;
-    gap: 10px;
-    .el-select {
-      width: 100% !important;
-    }
-    .el-button {
-      width: 100%;
-      min-height: 44px;
-      font-size: 16px;
-    }
-  }
-  .list-card {
-    margin-bottom: 12px;
-    :deep(.el-card__header) {
-      padding: 12px;
-    }
-    :deep(.el-card__body) {
-      padding: 12px;
-    }
-  }
+  .nodes-container { padding: 10px; }
 }
 </style> 

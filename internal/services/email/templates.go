@@ -719,6 +719,27 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
                 <p><strong>💡 提示：</strong>订单已自动处理，订阅已激活，用户可立即使用服务。</p>
             </div>`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
 
+	case "recharge_paid":
+		orderNo := getStringFromData(data, "order_no", "N/A")
+		amount := getFloatFromData(data, "amount", 0)
+		balance := getFloatFromData(data, "balance", 0)
+		paymentMethod := getStringFromData(data, "payment_method", "未知")
+		paymentTime := getStringFromData(data, "payment_time", "N/A")
+		content = fmt.Sprintf(`<h2>💳 用户充值成功</h2>
+            <p>系统检测到一笔账户充值到账，详情如下：</p>
+            <div class="success-box">
+                <h3>💰 充值信息</h3>
+                <table class="info-table">
+                    <tr><th>充值单号</th><td><strong style="font-family: 'Courier New', monospace;">%s</strong></td></tr>
+                    <tr><th>用户账号</th><td>%s</td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>充值金额</th><td style="color: #27ae60; font-weight: bold; font-size: 18px;">¥%.2f</td></tr>
+                    <tr><th>当前余额</th><td>¥%.2f</td></tr>
+                    <tr><th>支付方式</th><td>%s</td></tr>
+                    <tr><th>到账时间</th><td>%s</td></tr>
+                </table>
+            </div>`, orderNo, username, email, amount, balance, paymentMethod, paymentTime)
+
 	case "user_registered":
 		registerTime := getStringFromData(data, "register_time", "N/A")
 		content = fmt.Sprintf(`<h2>👤 新用户注册</h2>
@@ -750,6 +771,39 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="warning-box">
                 <p><strong>⚠️ 安全提醒：</strong>如非用户本人操作，请及时检查账户安全。</p>
             </div>`, username, email, resetTime)
+
+	case "password_changed":
+		changeTime := getStringFromData(data, "change_time", "N/A")
+		content = fmt.Sprintf(`<h2>🔐 用户修改密码</h2>
+            <p>系统检测到用户修改密码操作，详情如下：</p>
+            <div class="warning-box">
+                <h3>📋 修改信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>修改时间</th><td>%s</td></tr>
+                </table>
+            </div>
+            <div class="warning-box">
+                <p><strong>⚠️ 安全提醒：</strong>如非用户本人操作，请及时检查账户安全。</p>
+            </div>`, username, email, changeTime)
+
+	case "abnormal_login":
+		loginTime := getStringFromData(data, "login_time", "N/A")
+		ipAddress := getStringFromData(data, "ip_address", "N/A")
+		location := getStringFromData(data, "location", "未知")
+		content = fmt.Sprintf(`<h2>⚠️ 异常登录告警</h2>
+            <p>系统检测到异常登录行为，详情如下：</p>
+            <div class="warning-box">
+                <h3>🔐 登录信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>登录 IP</th><td>%s</td></tr>
+                    <tr><th>登录位置</th><td>%s</td></tr>
+                    <tr><th>登录时间</th><td>%s</td></tr>
+                </table>
+            </div>`, username, email, ipAddress, location, loginTime)
 
 	case "subscription_sent":
 		sendTime := getStringFromData(data, "send_time", "N/A")

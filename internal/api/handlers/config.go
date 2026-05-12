@@ -278,22 +278,9 @@ func GetAdminSettings(c *gin.Context) {
 			"clash_protocols":     []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks5", "http", "wireguard"},
 			"universal_protocols": []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks", "socks5", "http", "wireguard"},
 		},
-		"custom_node": {},
-		"notification": {
-			"system_notifications": "true", "email_notifications": "true", "subscription_expiry_notifications": "true",
-			"new_user_notifications": "true", "new_order_notifications": "true",
-			"subscription_expiry_reminder_cooldown_hours": 24, "subscription_expiry_reminder_daily_limit": 1,
-		},
-		CatAdminNotification: {
-			"admin_notification_enabled": "false", "admin_email_notification": "false", "admin_telegram_notification": "false",
-			"admin_bark_notification": "false", "admin_telegram_bot_token": "", "admin_telegram_chat_id": "",
-			"admin_bark_server_url": "https://api.day.app", "admin_bark_device_key": "", "admin_notification_email": "",
-			"admin_notify_order_paid": "false", "admin_notify_user_registered": "false", "admin_notify_password_reset": "false",
-			"admin_notify_subscription_sent": "false", "admin_notify_subscription_reset": "false", "admin_notify_subscription_expired": "false",
-			"admin_notify_user_created": "false", "admin_notify_subscription_created": "false",
-			"admin_notify_ticket_created": "false", "admin_notify_ticket_replied": "false",
-			"admin_abnormal_login_alert_enabled": true, // 管理员账户异常登录告警开关，默认开启
-		},
+		"custom_node":        {},
+		"notification":       notification.CustomerNotificationDefaultSettings(),
+		CatAdminNotification: notification.AdminNotificationDefaultSettings(),
 		"backup": {
 			"backup_target":        "gitee",
 			"backup_gitee_enabled": "false", "backup_gitee_token": "", "backup_gitee_owner": giteeDefaults.Owner,
@@ -387,9 +374,10 @@ func UpdateAnnouncementSettings(c *gin.Context) { updateSettingsCommon(c, CatAnn
 func UpdateNotificationSettings(c *gin.Context) { updateSettingsCommon(c, "notification") }
 func UpdateAdminNotificationSystemSettings(c *gin.Context) {
 	updateSettingsCommon(c, CatAdminNotification)
+	notification.ClearAdminNotificationCache()
 }
-func UpdateNodeHealthSettings(c *gin.Context) { updateSettingsCommon(c, "node_health") }
-func UpdateBackupSettings(c *gin.Context)     { updateSettingsCommon(c, "backup") }
+func UpdateNodeHealthSettings(c *gin.Context)     { updateSettingsCommon(c, "node_health") }
+func UpdateBackupSettings(c *gin.Context)         { updateSettingsCommon(c, "backup") }
 func UpdateProtocolFilterSettings(c *gin.Context) { updateSettingsCommon(c, "protocol_filter") }
 
 func UploadFile(c *gin.Context) {
@@ -645,6 +633,14 @@ func sendTestNotification(logTag string) {
 		testData := map[string]interface{}{
 			"type":      "test",
 			"test_time": utils.FormatBeijingTime(utils.GetBeijingTime()),
+		}
+		switch logTag {
+		case "Telegram":
+			testData["test_channel"] = "telegram"
+		case "Bark":
+			testData["test_channel"] = "bark"
+		default:
+			testData["test_channel"] = "email"
 		}
 		_ = notification.NewNotificationService().SendAdminNotification("test", testData)
 	}()

@@ -316,7 +316,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'

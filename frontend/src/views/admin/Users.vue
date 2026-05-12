@@ -88,7 +88,7 @@
           </el-button>
         </div>
       </div>
-      <el-form :inline="true" :model="searchForm" class="search-form desktop-only">
+      <el-form :inline="true" :model="searchForm" class="search-form list-filter-form desktop-only">
         <el-form-item label="搜索">
           <el-input
             v-model="searchForm.keyword"
@@ -657,7 +657,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
@@ -958,11 +958,14 @@ export default {
           }
         }
       } catch (error) {
+        if (seq !== loadUsersSeq) return
         ElMessage.error(`加载用户列表失败: ${error.response?.data?.message || error.message}`)
         users.value = []
         total.value = 0
       } finally {
-        loading.value = false
+        if (seq === loadUsersSeq) {
+          loading.value = false
+        }
       }
     }
     const searchUsers = () => {
@@ -1626,7 +1629,6 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@use '@/styles/list-common.scss';
 .admin-users {
   @media (max-width: 768px) {
     width: 100% !important;
@@ -1648,176 +1650,6 @@ export default {
     font-size: 0.9rem;
     margin: 0;
     line-height: 1.5;
-  }
-}
-.header-actions {
-  display: flex;
-  gap: 10px;
-}
-.search-form {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #fafafa;
-  border-radius: 8px;
-  &.desktop-only {
-    @media (max-width: 768px) {
-      display: none !important;
-    }
-  }
-  :deep(.el-form-item) {
-    .el-select, .el-date-editor, .el-input {
-      .el-input__wrapper {
-        border: 1px solid #dcdfe6;
-        box-shadow: none;
-        padding: 0 11px;
-      }
-      .el-input__inner {
-        border: none !important;
-        background: transparent !important;
-        box-shadow: none !important;
-        outline: none !important;
-      }
-    }
-  }
-}
-@media (max-width: 768px) {
-  .mobile-action-bar {
-    padding: 16px !important;
-    box-sizing: border-box !important;
-    .mobile-search-section {
-      margin-bottom: 12px !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-      .search-input-wrapper {
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-        .mobile-search-input {
-          flex: 1 !important;
-          width: 100% !important;
-          :deep(.el-input__wrapper) {
-            border: 1px solid #dcdfe6 !important;
-            border-radius: 10px !important;
-            padding-right: 60px !important;
-            min-height: 48px !important;
-            box-shadow: none !important;
-            background: #fff !important;
-            .el-input__inner {
-              border: none !important;
-              box-shadow: none !important;
-              background: transparent !important;
-            }
-          }
-        }
-        .search-button-inside {
-          position: absolute !important;
-          right: 4px !important;
-          top: 50% !important;
-          transform: translateY(-50%) !important;
-          height: 40px !important;
-          width: 40px !important;
-          min-width: 40px !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          z-index: 10 !important;
-        }
-      }
-    }
-    .mobile-filter-buttons {
-      display: flex !important;
-      gap: 10px !important;
-      width: 100% !important;
-      .el-dropdown, .el-button {
-        flex: 1 !important;
-        width: 100% !important;
-      }
-      .el-button {
-        height: 44px !important;
-        border-radius: 10px !important;
-      }
-    }
-  }
-}
-.mobile-date-picker-section {
-  margin-bottom: 14px;
-  width: 100%;
-  .date-picker-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    .mobile-date-picker-item {
-      flex: 1;
-      min-width: 0;
-      :deep(.el-input__wrapper) {
-        border: 1px solid #dcdfe6;
-        box-shadow: none;
-        min-height: 48px;
-        border-radius: 10px;
-        width: 100%;
-        background: #fff;
-        .el-input__inner {
-          border: none;
-          box-shadow: none;
-          background: transparent;
-        }
-      }
-    }
-    .date-separator {
-      flex-shrink: 0;
-      padding: 0 6px;
-      font-weight: 600;
-      color: #606266;
-    }
-  }
-}
-.mobile-action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-  .mobile-action-btn {
-    width: 100%;
-    height: 44px;
-    font-size: 16px;
-    border-radius: 6px;
-  }
-}
-.batch-actions {
-  margin: 20px 0;
-  padding: 15px;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  @media (max-width: 768px) {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-}
-.batch-info {
-  font-weight: 600;
-  color: #303133;
-  font-size: 14px;
-  @media (max-width: 768px) {
-    text-align: center;
-    font-size: 13px;
-  }
-}
-.batch-buttons {
-  display: flex;
-  gap: 10px;
-  @media (max-width: 768px) {
-    width: 100%;
-    .el-button {
-      flex: 1;
-    }
   }
 }
 .user-email {

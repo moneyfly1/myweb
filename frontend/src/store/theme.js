@@ -7,6 +7,9 @@ export const useThemeStore = defineStore('theme', () => {
     return localStorage.getItem('user-theme') || 'light'
   }
   const currentTheme = ref(getStoredTheme())
+  const THEME_CACHE_TTL = 5 * 60 * 1000
+  let loadThemePromise = null
+  let lastThemeLoadedAt = 0
   const availableThemes = ref([
     { value: 'light', label: '浅色主题', icon: 'sunny', color: '#409EFF' },
     { value: 'dark', label: '深色主题', icon: 'moon', color: '#1a1a1a' },
@@ -297,18 +300,37 @@ export const useThemeStore = defineStore('theme', () => {
     document.body.style.color = config.text
   }
   const loadUserTheme = async () => {
-    try {
-      const response = await api.get('/users/theme')
-      if (response.data && response.data.theme) {
-        currentTheme.value = response.data.theme
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('user-theme', response.data.theme)
-        }
-        applyTheme(response.data.theme)
-      }
-    } catch (error) {
+    const now = Date.now()
+    if (loadThemePromise) return loadThemePromise
+    if (lastThemeLoadedAt && now - lastThemeLoadedAt < THEME_CACHE_TTL) {
       applyTheme(currentTheme.value)
+      return { theme: currentTheme.value, cached: true }
     }
+    loadThemePromise = (async () => {
+      try {
+        const response = await api.get('/users/theme')
+        const theme = response.data?.data?.theme || response.data?.theme
+        if (theme) {
+          currentTheme.value = theme
+          lastThemeLoadedAt = Date.now()
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('user-theme', theme)
+          }
+          applyTheme(theme)
+        }
+        return { theme: currentTheme.value }
+      } catch (error) {
+        applyTheme(currentTheme.value)
+        return { theme: currentTheme.value, fallback: true }
+      } finally {
+        loadThemePromise = null
+      }
+    })()
+    return loadThemePromise
+  }
+  const refreshUserTheme = async () => {
+    lastThemeLoadedAt = 0
+    return loadUserTheme()
   }
   const initTheme = () => {
     if (typeof window === 'undefined') return
@@ -328,6 +350,7 @@ export const useThemeStore = defineStore('theme', () => {
     setTheme,
     applyTheme,
     loadUserTheme,
+    refreshUserTheme,
     initTheme
   }
 })

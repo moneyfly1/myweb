@@ -248,9 +248,13 @@ func GetDeviceStats(c *gin.Context) {
 		DevicesByType      map[string]int64 `json:"devices_by_type"`
 	}
 
-	db.Model(&models.Device{}).Count(&stats.TotalDevices)
-	db.Model(&models.Device{}).Where("is_active = ?", true).Count(&stats.ActiveDevices)
-	db.Model(&models.Device{}).Where("is_active = ?", false).Count(&stats.InactiveDevices)
+	db.Raw(`
+		SELECT
+			COUNT(*) AS total_devices,
+			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS active_devices,
+			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS inactive_devices
+		FROM devices
+	`, true, false).Scan(&stats)
 	db.Model(&models.Subscription{}).Count(&stats.TotalSubscriptions)
 
 	stats.DevicesByType = make(map[string]int64)

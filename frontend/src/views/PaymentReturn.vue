@@ -40,11 +40,11 @@
   </div>
 </template>
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Loading, CircleCheckFilled } from '@element-plus/icons-vue'
-import { useApi } from '@/utils/api'
+import { useApi, pendingPaymentStorage } from '@/utils/api'
 export default {
   name: 'PaymentReturn',
   components: { Loading, CircleCheckFilled },
@@ -58,13 +58,21 @@ export default {
     const paymentSuccess = ref(false)
     const errorMessage = ref('')
     const orderType = ref('order')
+    let redirectTimer = null
+    const normalizeOrderType = (type) => {
+      if (type === 'recharge' || type === 'device_upgrade' || type === 'custom_package' || type === 'order') {
+        return type
+      }
+      return 'order'
+    }
     const orderConfig = computed(() => {
       const configs = {
         recharge: { subtitle: '充值已到账', label: '账户充值', tagType: 'info' },
         device_upgrade: { subtitle: '设备已升级', label: '设备升级', tagType: 'warning' },
-        default: { subtitle: '套餐已开通', label: '套餐开通', tagType: 'success' }
+        custom_package: { subtitle: '自定义套餐已开通', label: '自定义套餐', tagType: 'success' },
+        order: { subtitle: '套餐已开通', label: '套餐开通', tagType: 'success' }
       }
-      return configs[orderType.value] || configs.default
+      return configs[normalizeOrderType(orderType.value)] || configs.order
     })
     const getOrderType = (no) => {
       if (no.startsWith('RCH')) return 'recharge'
@@ -77,6 +85,7 @@ export default {
       if (typeof no === 'string' && no.includes(',')) no = no.split(',')[0].trim()
       return no ? String(no).trim() : null
     }
+    const getPendingPaymentOrderNo = () => pendingPaymentStorage.get()?.order_no || null
     const fetchRecentOrderNo = async () => {
       try {
         const { orderAPI } = await import('@/utils/api')
@@ -95,16 +104,11 @@ export default {
     }
     const refreshUserState = async (data) => {
       try {
-        const { userAPI, subscriptionAPI } = await import('@/utils/api')
-        const tasks = [userAPI.getUserInfo()]
-        if (data.type !== 'recharge' && orderType.value !== 'recharge') {
-          tasks.push(subscriptionAPI.getSubscription())
-        }
-        await Promise.all(tasks)
-        window.dispatchEvent(new CustomEvent('user-info-updated'))
-        if (tasks.length > 1) {
-          window.dispatchEvent(new CustomEvent('subscription-updated'))
-        }
+        const { cachedAPI } = await import('@/utils/api')
+        const type = normalizeOrderType(data?.type || orderType.value)
+        await cachedAPI.refreshUserState({
+          includeSubscription: type !== 'recharge'
+        })
       } catch (e) {
       }
     }
@@ -112,17 +116,18 @@ export default {
       paymentSuccess.value = true
       isLoading.value = false
       amount.value = parseFloat(data.amount || 0)
+      orderType.value = normalizeOrderType(data.type || orderType.value)
       const messages = {
         recharge: '支付成功！充值已到账！',
         device_upgrade: '支付成功！设备已升级！',
-        default: '支付成功！套餐已开通！'
+        custom_package: '支付成功！自定义套餐已开通！',
+        order: '支付成功！套餐已开通！'
       }
-      const key = (data.type === 'recharge' || orderType.value === 'recharge') ? 'recharge' :
-                  (data.type === 'device_upgrade' || orderType.value === 'device_upgrade') ? 'device_upgrade' : 'default'
+      const key = normalizeOrderType(data.type || orderType.value)
       ElMessage.success(messages[key])
       await refreshUserState(data)
-      setTimeout(async () => await refreshUserState(data), 500)
-      setTimeout(() => router.push('/orders'), 2000)
+      pendingPaymentStorage.clear()
+      redirectTimer = setTimeout(() => router.push('/orders'), 2000)
     }
     const fetchOrderData = async (no) => {
       try {
@@ -143,6 +148,15 @@ export default {
           if (data.status === 'paid') {
             return data // 成功，返回数据
           }
+          if (['cancelled', 'failed', 'expired'].includes(data.status)) {
+            pendingPaymentStorage.clear()
+            const statusTextMap = {
+              cancelled: '已取消',
+              failed: '支付失败',
+              expired: '已过期'
+            }
+            throw new Error(`订单状态：${statusTextMap[data.status] || data.status}`)
+          }
         }
         if (i < maxChecks - 1) {
           await new Promise(r => setTimeout(r, 2000))
@@ -161,12 +175,15 @@ export default {
         errorMessage.value = ''
         let no = extractOrderNoFromUrl(route.query)
         if (!no) {
+          no = getPendingPaymentOrderNo()
+        }
+        if (!no) {
           no = await fetchRecentOrderNo()
         }
         if (!no) {
           errorMessage.value = '无法获取订单号，请稍后前往订单页面查看支付状态'
           isLoading.value = false
-          setTimeout(() => router.push('/orders'), 2000)
+          redirectTimer = setTimeout(() => router.push('/orders'), 2000)
           return
         }
         orderNo.value = no
@@ -190,6 +207,12 @@ export default {
     const goToDashboard = () => router.push('/dashboard')
     const goToOrders = () => router.push('/orders')
     onMounted(processPaymentReturn)
+    onUnmounted(() => {
+      if (redirectTimer) {
+        clearTimeout(redirectTimer)
+        redirectTimer = null
+      }
+    })
     return {
       orderNo,
       amount,

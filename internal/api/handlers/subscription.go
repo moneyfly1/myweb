@@ -112,7 +112,7 @@ func asyncSubscriptionLog(
 		// 设置超时，避免goroutine永久阻塞
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		
+
 		// 使用WithContext确保数据库操作可以取消
 		if err := utils.CreateSubscriptionLog(subID, userID, actionType, actionBy, actionByUserID, clientIP, beforeData, afterData, reason); err != nil {
 			// 只记录错误，不阻塞主流程
@@ -207,7 +207,7 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 	go func(url string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, url); err != nil {
 			select {
 			case <-ctx.Done():
@@ -650,7 +650,7 @@ func BatchClearDevices(c *gin.Context) {
 	go func(subscriptions []models.Subscription) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		
+
 		for _, sub := range subscriptions {
 			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, sub.SubscriptionURL); err != nil {
 				select {
@@ -750,7 +750,7 @@ func UpdateSubscription(c *gin.Context) {
 	go func(subURL string) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		
+
 		if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
 			select {
 			case <-ctx.Done():
@@ -812,7 +812,7 @@ func ExtendSubscription(c *gin.Context) {
 	go func(ctx context.Context, userEmail, username string, pkgID *int64, oldExp, newExp, nowStr string) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		
+
 		pkgName := "默认套餐"
 		if pkgID != nil && *pkgID > 0 {
 			var pkg models.Package
@@ -889,7 +889,7 @@ func ClearUserDevices(c *gin.Context) {
 		go func(subscriptions []models.Subscription) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			
+
 			for _, sub := range subscriptions {
 				if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, sub.SubscriptionURL); err != nil {
 					select {
@@ -945,7 +945,15 @@ func SendSubscriptionEmailSelf(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "发送邮件失败", err)
 		return
 	}
+	sendCustomerSubscriptionSentPush(*user)
 	utils.SuccessResponse(c, http.StatusOK, "订阅邮件已加入队列", nil)
+}
+
+func sendCustomerSubscriptionSentPush(user models.User) {
+	notificationService := notification.NewNotificationService()
+	if notification.ShouldSendCustomerNotificationToUser(&user, "subscription_sent", notification.ChannelSystem) {
+		_ = notificationService.CreateUserSystemNotification(&user, "subscription_sent", "订阅已发送", "服务配置信息已发送，请查收通知渠道。")
+	}
 }
 
 func ConvertSubscriptionToBalance(c *gin.Context) {
@@ -997,7 +1005,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	go func(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		
+
 		if err := utils.CreateBalanceLog(
 			user.ID,
 			"refund",
@@ -1068,8 +1076,15 @@ func sendResetEmail(c *gin.Context, sub models.Subscription, user models.User, r
 	}
 	resetTime := utils.GetBeijingTime().Format(TimeLayout)
 	content := email.NewEmailTemplateBuilder().GetSubscriptionResetTemplate(user.Username, univ, clash, exp, resetTime, reason)
-	_ = email.NewEmailService().QueueEmail(user.Email, "订阅重置通知", content, "subscription_reset")
-	_ = notification.NewNotificationService().SendAdminNotification("subscription_reset", map[string]interface{}{"username": user.Username, "email": user.Email, "reset_time": resetTime})
+	if notification.ShouldSendCustomerNotificationToUser(&user, "subscription_reset", notification.ChannelEmail) {
+		_ = email.NewEmailService().QueueEmail(user.Email, "订阅重置通知", content, "subscription_reset")
+	}
+	notificationService := notification.NewNotificationService()
+	data := map[string]interface{}{"username": user.Username, "email": user.Email, "reset_time": resetTime}
+	if notification.ShouldSendCustomerNotificationToUser(&user, "subscription_reset", notification.ChannelSystem) {
+		_ = notificationService.CreateUserSystemNotification(&user, "subscription_reset", "订阅已重置", "您的订阅地址已重置，请及时更新客户端配置。")
+	}
+	_ = notificationService.SendAdminNotification("subscription_reset", data)
 }
 
 func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) error {
@@ -1082,6 +1097,9 @@ func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) er
 		}
 	}
 	content := email.NewEmailTemplateBuilder().GetSubscriptionTemplate(user.Username, univ, clash, exp, days, sub.DeviceLimit, sub.CurrentDevices)
+	if !notification.ShouldSendCustomerNotificationToUser(&user, "subscription_sent", notification.ChannelEmail) {
+		return nil
+	}
 	return email.NewEmailService().QueueEmail(user.Email, "服务配置信息", content, "subscription")
 }
 
@@ -1145,7 +1163,7 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 		go func(subURL string) {
 			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 			defer cancel()
-			
+
 			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
 				select {
 				case <-ctx.Done():
@@ -1225,7 +1243,7 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 		go func(subURL string) {
 			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 			defer cancel()
-			
+
 			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
 				select {
 				case <-ctx.Done():
@@ -1518,7 +1536,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 		go func(ctx context.Context, subID, userID uint, ua, ip string) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			
+
 			if _, err := deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "clash"); err != nil {
 				select {
 				case <-ctx.Done():
@@ -1532,7 +1550,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 		go func(ctx context.Context, subID uint) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			
+
 			db := database.GetDB()
 			if err := db.WithContext(ctx).Model(&models.Subscription{}).Where("id = ?", subID).
 				Update("clash_count", gorm.Expr("clash_count + ?", 1)).Error; err != nil {

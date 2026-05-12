@@ -321,7 +321,7 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, InfoFilled, Filter, Refresh } from '@element-plus/icons-vue'
 import { userLevelAPI } from '@/utils/api'
 const loading = ref(false)
@@ -826,41 +826,6 @@ onUnmounted(() => {
   margin-bottom: 6px;
   color: #606266;
   font-size: 13px;
-}
-.mobile-action-bar {
-  display: none;
-  padding: 16px;
-  box-sizing: border-box;
-  background: #f5f7fa;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-.mobile-filter-buttons {
-  display: flex;
-  flex-direction: row;
-  gap: 10px;
-  align-items: stretch;
-  width: 100%;
-  box-sizing: border-box;
-  flex-wrap: nowrap;
-  margin-bottom: 12px;
-}
-.mobile-filter-buttons .el-button {
-  flex: 1;
-  height: 40px;
-  font-size: 14px;
-  border-radius: 6px;
-}
-.mobile-action-buttons {
-  width: 100%;
-}
-.mobile-action-btn {
-  width: 100%;
-  height: 44px;
-  margin: 0;
-  font-size: 16px;
-  border-radius: 6px;
-  font-weight: 500;
 }
 .filter-drawer-content {
   padding: 20px 0;

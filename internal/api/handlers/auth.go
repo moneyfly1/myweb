@@ -587,8 +587,10 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, userID uint, current *models.Lo
 	templateBuilder := email.NewEmailTemplateBuilder()
 	content := templateBuilder.GetAbnormalLoginAlertTemplate(user.Username, loginTimeStr, ipAddress, locationStr, isNewDevice, isNewLocation)
 	emailSvc := email.NewEmailService()
-	if err := emailSvc.QueueEmail(user.Email, "账户登录安全提醒", content, "abnormal_login_alert"); err != nil {
-		utils.LogErrorMsg("异常登录告警邮件入队失败: email=%s, error=%v", user.Email, err)
+	if notification.ShouldSendCustomerNotificationToUser(&user, "abnormal_login", notification.ChannelEmail) {
+		if err := emailSvc.QueueEmail(user.Email, "账户登录安全提醒", content, "abnormal_login_alert"); err != nil {
+			utils.LogErrorMsg("异常登录告警邮件入队失败: email=%s, error=%v", user.Email, err)
+		}
 	}
 
 	notifContent := "检测到您的账户在新设备或新地点登录。如非本人操作请尽快修改密码。"
@@ -600,8 +602,22 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, userID uint, current *models.Lo
 		notifContent = "检测到您的账户在异地登录。如非本人操作请尽快修改密码。"
 	}
 	uid := utils.MustSafeUintToInt64(user.ID)
-	if err := db.Create(&models.Notification{UserID: sql.NullInt64{Int64: uid, Valid: true}, Title: "账户登录安全提醒", Content: notifContent, Type: "security"}).Error; err != nil {
-		utils.LogErrorMsg("创建异常登录站内通知失败: user_id=%d, error=%v", user.ID, err)
+	if notification.ShouldSendCustomerNotificationToUser(&user, "abnormal_login", notification.ChannelSystem) {
+		if err := db.Create(&models.Notification{UserID: sql.NullInt64{Int64: uid, Valid: true}, Title: "账户登录安全提醒", Content: notifContent, Type: "security"}).Error; err != nil {
+			utils.LogErrorMsg("创建异常登录站内通知失败: user_id=%d, error=%v", user.ID, err)
+		}
+	}
+
+	notificationService := notification.NewNotificationService()
+	adminData := map[string]interface{}{
+		"username":   user.Username,
+		"email":      user.Email,
+		"ip_address": ipAddress,
+		"location":   locationStr,
+		"login_time": loginTimeStr,
+	}
+	if user.IsAdmin {
+		_ = notificationService.SendAdminNotification("abnormal_login", adminData)
 	}
 }
 
@@ -728,9 +744,13 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 		// FOR UPDATE 行锁防止并发超用
 		var inviteCode models.InviteCode
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("UPPER(code) = ? AND is_active = ?", inviteCodeStr, true).
+			Where("code = ? AND is_active = ?", inviteCodeStr, true).
 			First(&inviteCode).Error; err != nil {
-			return nil // 邀请码不存在或未激活，静默返回
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("UPPER(code) = ? AND is_active = ?", inviteCodeStr, true).
+				First(&inviteCode).Error; err != nil {
+				return nil // 邀请码不存在或未激活，静默返回
+			}
 		}
 
 		now := utils.GetBeijingTime()
@@ -947,7 +967,17 @@ func ChangePassword(c *gin.Context) {
 		changeTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 		content := templateBuilder.GetPasswordChangedTemplate(user.Username, changeTime, loginURL)
 		subject := "密码修改成功"
-		_ = emailService.QueueEmail(user.Email, subject, content, "password_changed")
+		if notification.ShouldSendCustomerNotificationToUser(user, "password_changed", notification.ChannelEmail) {
+			_ = emailService.QueueEmail(user.Email, subject, content, "password_changed")
+		}
+
+		notificationService := notification.NewNotificationService()
+		data := map[string]interface{}{
+			"username":    user.Username,
+			"email":       user.Email,
+			"change_time": changeTime,
+		}
+		_ = notificationService.SendAdminNotification("password_changed", data)
 	}()
 
 	utils.SetResponseStatus(c, http.StatusOK)

@@ -9,7 +9,7 @@
         <el-card class="settings-menu">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-setting"></i>
+              <el-icon><Setting /></el-icon>
               设置分类
             </div>
           </template>
@@ -19,19 +19,19 @@
             class="settings-menu-list"
           >
             <el-menu-item index="profile">
-              <i class="el-icon-user"></i>
+              <el-icon><User /></el-icon>
               <span>个人资料</span>
             </el-menu-item>
             <el-menu-item index="security">
-              <i class="el-icon-lock"></i>
+              <el-icon><Lock /></el-icon>
               <span>安全设置</span>
             </el-menu-item>
             <el-menu-item index="notifications">
-              <i class="el-icon-bell"></i>
+              <el-icon><Bell /></el-icon>
               <span>通知设置</span>
             </el-menu-item>
             <el-menu-item index="preferences">
-              <i class="el-icon-star-on"></i>
+              <el-icon><Star /></el-icon>
               <span>偏好设置</span>
             </el-menu-item>
           </el-menu>
@@ -41,7 +41,7 @@
         <el-card v-if="activeSetting === 'profile'" class="setting-content">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-user"></i>
+              <el-icon><User /></el-icon>
               个人资料
             </div>
           </template>
@@ -67,7 +67,7 @@
                 :before-upload="beforeAvatarUpload"
               >
                 <img v-if="profileForm.avatar" :src="profileForm.avatar" class="avatar" />
-                <i v-else class="el-icon-plus avatar-uploader-icon"></i>
+                <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
               </el-upload>
             </el-form-item>
             <el-form-item>
@@ -80,7 +80,7 @@
         <el-card v-if="activeSetting === 'security'" class="setting-content">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-lock"></i>
+              <el-icon><Lock /></el-icon>
               安全设置
             </div>
           </template>
@@ -104,7 +104,7 @@
         <el-card v-if="activeSetting === 'notifications'" class="setting-content">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-bell"></i>
+              <el-icon><Bell /></el-icon>
               通知设置
             </div>
           </template>
@@ -126,10 +126,7 @@
             <el-divider></el-divider>
             <h4>通知类型</h4>
             <el-checkbox-group v-model="notificationForm.notificationTypes">
-              <el-checkbox label="subscription">订阅相关通知</el-checkbox>
-              <el-checkbox label="payment">支付相关通知</el-checkbox>
-              <el-checkbox label="system">系统通知</el-checkbox>
-              <el-checkbox label="marketing">营销通知</el-checkbox>
+              <el-checkbox v-for="item in notificationTypeOptions" :key="item.value" :label="item.value">{{ item.label }}</el-checkbox>
             </el-checkbox-group>
             <el-divider></el-divider>
             <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving">
@@ -140,7 +137,7 @@
         <el-card v-if="activeSetting === 'preferences'" class="setting-content">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-star-on"></i>
+              <el-icon><Star /></el-icon>
               偏好设置
             </div>
           </template>
@@ -182,22 +179,22 @@
         <el-tabs v-model="activeSetting" class="mobile-settings-tabs">
           <el-tab-pane label="个人资料" name="profile">
             <template #label>
-              <span><i class="el-icon-user"></i> 个人资料</span>
+              <span class="tab-label"><el-icon><User /></el-icon>个人资料</span>
             </template>
           </el-tab-pane>
           <el-tab-pane label="安全设置" name="security">
             <template #label>
-              <span><i class="el-icon-lock"></i> 安全设置</span>
+              <span class="tab-label"><el-icon><Lock /></el-icon>安全设置</span>
             </template>
           </el-tab-pane>
           <el-tab-pane label="通知设置" name="notifications">
             <template #label>
-              <span><i class="el-icon-bell"></i> 通知设置</span>
+              <span class="tab-label"><el-icon><Bell /></el-icon>通知设置</span>
             </template>
           </el-tab-pane>
           <el-tab-pane label="偏好设置" name="preferences">
             <template #label>
-              <span><i class="el-icon-star-on"></i> 偏好设置</span>
+              <span class="tab-label"><el-icon><Star /></el-icon>偏好设置</span>
             </template>
           </el-tab-pane>
         </el-tabs>
@@ -206,7 +203,7 @@
         <el-card v-if="activeSetting === 'profile'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-user"></i>
+              <el-icon><User /></el-icon>
               个人资料
             </div>
           </template>
@@ -232,7 +229,7 @@
                 :before-upload="beforeAvatarUpload"
               >
                 <img v-if="profileForm.avatar" :src="profileForm.avatar" class="avatar" />
-                <i v-else class="el-icon-plus avatar-uploader-icon"></i>
+                <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
               </el-upload>
             </el-form-item>
             <el-form-item>
@@ -245,7 +242,7 @@
         <el-card v-if="activeSetting === 'security'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-lock"></i>
+              <el-icon><Lock /></el-icon>
               安全设置
             </div>
           </template>
@@ -269,7 +266,7 @@
         <el-card v-if="activeSetting === 'notifications'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-bell"></i>
+              <el-icon><Bell /></el-icon>
               通知设置
             </div>
           </template>
@@ -291,10 +288,7 @@
             <el-divider></el-divider>
             <h4>通知类型</h4>
             <el-checkbox-group v-model="notificationForm.notificationTypes" class="mobile-checkbox-group">
-              <el-checkbox label="subscription">订阅相关通知</el-checkbox>
-              <el-checkbox label="payment">支付相关通知</el-checkbox>
-              <el-checkbox label="system">系统通知</el-checkbox>
-              <el-checkbox label="marketing">营销通知</el-checkbox>
+              <el-checkbox v-for="item in notificationTypeOptions" :key="item.value" :label="item.value">{{ item.label }}</el-checkbox>
             </el-checkbox-group>
             <el-divider></el-divider>
             <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving" style="width: 100%">
@@ -305,7 +299,7 @@
         <el-card v-if="activeSetting === 'preferences'" class="setting-content mobile-setting-card">
           <template #header>
             <div class="card-header">
-              <i class="el-icon-star-on"></i>
+              <el-icon><Star /></el-icon>
               偏好设置
             </div>
           </template>
@@ -374,26 +368,30 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
+import { Bell, Lock, Plus, Setting, Star, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { api } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
+const notificationTypeOptions = [
+  { value: 'system', label: '系统通知' },
+  { value: 'security', label: '安全/密码通知' },
+  { value: 'payment', label: '订单/充值通知' },
+  { value: 'subscription', label: '订阅通知' },
+  { value: 'ticket', label: '工单通知' },
+  { value: 'marketing', label: '营销通知' }
+]
+const defaultNotificationTypes = notificationTypeOptions.map(item => item.value)
 export default {
   name: 'UserSettings',
+  components: { Bell, Lock, Plus, Setting, Star, User },
   setup() {
     const authStore = useAuthStore()
     const themeStore = useThemeStore()
     const activeSetting = ref('profile')
-    const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
-    const isMobile = computed(() => {
-      return windowWidth.value <= 768
-    })
-    const handleResize = () => {
-      if (typeof window !== 'undefined') {
-        windowWidth.value = window.innerWidth
-      }
-    }
+    const isMobile = useMobile()
     const profileFormRef = ref()
     const securityFormRef = ref()
     const emailChangeFormRef = ref()
@@ -418,7 +416,7 @@ export default {
     const notificationForm = reactive({
       emailNotifications: true,
       abnormalLoginAlert: true,  // 异常登录/设备告警，默认开启
-      notificationTypes: ['subscription', 'payment', 'system', 'marketing']  // 默认所有类型都开启
+      notificationTypes: [...defaultNotificationTypes]  // 默认所有类型都开启
     })
     const preferenceForm = reactive({
       theme: themeStore.currentTheme,
@@ -473,10 +471,12 @@ export default {
       activeSetting.value = key
     }
     const loadUserInfo = async () => {
+      let loadedUser = null
       try {
         const response = await api.get('/users/me')
         if (response.data && response.data.success && response.data.data) {
           const userData = response.data.data
+          loadedUser = userData
           profileForm.username = userData.username || ''
           profileForm.email = userData.email || ''
           profileForm.nickname = userData.nickname || ''
@@ -518,17 +518,17 @@ export default {
           if (typeof settings.notification_types === 'string' && settings.notification_types.trim() !== '') {
             try {
               const parsed = JSON.parse(settings.notification_types)
-              notificationForm.notificationTypes = Array.isArray(parsed) ? parsed : ['subscription', 'payment', 'system', 'marketing']
+              notificationForm.notificationTypes = Array.isArray(parsed) ? parsed : [...defaultNotificationTypes]
             } catch (e) {
-              notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
+              notificationForm.notificationTypes = [...defaultNotificationTypes]
             }
           } else if (Array.isArray(settings.notification_types) && settings.notification_types.length > 0) {
             notificationForm.notificationTypes = settings.notification_types
           } else {
-            notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
+            notificationForm.notificationTypes = [...defaultNotificationTypes]
           }
         } else {
-          notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
+          notificationForm.notificationTypes = [...defaultNotificationTypes]
         }
       } catch (error) {
         console.error('加载通知设置失败:', {
@@ -539,17 +539,16 @@ export default {
         })
         notificationForm.emailNotifications = true
         notificationForm.abnormalLoginAlert = true
-        notificationForm.notificationTypes = ['subscription', 'payment', 'system', 'marketing']
+        notificationForm.notificationTypes = [...defaultNotificationTypes]
       }
       try {
-        const userResponse = await api.get('/users/me')
-        const userData = userResponse.data?.data || userResponse.data || {}
-        if (userData && typeof userData === 'object') {
-          if (userData.theme && typeof userData.theme === 'string') {
-            preferenceForm.theme = userData.theme
+        const preferenceSource = loadedUser || authStore.user || {}
+        if (preferenceSource && typeof preferenceSource === 'object') {
+          if (preferenceSource.theme && typeof preferenceSource.theme === 'string') {
+            preferenceForm.theme = preferenceSource.theme
           }
-          if (userData.timezone && typeof userData.timezone === 'string') {
-            preferenceForm.timezone = userData.timezone
+          if (preferenceSource.timezone && typeof preferenceSource.timezone === 'string') {
+            preferenceForm.timezone = preferenceSource.timezone
           }
         }
       } catch (error) {
@@ -557,7 +556,7 @@ export default {
           error: error.message,
           response: error.response?.data,
           status: error.response?.status,
-          url: '/users/me'
+          url: 'local-user-preferences'
         })
       }
     }
@@ -765,19 +764,9 @@ export default {
       loadUserInfo()
       themeStore.initTheme()
       themeStore.loadUserTheme()
-      if (typeof window !== 'undefined') {
-        windowWidth.value = window.innerWidth
-        window.addEventListener('resize', handleResize)
-      }
-    })
-    onUnmounted(() => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', handleResize)
-      }
     })
     return {
       isMobile,
-      windowWidth,
       activeSetting,
       profileFormRef,
       securityFormRef,
@@ -792,6 +781,7 @@ export default {
       profileForm,
       securityForm,
       notificationForm,
+      notificationTypeOptions,
       preferenceForm,
       emailChangeForm,
       profileRules,
@@ -811,368 +801,314 @@ export default {
 }
 </script>
 <style scoped>
-.user-settings-container {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
-.page-header h1 {
-  margin: 0 0 10px 0;
-  color: #333;
+
+.settings-desktop {
+  align-items: flex-start;
 }
-.page-header :is(p) {
-  margin: 0;
-  color: #666;
-}
+
 .settings-menu {
   position: sticky;
-  top: 20px;
+  top: 76px;
+
+  :deep(.el-card__header) {
+    padding: 14px 16px;
+  }
 }
+
 .settings-menu-list {
   border-right: none;
 }
+
+.settings-menu-list :deep(.el-menu-item) {
+  height: 42px;
+  border-radius: 6px;
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.settings-menu-list :deep(.el-menu-item.is-active) {
+  background: #ecf5ff;
+  color: var(--el-color-primary);
+}
+
 .setting-content {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  padding: 0 !important;
+
+.card-header,
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 700;
 }
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-  padding: 0 11px !important;
+
+.tab-label {
+  gap: 6px;
+  font-weight: 500;
 }
-:deep(.el-input__prefix),
-:deep(.el-input__suffix) {
-  background-color: transparent !important;
-  border: none !important;
+
+.setting-content :deep(.el-card__header) {
+  padding: 14px 16px;
 }
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
+
+.setting-content :deep(.el-card__body) {
+  padding: 18px;
 }
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #409eff !important;
-  box-shadow: none !important;
+
+.setting-content :deep(.el-form) {
+  max-width: 720px;
 }
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
+
+.setting-content :deep(.el-form-item__label) {
+  color: #4b5563;
+  font-weight: 600;
 }
+
+:deep(.el-input__wrapper),
 :deep(.el-textarea__inner) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
 }
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-textarea__inner:hover),
+:deep(.el-textarea__inner:focus) {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+}
+
 .avatar-uploader {
   text-align: center;
 }
+
 .avatar-uploader .el-upload {
-  border: 1px dashed #d9d9d9;
-  border-radius: 6px;
+  border: 1px dashed #cfd8e3;
+  border-radius: 8px;
   cursor: pointer;
   position: relative;
   overflow: clip;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
+
 .avatar-uploader .el-upload:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
+  background: #f8fbff;
 }
+
+.avatar-uploader-icon,
+.avatar {
+  width: 96px;
+  height: 96px;
+}
+
 .avatar-uploader-icon {
-  font-size: 28px;
   color: #8c939d;
-  width: 100px;
-  height: 100px;
-  line-height: 100px;
+  font-size: 28px;
+  line-height: 96px;
   text-align: center;
 }
+
 .avatar {
-  width: 100px;
-  height: 100px;
   display: block;
+  object-fit: cover;
 }
-.security-options,
+
 .notification-settings,
 .preference-settings {
-  margin-top: 20px;
+  margin-top: 4px;
 }
-.security-options h4,
+
 .notification-settings h4,
 .preference-settings h4 {
-  margin: 0 0 15px 0;
-  color: #333;
+  margin: 0 0 12px;
+  color: #1f2937;
+  font-size: 15px;
+  font-weight: 700;
 }
-.security-tip,
+
 .setting-hint {
-  margin: 10px 0 0 0;
-  color: #666;
-  font-size: 14px;
+  margin: -4px 0 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
 }
+
+.notification-channel-form {
+  max-width: 520px;
+}
+
+.notification-settings :deep(.el-checkbox-group) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 10px;
+}
+
+.notification-settings :deep(.el-checkbox) {
+  margin-right: 0;
+}
+
 .el-divider {
   margin: 20px 0;
 }
+
 .dialog-footer {
   text-align: right;
 }
+
 .settings-mobile {
   display: none;
 }
+
 @media (max-width: 768px) {
   .settings-desktop {
     display: none;
   }
+
   .settings-mobile {
     display: block;
   }
-  .user-settings-container {
-    padding: 10px;
-  }
+
   .page-header {
-    margin-bottom: 16px;
-    :is(h1) {
-      font-size: 1.5rem;
-      margin-bottom: 8px;
-    }
-    :is(p) {
-      font-size: 0.875rem;
-    }
+    margin-bottom: 12px;
   }
+
   .mobile-tabs-card {
     margin-bottom: 12px;
+
     :deep(.el-card__body) {
-      padding: 12px;
+      padding: 0 10px;
     }
   }
+
   .mobile-settings-tabs {
     :deep(.el-tabs__header) {
       margin: 0;
     }
-    :deep(.el-tabs__nav-wrap) {
-      &::after {
-        display: none;
-      }
+
+    :deep(.el-tabs__nav-wrap::after) {
+      display: none;
     }
+
     :deep(.el-tabs__item) {
-      padding: 8px 12px;
-      font-size: 0.875rem;
-      height: auto;
-      line-height: 1.5;
-      :is(i) {
-        font-size: 14px;
-        margin-right: 4px;
-      }
+      height: 42px;
+      padding: 0 12px;
+      font-size: 13px;
+      line-height: 42px;
     }
+
     :deep(.el-tabs__content) {
       display: none;
     }
   }
+
   .mobile-setting-card {
     margin-bottom: 12px;
+
     :deep(.el-card__header) {
-      padding: 12px 16px;
-      .card-header {
-        font-size: 1rem;
-        :is(i) {
-          font-size: 16px;
-        }
-      }
+      padding: 12px 14px;
     }
+
     :deep(.el-card__body) {
-      padding: 16px;
+      padding: 14px;
     }
   }
+
   .mobile-form {
     :deep(.el-form-item) {
       margin-bottom: 18px;
-      .el-form-item__label {
-        width: 100% !important;
-        text-align: left;
-        margin-bottom: 8px;
-        padding: 0;
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 1.5;
-      }
-      .el-form-item__content {
-        width: 100%;
-        .el-input,
-        .el-select,
-        .el-textarea {
-          width: 100% !important;
-        }
-      }
     }
-    :deep(.el-input__wrapper) {
-      border-radius: 0 !important;
-      box-shadow: none !important;
-      border: 1px solid #dcdfe6 !important;
-      background-color: #ffffff !important;
-      padding: 0 !important;
+
+    :deep(.el-form-item__label) {
+      width: 100% !important;
+      margin-bottom: 8px;
+      padding: 0;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
     }
-    :deep(.el-input__inner) {
-      border-radius: 0 !important;
-      border: none !important;
-      box-shadow: none !important;
-      background-color: transparent !important;
-      padding: 0 11px !important;
+
+    :deep(.el-form-item__content) {
+      width: 100%;
     }
-    :deep(.el-input__prefix),
-    :deep(.el-input__suffix) {
-      background-color: transparent !important;
-      border: none !important;
-    }
-    :deep(.el-input__wrapper:hover) {
-      border-color: #c0c4cc !important;
-      box-shadow: none !important;
-    }
-    :deep(.el-input__wrapper.is-focus) {
-      border-color: #409eff !important;
-      box-shadow: none !important;
-    }
-    :deep(.el-select .el-input__wrapper) {
-      border-radius: 0 !important;
-    }
-    :deep(.el-textarea__inner) {
-      border-radius: 0 !important;
-      border: 1px solid #dcdfe6 !important;
-      box-shadow: none !important;
+
+    :deep(.el-input),
+    :deep(.el-select),
+    :deep(.el-textarea) {
+      width: 100%;
     }
   }
+
   .avatar-uploader {
     width: 100%;
     text-align: center;
+
     .el-upload {
-      width: 100px;
-      height: 100px;
+      width: 96px;
+      height: 96px;
       margin: 0 auto;
     }
-    .avatar,
-    .avatar-uploader-icon {
-      width: 100px;
-      height: 100px;
-    }
   }
-  .mobile-radio-group {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    :deep(.el-radio) {
-      margin: 0;
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      transition: all 0.2s;
-      &:hover {
-        border-color: #409eff;
-        background-color: #f0f9ff;
-      }
-      &.is-checked {
-        border-color: #409eff;
-        background-color: #ecf5ff;
-      }
-      .el-radio__label {
-        padding-left: 8px;
-        font-size: 14px;
-      }
-    }
-  }
+
+  .mobile-radio-group,
   .mobile-checkbox-group {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    :deep(.el-checkbox) {
-      margin: 0;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      transition: all 0.2s;
-      &:hover {
-        border-color: #409eff;
-        background-color: #f0f9ff;
-      }
-      &.is-checked {
-        border-color: #409eff;
-        background-color: #ecf5ff;
-      }
-      .el-checkbox__label {
-        padding-left: 8px;
-        font-size: 14px;
-      }
-    }
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
   }
+
+  .mobile-radio-group :deep(.el-radio),
+  .mobile-checkbox-group :deep(.el-checkbox) {
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    transition: border-color 0.16s ease, background-color 0.16s ease;
+  }
+
+  .mobile-radio-group :deep(.el-radio:hover),
+  .mobile-checkbox-group :deep(.el-checkbox:hover) {
+    background-color: #f5f9ff;
+    border-color: #c6e2ff;
+  }
+
+  .mobile-radio-group :deep(.el-radio.is-checked),
+  .mobile-checkbox-group :deep(.el-checkbox.is-checked) {
+    background-color: #ecf5ff;
+    border-color: var(--el-color-primary);
+  }
+
   :deep(.el-switch) {
     width: 100%;
-    display: flex;
+    min-height: 42px;
     justify-content: space-between;
-    align-items: center;
-    padding: 12px;
+    padding: 10px 12px;
     border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    margin-bottom: 12px;
-    .el-switch__label {
-      font-size: 14px;
-      flex: 1;
-    }
+    border-radius: 8px;
+    margin-bottom: 10px;
   }
-  .mobile-setting-card {
-    :deep(.el-button) {
-      width: 100%;
-      min-height: 44px;
-      font-size: 16px;
-      margin: 0;
-    }
+
+  :deep(.el-switch__label) {
+    flex: 1;
+    font-size: 14px;
   }
-  .security-options h4,
-  .notification-settings h4,
-  .preference-settings h4 {
-    font-size: 1rem;
-    margin-bottom: 12px;
-    color: #333;
-    font-weight: 600;
+
+  .mobile-setting-card :deep(.el-button) {
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
   }
-  .security-tip {
-    font-size: 0.8125rem;
-    color: #666;
-    line-height: 1.6;
-    margin-top: 8px;
-  }
+
   :deep(.el-divider) {
     margin: 16px 0;
-  }
-  :deep(.el-dialog) {
-    width: 90% !important;
-    margin: 5vh auto !important;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-  :deep(.el-dialog__body) {
-    padding: 15px !important;
-    max-height: calc(90vh - 120px);
-    overflow-y: auto;
-  }
-  :deep(.el-dialog__header) {
-    padding: 15px !important;
-  }
-  :deep(.el-dialog__footer) {
-    padding: 15px !important;
-    .el-button {
-      width: 100%;
-      margin: 0 0 10px 0 !important;
-      min-height: 44px;
-      font-size: 16px;
-      &:last-child {
-        margin-bottom: 0;
-      }
-    }
   }
 }
 </style>

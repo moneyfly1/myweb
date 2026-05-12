@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/config"
+	"cboard-go/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -436,18 +437,133 @@ func GetStringValue(ptr *string) string {
 
 // ========== 订单查询相关 ==========
 
-func CalculateTotalRevenue(db *gorm.DB, status string) float64 {
-	var total float64
-	query := db.Table("orders")
+func orderRevenueQuery(db *gorm.DB) *gorm.DB {
+	return db.Table("orders")
+}
 
+func applyStatusFilter(query *gorm.DB, status string) *gorm.DB {
 	if status != "" {
-		query = query.Where("status = ?", status)
+		return query.Where("status = ?", status)
 	}
+	return query
+}
 
-	query.Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END), 0)").
+func CalculateOrderRevenue(db *gorm.DB, status string) float64 {
+	var total float64
+	query := applyStatusFilter(orderRevenueQuery(db), status)
+
+	query.Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END), 0)").
 		Scan(&total)
 
 	return total
+}
+
+func CalculateRechargeRevenue(db *gorm.DB, status string) float64 {
+	var total float64
+	query := applyStatusFilter(db.Table("recharge_records"), status)
+
+	query.Select("COALESCE(SUM(amount), 0)").
+		Scan(&total)
+
+	return total
+}
+
+func CalculateTotalRevenue(db *gorm.DB, status string) float64 {
+	return RoundFloat(CalculateOrderRevenue(db, status)+CalculateRechargeRevenue(db, status), 2)
+}
+
+type PaymentSummary struct {
+	Total        int64
+	Pending      int64
+	Paid         int64
+	Cancelled    int64
+	PaidRevenue  float64
+	RangePaid    int64
+	RangeRevenue float64
+}
+
+func CalculatePaymentSummary(db *gorm.DB, rangeStart time.Time, rangeEnd time.Time) PaymentSummary {
+	var summary PaymentSummary
+	db.Raw(`
+		SELECT
+			COALESCE(SUM(total), 0) AS total,
+			COALESCE(SUM(pending), 0) AS pending,
+			COALESCE(SUM(paid), 0) AS paid,
+			COALESCE(SUM(cancelled), 0) AS cancelled,
+			COALESCE(SUM(paid_revenue), 0) AS paid_revenue,
+			COALESCE(SUM(range_paid), 0) AS range_paid,
+			COALESCE(SUM(range_revenue), 0) AS range_revenue
+		FROM (
+			SELECT
+				COUNT(*) AS total,
+				COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+				COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
+				COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+				COALESCE(SUM(CASE WHEN status = 'paid' THEN
+					CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END
+				ELSE 0 END), 0) AS paid_revenue,
+				COALESCE(SUM(CASE WHEN status = 'paid' AND created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS range_paid,
+				COALESCE(SUM(CASE WHEN status = 'paid' AND created_at >= ? AND created_at < ? THEN
+					CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END
+				ELSE 0 END), 0) AS range_revenue
+			FROM orders
+			UNION ALL
+			SELECT
+				COUNT(*) AS total,
+				COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+				COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
+				COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+				COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS paid_revenue,
+				COALESCE(SUM(CASE WHEN status = 'paid' AND created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS range_paid,
+				COALESCE(SUM(CASE WHEN status = 'paid' AND created_at >= ? AND created_at < ? THEN amount ELSE 0 END), 0) AS range_revenue
+			FROM recharge_records
+		) payment_summary
+	`, rangeStart, rangeEnd, rangeStart, rangeEnd, rangeStart, rangeEnd, rangeStart, rangeEnd).Scan(&summary)
+
+	summary.PaidRevenue = RoundFloat(summary.PaidRevenue, 2)
+	summary.RangeRevenue = RoundFloat(summary.RangeRevenue, 2)
+	return summary
+}
+
+func FindEnabledPaymentConfig(db *gorm.DB, payType string) (models.PaymentConfig, error) {
+	if payType == "" {
+		payType = "alipay"
+	}
+
+	queryPayType := payType
+	if strings.HasPrefix(payType, "yipay_") {
+		queryPayType = "yipay"
+	} else if strings.HasPrefix(payType, "codepay_") {
+		queryPayType = "codepay"
+	}
+
+	var paymentConfig models.PaymentConfig
+	err := db.Where("pay_type = ? AND status = ?", queryPayType, 1).
+		Order("sort_order ASC").
+		First(&paymentConfig).Error
+	if err == nil {
+		return paymentConfig, nil
+	}
+
+	err = db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", queryPayType, 1).
+		Order("sort_order ASC").
+		First(&paymentConfig).Error
+	if err == nil {
+		return paymentConfig, nil
+	}
+
+	if queryPayType != payType {
+		err = db.Where("pay_type = ? AND status = ?", payType, 1).
+			Order("sort_order ASC").
+			First(&paymentConfig).Error
+		if err == nil {
+			return paymentConfig, nil
+		}
+		err = db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).
+			Order("sort_order ASC").
+			First(&paymentConfig).Error
+	}
+	return paymentConfig, err
 }
 
 // ==========================================
@@ -651,36 +767,52 @@ func VerifyToken(tokenString string) (*JWTClaims, error) {
 }
 
 func CalculateTodayRevenue(db *gorm.DB, status string) float64 {
-	var total float64
 	start, end := GetDayRange(GetBeijingTime())
-	query := db.Table("orders").Where("created_at >= ? AND created_at < ?", start, end)
-
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-
-	query.Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END), 0)").
-		Scan(&total)
-
-	return total
+	return CalculatePaymentSummary(db, start, end).RangeRevenue
 }
 
-func CalculateUserOrderAmount(db *gorm.DB, userID uint, status string, useAbsolute bool) float64 {
-	var total float64
-	query := db.Table("orders").Where("user_id = ?", userID)
+type UserPaymentSummary struct {
+	Total      int64
+	Pending    int64
+	Paid       int64
+	Cancelled  int64
+	PaidAmount float64
+}
 
-	if status != "" {
-		query = query.Where("LOWER(status) = ?", strings.ToLower(status))
-	}
+func CalculateUserPaymentSummary(db *gorm.DB, userID uint) UserPaymentSummary {
+	var summary UserPaymentSummary
+	db.Raw(`
+		SELECT
+			COALESCE(SUM(total), 0) AS total,
+			COALESCE(SUM(pending), 0) AS pending,
+			COALESCE(SUM(paid), 0) AS paid,
+			COALESCE(SUM(cancelled), 0) AS cancelled,
+			COALESCE(SUM(paid_amount), 0) AS paid_amount
+		FROM (
+			SELECT
+				COUNT(*) AS total,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN
+					ABS(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END)
+				ELSE 0 END), 0) AS paid_amount
+			FROM orders
+			WHERE user_id = ?
+			UNION ALL
+			SELECT
+				COUNT(*) AS total,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN amount ELSE 0 END), 0) AS paid_amount
+			FROM recharge_records
+			WHERE user_id = ?
+		) user_payment_summary
+	`, userID, userID).Scan(&summary)
 
-	selectExpr := "COALESCE(SUM(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END), 0)"
-	if useAbsolute {
-		selectExpr = "COALESCE(SUM(ABS(CASE WHEN final_amount IS NOT NULL AND final_amount != 0 THEN final_amount ELSE amount END)), 0)"
-	}
-
-	query.Select(selectExpr).Scan(&total)
-
-	return total
+	summary.PaidAmount = RoundFloat(summary.PaidAmount, 2)
+	return summary
 }
 
 // GenerateRandomString 生成指定长度的随机字符串

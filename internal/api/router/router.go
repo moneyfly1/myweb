@@ -182,9 +182,9 @@ func SetupRouter() *gin.Engine {
 		{
 			coupons.GET("", handlers.GetCoupons)
 			coupons.GET("/:code", handlers.GetCoupon)
-			coupons.POST("/verify", handlers.VerifyCoupon)
+			coupons.POST("/verify", middleware.TryAuthMiddleware(), handlers.VerifyCoupon)
 			// 兼容旧前端路径
-			coupons.POST("/validate", handlers.VerifyCoupon)
+			coupons.POST("/validate", middleware.TryAuthMiddleware(), handlers.VerifyCoupon)
 		}
 		couponsAuth := coupons.Group("")
 		couponsAuth.Use(middleware.AuthMiddleware())
@@ -313,6 +313,10 @@ func SetupRouter() *gin.Engine {
 			paymentConfig.GET("", handlers.GetPaymentConfig)
 			paymentConfig.POST("", handlers.CreatePaymentConfig)
 			paymentConfig.PUT("/:id", handlers.UpdatePaymentConfig)
+			paymentConfig.DELETE("/:id", handlers.DeletePaymentConfig)
+			paymentConfig.POST("/bulk-enable", handlers.BulkEnablePaymentConfigs)
+			paymentConfig.POST("/bulk-disable", handlers.BulkDisablePaymentConfigs)
+			paymentConfig.POST("/bulk-delete", handlers.BulkDeletePaymentConfigs)
 		}
 
 		settings := api.Group("/settings")

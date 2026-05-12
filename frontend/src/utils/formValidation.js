@@ -59,7 +59,7 @@ export const VALIDATION_RULES = {
   ],
   
   // 确认密码
-  confirmPassword: (passwordField = 'password') => [
+  confirmPassword: () => [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     {
       validator: (rule, value, callback) => {
@@ -94,7 +94,22 @@ export const VALIDATION_RULES = {
   // 金额
   amount: [
     { required: true, message: '请输入金额', trigger: 'blur' },
-    { pattern: /^\d+(\.\d{1,2})?$/, message: '请输入有效的金额（最多两位小数）', trigger: 'blur' }
+    {
+      validator: (rule, value, callback) => {
+        const text = String(value ?? '')
+        const dotIndex = text.indexOf('.')
+        const integerPart = dotIndex === -1 ? text : text.slice(0, dotIndex)
+        const decimalPart = dotIndex === -1 ? '' : text.slice(dotIndex + 1)
+        const hasValidInteger = integerPart === '0' || (/^[1-9]/.test(integerPart) && [...integerPart].every(char => char >= '0' && char <= '9'))
+        const hasValidDecimal = dotIndex === -1 || (decimalPart.length >= 1 && decimalPart.length <= 2 && [...decimalPart].every(char => char >= '0' && char <= '9'))
+        if (text && hasValidInteger && hasValidDecimal) {
+          callback()
+        } else {
+          callback(new Error('请输入有效的金额（最多两位小数）'))
+        }
+      },
+      trigger: 'blur'
+    }
   ],
   
   // 用户名

@@ -500,7 +500,7 @@
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
   DocumentCopy, Edit, MoreFilled, User, Link,
@@ -917,40 +917,7 @@ export default {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-.filter-wrapper {
-  background: var(--el-fill-color-light);
-  padding: 16px;
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-.filter-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.filter-grid .el-select {
-  width: 140px;
-}
-.search-box {
-  flex: 1;
-  min-width: 200px;
-}
 @media (max-width: 768px) {
-  .filter-wrapper {
-    padding: 12px;
-  }
-  .filter-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .filter-grid .el-select {
-    width: 100%;
-  }
   .search-box {
     grid-column: 1 / -1;
   }
@@ -959,14 +926,6 @@ export default {
 .grid-orientation-group { margin-right: 8px; }
 .grid-size-group { margin-right: 8px; }
 .grid-columns-select { margin-right: 8px; }
-.batch-actions-bar {
-  display: flex;
-  align-items: center;
-  background: var(--el-color-primary-light-9);
-  padding: 8px 16px;
-  border-radius: 4px;
-  margin-bottom: 16px;
-}
 .batch-tip {
   font-size: 13px;
   color: var(--el-color-primary);
@@ -1206,10 +1165,5 @@ export default {
   .assign-form .el-select {
     width: 100%;
   }
-}
-.pagination-wrapper {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
 }
 </style>

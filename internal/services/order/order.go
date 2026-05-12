@@ -5,9 +5,11 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
+	discountService "cboard-go/internal/services/discount"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/payment"
+	promotionService "cboard-go/internal/services/promotion"
 	"cboard-go/internal/utils"
 	"database/sql"
 	"encoding/json"
@@ -17,6 +19,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CreateOrderParams struct {
@@ -31,6 +34,214 @@ type CreateOrderParams struct {
 
 type OrderService struct {
 	db *gorm.DB
+}
+
+type FinalizePaidOrderOptions struct {
+	PaymentMethodName     string
+	ExternalTransactionID string
+	PaymentMethodID       uint
+	CallbackData          string
+	IPAddress             string
+	BalanceAmount         float64
+}
+
+func (s *OrderService) CancelPendingOrder(orderNo string, userID uint) (*models.Order, error) {
+	return s.MarkPendingOrderStatus(orderNo, userID, "cancelled")
+}
+
+func (s *OrderService) MarkPendingOrderStatus(orderNo string, userID uint, status string) (*models.Order, error) {
+	status = strings.TrimSpace(status)
+	if status != "cancelled" && status != "expired" && status != "failed" {
+		return nil, fmt.Errorf("不支持的订单状态: %s", status)
+	}
+
+	var result models.Order
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var order models.Order
+		query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_no = ?", orderNo)
+		if userID > 0 {
+			query = query.Where("user_id = ?", userID)
+		}
+		if err := query.First(&order).Error; err != nil {
+			return fmt.Errorf("订单不存在")
+		}
+		if order.Status != "pending" {
+			return fmt.Errorf("订单状态不允许更新为%s", status)
+		}
+		if err := s.releaseDiscountReservationsTx(tx, order.ID); err != nil {
+			return err
+		}
+		if err := s.refundFrozenBalanceTx(tx, &order); err != nil {
+			return err
+		}
+		order.Status = status
+		if err := tx.Save(&order).Error; err != nil {
+			return fmt.Errorf("更新订单状态失败: %v", err)
+		}
+		if err := tx.Model(&models.PaymentTransaction{}).
+			Where("order_id = ? AND status = ?", order.ID, "pending").
+			Update("status", status).Error; err != nil {
+			return fmt.Errorf("更新支付交易状态失败: %v", err)
+		}
+		result = order
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result.UserID > 0 {
+		s.clearUserCaches(result.UserID)
+	}
+	return &result, nil
+}
+
+func (s *OrderService) CancelPendingOrders(orderIDs []uint) (int64, error) {
+	if len(orderIDs) == 0 {
+		return 0, nil
+	}
+
+	var cancelled int64
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var orders []models.Order
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id IN ? AND status = ?", orderIDs, "pending").
+			Find(&orders).Error; err != nil {
+			return err
+		}
+		for _, order := range orders {
+			if err := s.releaseDiscountReservationsTx(tx, order.ID); err != nil {
+				return err
+			}
+			if err := s.refundFrozenBalanceTx(tx, &order); err != nil {
+				return err
+			}
+			if err := tx.Model(&models.Order{}).Where("id = ? AND status = ?", order.ID, "pending").
+				Update("status", "cancelled").Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&models.PaymentTransaction{}).
+				Where("order_id = ? AND status = ?", order.ID, "pending").
+				Update("status", "cancelled").Error; err != nil {
+				return err
+			}
+			cancelled++
+		}
+		return nil
+	})
+	return cancelled, err
+}
+
+func (s *OrderService) refundFrozenBalanceTx(tx *gorm.DB, order *models.Order) error {
+	if !order.ExtraData.Valid || order.ExtraData.String == "" {
+		return nil
+	}
+	var extraData map[string]interface{}
+	if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err != nil {
+		return nil
+	}
+	deducted, _ := extraData["balance_deducted"].(bool)
+	if !deducted {
+		return nil
+	}
+	balanceUsed, _ := extraData["balance_used"].(float64)
+	if balanceUsed <= 0 {
+		return nil
+	}
+	var user models.User
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, order.UserID).Error; err != nil {
+		return fmt.Errorf("退还余额时用户不存在: %v", err)
+	}
+	oldBalance := user.Balance
+	if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
+		Update("balance", gorm.Expr("balance + ?", balanceUsed)).Error; err != nil {
+		return fmt.Errorf("退还余额失败: %v", err)
+	}
+	orderID := uint(order.ID)
+	userID := user.ID
+	if err := utils.CreateBalanceLogWithDB(
+		tx, user.ID, "refund", balanceUsed,
+		oldBalance, oldBalance+balanceUsed,
+		&orderID, nil,
+		fmt.Sprintf("订单取消退还余额，订单号: %s", order.OrderNo),
+		"system", &userID, "",
+	); err != nil {
+		return fmt.Errorf("记录余额退还日志失败: %v", err)
+	}
+	extraData["balance_deducted"] = false
+	if encodedExtra, err := json.Marshal(extraData); err == nil {
+		order.ExtraData = database.NullString(string(encodedExtra))
+		if err := tx.Model(order).Update("extra_data", order.ExtraData).Error; err != nil {
+			return fmt.Errorf("更新订单数据失败: %v", err)
+		}
+	}
+	return nil
+}
+
+func (s *OrderService) DeleteOrders(orderIDs []uint) (int64, error) {
+	if len(orderIDs) == 0 {
+		return 0, nil
+	}
+
+	var deleted int64
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var orders []models.Order
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id IN ?", orderIDs).
+			Find(&orders).Error; err != nil {
+			return err
+		}
+		if len(orders) == 0 {
+			return nil
+		}
+
+		ids := make([]uint, 0, len(orders))
+		for _, order := range orders {
+			if order.Status != "paid" && order.Status != "refunded" {
+				if err := s.releaseDiscountReservationsTx(tx, order.ID); err != nil {
+					return err
+				}
+			}
+			ids = append(ids, order.ID)
+		}
+
+		result := tx.Delete(&models.Order{}, ids)
+		if result.Error != nil {
+			return result.Error
+		}
+		deleted = result.RowsAffected
+		return nil
+	})
+	return deleted, err
+}
+
+func (s *OrderService) releaseDiscountReservationsTx(tx *gorm.DB, orderID uint) error {
+	if err := discountService.ReleaseCouponUsageForOrderTx(tx, orderID); err != nil {
+		return fmt.Errorf("释放优惠券失败: %v", err)
+	}
+	if err := tx.Model(&models.PromotionParticipation{}).
+		Where("order_id = ? AND status = ?", orderID, "pending").
+		Updates(map[string]interface{}{
+			"order_id": nil,
+		}).Error; err != nil {
+		return fmt.Errorf("释放营销活动折扣失败: %v", err)
+	}
+	return nil
+}
+
+func (s *OrderService) releaseCompletedDiscountApplicationsTx(tx *gorm.DB, orderID uint) error {
+	if err := discountService.ReleaseCouponUsageForOrderTx(tx, orderID); err != nil {
+		return fmt.Errorf("释放优惠券失败: %v", err)
+	}
+	if err := tx.Model(&models.PromotionParticipation{}).
+		Where("order_id = ? AND status = ?", orderID, "completed").
+		Updates(map[string]interface{}{
+			"order_id":   nil,
+			"status":     "pending",
+			"applied_at": nil,
+		}).Error; err != nil {
+		return fmt.Errorf("回退营销活动折扣失败: %v", err)
+	}
+	return nil
 }
 
 func NewOrderService() *OrderService {
@@ -66,65 +277,33 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	levelDiscountAmount := 0.0
 	couponDiscountAmount := 0.0
 	promotionDiscountAmount := 0.0
+	couponFreeDays := 0
 	finalAmount := baseAmount
 
-	if user.UserLevelID.Valid {
-		var lvl models.UserLevel
-		if err := s.db.First(&lvl, user.UserLevelID.Int64).Error; err == nil {
-			if lvl.DiscountRate > 0 && lvl.DiscountRate < 1.0 {
-				levelDiscountAmount = math.Round(baseAmount*(1.0-lvl.DiscountRate)*100) / 100
-				finalAmount = math.Round(baseAmount*lvl.DiscountRate*100) / 100
-			}
-		}
-	}
+	levelDiscountAmount, finalAmount = discountService.CalculateLevelDiscount(s.db, userID, baseAmount)
 
 	// --- 优惠券验证：总量、有效期、每用户上限 ---
 	var coupon *models.Coupon
-	if params.CouponCode != "" {
-		var c models.Coupon
-		if err := s.db.Where("code = ? AND status = ?", params.CouponCode, "active").First(&c).Error; err != nil {
-			return nil, "", fmt.Errorf("优惠券不存在或已失效")
+	couponCode := strings.TrimSpace(params.CouponCode)
+	if couponCode != "" {
+		quote, err := discountService.QuoteCouponForPreparedAmount(s.db, couponCode, userID, params.PackageID, finalAmount)
+		if err != nil {
+			return nil, "", err
 		}
-		now := utils.GetBeijingTime()
-		if now.Before(c.ValidFrom) || now.After(c.ValidUntil) {
-			return nil, "", fmt.Errorf("优惠券不在有效期内")
-		}
-		if c.TotalQuantity.Valid && c.UsedQuantity >= int(c.TotalQuantity.Int64) {
-			return nil, "", fmt.Errorf("优惠券已被领完")
-		}
-		if c.MaxUsesPerUser > 0 {
-			var userUsageCount int64
-			s.db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", c.ID, userID).Count(&userUsageCount)
-			if int(userUsageCount) >= c.MaxUsesPerUser {
-				return nil, "", fmt.Errorf("您已达到该优惠券的使用上限")
-			}
-		}
-		if c.MinAmount.Valid && finalAmount < c.MinAmount.Float64 {
-			return nil, "", fmt.Errorf("订单金额未达到优惠券最低使用金额")
-		}
-		if c.Type == "discount" {
-			couponDiscountAmount = math.Round(finalAmount*(c.DiscountValue/100)*100) / 100
-			if c.MaxDiscount.Valid && couponDiscountAmount > c.MaxDiscount.Float64 {
-				couponDiscountAmount = c.MaxDiscount.Float64
-			}
-		} else if c.Type == "fixed" {
-			couponDiscountAmount = c.DiscountValue
-			if couponDiscountAmount > finalAmount {
-				couponDiscountAmount = finalAmount
-			}
-		}
-		finalAmount = math.Round((finalAmount-couponDiscountAmount)*100) / 100
-		coupon = &c
+		couponDiscountAmount = quote.CouponDiscountAmount
+		couponFreeDays = quote.FreeDays
+		finalAmount = quote.FinalAmount
+		coupon = quote.Coupon
 	}
 
 	// --- 营销活动折扣 ---
 	var promotionParticipation *models.PromotionParticipation
-	if params.CouponCode == "" {
+	if couponCode == "" {
 		// 只有在没有使用优惠券时才应用营销活动折扣
 		discount, participation, err := s.applyPromotionDiscount(userID, params.PackageID, finalAmount)
 		if err == nil && discount > 0 && participation != nil {
 			promotionDiscountAmount = discount
-			finalAmount = math.Round((finalAmount-promotionDiscountAmount)*100) / 100
+			finalAmount = utils.RoundFloat(finalAmount-promotionDiscountAmount, 2)
 			promotionParticipation = participation
 		}
 	}
@@ -156,8 +335,12 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	extraDataMap := map[string]interface{}{
 		"duration_months": durationMonths,
 	}
+	if couponFreeDays > 0 {
+		extraDataMap["coupon_free_days"] = couponFreeDays
+	}
 	if balanceUsed > 0 {
 		extraDataMap["balance_used"] = balanceUsed
+		extraDataMap["balance_deducted"] = true
 	}
 	extraDataJSON, _ := json.Marshal(extraDataMap)
 
@@ -178,9 +361,11 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	}
 
 	if finalAmount == 0 {
-		order.Status = "paid"
-		order.PaymentTime = database.NullTime(utils.GetBeijingTime())
-		order.PaymentMethodName = database.NullString("余额支付")
+		if balanceUsed > 0 {
+			order.PaymentMethodName = database.NullString("余额支付")
+		} else {
+			order.PaymentMethodName = database.NullString("优惠抵扣")
+		}
 	} else {
 		methodName := params.PaymentMethod
 		if balanceUsed > 0 {
@@ -189,44 +374,49 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		order.PaymentMethodName = database.NullString(methodName)
 	}
 
-	// --- 事务：创建订单 + 记录优惠券使用 + 递增计数器 ---
-	// 注意：余额不在此处扣除，而是在支付成功回调时扣除
+	// --- 事务：创建订单 + 记录优惠券使用 + 递增计数器 + 冻结余额 ---
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&order).Error; err != nil {
 			return fmt.Errorf("创建订单失败: %v", err)
 		}
 
+		if balanceUsed > 0 {
+			result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
+				Update("balance", gorm.Expr("balance - ?", balanceUsed))
+			if result.Error != nil {
+				return fmt.Errorf("扣除余额失败: %v", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("余额不足")
+			}
+			orderID := uint(order.ID)
+			if err := utils.CreateBalanceLogWithDB(
+				tx, user.ID, "consume", -balanceUsed,
+				user.Balance, user.Balance-balanceUsed,
+				&orderID, nil,
+				fmt.Sprintf("订单余额冻结，订单号: %s", order.OrderNo),
+				"system", &userID, "",
+			); err != nil {
+				return fmt.Errorf("记录余额日志失败: %v", err)
+			}
+		}
+
 		// 记录优惠券使用 + 原子递增 used_quantity（事务内二次校验防并发超卖）
 		if coupon != nil {
-			// 事务内锁定优惠券行，防止并发超卖
-			var lockedCoupon models.Coupon
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&lockedCoupon, coupon.ID).Error; err != nil {
-				return fmt.Errorf("锁定优惠券失败: %v", err)
-			}
-			if lockedCoupon.TotalQuantity.Valid && lockedCoupon.UsedQuantity >= int(lockedCoupon.TotalQuantity.Int64) {
-				return fmt.Errorf("优惠券已被领完")
-			}
-
-			usage := models.CouponUsage{
-				CouponID:       coupon.ID,
-				UserID:         userID,
-				OrderID:        sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true},
-				DiscountAmount: couponDiscountAmount,
-			}
-			if err := tx.Create(&usage).Error; err != nil {
-				return fmt.Errorf("记录优惠券使用失败: %v", err)
-			}
-			if err := tx.Model(&models.Coupon{}).Where("id = ?", coupon.ID).
-				Update("used_quantity", gorm.Expr("used_quantity + 1")).Error; err != nil {
-				return fmt.Errorf("更新优惠券使用次数失败: %v", err)
+			if err := discountService.ReserveCouponUsageTx(tx, coupon.ID, userID, order.ID, couponDiscountAmount); err != nil {
+				return err
 			}
 		}
 
 		// 关联营销活动参与记录到订单
 		if promotionParticipation != nil {
-			if err := tx.Model(&models.PromotionParticipation{}).Where("id = ?", promotionParticipation.ID).
-				Update("order_id", sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true}).Error; err != nil {
-				return fmt.Errorf("关联营销活动失败: %v", err)
+			result := tx.Model(&models.PromotionParticipation{}).Where("id = ? AND (order_id IS NULL OR order_id = 0)", promotionParticipation.ID).
+				Update("order_id", sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true})
+			if result.Error != nil {
+				return fmt.Errorf("关联营销活动失败: %v", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("营销活动折扣已被其他订单占用，请重试")
 			}
 		}
 
@@ -236,12 +426,22 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		return nil, "", txErr
 	}
 
-	if order.Status == "paid" {
-		if _, err := s.ProcessPaidOrder(&order); err != nil {
-			utils.LogError("CreateOrder: process paid order failed", err, nil)
+	if finalAmount == 0 {
+		paymentMethodName := "优惠抵扣"
+		if balanceUsed > 0 {
+			paymentMethodName = "余额支付"
+		}
+		if _, err := s.FinalizePaidOrder(order.OrderNo, FinalizePaidOrderOptions{
+			PaymentMethodName: paymentMethodName,
+			IPAddress:         params.ClientIP,
+		}); err != nil {
+			return nil, "", fmt.Errorf("处理余额支付订单失败: %v", err)
+		}
+		if err := s.db.First(&order, order.ID).Error; err != nil {
+			return nil, "", fmt.Errorf("刷新订单状态失败: %v", err)
 		}
 
-		go s.sendPaymentSuccessEmail(&user, &order, &pkg, balanceUsed+finalAmount, "余额支付")
+		go s.sendPaymentSuccessEmail(&user, &order, &pkg, balanceUsed+finalAmount, paymentMethodName)
 		return &order, "", nil
 	}
 
@@ -251,6 +451,13 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 			params.PaymentMethod, order.OrderNo, finalAmount)
 		url, err := s.generatePaymentURLWithUA(&order, params.PaymentMethod, finalAmount, params.UserAgent)
 		if err != nil {
+			if failedOrder, markErr := s.MarkPendingOrderStatus(order.OrderNo, userID, "failed"); markErr != nil {
+				utils.LogError("CreateOrder: mark order failed after payment link error", markErr, map[string]interface{}{
+					"order_no": order.OrderNo,
+				})
+			} else if failedOrder != nil {
+				order = *failedOrder
+			}
 			utils.LogError("CreateOrder: 生成支付链接失败", err, map[string]interface{}{
 				"payment_method": params.PaymentMethod,
 				"order_no":       order.OrderNo,
@@ -270,79 +477,110 @@ func (s *OrderService) generatePaymentURL(order *models.Order, payType string, a
 }
 
 func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType string, amount float64, userAgent string) (string, error) {
-	var paymentConfig models.PaymentConfig
-
-	if strings.HasPrefix(payType, "yipay_") {
-		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "yipay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-		} else {
-			if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				return "", fmt.Errorf("未找到启用的支付配置")
-			}
-		}
-	} else if strings.HasPrefix(payType, "codepay_") {
-		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", "codepay", 1).Order("sort_order ASC").First(&paymentConfig).Error; err == nil {
-		} else {
-			if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-				return "", fmt.Errorf("未找到启用的支付配置")
-			}
-		}
-	} else {
-		if err := s.db.Where("LOWER(pay_type) = LOWER(?) AND status = ?", payType, 1).Order("sort_order ASC").First(&paymentConfig).Error; err != nil {
-			return "", fmt.Errorf("未找到启用的支付配置")
-		}
+	paymentConfig, err := utils.FindEnabledPaymentConfig(s.db, payType)
+	if err != nil {
+		return "", fmt.Errorf("未找到启用的支付配置")
 	}
 
 	transaction := models.PaymentTransaction{
 		OrderID:         order.ID,
 		UserID:          order.UserID,
 		PaymentMethodID: paymentConfig.ID,
-		Amount:          int(amount * 100),
+		Amount:          int(math.Round(amount * 100)),
 		Currency:        "CNY",
 		Status:          "pending",
 	}
-	s.db.Create(&transaction)
+	if err := s.db.Create(&transaction).Error; err != nil {
+		return "", fmt.Errorf("创建支付交易失败: %v", err)
+	}
+	order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(paymentConfig.ID))
+	if err := s.db.Model(order).Updates(map[string]interface{}{
+		"payment_method_id":   order.PaymentMethodID,
+		"payment_method_name": order.PaymentMethodName,
+	}).Error; err != nil {
+		utils.LogError("generatePaymentURLWithUA: update order payment method id failed", err, map[string]interface{}{
+			"order_no": order.OrderNo,
+		})
+		return "", fmt.Errorf("更新订单支付方式失败: %v", err)
+	}
+
+	markTransactionFailed := func(err error) (string, error) {
+		if updateErr := s.db.Model(&models.PaymentTransaction{}).
+			Where("id = ? AND status = ?", transaction.ID, "pending").
+			Update("status", "failed").Error; updateErr != nil {
+			utils.LogError("generatePaymentURLWithUA: mark payment transaction failed", updateErr, map[string]interface{}{
+				"order_no":       order.OrderNo,
+				"transaction_id": transaction.ID,
+			})
+		}
+		return "", err
+	}
 
 	switch paymentConfig.PayType {
 	case "alipay":
 		svc, err := payment.NewAlipayService(&paymentConfig)
 		if err != nil {
-			return "", err
+			return markTransactionFailed(err)
 		}
-		return svc.CreatePayment(order, amount)
+		url, err := svc.CreatePayment(order, amount)
+		if err != nil {
+			return markTransactionFailed(err)
+		}
+		return url, nil
 	case "wechat":
 		svc, err := payment.NewWechatService(&paymentConfig)
 		if err != nil {
-			return "", err
+			return markTransactionFailed(err)
 		}
-		return svc.CreatePayment(order, amount)
+		url, err := svc.CreatePayment(order, amount)
+		if err != nil {
+			return markTransactionFailed(err)
+		}
+		return url, nil
 	case "applepay":
 		svc, err := payment.NewApplePayService(&paymentConfig)
 		if err != nil {
-			return "", err
+			return markTransactionFailed(err)
 		}
-		return svc.CreatePayment(order, amount)
+		url, err := svc.CreatePayment(order, amount)
+		if err != nil {
+			return markTransactionFailed(err)
+		}
+		return url, nil
 	case "yipay", "yipay_alipay", "yipay_wxpay", "yipay_qqpay":
 		svc, err := payment.NewYipayService(&paymentConfig)
 		if err != nil {
-			return "", err
+			return markTransactionFailed(err)
 		}
 		paymentType := extractYipayType(payType)
 		utils.LogInfo("易支付生成支付链接: payType=%s, extracted_paymentType=%s, order_no=%s", payType, paymentType, order.OrderNo)
 		if userAgent != "" {
 			utils.LogInfo("易支付使用UserAgent: %s", userAgent)
-			return svc.CreatePaymentWithDevice(order, amount, paymentType, userAgent)
+			url, err := svc.CreatePaymentWithDevice(order, amount, paymentType, userAgent)
+			if err != nil {
+				return markTransactionFailed(err)
+			}
+			return url, nil
 		}
-		return svc.CreatePayment(order, amount, paymentType)
+		url, err := svc.CreatePayment(order, amount, paymentType)
+		if err != nil {
+			return markTransactionFailed(err)
+		}
+		return url, nil
 	case "codepay", "codepay_alipay", "codepay_wxpay":
 		svc, err := payment.NewCodepayService(&paymentConfig)
 		if err != nil {
-			return "", err
+			return markTransactionFailed(err)
 		}
 		codepayType := extractCodepayType(payType)
 		utils.LogInfo("码支付生成支付链接: payType=%s, extracted_paymentType=%s, order_no=%s", payType, codepayType, order.OrderNo)
-		return svc.CreatePayment(order, amount, codepayType)
+		url, err := svc.CreatePayment(order, amount, codepayType)
+		if err != nil {
+			return markTransactionFailed(err)
+		}
+		return url, nil
 	default:
-		return "", fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType)
+		return markTransactionFailed(fmt.Errorf("不支持的支付方式: %s", paymentConfig.PayType))
 	}
 }
 
@@ -376,28 +614,175 @@ func (s *OrderService) sendPaymentSuccessEmail(user *models.User, order *models.
 	_ = emailService.QueueEmail(user.Email, "支付成功通知", content, "payment_success")
 }
 
+func (s *OrderService) FinalizePaidOrder(orderNo string, opts FinalizePaidOrderOptions) (*models.Subscription, error) {
+	var result *models.Subscription
+	var fulfilledNow bool
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var order models.Order
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Preload("Package").Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+			return fmt.Errorf("订单不存在: %v", err)
+		}
+
+		if order.Status != "pending" && order.Status != "paid" {
+			return fmt.Errorf("订单状态不允许支付: %s", order.Status)
+		}
+
+		now := utils.GetBeijingTime()
+		if order.Status != "paid" {
+			order.Status = "paid"
+		}
+		if !order.PaymentTime.Valid {
+			order.PaymentTime = database.NullTime(now)
+		}
+		if opts.PaymentMethodName != "" && (!order.PaymentMethodName.Valid || order.PaymentMethodName.String == "") {
+			order.PaymentMethodName = database.NullString(opts.PaymentMethodName)
+		}
+		if opts.ExternalTransactionID != "" {
+			order.PaymentTransactionID = database.NullString(opts.ExternalTransactionID)
+		}
+		if opts.PaymentMethodID > 0 {
+			order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(opts.PaymentMethodID))
+		}
+		s.updatePaymentTransactionTx(tx, &order, opts)
+
+		if order.FulfilledAt.Valid {
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			if sub, err := s.getUserSubscriptionTx(tx, order.UserID); err == nil {
+				result = sub
+			}
+			return nil
+		}
+
+		subscription, err := s.processPaidOrderTx(tx, &order, opts)
+		if err != nil {
+			return err
+		}
+		order.FulfilledAt = database.NullTime(now)
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+
+		result = subscription
+		fulfilledNow = true
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if fulfilledNow {
+		if result != nil {
+			s.clearSubscriptionCaches(result.UserID, result.SubscriptionURL)
+		} else {
+			var order models.Order
+			if err := s.db.Where("order_no = ?", orderNo).First(&order).Error; err == nil {
+				s.clearUserCaches(order.UserID)
+			}
+		}
+	}
+	return result, nil
+}
+
+func (s *OrderService) updatePaymentTransactionTx(tx *gorm.DB, order *models.Order, opts FinalizePaidOrderOptions) {
+	if order == nil {
+		return
+	}
+	var paymentTx models.PaymentTransaction
+	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("order_id = ? AND status = ?", order.ID, "pending")
+	if opts.PaymentMethodID > 0 {
+		query = query.Where("payment_method_id = ?", opts.PaymentMethodID)
+	}
+	if err := query.Order("created_at DESC").First(&paymentTx).Error; err != nil {
+		return
+	}
+
+	paymentTx.Status = "success"
+	if opts.ExternalTransactionID != "" {
+		paymentTx.ExternalTransactionID = database.NullString(opts.ExternalTransactionID)
+	}
+	if opts.CallbackData != "" {
+		paymentTx.CallbackData = database.NullString(opts.CallbackData)
+	}
+	if err := tx.Save(&paymentTx).Error; err != nil {
+		utils.LogError("FinalizePaidOrder: failed to update payment transaction", err, map[string]interface{}{
+			"order_no": order.OrderNo,
+			"order_id": order.ID,
+		})
+	}
+}
+
 func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscription, error) {
+	if order == nil {
+		return nil, fmt.Errorf("订单不能为空")
+	}
+	if order.OrderNo != "" {
+		return s.FinalizePaidOrder(order.OrderNo, FinalizePaidOrderOptions{})
+	}
+	return nil, fmt.Errorf("订单号不能为空")
+}
+
+func (s *OrderService) calculateOrderPaidAmount(order *models.Order, balanceUsed float64) float64 {
+	if order == nil {
+		return 0
+	}
+	paidAmount := order.Amount
+	if order.FinalAmount.Valid {
+		paidAmount = order.FinalAmount.Float64
+	}
+	if balanceUsed > 0 {
+		paidAmount = utils.RoundFloat(paidAmount+balanceUsed, 2)
+	}
+
+	maxPaidAmount := order.Amount
+	if order.DiscountAmount.Valid && order.DiscountAmount.Float64 > 0 {
+		maxPaidAmount = utils.RoundFloat(order.Amount-order.DiscountAmount.Float64, 2)
+		if maxPaidAmount < 0 {
+			maxPaidAmount = 0
+		}
+	}
+	if maxPaidAmount >= 0 && paidAmount > maxPaidAmount {
+		paidAmount = maxPaidAmount
+	}
+	if paidAmount < 0 {
+		paidAmount = 0
+	}
+	return utils.RoundFloat(paidAmount, 2)
+}
+
+func (s *OrderService) processPaidOrderTx(tx *gorm.DB, order *models.Order, opts FinalizePaidOrderOptions) (*models.Subscription, error) {
 	if order.Status != "paid" {
 		return nil, fmt.Errorf("订单状态未支付")
 	}
 
 	var user models.User
-	if err := s.db.First(&user, order.UserID).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, order.UserID).Error; err != nil {
 		return nil, fmt.Errorf("用户不存在: %v", err)
 	}
 
-	// 从订单的 ExtraData 中提取余额使用金额
-	var balanceUsed float64
+	// 从订单的 ExtraData 中提取已预留的余额抵扣；opts.BalanceAmount 表示本次支付动作额外使用余额。
+	var storedBalanceUsed float64
+	var balanceDeducted bool
 	var extraData map[string]interface{}
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
 			if balance, ok := extraData["balance_used"].(float64); ok {
-				balanceUsed = balance
+				storedBalanceUsed = balance
+			}
+			if deducted, ok := extraData["balance_deducted"].(bool); ok {
+				balanceDeducted = deducted
 			}
 		}
 	}
+	additionalBalanceUsed := utils.RoundFloat(opts.BalanceAmount, 2)
+	if additionalBalanceUsed < 0 {
+		additionalBalanceUsed = 0
+	}
+	balanceUsed := utils.RoundFloat(storedBalanceUsed+additionalBalanceUsed, 2)
 
-	// 如果订单使用了余额，在支付成功时扣除
 	orderType := ""
 	if extraData != nil {
 		if rawType, ok := extraData["type"].(string); ok {
@@ -407,7 +792,7 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 
 	if orderType == "device_upgrade" {
 		var existingSubscription models.Subscription
-		if err := s.db.Where("user_id = ?", user.ID).First(&existingSubscription).Error; err == nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", user.ID).First(&existingSubscription).Error; err == nil {
 			additionalDevices := 0
 			additionalDays := 0
 			if devices, ok := extraData["additional_devices"].(float64); ok {
@@ -417,13 +802,40 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 				additionalDays = int(days)
 			}
 			if additionalDevices <= 0 && additionalDays <= 0 {
-				return &existingSubscription, nil
+				return nil, fmt.Errorf("设备升级参数无效: additional_devices=%d, additional_days=%d", additionalDevices, additionalDays)
 			}
 		}
 	}
 
-	if balanceUsed > 0 {
-		result := s.db.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
+	if balanceDeducted {
+		if additionalBalanceUsed > 0 {
+			oldBalance := user.Balance
+			result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, additionalBalanceUsed).
+				Update("balance", gorm.Expr("balance - ?", additionalBalanceUsed))
+			if result.Error != nil {
+				return nil, fmt.Errorf("扣除余额失败: %v", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return nil, fmt.Errorf("余额不足，无法完成支付")
+			}
+			orderID := uint(order.ID)
+			userID := user.ID
+			if err := utils.CreateBalanceLogWithDB(
+				tx, user.ID, "consume", -additionalBalanceUsed,
+				oldBalance, oldBalance-additionalBalanceUsed,
+				&orderID, nil,
+				fmt.Sprintf("订单支付扣除余额，订单号: %s", order.OrderNo),
+				"user", &userID, opts.IPAddress,
+			); err != nil {
+				return nil, fmt.Errorf("记录余额日志失败: %v", err)
+			}
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, order.UserID).Error; err != nil {
+				return nil, fmt.Errorf("重新加载用户信息失败: %v", err)
+			}
+		}
+	} else if balanceUsed > 0 {
+		oldBalance := user.Balance
+		result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
 			Update("balance", gorm.Expr("balance - ?", balanceUsed))
 		if result.Error != nil {
 			return nil, fmt.Errorf("扣除余额失败: %v", result.Error)
@@ -431,28 +843,55 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 		if result.RowsAffected == 0 {
 			return nil, fmt.Errorf("余额不足，无法完成支付")
 		}
-		// 重新加载用户信息
-		if err := s.db.First(&user, order.UserID).Error; err != nil {
+		orderID := uint(order.ID)
+		userID := user.ID
+		if err := utils.CreateBalanceLogWithDB(
+			tx,
+			user.ID,
+			"consume",
+			-balanceUsed,
+			oldBalance,
+			oldBalance-balanceUsed,
+			&orderID,
+			nil,
+			fmt.Sprintf("订单支付扣除余额，订单号: %s", order.OrderNo),
+			"user",
+			&userID,
+			opts.IPAddress,
+		); err != nil {
+			return nil, fmt.Errorf("记录余额日志失败: %v", err)
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, order.UserID).Error; err != nil {
 			return nil, fmt.Errorf("重新加载用户信息失败: %v", err)
 		}
 	}
 
-	paidAmount := order.Amount
-	if order.FinalAmount.Valid {
-		paidAmount = order.FinalAmount.Float64
+	if additionalBalanceUsed > 0 {
+		if extraData == nil {
+			extraData = make(map[string]interface{})
+		}
+		extraData["balance_used"] = balanceUsed
+		if encodedExtra, err := json.Marshal(extraData); err == nil {
+			order.ExtraData = database.NullString(string(encodedExtra))
+		}
+		if opts.PaymentMethodName == "余额支付" {
+			order.PaymentMethodName = database.NullString("余额支付")
+		}
 	}
 
-	user.TotalConsumption += order.Amount
-	if err := s.db.Save(&user).Error; err != nil {
+	paidAmount := s.calculateOrderPaidAmount(order, balanceUsed)
+
+	user.TotalConsumption = utils.RoundFloat(user.TotalConsumption+paidAmount, 2)
+	if err := tx.Save(&user).Error; err != nil {
 		return nil, fmt.Errorf("更新用户累计消费失败: %v", err)
 	}
 
-	s.updateUserLevel(&user)
+	s.updateUserLevelTx(tx, &user)
 
-	s.processInviteRewards(order, paidAmount)
+	s.processInviteRewardsTx(tx, order, paidAmount)
 
 	// 更新营销活动参与记录状态为已完成
-	if err := s.db.Model(&models.PromotionParticipation{}).
+	if err := tx.Model(&models.PromotionParticipation{}).
 		Where("order_id = ? AND status = ?", order.ID, "pending").
 		Updates(map[string]interface{}{
 			"status":     "completed",
@@ -477,36 +916,61 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	var result *models.Subscription
 	var err error
 	if order.PackageID > 0 || isCustomPackage {
-		result, err = s.processPackageOrder(order, &user)
+		result, err = s.processPackageOrderTx(tx, order, &user)
 	} else {
-		result, err = s.processDeviceUpgradeOrder(order, &user)
-	}
-
-	// 异步清除缓存
-	if err == nil && result != nil {
-		go func(userID uint, subscriptionURL string) {
-			cs := cache_service.NewCacheService()
-			if cacheErr := cs.ClearUserCache(userID); cacheErr != nil {
-				log.Printf("failed to clear user cache: %v", cacheErr)
-			}
-			if cacheErr := cs.ClearUserSubscriptionCache(userID); cacheErr != nil {
-				log.Printf("failed to clear user subscription cache: %v", cacheErr)
-			}
-			// 清除订阅配置缓存，确保用户立即获得最新配置
-			if cacheErr := cache.ClearSubscriptionConfigCache(subscriptionURL); cacheErr != nil {
-				log.Printf("failed to clear subscription config cache: %v", cacheErr)
-			}
-		}(user.ID, result.SubscriptionURL)
+		result, err = s.processDeviceUpgradeOrderTx(tx, order, &user)
 	}
 
 	return result, err
 }
 
+func (s *OrderService) clearSubscriptionCaches(userID uint, subscriptionURL string) {
+	go func() {
+		cs := cache_service.NewCacheService()
+		if cacheErr := cs.ClearUserCache(userID); cacheErr != nil {
+			log.Printf("failed to clear user cache: %v", cacheErr)
+		}
+		if cacheErr := cs.ClearUserSubscriptionCache(userID); cacheErr != nil {
+			log.Printf("failed to clear user subscription cache: %v", cacheErr)
+		}
+		if subscriptionURL != "" {
+			if cacheErr := cache.ClearSubscriptionConfigCache(subscriptionURL); cacheErr != nil {
+				log.Printf("failed to clear subscription config cache: %v", cacheErr)
+			}
+		}
+	}()
+}
+
+func (s *OrderService) clearUserCaches(userID uint) {
+	if userID == 0 {
+		return
+	}
+	go func() {
+		cs := cache_service.NewCacheService()
+		if cacheErr := cs.ClearUserCache(userID); cacheErr != nil {
+			log.Printf("failed to clear user cache: %v", cacheErr)
+		}
+	}()
+}
+
+func (s *OrderService) getUserSubscriptionTx(tx *gorm.DB, userID uint) (*models.Subscription, error) {
+	var subscription models.Subscription
+	if err := tx.Where("user_id = ?", userID).First(&subscription).Error; err != nil {
+		return nil, err
+	}
+	return &subscription, nil
+}
+
 func (s *OrderService) processPackageOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
+	return s.processPackageOrderTx(s.db, order, user)
+}
+
+func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, user *models.User) (*models.Subscription, error) {
 	// 检查是否是自定义套餐
 	isCustomPackage := false
 	var customDevices int
 	var customMonths int
+	var couponFreeDays int
 
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
 		var extraData map[string]interface{}
@@ -519,6 +983,9 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 				if months, ok := extraData["months"].(float64); ok {
 					customMonths = int(months)
 				}
+			}
+			if days, ok := extraData["coupon_free_days"].(float64); ok {
+				couponFreeDays = int(days)
 			}
 		}
 	}
@@ -540,7 +1007,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 		packageName = fmt.Sprintf("自定义套餐 (%d设备/%d月)", customDevices, customMonths)
 	} else {
 		// 普通套餐：从数据库加载套餐信息
-		if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
+		if err := tx.First(&pkg, order.PackageID).Error; err != nil {
 			return nil, fmt.Errorf("套餐不存在: %v", err)
 		}
 		packageName = pkg.Name
@@ -564,11 +1031,14 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 
 		totalDurationDays = pkg.DurationDays * durationMonths
 	}
+	if couponFreeDays > 0 {
+		totalDurationDays += couponFreeDays
+	}
 
 	now := utils.GetBeijingTime()
 
 	var subscription models.Subscription
-	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		subscriptionURL := utils.GenerateSubscriptionURL()
 		expireTime := now.AddDate(0, 0, totalDurationDays)
 		var pkgID *int64
@@ -586,7 +1056,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			Status:          "active",
 			ExpireTime:      expireTime,
 		}
-		if err := s.db.Create(&subscription).Error; err != nil {
+		if err := tx.Create(&subscription).Error; err != nil {
 			return nil, fmt.Errorf("创建订阅失败: %v", err)
 		}
 		if utils.AppLogger != nil {
@@ -624,7 +1094,7 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 			subscription.PackageID = &pkgID
 		}
 
-		if err := s.db.Save(&subscription).Error; err != nil {
+		if err := tx.Save(&subscription).Error; err != nil {
 			return nil, fmt.Errorf("更新订阅失败: %v", err)
 		}
 		if utils.AppLogger != nil {
@@ -637,6 +1107,10 @@ func (s *OrderService) processPackageOrder(order *models.Order, user *models.Use
 }
 
 func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
+	return s.processDeviceUpgradeOrderTx(s.db, order, user)
+}
+
+func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Order, user *models.User) (*models.Subscription, error) {
 	var additionalDevices int
 	var additionalDays int
 
@@ -655,7 +1129,7 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 	}
 
 	var subscription models.Subscription
-	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		return nil, fmt.Errorf("订阅不存在: %v", err)
 	}
 
@@ -672,7 +1146,7 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 		}
 	}
 
-	if err := s.db.Save(&subscription).Error; err != nil {
+	if err := tx.Save(&subscription).Error; err != nil {
 		return nil, fmt.Errorf("升级订阅失败: %v", err)
 	}
 
@@ -685,8 +1159,12 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 }
 
 func (s *OrderService) updateUserLevel(user *models.User) {
+	s.updateUserLevelTx(s.db, user)
+}
+
+func (s *OrderService) updateUserLevelTx(tx *gorm.DB, user *models.User) {
 	var userLevels []models.UserLevel
-	if err := s.db.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
+	if err := tx.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
 		var targetLevel *models.UserLevel
 		for i := range userLevels {
 			level := &userLevels[i]
@@ -702,7 +1180,7 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 				var currentLevel models.UserLevel
 				shouldUpgrade := true
 				if user.UserLevelID.Valid {
-					if err := s.db.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
+					if err := tx.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
 						if currentLevel.LevelOrder < targetLevel.LevelOrder {
 							shouldUpgrade = false
 						}
@@ -710,7 +1188,7 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 				}
 				if shouldUpgrade {
 					user.UserLevelID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(targetLevel.ID), Valid: true}
-					if err := s.db.Save(user).Error; err != nil {
+					if err := tx.Save(user).Error; err != nil {
 						if utils.AppLogger != nil {
 							utils.AppLogger.Error("更新用户等级失败: %v", err)
 						}
@@ -725,8 +1203,12 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 }
 
 func (s *OrderService) processInviteRewards(order *models.Order, paidAmount float64) {
+	s.processInviteRewardsTx(s.db, order, paidAmount)
+}
+
+func (s *OrderService) processInviteRewardsTx(tx *gorm.DB, order *models.Order, paidAmount float64) {
 	var inviteRelation models.InviteRelation
-	if err := s.db.Where("invitee_id = ? AND (inviter_reward_given = ? OR invitee_reward_given = ?)",
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("invitee_id = ? AND (inviter_reward_given = ? OR invitee_reward_given = ?)",
 		order.UserID, false, false).First(&inviteRelation).Error; err != nil {
 		return
 	}
@@ -737,7 +1219,7 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 	}
 
 	var inviteCode models.InviteCode
-	if err := s.db.First(&inviteCode, inviteRelation.InviteCodeID).Error; err != nil {
+	if err := tx.First(&inviteCode, inviteRelation.InviteCodeID).Error; err != nil {
 		utils.LogError("processInviteRewards: invite code not found", err, map[string]interface{}{
 			"invite_code_id": inviteRelation.InviteCodeID,
 		})
@@ -754,7 +1236,7 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 
 	if inviteCode.NewUserOnly {
 		var orderCount int64
-		s.db.Model(&models.Order{}).Where("user_id = ? AND status = ?", order.UserID, "paid").Count(&orderCount)
+		tx.Model(&models.Order{}).Where("user_id = ? AND status = ?", order.UserID, "paid").Count(&orderCount)
 		if orderCount > 1 {
 			if utils.AppLogger != nil {
 				utils.AppLogger.Info("processInviteRewards: ⏸️ 不是新用户订单，不发放奖励 - order_id=%d, order_count=%d",
@@ -770,9 +1252,9 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 
 	if !inviteRelation.InviterRewardGiven && inviteRelation.InviterRewardAmount > 0 {
 		var inviter models.User
-		if err := s.db.First(&inviter, inviteRelation.InviterID).Error; err == nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&inviter, inviteRelation.InviterID).Error; err == nil {
 			oldBalance := inviter.Balance
-			result := s.db.Model(&models.User{}).Where("id = ?", inviter.ID).
+			result := tx.Model(&models.User{}).Where("id = ?", inviter.ID).
 				Updates(map[string]interface{}{
 					"balance":             gorm.Expr("balance + ?", inviteRelation.InviterRewardAmount),
 					"total_invite_reward": gorm.Expr("total_invite_reward + ?", inviteRelation.InviterRewardAmount),
@@ -781,29 +1263,29 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 			if result.Error == nil {
 				inviteRelation.InviterRewardGiven = true
 				var freshInviter models.User
-				s.db.First(&freshInviter, inviter.ID)
+				tx.First(&freshInviter, inviter.ID)
 				if utils.AppLogger != nil {
 					utils.AppLogger.Info("processInviteRewards: ✅ 发放邀请者奖励 - inviter_id=%d, amount=%.2f, order_id=%d",
 						inviter.ID, inviteRelation.InviterRewardAmount, order.ID)
 				}
-				go func() {
-					if err := utils.CreateBalanceLog(
-						inviter.ID, "commission", inviteRelation.InviterRewardAmount,
-						oldBalance, freshInviter.Balance, nil, nil,
-						fmt.Sprintf("邀请奖励: 邀请人奖励 (订单 %s)", order.OrderNo),
-						"system", nil, "",
-					); err != nil {
-						log.Printf("failed to create balance log: %v", err)
-					}
-					relationID := uint(inviteRelation.ID)
-					if err := utils.CreateCommissionLog(
-						inviter.ID, order.UserID, "order_reward",
-						inviteRelation.InviterRewardAmount, &relationID, nil,
-						fmt.Sprintf("邀请人奖励: 订单 %s", order.OrderNo),
-					); err != nil {
-						log.Printf("failed to create commission log: %v", err)
-					}
-				}()
+				if err := utils.CreateBalanceLogWithDB(
+					tx,
+					inviter.ID, "commission", inviteRelation.InviterRewardAmount,
+					oldBalance, freshInviter.Balance, nil, nil,
+					fmt.Sprintf("邀请奖励: 邀请人奖励 (订单 %s)", order.OrderNo),
+					"system", nil, "",
+				); err != nil {
+					log.Printf("failed to create balance log: %v", err)
+				}
+				relationID := uint(inviteRelation.ID)
+				if err := utils.CreateCommissionLogWithDB(
+					tx,
+					inviter.ID, order.UserID, "order_reward",
+					inviteRelation.InviterRewardAmount, &relationID, nil,
+					fmt.Sprintf("邀请人奖励: 订单 %s", order.OrderNo),
+				); err != nil {
+					log.Printf("failed to create commission log: %v", err)
+				}
 			} else {
 				utils.LogError("processInviteRewards: failed to give inviter reward", result.Error, map[string]interface{}{
 					"inviter_id": inviter.ID, "amount": inviteRelation.InviterRewardAmount,
@@ -814,36 +1296,36 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 
 	if !inviteRelation.InviteeRewardGiven && inviteRelation.InviteeRewardAmount > 0 {
 		var invitee models.User
-		if err := s.db.First(&invitee, order.UserID).Error; err == nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&invitee, order.UserID).Error; err == nil {
 			oldBalance := invitee.Balance
-			result := s.db.Model(&models.User{}).Where("id = ?", invitee.ID).
+			result := tx.Model(&models.User{}).Where("id = ?", invitee.ID).
 				Update("balance", gorm.Expr("balance + ?", inviteRelation.InviteeRewardAmount))
 			if result.Error == nil {
 				inviteRelation.InviteeRewardGiven = true
 				var freshInvitee models.User
-				s.db.First(&freshInvitee, invitee.ID)
+				tx.First(&freshInvitee, invitee.ID)
 				if utils.AppLogger != nil {
 					utils.AppLogger.Info("processInviteRewards: ✅ 发放被邀请者奖励 - invitee_id=%d, amount=%.2f, order_id=%d",
 						invitee.ID, inviteRelation.InviteeRewardAmount, order.ID)
 				}
-				go func() {
-					if err := utils.CreateBalanceLog(
-						invitee.ID, "commission", inviteRelation.InviteeRewardAmount,
-						oldBalance, freshInvitee.Balance, nil, nil,
-						fmt.Sprintf("邀请奖励: 被邀请人奖励 (订单 %s)", order.OrderNo),
-						"system", nil, "",
-					); err != nil {
-						log.Printf("failed to create balance log: %v", err)
-					}
-					relationID := uint(inviteRelation.ID)
-					if err := utils.CreateCommissionLog(
-						inviteRelation.InviterID, invitee.ID, "order_reward",
-						inviteRelation.InviteeRewardAmount, &relationID, nil,
-						fmt.Sprintf("被邀请人奖励: 订单 %s", order.OrderNo),
-					); err != nil {
-						log.Printf("failed to create commission log: %v", err)
-					}
-				}()
+				if err := utils.CreateBalanceLogWithDB(
+					tx,
+					invitee.ID, "commission", inviteRelation.InviteeRewardAmount,
+					oldBalance, freshInvitee.Balance, nil, nil,
+					fmt.Sprintf("邀请奖励: 被邀请人奖励 (订单 %s)", order.OrderNo),
+					"system", nil, "",
+				); err != nil {
+					log.Printf("failed to create balance log: %v", err)
+				}
+				relationID := uint(inviteRelation.ID)
+				if err := utils.CreateCommissionLogWithDB(
+					tx,
+					inviteRelation.InviterID, invitee.ID, "order_reward",
+					inviteRelation.InviteeRewardAmount, &relationID, nil,
+					fmt.Sprintf("被邀请人奖励: 订单 %s", order.OrderNo),
+				); err != nil {
+					log.Printf("failed to create commission log: %v", err)
+				}
 			} else {
 				utils.LogError("processInviteRewards: failed to give invitee reward", result.Error, map[string]interface{}{
 					"invitee_id": invitee.ID, "amount": inviteRelation.InviteeRewardAmount,
@@ -852,7 +1334,7 @@ func (s *OrderService) processInviteRewards(order *models.Order, paidAmount floa
 		}
 	}
 
-	if err := s.db.Save(&inviteRelation).Error; err != nil {
+	if err := tx.Save(&inviteRelation).Error; err != nil {
 		utils.LogError("processInviteRewards: failed to save invite relation", err, map[string]interface{}{
 			"invite_relation_id": inviteRelation.ID,
 		})
@@ -869,18 +1351,6 @@ func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
 		return fmt.Errorf("用户不存在: %v", err)
 	}
 
-	paidAmount := order.Amount
-	if order.FinalAmount.Valid {
-		paidAmount = order.FinalAmount.Float64
-	}
-
-	// 回退用户累计消费
-	if user.TotalConsumption >= order.Amount {
-		user.TotalConsumption -= order.Amount
-	} else {
-		user.TotalConsumption = 0
-	}
-
 	// 回退余额（如果使用了余额支付）
 	var balanceUsed float64 = 0
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
@@ -891,9 +1361,27 @@ func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
 			}
 		}
 	}
+	paidAmount := s.calculateOrderPaidAmount(order, balanceUsed)
+
+	// 回退用户累计消费
+	if user.TotalConsumption >= paidAmount {
+		user.TotalConsumption = utils.RoundFloat(user.TotalConsumption-paidAmount, 2)
+	} else {
+		user.TotalConsumption = 0
+	}
 
 	// 回退订阅或设备升级
-	if order.PackageID > 0 {
+	isCustomPackage := false
+	if order.ExtraData.Valid && order.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+				isCustomPackage = true
+			}
+		}
+	}
+
+	if order.PackageID > 0 || isCustomPackage {
 		// 套餐订单：回退订阅时长和设备限制
 		if err := s.rollbackPackageOrder(order, &user); err != nil {
 			return fmt.Errorf("回退套餐订单失败: %v", err)
@@ -914,6 +1402,10 @@ func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
 	// 回退邀请奖励（如果已发放）
 	s.rollbackInviteRewards(order, paidAmount)
 
+	if err := s.releaseCompletedDiscountApplicationsTx(s.db, order.ID); err != nil {
+		return err
+	}
+
 	// 更新用户信息
 	if err := s.db.Save(&user).Error; err != nil {
 		return fmt.Errorf("更新用户信息失败: %v", err)
@@ -923,6 +1415,12 @@ func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
 	order.Status = "refunded"
 	if err := s.db.Save(order).Error; err != nil {
 		return fmt.Errorf("更新订单状态失败: %v", err)
+	}
+
+	if sub, err := s.getUserSubscriptionTx(s.db, order.UserID); err == nil {
+		s.clearSubscriptionCaches(sub.UserID, sub.SubscriptionURL)
+	} else {
+		s.clearUserCaches(order.UserID)
 	}
 
 	utils.LogInfo("ProcessRefundOrder: 订单退款成功 - order_id=%d, order_no=%s, user_id=%d, amount=%.2f", order.ID, order.OrderNo, user.ID, paidAmount)
@@ -937,17 +1435,23 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 		return nil
 	}
 
-	var pkg models.Package
-	if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
-		return fmt.Errorf("套餐不存在: %v", err)
-	}
-
+	isCustomPackage := false
 	durationMonths := 1
+	couponFreeDays := 0
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
 		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+				isCustomPackage = true
+				if months, ok := extraData["months"].(float64); ok {
+					durationMonths = int(months)
+				}
+			}
 			if months, ok := extraData["duration_months"].(float64); ok {
 				durationMonths = int(months)
+			}
+			if days, ok := extraData["coupon_free_days"].(float64); ok {
+				couponFreeDays = int(days)
 			}
 		}
 	}
@@ -955,7 +1459,21 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 		durationMonths = 1
 	}
 
-	totalDurationDays := pkg.DurationDays * durationMonths
+	var packageID uint
+	var totalDurationDays int
+	if isCustomPackage {
+		totalDurationDays = durationMonths * 30
+	} else {
+		var pkg models.Package
+		if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
+			return fmt.Errorf("套餐不存在: %v", err)
+		}
+		packageID = pkg.ID
+		totalDurationDays = pkg.DurationDays * durationMonths
+	}
+	if couponFreeDays > 0 {
+		totalDurationDays += couponFreeDays
+	}
 	now := utils.GetBeijingTime()
 
 	// 回退订阅时长
@@ -978,7 +1496,7 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 	}
 
 	utils.LogInfo("ProcessRefundOrder: 回退套餐订单成功 - user_id=%d, package_id=%d, duration_days=%d, expire_time=%s",
-		user.ID, pkg.ID, totalDurationDays, utils.FormatBeijingTime(subscription.ExpireTime))
+		user.ID, packageID, totalDurationDays, utils.FormatBeijingTime(subscription.ExpireTime))
 	return nil
 }
 
@@ -1064,57 +1582,5 @@ func (s *OrderService) rollbackInviteRewards(order *models.Order, paidAmount flo
 
 // applyPromotionDiscount 应用营销活动折扣
 func (s *OrderService) applyPromotionDiscount(userID uint, packageID uint, baseAmount float64) (float64, *models.PromotionParticipation, error) {
-	now := utils.GetBeijingTime()
-
-	// 查找可用的折扣
-	var participation models.PromotionParticipation
-	query := s.db.Where("user_id = ? AND status = ? AND reward_type = ? AND (expire_at IS NULL OR expire_at > ?)",
-		userID, "pending", "discount", now).
-		Preload("Promotion")
-
-	if err := query.Order("created_at ASC").First(&participation).Error; err != nil {
-		// 没有可用折扣
-		return 0, nil, nil
-	}
-
-	// 检查活动是否适用于该套餐
-	if participation.Promotion.PackageIDs.Valid && participation.Promotion.PackageIDs.String != "" {
-		packageIDsStr := participation.Promotion.PackageIDs.String
-		var packageIDs []uint
-		if err := json.Unmarshal([]byte(packageIDsStr), &packageIDs); err == nil {
-			found := false
-			for _, pid := range packageIDs {
-				if pid == packageID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				// 该活动不适用于此套餐
-				return 0, nil, nil
-			}
-		}
-	}
-
-	// 检查最低金额
-	if participation.Promotion.MinAmount > 0 && baseAmount < participation.Promotion.MinAmount {
-		return 0, nil, nil
-	}
-
-	// 计算折扣
-	var discountAmount float64
-	if participation.Promotion.DiscountType == "percentage" {
-		discountAmount = baseAmount * (participation.RewardValue / 100)
-		if participation.Promotion.MaxDiscount > 0 && discountAmount > participation.Promotion.MaxDiscount {
-			discountAmount = participation.Promotion.MaxDiscount
-		}
-	} else if participation.Promotion.DiscountType == "fixed" {
-		discountAmount = participation.RewardValue
-		if discountAmount > baseAmount {
-			discountAmount = baseAmount
-		}
-	}
-
-	discountAmount = utils.RoundFloat(discountAmount, 2)
-	return discountAmount, &participation, nil
+	return promotionService.NewService(s.db).ApplyDiscount(userID, packageID, baseAmount)
 }
