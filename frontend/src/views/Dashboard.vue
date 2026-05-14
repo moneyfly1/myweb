@@ -756,31 +756,17 @@ const platforms = ref([
     ]
   }
 ])
-const qrCodeUrl = computed(() => {
-  if (userInfo.value.qrcodeUrl) {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(userInfo.value.qrcodeUrl)}&ecc=M&margin=10`
-  } else if (userInfo.value.universalUrl) {
-    const subscriptionUrl = userInfo.value.universalUrl
-    const encodedUrl = btoa(unescape(encodeURIComponent(subscriptionUrl)))
-    let expiryDisplayName = '订阅'
-    if (userInfo.value.expiryDate && userInfo.value.expiryDate !== '未设置') {
-      try {
-        const expireDate = new Date(userInfo.value.expiryDate)
-        if (!isNaN(expireDate.getTime())) {
-          const year = expireDate.getFullYear()
-          const month = String(expireDate.getMonth() + 1).padStart(2, '0')
-          const day = String(expireDate.getDate()).padStart(2, '0')
-          expiryDisplayName = `到期时间${year}-${month}-${day}`
-        }
-      } catch (e) {
-        expiryDisplayName = '订阅'
-      }
-    }
-    const qrData = `sub://${encodedUrl}#${encodeURIComponent(expiryDisplayName)}`
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}&ecc=M&margin=10`
+const qrCodeUrl = ref('')
+async function generateSubQRCode() {
+  const data = userInfo.value.qrcodeUrl || userInfo.value.universalUrl
+  if (!data) { qrCodeUrl.value = ''; return }
+  try {
+    const QRCode = await import('qrcode')
+    qrCodeUrl.value = await QRCode.toDataURL(data, { width: 200, margin: 2, errorCorrectionLevel: 'M' })
+  } catch {
+    qrCodeUrl.value = ''
   }
-  return ''
-})
+}
 const isDeviceOverlimit = computed(() => {
   const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
@@ -832,6 +818,7 @@ const loadUserInfo = async () => {
       if (dashboardData.notice) {
         handleAnnouncement(dashboardData.notice)
       }
+      generateSubQRCode()
     } else {
       throw new Error('用户信息加载失败')
     }

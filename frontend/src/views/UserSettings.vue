@@ -729,9 +729,11 @@ export default {
           return
         }
         codeSending.value = true
-        ElMessage.success('验证码已发送到您的邮箱')
+        await userAPI.sendVerificationCode({ email: emailChangeForm.newEmail, type: 'email_change' })
+        ElMessage.success('验证码已发送到您的新邮箱')
       } catch (error) {
-        ElMessage.error('发送验证码失败：' + error.message)
+        const msg = error?.response?.data?.message || error.message || '发送失败'
+        ElMessage.error('发送验证码失败：' + msg)
       } finally {
         codeSending.value = false
       }

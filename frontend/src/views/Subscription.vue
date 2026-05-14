@@ -15,7 +15,7 @@
         </router-link>
       </template>
     </el-alert>
-    <el-card class="subscription-card">
+    <el-card class="subscription-card" v-loading="loading">
       <template #header>
         <div class="card-header">
           <h2>订阅管理</h2>
@@ -201,6 +201,7 @@ export default {
     UpgradeDevicesDrawer
   },
   setup() {
+    const loading = ref(false)
     const subscription = ref(null)
     const resetLoading = ref(false)
     const sendEmailLoading = ref(false)
@@ -237,6 +238,7 @@ export default {
       return refreshPromise
     }
     const fetchSubscription = async () => {
+      loading.value = true
       try {
         // 并发加载订阅和用户信息，提高页面加载速度
         let [subscriptionResponse, userResponse] = await Promise.allSettled([
@@ -300,6 +302,8 @@ export default {
       } catch (error) {
         console.error('获取订阅信息失败:', error)
         ElMessage.error(`获取订阅信息失败: ${error.message || '未知错误'}`)
+      } finally {
+        loading.value = false
       }
     }
     const generateQRCodes = async () => {
