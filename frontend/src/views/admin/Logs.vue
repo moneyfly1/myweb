@@ -26,6 +26,9 @@
         <el-tab-pane label="邮件日志" name="email">
           <EmailLogs />
         </el-tab-pane>
+        <el-tab-pane label="管理员操作日志" name="audit">
+          <AuditLogs />
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -38,13 +41,10 @@ import BalanceLogs from './logs/BalanceLogs.vue'
 import CommissionLogs from './logs/CommissionLogs.vue'
 import SubscriptionResetLogs from './logs/SubscriptionResetLogs.vue'
 import EmailLogs from './logs/EmailLogs.vue'
+import AuditLogs from './logs/AuditLogs.vue'
 const activeTab = ref('registration')
-const handleTabChange = (tabName) => {
-  activeTab.value = tabName
-}
+const handleTabChange = () => {}
 </script>
 <style scoped>
-.logs-container {
-  padding: 20px;
-}
+.logs-container { padding: 20px; }
 </style>

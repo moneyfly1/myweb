@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,16 @@ func isSecureRequest(c *gin.Context) bool {
 	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
 }
 
+func getMinPasswordLength(db *gorm.DB) int {
+	var config models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "min_password_length", "registration").First(&config).Error; err == nil {
+		if v, err := strconv.Atoi(config.Value); err == nil && v > 0 {
+			return v
+		}
+	}
+	return 8
+}
+
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -76,7 +87,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	if valid, msg := auth.ValidatePasswordStrength(req.Password, 8); !valid {
+	if valid, msg := auth.ValidatePasswordStrength(req.Password, getMinPasswordLength(db)); !valid {
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
@@ -84,6 +95,15 @@ func Register(c *gin.Context) {
 	if err := verifyRegisterCode(db, req.Email, req.VerificationCode); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
+	}
+
+	// 检查是否需要邀请码
+	var inviteConfig models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "invite_code_required", "registration").First(&inviteConfig).Error; err == nil {
+		if inviteConfig.Value == "true" && req.InviteCode == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "当前注册需要邀请码，请输入有效的邀请码", nil)
+			return
+		}
 	}
 
 	var user models.User
@@ -997,13 +1017,14 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
-	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
+	db := database.GetDB()
+
+	valid, msg := auth.ValidatePasswordStrength(req.Password, getMinPasswordLength(db))
 	if !valid {
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
-	db := database.GetDB()
 	var user models.User
 	if err := db.First(&user, userID).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)

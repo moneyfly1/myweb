@@ -57,6 +57,22 @@ func resolvePackageInfo(order models.Order) (uint, string, interface{}) {
 					itemType = "custom_package"
 					return 0, name, gin.H{"id": 0, "name": name, "type": itemType}
 				}
+				if orderType, ok := extraData["type"].(string); ok && orderType == "device_upgrade" {
+					oldLimit := 0
+					newLimit := 0
+					if v, ok := extraData["old_device_limit"].(float64); ok {
+						oldLimit = int(v)
+					}
+					if v, ok := extraData["new_device_limit"].(float64); ok {
+						newLimit = int(v)
+					}
+					if oldLimit > 0 && newLimit > 0 {
+						name = fmt.Sprintf("设备升级 (%d→%d台)", oldLimit, newLimit)
+					} else {
+						name = "设备升级订单"
+					}
+					return 0, name, gin.H{"id": 0, "name": name, "type": itemType, "old_device_limit": oldLimit, "new_device_limit": newLimit}
+				}
 			}
 			name = "设备升级订单"
 		}
@@ -83,10 +99,10 @@ func formatOrderData(order models.Order) gin.H {
 	}
 
 	var balanceUsed float64
+	var parsedExtraData map[string]interface{}
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+		if err := json.Unmarshal([]byte(order.ExtraData.String), &parsedExtraData); err == nil {
+			if balanceUsedVal, ok := parsedExtraData["balance_used"].(float64); ok {
 				balanceUsed = balanceUsedVal
 			}
 		}
@@ -128,6 +144,7 @@ func formatOrderData(order models.Order) gin.H {
 		"updated_at":             utils.FormatBeijingTime(order.UpdatedAt),
 		"expire_time":            utils.GetNullTimeValue(order.ExpireTime),
 		"coupon_id":              utils.GetNullInt64Value(order.CouponID),
+		"extra_data":             parsedExtraData,
 	}
 }
 
@@ -1043,6 +1060,8 @@ func UpdateAdminOrder(c *gin.Context) {
 		return
 	}
 
+	oldStatus := order.Status
+
 	if order.Status != "paid" && req.Status == "paid" {
 		svc := orderServicePkg.NewOrderService()
 		if _, err := svc.FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
@@ -1083,7 +1102,10 @@ func UpdateAdminOrder(c *gin.Context) {
 		}
 	}
 
-	utils.CreateAuditLogSimple(c, "update_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 更新订单 %s 状态为 %s", order.OrderNo, order.Status))
+	utils.CreateAuditLog(c, "update_admin_order", "order", order.ID,
+		fmt.Sprintf("管理员更新订单 %s(%s, ¥%.2f) 状态 → %s", order.OrderNo, order.User.Email, order.Amount, order.Status),
+		map[string]interface{}{"order_no": order.OrderNo, "old_status": oldStatus, "amount": order.Amount, "user_id": order.UserID},
+		map[string]interface{}{"order_no": order.OrderNo, "status": order.Status, "amount": order.Amount, "user_id": order.UserID})
 	utils.SuccessResponse(c, http.StatusOK, "订单已更新", order)
 }
 
@@ -1194,7 +1216,15 @@ func RefundAdminOrder(c *gin.Context) {
 	}
 
 	utils.LogInfo("RefundAdminOrder: 订单退款成功 - order_id=%d, order_no=%s, refund_amount=%.2f", order.ID, order.OrderNo, refundAmount)
-	utils.CreateAuditLogSimple(c, "refund_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 退款订单 %s 金额 %.2f", order.OrderNo, refundAmount))
+	utils.CreateAuditLog(c, "refund_admin_order", "order", order.ID,
+		fmt.Sprintf("管理员退款订单 %s(%s, ¥%.2f → 退款 ¥%.2f)", order.OrderNo, order.User.Email, order.Amount, refundAmount),
+		map[string]interface{}{
+			"order_no": order.OrderNo, "user_id": order.UserID, "user_email": order.User.Email,
+			"amount": order.Amount, "status": "paid", "payment_method": order.PaymentMethodName.String,
+		},
+		map[string]interface{}{
+			"order_no": order.OrderNo, "refund_amount": refundAmount, "status": "refunded",
+		})
 	utils.SuccessResponse(c, http.StatusOK, "订单退款成功", order)
 }
 
@@ -1216,7 +1246,9 @@ func DeleteAdminOrder(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除订单失败", err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "delete_admin_order", "order", order.ID, fmt.Sprintf("管理员操作: 删除订单 %s", order.OrderNo))
+	utils.CreateAuditLog(c, "delete_admin_order", "order", order.ID,
+		fmt.Sprintf("管理员删除订单 %s(%s, ¥%.2f)", order.OrderNo, order.User.Email, order.Amount),
+		map[string]interface{}{"order_no": order.OrderNo, "user_id": order.UserID, "amount": order.Amount, "status": order.Status}, nil)
 	utils.SuccessResponse(c, http.StatusOK, "订单已删除", nil)
 }
 
@@ -1273,7 +1305,9 @@ func BulkMarkOrdersPaid(c *gin.Context) {
 			go sendPaymentNotifications(db, order.OrderNo)
 		}
 	}
-	utils.CreateAuditLogSimple(c, "bulk_mark_orders_paid", "order", 0, fmt.Sprintf("管理员操作: 批量标记订单已支付 成功 %d 失败 %d", successCount, failCount))
+	utils.CreateAuditLog(c, "bulk_mark_orders_paid", "order", 0,
+		fmt.Sprintf("管理员批量标记订单已支付 成功%d 失败%d", successCount, failCount),
+		map[string]interface{}{"order_ids": req.OrderIDs, "total": len(req.OrderIDs)}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("处理完成: 成功 %d, 失败 %d", successCount, failCount), nil)
 }
 
@@ -1290,7 +1324,9 @@ func BulkCancelOrders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量取消失败", err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "bulk_cancel_orders", "order", 0, fmt.Sprintf("管理员操作: 批量取消订单 %d 个", cancelledCount))
+	utils.CreateAuditLog(c, "bulk_cancel_orders", "order", 0,
+		fmt.Sprintf("管理员批量取消 %d 个订单", cancelledCount),
+		map[string]interface{}{"order_ids": req.OrderIDs, "total": len(req.OrderIDs), "cancelled": cancelledCount}, nil)
 	utils.SuccessResponse(c, http.StatusOK, "批量取消成功", gin.H{"cancelled": cancelledCount})
 }
 
@@ -1307,7 +1343,9 @@ func BatchDeleteOrders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败", err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "batch_delete_orders", "order", 0, fmt.Sprintf("管理员操作: 批量删除订单 %d 个", deletedCount))
+	utils.CreateAuditLog(c, "batch_delete_orders", "order", 0,
+		fmt.Sprintf("管理员批量删除 %d 个订单", deletedCount),
+		map[string]interface{}{"order_ids": req.OrderIDs, "total": len(req.OrderIDs), "deleted": deletedCount}, nil)
 	utils.SuccessResponse(c, http.StatusOK, "批量删除成功", gin.H{"deleted": deletedCount})
 }
 
@@ -1611,7 +1649,10 @@ func UpgradeDevices(c *gin.Context) {
 	if balanceUsed > 0 {
 		balanceDeductedStr = "true"
 	}
-	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d,"balance_used":%.2f,"balance_deducted":%s,"level_discount":%.2f,"level_discount_rate":%.4f,"payable_amount":%.2f}`, req.AdditionalDevices, req.AdditionalDays, balanceUsed, balanceDeductedStr, levelDiscountAmount, levelDiscount, payableAmount)
+	newDeviceLimit := subscription.DeviceLimit + req.AdditionalDevices
+	oldExpireTime := subscription.ExpireTime.Format(TimeLayout)
+	newExpireTime := subscription.ExpireTime.AddDate(0, 0, req.AdditionalDays).Format(TimeLayout)
+	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d,"old_device_limit":%d,"new_device_limit":%d,"old_expire_time":"%s","new_expire_time":"%s","balance_used":%.2f,"balance_deducted":%s,"level_discount":%.2f,"level_discount_rate":%.4f,"payable_amount":%.2f}`, req.AdditionalDevices, req.AdditionalDays, subscription.DeviceLimit, newDeviceLimit, oldExpireTime, newExpireTime, balanceUsed, balanceDeductedStr, levelDiscountAmount, levelDiscount, payableAmount)
 
 	order := models.Order{
 		OrderNo:           orderNo,

@@ -78,7 +78,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SoftwareTutorials: typeof import('./src/components/tutorials/SoftwareTutorials.vue')['default']
-    ThemeSettings: typeof import('./src/components/ThemeSettings.vue')['default']
     UpgradeDevicesDrawer: typeof import('./src/components/UpgradeDevicesDrawer.vue')['default']
     UserLayout: typeof import('./src/components/layout/UserLayout.vue')['default']
     WindowsTutorials: typeof import('./src/components/tutorials/WindowsTutorials.vue')['default']

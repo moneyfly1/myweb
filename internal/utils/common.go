@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/config"
+	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -696,13 +697,44 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
+// GetSessionTimeout 获取会话超时时间（分钟），优先级：每用户设置 > 全局设置 > .env 配置
+func GetSessionTimeout(userID uint) int {
+	db := database.GetDB()
+	if db != nil {
+		// 1. 检查每用户设置
+		var userCfg models.SystemConfig
+		userKey := fmt.Sprintf("user_%d_session_timeout", userID)
+		if err := db.Where("category = ? AND key = ?", "user_security", userKey).First(&userCfg).Error; err == nil {
+			if v, err := strconv.Atoi(userCfg.Value); err == nil && v > 0 {
+				return v
+			}
+		}
+
+		// 2. 检查全局安全设置
+		var globalCfg models.SystemConfig
+		if err := db.Where("category = ? AND key = ?", "security", "session_timeout").First(&globalCfg).Error; err == nil {
+			if v, err := strconv.Atoi(globalCfg.Value); err == nil && v > 0 {
+				return v
+			}
+		}
+	}
+
+	// 3. 回退到 .env 配置
+	cfg := config.AppConfig
+	if cfg != nil && cfg.AccessTokenExpireMinutes > 0 {
+		return cfg.AccessTokenExpireMinutes
+	}
+	return 60
+}
+
 func CreateAccessToken(userID uint, email string, isAdmin bool) (string, error) {
 	cfg := config.AppConfig
 	if cfg == nil {
 		return "", errors.New("配置未初始化")
 	}
 
-	expiresAt := time.Now().Add(time.Duration(cfg.AccessTokenExpireMinutes) * time.Minute)
+	timeoutMinutes := GetSessionTimeout(userID)
+	expiresAt := time.Now().Add(time.Duration(timeoutMinutes) * time.Minute)
 
 	claims := JWTClaims{
 		UserID:  userID,
