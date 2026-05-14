@@ -912,23 +912,6 @@ func ClearEmailQueue(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, message, gin.H{"deleted_count": result.RowsAffected})
 }
 
-func GetAdminSystemConfig(c *gin.Context) {
-	var configs []models.SystemConfig
-	database.GetDB().Where("category = ?", "system").Order("sort_order ASC").Find(&configs)
-	configMap := make(map[string]interface{})
-	for _, config := range configs {
-		if config.Value == "true" || config.Value == "false" {
-			configMap[config.Key] = config.Value == "true"
-		} else {
-			configMap[config.Key] = config.Value
-		}
-	}
-	if len(configMap) == 0 {
-		configMap = map[string]interface{}{"site_name": "", "site_description": "", "logo_url": "", "maintenance_mode": false, "maintenance_message": ""}
-	}
-	utils.SuccessResponse(c, http.StatusOK, "", configMap)
-}
-
 func GetAdminEmailConfig(c *gin.Context) {
 	var configs []models.SystemConfig
 	database.GetDB().Where("category = ?", "email").Find(&configs)
@@ -1071,14 +1054,6 @@ func GetRevenueTrend(c *gin.Context) {
 	GetRevenueChart(c)
 }
 
-func UpdateClashConfig(c *gin.Context) {
-	updateSingleConfig(c, "clash", "config", "Clash 配置")
-}
-
-func UpdateV2RayConfig(c *gin.Context) {
-	updateSingleConfig(c, "v2ray", "config", "V2Ray 配置")
-}
-
 func UpdateEmailConfig(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1096,14 +1071,6 @@ func UpdateEmailConfig(c *gin.Context) {
 	}
 	utils.CreateAuditLogSimple(c, "update_email_config", "settings", 0, "管理员操作: 更新邮件配置")
 	utils.SuccessResponse(c, http.StatusOK, "邮件配置已更新", nil)
-}
-
-func MarkClashConfigInvalid(c *gin.Context) {
-	updateSingleConfig(c, "clash", "config_invalid", "Clash 失效配置")
-}
-
-func MarkV2RayConfigInvalid(c *gin.Context) {
-	updateSingleConfig(c, "v2ray", "config_invalid", "V2Ray 失效配置")
 }
 
 func CreatePaymentConfig(c *gin.Context) {

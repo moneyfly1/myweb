@@ -41,18 +41,3 @@ func (Announcement) TableName() string {
 	return "announcements"
 }
 
-type ThemeConfig struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	Name         string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
-	DisplayName  string    `gorm:"type:varchar(100);not null" json:"display_name"`
-	IsActive     bool      `gorm:"default:false" json:"is_active"`
-	IsDefault    bool      `gorm:"default:false" json:"is_default"`
-	Config       string    `gorm:"type:json" json:"config"`
-	PreviewImage string    `gorm:"type:varchar(200)" json:"preview_image"`
-	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-func (ThemeConfig) TableName() string {
-	return "theme_configs"
-}

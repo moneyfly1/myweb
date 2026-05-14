@@ -343,6 +343,16 @@
                <span class="label">套餐</span>
                <span class="val">{{ selectedOrder.package_name }}</span>
              </div>
+             <template v-if="selectedOrder.extra_data && selectedOrder.extra_data.type === 'device_upgrade'">
+               <div class="d-item">
+                 <span class="label">设备变化</span>
+                 <span class="val">{{ selectedOrder.extra_data.old_device_limit || 0 }}台 → {{ selectedOrder.extra_data.new_device_limit || 0 }}台</span>
+               </div>
+               <div class="d-item" v-if="selectedOrder.extra_data.additional_days > 0">
+                 <span class="label">到期时间变化</span>
+                 <span class="val">{{ selectedOrder.extra_data.old_expire_time || '-' }} → {{ selectedOrder.extra_data.new_expire_time || '-' }}</span>
+               </div>
+             </template>
              <div class="d-item">
                <span class="label">支付方式</span>
                <span class="val">{{ selectedOrder.payment_method }}</span>
@@ -369,6 +379,10 @@
           <el-descriptions-item label="订单号">{{ selectedOrder.order_no }}</el-descriptions-item>
           <el-descriptions-item label="用户邮箱">{{ selectedOrder.user?.email }}</el-descriptions-item>
           <el-descriptions-item label="套餐名称">{{ selectedOrder.package_name }}</el-descriptions-item>
+          <template v-if="selectedOrder.extra_data && selectedOrder.extra_data.type === 'device_upgrade'">
+            <el-descriptions-item label="设备变化">{{ selectedOrder.extra_data.old_device_limit || 0 }}台 → {{ selectedOrder.extra_data.new_device_limit || 0 }}台</el-descriptions-item>
+            <el-descriptions-item v-if="selectedOrder.extra_data.additional_days > 0" label="到期时间变化">{{ selectedOrder.extra_data.old_expire_time || '-' }} → {{ selectedOrder.extra_data.new_expire_time || '-' }}</el-descriptions-item>
+          </template>
           <el-descriptions-item label="金额">¥{{ formatMoney(selectedOrder.amount) }}</el-descriptions-item>
           <el-descriptions-item label="支付方式">{{ selectedOrder.payment_method }}</el-descriptions-item>
           <el-descriptions-item label="状态">

@@ -279,7 +279,7 @@ func (s *Scheduler) checkNodeHealth() {
 	interval := 30 * time.Minute
 
 	var config models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "node_health_check_interval", "general").First(&config).Error; err == nil {
+	if err := s.db.Where("key = ? AND category = ?", "node_health_check_interval", "node_health").First(&config).Error; err == nil {
 		if minutes, err := strconv.Atoi(config.Value); err == nil {
 			interval = time.Duration(minutes) * time.Minute
 		}
@@ -306,13 +306,13 @@ func (s *Scheduler) checkNodeHealthNow() {
 	healthService := node_health.NewNodeHealthService()
 
 	var config models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "node_max_latency", "general").First(&config).Error; err == nil {
+	if err := s.db.Where("key = ? AND category = ?", "node_max_latency", "node_health").First(&config).Error; err == nil {
 		if maxLatency, err := strconv.Atoi(config.Value); err == nil {
 			healthService.SetMaxLatency(maxLatency)
 		}
 	}
 
-	if err := s.db.Where("key = ? AND category = ?", "node_test_timeout", "general").First(&config).Error; err == nil {
+	if err := s.db.Where("key = ? AND category = ?", "node_test_timeout", "node_health").First(&config).Error; err == nil {
 		if timeout, err := strconv.Atoi(config.Value); err == nil {
 			healthService.SetTestTimeout(time.Duration(timeout) * time.Second)
 		}

@@ -53,13 +53,13 @@ func getMaintenanceConfig() *maintenanceCacheData {
 		expireAt: time.Now().Add(maintenanceCacheTTL),
 	}
 
-	// 一次查出所有需要的配置
+	// 一次查出所有需要的配置（兼容 logo_url 和 site_logo 两个 key）
 	var configs []models.SystemConfig
-	db.Where("(key = ? AND category = ?) OR (key = ? AND category = ?) OR (key = ? AND category IN (?,?)) OR (key = ? AND category IN (?,?))",
+	db.Where("(key = ? AND category = ?) OR (key = ? AND category = ?) OR (key = ? AND category IN (?,?)) OR (key IN (?,?) AND category IN (?,?))",
 		"maintenance_mode", "system",
 		"maintenance_message", "system",
 		"site_name", "general", "system",
-		"logo_url", "general", "system",
+		"logo_url", "site_logo", "general", "system",
 	).Find(&configs)
 
 	for _, cfg := range configs {
@@ -72,7 +72,7 @@ func getMaintenanceConfig() *maintenanceCacheData {
 			if data.siteName == "CBoard Modern" || cfg.Category == "general" {
 				data.siteName = cfg.Value
 			}
-		case cfg.Key == "logo_url":
+		case cfg.Key == "logo_url" || cfg.Key == "site_logo":
 			if data.logoURL == "" || cfg.Category == "general" {
 				data.logoURL = cfg.Value
 			}

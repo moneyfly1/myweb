@@ -467,9 +467,6 @@ export const userAPI = {
   getUserInfo: () => api.get('/users/dashboard-info'),
   getUserDevices: () => api.get('/users/devices'),
   getMyLevel: () => api.get('/users/my-level'),
-  getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
-  getDeviceList: () => api.get('/devices'),
-  addDevice: (data) => api.post('/devices', data),
   deleteDevice: (id) => api.delete(`/devices/${id}`)
 }
 export const rechargeAPI = {
@@ -558,10 +555,8 @@ export const adminAPI = {
   batchDeleteUsers: (ids) => api.post('/admin/users/batch-delete', { user_ids: ids }),
   batchEnableUsers: (ids) => api.post('/admin/users/batch-enable', { user_ids: ids }),
   batchDisableUsers: (ids) => api.post('/admin/users/batch-disable', { user_ids: ids }),
-  batchVerifyUsers: (ids) => api.post('/admin/users/batch-verify', { user_ids: ids }),
   sendUserSubEmail: (id) => api.post(`/admin/users/${id}/send-subscription-email`),
   batchSendSubEmail: (ids) => api.post('/admin/users/batch-send-subscription-email', { user_ids: ids }),
-  getExpiringUsers: (params) => api.get('/admin/users/expiring', { params }),
   batchSendExpireReminder: (ids) => api.post('/admin/users/batch-expire-reminder', { user_ids: ids }),
   getExpiringSubscriptions: (params) => api.get('/admin/subscriptions/expiring', { params }),
   getSubscriptions: (params) => api.get('/admin/subscriptions', { params }),
@@ -574,8 +569,6 @@ export const adminAPI = {
   sendSubscriptionEmail: (id) => api.post(`/admin/subscriptions/user/${id}/send-email`),
   batchClearDevices: (data) => api.post('/admin/subscriptions/batch-clear-devices', data),
   exportSubscriptions: () => api.get('/admin/subscriptions/export', { responseType: 'blob' }),
-  getAppleStats: () => api.get('/admin/subscriptions/apple-stats'),
-  getOnlineStats: () => api.get('/admin/subscriptions/online-stats'),
   clearUserDevices: (id) => api.delete(`/admin/subscriptions/user/${id}/delete-all`),
   batchDeleteSubscriptions: (ids) => api.post('/admin/subscriptions/batch-delete', { subscription_ids: ids }),
   batchEnableSubscriptions: (ids) => api.post('/admin/subscriptions/batch-enable', { subscription_ids: ids }),
@@ -594,7 +587,6 @@ export const adminAPI = {
   updatePackage: (id, data) => api.put(`/admin/packages/${id}`, data),
   deletePackage: (id) => api.delete(`/admin/packages/${id}`),
   getEmailQueue: (params) => api.get('/admin/email-queue', { params }),
-  resendEmail: (id) => api.post(`/admin/email-queue/${id}/resend`),
   getEmailDetail: (id) => api.get(`/admin/email-queue/${id}`),
   retryEmail: (id) => api.post(`/admin/email-queue/${id}/retry`),
   deleteEmailFromQueue: (id) => api.delete(`/admin/email-queue/${id}`),
@@ -606,6 +598,7 @@ export const adminAPI = {
   getLoginHistory: () => api.get('/admin/login-history'),
   getSecuritySettings: () => api.get('/admin/security-settings'),
   updateSecuritySettings: (data) => api.put('/admin/security-settings', data),
+  getAuditLogs: (params) => api.get('/admin/logs/audit', { params }),
   getSystemLogs: (params) => api.get('/admin/system-logs', { params }),
   getLogsStats: (params) => api.get('/admin/logs-stats', { params }),
   exportLogs: (params) => api.get('/admin/export-logs', { params, responseType: 'blob' }),
@@ -620,7 +613,6 @@ export const adminAPI = {
   getSubscriptionDevices: (id) => api.get(`/admin/subscriptions/${id}/devices`),
   getAdminRechargeRecords: (params) => api.get('/recharge/admin', { params }),
   removeDevice: (id) => api.delete(`/admin/devices/${id}`),
-  deleteUserDevice: (userId, deviceId) => api.delete(`/admin/users/${userId}/devices/${deviceId}`),
   getAdminNodes: (params) => api.get('/admin/nodes', { params }),
   getAdminNode: (id) => api.get(`/admin/nodes/${id}`),
   createNode: (data) => api.post('/admin/nodes', data),
@@ -707,7 +699,6 @@ export const paymentAPI = {
   bulkEnablePaymentConfigs: (ids) => api.post('/payment-config/bulk-enable', { ids }),
   bulkDisablePaymentConfigs: (ids) => api.post('/payment-config/bulk-disable', { ids }),
   bulkDeletePaymentConfigs: (ids) => api.post('/payment-config/bulk-delete', { ids }),
-  getPaymentStats: () => api.get('/admin/payment-stats'),
   getConfigUpdateStatus: () => api.get('/admin/config-update/status'),
   startConfigUpdate: () => api.post('/admin/config-update/start'),
   stopConfigUpdate: () => api.post('/admin/config-update/stop'),
@@ -715,32 +706,19 @@ export const paymentAPI = {
   getConfigUpdateLogs: (params) => api.get('/admin/config-update/logs', { params }),
   getConfigUpdateConfig: () => api.get('/admin/config-update/config'),
   updateConfigUpdateConfig: (data) => api.put('/admin/config-update/config', data),
-  getConfigUpdateFiles: () => api.get('/admin/config-update/files'),
-  getConfigUpdateSchedule: () => api.get('/admin/config-update/schedule'),
-  updateConfigUpdateSchedule: (data) => api.put('/admin/config-update/schedule', data),
-  startConfigUpdateSchedule: () => api.post('/admin/config-update/schedule/start'),
-  stopConfigUpdateSchedule: () => api.post('/admin/config-update/schedule/stop'),
   clearConfigUpdateLogs: () => api.post('/admin/config-update/logs/clear')
 }
 export const settingsAPI = {
   getPublicSettings: () => api.get('/settings/public-settings'),
   getSystemSettings: () => api.get('/admin/settings'),
-  updateSystemSettings: (data) => api.put('/admin/settings', data),
   updateGeneralSettings: (data) => api.put('/admin/settings/general', data),
   updateRegistrationSettings: (data) => api.put('/admin/settings/registration', data),
   updateNotificationSettings: (data) => api.put('/admin/settings/notification', data),
   updateSecuritySettings: (data) => api.put('/admin/settings/security', data),
   getConfigsByCategory: (params) => api.get('/admin/configs', { params }),
   getConfigs: (params) => api.get('/admin/configs', { params }),
-  getConfig: (key) => api.get(`/admin/configs/${key}`),
   createConfig: (data) => api.post('/admin/configs', data),
-  updateConfig: (key, data) => api.put(`/admin/configs/${key}`, data),
-  deleteConfig: (key) => api.delete(`/admin/configs/${key}`),
-  initializeConfigs: () => api.post('/admin/configs/initialize'),
-  getThemeConfigs: () => api.get('/admin/themes'),
-  createThemeConfig: (data) => api.post('/admin/themes', data),
-  updateThemeConfig: (id, data) => api.put(`/admin/themes/${id}`, data),
-  deleteThemeConfig: (id) => api.delete(`/admin/themes/${id}`)
+  updateConfig: (key, data) => api.put(`/admin/configs/${key}`, data)
 }
 export const softwareConfigAPI = {
   getSoftwareConfig: () => api.get('/software-config/'),
@@ -756,10 +734,6 @@ export const configUpdateAPI = {
   getFiles: () => api.get('/admin/config-update/files'),
   getLogs: (params) => api.get('/admin/config-update/logs', { params }),
   clearLogs: () => api.post('/admin/config-update/logs/clear'),
-  getNodeSources: () => api.get('/admin/config-update/node-sources'),
-  updateNodeSources: (data) => api.put('/admin/config-update/node-sources', data),
-  getFilterKeywords: () => api.get('/admin/config-update/filter-keywords'),
-  updateFilterKeywords: (data) => api.put('/admin/config-update/filter-keywords', data)
 }
 export const ticketAPI = {
   createTicket: (data) => api.post('/tickets/', data),
@@ -767,7 +741,6 @@ export const ticketAPI = {
   getTicket: (id) => api.get(`/tickets/${id}`),
   getAdminTicket: (id) => api.get(`/tickets/admin/${id}`),
   addReply: (id, data) => api.post(`/tickets/${id}/replies`, data),
-  addRating: (id, data) => api.post(`/tickets/${id}/rating`, data),
   getAllTickets: (params) => api.get('/tickets/admin/all', { params }),
   updateTicket: (id, data) => api.put(`/tickets/admin/${id}`, data),
   getTicketStatistics: () => api.get('/tickets/admin/statistics'),
@@ -781,7 +754,6 @@ export const couponAPI = {
   getCoupon: (id) => api.get(`/coupons/admin/${id}`),
   updateCoupon: (id, data) => api.put(`/coupons/admin/${id}`, data),
   deleteCoupon: (id) => api.delete(`/coupons/admin/${id}`),
-  getCouponStatistics: () => api.get('/coupons/admin/statistics')
 }
 export const inviteAPI = {
   generateInviteCode: (data) => api.post('/invites', data),
@@ -798,7 +770,6 @@ export const inviteAPI = {
   batchDeleteInviteRelations: (ids) => api.post('/admin/invite-relations/batch-delete', { ids })
 }
 export const userLevelAPI = {
-  getUserLevels: (activeOnly = true) => api.get('/user-levels', { params: { active_only: activeOnly } }),
   getMyLevel: () => api.get('/users/my-level'),
   getAllLevels: (activeOnly, isActive) => {
     const params = {}
@@ -806,11 +777,9 @@ export const userLevelAPI = {
     else if (activeOnly !== undefined) params.active_only = activeOnly
     return api.get('/admin/user-levels', { params })
   },
-  getLevelDetail: (id) => api.get(`/admin/user-levels/${id}`),
   createLevel: (data) => api.post('/admin/user-levels', data),
   updateLevel: (id, data) => api.put(`/admin/user-levels/${id}`, data),
-  deleteLevel: (id) => api.delete(`/admin/user-levels/${id}`),
-  upgradeUsers: (id, userIds) => api.post(`/admin/user-levels/${id}/upgrade-users`, userIds)
+  deleteLevel: (id) => api.delete(`/admin/user-levels/${id}`)
 }
 
 // 带缓存的 API 包装器
