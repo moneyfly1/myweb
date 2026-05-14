@@ -272,6 +272,19 @@ func (s *Scheduler) cleanupExpiredDataNow() {
 
 	s.db.Where("status = ? AND sent_at < ?", "sent", thirtyDaysAgo).Delete(&models.EmailQueue{})
 
+	// 清理过期审计日志，默认保留 90 天
+	auditRetentionDays := 90
+	var auditRetentionCfg models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "log_retention_days", "security").First(&auditRetentionCfg).Error; err == nil {
+		if v, err2 := strconv.Atoi(auditRetentionCfg.Value); err2 == nil && v > 0 {
+			auditRetentionDays = v
+		}
+	}
+	auditRetention := now.Add(-time.Duration(auditRetentionDays) * 24 * time.Hour)
+	if result := s.db.Where("created_at < ?", auditRetention).Delete(&models.AuditLog{}); result.RowsAffected > 0 {
+		log.Printf("过期审计日志清理完成，删除 %d 条（保留 %d 天）", result.RowsAffected, auditRetentionDays)
+	}
+
 	log.Println("过期数据清理完成")
 }
 
