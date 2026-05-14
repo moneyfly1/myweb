@@ -530,16 +530,6 @@
                   </div>
                   <el-switch v-model="securitySettings.abnormal_login_alert_enabled" />
                 </div>
-                <div class="switch-card mb-3">
-                  <span class="title">启用后台 IP 白名单</span>
-                  <el-switch v-model="securitySettings.ip_whitelist_enabled" />
-                </div>
-                <el-collapse-transition>
-                  <el-form-item label="白名单列表" v-show="securitySettings.ip_whitelist_enabled">
-                    <el-input v-model="securitySettings.ip_whitelist" type="textarea" :rows="4" placeholder="每行一个 IP 地址" />
-                    <div class="form-tip text-danger">配置错误可能导致您无法登录后台！</div>
-                  </el-form-item>
-                </el-collapse-transition>
               </el-form>
             </div>
           </div>
@@ -860,7 +850,7 @@ export default {
     const notificationSettings = reactive({ ...customerNotificationDefaults })
     const securitySettings = reactive({
       login_fail_limit: 5, login_lock_time: 30, session_timeout: 120,
-      ip_whitelist_enabled: false, ip_whitelist: '', abnormal_login_alert_enabled: true
+      abnormal_login_alert_enabled: true
     })
     const themeSettings = reactive({
       default_theme: 'light', allow_user_theme: true, available_themes: THEME_OPTIONS.map(t => t.value)

@@ -1078,8 +1078,8 @@ func CreateUser(c *gin.Context) {
 		}()
 	}
 
-	utils.CreateAuditLogSimple(c, "create_user", "user", user.ID,
-		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限: %v", user.Username, user.Email, user.IsAdmin))
+	utils.CreateAuditLog(c, "create_user", "user", user.ID,
+		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限:%v", user.Username, user.Email, user.IsAdmin), nil, map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username, "target_email": user.Email, "is_admin": user.IsAdmin, "is_active": user.IsActive, })
 
 	go func() {
 		notificationService := notification.NewNotificationService()
@@ -1614,6 +1614,11 @@ func UpdateUserStatus(c *gin.Context) {
 		return
 	}
 
+	// 保存变更前的状态
+	oldIsActive := user.IsActive
+	oldIsVerified := user.IsVerified
+	oldIsAdmin := user.IsAdmin
+
 	if req.Status != "" {
 		switch req.Status {
 		case "active":
@@ -1659,7 +1664,50 @@ func UpdateUserStatus(c *gin.Context) {
 				map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username})
 		}
 	}
-	utils.CreateAuditLogSimple(c, "update_user_status", "user", user.ID, fmt.Sprintf("管理员操作: 更新用户状态 %s (ID=%d)", user.Username, user.ID))
+
+	// 构建变更描述
+	changes := []string{}
+	if oldIsActive != user.IsActive {
+		if user.IsActive {
+			changes = append(changes, "启用账户")
+		} else {
+			changes = append(changes, "禁用账户")
+		}
+	}
+	if oldIsVerified != user.IsVerified {
+		if user.IsVerified {
+			changes = append(changes, "验证邮箱")
+		} else {
+			changes = append(changes, "取消验证")
+		}
+	}
+	if oldIsAdmin != user.IsAdmin {
+		if user.IsAdmin {
+			changes = append(changes, "设为管理员")
+		} else {
+			changes = append(changes, "取消管理员")
+		}
+	}
+	changeDesc := strings.Join(changes, "，")
+	if changeDesc == "" {
+		changeDesc = "无变更"
+	}
+
+	utils.CreateAuditLog(c, "update_user_status", "user", user.ID,
+		fmt.Sprintf("管理员更新用户 %s(ID:%d, 邮箱:%s) 状态: %s", user.Username, user.ID, user.Email, changeDesc),
+		map[string]interface{}{
+			"target_user_id":   user.ID,
+			"target_username":  user.Username,
+			"target_email":     user.Email,
+			"is_active":        oldIsActive,
+			"is_verified":      oldIsVerified,
+			"is_admin":         oldIsAdmin,
+		},
+		map[string]interface{}{
+			"is_active":   user.IsActive,
+			"is_verified": user.IsVerified,
+			"is_admin":    user.IsAdmin,
+		})
 	middleware.InvalidateAuthUserCache(user.ID)
 	utils.SuccessResponse(c, http.StatusOK, "用户状态已更新", user)
 }
@@ -1868,7 +1916,9 @@ func BatchDeleteUsers(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除操作失败", err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "batch_delete_users", "user", 0, fmt.Sprintf("管理员操作: 批量删除用户 %d 个", len(req.UserIDs)))
+	utils.CreateAuditLog(c, "batch_delete_users", "user", 0,
+			fmt.Sprintf("管理员批量删除 %d 个用户", len(req.UserIDs)),
+			map[string]interface{}{"user_ids": req.UserIDs, "count": len(req.UserIDs)}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)), nil)
 }
 
@@ -1888,6 +1938,8 @@ func BatchEnableUsers(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+	var targetUsers []models.User
+	db.Where("id IN ?", req.UserIDs).Select("id, username, email").Find(&targetUsers)
 	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", true)
 
 	if result.Error != nil {
@@ -1906,7 +1958,18 @@ func BatchEnableUsers(c *gin.Context) {
 		}
 	}(req.UserIDs)
 
-	utils.CreateAuditLogSimple(c, "batch_enable_users", "user", 0, fmt.Sprintf("管理员操作: 批量启用用户 %d 个", result.RowsAffected))
+	userDetails := make([]map[string]interface{}, 0, len(targetUsers))
+	for _, u := range targetUsers {
+		userDetails = append(userDetails, map[string]interface{}{
+			"user_id":  u.ID,
+			"username": u.Username,
+			"email":    u.Email,
+		})
+	}
+	utils.CreateAuditLog(c, "batch_enable_users", "user", 0,
+		fmt.Sprintf("管理员批量启用 %d 个用户", result.RowsAffected),
+		map[string]interface{}{"user_ids": req.UserIDs, "users": userDetails},
+		map[string]interface{}{"is_active": true, "count": result.RowsAffected})
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected), nil)
 }
 
@@ -1943,6 +2006,8 @@ func BatchDisableUsers(c *gin.Context) {
 		return
 	}
 
+	var targetUsers []models.User
+	db.Where("id IN ?", req.UserIDs).Select("id, username, email").Find(&targetUsers)
 	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", false)
 
 	if result.Error != nil {
@@ -1961,7 +2026,18 @@ func BatchDisableUsers(c *gin.Context) {
 		}
 	}(req.UserIDs)
 
-	utils.CreateAuditLogSimple(c, "batch_disable_users", "user", 0, fmt.Sprintf("管理员操作: 批量禁用用户 %d 个", result.RowsAffected))
+	userDetails := make([]map[string]interface{}, 0, len(targetUsers))
+	for _, u := range targetUsers {
+		userDetails = append(userDetails, map[string]interface{}{
+			"user_id":  u.ID,
+			"username": u.Username,
+			"email":    u.Email,
+		})
+	}
+	utils.CreateAuditLog(c, "batch_disable_users", "user", 0,
+		fmt.Sprintf("管理员批量禁用 %d 个用户", result.RowsAffected),
+		map[string]interface{}{"user_ids": req.UserIDs, "users": userDetails},
+		map[string]interface{}{"is_active": false, "count": result.RowsAffected})
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected), nil)
 }
 
@@ -1997,6 +2073,7 @@ func BatchSendSubEmail(c *gin.Context) {
 
 	successCount := 0
 	failCount := 0
+	emailTargets := make([]map[string]interface{}, 0, len(users))
 
 	for _, user := range users {
 		sub, ok := subMap[user.ID]
@@ -2009,9 +2086,20 @@ func BatchSendSubEmail(c *gin.Context) {
 			failCount++
 			continue
 		}
+		emailTargets = append(emailTargets, map[string]interface{}{
+			"user_id":  user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+		})
 		successCount++
 	}
-	utils.CreateAuditLogSimple(c, "batch_send_sub_email", "user", 0, fmt.Sprintf("管理员操作: 批量发送订阅邮件 成功 %d 失败 %d", successCount, failCount))
+	utils.CreateAuditLog(c, "batch_send_sub_email", "user", 0,
+		fmt.Sprintf("管理员批量发送订阅邮件 %d 封，成功 %d 失败 %d", len(users), successCount, failCount),
+		map[string]interface{}{
+			"user_ids": req.UserIDs,
+			"total":    len(users),
+			"targets":   emailTargets,
+		}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
 		"success_count": successCount,
 		"fail_count":    failCount,

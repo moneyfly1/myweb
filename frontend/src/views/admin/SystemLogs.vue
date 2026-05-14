@@ -480,12 +480,9 @@ export default {
           ...filterForm
         }
         const response = await adminAPI.getSystemLogs(params)
-        if (response && response.data && response.data.success) {
-          logsList.value = response.data.data.logs || []
-          pagination.total = response.data.data.total || 0
-        } else {
-          ElMessage.error((response?.data?.message || response?.message) || '加载日志失败')
-        }
+        const data = response?.data?.data ?? response?.data ?? {}
+        logsList.value = data.logs || []
+        pagination.total = data.total || 0
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.message || '加载日志失败'
         ElMessage.error(errorMsg)

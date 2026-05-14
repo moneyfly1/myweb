@@ -508,18 +508,65 @@ func GetAuditLogs(c *gin.Context) {
 	db := database.GetDB()
 
 	query := db.Model(&models.AuditLog{})
-	query = applyAuditLogFilters(query, c) // 复用过滤器逻辑
+	query = applyAuditLogFilters(query, c)
 
 	var total int64
-	query.Count(&total) // 先统计
+	query.Count(&total)
 
 	var logs []models.AuditLog
-	// 再分页查询 (预加载 User)
 	query.Preload("User").Order("audit_logs.created_at DESC").
 		Offset(p.Offset).Limit(p.PageSize).Find(&logs)
 
+	// 转换为前端友好格式：NullString → 普通字符串，包含 User 信息
+	type auditLogItem struct {
+		ID                uint   `json:"id"`
+		UserID            uint   `json:"user_id"`
+		Username          string `json:"username"`
+		Email             string `json:"email"`
+		ActionType        string `json:"action_type"`
+		ActionDescription string `json:"action_description"`
+		IPAddress         string `json:"ip_address"`
+		BeforeData        string `json:"before_data"`
+		AfterData         string `json:"after_data"`
+		ResponseStatus    int    `json:"response_status"`
+		CreatedAt         string `json:"created_at"`
+	}
+
+	items := make([]auditLogItem, 0, len(logs))
+	for _, l := range logs {
+		item := auditLogItem{
+			ID:         l.ID,
+			ActionType: l.ActionType,
+			CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
+		}
+		if l.UserID.Valid {
+			item.UserID = uint(l.UserID.Int64)
+		}
+		if l.ResponseStatus.Valid {
+			item.ResponseStatus = int(l.ResponseStatus.Int64)
+		}
+		if l.User.ID > 0 {
+			item.Username = l.User.Username
+			item.Email = l.User.Email
+		}
+		if l.ActionDescription.Valid {
+			item.ActionDescription = l.ActionDescription.String
+		}
+		if l.IPAddress.Valid {
+			item.IPAddress = l.IPAddress.String
+		}
+		if l.BeforeData.Valid {
+			item.BeforeData = l.BeforeData.String
+		}
+		if l.AfterData.Valid {
+			item.AfterData = l.AfterData.String
+		}
+
+		items = append(items, item)
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"logs":      logs,
+		"logs":      items,
 		"total":     total,
 		"page":      p.Page,
 		"page_size": p.PageSize,
@@ -537,8 +584,29 @@ func GetLoginAttempts(c *gin.Context) {
 	db.Order("created_at DESC").
 		Offset(p.Offset).Limit(p.PageSize).Find(&attempts)
 
+	type attemptItem struct {
+		ID        uint   `json:"id"`
+		Username  string `json:"username"`
+		IPAddress string `json:"ip_address"`
+		UserAgent string `json:"user_agent"`
+		Success   bool   `json:"success"`
+		CreatedAt string `json:"created_at"`
+	}
+	items := make([]attemptItem, 0, len(attempts))
+	for _, a := range attempts {
+		item := attemptItem{
+			ID:        a.ID,
+			Username:  a.Username,
+			Success:   a.Success,
+			CreatedAt: utils.FormatBeijingTime(a.CreatedAt),
+		}
+		if a.IPAddress.Valid { item.IPAddress = a.IPAddress.String }
+		if a.UserAgent.Valid { item.UserAgent = a.UserAgent.String }
+		items = append(items, item)
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"attempts":  attempts,
+		"attempts":  items,
 		"total":     total,
 		"page":      p.Page,
 		"page_size": p.PageSize,

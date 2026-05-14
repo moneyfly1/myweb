@@ -15,6 +15,7 @@ import (
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/backup_service"
 	"cboard-go/internal/services/cache_service"
@@ -95,6 +96,11 @@ func updateSettingsCommon(c *gin.Context, category string) {
 		utils.LogError(fmt.Sprintf("UpdateSettings (%s)", category), err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存设置失败", err)
 		return
+	}
+
+	// 安全设置变更后重载限流器配置
+	if category == "security" {
+		middleware.ReloadLoginRateLimiter()
 	}
 
 	// 清除系统配置缓存
@@ -261,7 +267,6 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
-			"ip_whitelist_enabled": "false", "ip_whitelist": "",
 			"abnormal_login_alert_enabled": true, // 全局异常登录告警开关，默认开启
 		},
 		"theme": {

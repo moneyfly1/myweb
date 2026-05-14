@@ -18,6 +18,7 @@ import (
 	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/geoip"
@@ -51,6 +52,8 @@ func main() {
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
+
+	middleware.ReloadLoginRateLimiter()
 
 	ensureDefaultAdmin()
 

@@ -3,19 +3,23 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
+	"cboard-go/internal/core/database"
+	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type RateLimiter struct {
-	visitors map[string]*Visitor
-	mu       sync.RWMutex
-	rate     int           // 允许的请求次数
-	window   time.Duration // 时间窗口
+	visitors     map[string]*Visitor
+	mu           sync.RWMutex
+	rate         int
+	window       time.Duration
+	lockDuration time.Duration
 }
 
 type Visitor struct {
@@ -25,11 +29,12 @@ type Visitor struct {
 	LockedAt time.Time
 }
 
-func NewRateLimiter(rate int, window time.Duration) *RateLimiter {
+func NewRateLimiter(rate int, window time.Duration, lockDuration time.Duration) *RateLimiter {
 	rl := &RateLimiter{
-		visitors: make(map[string]*Visitor),
-		rate:     rate,
-		window:   window,
+		visitors:     make(map[string]*Visitor),
+		rate:         rate,
+		window:       window,
+		lockDuration: lockDuration,
 	}
 
 	go rl.cleanup()
@@ -46,7 +51,7 @@ func (rl *RateLimiter) cleanup() {
 		now := time.Now()
 		for key, visitor := range rl.visitors {
 			if visitor.Locked {
-				if now.After(visitor.LockedAt.Add(15 * time.Minute)) {
+				if now.After(visitor.LockedAt.Add(rl.lockDuration)) {
 					delete(rl.visitors, key)
 				}
 				continue
@@ -76,13 +81,13 @@ func (rl *RateLimiter) Allow(key string) (allowed bool, resetAt time.Time, locke
 	}
 
 	if visitor.Locked {
-		if now.After(visitor.LockedAt.Add(15 * time.Minute)) {
+		if now.After(visitor.LockedAt.Add(rl.lockDuration)) {
 			visitor.Locked = false
 			visitor.Count = 0
 			visitor.ResetAt = now.Add(rl.window)
 			return true, visitor.ResetAt, false
 		}
-		return false, visitor.LockedAt.Add(15 * time.Minute), true
+		return false, visitor.LockedAt.Add(rl.lockDuration), true
 	}
 
 	if now.After(visitor.ResetAt) {
@@ -94,7 +99,7 @@ func (rl *RateLimiter) Allow(key string) (allowed bool, resetAt time.Time, locke
 	if visitor.Count >= rl.rate {
 		visitor.Locked = true
 		visitor.LockedAt = now
-		return false, visitor.LockedAt.Add(15 * time.Minute), true
+		return false, visitor.LockedAt.Add(rl.lockDuration), true
 	}
 
 	visitor.Count++
@@ -113,13 +118,13 @@ func (rl *RateLimiter) Check(key string) (allowed bool, resetAt time.Time, locke
 	}
 
 	if visitor.Locked {
-		if now.After(visitor.LockedAt.Add(15 * time.Minute)) {
+		if now.After(visitor.LockedAt.Add(rl.lockDuration)) {
 			visitor.Locked = false
 			visitor.Count = 0
 			visitor.ResetAt = now.Add(rl.window)
 			return true, visitor.ResetAt, false
 		}
-		return false, visitor.LockedAt.Add(15 * time.Minute), true
+		return false, visitor.LockedAt.Add(rl.lockDuration), true
 	}
 
 	if now.After(visitor.ResetAt) {
@@ -147,18 +152,64 @@ func (rl *RateLimiter) Reset(key string) {
 	}
 }
 
+func (rl *RateLimiter) UpdateConfig(rate int, lockDuration time.Duration) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if rate > 0 {
+		rl.rate = rate
+	}
+	if lockDuration > 0 {
+		rl.lockDuration = lockDuration
+	}
+}
+
+func (rl *RateLimiter) GetConfig() (rate int, lockDuration time.Duration) {
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+	return rl.rate, rl.lockDuration
+}
+
 var (
-	loginRateLimiter    = NewRateLimiter(5, 15*time.Minute)  // 登录：15分钟内最多5次
-	registerRateLimiter = NewRateLimiter(3, 1*time.Hour)     // 注册：1小时内最多3次
-	verifyCodeLimiter   = NewRateLimiter(5, 1*time.Hour)     // 验证码：1小时内最多5次
-	generalRateLimiter  = NewRateLimiter(100, 1*time.Minute) // 通用：1分钟内最多100次
+	loginRateLimiter    = NewRateLimiter(5, 15*time.Minute, 15*time.Minute)
+	registerRateLimiter = NewRateLimiter(3, 1*time.Hour, 1*time.Hour)
+	verifyCodeLimiter   = NewRateLimiter(5, 1*time.Hour, 1*time.Hour)
+	generalRateLimiter  = NewRateLimiter(100, 1*time.Minute, 5*time.Minute)
 )
+
+// ReloadLoginRateLimiter 从数据库读取 login_fail_limit 和 login_lock_time 并更新限流器
+func ReloadLoginRateLimiter() {
+	db := database.GetDB()
+	if db == nil {
+		return
+	}
+
+	var cfg models.SystemConfig
+	rate := 5
+	if err := db.Where("category = ? AND key = ?", "security", "login_fail_limit").First(&cfg).Error; err == nil {
+		if v, err := strconv.Atoi(cfg.Value); err == nil && v > 0 {
+			rate = v
+		}
+	}
+
+	lockMinutes := 15
+	if err := db.Where("category = ? AND key = ?", "security", "login_lock_time").First(&cfg).Error; err == nil {
+		if v, err := strconv.Atoi(cfg.Value); err == nil && v > 0 {
+			lockMinutes = v
+		}
+	}
+
+	loginRateLimiter.UpdateConfig(rate, time.Duration(lockMinutes)*time.Minute)
+
+	if utils.AppLogger != nil {
+		utils.AppLogger.Info("登录限流器配置已加载: 最大失败次数=%d, 锁定时间=%d分钟", rate, lockMinutes)
+	}
+}
 
 func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
 		if key == "" {
-			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+			key = c.ClientIP()
 		}
 
 		if userID, exists := c.Get("user_id"); exists {
@@ -191,19 +242,24 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
 		if key == "" {
-			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+			key = c.ClientIP()
 		}
 
 		allowed, resetAt, locked := loginRateLimiter.Check(key)
 
+		rate, lockDuration := loginRateLimiter.GetConfig()
+		lockMinutes := int(lockDuration.Minutes())
+		rateLimitStr := fmt.Sprintf("%d", rate)
+		lockStr := fmt.Sprintf("%d分钟", lockMinutes)
+
 		if !allowed {
 			if locked {
 				utils.CreateSecurityLog(c, "ip_blocked", "HIGH",
-					fmt.Sprintf("IP被封禁: %s (登录失败次数过多，已锁定15分钟)", key),
+					fmt.Sprintf("IP被封禁: %s (登录失败次数过多，已锁定%s)", key, lockStr),
 					map[string]interface{}{
 						"ip":        key,
 						"reason":    "登录失败次数过多",
-						"lock_time": "15分钟",
+						"lock_time": lockStr,
 						"reset_at":  utils.FormatBeijingTime(resetAt),
 					})
 			} else {
@@ -217,9 +273,10 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 			}
 
 			if locked {
-				utils.ErrorResponse(c, http.StatusTooManyRequests, "登录失败次数过多，账户已被临时锁定15分钟，请稍后再试", nil)
+				utils.ErrorResponse(c, http.StatusTooManyRequests,
+					fmt.Sprintf("登录失败次数过多，账户已被临时锁定%s，请稍后再试", lockStr), nil)
 			} else {
-				c.Header("X-RateLimit-Limit", "5")
+				c.Header("X-RateLimit-Limit", rateLimitStr)
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 				utils.ErrorResponse(c, http.StatusTooManyRequests, "登录失败次数过多，请稍后再试", nil)
@@ -228,7 +285,7 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		c.Header("X-RateLimit-Limit", "5")
+		c.Header("X-RateLimit-Limit", rateLimitStr)
 		c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 
 		c.Set("rate_limit_key", key)
@@ -253,7 +310,7 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
 		if key == "" {
-			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+			key = c.ClientIP()
 		}
 
 		allowed, resetAt, locked := registerRateLimiter.Allow(key)
@@ -288,7 +345,7 @@ func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
 		if key == "" {
-			key = c.ClientIP() // 如果获取不到，使用 Gin 的默认方法
+			key = c.ClientIP()
 		}
 
 		allowed, resetAt, locked := verifyCodeLimiter.Allow(key)
