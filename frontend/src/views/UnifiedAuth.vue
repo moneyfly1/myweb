@@ -180,6 +180,17 @@ const emailVerificationRequired = ref(true)
 const minPasswordLength = ref(8)
 const inviteCodeInfo = ref(null)
 
+// 共享密码强度校验器 (避免 registerRules / forgotRules 重复定义)
+const passwordValidator = (rule, value, callback) => {
+  if (!value) { callback(); return }
+  const hasLetter = /[A-Za-z]/.test(value)
+  const hasDigit = /\d/.test(value)
+  if (!hasLetter || !hasDigit) { callback(new Error('密码必须包含字母和数字')); return }
+  let c = (/[a-z]/.test(value) ? 1 : 0) + (/[A-Z]/.test(value) ? 1 : 0) + (/\d/.test(value) ? 1 : 0) + (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(value) ? 1 : 0)
+  if (c < 3) { callback(new Error('密码强度不足，建议包含大小写字母、数字和特殊字符')); return }
+  callback()
+}
+
 let countdownTimer = null
 
 const loginFormRef = ref()
@@ -267,43 +278,12 @@ const registerRules = computed(() => ({
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: minPasswordLength.value, max: 50, message: `密码长度至少 ${minPasswordLength.value} 位，最多 50 位`, trigger: 'blur' },
     {
-      validator: (rule, value, callback) => {
-        if (!value) {
-          callback()
-          return
-        }
-        const hasLetter = /[A-Za-z]/.test(value)
-        const hasDigit = /\d/.test(value)
-        if (!hasLetter || !hasDigit) {
-          callback(new Error('密码必须包含字母和数字'))
-          return
-        }
-        let complexityCount = 0
-        if (/[a-z]/.test(value)) complexityCount++
-        if (/[A-Z]/.test(value)) complexityCount++
-        if (/\d/.test(value)) complexityCount++
-        if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(value)) complexityCount++
-        if (complexityCount < 3) {
-          callback(new Error('密码强度不足，建议包含大小写字母、数字和特殊字符'))
-          return
-        }
-        callback()
-      },
-      trigger: 'blur'
+      validator: passwordValidator, trigger: 'blur'
     }
   ],
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
-    {
-      validator: (rule, value, callback) => {
-        if (value !== registerForm.password) {
-          callback(new Error('两次输入密码不一致'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur'
-    }
+    { validator: (rule, value, callback) => { callback(value !== registerForm.password ? new Error('两次输入密码不一致') : undefined) }, trigger: 'blur' }
   ],
   verificationCode: emailVerificationRequired.value ? [
     { required: true, message: '请输入验证码', trigger: 'blur' },
@@ -361,29 +341,7 @@ const forgotRules = computed(() => ({
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: minPasswordLength.value, max: 50, message: `密码长度至少 ${minPasswordLength.value} 位，最多 50 位`, trigger: 'blur' },
     {
-      validator: (rule, value, callback) => {
-        if (!value) {
-          callback()
-          return
-        }
-        const hasLetter = /[A-Za-z]/.test(value)
-        const hasDigit = /\d/.test(value)
-        if (!hasLetter || !hasDigit) {
-          callback(new Error('密码必须包含字母和数字'))
-          return
-        }
-        let complexityCount = 0
-        if (/[a-z]/.test(value)) complexityCount++
-        if (/[A-Z]/.test(value)) complexityCount++
-        if (/\d/.test(value)) complexityCount++
-        if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(value)) complexityCount++
-        if (complexityCount < 3) {
-          callback(new Error('密码强度不足，建议包含大小写字母、数字和特殊字符'))
-          return
-        }
-        callback()
-      },
-      trigger: 'blur'
+      validator: passwordValidator, trigger: 'blur'
     }
   ],
   confirmPassword: [

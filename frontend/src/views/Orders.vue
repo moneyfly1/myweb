@@ -1131,30 +1131,17 @@ export default {
       }
     const onImageError = async (event) => {
       if (paymentQRCode.value && paymentQRCode.value.startsWith('data:')) {
-        ElMessage.warning('二维码显示异常，正在重新生成...')
-        if (selectedOrder.value) {
+        // 使用已有的 paymentUrl 重新生成 QR 码，不重复调用支付 API
+        if (paymentUrl.value) {
           try {
-            const paymentMethodId = await resolvePaymentMethodId(
-              selectedOrder.value.payment_method_id,
-              selectedOrder.value.payment_method
-            )
-            if (!paymentMethodId) {
-              ElMessage.error('无法确定支付方式，请刷新页面后重试')
-              return
-            }
-            const response = await api.post(`/orders/${selectedOrder.value.order_no}/pay`, {
-              payment_method_id: paymentMethodId,
-              payment_method: normalizePaymentMethodValue(selectedOrder.value.payment_method)
-            })
-            const paymentUrl = response.data.data?.payment_url || response.data.data?.payment_qr_code
-            if (paymentUrl) {
-              const qrCodeDataURL = await generateQRCode(paymentUrl)
-              paymentQRCode.value = qrCodeDataURL
-              event.target.src = qrCodeDataURL
-            }
-          } catch (error) {
-            ElMessage.error('二维码生成失败，请刷新页面后重试')
+            const qrCodeDataURL = await generateQRCode(paymentUrl.value)
+            paymentQRCode.value = qrCodeDataURL
+            event.target.src = qrCodeDataURL
+          } catch {
+            ElMessage.error('二维码重新生成失败，请刷新页面后重试')
           }
+        } else {
+          ElMessage.error('二维码加载失败，请刷新页面后重试')
         }
       }
     }
