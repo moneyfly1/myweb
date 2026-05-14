@@ -511,6 +511,10 @@
                   <el-form-item label="会话超时(分钟)">
                     <el-input-number v-model="securitySettings.session_timeout" :min="10" size="small" class="input-full" />
                   </el-form-item>
+                  <el-form-item label="日志保留天数">
+                    <el-input-number v-model="securitySettings.log_retention_days" :min="7" :max="365" size="small" class="input-full" />
+                    <div class="form-tip">超过天数的审计日志将在每日清理任务中自动删除</div>
+                  </el-form-item>
                 </div>
                 <div class="mt-3">
                   <el-button type="primary" @click="saveSecuritySettings" :class="{ 'full-width': isMobile }">保存安全设置</el-button>
@@ -850,7 +854,7 @@ export default {
     const notificationSettings = reactive({ ...customerNotificationDefaults })
     const securitySettings = reactive({
       login_fail_limit: 5, login_lock_time: 30, session_timeout: 120,
-      abnormal_login_alert_enabled: true
+      log_retention_days: 90, abnormal_login_alert_enabled: true
     })
     const themeSettings = reactive({
       default_theme: 'light', allow_user_theme: true, available_themes: THEME_OPTIONS.map(t => t.value)
