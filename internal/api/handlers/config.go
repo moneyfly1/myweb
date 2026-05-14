@@ -267,6 +267,7 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
+			"log_retention_days": 90,
 			"abnormal_login_alert_enabled": true, // 全局异常登录告警开关，默认开启
 		},
 		"theme": {

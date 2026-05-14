@@ -133,33 +133,54 @@ const ACTION_TYPE_MAP = {
 }
 
 function getTargetUser(row) {
-  // 从 before_data 提取目标用户
-  if (row.before_data) {
+  // 1. 从 before_data JSON 提取
+  const fromData = (data) => {
+    if (!data) return null
     try {
-      const obj = JSON.parse(row.before_data)
+      const obj = JSON.parse(data)
       if (obj.target_username || obj.target_email) {
-        const name = obj.target_username || ''
-        const mail = obj.target_email || ''
-        return mail ? (name ? `${name} (${mail})` : mail) : name
+        return { name: obj.target_username || '', mail: obj.target_email || '' }
       }
     } catch {}
+    return null
   }
-  // 从 after_data 提取
-  if (row.after_data) {
-    try {
-      const obj = JSON.parse(row.after_data)
-      if (obj.target_username || obj.target_email) {
-        const name = obj.target_username || ''
-        const mail = obj.target_email || ''
-        return mail ? (name ? `${name} (${mail})` : mail) : name
-      }
-    } catch {}
+  let info = fromData(row.before_data) || fromData(row.after_data)
+  if (info && (info.name || info.mail)) {
+    return info.mail ? (info.name ? `${info.name} (${info.mail})` : info.mail) : info.name
   }
-  // 回退: 从描述中提取用户名
+
+  // 2. 从 action_description 提取
   const desc = row.action_description || ''
-  const m = desc.match(/用户\s*(\S+)\s*\(/)
+  // 模式: "管理员更新 张三(zhang@test.com) 订阅"
+  let m = desc.match(/(?:管理员)?更新\s+(\S+?)\((\S+?)\)/)
+  if (m) return m[2].includes('@') ? `${m[1]} (${m[2]})` : `${m[1]} (${m[2]})`
+  // 模式: "管理员向用户 张三(ID:1, 邮箱:test@test.com)"
+  m = desc.match(/向用户\s+(\S+?)\s*\(ID[^)]*邮箱[:：]\s*(\S+?)\s*\)/)
+  if (m) return `${m[1]} (${m[2]})`
+  // 模式: "管理员延长用户 张三(ID:1, 邮箱:test@test.com)"
+  m = desc.match(/延长用户\s+(\S+?)\s*\(ID[^)]*邮箱[:：]\s*(\S+?)\s*\)/)
+  if (m) return `${m[1]} (${m[2]})`
+  // 模式: "管理员禁用用户: 张三 (ID: 1)"
+  m = desc.match(/(?:启用|禁用)用户[:：]\s*(\S+)\s*\(/)
   if (m) return m[1]
-  return ''
+  // 模式: "管理员创建用户: testuser(test@test.com)"
+  m = desc.match(/(?:创建|删除)用户[:：]\s*(\S+?)\((\S+?@\S+?)\)/)
+  if (m) return `${m[1]} (${m[2]})`
+  // 模式: "管理员更新用户(ID:1)订阅: XXX" (仅 ID)
+  m = desc.match(/管理员更新用户\(ID:(\d+)\)/)
+  if (m) return `ID:${m[1]}`
+  // 模式: "管理员重置用户(ID:xx)全部 N 个订阅"
+  m = desc.match(/管理员重置用户\(ID:(\S+?)\)/)
+  if (m) return `ID:${m[1]}`
+  // 模式: "管理员清理用户(ID:xx)全部设备"
+  m = desc.match(/管理员清理用户\(ID:(\S+?)\)/)
+  if (m) return `ID:${m[1]}`
+  // 模式: "管理员延长用户(ID:1, 邮箱:test@test.com) ..." (紧凑格式)
+  m = desc.match(/用户\s*\(ID[:：]\s*(\d+)[,，\s]*邮箱[:：]\s*(\S+?)\)/)
+  if (m) return `ID:${m[1]} (${m[2]})`
+  // 批量操作不显示单个用户
+  if (desc.includes('批量')) return '批量操作'
+  return row.username || row.email || ''
 }
 
 const FIELD_LABEL_MAP = {
