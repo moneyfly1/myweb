@@ -75,6 +75,11 @@
             v-show="!sidebarCollapsed || isMobile"
             :class="{ collapsible: section.collapsible, collapsed: collapsedSections[section.title] }"
             @click="section.collapsible && toggleSection(section.title)"
+            @keydown.enter.prevent="section.collapsible && toggleSection(section.title)"
+            @keydown.space.prevent="section.collapsible && toggleSection(section.title)"
+            :tabindex="section.collapsible ? 0 : -1"
+            role="button"
+            :aria-expanded="!collapsedSections[section.title]"
           >
             <span>{{ section.title }}</span>
             <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
@@ -114,6 +119,11 @@
                   class="section-title"
                   :class="{ collapsible: section.collapsible, collapsed: collapsedSections[section.title] }"
                   @click="section.collapsible && toggleSection(section.title)"
+                  @keydown.enter.prevent="section.collapsible && toggleSection(section.title)"
+                  @keydown.space.prevent="section.collapsible && toggleSection(section.title)"
+                  :tabindex="section.collapsible ? 0 : -1"
+                  role="button"
+                  :aria-expanded="!collapsedSections[section.title]"
                 >
                   <span>{{ section.title }}</span>
                   <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
