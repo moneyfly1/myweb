@@ -2651,14 +2651,14 @@ export default {
   }
 }
 :deep(.el-input__wrapper) {
-  border-radius: 0 !important;
+  
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
 :deep(.el-input__inner) {
-  border-radius: 0 !important;
+  
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
@@ -2682,7 +2682,7 @@ export default {
   background: transparent !important;
 }
 :deep(.el-textarea__inner) {
-  border-radius: 0 !important;
+  
   border: 1px solid #dcdfe6 !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
