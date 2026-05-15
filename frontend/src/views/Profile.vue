@@ -5,7 +5,7 @@
       <p>管理您的账户信息</p>
     </div>
     <div class="profile-content">
-      <el-card class="profile-card">
+      <el-card class="profile-card" v-loading="pageLoading">
         <template #header>
           <div class="card-header">
             <i class="el-icon-user"></i>
