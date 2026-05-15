@@ -95,92 +95,6 @@
           </el-form-item>
         </el-form>
       </el-card>
-      <el-card class="password-card">
-        <template #header>
-          <div class="card-header">
-            <i class="el-icon-lock"></i>
-            修改密码
-          </div>
-        </template>
-        <el-form
-          ref="passwordFormRef"
-          :model="passwordForm"
-          :rules="passwordRules"
-          :label-width="isMobile ? '0' : '120px'"
-          class="password-form"
-        >
-          <el-form-item prop="oldPassword" :label="!isMobile ? '当前密码' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>当前密码</span>
-              </div>
-            </template>
-            <el-input 
-              v-model="passwordForm.oldPassword" 
-              type="password"
-              placeholder="请输入当前密码"
-              show-password
-              clearable
-              autocomplete="current-password"
-              class="password-input"
-            >
-              <template #prepend>
-                <i class="el-icon-lock"></i>
-              </template>
-            </el-input>
-          </el-form-item>
-          <el-form-item prop="newPassword" :label="!isMobile ? '新密码' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>新密码</span>
-              </div>
-            </template>
-            <el-input 
-              v-model="passwordForm.newPassword" 
-              type="password"
-              placeholder="请输入新密码"
-              show-password
-              clearable
-              autocomplete="new-password"
-              class="password-input"
-            >
-              <template #prepend>
-                <i class="el-icon-lock"></i>
-              </template>
-            </el-input>
-            <div class="form-tip">密码长度不能少于6位</div>
-          </el-form-item>
-          <el-form-item prop="confirmPassword" :label="!isMobile ? '确认密码' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>确认密码</span>
-              </div>
-            </template>
-            <el-input 
-              v-model="passwordForm.confirmPassword" 
-              type="password"
-              placeholder="请再次输入新密码"
-              show-password
-              clearable
-              autocomplete="new-password"
-              class="password-input"
-            >
-              <template #prepend>
-                <i class="el-icon-lock"></i>
-              </template>
-            </el-input>
-          </el-form-item>
-          <el-form-item>
-            <el-button 
-              type="primary" 
-              @click="changePassword"
-              :loading="passwordLoading"
-            >
-              修改密码
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
       <el-card class="security-card">
         <template #header>
           <div class="card-header">
@@ -1116,21 +1030,21 @@ export default {
   }
 }
 :deep(.el-input__wrapper) {
-  border-radius: 0 !important;
+  
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
 :deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
+  
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
 :deep(.el-input__inner) {
-  border-radius: 0 !important;
+  
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
@@ -1184,7 +1098,7 @@ export default {
 }
 :deep(.el-input-group__prepend),
 :deep(.el-input-group__append) {
-  border-radius: 0 !important;
+  
   border: none !important;
   background-color: #f5f7fa !important;
   pointer-events: none !important;

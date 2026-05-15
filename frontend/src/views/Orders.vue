@@ -255,7 +255,7 @@
                   取消充值
                 </el-button>
               </div>
-              <span v-else style="color: #909399; font-size: 12px;">-</span>
+              <span v-else style="color: var(--el-text-color-secondary, #6b7280); font-size: 12px;">-</span>
             </template>
           </el-table-column>
         </el-table>
@@ -1728,7 +1728,7 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #909399;
+  color: var(--el-text-color-secondary, #6b7280);
 }
 .qr-loading .el-icon {
   font-size: 24px;
