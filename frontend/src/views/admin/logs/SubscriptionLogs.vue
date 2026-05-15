@@ -52,7 +52,6 @@
       <el-table-column label="用户" width="120">
         <template #default="{ row }">
           <span>{{ row.username || '-' }}</span>
-          <div class="sub-text">ID: {{ row.user_id }}</div>
         </template>
       </el-table-column>
       <el-table-column prop="action_type" label="操作类型" width="100">

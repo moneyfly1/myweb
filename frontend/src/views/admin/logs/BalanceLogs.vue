@@ -50,11 +50,11 @@
       </el-table-column>
       <el-table-column prop="amount" label="金额" width="100">
         <template #default="{ row }">
-          <span :class="row.amount >= 0 ? 'text-green' : 'text-red'">{{ row.amount >= 0 ? '+' : '' }}{{ row.amount }}</span>
+          <span :class="row.amount >= 0 ? 'text-green' : 'text-red'">{{ row.amount >= 0 ? '+' : '' }}{{ (row.amount || 0).toFixed(2) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="余额变化" width="140">
-        <template #default="{ row }">{{ row.balance_before }} → {{ row.balance_after }}</template>
+        <template #default="{ row }">{{ (row.balance_before || 0).toFixed(2) }} → {{ (row.balance_after || 0).toFixed(2) }}</template>
       </el-table-column>
       <el-table-column prop="order_no" label="关联订单" width="140" />
       <el-table-column prop="description" label="说明" min-width="160" show-overflow-tooltip />
@@ -67,8 +67,8 @@
           <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value"><el-tag :type="getChangeTypeColor(row.change_type)" size="small">{{ getChangeTypeText(row.change_type) }}</el-tag></span></div>
-          <div class="mobile-card-row"><span class="mobile-label">金额</span><span class="mobile-value" :class="row.amount >= 0 ? 'text-green' : 'text-red'">{{ row.amount >= 0 ? '+' : '' }}{{ row.amount }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">余额</span><span class="mobile-value">{{ row.balance_before }} → {{ row.balance_after }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">金额</span><span class="mobile-value" :class="row.amount >= 0 ? 'text-green' : 'text-red'">{{ row.amount >= 0 ? '+' : '' }}{{ (row.amount || 0).toFixed(2) }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">余额</span><span class="mobile-value">{{ (row.balance_before || 0).toFixed(2) }} → {{ (row.balance_after || 0).toFixed(2) }}</span></div>
           <div class="mobile-card-row" v-if="row.description"><span class="mobile-label">说明</span><span class="mobile-value mobile-value-wrap">{{ row.description }}</span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />

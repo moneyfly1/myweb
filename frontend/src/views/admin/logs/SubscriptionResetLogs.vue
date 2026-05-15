@@ -58,14 +58,17 @@
           <el-tag :type="getResetTypeColor(row.reset_type)" size="small">{{ getResetTypeText(row.reset_type) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="reason" label="原因" min-width="150" show-overflow-tooltip />
+      <el-table-column label="URL变化" min-width="180" show-overflow-tooltip>
+        <template #default="{ row }">
+          <div class="reset-url">{{ (row.old_subscription_url || '').substring(0, 40) }}...</div>
+          <div style="text-align:center; color:#409EFF;">↓</div>
+          <div class="reset-url">{{ (row.new_subscription_url || '').substring(0, 40) }}...</div>
+        </template>
+      </el-table-column>
       <el-table-column label="设备数" width="100">
         <template #default="{ row }">
           {{ row.device_count_before ?? 0 }} → {{ row.device_count_after ?? 0 }}
         </template>
-      </el-table-column>
-      <el-table-column prop="reset_by" label="操作方" width="90">
-        <template #default="{ row }">{{ getResetByText(row.reset_by) }}</template>
       </el-table-column>
     </el-table>
     </div>
@@ -76,8 +79,7 @@
           <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value"><el-tag :type="getResetTypeColor(row.reset_type)" size="small">{{ getResetTypeText(row.reset_type) }}</el-tag></span></div>
           <div class="mobile-card-row"><span class="mobile-label">设备数</span><span class="mobile-value">{{ row.device_count_before ?? 0 }} → {{ row.device_count_after ?? 0 }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">操作方</span><span class="mobile-value">{{ getResetByText(row.reset_by) }}</span></div>
-          <div class="mobile-card-row" v-if="row.reason"><span class="mobile-label">原因</span><span class="mobile-value mobile-value-wrap">{{ row.reason }}</span></div>
+          <div class="mobile-card-row" v-if="row.old_subscription_url || row.new_subscription_url"><span class="mobile-label">URL变化</span><span class="mobile-value mobile-value-wrap">{{ (row.old_subscription_url || '').substring(0, 30) }} → {{ (row.new_subscription_url || '').substring(0, 30) }}</span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
       </div>
