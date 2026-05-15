@@ -1508,11 +1508,11 @@ onUnmounted(() => {
   margin-bottom: 30px;
 }
 .stat-card {
-  background: white;
+  background: var(--color-bg-card, #fff);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border, #e5e7eb);
   display: flex;
   align-items: center;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -1572,7 +1572,7 @@ onUnmounted(() => {
     }
     .level-expiry {
       font-size: 0.95rem;
-      color: #6b7280;
+      color: var(--color-text-secondary, #6b7280);
       margin: 0 0 16px 0;
       display: flex;
       align-items: center;
@@ -1659,7 +1659,7 @@ onUnmounted(() => {
       }
       .progress-tip {
         font-size: 11px;
-        color: #909399;
+        color: var(--color-text-secondary, #909399);
         margin: 0;
         padding: 6px 8px;
         background: #f5f7fa;
@@ -1725,11 +1725,11 @@ onUnmounted(() => {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0 0 4px 0;
-  color: #1f2937;
+  color: var(--color-text, #1f2937);
 }
 .stat-subtitle {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary, #6b7280);
   margin: 0;
   margin-top: 4px;
 }
@@ -1744,18 +1744,18 @@ onUnmounted(() => {
   .device-count {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #1f2937;
+    color: var(--color-text, #1f2937);
     transition: color 0.3s ease;
   }
   .device-separator {
     font-size: 1.2rem;
-    color: #9ca3af;
+    color: var(--color-text-secondary, #9ca3af);
     margin: 0 2px;
   }
   .device-limit {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #6b7280;
+    color: var(--color-text-secondary, #6b7280);
   }
   .device-overlimit-count {
     color: #ef4444 !important;
@@ -1925,19 +1925,19 @@ onUnmounted(() => {
   .time-number {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #1f2937;
+    color: var(--color-text, #1f2937);
     line-height: 1.3;
     margin: 0;
   }
   .time-unit {
     font-size: 1rem;
     font-weight: 600;
-    color: #6b7280;
+    color: var(--color-text-secondary, #6b7280);
   }
   .remaining-time-card .stat-subtitle {
     margin: 0;
     font-size: 0.875rem;
-    color: #6b7280;
+    color: var(--color-text-secondary, #6b7280);
     line-height: 1.4;
     word-break: break-word;
   }
@@ -2042,7 +2042,7 @@ onUnmounted(() => {
       margin-top: 8px;
       line-height: 1.4;
       word-break: break-word;
-      color: #6b7280;
+      color: var(--color-text-secondary, #6b7280);
       text-align: center;
     }
     .renew-btn {
@@ -2140,7 +2140,7 @@ onUnmounted(() => {
   .amount-tips {
     margin-top: 12px;
     font-size: 12px;
-    color: #909399;
+    color: var(--color-text-secondary, #909399);
     @media (max-width: 768px) {
       margin-top: 12px;
       font-size: 12px;
@@ -2219,7 +2219,7 @@ onUnmounted(() => {
         border: 1px solid #dcdfe6;
         border-radius: 8px;
         padding: 10px;
-        background: white;
+        background: var(--color-bg-card, #fff);
         box-sizing: border-box;
         @media (max-width: 768px) {
           max-width: 220px;
@@ -2234,7 +2234,7 @@ onUnmounted(() => {
       }
     }
     .qr-tip {
-      color: #909399;
+      color: var(--color-text-secondary, #909399);
       font-size: 12px;
       margin-top: 12px;
       line-height: 1.5;
@@ -2301,10 +2301,10 @@ onUnmounted(() => {
   gap: 30px;
 }
 .card {
-  background: white;
+  background: var(--color-bg-card, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border, #e5e7eb);
   margin-bottom: 20px;
 }
 .card-header {
@@ -2314,7 +2314,7 @@ onUnmounted(() => {
   font-size: 1.25rem;
   font-weight: 600;
   margin: 0;
-  color: #1f2937;
+  color: var(--color-text, #1f2937);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2333,7 +2333,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2354,7 +2354,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 8px;
   margin-bottom: 12px;
 }
@@ -2367,11 +2367,11 @@ onUnmounted(() => {
   font-size: 1rem;
   font-weight: 600;
   margin: 0 0 4px 0;
-  color: #1f2937;
+  color: var(--color-text, #1f2937);
 }
 .app-version {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary, #6b7280);
   margin: 0;
 }
 .app-actions {
@@ -2499,9 +2499,9 @@ onUnmounted(() => {
   gap: 3px !important;
   flex-shrink: 0;
   border-radius: 4px;
-  background-color: #ffffff !important;
+  background-color: var(--color-bg-card, #fff) !important;
   border: 1px solid #dcdfe6 !important;
-  color: #000000 !important;
+  color: var(--color-text, #000) !important;
   transition: all 0.2s ease;
   font-size: 11px !important;
   white-space: nowrap;
@@ -2510,19 +2510,19 @@ onUnmounted(() => {
   &:hover {
     background-color: #f5f7fa !important;
     border-color: #c0c4cc !important;
-    color: #000000 !important;
+    color: var(--color-text, #000) !important;
   }
   &:active {
     background-color: #ebedf0 !important;
   }
   :is(i) {
     font-size: 11px !important;
-    color: #000000 !important;
+    color: var(--color-text, #000) !important;
     flex-shrink: 0;
   }
   :is(span) {
     font-size: 11px !important;
-    color: #000000 !important;
+    color: var(--color-text, #000) !important;
     font-weight: 400;
     line-height: 1;
     flex-shrink: 0;
@@ -2547,7 +2547,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
+  background: var(--color-bg-card, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -2653,7 +2653,7 @@ onUnmounted(() => {
 }
 .qr-tip {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary, #6b7280);
   margin: 12px 0 0 0;
 }
 .device-list {
@@ -2666,7 +2666,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 8px;
   margin-bottom: 12px;
 }
@@ -2690,17 +2690,17 @@ onUnmounted(() => {
   font-size: 1rem;
   font-weight: 600;
   margin: 0 0 4px 0;
-  color: #1f2937;
+  color: var(--color-text, #1f2937);
 }
 .device-os, .device-ip {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary, #6b7280);
   margin: 0;
 }
 .no-devices {
   text-align: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--color-text-secondary, #9ca3af);
 }
 .no-devices :is(i) {
   font-size: 3rem;
@@ -2742,12 +2742,14 @@ onUnmounted(() => {
       grid-template-columns: 1fr;
       gap: 12px;
     }
-    &.level-card::before,
-    &.max-level-tip::before,
-    .level-icon::before {
-      animation: none !important;
-      display: none;
-    }
+  }
+  .level-card::before,
+  .max-level-tip::before,
+  .level-icon::before {
+    animation: none !important;
+    display: none;
+  }
+  .stats-grid {
     .stat-card {
       padding: 16px;
       display: flex;
@@ -2779,7 +2781,7 @@ onUnmounted(() => {
           line-height: 1.4;
           word-break: break-word;
           margin: 0;
-          color: #6b7280;
+          color: var(--color-text-secondary, #6b7280);
         }
       }
     }

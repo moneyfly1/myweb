@@ -690,11 +690,11 @@ export default {
 .stat-number {
   font-size: 2em;
   font-weight: bold;
-  color: #409EFF;
+  color: var(--el-color-primary, #409EFF);
 }
 .stat-label {
   margin-top: 10px;
-  color: #666;
+  color: var(--el-text-color-regular, #666);
 }
 @media (max-width: 768px) {
   .admin-dashboard {
@@ -855,7 +855,7 @@ export default {
 }
 .card-title {
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   font-size: 16px;
 }
 .item-count {
@@ -864,7 +864,7 @@ export default {
 .view-all-btn {
   padding: 4px 8px;
   font-size: 12px;
-  color: #409eff;
+  color: var(--el-color-primary, #409EFF);
 }
 .view-all-btn:hover {
   color: #66b1ff;
@@ -882,7 +882,7 @@ export default {
   overflow-y: auto;
 }
 .user-avatar {
-  background-color: #409eff;
+  background-color: var(--el-color-primary, #409EFF);
   color: white;
   font-size: 12px;
   font-weight: 600;
@@ -892,12 +892,12 @@ export default {
 }
 .user-name {
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   font-size: 14px;
   line-height: 1.2;
 }
 .user-email {
-  color: #909399;
+  color: var(--el-text-color-secondary, #909399);
   font-size: 12px;
   line-height: 1.2;
   margin-top: 2px;
@@ -925,7 +925,7 @@ export default {
 }
 .order-no {
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   font-size: 14px;
   line-height: 1.2;
 }
@@ -959,12 +959,12 @@ export default {
 }
 .abnormal-user {
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   font-size: 14px;
   line-height: 1.2;
 }
 .abnormal-email {
-  color: #909399;
+  color: var(--el-text-color-secondary, #909399);
   font-size: 12px;
   line-height: 1.2;
   margin-top: 2px;
@@ -974,7 +974,7 @@ export default {
   cursor: pointer;
 }
 .table-container .el-table__row:hover {
-  background-color: #f0f9ff;
+  background-color: var(--el-color-primary-light-9, #f0f9ff);
 }
 .clickable-row {
   cursor: pointer;
@@ -1001,19 +1001,19 @@ export default {
   background: #a8a8a8;
 }
 :deep(.el-input__wrapper) {
-  border-radius: 0 !important;
+  
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
 :deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
+  
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
 :deep(.el-input__inner) {
-  border-radius: 0 !important;
+  
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
@@ -1061,7 +1061,7 @@ export default {
   font-size: 14px;
 }
 .expiring-item-card {
-  background: #f8f9fa;
+  background: var(--el-fill-color-light, #f8f9fa);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
@@ -1082,14 +1082,14 @@ export default {
 }
 .expiring-username {
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   font-size: 15px;
   line-height: 1.4;
   margin-bottom: 4px;
   word-break: break-all;
 }
 .expiring-email {
-  color: #909399;
+  color: var(--el-text-color-secondary, #909399);
   font-size: 13px;
   line-height: 1.4;
   word-break: break-all;
@@ -1114,12 +1114,12 @@ export default {
   margin-bottom: 0;
 }
 .expiring-label {
-  color: #909399;
+  color: var(--el-text-color-secondary, #909399);
   min-width: 70px;
   flex-shrink: 0;
 }
 .expiring-value {
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   flex: 1;
   word-break: break-all;
 }
