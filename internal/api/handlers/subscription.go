@@ -1679,6 +1679,23 @@ func GetSubscriptionConfig(c *gin.Context) {
 		}(c.Request.Context(), subscription.ID)
 	}
 
+	// 记录订阅访问日志（含设备信息）
+	go func(ctx context.Context, subID, userID uint, ua, ip, subType string) {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		dm := device.NewDeviceManager()
+		devInfo := dm.ParseUserAgent(ua)
+		logData := map[string]interface{}{
+			"type":           subType,
+			"software_name":  devInfo.SoftwareName,
+			"software_ver":   devInfo.SoftwareVersion,
+			"os_name":        devInfo.OSName,
+			"device_name":    devInfo.DeviceName,
+		}
+		_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
+			fmt.Sprintf("[%s] %s %s", subType, devInfo.SoftwareName, devInfo.DeviceName))
+	}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP, "clash")
+
 	// 生成 Clash 配置
 	configService := config_update.NewConfigUpdateService()
 	config, err := configService.GenerateClashConfig(clashURL, clientIP, userAgent)
@@ -1886,6 +1903,16 @@ func GetUniversalSubscription(c *gin.Context) {
 				db.Model(&models.Subscription{}).Where("id = ?", subID).
 					Update("universal_count", gorm.Expr("universal_count + ?", 1))
 			}(sub.ID)
+			// 记录 Universal 订阅访问日志
+			go func(ctx context.Context, subID, userID uint, ua, ip string) {
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+				dm := device.NewDeviceManager()
+				devInfo := dm.ParseUserAgent(ua)
+				logData := map[string]interface{}{"type": "universal", "software_name": devInfo.SoftwareName, "software_ver": devInfo.SoftwareVersion, "os_name": devInfo.OSName, "device_name": devInfo.DeviceName}
+				_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
+					fmt.Sprintf("[universal] %s %s", devInfo.SoftwareName, devInfo.DeviceName))
+			}(c.Request.Context(), sub.ID, sub.UserID, deviceUA, deviceIP)
 		}
 
 		// 正常生成配置

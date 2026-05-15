@@ -59,11 +59,14 @@
           <el-tag :type="getActionTypeColor(row.action_type)" size="small">{{ getActionTypeText(row.action_type) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="订阅方式" width="130">
+      <el-table-column label="订阅方式" width="100">
         <template #default="{ row }">
-          <el-tag v-if="parseSubType(row.description)" size="small" type="info">{{ parseSubType(row.description) }}</el-tag>
+          <el-tag v-if="getSubType(row)" size="small" :type="getSubType(row) === 'Clash订阅' ? '' : 'success'">{{ getSubType(row) }}</el-tag>
           <span v-else>-</span>
         </template>
+      </el-table-column>
+      <el-table-column label="软件/设备" width="150" show-overflow-tooltip>
+        <template #default="{ row }">{{ getDeviceInfo(row) }}</template>
       </el-table-column>
       <el-table-column label="操作人" width="120">
         <template #default="{ row }">
@@ -71,7 +74,7 @@
         </template>
       </el-table-column>
       <el-table-column label="说明" min-width="180" show-overflow-tooltip>
-        <template #default="{ row }">{{ parseDescText(row.description) }}</template>
+        <template #default="{ row }">{{ row.description || '-' }}</template>
       </el-table-column>
       <el-table-column prop="ip_address" label="IP/地区" width="160" show-overflow-tooltip />
     </el-table>
@@ -82,9 +85,10 @@
           <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">操作</span><span class="mobile-value"><el-tag :type="getActionTypeColor(row.action_type)" size="small">{{ getActionTypeText(row.action_type) }}</el-tag></span></div>
-          <div class="mobile-card-row" v-if="parseSubType(row.description)"><span class="mobile-label">订阅方式</span><span class="mobile-value">{{ parseSubType(row.description) }}</span></div>
+          <div class="mobile-card-row" v-if="getSubType(row)"><span class="mobile-label">订阅方式</span><span class="mobile-value">{{ getSubType(row) }}</span></div>
+          <div class="mobile-card-row" v-if="getDeviceInfo(row)"><span class="mobile-label">软件/设备</span><span class="mobile-value">{{ getDeviceInfo(row) }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">操作人</span><span class="mobile-value">{{ formatOperator(row) }}</span></div>
-          <div class="mobile-card-row" v-if="parseDescText(row.description)"><span class="mobile-label">说明</span><span class="mobile-value mobile-value-wrap">{{ parseDescText(row.description) }}</span></div>
+          <div class="mobile-card-row" v-if="row.description"><span class="mobile-label">说明</span><span class="mobile-value mobile-value-wrap">{{ row.description || '-' }}</span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
       </div>
@@ -113,13 +117,13 @@ const pageSize = ref(20)
 
 const ACTION_TYPE_MAP = {
   create: '创建', update: '更新', delete: '删除',
-  activate: '激活', deactivate: '停用', reset: '重置'
+  activate: '激活', deactivate: '停用', reset: '重置', access: '订阅访问'
 }
 const ACTION_BY_MAP = { user: '用户', admin: '管理员', system: '系统' }
 
 const getActionTypeText = (type) => ACTION_TYPE_MAP[type] || type || '-'
 const getActionTypeColor = (type) => {
-  const map = { create: 'success', update: '', delete: 'danger', activate: 'success', deactivate: 'warning', reset: 'info' }
+  const map = { create: 'success', update: '', delete: 'danger', activate: 'success', deactivate: 'warning', reset: 'info', access: '' }
   return map[type] || 'info'
 }
 
@@ -130,15 +134,34 @@ function formatOperator(row) {
   return by || user || '-'
 }
 
-function parseSubType(desc) {
-  if (!desc) return ''
-  const match = desc.match(/\[(.+?)\]\s*$/)
-  return match ? match[1] : ''
+// 从 after_data 或描述中提取订阅类型
+function getSubType(row) {
+  const d = row.description || ''
+  const m = d.match(/^\[(.+?)\]/)
+  if (m) return m[1] === 'clash' ? 'Clash订阅' : m[1] === 'universal' ? '通用订阅' : m[1]
+  // 回退到 before/after data
+  try {
+    const ad = JSON.parse(row.before_data || '{}')
+    if (ad.type) return ad.type === 'clash' ? 'Clash订阅' : ad.type === 'universal' ? '通用订阅' : ad.type
+  } catch {}
+  return ''
 }
 
-function parseDescText(desc) {
-  if (!desc) return '-'
-  return desc.replace(/\s*\[.+?\]\s*$/, '') || '-'
+// 从 after_data 或描述中提取设备信息
+function getDeviceInfo(row) {
+  const d = row.description || ''
+  // 格式: "[clash] Shadowrocket iPhone 15" → 提取软件名+设备名
+  const clean = d.replace(/^\[.+?\]\s*/, '')
+  if (clean && clean !== '-' && clean !== d) return clean
+  // 回退到 after_data
+  try {
+    const ad = JSON.parse(row.after_data || row.before_data || '{}')
+    const parts = []
+    if (ad.software_name && ad.software_name !== 'Unknown') parts.push(ad.software_name)
+    if (ad.device_name && ad.device_name !== 'Unknown Device') parts.push(ad.device_name)
+    return parts.join(' ') || '-'
+  } catch {}
+  return clean || '-'
 }
 
 const filter = ref({
