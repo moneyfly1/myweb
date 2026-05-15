@@ -99,11 +99,10 @@ func JoinWithinBaseDir(baseDir string, elems ...string) (string, bool) {
 }
 
 // EscapeLikePattern 转义LIKE查询中的特殊字符，防止注入
+// 注意: 只转义 % 和 \，不转义 _ 因为 _ 匹配单字符对搜索无害，且 SQL 未使用 ESCAPE 子句
 func EscapeLikePattern(pattern string) string {
-	// 转义LIKE模式中的特殊字符: %, _, \
 	pattern = strings.ReplaceAll(pattern, "\\", "\\\\")
 	pattern = strings.ReplaceAll(pattern, "%", "\\%")
-	pattern = strings.ReplaceAll(pattern, "_", "\\_")
 	return pattern
 }
 
