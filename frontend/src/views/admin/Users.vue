@@ -1640,7 +1640,7 @@ export default {
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
-  color: #999;
+  color: var(--el-text-color-placeholder, #999);
   :is(i) {
     font-size: 3rem;
     margin-bottom: 1rem;
@@ -1689,7 +1689,7 @@ export default {
 }
 .user-name-mobile {
   font-size: 12px;
-  color: #999;
+  color: var(--el-text-color-placeholder, #999);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1705,7 +1705,7 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light, #f5f7fa);
   border-radius: 6px;
   transition: all 0.3s;
   &.device-overlimit-alert {
@@ -1815,7 +1815,7 @@ export default {
   .mobile-card-list {
     margin-top: 10px;
     .mobile-card {
-      background: #fff;
+      background: var(--el-bg-color, #fff);
       border-radius: 8px;
       padding: 10px 12px;
       margin-bottom: 8px;
@@ -1834,14 +1834,14 @@ export default {
         }
         .label {
           flex: 0 0 72px;
-          color: #999;
+          color: var(--el-text-color-placeholder, #999);
           font-size: 12px;
           flex-shrink: 0;
         }
         .value {
           flex: 1;
           min-width: 0;
-          color: #333;
+          color: var(--el-text-color-primary, #333);
           word-break: break-all;
           overflow-wrap: break-word;
         }
@@ -1882,11 +1882,11 @@ export default {
   }
 }
 :deep(.notes-column) {
-  background-color: #fafafa !important;
+  background-color: var(--el-fill-color-lighter, #fafafa) !important;
 }
 :deep(.notes-column .cell) {
   padding: 8px !important;
-  background-color: #fafafa !important;
+  background-color: var(--el-fill-color-lighter, #fafafa) !important;
 }
 .notes-input-wrapper {
   position: relative;
@@ -2036,7 +2036,7 @@ export default {
     .url-code {
       font-size: 12px;
       font-family: monospace;
-      background: #f5f7fa;
+      background: var(--el-fill-color-light, #f5f7fa);
       padding: 8px 12px;
       border-radius: 4px;
       border: 1px solid #e4e7ed;
@@ -2156,7 +2156,7 @@ export default {
 
     &.empty {
       color: #909399;
-      background: #f5f7fa;
+      background: var(--el-fill-color-light, #f5f7fa);
     }
   }
 }
