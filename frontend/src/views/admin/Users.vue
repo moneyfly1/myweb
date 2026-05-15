@@ -29,9 +29,9 @@
             </el-button>
           </div>
         </div>
-        <div class="mobile-filter-buttons">
+        <div class="mobile-filter-buttons" style="display: flex; gap: 8px; align-items: center;">
           <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start">
-            <el-button size="small" :type="searchForm.status ? 'primary' : 'default'" plain>
+            <el-button size="small" :type="searchForm.status ? 'primary' : 'default'" plain style="flex: 1;">
               <el-icon><Filter /></el-icon>
               {{ getStatusFilterText() }}
             </el-button>
@@ -47,7 +47,7 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button size="small" type="default" plain @click="resetSearch">
+          <el-button size="small" type="default" plain @click="resetSearch" style="flex-shrink: 0;">
             <el-icon><Refresh /></el-icon>
             重置
           </el-button>
