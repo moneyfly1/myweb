@@ -49,8 +49,7 @@
     <div class="table-wrapper desktop-only">
       <el-table v-loading="loading" :data="list" stripe border class="resizable-table">
         <el-table-column prop="created_at" label="时间" width="180" />
-        <el-table-column prop="user_id" label="用户ID" width="90" />
-        <el-table-column prop="username" label="用户名" width="120" />
+        <el-table-column prop="username" label="用户" width="120" />
         <el-table-column prop="email" label="邮箱" width="180" />
         <el-table-column prop="ip_address" label="IP" width="130" />
         <el-table-column prop="location" label="地区" width="120">

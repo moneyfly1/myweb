@@ -947,10 +947,11 @@ func GetBalanceLogs(c *gin.Context) {
 			"id":               log.ID,
 			"user_id":          log.UserID,
 			"username":         getCommonUserName(&log.User),
+				"user_email":      log.User.Email,
 			"change_type":      log.ChangeType,
-			"amount":           log.Amount,
-			"balance_before":   log.BalanceBefore,
-			"balance_after":    log.BalanceAfter,
+			"amount":           utils.RoundFloat(log.Amount, 2),
+			"balance_before":   utils.RoundFloat(log.BalanceBefore, 2),
+			"balance_after":    utils.RoundFloat(log.BalanceAfter, 2),
 			"related_order_id": getNullableInt64(log.RelatedOrderID),
 			"order_no": func() string {
 				if log.RelatedOrder != nil {
@@ -1027,10 +1028,12 @@ func GetCommissionLogs(c *gin.Context) {
 			"id":               log.ID,
 			"inviter_id":       log.InviterID,
 			"inviter_name":     getCommonUserName(&log.Inviter),
+				"inviter_email":    log.Inviter.Email,
 			"invitee_id":       log.InviteeID,
 			"invitee_name":     getCommonUserName(&log.Invitee),
+				"invitee_email":    log.Invitee.Email,
 			"commission_type":  log.CommissionType,
-			"amount":           log.Amount,
+			"amount":           utils.RoundFloat(log.Amount, 2),
 			"related_order_id": getNullableInt64(log.RelatedOrderID),
 			"order_no": func() string {
 				if log.RelatedOrder != nil {
