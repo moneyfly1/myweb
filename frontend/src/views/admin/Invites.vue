@@ -174,6 +174,15 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="mobile-card-list" v-if="isMobile">
+            <div v-for="row in inviteCodes" :key="row.id" class="mobile-card">
+              <div class="mobile-card-row"><span class="mobile-label">邀请码</span><span class="mobile-value">{{ row.code }}</span></div>
+              <div class="mobile-card-row"><span class="mobile-label">邀请人</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
+              <div class="mobile-card-row"><span class="mobile-label">已使用</span><span class="mobile-value">{{ row.used_count || 0 }}</span></div>
+              <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value"><el-tag :type="row.is_active ? 'success' : 'danger'" size="small">{{ row.is_active ? '启用' : '禁用' }}</el-tag></span></div>
+            </div>
+            <el-empty v-if="inviteCodes.length === 0" description="暂无数据" />
+          </div>
           <div style="margin-top: 20px; display: flex; justify-content: center;">
             <el-pagination
               v-model:current-page="codePage"
@@ -347,6 +356,15 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="mobile-card-list" v-if="isMobile">
+            <div v-for="row in inviteRelations" :key="row.id" class="mobile-card">
+              <div class="mobile-card-row"><span class="mobile-label">邀请码</span><span class="mobile-value">{{ row.invite_code || '-' }}</span></div>
+              <div class="mobile-card-row"><span class="mobile-label">邀请人</span><span class="mobile-value">{{ row.inviter_username || '-' }}</span></div>
+              <div class="mobile-card-row"><span class="mobile-label">被邀请人</span><span class="mobile-value">{{ row.invitee_username || '-' }}</span></div>
+              <div class="mobile-card-row"><span class="mobile-label">注册时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
+            </div>
+            <el-empty v-if="inviteRelations.length === 0" description="暂无数据" />
+          </div>
           <div style="margin-top: 20px; display: flex; justify-content: center;">
             <el-pagination
               v-model:current-page="relationPage"
@@ -1718,4 +1736,9 @@ onUnmounted(() => {
     }
   }
 }
+.mobile-card-list { margin-bottom: 16px; }
+.mobile-card { background: var(--el-bg-color, #fff); border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.mobile-card-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.mobile-label { color: var(--el-text-color-secondary, #909399); flex-shrink: 0; margin-right: 12px; }
+.mobile-value { text-align: right; word-break: break-all; }
 </style>

@@ -1728,10 +1728,10 @@ export default {
       }
       saveColumnSettings(newColumns)
     }, { deep: true })
-    const isMobile = computed(() => {
-      if (typeof window === 'undefined') return false
-      return window.innerWidth <= 768
-    })
+    const isMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 768)
+    function onResize() { isMobile.value = window.innerWidth <= 768 }
+    onMounted(() => window.addEventListener('resize', onResize))
+    onUnmounted(() => window.removeEventListener('resize', onResize))
     onMounted(() => {
       if (route.query.search) {
         const searchParam = String(route.query.search).trim()
