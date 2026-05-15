@@ -29,9 +29,9 @@
             </el-button>
           </div>
         </div>
-        <div class="mobile-filter-buttons" style="display: flex; gap: 8px; align-items: center;">
-          <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start">
-            <el-button size="small" :type="searchForm.status ? 'primary' : 'default'" plain style="flex: 1;">
+        <div class="mobile-filter-row">
+          <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start" class="mobile-filter-dropdown">
+            <el-button size="small" :type="searchForm.status ? 'primary' : 'default'" plain>
               <el-icon><Filter /></el-icon>
               {{ getStatusFilterText() }}
             </el-button>
@@ -47,7 +47,7 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button size="small" type="default" plain @click="resetSearch" style="flex-shrink: 0;">
+          <el-button size="small" type="default" plain @click="resetSearch" class="mobile-filter-reset-btn">
             <el-icon><Refresh /></el-icon>
             重置
           </el-button>
@@ -1635,6 +1635,19 @@ export default {
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 12px !important;
+  }
+}
+.mobile-filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  .mobile-filter-dropdown {
+    flex: 1;
+    :deep(.el-button) { width: 100%; justify-content: center; }
+  }
+  .mobile-filter-reset-btn {
+    flex-shrink: 0;
+    min-width: 72px;
   }
 }
 .empty-state {
