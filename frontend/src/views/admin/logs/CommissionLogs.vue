@@ -49,8 +49,12 @@
     <div class="table-wrapper desktop-only">
     <el-table v-loading="loading" :data="list" stripe border>
       <el-table-column prop="created_at" label="时间" width="180" />
-      <el-table-column prop="inviter_name" label="邀请人" width="120" />
-      <el-table-column prop="invitee_name" label="被邀请人" width="120" />
+      <el-table-column label="邀请人" width="160" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.inviter_name }} <small class="text-muted">{{ row.inviter_email }}</small></template>
+      </el-table-column>
+      <el-table-column label="被邀请人" width="160" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.invitee_name }} <small class="text-muted">{{ row.invitee_email }}</small></template>
+      </el-table-column>
       <el-table-column prop="commission_type" label="类型" width="110">
         <template #default="{ row }">
           <el-tag size="small" type="info">{{ getCommissionTypeText(row.commission_type) }}</el-tag>
@@ -58,7 +62,7 @@
       </el-table-column>
       <el-table-column prop="amount" label="佣金" width="100">
         <template #default="{ row }">
-          <span class="text-green">+{{ row.amount }}</span>
+          <span class="text-green">+{{ (row.amount || 0).toFixed(2) }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="order_no" label="关联订单" width="140" />
@@ -78,7 +82,7 @@
           <div class="mobile-card-row"><span class="mobile-label">邀请人</span><span class="mobile-value">{{ row.inviter_name || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">被邀请人</span><span class="mobile-value">{{ row.invitee_name || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">类型</span><span class="mobile-value">{{ getCommissionTypeText(row.commission_type) }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">佣金</span><span class="mobile-value text-green">+{{ row.amount ?? '-' }}</span></div>
+          <div class="mobile-card-row"><span class="mobile-label">佣金</span><span class="mobile-value text-green">+{{ (row.amount || 0).toFixed(2) }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value"><el-tag :type="getStatusColor(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag></span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
