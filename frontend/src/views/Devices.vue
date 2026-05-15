@@ -157,7 +157,7 @@
                       :type="getDeviceTypeColor(device.device_type)">
                 {{ getDeviceTypeName(device.device_type) }}
               </el-tag>
-              <span v-else style="color: #909399; font-size: 12px;">-</span>
+              <span v-else style="color: var(--el-text-color-secondary, #6b7280); font-size: 12px;">-</span>
             </span>
           </div>
           <div class="card-row" v-if="device.os_name || device.os_version">
@@ -540,13 +540,13 @@ export default {
   }
   .no-location-text {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary, #6b7280);
     font-style: italic;
     margin-left: 8px;
   }
   .no-location {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary, #6b7280);
     font-style: italic;
   }
 }
@@ -778,7 +778,7 @@ export default {
           }
           .no-location {
             font-size: 12px;
-            color: #909399;
+            color: var(--el-text-color-secondary, #6b7280);
             font-style: italic;
             padding: 4px 0;
             flex-shrink: 0;

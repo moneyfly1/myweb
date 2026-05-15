@@ -578,7 +578,7 @@ export default {
     }
     .qr-loading {
       padding: 40px;
-      color: #909399;
+      color: var(--el-text-color-secondary, #6b7280);
       .el-icon {
         font-size: 32px;
         margin-bottom: 12px;
@@ -589,7 +589,7 @@ export default {
     text-align: center;
     margin-bottom: 20px;
     .tip-text {
-      color: #909399;
+      color: var(--el-text-color-secondary, #6b7280);
       font-size: 13px;
       display: flex;
       align-items: center;
@@ -629,7 +629,7 @@ export default {
     }
   }
   .form-hint {
-    color: #909399;
+    color: var(--el-text-color-secondary, #6b7280);
     font-size: 0.875rem;
     margin-top: 8px;
   }
@@ -847,7 +847,7 @@ export default {
   }
   .form-hint {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary, #6b7280);
     margin-top: 6px;
   }
   .cost-calculation {
