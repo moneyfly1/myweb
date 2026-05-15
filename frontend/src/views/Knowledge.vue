@@ -27,6 +27,10 @@
             class="category-item"
             :class="{ active: !selectedCategory }"
             @click="selectCategory(null)"
+            @keydown.enter.prevent="selectCategory(null)"
+            @keydown.space.prevent="selectCategory(null)"
+            tabindex="0"
+            role="button"
           >
             <el-icon><Folder /></el-icon>
             <span>全部分类</span>
@@ -37,6 +41,11 @@
             class="category-item"
             :class="{ active: selectedCategory === cat.id }"
             @click="selectCategory(cat.id)"
+            @keydown.enter.prevent="selectCategory(cat.id)"
+            @keydown.space.prevent="selectCategory(cat.id)"
+            tabindex="0"
+            role="button"
+            :aria-label="cat.name"
           >
             <el-icon><component :is="resolveIcon(cat.icon)" /></el-icon>
             <span>{{ cat.name }}</span>
