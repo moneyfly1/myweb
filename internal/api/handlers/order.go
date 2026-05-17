@@ -1674,41 +1674,86 @@ func UpgradeDevices(c *gin.Context) {
 		}
 	}
 
+	var paymentConfig models.PaymentConfig
 	var paymentURL string
-	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
-		paymentConfig, err := utils.FindEnabledPaymentConfig(db, req.PaymentMethod)
-		if err != nil {
-			utils.ErrorResponse(c, http.StatusBadRequest, "未找到启用的支付配置", nil)
-			return
-		}
-		order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(paymentConfig.ID))
-		if err := db.Create(&order).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
-			return
+
+	// 余额支付但余额不足时直接提示，避免创建无法支付的死订单
+	if req.PaymentMethod == "balance" && finalAmount > 0.01 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "余额不足，请选择其他支付方式或充值后再试", nil)
+		return
+	}
+
+	// 使用事务保证余额扣除与订单创建的一致性
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		// 查找支付配置（需外部支付时）
+		if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+			var err error
+			paymentConfig, err = utils.FindEnabledPaymentConfig(tx, req.PaymentMethod)
+			if err != nil {
+				return fmt.Errorf("未找到启用的支付配置: %v", err)
+			}
+			order.PaymentMethodID = database.NullInt64(utils.MustSafeUintToInt64(paymentConfig.ID))
 		}
 
-		transaction := models.PaymentTransaction{
-			OrderID:         order.ID,
-			UserID:          user.ID,
-			PaymentMethodID: paymentConfig.ID,
-			Amount:          int(math.Round(finalAmount * 100)),
-			Currency:        "CNY",
-			Status:          "pending",
+		// 创建订单
+		if err := tx.Create(&order).Error; err != nil {
+			return fmt.Errorf("创建订单失败: %v", err)
 		}
-		if err := db.Create(&transaction).Error; err != nil {
-			_, _ = orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, user.ID, "failed")
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付记录失败", err)
-			return
+
+		// 扣除余额
+		if balanceUsed > 0 {
+			oldBalance := user.Balance
+			result := tx.Model(&models.User{}).Where("id = ? AND balance >= ?", user.ID, balanceUsed).
+				Update("balance", gorm.Expr("balance - ?", balanceUsed))
+			if result.Error != nil {
+				return fmt.Errorf("扣除余额失败: %v", result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("余额不足")
+			}
+			orderID := uint(order.ID)
+			userID := user.ID
+			if err := utils.CreateBalanceLogWithDB(
+				tx, user.ID, "consume", -balanceUsed,
+				oldBalance, oldBalance-balanceUsed,
+				&orderID, nil,
+				fmt.Sprintf("设备升级订单余额抵扣，订单号: %s", orderNo),
+				"user", &userID, utils.GetRealClientIP(c),
+			); err != nil {
+				return fmt.Errorf("记录余额日志失败: %v", err)
+			}
 		}
+
+		// 创建支付交易记录（外部支付）
+		if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+			transaction := models.PaymentTransaction{
+				OrderID:         order.ID,
+				UserID:          user.ID,
+				PaymentMethodID: paymentConfig.ID,
+				Amount:          int(math.Round(finalAmount * 100)),
+				Currency:        "CNY",
+				Status:          "pending",
+			}
+			if err := tx.Create(&transaction).Error; err != nil {
+				return fmt.Errorf("创建支付记录失败: %v", err)
+			}
+		}
+
+		return nil
+	})
+
+	if txErr != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, txErr.Error(), txErr)
+		return
+	}
+
+	// 生成支付链接（在事务外，因为涉及外部API调用）
+	if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
+		var err error
 		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, finalAmount)
 		if err != nil {
 			_, _ = orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, user.ID, "failed")
 			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
-			return
-		}
-	} else {
-		if err := db.Create(&order).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建订单失败", err)
 			return
 		}
 	}
