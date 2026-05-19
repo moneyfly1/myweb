@@ -4,7 +4,7 @@
     <div class="page-header settings-page-header">
       <div class="header-copy">
         <h1>系统设置</h1>
-        <p>集中管理站点、注册、安全、通知、备份和订阅输出规则。</p>
+        <p>集中管理站点、注册、安全、通知、备份恢复和订阅输出规则。</p>
       </div>
       <div class="header-actions">
         <el-button :icon="Refresh" :loading="pageLoading" @click="refreshSettings">刷新</el-button>
@@ -540,7 +540,7 @@
         </el-tab-pane>
 
         <!-- ==================== 备份设置 ==================== -->
-        <el-tab-pane label="数据备份" name="backup">
+        <el-tab-pane label="备份与恢复" name="backup">
           <div class="notification-layout">
             <!-- 左列：平台配置 -->
             <div class="notification-panel">
@@ -611,13 +611,17 @@
                     </div>
                   </el-collapse-transition>
                 </div>
+
+                <div class="mt-3">
+                  <el-button type="primary" @click="saveBackupSettings" :class="{ 'full-width': isMobile }">保存所有备份配置</el-button>
+                </div>
               </el-form>
             </div>
 
-            <!-- 右列：自动化与执行 -->
+            <!-- 右列：备份执行与恢复 -->
             <div class="notification-panel">
               <div class="panel-header">
-                <h3>自动化与执行</h3>
+                <h3>自动化与手动备份</h3>
               </div>
 
               <el-form :model="backupSettings" label-position="top" class="compact-form">
@@ -669,10 +673,43 @@
                     </template>
                   </el-alert>
                 </div>
+              </el-form>
 
-                <div class="mt-3">
-                  <el-button type="primary" @click="saveBackupSettings" :class="{ 'full-width': isMobile }">保存所有备份配置</el-button>
+              <!-- 本地恢复 -->
+              <div class="settings-section-title text-sm" style="margin-top: 20px;">本地恢复</div>
+              <el-form label-position="top" class="compact-form">
+                <el-form-item label="选择本地备份文件">
+                  <div style="display: flex; gap: 8px; width: 100%;">
+                    <el-select v-model="restoreLocal.selectedFile" placeholder="请选择备份文件" class="input-full" @focus="loadLocalBackups">
+                      <el-option v-for="f in restoreLocal.files" :key="f.filename" :label="`${f.filename} (${formatFileSize(f.size)})`" :value="f.filename" />
+                    </el-select>
+                    <el-button type="text" :icon="Refresh" @click="loadLocalBackups" :loading="restoreLocal.loading" style="padding: 0 8px;" />
+                  </div>
+                </el-form-item>
+                <el-button type="warning" plain @click="doRestoreLocal" :loading="restoreLocal.restoring" :disabled="!restoreLocal.selectedFile" :class="{ 'full-width': isMobile }">恢复此备份</el-button>
+              </el-form>
+
+              <!-- 远程恢复 -->
+              <div class="settings-section-title text-sm" style="margin-top: 20px;">远程恢复 ({{ backupSettings.backup_target === 'github' ? 'GitHub' : 'Gitee' }})</div>
+              <el-form label-position="top" class="compact-form">
+                <div class="backup-fields-row">
+                  <el-form-item label="年份">
+                    <el-select v-model="restoreRemote.selectedYear" placeholder="选择年份" class="input-full" @focus="loadRemoteYears" @change="onRemoteYearChange">
+                      <el-option v-for="y in restoreRemote.years" :key="y" :label="y" :value="y" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="月份">
+                    <el-select v-model="restoreRemote.selectedMonth" placeholder="选择月份" class="input-full" :disabled="!restoreRemote.selectedYear" @change="onRemoteMonthChange" :loading="restoreRemote.loadingMonths">
+                      <el-option v-for="m in restoreRemote.months" :key="m" :label="m + '月'" :value="m" />
+                    </el-select>
+                  </el-form-item>
                 </div>
+                <el-form-item label="备份文件">
+                  <el-select v-model="restoreRemote.selectedFile" placeholder="选择备份文件" class="input-full" :disabled="!restoreRemote.selectedMonth" :loading="restoreRemote.loadingFiles">
+                    <el-option v-for="f in restoreRemote.files" :key="f.name" :label="`${f.name} (${formatFileSize(f.size)})`" :value="f.name" />
+                  </el-select>
+                </el-form-item>
+                <el-button type="warning" plain @click="doRestoreRemote" :loading="restoreRemote.restoring" :disabled="!restoreRemote.selectedFile" :class="{ 'full-width': isMobile }">从远程恢复</el-button>
               </el-form>
             </div>
           </div>
@@ -831,6 +868,25 @@ export default {
     const uploadTaskId = ref(null)
     const uploadTarget = ref('gitee')
     const uploadStatusInterval = ref(null)
+
+    const restoreLocal = reactive({
+      files: [],
+      selectedFile: '',
+      loading: false,
+      restoring: false
+    })
+    const restoreRemote = reactive({
+      years: [],
+      months: [],
+      files: [],
+      selectedYear: '',
+      selectedMonth: '',
+      selectedFile: '',
+      loadingYears: false,
+      loadingMonths: false,
+      loadingFiles: false,
+      restoring: false
+    })
 
     // Forms should stack vertically on mobile for better UX
     const formLayout = computed(() => ({
@@ -1207,6 +1263,91 @@ export default {
       } finally { creatingBackup.value = false }
     }
 
+    const loadLocalBackups = async () => {
+      restoreLocal.loading = true
+      try {
+        const res = await api.get('/admin/backups')
+        restoreLocal.files = (res.data?.data || res.data || []).sort((a, b) => b.filename.localeCompare(a.filename))
+      } catch (e) { ElMessage.error('加载本地备份列表失败') }
+      finally { restoreLocal.loading = false }
+    }
+
+    const doRestoreLocal = async () => {
+      if (!restoreLocal.selectedFile) return
+      try {
+        await ElMessageBox.confirm(
+          `确定要从本地备份 "${restoreLocal.selectedFile}" 恢复数据库吗？\n\n此操作将替换当前数据库，系统会自动创建恢复前快照。`,
+          '确认恢复', { confirmButtonText: '确认恢复', cancelButtonText: '取消', type: 'warning' }
+        )
+      } catch { return }
+      restoreLocal.restoring = true
+      try {
+        const res = await api.post('/admin/backup/restore', { source: 'local', filename: restoreLocal.selectedFile }, { timeout: 120000 })
+        if (res.data?.success !== false) ElMessage.success('数据库恢复成功！页面将自动刷新...')
+        else throw new Error(res.data?.message || '恢复失败')
+        setTimeout(() => window.location.reload(), 1500)
+      } catch (e) {
+        if (e.message !== 'cancel') ElMessage.error('恢复失败: ' + (e.response?.data?.message || e.message))
+      } finally { restoreLocal.restoring = false }
+    }
+
+    const loadRemoteYears = async () => {
+      if (restoreRemote.years.length > 0) return
+      restoreRemote.loadingYears = true
+      try {
+        const res = await api.get('/admin/backup/remote/list?path=')
+        const items = (res.data?.data || res.data || []).filter(i => i.type === 'dir').map(i => i.name).sort().reverse()
+        restoreRemote.years = items
+      } catch (e) { ElMessage.error('加载远程年份列表失败: ' + (e.response?.data?.message || e.message)) }
+      finally { restoreRemote.loadingYears = false }
+    }
+
+    const onRemoteYearChange = async (year) => {
+      restoreRemote.selectedMonth = ''
+      restoreRemote.selectedFile = ''
+      restoreRemote.months = []
+      restoreRemote.files = []
+      if (!year) return
+      restoreRemote.loadingMonths = true
+      try {
+        const res = await api.get(`/admin/backup/remote/list?path=${year}`)
+        restoreRemote.months = (res.data?.data || res.data || []).filter(i => i.type === 'dir').map(i => i.name).sort().reverse()
+      } catch (e) { ElMessage.error('加载月份列表失败') }
+      finally { restoreRemote.loadingMonths = false }
+    }
+
+    const onRemoteMonthChange = async (month) => {
+      restoreRemote.selectedFile = ''
+      restoreRemote.files = []
+      if (!month) return
+      restoreRemote.loadingFiles = true
+      try {
+        const res = await api.get(`/admin/backup/remote/list?path=${restoreRemote.selectedYear}/${month}`)
+        restoreRemote.files = (res.data?.data || res.data || []).filter(i => i.type === 'file' && i.name.endsWith('.zip')).sort((a, b) => b.name.localeCompare(a.name))
+      } catch (e) { ElMessage.error('加载文件列表失败') }
+      finally { restoreRemote.loadingFiles = false }
+    }
+
+    const doRestoreRemote = async () => {
+      if (!restoreRemote.selectedFile) return
+      const remotePath = `${restoreRemote.selectedYear}/${restoreRemote.selectedMonth}/${restoreRemote.selectedFile}`
+      try {
+        await ElMessageBox.confirm(
+          `确定要从远程备份恢复数据库吗？\n\n文件: ${remotePath}\n来源: ${backupSettings.backup_target === 'github' ? 'GitHub' : 'Gitee'}\n\n此操作将下载远程文件并替换当前数据库，系统会自动创建恢复前快照。`,
+          '确认远程恢复', { confirmButtonText: '确认恢复', cancelButtonText: '取消', type: 'warning' }
+        )
+      } catch { return }
+      restoreRemote.restoring = true
+      try {
+        const res = await api.post('/admin/backup/restore', { source: 'remote', remote_path: remotePath }, { timeout: 180000 })
+        if (res.data?.success !== false) ElMessage.success('数据库恢复成功！页面将自动刷新...')
+        else throw new Error(res.data?.message || '恢复失败')
+        setTimeout(() => window.location.reload(), 1500)
+      } catch (e) {
+        if (e.message !== 'cancel') ElMessage.error('恢复失败: ' + (e.response?.data?.message || e.message))
+      } finally { restoreRemote.restoring = false }
+    }
+
     const handleLogoSuccess = (res) => {
       const url = res?.data?.url || res?.url
       if (res?.success || url) { generalSettings.site_logo = url || ''; ElMessage.success('Logo 上传成功') }
@@ -1228,7 +1369,8 @@ export default {
       uploadUrl, themeOptions: THEME_OPTIONS,
       customerMethodSwitches, customerEventSwitches, adminNotificationEvents,
       testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, switchingDatabase, creatingBackup, cacheClearing,
-      uploadStatus, uploadTaskId, stopStatusPolling,
+      uploadStatus, uploadTaskId, uploadTarget, stopStatusPolling,
+      restoreLocal, restoreRemote, loadLocalBackups, doRestoreLocal, loadRemoteYears, onRemoteYearChange, onRemoteMonthChange, doRestoreRemote,
       saveGeneralSettings, saveRegistrationSettings, saveInviteSettings, saveNotificationSettings, saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize

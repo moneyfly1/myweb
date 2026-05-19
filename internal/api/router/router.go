@@ -511,6 +511,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/backup/test-gitee", handlers.TestGiteeConnection)
 			admin.POST("/backup/test-github", handlers.TestGitHubConnection)
 			admin.GET("/backup/upload-status/:taskId", handlers.GetUploadStatus)
+			admin.GET("/backup/remote/list", handlers.ListRemoteBackupContents)
+			admin.POST("/backup/restore", handlers.RestoreBackup)
 
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)

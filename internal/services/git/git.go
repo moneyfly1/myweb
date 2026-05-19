@@ -466,6 +466,171 @@ func (m *UploadStatusManager) UpdateError(taskID string, err error) {
 	}
 }
 
+// RemoteEntry 远程仓库目录/文件条目
+type RemoteEntry struct {
+	Name string `json:"name"`
+	Type string `json:"type"` // "dir" or "file"
+	Size int64  `json:"size"`
+}
+
+// ListContents 列出远程仓库指定路径下的目录和文件
+func (c *GitClient) ListContents(path string) ([]RemoteEntry, error) {
+	if strings.Contains(path, "..") {
+		return nil, fmt.Errorf("invalid path")
+	}
+	path = strings.TrimPrefix(path, "/")
+
+	apiURL := c.getAPIURL("/contents/" + path)
+	if c.Platform == PlatformGitee && c.Token != "" {
+		if strings.Contains(apiURL, "?") {
+			apiURL += "&access_token=" + c.Token
+		} else {
+			apiURL += "?access_token=" + c.Token
+		}
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Header.Set("Authorization", c.getAuthHeader())
+	if c.Platform == PlatformGitHub {
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+	}
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return []RemoteEntry{}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("请求失败: %s, 响应: %s", resp.Status, string(body))
+	}
+
+	var items []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+		Size int64  `json:"size"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	entries := make([]RemoteEntry, 0, len(items))
+	for _, item := range items {
+		entryType := item.Type
+		if entryType == "tree" {
+			entryType = "dir"
+		}
+		entries = append(entries, RemoteEntry{
+			Name: item.Name,
+			Type: entryType,
+			Size: item.Size,
+		})
+	}
+	return entries, nil
+}
+
+// DownloadFile 从远程仓库下载文件到本地路径
+func (c *GitClient) DownloadFile(remotePath, localPath string) error {
+	if strings.Contains(remotePath, "..") {
+		return fmt.Errorf("invalid remote path")
+	}
+	remotePath = strings.TrimPrefix(remotePath, "/")
+
+	apiURL := c.getAPIURL("/contents/" + remotePath)
+	if c.Platform == PlatformGitee && c.Token != "" {
+		if strings.Contains(apiURL, "?") {
+			apiURL += "&access_token=" + c.Token
+		} else {
+			apiURL += "?access_token=" + c.Token
+		}
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Header.Set("Authorization", c.getAuthHeader())
+	if c.Platform == PlatformGitHub {
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+	}
+
+	httpClient := &http.Client{Timeout: 120 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("请求失败: %s, 响应: %s", resp.Status, string(body))
+	}
+
+	var fileInfo struct {
+		Content     string `json:"content"`
+		Encoding    string `json:"encoding"`
+		DownloadURL string `json:"download_url"`
+		Size        int64  `json:"size"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&fileInfo); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	// For small files, content is returned directly as base64
+	if fileInfo.Content != "" && fileInfo.Encoding == "base64" {
+		cleaned := strings.ReplaceAll(fileInfo.Content, "\n", "")
+		decoded, err := base64.StdEncoding.DecodeString(cleaned)
+		if err != nil {
+			return fmt.Errorf("解码文件内容失败: %w", err)
+		}
+		return os.WriteFile(localPath, decoded, 0600)
+	}
+
+	// For large files, use download_url
+	if fileInfo.DownloadURL == "" {
+		return fmt.Errorf("无法获取文件下载链接")
+	}
+
+	dlReq, err := http.NewRequest("GET", fileInfo.DownloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("创建下载请求失败: %w", err)
+	}
+	if c.Platform == PlatformGitHub {
+		dlReq.Header.Set("Authorization", c.getAuthHeader())
+	}
+
+	dlResp, err := httpClient.Do(dlReq)
+	if err != nil {
+		return fmt.Errorf("下载失败: %w", err)
+	}
+	defer dlResp.Body.Close()
+
+	if dlResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("下载失败: %s", dlResp.Status)
+	}
+
+	outFile, err := os.Create(localPath)
+	if err != nil {
+		return fmt.Errorf("创建本地文件失败: %w", err)
+	}
+	defer outFile.Close()
+
+	if _, err := io.Copy(outFile, dlResp.Body); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+	return nil
+}
+
 // CleanOldStatuses 清理超过1小时的状态记录
 func (m *UploadStatusManager) CleanOldStatuses() {
 	m.mu.Lock()

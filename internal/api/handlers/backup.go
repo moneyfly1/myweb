@@ -333,3 +333,210 @@ func GetUploadStatus(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "", status)
 }
+
+func ListRemoteBackupContents(c *gin.Context) {
+	path := c.DefaultQuery("path", "")
+
+	db := database.GetDB()
+	remoteCfg := backup_service.LoadRemoteBackupConfig(db)
+	if remoteCfg.Token == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未配置远程备份平台Token", nil)
+		return
+	}
+
+	client := git.NewClient(remoteCfg.PlatformType, remoteCfg.Token, remoteCfg.Owner, remoteCfg.Repo)
+	entries, err := client.ListContents(path)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取远程目录失败: "+err.Error(), err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", entries)
+}
+
+func RestoreBackup(c *gin.Context) {
+	var req struct {
+		Source     string `json:"source"`
+		Filename   string `json:"filename"`
+		RemotePath string `json:"remote_path"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+
+	if req.Source != "local" && req.Source != "remote" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "source 必须为 local 或 remote", nil)
+		return
+	}
+
+	cfg := config.AppConfig
+	wd, err := os.Getwd()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取工作目录失败", err)
+		return
+	}
+
+	dbPath, ok := utils.JoinWithinBaseDir(wd, "cboard.db")
+	if !ok {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "无效的数据库路径", nil)
+		return
+	}
+
+	var zipFilePath string
+
+	if req.Source == "local" {
+		if req.Filename == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "请选择备份文件", nil)
+			return
+		}
+		if strings.Contains(req.Filename, "..") || strings.Contains(req.Filename, "/") || strings.Contains(req.Filename, "\\") {
+			utils.ErrorResponse(c, http.StatusBadRequest, "无效的文件名", nil)
+			return
+		}
+		backupDir := filepath.Join(wd, cfg.UploadDir, "backups")
+		localPath, inBase := utils.JoinWithinBaseDir(backupDir, req.Filename)
+		if !inBase {
+			utils.ErrorResponse(c, http.StatusBadRequest, "无效的备份路径", nil)
+			return
+		}
+		if _, err := os.Stat(localPath); os.IsNotExist(err) {
+			utils.ErrorResponse(c, http.StatusNotFound, "备份文件不存在", nil)
+			return
+		}
+		zipFilePath = localPath
+	} else {
+		if req.RemotePath == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "请选择远程备份文件", nil)
+			return
+		}
+		if strings.Contains(req.RemotePath, "..") {
+			utils.ErrorResponse(c, http.StatusBadRequest, "无效的远程路径", nil)
+			return
+		}
+
+		db := database.GetDB()
+		remoteCfg := backup_service.LoadRemoteBackupConfig(db)
+		if remoteCfg.Token == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未配置远程备份平台Token", nil)
+			return
+		}
+
+		tmpDir := filepath.Join(wd, cfg.UploadDir, "backups", "tmp_restore")
+		if err := os.MkdirAll(tmpDir, 0750); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建临时目录失败", err)
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+
+		tmpZip := filepath.Join(tmpDir, filepath.Base(req.RemotePath))
+		client := git.NewClient(remoteCfg.PlatformType, remoteCfg.Token, remoteCfg.Owner, remoteCfg.Repo)
+		if err := client.DownloadFile(req.RemotePath, tmpZip); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "下载远程备份文件失败: "+err.Error(), err)
+			return
+		}
+		zipFilePath = tmpZip
+	}
+
+	extractedDB, err := extractDBFromZip(zipFilePath)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "解压备份文件失败: "+err.Error(), err)
+		return
+	}
+	defer os.Remove(extractedDB)
+
+	backupPath := dbPath + ".before_restore"
+	if err := copyFile(dbPath, backupPath); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "创建数据库快照失败", err)
+		return
+	}
+
+	if err := database.CloseDatabase(); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "关闭数据库失败", err)
+		return
+	}
+
+	restoreErr := func() error {
+		_ = os.Remove(dbPath + "-wal")
+		_ = os.Remove(dbPath + "-shm")
+
+		if err := copyFile(extractedDB, dbPath); err != nil {
+			return fmt.Errorf("替换数据库文件失败: %w", err)
+		}
+		return nil
+	}()
+
+	if restoreErr != nil {
+		_ = copyFile(backupPath, dbPath)
+		_ = database.ReopenDatabase()
+		utils.ErrorResponse(c, http.StatusInternalServerError, "恢复失败已回滚: "+restoreErr.Error(), restoreErr)
+		return
+	}
+
+	if err := database.ReopenDatabase(); err != nil {
+		_ = copyFile(backupPath, dbPath)
+		_ = database.ReopenDatabase()
+		utils.ErrorResponse(c, http.StatusInternalServerError, "重新连接数据库失败已回滚: "+err.Error(), err)
+		return
+	}
+
+	sourceName := req.Filename
+	if req.Source == "remote" {
+		sourceName = req.RemotePath
+	}
+	utils.CreateAuditLogSimple(c, "restore_backup", "backup", 0, fmt.Sprintf("管理员操作: 从%s恢复备份 %s", req.Source, sourceName))
+	utils.SuccessResponse(c, http.StatusOK, "数据库恢复成功", gin.H{
+		"source":   req.Source,
+		"filename": sourceName,
+	})
+}
+
+func extractDBFromZip(zipPath string) (string, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("打开zip文件失败: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		if f.Name == "cboard.db" {
+			rc, err := f.Open()
+			if err != nil {
+				return "", fmt.Errorf("打开zip内文件失败: %w", err)
+			}
+			defer rc.Close()
+
+			tmpFile, err := os.CreateTemp("", "restore_db_*.db")
+			if err != nil {
+				return "", fmt.Errorf("创建临时文件失败: %w", err)
+			}
+			defer tmpFile.Close()
+
+			if _, err := io.Copy(tmpFile, rc); err != nil {
+				os.Remove(tmpFile.Name())
+				return "", fmt.Errorf("解压数据库文件失败: %w", err)
+			}
+			return tmpFile.Name(), nil
+		}
+	}
+	return "", fmt.Errorf("备份文件中未找到 cboard.db")
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
