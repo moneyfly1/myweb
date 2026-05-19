@@ -1591,6 +1591,11 @@ func UpgradeDevices(c *gin.Context) {
 	}
 	// 未配置年度价时回退到按月的旧逻辑
 	if totalAmount == 0 {
+		now := utils.GetBeijingTime()
+		if subscription.ExpireTime.Before(now) && req.AdditionalDays <= 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "订阅已过期，请同时选择增加时长后再升级设备数量", nil)
+			return
+		}
 		devicePricePerMonth := config.AppConfig.DeviceUpgradePricePerMonth
 		if devicePricePerMonth <= 0 {
 			devicePricePerMonth = 10.0
