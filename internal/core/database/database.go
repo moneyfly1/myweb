@@ -417,6 +417,26 @@ func GetDB() *gorm.DB {
 	return DB
 }
 
+func CloseDatabase() error {
+	if DB == nil {
+		return nil
+	}
+	DB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("获取底层数据库连接失败: %w", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("关闭数据库失败: %w", err)
+	}
+	DB = nil
+	return nil
+}
+
+func ReopenDatabase() error {
+	return InitDatabase()
+}
+
 // ==========================================
 // 数据库辅助函数
 // ==========================================

@@ -543,10 +543,17 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 		universal, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
 
 		var userInfo gin.H
+		var userNotes string
 		if sub.User.ID > 0 {
-			userInfo = gin.H{"id": sub.User.ID, "username": sub.User.Username, "email": sub.User.Email}
+			if sub.User.Notes.Valid {
+				userNotes = sub.User.Notes.String
+			}
+			userInfo = gin.H{"id": sub.User.ID, "username": sub.User.Username, "email": sub.User.Email, "notes": userNotes}
 		} else if user, ok := userMap[sub.UserID]; ok {
-			userInfo = gin.H{"id": user.ID, "username": user.Username, "email": user.Email}
+			if user.Notes.Valid {
+				userNotes = user.Notes.String
+			}
+			userInfo = gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "notes": userNotes}
 		} else {
 			userInfo = gin.H{
 				"id":       0,

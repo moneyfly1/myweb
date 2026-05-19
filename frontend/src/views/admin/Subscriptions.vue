@@ -210,18 +210,19 @@
           border
         >
         <el-table-column type="selection" width="55" />
-        <el-table-column 
-          v-if="visibleColumns.includes('qq')" 
-          label="QQ号码" 
-          width="140" 
+        <el-table-column
+          v-if="visibleColumns.includes('qq')"
+          label="用户"
+          width="150"
           fixed="left"
         >
           <template #default="scope">
             <div class="qq-info">
-              <div class="qq-number">{{ scope.row.user?.email || scope.row.user?.username || '未知' }}</div>
-              <el-button 
-                size="small" 
-                type="success" 
+              <div class="qq-email">{{ scope.row.user?.email || '未知' }}</div>
+              <div class="qq-username">{{ scope.row.user?.username || '-' }}</div>
+              <el-button
+                size="small"
+                type="success"
                 @click="showUserDetails(scope.row)"
                 class="detail-btn"
               >
@@ -281,42 +282,35 @@
           </template>
         </el-table-column>
         <el-table-column
-          v-if="visibleColumns.includes('universal_url')"
-          label="通用订阅"
-          min-width="180"
+          v-if="visibleColumns.includes('sub_urls')"
+          label="订阅链接"
+          min-width="200"
         >
           <template #default="scope">
-            <div class="subscription-link">
-              <el-link 
-                v-if="scope.row.universal_url" 
-                @click="copyToClipboard(scope.row.universal_url)"
-                type="primary"
-                class="link-text copy-link"
-                :title="'点击复制: ' + scope.row.universal_url"
-              >
-                {{ scope.row.universal_url }}
-              </el-link>
-              <el-text v-else type="info" size="small">未配置</el-text>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('clash_url')" 
-          label="猫咪订阅" 
-          width="180"
-        >
-          <template #default="scope">
-            <div class="subscription-link">
-              <el-link 
-                v-if="scope.row.clash_url" 
-                @click="copyToClipboard(scope.row.clash_url)"
-                type="primary"
-                class="link-text copy-link"
-                :title="'点击复制: ' + scope.row.clash_url"
-              >
-                {{ scope.row.clash_url }}
-              </el-link>
-              <el-text v-else type="info" size="small">未配置</el-text>
+            <div class="sub-urls-stacked">
+              <div class="sub-url-row" v-if="scope.row.universal_url">
+                <span class="sub-url-label">通用</span>
+                <el-link
+                  @click="copyToClipboard(scope.row.universal_url)"
+                  type="primary"
+                  class="link-text copy-link"
+                  :title="'点击复制: ' + scope.row.universal_url"
+                >
+                  {{ scope.row.universal_url }}
+                </el-link>
+              </div>
+              <div class="sub-url-row" v-if="scope.row.clash_url">
+                <span class="sub-url-label">Clash</span>
+                <el-link
+                  @click="copyToClipboard(scope.row.clash_url)"
+                  type="primary"
+                  class="link-text copy-link"
+                  :title="'点击复制: ' + scope.row.clash_url"
+                >
+                  {{ scope.row.clash_url }}
+                </el-link>
+              </div>
+              <el-text v-if="!scope.row.universal_url && !scope.row.clash_url" type="info" size="small">未配置</el-text>
             </div>
           </template>
         </el-table-column>
@@ -334,34 +328,26 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('apple_count')" 
-          label="通用订阅次数" 
-          width="110" 
+        <el-table-column
+          v-if="visibleColumns.includes('sub_count')"
+          label="订阅次数"
+          width="110"
           align="center"
           prop="apple_count"
           sortable="custom"
           :sort-orders="['descending', 'ascending', null]"
         >
           <template #default="scope">
-            <el-tooltip content="订阅通用订阅的次数" placement="top">
-              <el-tag type="info" size="small">{{ scope.row.apple_count || 0 }}</el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('clash_count')" 
-          label="猫咪订阅次数" 
-          width="110" 
-          align="center"
-          prop="clash_count"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending', null]"
-        >
-          <template #default="scope">
-            <el-tooltip content="订阅猫咪订阅的次数" placement="top">
-              <el-tag type="warning" size="small">{{ scope.row.clash_count || 0 }}</el-tag>
-            </el-tooltip>
+            <div class="sub-count-stacked">
+              <div class="sub-count-row">
+                <span class="sub-count-label">通用</span>
+                <el-tag type="info" size="small">{{ scope.row.apple_count || 0 }}</el-tag>
+              </div>
+              <div class="sub-count-row">
+                <span class="sub-count-label">Clash</span>
+                <el-tag type="warning" size="small">{{ scope.row.clash_count || 0 }}</el-tag>
+              </div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column 
@@ -408,8 +394,38 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('actions')" 
+        <el-table-column
+          v-if="visibleColumns.includes('notes')"
+          label="备注"
+          min-width="180"
+          class-name="notes-column"
+        >
+          <template #default="scope">
+            <div class="notes-input-wrapper">
+              <el-input
+                v-model="scope.row.user_notes"
+                type="textarea"
+                :rows="2"
+                placeholder="点击输入备注，自动保存"
+                class="notes-input"
+                @blur="saveSubNotes(scope.row)"
+                @input="debounceSaveSubNotes(scope.row)"
+                :maxlength="500"
+                show-word-limit
+              />
+              <div v-if="scope.row.savingNotes" class="saving-indicator">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                <span>保存中...</span>
+              </div>
+              <div v-else-if="scope.row.notesSaved" class="saved-indicator">
+                <el-icon><CircleCheckFilled /></el-icon>
+                <span>已保存</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-if="visibleColumns.includes('actions')"
           label="操作" 
           width="220" 
           fixed="right"
@@ -620,22 +636,21 @@
         </div>
         <el-checkbox-group v-model="visibleColumns" class="column-checkboxes">
           <div class="checkbox-row">
-            <el-checkbox label="qq">QQ号码</el-checkbox>
+            <el-checkbox label="qq">用户</el-checkbox>
             <el-checkbox label="expire_time">结束时间</el-checkbox>
             <el-checkbox label="qr_code">二维码</el-checkbox>
           </div>
           <div class="checkbox-row">
-            <el-checkbox label="universal_url">通用订阅</el-checkbox>
-            <el-checkbox label="clash_url">猫咪订阅</el-checkbox>
+            <el-checkbox label="sub_urls">订阅链接</el-checkbox>
             <el-checkbox label="created_at">添加时间</el-checkbox>
+            <el-checkbox label="sub_count">订阅次数</el-checkbox>
           </div>
           <div class="checkbox-row">
-            <el-checkbox label="apple_count">通用订阅次数</el-checkbox>
-            <el-checkbox label="clash_count">猫咪订阅次数</el-checkbox>
             <el-checkbox label="online_devices">在线</el-checkbox>
+            <el-checkbox label="device_limit">最大设备数</el-checkbox>
+            <el-checkbox label="notes">备注</el-checkbox>
           </div>
           <div class="checkbox-row">
-            <el-checkbox label="device_limit">最大设备数</el-checkbox>
             <el-checkbox label="actions">操作</el-checkbox>
           </div>
         </el-checkbox-group>
@@ -650,10 +665,10 @@
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { 
+import {
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
   Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
-  Check, Close
+  Check, Close, Loading, CircleCheckFilled
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
@@ -672,7 +687,7 @@ export default {
   components: {
     Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
     Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
-    Check, Close, UserDetailDialog
+    Check, Close, Loading, CircleCheckFilled, UserDetailDialog
   },
   setup() {
     const route = useRoute()
@@ -696,15 +711,24 @@ export default {
     const currentQRCode = ref('')
     const COLUMN_SETTINGS_KEY = 'admin_subscriptions_visible_columns'
     const defaultVisibleColumns = [
-      'qq', 'expire_time', 'qr_code', 'universal_url', 'clash_url', 
-      'created_at', 'apple_count', 'clash_count', 'online_devices', 
-      'device_limit', 'actions'
+      'qq', 'expire_time', 'qr_code', 'sub_urls',
+      'created_at', 'sub_count', 'online_devices',
+      'device_limit', 'notes', 'actions'
     ]
     const loadColumnSettings = () => {
       try {
         const saved = localStorage.getItem(COLUMN_SETTINGS_KEY)
         if (saved) {
-          const parsed = JSON.parse(saved)
+          let parsed = JSON.parse(saved)
+          if (parsed.includes('apple_count') || parsed.includes('clash_count')) {
+            parsed = parsed.filter(col => col !== 'apple_count' && col !== 'clash_count')
+            if (!parsed.includes('sub_count')) parsed.push('sub_count')
+          }
+          if (parsed.includes('universal_url') || parsed.includes('clash_url')) {
+            parsed = parsed.filter(col => col !== 'universal_url' && col !== 'clash_url')
+            if (!parsed.includes('sub_urls')) parsed.push('sub_urls')
+          }
+          if (!parsed.includes('notes')) parsed.push('notes')
           const validColumns = parsed.filter(col => defaultVisibleColumns.includes(col))
           if (validColumns.length > 0) {
             return validColumns
@@ -765,10 +789,15 @@ export default {
               ...sub,
               is_active: sub.is_active === true || sub.is_active === 1 || sub.is_active === '1',
               device_limit: Number(sub.device_limit) || 0,
-              expire_time: sub.expire_time || ''
+              expire_time: sub.expire_time || '',
+              user_notes: sub.user?.notes || '',
+              savingNotes: false,
+              notesSaved: false
             }
             // 预计算二维码 URL，避免模板每次渲染重复计算
             mapped.qr_code_url = generateQRCode(mapped)
+            const uid = sub.user?.id || sub.user_id
+            if (uid) subOriginalNotes.set(uid, mapped.user_notes)
             return mapped
           })
           total.value = response.data?.data?.total || 0
@@ -1412,6 +1441,36 @@ export default {
         }
       }
     }
+    const subNotesSaveTimers = new Map()
+    const subNotesSavedTimers = new Map()
+    const subOriginalNotes = new Map()
+    const saveSubNotes = async (row) => {
+      const userId = row.user?.id || row.user_id
+      if (!userId || userId === 0) return
+      const currentNotes = row.user_notes || ''
+      const original = subOriginalNotes.get(userId) || ''
+      if (currentNotes === original) { row.savingNotes = false; return }
+      if (subNotesSaveTimers.has(userId)) { clearTimeout(subNotesSaveTimers.get(userId)); subNotesSaveTimers.delete(userId) }
+      row.savingNotes = true
+      row.notesSaved = false
+      try {
+        await adminAPI.updateUser(userId, { notes: currentNotes || null })
+        subOriginalNotes.set(userId, currentNotes)
+        row.notesSaved = true
+        if (subNotesSavedTimers.has(userId)) clearTimeout(subNotesSavedTimers.get(userId))
+        subNotesSavedTimers.set(userId, setTimeout(() => { row.notesSaved = false; subNotesSavedTimers.delete(userId) }, 2000))
+      } catch (error) {
+        ElMessage.error(`保存备注失败: ${error.response?.data?.message || error.message}`)
+        row.user_notes = original
+      } finally { row.savingNotes = false }
+    }
+    const debounceSaveSubNotes = (row) => {
+      const userId = row.user?.id || row.user_id
+      if (!userId) return
+      if (!subOriginalNotes.has(userId)) subOriginalNotes.set(userId, row.user_notes || '')
+      if (subNotesSaveTimers.has(userId)) clearTimeout(subNotesSaveTimers.get(userId))
+      subNotesSaveTimers.set(userId, setTimeout(() => { saveSubNotes(row); subNotesSaveTimers.delete(userId) }, 1000))
+    }
     const exportSubscriptions = async () => {
       try {
         const response = await adminAPI.exportSubscriptions()
@@ -1826,7 +1885,9 @@ export default {
       formatTime,
       formatLocation,
       handleActionCommand,
-      truncateUrl
+      truncateUrl,
+      saveSubNotes,
+      debounceSaveSubNotes
     }
   }
 }
@@ -1848,11 +1909,19 @@ export default {
 .qq-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
-.qq-number {
+.qq-email {
+  font-size: 12px;
   font-weight: 500;
   color: #303133;
+  word-break: break-all;
+  line-height: 1.3;
+}
+.qq-username {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.3;
 }
 .detail-btn {
   width: 100%;
@@ -2561,6 +2630,75 @@ export default {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+.sub-urls-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  .sub-url-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .sub-url-label {
+    font-size: 11px;
+    color: #909399;
+    flex-shrink: 0;
+    min-width: 32px;
+  }
+  .link-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+}
+.sub-count-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  .sub-count-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .sub-count-label {
+    font-size: 11px;
+    color: #909399;
+    min-width: 30px;
+    text-align: right;
+  }
+}
+.notes-input-wrapper {
+  position: relative;
+  .notes-input {
+    :deep(.el-textarea__inner) {
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      resize: none;
+    }
+  }
+  .saving-indicator, .saved-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    margin-top: 2px;
+    color: #909399;
+  }
+  .saved-indicator {
+    color: #67c23a;
+  }
+}
+:deep(.notes-column) {
+  background-color: var(--el-fill-color-lighter, #fafafa) !important;
+}
+:deep(.notes-column .cell) {
+  padding: 8px !important;
+  background-color: var(--el-fill-color-lighter, #fafafa) !important;
 }
 .column-settings {
   .settings-header {
