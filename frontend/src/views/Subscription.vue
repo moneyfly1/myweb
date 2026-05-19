@@ -415,9 +415,9 @@ export default {
     }
     const isSubscriptionActive = (subscription) => {
       if (!subscription) return false
+      if (subscription.expire_time && isExpiredUtil(subscription.expire_time)) return false
       if (subscription.status) return subscription.status === 'active'
-      if (!subscription.expire_time) return false
-      return !isExpiredUtil(subscription.expire_time)
+      return false
     }
     const isDeviceFull = (sub) => {
       if (!sub) return false

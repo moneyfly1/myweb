@@ -167,7 +167,7 @@
             <span>设备数量超过限制！</span>
           </div>
           <el-button
-            v-if="userInfo.total_devices || subscriptionInfo.maxDevices"
+            v-if="(userInfo.total_devices || subscriptionInfo.maxDevices) && getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) > 0"
             size="small"
             class="upgrade-device-btn"
             :type="isDeviceOverlimit ? 'danger' : isDeviceWarning ? 'warning' : 'primary'"
@@ -525,7 +525,7 @@ import { Wallet } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage } from '@/utils/api'
-import { formatDate as formatDateUtil, getRemainingDays } from '@/utils/date'
+import { formatDate as formatDateUtil, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
