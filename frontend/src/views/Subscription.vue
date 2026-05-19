@@ -109,7 +109,7 @@
       </div>
       <!-- 设备满载提示 -->
       <el-alert
-        v-if="subscription && isDeviceFull(subscription)"
+        v-if="subscription && isDeviceFull(subscription) && isSubscriptionActive(subscription)"
         title="设备数量已达上限，无法连接新设备"
         type="error"
         show-icon
