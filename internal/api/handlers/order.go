@@ -345,12 +345,14 @@ func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.
 
 func shouldQueryPaymentStatus(createdAt time.Time) bool {
 	timeSince := time.Since(createdAt)
-	if timeSince >= 3*time.Second && timeSince < 10*time.Second {
+	if timeSince < 2*time.Second {
+		return false
+	}
+	if timeSince < 5*time.Minute {
 		return true
-	} else if timeSince >= 10*time.Second && timeSince < 60*time.Second {
-		return int(timeSince.Seconds())%5 < 2
-	} else if timeSince >= 60*time.Second {
-		return int(timeSince.Seconds())%30 < 2
+	}
+	if timeSince < 30*time.Minute {
+		return int(timeSince.Seconds())%10 < 3
 	}
 	return false
 }
