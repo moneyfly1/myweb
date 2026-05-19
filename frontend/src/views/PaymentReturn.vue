@@ -189,14 +189,16 @@ export default {
         orderNo.value = no
         orderType.value = getOrderType(no)
         if (route.query.trade_status === 'TRADE_SUCCESS' && route.query.pid) {
-          await new Promise(r => setTimeout(r, 500))
-          const fastData = await fetchOrderData(no)
-          if (fastData && fastData.status === 'paid') {
-            await handlePaymentSuccess(fastData)
-            return
+          for (let i = 0; i < 5; i++) {
+            await new Promise(r => setTimeout(r, 1000))
+            const fastData = await fetchOrderData(no)
+            if (fastData && fastData.status === 'paid') {
+              await handlePaymentSuccess(fastData)
+              return
+            }
           }
         }
-        await new Promise(r => setTimeout(r, 2000))
+        await new Promise(r => setTimeout(r, 500))
         const data = await pollOrderStatus(no)
         await handlePaymentSuccess(data)
       } catch (error) {

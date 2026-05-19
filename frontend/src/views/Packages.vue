@@ -1530,7 +1530,7 @@ export default {
       checkPaymentStatus()
       paymentStatusCheckInterval = setInterval(async () => {
         await checkPaymentStatus()
-      }, 5000)
+      }, 3000)
       visibilityChangeHandler = async () => {
         if (document.visibilityState === 'visible' && currentOrder.value?.order_no) {
           await checkPaymentStatus()
