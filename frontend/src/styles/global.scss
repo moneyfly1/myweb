@@ -322,14 +322,14 @@
       background-color: rgba(123, 104, 238, 0.15);
     }
   }
+  .el-input__wrapper {
+    background-color: rgba(26, 22, 37, 0.8) !important;
+    border-color: #4B0082 !important;
+    &:hover { border-color: #7B68EE !important; }
+    &.is-focus { border-color: #7B68EE !important; box-shadow: 0 0 0 2px rgba(123, 104, 238, 0.2) !important; }
+  }
   .el-input__inner {
-    background-color: rgba(26, 22, 37, 0.8);
-    border-color: #4B0082;
     color: #E6E6FA;
-    &:focus {
-      border-color: #7B68EE;
-      box-shadow: 0 0 0 2px rgba(123, 104, 238, 0.2);
-    }
   }
   .el-select-dropdown {
     background-color: rgba(26, 22, 37, 0.95);
@@ -621,7 +621,11 @@ $breakpoints: (
     .el-select,
     .el-textarea {
       width: 100%;
-      .el-input__inner,
+      .el-input__inner {
+        font-size: 14px !important;
+        min-height: 32px;
+        padding: 0 10px;
+      }
       .el-textarea__inner {
         font-size: 14px !important;
         min-height: 32px;
@@ -915,19 +919,9 @@ $breakpoints: (
   .el-form-item {
     margin-bottom: 20px;
   }
-  .el-input, .el-select {
-    .el-input__inner {
-      border: none;
-      border-radius: 0;
-      transition: all 0.3s ease;
-      &:focus {
-        box-shadow: none;
-      }
-    }
-  }
 }
 
-// 全局统一输入框样式：去掉内层弧形 box-shadow，改用方形 border
+// 全局统一输入框样式：wrapper 负责边框，inner 不再有边框
 .el-input__wrapper {
   box-shadow: none !important;
   border: 1px solid var(--el-border-color, #dcdfe6) !important;
@@ -940,6 +934,12 @@ $breakpoints: (
 .el-input__wrapper.is-focus {
   box-shadow: none !important;
   border-color: var(--el-color-primary, #409eff) !important;
+}
+.el-input__inner {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
 }
 .el-textarea__inner {
   box-shadow: none !important;
