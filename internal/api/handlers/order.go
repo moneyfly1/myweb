@@ -348,13 +348,7 @@ func shouldQueryPaymentStatus(createdAt time.Time) bool {
 	if timeSince < 2*time.Second {
 		return false
 	}
-	if timeSince < 5*time.Minute {
-		return true
-	}
-	if timeSince < 30*time.Minute {
-		return int(timeSince.Seconds())%10 < 3
-	}
-	return false
+	return timeSince < 30*time.Minute
 }
 
 func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *payment.AlipayQueryResult, error) {
