@@ -331,6 +331,51 @@ func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, pack
 	return b.GetBaseTemplate(title, content, "感谢您的信任")
 }
 
+func (b *EmailTemplateBuilder) GetDeviceUpgradePaymentSuccessTemplate(username, orderNo string, amount float64, paymentMethod, paymentTime string, oldDeviceLimit, newDeviceLimit, additionalDevices, additionalDays int, oldExpireTime, newExpireTime string) string {
+	title := "支付成功通知"
+
+	upgradeRows := ""
+	if oldDeviceLimit > 0 && newDeviceLimit > 0 {
+		upgradeRows += fmt.Sprintf(`<tr><th>设备数量</th><td style="color: #27ae60; font-weight: bold;">%d → %d 台 (+%d台)</td></tr>`, oldDeviceLimit, newDeviceLimit, additionalDevices)
+	}
+	if oldExpireTime != "" && newExpireTime != "" && additionalDays > 0 {
+		upgradeRows += fmt.Sprintf(`<tr><th>有效期</th><td style="color: #27ae60; font-weight: bold;">%s → %s (+%d天)</td></tr>`, oldExpireTime, newExpireTime, additionalDays)
+	} else if additionalDays > 0 {
+		upgradeRows += fmt.Sprintf(`<tr><th>增加时长</th><td style="color: #27ae60; font-weight: bold;">+%d 天</td></tr>`, additionalDays)
+	}
+
+	content := fmt.Sprintf(`<h2>🎉 支付成功！</h2>
+            <p>亲爱的 %s，</p>
+            <p>您的升级订单已支付成功！</p>
+            <div class="success-box">
+                <h3>✅ 支付确认</h3>
+                <table class="info-table">
+                    <tr><th>订单号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>支付金额</th><td style="color: #27ae60; font-weight: bold; font-size: 18px;">¥%.2f</td></tr>
+                    <tr><th>支付方式</th><td>%s</td></tr>
+                    <tr><th>支付时间</th><td>%s</td></tr>
+                    <tr><th>订单状态</th><td style="color: #27ae60; font-weight: bold;">✅ 已支付</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <h3>📊 升级详情</h3>
+                <table class="info-table">
+                    %s
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>✨ 升级已生效：</strong></p>
+                <ul>
+                    <li>✅ 您的订阅已自动升级</li>
+                    <li>✅ 新的设备数量和有效期已生效</li>
+                    <li>✅ 可以立即使用服务</li>
+                </ul>
+            </div>
+            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, username, orderNo, amount, paymentMethod, paymentTime, upgradeRows)
+
+	return b.GetBaseTemplate(title, content, "感谢您的信任")
+}
+
 // GetAbnormalLoginAlertTemplate 异常登录/新设备/异地登录告警邮件
 func (b *EmailTemplateBuilder) GetAbnormalLoginAlertTemplate(username, loginTime, ipAddress, locationStr string, isNewDevice, isNewLocation bool) string {
 	title := "账户登录安全提醒"
@@ -702,6 +747,34 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
 		packageName := getStringFromData(data, "package_name", "未知套餐")
 		paymentMethod := getStringFromData(data, "payment_method", "未知")
 		paymentTime := getStringFromData(data, "payment_time", "N/A")
+
+		upgradeSection := ""
+		if oldLimit := getFloatFromData(data, "old_device_limit", 0); oldLimit > 0 {
+			newLimit := getFloatFromData(data, "new_device_limit", 0)
+			addDevices := getFloatFromData(data, "additional_devices", 0)
+			addDays := getFloatFromData(data, "additional_days", 0)
+			oldExpire := getStringFromData(data, "old_expire_time", "")
+			newExpire := getStringFromData(data, "new_expire_time", "")
+
+			upgradeSection = `<div class="info-box">
+                <h3>📊 升级详情</h3>
+                <table class="info-table">`
+			if newLimit > 0 {
+				upgradeSection += fmt.Sprintf(`
+                    <tr><th>设备数量</th><td style="color: #27ae60; font-weight: bold;">%d → %d 台 (+%.0f台)</td></tr>`, int(oldLimit), int(newLimit), addDevices)
+			}
+			if oldExpire != "" && newExpire != "" && addDays > 0 {
+				upgradeSection += fmt.Sprintf(`
+                    <tr><th>有效期</th><td style="color: #27ae60; font-weight: bold;">%s → %s (+%.0f天)</td></tr>`, oldExpire, newExpire, addDays)
+			} else if addDays > 0 {
+				upgradeSection += fmt.Sprintf(`
+                    <tr><th>增加时长</th><td style="color: #27ae60; font-weight: bold;">+%.0f 天</td></tr>`, addDays)
+			}
+			upgradeSection += `
+                </table>
+            </div>`
+		}
+
 		content = fmt.Sprintf(`<h2>💰 新订单支付成功</h2>
             <p>系统检测到一笔新的订单支付，详情如下：</p>
             <div class="success-box">
@@ -715,9 +788,10 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
                     <tr><th>支付时间</th><td>%s</td></tr>
                 </table>
             </div>
+            %s
             <div class="info-box">
                 <p><strong>💡 提示：</strong>订单已自动处理，订阅已激活，用户可立即使用服务。</p>
-            </div>`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
+            </div>`, orderNo, username, packageName, amount, paymentMethod, paymentTime, upgradeSection)
 
 	case "recharge_paid":
 		orderNo := getStringFromData(data, "order_no", "N/A")

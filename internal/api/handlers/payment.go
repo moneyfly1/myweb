@@ -924,24 +924,99 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 		paymentMethod = latestOrder.PaymentMethodName.String
 	}
 	packageName := "未知套餐"
+	var upgradeData map[string]interface{}
+	isDeviceUpgrade := false
 	if latestOrder.Package.ID > 0 {
 		packageName = latestOrder.Package.Name
-	} else if latestOrder.ExtraData.Valid {
-		packageName = "设备/时长升级"
+	} else if latestOrder.ExtraData.Valid && latestOrder.ExtraData.String != "" {
+		var extraData map[string]interface{}
+		if err := json.Unmarshal([]byte(latestOrder.ExtraData.String), &extraData); err == nil {
+			if orderType, ok := extraData["type"].(string); ok && orderType == "device_upgrade" {
+				isDeviceUpgrade = true
+				upgradeData = extraData
+				oldLimit := 0
+				newLimit := 0
+				addDays := 0
+				if v, ok := extraData["old_device_limit"].(float64); ok {
+					oldLimit = int(v)
+				}
+				if v, ok := extraData["new_device_limit"].(float64); ok {
+					newLimit = int(v)
+				}
+				if v, ok := extraData["additional_days"].(float64); ok {
+					addDays = int(v)
+				}
+				if oldLimit > 0 && newLimit > 0 && addDays > 0 {
+					packageName = fmt.Sprintf("设备升级 (%d→%d台, +%d天)", oldLimit, newLimit, addDays)
+				} else if oldLimit > 0 && newLimit > 0 {
+					packageName = fmt.Sprintf("设备升级 (%d→%d台)", oldLimit, newLimit)
+				} else if addDays > 0 {
+					packageName = fmt.Sprintf("时长升级 (+%d天)", addDays)
+				} else {
+					packageName = "设备/时长升级"
+				}
+			} else if orderType == "custom_package" {
+				devices := 0
+				months := 0
+				if v, ok := extraData["devices"].(float64); ok {
+					devices = int(v)
+				}
+				if v, ok := extraData["months"].(float64); ok {
+					months = int(v)
+				}
+				packageName = fmt.Sprintf("自定义套餐 (%d设备/%d月)", devices, months)
+			} else {
+				packageName = "设备/时长升级"
+			}
+		} else {
+			packageName = "设备/时长升级"
+		}
 	}
 
 	if notification.ShouldSendCustomerNotificationToUser(&latestUser, "order_paid", notification.ChannelEmail) {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
 
-		paymentSuccessContent := templateBuilder.GetPaymentSuccessTemplate(
-			latestUser.Username,
-			latestOrder.OrderNo,
-			packageName,
-			paidAmount,
-			paymentMethod,
-			paymentTime,
-		)
+		var paymentSuccessContent string
+		if isDeviceUpgrade && upgradeData != nil {
+			oldLimit := 0
+			newLimit := 0
+			addDevices := 0
+			addDays := 0
+			oldExpire := ""
+			newExpire := ""
+			if v, ok := upgradeData["old_device_limit"].(float64); ok {
+				oldLimit = int(v)
+			}
+			if v, ok := upgradeData["new_device_limit"].(float64); ok {
+				newLimit = int(v)
+			}
+			if v, ok := upgradeData["additional_devices"].(float64); ok {
+				addDevices = int(v)
+			}
+			if v, ok := upgradeData["additional_days"].(float64); ok {
+				addDays = int(v)
+			}
+			if v, ok := upgradeData["old_expire_time"].(string); ok {
+				oldExpire = v
+			}
+			if v, ok := upgradeData["new_expire_time"].(string); ok {
+				newExpire = v
+			}
+			paymentSuccessContent = templateBuilder.GetDeviceUpgradePaymentSuccessTemplate(
+				latestUser.Username, latestOrder.OrderNo, paidAmount, paymentMethod, paymentTime,
+				oldLimit, newLimit, addDevices, addDays, oldExpire, newExpire,
+			)
+		} else {
+			paymentSuccessContent = templateBuilder.GetPaymentSuccessTemplate(
+				latestUser.Username,
+				latestOrder.OrderNo,
+				packageName,
+				paidAmount,
+				paymentMethod,
+				paymentTime,
+			)
+		}
 		if err := emailService.QueueEmail(latestUser.Email, "支付成功通知", paymentSuccessContent, "payment_success"); err != nil {
 			utils.LogErrorMsg("sendPaymentNotifications: 发送付款成功邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
 		} else {
@@ -995,14 +1070,22 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 		}
 	}
 
-	if err := notificationService.SendAdminNotification("order_paid", map[string]interface{}{
+	adminData := map[string]interface{}{
 		"order_no":       latestOrder.OrderNo,
 		"username":       latestUser.Username,
 		"amount":         paidAmount,
 		"package_name":   packageName,
 		"payment_method": paymentMethod,
 		"payment_time":   paymentTime,
-	}); err != nil {
+	}
+	if isDeviceUpgrade && upgradeData != nil {
+		for _, key := range []string{"old_device_limit", "new_device_limit", "additional_devices", "additional_days", "old_expire_time", "new_expire_time"} {
+			if v, ok := upgradeData[key]; ok {
+				adminData[key] = v
+			}
+		}
+	}
+	if err := notificationService.SendAdminNotification("order_paid", adminData); err != nil {
 		utils.LogErrorMsg("sendPaymentNotifications: 发送管理员通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
 	} else {
 		utils.LogInfo("sendPaymentNotifications: 管理员通知已发送: order_no=%s", latestOrder.OrderNo)
