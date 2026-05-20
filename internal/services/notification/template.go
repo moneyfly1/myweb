@@ -89,7 +89,7 @@ func (b *MessageTemplateBuilder) buildOrderPaidTelegram(data map[string]interfac
 	paymentMethod := getString(data, "payment_method", "未知")
 	paymentTime := getString(data, "payment_time", "N/A")
 
-	return fmt.Sprintf(`🎉 <b>订单支付成功</b>
+	msg := fmt.Sprintf(`🎉 <b>订单支付成功</b>
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  📋 <b>订单详情</b>
@@ -100,13 +100,48 @@ func (b *MessageTemplateBuilder) buildOrderPaidTelegram(data map[string]interfac
 📦 <b>套餐名称</b>: <b>%s</b>
 💰 <b>支付金额</b>: <b>¥%.2f</b>
 💳 <b>支付方式</b>: %s
-🕐 <b>支付时间</b>: %s
+🕐 <b>支付时间</b>: %s`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
+
+	if upgradeSection := b.buildUpgradeDetailsTelegram(data); upgradeSection != "" {
+		msg += "\n\n" + upgradeSection
+	}
+
+	msg += fmt.Sprintf(`
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✅ <b>订单已自动处理</b>
 ┃  📦 <b>订阅已激活</b>
 ┃  🚀 <b>用户可立即使用服务</b>
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`)
+
+	return msg
+}
+
+func (b *MessageTemplateBuilder) buildUpgradeDetailsTelegram(data map[string]interface{}) string {
+	oldLimit := getInt(data, "old_device_limit", 0)
+	newLimit := getInt(data, "new_device_limit", 0)
+	addDevices := getInt(data, "additional_devices", 0)
+	addDays := getInt(data, "additional_days", 0)
+	oldExpire := getString(data, "old_expire_time", "")
+	newExpire := getString(data, "new_expire_time", "")
+
+	if oldLimit == 0 && newLimit == 0 && addDays == 0 {
+		return ""
+	}
+
+	section := `┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📊 <b>升级详情</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+`
+	if oldLimit > 0 && newLimit > 0 {
+		section += fmt.Sprintf("\n📱 <b>设备数量</b>: <b>%d</b> → <b>%d</b> 台 (+%d)", oldLimit, newLimit, addDevices)
+	}
+	if oldExpire != "" && newExpire != "" && addDays > 0 {
+		section += fmt.Sprintf("\n📅 <b>有效期</b>: %s → %s (+%d天)", oldExpire, newExpire, addDays)
+	} else if addDays > 0 {
+		section += fmt.Sprintf("\n📅 <b>增加时长</b>: +%d 天", addDays)
+	}
+	return section
 }
 
 func (b *MessageTemplateBuilder) buildRechargePaidTelegram(data map[string]interface{}) string {
@@ -412,15 +447,48 @@ func (b *MessageTemplateBuilder) buildOrderPaidBark(data map[string]interface{})
 📦 套餐名称: %s
 💰 支付金额: ¥%.2f
 💳 支付方式: %s
-🕐 支付时间: %s
+🕐 支付时间: %s`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
+
+	if upgradeSection := b.buildUpgradeDetailsBark(data); upgradeSection != "" {
+		body += "\n\n" + upgradeSection
+	}
+
+	body += fmt.Sprintf(`
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✅ 订单已自动处理
 ┃  📦 订阅已激活
 ┃  🚀 用户可立即使用服务
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, orderNo, username, packageName, amount, paymentMethod, paymentTime)
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`)
 
 	return title, body
+}
+
+func (b *MessageTemplateBuilder) buildUpgradeDetailsBark(data map[string]interface{}) string {
+	oldLimit := getInt(data, "old_device_limit", 0)
+	newLimit := getInt(data, "new_device_limit", 0)
+	addDevices := getInt(data, "additional_devices", 0)
+	addDays := getInt(data, "additional_days", 0)
+	oldExpire := getString(data, "old_expire_time", "")
+	newExpire := getString(data, "new_expire_time", "")
+
+	if oldLimit == 0 && newLimit == 0 && addDays == 0 {
+		return ""
+	}
+
+	section := `┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📊 升级详情
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+`
+	if oldLimit > 0 && newLimit > 0 {
+		section += fmt.Sprintf("\n📱 设备数量: %d → %d 台 (+%d)", oldLimit, newLimit, addDevices)
+	}
+	if oldExpire != "" && newExpire != "" && addDays > 0 {
+		section += fmt.Sprintf("\n📅 有效期: %s → %s (+%d天)", oldExpire, newExpire, addDays)
+	} else if addDays > 0 {
+		section += fmt.Sprintf("\n📅 增加时长: +%d 天", addDays)
+	}
+	return section
 }
 
 func (b *MessageTemplateBuilder) buildRechargePaidBark(data map[string]interface{}) (string, string) {
