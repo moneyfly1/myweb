@@ -373,7 +373,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Bell, Lock, Plus, Setting, Star, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { api } from '@/utils/api'
+import { api, userAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 const notificationTypeOptions = [
   { value: 'system', label: '系统通知' },

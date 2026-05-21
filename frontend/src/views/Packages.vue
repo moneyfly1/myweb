@@ -12,7 +12,7 @@
 
     <!-- 空状态 -->
     <EmptyState
-      v-else-if="packages.length === 0"
+      v-else-if="packages.length === 0 && !customPackageEnabled"
       type="empty"
       title="暂无可用套餐"
       description="当前没有可购买的套餐，请稍后再试"
@@ -909,7 +909,7 @@ export default {
         const settingsResponse = await settingsPromise;
         if (settingsResponse && settingsResponse.data && settingsResponse.data.data) {
           const settings = settingsResponse.data.data
-          customPackageEnabled.value = settings.custom_package_enabled === true
+          customPackageEnabled.value = settings.custom_package_enabled === true || settings.custom_package_enabled === 'true'
           if (customPackageEnabled.value) {
             customPackageConfig.price_per_device_year = parseFloat(settings.custom_package_price_per_device_year || 40)
             customPackageConfig.min_devices = parseInt(settings.custom_package_min_devices || 5)

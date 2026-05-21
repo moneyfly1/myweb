@@ -3,44 +3,82 @@
     v-model="drawerVisible"
     title="升级设备数量"
     direction="rtl"
-    size="420px"
+    :size="isMobile ? '92%' : '460px'"
     :close-on-click-modal="false"
     class="upgrade-drawer"
     @open="handleUpgradeDialogOpen"
   >
     <div class="upgrade-content" v-if="subscription">
-      <div class="current-subscription-info">
-        <h4>当前订阅信息</h4>
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="当前设备数">{{ subscription.device_limit || subscription.maxDevices || 0 }} 个</el-descriptions-item>
-          <el-descriptions-item label="剩余天数">{{ getRemainingDays(subscription) }} 天</el-descriptions-item>
-        </el-descriptions>
-      </div>
-      <div class="upgrade-options">
-        <h4>升级选项</h4>
+      <section class="upgrade-hero">
+        <div>
+          <div class="hero-eyebrow">设备扩容</div>
+          <h3>按需增加可用设备</h3>
+          <p>系统会根据当前订阅剩余时间计算费用，也可以同时延长到期时间。</p>
+        </div>
+        <div class="hero-metric">
+          <span>{{ currentDeviceLimit }}</span>
+          <small>当前设备</small>
+        </div>
+      </section>
+
+      <section class="upgrade-panel">
+        <div class="panel-title">
+          <span>订阅概览</span>
+          <small>剩余 {{ remainingDays }} 天</small>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="summary-label">当前设备</span>
+            <strong>{{ currentDeviceLimit }}</strong>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">升级后</span>
+            <strong>{{ targetDeviceLimit }}</strong>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">延长时间</span>
+            <strong>{{ upgradeForm.additionalDays || 0 }} 天</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="upgrade-panel">
+        <div class="panel-title">
+          <span>升级内容</span>
+          <small>至少增加 1 个设备</small>
+        </div>
         <div class="form-item-block">
-          <div class="form-label">增加设备数量</div>
-          <div class="device-input-row">
-            <el-button @click="changeDeviceCount(-1)" :disabled="upgradeForm.additionalDevices <= 1" circle size="small"><el-icon><Minus /></el-icon></el-button>
+          <div class="form-row-label">
+            <span>增加设备数量</span>
+            <em>升级后共 {{ targetDeviceLimit }} 个设备</em>
+          </div>
+          <div class="device-stepper">
+            <el-button @click="changeDeviceCount(-1)" :disabled="upgradeForm.additionalDevices <= 1" circle size="small" aria-label="减少设备">
+              <el-icon><Minus /></el-icon>
+            </el-button>
             <el-input-number
               v-model="upgradeForm.additionalDevices"
               :min="1"
               :max="500"
               :controls="false"
-              style="width: 90px; text-align: center;"
+              class="device-number"
               @change="calculateUpgradeCost"
             />
-            <el-button @click="changeDeviceCount(1)" circle size="small"><el-icon><Plus /></el-icon></el-button>
-            <span class="device-input-hint">个设备</span>
+            <el-button @click="changeDeviceCount(1)" circle size="small" aria-label="增加设备">
+              <el-icon><Plus /></el-icon>
+            </el-button>
+            <span class="device-unit">个设备</span>
           </div>
-          <div class="form-hint">升级后共 {{ (subscription.device_limit || subscription.maxDevices || 0) + (upgradeForm.additionalDevices || 0) }} 个设备</div>
         </div>
         <div class="form-item-block">
-          <div class="form-label">延长到期时间（可选）</div>
+          <div class="form-row-label">
+            <span>延长到期时间</span>
+            <em>{{ upgradeForm.additionalDays > 0 ? `约 ${additionalMonths} 个月` : '可选' }}</em>
+          </div>
           <el-select
             v-model="upgradeForm.additionalDays"
             @change="calculateUpgradeCost"
-            style="width: 100%"
+            class="duration-select"
             placeholder="请选择延长的月数"
           >
             <el-option label="不延长" :value="0" />
@@ -51,57 +89,76 @@
               :value="months * 30"
             />
           </el-select>
-          <div class="form-hint" v-if="upgradeForm.additionalDays > 0">将延长 {{ upgradeForm.additionalDays }} 天</div>
         </div>
-      </div>
-      <div class="cost-calculation" v-if="upgradeCost > 0">
-        <h4>费用明细</h4>
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="升级费用">¥{{ upgradeCost.toFixed(2) }}</el-descriptions-item>
-          <el-descriptions-item label="等级折扣" v-if="levelDiscount > 0">
-            -¥{{ levelDiscount.toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="应付金额">
-            <span class="final-amount">¥{{ finalAmount.toFixed(2) }}</span>
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-      <div class="payment-method" v-if="finalAmount > 0 || upgradeForm.additionalDevices >= 1">
-        <h4>支付方式</h4>
+      </section>
+
+      <section class="upgrade-panel cost-panel" v-if="upgradeCost > 0">
+        <div class="panel-title">
+          <span>费用明细</span>
+          <small>自动应用等级折扣</small>
+        </div>
+        <div class="cost-list">
+          <div class="cost-row">
+            <span>升级费用</span>
+            <strong>¥{{ upgradeCost.toFixed(2) }}</strong>
+          </div>
+          <div class="cost-row discount-row" v-if="levelDiscount > 0">
+            <span>等级折扣</span>
+            <strong>-¥{{ levelDiscount.toFixed(2) }}</strong>
+          </div>
+          <div class="cost-row total-row">
+            <span>应付金额</span>
+            <strong>¥{{ finalAmount.toFixed(2) }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="upgrade-panel payment-method" v-if="finalAmount > 0 || upgradeForm.additionalDevices >= 1">
+        <div class="panel-title">
+          <span>支付方式</span>
+          <small>余额 ¥{{ userBalance.toFixed(2) }}</small>
+        </div>
         <div class="balance-info">
-          <span>账户余额：¥{{ userBalance.toFixed(2) }}</span>
+          <el-icon><Wallet /></el-icon>
+          <span>账户余额</span>
+          <strong>¥{{ userBalance.toFixed(2) }}</strong>
         </div>
-        <div v-if="!availableUpgradePaymentMethods || availableUpgradePaymentMethods.length === 0" style="color: #909399; padding: 10px;">
+        <div v-if="!availableUpgradePaymentMethods || availableUpgradePaymentMethods.length === 0" class="payment-loading-text">
           正在加载支付方式...
         </div>
-        <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" v-else>
-          <el-radio label="balance" :disabled="userBalance <= 0 || (finalAmount > 0 && userBalance < finalAmount)">
-            余额支付
-            <span v-if="finalAmount > 0 && userBalance >= finalAmount" style="color: #67c23a; margin-left: 5px">（余额充足）</span>
-            <span v-else-if="finalAmount > 0 && userBalance > 0" style="color: #f56c6c; margin-left: 5px">（余额不足，还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}）</span>
+        <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" class="payment-radio-list" v-else>
+          <el-radio class="payment-radio-card" label="balance" :disabled="userBalance <= 0 || (finalAmount > 0 && userBalance < finalAmount)">
+            <span class="pay-title">余额支付</span>
+            <span v-if="finalAmount > 0 && userBalance >= finalAmount" class="pay-status success">余额充足</span>
+            <span v-else-if="finalAmount > 0 && userBalance > 0" class="pay-status danger">还需 ¥{{ (finalAmount - userBalance).toFixed(2) }}</span>
           </el-radio>
           <template v-for="method in availableUpgradePaymentMethods" :key="method.key">
             <el-radio
               v-if="method && method.key && method.key !== 'balance'"
+              class="payment-radio-card"
               :label="method.key"
             >
-              {{ method.name || method.key }}
+              <span class="pay-title">{{ method.name || method.key }}</span>
+              <span class="pay-status">在线支付</span>
             </el-radio>
           </template>
         </el-radio-group>
-      </div>
+      </section>
     </div>
     <template #footer>
       <div class="drawer-footer">
-        <el-button @click="drawerVisible = false" style="width:48%">取消</el-button>
+        <div class="footer-amount">
+          <span>应付</span>
+          <strong>¥{{ finalAmount.toFixed(2) }}</strong>
+        </div>
+        <el-button @click="drawerVisible = false">取消</el-button>
         <el-button
           type="primary"
-          style="width:48%"
           @click="confirmUpgrade"
           :loading="upgradeLoading"
           :disabled="!upgradeForm.additionalDevices || upgradeForm.additionalDevices < 1"
         >
-          确认升级并支付
+          {{ finalAmount > 0 ? '确认升级并支付' : '确认升级' }}
         </el-button>
       </div>
     </template>
@@ -237,6 +294,10 @@ const paymentStatusRequest = ref(null)
 let paymentManualVisibilityHandler = null
 const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
 let resizeRafId = null
+const currentDeviceLimit = computed(() => props.subscription?.device_limit || props.subscription?.maxDevices || 0)
+const targetDeviceLimit = computed(() => currentDeviceLimit.value + (upgradeForm.value.additionalDevices || 0))
+const remainingDays = computed(() => getRemainingDays(props.subscription))
+const additionalMonths = computed(() => Math.round((upgradeForm.value.additionalDays || 0) / 30))
 const isPaymentPageUrl = computed(() => {
   if (!paymentUrl.value) return false
   const url = String(paymentUrl.value).toLowerCase()
@@ -540,20 +601,353 @@ onUnmounted(() => {
 
 <style scoped>
 .upgrade-drawer {
-  :deep(.el-drawer__body) {
-    padding: 20px;
+  :deep(.el-drawer__header) {
+    margin-bottom: 0;
+    padding: 18px 22px;
+    border-bottom: 1px solid #e5e7eb;
   }
+
+  :deep(.el-drawer__title) {
+    font-size: 17px;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  :deep(.el-drawer__body) {
+    padding: 18px 20px 22px;
+    background: #f7f9fc;
+    overflow-y: auto;
+  }
+
+  :deep(.el-drawer__footer) {
+    padding: 14px 18px;
+    border-top: 1px solid #e5e7eb;
+    background: #ffffff;
+  }
+}
+
+.upgrade-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.upgrade-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
+}
+
+.hero-eyebrow {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.upgrade-hero h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 800;
+  color: #111827;
+}
+
+.upgrade-hero p {
+  margin: 8px 0 0;
+  max-width: 280px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.hero-metric {
+  width: 88px;
+  min-width: 88px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  text-align: center;
+}
+
+.hero-metric span {
+  display: block;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.hero-metric small {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.upgrade-panel {
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.panel-title span {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.panel-title small {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-item {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+}
+
+.summary-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.summary-item strong {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 800;
+  color: #111827;
+}
+
+.form-item-block {
+  margin-bottom: 16px;
+}
+
+.form-item-block:last-child {
+  margin-bottom: 0;
+}
+
+.form-row-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.form-row-label span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.form-row-label em {
+  font-style: normal;
+  font-size: 12px;
+  color: #64748b;
+  text-align: right;
+}
+
+.device-stepper {
+  display: grid;
+  grid-template-columns: 32px 104px 32px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-stepper .el-button {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+}
+
+.device-number {
+  width: 104px;
+}
+
+.device-number :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px #dbe4f0 inset;
+}
+
+.device-number :deep(.el-input__inner) {
+  text-align: center;
+  font-weight: 700;
+  color: #111827;
+}
+
+.device-unit {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.duration-select {
+  width: 100%;
+}
+
+.cost-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cost-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  color: #475569;
+}
+
+.cost-row strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.discount-row strong {
+  color: #059669;
+}
+
+.total-row {
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.total-row span,
+.total-row strong {
+  font-size: 18px;
+  color: #2563eb;
+}
+
+.balance-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+  color: #475569;
+  font-size: 13px;
+}
+
+.balance-info strong {
+  margin-left: auto;
+  color: #111827;
+  font-size: 14px;
+}
+
+.payment-loading-text {
+  padding: 10px 0;
+  color: #909399;
+  font-size: 13px;
+}
+
+.payment-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.payment-radio-card {
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.payment-radio-card.is-checked {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.payment-radio-card :deep(.el-radio__label) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding-left: 8px;
+  color: #111827;
+}
+
+.pay-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pay-status {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.pay-status.success {
+  color: #059669;
+}
+
+.pay-status.danger {
+  color: #dc2626;
 }
 
 .drawer-footer {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 12px;
 }
 
-.final-amount {
+.footer-amount {
+  margin-right: auto;
+}
+
+.footer-amount span {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.footer-amount strong {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 800;
   color: #2563eb;
-  font-weight: 700;
+}
+
+.drawer-footer .el-button {
+  min-width: 104px;
 }
 
 .payment-qr-dialog {
@@ -767,6 +1161,83 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .upgrade-drawer {
+    :deep(.el-drawer__header) {
+      padding: 14px 16px;
+    }
+
+    :deep(.el-drawer__body) {
+      padding: 14px;
+    }
+
+    :deep(.el-drawer__footer) {
+      padding: 12px 14px 14px;
+    }
+  }
+
+  .upgrade-hero {
+    padding: 16px;
+  }
+
+  .upgrade-hero h3 {
+    font-size: 18px;
+  }
+
+  .upgrade-hero p {
+    max-width: none;
+    font-size: 12px;
+  }
+
+  .hero-metric {
+    width: 76px;
+    min-width: 76px;
+  }
+
+  .hero-metric span {
+    font-size: 24px;
+  }
+
+  .upgrade-panel {
+    padding: 14px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-stepper {
+    grid-template-columns: 32px 1fr 32px;
+  }
+
+  .device-number {
+    width: 100%;
+  }
+
+  .device-unit {
+    grid-column: 1 / -1;
+  }
+
+  .payment-radio-card :deep(.el-radio__label) {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .drawer-footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .footer-amount {
+    grid-column: 1 / -1;
+  }
+
+  .drawer-footer .el-button {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
   .payment-qr-dialog {
     :deep(.el-dialog) {
       border-radius: 20px;
