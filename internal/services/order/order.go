@@ -17,10 +17,13 @@ import (
 	"log"
 	"math"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+const orderTimeLayout = "2006-01-02 15:04:05"
 
 type CreateOrderParams struct {
 	PackageID      uint   `json:"package_id"`
@@ -976,10 +979,12 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 	var customDevices int
 	var customMonths int
 	var couponFreeDays int
+	var parsedExtraData map[string]interface{}
 
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
 		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+			parsedExtraData = extraData
 			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
 				isCustomPackage = true
 				if devices, ok := extraData["devices"].(float64); ok {
@@ -1051,6 +1056,19 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 			id := utils.MustSafeUintToInt64(pkg.ID)
 			pkgID = &id
 		}
+		if isCustomPackage {
+			if parsedExtraData == nil {
+				parsedExtraData = make(map[string]interface{})
+			}
+			parsedExtraData["duration_days"] = totalDurationDays
+			parsedExtraData["new_device_limit"] = deviceLimit
+			parsedExtraData["new_expire_time"] = utils.FormatBeijingTime(expireTime)
+			parsedExtraData["activation_mode"] = "create"
+			parsedExtraData["had_existing_subscription"] = false
+			if encodedExtra, err := json.Marshal(parsedExtraData); err == nil {
+				order.ExtraData = database.NullString(string(encodedExtra))
+			}
+		}
 		subscription = models.Subscription{
 			UserID:          user.ID,
 			PackageID:       pkgID,
@@ -1085,16 +1103,41 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 		}()
 	} else {
 		oldExpireTime := subscription.ExpireTime
-		if subscription.ExpireTime.Before(now) {
+		oldDeviceLimit := subscription.DeviceLimit
+		var oldPackageID int64
+		if subscription.PackageID != nil {
+			oldPackageID = *subscription.PackageID
+		}
+		if isCustomPackage {
+			// 自定义套餐按本次购买时长重新开通，避免把已有剩余时间重复叠加成双倍时长。
+			subscription.ExpireTime = now.AddDate(0, 0, totalDurationDays)
+		} else if subscription.ExpireTime.Before(now) {
 			subscription.ExpireTime = now.AddDate(0, 0, totalDurationDays)
 		} else {
 			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, totalDurationDays)
 		}
-		oldDeviceLimit := subscription.DeviceLimit
 		subscription.DeviceLimit = deviceLimit
 		subscription.IsActive = true
 		subscription.Status = "active"
-		if !isCustomPackage {
+		if isCustomPackage {
+			subscription.PackageID = nil
+			if parsedExtraData == nil {
+				parsedExtraData = make(map[string]interface{})
+			}
+			parsedExtraData["old_device_limit"] = oldDeviceLimit
+			parsedExtraData["new_device_limit"] = deviceLimit
+			parsedExtraData["old_expire_time"] = utils.FormatBeijingTime(oldExpireTime)
+			parsedExtraData["new_expire_time"] = utils.FormatBeijingTime(subscription.ExpireTime)
+			parsedExtraData["old_expire_time_rfc3339"] = oldExpireTime.Format(time.RFC3339Nano)
+			parsedExtraData["new_expire_time_rfc3339"] = subscription.ExpireTime.Format(time.RFC3339Nano)
+			parsedExtraData["old_package_id"] = oldPackageID
+			parsedExtraData["duration_days"] = totalDurationDays
+			parsedExtraData["activation_mode"] = "replace"
+			parsedExtraData["had_existing_subscription"] = true
+			if encodedExtra, err := json.Marshal(parsedExtraData); err == nil {
+				order.ExtraData = database.NullString(string(encodedExtra))
+			}
+		} else {
 			pkgID := utils.MustSafeUintToInt64(pkg.ID)
 			subscription.PackageID = &pkgID
 		}
@@ -1443,8 +1486,8 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 	isCustomPackage := false
 	durationMonths := 1
 	couponFreeDays := 0
+	var extraData map[string]interface{}
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
 			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
 				isCustomPackage = true
@@ -1480,6 +1523,46 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 		totalDurationDays += couponFreeDays
 	}
 	now := utils.GetBeijingTime()
+
+	if isCustomPackage && extraData != nil {
+		if activationMode, _ := extraData["activation_mode"].(string); activationMode == "replace" {
+			if oldExpireTimeStr, ok := extraData["old_expire_time"].(string); ok && oldExpireTimeStr != "" {
+				if exactOldExpireTimeStr, ok := extraData["old_expire_time_rfc3339"].(string); ok && exactOldExpireTimeStr != "" {
+					oldExpireTimeStr = exactOldExpireTimeStr
+				}
+				oldExpireTime, err := time.Parse(time.RFC3339Nano, oldExpireTimeStr)
+				if err != nil {
+					oldExpireTime, err = time.ParseInLocation(orderTimeLayout, oldExpireTimeStr, utils.BeijingTZ)
+				}
+				if err != nil {
+					return fmt.Errorf("自定义套餐旧到期时间无效: %v", err)
+				}
+				subscription.ExpireTime = oldExpireTime
+				if oldDeviceLimit, ok := extraData["old_device_limit"].(float64); ok {
+					subscription.DeviceLimit = int(oldDeviceLimit)
+				}
+				if oldPackageID, ok := extraData["old_package_id"].(float64); ok && oldPackageID > 0 {
+					pkgID := int64(oldPackageID)
+					subscription.PackageID = &pkgID
+				} else {
+					subscription.PackageID = nil
+				}
+				if subscription.ExpireTime.After(now) {
+					subscription.IsActive = true
+					subscription.Status = "active"
+				} else {
+					subscription.IsActive = false
+					subscription.Status = "expired"
+				}
+				if err := s.db.Save(&subscription).Error; err != nil {
+					return fmt.Errorf("恢复自定义套餐前订阅失败: %v", err)
+				}
+				utils.LogInfo("ProcessRefundOrder: 恢复自定义套餐前订阅成功 - user_id=%d, duration_days=%d, expire_time=%s",
+					user.ID, totalDurationDays, utils.FormatBeijingTime(subscription.ExpireTime))
+				return nil
+			}
+		}
+	}
 
 	// 回退订阅时长
 	if subscription.ExpireTime.After(now) {

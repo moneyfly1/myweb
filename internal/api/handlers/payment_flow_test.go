@@ -6,6 +6,7 @@ import (
 	orderServicePkg "cboard-go/internal/services/order"
 	"cboard-go/internal/utils"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -610,6 +611,130 @@ func TestFinalizePaidOrderIsIdempotentForDeviceUpgrade(t *testing.T) {
 	db.First(&fresh, sub.ID)
 	if fresh.DeviceLimit != 5 {
 		t.Fatalf("expected device limit 5 after duplicate callbacks, got %d", fresh.DeviceLimit)
+	}
+}
+
+func TestCustomPackageReplacesExistingSubscriptionDuration(t *testing.T) {
+	db := setupPaymentFlowTestDB(t)
+	user := models.User{Username: "custom_replace", Email: "custom_replace@example.com", Password: "x"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := utils.GetBeijingTime()
+	oldExpire := now.AddDate(0, 0, 365)
+	oldPackageID := int64(88)
+	sub := models.Subscription{
+		UserID:          user.ID,
+		PackageID:       &oldPackageID,
+		SubscriptionURL: "sub-custom-replace",
+		DeviceLimit:     5,
+		IsActive:        true,
+		Status:          "active",
+		ExpireTime:      oldExpire,
+	}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	order := models.Order{
+		OrderNo:     "ORDCUSTOMREPLACE001",
+		UserID:      user.ID,
+		PackageID:   0,
+		Amount:      760,
+		FinalAmount: database.NullFloat64(760),
+		Status:      "pending",
+		ExtraData:   database.NullString(`{"type":"custom_package","devices":19,"months":12}`),
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	svc := orderServicePkg.NewOrderService()
+	beforePay := utils.GetBeijingTime()
+	if _, err := svc.FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{}); err != nil {
+		t.Fatalf("finalize custom package: %v", err)
+	}
+
+	var freshSub models.Subscription
+	if err := db.First(&freshSub, sub.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	days := int(freshSub.ExpireTime.Sub(beforePay).Hours() / 24)
+	if days < 359 || days > 360 {
+		t.Fatalf("expected custom package to open about 360 days, got %d expire=%v old_expire=%v", days, freshSub.ExpireTime, oldExpire)
+	}
+	if freshSub.ExpireTime.After(oldExpire.AddDate(0, 0, 30)) {
+		t.Fatalf("custom package appears to have stacked on existing time: expire=%v old_expire=%v", freshSub.ExpireTime, oldExpire)
+	}
+	if freshSub.DeviceLimit != 19 {
+		t.Fatalf("expected device limit replaced with 19, got %d", freshSub.DeviceLimit)
+	}
+	if freshSub.PackageID != nil {
+		t.Fatalf("expected custom package subscription package id nil, got %+v", freshSub.PackageID)
+	}
+
+	var paidOrder models.Order
+	if err := db.First(&paidOrder, order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var extra map[string]interface{}
+	if err := json.Unmarshal([]byte(paidOrder.ExtraData.String), &extra); err != nil {
+		t.Fatalf("parse extra data: %v", err)
+	}
+	if extra["activation_mode"] != "replace" {
+		t.Fatalf("expected activation mode replace, got %+v", extra["activation_mode"])
+	}
+
+	if err := svc.ProcessRefundOrder(&paidOrder); err != nil {
+		t.Fatalf("refund custom package: %v", err)
+	}
+	var restoredSub models.Subscription
+	if err := db.First(&restoredSub, sub.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !restoredSub.ExpireTime.Equal(oldExpire) {
+		t.Fatalf("expected old expiry restored after refund: got %v want %v", restoredSub.ExpireTime, oldExpire)
+	}
+	if restoredSub.DeviceLimit != 5 {
+		t.Fatalf("expected old device limit restored after refund, got %d", restoredSub.DeviceLimit)
+	}
+	if restoredSub.PackageID == nil || *restoredSub.PackageID != oldPackageID {
+		t.Fatalf("expected old package id restored after refund, got %+v", restoredSub.PackageID)
+	}
+}
+
+func TestPublicSettingsExposeEnabledCustomPackageWithoutNormalPackages(t *testing.T) {
+	db := setupPaymentFlowTestDB(t)
+	configs := []models.SystemConfig{
+		{Key: "custom_package_enabled", Value: "true", Type: "boolean", Category: "custom_package", DisplayName: "启用自定义套餐"},
+		{Key: "custom_package_price_per_device_year", Value: "40", Type: "string", Category: "custom_package", DisplayName: "每设备每年价格"},
+		{Key: "custom_package_min_devices", Value: "5", Type: "string", Category: "custom_package", DisplayName: "最小设备数"},
+		{Key: "custom_package_max_devices", Value: "100", Type: "string", Category: "custom_package", DisplayName: "最大设备数"},
+		{Key: "custom_package_min_months", Value: "6", Type: "string", Category: "custom_package", DisplayName: "最小购买月数"},
+	}
+	if err := db.Create(&configs).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := performPaymentFlowRequest(http.MethodGet, "/settings/public-settings", "", models.User{}, GetPublicSettings)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected public settings status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Success bool                   `json:"success"`
+		Data    map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("parse public settings response: %v body=%s", err, recorder.Body.String())
+	}
+	if !payload.Success {
+		t.Fatalf("expected success response, got body=%s", recorder.Body.String())
+	}
+	if payload.Data["custom_package_enabled"] != true {
+		t.Fatalf("expected custom package enabled=true, got %#v body=%s", payload.Data["custom_package_enabled"], recorder.Body.String())
+	}
+	if payload.Data["custom_package_min_devices"] != float64(5) {
+		t.Fatalf("expected min devices 5, got %#v body=%s", payload.Data["custom_package_min_devices"], recorder.Body.String())
 	}
 }
 
