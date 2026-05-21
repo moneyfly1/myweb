@@ -11,23 +11,32 @@ function isSecureContext() {
 function getStorageKey(key) {
   return `${SECURE_STORAGE_KEY}${key}`
 }
-function getStorageItem(key) {
+function readStorageValue(storage, storageKey) {
+  const item = storage.getItem(storageKey)
+  if (!item) return { found: false, value: null }
   try {
-    const storageKey = getStorageKey(key)
-    const item = sessionStorage.getItem(storageKey) || localStorage.getItem(storageKey)
-    if (!item) return null
     const data = JSON.parse(item)
     if (data.expiry && Date.now() > data.expiry) {
-      removeStorageItem(key)
-      return null
+      storage.removeItem(storageKey)
+      return { found: false, value: null }
     }
-    return data.value
+    return { found: true, value: data.value }
   } catch (error) {
+    storage.removeItem(storageKey)
     if (process.env.NODE_ENV === 'development') {
       console.error('读取存储失败:', error)
     }
-    return null
+    return { found: false, value: null }
   }
+}
+function getStorageItem(key) {
+  const storageKey = getStorageKey(key)
+  const storages = [sessionStorage, localStorage]
+  for (const storage of storages) {
+    const result = readStorageValue(storage, storageKey)
+    if (result.found) return result.value
+  }
+  return null
 }
 function setStorageItem(key, value, useSession = true, maxAge = MAX_STORAGE_AGE) {
   try {
@@ -38,6 +47,8 @@ function setStorageItem(key, value, useSession = true, maxAge = MAX_STORAGE_AGE)
       timestamp: Date.now()
     }
     const storage = useSession ? sessionStorage : localStorage
+    const otherStorage = useSession ? localStorage : sessionStorage
+    otherStorage.removeItem(storageKey)
     storage.setItem(storageKey, JSON.stringify(data))
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
@@ -243,6 +254,7 @@ const clearRoleTokens = (isAdmin) => {
   secureStorage.remove(`${prefix}_refresh_token`)
 }
 const shouldRememberRole = (isAdmin) => {
+  if (isAdmin) return true
   const remember = secureStorage.get(isAdmin ? 'admin_remember' : 'user_remember')
   if (remember === true || remember === 'true') return true
   if (remember === false || remember === 'false') return false
@@ -264,12 +276,13 @@ const shouldHandleLogout = (isAdminAPI) => {
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
   return (isAdminAPI && currentPath.startsWith('/admin')) || (!isAdminAPI && !currentPath.startsWith('/admin'))
 }
-const handleLogout = () => {
-  if (_useAuthStore) _useAuthStore().logout()
+const handleLogout = (isAdminAPI) => {
+  const role = isAdminAPI ? 'admin' : 'user'
+  if (_useAuthStore) _useAuthStore().logout(role)
   if (_router) {
     const currentPath = _router.currentRoute.value.path
     if (currentPath.startsWith('/admin')) {
-      if (currentPath !== '/login') _router.push('/login')
+      if (currentPath !== '/admin/login') _router.push('/admin/login')
     } else {
       if (currentPath !== '/login' && currentPath !== '/forgot-password') _router.push('/login')
     }
@@ -294,10 +307,7 @@ api.interceptors.request.use(
       ADMIN_PATHS.some(path => config.url.startsWith(path)) ||
       (isInAdminPanel && (config.url.startsWith('/users/') || config.url.startsWith('/tickets/')))
     )
-    let token = isAdminAPI ? secureStorage.get('admin_token') : secureStorage.get('user_token')
-    if (!token && !isAdminAPI) {
-      token = secureStorage.get('admin_token')
-    }
+    const token = isAdminAPI ? secureStorage.get('admin_token') : secureStorage.get('user_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -367,9 +377,6 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
     if (error.response?.status === 401) {
-      if (secureStorage.get('logout_marker')) {
-        return Promise.reject(error)
-      }
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
       const isInAdminPanel = currentPath.startsWith('/admin')
       const isAdminAPI = error.config?.url && (
@@ -379,14 +386,17 @@ api.interceptors.response.use(
         (isInAdminPanel && (error.config.url.startsWith('/users/') || error.config.url.startsWith('/tickets/')))
       )
       const refreshKey = isAdminAPI ? 'admin' : 'user'
+      if (secureStorage.get(`logout_marker_${refreshKey}`) || secureStorage.get('logout_marker')) {
+        return Promise.reject(error)
+      }
       if (refreshFailed[refreshKey] || error.config?.url?.includes('/auth/login')) {
-        if (shouldHandleLogout(isAdminAPI)) handleLogout()
+        if (shouldHandleLogout(isAdminAPI)) handleLogout(isAdminAPI)
         return Promise.reject(error)
       }
       if (error.config?.url?.includes('/auth/refresh')) {
         refreshFailed[refreshKey] = true
         clearRoleTokens(isAdminAPI)
-        if (shouldHandleLogout(isAdminAPI)) handleLogout()
+        if (shouldHandleLogout(isAdminAPI)) handleLogout(isAdminAPI)
         return Promise.reject(error)
       }
       if (error.config && !error.config._retry) {
@@ -436,12 +446,12 @@ api.interceptors.response.use(
           clearRoleTokens(isAdminAPI)
           processQueue(refreshError, null, isAdminAPI)
           isRefreshing[refreshKey] = false
-          if (shouldHandleLogout(isAdminAPI)) handleLogout()
+          if (shouldHandleLogout(isAdminAPI)) handleLogout(isAdminAPI)
           return Promise.reject(refreshError)
         }
       } else {
         clearRoleTokens(isAdminAPI)
-        if (shouldHandleLogout(isAdminAPI)) handleLogout()
+        if (shouldHandleLogout(isAdminAPI)) handleLogout(isAdminAPI)
         return Promise.reject(error)
       }
     }

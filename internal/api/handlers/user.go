@@ -1079,7 +1079,7 @@ func CreateUser(c *gin.Context) {
 	}
 
 	utils.CreateAuditLog(c, "create_user", "user", user.ID,
-		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限:%v", user.Username, user.Email, user.IsAdmin), nil, map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username, "target_email": user.Email, "is_admin": user.IsAdmin, "is_active": user.IsActive, })
+		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限:%v", user.Username, user.Email, user.IsAdmin), nil, map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username, "target_email": user.Email, "is_admin": user.IsAdmin, "is_active": user.IsActive})
 
 	go func() {
 		notificationService := notification.NewNotificationService()
@@ -1560,14 +1560,18 @@ func LoginAsUser(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
 	}
+	if targetUser.IsAdmin {
+		utils.ErrorResponse(c, http.StatusForbidden, "不能以管理员账号进入用户后台", nil)
+		return
+	}
 
-	accessToken, err := utils.CreateAccessToken(targetUser.ID, targetUser.Email, targetUser.IsAdmin)
+	accessToken, err := utils.CreateAccessToken(targetUser.ID, targetUser.Email, false)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成令牌失败", err)
 		return
 	}
 
-	refreshToken, err := utils.CreateRefreshToken(targetUser.ID, targetUser.Email, targetUser.IsAdmin)
+	refreshToken, err := utils.CreateRefreshToken(targetUser.ID, targetUser.Email, false)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
@@ -1587,7 +1591,7 @@ func LoginAsUser(c *gin.Context) {
 			"id":       targetUser.ID,
 			"username": targetUser.Username,
 			"email":    targetUser.Email,
-			"is_admin": targetUser.IsAdmin,
+			"is_admin": false,
 		},
 	})
 }
@@ -1696,12 +1700,12 @@ func UpdateUserStatus(c *gin.Context) {
 	utils.CreateAuditLog(c, "update_user_status", "user", user.ID,
 		fmt.Sprintf("管理员更新用户 %s(ID:%d, 邮箱:%s) 状态: %s", user.Username, user.ID, user.Email, changeDesc),
 		map[string]interface{}{
-			"target_user_id":   user.ID,
-			"target_username":  user.Username,
-			"target_email":     user.Email,
-			"is_active":        oldIsActive,
-			"is_verified":      oldIsVerified,
-			"is_admin":         oldIsAdmin,
+			"target_user_id":  user.ID,
+			"target_username": user.Username,
+			"target_email":    user.Email,
+			"is_active":       oldIsActive,
+			"is_verified":     oldIsVerified,
+			"is_admin":        oldIsAdmin,
 		},
 		map[string]interface{}{
 			"is_active":   user.IsActive,
@@ -1917,8 +1921,8 @@ func BatchDeleteUsers(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLog(c, "batch_delete_users", "user", 0,
-			fmt.Sprintf("管理员批量删除 %d 个用户", len(req.UserIDs)),
-			map[string]interface{}{"user_ids": req.UserIDs, "count": len(req.UserIDs)}, nil)
+		fmt.Sprintf("管理员批量删除 %d 个用户", len(req.UserIDs)),
+		map[string]interface{}{"user_ids": req.UserIDs, "count": len(req.UserIDs)}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个用户", len(req.UserIDs)), nil)
 }
 
@@ -2098,7 +2102,7 @@ func BatchSendSubEmail(c *gin.Context) {
 		map[string]interface{}{
 			"user_ids": req.UserIDs,
 			"total":    len(users),
-			"targets":   emailTargets,
+			"targets":  emailTargets,
 		}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
 		"success_count": successCount,

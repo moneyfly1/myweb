@@ -672,7 +672,7 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
-import { safeNavigate, safeOpen } from '@/utils/safeOpen'
+import { safeNavigate } from '@/utils/safeOpen'
 import { formatLocation } from '@/utils/date'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
 import dayjs from 'dayjs'
@@ -1222,7 +1222,42 @@ export default {
         }
       }
     }
+    const openUserBackendWindow = () => {
+      if (typeof window === 'undefined') return null
+      try {
+        const userWindow = window.open('', '_blank')
+        if (!userWindow) return null
+        userWindow.opener = null
+        try {
+          userWindow.document.title = '正在打开用户后台'
+          userWindow.document.body.innerHTML = '<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; padding: 32px; color: #303133;">正在打开用户后台...</div>'
+        } catch (_) {}
+        return userWindow
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('打开用户后台新标签页失败:', error)
+        }
+        return null
+      }
+    }
+
+    const closeUserBackendWindow = (userWindow) => {
+      if (!userWindow) return
+      try {
+        if (!userWindow.closed) userWindow.close()
+      } catch (_) {}
+    }
+
+    const shouldUseCurrentTabForUserBackend = () => {
+      if (typeof window === 'undefined') return true
+      const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 0
+      const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches
+      return viewportWidth <= 768 || (coarsePointer && viewportWidth <= 1024)
+    }
+
     const goToUserBackend = async (subscription) => {
+      let userBackendWindow = null
+      let keepUserBackendWindow = false
       try {
         const userId = subscription.user?.id || subscription.user_id
         if (!userId || userId === 0) {
@@ -1239,6 +1274,9 @@ export default {
             type: 'info'
           }
         )
+        if (!shouldUseCurrentTabForUserBackend()) {
+          userBackendWindow = openUserBackendWindow()
+        }
         const response = await adminAPI.loginAsUser(userId)
         if (!response.data) {
           ElMessage.error('登录失败：服务器未返回数据')
@@ -1267,6 +1305,7 @@ export default {
           token: userToken,
           refreshToken: userRefreshToken,
           user: userData,
+          storage: 'session',
           timestamp: Date.now()
         }
         if (adminToken && adminUser) {
@@ -1282,9 +1321,12 @@ export default {
         }, 5 * 60 * 1000)
         const dashboardUrl = window.location.origin + '/dashboard'
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
-        ElMessage.success('正在跳转到用户后台...')
-        const opened = safeOpen(finalUrl)
-        if (!opened) {
+        if (userBackendWindow) {
+          ElMessage.success('正在打开用户后台...')
+          userBackendWindow.location.replace(finalUrl)
+          keepUserBackendWindow = true
+        } else {
+          ElMessage.success('当前浏览器不支持新标签页，正在当前页面进入用户后台...')
           safeNavigate(finalUrl)
         }
       } catch (error) {
@@ -1297,6 +1339,10 @@ export default {
                              error.message ||
                              '登录失败'
           ElMessage.error(errorMessage)
+        }
+      } finally {
+        if (!keepUserBackendWindow) {
+          closeUserBackendWindow(userBackendWindow)
         }
       }
     }
