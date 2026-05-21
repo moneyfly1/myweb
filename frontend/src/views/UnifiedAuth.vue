@@ -11,10 +11,10 @@
         <div class="brand-center">
           <transition name="fade" mode="out-in">
             <div :key="currentView">
-              <h2 class="brand-headline" v-if="currentView === 'login'">欢迎回来</h2>
+              <h2 class="brand-headline" v-if="currentView === 'login'">{{ isAdminLoginRoute ? '管理员登录' : '欢迎回来' }}</h2>
               <h2 class="brand-headline" v-else-if="currentView === 'register'">加入我们</h2>
               <h2 class="brand-headline" v-else>找回密码</h2>
-              <p class="brand-desc" v-if="currentView === 'login'">安全极速的全球网络加速服务，IEPL 专线直连，畅享无限可能。</p>
+              <p class="brand-desc" v-if="currentView === 'login'">{{ isAdminLoginRoute ? '进入管理后台，处理用户、订阅、订单与系统配置。' : '安全极速的全球网络加速服务，IEPL 专线直连，畅享无限可能。' }}</p>
               <p class="brand-desc" v-else-if="currentView === 'register'">注册即享全球 80+ 优质节点，10Gbps 骨干带宽，全平台客户端支持。</p>
               <p class="brand-desc" v-else>输入您的注册邮箱，我们将发送验证码帮助您重置密码。</p>
             </div>
@@ -32,7 +32,7 @@
         </div>
         <transition name="fade" mode="out-in">
           <div v-if="currentView === 'login'" key="login" class="lux-form">
-            <h3 class="form-heading">登录</h3>
+            <h3 class="form-heading">{{ isAdminLoginRoute ? '管理员登录' : '登录' }}</h3>
             <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" @submit.prevent="handleLogin" label-position="top">
               <el-form-item prop="username">
                 <el-input v-model="loginForm.username" placeholder="用户名或邮箱" size="large" :prefix-icon="User" clearable autocomplete="username" />
@@ -56,7 +56,8 @@
                 </button>
               </el-form-item>
             </el-form>
-            <div class="form-switch">尚未注册？ <a href="#" @click.prevent="switchView('register')" class="lux-link-gold">立即注册</a></div>
+            <div v-if="!isAdminLoginRoute" class="form-switch">尚未注册？ <a href="#" @click.prevent="switchView('register')" class="lux-link-gold">立即注册</a></div>
+            <div v-else class="form-switch"><router-link to="/login" class="lux-link-gold">返回用户登录</router-link></div>
           </div>
           <div v-else-if="currentView === 'register'" key="register" class="lux-form">
             <h3 class="form-heading">注册</h3>
@@ -225,6 +226,7 @@ const notification = reactive({
 })
 
 const settings = computed(() => settingsStore)
+const isAdminLoginRoute = computed(() => route.path === '/admin/login')
 
 const showNotification = (message, type = 'success') => {
   notification.message = message
@@ -236,6 +238,7 @@ const showNotification = (message, type = 'success') => {
 }
 
 const switchView = (view) => {
+  if (isAdminLoginRoute.value && view !== 'login') return
   currentView.value = view
   if (view === 'login') {
     loginForm.password = ''
@@ -415,7 +418,9 @@ const handleLogin = async () => {
   try {
     const result = await authStore.login({
       username: loginForm.username,
-      password: loginForm.password
+      password: loginForm.password,
+      remember: rememberMe.value,
+      requireAdmin: isAdminLoginRoute.value
     })
     if (result.success) {
       ElMessage.success('登录成功')
@@ -687,7 +692,9 @@ onMounted(async () => {
     registerForm.inviteCode = route.query.invite
     await validateInviteCode(route.query.invite)
   }
-  if (route.path === '/register') {
+  if (route.path === '/admin/login') {
+    currentView.value = 'login'
+  } else if (route.path === '/register') {
     currentView.value = 'register'
   } else if (route.path === '/forgot-password') {
     currentView.value = 'forgot'

@@ -313,8 +313,8 @@ const handleThemeChange = async (themeName) => {
 const handleAdminCommand = (command) => {
   const routes = { profile: '/admin/profile', settings: '/admin/settings' }
   if (command === 'logout') {
-    authStore.logout()
-    router.push('/login')
+    authStore.logout('admin')
+    router.push('/admin/login')
   } else {
     router.push(routes[command])
   }
