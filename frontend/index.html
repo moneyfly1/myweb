@@ -97,9 +97,7 @@
             try {
               const data = JSON.parse(adminToken);
               if (data.expiry && Date.now() > data.expiry) {
-                const keys = ['admin_token', 'admin_user', 'admin_refresh_token', 
-                             'user_token', 'user_data', 'user_refresh_token',
-                             'token', 'refresh_token', 'user'];
+                const keys = ['admin_token', 'admin_user', 'admin_refresh_token', 'admin_remember'];
                 keys.forEach(key => {
                   localStorage.removeItem('cboard_secure_' + key);
                   sessionStorage.removeItem('cboard_secure_' + key);

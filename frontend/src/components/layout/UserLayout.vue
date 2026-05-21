@@ -250,7 +250,7 @@ const handleUserCommand = (command) => {
     backToAdmin: returnToAdmin,
     profile: () => router.push('/profile'),
     settings: () => router.push('/settings'),
-    logout: () => { authStore.logout(); router.push('/login') }
+    logout: () => { authStore.logout('user'); router.push('/login') }
   }
   actions[command]?.()
 }
@@ -276,8 +276,8 @@ const returnToAdmin = () => {
   try {
     const user = typeof userData === 'string' ? JSON.parse(userData) : userData
     if (!user?.is_admin) throw new Error('Not Admin')
+    authStore.logout('user')
     authStore.setAuth(token, user, false)
-    secureStorage.remove('user_token')
     router.push('/admin/dashboard')
     ElMessage.success('已返回管理员后台')
   } catch (e) {

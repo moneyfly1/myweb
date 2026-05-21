@@ -30,7 +30,12 @@ const routes = [
     component: () => import('@/views/UnifiedAuth.vue'),
     meta: { requiresGuest: true }
   },
-  { path: '/admin/login', redirect: '/login' },
+  {
+    path: '/admin/login',
+    name: 'AdminLogin',
+    component: () => import('@/views/UnifiedAuth.vue'),
+    meta: { requiresGuest: true, adminLogin: true }
+  },
   {
     path: '/',
     component: UserLayout,
@@ -89,21 +94,17 @@ const routes = [
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFound.vue') }
 ]
 const router = createRouter({ history: createWebHistory(), routes })
-const hasValidLocalSecureValue = (key) => {
-  try {
-    const item = localStorage.getItem(`${SECURE_STORAGE_KEY}${key}`)
-    if (!item) return false
-    const data = JSON.parse(item)
-    if (data.expiry && Date.now() > data.expiry) {
-      localStorage.removeItem(`${SECURE_STORAGE_KEY}${key}`)
-      return false
-    }
-    return true
-  } catch (e) {
-    return false
-  }
-}
 const ADMIN_USER_TTL = 30 * 24 * 60 * 60 * 1000 // 30天
+const getStorageMode = (key) => {
+  const storageKey = `${SECURE_STORAGE_KEY}${key}`
+  try {
+    if (sessionStorage.getItem(storageKey)) return 'session'
+    if (localStorage.getItem(storageKey)) return 'local'
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') console.debug('getStorageMode failed', e)
+  }
+  return null
+}
 const saveAdminAuth = (adminToken, adminUser) => {
   try {
     const adminData = typeof adminUser === 'string' ? JSON.parse(adminUser) : adminUser
@@ -136,10 +137,14 @@ router.beforeEach(async (to, from, next) => {
 
     // 访客页面（登录/注册等）快速通过，跳过所有 token 检查
     if (to.meta.requiresGuest) {
-      if (authStore.isAuthenticated) {
-        if (to.path === '/admin/login') return next(authStore.isAdmin ? '/admin/dashboard' : '/login')
-        if (to.path === '/login') return next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-        return next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      if (to.meta.adminLogin) {
+        if (secureStorage.get('admin_token') && secureStorage.get('admin_user')) {
+          return next('/admin/dashboard')
+        }
+        return next()
+      }
+      if (secureStorage.get('user_token') && secureStorage.get('user_data')) {
+        return next('/dashboard')
       }
       return next()
     }
@@ -157,17 +162,19 @@ router.beforeEach(async (to, from, next) => {
           secureStorage.set('admin_refresh_token', loginData.adminRefreshToken, false, ADMIN_USER_TTL)
         }
         const userData = { ...loginData.user, is_admin: false }
-        secureStorage.set('user_token', loginData.token, true, ACCESS_TOKEN_TTL)
-        secureStorage.set('user_data', userData, true, ADMIN_USER_TTL)
+        const useSessionStorage = loginData.storage !== 'local'
+        secureStorage.set('user_token', loginData.token, useSessionStorage, ACCESS_TOKEN_TTL)
+        secureStorage.set('user_data', userData, useSessionStorage, ADMIN_USER_TTL)
         if (loginData.refreshToken) {
-          secureStorage.set('user_refresh_token', loginData.refreshToken, true, ADMIN_USER_TTL)
+          secureStorage.set('user_refresh_token', loginData.refreshToken, useSessionStorage, ADMIN_USER_TTL)
         }
-        authStore.setAuth(loginData.token, userData, true)
+        authStore.setAuth(loginData.token, userData, useSessionStorage)
         useThemeStore().loadUserTheme().catch(() => {})
         return next({ path: to.path.startsWith('/admin') ? '/dashboard' : to.path, query: { ...to.query, sessionKey: undefined }, replace: true })
       }
     }
     const isAdminPath = to.path.startsWith('/admin')
+    const userStorageMode = getStorageMode('user_token') || getStorageMode('user_refresh_token') || getStorageMode('user_data')
 
     // 优先检查对应角色的token
     const roleTokenKey = isAdminPath ? 'admin_token' : 'user_token'
@@ -182,7 +189,7 @@ router.beforeEach(async (to, from, next) => {
         try {
           const storedRefresh = secureStorage.get('admin_refresh_token')
           if (!storedRefresh) {
-            return next('/login')
+            return next('/admin/login')
           }
           const { default: axios } = await import('axios')
           const refreshResponse = await axios.post(
@@ -197,13 +204,13 @@ router.beforeEach(async (to, from, next) => {
             storedToken = access_token
             storedUser = secureStorage.get('admin_user')
             if (!storedUser) {
-              return next('/login')
+              return next('/admin/login')
             }
           } else {
-            return next('/login')
+            return next('/admin/login')
           }
         } catch {
-          return next('/login')
+          return next('/admin/login')
         }
       } else {
         // 访问用户路径但user_token不存在，尝试用用户 refresh token 刷新
@@ -220,8 +227,9 @@ router.beforeEach(async (to, from, next) => {
             )
             const { access_token, refresh_token: newRefresh } = refreshResponse.data?.data || refreshResponse.data || {}
             if (access_token) {
-              secureStorage.set('user_token', access_token, false, ACCESS_TOKEN_TTL)
-              if (newRefresh) secureStorage.set('user_refresh_token', newRefresh, false, ADMIN_USER_TTL)
+              const useSessionStorage = userStorageMode !== 'local'
+              secureStorage.set('user_token', access_token, useSessionStorage, ACCESS_TOKEN_TTL)
+              if (newRefresh) secureStorage.set('user_refresh_token', newRefresh, useSessionStorage, ADMIN_USER_TTL)
               storedToken = access_token
               storedUser = secureStorage.get('user_data')
               if (!storedUser) {
@@ -248,13 +256,14 @@ router.beforeEach(async (to, from, next) => {
       }
 
       if (!authStore.isAuthenticated || authStore.token !== storedToken) {
-        const useSessionStorage = !hasValidLocalSecureValue(roleTokenKey)
+        const useSessionStorage = isAdminPath ? false : userStorageMode !== 'local'
         authStore.setAuth(storedToken, userData, useSessionStorage)
         useThemeStore().loadUserTheme().catch(() => {})
       }
     }
-    if (to.meta.requiresAuth && !authStore.isAuthenticated) return next('/login')
-    if (to.meta.requiresAdmin && !authStore.isAdmin) return next(authStore.isAuthenticated ? '/dashboard' : '/login')
+    const hasRoleAuth = !!(storedToken && storedUser)
+    if (to.meta.requiresAuth && !hasRoleAuth) return next(isAdminPath ? '/admin/login' : '/login')
+    if (to.meta.requiresAdmin && !authStore.isAdmin) return next('/admin/login')
     if (to.path === '/') return next(authStore.isAuthenticated ? (authStore.isAdmin ? '/admin/dashboard' : '/dashboard') : '/login')
     next()
   } catch (error) {

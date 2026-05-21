@@ -8,7 +8,25 @@ export const useAuthStore = defineStore('auth', () => {
   const TOKEN_TTL = 60 * 60 * 1000
   const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60 * 1000
   const SECURE_STORAGE_KEY = 'cboard_secure_'
+  const normalizeRole = (role) => {
+    if (role === 'admin' || role === true) return 'admin'
+    if (role === 'user' || role === false) return 'user'
+    if (role === 'all') return 'all'
+    return isAdminPath() ? 'admin' : 'user'
+  }
+  const roleIsAdmin = (role) => normalizeRole(role) === 'admin'
   const getRememberKey = (isAdmin = false) => (isAdmin ? 'admin_remember' : 'user_remember')
+  const getRoleKeys = (role) => {
+    const adminRole = roleIsAdmin(role)
+    return {
+      token: adminRole ? 'admin_token' : 'user_token',
+      user: adminRole ? 'admin_user' : 'user_data',
+      refresh: adminRole ? 'admin_refresh_token' : 'user_refresh_token',
+      remember: adminRole ? 'admin_remember' : 'user_remember',
+      marker: adminRole ? 'logout_marker_admin' : 'logout_marker_user',
+      isAdmin: adminRole
+    }
+  }
   const hasValidLocalValue = (key) => {
     if (typeof window === 'undefined') return false
     try {
@@ -25,6 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
   const getRememberPreference = (isAdmin = false) => {
+    if (isAdmin) return true
     const remember = secureStorage.get(getRememberKey(isAdmin))
     if (remember === true || remember === 'true') return true
     if (remember === false || remember === 'false') return false
@@ -32,7 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const saveRememberPreference = (remember, isAdmin = false) => {
     // 偏好始终持久化，保证刷新时可读取正确的存储策略
-    secureStorage.set(getRememberKey(isAdmin), !!remember, false, REFRESH_TOKEN_TTL)
+    secureStorage.set(getRememberKey(isAdmin), isAdmin ? true : !!remember, false, REFRESH_TOKEN_TTL)
   }
   const getInitialToken = () => {
     if (typeof window === 'undefined') return ''
@@ -98,6 +117,21 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.is_admin || false)
+  const activeRole = () => user.value?.is_admin ? 'admin' : 'user'
+  const isRoleActive = (role) => token.value && normalizeRole(role) === activeRole()
+  const clearRoleStorage = (role) => {
+    const keys = getRoleKeys(role)
+    secureStorage.remove(keys.token)
+    secureStorage.remove(keys.user)
+    secureStorage.remove(keys.refresh)
+    secureStorage.remove(keys.remember)
+  }
+  const clearLegacyAuthStorage = () => {
+    secureStorage.remove('token')
+    secureStorage.remove('refresh_token')
+    secureStorage.remove('user')
+    secureStorage.remove('logout_marker')
+  }
   const handleApiError = (error, defaultMessage) => {
     let message = defaultMessage
     if (error.response?.data) {
@@ -130,17 +164,16 @@ export const useAuthStore = defineStore('auth', () => {
         }
       }
       const isAdminUser = !!userData.is_admin
-      // 管理员登录时清除所有旧 token，避免残留
-      if (isAdminUser) {
-        secureStorage.remove('admin_token')
-        secureStorage.remove('admin_user')
-        secureStorage.remove('admin_refresh_token')
-        secureStorage.remove('user_token')
-        secureStorage.remove('user_data')
-        secureStorage.remove('user_refresh_token')
+      if (credentials.requireAdmin && !isAdminUser) {
+        return {
+          success: false,
+          message: '该账号不是管理员账号'
+        }
       }
+      clearRoleStorage(isAdminUser ? 'admin' : 'user')
       token.value = access_token
       user.value = userData
+      secureStorage.remove(isAdminUser ? 'logout_marker_admin' : 'logout_marker_user')
       secureStorage.remove('logout_marker')
       const safeUserData = {
         id: userData.id,
@@ -152,7 +185,7 @@ export const useAuthStore = defineStore('auth', () => {
         theme: userData.theme,
         language: userData.language
       }
-      const remember = !!credentials.remember
+      const remember = isAdminUser ? true : !!credentials.remember
       saveRememberPreference(remember, isAdminUser)
       saveToken(access_token, isAdminUser, remember)
       saveUser(safeUserData, isAdminUser, remember)
@@ -181,11 +214,38 @@ export const useAuthStore = defineStore('auth', () => {
       loading.value = false
     }
   }
-  const logout = () => {
-    const currentToken = token.value
-    const isAdmin = isAdminPath()
-    const refreshKey = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
-    const storedRefresh = secureStorage.get(refreshKey)
+  const logout = (role = null) => {
+    const targetRole = normalizeRole(role)
+    if (targetRole === 'all') {
+      const roles = ['admin', 'user']
+      roles.forEach(item => {
+        const keys = getRoleKeys(item)
+        const roleToken = secureStorage.get(keys.token)
+        const storedRefresh = secureStorage.get(keys.refresh)
+        if (typeof window !== 'undefined' && roleToken) {
+          fetch('/api/v1/auth/logout', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${roleToken}`
+            },
+            body: JSON.stringify({ refresh_token: storedRefresh || '' })
+          }).catch(() => {})
+        }
+        clearRoleStorage(item)
+        secureStorage.set(keys.marker, true, false, 24 * 60 * 60 * 1000)
+      })
+      token.value = ''
+      user.value = null
+      clearLegacyAuthStorage()
+      resetRefreshFailed()
+      return
+    }
+
+    const keys = getRoleKeys(targetRole)
+    const currentToken = isRoleActive(targetRole) ? token.value : secureStorage.get(keys.token)
+    const storedRefresh = secureStorage.get(keys.refresh)
     if (typeof window !== 'undefined' && currentToken) {
       fetch('/api/v1/auth/logout', {
         method: 'POST',
@@ -198,35 +258,27 @@ export const useAuthStore = defineStore('auth', () => {
       }).catch(() => {})
     }
 
-    token.value = ''
-    user.value = null
-    secureStorage.remove('admin_token')
-    secureStorage.remove('admin_user')
-    secureStorage.remove('admin_refresh_token')
-    secureStorage.remove('user_token')
-    secureStorage.remove('user_data')
-    secureStorage.remove('user_refresh_token')
-    secureStorage.remove('token')
-    secureStorage.remove('refresh_token')
-    secureStorage.remove('user')
-    secureStorage.remove('admin_remember')
-    secureStorage.remove('user_remember')
-    secureStorage.clear()
-    secureStorage.set('logout_marker', true, false, 24 * 60 * 60 * 1000)
+    if (isRoleActive(targetRole)) {
+      token.value = ''
+      user.value = null
+    }
+    clearRoleStorage(targetRole)
+    clearLegacyAuthStorage()
+    secureStorage.set(keys.marker, true, false, 24 * 60 * 60 * 1000)
     resetRefreshFailed()
   }
   const clearAuthCache = () => {
-    logout()
+    logout('all')
     if (typeof window !== 'undefined') {
       window.location.reload()
     }
   }
   const refreshToken = async () => {
-    const isAdmin = isAdminPath()
-    const refreshKey = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
-    const storedRefresh = secureStorage.get(refreshKey)
+    const role = isAdminPath() ? 'admin' : 'user'
+    const keys = getRoleKeys(role)
+    const storedRefresh = secureStorage.get(keys.refresh)
     if (!storedRefresh) {
-      logout()
+      logout(role)
       return false
     }
     try {
@@ -234,11 +286,11 @@ export const useAuthStore = defineStore('auth', () => {
       const responseData = response.data?.data || response.data
       const { access_token, refresh_token: newRefresh } = responseData
       token.value = access_token
-      saveToken(access_token, isAdmin)
-      saveRefreshToken(newRefresh, isAdmin)
+      saveToken(access_token, keys.isAdmin)
+      saveRefreshToken(newRefresh, keys.isAdmin)
       return true
     } catch (error) {
-      logout()
+      logout(role)
       return false
     }
   }
@@ -280,6 +332,7 @@ export const useAuthStore = defineStore('auth', () => {
     saveRememberPreference(remember, isAdmin)
     saveToken(newToken, isAdmin, remember)
     saveUser(newUser, isAdmin, remember)
+    secureStorage.remove(isAdmin ? 'logout_marker_admin' : 'logout_marker_user')
     secureStorage.remove('logout_marker')
   }
   const setToken = (newToken) => {
