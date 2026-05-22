@@ -133,6 +133,8 @@ func formatOrderData(order models.Order) gin.H {
 		"package_name":           pkgName,
 		"package":                pkgInfo,
 		"amount":                 amount,
+		"base_amount":            order.Amount,
+		"order_amount":           order.Amount,
 		"final_amount":           utils.GetNullFloat64Value(order.FinalAmount),
 		"discount_amount":        utils.GetNullFloat64Value(order.DiscountAmount),
 		"payment_method":         paymentMethod,
@@ -142,6 +144,7 @@ func formatOrderData(order models.Order) gin.H {
 		"status":                 order.Status,
 		"created_at":             utils.FormatBeijingTime(order.CreatedAt),
 		"updated_at":             utils.FormatBeijingTime(order.UpdatedAt),
+		"fulfilled_at":           utils.GetNullTimeValue(order.FulfilledAt),
 		"expire_time":            utils.GetNullTimeValue(order.ExpireTime),
 		"coupon_id":              utils.GetNullInt64Value(order.CouponID),
 		"extra_data":             parsedExtraData,
@@ -952,19 +955,8 @@ func GetAdminOrders(c *gin.Context) {
 				return
 			}
 			for _, record := range recharges {
-				formatted := gin.H{
-					"id":                     record.ID,
-					"user_id":                record.UserID,
-					"user":                   resolveUserInfo(record.User),
-					"order_no":               record.OrderNo,
-					"amount":                 record.Amount,
-					"status":                 record.Status,
-					"payment_method":         utils.GetNullStringValue(record.PaymentMethod),
-					"payment_transaction_id": utils.GetNullStringValue(record.PaymentTransactionID),
-					"paid_at":                utils.GetNullTimeValue(record.PaidAt),
-					"created_at":             utils.FormatBeijingTime(record.CreatedAt),
-					"record_type":            "recharge",
-				}
+				formatted := formatRechargeRecord(record, true, false)
+				formatted["record_type"] = "recharge"
 				rechargeMap[record.ID] = formatted
 			}
 		}

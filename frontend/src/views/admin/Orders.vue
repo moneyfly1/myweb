@@ -150,9 +150,9 @@
               {{ (activeTab === 'orders' ? scope.row.payment_time : scope.row.paid_at) || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right" v-if="activeTab === 'orders'">
+          <el-table-column label="操作" width="280" fixed="right">
             <template #default="scope">
-              <div class="action-buttons-grid" v-if="scope.row.record_type === 'order'">
+              <div class="action-buttons-grid" v-if="!isRechargeRecord(scope.row)">
                 <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
                   <el-icon><View /></el-icon> 查看
                 </el-button>
@@ -192,7 +192,9 @@
                   <el-icon><Close /></el-icon> 取消
                 </el-button>
               </div>
-              <span v-else class="text-muted">充值记录</span>
+              <el-button v-else size="small" @click="viewOrder(scope.row)" class="action-btn">
+                <el-icon><View /></el-icon> 查看充值
+              </el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -245,7 +247,7 @@
           </div>
 
           <!-- 卡片底部：操作区 -->
-          <div class="mc-footer" v-if="activeTab === 'orders' && item.record_type === 'order'">
+          <div class="mc-footer">
             <el-button-group class="mc-actions">
               <el-button size="small" @click="viewOrder(item)">
                  详情
@@ -260,7 +262,7 @@
                 退款
               </el-button>
               <el-button 
-                v-if="item.status === 'pending'"
+                v-if="!isRechargeRecord(item) && item.status === 'pending'"
                 size="small" 
                 type="success" 
                 plain
@@ -269,7 +271,7 @@
                 已付
               </el-button>
               <el-button 
-                v-if="item.status === 'pending'"
+                v-if="!isRechargeRecord(item) && item.status === 'pending'"
                 size="small" 
                 type="warning" 
                 plain
@@ -282,12 +284,10 @@
                 type="danger" 
                 plain
                 icon="Delete"
+                v-if="!isRechargeRecord(item)"
                 @click="deleteOrder(item)"
               />
             </el-button-group>
-          </div>
-          <div class="mc-footer-info" v-else>
-            <span class="text-muted">充值记录 - 自动处理</span>
           </div>
         </div>
       </div>
@@ -317,85 +317,366 @@
     <!-- 详情抽屉 -->
     <el-drawer
       v-model="showOrderDialog"
-      title="订单详情"
-      :size="isMobile ? '92%' : '500px'"
+      :title="detailTitle"
+      :size="isMobile ? '94%' : '720px'"
       direction="rtl"
       class="order-detail-drawer"
       :lock-scroll="false"
     >
-      <div class="order-detail-content">
-        <div class="mobile-order-detail" v-if="isMobile">
-           <!-- 使用新的手机端详情展示方式 -->
-           <div class="detail-header-block">
-              <div class="amount">¥{{ formatMoney(selectedOrder.amount) }}</div>
-              <el-tag :type="getStatusType(selectedOrder.status)">{{ getStatusText(selectedOrder.status) }}</el-tag>
-           </div>
-           <div class="detail-list-block">
-             <div class="d-item">
-               <span class="label">订单号</span>
-               <span class="val copyable">{{ selectedOrder.order_no }}</span>
-             </div>
-             <div class="d-item">
-               <span class="label">用户</span>
-               <span class="val">{{ selectedOrder.user?.email || '-' }}</span>
-             </div>
-             <div class="d-item">
-               <span class="label">套餐</span>
-               <span class="val">{{ selectedOrder.package_name }}</span>
-             </div>
-             <template v-if="selectedOrder.extra_data && selectedOrder.extra_data.type === 'device_upgrade'">
-               <div class="d-item">
-                 <span class="label">设备变化</span>
-                 <span class="val">{{ selectedOrder.extra_data.old_device_limit || 0 }}台 → {{ selectedOrder.extra_data.new_device_limit || 0 }}台</span>
-               </div>
-               <div class="d-item" v-if="selectedOrder.extra_data.additional_days > 0">
-                 <span class="label">到期时间变化</span>
-                 <span class="val">{{ selectedOrder.extra_data.old_expire_time || '-' }} → {{ selectedOrder.extra_data.new_expire_time || '-' }}</span>
-               </div>
-             </template>
-             <div class="d-item">
-               <span class="label">支付方式</span>
-               <span class="val">{{ selectedOrder.payment_method }}</span>
-             </div>
-             <div class="d-item">
-               <span class="label">创建时间</span>
-               <span class="val">{{ formatDateTime(selectedOrder.created_at) }}</span>
-             </div>
-             <div class="d-item" v-if="selectedOrder.payment_time">
-               <span class="label">支付时间</span>
-               <span class="val">{{ formatDateTime(selectedOrder.payment_time) }}</span>
-             </div>
-           </div>
-           
-           <div v-if="selectedOrder.payment_proof" class="payment-proof-section">
-            <div class="section-title">支付凭证</div>
-            <div class="proof-image-wrapper">
-              <img :src="selectedOrder.payment_proof" class="proof-image" @click="previewImage(selectedOrder.payment_proof)" />
+      <div class="order-detail-content" v-if="selectedOrder && selectedOrder.order_no">
+        <div class="detail-hero" :class="{ 'is-recharge': isRechargeRecord(selectedOrder) }">
+          <div class="hero-main">
+            <div class="hero-kicker">{{ detailKindLabel(selectedOrder) }}</div>
+            <div class="hero-title">{{ detailPrimaryName(selectedOrder) }}</div>
+            <div class="hero-order-no">{{ selectedOrder.order_no }}</div>
+          </div>
+          <div class="hero-side">
+            <div class="hero-amount" :class="{ 'is-plus': isRechargeRecord(selectedOrder) }">
+              {{ isRechargeRecord(selectedOrder) ? '+' : '' }}¥{{ formatMoney(selectedOrder.amount) }}
+            </div>
+            <el-tag :type="getStatusType(selectedOrder.status)" effect="dark">
+              {{ getStatusText(selectedOrder.status) }}
+            </el-tag>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">基础信息</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">客户邮箱</span>
+              <span class="field-value">{{ selectedOrder.user?.email || '-' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">客户账号</span>
+              <span class="field-value">{{ selectedOrder.user?.username || '-' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">创建时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.created_at) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">{{ isRechargeRecord(selectedOrder) ? '到账时间' : '支付时间' }}</span>
+              <span class="field-value">{{ detailPaidTime(selectedOrder) }}</span>
             </div>
           </div>
         </div>
-        <!-- 电脑端详情保持不变 -->
-        <el-descriptions :column="2" border v-else>
-          <el-descriptions-item label="订单号">{{ selectedOrder.order_no }}</el-descriptions-item>
-          <el-descriptions-item label="用户邮箱">{{ selectedOrder.user?.email }}</el-descriptions-item>
-          <el-descriptions-item label="套餐名称">{{ selectedOrder.package_name }}</el-descriptions-item>
-          <template v-if="selectedOrder.extra_data && selectedOrder.extra_data.type === 'device_upgrade'">
-            <el-descriptions-item label="设备变化">{{ selectedOrder.extra_data.old_device_limit || 0 }}台 → {{ selectedOrder.extra_data.new_device_limit || 0 }}台</el-descriptions-item>
-            <el-descriptions-item v-if="selectedOrder.extra_data.additional_days > 0" label="到期时间变化">{{ selectedOrder.extra_data.old_expire_time || '-' }} → {{ selectedOrder.extra_data.new_expire_time || '-' }}</el-descriptions-item>
-          </template>
-          <el-descriptions-item label="金额">¥{{ formatMoney(selectedOrder.amount) }}</el-descriptions-item>
-          <el-descriptions-item label="支付方式">{{ selectedOrder.payment_method }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(selectedOrder.status)">
-              {{ getStatusText(selectedOrder.status) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ selectedOrder.created_at }}</el-descriptions-item>
-          <el-descriptions-item label="支付时间">{{ selectedOrder.payment_time || '-' }}</el-descriptions-item>
-        </el-descriptions>
-        <div v-if="selectedOrder.payment_proof && !isMobile" style="margin-top: 20px;">
-          <h4>支付凭证</h4>
-          <img :src="selectedOrder.payment_proof" style="max-width: 100%; cursor: pointer;" />
+
+        <div class="detail-section">
+          <div class="detail-section-title">支付信息</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">支付方式</span>
+              <span class="field-value">{{ selectedOrder.payment_method || '-' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">交易流水</span>
+              <span class="field-value mono">{{ selectedOrder.payment_transaction_id || '-' }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">订单原价</span>
+              <span class="field-value">¥{{ formatMoney(orderOriginalAmount(selectedOrder)) }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">优惠金额</span>
+              <span class="field-value discount">-¥{{ formatMoney(selectedOrder.discount_amount || 0) }}</span>
+            </div>
+            <div class="detail-field" v-if="isRechargeRecord(selectedOrder)">
+              <span class="field-label">充值金额</span>
+              <span class="field-value positive">+¥{{ formatMoney(selectedOrder.amount) }}</span>
+            </div>
+            <div class="detail-field" v-if="isRechargeRecord(selectedOrder)">
+              <span class="field-label">充值 IP</span>
+              <span class="field-value">{{ selectedOrder.ip_address || '-' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="!isRechargeRecord(selectedOrder)">
+          <div class="detail-section-title">金额拆分</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">订单标价</span>
+              <span class="field-value">{{ moneyField(selectedOrder.base_amount, selectedOrder.order_amount, orderOriginalAmount(selectedOrder)) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">优惠合计</span>
+              <span class="field-value discount">-{{ moneyField(selectedOrder.discount_amount, 0) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">余额抵扣</span>
+              <span class="field-value discount">-{{ moneyField(extraValue(selectedOrder, 'balance_used'), 0) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">折后应付</span>
+              <span class="field-value">{{ moneyField(extraValue(selectedOrder, 'payable_amount'), selectedOrder.final_amount, selectedOrder.amount) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">第三方实付</span>
+              <span class="field-value positive">{{ moneyField(selectedOrder.final_amount, selectedOrder.amount) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">订单入账金额</span>
+              <span class="field-value positive">{{ moneyField(selectedOrder.amount) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="!isRechargeRecord(selectedOrder)">
+          <div class="detail-section-title">套餐与订单参数</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">订单类型</span>
+              <span class="field-value">{{ packageTypeText(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">套餐 ID</span>
+              <span class="field-value mono">{{ fieldOrDash(selectedOrder.package_id || extraValue(selectedOrder, 'package_id')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">原套餐 ID</span>
+              <span class="field-value mono">{{ fieldOrDash(extraValue(selectedOrder, 'old_package_id')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">付款后套餐 ID</span>
+              <span class="field-value mono">{{ fieldOrDash(extraValue(selectedOrder, 'new_package_id') || extraValue(selectedOrder, 'package_id') || selectedOrder.package_id) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">购买设备数</span>
+              <span class="field-value">{{ deviceCountText(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">购买月数</span>
+              <span class="field-value">{{ monthCountText(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">套餐基础天数</span>
+              <span class="field-value">{{ daysText(extraValue(selectedOrder, 'package_duration_days')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">本次开通天数</span>
+              <span class="field-value accent">{{ daysText(extraValue(selectedOrder, 'duration_days') || extraValue(selectedOrder, 'additional_days')) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="hasDiscountOrBalance(selectedOrder)">
+          <div class="detail-section-title">优惠与余额</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">优惠券 ID</span>
+              <span class="field-value mono">{{ fieldOrDash(selectedOrder.coupon_id) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">优惠券赠送天数</span>
+              <span class="field-value">{{ daysText(extraValue(selectedOrder, 'coupon_free_days')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">会员等级优惠</span>
+              <span class="field-value discount">-{{ moneyField(extraValue(selectedOrder, 'level_discount'), 0) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">等级折扣率</span>
+              <span class="field-value">{{ percentField(extraValue(selectedOrder, 'level_discount_rate')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">自定义时长折扣</span>
+              <span class="field-value">{{ percentField(extraValue(selectedOrder, 'discount_percent')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">余额已扣除</span>
+              <span class="field-value">{{ boolText(extraValue(selectedOrder, 'balance_deducted')) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="isPackageLikeOrder(selectedOrder)">
+          <div class="detail-section-title">套餐开通变化</div>
+          <div class="change-panel">
+            <div class="change-card">
+              <span class="change-label">原到期时间</span>
+              <strong>{{ extraValue(selectedOrder, 'old_expire_time') || '未记录' }}</strong>
+            </div>
+            <div class="change-arrow">→</div>
+            <div class="change-card is-new">
+              <span class="change-label">付款后到期时间</span>
+              <strong>{{ extraValue(selectedOrder, 'new_expire_time') || '未记录' }}</strong>
+            </div>
+          </div>
+          <div class="detail-grid compact">
+            <div class="detail-field">
+              <span class="field-label">本次购买天数</span>
+              <span class="field-value accent">{{ detailAddedDays(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">到期净变化</span>
+              <span class="field-value accent">{{ expireDeltaText(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">开通方式</span>
+              <span class="field-value">{{ activationModeText(extraValue(selectedOrder, 'activation_mode')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">付款前已有订阅</span>
+              <span class="field-value">{{ boolText(extraValue(selectedOrder, 'had_existing_subscription')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">原设备数</span>
+              <span class="field-value">{{ numberOrDash(extraValue(selectedOrder, 'old_device_limit')) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">付款后设备数</span>
+              <span class="field-value">{{ numberOrDash(extraValue(selectedOrder, 'new_device_limit')) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="isDeviceUpgradeOrder(selectedOrder)">
+          <div class="detail-section-title">设备升级变化</div>
+          <div class="change-panel">
+            <div class="change-card">
+              <span class="change-label">原设备数</span>
+              <strong>{{ numberOrZero(extraValue(selectedOrder, 'old_device_limit')) }} 台</strong>
+            </div>
+            <div class="change-arrow">→</div>
+            <div class="change-card is-new">
+              <span class="change-label">升级后设备数</span>
+              <strong>{{ numberOrZero(extraValue(selectedOrder, 'new_device_limit')) }} 台</strong>
+            </div>
+          </div>
+          <div class="detail-grid compact">
+            <div class="detail-field">
+              <span class="field-label">增加设备</span>
+              <span class="field-value accent">+{{ numberOrZero(extraValue(selectedOrder, 'additional_devices')) }} 台</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">增加天数</span>
+              <span class="field-value accent">+{{ numberOrZero(extraValue(selectedOrder, 'additional_days')) }} 天</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">原到期时间</span>
+              <span class="field-value">{{ extraValue(selectedOrder, 'old_expire_time') || '未记录' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">升级后到期时间</span>
+              <span class="field-value">{{ extraValue(selectedOrder, 'new_expire_time') || '未记录' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">到期净变化</span>
+              <span class="field-value accent">{{ expireDeltaText(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">实际履约时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.fulfilled_at) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="isRechargeRecord(selectedOrder)">
+          <div class="detail-section-title">充值到账信息</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">充值状态</span>
+              <span class="field-value">{{ getStatusText(selectedOrder.status) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">更新时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.updated_at) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">充值记录 ID</span>
+              <span class="field-value mono">{{ selectedOrder.id }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">用户 ID</span>
+              <span class="field-value mono">{{ selectedOrder.user_id }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">支付二维码</span>
+              <span class="field-value mono">{{ qrSummary(selectedOrder.payment_qr_code, selectedOrder.payment_url) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">支付链接</span>
+              <span class="field-value mono">{{ selectedOrder.payment_url || '-' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">充值 IP</span>
+              <span class="field-value">{{ selectedOrder.ip_address || '-' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">IP 归属地</span>
+              <span class="field-value">{{ selectedOrder.location || '-' }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">用户代理</span>
+              <span class="field-value">{{ selectedOrder.user_agent || '-' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">履约与审计</div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="field-label">{{ isRechargeRecord(selectedOrder) ? '充值 ID' : '订单 ID' }}</span>
+              <span class="field-value mono">{{ selectedOrder.id }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">用户 ID</span>
+              <span class="field-value mono">{{ selectedOrder.user_id }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">支付方式 ID</span>
+              <span class="field-value mono">{{ fieldOrDash(selectedOrder.payment_method_id) }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">优惠券 ID</span>
+              <span class="field-value mono">{{ fieldOrDash(selectedOrder.coupon_id) }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">订单支付过期时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.expire_time) }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">实际履约时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.fulfilled_at) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">创建时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.created_at) }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="field-label">最后更新时间</span>
+              <span class="field-value">{{ formatDateTime(selectedOrder.updated_at) }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">履约状态</span>
+              <span class="field-value">{{ fulfillmentText(selectedOrder) }}</span>
+            </div>
+            <div class="detail-field" v-if="!isRechargeRecord(selectedOrder)">
+              <span class="field-label">开通方式</span>
+              <span class="field-value">{{ activationModeText(extraValue(selectedOrder, 'activation_mode')) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" v-if="extraEntries(selectedOrder).length">
+          <div class="detail-section-title">扩展数据快照</div>
+          <div class="extra-data-list">
+            <div
+              v-for="entry in extraEntries(selectedOrder)"
+              :key="entry.key"
+              class="extra-data-row"
+            >
+              <span class="extra-data-label">{{ entry.label }}</span>
+              <span class="extra-data-value">{{ entry.value }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="selectedOrder.payment_proof" class="payment-proof-section">
+          <div class="detail-section-title">支付凭证</div>
+          <img :src="selectedOrder.payment_proof" class="proof-image" @click="previewImage(selectedOrder.payment_proof)" />
         </div>
       </div>
     </el-drawer>
@@ -450,7 +731,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
@@ -493,6 +774,65 @@ export default {
     const selectedOrder = ref({})
     const selectedOrders = ref([])
     const bulkLoading = ref(false)
+    const detailTitle = computed(() => isRechargeRecord(selectedOrder.value) ? '充值详情' : '订单详情')
+    const renderedExtraKeys = new Set([
+      'type',
+      'duration_days',
+      'additional_days',
+      'old_device_limit',
+      'new_device_limit',
+      'old_expire_time',
+      'new_expire_time',
+      'old_expire_time_rfc3339',
+      'new_expire_time_rfc3339',
+      'activation_mode',
+      'had_existing_subscription',
+      'package_id',
+      'package_name',
+      'package_duration_days',
+      'duration_months',
+      'new_package_id',
+      'old_package_id',
+      'devices',
+      'months',
+      'discount_percent',
+      'additional_devices',
+      'balance_used',
+      'balance_deducted',
+      'level_discount',
+      'level_discount_rate',
+      'payable_amount',
+      'coupon_free_days'
+    ])
+    const extraLabelMap = {
+      type: '订单类型',
+      duration_days: '开通天数',
+      additional_days: '增加天数',
+      old_device_limit: '原设备数',
+      new_device_limit: '付款后设备数',
+      old_expire_time: '原到期时间',
+      new_expire_time: '付款后到期时间',
+      old_expire_time_rfc3339: '原到期时间原始值',
+      new_expire_time_rfc3339: '付款后到期时间原始值',
+      activation_mode: '开通方式',
+      had_existing_subscription: '付款前已有订阅',
+      package_id: '套餐 ID',
+      package_name: '套餐名称',
+      package_duration_days: '套餐基础天数',
+      duration_months: '购买月数',
+      new_package_id: '付款后套餐 ID',
+      old_package_id: '原套餐 ID',
+      devices: '自定义设备数',
+      months: '自定义月数',
+      discount_percent: '自定义时长折扣',
+      additional_devices: '增加设备',
+      balance_used: '余额抵扣',
+      balance_deducted: '余额已扣除',
+      level_discount: '会员等级优惠',
+      level_discount_rate: '等级折扣率',
+      payable_amount: '折后应付',
+      coupon_free_days: '优惠券赠送天数'
+    }
     
     const isMobile = ref(window.innerWidth <= 768)
     const searchForm = reactive({
@@ -660,8 +1000,195 @@ export default {
       })
     }
 
+    const isRechargeRecord = (record) => {
+      return record?.record_type === 'recharge' || String(record?.order_no || '').startsWith('RCH')
+    }
+
+    const orderExtra = (order) => order?.extra_data || {}
+
+    const extraValue = (order, key) => {
+      const value = orderExtra(order)[key]
+      return value === undefined || value === null || value === '' ? '' : value
+    }
+
+    const numberOrZero = (value) => {
+      const num = Number(value)
+      return Number.isFinite(num) ? num : 0
+    }
+
+    const numberOrDash = (value) => {
+      const num = Number(value)
+      return Number.isFinite(num) ? num : '-'
+    }
+
+    const isDeviceUpgradeOrder = (order) => {
+      return !isRechargeRecord(order) && extraValue(order, 'type') === 'device_upgrade'
+    }
+
+    const isCustomPackageOrder = (order) => {
+      return !isRechargeRecord(order) && extraValue(order, 'type') === 'custom_package'
+    }
+
+    const isPackageLikeOrder = (order) => {
+      if (!order || isRechargeRecord(order) || isDeviceUpgradeOrder(order)) return false
+      return true
+    }
+
+    const detailKindLabel = (order) => {
+      if (isRechargeRecord(order)) return '账户充值'
+      if (isDeviceUpgradeOrder(order)) return '设备升级'
+      if (isCustomPackageOrder(order)) return '自定义套餐'
+      return '套餐订单'
+    }
+
+    const detailPrimaryName = (order) => {
+      if (isRechargeRecord(order)) return '账户余额充值'
+      return order?.package_name || detailKindLabel(order)
+    }
+
+    const detailPaidTime = (order) => {
+      return formatDateTime(isRechargeRecord(order) ? order?.paid_at : order?.payment_time)
+    }
+
+    const detailAddedDays = (order) => {
+      const days = numberOrZero(extraValue(order, 'additional_days') || extraValue(order, 'duration_days'))
+      return days > 0 ? `+${days} 天` : '未记录'
+    }
+
+    const hasValue = (value) => value !== undefined && value !== null && value !== ''
+
+    const fieldOrDash = (...values) => {
+      const value = values.find(hasValue)
+      return hasValue(value) ? String(value) : '-'
+    }
+
+    const moneyField = (...values) => {
+      const value = values.find(hasValue)
+      return `¥${formatMoney(value || 0)}`
+    }
+
+    const percentField = (value) => {
+      if (!hasValue(value)) return '-'
+      const num = Number(value)
+      if (!Number.isFinite(num)) return String(value)
+      const percent = num > 0 && num <= 1 ? num * 100 : num
+      return `${percent.toFixed(percent % 1 === 0 ? 0 : 2)}%`
+    }
+
+    const boolText = (value) => {
+      if (value === true || value === 'true' || value === 1 || value === '1') return '是'
+      if (value === false || value === 'false' || value === 0 || value === '0') return '否'
+      return '未记录'
+    }
+
+    const daysText = (value) => {
+      const days = numberOrZero(value)
+      return days > 0 ? `${days} 天` : '-'
+    }
+
+    const deviceCountText = (order) => {
+      const devices = extraValue(order, 'devices') || extraValue(order, 'new_device_limit') || order?.package?.device_limit
+      const count = numberOrZero(devices)
+      return count > 0 ? `${count} 台` : '-'
+    }
+
+    const monthCountText = (order) => {
+      const months = extraValue(order, 'months') || extraValue(order, 'duration_months')
+      const count = numberOrZero(months)
+      return count > 0 ? `${count} 个月` : '-'
+    }
+
+    const packageTypeText = (order) => {
+      if (isDeviceUpgradeOrder(order)) return '设备升级'
+      if (isCustomPackageOrder(order)) return '自定义套餐'
+      return '固定套餐'
+    }
+
+    const toComparableDate = (value) => {
+      if (!hasValue(value)) return null
+      if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+      const raw = String(value)
+      const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+        ? raw.replace(' ', 'T') + '+08:00'
+        : raw
+      const date = new Date(normalized)
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+
+    const expireDeltaText = (order) => {
+      const oldDate = toComparableDate(extraValue(order, 'old_expire_time_rfc3339') || extraValue(order, 'old_expire_time'))
+      const newDate = toComparableDate(extraValue(order, 'new_expire_time_rfc3339') || extraValue(order, 'new_expire_time'))
+      if (!newDate) return '未记录'
+      if (!oldDate) return detailAddedDays(order)
+      const days = Math.round((newDate.getTime() - oldDate.getTime()) / 86400000)
+      if (days > 0) return `+${days} 天`
+      if (days < 0) return `${days} 天`
+      return '0 天'
+    }
+
+    const hasDiscountOrBalance = (order) => {
+      if (!order || isRechargeRecord(order)) return false
+      return [
+        order.coupon_id,
+        order.discount_amount,
+        extraValue(order, 'coupon_free_days'),
+        extraValue(order, 'balance_used'),
+        extraValue(order, 'level_discount'),
+        extraValue(order, 'level_discount_rate'),
+        extraValue(order, 'discount_percent'),
+        extraValue(order, 'balance_deducted')
+      ].some(hasValue)
+    }
+
+    const qrSummary = (qrCode, paymentUrl) => {
+      if (!qrCode) return '-'
+      if (qrCode === paymentUrl) return '同支付链接'
+      return String(qrCode)
+    }
+
+    const fulfillmentText = (order) => {
+      if (!order) return '-'
+      if (order.status !== 'paid') return '未支付未履约'
+      return order.fulfilled_at ? '已开通/已履约' : '已支付但未记录履约时间'
+    }
+
+    const formatExtraValue = (key, value) => {
+      if (value === undefined || value === null || value === '') return '-'
+      if (key.includes('amount') || key.includes('price') || key.includes('balance') || key.includes('discount')) {
+        if (!key.includes('percent') && !key.includes('rate')) return moneyField(value)
+      }
+      if (key.includes('rate') || key.includes('percent')) return percentField(value)
+      if (key.includes('days')) return daysText(value)
+      if (typeof value === 'boolean') return boolText(value)
+      if (typeof value === 'object') return JSON.stringify(value)
+      return String(value)
+    }
+
+    const extraEntries = (order) => {
+      return Object.entries(orderExtra(order))
+        .filter(([key, value]) => !renderedExtraKeys.has(key) && hasValue(value))
+        .map(([key, value]) => ({
+          key,
+          label: extraLabelMap[key] || key,
+          value: formatExtraValue(key, value)
+        }))
+    }
+
+    const activationModeText = (mode) => ({
+      create: '新建订阅',
+      extend: '续期叠加',
+      reactivate: '过期重开',
+      replace: '替换开通'
+    }[mode] || '未记录')
+
+    const orderOriginalAmount = (order) => {
+      const discount = Number(order?.discount_amount || 0)
+      const paid = Number(order?.amount || 0)
+      return discount > 0 ? paid + discount : paid
+    }
+
     const canRefundOrder = (order) => {
-      if (!order || order.record_type === 'recharge' || order.status !== 'paid') return false
+      if (!order || isRechargeRecord(order) || order.status !== 'paid') return false
       const method = String(order.payment_method || '').toLowerCase()
       return method.includes('yipay') || method.includes('易支付')
     }
@@ -810,12 +1337,18 @@ export default {
       // Actions
       searchOrders, resetSearch, handleTabChange,
       handleSizeChange, handleCurrentChange, handleSelectionChange,
-      isOrderSelectable,
+      isOrderSelectable, isRechargeRecord,
       viewOrder, previewImage, markAsPaid, cancelOrder, deleteOrder, refundOrder, canRefundOrder,
       exportOrders, bulkMarkAsPaid, bulkCancel, bulkDelete,
       
       // Utils
-      getStatusType, getStatusText, formatDateTime, formatMoney
+      detailTitle, getStatusType, getStatusText, formatDateTime, formatMoney,
+      orderExtra, extraValue, numberOrZero, numberOrDash,
+      isDeviceUpgradeOrder, isCustomPackageOrder, isPackageLikeOrder,
+      detailKindLabel, detailPrimaryName, detailPaidTime, detailAddedDays,
+      activationModeText, orderOriginalAmount, moneyField, percentField, boolText,
+      fieldOrDash, daysText, deviceCountText, monthCountText, packageTypeText,
+      expireDeltaText, hasDiscountOrBalance, qrSummary, fulfillmentText, extraEntries
     }
   }
 }
@@ -830,7 +1363,252 @@ export default {
 .selected-count { color: #409eff; font-weight: 600; font-size: 14px; }
 .action-buttons-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 
+.order-detail-content {
+  padding: 0 2px 24px;
+}
+
+.detail-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%);
+  margin-bottom: 18px;
+
+  &.is-recharge {
+    background: linear-gradient(135deg, #f7fdf8 0%, #ecf8f0 100%);
+  }
+}
+
+.hero-main {
+  min-width: 0;
+}
+
+.hero-kicker {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 8px;
+}
+
+.hero-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.hero-order-no {
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #6b7280;
+  word-break: break-all;
+}
+
+.hero-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.hero-amount {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;
+
+  &.is-plus {
+    color: #16a34a;
+  }
+}
+
+.detail-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.detail-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 14px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+
+  &.compact {
+    margin-top: 14px;
+  }
+}
+
+.detail-field {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f9fafb;
+  border: 1px solid #f1f5f9;
+}
+
+.field-label {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.field-value {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-word;
+
+  &.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+
+  &.discount {
+    color: #dc2626;
+  }
+
+  &.positive {
+    color: #16a34a;
+  }
+
+  &.accent {
+    color: #2563eb;
+  }
+}
+
+.change-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 10px;
+}
+
+.change-card {
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 14px;
+
+  &.is-new {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+  }
+
+  strong {
+    display: block;
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+}
+
+.change-label {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.change-arrow {
+  display: flex;
+  align-items: center;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.extra-data-list {
+  display: grid;
+  gap: 8px;
+}
+
+.extra-data-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid #f1f5f9;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.extra-data-label {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.extra-data-value {
+  min-width: 0;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.payment-proof-section {
+  margin-top: 18px;
+}
+
+.proof-image {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  background: #f8fafc;
+}
+
 @media (max-width: 768px) {
+  .detail-hero {
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .hero-side {
+    align-items: flex-start;
+  }
+
+  .hero-amount {
+    font-size: 22px;
+  }
+
+  .detail-grid,
+  .change-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .extra-data-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .change-arrow {
+    justify-content: center;
+    transform: rotate(90deg);
+  }
+
   .mobile-card-optimized {
     .mc-header {
       padding: 12px 16px;
