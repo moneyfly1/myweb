@@ -180,27 +180,6 @@
           </el-card>
         </el-col>
       </el-row>
-      <el-card class="recent-activities">
-        <template #header>
-          <div class="card-header">
-            <h3>最近活动</h3>
-          </div>
-        </template>
-        <el-timeline v-if="recentActivities.length > 0">
-          <el-timeline-item
-            v-for="activity in recentActivities"
-            :key="activity.id"
-            :timestamp="activity.time"
-            :type="activity.type"
-          >
-            <div class="activity-content">
-              <div class="activity-title">{{ activity.title }}</div>
-              <div class="activity-description">{{ activity.description }}</div>
-            </div>
-          </el-timeline-item>
-        </el-timeline>
-        <el-empty v-else description="暂无活动记录" />
-      </el-card>
         </el-tab-pane>
         <el-tab-pane label="地区分析" name="regions">
           <el-card style="margin-bottom: 20px;">
@@ -341,7 +320,6 @@ export default {
 		})
 		const userStats = ref([])
 		const subscriptionStats = ref([])
-		const recentActivities = ref([])
 		const regionStats = ref([])
 		const fetchStatistics = async () => {
 			try {
@@ -375,19 +353,6 @@ export default {
 						}))
 					} else {
 						subscriptionStats.value = []
-					}
-					if (data.recentActivities && Array.isArray(data.recentActivities)) {
-						recentActivities.value = data.recentActivities.map(activity => ({
-							id: activity.id,
-							type: activity.type || 'primary',
-							title: activity.description || activity.title || '未知活动',
-							description: activity.amount !== undefined
-								? `金额: ¥${formatMoney(activity.amount)} | 状态: ${activity.status || '未知'}`
-								: (activity.description || ''),
-							time: activity.time || activity.created_at || ''
-						}))
-					} else {
-						recentActivities.value = []
 					}
 				}
 			} catch (error) {
@@ -601,7 +566,6 @@ export default {
 			statistics,
 			userStats,
 			subscriptionStats,
-			recentActivities,
 			regionStats,
 			loadRegionStats,
 			formatMoney

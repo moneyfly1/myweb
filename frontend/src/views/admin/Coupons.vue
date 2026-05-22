@@ -162,16 +162,17 @@
         <el-empty description="暂无优惠券数据" />
       </div>
     </div>
-    <el-pagination
-      v-model:current-page="pagination.page"
-      v-model:page-size="pagination.size"
-      :total="pagination.total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      @size-change="loadCoupons"
-      @current-change="loadCoupons"
-      style="margin-top: 20px; justify-content: center"
-    />
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.size"
+        :total="pagination.total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="loadCoupons"
+        @current-change="loadCoupons"
+      />
+    </div>
     <el-drawer
       v-model="showCreateDialog"
       :title="editingCoupon ? '编辑优惠券' : '创建优惠券'"
@@ -1006,5 +1007,10 @@ onUnmounted(() => {
   .mobile-coupons-list {
     display: none !important;
   }
+}
+.pagination {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
