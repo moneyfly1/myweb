@@ -702,6 +702,71 @@ func TestCustomPackageReplacesExistingSubscriptionDuration(t *testing.T) {
 	}
 }
 
+func TestPaidPackageOrderStoresSubscriptionChangeSnapshot(t *testing.T) {
+	db := setupPaymentFlowTestDB(t)
+	user := models.User{Username: "package_snapshot", Email: "package_snapshot@example.com", Password: "x"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	pkg := models.Package{Name: "Snapshot Pro", Price: 100, DurationDays: 30, DeviceLimit: 8, IsActive: true}
+	if err := db.Create(&pkg).Error; err != nil {
+		t.Fatal(err)
+	}
+	oldExpire := utils.GetBeijingTime().AddDate(0, 0, 15)
+	sub := models.Subscription{
+		UserID:          user.ID,
+		SubscriptionURL: "sub-package-snapshot",
+		DeviceLimit:     3,
+		IsActive:        true,
+		Status:          "active",
+		ExpireTime:      oldExpire,
+	}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	order := models.Order{
+		OrderNo:     "ORDPACKSNAP001",
+		UserID:      user.ID,
+		PackageID:   pkg.ID,
+		Amount:      200,
+		FinalAmount: database.NullFloat64(200),
+		Status:      "pending",
+		ExtraData:   database.NullString(`{"duration_months":2}`),
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	svc := orderServicePkg.NewOrderService()
+	if _, err := svc.FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{}); err != nil {
+		t.Fatalf("finalize package order: %v", err)
+	}
+
+	var paidOrder models.Order
+	if err := db.First(&paidOrder, order.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var extra map[string]interface{}
+	if err := json.Unmarshal([]byte(paidOrder.ExtraData.String), &extra); err != nil {
+		t.Fatalf("parse extra data: %v", err)
+	}
+	if extra["type"] != "package" {
+		t.Fatalf("expected package type snapshot, got %+v", extra["type"])
+	}
+	if extra["activation_mode"] != "extend" {
+		t.Fatalf("expected activation mode extend, got %+v", extra["activation_mode"])
+	}
+	if extra["old_expire_time"] == "" || extra["new_expire_time"] == "" {
+		t.Fatalf("expected old/new expiry snapshot, got %+v", extra)
+	}
+	if extra["additional_days"] != float64(60) {
+		t.Fatalf("expected additional days 60, got %+v", extra["additional_days"])
+	}
+	if extra["old_device_limit"] != float64(3) || extra["new_device_limit"] != float64(8) {
+		t.Fatalf("expected device snapshot 3->8, got old=%+v new=%+v", extra["old_device_limit"], extra["new_device_limit"])
+	}
+}
+
 func TestPublicSettingsExposeEnabledCustomPackageWithoutNormalPackages(t *testing.T) {
 	db := setupPaymentFlowTestDB(t)
 	configs := []models.SystemConfig{
