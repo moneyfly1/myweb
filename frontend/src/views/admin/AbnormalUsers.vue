@@ -170,6 +170,17 @@
           </div>
         </div>
       </div>
+      <div class="pagination">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
     </el-card>
     <el-drawer
       v-model="showUserDetailsDialog"
@@ -292,6 +303,9 @@ export default {
     const route = useRoute()
     const loading = ref(false)
     const abnormalUsers = ref([])
+    const currentPage = ref(1)
+    const pageSize = ref(10)
+    const total = ref(0)
     const showUserDetailsDialog = ref(false)
     const userDetails = ref(null)
     const isMobile = ref(window.innerWidth <= 768)
@@ -315,7 +329,10 @@ export default {
     const loadAbnormalUsers = async () => {
       loading.value = true
       try {
-        const params = {}
+        const params = {
+          page: currentPage.value,
+          size: pageSize.value
+        }
         if (filters.dateRange && filters.dateRange.length === 2) {
           params['date_range[]'] = filters.dateRange
         }
@@ -328,17 +345,22 @@ export default {
         const response = await adminAPI.getAbnormalUsers(params)
         if (response.data && response.data.success) {
           const data = response.data.data
-          if (Array.isArray(data)) {
-            abnormalUsers.value = data
-          } else if (data && Array.isArray(data.users)) {
+          if (data && Array.isArray(data.users)) {
             abnormalUsers.value = data.users
+            total.value = data.total || 0
+          } else if (Array.isArray(data)) {
+            abnormalUsers.value = data
+            total.value = data.length
           } else if (data && Array.isArray(data.list)) {
             abnormalUsers.value = data.list
+            total.value = data.total || 0
           } else {
             abnormalUsers.value = []
+            total.value = 0
           }
         } else {
           abnormalUsers.value = []
+          total.value = 0
         }
       } catch (error) {
         ElMessage.error('加载异常用户失败: ' + (error.response?.data?.message || error.message))
@@ -348,12 +370,24 @@ export default {
       }
     }
     const applyFilters = () => {
+      currentPage.value = 1
       loadAbnormalUsers()
     }
     const resetFilters = () => {
       filters.dateRange = getDefaultDateRange()  // 重置为默认日期范围
       filters.subscriptionCount = 10  // 重置为默认值
       filters.resetCount = 3  // 重置为默认值
+      currentPage.value = 1
+      pageSize.value = 10
+      loadAbnormalUsers()
+    }
+    const handleSizeChange = (val) => {
+      pageSize.value = val
+      currentPage.value = 1
+      loadAbnormalUsers()
+    }
+    const handleCurrentChange = (val) => {
+      currentPage.value = val
       loadAbnormalUsers()
     }
     const viewUserDetails = async (userId) => {
@@ -418,6 +452,9 @@ export default {
     return {
       loading,
       abnormalUsers,
+      currentPage,
+      pageSize,
+      total,
       filters,
       showUserDetailsDialog,
       userDetails,
@@ -426,6 +463,8 @@ export default {
       loadAbnormalUsers,
       applyFilters,
       resetFilters,
+      handleSizeChange,
+      handleCurrentChange,
       viewUserDetails,
       markAsNormal,
       formatDate
@@ -694,5 +733,10 @@ export default {
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: none !important;
+}
+.pagination {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

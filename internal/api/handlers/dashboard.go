@@ -248,6 +248,9 @@ func GetRecentOrders(c *gin.Context) {
 func GetAbnormalUsers(c *gin.Context) {
 	db := database.GetDB()
 	now := utils.GetBeijingTime()
+	pagination := utils.ParsePagination(c)
+	page := pagination.Page
+	size := pagination.Size
 
 	dateRange := c.QueryArray("date_range[]")
 	if len(dateRange) == 0 {
@@ -313,11 +316,14 @@ func GetAbnormalUsers(c *gin.Context) {
 	// 注意：日期范围只用于统计订阅/重置次数的时间范围，不用于限制用户的创建时间
 	// 因为一个用户可能在上个月创建，但在本月有异常行为，应该被识别为异常用户
 
+	var total int64
+	query.Count(&total)
+
 	var users []models.User
-	query.Order("created_at DESC").Limit(200).Find(&users)
+	query.Order("created_at DESC").Offset(pagination.GetOffset()).Limit(pagination.Size).Find(&users)
 
 	userList := buildAbnormalUserDataWithDateRange(db, users, startTime, endTime, minSub, minReset)
-	utils.SuccessResponse(c, http.StatusOK, "", userList)
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": userList, "total": total, "page": page, "size": size})
 }
 
 func MarkUserNormal(c *gin.Context) {
