@@ -1056,18 +1056,29 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 			id := utils.MustSafeUintToInt64(pkg.ID)
 			pkgID = &id
 		}
+		if parsedExtraData == nil {
+			parsedExtraData = make(map[string]interface{})
+		}
+		parsedExtraData["duration_days"] = totalDurationDays
+		parsedExtraData["additional_days"] = totalDurationDays
+		parsedExtraData["old_device_limit"] = 0
+		parsedExtraData["new_device_limit"] = deviceLimit
+		parsedExtraData["old_expire_time"] = ""
+		parsedExtraData["new_expire_time"] = utils.FormatBeijingTime(expireTime)
+		parsedExtraData["new_expire_time_rfc3339"] = expireTime.Format(time.RFC3339Nano)
+		parsedExtraData["activation_mode"] = "create"
+		parsedExtraData["had_existing_subscription"] = false
 		if isCustomPackage {
-			if parsedExtraData == nil {
-				parsedExtraData = make(map[string]interface{})
-			}
-			parsedExtraData["duration_days"] = totalDurationDays
-			parsedExtraData["new_device_limit"] = deviceLimit
-			parsedExtraData["new_expire_time"] = utils.FormatBeijingTime(expireTime)
-			parsedExtraData["activation_mode"] = "create"
-			parsedExtraData["had_existing_subscription"] = false
-			if encodedExtra, err := json.Marshal(parsedExtraData); err == nil {
-				order.ExtraData = database.NullString(string(encodedExtra))
-			}
+			parsedExtraData["type"] = "custom_package"
+		} else {
+			parsedExtraData["type"] = "package"
+			parsedExtraData["package_id"] = pkg.ID
+			parsedExtraData["package_name"] = packageName
+			parsedExtraData["package_duration_days"] = pkg.DurationDays
+			parsedExtraData["duration_months"] = durationMonths
+		}
+		if encodedExtra, err := json.Marshal(parsedExtraData); err == nil {
+			order.ExtraData = database.NullString(string(encodedExtra))
 		}
 		subscription = models.Subscription{
 			UserID:          user.ID,
@@ -1119,27 +1130,40 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 		subscription.DeviceLimit = deviceLimit
 		subscription.IsActive = true
 		subscription.Status = "active"
+		if parsedExtraData == nil {
+			parsedExtraData = make(map[string]interface{})
+		}
+		parsedExtraData["old_device_limit"] = oldDeviceLimit
+		parsedExtraData["new_device_limit"] = deviceLimit
+		parsedExtraData["old_expire_time"] = utils.FormatBeijingTime(oldExpireTime)
+		parsedExtraData["new_expire_time"] = utils.FormatBeijingTime(subscription.ExpireTime)
+		parsedExtraData["old_expire_time_rfc3339"] = oldExpireTime.Format(time.RFC3339Nano)
+		parsedExtraData["new_expire_time_rfc3339"] = subscription.ExpireTime.Format(time.RFC3339Nano)
+		parsedExtraData["old_package_id"] = oldPackageID
+		parsedExtraData["duration_days"] = totalDurationDays
+		parsedExtraData["additional_days"] = totalDurationDays
+		parsedExtraData["had_existing_subscription"] = true
 		if isCustomPackage {
 			subscription.PackageID = nil
-			if parsedExtraData == nil {
-				parsedExtraData = make(map[string]interface{})
-			}
-			parsedExtraData["old_device_limit"] = oldDeviceLimit
-			parsedExtraData["new_device_limit"] = deviceLimit
-			parsedExtraData["old_expire_time"] = utils.FormatBeijingTime(oldExpireTime)
-			parsedExtraData["new_expire_time"] = utils.FormatBeijingTime(subscription.ExpireTime)
-			parsedExtraData["old_expire_time_rfc3339"] = oldExpireTime.Format(time.RFC3339Nano)
-			parsedExtraData["new_expire_time_rfc3339"] = subscription.ExpireTime.Format(time.RFC3339Nano)
-			parsedExtraData["old_package_id"] = oldPackageID
-			parsedExtraData["duration_days"] = totalDurationDays
 			parsedExtraData["activation_mode"] = "replace"
-			parsedExtraData["had_existing_subscription"] = true
-			if encodedExtra, err := json.Marshal(parsedExtraData); err == nil {
-				order.ExtraData = database.NullString(string(encodedExtra))
-			}
+			parsedExtraData["type"] = "custom_package"
 		} else {
 			pkgID := utils.MustSafeUintToInt64(pkg.ID)
 			subscription.PackageID = &pkgID
+			parsedExtraData["type"] = "package"
+			if oldExpireTime.Before(now) {
+				parsedExtraData["activation_mode"] = "reactivate"
+			} else {
+				parsedExtraData["activation_mode"] = "extend"
+			}
+			parsedExtraData["package_id"] = pkg.ID
+			parsedExtraData["package_name"] = packageName
+			parsedExtraData["package_duration_days"] = pkg.DurationDays
+			parsedExtraData["duration_months"] = durationMonths
+			parsedExtraData["new_package_id"] = pkg.ID
+		}
+		if encodedExtra, err := json.Marshal(parsedExtraData); err == nil {
+			order.ExtraData = database.NullString(string(encodedExtra))
 		}
 
 		if err := tx.Save(&subscription).Error; err != nil {
@@ -1161,9 +1185,9 @@ func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *mode
 func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Order, user *models.User) (*models.Subscription, error) {
 	var additionalDevices int
 	var additionalDays int
+	var extraData map[string]interface{}
 
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
 			if extraData["type"] == "device_upgrade" {
 				if devices, ok := extraData["additional_devices"].(float64); ok {
@@ -1181,6 +1205,8 @@ func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Or
 		return nil, fmt.Errorf("订阅不存在: %v", err)
 	}
 
+	oldExpireTime := subscription.ExpireTime
+	oldDeviceLimit := subscription.DeviceLimit
 	if additionalDevices > 0 {
 		subscription.DeviceLimit += additionalDevices
 	}
@@ -1198,9 +1224,25 @@ func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Or
 		return nil, fmt.Errorf("升级订阅失败: %v", err)
 	}
 
+	if extraData == nil {
+		extraData = make(map[string]interface{})
+	}
+	extraData["type"] = "device_upgrade"
+	extraData["additional_devices"] = additionalDevices
+	extraData["additional_days"] = additionalDays
+	extraData["old_device_limit"] = oldDeviceLimit
+	extraData["new_device_limit"] = subscription.DeviceLimit
+	extraData["old_expire_time"] = utils.FormatBeijingTime(oldExpireTime)
+	extraData["new_expire_time"] = utils.FormatBeijingTime(subscription.ExpireTime)
+	extraData["old_expire_time_rfc3339"] = oldExpireTime.Format(time.RFC3339Nano)
+	extraData["new_expire_time_rfc3339"] = subscription.ExpireTime.Format(time.RFC3339Nano)
+	if encodedExtra, err := json.Marshal(extraData); err == nil {
+		order.ExtraData = database.NullString(string(encodedExtra))
+	}
+
 	if utils.AppLogger != nil {
-		utils.AppLogger.Info("ProcessPaidOrder: ✅ 设备升级成功 - user_id=%d, additional_devices=%d, additional_days=%d, device_limit=%d, expire_time=%s",
-			user.ID, additionalDevices, additionalDays, subscription.DeviceLimit, utils.FormatBeijingTime(subscription.ExpireTime))
+		utils.AppLogger.Info("ProcessPaidOrder: ✅ 设备升级成功 - user_id=%d, additional_devices=%d, additional_days=%d, device_limit: %d->%d, expire_time: %s->%s",
+			user.ID, additionalDevices, additionalDays, oldDeviceLimit, subscription.DeviceLimit, utils.FormatBeijingTime(oldExpireTime), utils.FormatBeijingTime(subscription.ExpireTime))
 	}
 
 	return &subscription, nil
