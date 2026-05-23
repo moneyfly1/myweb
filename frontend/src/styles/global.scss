@@ -1148,3 +1148,11 @@ $breakpoints: (
   outline: 2px solid var(--theme-primary, #409EFF) !important;
   outline-offset: 2px;
 }
+
+// 统一分页样式：右对齐
+.pagination,
+.pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
