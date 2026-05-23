@@ -237,16 +237,17 @@
         <el-empty description="暂无工单数据" />
       </div>
     </div>
-    <el-pagination
-      v-model:current-page="pagination.page"
-      v-model:page-size="pagination.size"
-      :total="pagination.total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      @size-change="loadTickets"
-      @current-change="loadTickets"
-      style="margin-top: 20px; justify-content: center"
-    />
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.size"
+        :total="pagination.total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="loadTickets"
+        @current-change="loadTickets"
+      />
+    </div>
     <el-drawer
       v-model="showDetailDialog"
       :title="currentTicket ? `工单详情 - ${currentTicket.ticket_no}` : '工单详情'"

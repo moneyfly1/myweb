@@ -492,12 +492,10 @@ onUnmounted(() => {
   }
 
   .pagination-wrapper {
-    justify-content: center;
   }
 
   :deep(.el-pagination) {
     flex-wrap: wrap;
-    justify-content: center;
   }
 }
 </style>

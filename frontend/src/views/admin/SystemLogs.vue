@@ -1010,7 +1010,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
   .pagination-wrapper {
     margin-top: 16px;
     :deep(.el-pagination) {
-      justify-content: center;
       flex-wrap: wrap;
       .el-pagination__sizes,
       .el-pagination__jump {
