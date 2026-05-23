@@ -183,7 +183,7 @@
             </div>
             <el-empty v-if="inviteCodes.length === 0" description="暂无数据" />
           </div>
-          <div style="margin-top: 20px; display: flex; justify-content: center;">
+          <div class="pagination">
             <el-pagination
               v-model:current-page="codePage"
               v-model:page-size="codePageSize"
@@ -365,7 +365,7 @@
             </div>
             <el-empty v-if="inviteRelations.length === 0" description="暂无数据" />
           </div>
-          <div style="margin-top: 20px; display: flex; justify-content: center;">
+          <div class="pagination">
             <el-pagination
               v-model:current-page="relationPage"
               v-model:page-size="relationPageSize"
@@ -1469,7 +1469,6 @@ onUnmounted(() => {
   }
   :deep(.el-pagination) {
     flex-wrap: wrap;
-    justify-content: center;
     .el-pagination__sizes,
     .el-pagination__jump {
       margin-top: 10px;
