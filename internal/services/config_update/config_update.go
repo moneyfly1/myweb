@@ -1129,7 +1129,7 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 			if proxy.Name == "" {
 				proxy.Name = "专线-" + cn.Name
 			}
-			key := fmt.Sprintf("%s:%s:%d", proxy.Type, proxy.Server, proxy.Port)
+			key := fmt.Sprintf("%s:%s:%d:%s", proxy.Type, proxy.Server, proxy.Port, proxy.Name)
 			if !processed[key] {
 				processed[key] = true
 				*proxies = append(*proxies, &proxy)
@@ -1142,7 +1142,7 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 	cache := &CacheService{}
 	if cached, ok := cache.GetSystemNodesCache(); ok {
 		for _, n := range cached {
-			if key := fmt.Sprintf("%s:%s:%d", n.Type, n.Server, n.Port); !processed[key] {
+			if key := fmt.Sprintf("%s:%s:%d:%s", n.Type, n.Server, n.Port, n.Name); !processed[key] {
 				processed[key] = true
 				*proxies = append(*proxies, n)
 			}
@@ -1161,7 +1161,7 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 		var p ProxyNode
 		if json.Unmarshal([]byte(*n.Config), &p) == nil {
 			p.Name = n.Name
-			if key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port); !processed[key] {
+			if key := fmt.Sprintf("%s:%s:%d:%s", p.Type, p.Server, p.Port, p.Name); !processed[key] {
 				processed[key] = true
 				*proxies = append(*proxies, &p)
 				sysNodes = append(sysNodes, &p)
