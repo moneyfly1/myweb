@@ -965,7 +965,7 @@ func (s *ConfigUpdateService) generateNodeKey(nodeType string, name string, conf
 }
 
 func (s *ConfigUpdateService) generateNodeKeyFromProxy(p *ProxyNode) string {
-	key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port)
+	key := fmt.Sprintf("%s:%s:%d:%s", p.Type, p.Server, p.Port, p.Name)
 	if p.UUID != "" {
 		return key + ":" + p.UUID
 	} else if p.Password != "" {
