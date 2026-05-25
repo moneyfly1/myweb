@@ -64,7 +64,7 @@ func generateNodeKey(nodeType string, name string, config *string) string {
 	}
 	var p config_update.ProxyNode
 	if err := json.Unmarshal([]byte(*config), &p); err == nil {
-		key := fmt.Sprintf("%s:%s:%d", p.Type, p.Server, p.Port)
+		key := fmt.Sprintf("%s:%s:%d:%s", p.Type, p.Server, p.Port, p.Name)
 		if p.UUID != "" {
 			return key + ":" + p.UUID
 		} else if p.Password != "" {
