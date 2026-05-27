@@ -924,16 +924,16 @@ $breakpoints: (
 // 全局统一输入框样式：wrapper 负责边框，inner 不再有边框
 .el-input__wrapper {
   box-shadow: none !important;
-  border: 1px solid var(--el-border-color, #dcdfe6) !important;
+  border: none !important;
   border-radius: 4px !important;
 }
 .el-input__wrapper:hover {
   box-shadow: none !important;
-  border-color: #c0c4cc !important;
+  border: none !important;
 }
 .el-input__wrapper.is-focus {
   box-shadow: none !important;
-  border-color: var(--el-color-primary, #409eff) !important;
+  border: none !important;
 }
 .el-input__inner {
   border: none !important;
