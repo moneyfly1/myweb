@@ -366,7 +366,11 @@ server {
     root ${PROJECT_DIR}/frontend/dist;
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
-    location /.well-known/acme-challenge/ { root ${PROJECT_DIR}; }
+    location ^~ /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
     location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
     location / { try_files \$uri \$uri/ /index.html; }
 }
@@ -384,7 +388,19 @@ EOF
     if [ -n "$cert_root" ] && [ -f "$cert_root/fullchain.pem" ]; then
         cat > "$bt_path" << EOF
 server {
-    listen 80; server_name ${DOMAIN}; return 301 https://\$host\$request_uri;
+    listen 80;
+    server_name ${DOMAIN};
+    root ${PROJECT_DIR}/frontend/dist;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    location ^~ /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
 }
 server {
     listen 443 ssl http2; server_name ${DOMAIN};
@@ -393,6 +409,11 @@ server {
     root ${PROJECT_DIR}/frontend/dist;
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
+    location ^~ /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
@@ -623,12 +644,68 @@ renew_cert() {
         error "未安装 certbot，请先执行「一键全自动部署」或安装 certbot"
         return 1
     fi
+
+    local bt_path="/www/server/panel/vhost/nginx/${DOMAIN}.conf"
+    local challenge_dir="${PROJECT_DIR}/.well-known/acme-challenge"
+    local project_root="${PROJECT_DIR}"
+
+    mkdir -p "$challenge_dir"
+
+    if [[ -f "$bt_path" ]]; then
+        if ! grep -q "location \^~ /\\.well-known/acme-challenge/" "$bt_path"; then
+            warn "检测到当前 Nginx 配置未放行 ACME challenge，正在自动修复..."
+            cp "$bt_path" "${bt_path}.backup.$(date +%Y%m%d_%H%M%S)"
+            python3 - "$bt_path" "$project_root" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+project_root = sys.argv[2]
+text = path.read_text()
+challenge_block = f'''    location ^~ /.well-known/acme-challenge/ {{
+        root {project_root};
+        default_type text/plain;
+        try_files $uri =404;
+    }}
+'''
+
+if 'listen 80;' in text and 'return 301 https://$host$request_uri;' in text and 'location ^~ /.well-known/acme-challenge/' not in text:
+    text = text.replace(
+        f'''server {{
+    listen 80; server_name {Path(path).stem}; return 301 https://$host$request_uri;
+}}''',
+        f'''server {{
+    listen 80;
+    server_name {Path(path).stem};
+{challenge_block}    location / {{
+        return 301 https://$host$request_uri;
+    }}
+}}'''
+    )
+else:
+    marker = f'    server_name {Path(path).stem};\n'
+    idx = text.find(marker)
+    if idx != -1:
+        insert_at = idx + len(marker)
+        text = text[:insert_at] + challenge_block + text[insert_at:]
+
+path.write_text(text)
+PY
+        fi
+        if nginx -t; then
+            systemctl reload nginx 2>/dev/null || /etc/init.d/nginx reload 2>/dev/null || true
+        else
+            error "Nginx 配置检测失败，请检查: $bt_path"
+            return 1
+        fi
+    fi
+
     setup_cert_auto_renew_hook
     if certbot renew --quiet --deploy-hook "systemctl reload nginx 2>/dev/null || /etc/init.d/nginx reload 2>/dev/null"; then
         log "证书续期检查完成（未到期则不会更新）；若已续期，Nginx 已重载"
     else
         warn "certbot renew 执行异常，请检查: certbot certificates"
-        certbot renew --no-quiet 2>&1 | tail -20
+        certbot renew 2>&1 | tail -20
     fi
 }
 
