@@ -380,9 +380,10 @@ api.interceptors.response.use(
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
       const isInAdminPanel = currentPath.startsWith('/admin')
       const isAdminAPI = error.config?.url && (
-        error.config.url.startsWith('/admin') || 
-        error.config.url.includes('/admin/') || 
+        error.config.url.startsWith('/admin') ||
+        error.config.url.includes('/admin/') ||
         ADMIN_PATHS.some(path => error.config.url.startsWith(path)) ||
+        error.config.url.startsWith('/recharge/admin') ||
         (isInAdminPanel && (error.config.url.startsWith('/users/') || error.config.url.startsWith('/tickets/')))
       )
       const refreshKey = isAdminAPI ? 'admin' : 'user'
