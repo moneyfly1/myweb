@@ -403,7 +403,9 @@ server {
     }
 }
 server {
-    listen 443 ssl http2; server_name ${DOMAIN};
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
     ssl_certificate ${cert_root}/fullchain.pem;
     ssl_certificate_key ${cert_root}/privkey.pem;
     root ${PROJECT_DIR}/frontend/dist;
