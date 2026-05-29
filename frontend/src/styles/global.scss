@@ -1143,6 +1143,30 @@ $breakpoints: (
     }
   }
 } 
+@media (max-width: 768px) {
+  .mobile-search-input,
+  .mobile-filter-input,
+  .mobile-filter-select,
+  .mobile-status-select,
+  .mobile-date-picker-item {
+    :deep(.el-input__wrapper),
+    :deep(.el-select__wrapper),
+    .el-input__wrapper,
+    .el-select__wrapper {
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    }
+
+    :deep(.el-input__inner),
+    .el-input__inner {
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    }
+  }
+}
+
 /* Focus visibility for keyboard navigation */
 :focus-visible {
   outline: 2px solid var(--theme-primary, #409EFF) !important;
