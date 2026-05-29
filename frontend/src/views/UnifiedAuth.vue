@@ -882,13 +882,13 @@ $gold-light: #F3E5AB;
 // Element Plus 深色主题覆盖
 :deep(.el-input__wrapper) {
   background: rgba(255,255,255,0.05) !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
+  border: none !important;
   border-radius: 12px !important;
   box-shadow: none !important;
   transition: all 0.3s;
   &:hover, &.is-focus {
     background: rgba(255,255,255,0.08) !important;
-    border-color: $gold !important;
+    border: none !important;
     box-shadow: 0 0 12px rgba($gold, 0.15) !important;
   }
 }
