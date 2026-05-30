@@ -375,7 +375,8 @@ func GetAdminNodes(c *gin.Context) {
 		search = utils.SanitizeSearchKeyword(search)
 		if search != "" {
 			escapedSearch := utils.EscapeLikePattern(search)
-			query = query.Where("name LIKE ?", "%"+escapedSearch+"%")
+			searchPattern := "%" + escapedSearch + "%"
+			query = query.Where("name LIKE ? OR config LIKE ?", searchPattern, searchPattern)
 		}
 	}
 
