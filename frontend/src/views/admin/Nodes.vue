@@ -69,7 +69,7 @@
           <div class="search-box">
             <el-input
               v-model="searchKeyword"
-              placeholder="搜索节点名称..."
+              placeholder="搜索节点名称、服务器地址或域名..."
               clearable
               @keyup.enter="loadNodes"
             >
