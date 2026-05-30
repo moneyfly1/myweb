@@ -485,6 +485,12 @@
           </template>
           <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password />
         </el-form-item>
+        <el-form-item :label="isMobile ? '' : '密码'" prop="password" v-else>
+          <template v-if="isMobile">
+            <div class="form-mobile-label">密码</div>
+          </template>
+          <el-input v-model="userForm.password" type="password" placeholder="留空则不修改密码" show-password />
+        </el-form-item>
         <el-form-item :label="isMobile ? '' : '状态'" prop="status">
           <template v-if="isMobile">
             <div class="form-mobile-label">状态 <span class="required">*</span></div>
@@ -752,8 +758,20 @@ export default {
         { min: 2, max: 20, message: '用户名长度在2到20个字符', trigger: 'blur' }
       ],
       password: [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+        {
+          validator: (rule, value, callback) => {
+            if (!editingUser.value && !value) {
+              callback(new Error('请输入密码'))
+              return
+            }
+            if (value && value.length < 6) {
+              callback(new Error('密码长度不能少于6位'))
+              return
+            }
+            callback()
+          },
+          trigger: 'blur'
+        }
       ],
       status: [
         { required: true, message: '请选择状态', trigger: 'change' }
@@ -794,7 +812,8 @@ export default {
           is_verified: Boolean(user.is_verified),
           note: user.notes || '', password: '',
           balance: user.balance || 0,
-          device_limit: 5, expire_time: ''
+          device_limit: user.subscription?.device_limit || 5,
+          expire_time: user.subscription?.expire_time ? dayjs(user.subscription.expire_time).format('YYYY-MM-DDTHH:mm:ss') : ''
         })
 
         // 加载用户详情以获取订阅信息
