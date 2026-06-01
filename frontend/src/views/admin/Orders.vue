@@ -731,15 +731,16 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { 
+import {
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
   Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
+import { useMobile } from '@/composables/useMobile'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 
@@ -834,7 +835,7 @@ export default {
       coupon_free_days: '优惠券赠送天数'
     }
     
-    const isMobile = ref(window.innerWidth <= 768)
+    const isMobile = useMobile()
     const searchForm = reactive({
       keyword: '',
       status: ''
@@ -846,11 +847,6 @@ export default {
       cancelledOrders: 0,
       totalRevenue: 0
     })
-
-    // Resize Handler
-    const handleResize = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
 
     // Data Loading Functions
     const loadOrders = async () => {
@@ -1317,13 +1313,8 @@ export default {
     // Lifecycle
     onMounted(() => {
       if (route.query.search) searchForm.keyword = String(route.query.search).trim()
-      window.addEventListener('resize', handleResize)
       loadOrders()
       loadStatistics()
-    })
-
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
     })
 
     return {

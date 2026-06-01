@@ -754,6 +754,7 @@ import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 import { useMobile } from '@/composables/useMobile'
+import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 
 const ALL_PROTOCOLS = [
   'vmess', 'vless', 'trojan', 'ss', 'ssr', 'hysteria', 'hysteria2',
@@ -1223,14 +1224,21 @@ export default {
     }
 
     const startStatusPolling = (taskId, target) => {
-      if (uploadStatusInterval.value) clearInterval(uploadStatusInterval.value)
-      checkUploadStatus(taskId, target)
-      uploadStatusInterval.value = setInterval(() => checkUploadStatus(taskId, target), 2000)
+      uploadTaskId.value = taskId
+      uploadTarget.value = target || 'gitee'
+      startUploadStatusPolling()
     }
     const stopStatusPolling = () => {
-      if (uploadStatusInterval.value) { clearInterval(uploadStatusInterval.value); uploadStatusInterval.value = null }
+      stopUploadStatusPolling()
       uploadStatus.value = null; uploadTaskId.value = null
     }
+
+    const { startPolling: startUploadStatusPolling, clearPolling: stopUploadStatusPolling } = usePaymentStatusPolling({
+      intervalMs: 2000,
+      timeoutMs: 30 * 60 * 1000,
+      shouldPoll: () => !!uploadTaskId.value,
+      poll: () => checkUploadStatus(uploadTaskId.value, uploadTarget.value),
+    })
 
     const createManualBackup = async () => {
       creatingBackup.value = true; uploadStatus.value = null; uploadTaskId.value = null

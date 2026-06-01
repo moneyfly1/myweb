@@ -287,11 +287,12 @@ import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, DocumentCopy, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
+import { useMobile } from '@/composables/useMobile'
 const loading = ref(false)
 const generating = ref(false)
 const showGenerateDialog = ref(false)
 const inviteCodes = ref([])
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const inviteTableRef = ref(null)
 const recentTableRef = ref(null)
 
@@ -382,15 +383,9 @@ const handleRecentColumnResize = () => {
   }, 300)
 }
 
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
 onMounted(async () => {
-  window.addEventListener('resize', handleResize)
-  handleResize()
   loadInviteSettings()
   loadRecentSettings()
-  // 并发加载三个独立的数据源，提高页面加载速度
   await Promise.all([
     loadInviteRewardSettings(),
     loadInviteCodes(),
@@ -398,7 +393,6 @@ onMounted(async () => {
   ])
 })
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 const stats = ref({
   total_invites: 0,

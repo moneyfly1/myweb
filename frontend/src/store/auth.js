@@ -84,33 +84,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
   const saveToken = (accessToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    if (isAdmin) {
-      // 管理员token始终存localStorage，确保新标签页和刷新后可恢复
-      secureStorage.set('admin_token', accessToken, false, TOKEN_TTL)
-      return
-    }
-    const useSession = !remember
-    secureStorage.set('user_token', accessToken, useSession, TOKEN_TTL)
+    const useSession = isAdmin ? true : !remember
+    secureStorage.set(isAdmin ? 'admin_token' : 'user_token', accessToken, useSession, TOKEN_TTL)
   }
   const saveUser = (userData, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    if (isAdmin) {
-      // 管理员user始终存localStorage，TTL延长到30天
-      secureStorage.set('admin_user', userData, false, REFRESH_TOKEN_TTL)
-      return
-    }
-    const useSession = !remember
-    secureStorage.set('user_data', userData, useSession, REFRESH_TOKEN_TTL)
+    const useSession = isAdmin ? true : !remember
+    secureStorage.set(isAdmin ? 'admin_user' : 'user_data', userData, useSession, REFRESH_TOKEN_TTL)
   }
   const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
     if (!refreshToken) return
     const key = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
-    if (isAdmin) {
-      // 管理员 refresh token 始终存 localStorage，与 admin_token 策略一致
-      secureStorage.set(key, refreshToken, false, REFRESH_TOKEN_TTL)
-    } else {
-      const useSession = !remember
-      secureStorage.set(key, refreshToken, useSession, REFRESH_TOKEN_TTL)
-    }
+    const useSession = isAdmin ? true : !remember
+    secureStorage.set(key, refreshToken, useSession, REFRESH_TOKEN_TTL)
   }
   const token = ref(getInitialToken())
   const user = ref(getInitialUser())
