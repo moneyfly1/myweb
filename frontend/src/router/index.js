@@ -94,6 +94,7 @@ const routes = [
 ]
 const router = createRouter({ history: createWebHistory(), routes })
 const ADMIN_USER_TTL = 30 * 24 * 60 * 60 * 1000 // 30天
+const LOGIN_HANDOFF_STORAGE_PREFIX = 'cboard_login_handoff_'
 const getStorageMode = (key) => {
   const storageKey = `${SECURE_STORAGE_KEY}${key}`
   try {
@@ -106,8 +107,10 @@ const getStorageMode = (key) => {
 }
 const readLoginHandoff = (sessionKey) => {
   if (!sessionKey) return null
-  const raw = sessionStorage.getItem(sessionKey)
+  const localStorageKey = `${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`
+  const raw = sessionStorage.getItem(sessionKey) || localStorage.getItem(localStorageKey)
   sessionStorage.removeItem(sessionKey)
+  localStorage.removeItem(localStorageKey)
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw)

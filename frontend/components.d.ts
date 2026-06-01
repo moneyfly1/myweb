@@ -75,8 +75,6 @@ declare module 'vue' {
     LoadingState: typeof import('./src/components/LoadingState.vue')['default']
     MacOSTutorials: typeof import('./src/components/tutorials/MacOSTutorials.vue')['default']
     MobileCardList: typeof import('./src/components/MobileCardList.vue')['default']
-    RouterLink: typeof import('vue-router')['RouterLink']
-    RouterView: typeof import('vue-router')['RouterView']
     SoftwareTutorials: typeof import('./src/components/tutorials/SoftwareTutorials.vue')['default']
     UpgradeDevicesDrawer: typeof import('./src/components/UpgradeDevicesDrawer.vue')['default']
     UserLayout: typeof import('./src/components/layout/UserLayout.vue')['default']
