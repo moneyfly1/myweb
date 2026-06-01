@@ -331,10 +331,11 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
 import { couponAPI, packageAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import { formatTime as formatTimeUtil } from '@/utils/date'
@@ -347,7 +348,7 @@ const showCreateDialog = ref(false)
 const showFilterDrawer = ref(false)
 const editingCoupon = ref(null)
 const couponFormRef = ref(null)
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const filters = reactive({
   keyword: '',
   status: '',
@@ -597,16 +598,9 @@ const applyFilters = () => {
   showFilterDrawer.value = false
   loadCoupons()
 }
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
 onMounted(() => {
   loadCoupons()
   loadPackages()
-  window.addEventListener('resize', handleResize)
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 <style scoped lang="scss">

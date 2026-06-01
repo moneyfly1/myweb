@@ -671,6 +671,7 @@ import {
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import { debounce } from '@/composables/useDebounce'
+import { useMobile } from '@/composables/useMobile'
 import UserDetailDialog from './components/UserDetailDialog.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -726,7 +727,7 @@ export default {
     const nodeSearchKeyword = ref('')
     const selectedNodeId = ref(null)
     const assigningNode = ref(false)
-    const isMobile = ref(window.innerWidth <= 768)
+    const isMobile = useMobile()
     const defaultSort = ref({ prop: 'created_at', order: 'descending' })
     const tableRef = ref(null)
     // 用户表单相关
@@ -847,7 +848,8 @@ export default {
             notes: userForm.note || null,
             balance: userForm.balance,
             device_limit: userForm.device_limit,
-            expire_time: userForm.expire_time
+            expire_time: userForm.expire_time,
+            password: userForm.password || undefined
           })
           ElMessage.success('用户更新成功')
         } else {
@@ -907,12 +909,6 @@ export default {
       return subscription.is_expired ? '已过期' : `${subscription.days_until_expire}天后到期`
     }
     let resizeTimer = null
-    const handleResize = () => {
-      if (resizeTimer) clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => {
-        isMobile.value = window.innerWidth <= 768
-      }, 150)
-    }
     const buildSearchParams = () => {
       const params = {
         page: currentPage.value,
@@ -1537,11 +1533,9 @@ export default {
     }
     onMounted(() => {
       loadUsers()
-      window.addEventListener('resize', handleResize)
       window.addEventListener('subscription-device-limit-updated', loadUsers)
     })
     onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
       window.removeEventListener('subscription-device-limit-updated', loadUsers)
       if (resizeTimer) clearTimeout(resizeTimer)
       saveTimers.forEach(timer => clearTimeout(timer))

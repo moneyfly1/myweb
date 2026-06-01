@@ -179,11 +179,12 @@ import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { adminAPI, ticketAPI, api } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
-const isMobile = ref(false)
+const isMobile = useMobile()
 const sidebarCollapsed = ref(true)
 const mobileNavExpanded = ref(false)
 const stats = ref({ users: 0, subscriptions: 0, revenue: 0 })
@@ -351,7 +352,6 @@ const loadStats = async () => {
   }
 }
 const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 768
   if (isMobile.value) {
     sidebarCollapsed.value = true
   } else {
@@ -359,6 +359,9 @@ const checkMobile = () => {
     sidebarCollapsed.value = saved === 'true'
   }
 }
+watch(isMobile, () => {
+  checkMobile()
+})
 watch(() => route.path, () => {
   if (isMobile.value) {
     mobileNavExpanded.value = false
@@ -368,7 +371,6 @@ watch(() => route.path, () => {
 onMounted(() => {
   checkMobile()
   loadStats()
-  window.addEventListener('resize', checkMobile)
   loadUnreadTicketCount()
   unreadCheckInterval = setInterval(() => {
     loadUnreadTicketCount()
@@ -381,7 +383,6 @@ onMounted(() => {
   })
 })
 onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
   window.removeEventListener('ticket-viewed', loadUnreadTicketCount)
   if (unreadCheckInterval) {
     clearInterval(unreadCheckInterval)

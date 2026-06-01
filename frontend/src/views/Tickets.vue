@@ -326,6 +326,7 @@ import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 
 const TICKETS_TABLE_STORAGE_KEY = 'user_tickets_table_settings'
 const ticketTableRef = ref(null)
@@ -371,17 +372,12 @@ const handleTicketColumnResize = () => {
   }, 300)
 }
 
-const isMobile = ref(window.innerWidth <= 768)
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
+const isMobile = useMobile()
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   loadTicketTableSettings()
   loadTickets()
 })
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 const loading = ref(false)
 const creating = ref(false)

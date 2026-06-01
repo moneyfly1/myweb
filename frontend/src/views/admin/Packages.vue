@@ -485,10 +485,11 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Plus, HomeFilled, Search, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { adminAPI, configAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 export default {
   name: 'AdminPackages',
   components: {
@@ -506,7 +507,7 @@ export default {
     const isEdit = ref(false)
     const formRef = ref()
     const packages = ref([])
-    const isMobile = ref(window.innerWidth <= 768)
+    const isMobile = useMobile()
 
     // 自定义套餐相关
     const customPackageDialogVisible = ref(false)
@@ -770,9 +771,6 @@ export default {
         }
       }
     }
-    const handleResize = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
 
     // 自定义套餐相关方法
     const showCustomPackageDialog = async () => {
@@ -874,10 +872,6 @@ export default {
 
     onMounted(() => {
       fetchPackages()
-      window.addEventListener('resize', handleResize)
-    })
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
     })
     return {
       isMobile,

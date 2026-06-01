@@ -568,6 +568,7 @@ import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion, QuestionFilled } from '@element-plus/icons-vue'
 import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
+import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import ErrorState from '@/components/ErrorState.vue'
@@ -608,7 +609,6 @@ export default {
              (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
     })
     const isCheckingPayment = ref(false)
-    let paymentStatusCheckInterval = null
     let paymentStatusTimeoutId = null
     let paymentStatusRequest = null
     let paymentManualVisibilityHandler = null
@@ -1481,27 +1481,6 @@ export default {
       }, 10000)
       startPaymentStatusCheck()
     }
-    let visibilityChangeHandler = null
-    let focusHandler = null
-    const closePaymentStatusWatchers = () => {
-      if (paymentStatusCheckInterval) {
-        clearInterval(paymentStatusCheckInterval)
-        paymentStatusCheckInterval = null
-      }
-      if (paymentStatusTimeoutId) {
-        clearTimeout(paymentStatusTimeoutId)
-        paymentStatusTimeoutId = null
-      }
-      if (visibilityChangeHandler) {
-        document.removeEventListener('visibilitychange', visibilityChangeHandler)
-        visibilityChangeHandler = null
-      }
-      if (focusHandler) {
-        window.removeEventListener('focus', focusHandler)
-        focusHandler = null
-      }
-      cleanupPaymentManualWatchers()
-    }
     const cleanupPaymentManualWatchers = () => {
       if (paymentManualVisibilityHandler) {
         document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
@@ -1512,6 +1491,13 @@ export default {
         paymentManualFocusHandler = null
       }
     }
+    const { startPolling: startPaymentStatusCheck, clearPolling: closePaymentStatusWatchers } = usePaymentStatusPolling({
+      intervalMs: 3000,
+      timeoutMs: 30 * 60 * 1000,
+      shouldPoll: () => !!currentOrder.value?.order_no,
+      poll: () => checkPaymentStatus(),
+      onCleanup: cleanupPaymentManualWatchers,
+    })
     const markOrderPaid = async (successText = '支付成功！您的订阅已激活') => {
       closePaymentStatusWatchers()
       paymentQRVisible.value = false
@@ -1524,28 +1510,6 @@ export default {
         successDialogVisible.value = false
         loadPackages()
       }, 3000)
-    }
-    const startPaymentStatusCheck = () => {
-      closePaymentStatusWatchers()
-      checkPaymentStatus()
-      paymentStatusCheckInterval = setInterval(async () => {
-        await checkPaymentStatus()
-      }, 3000)
-      visibilityChangeHandler = async () => {
-        if (document.visibilityState === 'visible' && currentOrder.value?.order_no) {
-          await checkPaymentStatus()
-        }
-      }
-      document.addEventListener('visibilitychange', visibilityChangeHandler)
-      focusHandler = async () => {
-        if (currentOrder.value?.order_no) {
-          await checkPaymentStatus()
-        }
-      }
-      window.addEventListener('focus', focusHandler)
-      paymentStatusTimeoutId = setTimeout(() => {
-        closePaymentStatusWatchers()
-      }, 30 * 60 * 1000)
     }
     const checkPaymentStatus = async () => {
       if (!currentOrder.value || !currentOrder.value.order_no) {
@@ -1673,10 +1637,6 @@ export default {
     })
     
     onUnmounted(() => {
-      if (paymentStatusCheckInterval) {
-        clearInterval(paymentStatusCheckInterval)
-        paymentStatusCheckInterval = null
-      }
       closePaymentStatusWatchers()
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize)

@@ -252,6 +252,7 @@ import { Loading, Wallet, InfoFilled, Plus, Minus } from '@element-plus/icons-vu
 import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
+import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 
 const props = defineProps({
   modelValue: {
@@ -418,33 +419,6 @@ const showPaymentQRCode = async (order) => {
     startPaymentStatusCheck()
   } catch (error) {
     ElMessage.error('生成二维码失败: ' + (error.response?.data?.message || error.message))
-  }
-}
-
-const startPaymentStatusCheck = () => {
-  cleanupPaymentStatusCheck()
-  checkUpgradeOrderStatus(true)
-  paymentStatusCheckTimer.value = setInterval(async () => {
-    if (!upgradeOrder.value?.order_no) {
-      cleanupPaymentStatusCheck()
-      return
-    }
-    await checkUpgradeOrderStatus(true)
-  }, 2000)
-}
-
-const cleanupPaymentStatusCheck = () => {
-  if (paymentStatusCheckTimer.value) {
-    clearInterval(paymentStatusCheckTimer.value)
-    paymentStatusCheckTimer.value = null
-  }
-  cleanupPaymentManualWatcher()
-}
-
-const cleanupPaymentManualWatcher = () => {
-  if (paymentManualVisibilityHandler) {
-    document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
-    paymentManualVisibilityHandler = null
   }
 }
 

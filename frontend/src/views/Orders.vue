@@ -471,6 +471,7 @@ import { Loading, Refresh, Wallet, ShoppingCart } from '@element-plus/icons-vue'
 import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
+import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 export default {
   name: 'Orders',
   components: {
@@ -509,10 +510,6 @@ export default {
     const paymentQRCode = ref('')
     const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App
     const isCheckingPayment = ref(false)
-    let paymentStatusCheckInterval = null
-    let paymentVisibilityHandler = null
-    let paymentFocusHandler = null
-    let paymentTimeoutId = null
     let paymentStatusRequest = null
     let orderLoadPromise = null
     let paymentManualVisibilityHandler = null
@@ -949,25 +946,6 @@ export default {
         return null
       }
     }
-    const cleanupPaymentStatusCheck = () => {
-      if (paymentStatusCheckInterval) {
-        clearInterval(paymentStatusCheckInterval)
-        paymentStatusCheckInterval = null
-      }
-      if (paymentVisibilityHandler) {
-        document.removeEventListener('visibilitychange', paymentVisibilityHandler)
-        paymentVisibilityHandler = null
-      }
-      if (paymentFocusHandler) {
-        window.removeEventListener('focus', paymentFocusHandler)
-        paymentFocusHandler = null
-      }
-      if (paymentTimeoutId) {
-        clearTimeout(paymentTimeoutId)
-        paymentTimeoutId = null
-      }
-      cleanupPaymentManualWatchers()
-    }
     const cleanupPaymentManualWatchers = () => {
       if (paymentManualVisibilityHandler) {
         document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
@@ -978,6 +956,16 @@ export default {
         paymentManualFocusHandler = null
       }
     }
+    const cleanupPaymentStatusCheck = () => {
+      cleanupPaymentManualWatchers()
+    }
+    const { startPolling: startPaymentStatusCheck } = usePaymentStatusPolling({
+      intervalMs: 2000,
+      timeoutMs: 30 * 60 * 1000,
+      shouldPoll: () => !!selectedOrder.value?.order_no,
+      poll: () => checkPaymentStatus(),
+      onCleanup: cleanupPaymentManualWatchers,
+    })
     const generateQRCode = async (url) => {
       try {
         const QRCode = await import('qrcode')
@@ -1144,49 +1132,6 @@ export default {
           ElMessage.error('二维码加载失败，请刷新页面后重试')
         }
       }
-    }
-    const startPaymentStatusCheck = () => {
-      cleanupPaymentStatusCheck()
-
-      // 立即检查一次
-      checkPaymentStatus()
-
-      // 启动定时检查
-      paymentStatusCheckInterval = setInterval(async () => {
-        await checkPaymentStatus()
-      }, 2000)
-
-      // 添加页面可见性监听
-      paymentVisibilityHandler = async () => {
-        if (document.visibilityState === 'visible' && selectedOrder.value?.order_no) {
-          await checkPaymentStatus()
-        }
-      }
-      document.addEventListener('visibilitychange', paymentVisibilityHandler)
-
-      // 添加窗口焦点监听
-      paymentFocusHandler = async () => {
-        if (selectedOrder.value?.order_no) {
-          await checkPaymentStatus()
-        }
-      }
-      window.addEventListener('focus', paymentFocusHandler)
-
-      // 30分钟后自动清理
-      paymentTimeoutId = setTimeout(() => {
-        if (paymentStatusCheckInterval) {
-          clearInterval(paymentStatusCheckInterval)
-          paymentStatusCheckInterval = null
-        }
-        if (paymentVisibilityHandler) {
-          document.removeEventListener('visibilitychange', paymentVisibilityHandler)
-          paymentVisibilityHandler = null
-        }
-        if (paymentFocusHandler) {
-          window.removeEventListener('focus', paymentFocusHandler)
-          paymentFocusHandler = null
-        }
-      }, 30 * 60 * 1000)
     }
     const checkPaymentStatus = async () => {
       if (!selectedOrder.value) return

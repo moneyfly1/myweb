@@ -108,8 +108,9 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { adminAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 import { formatLocation } from '@/utils/date'
 
 const displayLocation = (loc) => {
@@ -130,10 +131,7 @@ const filter = ref({
   timeRange: null
 })
 
-const isMobile = ref(false)
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768
-}
+const isMobile = useMobile()
 const paginationLayout = computed(() => (isMobile.value ? 'total, prev, pager, next' : 'total, prev, pager, next, sizes'))
 
 function startResize(e, col) {
@@ -190,12 +188,7 @@ function onSizeChange(size) {
 }
 
 onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
   fetch()
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
 })
 </script>
 <style scoped>

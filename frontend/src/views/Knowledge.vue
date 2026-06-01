@@ -115,16 +115,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
 import { sanitizeArticleHtml } from '@/utils/sanitizeHtml'
+import { useMobile } from '@/composables/useMobile'
 
 const iconMap = { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook }
 const resolveIcon = (name) => iconMap[name] || Folder
 
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const categories = ref([])
 const articles = ref([])
 const loading = ref(false)
@@ -191,21 +192,11 @@ const openArticle = async (article) => {
   }
 }
 
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
-
 onMounted(() => {
-  // 并发加载分类和文章，提高页面加载速度
   Promise.all([
     loadCategories(),
     loadArticles()
   ])
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

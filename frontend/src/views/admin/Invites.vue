@@ -493,17 +493,18 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 const api = useApi()
 const activeTab = ref('codes')
 const codesLoading = ref(false)
 const relationsLoading = ref(false)
 const savingSettings = ref(false)
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const showSettingsDialog = ref(false)
 const selectedCodes = ref([])
 const selectedRelations = ref([])
@@ -860,9 +861,6 @@ const handleStatusFilter = (command) => {
   }
   searchCodes()
 }
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
 const loadData = () => {
   loadInviteCodes()
   loadInviteRelations()
@@ -883,10 +881,6 @@ const formatDate = (dateString) => {
 onMounted(() => {
   loadInviteSettings()
   loadData()
-  window.addEventListener('resize', handleResize)
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 <style scoped lang="scss">

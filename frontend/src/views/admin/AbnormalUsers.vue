@@ -280,11 +280,12 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 const abnormalTypeMap = {
   disabled: { tag: 'danger', text: '账户禁用' },
   frequent_reset: { tag: 'warning', text: '频繁重置' },
@@ -308,7 +309,7 @@ export default {
     const total = ref(0)
     const showUserDetailsDialog = ref(false)
     const userDetails = ref(null)
-    const isMobile = ref(window.innerWidth <= 768)
+    const isMobile = useMobile()
     const getDefaultDateRange = () => {
       const now = new Date()
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -323,9 +324,6 @@ export default {
       subscriptionCount: 10,  // 默认：订阅次数>=10次
       resetCount: 3  // 默认：重置次数>=3次
     })
-    const handleResize = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
     const loadAbnormalUsers = async () => {
       loading.value = true
       try {
@@ -436,7 +434,6 @@ export default {
       })
     }
     onMounted(() => {
-      window.addEventListener('resize', handleResize)
       loadAbnormalUsers()
       const route = useRoute()
       const userId = route.query.user_id
@@ -445,9 +442,6 @@ export default {
           viewUserDetails(Number(userId))
         }, 500)
       }
-    })
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
     })
     return {
       loading,
