@@ -1318,6 +1318,10 @@ export default {
         }
         const handoffPayload = JSON.stringify(sessionData)
         sessionStorage.setItem(sessionKey, handoffPayload)
+        localStorage.setItem(`${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`, handoffPayload)
+        setTimeout(() => {
+          localStorage.removeItem(`${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`)
+        }, LOGIN_HANDOFF_TTL)
         const dashboardUrl = window.location.origin + '/dashboard'
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
         if (userBackendWindow) {
