@@ -154,11 +154,12 @@ import { useThemeStore } from '@/store/theme'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { secureStorage } from '@/utils/api'
 import { ticketAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
-const isMobile = ref(false)
+const isMobile = useMobile()
 const sidebarCollapsed = ref(true)
 const mobileNavExpanded = ref(false)
 const unreadTicketReplies = ref(0)
@@ -289,7 +290,6 @@ const handleThemeChange = async (name) => {
   res.success ? ElMessage.success('主题已同步') : ElMessage.warning('本地生效')
 }
 const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 768
   if (isMobile.value) {
     sidebarCollapsed.value = true
   } else {
@@ -297,6 +297,9 @@ const checkMobile = () => {
     sidebarCollapsed.value = saved === 'true'
   }
 }
+watch(isMobile, () => {
+  checkMobile()
+})
 watch(() => route.path, () => {
   if (isMobile.value) {
     mobileNavExpanded.value = false
@@ -308,7 +311,6 @@ watch(() => route.path, () => {
 })
 onMounted(() => {
   checkMobile()
-  window.addEventListener('resize', checkMobile)
   loadUnreadTicketReplies()
   unreadCheckInterval = setInterval(() => {
     loadUnreadTicketReplies()
@@ -316,7 +318,6 @@ onMounted(() => {
   window.addEventListener('ticket-viewed', loadUnreadTicketReplies)
 })
 onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
   window.removeEventListener('ticket-viewed', loadUnreadTicketReplies)
   if (unreadCheckInterval) {
     clearInterval(unreadCheckInterval)

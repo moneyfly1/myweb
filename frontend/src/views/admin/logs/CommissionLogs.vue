@@ -101,8 +101,9 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { adminAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 
 const loading = ref(false)
 const list = ref([])
@@ -128,8 +129,7 @@ const filter = ref({
   status: '',
   timeRange: null
 })
-const isMobile = ref(false)
-function checkMobile() { isMobile.value = window.innerWidth <= 768 }
+const isMobile = useMobile()
 const paginationLayout = computed(() => (isMobile.value ? 'total, prev, pager, next' : 'total, prev, pager, next, sizes'))
 
 async function fetch() {
@@ -166,8 +166,7 @@ function onSizeChange(size) {
   fetch()
 }
 
-onMounted(() => { checkMobile(); window.addEventListener('resize', checkMobile); fetch() })
-onUnmounted(() => { window.removeEventListener('resize', checkMobile) })
+onMounted(() => { fetch() })
 </script>
 <style scoped>
 .log-list { padding: 0; }

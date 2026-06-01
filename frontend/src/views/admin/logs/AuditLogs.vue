@@ -24,10 +24,10 @@
           <template #default="{ row }">{{ row.action_description || '-' }}</template>
         </el-table-column>
         <el-table-column label="变更前" width="180" show-overflow-tooltip>
-          <template #default="{ row }"><div class="audit-data" v-html="fmtAuditData(row.before_data)"></div></template>
+          <template #default="{ row }"><div class="audit-data"><div v-for="(line, index) in fmtAuditData(row.before_data)" :key="`before-${row.id}-${index}`">{{ line }}</div></div></template>
         </el-table-column>
         <el-table-column label="变更后" width="180" show-overflow-tooltip>
-          <template #default="{ row }"><div class="audit-data" v-html="fmtAuditData(row.after_data)"></div></template>
+          <template #default="{ row }"><div class="audit-data"><div v-for="(line, index) in fmtAuditData(row.after_data)" :key="`after-${row.id}-${index}`">{{ line }}</div></div></template>
         </el-table-column>
         <el-table-column prop="ip_address" label="IP" width="135" show-overflow-tooltip />
       </el-table>
@@ -39,8 +39,8 @@
           <div class="mobile-card-row"><span class="mobile-label">操作</span><span class="mobile-value">{{ getActionTypeText(row.action_type) }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ getTargetUser(row) || '-' }}</span></div>
           <div class="mobile-card-row"><span class="mobile-label">描述</span><span class="mobile-value mobile-value-wrap">{{ row.action_description || '-' }}</span></div>
-          <div class="mobile-card-row" v-if="row.before_data"><span class="mobile-label">变更前</span><span class="mobile-value mobile-value-wrap" v-html="fmtAuditData(row.before_data)"></span></div>
-          <div class="mobile-card-row" v-if="row.after_data"><span class="mobile-label">变更后</span><span class="mobile-value mobile-value-wrap" v-html="fmtAuditData(row.after_data)"></span></div>
+          <div class="mobile-card-row" v-if="row.before_data"><span class="mobile-label">变更前</span><span class="mobile-value mobile-value-wrap audit-data"><div v-for="(line, index) in fmtAuditData(row.before_data)" :key="`mobile-before-${row.id}-${index}`">{{ line }}</div></span></div>
+          <div class="mobile-card-row" v-if="row.after_data"><span class="mobile-label">变更后</span><span class="mobile-value mobile-value-wrap audit-data"><div v-for="(line, index) in fmtAuditData(row.after_data)" :key="`mobile-after-${row.id}-${index}`">{{ line }}</div></span></div>
         </div>
         <el-empty v-if="list.length === 0 && !loading" description="暂无操作记录" />
       </div>
@@ -208,12 +208,12 @@ function getActionTypeText(type) {
 function fieldLabel(key) { return FIELD_LABEL_MAP[key] || key }
 
 function fmtAuditData(v) {
-  if (!v) return '-'
+  if (!v) return ['-']
   try {
     const obj = JSON.parse(v)
     if (Array.isArray(obj)) {
-      if (obj.every(x => typeof x === 'object' && x !== null)) return `共 ${obj.length} 条`
-      return obj.join(', ')
+      if (obj.every(x => typeof x === 'object' && x !== null)) return [`共 ${obj.length} 条`]
+      return [obj.join(', ')]
     }
     if (typeof obj === 'object' && obj !== null) {
       const lines = []
@@ -224,11 +224,13 @@ function fmtAuditData(v) {
         const display = typeof val === 'boolean' ? (val ? '是' : '否') : String(val)
         lines.push(`${fieldLabel(k)}: ${display}`)
       }
-      return lines.slice(0, 8).join('<br>') + (lines.length > 8 ? '<br>...' : '') || '-'
+      const visibleLines = lines.slice(0, 8)
+      if (lines.length > 8) visibleLines.push('...')
+      return visibleLines.length > 0 ? visibleLines : ['-']
     }
-    return String(obj)
+    return [String(obj)]
   } catch {
-    return v.length > 200 ? v.substring(0, 200) + '...' : v
+    return [v.length > 200 ? v.substring(0, 200) + '...' : v]
   }
 }
 

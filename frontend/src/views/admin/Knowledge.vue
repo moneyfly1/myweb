@@ -196,15 +196,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 
 const iconMap = { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View }
 const resolveIcon = (name) => iconMap[name] || Folder
 
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const activeTab = ref('articles')
 const loading = ref(false)
 const saving = ref(false)
@@ -417,21 +418,11 @@ const deleteArticle = async (id) => {
   }
 }
 
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
-
 onMounted(() => {
-  // 并发加载分类和文章，提高页面加载速度
   Promise.all([
     loadCategories(),
     loadArticles()
   ])
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

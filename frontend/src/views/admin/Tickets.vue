@@ -433,10 +433,11 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search, Filter, User, ChatLineRound, Clock } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 const loading = ref(false)
 const replying = ref(false)
 const tickets = ref([])
@@ -449,7 +450,7 @@ const replyContent = ref('')
 const newStatus = ref('')
 const adminNotes = ref('')
 const statistics = ref(null)
-const isMobile = ref(window.innerWidth <= 768)
+const isMobile = useMobile()
 const filters = reactive({
   keyword: '',
   status: '',
@@ -657,16 +658,8 @@ const applyFilters = () => {
   showFilterDrawer.value = false
   loadTickets()
 }
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 768
-}
-onMounted(() => {
-  loadTickets()
-  loadStatistics()
-  window.addEventListener('resize', handleResize)
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
+onMounted(async () => {
+  await Promise.all([loadStatistics(), loadTickets()])
 })
 </script>
 <style scoped lang="scss">

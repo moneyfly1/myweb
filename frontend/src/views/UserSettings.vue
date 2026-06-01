@@ -85,9 +85,6 @@
             </div>
           </template>
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" label-width="100px">
-            <el-form-item label="当前密码" prop="currentPassword">
-              <el-input v-model="securityForm.currentPassword" type="password" placeholder="请输入当前密码"></el-input>
-            </el-form-item>
             <el-form-item label="新密码" prop="newPassword">
               <el-input v-model="securityForm.newPassword" type="password" placeholder="请输入新密码"></el-input>
             </el-form-item>
@@ -247,9 +244,6 @@
             </div>
           </template>
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" class="mobile-form">
-            <el-form-item label="当前密码" prop="currentPassword">
-              <el-input v-model="securityForm.currentPassword" type="password" placeholder="请输入当前密码"></el-input>
-            </el-form-item>
             <el-form-item label="新密码" prop="newPassword">
               <el-input v-model="securityForm.newPassword" type="password" placeholder="请输入新密码"></el-input>
             </el-form-item>
@@ -436,9 +430,6 @@ export default {
       ]
     }
     const securityRules = {
-      currentPassword: [
-        { required: true, message: '请输入当前密码', trigger: 'blur' }
-      ],
       newPassword: [
         { required: true, message: '请输入新密码', trigger: 'blur' },
         { min: 6, message: '密码长度不能少于 6 个字符', trigger: 'blur' }
@@ -600,12 +591,10 @@ export default {
         await securityFormRef.value.validate()
         passwordChanging.value = true
         const response = await api.post('/users/change-password', {
-          current_password: securityForm.currentPassword || '',
           new_password: securityForm.newPassword || ''
         })
         if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '密码修改成功')
-          securityForm.currentPassword = ''
           securityForm.newPassword = ''
           securityForm.confirmPassword = ''
           if (securityFormRef.value) {

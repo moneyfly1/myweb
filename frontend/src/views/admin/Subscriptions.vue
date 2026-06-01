@@ -675,12 +675,14 @@ import { secureStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
 import { formatLocation } from '@/utils/date'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
+import { useMobile } from '@/composables/useMobile'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import UserDetailDialog from './components/UserDetailDialog.vue'
 dayjs.extend(timezone)
 
 const LOGIN_HANDOFF_STORAGE_PREFIX = 'cboard_login_handoff_'
+const LOGIN_HANDOFF_TTL = 5 * 60 * 1000
 
 export default {
   name: 'AdminSubscriptions',
@@ -1230,7 +1232,13 @@ export default {
         userWindow.opener = null
         try {
           userWindow.document.title = '正在打开用户后台'
-          userWindow.document.body.innerHTML = '<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; padding: 32px; color: #303133;">正在打开用户后台...</div>'
+          const body = userWindow.document.body
+          if (body) {
+            body.textContent = '正在打开用户后台...'
+            body.style.fontFamily = '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'
+            body.style.padding = '32px'
+            body.style.color = '#303133'
+          }
         } catch (_) {}
         return userWindow
       } catch (error) {
@@ -1308,17 +1316,8 @@ export default {
           storage: 'session',
           timestamp: Date.now()
         }
-        if (adminToken && adminUser) {
-          sessionData.adminToken = adminToken
-          sessionData.adminUser = typeof adminUser === 'string' ? adminUser : JSON.stringify(adminUser)
-          sessionData.adminRefreshToken = adminRefreshToken
-        }
         const handoffPayload = JSON.stringify(sessionData)
         sessionStorage.setItem(sessionKey, handoffPayload)
-        localStorage.setItem(`${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`, handoffPayload)
-        window.setTimeout(() => {
-          localStorage.removeItem(`${LOGIN_HANDOFF_STORAGE_PREFIX}${sessionKey}`)
-        }, 5 * 60 * 1000)
         const dashboardUrl = window.location.origin + '/dashboard'
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
         if (userBackendWindow) {
@@ -1833,10 +1832,7 @@ export default {
       }
       saveColumnSettings(newColumns)
     }, { deep: true })
-    const isMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 768)
-    function onResize() { isMobile.value = window.innerWidth <= 768 }
-    onMounted(() => window.addEventListener('resize', onResize))
-    onUnmounted(() => window.removeEventListener('resize', onResize))
+    const isMobile = useMobile()
     onMounted(() => {
       if (route.query.search) {
         const searchParam = String(route.query.search).trim()

@@ -529,6 +529,8 @@ import { formatDate as formatDateUtil, getRemainingDays, isExpired as isExpiredU
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
+import { useMobile } from '@/composables/useMobile'
+import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 const router = useRouter()
 const api = useApi()
 const sanitizeHtml = sanitizeBasicHtml
@@ -596,7 +598,7 @@ const rechargeQRCode = ref('')
 const rechargePaymentUrl = ref('') // 保存支付URL，用于跳转支付宝App
 const rechargePaymentMethod = ref('alipay')
 const rechargePaymentMethods = ref([])
-const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+const isMobile = useMobile()
 let resizeRafId = null
 const quickAmounts = [20, 50, 100, 200, 500, 1000]
 const loadRechargePaymentMethods = async () => {
@@ -1042,46 +1044,15 @@ const cleanupRechargeManualWatchers = () => {
   }
 }
 const cleanupRechargeStatusCheck = () => {
-  if (rechargeStatusInterval) {
-    clearInterval(rechargeStatusInterval)
-    rechargeStatusInterval = null
-  }
-  if (rechargeVisibilityHandler) {
-    document.removeEventListener('visibilitychange', rechargeVisibilityHandler)
-    rechargeVisibilityHandler = null
-  }
-  if (rechargeFocusHandler) {
-    window.removeEventListener('focus', rechargeFocusHandler)
-    rechargeFocusHandler = null
-  }
-  if (rechargeStatusTimeoutId) {
-    clearTimeout(rechargeStatusTimeoutId)
-    rechargeStatusTimeoutId = null
-  }
   cleanupRechargeManualWatchers()
 }
-const startRechargeStatusCheck = () => {
-  cleanupRechargeStatusCheck()
-  checkRechargeStatus()
-  rechargeStatusInterval = setInterval(async () => {
-    await checkRechargeStatus()
-  }, 5000)
-  rechargeVisibilityHandler = async () => {
-    if (document.visibilityState === 'visible' && currentRechargeOrderNo.value) {
-      await checkRechargeStatus()
-    }
-  }
-  document.addEventListener('visibilitychange', rechargeVisibilityHandler)
-  rechargeFocusHandler = async () => {
-    if (currentRechargeOrderNo.value) {
-      await checkRechargeStatus()
-    }
-  }
-  window.addEventListener('focus', rechargeFocusHandler)
-  rechargeStatusTimeoutId = setTimeout(() => {
-    cleanupRechargeStatusCheck()
-  }, 30 * 60 * 1000)
-}
+const { startPolling: startRechargeStatusCheck } = usePaymentStatusPolling({
+  intervalMs: 5000,
+  timeoutMs: 30 * 60 * 1000,
+  shouldPoll: () => !!currentRechargeOrderNo.value,
+  poll: () => checkRechargeStatus(),
+  onCleanup: cleanupRechargeManualWatchers,
+})
 const closeRechargeDialog = () => {
   cleanupRechargeStatusCheck()
   rechargeDialogVisible.value = false
@@ -1395,25 +1366,12 @@ const checkAndShowAnnouncement = async () => {
   } catch (error) {
   }
 }
-const handleResize = () => {
-  if (resizeRafId !== null || typeof window === 'undefined') return
-  resizeRafId = window.requestAnimationFrame(() => {
-    resizeRafId = null
-    isMobile.value = window.innerWidth <= 768
-  })
-}
 onMounted(() => {
-  if (typeof window !== 'undefined') {
-    isMobile.value = window.innerWidth <= 768
-    window.addEventListener('resize', handleResize, { passive: true })
-  }
-
-  // 并发加载所有初始化任务，提高首页加载速度
   Promise.all([
     loadUserInfo(),
     loadSoftwareConfig(),
     loadCheckinStatus(),
-    checkAndShowAnnouncement() // 移除延迟，直接并发执行
+    checkAndShowAnnouncement()
   ]).catch(err => {
     console.error('Dashboard 初始化失败:', err)
   })
@@ -1421,7 +1379,6 @@ onMounted(() => {
   const handleSubscriptionUpdate = async (event) => {
     if (event?.detail?.refreshed) return
     cachedAPI.clearUserCache()
-    // 并发更新订阅和用户信息
     await Promise.all([
       loadSubscriptionInfo(),
       loadUserInfo()
@@ -1441,12 +1398,9 @@ onMounted(() => {
 })
 onUnmounted(() => {
   cleanupRechargeStatusCheck()
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', handleResize)
-    if (resizeRafId !== null) {
-      window.cancelAnimationFrame(resizeRafId)
-      resizeRafId = null
-    }
+  if (typeof window !== 'undefined' && resizeRafId !== null) {
+    window.cancelAnimationFrame(resizeRafId)
+    resizeRafId = null
   }
 })
 </script>
