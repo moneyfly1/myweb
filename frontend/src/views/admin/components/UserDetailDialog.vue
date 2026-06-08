@@ -477,7 +477,7 @@
         </div>
       </div>
 
-      <el-form label-width="80px">
+      <el-form label-width="100px">
         <el-form-item label="选择节点">
           <el-select
             v-model="selectedNodeId"
@@ -492,6 +492,18 @@
               :value="node.id"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="节点显示模式">
+          <div class="toggle-row">
+            <el-switch v-model="assignSpecialOnly" active-text="仅专线" inactive-text="专线+普通" size="small" />
+            <span class="toggle-hint">开启后用户仅能看到专线节点</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="设备数量限制">
+          <div class="toggle-row">
+            <el-switch v-model="assignFollowDeviceLimit" active-text="跟随系统" inactive-text="不限制" size="small" />
+            <span class="toggle-hint">关闭后不限制该用户的设备数量</span>
+          </div>
         </el-form-item>
       </el-form>
 
@@ -574,6 +586,8 @@ export default {
       selectedNodeId: null,
       assigning: false,
       loadingNodes: false,
+      assignSpecialOnly: false,
+      assignFollowDeviceLimit: true,
       devices: [],
       loadingDevices: false,
       deletingDeviceId: null,
@@ -619,6 +633,8 @@ export default {
         if (this.activeTab === 'devices') {
           this.loadDevices()
         } else if (this.activeTab === 'custom-nodes') {
+          this.assignSpecialOnly = false
+          this.assignFollowDeviceLimit = true
           this.loadUserCustomNodes()
         } else if (this.activeTab === 'checkins') {
           this.loadCheckinLogs()
@@ -973,13 +989,19 @@ export default {
       }
       this.assigning = true
       try {
-        const response = await adminAPI.assignCustomNodeToUser(userId, this.selectedNodeId)
+        const extraData = {
+          subscription_type: this.assignSpecialOnly ? 'special_only' : 'both',
+          unlimited_devices: !this.assignFollowDeviceLimit
+        }
+        const response = await adminAPI.assignCustomNodeToUser(userId, this.selectedNodeId, extraData)
         if (response.data && response.data.success) {
           ElMessage.success('分配成功')
           this.showAssignDialog = false
           this.selectedNodeId = null
           this.nodeSearchKeyword = ''
           this.searchedNodes = []
+          this.assignSpecialOnly = false
+          this.assignFollowDeviceLimit = true
           await this.loadUserCustomNodes()
         } else {
           ElMessage.error(response.data?.message || '分配失败')
@@ -1179,6 +1201,17 @@ export default {
     color: #909399;
     margin-top: 8px;
     line-height: 1.5;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .toggle-hint {
+    font-size: 11px;
+    color: var(--el-text-color-secondary);
   }
 
   @media (max-width: 768px) {

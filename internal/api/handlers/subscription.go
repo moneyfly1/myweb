@@ -1542,6 +1542,11 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	var count int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
 
+	// 如果用户开启了不限制设备数量，跳过设备数量限制检查
+	if user.SpecialNodeUnlimitedDevices {
+		return "", int(count), subscription.DeviceLimit, true
+	}
+
 	if subscription.DeviceLimit == 0 {
 		return "设备数量限制为0，无法使用服务", int(count), subscription.DeviceLimit, false
 	}
@@ -1647,7 +1652,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 	// 检查设备限制（不拦截请求，交由 GenerateClashConfig 返回 YAML 格式错误节点）
 	shouldRecord := true
-	if !deviceExists {
+	if !deviceExists && !user.SpecialNodeUnlimitedDevices {
 		if subscription.DeviceLimit == 0 || (subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit) {
 			shouldRecord = false
 		}
@@ -1867,6 +1872,13 @@ func GetUniversalSubscription(c *gin.Context) {
 		deviceManager := device.NewDeviceManager()
 		hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
 
+		// 加载用户信息以检查不限制设备标志
+		var user models.User
+		unlimitedDevices := false
+		if err := db.First(&user, sub.UserID).Error; err == nil {
+			unlimitedDevices = user.SpecialNodeUnlimitedDevices
+		}
+
 		var currentDevice models.Device
 		deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
 
@@ -1891,7 +1903,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
 
 		shouldRecord := true
-		if !deviceExists {
+		if !deviceExists && !unlimitedDevices {
 			if (sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit) || sub.DeviceLimit == 0 {
 				shouldRecord = false
 			}

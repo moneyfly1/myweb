@@ -1077,8 +1077,8 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 	hasSpecialExpire := user.SpecialNodeExpiresAt.Valid
 	specialActive := hasSpecialExpire && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).After(now)
 
-	// 设置了专线到期时间且未过期，跳过设备数量限制
-	if !specialActive {
+	// 设置了专线到期时间且未过期 或 开启了不限制设备 → 跳过设备数量限制
+	if !specialActive && !user.SpecialNodeUnlimitedDevices {
 		var devices int64
 		s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&devices)
 		ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
@@ -1106,9 +1106,10 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 	customExpired := specialExpired || (!hasSpecialExpire && subExpired)
 	s.appendCustomNodes(user.ID, now, customExpired, &proxies, processed)
 
-	// 设置了专线到期时间且未过期 → 只显示专线节点；否则同时显示普通节点
+	// 仅专线模式 或 设置了专线到期时间且未过期 → 只显示专线节点；否则同时显示普通节点
 	specialActive := hasSpecialExpire && !specialExpired
-	if !specialActive && !subExpired {
+	specialOnly := user.SpecialNodeSubscriptionType == "special_only"
+	if !specialOnly && !specialActive && !subExpired {
 		s.appendSystemNodes(&proxies, processed)
 	}
 	return proxies, nil

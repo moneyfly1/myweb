@@ -99,11 +99,12 @@ func GetCustomNodeUsers(c *gin.Context) {
 	for _, un := range userNodes {
 		if un.User.ID != 0 {
 			users = append(users, gin.H{
-				"id":                             un.User.ID,
-				"username":                       un.User.Username,
-				"email":                          un.User.Email,
-				"special_node_subscription_type": un.User.SpecialNodeSubscriptionType,
-				"special_node_expires_at":        un.User.SpecialNodeExpiresAt,
+				"id":                               un.User.ID,
+				"username":                         un.User.Username,
+				"email":                            un.User.Email,
+				"special_node_subscription_type":   un.User.SpecialNodeSubscriptionType,
+				"special_node_expires_at":          un.User.SpecialNodeExpiresAt,
+				"special_node_unlimited_devices":   un.User.SpecialNodeUnlimitedDevices,
 			})
 		}
 	}
@@ -414,6 +415,7 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		UserIDs          []uint     `json:"user_ids" binding:"required"`
 		SubscriptionType string     `json:"subscription_type"`
 		ExpiresAt        *time.Time `json:"expires_at"`
+		UnlimitedDevices *bool      `json:"unlimited_devices"` // true = 不限制设备数量
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -479,6 +481,10 @@ func BatchAssignCustomNodes(c *gin.Context) {
 			}
 			if req.ExpiresAt != nil {
 				u.SpecialNodeExpiresAt = sql.NullTime{Time: *req.ExpiresAt, Valid: true}
+				needSave = true
+			}
+			if req.UnlimitedDevices != nil {
+				u.SpecialNodeUnlimitedDevices = *req.UnlimitedDevices
 				needSave = true
 			}
 			if needSave {
@@ -708,6 +714,7 @@ func AssignCustomNodeToUser(c *gin.Context) {
 		CustomNodeID     uint       `json:"custom_node_id" binding:"required"`
 		SubscriptionType string     `json:"subscription_type"`
 		ExpiresAt        *time.Time `json:"expires_at"`
+		UnlimitedDevices *bool      `json:"unlimited_devices"` // true = 不限制设备数量
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -738,6 +745,9 @@ func AssignCustomNodeToUser(c *gin.Context) {
 		}
 		if req.ExpiresAt != nil {
 			user.SpecialNodeExpiresAt = sql.NullTime{Time: *req.ExpiresAt, Valid: true}
+		}
+		if req.UnlimitedDevices != nil {
+			user.SpecialNodeUnlimitedDevices = *req.UnlimitedDevices
 		}
 		db.Save(&user)
 	}
