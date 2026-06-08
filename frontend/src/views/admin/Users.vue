@@ -636,7 +636,7 @@
         </div>
       </div>
 
-      <el-form label-width="80px">
+      <el-form label-width="100px">
         <el-form-item label="选择节点">
           <el-select
             v-model="selectedNodeId"
@@ -651,6 +651,18 @@
               :value="node.id"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="节点显示模式">
+          <div class="toggle-row">
+            <el-switch v-model="assignSpecialOnly" active-text="仅专线" inactive-text="专线+普通" size="small" />
+            <span class="toggle-hint">开启后用户仅能看到专线节点</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="设备数量限制">
+          <div class="toggle-row">
+            <el-switch v-model="assignFollowDeviceLimit" active-text="跟随系统" inactive-text="不限制" size="small" />
+            <span class="toggle-hint">关闭后不限制该用户的设备数量</span>
+          </div>
         </el-form-item>
       </el-form>
 
@@ -727,6 +739,8 @@ export default {
     const nodeSearchKeyword = ref('')
     const selectedNodeId = ref(null)
     const assigningNode = ref(false)
+    const assignSpecialOnly = ref(false)
+    const assignFollowDeviceLimit = ref(true)
     const isMobile = useMobile()
     const defaultSort = ref({ prop: 'created_at', order: 'descending' })
     const tableRef = ref(null)
@@ -1248,13 +1262,19 @@ export default {
       assigningNode.value = true
       try {
         const userId = selectedUser.value.user.id
-        const response = await adminAPI.assignCustomNodeToUser(userId, selectedNodeId.value)
+        const extraData = {
+          subscription_type: assignSpecialOnly.value ? 'special_only' : 'both',
+          unlimited_devices: !assignFollowDeviceLimit.value
+        }
+        const response = await adminAPI.assignCustomNodeToUser(userId, selectedNodeId.value, extraData)
         if (response.data && response.data.success) {
           ElMessage.success('专线节点分配成功')
           showAssignNodeDialog.value = false
           selectedNodeId.value = null
           nodeSearchKeyword.value = ''
           searchedNodes.value = []
+          assignSpecialOnly.value = false
+          assignFollowDeviceLimit.value = true
           await loadUserCustomNodes()
         } else {
           throw new Error(response.data?.message || '分配失败')
@@ -1574,6 +1594,8 @@ export default {
       nodeSearchKeyword,
       selectedNodeId,
       assigningNode,
+      assignSpecialOnly,
+      assignFollowDeviceLimit,
       // 用户表单
       userForm,
       userRules,
@@ -2164,6 +2186,16 @@ export default {
   }
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.toggle-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
 .node-search-section {
   margin-bottom: 20px;
 
