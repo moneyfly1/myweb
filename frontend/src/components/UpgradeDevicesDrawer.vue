@@ -3,7 +3,7 @@
     v-model="drawerVisible"
     title="升级设备数量"
     direction="rtl"
-    :size="isMobile ? '92%' : '460px'"
+    :size="isMobile ? '92%' : '500px'"
     :close-on-click-modal="false"
     class="upgrade-drawer"
     @open="handleUpgradeDialogOpen"
@@ -31,64 +31,108 @@
             <span class="summary-label">当前设备</span>
             <strong>{{ currentDeviceLimit }}</strong>
           </div>
-          <div class="summary-item">
+          <div class="summary-item highlight">
             <span class="summary-label">升级后</span>
             <strong>{{ targetDeviceLimit }}</strong>
           </div>
-          <div class="summary-item">
+          <div class="summary-item" :class="{ highlight: upgradeForm.additionalDays > 0 }">
             <span class="summary-label">延长时间</span>
-            <strong>{{ upgradeForm.additionalDays || 0 }} 天</strong>
+            <strong>{{ upgradeForm.additionalDays > 0 ? upgradeForm.additionalDays + ' 天' : '无' }}</strong>
           </div>
         </div>
       </section>
 
-      <section class="upgrade-panel">
+      <section class="upgrade-panel upgrade-main-panel">
         <div class="panel-title">
           <span>升级内容</span>
           <small>至少增加 1 个设备</small>
         </div>
-        <div class="form-item-block">
+
+        <!-- 设备数量 — 大卡片 Stepper -->
+        <div class="form-item-block device-block">
           <div class="form-row-label">
             <span>增加设备数量</span>
-            <em>升级后共 {{ targetDeviceLimit }} 个设备</em>
+            <em>升级后共 <strong>{{ targetDeviceLimit }}</strong> 个设备</em>
           </div>
-          <div class="device-stepper">
-            <el-button @click="changeDeviceCount(-1)" :disabled="upgradeForm.additionalDevices <= 1" circle size="small" aria-label="减少设备">
+          <div class="device-stepper-card">
+            <button
+              class="stepper-btn stepper-btn-minus"
+              @click="changeDeviceCount(-1)"
+              :disabled="upgradeForm.additionalDevices <= 1"
+              aria-label="减少设备"
+            >
               <el-icon><Minus /></el-icon>
-            </el-button>
-            <el-input-number
-              v-model="upgradeForm.additionalDevices"
-              :min="1"
-              :max="500"
-              :controls="false"
-              class="device-number"
-              @change="calculateUpgradeCost"
-            />
-            <el-button @click="changeDeviceCount(1)" circle size="small" aria-label="增加设备">
+            </button>
+            <div class="stepper-display">
+              <span class="stepper-number">{{ upgradeForm.additionalDevices }}</span>
+              <span class="stepper-unit">个设备</span>
+            </div>
+            <button
+              class="stepper-btn stepper-btn-plus"
+              @click="changeDeviceCount(1)"
+              aria-label="增加设备"
+            >
               <el-icon><Plus /></el-icon>
-            </el-button>
-            <span class="device-unit">个设备</span>
+            </button>
+          </div>
+          <!-- 设备数量进度条 -->
+          <div class="device-dot-progress" v-if="targetDeviceLimit <= 30">
+            <div class="dot-labels">
+              <span>当前 {{ currentDeviceLimit }} 个</span>
+              <span>升级后 {{ targetDeviceLimit }} 个</span>
+            </div>
+            <div class="dot-track">
+              <span
+                v-for="i in targetDeviceLimit"
+                :key="i"
+                class="dot"
+                :class="i <= currentDeviceLimit ? 'dot-existing' : 'dot-new'"
+              />
+            </div>
+          </div>
+          <div class="device-bar-progress" v-else>
+            <div class="bar-labels">
+              <span>当前 {{ currentDeviceLimit }} 个</span>
+              <span>升级后 {{ targetDeviceLimit }} 个</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill bar-existing" :style="{ width: existingPercent + '%' }" />
+              <div class="bar-fill bar-new" :style="{ width: newPercent + '%', left: existingPercent + '%' }" />
+            </div>
           </div>
         </div>
-        <div class="form-item-block">
+
+        <!-- 延长到期时间 — 视觉月份卡片 -->
+        <div class="form-item-block duration-block">
           <div class="form-row-label">
             <span>延长到期时间</span>
-            <em>{{ upgradeForm.additionalDays > 0 ? `约 ${additionalMonths} 个月` : '可选' }}</em>
+            <em>{{ upgradeForm.additionalDays > 0 ? `+${upgradeForm.additionalDays} 天（约 ${additionalMonths} 个月）` : '可选，也可以不延长' }}</em>
           </div>
-          <el-select
-            v-model="upgradeForm.additionalDays"
-            @change="calculateUpgradeCost"
-            class="duration-select"
-            placeholder="请选择延长的月数"
-          >
-            <el-option label="不延长" :value="0" />
-            <el-option
-              v-for="months in monthOptions"
-              :key="months"
-              :label="`${months} 个月（${months * 30} 天）`"
-              :value="months * 30"
-            />
-          </el-select>
+          <div class="month-cards-grid">
+            <button
+              v-for="opt in monthCardOptions"
+              :key="opt.days"
+              class="month-card"
+              :class="{ 'is-active': upgradeForm.additionalDays === opt.days, 'is-zero': opt.days === 0 }"
+              @click="selectAdditionalDays(opt.days)"
+            >
+              <span class="month-card-num">{{ opt.label }}</span>
+              <span class="month-card-days">{{ opt.sub }}</span>
+            </button>
+          </div>
+          <!-- 到期日预览 -->
+          <div class="expire-preview" v-if="subscription?.expire_time">
+            <div class="expire-preview-row">
+              <span class="expire-label">📅 到期日</span>
+              <span class="expire-old">{{ formatDate(subscription.expire_time) }}</span>
+              <el-icon class="expire-arrow"><Right /></el-icon>
+              <span class="expire-new">{{ formatDate(newExpireDate) }}</span>
+            </div>
+            <div class="expire-preview-badge" v-if="upgradeForm.additionalDays > 0">
+              <el-icon><Timer /></el-icon>
+              延长 +{{ upgradeForm.additionalDays }} 天
+            </div>
+          </div>
         </div>
       </section>
 
@@ -248,7 +292,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { Loading, Wallet, InfoFilled, Plus, Minus } from '@element-plus/icons-vue'
+import { Loading, Wallet, InfoFilled, Plus, Minus, Right, Timer } from '@element-plus/icons-vue'
 import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
@@ -306,6 +350,49 @@ const isPaymentPageUrl = computed(() => {
          url.includes('submit.php') ||
          (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
 })
+
+// 月份卡片选项
+const monthCardOptions = computed(() => [
+  { days: 30, label: '1 个月', sub: '30 天' },
+  { days: 90, label: '3 个月', sub: '90 天' },
+  { days: 180, label: '6 个月', sub: '180 天' },
+  { days: 360, label: '12 个月', sub: '360 天' },
+  { days: 60, label: '2 个月', sub: '60 天' },
+  { days: 120, label: '4 个月', sub: '120 天' },
+  { days: 240, label: '8 个月', sub: '240 天' },
+  { days: 0, label: '不延长', sub: '仅升级设备' }
+])
+
+// 到期日预览
+const newExpireDate = computed(() => {
+  if (!props.subscription?.expire_time) return ''
+  const current = new Date(props.subscription.expire_time)
+  if (isNaN(current.getTime())) return ''
+  const days = upgradeForm.value.additionalDays || 0
+  const next = new Date(current.getTime() + days * 86400000)
+  return next.toISOString()
+})
+
+// 设备进度条百分比 (用于 >30 设备时的条形图)
+const existingPercent = computed(() => {
+  if (!targetDeviceLimit.value) return 100
+  return Math.round((currentDeviceLimit.value / targetDeviceLimit.value) * 100)
+})
+const newPercent = computed(() => 100 - existingPercent.value)
+
+// 格式化日期显示
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// 选择延长天数
+const selectAdditionalDays = (days) => {
+  upgradeForm.value.additionalDays = days
+  calculateUpgradeCost()
+}
 
 const handleResize = () => {
   if (resizeRafId !== null || typeof window === 'undefined') return
@@ -718,6 +805,15 @@ onUnmounted(() => {
   color: #111827;
 }
 
+.summary-item.highlight strong {
+  color: #2563eb;
+}
+
+.summary-item.highlight {
+  border-color: #bfd4f7;
+  background: #f0f5ff;
+}
+
 .form-item-block {
   margin-bottom: 16px;
 }
@@ -747,40 +843,310 @@ onUnmounted(() => {
   text-align: right;
 }
 
-.device-stepper {
-  display: grid;
-  grid-template-columns: 32px 104px 32px 1fr;
+.form-row-label em strong {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+/* ======== 升级主面板 ======== */
+.upgrade-main-panel {
+  padding: 18px 20px 10px;
+}
+
+/* ======== 设备卡片 Stepper ======== */
+.device-block {
+  margin-bottom: 24px;
+}
+
+.device-stepper-card {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 20px;
+  padding: 14px 0 10px;
 }
 
-.device-stepper .el-button {
-  width: 32px;
-  height: 32px;
-  margin: 0;
+.stepper-btn {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border: 2px solid #dbe4f0;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+.stepper-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+}
+.stepper-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.stepper-btn-plus {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+.stepper-btn-plus:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
 }
 
-.device-number {
-  width: 104px;
+.stepper-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+  padding: 8px 24px;
+  border-radius: 16px;
+  background: #f0f5ff;
+  border: 2px dashed #bfd4f7;
 }
 
-.device-number :deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px #dbe4f0 inset;
+.stepper-number {
+  font-size: 36px;
+  line-height: 1.1;
+  font-weight: 900;
+  color: #1d4ed8;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.device-number :deep(.el-input__inner) {
-  text-align: center;
-  font-weight: 700;
-  color: #111827;
-}
-
-.device-unit {
+.stepper-unit {
+  margin-top: 4px;
   font-size: 13px;
+  font-weight: 600;
   color: #64748b;
 }
 
-.duration-select {
-  width: 100%;
+/* 设备圆点进度 (≤30 设备) */
+.device-dot-progress {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+}
+
+.dot-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.dot-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+.dot-existing {
+  background: #94a3b8;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
+}
+.dot-new {
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  animation: dotPopIn 0.3s ease;
+}
+@keyframes dotPopIn {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.3); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* 设备条形进度 (>30 设备) */
+.device-bar-progress {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+}
+
+.bar-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.bar-track {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.35s ease;
+}
+.bar-existing {
+  left: 0;
+  background: #94a3b8;
+}
+.bar-new {
+  background: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* ======== 月份卡片选择器 ======== */
+.duration-block {
+  margin-bottom: 4px;
+}
+
+.month-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.month-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 6px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+  gap: 4px;
+  font-family: inherit;
+}
+.month-card:hover {
+  border-color: #93b4f0;
+  background: #f8faff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+.month-card.is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  transform: translateY(-2px);
+}
+.month-card.is-zero {
+  border-style: dashed;
+}
+.month-card.is-zero.is-active {
+  border-style: solid;
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.14);
+  color: #475569;
+}
+
+.month-card-num {
+  font-size: 17px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1;
+}
+.month-card.is-active .month-card-num {
+  color: #1d4ed8;
+}
+.month-card.is-zero.is-active .month-card-num {
+  color: #475569;
+}
+
+.month-card-days {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.month-card.is-active .month-card-days {
+  color: #6093e8;
+}
+.month-card.is-zero.is-active .month-card-days {
+  color: #94a3b8;
+}
+
+/* 到期日预览 */
+.expire-preview {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.expire-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.expire-label {
+  font-weight: 600;
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.expire-old {
+  color: #94a3b8;
+  text-decoration: line-through;
+  font-weight: 500;
+}
+
+.expire-arrow {
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.expire-new {
+  color: #059669;
+  font-weight: 700;
+}
+
+.expire-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .cost-list {
@@ -1175,20 +1541,49 @@ onUnmounted(() => {
     padding: 14px;
   }
 
+  .upgrade-main-panel {
+    padding: 14px 14px 6px;
+  }
+
   .summary-grid {
     grid-template-columns: 1fr;
   }
 
-  .device-stepper {
-    grid-template-columns: 32px 1fr 32px;
+  /* 设备 stepper — 移动端适配 */
+  .device-stepper-card {
+    gap: 14px;
+    padding: 10px 0 6px;
+  }
+  .stepper-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+  .stepper-display {
+    min-width: 84px;
+    padding: 8px 18px;
+  }
+  .stepper-number {
+    font-size: 30px;
   }
 
-  .device-number {
-    width: 100%;
+  /* 月份卡片 — 移动端 2 列 */
+  .month-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .month-card {
+    padding: 12px 6px;
+  }
+  .month-card-num {
+    font-size: 15px;
   }
 
-  .device-unit {
-    grid-column: 1 / -1;
+  /* 到期预览 */
+  .expire-preview-row {
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 12px;
   }
 
   .payment-radio-card :deep(.el-radio__label) {
