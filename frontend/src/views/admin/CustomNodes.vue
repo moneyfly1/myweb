@@ -471,11 +471,17 @@
             />
           </el-select>
           <el-form label-position="top" size="small">
-             <el-form-item label="订阅模式">
-               <el-radio-group v-model="assignExtraData.subscription_type">
-                 <el-radio label="both">全部订阅</el-radio>
-                 <el-radio label="special_only">仅专线</el-radio>
-               </el-radio-group>
+             <el-form-item label="节点显示模式">
+               <div class="toggle-row">
+                 <el-switch v-model="assignExtraData.special_only" active-text="仅专线" inactive-text="专线+普通" />
+                 <span class="toggle-desc">开启后用户仅能看到专线节点</span>
+               </div>
+             </el-form-item>
+             <el-form-item label="设备数量限制">
+               <div class="toggle-row">
+                 <el-switch v-model="assignExtraData.follow_device_limit" active-text="跟随系统" inactive-text="不限制" />
+                 <span class="toggle-desc">关闭后不限制该用户的设备数量</span>
+               </div>
              </el-form-item>
              <el-form-item label="专线到期 (可选)">
                 <el-date-picker
@@ -616,7 +622,9 @@ export default {
     const selectedUserIds = ref([])
     const loadingUsers = ref(false)
     const batchAssigning = ref(false)
-    const assignExtraData = reactive({ subscription_type: 'both', expires_at: null })
+    // special_only: true = 仅显示专线节点, false = 显示专线+普通节点
+    // follow_device_limit: true = 跟随系统设备限制, false = 不限制设备数量
+    const assignExtraData = reactive({ special_only: false, follow_device_limit: true, expires_at: null })
     const batchTesting = ref(false)
     const batchDeleting = ref(false)
     const rules = {
@@ -829,7 +837,12 @@ export default {
       batchAssigning.value = true
       try {
         const nodeIds = assignMode.value === 'single' ? [assigningNode.value.id] : selectedNodes.value.map(n => n.id)
-        await adminAPI.batchAssignCustomNodes(nodeIds, selectedUserIds.value, assignExtraData)
+        const payload = {
+          subscription_type: assignExtraData.special_only ? 'special_only' : 'both',
+          unlimited_devices: !assignExtraData.follow_device_limit,
+          expires_at: assignExtraData.expires_at
+        }
+        await adminAPI.batchAssignCustomNodes(nodeIds, selectedUserIds.value, payload)
         ElMessage.success('分配成功')
         showAssignDialog.value = false
         if (assignMode.value === 'single') loadAssignedUsers(assigningNode.value.id)
@@ -1147,6 +1160,16 @@ export default {
 .text-danger { color: var(--el-color-danger); }
 .text-secondary { color: var(--el-text-color-secondary); font-size: 12px; }
 .text-xs { font-size: 12px; }
+.toggle-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.toggle-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
 .dialog-scroll-content {
   max-height: 70vh;
   overflow-y: auto;
