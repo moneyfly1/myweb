@@ -125,6 +125,17 @@
         </el-table-column>
       </el-table>
       </div>
+      <div class="pagination" v-if="total > pageSize">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
       <div class="mobile-card-list" v-if="devices.length > 0">
         <div 
           v-for="device in devices" 
@@ -215,6 +226,17 @@
           </el-button>
         </div>
       </div>
+      <div class="pagination mobile-pagination" v-if="total > pageSize">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, prev, pager, next"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
     </el-card>
     <el-card class="chart-card">
       <template #header>
@@ -257,6 +279,9 @@ export default {
     const loading = ref(false)
     const devices = ref([])
     const deviceTableRef = ref(null)
+    const currentPage = ref(1)
+    const pageSize = ref(10)
+    const total = ref(0)
     const DEVICES_TABLE_STORAGE_KEY = 'user_devices_table_settings'
     const columnWidths = reactive({
       device_name: 220,
@@ -316,47 +341,82 @@ export default {
     const fetchDevices = async () => {
       loading.value = true
       try {
-        const response = await subscriptionAPI.getDevices()
+        const response = await subscriptionAPI.getDevices({
+          page: currentPage.value,
+          size: pageSize.value
+        })
         if (response && response.data) {
           const responseData = response.data
           if (responseData.success === false) {
             const errorMsg = responseData.message || '获取设备列表失败'
             ElMessage.error(errorMsg)
             devices.value = []
+            total.value = 0
           } else if (responseData.data) {
             if (responseData.data.devices && Array.isArray(responseData.data.devices)) {
               devices.value = responseData.data.devices
+              total.value = responseData.data.total || 0
+              updateDeviceStats(responseData.data)
             } else if (Array.isArray(responseData.data)) {
               devices.value = responseData.data
+              total.value = 0
+              updateDeviceStats()
             } else {
               devices.value = []
+              total.value = 0
+              updateDeviceStats()
             }
           } else if (Array.isArray(responseData)) {
             devices.value = responseData
+            total.value = 0
+            updateDeviceStats()
           } else {
             devices.value = []
+            total.value = 0
+            updateDeviceStats()
           }
         } else {
           devices.value = []
+          total.value = 0
+          updateDeviceStats()
         }
-        updateDeviceStats()
       } catch (error) {
         console.error('获取设备列表错误:', error)
         const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
         ElMessage.error('获取设备列表失败: ' + errorMsg)
         devices.value = []
+        total.value = 0
         updateDeviceStats()
       } finally {
         loading.value = false
       }
     }
-    const updateDeviceStats = () => {
-      deviceStats.total = devices.value.length
-      deviceStats.online = devices.value.filter(d => isOnline(d.last_access)).length
-      deviceStats.mobile = devices.value.filter(d => d.device_type === 'mobile').length
-      deviceStats.desktop = devices.value.filter(d => d.device_type === 'desktop').length
+    const updateDeviceStats = (data) => {
+      if (data && typeof data.total === 'number') {
+        // 使用后端返回的全局统计数据
+        deviceStats.total = data.total || 0
+        deviceStats.online = data.total_online || 0
+        deviceStats.mobile = data.total_mobile || 0
+        deviceStats.desktop = data.total_desktop || 0
+      } else {
+        // 兼容旧格式：基于当前页设备计算
+        deviceStats.total = devices.value.length
+        deviceStats.online = devices.value.filter(d => isOnline(d.last_access)).length
+        deviceStats.mobile = devices.value.filter(d => d.device_type === 'mobile').length
+        deviceStats.desktop = devices.value.filter(d => d.device_type === 'desktop').length
+      }
+    }
+    const handleSizeChange = (val) => {
+      pageSize.value = val
+      currentPage.value = 1
+      fetchDevices()
+    }
+    const handleCurrentChange = (val) => {
+      currentPage.value = val
+      fetchDevices()
     }
     const refreshDevices = () => {
+      currentPage.value = 1
       fetchDevices()
     }
     const removeDevice = async (deviceId) => {
@@ -450,9 +510,14 @@ export default {
       devices,
       deviceStats,
       deviceTypeStats,
+      currentPage,
+      pageSize,
+      total,
       fetchDevices,
       refreshDevices,
       removeDevice,
+      handleSizeChange,
+      handleCurrentChange,
       getDeviceIcon,
       getDeviceTypeName,
       getDeviceTypeColor,
@@ -560,6 +625,14 @@ export default {
   box-shadow: var(--card-shadow);
   margin-bottom: 1.5rem;
 }
+.pagination {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  &.mobile-pagination {
+    display: none;
+  }
+}
 .chart-container {
   padding: 1rem 0;
   @media (max-width: 768px) {
@@ -567,6 +640,15 @@ export default {
   }
 }
 @media (max-width: 768px) {
+  .pagination {
+    justify-content: center;
+    &.mobile-pagination {
+      display: flex;
+    }
+  }
+  .table-wrapper + .pagination {
+    display: none;
+  }
   .devices-container {
     padding: 10px;
   }
