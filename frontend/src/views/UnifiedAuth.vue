@@ -77,8 +77,8 @@
                   <el-button type="primary" size="large" :disabled="codeTimer > 0 || !registerForm.email || sendingCode" :loading="sendingCode" @click="sendVerificationCode('register')" class="code-btn">{{ codeTimer > 0 ? `${codeTimer}s` : '获取验证码' }}</el-button>
                 </div>
               </el-form-item>
-              <el-form-item prop="inviteCode" :required="inviteCodeRequired">
-                <el-input v-model="registerForm.inviteCode" :placeholder="inviteCodeRequired ? '邀请码（必填）' : '邀请码（选填）'" size="large" :prefix-icon="Ticket" clearable />
+              <el-form-item v-if="inviteCodeRequired" prop="inviteCode" required>
+                <el-input v-model="registerForm.inviteCode" placeholder="邀请码（必填）" size="large" :prefix-icon="Ticket" clearable />
                 <div v-if="inviteCodeInfo" class="invite-tip">
                   <span v-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" class="tip-ok">✓ 邀请码有效，注册后可获得 {{ inviteCodeInfo.invitee_reward || inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励</span>
                   <span v-else class="tip-err">✗ {{ inviteCodeInfo.message }}</span>
