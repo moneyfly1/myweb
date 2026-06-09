@@ -618,9 +618,35 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 		utils.SuccessResponse(c, http.StatusOK, "", []gin.H{})
 		return
 	}
+
+	page, size, offset := getPagination(c)
+
+	var total int64
+	db.Model(&models.Device{}).Where("subscription_id = ?", sub.ID).Count(&total)
+
+	// 统计所有设备（不受分页影响）
+	oneDayAgo := time.Now().Add(-24 * time.Hour)
+	var totalOnline, totalMobile, totalDesktop int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND last_access >= ?", sub.ID, oneDayAgo).Count(&totalOnline)
+	db.Model(&models.Device{}).Where("subscription_id = ? AND device_type = ?", sub.ID, "mobile").Count(&totalMobile)
+	db.Model(&models.Device{}).Where("subscription_id = ? AND device_type = ?", sub.ID, "desktop").Count(&totalDesktop)
+
 	var devices []models.Device
-	db.Where("subscription_id = ?", sub.ID).Find(&devices)
-	utils.SuccessResponse(c, http.StatusOK, "", formatDeviceList(devices))
+	db.Where("subscription_id = ?", sub.ID).
+		Order("last_access DESC").
+		Offset(offset).
+		Limit(size).
+		Find(&devices)
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"devices":       formatDeviceList(devices),
+		"total":         total,
+		"page":          page,
+		"size":          size,
+		"total_online":  totalOnline,
+		"total_mobile":  totalMobile,
+		"total_desktop": totalDesktop,
+	})
 }
 
 func GetSubscriptionDevices(c *gin.Context) {
