@@ -15,6 +15,7 @@ import (
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetCustomNodes(c *gin.Context) {
@@ -376,6 +377,7 @@ func DeleteCustomNode(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s", node.Name))
 	for _, uid := range affectedUserIDs {
 		clearUserCustomNodeCache(uid)
+		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
 	}
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
@@ -405,6 +407,7 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个", len(req.NodeIDs)))
 	for _, uid := range batchAffectedUserIDs {
 		clearUserCustomNodeCache(uid)
+		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
 	}
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", len(req.NodeIDs)), nil)
 }
@@ -766,8 +769,11 @@ func UnassignCustomNodeFromUser(c *gin.Context) {
 		return
 	}
 
+	uid := parseUint(userID)
+	clearUserCustomNodeCache(uid)
+	resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
+
 	utils.SuccessResponse(c, http.StatusOK, "取消分配成功", nil)
-	clearUserCustomNodeCache(parseUint(userID))
 }
 
 func parseUint(s string) uint {
@@ -788,4 +794,45 @@ func clearUserCustomNodeCache(userID uint) {
 			_ = cacheService.ClearSubscriptionConfigCache(sub.SubscriptionURL)
 		}
 	}
+}
+
+// resetSpecialNodeFieldsIfNoCustomNodes 当用户已无专线节点时自动重置 SpecialNode 相关字段，
+// 避免用户因 SpecialNodeSubscriptionType="special_only" 但无任何专线节点而导致无法访问任何线路。
+func resetSpecialNodeFieldsIfNoCustomNodes(db *gorm.DB, userID uint) {
+	var count int64
+	if err := db.Model(&models.UserCustomNode{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		utils.LogError("resetSpecialNodeFields: count custom nodes failed", err, map[string]interface{}{"user_id": userID})
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil {
+		utils.LogError("resetSpecialNodeFields: find user failed", err, map[string]interface{}{"user_id": userID})
+		return
+	}
+
+	// 仅当用户确实处于 special_only 模式或设置了专线到期/不限设备时才需重置
+	needsReset := user.SpecialNodeSubscriptionType == "special_only" ||
+		user.SpecialNodeExpiresAt.Valid ||
+		user.SpecialNodeUnlimitedDevices
+
+	if !needsReset {
+		return
+	}
+
+	oldType := user.SpecialNodeSubscriptionType
+	user.SpecialNodeSubscriptionType = ""
+	user.SpecialNodeExpiresAt = sql.NullTime{Valid: false}
+	user.SpecialNodeUnlimitedDevices = false
+
+	if err := db.Save(&user).Error; err != nil {
+		utils.LogError("resetSpecialNodeFields: save user failed", err, map[string]interface{}{"user_id": userID})
+		return
+	}
+
+	utils.LogInfo("resetSpecialNodeFields: 用户 %d (%s) 已无专线节点，自动重置 SpecialNode 字段 (原 subscription_type=%s)，恢复普通线路访问",
+		userID, user.Username, oldType)
 }
