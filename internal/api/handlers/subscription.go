@@ -167,6 +167,7 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"device_model":       getString(d.DeviceModel),
 			"device_brand":       getString(d.DeviceBrand),
 			"access_count":       d.AccessCount,
+			"remark":             getString(d.Remark),
 		})
 	}
 	return list

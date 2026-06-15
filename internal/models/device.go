@@ -29,6 +29,7 @@ type Device struct {
 	LastAccess        time.Time  `gorm:"autoCreateTime" json:"last_access"`
 	LastSeen          *time.Time `json:"last_seen,omitempty"`
 	AccessCount       int        `gorm:"default:0" json:"access_count"`
+	Remark            *string    `gorm:"type:varchar(255)" json:"remark,omitempty"` // 用户自定义备注
 	CreatedAt         time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt         time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 

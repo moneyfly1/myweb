@@ -495,6 +495,7 @@ export const subscriptionAPI = {
   sendSubscriptionEmail: () => api.post('/subscriptions/send-subscription-email'),
   getDevices: (params) => api.get('/subscriptions/devices', { params }),
   removeDevice: (id) => api.delete(`/subscriptions/devices/${id}`),
+  updateDeviceRemark: (id, remark) => api.put(`/subscriptions/devices/${id}/remark`, { remark }),
   getSSRSubscription: (key) => api.get(`/subscriptions/ssr/${key}`),
   getClashSubscription: (key) => api.get(`/subscriptions/clash/${key}`),
   convertToBalance: () => api.post('/subscriptions/convert-to-balance')

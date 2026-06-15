@@ -103,6 +103,7 @@ func GetDevices(c *gin.Context) {
 			"last_seen":          lastSeen,
 			"access_count":       d.AccessCount,
 			"created_at":         utils.FormatBeijingTime(d.CreatedAt),
+			"remark":             getString(d.Remark),
 		})
 	}
 
@@ -292,4 +293,57 @@ func getDeviceDisplayName(device *models.Device) string {
 		return ua
 	}
 	return fmt.Sprintf("设备 #%d", device.ID)
+}
+
+func UpdateDeviceRemark(c *gin.Context) {
+	user, ok := getCurrentUserOrError(c)
+	if !ok {
+		return
+	}
+
+	db := database.GetDB()
+	deviceID := c.Param("id")
+
+	var req struct {
+		Remark string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+
+	// 限制备注长度
+	if len(req.Remark) > 200 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "备注长度不能超过200个字符", nil)
+		return
+	}
+
+	var device models.Device
+	if err := db.Where("devices.id = ?", deviceID).
+		Joins("JOIN subscriptions ON devices.subscription_id = subscriptions.id").
+		Where("subscriptions.user_id = ?", user.ID).
+		First(&device).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "设备不存在或无权限", err)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询设备失败", err)
+		}
+		return
+	}
+
+	remark := req.Remark
+	if remark == "" {
+		// 允许清空备注
+		if err := db.Model(&device).Update("remark", nil).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新备注失败", err)
+			return
+		}
+	} else {
+		if err := db.Model(&device).Update("remark", remark).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新备注失败", err)
+			return
+		}
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "备注已更新", gin.H{"remark": remark})
 }
