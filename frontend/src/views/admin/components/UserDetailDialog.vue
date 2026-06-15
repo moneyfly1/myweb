@@ -1020,6 +1020,15 @@ export default {
         return
       }
       try {
+        // 如果是用户最后一个专线节点，弹出确认提示
+        const isLastNode = this.customNodes.length === 1
+        if (isLastNode) {
+          await ElMessageBox.confirm(
+            '这是该用户的最后一个专线节点。取消后用户将无法访问任何专线节点，系统将自动恢复其普通线路访问。\n\n确认取消分配？',
+            '取消分配专线节点',
+            { type: 'warning', confirmButtonText: '确认取消' }
+          )
+        }
         const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
         if (response.data && response.data.success) {
           ElMessage.success('取消分配成功')
@@ -1028,8 +1037,10 @@ export default {
           ElMessage.error(response.data?.message || '取消分配失败')
         }
       } catch (error) {
-        console.error('取消分配失败:', error)
-        ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') {
+          console.error('取消分配失败:', error)
+          ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
+        }
       }
     }
   }
