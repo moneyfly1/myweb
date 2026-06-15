@@ -717,7 +717,24 @@ export default {
     }
     const deleteNode = async (node) => {
       try {
-        await ElMessageBox.confirm(`确认删除 "${node.name}"?`, '提示', { type: 'warning' })
+        // 检查受影响用户，生成更明确的提示
+        let warningMsg = `确认删除 "${node.name}"?`
+        try {
+          const usersRes = await adminAPI.getCustomNodeUsers(node.id)
+          if (usersRes?.data?.success) {
+            const users = usersRes.data.data || []
+            if (users.length > 0) {
+              const specialOnlyUsers = users.filter(u => u.special_node_subscription_type === 'special_only')
+              if (specialOnlyUsers.length > 0) {
+                const names = specialOnlyUsers.map(u => u.username).join('、')
+                warningMsg = `该节点有 ${users.length} 个用户，其中 ${specialOnlyUsers.length} 个开启了「仅专线显示」：${names}。\n\n删除后系统将自动恢复其普通线路访问。\n\n确认删除 "${node.name}"?`
+              } else {
+                warningMsg = `该节点有 ${users.length} 个用户正在使用。\n\n删除后若用户无其他专线节点，系统将自动恢复其普通线路访问。\n\n确认删除 "${node.name}"?`
+              }
+            }
+          }
+        } catch (e) { /* 获取用户列表失败，使用默认提示 */ }
+        await ElMessageBox.confirm(warningMsg, '删除专线节点', { type: 'warning', confirmButtonText: '确认删除', dangerouslyUseHTMLString: false })
         await adminAPI.deleteCustomNode(node.id)
         ElMessage.success('已删除')
         loadCustomNodes()
@@ -753,8 +770,33 @@ export default {
     const batchDelete = async () => {
       if (!selectedNodes.value.length) return
       try {
-        await ElMessageBox.confirm(`确认删除选中的 ${selectedNodes.value.length} 个节点?`, '警告', { type: 'error' })
         batchDeleting.value = true
+        // 检查受影响用户
+        let warningMsg = `确认删除选中的 ${selectedNodes.value.length} 个节点?`
+        try {
+          let totalUsers = 0
+          const specialOnlyUsers = []
+          for (const node of selectedNodes.value) {
+            const usersRes = await adminAPI.getCustomNodeUsers(node.id)
+            if (usersRes?.data?.success) {
+              const users = usersRes.data.data || []
+              totalUsers += users.length
+              users.filter(u => u.special_node_subscription_type === 'special_only').forEach(u => {
+                if (!specialOnlyUsers.find(s => s.id === u.id)) specialOnlyUsers.push(u)
+              })
+            }
+          }
+          if (totalUsers > 0) {
+            if (specialOnlyUsers.length > 0) {
+              const names = specialOnlyUsers.slice(0, 5).map(u => u.username).join('、')
+              const more = specialOnlyUsers.length > 5 ? `等${specialOnlyUsers.length}人` : ''
+              warningMsg = `选中节点共有 ${totalUsers} 个用户，其中 ${specialOnlyUsers.length} 个开启了「仅专线显示」：${names}${more}。\n\n删除后系统将自动恢复其普通线路访问。\n\n确认删除 ${selectedNodes.value.length} 个节点?`
+            } else {
+              warningMsg = `选中节点共有 ${totalUsers} 个用户正在使用。\n\n删除后若用户无其他专线节点，系统将自动恢复其普通线路访问。\n\n确认删除 ${selectedNodes.value.length} 个节点?`
+            }
+          }
+        } catch (e) { /* 获取用户列表失败，使用默认提示 */ }
+        await ElMessageBox.confirm(warningMsg, '批量删除专线节点', { type: 'error', confirmButtonText: '确认删除' })
         await adminAPI.batchDeleteCustomNodes(selectedNodes.value.map(n => n.id))
         ElMessage.success('批量删除成功')
         selectedNodes.value = []
