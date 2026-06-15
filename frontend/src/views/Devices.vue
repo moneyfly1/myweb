@@ -109,6 +109,28 @@
             </el-tooltip>
           </template>
         </el-table-column>
+        <el-table-column prop="remark" label="备注" :width="columnWidths.remark" resizable>
+          <template #default="{ row }">
+            <div class="remark-cell" @click="startEditRemark(row)" v-if="editingRemarkId !== row.id">
+              <span v-if="row.remark" class="remark-text">{{ row.remark }}</span>
+              <span v-else class="remark-placeholder">点击添加备注</span>
+            </div>
+            <div class="remark-edit" v-else>
+              <el-input
+                v-model="editingRemarkValue"
+                size="small"
+                maxlength="200"
+                show-word-limit
+                placeholder="输入设备备注，自动保存"
+                @blur="saveRemark(row)"
+                @keyup.enter="saveRemark(row)"
+                @keyup.escape="cancelEditRemark"
+                @input="onRemarkInput(row)"
+                ref="remarkInputRef"
+              />
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
           <template #default="{ row }">
             <div class="action-buttons">
@@ -205,6 +227,28 @@
             <span class="label">User Agent</span>
             <span class="value user-agent">{{ truncateUserAgent(device.user_agent) }}</span>
           </div>
+          <div class="card-row">
+            <span class="label">备注</span>
+            <span class="value">
+              <div class="remark-cell" @click="startEditRemark(device)" v-if="editingRemarkId !== device.id">
+                <span v-if="device.remark" class="remark-text">{{ device.remark }}</span>
+                <span v-else class="remark-placeholder">点击添加备注</span>
+              </div>
+              <div class="remark-edit" v-else>
+                <el-input
+                  v-model="editingRemarkValue"
+                  size="small"
+                  maxlength="200"
+                  show-word-limit
+                  placeholder="输入设备备注，自动保存"
+                  @blur="saveRemark(device)"
+                  @keyup.enter="saveRemark(device)"
+                  @keyup.escape="cancelEditRemark"
+                  @input="onRemarkInput(device)"
+                />
+              </div>
+            </span>
+          </div>
           <div class="card-actions">
             <el-button 
               type="danger" 
@@ -282,6 +326,9 @@ export default {
     const currentPage = ref(1)
     const pageSize = ref(10)
     const total = ref(0)
+    const editingRemarkId = ref(null)
+    const editingRemarkValue = ref('')
+    const remarkInputRef = ref(null)
     const DEVICES_TABLE_STORAGE_KEY = 'user_devices_table_settings'
     const columnWidths = reactive({
       device_name: 220,
@@ -290,6 +337,7 @@ export default {
       ip_address: 280,
       last_access: 180,
       user_agent: 200,
+      remark: 160,
       actions: 120
     })
     const loadDeviceTableSettings = () => {
@@ -310,7 +358,7 @@ export default {
         console.warn('保存设备表设置失败:', e)
       }
     }
-    const DEVICE_COLUMN_KEYS = ['device_name', 'device_type', 'os_name', 'ip_address', 'last_access', 'user_agent', 'actions']
+    const DEVICE_COLUMN_KEYS = ['device_name', 'device_type', 'os_name', 'ip_address', 'last_access', 'user_agent', 'remark', 'actions']
     let deviceResizeTimer = null
     const handleDeviceColumnResize = () => {
       if (deviceResizeTimer) clearTimeout(deviceResizeTimer)
@@ -501,6 +549,49 @@ export default {
       if (deviceStats.total === 0) return 0
       return Math.round((count / deviceStats.total) * 100)
     }
+    const startEditRemark = (device) => {
+      editingRemarkId.value = device.id
+      editingRemarkValue.value = device.remark || ''
+      // Focus input after DOM update
+      setTimeout(() => {
+        if (remarkInputRef.value) {
+          remarkInputRef.value.focus()
+        }
+      }, 50)
+    }
+    let remarkDebounceTimer = null
+    const onRemarkInput = (device) => {
+      // 防抖：停止输入1.5秒后自动保存
+      if (remarkDebounceTimer) clearTimeout(remarkDebounceTimer)
+      remarkDebounceTimer = setTimeout(() => {
+        saveRemark(device, true)
+      }, 1500)
+    }
+    const saveRemark = async (device, silent = false) => {
+      if (remarkDebounceTimer) clearTimeout(remarkDebounceTimer)
+      const newRemark = editingRemarkValue.value.trim()
+      // If unchanged, just cancel edit mode
+      if (newRemark === (device.remark || '')) {
+        cancelEditRemark()
+        return
+      }
+      try {
+        await subscriptionAPI.updateDeviceRemark(device.id, newRemark)
+        device.remark = newRemark || ''
+        if (!silent) {
+          ElMessage.success('备注已更新')
+        }
+      } catch (error) {
+        if (!silent) {
+          ElMessage.error('更新备注失败: ' + (error.response?.data?.message || error.message))
+        }
+      }
+      cancelEditRemark()
+    }
+    const cancelEditRemark = () => {
+      editingRemarkId.value = null
+      editingRemarkValue.value = ''
+    }
     onMounted(() => {
       loadDeviceTableSettings()
       fetchDevices()
@@ -527,12 +618,46 @@ export default {
       formatLocation,
       deviceTableRef,
       columnWidths,
-      handleDeviceColumnResize
+      handleDeviceColumnResize,
+      editingRemarkId,
+      editingRemarkValue,
+      remarkInputRef,
+      startEditRemark,
+      saveRemark,
+      cancelEditRemark,
+      onRemarkInput
     }
   }
 }
 </script>
 <style scoped lang="scss">
+.remark-cell {
+  cursor: pointer;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px dashed transparent;
+  transition: all 0.2s ease;
+  &:hover {
+    border-color: var(--el-color-primary-light-5);
+    background: var(--el-color-primary-light-9);
+  }
+}
+.remark-text {
+  color: #303133;
+  font-size: 13px;
+  word-break: break-word;
+}
+.remark-placeholder {
+  color: #c0c4cc;
+  font-size: 12px;
+  font-style: italic;
+}
+.remark-edit {
+  width: 100%;
+}
 .device-name {
   display: flex;
   align-items: flex-start;
