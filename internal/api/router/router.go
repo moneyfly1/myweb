@@ -116,7 +116,8 @@ func SetupRouter() *gin.Engine {
 			subscriptions.POST("/send-subscription-email", handlers.SendSubscriptionEmailSelf)
 			subscriptions.POST("/convert-to-balance", handlers.ConvertSubscriptionToBalance)
 			subscriptions.DELETE("/devices/:id", handlers.DeleteDevice)
-		}
+				subscriptions.PUT("/devices/:id/remark", handlers.UpdateDeviceRemark)
+			}
 
 		subscribePublic := api.Group("")
 		subscribePublic.Use(middleware.CSRFExemptMiddleware())
