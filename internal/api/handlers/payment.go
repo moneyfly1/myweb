@@ -624,6 +624,21 @@ func PaymentNotify(c *gin.Context) {
 
 	paymentConfig, err := utils.FindEnabledPaymentConfig(db, paymentType)
 	if err != nil {
+		// Fallback: codepay 与 yipay 使用相同协议族，后台配置的 notify_url
+		// 可能因历史原因使用 /yipay 路径，而数据库 pay_type 为 codepay（反之亦然）。
+		// 当前次查询失败时尝试互查对方类型，确保回调不会被误拒。
+		fallbackType := ""
+		if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") {
+			fallbackType = "codepay"
+		} else if paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
+			fallbackType = "yipay"
+		}
+		if fallbackType != "" {
+			utils.LogInfo("PaymentNotify: payment config not found for %s, trying fallback %s", paymentType, fallbackType)
+			paymentConfig, err = utils.FindEnabledPaymentConfig(db, fallbackType)
+		}
+	}
+	if err != nil {
 		utils.LogError("PaymentNotify: payment config not found", err, map[string]interface{}{
 			"payment_type": paymentType,
 		})
@@ -634,24 +649,29 @@ func PaymentNotify(c *gin.Context) {
 	utils.LogInfo("PaymentNotify: 找到支付配置 - payment_type=%s, config_id=%d, config_pay_type=%s",
 		paymentType, paymentConfig.ID, paymentConfig.PayType)
 
+	// 使用数据库中实际 pay_type 选择验签服务，而非 URL 路径中的 type 参数，
+	// 避免因 notify_url 路径与 pay_type 不一致导致使用错误的签名算法。
+	effectivePayType := paymentConfig.PayType
+	utils.LogInfo("PaymentNotify: using effective pay_type=%s (url_type=%s)", effectivePayType, paymentType)
+
 	var verified bool
-	switch paymentType {
-	case "alipay":
+	switch {
+	case effectivePayType == "alipay":
 		alipayService, err := payment.NewAlipayService(&paymentConfig)
 		if err == nil {
 			verified = alipayService.VerifyNotify(params)
 		}
-	case "wechat":
+	case effectivePayType == "wechat":
 		wechatService, err := payment.NewWechatService(&paymentConfig)
 		if err == nil {
 			verified = wechatService.VerifyNotify(params)
 		}
-	case "applepay":
+	case effectivePayType == "applepay":
 		applePayService, err := payment.NewApplePayService(&paymentConfig)
 		if err == nil {
 			verified = applePayService.VerifyNotify(params)
 		}
-	case "yipay", "yipay_alipay", "yipay_wxpay", "yipay_qqpay":
+	case effectivePayType == "yipay" || strings.HasPrefix(effectivePayType, "yipay_"):
 		yipayService, err := payment.NewYipayService(&paymentConfig)
 		if err != nil {
 			utils.LogError("PaymentNotify: 创建易支付服务失败", err, map[string]interface{}{
@@ -661,7 +681,7 @@ func PaymentNotify(c *gin.Context) {
 			verified = yipayService.VerifyNotify(params)
 			utils.LogInfo("PaymentNotify: 易支付签名验证结果 - verified=%v, payment_type=%s", verified, paymentType)
 		}
-	case "codepay", "codepay_alipay", "codepay_wxpay":
+	case effectivePayType == "codepay" || strings.HasPrefix(effectivePayType, "codepay_"):
 		codepayService, err := payment.NewCodepayService(&paymentConfig)
 		if err != nil {
 			utils.LogError("PaymentNotify: 创建码支付服务失败", err, map[string]interface{}{
@@ -671,6 +691,13 @@ func PaymentNotify(c *gin.Context) {
 			verified = codepayService.VerifyNotify(params)
 			utils.LogInfo("PaymentNotify: 码支付签名验证结果 - verified=%v, payment_type=%s, order_no=%s", verified, paymentType, params["out_trade_no"])
 		}
+	default:
+		utils.LogError("PaymentNotify: unsupported effective pay_type", nil, map[string]interface{}{
+			"effective_pay_type": effectivePayType,
+			"url_type":           paymentType,
+		})
+		c.String(http.StatusBadRequest, "不支持的支付方式")
+		return
 	}
 
 	if !verified {
