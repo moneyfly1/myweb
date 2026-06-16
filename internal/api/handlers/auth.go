@@ -1005,7 +1005,7 @@ func ChangePassword(c *gin.Context) {
 }
 
 type ResetPasswordRequest struct {
-	Password string `json:"password" binding:"required,min=8"`
+	Password string `json:"password" binding:"required"`
 }
 
 func ResetPassword(c *gin.Context) {
@@ -1037,8 +1037,7 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
-	user.Password = hashedPassword
-	if err := db.Save(&user).Error; err != nil {
+	if err := db.Model(&models.User{}).Where("id = ?", user.ID).Update("password", hashedPassword).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置密码失败", err)
 		return
 	}

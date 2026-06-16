@@ -1414,6 +1414,26 @@ export default {
         ElMessage.error(`状态更新失败: ${error.response?.data?.message || error.message}`)
       }
     }
+    const validateResetPassword = (value) => {
+      if (!value) return '密码不能为空'
+      if (value.length < 8) return '密码长度不能少于8位'
+
+      let complexityCount = 0
+      if (/[A-Z]/.test(value)) complexityCount += 1
+      if (/[a-z]/.test(value)) complexityCount += 1
+      if (/\d/.test(value)) complexityCount += 1
+      if (/[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(value)) complexityCount += 1
+      if (complexityCount < 3) return '密码需包含大小写字母、数字和特殊字符中的至少三种'
+
+      const weakPasswords = [
+        'password', '123456', '123456789', 'qwerty', 'abc123',
+        'password123', 'admin', 'root', 'user', 'test',
+        '12345678', 'password1', 'qwerty123', 'admin123'
+      ]
+      if (weakPasswords.includes(value.toLowerCase())) return '密码过于简单，请使用更复杂的密码'
+
+      return true
+    }
     const resetUserPassword = async (user) => {
       try {
         const { value: newPassword } = await ElMessageBox.prompt(
@@ -1423,12 +1443,8 @@ export default {
             confirmButtonText: '确定',
             cancelButtonText: '取消',
             inputType: 'password',
-            inputPlaceholder: '请输入新密码（至少6位）',
-            inputValidator: (value) => {
-              if (!value) return '密码不能为空'
-              if (value.length < 6) return '密码长度不能少于6位'
-              return true
-            }
+            inputPlaceholder: '请输入新密码（至少8位）',
+            inputValidator: validateResetPassword
           }
         )
         await adminAPI.resetUserPassword(user.id, newPassword)
