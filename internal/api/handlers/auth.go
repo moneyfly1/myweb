@@ -970,8 +970,7 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	user.Password = hashedPassword
-	if err := db.Save(&user).Error; err != nil {
+	if err := db.Model(&models.User{}).Where("id = ?", user.ID).Update("password", hashedPassword).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新密码失败", err)
 		return
 	}
@@ -1141,19 +1140,22 @@ func ForgotPassword(c *gin.Context) {
 			"user_id": user.ID,
 		})
 		if sendErr != nil {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "发送验证码邮件失败", sendErr)
+			utils.ErrorResponse(c, http.StatusServiceUnavailable, "邮件服务暂时不可用，请稍后重试", nil)
 			return
 		}
 	} else if sendErr == nil {
-		// 直接发送成功，将队列记录标记为已发送
-		db := database.GetDB()
 		var emailQueue models.EmailQueue
 		if err := db.Where("to_email = ? AND subject = ? AND email_type = ? AND status = ?",
 			user.Email, subject, "password_reset", "pending").
 			Order("created_at DESC").First(&emailQueue).Error; err == nil {
-			emailQueue.Status = "sent"
-			emailQueue.SentAt = database.NullTime(utils.GetBeijingTime())
-			db.Save(&emailQueue)
+			if err := db.Model(&models.EmailQueue{}).Where("id = ?", emailQueue.ID).Updates(map[string]interface{}{
+				"status":  "sent",
+				"sent_at": database.NullTime(utils.GetBeijingTime()),
+			}).Error; err != nil {
+				utils.LogError("RequestPasswordReset: mark queued email sent failed", err, map[string]interface{}{
+					"user_id": user.ID,
+				})
+			}
 		}
 	}
 
@@ -1254,23 +1256,33 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
-	verificationCode.Used = 1
-	if err := db.Model(&verificationCode).Where("id = ?", verificationCode.ID).Update("used", 1).Error; err != nil {
-		utils.LogError("ResetPasswordByCode: mark verification code as used failed", err, map[string]interface{}{
-			"code_id": verificationCode.ID,
-		})
-		utils.ErrorResponse(c, http.StatusInternalServerError, "标记验证码失败", err)
-		return
-	}
-
 	hashedPassword, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "密码加密失败", err)
 		return
 	}
 
-	user.Password = hashedPassword
-	if err := db.Save(&user).Error; err != nil {
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Update("password", hashedPassword).Error; err != nil {
+			return fmt.Errorf("update password: %w", err)
+		}
+
+		result := tx.Model(&models.VerificationCode{}).
+			Where("id = ? AND used = ?", verificationCode.ID, 0).
+			Update("used", 1)
+		if result.Error != nil {
+			return fmt.Errorf("mark verification code used: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		utils.LogError("ResetPasswordByCode: update password failed", err, map[string]interface{}{
+			"user_id": user.ID,
+			"code_id": verificationCode.ID,
+		})
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重置密码失败", err)
 		return
 	}
