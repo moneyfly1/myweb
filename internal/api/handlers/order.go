@@ -14,6 +14,8 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	discountService "cboard-go/internal/services/discount"
+	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/notification"
 	orderServicePkg "cboard-go/internal/services/order"
 	"cboard-go/internal/services/payment"
 	"cboard-go/internal/utils"
@@ -148,6 +150,102 @@ func formatOrderData(order models.Order) gin.H {
 		"expire_time":            utils.GetNullTimeValue(order.ExpireTime),
 		"coupon_id":              utils.GetNullInt64Value(order.CouponID),
 		"extra_data":             parsedExtraData,
+	}
+}
+
+func collectOrderUpgradeData(order models.Order) map[string]interface{} {
+	if !order.ExtraData.Valid || order.ExtraData.String == "" {
+		return nil
+	}
+	var extraData map[string]interface{}
+	if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err != nil {
+		return nil
+	}
+	if extraData["type"] != "device_upgrade" {
+		return nil
+	}
+	data := make(map[string]interface{})
+	for _, key := range []string{"old_device_limit", "new_device_limit", "additional_devices", "additional_days", "old_expire_time", "new_expire_time"} {
+		if v, ok := extraData[key]; ok {
+			data[key] = v
+		}
+	}
+	return data
+}
+
+func resolveOrderNotificationPackageName(order models.Order) string {
+	if order.Package.ID > 0 {
+		return order.Package.Name
+	}
+	_, packageName, _ := resolvePackageInfo(order)
+	return packageName
+}
+
+func sendOrderCreatedNotifications(db *gorm.DB, orderNo string) {
+	var latestOrder models.Order
+	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&latestOrder).Error; err != nil {
+		utils.LogErrorMsg("sendOrderCreatedNotifications: 查询订单失败: order_no=%s, error=%v", orderNo, err)
+		return
+	}
+
+	var latestUser models.User
+	if err := db.First(&latestUser, latestOrder.UserID).Error; err != nil {
+		utils.LogErrorMsg("sendOrderCreatedNotifications: 查询用户失败: order_no=%s, user_id=%d, error=%v", orderNo, latestOrder.UserID, err)
+		return
+	}
+
+	createTime := utils.FormatBeijingTime(latestOrder.CreatedAt)
+	payAmount := latestOrder.Amount
+	if latestOrder.FinalAmount.Valid {
+		payAmount = latestOrder.FinalAmount.Float64
+	}
+	paymentMethod := "待选择"
+	if latestOrder.PaymentMethodName.Valid && strings.TrimSpace(latestOrder.PaymentMethodName.String) != "" {
+		paymentMethod = latestOrder.PaymentMethodName.String
+	}
+	packageName := resolveOrderNotificationPackageName(latestOrder)
+	notificationService := notification.NewNotificationService()
+
+	if notification.ShouldSendCustomerNotificationToUser(&latestUser, "order_created", notification.ChannelEmail) {
+		templateBuilder := email.NewEmailTemplateBuilder()
+		content := templateBuilder.GetOrderConfirmationTemplate(
+			latestUser.Username,
+			latestOrder.OrderNo,
+			packageName,
+			payAmount,
+			paymentMethod,
+			createTime,
+		)
+		if err := email.NewEmailService().QueueEmail(latestUser.Email, "订单创建通知", content, "order_created"); err != nil {
+			utils.LogErrorMsg("sendOrderCreatedNotifications: 发送订单创建邮件失败: order_no=%s, email=%s, error=%v", latestOrder.OrderNo, latestUser.Email, err)
+		} else {
+			utils.LogInfo("sendOrderCreatedNotifications: 订单创建邮件已加入队列: order_no=%s, email=%s", latestOrder.OrderNo, latestUser.Email)
+		}
+	}
+
+	if notification.ShouldSendCustomerNotificationToUser(&latestUser, "order_created", notification.ChannelSystem) {
+		content := fmt.Sprintf("您的订单 %s 已创建，待支付金额 ¥%.2f。", latestOrder.OrderNo, payAmount)
+		if err := notificationService.CreateUserSystemNotification(&latestUser, "order_created", "订单已创建", content); err != nil {
+			utils.LogErrorMsg("sendOrderCreatedNotifications: 创建站内订单通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
+		}
+	}
+
+	adminData := map[string]interface{}{
+		"order_no":       latestOrder.OrderNo,
+		"username":       latestUser.Username,
+		"email":          latestUser.Email,
+		"amount":         payAmount,
+		"package_name":   packageName,
+		"payment_method": paymentMethod,
+		"create_time":    createTime,
+	}
+	for key, value := range collectOrderUpgradeData(latestOrder) {
+		adminData[key] = value
+	}
+	if err := notificationService.SendAdminNotification("order_created", adminData); err != nil {
+		utils.LogErrorMsg("sendOrderCreatedNotifications: 发送管理员通知失败: order_no=%s, error=%v", latestOrder.OrderNo, err)
+	} else {
+		utils.LogInfo("sendOrderCreatedNotifications: 管理员通知已发送: order_no=%s", latestOrder.OrderNo)
 	}
 }
 
@@ -730,6 +828,8 @@ func CreateOrder(c *gin.Context) {
 	}
 	if order.Status == "paid" {
 		data["message"] = "订单已支付成功"
+	} else {
+		go sendOrderCreatedNotifications(database.GetDB(), order.OrderNo)
 	}
 	if order.CouponID.Valid {
 		data["coupon_id"] = order.CouponID.Int64
@@ -1816,6 +1916,7 @@ func UpgradeDevices(c *gin.Context) {
 		responseData["payment_url"] = paymentURL
 		responseData["payment_qr_code"] = paymentURL
 	}
+	go sendOrderCreatedNotifications(database.GetDB(), order.OrderNo)
 	utils.SuccessResponse(c, http.StatusOK, "", responseData)
 }
 
@@ -2115,6 +2216,8 @@ func CreateCustomOrder(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "刷新订单状态失败", err)
 			return
 		}
+	} else {
+		go sendOrderCreatedNotifications(database.GetDB(), order.OrderNo)
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "订单创建成功", gin.H{

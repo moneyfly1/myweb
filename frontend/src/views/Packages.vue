@@ -569,6 +569,7 @@ import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Prom
 import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
+import { createQRCodeDataURL } from '@/utils/qrcode'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import ErrorState from '@/components/ErrorState.vue'
@@ -1411,7 +1412,6 @@ export default {
           paymentQRCode.value = ''
         } else {
           // 生成二维码
-          const QRCode = await import('qrcode')
           const isMobileDevice = window.innerWidth <= 768
           const qrOptions = {
             width: isMobileDevice ? 200 : 256,
@@ -1422,7 +1422,7 @@ export default {
             },
             errorCorrectionLevel: 'M'
           }
-          const qrCodeDataURL = await QRCode.toDataURL(urlString, qrOptions)
+          const qrCodeDataURL = await createQRCodeDataURL(urlString, qrOptions)
           paymentQRCode.value = qrCodeDataURL
         }
         paymentQRVisible.value = true
@@ -1577,8 +1577,7 @@ export default {
         const paymentUrl = orderInfo.paymentUrl || currentOrder.value?.payment_url
         if (paymentUrl) {
           try {
-            const QRCode = await import('qrcode')
-            const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, {
+            const qrCodeDataURL = await createQRCodeDataURL(paymentUrl, {
               width: 256,
               margin: 2,
               color: {

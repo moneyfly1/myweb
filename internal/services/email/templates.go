@@ -741,6 +741,60 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
 	email := getStringFromData(data, "email", "N/A")
 
 	switch notificationType {
+	case "order_created":
+		orderNo := getStringFromData(data, "order_no", "N/A")
+		amount := getFloatFromData(data, "amount", 0)
+		packageName := getStringFromData(data, "package_name", "未知套餐")
+		paymentMethod := getStringFromData(data, "payment_method", "待选择")
+		createTime := getStringFromData(data, "create_time", "N/A")
+
+		upgradeSection := ""
+		if oldLimit := getFloatFromData(data, "old_device_limit", 0); oldLimit > 0 {
+			newLimit := getFloatFromData(data, "new_device_limit", 0)
+			addDevices := getFloatFromData(data, "additional_devices", 0)
+			addDays := getFloatFromData(data, "additional_days", 0)
+			oldExpire := getStringFromData(data, "old_expire_time", "")
+			newExpire := getStringFromData(data, "new_expire_time", "")
+
+			upgradeSection = `<div class="info-box">
+                <h3>📊 升级详情</h3>
+                <table class="info-table">`
+			if newLimit > 0 {
+				upgradeSection += fmt.Sprintf(`
+                    <tr><th>设备数量</th><td style="color: #f39c12; font-weight: bold;">%d → %d 台 (+%.0f台)</td></tr>`, int(oldLimit), int(newLimit), addDevices)
+			}
+			if oldExpire != "" && newExpire != "" && addDays > 0 {
+				upgradeSection += fmt.Sprintf(`
+                    <tr><th>有效期</th><td style="color: #f39c12; font-weight: bold;">%s → %s (+%.0f天)</td></tr>`, oldExpire, newExpire, addDays)
+			} else if addDays > 0 {
+				upgradeSection += fmt.Sprintf(`
+                    <tr><th>增加时长</th><td style="color: #f39c12; font-weight: bold;">+%.0f 天</td></tr>`, addDays)
+			}
+			upgradeSection += `
+                </table>
+            </div>`
+		}
+
+		content = fmt.Sprintf(`<h2>🧾 用户创建订单</h2>
+            <p>系统检测到用户创建了一笔待支付订单，详情如下：</p>
+            <div class="info-box">
+                <h3>📋 订单信息</h3>
+                <table class="info-table">
+                    <tr><th>订单号</th><td><strong style="font-family: 'Courier New', monospace;">%s</strong></td></tr>
+                    <tr><th>用户账号</th><td>%s</td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>套餐名称</th><td><strong>%s</strong></td></tr>
+                    <tr><th>应付金额</th><td style="color: #e67e22; font-weight: bold; font-size: 18px;">¥%.2f</td></tr>
+                    <tr><th>支付方式</th><td>%s</td></tr>
+                    <tr><th>下单时间</th><td>%s</td></tr>
+                    <tr><th>订单状态</th><td style="color: #f39c12; font-weight: bold;">待支付</td></tr>
+                </table>
+            </div>
+            %s
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>该订单尚未支付，支付成功后系统会自动处理订阅或升级。</p>
+            </div>`, orderNo, username, email, packageName, amount, paymentMethod, createTime, upgradeSection)
+
 	case "order_paid":
 		orderNo := getStringFromData(data, "order_no", "N/A")
 		amount := getFloatFromData(data, "amount", 0)
