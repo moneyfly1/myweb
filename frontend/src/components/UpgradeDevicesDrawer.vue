@@ -334,7 +334,6 @@ const upgradeOrder = ref(null)
 const paymentQRVisible = ref(false)
 const paymentQRCode = ref(null)
 const paymentUrl = ref('')
-const paymentStatusCheckTimer = ref(null)
 const paymentStatusRequest = ref(null)
 let paymentManualVisibilityHandler = null
 const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
@@ -485,7 +484,14 @@ const handlePaymentMethodChange = () => {
 }
 
 const showPaymentQRCode = async (order) => {
-  const url = order.payment_url || order.payment_qr_code
+  const url = String(order?.payment_url || order?.payment_qr_code || '').trim()
+  if (!url) {
+    paymentQRCode.value = ''
+    paymentUrl.value = ''
+    ElMessage.error(order?.payment_error || order?.note || '支付链接生成失败，请稍后重试')
+    return
+  }
+
   paymentUrl.value = url
   if (isPaymentPageUrl.value) {
     paymentQRCode.value = ''
@@ -505,7 +511,8 @@ const showPaymentQRCode = async (order) => {
     paymentQRVisible.value = true
     startPaymentStatusCheck()
   } catch (error) {
-    ElMessage.error('生成二维码失败: ' + (error.response?.data?.message || error.message))
+    console.error('生成支付二维码失败:', error)
+    ElMessage.error('二维码生成失败，请刷新页面重试')
   }
 }
 
@@ -633,6 +640,21 @@ const openAlipayApp = () => {
 
 const onImageError = () => ElMessage.error('二维码加载失败')
 const onImageLoad = () => {}
+
+const cleanupPaymentManualWatcher = () => {
+  if (paymentManualVisibilityHandler && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', paymentManualVisibilityHandler)
+    paymentManualVisibilityHandler = null
+  }
+}
+
+const { startPolling: startPaymentStatusCheck, clearPolling: cleanupPaymentStatusCheck } = usePaymentStatusPolling({
+  intervalMs: 3000,
+  timeoutMs: 30 * 60 * 1000,
+  shouldPoll: () => !!upgradeOrder.value?.order_no,
+  poll: () => checkUpgradeOrderStatus(true),
+  onCleanup: cleanupPaymentManualWatcher
+})
 
 const changeDeviceCount = (delta) => {
   const next = (upgradeForm.value.additionalDevices || 1) + delta
