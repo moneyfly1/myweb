@@ -156,26 +156,34 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "v2rayNG"
 	}
 
-	// 通用软件识别
-	softwares := map[string]string{
-		"quantumult":  "Quantumult",
-		"hiddify":     "Hiddify",
-		"clash meta":  "Clash Meta",
-		"clash":       "Clash",
-		"v2ray":       "V2Ray",
-		"xray":        "Xray",
-		"loon":        "Loon",
-		"surge":       "Surge",
-		"stash":       "Stash",
-		"shadowsocks": "Shadowsocks",
-		"sing-box":    "sing-box",
-		"karing":      "Karing",
-		"nekobox":     "NekoBox",
+	// 通用软件识别。这里必须保持有序：一些客户端 UA 会同时带上内核/兼容标识，
+	// 例如 HiddifyNext/... like ClashMeta v2ray sing-box，应优先识别真实客户端。
+	softwares := []struct {
+		key  string
+		name string
+	}{
+		{"hiddifynext", "Hiddify"},
+		{"hiddify-next", "Hiddify"},
+		{"hiddify next", "Hiddify"},
+		{"hiddify", "Hiddify"},
+		{"quantumult", "Quantumult"},
+		{"clash meta", "Clash Meta"},
+		{"clashmeta", "Clash Meta"},
+		{"sing-box", "sing-box"},
+		{"karing", "Karing"},
+		{"nekobox", "NekoBox"},
+		{"shadowsocks", "Shadowsocks"},
+		{"clash", "Clash"},
+		{"v2ray", "V2Ray"},
+		{"xray", "Xray"},
+		{"loon", "Loon"},
+		{"surge", "Surge"},
+		{"stash", "Stash"},
 	}
 
-	for key, name := range softwares {
-		if strings.Contains(uaLower, key) {
-			return name
+	for _, software := range softwares {
+		if strings.Contains(uaLower, software.key) {
+			return software.name
 		}
 	}
 
@@ -667,6 +675,33 @@ func (dm *DeviceManager) generateDeviceName(info *DeviceInfo) string {
 	return "Unknown Device"
 }
 
+func (dm *DeviceManager) refreshDeviceInfo(device *models.Device, info *DeviceInfo) {
+	if info.DeviceName != "Unknown Device" {
+		device.DeviceName = &info.DeviceName
+	}
+	if info.DeviceType != "unknown" {
+		device.DeviceType = &info.DeviceType
+	}
+	if info.DeviceModel != "" {
+		device.DeviceModel = &info.DeviceModel
+	}
+	if info.DeviceBrand != "" {
+		device.DeviceBrand = &info.DeviceBrand
+	}
+	if info.SoftwareName != "Unknown" {
+		device.SoftwareName = &info.SoftwareName
+	}
+	if info.SoftwareVersion != "" {
+		device.SoftwareVersion = &info.SoftwareVersion
+	}
+	if info.OSName != "Unknown" {
+		device.OSName = &info.OSName
+	}
+	if info.OSVersion != "" {
+		device.OSVersion = &info.OSVersion
+	}
+}
+
 func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID string) string {
 	if deviceID != "" {
 		hash := sha256.Sum256([]byte("device_id:" + strings.TrimSpace(deviceID)))
@@ -774,30 +809,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 				sameUADevice.SubscriptionType = &subscriptionTypeStr
 			}
 
-			if deviceInfo.DeviceName != "Unknown Device" && (sameUADevice.DeviceName == nil || *sameUADevice.DeviceName == "" || *sameUADevice.DeviceName == "Unknown Device") {
-				sameUADevice.DeviceName = &deviceInfo.DeviceName
-			}
-			if deviceInfo.DeviceType != "unknown" && (sameUADevice.DeviceType == nil || *sameUADevice.DeviceType == "" || *sameUADevice.DeviceType == "unknown") {
-				sameUADevice.DeviceType = &deviceInfo.DeviceType
-			}
-			if deviceInfo.DeviceModel != "" && (sameUADevice.DeviceModel == nil || *sameUADevice.DeviceModel == "") {
-				sameUADevice.DeviceModel = &deviceInfo.DeviceModel
-			}
-			if deviceInfo.DeviceBrand != "" && (sameUADevice.DeviceBrand == nil || *sameUADevice.DeviceBrand == "") {
-				sameUADevice.DeviceBrand = &deviceInfo.DeviceBrand
-			}
-			if deviceInfo.SoftwareName != "Unknown" && (sameUADevice.SoftwareName == nil || *sameUADevice.SoftwareName == "" || *sameUADevice.SoftwareName == "Unknown") {
-				sameUADevice.SoftwareName = &deviceInfo.SoftwareName
-			}
-			if deviceInfo.SoftwareVersion != "" && (sameUADevice.SoftwareVersion == nil || *sameUADevice.SoftwareVersion == "") {
-				sameUADevice.SoftwareVersion = &deviceInfo.SoftwareVersion
-			}
-			if deviceInfo.OSName != "Unknown" && (sameUADevice.OSName == nil || *sameUADevice.OSName == "" || *sameUADevice.OSName == "Unknown") {
-				sameUADevice.OSName = &deviceInfo.OSName
-			}
-			if deviceInfo.OSVersion != "" && (sameUADevice.OSVersion == nil || *sameUADevice.OSVersion == "") {
-				sameUADevice.OSVersion = &deviceInfo.OSVersion
-			}
+			dm.refreshDeviceInfo(&sameUADevice, deviceInfo)
 
 			if err := dm.db.Save(&sameUADevice).Error; err != nil {
 				return nil, err
@@ -828,30 +840,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			existingDevice.SubscriptionType = &subscriptionTypeStr
 		}
 
-		if deviceInfo.DeviceName != "Unknown Device" && (existingDevice.DeviceName == nil || *existingDevice.DeviceName == "" || *existingDevice.DeviceName == "Unknown Device") {
-			existingDevice.DeviceName = &deviceInfo.DeviceName
-		}
-		if deviceInfo.DeviceType != "unknown" && (existingDevice.DeviceType == nil || *existingDevice.DeviceType == "" || *existingDevice.DeviceType == "unknown") {
-			existingDevice.DeviceType = &deviceInfo.DeviceType
-		}
-		if deviceInfo.DeviceModel != "" && (existingDevice.DeviceModel == nil || *existingDevice.DeviceModel == "") {
-			existingDevice.DeviceModel = &deviceInfo.DeviceModel
-		}
-		if deviceInfo.DeviceBrand != "" && (existingDevice.DeviceBrand == nil || *existingDevice.DeviceBrand == "") {
-			existingDevice.DeviceBrand = &deviceInfo.DeviceBrand
-		}
-		if deviceInfo.SoftwareName != "Unknown" && (existingDevice.SoftwareName == nil || *existingDevice.SoftwareName == "" || *existingDevice.SoftwareName == "Unknown") {
-			existingDevice.SoftwareName = &deviceInfo.SoftwareName
-		}
-		if deviceInfo.SoftwareVersion != "" && (existingDevice.SoftwareVersion == nil || *existingDevice.SoftwareVersion == "") {
-			existingDevice.SoftwareVersion = &deviceInfo.SoftwareVersion
-		}
-		if deviceInfo.OSName != "Unknown" && (existingDevice.OSName == nil || *existingDevice.OSName == "" || *existingDevice.OSName == "Unknown") {
-			existingDevice.OSName = &deviceInfo.OSName
-		}
-		if deviceInfo.OSVersion != "" && (existingDevice.OSVersion == nil || *existingDevice.OSVersion == "") {
-			existingDevice.OSVersion = &deviceInfo.OSVersion
-		}
+		dm.refreshDeviceInfo(&existingDevice, deviceInfo)
 
 		if err := dm.db.Save(&existingDevice).Error; err != nil {
 			return nil, err
