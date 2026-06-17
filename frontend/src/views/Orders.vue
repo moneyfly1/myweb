@@ -449,7 +449,7 @@
             <p>生成中...</p>
           </div>
         </div>
-        <div class="payment-actions-compact" v-if="isMobile && paymentUrl && (selectedOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
+        <div class="payment-actions-compact" v-if="isMobile && paymentUrl && isAlipayPayment(selectedOrder)">
           <el-button
             type="success"
             size="default"
@@ -903,6 +903,11 @@ export default {
         errorCorrectionLevel: 'M'
       })
     }
+    const isAlipayPayment = (order) => {
+      const method = normalizePaymentMethodValue(order?.payment_method).toLowerCase()
+      const url = String(paymentUrl.value || '').toLowerCase()
+      return method.includes('alipay') || method.includes('支付宝') || url.includes('alipay') || url.includes('alipays')
+    }
     const resolvePaymentMethodId = async (paymentMethodId, paymentMethod) => {
       // 如果已有支付方式ID，直接返回
       if (paymentMethodId) {
@@ -1013,7 +1018,7 @@ export default {
               payment_method_id: paymentMethodId,
               payment_method: response.data.data?.payment_method || normalizePaymentMethodValue(order.payment_method),
               amount: response.data.data?.actual_payment_amount ?? response.data.data?.final_amount ?? response.data.data?.amount ?? order.amount
-            }, paymentUrl)
+            }, paymentUrl, { forceQRCode: true })
           } else {
             const errorMsg = response.data.message || response.data.detail || '支付链接生成失败'
             ElMessage.error(errorMsg)
@@ -1060,7 +1065,7 @@ export default {
         ElMessage.error('跳转失败，请使用支付宝扫描二维码完成支付')
       }
     }
-    const showPaymentQR = async (order, url) => {
+    const showPaymentQR = async (order, url, options = {}) => {
       if (!url) {
         ElMessage.error('支付链接生成失败，请重试')
         return
@@ -1076,7 +1081,7 @@ export default {
         amount: order.amount || order.display_amount,
         payment_method: paymentMethod
       }
-      if (isPaymentPageUrl(url)) {
+      if (!options.forceQRCode && isPaymentPageUrl(url)) {
         paymentQRCode.value = ''
         paymentQRVisible.value = false
         pendingPaymentStorage.save(
@@ -1472,6 +1477,7 @@ export default {
       getPaymentMethodText,
       formatAmount,
       getPaymentMethodName,
+      isAlipayPayment,
       formatDateTime,
       isMobile,
       orderTableRef,
