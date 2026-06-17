@@ -297,6 +297,7 @@ import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI, cachedAPI
 import { getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
+import { createQRCodeDataURL } from '@/utils/qrcode'
 
 const props = defineProps({
   modelValue: {
@@ -506,13 +507,12 @@ const showPaymentQRCode = async (order) => {
       color: { dark: '#000000', light: '#FFFFFF' },
       errorCorrectionLevel: 'M'
     }
-    const QRCodeLib = (await import('qrcode')).default
-    paymentQRCode.value = await QRCodeLib.toDataURL(url, qrOptions)
+    paymentQRCode.value = await createQRCodeDataURL(url, qrOptions)
     paymentQRVisible.value = true
     startPaymentStatusCheck()
   } catch (error) {
     console.error('生成支付二维码失败:', error)
-    ElMessage.error('二维码生成失败，请刷新页面重试')
+    ElMessage.error(error.message || '二维码生成失败，请刷新页面重试')
   }
 }
 

@@ -13,6 +13,8 @@ func NewMessageTemplateBuilder() *MessageTemplateBuilder {
 
 func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, data map[string]interface{}) string {
 	switch notificationType {
+	case "order_created":
+		return b.buildOrderCreatedTelegram(data)
 	case "order_paid":
 		return b.buildOrderPaidTelegram(data)
 	case "recharge_paid":
@@ -48,6 +50,8 @@ func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, d
 
 func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data map[string]interface{}) (string, string) {
 	switch notificationType {
+	case "order_created":
+		return b.buildOrderCreatedBark(data)
 	case "order_paid":
 		return b.buildOrderPaidBark(data)
 	case "recharge_paid":
@@ -79,6 +83,41 @@ func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data 
 	default:
 		return b.buildDefaultBark(data)
 	}
+}
+
+func (b *MessageTemplateBuilder) buildOrderCreatedTelegram(data map[string]interface{}) string {
+	orderNo := getString(data, "order_no", "N/A")
+	username := getString(data, "username", "N/A")
+	amount := getFloat(data, "amount", 0)
+	packageName := getString(data, "package_name", "未知套餐")
+	paymentMethod := getString(data, "payment_method", "待选择")
+	createTime := getString(data, "create_time", "N/A")
+
+	msg := fmt.Sprintf(`🧾 <b>用户创建订单</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 <b>订单详情</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🆔 <b>订单号</b>: <code>%s</code>
+👤 <b>用户账号</b>: <code>%s</code>
+📦 <b>套餐名称</b>: <b>%s</b>
+💰 <b>应付金额</b>: <b>¥%.2f</b>
+💳 <b>支付方式</b>: %s
+🕐 <b>下单时间</b>: %s`, orderNo, username, packageName, amount, paymentMethod, createTime)
+
+	if upgradeSection := b.buildUpgradeDetailsTelegram(data); upgradeSection != "" {
+		msg += "\n\n" + upgradeSection
+	}
+
+	msg += `
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⏳ <b>订单待支付</b>
+┃  💡 <b>支付成功后将自动开通服务</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`
+
+	return msg
 }
 
 func (b *MessageTemplateBuilder) buildOrderPaidTelegram(data map[string]interface{}) string {
@@ -427,6 +466,40 @@ func (b *MessageTemplateBuilder) buildDefaultTelegram(data map[string]interface{
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  💡 <b>系统自动发送</b>
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, title, message)
+}
+
+func (b *MessageTemplateBuilder) buildOrderCreatedBark(data map[string]interface{}) (string, string) {
+	orderNo := getString(data, "order_no", "N/A")
+	username := getString(data, "username", "N/A")
+	amount := getFloat(data, "amount", 0)
+	packageName := getString(data, "package_name", "未知套餐")
+	paymentMethod := getString(data, "payment_method", "待选择")
+	createTime := getString(data, "create_time", "N/A")
+
+	title := "🧾 用户创建订单"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 订单详情
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🆔 订单号: %s
+👤 用户账号: %s
+📦 套餐名称: %s
+💰 应付金额: ¥%.2f
+💳 支付方式: %s
+🕐 下单时间: %s`, orderNo, username, packageName, amount, paymentMethod, createTime)
+
+	if upgradeSection := b.buildUpgradeDetailsBark(data); upgradeSection != "" {
+		body += "\n\n" + upgradeSection
+	}
+
+	body += `
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⏳ 订单待支付
+┃  💡 支付成功后将自动开通服务
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`
+
+	return title, body
 }
 
 func (b *MessageTemplateBuilder) buildOrderPaidBark(data map[string]interface{}) (string, string) {

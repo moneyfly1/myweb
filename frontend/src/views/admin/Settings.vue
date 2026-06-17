@@ -780,7 +780,8 @@ const customerMethodSwitches = [
 ]
 const customerEventSwitches = [
   { label: '新用户注册', base: 'user_registered', legacyKey: 'new_user_notifications', channels: { email: 'user_registered_email_notifications' } },
-  { label: '订单支付成功', base: 'order_paid', legacyKey: 'new_order_notifications', channels: { email: 'order_paid_email_notifications' } },
+  { label: '订单创建（待支付）', base: 'order_created', legacyKey: 'order_created_notifications', fallbackLegacyKey: 'new_order_notifications', channels: { email: 'order_created_email_notifications' } },
+  { label: '订单支付成功', base: 'order_paid', legacyKey: 'order_paid_notifications', fallbackLegacyKey: 'new_order_notifications', channels: { email: 'order_paid_email_notifications' } },
   { label: '充值到账', base: 'recharge_paid', legacyKey: 'recharge_success_notifications', channels: { email: 'recharge_paid_email_notifications' } },
   { label: '订阅创建', base: 'subscription_created', legacyKey: 'subscription_created_notifications', channels: { email: 'subscription_created_email_notifications' } },
   { label: '订阅发送', base: 'subscription_sent', legacyKey: 'subscription_sent_notifications', channels: { email: 'subscription_sent_email_notifications' } },
@@ -797,6 +798,7 @@ const adminNotificationEvents = [
   { label: '管理员创建用户', key: 'admin_notify_user_created' },
   { label: '密码重置', key: 'admin_notify_password_reset' },
   { label: '密码修改', key: 'admin_notify_password_changed' },
+  { label: '订单创建（待支付）', key: 'admin_notify_order_created' },
   { label: '订单支付成功', key: 'admin_notify_order_paid' },
   { label: '充值到账', key: 'admin_notify_recharge_paid' },
   { label: '订阅创建', key: 'admin_notify_subscription_created' },
@@ -813,7 +815,10 @@ const adminNotificationEvents = [
 
 const adminLegacyEventKeys = adminNotificationEvents.map(item => item.key)
 const adminEventChannelKeys = adminNotificationEvents.flatMap(item => Object.values(item.channels))
-const customerEventLegacyKeys = customerEventSwitches.map(item => item.legacyKey)
+const customerEventLegacyKeys = [...new Set([
+  ...customerEventSwitches.map(item => item.legacyKey).filter(Boolean),
+  ...customerEventSwitches.map(item => item.fallbackLegacyKey).filter(Boolean)
+])]
 const customerEventChannelKeys = customerEventSwitches.flatMap(item => Object.values(item.channels))
 
 const customerNotificationDefaults = {
@@ -1067,12 +1072,15 @@ export default {
 
     const syncCustomerLegacyNotificationKeys = () => {
       customerEventSwitches.forEach(item => {
-        notificationSettings[item.legacyKey] = Boolean(notificationSettings[item.channels.email])
+        if (item.legacyKey) {
+          notificationSettings[item.legacyKey] = Boolean(notificationSettings[item.channels.email])
+        }
       })
     }
     const applyCustomerNotificationFallbacks = (source) => {
       customerEventSwitches.forEach(item => {
-        const legacyEnabled = toBool(source[item.legacyKey])
+        const legacySourceKey = hasOwn(source, item.legacyKey) ? item.legacyKey : item.fallbackLegacyKey
+        const legacyEnabled = toBool(source[legacySourceKey])
         Object.entries(item.channels).forEach(([channel, key]) => {
           if (!hasOwn(source, key)) notificationSettings[key] = channel === 'email' ? legacyEnabled : false
         })

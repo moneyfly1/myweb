@@ -191,6 +191,7 @@ import { subscriptionAPI, userAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
+import { drawQRCodeToCanvas } from '@/utils/qrcode'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -332,8 +333,7 @@ export default {
         await nextTick()
         const qrElement = document.getElementById('subscription-qrcode')
         if (qrElement && qrData) {
-          const QRCode = (await import('qrcode')).default
-          await QRCode.toCanvas(qrElement, qrData, {
+          await drawQRCodeToCanvas(qrElement, qrData, {
             width: 200,
             margin: 2,
             color: { dark: '#000000', light: '#FFFFFF' },
