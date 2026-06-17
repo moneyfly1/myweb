@@ -472,6 +472,7 @@ import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } fro
 import { formatDateTime } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
+import { createQRCodeDataURL } from '@/utils/qrcode'
 export default {
   name: 'Orders',
   components: {
@@ -892,8 +893,7 @@ export default {
     }
     const isHttpUrl = (url) => /^https?:\/\//i.test(String(url || '').trim())
     const createPaymentQRCode = async (url) => {
-      const QRCode = await import('qrcode')
-      return QRCode.toDataURL(String(url || '').trim(), {
+      return createQRCodeDataURL(url, {
         width: 256,
         margin: 2,
         color: {
@@ -968,8 +968,7 @@ export default {
     })
     const generateQRCode = async (url) => {
       try {
-        const QRCode = await import('qrcode')
-        return await QRCode.toDataURL(url, {
+        return await createQRCodeDataURL(url, {
           width: 256,
           margin: 2,
           color: {

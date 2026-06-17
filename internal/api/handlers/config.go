@@ -267,7 +267,7 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
-			"log_retention_days": 90,
+			"log_retention_days":           90,
 			"abnormal_login_alert_enabled": true, // 全局异常登录告警开关，默认开启
 		},
 		"theme": {
@@ -325,6 +325,22 @@ func GetAdminSettings(c *gin.Context) {
 			preciseMap[c.Category] = make(map[string]string)
 		}
 		preciseMap[c.Category][c.Key] = c.Value
+	}
+	if notificationConfigs, ok := preciseMap["notification"]; ok {
+		if oldNewOrderEnabled, exists := notificationConfigs["new_order_notifications"]; exists {
+			if _, hasNewKey := notificationConfigs["order_created_notifications"]; !hasNewKey {
+				notificationConfigs["order_created_notifications"] = oldNewOrderEnabled
+			}
+			if _, hasNewKey := notificationConfigs["order_paid_notifications"]; !hasNewKey {
+				notificationConfigs["order_paid_notifications"] = oldNewOrderEnabled
+			}
+			if _, hasNewKey := notificationConfigs["order_created_email_notifications"]; !hasNewKey {
+				notificationConfigs["order_created_email_notifications"] = oldNewOrderEnabled
+			}
+			if _, hasNewKey := notificationConfigs["order_paid_email_notifications"]; !hasNewKey {
+				notificationConfigs["order_paid_email_notifications"] = oldNewOrderEnabled
+			}
+		}
 	}
 
 	// Apply values

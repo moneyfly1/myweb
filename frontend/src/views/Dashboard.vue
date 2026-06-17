@@ -531,6 +531,7 @@ import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
+import { createQRCodeDataURL } from '@/utils/qrcode'
 const router = useRouter()
 const api = useApi()
 const sanitizeHtml = sanitizeBasicHtml
@@ -763,8 +764,7 @@ async function generateSubQRCode() {
   const data = userInfo.value.qrcodeUrl || userInfo.value.universalUrl
   if (!data) { qrCodeUrl.value = ''; return }
   try {
-    const QRCode = await import('qrcode')
-    qrCodeUrl.value = await QRCode.toDataURL(data, { width: 200, margin: 2, errorCorrectionLevel: 'M' })
+    qrCodeUrl.value = await createQRCodeDataURL(data, { width: 200, margin: 2, errorCorrectionLevel: 'M' })
   } catch {
     qrCodeUrl.value = ''
   }
@@ -996,7 +996,6 @@ const createRecharge = async () => {
         rechargePaymentUrl.value = paymentUrl
         currentRechargeOrderNo.value = rechargeOrderNo
         try {
-          const QRCode = await import('qrcode')
           const qrOptions = {
             width: isMobile.value ? 200 : 256,
             margin: 2,
@@ -1006,7 +1005,7 @@ const createRecharge = async () => {
             },
             errorCorrectionLevel: 'M'
           }
-          const qrCodeDataURL = await QRCode.toDataURL(paymentUrl, qrOptions)
+          const qrCodeDataURL = await createQRCodeDataURL(paymentUrl, qrOptions)
           rechargeQRCode.value = qrCodeDataURL
           ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
           startRechargeStatusCheck()

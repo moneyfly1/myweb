@@ -21,6 +21,7 @@ var (
 		"user_created",
 		"password_reset",
 		"password_changed",
+		"order_created",
 		"order_paid",
 		"recharge_paid",
 		"subscription_created",
@@ -39,6 +40,7 @@ var (
 		"user_registered":      "admin_notify_user_registered",
 		"password_reset":       "admin_notify_password_reset",
 		"password_changed":     "admin_notify_password_changed",
+		"order_created":        "admin_notify_order_created",
 		"subscription_sent":    "admin_notify_subscription_sent",
 		"subscription_reset":   "admin_notify_subscription_reset",
 		"subscription_expired": "admin_notify_subscription_expired",
@@ -56,6 +58,7 @@ var (
 		"user_registered":      "👤 新用户注册",
 		"password_reset":       "🔐 用户重置密码",
 		"password_changed":     "🔐 用户修改密码",
+		"order_created":        "🧾 用户创建订单",
 		"subscription_sent":    "📧 用户发送订阅",
 		"subscription_reset":   "🔄 用户重置订阅",
 		"subscription_expired": "⏰ 订阅已过期",
@@ -77,9 +80,10 @@ const (
 var customerNotificationKeyMap = map[string]string{
 	"new_user":             "new_user_notifications",
 	"user_registered":      "new_user_notifications",
-	"new_order":            "new_order_notifications",
-	"order_paid":           "new_order_notifications",
-	"payment_success":      "new_order_notifications",
+	"new_order":            "order_created_notifications",
+	"order_created":        "order_created_notifications",
+	"order_paid":           "order_paid_notifications",
+	"payment_success":      "order_paid_notifications",
 	"recharge_paid":        "recharge_success_notifications",
 	"recharge_success":     "recharge_success_notifications",
 	"subscription_created": "subscription_created_notifications",
@@ -100,6 +104,7 @@ var customerNotificationLegacyTypeMap = map[string]string{
 	"new_user":             "system",
 	"user_registered":      "system",
 	"new_order":            "payment",
+	"order_created":        "payment",
 	"order_paid":           "payment",
 	"payment_success":      "payment",
 	"recharge_paid":        "payment",
@@ -132,6 +137,7 @@ func AdminNotificationDefaultSettings() map[string]interface{} {
 		"admin_notify_user_created":          "false",
 		"admin_notify_password_reset":        "false",
 		"admin_notify_password_changed":      "false",
+		"admin_notify_order_created":         "false",
 		"admin_notify_order_paid":            "false",
 		"admin_notify_recharge_paid":         "false",
 		"admin_notify_subscription_created":  "false",
@@ -173,6 +179,8 @@ func CustomerNotificationDefaultSettings() map[string]interface{} {
 		"subscription_reset_notifications":            "true",
 		"new_user_notifications":                      "true",
 		"new_order_notifications":                     "true",
+		"order_created_notifications":                 "true",
+		"order_paid_notifications":                    "true",
 		"recharge_success_notifications":              "true",
 		"ticket_reply_notifications":                  "true",
 		"password_changed_notifications":              "true",
@@ -181,6 +189,7 @@ func CustomerNotificationDefaultSettings() map[string]interface{} {
 		"subscription_expiry_reminder_cooldown_hours": 24,
 		"subscription_expiry_reminder_daily_limit":    1,
 		"user_registered_email_notifications":         "true",
+		"order_created_email_notifications":           "true",
 		"order_paid_email_notifications":              "true",
 		"recharge_paid_email_notifications":           "true",
 		"subscription_created_email_notifications":    "true",
@@ -247,7 +256,11 @@ func ShouldSendCustomerNotificationChannel(notificationType, channel string) boo
 	if eventKey == "" {
 		return true
 	}
-	if !configBool(configMap, eventKey, true) {
+	eventDefault := true
+	if (notificationType == "order_created" || notificationType == "order_paid" || notificationType == "payment_success") && configMap[eventKey] == "" {
+		eventDefault = configBool(configMap, "new_order_notifications", true)
+	}
+	if !configBool(configMap, eventKey, eventDefault) {
 		return false
 	}
 
