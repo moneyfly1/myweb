@@ -116,8 +116,8 @@ func SetupRouter() *gin.Engine {
 			subscriptions.POST("/send-subscription-email", handlers.SendSubscriptionEmailSelf)
 			subscriptions.POST("/convert-to-balance", handlers.ConvertSubscriptionToBalance)
 			subscriptions.DELETE("/devices/:id", handlers.DeleteDevice)
-				subscriptions.PUT("/devices/:id/remark", handlers.UpdateDeviceRemark)
-			}
+			subscriptions.PUT("/devices/:id/remark", handlers.UpdateDeviceRemark)
+		}
 
 		subscribePublic := api.Group("")
 		subscribePublic.Use(middleware.CSRFExemptMiddleware())
@@ -399,6 +399,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/custom-nodes/import-links", handlers.ImportCustomNodeLinks)
 			admin.POST("/custom-nodes/batch-delete", handlers.BatchDeleteCustomNodes)
 			admin.POST("/custom-nodes/batch-assign", handlers.BatchAssignCustomNodes)
+			admin.POST("/custom-nodes/batch-unassign", handlers.BatchUnassignCustomNodes)
+			admin.POST("/custom-nodes/migrate-assignments", handlers.MigrateCustomNodeAssignments)
 			admin.POST("/custom-nodes/batch-test", handlers.BatchTestCustomNodes)
 			admin.POST("/custom-nodes/:id/test", handlers.TestCustomNode)
 			admin.GET("/custom-nodes/:id/link", handlers.GetCustomNodeLink)

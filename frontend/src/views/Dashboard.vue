@@ -11,6 +11,18 @@
         </div>
       </div>
     </div>
+    <el-alert
+      v-if="userInfo.has_special_nodes"
+      type="success"
+      show-icon
+      :closable="false"
+      class="special-user-alert"
+    >
+      <template #title>专线用户</template>
+      <template #default>
+        当前账号已开通专线节点，{{ specialNodeModeText }}。
+      </template>
+    </el-alert>
     <!-- 到期预警横幅 -->
     <el-alert
       v-if="getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) > 0 && getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) <= 7"
@@ -774,6 +786,11 @@ const isDeviceOverlimit = computed(() => {
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
   return deviceLimit > 0 && onlineDevices > deviceLimit
 })
+const specialNodeModeText = computed(() => {
+  const lineMode = userInfo.value.special_node_subscription_type === 'special_only' ? '仅显示专线线路' : '显示专线和普通线路'
+  const deviceMode = userInfo.value.special_node_unlimited_devices ? '设备不限制' : '设备跟随系统限制'
+  return `${lineMode}，${deviceMode}`
+})
 const dashboardUpgradeSubscription = computed(() => ({
   device_limit: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
   maxDevices: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
@@ -807,7 +824,11 @@ const loadUserInfo = async () => {
         expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
         expire_time: dashboardData.expire_time || dashboardData.expiryDate || dashboardData.subscription?.expire_time || dashboardData.subscription?.expiryDate || '未设置',
         remaining_days: dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0,
-        subscription_status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
+        subscription_status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive',
+        has_special_nodes: !!(dashboardData.has_special_nodes || dashboardData.subscription?.has_special_nodes),
+        special_node_count: dashboardData.special_node_count || dashboardData.subscription?.special_node_count || 0,
+        special_node_subscription_type: dashboardData.special_node_subscription_type || dashboardData.subscription?.special_node_subscription_type || 'both',
+        special_node_unlimited_devices: !!(dashboardData.special_node_unlimited_devices || dashboardData.subscription?.special_node_unlimited_devices)
       }
       const calculatedRemainingDays = dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0
       subscriptionInfo.value = {
@@ -843,7 +864,11 @@ const loadUserInfo = async () => {
           subscription_status: subscriptionData.status || 'inactive',
           clashUrl: subscriptionData.clashUrl || '',
           universalUrl: subscriptionData.universalUrl || '',
-          qrcodeUrl: subscriptionData.qrcodeUrl || ''
+          qrcodeUrl: subscriptionData.qrcodeUrl || '',
+          has_special_nodes: !!subscriptionData.has_special_nodes,
+          special_node_count: subscriptionData.special_node_count || 0,
+          special_node_subscription_type: subscriptionData.special_node_subscription_type || 'both',
+          special_node_unlimited_devices: !!subscriptionData.special_node_unlimited_devices
         }
         ElMessage.warning('部分信息加载失败，但订阅地址可用')
       } else {
@@ -1418,6 +1443,10 @@ onUnmounted(() => {
   color: white;
   position: relative;
   overflow: clip;
+}
+.special-user-alert {
+  margin-bottom: 20px;
+  border-radius: 8px;
 }
 .welcome-banner::before {
   content: '';
