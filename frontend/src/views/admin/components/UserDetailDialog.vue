@@ -401,7 +401,7 @@
                 type="primary"
                 size="small"
                 :icon="Plus"
-                @click="showAssignDialog = true"
+                @click="openAssignDialog"
               >
                 分配专线节点
               </el-button>
@@ -424,6 +424,11 @@
             >
               <el-table-column prop="node_name" label="节点名称" min-width="150" />
               <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
+              <el-table-column label="专线到期" width="160">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.special_node_expires_at) || '跟随订阅' }}
+                </template>
+              </el-table-column>
               <el-table-column prop="assigned_at" label="分配时间" width="160">
                 <template #default="scope">
                   {{ formatDateTime(scope.row.assigned_at) }}
@@ -452,81 +457,174 @@
     <el-dialog
       v-model="showAssignDialog"
       title="分配专线节点"
-      width="500px"
+      :width="isMobile ? '94%' : '720px'"
       :close-on-click-modal="false"
       append-to-body
+      class="assign-node-dialog"
     >
-      <div class="node-search-section">
-        <div class="search-input-group">
-          <el-input
-            v-model="nodeSearchKeyword"
-            placeholder="输入节点名称或地址搜索"
-            clearable
-            @clear="handleNodeSearchClear"
-            :prefix-icon="Search"
-          />
-          <el-button type="primary" :icon="Search" @click="handleNodeSearch">
-            搜索
-          </el-button>
+      <div class="assign-dialog-content">
+        <div class="assign-summary">
+          <div class="assign-summary-item">
+            <span>已选用户</span>
+            <strong>{{ selectedUserIds.length }}</strong>
+          </div>
+          <div class="assign-summary-item">
+            <span>已选节点</span>
+            <strong>{{ selectedNodeIds.length }}</strong>
+          </div>
+          <div class="assign-summary-item">
+            <span>到期时间</span>
+            <strong>{{ assignExpiresAt || '跟随订阅' }}</strong>
+          </div>
         </div>
-        <div v-if="nodeSearchKeyword && searchedNodes.length > 0" class="search-result-tip">
-          找到 {{ searchedNodes.length }} 个节点
-        </div>
-        <div v-else-if="nodeSearchKeyword && searchedNodes.length === 0" class="search-result-tip empty">
-          未找到匹配的节点
-        </div>
-      </div>
 
-      <el-form label-width="100px">
-        <el-form-item label="选择节点">
+        <div class="assign-section-card">
+          <div class="assign-section-header">
+            <div>
+              <div class="section-title">选择用户</div>
+              <div class="section-desc">默认包含当前详情用户，也可以搜索追加其他用户。</div>
+            </div>
+          </div>
+          <div class="search-input-group">
+            <el-input
+              v-model="userSearchKeyword"
+              placeholder="搜索用户名、邮箱或备注"
+              clearable
+              @keyup.enter="handleUserSearch"
+              @clear="handleUserSearchClear"
+            >
+              <template #append>
+                <el-button @click="handleUserSearch" :loading="searchingUsers">
+                  <el-icon><Search /></el-icon>
+                  <span class="search-button-text">搜索</span>
+                </el-button>
+              </template>
+            </el-input>
+          </div>
+          <div v-if="hasUserSearched && userSearchKeyword && searchedUsers.length > 0" class="search-result-tip">
+            找到 {{ searchedUsers.length }} 个用户
+          </div>
+          <div v-else-if="hasUserSearched && userSearchKeyword && !searchingUsers" class="search-result-tip empty">
+            未找到匹配的用户
+          </div>
           <el-select
-            v-model="selectedNodeId"
-            placeholder="请选择要分配的节点"
+            v-model="selectedUserIds"
+            multiple
             filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择用户"
             style="width: 100%"
+            no-data-text="请先搜索用户"
+            @change="handleSelectedUsersChange"
           >
             <el-option
-              v-for="node in searchedNodes"
+              v-for="userItem in assignUserOptions"
+              :key="userItem.id"
+              :label="formatUserOption(userItem)"
+              :value="userItem.id"
+            />
+          </el-select>
+        </div>
+
+        <div class="assign-section-card">
+          <div class="assign-section-header">
+            <div>
+              <div class="section-title">选择专线节点</div>
+              <div class="section-desc">支持按节点名称、显示名称或地址搜索，搜索后可多选。</div>
+            </div>
+          </div>
+          <div class="search-input-group">
+            <el-input
+              v-model="nodeSearchKeyword"
+              placeholder="搜索节点名称、显示名称或地址"
+              clearable
+              @keyup.enter="handleNodeSearch"
+              @clear="handleNodeSearchClear"
+            >
+              <template #append>
+                <el-button @click="handleNodeSearch" :loading="searchingNodes">
+                  <el-icon><Search /></el-icon>
+                  <span class="search-button-text">搜索</span>
+                </el-button>
+              </template>
+            </el-input>
+          </div>
+          <div v-if="hasNodeSearched && nodeSearchKeyword && searchedNodes.length > 0" class="search-result-tip">
+            找到 {{ searchedNodes.length }} 个节点
+          </div>
+          <div v-else-if="hasNodeSearched && nodeSearchKeyword && !searchingNodes" class="search-result-tip empty">
+            未找到匹配的节点
+          </div>
+          <el-select
+            v-model="selectedNodeIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择专线节点"
+            style="width: 100%"
+            no-data-text="请先搜索专线节点"
+            @change="handleSelectedNodesChange"
+          >
+            <el-option
+              v-for="node in assignNodeOptions"
               :key="node.id"
-              :label="`${node.name} (${node.address})`"
+              :label="formatNodeOption(node)"
               :value="node.id"
             />
           </el-select>
-        </el-form-item>
-        <el-form-item label="节点显示模式">
-          <el-radio-group v-model="assignSubscriptionType" class="assign-option-group">
-            <el-radio-button label="both">专线 + 普通节点</el-radio-button>
-            <el-radio-button label="special_only">仅专线</el-radio-button>
-          </el-radio-group>
-          <div class="toggle-hint">
-            {{ assignSubscriptionType === 'special_only' ? '用户订阅里只显示已分配的专线节点' : '用户订阅里同时显示普通节点和专线节点' }}
-          </div>
-        </el-form-item>
-        <el-form-item label="设备数量限制">
-          <el-radio-group v-model="assignDeviceLimitMode" class="assign-option-group">
-            <el-radio-button label="system">跟随系统</el-radio-button>
-            <el-radio-button label="unlimited">不限制</el-radio-button>
-          </el-radio-group>
-          <div class="toggle-hint">
-            {{ assignDeviceLimitMode === 'unlimited' ? '专线用户不受设备数量限制' : '专线用户仍按系统套餐设备数限制' }}
-          </div>
-        </el-form-item>
-      </el-form>
+        </div>
 
-      <div class="form-tip">
-        提示：专线节点分配后，用户可以在订阅中使用该节点。
+        <el-form label-position="top" class="assign-options-form">
+          <el-form-item label="专线到期时间">
+            <el-date-picker
+              v-model="assignExpiresAt"
+              type="datetime"
+              placeholder="不填则跟随用户订阅"
+              style="width: 100%"
+              value-format="YYYY-MM-DDTHH:mm:ssZ"
+              :default-time="assignDefaultTime"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item label="节点显示模式">
+            <el-radio-group v-model="assignSubscriptionType" class="assign-option-group">
+              <el-radio-button label="both">专线 + 普通节点</el-radio-button>
+              <el-radio-button label="special_only">仅专线</el-radio-button>
+            </el-radio-group>
+            <div class="toggle-hint">
+              {{ assignSubscriptionType === 'special_only' ? '用户订阅里只显示已分配的专线节点' : '用户订阅里同时显示普通节点和专线节点' }}
+            </div>
+          </el-form-item>
+          <el-form-item label="设备数量限制">
+            <el-radio-group v-model="assignDeviceLimitMode" class="assign-option-group">
+              <el-radio-button label="system">跟随系统</el-radio-button>
+              <el-radio-button label="unlimited">不限制</el-radio-button>
+            </el-radio-group>
+            <div class="toggle-hint">
+              {{ assignDeviceLimitMode === 'unlimited' ? '专线用户不受设备数量限制' : '专线用户仍按系统套餐设备数限制' }}
+            </div>
+          </el-form-item>
+        </el-form>
+
+        <div class="form-tip">
+          提示：提交后会把所选专线节点分配给所选用户，重复分配会由系统自动跳过。
+        </div>
       </div>
 
       <template #footer>
-        <el-button @click="showAssignDialog = false">取消</el-button>
-        <el-button
-          type="primary"
-          @click="assignNode"
-          :loading="assigning"
-          :disabled="!selectedNodeId"
-        >
-          确认分配
-        </el-button>
+        <div class="assign-dialog-footer">
+          <el-button @click="showAssignDialog = false">取消</el-button>
+          <el-button
+            type="primary"
+            @click="assignNode"
+            :loading="assigning"
+            :disabled="assignButtonDisabled"
+          >
+            确认分配
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </el-drawer>
@@ -586,14 +684,25 @@ export default {
     return {
       activeTab: this.initialTab,
       customNodes: [],
+      searchedUsers: [],
+      selectedUserIds: [],
+      selectedUserCache: [],
+      userSearchKeyword: '',
       searchedNodes: [],
+      selectedNodeIds: [],
+      selectedNodeCache: [],
       nodeSearchKeyword: '',
       showAssignDialog: false,
-      selectedNodeId: null,
       assigning: false,
+      searchingUsers: false,
+      searchingNodes: false,
+      hasUserSearched: false,
+      hasNodeSearched: false,
       loadingNodes: false,
       assignSubscriptionType: 'both',
       assignDeviceLimitMode: 'system',
+      assignExpiresAt: '',
+      assignDefaultTime: new Date(2000, 1, 1, 23, 59, 59),
       devices: [],
       loadingDevices: false,
       deletingDeviceId: null,
@@ -623,6 +732,34 @@ export default {
     },
     loginHistory() {
       return this.user?.login_history || []
+    },
+    currentUserId() {
+      return this.user?.user_info?.id || this.user?.id
+    },
+    currentUserOption() {
+      if (!this.currentUserId) return null
+      return {
+        id: this.currentUserId,
+        username: this.user?.user_info?.username || this.user?.username || '',
+        email: this.user?.user_info?.email || this.user?.email || '',
+        notes: this.user?.user_info?.notes || this.user?.notes || ''
+      }
+    },
+    assignUserOptions() {
+      return this.uniqueById([
+        ...this.selectedUserCache,
+        ...this.searchedUsers,
+        ...(this.currentUserOption ? [this.currentUserOption] : [])
+      ])
+    },
+    assignNodeOptions() {
+      return this.uniqueById([
+        ...this.selectedNodeCache,
+        ...this.searchedNodes
+      ])
+    },
+    assignButtonDisabled() {
+      return !this.selectedUserIds.length || !this.selectedNodeIds.length
     }
   },
   watch: {
@@ -758,6 +895,68 @@ export default {
     },
     getCurrentUserId() {
       return this.user?.user_info?.id || this.user?.id
+    },
+    uniqueById(items) {
+      const seen = new Set()
+      const result = []
+      for (const item of items || []) {
+        if (!item || item.id === undefined || item.id === null || seen.has(item.id)) {
+          continue
+        }
+        seen.add(item.id)
+        result.push(item)
+      }
+      return result
+    },
+    formatUserOption(user) {
+      if (!user) return ''
+      const username = user.username || '未命名用户'
+      return user.email ? `${username} (${user.email})` : username
+    },
+    getNodeAddress(node) {
+      if (!node) return ''
+      const address = node.address || node.node_address || node.domain || ''
+      if (address && node.port && node.port !== 443 && !String(address).includes(':')) {
+        return `${address}:${node.port}`
+      }
+      return address
+    },
+    formatNodeOption(node) {
+      if (!node) return ''
+      const name = node.display_name || node.name || node.node_name || '未命名节点'
+      const address = this.getNodeAddress(node)
+      return address ? `${name} (${address})` : name
+    },
+    getAssignedNodeIdSet() {
+      return new Set((this.customNodes || []).map(n => n.node_id || n.id).filter(Boolean))
+    },
+    resetAssignForm() {
+      this.userSearchKeyword = ''
+      this.searchedUsers = []
+      this.selectedUserCache = this.currentUserOption ? [this.currentUserOption] : []
+      this.selectedUserIds = this.currentUserId ? [this.currentUserId] : []
+      this.nodeSearchKeyword = ''
+      this.searchedNodes = []
+      this.hasUserSearched = false
+      this.hasNodeSearched = false
+      this.selectedNodeCache = []
+      this.selectedNodeIds = []
+      this.assignSubscriptionType = 'both'
+      this.assignDeviceLimitMode = 'system'
+      this.assignExpiresAt = ''
+    },
+    async openAssignDialog() {
+      this.resetAssignForm()
+      this.showAssignDialog = true
+      await this.handleNodeSearch({ silent: true })
+    },
+    handleSelectedUsersChange(ids) {
+      const optionMap = new Map(this.assignUserOptions.map(item => [item.id, item]))
+      this.selectedUserCache = ids.map(id => optionMap.get(id)).filter(Boolean)
+    },
+    handleSelectedNodesChange(ids) {
+      const optionMap = new Map(this.assignNodeOptions.map(item => [item.id, item]))
+      this.selectedNodeCache = ids.map(id => optionMap.get(id)).filter(Boolean)
     },
     async loadCheckinLogs() {
       const userId = this.getCurrentUserId()
@@ -955,59 +1154,98 @@ export default {
         this.loadingNodes = false
       }
     },
-    async handleNodeSearch() {
-      if (!this.nodeSearchKeyword.trim()) {
-        ElMessage.warning('请输入搜索关键词')
+    async handleUserSearch() {
+      const keyword = this.userSearchKeyword.trim()
+      if (!keyword) {
+        ElMessage.warning('请输入用户搜索关键词')
         return
       }
+      this.hasUserSearched = true
+      this.searchingUsers = true
       try {
-        const params = { is_active: 'true', page: 1, size: 200, search: this.nodeSearchKeyword.trim() }
+        const response = await adminAPI.getUsers({ keyword, page: 1, size: 50 })
+        if (response.data && response.data.success) {
+          const users = response.data.data?.users || response.data.data?.data || response.data.data || []
+          this.searchedUsers = this.uniqueById(users)
+          this.handleSelectedUsersChange(this.selectedUserIds)
+          if (this.searchedUsers.length === 0) {
+            ElMessage.info('未找到匹配的用户')
+          }
+        } else {
+          ElMessage.error(response.data?.message || '搜索用户失败')
+        }
+      } catch (error) {
+        console.error('搜索用户失败:', error)
+        ElMessage.error('搜索用户失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        this.searchingUsers = false
+      }
+    },
+    handleUserSearchClear() {
+      this.userSearchKeyword = ''
+      this.searchedUsers = []
+      this.hasUserSearched = false
+      this.handleSelectedUsersChange(this.selectedUserIds)
+    },
+    async handleNodeSearch(options = {}) {
+      const keyword = this.nodeSearchKeyword.trim()
+      this.hasNodeSearched = Boolean(keyword)
+      this.searchingNodes = true
+      try {
+        const params = { is_active: 'true', page: 1, size: 100 }
+        if (keyword) {
+          params.search = keyword
+        }
         const response = await adminAPI.getCustomNodes(params)
         if (response.data && response.data.success) {
-          const allNodes = response.data.data?.data || response.data.data || []
-          const assignedIds = this.customNodes.map(n => n.id)
-          this.searchedNodes = allNodes.filter(n => !assignedIds.includes(n.id))
-          if (this.searchedNodes.length === 0) {
+          const allNodes = response.data.data?.data || response.data.data?.nodes || response.data.data || []
+          const assignedIds = this.getAssignedNodeIdSet()
+          this.searchedNodes = this.uniqueById(allNodes).filter(node => !assignedIds.has(node.id))
+          this.handleSelectedNodesChange(this.selectedNodeIds)
+          if (keyword && this.searchedNodes.length === 0 && !options.silent) {
             ElMessage.info('未找到匹配的节点')
           }
         } else {
-          ElMessage.error('搜索节点失败')
+          ElMessage.error(response.data?.message || '搜索节点失败')
         }
       } catch (error) {
         console.error('搜索节点失败:', error)
-        ElMessage.error('搜索节点失败')
+        ElMessage.error('搜索节点失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        this.searchingNodes = false
       }
     },
     handleNodeSearchClear() {
       this.nodeSearchKeyword = ''
       this.searchedNodes = []
-      this.selectedNodeId = null
+      this.hasNodeSearched = false
+      this.handleSelectedNodesChange(this.selectedNodeIds)
     },
     async assignNode() {
-      if (!this.selectedNodeId) {
-        ElMessage.warning('请选择要分配的节点')
+      if (!this.selectedNodeIds.length) {
+        ElMessage.warning('请选择要分配的专线节点')
         return
       }
-      const userId = this.user.user_info?.id || this.user.id
-      if (!userId) {
-        ElMessage.error('用户ID不存在')
+      if (!this.selectedUserIds.length) {
+        ElMessage.warning('请选择要分配的用户')
+        return
+      }
+      if (!this.currentUserId) {
+        ElMessage.error('当前用户ID不存在')
         return
       }
       this.assigning = true
       try {
         const extraData = {
           subscription_type: this.assignSubscriptionType,
-          unlimited_devices: this.assignDeviceLimitMode === 'unlimited'
+          unlimited_devices: this.assignDeviceLimitMode === 'unlimited',
+          expires_at: this.assignExpiresAt || null
         }
-        const response = await adminAPI.assignCustomNodeToUser(userId, this.selectedNodeId, extraData)
+        const response = await adminAPI.batchAssignCustomNodes(this.selectedNodeIds, this.selectedUserIds, extraData)
         if (response.data && response.data.success) {
-          ElMessage.success('分配成功')
+          ElMessage.success(response.data.message || '分配成功')
           this.showAssignDialog = false
-          this.selectedNodeId = null
-          this.nodeSearchKeyword = ''
-          this.searchedNodes = []
-          this.assignSubscriptionType = 'both'
-          this.assignDeviceLimitMode = 'system'
+          this.resetAssignForm()
           await this.loadUserCustomNodes()
         } else {
           ElMessage.error(response.data?.message || '分配失败')
@@ -1277,22 +1515,6 @@ export default {
       font-size: 11px;
     }
 
-    .assign-option-group {
-      display: grid;
-      grid-template-columns: 1fr;
-      width: 100%;
-    }
-
-    .assign-option-group :deep(.el-radio-button),
-    .assign-option-group :deep(.el-radio-button__inner) {
-      width: 100%;
-    }
-
-    .assign-option-group :deep(.el-radio-button__inner) {
-      min-height: 44px;
-      justify-content: center;
-    }
-
     :deep(.el-descriptions) {
       .el-descriptions__body {
         .el-descriptions__table {
@@ -1356,6 +1578,200 @@ export default {
       font-size: 12px;
       padding: 4px 8px;
       min-height: 28px;
+    }
+  }
+}
+
+:deep(.assign-node-dialog) {
+  .assign-dialog-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 68vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .assign-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .assign-summary-item {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    background: var(--el-fill-color-extra-light);
+
+    span {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+    }
+
+    strong {
+      display: block;
+      overflow: hidden;
+      color: var(--el-text-color-primary);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .assign-section-card {
+    padding: 14px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    background: var(--el-bg-color);
+  }
+
+  .assign-section-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .section-title {
+    color: var(--el-text-color-primary);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .section-desc {
+    margin-top: 3px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .search-input-group {
+    margin-bottom: 8px;
+  }
+
+  .search-input-group .el-input-group__append {
+    padding: 0;
+  }
+
+  .search-input-group .el-input-group__append .el-button {
+    min-width: 82px;
+    border-radius: 0 var(--el-border-radius-base) var(--el-border-radius-base) 0;
+  }
+
+  .search-button-text {
+    margin-left: 4px;
+  }
+
+  .search-result-tip {
+    margin: 5px 0 8px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+
+    &.empty {
+      color: var(--el-color-danger);
+    }
+  }
+
+  .assign-options-form {
+    padding: 14px 14px 0;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    background: var(--el-fill-color-blank);
+  }
+
+  .toggle-hint {
+    margin-top: 6px;
+    color: var(--el-text-color-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .assign-option-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .assign-option-group .el-radio-button__inner {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    border-left: 1px solid var(--el-border-color) !important;
+    border-radius: 6px !important;
+  }
+
+  .form-tip {
+    margin-top: 8px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .assign-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  :deep(.assign-node-dialog) {
+    .el-dialog {
+      margin-top: 5vh;
+    }
+
+    .assign-dialog-content {
+      max-height: 70vh;
+      padding-right: 0;
+    }
+
+    .assign-summary {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .assign-section-card,
+    .assign-options-form {
+      padding: 12px;
+    }
+
+    .search-input-group .el-input-group__append .el-button {
+      min-width: 68px;
+      padding: 0 10px;
+    }
+
+    .assign-option-group {
+      display: grid;
+      grid-template-columns: 1fr;
+      width: 100%;
+    }
+
+    .assign-option-group .el-radio-button,
+    .assign-option-group .el-radio-button__inner {
+      width: 100%;
+    }
+
+    .assign-option-group .el-radio-button__inner {
+      min-height: 44px;
+      justify-content: center;
+    }
+
+    .assign-dialog-footer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+      gap: 8px;
+    }
+
+    .assign-dialog-footer .el-button {
+      width: 100%;
+      margin-left: 0;
     }
   }
 }
