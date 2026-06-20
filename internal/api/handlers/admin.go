@@ -733,22 +733,28 @@ func GetUserSubscription(c *gin.Context) {
 	}
 	var onlineDevices int64
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&onlineDevices)
+	var specialNodeCount int64
+	db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Count(&specialNodeCount)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"id":               subscription.ID,
-		"subscription_url": subscription.SubscriptionURL,
-		"clash_url":        clashURL,
-		"universal_url":    universalURL,
-		"qrcode_url":       qrcodeURL,
-		"device_limit":     subscription.DeviceLimit,
-		"current_devices":  onlineDevices,
-		"status":           subscription.Status,
-		"is_active":        subscription.IsActive,
-		"expire_time":      expiryDate,
-		"expiryDate":       expiryDate,
-		"remaining_days":   remainingDays,
-		"is_expired":       isExpired,
-		"created_at":       utils.FormatBeijingTime(subscription.CreatedAt),
+		"id":                             subscription.ID,
+		"subscription_url":               subscription.SubscriptionURL,
+		"clash_url":                      clashURL,
+		"universal_url":                  universalURL,
+		"qrcode_url":                     qrcodeURL,
+		"device_limit":                   subscription.DeviceLimit,
+		"current_devices":                onlineDevices,
+		"status":                         subscription.Status,
+		"is_active":                      subscription.IsActive,
+		"expire_time":                    expiryDate,
+		"expiryDate":                     expiryDate,
+		"remaining_days":                 remainingDays,
+		"is_expired":                     isExpired,
+		"created_at":                     utils.FormatBeijingTime(subscription.CreatedAt),
+		"has_special_nodes":              specialNodeCount > 0,
+		"special_node_count":             specialNodeCount,
+		"special_node_subscription_type": user.SpecialNodeSubscriptionType,
+		"special_node_unlimited_devices": user.SpecialNodeUnlimitedDevices,
 	})
 }
 

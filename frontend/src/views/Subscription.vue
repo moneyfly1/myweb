@@ -23,6 +23,20 @@
         </div>
       </template>
       <div class="subscription-status" v-if="subscription">
+        <el-alert
+          v-if="subscription.has_special_nodes"
+          type="success"
+          show-icon
+          :closable="false"
+          class="special-user-alert"
+        >
+          <template #title>
+            专线用户
+          </template>
+          <template #default>
+            当前账号已开通专线节点，{{ getSpecialNodeModeText(subscription) }}。
+          </template>
+        </el-alert>
         <el-row :gutter="20">
           <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
             <div class="status-item">
@@ -273,10 +287,12 @@ export default {
             universal_url: subscriptionData.universal_url || '',
             qrcode_url: subscriptionData.qrcode_url || subscriptionData.qrcodeUrl || ''
           }
+          applySpecialNodeInfo(subscription.value, subscriptionData)
           if (userResponse && userResponse.data && userResponse.data.success) {
             const userData = userResponse.data.data
             if (userData.clashUrl) subscription.value.clash_url = userData.clashUrl
             if (userData.qrcodeUrl) subscription.value.qrcode_url = userData.qrcodeUrl
+            applySpecialNodeInfo(subscription.value, userData)
           }
         } else if (userResponse && userResponse.data && userResponse.data.success) {
           const userData = userResponse.data.data
@@ -292,6 +308,7 @@ export default {
             universal_url: userData.universalUrl || '',
             qrcode_url: userData.qrcodeUrl || ''
           }
+          applySpecialNodeInfo(subscription.value, userData)
         } else {
           ElMessage.error('获取订阅信息失败：无法连接到服务器')
           return
@@ -425,6 +442,18 @@ export default {
       const limit = sub.device_limit || sub.maxDevices || 0
       return limit > 0 && online >= limit
     }
+    const applySpecialNodeInfo = (target, source = {}) => {
+      if (!target || !source) return
+      target.has_special_nodes = !!(source.has_special_nodes || source.subscription?.has_special_nodes)
+      target.special_node_count = source.special_node_count || source.subscription?.special_node_count || 0
+      target.special_node_subscription_type = source.special_node_subscription_type || source.subscription?.special_node_subscription_type || 'both'
+      target.special_node_unlimited_devices = !!(source.special_node_unlimited_devices || source.subscription?.special_node_unlimited_devices)
+    }
+    const getSpecialNodeModeText = (sub) => {
+      const lineMode = sub.special_node_subscription_type === 'special_only' ? '仅显示专线线路' : '显示专线和普通线路'
+      const deviceMode = sub.special_node_unlimited_devices ? '设备不限制' : '设备跟随系统限制'
+      return `${lineMode}，${deviceMode}`
+    }
     return {
       subscription,
       resetLoading,
@@ -438,7 +467,8 @@ export default {
       getStatusType,
       getStatusText,
       isSubscriptionActive,
-      isDeviceFull
+      isDeviceFull,
+      getSpecialNodeModeText
     }
   }
 }
@@ -465,6 +495,9 @@ export default {
   padding: 20px;
   background: #f8f9fa;
   border-radius: 8px;
+}
+.special-user-alert {
+  margin-bottom: 16px;
 }
 .status-item {
   text-align: left;
