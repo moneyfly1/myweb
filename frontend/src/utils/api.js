@@ -643,6 +643,8 @@ export const adminAPI = {
   deleteCustomNode: (id) => api.delete(`/admin/custom-nodes/${id}`),
   batchDeleteCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-delete', { node_ids: nodeIds }),
   batchAssignCustomNodes: (nodeIds, userIds, extraData = {}) => api.post('/admin/custom-nodes/batch-assign', { node_ids: nodeIds, user_ids: userIds, ...extraData }),
+  batchUnassignCustomNodes: (nodeIds, userIds = []) => api.post('/admin/custom-nodes/batch-unassign', { node_ids: nodeIds, user_ids: userIds }),
+  migrateCustomNodeAssignments: (fromNodeId, toNodeId, options = {}) => api.post('/admin/custom-nodes/migrate-assignments', { from_node_id: fromNodeId, to_node_id: toNodeId, ...options }),
   getCustomNodeUsers: (id) => api.get(`/admin/custom-nodes/${id}/users`),
   testCustomNode: (id) => api.post(`/admin/custom-nodes/${id}/test`),
   batchTestCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-test', { node_ids: nodeIds }),

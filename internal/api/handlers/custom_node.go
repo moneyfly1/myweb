@@ -100,12 +100,12 @@ func GetCustomNodeUsers(c *gin.Context) {
 	for _, un := range userNodes {
 		if un.User.ID != 0 {
 			users = append(users, gin.H{
-				"id":                               un.User.ID,
-				"username":                         un.User.Username,
-				"email":                            un.User.Email,
-				"special_node_subscription_type":   un.User.SpecialNodeSubscriptionType,
-				"special_node_expires_at":          un.User.SpecialNodeExpiresAt,
-				"special_node_unlimited_devices":   un.User.SpecialNodeUnlimitedDevices,
+				"id":                             un.User.ID,
+				"username":                       un.User.Username,
+				"email":                          un.User.Email,
+				"special_node_subscription_type": un.User.SpecialNodeSubscriptionType,
+				"special_node_expires_at":        un.User.SpecialNodeExpiresAt,
+				"special_node_unlimited_devices": un.User.SpecialNodeUnlimitedDevices,
 			})
 		}
 	}
@@ -501,6 +501,156 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		clearUserCustomNodeCache(userID)
 	}
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功分配 %d 个节点关系", assignedCount), nil)
+}
+
+func BatchUnassignCustomNodes(c *gin.Context) {
+	var req struct {
+		NodeIDs []uint `json:"node_ids" binding:"required"`
+		UserIDs []uint `json:"user_ids"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+	if len(req.NodeIDs) == 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要取消分配的节点", nil)
+		return
+	}
+
+	db := database.GetDB()
+	query := db.Where("custom_node_id IN ?", req.NodeIDs)
+	if len(req.UserIDs) > 0 {
+		query = query.Where("user_id IN ?", req.UserIDs)
+	}
+
+	var affectedUserIDs []uint
+	if err := query.Model(&models.UserCustomNode{}).Distinct("user_id").Pluck("user_id", &affectedUserIDs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询受影响用户失败", err)
+		return
+	}
+	if len(affectedUserIDs) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "没有需要取消的分配关系", gin.H{"unassigned": 0})
+		return
+	}
+
+	deleteQuery := db.Where("custom_node_id IN ?", req.NodeIDs)
+	if len(req.UserIDs) > 0 {
+		deleteQuery = deleteQuery.Where("user_id IN ?", req.UserIDs)
+	}
+	result := deleteQuery.Delete(&models.UserCustomNode{})
+	if result.Error != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量取消分配失败: "+result.Error.Error(), result.Error)
+		return
+	}
+
+	for _, uid := range affectedUserIDs {
+		clearUserCustomNodeCache(uid)
+		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
+	}
+	utils.CreateAuditLogSimple(c, "batch_unassign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量取消专线节点分配 节点 %d 个 用户 %d 个 分配关系 %d", len(req.NodeIDs), len(affectedUserIDs), result.RowsAffected))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功取消 %d 个分配关系", result.RowsAffected), gin.H{
+		"unassigned": result.RowsAffected,
+		"user_count": len(affectedUserIDs),
+	})
+}
+
+func MigrateCustomNodeAssignments(c *gin.Context) {
+	var req struct {
+		FromNodeID       uint  `json:"from_node_id" binding:"required"`
+		ToNodeID         uint  `json:"to_node_id" binding:"required"`
+		DeactivateSource *bool `json:"deactivate_source"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+	if req.FromNodeID == req.ToNodeID {
+		utils.ErrorResponse(c, http.StatusBadRequest, "源节点和目标节点不能相同", nil)
+		return
+	}
+
+	db := database.GetDB()
+	var fromNode, toNode models.CustomNode
+	if err := db.First(&fromNode, req.FromNodeID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "源节点不存在", err)
+		return
+	}
+	if err := db.First(&toNode, req.ToNodeID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "目标节点不存在", err)
+		return
+	}
+
+	var sourceRelations []models.UserCustomNode
+	if err := db.Where("custom_node_id = ?", req.FromNodeID).Find(&sourceRelations).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询源节点分配关系失败", err)
+		return
+	}
+	if len(sourceRelations) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "源节点没有需要迁移的用户", gin.H{"migrated": 0, "skipped": 0})
+		return
+	}
+
+	userIDs := make([]uint, 0, len(sourceRelations))
+	for _, rel := range sourceRelations {
+		userIDs = append(userIDs, rel.UserID)
+	}
+
+	var existingTargets []models.UserCustomNode
+	db.Where("user_id IN ? AND custom_node_id = ?", userIDs, req.ToNodeID).Find(&existingTargets)
+	existingTargetUsers := make(map[uint]bool, len(existingTargets))
+	for _, rel := range existingTargets {
+		existingTargetUsers[rel.UserID] = true
+	}
+
+	migratedCount := 0
+	skippedCount := 0
+	err := db.Transaction(func(tx *gorm.DB) error {
+		newRelations := make([]models.UserCustomNode, 0, len(sourceRelations))
+		for _, rel := range sourceRelations {
+			if existingTargetUsers[rel.UserID] {
+				skippedCount++
+				continue
+			}
+			newRelations = append(newRelations, models.UserCustomNode{
+				UserID:       rel.UserID,
+				CustomNodeID: req.ToNodeID,
+			})
+		}
+		if len(newRelations) > 0 {
+			if err := tx.CreateInBatches(newRelations, 100).Error; err != nil {
+				return err
+			}
+			migratedCount = len(newRelations)
+		}
+		if err := tx.Where("custom_node_id = ?", req.FromNodeID).Delete(&models.UserCustomNode{}).Error; err != nil {
+			return err
+		}
+		if req.DeactivateSource != nil && *req.DeactivateSource {
+			if err := tx.Model(&fromNode).Update("is_active", false).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "迁移分配失败: "+err.Error(), err)
+		return
+	}
+
+	for _, uid := range userIDs {
+		clearUserCustomNodeCache(uid)
+		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
+	}
+	utils.CreateAuditLogSimple(c, "migrate_custom_node_assignments", "custom_node", req.FromNodeID, fmt.Sprintf("管理员操作: 迁移专线分配 %s -> %s 用户 %d 个 新增 %d 跳过 %d", fromNode.Name, toNode.Name, len(userIDs), migratedCount, skippedCount))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已迁移 %d 个用户，跳过 %d 个已拥有目标节点的用户", migratedCount, skippedCount), gin.H{
+		"migrated":     migratedCount,
+		"skipped":      skippedCount,
+		"user_count":   len(userIDs),
+		"from_node_id": req.FromNodeID,
+		"to_node_id":   req.ToNodeID,
+	})
 }
 
 func TestCustomNode(c *gin.Context) {

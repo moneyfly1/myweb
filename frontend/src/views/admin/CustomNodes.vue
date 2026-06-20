@@ -54,6 +54,8 @@
                   <el-dropdown-item command="refresh" :icon="Refresh">刷新列表</el-dropdown-item>
                   <el-dropdown-item command="batch_test" :disabled="!selectedNodes.length" :icon="Connection">批量测速</el-dropdown-item>
                   <el-dropdown-item command="batch_assign" :disabled="!selectedNodes.length" :icon="User">批量分配</el-dropdown-item>
+                  <el-dropdown-item command="batch_unassign" :disabled="!selectedNodes.length" :icon="Close">批量取消分配</el-dropdown-item>
+                  <el-dropdown-item command="migrate_assignments" :disabled="selectedNodes.length !== 1" :icon="Connection">迁移分配</el-dropdown-item>
                   <el-dropdown-item command="batch_delete" :disabled="!selectedNodes.length" :icon="Delete" divided style="color: var(--el-color-danger)">批量删除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -92,6 +94,10 @@
           <el-button type="success" link @click="batchTest" :loading="batchTesting">批量测速</el-button>
           <el-divider direction="vertical" />
           <el-button type="primary" link @click="handleBatchAssignClick">批量分配</el-button>
+          <el-divider direction="vertical" />
+          <el-button type="warning" link @click="batchUnassign" :loading="batchUnassigning">批量取消</el-button>
+          <el-divider direction="vertical" />
+          <el-button type="info" link @click="openMigrateDialog(selectedNodes[0])" :disabled="selectedNodes.length !== 1">迁移分配</el-button>
           <el-divider direction="vertical" />
           <el-button type="danger" link @click="batchDelete" :loading="batchDeleting">批量删除</el-button>
         </div>
@@ -145,6 +151,7 @@
                 <el-button size="small" @click="testNode(row)" :loading="row.testing">测试</el-button>
                 <el-button size="small" type="success" plain @click="viewLink(row)">链接</el-button>
                 <el-button size="small" type="warning" plain @click="assignSingleNode(row)">分配</el-button>
+                <el-button size="small" type="info" plain @click="openMigrateDialog(row)">迁移</el-button>
                 <el-button size="small" type="primary" plain @click="editNode(row)" :icon="Edit">编辑</el-button>
                 <el-button size="small" type="danger" plain @click="deleteNode(row)" :icon="Delete">删除</el-button>
               </div>
@@ -204,6 +211,7 @@
                   <el-button size="small" @click="testNode(node)" :loading="node.testing">测试</el-button>
                   <el-button size="small" type="success" plain @click="viewLink(node)">链接</el-button>
                   <el-button size="small" type="warning" plain @click="assignSingleNode(node)">分配</el-button>
+                  <el-button size="small" type="info" plain @click="openMigrateDialog(node)">迁移</el-button>
                   <el-button size="small" type="primary" plain @click="editNode(node)" :icon="Edit">编辑</el-button>
                   <el-button size="small" type="danger" plain @click="deleteNode(node)" :icon="Delete">删除</el-button>
                 </div>
@@ -262,6 +270,7 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item @click="viewLink(node)" :icon="Link">链接</el-dropdown-item>
+                      <el-dropdown-item @click="openMigrateDialog(node)" :icon="Connection">迁移分配</el-dropdown-item>
                       <el-dropdown-item @click="editNode(node)" :icon="Edit">编辑</el-dropdown-item>
                       <el-dropdown-item @click="deleteNode(node)" :icon="Delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
                     </el-dropdown-menu>
@@ -396,17 +405,24 @@
         </div>
       </div>
     </el-dialog>
-    <el-dialog
+    <el-drawer
       v-model="showAssignDialog"
       :title="assignMode === 'single' ? '分配节点' : '批量分配'"
-      :width="isMobile ? '92%' : '750px'"
-      :fullscreen="isMobile"
-      class="responsive-dialog assign-dialog"
+      :size="isMobile ? '88%' : '760px'"
+      :direction="isMobile ? 'btt' : 'rtl'"
+      class="assign-drawer"
       append-to-body
+      destroy-on-close
+      :lock-scroll="false"
     >
       <div class="dialog-scroll-content">
         <div v-if="assignMode === 'single'" class="assigned-section">
-          <div class="section-header">已分配用户</div>
+          <div class="section-header">
+            <span>已分配用户</span>
+            <el-button type="danger" link size="small" :disabled="!assignedUsers.length" @click="batchUnassignAssignedUsers">
+              批量取消
+            </el-button>
+          </div>
           <el-table 
             v-if="!isMobile" 
             :data="assignedUsers" 
@@ -452,7 +468,10 @@
               @keyup.enter="handleUserSearch"
             >
               <template #append>
-                <el-button @click="handleUserSearch" :loading="loadingUsers" icon="Search" />
+                <el-button @click="handleUserSearch" :loading="loadingUsers">
+                  <el-icon><Search /></el-icon>
+                  <span class="search-button-text">搜索</span>
+                </el-button>
               </template>
             </el-input>
           </div>
@@ -472,16 +491,18 @@
           </el-select>
           <el-form label-position="top" size="small">
              <el-form-item label="节点显示模式">
-               <div class="toggle-row">
-                 <el-switch v-model="assignExtraData.special_only" active-text="仅专线" inactive-text="专线+普通" />
-                 <span class="toggle-desc">开启后用户仅能看到专线节点</span>
-               </div>
+               <el-radio-group v-model="assignExtraData.subscription_type" class="option-radio-group">
+                 <el-radio-button label="both">专线 + 普通节点</el-radio-button>
+                 <el-radio-button label="special_only">仅专线</el-radio-button>
+               </el-radio-group>
+               <div class="toggle-desc">{{ subscriptionTypeDesc }}</div>
              </el-form-item>
              <el-form-item label="设备数量限制">
-               <div class="toggle-row">
-                 <el-switch v-model="assignExtraData.follow_device_limit" active-text="跟随系统" inactive-text="不限制" />
-                 <span class="toggle-desc">关闭后不限制该用户的设备数量</span>
-               </div>
+               <el-radio-group v-model="assignExtraData.device_limit_mode" class="option-radio-group">
+                 <el-radio-button label="system">跟随系统</el-radio-button>
+                 <el-radio-button label="unlimited">不限制</el-radio-button>
+               </el-radio-group>
+               <div class="toggle-desc">{{ deviceLimitDesc }}</div>
              </el-form-item>
              <el-form-item label="专线到期 (可选)">
                 <el-date-picker
@@ -501,7 +522,52 @@
           <el-button type="primary" @click="handleAssign" :loading="batchAssigning" :disabled="!selectedUserIds.length">确定分配</el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
+    <el-drawer
+      v-model="showMigrateDialog"
+      title="迁移分配"
+      :size="isMobile ? '82%' : '520px'"
+      :direction="isMobile ? 'btt' : 'rtl'"
+      class="assign-drawer"
+      append-to-body
+      :lock-scroll="false"
+    >
+      <div class="dialog-scroll-content">
+        <div class="migrate-summary" v-if="migratingNode">
+          <div class="summary-label">源专线节点</div>
+          <div class="summary-title">{{ migratingNode.name }}</div>
+          <div class="summary-meta">会把该节点当前已分配用户迁移到新的专线节点。</div>
+        </div>
+        <el-form label-position="top" size="small">
+          <el-form-item label="目标专线节点">
+            <el-select
+              v-model="migrateTargetNodeId"
+              filterable
+              placeholder="选择新的专线节点"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="node in migrateTargetNodes"
+                :key="node.id"
+                :label="node.name"
+                :value="node.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="deactivateSourceAfterMigrate">迁移后停用源节点</el-checkbox>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showMigrateDialog = false">取消</el-button>
+          <el-button type="primary" :loading="migratingAssignments" :disabled="!migrateTargetNodeId" @click="migrateAssignments">
+            确认迁移
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 <script>
@@ -537,7 +603,7 @@ export default {
       status: 100,
       is_active: 80,
       expire_time: 150,
-      actions: 380  // 增加操作列宽度以容纳更多按钮
+      actions: 440  // 增加操作列宽度以容纳更多按钮
     })
     
     // 从 localStorage 加载设置
@@ -622,11 +688,30 @@ export default {
     const selectedUserIds = ref([])
     const loadingUsers = ref(false)
     const batchAssigning = ref(false)
-    // special_only: true = 仅显示专线节点, false = 显示专线+普通节点
-    // follow_device_limit: true = 跟随系统设备限制, false = 不限制设备数量
-    const assignExtraData = reactive({ special_only: false, follow_device_limit: true, expires_at: null })
+    const assignExtraData = reactive({
+      subscription_type: 'both',
+      device_limit_mode: 'system',
+      expires_at: null
+    })
+    const subscriptionTypeDesc = computed(() => (
+      assignExtraData.subscription_type === 'special_only'
+        ? '用户订阅里只显示已分配的专线节点。'
+        : '用户订阅里同时显示普通节点和已分配专线节点。'
+    ))
+    const deviceLimitDesc = computed(() => (
+      assignExtraData.device_limit_mode === 'unlimited'
+        ? '专线用户不受设备数量限制。'
+        : '专线用户仍按系统套餐设备数限制。'
+    ))
     const batchTesting = ref(false)
     const batchDeleting = ref(false)
+    const batchUnassigning = ref(false)
+    const showMigrateDialog = ref(false)
+    const migratingNode = ref(null)
+    const migrateTargetNodeId = ref(null)
+    const migrateTargetNodes = ref([])
+    const deactivateSourceAfterMigrate = ref(true)
+    const migratingAssignments = ref(false)
     const rules = {
       name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
       protocol: [{ required: true, message: '请选择协议', trigger: 'change' }],
@@ -755,6 +840,8 @@ export default {
       if (cmd === 'refresh') loadCustomNodes()
       if (cmd === 'batch_test') batchTest()
       if (cmd === 'batch_assign') handleBatchAssignClick()
+      if (cmd === 'batch_unassign') batchUnassign()
+      if (cmd === 'migrate_assignments' && selectedNodes.value.length === 1) openMigrateDialog(selectedNodes.value[0])
       if (cmd === 'batch_delete') batchDelete()
     }
     const batchTest = async () => {
@@ -804,6 +891,37 @@ export default {
       } catch (error) {
         if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
       } finally { batchDeleting.value = false }
+    }
+    const batchUnassign = async () => {
+      if (!selectedNodes.value.length) return
+      try {
+        let totalUsers = 0
+        const affectedUsers = []
+        for (const node of selectedNodes.value) {
+          const usersRes = await adminAPI.getCustomNodeUsers(node.id)
+          if (usersRes?.data?.success) {
+            const users = usersRes.data.data || []
+            totalUsers += users.length
+            users.forEach(u => {
+              if (!affectedUsers.find(item => item.id === u.id)) affectedUsers.push(u)
+            })
+          }
+        }
+        if (!totalUsers) {
+          ElMessage.info('选中的节点暂无分配用户')
+          return
+        }
+        const warningMsg = `将取消 ${selectedNodes.value.length} 个专线节点的分配关系，影响 ${affectedUsers.length} 个用户。\n\n如果某个用户取消后没有其他专线节点，系统会自动恢复普通线路访问。\n\n确认继续？`
+        await ElMessageBox.confirm(warningMsg, '批量取消分配', { type: 'warning', confirmButtonText: '确认取消分配' })
+        batchUnassigning.value = true
+        const res = await adminAPI.batchUnassignCustomNodes(selectedNodes.value.map(n => n.id))
+        ElMessage.success(res.data?.message || '批量取消成功')
+        if (assigningNode.value) loadAssignedUsers(assigningNode.value.id)
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量取消失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        batchUnassigning.value = false
+      }
     }
     const parseNodeLink = async () => {
       const link = nodeLinkInput.value.split('\n')[0].trim()
@@ -880,8 +998,8 @@ export default {
       try {
         const nodeIds = assignMode.value === 'single' ? [assigningNode.value.id] : selectedNodes.value.map(n => n.id)
         const payload = {
-          subscription_type: assignExtraData.special_only ? 'special_only' : 'both',
-          unlimited_devices: !assignExtraData.follow_device_limit,
+          subscription_type: assignExtraData.subscription_type,
+          unlimited_devices: assignExtraData.device_limit_mode === 'unlimited',
           expires_at: assignExtraData.expires_at
         }
         await adminAPI.batchAssignCustomNodes(nodeIds, selectedUserIds.value, payload)
@@ -899,6 +1017,24 @@ export default {
         ElMessage.error('加载用户列表失败: ' + (error.response?.data?.message || error.message))
       }
     }
+    const batchUnassignAssignedUsers = async () => {
+      if (!assigningNode.value || !assignedUsers.value.length) return
+      try {
+        await ElMessageBox.confirm(
+          `确认取消 ${assignedUsers.value.length} 个用户与「${assigningNode.value.name}」的分配关系？`,
+          '批量取消分配',
+          { type: 'warning', confirmButtonText: '确认取消' }
+        )
+        batchUnassigning.value = true
+        await adminAPI.batchUnassignCustomNodes([assigningNode.value.id], assignedUsers.value.map(u => u.id))
+        ElMessage.success('已批量取消分配')
+        await loadAssignedUsers(assigningNode.value.id)
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('批量取消失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        batchUnassigning.value = false
+      }
+    }
     const handleUnassign = async (user) => {
       try {
         await adminAPI.unassignCustomNodeFromUser(user.id, assigningNode.value.id)
@@ -908,9 +1044,53 @@ export default {
         ElMessage.error('移除用户失败: ' + (error.response?.data?.message || error.message))
       }
     }
+    const loadMigrateTargetNodes = async (sourceNodeId) => {
+      try {
+        const res = await adminAPI.getCustomNodes({ page: 1, size: 1000, is_active: 'true' })
+        const raw = res.data?.data
+        const list = Array.isArray(raw) ? raw : (raw?.data || raw?.nodes || [])
+        migrateTargetNodes.value = list.filter(node => node.id !== sourceNodeId)
+      } catch (error) {
+        migrateTargetNodes.value = customNodes.value.filter(node => node.id !== sourceNodeId)
+      }
+    }
+    const openMigrateDialog = async (node) => {
+      if (!node) return
+      migratingNode.value = node
+      migrateTargetNodeId.value = null
+      deactivateSourceAfterMigrate.value = true
+      showMigrateDialog.value = true
+      await loadMigrateTargetNodes(node.id)
+    }
+    const migrateAssignments = async () => {
+      if (!migratingNode.value || !migrateTargetNodeId.value) return
+      const target = migrateTargetNodes.value.find(node => node.id === migrateTargetNodeId.value)
+      try {
+        await ElMessageBox.confirm(
+          `确认把「${migratingNode.value.name}」上的用户迁移到「${target?.name || '目标节点'}」？`,
+          '迁移专线分配',
+          { type: 'warning', confirmButtonText: '确认迁移' }
+        )
+        migratingAssignments.value = true
+        const res = await adminAPI.migrateCustomNodeAssignments(
+          migratingNode.value.id,
+          migrateTargetNodeId.value,
+          { deactivate_source: deactivateSourceAfterMigrate.value }
+        )
+        ElMessage.success(res.data?.message || '迁移完成')
+        showMigrateDialog.value = false
+        selectedNodes.value = []
+        await loadCustomNodes()
+      } catch (error) {
+        if (error !== 'cancel') ElMessage.error('迁移失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        migratingAssignments.value = false
+      }
+    }
     const getStatusType = (s) => ({ active: 'success', inactive: 'info', error: 'danger' }[s] || 'info')
     const getStatusText = (s) => ({ active: '活跃', inactive: '非活跃', error: '错误' }[s] || s)
     const formatExpire = (row) => row.follow_user_expire ? '跟随用户' : (row.expire_time ? new Date(row.expire_time).toLocaleString() : '永久')
+    const formatTime = (t) => t ? new Date(t).toLocaleString() : '跟随订阅'
     const isExpired = (t) => t && new Date(t) < new Date()
     const testNode = async (node) => {
        node.testing = true
@@ -946,12 +1126,16 @@ export default {
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
       nodeLinkInput, parsedNode, nodeLink, testingFromLink,
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
-      loadingUsers, batchAssigning, assignExtraData, batchTesting, batchDeleting,
+      loadingUsers, batchAssigning, assignExtraData, subscriptionTypeDesc, deviceLimitDesc,
+      batchTesting, batchDeleting, batchUnassigning,
+      showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes,
+      deactivateSourceAfterMigrate, migratingAssignments,
       loadCustomNodes, handleFilterChange, handleSelectionChange, handleMobileSelect, handleGridSelect,
       handleCommand, editNode, saveNode, deleteNode, toggleNodeStatus,
-      batchTest, batchDelete, parseNodeLink, batchImportLinks, viewLink, copyLink,
+      batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
-      handleUserSearch, handleUnassign, getStatusType, getStatusText, formatExpire, isExpired,
+      handleUserSearch, handleUnassign, batchUnassignAssignedUsers, openMigrateDialog, migrateAssignments,
+      getStatusType, getStatusText, formatExpire, formatTime, isExpired,
       isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
       Delete, Edit, Link, Refresh, Connection, User,
       editingNode
@@ -985,6 +1169,22 @@ export default {
   font-size: 13px;
   color: var(--el-color-primary);
   margin-right: auto;
+}
+.batch-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--el-fill-color-extra-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+.batch-btns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
 }
 /* 桌面端方格视图（可调大小和方向） */
 .desktop-grid-view {
@@ -1211,24 +1411,129 @@ export default {
 .toggle-desc {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.option-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.option-radio-group :deep(.el-radio-button__inner) {
+  min-height: 36px;
+  border-radius: 6px !important;
+  border-left: 1px solid var(--el-border-color) !important;
+  display: inline-flex;
+  align-items: center;
+}
+.search-button-text {
+  margin-left: 4px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.assigned-section {
+  margin-bottom: 18px;
+}
+.assign-form {
+  padding-top: 4px;
+}
+.search-user-row :deep(.el-button) {
+  min-width: 76px;
+}
+.migrate-summary {
+  padding: 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-extra-light);
+}
+.summary-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
+}
+.summary-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+.summary-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
 }
 .dialog-scroll-content {
   max-height: 70vh;
   overflow-y: auto;
   padding-right: 4px;
 }
-.responsive-dialog :deep(.el-dialog__body) {
-  padding: 15px 20px;
+.assign-drawer :deep(.el-drawer__body) {
+  padding: 16px 20px;
+}
+.assign-drawer :deep(.el-drawer__footer) {
+  padding: 12px 20px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 @media (max-width: 768px) {
-  .responsive-dialog :deep(.el-dialog__body) {
+  .batch-actions-bar {
+    display: none;
+  }
+  .assign-drawer :deep(.el-drawer) {
+    border-radius: 14px 14px 0 0;
+  }
+  .assign-drawer :deep(.el-drawer__body) {
     padding: 12px;
   }
+  .assign-drawer :deep(.el-drawer__footer) {
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+  }
   .dialog-scroll-content {
-    max-height: calc(100vh - 120px);
+    max-height: calc(88vh - 120px);
   }
   .assign-form .el-select {
     width: 100%;
+  }
+  .option-radio-group {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .option-radio-group :deep(.el-radio-button) {
+    width: 100%;
+  }
+  .option-radio-group :deep(.el-radio-button__inner) {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .dialog-footer .el-button {
+    min-height: 44px;
+    flex: 1;
+  }
+  .card-actions-row {
+    align-items: stretch;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .right-buttons {
+    flex: 1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .right-buttons .el-button {
+    min-height: 36px;
   }
 }
 </style>

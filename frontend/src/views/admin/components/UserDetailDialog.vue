@@ -494,15 +494,21 @@
           </el-select>
         </el-form-item>
         <el-form-item label="节点显示模式">
-          <div class="toggle-row">
-            <el-switch v-model="assignSpecialOnly" active-text="仅专线" inactive-text="专线+普通" size="small" />
-            <span class="toggle-hint">开启后用户仅能看到专线节点</span>
+          <el-radio-group v-model="assignSubscriptionType" class="assign-option-group">
+            <el-radio-button label="both">专线 + 普通节点</el-radio-button>
+            <el-radio-button label="special_only">仅专线</el-radio-button>
+          </el-radio-group>
+          <div class="toggle-hint">
+            {{ assignSubscriptionType === 'special_only' ? '用户订阅里只显示已分配的专线节点' : '用户订阅里同时显示普通节点和专线节点' }}
           </div>
         </el-form-item>
         <el-form-item label="设备数量限制">
-          <div class="toggle-row">
-            <el-switch v-model="assignFollowDeviceLimit" active-text="跟随系统" inactive-text="不限制" size="small" />
-            <span class="toggle-hint">关闭后不限制该用户的设备数量</span>
+          <el-radio-group v-model="assignDeviceLimitMode" class="assign-option-group">
+            <el-radio-button label="system">跟随系统</el-radio-button>
+            <el-radio-button label="unlimited">不限制</el-radio-button>
+          </el-radio-group>
+          <div class="toggle-hint">
+            {{ assignDeviceLimitMode === 'unlimited' ? '专线用户不受设备数量限制' : '专线用户仍按系统套餐设备数限制' }}
           </div>
         </el-form-item>
       </el-form>
@@ -586,8 +592,8 @@ export default {
       selectedNodeId: null,
       assigning: false,
       loadingNodes: false,
-      assignSpecialOnly: false,
-      assignFollowDeviceLimit: true,
+      assignSubscriptionType: 'both',
+      assignDeviceLimitMode: 'system',
       devices: [],
       loadingDevices: false,
       deletingDeviceId: null,
@@ -633,8 +639,8 @@ export default {
         if (this.activeTab === 'devices') {
           this.loadDevices()
         } else if (this.activeTab === 'custom-nodes') {
-          this.assignSpecialOnly = false
-          this.assignFollowDeviceLimit = true
+          this.assignSubscriptionType = 'both'
+          this.assignDeviceLimitMode = 'system'
           this.loadUserCustomNodes()
         } else if (this.activeTab === 'checkins') {
           this.loadCheckinLogs()
@@ -990,8 +996,8 @@ export default {
       this.assigning = true
       try {
         const extraData = {
-          subscription_type: this.assignSpecialOnly ? 'special_only' : 'both',
-          unlimited_devices: !this.assignFollowDeviceLimit
+          subscription_type: this.assignSubscriptionType,
+          unlimited_devices: this.assignDeviceLimitMode === 'unlimited'
         }
         const response = await adminAPI.assignCustomNodeToUser(userId, this.selectedNodeId, extraData)
         if (response.data && response.data.success) {
@@ -1000,8 +1006,8 @@ export default {
           this.selectedNodeId = null
           this.nodeSearchKeyword = ''
           this.searchedNodes = []
-          this.assignSpecialOnly = false
-          this.assignFollowDeviceLimit = true
+          this.assignSubscriptionType = 'both'
+          this.assignDeviceLimitMode = 'system'
           await this.loadUserCustomNodes()
         } else {
           ElMessage.error(response.data?.message || '分配失败')
@@ -1223,6 +1229,22 @@ export default {
   .toggle-hint {
     font-size: 11px;
     color: var(--el-text-color-secondary);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  .assign-option-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .assign-option-group :deep(.el-radio-button__inner) {
+    min-height: 36px;
+    border-radius: 6px !important;
+    border-left: 1px solid var(--el-border-color) !important;
+    display: inline-flex;
+    align-items: center;
   }
 
   @media (max-width: 768px) {
@@ -1253,6 +1275,22 @@ export default {
 
     .el-table {
       font-size: 11px;
+    }
+
+    .assign-option-group {
+      display: grid;
+      grid-template-columns: 1fr;
+      width: 100%;
+    }
+
+    .assign-option-group :deep(.el-radio-button),
+    .assign-option-group :deep(.el-radio-button__inner) {
+      width: 100%;
+    }
+
+    .assign-option-group :deep(.el-radio-button__inner) {
+      min-height: 44px;
+      justify-content: center;
     }
 
     :deep(.el-descriptions) {
