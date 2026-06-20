@@ -831,6 +831,12 @@ func GetUserCustomNodes(c *gin.Context) {
 	userID := c.Param("id")
 	db := database.GetDB()
 
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
+		return
+	}
+
 	var userNodes []models.UserCustomNode
 	if err := db.Preload("CustomNode").Where("user_id = ?", userID).Find(&userNodes).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点列表失败", err)
@@ -840,18 +846,25 @@ func GetUserCustomNodes(c *gin.Context) {
 	nodes := make([]gin.H, 0)
 	for _, un := range userNodes {
 		if un.CustomNode.ID > 0 {
+			var specialNodeExpiresAt interface{}
+			if user.SpecialNodeExpiresAt.Valid {
+				specialNodeExpiresAt = utils.FormatBeijingTime(user.SpecialNodeExpiresAt.Time)
+			}
 			nodeAddress := un.CustomNode.Domain
 			if un.CustomNode.Port > 0 && un.CustomNode.Port != 443 {
 				nodeAddress = fmt.Sprintf("%s:%d", un.CustomNode.Domain, un.CustomNode.Port)
 			}
 			nodes = append(nodes, gin.H{
-				"id":           un.CustomNode.ID,
-				"node_id":      un.CustomNode.ID,
-				"node_name":    un.CustomNode.Name,
-				"node_address": nodeAddress,
-				"assigned_at":  utils.FormatBeijingTime(un.CreatedAt),
-				"status":       un.CustomNode.Status,
-				"is_active":    un.CustomNode.IsActive,
+				"id":                             un.CustomNode.ID,
+				"node_id":                        un.CustomNode.ID,
+				"node_name":                      un.CustomNode.Name,
+				"node_address":                   nodeAddress,
+				"assigned_at":                    utils.FormatBeijingTime(un.CreatedAt),
+				"status":                         un.CustomNode.Status,
+				"is_active":                      un.CustomNode.IsActive,
+				"special_node_subscription_type": user.SpecialNodeSubscriptionType,
+				"special_node_expires_at":        specialNodeExpiresAt,
+				"special_node_unlimited_devices": user.SpecialNodeUnlimitedDevices,
 			})
 		}
 	}
