@@ -29,7 +29,7 @@ import (
 type RegisterRequest struct {
 	Username         string `json:"username" binding:"required"`
 	Email            string `json:"email" binding:"required,email,max=255"`
-	Password         string `json:"password" binding:"required,min=8"`
+	Password         string `json:"password" binding:"required"`
 	VerificationCode string `json:"verification_code"`
 	InviteCode       string `json:"invite_code"`
 }
@@ -436,6 +436,22 @@ func handleValidationError(c *gin.Context, err error) {
 		return
 	}
 	utils.ErrorResponse(c, http.StatusBadRequest, "请求格式错误，请检查输入信息", err)
+}
+
+func handleChangePasswordValidationError(c *gin.Context, err error) {
+	if validationErr, ok := err.(validator.ValidationErrors); ok {
+		for _, fieldErr := range validationErr {
+			switch fieldErr.Field() {
+			case "CurrentPassword":
+				utils.ErrorResponse(c, http.StatusBadRequest, "请输入当前密码", nil)
+				return
+			case "NewPassword":
+				utils.ErrorResponse(c, http.StatusBadRequest, "请输入新密码", nil)
+				return
+			}
+		}
+	}
+	utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误，请检查输入信息", nil)
 }
 
 func verifyRegisterCode(db *gorm.DB, emailStr, code string) error {
@@ -932,7 +948,7 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
-	NewPassword     string `json:"new_password" binding:"required,min=8"`
+	NewPassword     string `json:"new_password" binding:"required"`
 }
 
 func ChangePassword(c *gin.Context) {
@@ -944,7 +960,7 @@ func ChangePassword(c *gin.Context) {
 
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		handleChangePasswordValidationError(c, err)
 		return
 	}
 
@@ -958,7 +974,8 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	valid, msg := auth.ValidatePasswordStrength(req.NewPassword, 8)
+	minPasswordLength := getMinPasswordLength(db)
+	valid, msg := auth.ValidatePasswordStrength(req.NewPassword, minPasswordLength)
 	if !valid {
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
@@ -974,6 +991,7 @@ func ChangePassword(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新密码失败", err)
 		return
 	}
+	middleware.InvalidateAuthUserCache(user.ID)
 
 	utils.CreateAuditLogSimple(c, "change_password", "user", user.ID,
 		fmt.Sprintf("用户修改密码: %s", user.Email))
@@ -1165,7 +1183,7 @@ func ForgotPassword(c *gin.Context) {
 type ResetPasswordByCodeRequest struct {
 	Email            string `json:"email" binding:"required,email,max=255"`
 	VerificationCode string `json:"verification_code" binding:"required"`
-	NewPassword      string `json:"new_password" binding:"required,min=8"`
+	NewPassword      string `json:"new_password" binding:"required"`
 }
 
 func ResetPasswordByCode(c *gin.Context) {
@@ -1187,8 +1205,8 @@ func ResetPasswordByCode(c *gin.Context) {
 				case "NewPassword":
 					if fieldErr.Tag() == "required" {
 						utils.ErrorResponse(c, http.StatusBadRequest, "请输入新密码", err)
-					} else if fieldErr.Tag() == "min" {
-						utils.ErrorResponse(c, http.StatusBadRequest, "密码长度至少8位", err)
+					} else {
+						utils.ErrorResponse(c, http.StatusBadRequest, "新密码格式不正确，请检查后重试", err)
 					}
 					return
 				}
@@ -1198,14 +1216,14 @@ func ResetPasswordByCode(c *gin.Context) {
 		return
 	}
 
-	valid, msg := auth.ValidatePasswordStrength(req.NewPassword, 8)
+	db := database.GetDB()
+	valid, msg := auth.ValidatePasswordStrength(req.NewPassword, getMinPasswordLength(db))
 	if !valid {
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
 	req.Email = utils.NormalizeEmail(req.Email)
-	db := database.GetDB()
 	var user models.User
 	if err := db.Where("LOWER(email) = ?", req.Email).First(&user).Error; err != nil {
 		utils.CreateSecurityLog(c, "reset_code_failed", "MEDIUM",
