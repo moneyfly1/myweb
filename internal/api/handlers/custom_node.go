@@ -113,6 +113,138 @@ func GetCustomNodeUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", users)
 }
 
+func normalizeCustomNodeConfig(configStr, protocol, domain string, port int) (string, string, string, int) {
+	trimmed := strings.TrimSpace(configStr)
+	if trimmed == "" {
+		return configStr, protocol, domain, port
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &data); err != nil {
+		return configStr, protocol, domain, port
+	}
+
+	if protocol == "" {
+		protocol = getStringFromConfigMap(data, "type", "Type", "protocol")
+	}
+	if domain == "" {
+		domain = getStringFromConfigMap(data, "server", "Server", "add", "address")
+	}
+	if port <= 0 {
+		port = getIntFromConfigMap(data, "port", "Port")
+	}
+
+	if protocol != "" {
+		setStringInConfigMap(data, protocol, "Type", "type", "protocol")
+	}
+	if domain != "" {
+		setStringInConfigMap(data, domain, "Server", "server", "add", "address")
+	}
+	if port > 0 {
+		setIntInConfigMap(data, port, "Port", "port")
+	}
+
+	normalized, err := json.Marshal(data)
+	if err != nil {
+		return configStr, protocol, domain, port
+	}
+	return string(normalized), protocol, domain, port
+}
+
+func getStringFromConfigMap(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := data[key]; ok {
+			if s, ok := val.(string); ok {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	for existingKey, val := range data {
+		for _, key := range keys {
+			if strings.EqualFold(existingKey, key) {
+				if s, ok := val.(string); ok {
+					return strings.TrimSpace(s)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func getIntFromConfigMap(data map[string]interface{}, keys ...string) int {
+	for _, key := range keys {
+		if val, ok := data[key]; ok {
+			if port := configMapValueToInt(val); port > 0 {
+				return port
+			}
+		}
+	}
+	for existingKey, val := range data {
+		for _, key := range keys {
+			if strings.EqualFold(existingKey, key) {
+				if port := configMapValueToInt(val); port > 0 {
+					return port
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func configMapValueToInt(val interface{}) int {
+	switch v := val.(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case string:
+		i, _ := strconv.Atoi(strings.TrimSpace(v))
+		return i
+	default:
+		return 0
+	}
+}
+
+func setStringInConfigMap(data map[string]interface{}, value string, keys ...string) {
+	if value == "" || len(keys) == 0 {
+		return
+	}
+	hasCanonicalKey := false
+	for existingKey := range data {
+		if strings.EqualFold(existingKey, keys[0]) {
+			hasCanonicalKey = true
+		}
+		for _, key := range keys {
+			if strings.EqualFold(existingKey, key) {
+				data[existingKey] = value
+			}
+		}
+	}
+	if !hasCanonicalKey {
+		data[keys[0]] = value
+	}
+}
+
+func setIntInConfigMap(data map[string]interface{}, value int, keys ...string) {
+	if value <= 0 || len(keys) == 0 {
+		return
+	}
+	hasCanonicalKey := false
+	for existingKey := range data {
+		if strings.EqualFold(existingKey, keys[0]) {
+			hasCanonicalKey = true
+		}
+		for _, key := range keys {
+			if strings.EqualFold(existingKey, key) {
+				data[existingKey] = value
+			}
+		}
+	}
+	if !hasCanonicalKey {
+		data[keys[0]] = value
+	}
+}
+
 func CreateCustomNode(c *gin.Context) {
 	var req struct {
 		NodeLink         string     `json:"node_link"`
@@ -191,14 +323,15 @@ func CreateCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "节点名称、协议和配置为必填项", nil)
 		return
 	}
+	configStr, protocol, domain, port := normalizeCustomNodeConfig(req.Config, req.Protocol, req.Domain, req.Port)
 
 	customNode := models.CustomNode{
 		Name:             req.Name,
 		DisplayName:      req.DisplayName,
-		Protocol:         req.Protocol,
-		Domain:           req.Domain,
-		Port:             req.Port,
-		Config:           req.Config,
+		Protocol:         protocol,
+		Domain:           domain,
+		Port:             port,
+		Config:           configStr,
 		Status:           "inactive",
 		IsActive:         true,
 		ExpireTime:       req.ExpireTime,
@@ -339,6 +472,13 @@ func UpdateCustomNode(c *gin.Context) {
 	if req.FollowUserExpire != nil {
 		node.FollowUserExpire = *req.FollowUserExpire
 	}
+
+	node.Config, node.Protocol, node.Domain, node.Port = normalizeCustomNodeConfig(
+		node.Config,
+		node.Protocol,
+		node.Domain,
+		node.Port,
+	)
 
 	if err := db.Save(&node).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新失败: "+err.Error(), err)

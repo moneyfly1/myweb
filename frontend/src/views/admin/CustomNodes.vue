@@ -34,7 +34,7 @@
                 </el-radio-group>
               </template>
             </template>
-            <el-button type="primary" @click="showAddDialog = true">
+            <el-button type="primary" @click="openCreateNodeDialog">
               <el-icon><Plus /></el-icon>创建节点
             </el-button>
             <el-button @click="loadCustomNodes" :loading="loading">
@@ -42,7 +42,7 @@
             </el-button>
           </div>
           <div class="header-actions mobile" v-else>
-            <el-button type="primary" circle @click="showAddDialog = true" size="small">
+            <el-button type="primary" circle @click="openCreateNodeDialog" size="small">
               <el-icon><Plus /></el-icon>
             </el-button>
             <el-dropdown trigger="click" @command="handleCommand">
@@ -125,7 +125,14 @@
           </el-table-column>
           <el-table-column prop="protocol" label="协议" :width="columnWidths.protocol" resizable>
             <template #default="{ row }">
-              <el-tag size="small" effect="plain">{{ row.protocol }}</el-tag>
+              <el-tag size="small" effect="plain">{{ getProtocolLabel(row.protocol) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="domain" label="服务器IP" :min-width="columnWidths.server_ip" resizable show-overflow-tooltip>
+            <template #default="{ row }">
+              <span :class="getNodeServer(row) ? 'server-address' : 'text-secondary'">
+                {{ getNodeServer(row) || '-' }}
+              </span>
             </template>
           </el-table-column>
           <el-table-column label="状态" :width="columnWidths.status" resizable>
@@ -187,7 +194,11 @@
               <div class="gnc-body">
                 <div class="gnc-row">
                   <span class="label">协议</span>
-                  <span class="value">{{ node.protocol }}</span>
+                  <span class="value">{{ getProtocolLabel(node.protocol) }}</span>
+                </div>
+                <div class="gnc-row">
+                  <span class="label">服务器IP</span>
+                  <span class="value">{{ getNodeServer(node) || '-' }}</span>
                 </div>
                 <div class="gnc-row">
                   <span class="label">端口</span>
@@ -240,7 +251,11 @@
             <div class="card-info-grid">
               <div class="info-item">
                 <span class="label">协议</span>
-                <span class="value">{{ node.protocol }}</span>
+                <span class="value">{{ getProtocolLabel(node.protocol) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">服务器IP</span>
+                <span class="value">{{ getNodeServer(node) || '-' }}</span>
               </div>
               <div class="info-item">
                 <span class="label">端口</span>
@@ -303,6 +318,7 @@
       destroy-on-close
       append-to-body
       :lock-scroll="false"
+      @closed="handleNodeDrawerClosed"
     >
       <div class="dialog-scroll-content">
         <el-tabs v-model="addNodeTab" v-if="!editingNode" class="compact-tabs">
@@ -341,18 +357,25 @@
           <el-form-item label="显示名称" prop="display_name">
             <el-input v-model="nodeForm.display_name" placeholder="客户端显示的名称 (可选)" />
           </el-form-item>
-          <template v-if="!editingNode">
-            <el-form-item label="协议类型" prop="protocol">
-              <el-select v-model="nodeForm.protocol" placeholder="选择协议" style="width: 100%">
-                <el-option v-for="p in ['vmess','vless','trojan','ss','hysteria2','tuic','naive']" :key="p" :label="p" :value="p" />
-              </el-select>
-            </el-form-item>
+          <el-form-item label="节点类型" prop="protocol">
+            <el-select v-model="nodeForm.protocol" placeholder="选择节点类型" style="width: 100%">
+              <el-option-group v-for="group in nodeTypeGroups" :key="group.label" :label="group.label">
+                <el-option
+                  v-for="type in group.options"
+                  :key="type.value"
+                  :label="type.label"
+                  :value="type.value"
+                />
+              </el-option-group>
+            </el-select>
+          </el-form-item>
+          <template v-if="editingNode || addNodeTab === 'manual'">
             <el-form-item label="配置(JSON)" prop="config">
               <el-input 
                 v-model="nodeForm.config" 
                 type="textarea" 
                 :rows="6" 
-                placeholder='{"server":"example.com", "port":443, ...}' 
+                placeholder='{"server":"1.2.3.4", "port":443, ...}'
                 class="code-input"
               />
             </el-form-item>
@@ -600,6 +623,7 @@ export default {
       name: 140,
       display_name: 120,
       protocol: 100,
+      server_ip: 160,
       status: 100,
       is_active: 80,
       expire_time: 150,
@@ -650,7 +674,7 @@ export default {
         // 获取所有列的当前宽度
         if (tableRef.value && tableRef.value.$el) {
           const headerCells = tableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
-          const keys = ['selection', 'name', 'display_name', 'protocol', 'status', 'is_active', 'expire_time', 'actions']
+          const keys = ['selection', 'name', 'display_name', 'protocol', 'server_ip', 'status', 'is_active', 'expire_time', 'actions']
           headerCells.forEach((cell, index) => {
             if (keys[index] && cell.offsetWidth > 0) {
               columnWidths[keys[index]] = cell.offsetWidth
@@ -668,6 +692,42 @@ export default {
     const showLinkDialog = ref(false)
     const showAssignDialog = ref(false)
     const addNodeTab = ref('link')
+    const nodeTypeGroups = [
+      {
+        label: '代理协议',
+        options: [
+          { label: 'VMess', value: 'vmess' },
+          { label: 'VLESS', value: 'vless' },
+          { label: 'Trojan', value: 'trojan' },
+          { label: 'Shadowsocks (SS)', value: 'ss' },
+          { label: 'ShadowsocksR (SSR)', value: 'ssr' }
+        ]
+      },
+      {
+        label: '现代协议',
+        options: [
+          { label: 'Hysteria', value: 'hysteria' },
+          { label: 'Hysteria2', value: 'hysteria2' },
+          { label: 'TUIC', value: 'tuic' },
+          { label: 'Naive', value: 'naive' },
+          { label: 'AnyTLS', value: 'anytls' }
+        ]
+      },
+      {
+        label: '其他协议',
+        options: [
+          { label: 'SOCKS', value: 'socks' },
+          { label: 'SOCKS5', value: 'socks5' },
+          { label: 'HTTP', value: 'http' },
+          { label: 'HTTPS', value: 'https' },
+          { label: 'WireGuard (WG)', value: 'wg' }
+        ]
+      }
+    ]
+    const nodeTypeLabels = nodeTypeGroups.reduce((acc, group) => {
+      group.options.forEach(option => { acc[option.value] = option.label })
+      return acc
+    }, {})
     const searchKeyword = ref('')
     const filters = reactive({ status: '', is_active: '' })
     const pagination = reactive({ page: 1, size: 10, total: 0 })
@@ -714,8 +774,24 @@ export default {
     const migratingAssignments = ref(false)
     const rules = {
       name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
-      protocol: [{ required: true, message: '请选择协议', trigger: 'change' }],
+      protocol: [{ required: true, message: '请选择节点类型', trigger: 'change' }],
       config: [{ required: true, message: '请输入配置', trigger: 'blur' }]
+    }
+    const getProtocolLabel = (protocol) => nodeTypeLabels[protocol] || protocol || '-'
+    const parseConfigValue = (config) => {
+      if (!config) return null
+      if (typeof config === 'object') return config
+      try {
+        return JSON.parse(config)
+      } catch {
+        return null
+      }
+    }
+    const getNodeServer = (node) => {
+      if (!node) return ''
+      if (node.domain) return node.domain
+      const config = parseConfigValue(node.config)
+      return config?.server || config?.Server || config?.add || ''
     }
     const checkMobile = () => { isMobile.value = window.innerWidth <= 768 }
     const loadCustomNodes = async () => {
@@ -764,6 +840,30 @@ export default {
     const toggleMobileSelectAll = (val) => selectedNodes.value = val ? [...customNodes.value] : []
     const handleSelectionChange = (val) => selectedNodes.value = val
     const editingNode = ref(null)
+    const resetNodeForm = () => {
+      Object.assign(nodeForm, {
+        name: '',
+        display_name: '',
+        protocol: 'vmess',
+        config: '',
+        expire_time: null,
+        follow_user_expire: false
+      })
+    }
+    const openCreateNodeDialog = () => {
+      editingNode.value = null
+      addNodeTab.value = 'link'
+      nodeLinkInput.value = ''
+      parsedNode.value = null
+      resetNodeForm()
+      showAddDialog.value = true
+    }
+    const handleNodeDrawerClosed = () => {
+      editingNode.value = null
+      resetNodeForm()
+      nodeLinkInput.value = ''
+      parsedNode.value = null
+    }
     const editNode = (node) => {
       editingNode.value = node
       Object.assign(nodeForm, {
@@ -783,13 +883,8 @@ export default {
         saving.value = true
         try {
           const payload = { ...nodeForm }
-          if (editingNode.value) {
-             delete payload.protocol 
-             delete payload.config
-             await adminAPI.updateCustomNode(editingNode.value.id, payload)
-          } else {
-             await adminAPI.createCustomNode(payload)
-          }
+          if (editingNode.value) await adminAPI.updateCustomNode(editingNode.value.id, payload)
+          else await adminAPI.createCustomNode(payload)
           ElMessage.success('保存成功')
           showAddDialog.value = false
           loadCustomNodes()
@@ -1124,6 +1219,7 @@ export default {
       handleColumnResize,
       showAddDialog, showLinkDialog, showAssignDialog, addNodeTab,
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
+      nodeTypeGroups,
       nodeLinkInput, parsedNode, nodeLink, testingFromLink,
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
       loadingUsers, batchAssigning, assignExtraData, subscriptionTypeDesc, deviceLimitDesc,
@@ -1131,11 +1227,11 @@ export default {
       showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes,
       deactivateSourceAfterMigrate, migratingAssignments,
       loadCustomNodes, handleFilterChange, handleSelectionChange, handleMobileSelect, handleGridSelect,
-      handleCommand, editNode, saveNode, deleteNode, toggleNodeStatus,
+      handleCommand, openCreateNodeDialog, handleNodeDrawerClosed, editNode, saveNode, deleteNode, toggleNodeStatus,
       batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
       handleUserSearch, handleUnassign, batchUnassignAssignedUsers, openMigrateDialog, migrateAssignments,
-      getStatusType, getStatusText, formatExpire, formatTime, isExpired,
+      getStatusType, getStatusText, getProtocolLabel, getNodeServer, formatExpire, formatTime, isExpired,
       isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
       Delete, Edit, Link, Refresh, Connection, User,
       editingNode
