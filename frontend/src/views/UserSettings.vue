@@ -85,11 +85,33 @@
             </div>
           </template>
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" label-width="100px">
+            <el-form-item label="当前密码" prop="currentPassword">
+              <el-input
+                v-model="securityForm.currentPassword"
+                type="password"
+                placeholder="请输入当前密码"
+                show-password
+                autocomplete="current-password"
+              ></el-input>
+            </el-form-item>
             <el-form-item label="新密码" prop="newPassword">
-              <el-input v-model="securityForm.newPassword" type="password" placeholder="请输入新密码"></el-input>
+              <el-input
+                v-model="securityForm.newPassword"
+                type="password"
+                :placeholder="`请输入新密码（至少 ${minPasswordLength} 位）`"
+                show-password
+                autocomplete="new-password"
+              ></el-input>
+              <div class="password-requirement">{{ passwordRequirementText }}</div>
             </el-form-item>
             <el-form-item label="确认密码" prop="confirmPassword">
-              <el-input v-model="securityForm.confirmPassword" type="password" placeholder="请再次输入新密码"></el-input>
+              <el-input
+                v-model="securityForm.confirmPassword"
+                type="password"
+                placeholder="请再次输入新密码"
+                show-password
+                autocomplete="new-password"
+              ></el-input>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="changePassword" :loading="passwordChanging">
@@ -244,11 +266,33 @@
             </div>
           </template>
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" class="mobile-form">
+            <el-form-item label="当前密码" prop="currentPassword">
+              <el-input
+                v-model="securityForm.currentPassword"
+                type="password"
+                placeholder="请输入当前密码"
+                show-password
+                autocomplete="current-password"
+              ></el-input>
+            </el-form-item>
             <el-form-item label="新密码" prop="newPassword">
-              <el-input v-model="securityForm.newPassword" type="password" placeholder="请输入新密码"></el-input>
+              <el-input
+                v-model="securityForm.newPassword"
+                type="password"
+                :placeholder="`请输入新密码（至少 ${minPasswordLength} 位）`"
+                show-password
+                autocomplete="new-password"
+              ></el-input>
+              <div class="password-requirement">{{ passwordRequirementText }}</div>
             </el-form-item>
             <el-form-item label="确认密码" prop="confirmPassword">
-              <el-input v-model="securityForm.confirmPassword" type="password" placeholder="请再次输入新密码"></el-input>
+              <el-input
+                v-model="securityForm.confirmPassword"
+                type="password"
+                placeholder="请再次输入新密码"
+                show-password
+                autocomplete="new-password"
+              ></el-input>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="changePassword" :loading="passwordChanging" style="width: 100%">
@@ -362,12 +406,12 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Bell, Lock, Plus, Setting, Star, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { api, userAPI } from '@/utils/api'
+import { api, userAPI, settingsAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 const notificationTypeOptions = [
   { value: 'system', label: '系统通知' },
@@ -396,6 +440,7 @@ export default {
     const emailChanging = ref(false)
     const codeSending = ref(false)
     const emailChangeDialogVisible = ref(false)
+    const minPasswordLength = ref(8)
     const profileForm = reactive({
       username: '',
       email: '',
@@ -429,10 +474,56 @@ export default {
         { max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }
       ]
     }
-    const securityRules = {
+    const weakPasswords = [
+      'password', '123456', '123456789', 'qwerty', 'abc123',
+      'password123', 'admin', 'root', 'user', 'test',
+      '12345678', 'password1', 'qwerty123', 'admin123'
+    ]
+    const passwordRequirementText = computed(() => (
+      `密码长度至少 ${minPasswordLength.value} 位，需包含大写字母、小写字母、数字、特殊字符中的至少三种`
+    ))
+    const validatePasswordStrength = (value) => {
+      if (!value) return '请输入新密码'
+      if (value.length < minPasswordLength.value) {
+        return `密码长度至少 ${minPasswordLength.value} 位`
+      }
+
+      const complexityCount = [
+        /[A-Z]/.test(value),
+        /[a-z]/.test(value),
+        /\d/.test(value),
+        /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(value)
+      ].filter(Boolean).length
+
+      if (complexityCount < 3) {
+        return '密码必须包含大小写字母、数字和特殊字符中的至少三种'
+      }
+      if (weakPasswords.includes(value.toLowerCase())) {
+        return '密码过于简单，请使用更复杂的密码'
+      }
+      return null
+    }
+    const securityRules = computed(() => ({
+      currentPassword: [
+        { required: true, message: '请输入当前密码', trigger: 'blur' }
+      ],
       newPassword: [
         { required: true, message: '请输入新密码', trigger: 'blur' },
-        { min: 6, message: '密码长度不能少于 6 个字符', trigger: 'blur' }
+        {
+          validator: (rule, value, callback) => {
+            const error = validatePasswordStrength(value)
+            if (error) {
+              callback(new Error(error))
+              return
+            }
+            if (securityForm.currentPassword && value === securityForm.currentPassword) {
+              callback(new Error('新密码不能与当前密码相同'))
+              return
+            }
+            callback()
+          },
+          trigger: 'blur'
+        }
       ],
       confirmPassword: [
         { required: true, message: '请再次输入新密码', trigger: 'blur' },
@@ -447,7 +538,7 @@ export default {
           trigger: 'blur'
         }
       ]
-    }
+    }))
     const emailChangeRules = {
       newEmail: [
         { required: true, message: '请输入新邮箱', trigger: 'blur' },
@@ -460,6 +551,19 @@ export default {
     }
     const handleSettingSelect = (key) => {
       activeSetting.value = key
+    }
+    const loadPasswordSettings = async () => {
+      try {
+        const response = await settingsAPI.getPublicSettings()
+        const settings = response.data?.data || response.data || {}
+        const value = settings.min_password_length !== undefined
+          ? settings.min_password_length
+          : settings.minPasswordLength
+        const parsed = typeof value === 'number' ? value : parseInt(value)
+        minPasswordLength.value = Number.isFinite(parsed) && parsed > 0 ? parsed : 8
+      } catch (error) {
+        minPasswordLength.value = 8
+      }
     }
     const loadUserInfo = async () => {
       let loadedUser = null
@@ -591,10 +695,12 @@ export default {
         await securityFormRef.value.validate()
         passwordChanging.value = true
         const response = await api.post('/users/change-password', {
+          current_password: securityForm.currentPassword || '',
           new_password: securityForm.newPassword || ''
         })
         if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '密码修改成功')
+          securityForm.currentPassword = ''
           securityForm.newPassword = ''
           securityForm.confirmPassword = ''
           if (securityFormRef.value) {
@@ -752,6 +858,7 @@ export default {
       return isJPG && isLt2M
     }
     onMounted(() => {
+      loadPasswordSettings()
       loadUserInfo()
       themeStore.initTheme()
       themeStore.loadUserTheme()
@@ -769,6 +876,7 @@ export default {
       emailChanging,
       codeSending,
       emailChangeDialogVisible,
+      minPasswordLength,
       profileForm,
       securityForm,
       notificationForm,
@@ -778,6 +886,7 @@ export default {
       profileRules,
       securityRules,
       emailChangeRules,
+      passwordRequirementText,
       handleSettingSelect,
       saveProfile,
       changePassword,
@@ -864,6 +973,13 @@ export default {
 :deep(.el-textarea__inner) {
   border-radius: 6px;
   box-shadow: 0 0 0 1px #dcdfe6 inset;
+}
+
+.password-requirement {
+  margin-top: 6px;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 :deep(.el-input__wrapper:hover),

@@ -956,7 +956,7 @@ func CreateUser(c *gin.Context) {
 	var req struct {
 		Username    string  `json:"username" binding:"required"`
 		Email       string  `json:"email" binding:"required,email"`
-		Password    string  `json:"password" binding:"required,min=8"`
+		Password    string  `json:"password" binding:"required"`
 		IsActive    bool    `json:"is_active"`
 		IsVerified  bool    `json:"is_verified"`
 		IsAdmin     bool    `json:"is_admin"`
@@ -981,7 +981,7 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	valid, msg := auth.ValidatePasswordStrength(req.Password, 8)
+	valid, msg := auth.ValidatePasswordStrength(req.Password, getMinPasswordLength(db))
 	if !valid {
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
