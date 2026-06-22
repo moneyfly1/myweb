@@ -58,6 +58,21 @@ func performAuthPasswordResetRequest(method string, routePath string, body strin
 	return recorder
 }
 
+func performAuthPasswordResetRequestAsUser(method string, routePath string, body string, user *models.User, handler gin.HandlerFunc) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Handle(method, routePath, func(c *gin.Context) {
+		c.Set("user", user)
+		c.Set("user_id", user.ID)
+		handler(c)
+	})
+	req := httptest.NewRequest(method, routePath, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+	return recorder
+}
+
 func TestForgotPasswordQueuesResetEmail(t *testing.T) {
 	db := setupAuthPasswordResetTestDB(t)
 	user := models.User{
@@ -161,5 +176,92 @@ func TestResetPasswordByCodeUpdatesPasswordAndConsumesCode(t *testing.T) {
 	}
 	if usedCode.Used != 1 {
 		t.Fatalf("expected verification code to be marked used, got %d", usedCode.Used)
+	}
+}
+
+func TestChangePasswordUsesConfiguredMinPasswordLength(t *testing.T) {
+	db := setupAuthPasswordResetTestDB(t)
+	currentHash, err := auth.HashPassword("OldPass1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{
+		Username: "change_user",
+		Email:    "change@example.com",
+		Password: currentHash,
+		IsActive: true,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.SystemConfig{
+		Key:      "min_password_length",
+		Value:    "12",
+		Category: "registration",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := performAuthPasswordResetRequestAsUser(
+		http.MethodPost,
+		"/users/change-password",
+		`{"current_password":"OldPass1!","new_password":"NewPass1!"}`,
+		&user,
+		ChangePassword,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Success {
+		t.Fatalf("expected failure response")
+	}
+	if response.Message != "密码长度至少12位" {
+		t.Fatalf("expected configured min length message, got %q", response.Message)
+	}
+}
+
+func TestChangePasswordMissingCurrentPasswordMessage(t *testing.T) {
+	db := setupAuthPasswordResetTestDB(t)
+	currentHash, err := auth.HashPassword("OldPass1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{
+		Username: "change_user",
+		Email:    "change@example.com",
+		Password: currentHash,
+		IsActive: true,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := performAuthPasswordResetRequestAsUser(
+		http.MethodPost,
+		"/users/change-password",
+		`{"new_password":"NewPass1!"}`,
+		&user,
+		ChangePassword,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message != "请输入当前密码" {
+		t.Fatalf("expected missing current password message, got %q", response.Message)
 	}
 }
