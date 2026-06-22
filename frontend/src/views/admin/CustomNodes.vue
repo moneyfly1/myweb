@@ -71,6 +71,17 @@
             <el-option label="非活跃" value="inactive" />
             <el-option label="错误" value="error" />
           </el-select>
+          <el-select v-model="filters.protocol" placeholder="节点类型" clearable @change="handleFilterChange">
+            <el-option label="全部类型" value="" />
+            <el-option-group v-for="group in nodeTypeGroups" :key="group.label" :label="group.label">
+              <el-option
+                v-for="type in group.options"
+                :key="type.value"
+                :label="type.label"
+                :value="type.value"
+              />
+            </el-option-group>
+          </el-select>
           <el-select v-model="filters.is_active" placeholder="激活" clearable @change="handleFilterChange">
             <el-option label="全部" value="" />
             <el-option label="已激活" value="true" />
@@ -720,7 +731,7 @@ export default {
           { label: 'SOCKS5', value: 'socks5' },
           { label: 'HTTP', value: 'http' },
           { label: 'HTTPS', value: 'https' },
-          { label: 'WireGuard (WG)', value: 'wg' }
+          { label: 'WireGuard (WG)', value: 'wireguard' }
         ]
       }
     ]
@@ -729,7 +740,7 @@ export default {
       return acc
     }, {})
     const searchKeyword = ref('')
-    const filters = reactive({ status: '', is_active: '' })
+    const filters = reactive({ status: '', protocol: '', is_active: '' })
     const pagination = reactive({ page: 1, size: 10, total: 0 })
     const nodeFormRef = ref(null)
     const nodeForm = reactive({
@@ -1206,7 +1217,7 @@ export default {
     watch([viewMode, gridOrientation, gridColumns, gridSize], () => {
       saveSettings()
     })
-    
+
     onMounted(() => {
       checkMobile()
       window.addEventListener('resize', checkMobile)

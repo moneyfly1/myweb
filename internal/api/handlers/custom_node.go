@@ -26,6 +26,13 @@ func GetCustomNodes(c *gin.Context) {
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
+	if protocol := strings.TrimSpace(c.Query("protocol")); protocol != "" {
+		if protocol == "wireguard" {
+			query = query.Where("protocol IN ?", []string{"wireguard", "wg"})
+		} else {
+			query = query.Where("protocol = ?", protocol)
+		}
+	}
 	if isActive := c.Query("is_active"); isActive != "" {
 		if isActive == "true" {
 			query = query.Where("is_active = ?", true)
