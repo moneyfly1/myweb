@@ -19,6 +19,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
+	"cboard-go/internal/services/device"
 	"cboard-go/internal/utils"
 
 	"gopkg.in/yaml.v3"
@@ -76,10 +77,10 @@ type ConfigUpdateService struct {
 	logBuffer     []map[string]interface{}
 	logMutex      sync.RWMutex
 	// Clash 模板缓存
-	tplCache    []byte
-	tplPath     string
-	tplModTime  time.Time
-	tplMutex    sync.RWMutex
+	tplCache   []byte
+	tplPath    string
+	tplModTime time.Time
+	tplMutex   sync.RWMutex
 }
 
 type nodeWithOrder struct {
@@ -1083,9 +1084,17 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 		s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&devices)
 		ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
 
-		if sub.DeviceLimit == 0 || (sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit && s.db.Where("subscription_id = ? AND ip_address = ? AND user_agent = ?", sub.ID, clientIP, userAgent).First(&models.Device{}).Error != nil) {
+		if sub.DeviceLimit == 0 {
 			ctx.Status = StatusDeviceOverLimit
 			return ctx
+		}
+
+		if sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit {
+			_, exists, err := device.NewDeviceManager().FindExistingDevice(sub.ID, userAgent, clientIP)
+			if err != nil || !exists {
+				ctx.Status = StatusDeviceOverLimit
+				return ctx
+			}
 		}
 	}
 
