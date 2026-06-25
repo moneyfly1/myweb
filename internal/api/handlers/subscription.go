@@ -1579,9 +1579,10 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	}
 
 	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
-		hash := device.NewDeviceManager().GenerateDeviceHash(userAgent, clientIP, "")
-		var currentDevice models.Device
-		isCurrentDeviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&currentDevice).Error == nil
+		currentDevice, isCurrentDeviceExists, err := device.NewDeviceManager().FindExistingDevice(subscription.ID, userAgent, clientIP)
+		if err != nil {
+			return "设备校验失败，请稍后重试", int(count), subscription.DeviceLimit, false
+		}
 
 		if !isCurrentDeviceExists {
 			return fmt.Sprintf("设备数量超过限制(当前%d/限制%d)，无法添加新设备", count, subscription.DeviceLimit), int(count), subscription.DeviceLimit, false
@@ -1654,24 +1655,9 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 	// 设备管理逻辑（类似 GetUniversalSubscription）
 	deviceManager := device.NewDeviceManager()
-	hash := deviceManager.GenerateDeviceHash(userAgent, clientIP, "")
-
-	var currentDevice models.Device
-	deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, subscription.ID).First(&currentDevice).Error == nil
-
-	if !deviceExists {
-		var sameUADevice models.Device
-		if err := db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", subscription.ID, userAgent, true).
-			Order("last_access DESC").
-			First(&sameUADevice).Error; err == nil {
-			sameUADevice.IPAddress = &clientIP
-			sameUADevice.DeviceHash = &hash
-			sameUADevice.LastAccess = utils.GetBeijingTime()
-			if err := db.Save(&sameUADevice).Error; err == nil {
-				deviceExists = true
-				currentDevice = sameUADevice
-			}
-		}
+	_, deviceExists, findDeviceErr := deviceManager.FindExistingDevice(subscription.ID, userAgent, clientIP)
+	if findDeviceErr != nil {
+		log.Printf("failed to check existing device: %v", findDeviceErr)
 	}
 
 	var count int64
@@ -1897,7 +1883,6 @@ func GetUniversalSubscription(c *gin.Context) {
 		deviceIP := utils.GetRealClientIP(c)
 		deviceUA := c.GetHeader("User-Agent")
 		deviceManager := device.NewDeviceManager()
-		hash := deviceManager.GenerateDeviceHash(deviceUA, deviceIP, "")
 
 		// 加载用户信息以检查不限制设备标志
 		var user models.User
@@ -1906,24 +1891,9 @@ func GetUniversalSubscription(c *gin.Context) {
 			unlimitedDevices = user.SpecialNodeUnlimitedDevices
 		}
 
-		var currentDevice models.Device
-		deviceExists := db.Where("device_hash = ? AND subscription_id = ?", hash, sub.ID).First(&currentDevice).Error == nil
-
-		if !deviceExists {
-			var sameUADevice models.Device
-			if err := db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", sub.ID, deviceUA, true).
-				Order("last_access DESC").
-				First(&sameUADevice).Error; err == nil {
-
-				sameUADevice.IPAddress = &deviceIP
-				sameUADevice.DeviceHash = &hash
-				sameUADevice.LastAccess = utils.GetBeijingTime()
-
-				if err := db.Save(&sameUADevice).Error; err == nil {
-					deviceExists = true
-					currentDevice = sameUADevice
-				}
-			}
+		_, deviceExists, findDeviceErr := deviceManager.FindExistingDevice(sub.ID, deviceUA, deviceIP)
+		if findDeviceErr != nil {
+			log.Printf("failed to check existing device: %v", findDeviceErr)
 		}
 
 		var count int64

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -14,6 +15,8 @@ import (
 
 	"gorm.io/gorm"
 )
+
+const clashMetaAndroidAliasWindow = 30 * time.Second
 
 type DeviceManager struct {
 	db *gorm.DB
@@ -88,6 +91,159 @@ func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 	return info
 }
 
+func (dm *DeviceManager) IsGenericClashWindowsUA(userAgent string) bool {
+	info := dm.ParseUserAgent(userAgent)
+	if info.SoftwareName != "Clash" || info.OSName != "Windows" {
+		return false
+	}
+
+	uaLower := strings.ToLower(userAgent)
+	return strings.Contains(uaLower, "windows") &&
+		strings.Contains(uaLower, "clash") &&
+		!strings.Contains(uaLower, "clash for windows") &&
+		!strings.Contains(uaLower, "clash meta") &&
+		!strings.Contains(uaLower, "clashmeta") &&
+		!strings.Contains(uaLower, "mihomo") &&
+		!strings.Contains(uaLower, "clash-verge") &&
+		!strings.Contains(uaLower, "clash verge")
+}
+
+func (dm *DeviceManager) isClashMetaAndroidUA(userAgent string) bool {
+	info := dm.ParseUserAgent(userAgent)
+	return info.SoftwareName == "Clash Meta" && info.OSName == "Android"
+}
+
+func (dm *DeviceManager) areSameClashMetaAndroidAlias(a, b string) bool {
+	return (dm.IsGenericClashWindowsUA(a) && dm.isClashMetaAndroidUA(b)) ||
+		(dm.IsGenericClashWindowsUA(b) && dm.isClashMetaAndroidUA(a))
+}
+
+func (dm *DeviceManager) deviceUA(device *models.Device) string {
+	if device.UserAgent != nil {
+		return *device.UserAgent
+	}
+	if device.DeviceUA != nil {
+		return *device.DeviceUA
+	}
+	return ""
+}
+
+func (dm *DeviceManager) isClashMetaAndroidDevice(device *models.Device) bool {
+	if dm.isClashMetaAndroidUA(dm.deviceUA(device)) {
+		return true
+	}
+	return device.SoftwareName != nil && *device.SoftwareName == "Clash Meta" &&
+		device.OSName != nil && *device.OSName == "Android"
+}
+
+func closeInTime(a, b time.Time, window time.Duration) bool {
+	if a.IsZero() || b.IsZero() {
+		return false
+	}
+	if a.After(b) {
+		return a.Sub(b) <= window
+	}
+	return b.Sub(a) <= window
+}
+
+func firstSeenTime(device *models.Device) time.Time {
+	if device.FirstSeen != nil && !device.FirstSeen.IsZero() {
+		return *device.FirstSeen
+	}
+	return device.CreatedAt
+}
+
+func (dm *DeviceManager) findClashMetaAndroidAliasDevice(subscriptionID uint, userAgent, ipAddress string) (*models.Device, error) {
+	if ipAddress == "" || (!dm.IsGenericClashWindowsUA(userAgent) && !dm.isClashMetaAndroidUA(userAgent)) {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var candidates []models.Device
+	if err := dm.db.Where("subscription_id = ? AND ip_address = ? AND is_active = ? AND last_access >= ?", subscriptionID, ipAddress, true, utils.GetBeijingTime().Add(-clashMetaAndroidAliasWindow)).
+		Order("last_access DESC").
+		Limit(20).
+		Find(&candidates).Error; err != nil {
+		return nil, err
+	}
+
+	for i := range candidates {
+		if dm.areSameClashMetaAndroidAlias(dm.deviceUA(&candidates[i]), userAgent) {
+			return &candidates[i], nil
+		}
+	}
+
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAddress string) (*models.Device, bool, error) {
+	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
+
+	var device models.Device
+	err := dm.db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscriptionID).First(&device).Error
+	if err == nil {
+		return &device, true, nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return nil, false, err
+	}
+
+	if userAgent != "" {
+		err = dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", subscriptionID, userAgent, true).
+			Order("last_access DESC").
+			First(&device).Error
+		if err == nil {
+			return &device, true, nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return nil, false, err
+		}
+	}
+
+	if aliasDevice, aliasErr := dm.findClashMetaAndroidAliasDevice(subscriptionID, userAgent, ipAddress); aliasErr == nil {
+		return aliasDevice, true, nil
+	} else if aliasErr != gorm.ErrRecordNotFound {
+		return nil, false, aliasErr
+	}
+
+	return nil, false, nil
+}
+
+func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *models.Device, ipAddress string) error {
+	if canonical == nil || canonical.ID == 0 || ipAddress == "" || !dm.isClashMetaAndroidDevice(canonical) {
+		return nil
+	}
+
+	var candidates []models.Device
+	if err := dm.db.Where("subscription_id = ? AND ip_address = ? AND is_active = ? AND id <> ?", canonical.SubscriptionID, ipAddress, true, canonical.ID).
+		Find(&candidates).Error; err != nil {
+		return err
+	}
+
+	canonicalFirstSeen := firstSeenTime(canonical)
+	deactivated := false
+	for i := range candidates {
+		if !dm.IsGenericClashWindowsUA(dm.deviceUA(&candidates[i])) {
+			continue
+		}
+		if !closeInTime(canonicalFirstSeen, firstSeenTime(&candidates[i]), clashMetaAndroidAliasWindow) {
+			continue
+		}
+		candidates[i].IsActive = false
+		if err := dm.db.Save(&candidates[i]).Error; err != nil {
+			return err
+		}
+		deactivated = true
+	}
+
+	if deactivated {
+		var deviceCount int64
+		dm.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", canonical.SubscriptionID, true).Count(&deviceCount)
+		return dm.db.Model(&models.Subscription{}).Where("id = ?", canonical.SubscriptionID).Update("current_devices", deviceCount).Error
+	}
+
+	return nil
+}
+
 func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 	// Shadowrocket
 	if strings.Contains(uaLower, "shadowrocket") {
@@ -146,7 +302,7 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 	}
 
 	// Android 客户端
-	if strings.Contains(uaLower, "clash for android") || strings.Contains(uaLower, "cfa") {
+	if strings.Contains(uaLower, "clash for android") || strings.Contains(uaLower, "clashforandroid") || strings.Contains(uaLower, "cfa") {
 		return "Clash for Android"
 	}
 	if strings.Contains(uaLower, "surfboard") {
@@ -437,7 +593,7 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 	}
 
 	if strings.Contains(uaLower, "android") {
-		if match := regexp.MustCompile(`;\s*([^;]+)\s*build`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := regexp.MustCompile(`(?i);\s*([^;]+)\s*build`).FindStringSubmatch(userAgent); len(match) > 1 {
 			name := strings.TrimSpace(match[1])
 			result["device_model"] = name
 			brands := map[string][]string{
@@ -741,6 +897,47 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 	return hex.EncodeToString(hash[:])
 }
 
+func (dm *DeviceManager) updateExistingDeviceAccess(device *models.Device, deviceInfo *DeviceInfo, deviceHash, userAgent, ipAddress, subscriptionType string) error {
+	now := utils.GetBeijingTime()
+	device.IPAddress = &ipAddress
+	device.LastAccess = now
+	device.LastSeen = &now
+	device.AccessCount++
+	device.IsActive = true
+
+	// 查询并更新位置信息（使用缓存）
+	if ipAddress != "" {
+		location := geoip.GetLocationWithCache(ipAddress)
+		if location.Valid && location.String != "" {
+			device.Location = &location.String
+		}
+	}
+
+	if subscriptionType != "" {
+		subscriptionTypeStr := subscriptionType
+		device.SubscriptionType = &subscriptionTypeStr
+	}
+
+	existingClashMetaAndroid := dm.isClashMetaAndroidDevice(device)
+	if dm.IsGenericClashWindowsUA(userAgent) && existingClashMetaAndroid {
+		if err := dm.db.Save(device).Error; err != nil {
+			return err
+		}
+		return dm.deactivateClashMetaAndroidAliasDuplicates(device, ipAddress)
+	}
+
+	device.DeviceHash = &deviceHash
+	device.DeviceFingerprint = deviceHash
+	device.DeviceUA = &userAgent
+	device.UserAgent = &userAgent
+	dm.refreshDeviceInfo(device, deviceInfo)
+
+	if err := dm.db.Save(device).Error; err != nil {
+		return err
+	}
+	return dm.deactivateClashMetaAndroidAliasDuplicates(device, ipAddress)
+}
+
 func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string) (*models.Device, error) {
 	deviceInfo := dm.ParseUserAgent(userAgent)
 
@@ -777,76 +974,16 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 
 	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
 
-	var existingDevice models.Device
-	err := dm.db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscriptionID).First(&existingDevice).Error
-
-	// 如果通过 device_hash 找不到设备，尝试通过相同的 User-Agent 查找
-	if err == gorm.ErrRecordNotFound {
-		var sameUADevice models.Device
-		if uaErr := dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", subscriptionID, userAgent, true).
-			Order("last_access DESC").
-			First(&sameUADevice).Error; uaErr == nil {
-			// 找到相同 User-Agent 的设备，更新其 hash 和其他信息
-			now := utils.GetBeijingTime()
-			sameUADevice.DeviceHash = &deviceHash
-			sameUADevice.IPAddress = &ipAddress
-			sameUADevice.LastAccess = now
-			sameUADevice.LastSeen = &now
-			sameUADevice.AccessCount++
-			sameUADevice.UserAgent = &userAgent
-			sameUADevice.IsActive = true
-
-			// 查询并更新位置信息（使用缓存）
-			if ipAddress != "" {
-				location := geoip.GetLocationWithCache(ipAddress)
-				if location.Valid && location.String != "" {
-					sameUADevice.Location = &location.String
-				}
-			}
-
-			if subscriptionType != "" {
-				subscriptionTypeStr := subscriptionType
-				sameUADevice.SubscriptionType = &subscriptionTypeStr
-			}
-
-			dm.refreshDeviceInfo(&sameUADevice, deviceInfo)
-
-			if err := dm.db.Save(&sameUADevice).Error; err != nil {
-				return nil, err
-			}
-			return &sameUADevice, nil
-		}
-	}
-
-	if err == nil {
-		now := utils.GetBeijingTime()
-		existingDevice.LastAccess = now
-		existingDevice.LastSeen = &now
-		existingDevice.AccessCount++
-		existingDevice.IPAddress = &ipAddress
-		existingDevice.UserAgent = &userAgent
-		existingDevice.IsActive = true // 确保设备标记为活跃
-
-		// 查询并更新位置信息（使用缓存）
-		if ipAddress != "" {
-			location := geoip.GetLocationWithCache(ipAddress)
-			if location.Valid && location.String != "" {
-				existingDevice.Location = &location.String
-			}
-		}
-
-		if subscriptionType != "" {
-			subscriptionTypeStr := subscriptionType
-			existingDevice.SubscriptionType = &subscriptionTypeStr
-		}
-
-		dm.refreshDeviceInfo(&existingDevice, deviceInfo)
-
-		if err := dm.db.Save(&existingDevice).Error; err != nil {
+	if existingDevice, exists, err := dm.FindExistingDevice(subscriptionID, userAgent, ipAddress); err != nil {
+		return nil, err
+	} else if exists {
+		if err := dm.updateExistingDeviceAccess(existingDevice, deviceInfo, deviceHash, userAgent, ipAddress, subscriptionType); err != nil {
 			return nil, err
 		}
-		return &existingDevice, nil
-	} else if err == gorm.ErrRecordNotFound {
+		return existingDevice, nil
+	}
+
+	{
 		now := utils.GetBeijingTime()
 		userIDInt64 := utils.MustSafeUintToInt64(userID)
 		subscriptionTypeStr := subscriptionType
@@ -896,6 +1033,4 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 
 		return &device, nil
 	}
-
-	return nil, err
 }
