@@ -1355,7 +1355,11 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 				for _, p := range filtered {
 					m := s.nodeToMap(p)
 					// 转成 yaml.Node 并设 FlowStyle 实现横排 compact 输出
-					data, _ := yaml.Marshal(m)
+					data, err := yaml.Marshal(m)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "yaml.Marshal failed for node %s: %v\n", p.Name, err)
+						continue
+					}
 					var doc yaml.Node
 					if yaml.Unmarshal(data, &doc) == nil && len(doc.Content) > 0 {
 						flowNode := *doc.Content[0]
@@ -1608,6 +1612,11 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		res["password"] = n.Password
 	}
 
+	// consumed tracks keys already processed in the switch below, so they are
+	// NOT blindly copied from n.Options in the final copy loop. Using a set
+	// avoids mutating the input node's Options map (read-only contract).
+	consumed := map[string]bool{}
+
 	switch n.Type {
 	case "ss":
 		if n.Cipher != "" {
@@ -1615,8 +1624,10 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		}
 		if p := optVal[string](n.Options, "plugin"); p != "" {
 			res["plugin"] = p
+			consumed["plugin"] = true
 			if popt := optVal[map[string]interface{}](n.Options, "plugin-opts"); popt != nil {
 				res["plugin-opts"] = popt
+				consumed["plugin-opts"] = true
 			}
 		}
 	case "vmess":
@@ -1642,13 +1653,14 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 			res["udp-relay-mode"] = "native"
 			if cc := optVal[string](n.Options, "congestion_control"); cc != "" {
 				res["congestion-controller"] = cc
-				delete(n.Options, "congestion_control")
+				consumed["congestion_control"] = true
 			} else if cc := optVal[string](n.Options, "congestion-controller"); cc != "" {
 				res["congestion-controller"] = cc
+				consumed["congestion-controller"] = true
 			}
 			if sni := optVal[string](n.Options, "servername"); sni != "" {
 				res["sni"] = sni
-				delete(n.Options, "servername")
+				consumed["servername"] = true
 			}
 		}
 	case "ssr":
@@ -1659,11 +1671,12 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		res["udp"] = n.UDP
 		if sni := optVal[string](n.Options, "servername"); sni != "" {
 			res["sni"] = sni
-			delete(n.Options, "servername")
+			consumed["servername"] = true
 		}
 	case "hysteria", "hysteria2":
 		if res["password"] == "" {
 			res["password"] = optVal[string](n.Options, "auth")
+			consumed["auth"] = true
 		}
 		if n.Type == "hysteria2" {
 			res["auth"] = res["password"]
@@ -1686,6 +1699,10 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 
 	excludes := clashExcludedOptions[n.Type]
 	for k, v := range n.Options {
+		// 跳过已在 switch 中显式处理过的 key，避免覆盖正确的值
+		if consumed[k] {
+			continue
+		}
 		// alterId 是 VMess 专用字段，不输出到 Clash YAML
 		if k == "alterId" && n.Type == "vmess" {
 			continue
@@ -1710,85 +1727,6 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 	}
 
 	return res
-}
-
-func (s *ConfigUpdateService) writeYAMLValue(b *strings.Builder, ind, key string, val interface{}, lvl int) {
-	ek := s.escapeYAMLString(key)
-	switch v := val.(type) {
-	case map[string]interface{}:
-		b.WriteString(fmt.Sprintf("%s%s:\n", ind, ek))
-		s.writeMapContent(b, ind+"  ", v, key, lvl+1)
-	case []interface{}:
-		b.WriteString(fmt.Sprintf("%s%s:\n", ind, ek))
-		for _, item := range v {
-			b.WriteString(fmt.Sprintf("%s  - %s\n", ind, s.formatYAMLInline(item)))
-		}
-	case []string:
-		b.WriteString(fmt.Sprintf("%s%s:\n", ind, ek))
-		for _, item := range v {
-			b.WriteString(fmt.Sprintf("%s  - %s\n", ind, s.escapeYAMLString(item)))
-		}
-	default:
-		b.WriteString(fmt.Sprintf("%s%s: %s\n", ind, ek, s.formatYAMLInline(v)))
-	}
-}
-
-func (s *ConfigUpdateService) writeMapContent(b *strings.Builder, ind string, v map[string]interface{}, pk string, lvl int) {
-	if pk == "http-opts" {
-		if m, ok := v["method"].(string); ok {
-			b.WriteString(fmt.Sprintf("%smethod: %s\n", ind, m))
-		}
-		if p, ok := v["path"]; ok {
-			s.writeYAMLList(b, ind, "path", p)
-		}
-		if h, ok := v["headers"].(map[string]interface{}); ok {
-			b.WriteString(ind + "headers:\n")
-			for hk, hv := range h {
-				s.writeYAMLList(b, ind+"  ", hk, hv)
-			}
-		}
-		return
-	}
-	var keys []string
-	for k := range v {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		if sm, ok := v[k].(map[string]string); ok {
-			nm := make(map[string]interface{})
-			for mk, mv := range sm {
-				nm[mk] = mv
-			}
-			s.writeYAMLValue(b, ind, k, nm, lvl+1)
-		} else {
-			s.writeYAMLValue(b, ind, k, v[k], lvl+1)
-		}
-	}
-}
-
-func (s *ConfigUpdateService) writeYAMLList(b *strings.Builder, ind, key string, val interface{}) {
-	b.WriteString(fmt.Sprintf("%s%s:\n", ind, s.escapeYAMLString(key)))
-	w := func(i interface{}) { b.WriteString(fmt.Sprintf("%s  - %s\n", ind, s.formatYAMLInline(i))) }
-	switch v := val.(type) {
-	case string:
-		w(v)
-	case []string:
-		for _, i := range v {
-			w(i)
-		}
-	case []interface{}:
-		for _, i := range v {
-			w(i)
-		}
-	}
-}
-
-func (s *ConfigUpdateService) formatYAMLInline(v interface{}) string {
-	if str, ok := v.(string); ok {
-		return s.escapeYAMLString(str)
-	}
-	return s.escapeYAMLString(fmt.Sprintf("%v", v))
 }
 
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
@@ -1816,7 +1754,7 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 
 // escapeYAMLKey 对 flow-style YAML 的 key 做引号处理
 func (s *ConfigUpdateService) escapeYAMLKey(key string) string {
-	if strings.ContainsAny(key, ":{}\"'[]#,>&*?|!%@`") ||
+	if strings.ContainsAny(key, ":{}\"'[]#,>&*?|!%@`\t\x00") ||
 		strings.HasPrefix(key, " ") || strings.HasSuffix(key, " ") {
 		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(key, "\"", "\\\""))
 	}
@@ -2189,6 +2127,427 @@ func (s *ConfigUpdateService) nodeToSSRLink(n *ProxyNode) string {
 		base64.RawURLEncoding.EncodeToString([]byte(n.Name)),
 		base64.RawURLEncoding.EncodeToString([]byte("GoWeb")))
 	return "ssr://" + base64.RawURLEncoding.EncodeToString([]byte(str))
+}
+
+// ===========================================================================
+// 多客户端订阅生成器 (Multi-Client Subscription Generators)
+// ===========================================================================
+
+// GenerateClientConfig 根据客户端类型生成对应的订阅配置
+// subType: clash, clashmeta, mihomo, stash, surge, quantumultx, loon, singbox, shadowrocket, universal
+func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, subType string) (responseData, contentType, fileName string) {
+	s.refreshSystemConfig()
+
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	var nodes []*ProxyNode
+	if ctx.Status != StatusNormal {
+		nodes = s.generateErrorNodes(ctx.Status, ctx)
+	} else {
+		nodes = s.addInfoNodes(ctx.Proxies, ctx)
+	}
+
+	subName := s.GenerateSubscriptionName(ctx)
+	siteURL := s.siteURL
+
+	switch subType {
+	case "clash", "clashmeta", "mihomo", "stash":
+		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		config := s.generateClashYAML(nodes, ctx)
+		return config, "text/yaml; charset=utf-8", subName + ".yaml"
+
+	case "surge":
+		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		config := s.generateSurgeConfig(nodes, siteURL)
+		return config, "text/plain; charset=utf-8", subName + ".conf"
+
+	case "singbox", "sing-box":
+		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		config := s.generateSingBoxConfig(nodes)
+		return config, "application/json; charset=utf-8", subName + ".json"
+
+	case "quantumult", "quantumultx":
+		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		config := s.generateQuantumultXConfig(nodes, siteURL)
+		return config, "text/plain; charset=utf-8", subName + ".conf"
+
+	case "loon":
+		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		config := s.generateLoonConfig(nodes, siteURL)
+		return config, "text/plain; charset=utf-8", subName + ".conf"
+
+	default:
+		// universal / shadowrocket / v2ray — 所有类型的 base64 链接
+		uaLower := strings.ToLower(userAgent)
+		isV2rayN := strings.Contains(uaLower, "v2rayn")
+		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
+		if isV2rayN {
+			filtered := nodes[:0]
+			for _, n := range nodes {
+				if n.Type != "socks" && n.Type != "socks5" {
+					filtered = append(filtered, n)
+				}
+			}
+			nodes = filtered
+		}
+		var links []string
+		for _, n := range nodes {
+			if link := s.nodeToLink(n); link != "" {
+				links = append(links, link)
+			}
+		}
+		config := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+		return config, "text/plain; charset=utf-8", subName
+	}
+}
+
+// generateSurgeConfig 生成 Surge 订阅配置
+func (s *ConfigUpdateService) generateSurgeConfig(proxies []*ProxyNode, siteURL string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s Surge Config\n", siteURL))
+	sb.WriteString("[Proxy]\n")
+	sb.WriteString("DIRECT = direct\n")
+
+	var names []string
+	for _, n := range proxies {
+		if n.Server == "baidu.com" {
+			continue
+		}
+		line := s.proxyNodeToSurgeLine(n)
+		if line != "" {
+			sb.WriteString(line + "\n")
+			names = append(names, s.safeSurgeName(n.Name))
+		}
+	}
+
+	sb.WriteString("\n[Proxy Group]\n")
+	if len(names) > 0 {
+		joined := strings.Join(names, ", ")
+		sb.WriteString(fmt.Sprintf("Proxy = select, AutoTest, DIRECT, %s\n", joined))
+		sb.WriteString(fmt.Sprintf("AutoTest = url-test, %s, url=http://www.gstatic.com/generate_204, interval=300, tolerance=50\n", joined))
+	} else {
+		sb.WriteString("Proxy = select, DIRECT\n")
+	}
+
+	sb.WriteString("\n[Rule]\n")
+	sb.WriteString("DOMAIN-SET,https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/reject.txt,REJECT\n")
+	sb.WriteString("DOMAIN-SET,https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/proxy.txt,Proxy\n")
+	sb.WriteString("DOMAIN-SET,https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt,DIRECT\n")
+	sb.WriteString("RULE-SET,https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/cncidr.txt,DIRECT\n")
+	sb.WriteString("GEOIP,CN,DIRECT,no-resolve\n")
+	sb.WriteString("FINAL,Proxy,dns-failed\n")
+	return sb.String()
+}
+
+// proxyNodeToSurgeLine 将 ProxyNode 转为 Surge 格式的一行
+func (s *ConfigUpdateService) proxyNodeToSurgeLine(n *ProxyNode) string {
+	m := s.nodeToMap(n)
+	name := s.safeSurgeName(n.Name)
+	host := fmt.Sprintf("%v", m["server"])
+	port := fmt.Sprintf("%d", n.Port)
+
+	switch n.Type {
+	case "ss":
+		cipher := optVal[string](m, "cipher")
+		password := optVal[string](m, "password")
+		if cipher == "" || host == "" {
+			return ""
+		}
+		return fmt.Sprintf("%s = ss, %s, %s, encrypt-method=%s, password=%s", name, host, port, cipher, password)
+
+	case "trojan":
+		password := optVal[string](m, "password")
+		sni := optVal[string](m, "sni")
+		if sni == "" {
+			sni = fmt.Sprintf("%v", m["servername"])
+		}
+		if sni == "" {
+			sni = host
+		}
+		parts := []string{fmt.Sprintf("%s = trojan, %s, %s, password=%s, sni=%s", name, host, port, password, sni)}
+		if optVal[bool](m, "skip-cert-verify") {
+			parts = append(parts, "skip-cert-verify=true")
+		}
+		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
+			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", optVal[string](m, "ws-opts.path")))
+		}
+		return strings.Join(parts, ", ")
+
+	case "vmess":
+		uuid := optVal[string](m, "uuid")
+		tlsStr := ""
+		if optVal[bool](m, "tls") {
+			tlsStr = ", tls=true"
+		}
+		parts := []string{fmt.Sprintf("%s = vmess, %s, %s, username=%s, encrypt-method=auto%s", name, host, port, uuid, tlsStr)}
+		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
+			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", optVal[string](m, "ws-opts.path")))
+		}
+		return strings.Join(parts, ", ")
+
+	case "vless":
+		uuid := optVal[string](m, "uuid")
+		tlsStr := ""
+		if optVal[bool](m, "tls") {
+			tlsStr = ", tls=true"
+		}
+		parts := []string{fmt.Sprintf("%s = vless, %s, %s, username=%s, encrypt-method=none%s", name, host, port, uuid, tlsStr)}
+		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
+			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", optVal[string](m, "ws-opts.path")))
+		}
+		return strings.Join(parts, ", ")
+
+	case "socks", "socks5":
+		user := optVal[string](m, "username")
+		pass := optVal[string](m, "password")
+		if user == "" {
+			return fmt.Sprintf("%s = socks5, %s, %s", name, host, port)
+		}
+		return fmt.Sprintf("%s = socks5, %s, %s, username=%s, password=%s", name, host, port, user, pass)
+
+	case "http":
+		user := optVal[string](m, "username")
+		pass := optVal[string](m, "password")
+		if user == "" {
+			return fmt.Sprintf("%s = http, %s, %s", name, host, port)
+		}
+		return fmt.Sprintf("%s = http, %s, %s, username=%s, password=%s", name, host, port, user, pass)
+
+	case "hysteria", "hysteria2":
+		password := optVal[string](m, "password")
+		sni := optVal[string](m, "sni")
+		if sni == "" {
+			sni = host
+		}
+		return fmt.Sprintf("%s = hysteria2, %s, %s, password=%s, sni=%s, skip-cert-verify=%v",
+			name, host, port, password, sni, optVal[bool](m, "skip-cert-verify"))
+
+	case "tuic":
+		uuid := optVal[string](m, "uuid")
+		password := optVal[string](m, "password")
+		sni := optVal[string](m, "sni")
+		if sni == "" {
+			sni = host
+		}
+		return fmt.Sprintf("%s = tuic, %s, %s, token=%s, sni=%s, skip-cert-verify=%v",
+			name, host, port, uuid+":"+password, sni, optVal[bool](m, "skip-cert-verify"))
+	}
+	return ""
+}
+
+// safeSurgeName 清理名称中的逗号，防止破坏 Surge 配置格式
+func (s *ConfigUpdateService) safeSurgeName(name string) string {
+	name = strings.ReplaceAll(name, ",", " ")
+	name = strings.ReplaceAll(name, "=", ":")
+	return strings.TrimSpace(name)
+}
+
+// generateSingBoxConfig 生成 Sing-Box 订阅配置 (JSON)
+func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string {
+	type singOutbound struct {
+		Type     string `json:"type"`
+		Tag      string `json:"tag"`
+		Server   string `json:"server"`
+		Port     int    `json:"server_port"`
+		Password string `json:"password,omitempty"`
+		UUID     string `json:"uuid,omitempty"`
+		Method   string `json:"method,omitempty"`
+		TLS      *struct {
+			Enabled  bool   `json:"enabled"`
+			ServerName string `json:"server_name,omitempty"`
+			Insecure bool   `json:"insecure,omitempty"`
+			ALPN     []string `json:"alpn,omitempty"`
+		} `json:"tls,omitempty"`
+		Transport *struct {
+			Type string `json:"type"`
+			Path string `json:"path,omitempty"`
+			Host string `json:"host,omitempty"`
+		} `json:"transport,omitempty"`
+	}
+
+	var outbounds []singOutbound
+	outbounds = append(outbounds, singOutbound{Type: "direct", Tag: "DIRECT"})
+
+	for _, n := range proxies {
+		if n.Server == "baidu.com" {
+			continue
+		}
+		m := s.nodeToMap(n)
+		ob := singOutbound{Tag: n.Name, Server: fmt.Sprintf("%v", m["server"]), Port: n.Port}
+
+		switch n.Type {
+		case "ss":
+			ob.Type = "shadowsocks"
+			ob.Method = optVal[string](m, "cipher")
+			ob.Password = optVal[string](m, "password")
+		case "trojan":
+			ob.Type = "trojan"
+			ob.Password = optVal[string](m, "password")
+		case "vmess":
+			ob.Type = "vmess"
+			ob.UUID = optVal[string](m, "uuid")
+			if ob.Method = optVal[string](m, "cipher"); ob.Method == "" {
+				ob.Method = "auto"
+			}
+		case "vless":
+			ob.Type = "vless"
+			ob.UUID = optVal[string](m, "uuid")
+		case "hysteria", "hysteria2":
+			ob.Type = "hysteria2"
+			ob.Password = optVal[string](m, "password")
+		case "tuic":
+			ob.Type = "tuic"
+			ob.UUID = optVal[string](m, "uuid")
+			ob.Password = optVal[string](m, "password")
+		default:
+			continue
+		}
+
+		// TLS
+		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" {
+			sni := optVal[string](m, "sni")
+			if sni == "" {
+				sni = fmt.Sprintf("%v", m["servername"])
+			}
+			if sni == "" {
+				sni = ob.Server
+			}
+			ob.TLS = &struct {
+				Enabled  bool   `json:"enabled"`
+				ServerName string `json:"server_name,omitempty"`
+				Insecure bool   `json:"insecure,omitempty"`
+				ALPN     []string `json:"alpn,omitempty"`
+			}{Enabled: true, ServerName: sni, Insecure: optVal[bool](m, "skip-cert-verify")}
+		}
+
+		// Transport
+		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
+			tr := &struct {
+				Type string `json:"type"`
+				Path string `json:"path,omitempty"`
+				Host string `json:"host,omitempty"`
+			}{Type: network}
+			if wsOpts, ok := m["ws-opts"].(map[string]interface{}); ok {
+				if p, _ := wsOpts["path"].(string); p != "" {
+					tr.Path = p
+				}
+				if hdrs, ok := wsOpts["headers"].(map[string]interface{}); ok {
+					if h, _ := hdrs["Host"].(string); h != "" {
+						tr.Host = h
+					}
+				}
+			}
+			if grpcOpts, ok := m["grpc-opts"].(map[string]interface{}); ok {
+				if p, _ := grpcOpts["grpc-service-name"].(string); p != "" {
+					tr.Path = p
+				}
+			}
+			ob.Transport = tr
+		}
+
+		outbounds = append(outbounds, ob)
+	}
+
+	result, _ := json.MarshalIndent(map[string]interface{}{"outbounds": outbounds}, "", "  ")
+	return string(result)
+}
+
+// generateQuantumultXConfig 生成 Quantumult X 订阅配置
+func (s *ConfigUpdateService) generateQuantumultXConfig(proxies []*ProxyNode, siteURL string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s Quantumult X Config\n", siteURL))
+	sb.WriteString("[server_local]\n")
+
+	for _, n := range proxies {
+		if n.Server == "baidu.com" {
+			continue
+		}
+		m := s.nodeToMap(n)
+		name := strings.ReplaceAll(n.Name, ",", " ")
+		host := fmt.Sprintf("%v", m["server"])
+
+		switch n.Type {
+		case "ss":
+			cipher := optVal[string](m, "cipher")
+			password := optVal[string](m, "password")
+			sb.WriteString(fmt.Sprintf("shadowsocks=%s,%d,%s,%s,%s\n", host, n.Port, cipher, fmt.Sprintf(`"%s"`, password), name))
+		case "trojan":
+			password := optVal[string](m, "password")
+			sni := optVal[string](m, "sni")
+			if sni == "" {
+				sni = host
+			}
+			sb.WriteString(fmt.Sprintf("trojan=%s,%d,password=%s,over-tls=true,tls-host=%s,fast-open=false,udp-relay=false,tag=%s\n",
+				host, n.Port, password, sni, name))
+		case "vmess":
+			uuid := optVal[string](m, "uuid")
+			tlsStr := "false"
+			if optVal[bool](m, "tls") {
+				tlsStr = "true"
+			}
+			sb.WriteString(fmt.Sprintf("vmess=%s,%d,method=auto,password=%s,over-tls=%s,fast-open=false,udp-relay=false,tag=%s\n",
+				host, n.Port, uuid, tlsStr, name))
+		}
+	}
+
+	sb.WriteString("\n[policy]\n")
+	var allNames []string
+	for _, n := range proxies {
+		if n.Server == "baidu.com" {
+			continue
+		}
+		name := strings.ReplaceAll(n.Name, ",", " ")
+		allNames = append(allNames, name)
+	}
+	if len(allNames) > 0 {
+		sb.WriteString(fmt.Sprintf("static=🚀 节点选择, %s, img-url=system\n", strings.Join(allNames, ", ")))
+		sb.WriteString(fmt.Sprintf("available=♻️ 自动选择, %s, img-url=bolt.circle\n", strings.Join(allNames, ", ")))
+	}
+
+	sb.WriteString("\n[filter_remote]\n")
+	sb.WriteString("https://raw.githubusercontent.com/KOP-XIAO/QuantumultX/master/Filter/ChinaGlobal.list, tag=ChinaGlobal, force-policy=DIRECT, enabled=true\n")
+	return sb.String()
+}
+
+// generateLoonConfig 生成 Loon 订阅配置
+func (s *ConfigUpdateService) generateLoonConfig(proxies []*ProxyNode, siteURL string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s Loon Config\n", siteURL))
+	sb.WriteString("[Proxy]\n")
+
+	for _, n := range proxies {
+		if n.Server == "baidu.com" {
+			continue
+		}
+		m := s.nodeToMap(n)
+		name := strings.ReplaceAll(n.Name, ",", " ")
+		host := fmt.Sprintf("%v", m["server"])
+
+		switch n.Type {
+		case "ss":
+			cipher := optVal[string](m, "cipher")
+			password := optVal[string](m, "password")
+			sb.WriteString(fmt.Sprintf("%s = Shadowsocks, %s, %d, %s, %s\n", name, host, n.Port, cipher, password))
+		case "trojan":
+			password := optVal[string](m, "password")
+			sni := optVal[string](m, "sni")
+			if sni == "" {
+				sni = host
+			}
+			sb.WriteString(fmt.Sprintf("%s = Trojan, %s, %d, %s, sni=%s\n", name, host, n.Port, password, sni))
+		case "vmess":
+			uuid := optVal[string](m, "uuid")
+			sb.WriteString(fmt.Sprintf("%s = VMess, %s, %d, %s, method=auto\n", name, host, n.Port, uuid))
+		case "vless":
+			uuid := optVal[string](m, "uuid")
+			sb.WriteString(fmt.Sprintf("%s = VLESS, %s, %d, %s\n", name, host, n.Port, uuid))
+		}
+	}
+
+	sb.WriteString("\n[Remote Rule]\n")
+	sb.WriteString("https://raw.githubusercontent.com/Loyalsoldier/loon-rules/release/reject.list, tag=Reject, policy=REJECT, enabled=true\n")
+	sb.WriteString("https://raw.githubusercontent.com/Loyalsoldier/loon-rules/release/proxy.list, tag=Proxy, policy=Proxy, enabled=true\n")
+	sb.WriteString("https://raw.githubusercontent.com/Loyalsoldier/loon-rules/release/direct.list, tag=Direct, policy=DIRECT, enabled=true\n")
+	return sb.String()
 }
 
 func unescapeUnicode(s string) string {
