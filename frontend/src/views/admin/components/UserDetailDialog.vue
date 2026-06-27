@@ -64,7 +64,7 @@
           <div class="url-section">
             <div class="url-item">
               <div class="url-header">
-                <span class="url-label">通用订阅:</span>
+                <span class="url-label">通用订阅 (V2Ray/Shadowrocket):</span>
                 <el-button
                   size="small"
                   :icon="CopyDocument"
@@ -78,7 +78,7 @@
             </div>
             <div class="url-item">
               <div class="url-header">
-                <span class="url-label">Clash订阅:</span>
+                <span class="url-label">Clash / Clash Meta:</span>
                 <el-button
                   size="small"
                   :icon="CopyDocument"
@@ -90,6 +90,53 @@
               </div>
               <code class="url-code">{{ sub.clash_url || '无' }}</code>
             </div>
+            <!-- 更多客户端订阅 -->
+            <el-collapse v-if="sub.stash_url || sub.surge_url || sub.quantumultx_url || sub.loon_url || sub.singbox_url || sub.shadowrocket_url" class="more-urls-collapse">
+              <el-collapse-item title="更多客户端订阅 ▼" name="more">
+                <div class="url-item" v-if="sub.stash_url">
+                  <div class="url-header">
+                    <span class="url-label">Stash:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.stash_url)">复制</el-button>
+                  </div>
+                  <code class="url-code">{{ sub.stash_url }}</code>
+                </div>
+                <div class="url-item" v-if="sub.surge_url">
+                  <div class="url-header">
+                    <span class="url-label">Surge:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.surge_url)">复制</el-button>
+                  </div>
+                  <code class="url-code">{{ sub.surge_url }}</code>
+                </div>
+                <div class="url-item" v-if="sub.quantumultx_url">
+                  <div class="url-header">
+                    <span class="url-label">Quantumult X:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.quantumultx_url)">复制</el-button>
+                  </div>
+                  <code class="url-code">{{ sub.quantumultx_url }}</code>
+                </div>
+                <div class="url-item" v-if="sub.loon_url">
+                  <div class="url-header">
+                    <span class="url-label">Loon:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.loon_url)">复制</el-button>
+                  </div>
+                  <code class="url-code">{{ sub.loon_url }}</code>
+                </div>
+                <div class="url-item" v-if="sub.singbox_url">
+                  <div class="url-header">
+                    <span class="url-label">Sing-Box:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.singbox_url)">复制</el-button>
+                  </div>
+                  <code class="url-code">{{ sub.singbox_url }}</code>
+                </div>
+                <div class="url-item" v-if="sub.shadowrocket_url">
+                  <div class="url-header">
+                    <span class="url-label">Shadowrocket:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.shadowrocket_url)">复制</el-button>
+                  </div>
+                  <code class="url-code">{{ sub.shadowrocket_url }}</code>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
           </div>
 
           <el-divider v-if="index < user.subscriptions.length - 1" />
@@ -1329,6 +1376,31 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 12px;
+
+    .more-urls-collapse {
+      margin-top: 4px;
+      border: none;
+      background: transparent;
+
+      :deep(.el-collapse-item__header) {
+        font-size: 13px;
+        color: #409eff;
+        background: transparent;
+        border: none;
+        padding: 4px 0;
+        font-weight: 500;
+      }
+      :deep(.el-collapse-item__wrap) {
+        background: transparent;
+        border: none;
+      }
+      :deep(.el-collapse-item__content) {
+        padding: 8px 0 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+    }
   }
 
   .url-item {
