@@ -536,12 +536,20 @@ func GetUserDetails(c *gin.Context) {
 
 		// 生成通用订阅和Clash订阅URL
 		universalURL, clashURL := getSubscriptionURLs(c, sub.SubscriptionURL)
+		// 多客户端订阅地址
+		multiURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
 
 		formattedSubs = append(formattedSubs, gin.H{
 			"id":                sub.ID,
 			"subscription_url":  sub.SubscriptionURL,
 			"universal_url":     universalURL,
 			"clash_url":         clashURL,
+			"stash_url":         multiURLs["stash_url"],
+			"surge_url":         multiURLs["surge_url"],
+			"quantumultx_url":   multiURLs["quantumultx_url"],
+			"loon_url":          multiURLs["loon_url"],
+			"singbox_url":       multiURLs["singbox_url"],
+			"shadowrocket_url":  multiURLs["shadowrocket_url"],
 			"status":            sub.Status,
 			"is_active":         sub.IsActive,
 			"device_limit":      sub.DeviceLimit,
