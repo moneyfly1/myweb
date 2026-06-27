@@ -1548,6 +1548,18 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	return b.String()
 }
 
+// clashExcludedOptions 定义各协议不应出现在 Clash YAML 输出的 Options 字段。
+// 这些字段在 share-link 格式中合法，但在 Clash Meta 的代理配置 schema 中要么不存在，
+// 要么属于其他协议（如 encryption 是 Shadowsocks 专用字段，VLESS/Trojan 等不应输出）。
+var clashExcludedOptions = map[string]map[string]bool{
+	"vless":     {"encryption": true},
+	"trojan":    {"encryption": true},
+	"tuic":      {"encryption": true},
+	"hysteria":  {"encryption": true},
+	"hysteria2": {"encryption": true},
+	"anytls":    {"encryption": true},
+}
+
 func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 	server, uuid := n.Server, n.UUID
 	if n.UUID == "" && (n.Type == "vless" || n.Type == "vmess" || n.Type == "tuic") {
@@ -1655,10 +1667,17 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		res["udp"] = true
 	}
 
+	excludes := clashExcludedOptions[n.Type]
 	for k, v := range n.Options {
-		if k != "alterId" || n.Type != "vmess" {
-			res[k] = v
+		// alterId 是 VMess 专用字段，不输出到 Clash YAML
+		if k == "alterId" && n.Type == "vmess" {
+			continue
 		}
+		// 协议感知排除：跳过已知对当前协议无效的字段
+		if excludes != nil && excludes[k] {
+			continue
+		}
+		res[k] = v
 	}
 	return res
 }
