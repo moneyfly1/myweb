@@ -1550,14 +1550,14 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 
 // clashExcludedOptions 定义各协议不应出现在 Clash YAML 输出的 Options 字段。
 // 这些字段在 share-link 格式中合法，但在 Clash Meta 的代理配置 schema 中要么不存在，
-// 要么属于其他协议（如 encryption 是 Shadowsocks 专用字段，VLESS/Trojan 等不应输出）。
+// 要么属于其他协议（如 encryption 是 Shadowsocks 专用字段，header-type 是 VMess 专用字段）。
 var clashExcludedOptions = map[string]map[string]bool{
-	"vless":     {"encryption": true},
-	"trojan":    {"encryption": true},
-	"tuic":      {"encryption": true},
-	"hysteria":  {"encryption": true},
-	"hysteria2": {"encryption": true},
-	"anytls":    {"encryption": true},
+	"vless":     {"encryption": true, "header-type": true},
+	"trojan":    {"encryption": true, "header-type": true},
+	"tuic":      {"encryption": true, "header-type": true},
+	"hysteria":  {"encryption": true, "header-type": true},
+	"hysteria2": {"encryption": true, "header-type": true},
+	"anytls":    {"encryption": true, "header-type": true},
 }
 
 func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
