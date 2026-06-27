@@ -185,8 +185,40 @@ func parseVLESS(link string) (*ProxyNode, error) {
 func parseTrojan(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "trojan", func(n *ProxyNode, q url.Values, p *url.URL) {
 		n.Password = p.User.Username()
-		n.Network, n.UDP, n.TLS = firstNotEmpty(q.Get("type"), "tcp"), true, true
-		applyTLSOptions(n, q, p.Hostname())
+		n.Network, n.UDP = firstNotEmpty(q.Get("type"), "tcp"), true
+
+		sec := q.Get("security")
+		// Trojan 默认就是 TLS，security 可以是 tls / xtls / reality
+		if sec == "" || sec == "tls" || sec == "xtls" || sec == "reality" || isTrue(q.Get("tls")) {
+			n.TLS = true
+			applyTLSOptions(n, q, p.Hostname())
+
+			// 指纹：优先使用 URL 参数，否则用 applyTLSOptions 已设置的，最后 fallback chrome
+			if fp := q.Get("fp"); fp != "" {
+				n.Options["client-fingerprint"] = fp
+			} else if _, ok := n.Options["client-fingerprint"]; !ok {
+				n.Options["client-fingerprint"] = "chrome"
+			}
+
+			// Reality 处理
+			if sec == "reality" || q.Get("pbk") != "" {
+				applyRealityOptions(n, q)
+			}
+
+			// XTLS / flow 处理
+			flow := q.Get("flow")
+			if flow == "" && q.Get("xtls") != "" {
+				if q.Get("xtls") == "2" {
+					flow = "xtls-rprx-vision"
+				} else if q.Get("xtls") == "1" {
+					flow = "xtls-rprx-direct"
+				}
+			}
+			if flow != "" {
+				n.Options["flow"] = flow
+			}
+		}
+
 		applyTransportOptions(n, q)
 	})
 }
