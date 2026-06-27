@@ -67,8 +67,23 @@ func fetchSubscriptionAdmin(c *gin.Context, db *gorm.DB, subID string) (*models.
 
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
-	return fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subURL),
-		fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subURL)
+	return fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subURL),
+		fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subURL)
+}
+
+// getMultiClientSubscriptionURLs 返回所有支持的客户端订阅地址
+func getMultiClientSubscriptionURLs(c *gin.Context, subURL string) gin.H {
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
+	return gin.H{
+		"universal_url":    fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subURL),
+		"clash_url":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subURL),
+		"stash_url":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=stash", baseURL, subURL),
+		"surge_url":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=surge", baseURL, subURL),
+		"quantumultx_url":  fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=quantumultx", baseURL, subURL),
+		"loon_url":         fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=loon", baseURL, subURL),
+		"singbox_url":      fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=singbox", baseURL, subURL),
+		"shadowrocket_url": fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=shadowrocket", baseURL, subURL),
+	}
 }
 
 func getCurrentAdminUsername(c *gin.Context) *string {
