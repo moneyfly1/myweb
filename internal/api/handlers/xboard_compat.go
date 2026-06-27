@@ -1,15 +1,21 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/config_update"
+	"cboard-go/internal/services/device"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetCurrentUserXBoardCompat(c *gin.Context) {
@@ -57,9 +63,10 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 		return
 	}
 
-	baseURL := utils.GetBuildBaseURL(c.Request, db)
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscription.SubscriptionURL)
-	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL)
+	urls := getMultiClientSubscriptionURLs(c, subscription.SubscriptionURL)
+
+	clashURL := urls["clash_url"].(string)
+	universalURL := urls["universal_url"].(string)
 
 	expiryDate := ""
 	if !subscription.ExpireTime.IsZero() {
@@ -107,41 +114,144 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 		return
 	}
 
+	subType := c.Query("type")
+	if subType == "" {
+		subType = c.Query("format")
+	}
+	if subType == "" {
+		// 根据 User-Agent 自动检测客户端类型
+		ua := c.GetHeader("User-Agent")
+		subType = detectClientType(ua)
+	}
+
 	db := database.GetDB()
 	var subscription models.Subscription
 	if err := db.Where("subscription_url = ?", token).First(&subscription).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", nil)
+			return
+		}
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询订阅失败", err)
 		return
 	}
 
-	user, ok := middleware.GetCurrentUser(c)
-	if !ok {
-		var subUser models.User
-		if err := db.First(&subUser, subscription.UserID).Error; err != nil {
-			utils.ErrorResponse(c, http.StatusNotFound, "订阅关联的用户不存在", err)
-			return
-		}
-		if !subUser.IsActive {
-			utils.ErrorResponse(c, http.StatusForbidden, "用户账户已禁用", nil)
-			return
-		}
-	} else {
-		if subscription.UserID != user.ID {
-			utils.ErrorResponse(c, http.StatusForbidden, "无权访问此订阅", nil)
-			return
-		}
-	}
-
+	// 验证订阅状态
 	now := utils.GetBeijingTime()
-	if !subscription.ExpireTime.IsZero() && subscription.ExpireTime.Before(now) {
-		utils.ErrorResponse(c, http.StatusForbidden, "订阅已过期", nil)
+	isExpired := subscription.ExpireTime.Before(now)
+	isInactive := !subscription.IsActive || subscription.Status != "active"
+
+	var user models.User
+	var isSpecialValid bool
+	if err := db.First(&user, subscription.UserID).Error; err == nil {
+		isSpecialValid = user.SpecialNodeExpiresAt.Valid && user.SpecialNodeExpiresAt.Time.After(now)
+	}
+
+	if isExpired && !isSpecialValid {
+		baseURL := utils.GetBuildBaseURL(c.Request, db)
+		content, _, _ := config_update.NewConfigUpdateService().GenerateClientConfig(token, utils.GetRealClientIP(c), c.GetHeader("User-Agent"), subType)
+		if content != "" {
+			c.String(200, content)
+			return
+		}
+		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", subscription.ExpireTime.Format(DateFormat)), baseURL))
+		return
+	}
+	if isInactive {
+		baseURL := utils.GetBuildBaseURL(c.Request, db)
+		c.String(200, generateErrorConfigBase64("订阅已失效", "订阅已被禁用或状态异常，请联系客服", baseURL))
 		return
 	}
 
-	if !subscription.IsActive || subscription.Status != "active" {
-		utils.ErrorResponse(c, http.StatusForbidden, "订阅未激活", nil)
-		return
+	clientIP := utils.GetRealClientIP(c)
+	userAgent := c.GetHeader("User-Agent")
+
+	// 设备管理
+	deviceManager := device.NewDeviceManager()
+	_, deviceExists, _ := deviceManager.FindExistingDevice(subscription.ID, userAgent, clientIP)
+
+	var count int64
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
+
+	shouldRecord := true
+	if !deviceExists && !user.SpecialNodeUnlimitedDevices {
+		if subscription.DeviceLimit == 0 || (subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit) {
+			shouldRecord = false
+		}
 	}
 
-	c.Redirect(http.StatusFound, fmt.Sprintf("/api/v1/subscriptions/clash/%s", subscription.SubscriptionURL))
+	if shouldRecord {
+		go func(subID, userID uint, ua, ip string) {
+			deviceManager.RecordDeviceAccess(subID, userID, ua, ip, subType)
+		}(subscription.ID, subscription.UserID, userAgent, clientIP)
+
+		go func(subID uint) {
+			db.Model(&models.Subscription{}).Where("id = ?", subID).
+				UpdateColumn(fmt.Sprintf("%s_count", safeSubTypeForDB(subType)), gorm.Expr(fmt.Sprintf("%s_count + 1", safeSubTypeForDB(subType))))
+		}(subscription.ID)
+	}
+
+	// 生成配置
+	configService := config_update.NewConfigUpdateService()
+	config, contentType, fileName := configService.GenerateClientConfig(token, clientIP, userAgent, subType)
+
+	subscriptionName := configService.GenerateSubscriptionName(
+		configService.GetSubscriptionContext(token, clientIP, userAgent),
+	)
+	encodedName := url.QueryEscape(fileName)
+
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", encodedName))
+	c.Header("Subscription-Title", subscriptionName)
+	c.Header("Profile-Title", subscriptionName)
+	userinfoParts := []string{"upload=0", "download=0", "total=0"}
+	if !subscription.ExpireTime.IsZero() {
+		userinfoParts = append(userinfoParts, fmt.Sprintf("expire=%d", subscription.ExpireTime.Unix()))
+	}
+	c.Header("Subscription-Userinfo", strings.Join(userinfoParts, "; "))
+	c.Header("Profile-Update-Interval", "24")
+
+	c.String(200, config)
+}
+
+// detectClientType 根据 User-Agent 检测客户端类型
+func detectClientType(ua string) string {
+	uaLower := strings.ToLower(ua)
+	switch {
+	case strings.Contains(uaLower, "clash") || strings.Contains(uaLower, "mihomo"):
+		return "clash"
+	case strings.Contains(uaLower, "stash"):
+		return "stash"
+	case strings.Contains(uaLower, "surge"):
+		return "surge"
+	case strings.Contains(uaLower, "quantumult"):
+		return "quantumultx"
+	case strings.Contains(uaLower, "loon"):
+		return "loon"
+	case strings.Contains(uaLower, "sing-box") || strings.Contains(uaLower, "singbox"):
+		return "singbox"
+	case strings.Contains(uaLower, "shadowrocket"):
+		return "shadowrocket"
+	default:
+		return "universal"
+	}
+}
+
+// safeSubTypeForDB maps client type to the DB counter column suffix
+func safeSubTypeForDB(t string) string {
+	switch t {
+	case "clash", "clashmeta", "stash":
+		return "clash"
+	case "surge":
+		return "surge"
+	case "shadowrocket":
+		return "universal"
+	case "quantumultx", "quantumult":
+		return "universal"
+	case "singbox", "sing-box":
+		return "universal"
+	case "loon":
+		return "universal"
+	default:
+		return "universal"
+	}
 }
