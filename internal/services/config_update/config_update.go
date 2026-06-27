@@ -1351,11 +1351,19 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 			var tpl map[string]interface{}
 			if yaml.Unmarshal(data, &tpl) == nil {
 				tpl["name"] = subName
-				var plist []map[string]interface{}
+				var proxyNodes []yaml.Node
 				for _, p := range filtered {
-					plist = append(plist, s.nodeToMap(p))
+					m := s.nodeToMap(p)
+					// 转成 yaml.Node 并设 FlowStyle 实现横排 compact 输出
+					data, _ := yaml.Marshal(m)
+					var doc yaml.Node
+					if yaml.Unmarshal(data, &doc) == nil && len(doc.Content) > 0 {
+						flowNode := *doc.Content[0]
+						flowNode.Style = yaml.FlowStyle
+						proxyNodes = append(proxyNodes, flowNode)
+					}
 				}
-				tpl["proxies"] = plist
+				tpl["proxies"] = proxyNodes
 
 				if grps, ok := tpl["proxy-groups"].([]interface{}); ok {
 					s.updateProxyGroups(grps, proxyNames)
@@ -1531,21 +1539,30 @@ func optVal[T any](opts map[string]interface{}, key string) T {
 
 func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	ind := strings.Repeat(" ", indent)
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%s- name: %s\n%s  type: %s\n%s  server: %s\n%s  port: %d\n", ind, s.escapeYAMLString(node.Name), ind, node.Type, ind, node.Server, ind, node.Port))
-
 	m := s.nodeToMap(node)
-	var keys []string
-	for k := range m {
-		if k != "name" && k != "type" && k != "server" && k != "port" {
-			keys = append(keys, k)
+
+	// 固定顺序：name, type, server, port 在前，其余按字母排序
+	ordered := make([]string, 0, len(m))
+	for _, k := range []string{"name", "type", "server", "port"} {
+		if _, ok := m[k]; ok {
+			ordered = append(ordered, k)
 		}
 	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		s.writeYAMLValue(&b, ind+"  ", k, m[k], indent+2)
+	var rest []string
+	for k := range m {
+		if k != "name" && k != "type" && k != "server" && k != "port" {
+			rest = append(rest, k)
+		}
 	}
-	return b.String()
+	sort.Strings(rest)
+	ordered = append(ordered, rest...)
+
+	// 构建 flow-style YAML
+	var parts []string
+	for _, k := range ordered {
+		parts = append(parts, fmt.Sprintf("%s: %s", s.escapeYAMLKey(k), s.formatYAMLFlow(m[k])))
+	}
+	return fmt.Sprintf("%s- {%s}\n", ind, strings.Join(parts, ", "))
 }
 
 // clashExcludedOptions 定义各协议不应出现在 Clash YAML 输出的 Options 字段。
@@ -1679,6 +1696,19 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		}
 		res[k] = v
 	}
+
+	// servername → sni：仅 trojan/hysteria/hysteria2/naive 使用 sni 字段
+	// vless/vmess 使用 servername，不能转换；tuic/anytls 已在 switch 中处理
+	if _, hasSNI := res["sni"]; !hasSNI {
+		if sn, ok := res["servername"]; ok {
+			switch n.Type {
+			case "trojan", "hysteria", "hysteria2", "naive":
+				res["sni"] = sn
+				delete(res, "servername")
+			}
+		}
+	}
+
 	return res
 }
 
@@ -1765,7 +1795,7 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	if str == "" {
 		return `""`
 	}
-	needQuote := strings.ContainsAny(str, ":\"'\n\r\t#@&*?|>!%`[]{},\x00") ||
+	needQuote := strings.ContainsAny(str, ":\"'\n\r	 #@&*?|>!%`[]{},\x00") ||
 		strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") ||
 		strings.HasPrefix(str, "-") || strings.HasPrefix(str, "0x")
 
@@ -1782,6 +1812,71 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 		return fmt.Sprintf(`"%s"`, escaped)
 	}
 	return str
+}
+
+// escapeYAMLKey 对 flow-style YAML 的 key 做引号处理
+func (s *ConfigUpdateService) escapeYAMLKey(key string) string {
+	if strings.ContainsAny(key, ":{}\"'[]#,>&*?|!%@`") ||
+		strings.HasPrefix(key, " ") || strings.HasSuffix(key, " ") {
+		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(key, "\"", "\\\""))
+	}
+	return key
+}
+
+// formatYAMLFlow 将值序列化为 flow-style YAML 行内格式
+func (s *ConfigUpdateService) formatYAMLFlow(v interface{}) string {
+	if v == nil {
+		return "null"
+	}
+	switch val := v.(type) {
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case int:
+		return fmt.Sprintf("%d", val)
+	case int64:
+		return fmt.Sprintf("%d", val)
+	case float64:
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", val), "0"), ".")
+	case string:
+		return s.escapeYAMLString(val)
+	case map[string]interface{}:
+		if len(val) == 0 {
+			return "{}"
+		}
+		var keys []string
+		for k := range val {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var pairs []string
+		for _, k := range keys {
+			pairs = append(pairs, fmt.Sprintf("%s: %s", s.escapeYAMLKey(k), s.formatYAMLFlow(val[k])))
+		}
+		return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
+	case []interface{}:
+		if len(val) == 0 {
+			return "[]"
+		}
+		var items []string
+		for _, item := range val {
+			items = append(items, s.formatYAMLFlow(item))
+		}
+		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	case []string:
+		if len(val) == 0 {
+			return "[]"
+		}
+		var items []string
+		for _, item := range val {
+			items = append(items, s.escapeYAMLString(item))
+		}
+		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	default:
+		return s.escapeYAMLString(fmt.Sprintf("%v", val))
+	}
 }
 
 func (s *ConfigUpdateService) NodeToLink(node *ProxyNode) string { return s.nodeToLink(node) }
