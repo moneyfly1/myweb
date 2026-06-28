@@ -192,7 +192,12 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 
 	// 生成配置
 	configService := config_update.NewConfigUpdateService()
-	config, contentType, fileName := configService.GenerateClientConfig(token, clientIP, userAgent, subType)
+	var config, contentType, fileName string
+	if excludedProtocols := parseExcludedProtocols(c.Query("exclude")); len(excludedProtocols) > 0 {
+		config, contentType, fileName = configService.GenerateClientConfigWithExcludedProtocols(token, clientIP, userAgent, subType, excludedProtocols)
+	} else {
+		config, contentType, fileName = configService.GenerateClientConfig(token, clientIP, userAgent, subType)
+	}
 
 	subscriptionName := configService.GenerateSubscriptionName(
 		configService.GetSubscriptionContext(token, clientIP, userAgent),
@@ -234,6 +239,24 @@ func detectClientType(ua string) string {
 	default:
 		return "universal"
 	}
+}
+
+func parseExcludedProtocols(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	protocols := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		protocol := strings.ToLower(strings.TrimSpace(part))
+		if protocol == "" || seen[protocol] {
+			continue
+		}
+		seen[protocol] = true
+		protocols = append(protocols, protocol)
+	}
+	return protocols
 }
 
 // safeSubTypeForDB maps client type to the DB counter column suffix

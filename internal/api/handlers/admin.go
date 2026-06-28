@@ -708,8 +708,9 @@ func GetUserSubscription(c *gin.Context) {
 	}
 
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
-	clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscription.SubscriptionURL)
-	universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL)
+	clashURL := fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subscription.SubscriptionURL)
+	universalURL := fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subscription.SubscriptionURL)
+	multiURLs := getMultiClientSubscriptionURLs(c, subscription.SubscriptionURL)
 	expiryDate := "未设置"
 	if !subscription.ExpireTime.IsZero() {
 		expiryDate = utils.FormatBeijingTime(subscription.ExpireTime)
@@ -741,6 +742,12 @@ func GetUserSubscription(c *gin.Context) {
 		"subscription_url":               subscription.SubscriptionURL,
 		"clash_url":                      clashURL,
 		"universal_url":                  universalURL,
+		"stash_url":                      multiURLs["stash_url"],
+		"surge_url":                      multiURLs["surge_url"],
+		"quantumultx_url":                multiURLs["quantumultx_url"],
+		"loon_url":                       multiURLs["loon_url"],
+		"singbox_url":                    multiURLs["singbox_url"],
+		"shadowrocket_url":               multiURLs["shadowrocket_url"],
 		"qrcode_url":                     qrcodeURL,
 		"device_limit":                   subscription.DeviceLimit,
 		"current_devices":                onlineDevices,
