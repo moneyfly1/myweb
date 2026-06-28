@@ -205,6 +205,19 @@ func (s *ConfigUpdateService) filterProxiesByProtocol(proxies []*ProxyNode, allo
 	return result
 }
 
+func (s *ConfigUpdateService) filterProxiesByExcludedProtocols(proxies []*ProxyNode, excluded map[string]bool) []*ProxyNode {
+	if len(excluded) == 0 {
+		return proxies
+	}
+	var result []*ProxyNode
+	for _, p := range proxies {
+		if !excluded[p.Type] {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 func (s *ConfigUpdateService) IsRunning() bool {
 	s.runningMutex.Lock()
 	defer s.runningMutex.Unlock()
@@ -2136,6 +2149,21 @@ func (s *ConfigUpdateService) nodeToSSRLink(n *ProxyNode) string {
 // GenerateClientConfig 根据客户端类型生成对应的订阅配置
 // subType: clash, clashmeta, mihomo, stash, surge, quantumultx, loon, singbox, shadowrocket, universal
 func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, subType string) (responseData, contentType, fileName string) {
+	return s.generateClientConfig(token, clientIP, userAgent, subType, nil)
+}
+
+func (s *ConfigUpdateService) GenerateClientConfigWithExcludedProtocols(token, clientIP, userAgent, subType string, excludedProtocols []string) (responseData, contentType, fileName string) {
+	excluded := make(map[string]bool, len(excludedProtocols))
+	for _, protocol := range excludedProtocols {
+		protocol = strings.ToLower(strings.TrimSpace(protocol))
+		if protocol != "" {
+			excluded[protocol] = true
+		}
+	}
+	return s.generateClientConfig(token, clientIP, userAgent, subType, excluded)
+}
+
+func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, subType string, excludedProtocols map[string]bool) (responseData, contentType, fileName string) {
 	s.refreshSystemConfig()
 
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
@@ -2152,26 +2180,31 @@ func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, s
 	switch subType {
 	case "clash", "clashmeta", "mihomo", "stash":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		config := s.generateClashYAML(nodes, ctx)
 		return config, "text/yaml; charset=utf-8", subName + ".yaml"
 
 	case "surge":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		config := s.generateSurgeConfig(nodes, siteURL)
 		return config, "text/plain; charset=utf-8", subName + ".conf"
 
 	case "singbox", "sing-box":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		config := s.generateSingBoxConfig(nodes)
 		return config, "application/json; charset=utf-8", subName + ".json"
 
 	case "quantumult", "quantumultx":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		config := s.generateQuantumultXConfig(nodes, siteURL)
 		return config, "text/plain; charset=utf-8", subName + ".conf"
 
 	case "loon":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		config := s.generateLoonConfig(nodes, siteURL)
 		return config, "text/plain; charset=utf-8", subName + ".conf"
 
@@ -2180,6 +2213,7 @@ func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, s
 		uaLower := strings.ToLower(userAgent)
 		isV2rayN := strings.Contains(uaLower, "v2rayn")
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		if isV2rayN {
 			filtered := nodes[:0]
 			for _, n := range nodes {
@@ -2352,10 +2386,10 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 		UUID     string `json:"uuid,omitempty"`
 		Method   string `json:"method,omitempty"`
 		TLS      *struct {
-			Enabled  bool   `json:"enabled"`
-			ServerName string `json:"server_name,omitempty"`
-			Insecure bool   `json:"insecure,omitempty"`
-			ALPN     []string `json:"alpn,omitempty"`
+			Enabled    bool     `json:"enabled"`
+			ServerName string   `json:"server_name,omitempty"`
+			Insecure   bool     `json:"insecure,omitempty"`
+			ALPN       []string `json:"alpn,omitempty"`
 		} `json:"tls,omitempty"`
 		Transport *struct {
 			Type string `json:"type"`
@@ -2412,10 +2446,10 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 				sni = ob.Server
 			}
 			ob.TLS = &struct {
-				Enabled  bool   `json:"enabled"`
-				ServerName string `json:"server_name,omitempty"`
-				Insecure bool   `json:"insecure,omitempty"`
-				ALPN     []string `json:"alpn,omitempty"`
+				Enabled    bool     `json:"enabled"`
+				ServerName string   `json:"server_name,omitempty"`
+				Insecure   bool     `json:"insecure,omitempty"`
+				ALPN       []string `json:"alpn,omitempty"`
 			}{Enabled: true, ServerName: sni, Insecure: optVal[bool](m, "skip-cert-verify")}
 		}
 

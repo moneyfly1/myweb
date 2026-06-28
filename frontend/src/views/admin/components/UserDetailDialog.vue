@@ -93,6 +93,15 @@
             <!-- 更多客户端订阅 -->
             <el-collapse v-if="sub.stash_url || sub.surge_url || sub.quantumultx_url || sub.loon_url || sub.singbox_url || sub.shadowrocket_url" class="more-urls-collapse">
               <el-collapse-item title="更多客户端订阅 ▼" name="more">
+                <div class="url-item exclude-example" v-if="sub.clash_url">
+                  <div class="url-header">
+                    <span class="url-label">协议排除示例:</span>
+                  </div>
+                  <div class="exclude-example-text">
+                    默认订阅遵循后台系统设置中的协议过滤，不额外排除协议。Clash 临时排除 AnyTLS 示例：
+                    <code>{{ buildExcludeExampleUrl(sub.clash_url) }}</code>
+                  </div>
+                </div>
                 <div class="url-item" v-if="sub.stash_url">
                   <div class="url-header">
                     <span class="url-label">Stash:</span>
@@ -882,6 +891,11 @@ export default {
       if (!date) return ''
       return formatDateUtil(date)
     },
+    buildExcludeExampleUrl(url) {
+      if (!url) return ''
+      const separator = url.includes('?') ? '&' : '?'
+      return `${url}${separator}exclude=anytls`
+    },
     getStatusType(status) {
       const statusMap = {
         active: 'success',
@@ -1432,6 +1446,27 @@ export default {
       line-height: 1.6;
       user-select: all;
       display: block;
+    }
+
+    &.exclude-example {
+      padding: 8px 10px;
+      border: 1px dashed #dcdfe6;
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .exclude-example-text {
+      color: #606266;
+      font-size: 12px;
+      line-height: 1.6;
+      word-break: break-all;
+
+      code {
+        color: #303133;
+        background: #f5f7fa;
+        padding: 2px 5px;
+        border-radius: 4px;
+      }
     }
   }
 

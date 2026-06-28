@@ -71,8 +71,8 @@ func GetUserDashboard(c *gin.Context) {
 	universalURL := ""
 	qrcodeURL := ""
 	if subscription.ID > 0 && subscription.SubscriptionURL != "" {
-		clashURL = fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscription.SubscriptionURL)
-		universalURL = fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscription.SubscriptionURL)
+		clashURL = fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subscription.SubscriptionURL)
+		universalURL = fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subscription.SubscriptionURL)
 
 		encodedURL := base64.StdEncoding.EncodeToString([]byte(universalURL))
 		expiryDisplay := expiryDate
