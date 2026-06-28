@@ -80,17 +80,45 @@
       </div>
       <div class="subscription-urls" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
         <h3>订阅地址</h3>
+        <div class="protocol-exclude-panel" v-if="availableProtocolOptions.length">
+          <div class="protocol-exclude-header">
+            <div>
+              <div class="exclude-title">协议排除</div>
+              <div class="exclude-subtitle">
+                {{ selectedExcludedProtocols.length ? `已排除 ${selectedExcludedProtocols.length} 种协议` : '默认遵循后台系统协议过滤' }}
+              </div>
+            </div>
+            <el-button
+              text
+              type="primary"
+              size="small"
+              :disabled="!selectedExcludedProtocols.length"
+              @click="clearExcludedProtocols"
+            >
+              清空
+            </el-button>
+          </div>
+          <el-checkbox-group v-model="selectedExcludedProtocols" class="protocol-checkboxes">
+            <el-checkbox-button
+              v-for="protocol in availableProtocolOptions"
+              :key="protocol.value"
+              :label="protocol.value"
+            >
+              {{ protocol.label }}
+            </el-checkbox-button>
+          </el-checkbox-group>
+        </div>
         <div class="url-list">
           <div class="url-item">
             <div class="url-label">通用订阅 (V2Ray/Shadowrocket)：</div>
             <div class="url-content">
               <el-input
-                v-model="subscription.universal_url"
+                :model-value="buildSubscriptionUrl(subscription.universal_url)"
                 readonly
                 size="large"
               >
                 <template #append>
-                  <el-button @click="copyUrl(subscription.universal_url)">
+                  <el-button @click="copyUrl(buildSubscriptionUrl(subscription.universal_url))">
                     <el-icon><DocumentCopy /></el-icon>
                     复制
                   </el-button>
@@ -102,12 +130,12 @@
             <div class="url-label">Clash / Clash Meta：</div>
             <div class="url-content">
               <el-input
-                v-model="subscription.clash_url"
+                :model-value="buildSubscriptionUrl(subscription.clash_url)"
                 readonly
                 size="large"
               >
                 <template #append>
-                  <el-button @click="copyUrl(subscription.clash_url)">
+                  <el-button @click="copyUrl(buildSubscriptionUrl(subscription.clash_url))">
                     <el-icon><DocumentCopy /></el-icon>
                     复制
                   </el-button>
@@ -120,18 +148,12 @@
         <el-collapse v-if="subscription.stash_url || subscription.surge_url || subscription.quantumultx_url || subscription.loon_url || subscription.singbox_url || subscription.shadowrocket_url" class="more-clients-collapse">
           <el-collapse-item title="更多客户端订阅 ▼" name="more">
             <div class="url-list more-url-list">
-              <div class="url-item exclude-example" v-if="subscription.clash_url">
-                <div class="url-label">协议排除示例：</div>
-                <div class="exclude-example-text">
-                  默认订阅遵循后台系统设置中的协议过滤，不额外排除协议。如需让 Clash 订阅临时排除 AnyTLS，可在 Clash 链接后追加参数，例如 <code>{{ getExcludeExampleUrl(subscription.clash_url) }}</code>
-                </div>
-              </div>
               <div class="url-item" v-if="subscription.stash_url">
                 <div class="url-label">Stash：</div>
                 <div class="url-content">
-                  <el-input v-model="subscription.stash_url" readonly size="default">
+                  <el-input :model-value="buildSubscriptionUrl(subscription.stash_url)" readonly size="default">
                     <template #append>
-                      <el-button @click="copyUrl(subscription.stash_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.stash_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
                     </template>
                   </el-input>
                 </div>
@@ -139,9 +161,9 @@
               <div class="url-item" v-if="subscription.surge_url">
                 <div class="url-label">Surge：</div>
                 <div class="url-content">
-                  <el-input v-model="subscription.surge_url" readonly size="default">
+                  <el-input :model-value="buildSubscriptionUrl(subscription.surge_url)" readonly size="default">
                     <template #append>
-                      <el-button @click="copyUrl(subscription.surge_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.surge_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
                     </template>
                   </el-input>
                 </div>
@@ -149,9 +171,9 @@
               <div class="url-item" v-if="subscription.quantumultx_url">
                 <div class="url-label">Quantumult X：</div>
                 <div class="url-content">
-                  <el-input v-model="subscription.quantumultx_url" readonly size="default">
+                  <el-input :model-value="buildSubscriptionUrl(subscription.quantumultx_url)" readonly size="default">
                     <template #append>
-                      <el-button @click="copyUrl(subscription.quantumultx_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.quantumultx_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
                     </template>
                   </el-input>
                 </div>
@@ -159,9 +181,9 @@
               <div class="url-item" v-if="subscription.loon_url">
                 <div class="url-label">Loon：</div>
                 <div class="url-content">
-                  <el-input v-model="subscription.loon_url" readonly size="default">
+                  <el-input :model-value="buildSubscriptionUrl(subscription.loon_url)" readonly size="default">
                     <template #append>
-                      <el-button @click="copyUrl(subscription.loon_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.loon_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
                     </template>
                   </el-input>
                 </div>
@@ -169,9 +191,9 @@
               <div class="url-item" v-if="subscription.singbox_url">
                 <div class="url-label">Sing-Box：</div>
                 <div class="url-content">
-                  <el-input v-model="subscription.singbox_url" readonly size="default">
+                  <el-input :model-value="buildSubscriptionUrl(subscription.singbox_url)" readonly size="default">
                     <template #append>
-                      <el-button @click="copyUrl(subscription.singbox_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.singbox_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
                     </template>
                   </el-input>
                 </div>
@@ -179,9 +201,9 @@
               <div class="url-item" v-if="subscription.shadowrocket_url">
                 <div class="url-label">Shadowrocket：</div>
                 <div class="url-content">
-                  <el-input v-model="subscription.shadowrocket_url" readonly size="default">
+                  <el-input :model-value="buildSubscriptionUrl(subscription.shadowrocket_url)" readonly size="default">
                     <template #append>
-                      <el-button @click="copyUrl(subscription.shadowrocket_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.shadowrocket_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
                     </template>
                   </el-input>
                 </div>
@@ -288,7 +310,7 @@
   </div>
 </template>
 <script>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { subscriptionAPI, userAPI } from '@/utils/api'
@@ -312,6 +334,18 @@ export default {
     const sendEmailLoading = ref(false)
     const sendEmailRequesting = ref(false)
     const showUpgradeDrawer = ref(false)
+    const selectedExcludedProtocols = ref([])
+    const availableProtocolOptions = [
+      { label: 'AnyTLS', value: 'anytls' },
+      { label: 'VMess', value: 'vmess' },
+      { label: 'VLESS', value: 'vless' },
+      { label: 'Trojan', value: 'trojan' },
+      { label: 'Shadowsocks', value: 'ss' },
+      { label: 'Hysteria2', value: 'hysteria2' },
+      { label: 'TUIC', value: 'tuic' },
+      { label: 'SOCKS', value: 'socks' },
+      { label: 'HTTP', value: 'http' }
+    ]
     let refreshPromise = null
     const handleUpgradeSuccess = async () => {
       await refreshSubscription()
@@ -334,6 +368,9 @@ export default {
         window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
         window.removeEventListener('user-info-updated', handleUserInfoUpdate)
       })
+    })
+    watch(selectedExcludedProtocols, () => {
+      generateQRCodes()
     })
     const refreshSubscription = async () => {
       if (refreshPromise) return refreshPromise
@@ -429,12 +466,13 @@ export default {
     const generateQRCodes = async () => {
       if (!subscription.value) return
       try {
-        let qrData = subscription.value.qrcode_url
+        let qrData = selectedExcludedProtocols.value.length ? '' : subscription.value.qrcode_url
         if (!qrData && subscription.value.universal_url) {
           const baseUrl = window.location.origin
-          const subscriptionUrl = subscription.value.universal_url.startsWith('http') 
-            ? subscription.value.universal_url 
-            : `${baseUrl}${subscription.value.universal_url}`
+          const excludedUrl = buildSubscriptionUrl(subscription.value.universal_url)
+          const subscriptionUrl = excludedUrl.startsWith('http')
+            ? excludedUrl
+            : `${baseUrl}${excludedUrl}`
           const encodedUrl = btoa(unescape(encodeURIComponent(subscriptionUrl)))
           let expiryDisplayName = '订阅'
           if (subscription.value.expire_time && subscription.value.expire_time !== '未设置') {
@@ -466,10 +504,14 @@ export default {
     const copyUrl = async (url) => {
       await copyText(url, '链接已复制到剪贴板')
     }
-    const getExcludeExampleUrl = (url) => {
+    const buildSubscriptionUrl = (url) => {
       if (!url) return ''
+      if (!selectedExcludedProtocols.value.length) return url
       const separator = url.includes('?') ? '&' : '?'
-      return `${url}${separator}exclude=anytls`
+      return `${url}${separator}exclude=${selectedExcludedProtocols.value.join(',')}`
+    }
+    const clearExcludedProtocols = () => {
+      selectedExcludedProtocols.value = []
     }
     const resetSubscription = async () => {
       try {
@@ -566,11 +608,14 @@ export default {
       resetLoading,
       sendEmailLoading,
       showUpgradeDrawer,
+      selectedExcludedProtocols,
+      availableProtocolOptions,
       copyUrl,
+      buildSubscriptionUrl,
+      clearExcludedProtocols,
       resetSubscription,
       sendSubscriptionToEmail,
       formatDate,
-      getExcludeExampleUrl,
       getRemainingDays,
       getStatusType,
       getStatusText,
@@ -649,6 +694,54 @@ export default {
     }
   }
 }
+.protocol-exclude-panel {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #f8fafc;
+
+  .protocol-exclude-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .exclude-title {
+    color: #303133;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .exclude-subtitle {
+    margin-top: 2px;
+    color: #909399;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .protocol-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    :deep(.el-checkbox-button__inner) {
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      box-shadow: none;
+      padding: 7px 12px;
+      line-height: 1;
+    }
+
+    :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
+    :deep(.el-checkbox-button:last-child .el-checkbox-button__inner) {
+      border-radius: 6px;
+    }
+  }
+}
 .url-list {
   margin-bottom: 30px;
 }
@@ -664,25 +757,6 @@ export default {
   }
   .url-content {
     flex: 1;
-  }
-  &.exclude-example {
-    align-items: flex-start;
-    padding: 10px 12px;
-    border: 1px dashed #dcdfe6;
-    border-radius: 6px;
-    background: #fff;
-  }
-  .exclude-example-text {
-    flex: 1;
-    color: #606266;
-    line-height: 1.6;
-    word-break: break-all;
-    code {
-      color: #303133;
-      background: #f5f7fa;
-      padding: 2px 5px;
-      border-radius: 4px;
-    }
   }
 }
 .qr-code-section {
