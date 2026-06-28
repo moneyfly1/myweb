@@ -62,7 +62,7 @@
 
           <!-- 订阅链接 -->
           <div class="url-section">
-            <div class="url-item">
+            <div class="url-item" v-if="sub.universal_url || sub.subscription_url">
               <div class="url-header">
                 <span class="url-label">通用订阅 (V2Ray/Shadowrocket):</span>
                 <el-button
@@ -74,75 +74,63 @@
                   复制
                 </el-button>
               </div>
-              <code class="url-code">{{ sub.universal_url || sub.subscription_url || '无' }}</code>
+              <button
+                type="button"
+                class="url-code url-copy"
+                @click="copyToClipboard(sub.universal_url || sub.subscription_url)"
+                :disabled="!sub.universal_url && !sub.subscription_url"
+                :title="`点击复制: ${sub.universal_url || sub.subscription_url || ''}`"
+              >
+                {{ sub.universal_url || sub.subscription_url || '无' }}
+              </button>
             </div>
-            <div class="url-item">
+            <div class="url-item" v-if="sub.clash_url">
               <div class="url-header">
                 <span class="url-label">Clash / Clash Meta:</span>
                 <el-button
                   size="small"
                   :icon="CopyDocument"
-                  @click="copyToClipboard(sub.clash_url)"
-                  :disabled="!sub.clash_url"
+                  @click="copyToClipboard(getTypedSubscriptionUrl(sub, 'clash'))"
+                  :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
                 >
                   复制
                 </el-button>
               </div>
-              <code class="url-code">{{ sub.clash_url || '无' }}</code>
+              <button
+                type="button"
+                class="url-code url-copy"
+                @click="copyToClipboard(getTypedSubscriptionUrl(sub, 'clash'))"
+                :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
+                :title="`点击复制: ${getTypedSubscriptionUrl(sub, 'clash') || ''}`"
+              >
+                {{ getTypedSubscriptionUrl(sub, 'clash') || '无' }}
+              </button>
             </div>
-            <!-- 更多客户端订阅 -->
-            <el-collapse v-if="sub.stash_url || sub.surge_url || sub.quantumultx_url || sub.loon_url || sub.singbox_url || sub.shadowrocket_url" class="more-urls-collapse">
-              <el-collapse-item title="更多客户端订阅 ▼" name="more">
-                <div class="url-item exclude-example" v-if="sub.clash_url">
+            <div class="url-item" v-if="!sub.universal_url && !sub.subscription_url && !sub.clash_url">
+              <div class="url-header">
+                <span class="url-label">订阅地址:</span>
+              </div>
+              <code class="url-code">无</code>
+            </div>
+            <el-collapse v-if="hasMoreSubscriptionUrls(sub)" class="more-urls-collapse">
+              <el-collapse-item title="更多订阅地址" :name="`more-${sub.id || index}`">
+                <div
+                  v-for="client in getMoreSubscriptionUrls(sub)"
+                  :key="client.type"
+                  class="url-item"
+                >
                   <div class="url-header">
-                    <span class="url-label">协议排除示例:</span>
+                    <span class="url-label">{{ client.label }}:</span>
+                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(client.url)">复制</el-button>
                   </div>
-                  <div class="exclude-example-text">
-                    默认订阅遵循后台系统设置中的协议过滤，不额外排除协议。Clash 临时排除 AnyTLS 示例：
-                    <code>{{ buildExcludeExampleUrl(sub.clash_url) }}</code>
-                  </div>
-                </div>
-                <div class="url-item" v-if="sub.stash_url">
-                  <div class="url-header">
-                    <span class="url-label">Stash:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.stash_url)">复制</el-button>
-                  </div>
-                  <code class="url-code">{{ sub.stash_url }}</code>
-                </div>
-                <div class="url-item" v-if="sub.surge_url">
-                  <div class="url-header">
-                    <span class="url-label">Surge:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.surge_url)">复制</el-button>
-                  </div>
-                  <code class="url-code">{{ sub.surge_url }}</code>
-                </div>
-                <div class="url-item" v-if="sub.quantumultx_url">
-                  <div class="url-header">
-                    <span class="url-label">Quantumult X:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.quantumultx_url)">复制</el-button>
-                  </div>
-                  <code class="url-code">{{ sub.quantumultx_url }}</code>
-                </div>
-                <div class="url-item" v-if="sub.loon_url">
-                  <div class="url-header">
-                    <span class="url-label">Loon:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.loon_url)">复制</el-button>
-                  </div>
-                  <code class="url-code">{{ sub.loon_url }}</code>
-                </div>
-                <div class="url-item" v-if="sub.singbox_url">
-                  <div class="url-header">
-                    <span class="url-label">Sing-Box:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.singbox_url)">复制</el-button>
-                  </div>
-                  <code class="url-code">{{ sub.singbox_url }}</code>
-                </div>
-                <div class="url-item" v-if="sub.shadowrocket_url">
-                  <div class="url-header">
-                    <span class="url-label">Shadowrocket:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(sub.shadowrocket_url)">复制</el-button>
-                  </div>
-                  <code class="url-code">{{ sub.shadowrocket_url }}</code>
+                  <button
+                    type="button"
+                    class="url-code url-copy"
+                    @click="copyToClipboard(client.url)"
+                    :title="`点击复制: ${client.url}`"
+                  >
+                    {{ client.url }}
+                  </button>
                 </div>
               </el-collapse-item>
             </el-collapse>
@@ -688,7 +676,7 @@
 
 <script>
 import { adminAPI } from '@/utils/api'
-import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
+import { formatDate as formatDateUtil } from '@/utils/date'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import {
   Wallet,
@@ -702,6 +690,80 @@ import {
   Monitor,
   Delete
 } from '@element-plus/icons-vue'
+
+const COUNTRY_NAME_ZH = {
+  CN: '中国',
+  HK: '中国香港',
+  MO: '中国澳门',
+  TW: '中国台湾',
+  US: '美国',
+  JP: '日本',
+  KR: '韩国',
+  SG: '新加坡',
+  GB: '英国',
+  UK: '英国',
+  DE: '德国',
+  FR: '法国',
+  CA: '加拿大',
+  AU: '澳大利亚',
+  RU: '俄罗斯',
+  IN: '印度',
+  TH: '泰国',
+  VN: '越南',
+  MY: '马来西亚',
+  ID: '印度尼西亚',
+  PH: '菲律宾',
+  BR: '巴西',
+  TR: '土耳其',
+  NL: '荷兰',
+  ES: '西班牙',
+  IT: '意大利',
+  SE: '瑞典',
+  CH: '瑞士',
+  PL: '波兰',
+  ZA: '南非',
+  AE: '阿联酋',
+  SA: '沙特阿拉伯',
+  IR: '伊朗'
+}
+
+const COUNTRY_ALIASES_ZH = {
+  china: '中国',
+  'hong kong': '中国香港',
+  macao: '中国澳门',
+  macau: '中国澳门',
+  taiwan: '中国台湾',
+  'united states': '美国',
+  usa: '美国',
+  'united kingdom': '英国',
+  japan: '日本',
+  korea: '韩国',
+  'south korea': '韩国',
+  singapore: '新加坡',
+  germany: '德国',
+  france: '法国',
+  canada: '加拿大',
+  australia: '澳大利亚',
+  russia: '俄罗斯',
+  india: '印度',
+  thailand: '泰国',
+  vietnam: '越南',
+  malaysia: '马来西亚',
+  indonesia: '印度尼西亚',
+  philippines: '菲律宾',
+  brazil: '巴西',
+  turkey: '土耳其',
+  netherlands: '荷兰',
+  spain: '西班牙',
+  italy: '意大利',
+  sweden: '瑞典',
+  switzerland: '瑞士',
+  poland: '波兰',
+  'south africa': '南非',
+  'united arab emirates': '阿联酋',
+  'saudi arabia': '沙特阿拉伯',
+  iran: '伊朗'
+}
 
 export default {
   name: 'UserDetailDialog',
@@ -880,8 +942,35 @@ export default {
     },
     displayLocation(loc) {
       if (!loc) return '-'
-      const result = formatLocation(loc)
-      return result || loc
+      const country = this.getLocationCountry(loc)
+      return country || '-'
+    },
+    getLocationCountry(loc) {
+      if (!loc) return ''
+      if (typeof loc === 'object') {
+        return this.getChineseCountryName(loc.country_code || loc.countryCode, loc.country || loc.country_name || loc.countryName)
+      }
+      const text = String(loc).trim()
+      if (!text) return ''
+      try {
+        const parsed = JSON.parse(text)
+        if (parsed && typeof parsed === 'object') {
+          return this.getChineseCountryName(parsed.country_code || parsed.countryCode, parsed.country || parsed.country_name || parsed.countryName)
+        }
+      } catch (e) {
+        // Plain text location; parse below.
+      }
+      const country = text.includes(',') ? text.split(',')[0].trim() : text
+      return this.getChineseCountryName('', country)
+    },
+    getChineseCountryName(countryCode, countryName) {
+      const code = String(countryCode || '').trim().toUpperCase()
+      if (code && COUNTRY_NAME_ZH[code]) return COUNTRY_NAME_ZH[code]
+      const name = String(countryName || '').trim()
+      if (!name) return ''
+      const alias = COUNTRY_ALIASES_ZH[name.toLowerCase()]
+      if (alias) return alias
+      return name
     },
     formatDate(date) {
       if (!date) return ''
@@ -891,10 +980,40 @@ export default {
       if (!date) return ''
       return formatDateUtil(date)
     },
-    buildExcludeExampleUrl(url) {
-      if (!url) return ''
-      const separator = url.includes('?') ? '&' : '?'
-      return `${url}${separator}exclude=anytls`
+    hasMoreSubscriptionUrls(sub) {
+      return this.getMoreSubscriptionUrls(sub).length > 0
+    },
+    getMoreSubscriptionUrls(sub) {
+      return [
+        { label: 'Stash', type: 'stash' },
+        { label: 'Surge', type: 'surge' },
+        { label: 'Quantumult X', type: 'quantumultx' },
+        { label: 'Loon', type: 'loon' },
+        { label: 'Sing-Box', type: 'singbox' },
+        { label: 'Shadowrocket', type: 'shadowrocket' }
+      ].map(client => ({
+        ...client,
+        url: this.getTypedSubscriptionUrl(sub, client.type)
+      })).filter(client => client.url)
+    },
+    getTypedSubscriptionUrl(sub, type) {
+      if (!sub) return ''
+      const field = `${type}_url`
+      if (sub[field]) return sub[field]
+      const token = sub.subscription_url
+      const base = sub.universal_url || sub.clash_url || ''
+      if (base) {
+        try {
+          const url = new URL(base, window.location.origin)
+          url.searchParams.set('type', type)
+          return url.toString()
+        } catch (e) {
+          const separator = base.includes('?') ? '&' : '?'
+          return `${base}${separator}type=${encodeURIComponent(type)}`
+        }
+      }
+      if (!token) return ''
+      return `${window.location.origin}/api/v1/client/subscribe?token=${encodeURIComponent(token)}&type=${encodeURIComponent(type)}`
     },
     getStatusType(status) {
       const statusMap = {
@@ -1386,7 +1505,8 @@ export default {
     margin-top: 12px;
     padding: 12px;
     background: #f5f7fa;
-    border-radius: 4px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -1401,7 +1521,7 @@ export default {
         color: #409eff;
         background: transparent;
         border: none;
-        padding: 4px 0;
+        padding: 6px 0;
         font-weight: 500;
       }
       :deep(.el-collapse-item__wrap) {
@@ -1448,24 +1568,21 @@ export default {
       display: block;
     }
 
-    &.exclude-example {
-      padding: 8px 10px;
-      border: 1px dashed #dcdfe6;
-      border-radius: 4px;
-      background: #fff;
-    }
+    .url-copy {
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      appearance: none;
 
-    .exclude-example-text {
-      color: #606266;
-      font-size: 12px;
-      line-height: 1.6;
-      word-break: break-all;
+      &:hover:not(:disabled) {
+        color: #409eff;
+        border-color: #409eff;
+        background: #f0f7ff;
+      }
 
-      code {
-        color: #303133;
-        background: #f5f7fa;
-        padding: 2px 5px;
-        border-radius: 4px;
+      &:disabled {
+        cursor: default;
+        color: #909399;
       }
     }
   }
