@@ -82,7 +82,24 @@
         <h3>订阅地址</h3>
         <div class="url-list">
           <div class="url-item">
-            <div class="url-label">Clash订阅地址：</div>
+            <div class="url-label">通用订阅 (V2Ray/Shadowrocket)：</div>
+            <div class="url-content">
+              <el-input
+                v-model="subscription.universal_url"
+                readonly
+                size="large"
+              >
+                <template #append>
+                  <el-button @click="copyUrl(subscription.universal_url)">
+                    <el-icon><DocumentCopy /></el-icon>
+                    复制
+                  </el-button>
+                </template>
+              </el-input>
+            </div>
+          </div>
+          <div class="url-item">
+            <div class="url-label">Clash / Clash Meta：</div>
             <div class="url-content">
               <el-input
                 v-model="subscription.clash_url"
@@ -99,6 +116,79 @@
             </div>
           </div>
         </div>
+        <!-- 更多客户端订阅 -->
+        <el-collapse v-if="subscription.stash_url || subscription.surge_url || subscription.quantumultx_url || subscription.loon_url || subscription.singbox_url || subscription.shadowrocket_url" class="more-clients-collapse">
+          <el-collapse-item title="更多客户端订阅 ▼" name="more">
+            <div class="url-list more-url-list">
+              <div class="url-item exclude-example" v-if="subscription.clash_url">
+                <div class="url-label">协议排除示例：</div>
+                <div class="exclude-example-text">
+                  默认订阅遵循后台系统设置中的协议过滤，不额外排除协议。如需让 Clash 订阅临时排除 AnyTLS，可在 Clash 链接后追加参数，例如 <code>{{ getExcludeExampleUrl(subscription.clash_url) }}</code>
+                </div>
+              </div>
+              <div class="url-item" v-if="subscription.stash_url">
+                <div class="url-label">Stash：</div>
+                <div class="url-content">
+                  <el-input v-model="subscription.stash_url" readonly size="default">
+                    <template #append>
+                      <el-button @click="copyUrl(subscription.stash_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                    </template>
+                  </el-input>
+                </div>
+              </div>
+              <div class="url-item" v-if="subscription.surge_url">
+                <div class="url-label">Surge：</div>
+                <div class="url-content">
+                  <el-input v-model="subscription.surge_url" readonly size="default">
+                    <template #append>
+                      <el-button @click="copyUrl(subscription.surge_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                    </template>
+                  </el-input>
+                </div>
+              </div>
+              <div class="url-item" v-if="subscription.quantumultx_url">
+                <div class="url-label">Quantumult X：</div>
+                <div class="url-content">
+                  <el-input v-model="subscription.quantumultx_url" readonly size="default">
+                    <template #append>
+                      <el-button @click="copyUrl(subscription.quantumultx_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                    </template>
+                  </el-input>
+                </div>
+              </div>
+              <div class="url-item" v-if="subscription.loon_url">
+                <div class="url-label">Loon：</div>
+                <div class="url-content">
+                  <el-input v-model="subscription.loon_url" readonly size="default">
+                    <template #append>
+                      <el-button @click="copyUrl(subscription.loon_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                    </template>
+                  </el-input>
+                </div>
+              </div>
+              <div class="url-item" v-if="subscription.singbox_url">
+                <div class="url-label">Sing-Box：</div>
+                <div class="url-content">
+                  <el-input v-model="subscription.singbox_url" readonly size="default">
+                    <template #append>
+                      <el-button @click="copyUrl(subscription.singbox_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                    </template>
+                  </el-input>
+                </div>
+              </div>
+              <div class="url-item" v-if="subscription.shadowrocket_url">
+                <div class="url-label">Shadowrocket：</div>
+                <div class="url-content">
+                  <el-input v-model="subscription.shadowrocket_url" readonly size="default">
+                    <template #append>
+                      <el-button @click="copyUrl(subscription.shadowrocket_url)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                    </template>
+                  </el-input>
+                </div>
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
         <div class="qr-code-section">
           <h4>订阅二维码（Shadowrocket扫码）</h4>
           <div class="qr-codes">
@@ -285,6 +375,12 @@ export default {
             maxDevices: subscriptionData.device_limit || subscriptionData.maxDevices || 0,
             clash_url: subscriptionData.clash_url || subscriptionData.clashUrl || '',
             universal_url: subscriptionData.universal_url || '',
+            stash_url: subscriptionData.stash_url || '',
+            surge_url: subscriptionData.surge_url || '',
+            quantumultx_url: subscriptionData.quantumultx_url || '',
+            loon_url: subscriptionData.loon_url || '',
+            singbox_url: subscriptionData.singbox_url || '',
+            shadowrocket_url: subscriptionData.shadowrocket_url || '',
             qrcode_url: subscriptionData.qrcode_url || subscriptionData.qrcodeUrl || ''
           }
           applySpecialNodeInfo(subscription.value, subscriptionData)
@@ -306,6 +402,12 @@ export default {
             maxDevices: userData.device_limit || userData.total_devices || 0,
             clash_url: userData.clashUrl || '',
             universal_url: userData.universalUrl || '',
+            stash_url: userData.stashUrl || userData.stash_url || '',
+            surge_url: userData.surgeUrl || userData.surge_url || '',
+            quantumultx_url: userData.quantumultxUrl || userData.quantumultx_url || '',
+            loon_url: userData.loonUrl || userData.loon_url || '',
+            singbox_url: userData.singboxUrl || userData.singbox_url || '',
+            shadowrocket_url: userData.shadowrocketUrl || userData.shadowrocket_url || '',
             qrcode_url: userData.qrcodeUrl || ''
           }
           applySpecialNodeInfo(subscription.value, userData)
@@ -363,6 +465,11 @@ export default {
     }
     const copyUrl = async (url) => {
       await copyText(url, '链接已复制到剪贴板')
+    }
+    const getExcludeExampleUrl = (url) => {
+      if (!url) return ''
+      const separator = url.includes('?') ? '&' : '?'
+      return `${url}${separator}exclude=anytls`
     }
     const resetSubscription = async () => {
       try {
@@ -463,6 +570,7 @@ export default {
       resetSubscription,
       sendSubscriptionToEmail,
       formatDate,
+      getExcludeExampleUrl,
       getRemainingDays,
       getStatusType,
       getStatusText,
@@ -519,6 +627,27 @@ export default {
     margin-bottom: 20px;
     font-size: 1.2rem;
   }
+  .more-clients-collapse {
+    margin-top: 16px;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    background: #fafafa;
+    :deep(.el-collapse-item__header) {
+      font-size: 14px;
+      color: #409eff;
+      background: transparent;
+      border: none;
+      padding: 12px 16px;
+      font-weight: 500;
+    }
+    :deep(.el-collapse-item__wrap) {
+      background: transparent;
+      border: none;
+    }
+    :deep(.el-collapse-item__content) {
+      padding: 0 16px 16px;
+    }
+  }
 }
 .url-list {
   margin-bottom: 30px;
@@ -535,6 +664,25 @@ export default {
   }
   .url-content {
     flex: 1;
+  }
+  &.exclude-example {
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px dashed #dcdfe6;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .exclude-example-text {
+    flex: 1;
+    color: #606266;
+    line-height: 1.6;
+    word-break: break-all;
+    code {
+      color: #303133;
+      background: #f5f7fa;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
   }
 }
 .qr-code-section {

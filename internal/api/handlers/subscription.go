@@ -746,13 +746,13 @@ func UpdateSubscription(c *gin.Context) {
 
 	// 记录变更前数据
 	beforeData := map[string]interface{}{
-		"device_limit": sub.DeviceLimit,
-		"is_active":    sub.IsActive,
-		"status":       sub.Status,
-		"expire_time":  sub.ExpireTime.Format(TimeLayout),
-		"target_user_id":    sub.UserID,
-		"target_username":   targetUsername,
-		"target_email":      targetEmail,
+		"device_limit":    sub.DeviceLimit,
+		"is_active":       sub.IsActive,
+		"status":          sub.Status,
+		"expire_time":     sub.ExpireTime.Format(TimeLayout),
+		"target_user_id":  sub.UserID,
+		"target_username": targetUsername,
+		"target_email":    targetEmail,
 	}
 
 	if req.DeviceLimit != nil {
@@ -803,23 +803,31 @@ func UpdateSubscription(c *gin.Context) {
 		}
 	}
 	afterData := map[string]interface{}{
-		"device_limit": sub.DeviceLimit,
-		"is_active":    sub.IsActive,
-		"status":       sub.Status,
-		"expire_time":  sub.ExpireTime.Format(TimeLayout),
-		"target_user_id":    sub.UserID,
-		"target_username":   targetUsername,
-		"target_email":      targetEmail,
+		"device_limit":    sub.DeviceLimit,
+		"is_active":       sub.IsActive,
+		"status":          sub.Status,
+		"expire_time":     sub.ExpireTime.Format(TimeLayout),
+		"target_user_id":  sub.UserID,
+		"target_username": targetUsername,
+		"target_email":    targetEmail,
 	}
 
 	asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, actionType, actionBy, actionByUserID, utils.GetRealClientIP(c), beforeData, afterData, "更新订阅")
 	if actionBy == "admin" {
 		changes := []string{}
-		if req.DeviceLimit != nil { changes = append(changes, fmt.Sprintf("设备数 %d→%d", beforeData["device_limit"], sub.DeviceLimit)) }
-		if req.ExpireTime != nil && *req.ExpireTime != "" { changes = append(changes, fmt.Sprintf("到期时间 %s→%s", beforeData["expire_time"], sub.ExpireTime.Format(TimeLayout))) }
-		if req.IsActive != nil { changes = append(changes, fmt.Sprintf("状态 %v→%v", beforeData["is_active"], sub.IsActive)) }
+		if req.DeviceLimit != nil {
+			changes = append(changes, fmt.Sprintf("设备数 %d→%d", beforeData["device_limit"], sub.DeviceLimit))
+		}
+		if req.ExpireTime != nil && *req.ExpireTime != "" {
+			changes = append(changes, fmt.Sprintf("到期时间 %s→%s", beforeData["expire_time"], sub.ExpireTime.Format(TimeLayout)))
+		}
+		if req.IsActive != nil {
+			changes = append(changes, fmt.Sprintf("状态 %v→%v", beforeData["is_active"], sub.IsActive))
+		}
 		changeDesc := strings.Join(changes, "，")
-		if changeDesc == "" { changeDesc = "无变更" }
+		if changeDesc == "" {
+			changeDesc = "无变更"
+		}
 		utils.CreateAuditLog(c, auditActionType, "subscription", sub.ID,
 			fmt.Sprintf("管理员更新 %s(%s) 订阅: %s", targetUsername, targetEmail, changeDesc),
 			beforeData, afterData)
@@ -861,8 +869,8 @@ func ResetSubscription(c *gin.Context) {
 	utils.CreateAuditLog(c, "reset_subscription", "subscription", sub.ID,
 		fmt.Sprintf("管理员重置用户 %s(ID:%d) 订阅地址", sub.User.Username, sub.User.ID),
 		map[string]interface{}{
-			"target_user_id":    sub.UserID,
-			"target_username":   sub.User.Username,
+			"target_user_id":       sub.UserID,
+			"target_username":      sub.User.Username,
 			"old_subscription_url": oldURL,
 		},
 		map[string]interface{}{
@@ -898,13 +906,13 @@ func ExtendSubscription(c *gin.Context) {
 		fmt.Sprintf("管理员延长用户 %s(ID:%d, 邮箱:%s) 订阅 %d 天，到期时间 %s → %s",
 			sub.User.Username, sub.User.ID, sub.User.Email, req.Days, oldExp, sub.ExpireTime.Format(TimeLayout)),
 		map[string]interface{}{
-			"target_user_id":    sub.UserID,
-			"target_username":   sub.User.Username,
-			"target_email":      sub.User.Email,
-			"device_limit":      sub.DeviceLimit,
-			"extend_days":       req.Days,
-			"old_expire_time":   oldExp,
-			"new_expire_time":   sub.ExpireTime.Format(TimeLayout),
+			"target_user_id":  sub.UserID,
+			"target_username": sub.User.Username,
+			"target_email":    sub.User.Email,
+			"device_limit":    sub.DeviceLimit,
+			"extend_days":     req.Days,
+			"old_expire_time": oldExp,
+			"new_expire_time": sub.ExpireTime.Format(TimeLayout),
 		},
 		map[string]interface{}{
 			"expire_time":  sub.ExpireTime.Format(TimeLayout),
@@ -955,7 +963,7 @@ func ResetUserSubscription(c *gin.Context) {
 	utils.CreateAuditLog(c, "reset_user_subscription", "user", 0,
 		fmt.Sprintf("管理员重置用户(ID:%s)全部 %d 个订阅地址", userID, len(subs)),
 		map[string]interface{}{
-			"target_user_id":  userID,
+			"target_user_id":     userID,
 			"subscription_count": len(subs),
 		}, nil)
 	utils.SuccessResponse(c, http.StatusOK, "用户订阅已重置", nil)
@@ -980,10 +988,10 @@ func SendSubscriptionEmail(c *gin.Context) {
 	utils.CreateAuditLog(c, "send_subscription_email", "subscription", sub.ID,
 		fmt.Sprintf("管理员向用户 %s(ID:%d, 邮箱:%s) 发送订阅地址邮件", user.Username, user.ID, user.Email),
 		map[string]interface{}{
-			"target_user_id":    user.ID,
-			"target_username":   user.Username,
-			"target_email":      user.Email,
-			"subscription_url":  sub.SubscriptionURL,
+			"target_user_id":   user.ID,
+			"target_username":  user.Username,
+			"target_email":     user.Email,
+			"subscription_url": sub.SubscriptionURL,
 		}, nil)
 	utils.SuccessResponse(c, http.StatusOK, "订阅邮件已加入队列", nil)
 }
@@ -1021,9 +1029,9 @@ func ClearUserDevices(c *gin.Context) {
 	utils.CreateAuditLog(c, "clear_user_devices", "user", 0,
 		fmt.Sprintf("管理员清理用户(ID:%s)全部设备，共 %d 台", userID, totalDevices),
 		map[string]interface{}{
-			"target_user_id":   userID,
+			"target_user_id":     userID,
 			"subscription_count": len(subs),
-			"device_count":     totalDevices,
+			"device_count":       totalDevices,
 		}, nil)
 	utils.SuccessResponse(c, http.StatusOK, "设备已清理", nil)
 }
@@ -1297,8 +1305,8 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 		}(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLog(c, "batch_delete_subscriptions", "subscription", 0,
-			fmt.Sprintf("管理员批量删除 %d 个订阅", len(req.SubscriptionIDs)),
-			map[string]interface{}{"subscription_ids": req.SubscriptionIDs, "count": len(req.SubscriptionIDs)}, nil)
+		fmt.Sprintf("管理员批量删除 %d 个订阅", len(req.SubscriptionIDs)),
+		map[string]interface{}{"subscription_ids": req.SubscriptionIDs, "count": len(req.SubscriptionIDs)}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个订阅", len(req.SubscriptionIDs)), nil)
 }
 
@@ -1383,14 +1391,14 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 	for _, sub := range subsToUpdate {
 		subDetails = append(subDetails, map[string]interface{}{
 			"subscription_id": sub.ID,
-			"user_id":        sub.UserID,
+			"user_id":         sub.UserID,
 		})
 	}
 	utils.CreateAuditLog(c, "batch_update_subscriptions_status", "subscription", 0,
 		fmt.Sprintf("管理员批量%s %d 个订阅", actionName, res.RowsAffected),
 		map[string]interface{}{
 			"subscription_ids": req.SubscriptionIDs,
-			"details":         subDetails,
+			"details":          subDetails,
 		},
 		map[string]interface{}{
 			"is_active": isActive,
@@ -1439,15 +1447,15 @@ func BatchResetSubscriptions(c *gin.Context) {
 		successCount++
 	}
 	utils.CreateAuditLog(c, "batch_reset_subscriptions", "subscription", 0,
-			fmt.Sprintf("管理员批量重置 %d 个订阅，成功 %d 失败 %d", len(req.SubscriptionIDs), successCount, failCount),
-			map[string]interface{}{
-				"subscription_ids": req.SubscriptionIDs,
-				"total":           len(req.SubscriptionIDs),
-			},
-			map[string]interface{}{
-				"success_count": successCount,
-				"fail_count":    failCount,
-			})
+		fmt.Sprintf("管理员批量重置 %d 个订阅，成功 %d 失败 %d", len(req.SubscriptionIDs), successCount, failCount),
+		map[string]interface{}{
+			"subscription_ids": req.SubscriptionIDs,
+			"total":            len(req.SubscriptionIDs),
+		},
+		map[string]interface{}{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		})
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功重置 %d 个订阅，失败 %d 个", successCount, failCount), gin.H{
 		"success_count": successCount,
 		"fail_count":    failCount,
@@ -1481,9 +1489,9 @@ func BatchSendAdminSubEmail(c *gin.Context) {
 			continue
 		}
 		emailTargets = append(emailTargets, map[string]interface{}{
-			"user_id":    sub.UserID,
-			"username":   sub.User.Username,
-			"email":      sub.User.Email,
+			"user_id":         sub.UserID,
+			"username":        sub.User.Username,
+			"email":           sub.User.Email,
 			"subscription_id": sub.ID,
 		})
 		successCount++
@@ -1492,7 +1500,7 @@ func BatchSendAdminSubEmail(c *gin.Context) {
 		fmt.Sprintf("管理员批量发送订阅邮件 %d 封，成功 %d 失败 %d", len(subscriptions), successCount, failCount),
 		map[string]interface{}{
 			"subscription_ids": req.SubscriptionIDs,
-			"total":           len(subscriptions),
+			"total":            len(subscriptions),
 			"targets":          emailTargets,
 		}, nil)
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功发送 %d 封邮件，失败 %d 封", successCount, failCount), gin.H{
@@ -1726,11 +1734,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 		dm := device.NewDeviceManager()
 		devInfo := dm.ParseUserAgent(ua)
 		logData := map[string]interface{}{
-			"type":           subType,
-			"software_name":  devInfo.SoftwareName,
-			"software_ver":   devInfo.SoftwareVersion,
-			"os_name":        devInfo.OSName,
-			"device_name":    devInfo.DeviceName,
+			"type":          subType,
+			"software_name": devInfo.SoftwareName,
+			"software_ver":  devInfo.SoftwareVersion,
+			"os_name":       devInfo.OSName,
+			"device_name":   devInfo.DeviceName,
 		}
 		_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
 			fmt.Sprintf("[%s] %s %s", subType, devInfo.SoftwareName, devInfo.DeviceName))
