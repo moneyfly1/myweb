@@ -23,6 +23,7 @@ declare module 'vue' {
     ElButtonGroup: typeof import('element-plus/es/components/button/index.mjs')['ElButtonGroup']
     ElCard: typeof import('element-plus/es/components/card/index.mjs')['ElCard']
     ElCheckbox: typeof import('element-plus/es/components/checkbox/index.mjs')['ElCheckbox']
+    ElCheckboxButton: typeof import('element-plus/es/components/checkbox/index.mjs')['ElCheckboxButton']
     ElCheckboxGroup: typeof import('element-plus/es/components/checkbox/index.mjs')['ElCheckboxGroup']
     ElCol: typeof import('element-plus/es/components/col/index.mjs')['ElCol']
     ElCollapse: typeof import('element-plus/es/components/collapse/index.mjs')['ElCollapse']

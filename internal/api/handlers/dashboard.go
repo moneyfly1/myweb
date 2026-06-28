@@ -66,13 +66,14 @@ func GetUserDashboard(c *gin.Context) {
 	var specialNodeCount int64
 	db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Count(&specialNodeCount)
 
-	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	clashURL := ""
 	universalURL := ""
 	qrcodeURL := ""
+	multiURLs := gin.H{}
 	if subscription.ID > 0 && subscription.SubscriptionURL != "" {
-		clashURL = fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subscription.SubscriptionURL)
-		universalURL = fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subscription.SubscriptionURL)
+		multiURLs = getMultiClientSubscriptionURLs(c, subscription.SubscriptionURL)
+		clashURL = multiURLs["clash_url"].(string)
+		universalURL = multiURLs["universal_url"].(string)
 
 		encodedURL := base64.StdEncoding.EncodeToString([]byte(universalURL))
 		expiryDisplay := expiryDate
@@ -140,6 +141,12 @@ func GetUserDashboard(c *gin.Context) {
 		"subscription_url":               subscription.SubscriptionURL,
 		"clashUrl":                       clashURL,
 		"universalUrl":                   universalURL,
+		"stashUrl":                       multiURLs["stash_url"],
+		"surgeUrl":                       multiURLs["surge_url"],
+		"quantumultxUrl":                 multiURLs["quantumultx_url"],
+		"loonUrl":                        multiURLs["loon_url"],
+		"singboxUrl":                     multiURLs["singbox_url"],
+		"shadowrocketUrl":                multiURLs["shadowrocket_url"],
 		"qrcodeUrl":                      qrcodeURL,
 		"subscription_status":            subStatus,
 		"expire_time":                    expiryDate,
@@ -159,6 +166,12 @@ func GetUserDashboard(c *gin.Context) {
 			"subscription_url":               subscription.SubscriptionURL,
 			"clashUrl":                       clashURL,
 			"universalUrl":                   universalURL,
+			"stashUrl":                       multiURLs["stash_url"],
+			"surgeUrl":                       multiURLs["surge_url"],
+			"quantumultxUrl":                 multiURLs["quantumultx_url"],
+			"loonUrl":                        multiURLs["loon_url"],
+			"singboxUrl":                     multiURLs["singbox_url"],
+			"shadowrocketUrl":                multiURLs["shadowrocket_url"],
 			"qrcodeUrl":                      qrcodeURL,
 			"has_special_nodes":              specialNodeCount > 0,
 			"special_node_count":             specialNodeCount,
