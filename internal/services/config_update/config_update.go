@@ -1558,16 +1558,28 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	ind := strings.Repeat(" ", indent)
 	m := s.nodeToMap(node)
 
-	// 固定顺序：name, type, server, port 在前，其余按字母排序
+	// Keep proxy fields in the conventional Clash/Mihomo order. Some clients
+	// are lax, but this also makes generated output line up with common
+	// converter output and avoids fragile user-side parsing/display code.
 	ordered := make([]string, 0, len(m))
-	for _, k := range []string{"name", "type", "server", "port"} {
+	for _, k := range []string{
+		"name", "server", "port", "type",
+		"uuid", "password", "cipher", "alterId",
+		"tls", "tfo", "skip-cert-verify", "servername", "sni", "client-fingerprint",
+		"flow", "reality-opts", "network", "ws-opts", "grpc-opts", "h2-opts", "http-opts",
+		"alpn", "udp",
+	} {
 		if _, ok := m[k]; ok {
 			ordered = append(ordered, k)
 		}
 	}
+	used := make(map[string]bool, len(ordered))
+	for _, k := range ordered {
+		used[k] = true
+	}
 	var rest []string
 	for k := range m {
-		if k != "name" && k != "type" && k != "server" && k != "port" {
+		if !used[k] {
 			rest = append(rest, k)
 		}
 	}
@@ -1703,10 +1715,13 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 	if n.TLS || n.Type == "tuic" || n.Type == "anytls" {
 		res["tls"] = true
 	}
+	if (n.Type == "vless" || n.Type == "vmess" || n.Type == "trojan") && n.TLS {
+		res["tfo"] = false
+	}
 	if n.Network != "" && n.Network != "tcp" {
 		res["network"] = n.Network
 	}
-	if n.UDP {
+	if n.UDP && n.Type != "vless" && n.Type != "vmess" {
 		res["udp"] = true
 	}
 

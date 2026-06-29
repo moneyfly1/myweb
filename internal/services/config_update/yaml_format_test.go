@@ -204,6 +204,12 @@ func TestClashVLESSWSSampleKeepsTLSAndWSOptions(t *testing.T) {
 	if m["uuid"] != "00000000-0000-4000-8000-000000000013" || m["tls"] != true || m["network"] != "ws" {
 		t.Fatalf("core fields uuid=%v tls=%v network=%v", m["uuid"], m["tls"], m["network"])
 	}
+	if _, ok := m["udp"]; ok {
+		t.Fatalf("vless ws should not emit udp by default: %#v", m["udp"])
+	}
+	if m["tfo"] != false {
+		t.Fatalf("tfo = %v, want false", m["tfo"])
+	}
 	if m["servername"] != "node63.example.com" || m["client-fingerprint"] != "chrome" || m["skip-cert-verify"] != false {
 		t.Fatalf("tls opts servername=%v fp=%v skip=%v", m["servername"], m["client-fingerprint"], m["skip-cert-verify"])
 	}
@@ -217,5 +223,14 @@ func TestClashVLESSWSSampleKeepsTLSAndWSOptions(t *testing.T) {
 	headers, ok := ws["headers"].(map[string]any)
 	if !ok || headers["Host"] != "node63.example.com" {
 		t.Fatalf("headers = %#v", ws["headers"])
+	}
+
+	out := s.nodeToYAML(node, 0)
+	wantPrefix := "- {name: 日本01快橙, server: node63.example.com, port: 443, type: vless, uuid: 00000000-0000-4000-8000-000000000013, tls: true, tfo: false, skip-cert-verify: false, servername: node63.example.com, client-fingerprint: chrome, network: ws, ws-opts:"
+	if !strings.HasPrefix(out, wantPrefix) {
+		t.Fatalf("unexpected yaml order:\n%s", out)
+	}
+	if strings.Contains(out, "udp: true") {
+		t.Fatalf("vless yaml should not contain udp: %s", out)
 	}
 }
