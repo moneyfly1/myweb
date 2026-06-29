@@ -1754,7 +1754,22 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		}
 	}
 
+	if shouldClashSkipCertVerify(n) {
+		res["skip-cert-verify"] = true
+	}
+
 	return res
+}
+
+func shouldClashSkipCertVerify(n *ProxyNode) bool {
+	switch n.Type {
+	case "vless", "vmess", "trojan", "hysteria", "hysteria2":
+		return n.TLS
+	case "tuic", "anytls":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
