@@ -62,13 +62,45 @@
 
           <!-- 订阅链接 -->
           <div class="url-section">
+            <div class="protocol-exclude-panel" v-if="protocolOptions.length">
+              <div class="protocol-exclude-header">
+                <div>
+                  <div class="exclude-title">协议排除</div>
+                  <div class="exclude-subtitle">
+                    {{ getExcludedProtocols(sub).length ? `已排除 ${getExcludedProtocols(sub).length} 种协议` : '默认遵循后台系统协议过滤' }}
+                  </div>
+                </div>
+                <el-button
+                  text
+                  type="primary"
+                  size="small"
+                  :disabled="!getExcludedProtocols(sub).length"
+                  @click="clearExcludedProtocols(sub)"
+                >
+                  清空
+                </el-button>
+              </div>
+              <el-checkbox-group
+                :model-value="getExcludedProtocols(sub)"
+                class="protocol-checkboxes"
+                @change="value => setExcludedProtocols(sub, value)"
+              >
+                <el-checkbox-button
+                  v-for="protocol in protocolOptions"
+                  :key="protocol.value"
+                  :label="protocol.value"
+                >
+                  {{ protocol.label }}
+                </el-checkbox-button>
+              </el-checkbox-group>
+            </div>
             <div class="url-item" v-if="sub.universal_url || sub.subscription_url">
               <div class="url-header">
                 <span class="url-label">通用订阅 (V2Ray/Shadowrocket):</span>
                 <el-button
                   size="small"
                   :icon="CopyDocument"
-                  @click="copyToClipboard(sub.universal_url || sub.subscription_url)"
+                  @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url))"
                   :disabled="!sub.universal_url && !sub.subscription_url"
                 >
                   复制
@@ -77,11 +109,11 @@
               <button
                 type="button"
                 class="url-code url-copy"
-                @click="copyToClipboard(sub.universal_url || sub.subscription_url)"
+                @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url))"
                 :disabled="!sub.universal_url && !sub.subscription_url"
-                :title="`点击复制: ${sub.universal_url || sub.subscription_url || ''}`"
+                :title="`点击复制: ${getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url) || ''}`"
               >
-                {{ sub.universal_url || sub.subscription_url || '无' }}
+                {{ getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url) || '无' }}
               </button>
             </div>
             <div class="url-item" v-if="sub.clash_url">
@@ -90,7 +122,7 @@
                 <el-button
                   size="small"
                   :icon="CopyDocument"
-                  @click="copyToClipboard(getTypedSubscriptionUrl(sub, 'clash'))"
+                  @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')))"
                   :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
                 >
                   复制
@@ -99,11 +131,11 @@
               <button
                 type="button"
                 class="url-code url-copy"
-                @click="copyToClipboard(getTypedSubscriptionUrl(sub, 'clash'))"
+                @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')))"
                 :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
-                :title="`点击复制: ${getTypedSubscriptionUrl(sub, 'clash') || ''}`"
+                :title="`点击复制: ${getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')) || ''}`"
               >
-                {{ getTypedSubscriptionUrl(sub, 'clash') || '无' }}
+                {{ getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')) || '无' }}
               </button>
             </div>
             <div class="url-item" v-if="!sub.universal_url && !sub.subscription_url && !sub.clash_url">
@@ -824,6 +856,18 @@ export default {
       devices: [],
       loadingDevices: false,
       deletingDeviceId: null,
+      subscriptionExcludedProtocols: {},
+      protocolOptions: [
+        { label: 'AnyTLS', value: 'anytls' },
+        { label: 'VMess', value: 'vmess' },
+        { label: 'VLESS', value: 'vless' },
+        { label: 'Trojan', value: 'trojan' },
+        { label: 'Shadowsocks', value: 'ss' },
+        { label: 'Hysteria2', value: 'hysteria2' },
+        { label: 'TUIC', value: 'tuic' },
+        { label: 'SOCKS', value: 'socks' },
+        { label: 'HTTP', value: 'http' }
+      ],
       checkinLogs: [],
       checkinLoaded: false,
       loadingCheckins: false,
@@ -888,6 +932,7 @@ export default {
         this.customNodes = []
         this.checkinLogs = []
         this.checkinLoaded = false
+        this.subscriptionExcludedProtocols = {}
         this.checkinPagination.page = 1
         this.checkinPagination.size = 20
         this.checkinPagination.total = 0
@@ -993,8 +1038,37 @@ export default {
         { label: 'Shadowrocket', type: 'shadowrocket' }
       ].map(client => ({
         ...client,
-        url: this.getTypedSubscriptionUrl(sub, client.type)
+        url: this.getSubscriptionUrlWithExclude(sub, this.getTypedSubscriptionUrl(sub, client.type))
       })).filter(client => client.url)
+    },
+    getSubscriptionExcludeKey(sub) {
+      return String(sub?.id || sub?.subscription_url || sub?.universal_url || sub?.clash_url || 'default')
+    },
+    getExcludedProtocols(sub) {
+      return this.subscriptionExcludedProtocols[this.getSubscriptionExcludeKey(sub)] || []
+    },
+    setExcludedProtocols(sub, value) {
+      const key = this.getSubscriptionExcludeKey(sub)
+      this.subscriptionExcludedProtocols = {
+        ...this.subscriptionExcludedProtocols,
+        [key]: Array.isArray(value) ? value : []
+      }
+    },
+    clearExcludedProtocols(sub) {
+      this.setExcludedProtocols(sub, [])
+    },
+    getSubscriptionUrlWithExclude(sub, url) {
+      if (!url) return ''
+      const excluded = this.getExcludedProtocols(sub)
+      if (!excluded.length) return url
+      try {
+        const parsed = new URL(url, window.location.origin)
+        parsed.searchParams.set('exclude', excluded.join(','))
+        return parsed.toString()
+      } catch (e) {
+        const separator = url.includes('?') ? '&' : '?'
+        return `${url}${separator}exclude=${encodeURIComponent(excluded.join(','))}`
+      }
     },
     getTypedSubscriptionUrl(sub, type) {
       if (!sub) return ''
@@ -1533,6 +1607,54 @@ export default {
         display: flex;
         flex-direction: column;
         gap: 12px;
+      }
+    }
+  }
+
+  .protocol-exclude-panel {
+    padding: 12px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #fff;
+
+    .protocol-exclude-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .exclude-title {
+      color: #303133;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .exclude-subtitle {
+      margin-top: 2px;
+      color: #909399;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .protocol-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      :deep(.el-checkbox-button__inner) {
+        border: 1px solid #dcdfe6;
+        border-radius: 6px;
+        box-shadow: none;
+        padding: 7px 10px;
+        line-height: 1;
+      }
+
+      :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
+      :deep(.el-checkbox-button:last-child .el-checkbox-button__inner) {
+        border-radius: 6px;
       }
     }
   }
