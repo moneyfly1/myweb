@@ -234,3 +234,27 @@ func TestClashVLESSWSSampleKeepsTLSAndWSOptions(t *testing.T) {
 		t.Fatalf("vless yaml should not contain udp: %s", out)
 	}
 }
+
+func TestClashTemplateFlowNodeKeepsConverterLikeVLESSOrder(t *testing.T) {
+	s := &ConfigUpdateService{}
+
+	raw := "vless://15884975-9b74-4502-b6a3-f69df7ec93d7@n1743918709.4u9ma.icu:443?encryption=none&security=tls&sni=n1743918709.4u9ma.icu&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=n1743918709.4u9ma.icu&path=%2F15884975-9b74-4502-b6a3-f69df7ec93d7#%E6%97%A5%E6%9C%AC01%E5%BF%AB%E6%A9%99"
+	node, err := ParseNodeLink(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	flowNode, err := s.nodeToYAMLFlowNode(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := yaml.Marshal(&flowNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	want := "{name: 日本01快橙, server: n1743918709.4u9ma.icu, port: 443, type: vless, uuid: 15884975-9b74-4502-b6a3-f69df7ec93d7, tls: true, tfo: false, skip-cert-verify: true, servername: n1743918709.4u9ma.icu, client-fingerprint: chrome, network: ws"
+	if !strings.Contains(out, want) {
+		t.Fatalf("expected converter-like VLESS order in template flow node:\nwant: %s\noutput:\n%s", want, out)
+	}
+}
