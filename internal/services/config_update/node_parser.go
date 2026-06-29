@@ -317,12 +317,24 @@ func parseHysteria2(link string) (*ProxyNode, error) {
 
 func parseTUIC(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "tuic", func(n *ProxyNode, q url.Values, p *url.URL) {
-		user, _ := url.QueryUnescape(p.User.Username())
-		if parts := strings.SplitN(user, ":", 2); len(parts) == 2 {
-			n.UUID, n.Password = parts[0], parts[1]
+		user := p.User.Username()
+		pwd, hasPwd := p.User.Password()
+
+		// url.Parse does not treat an escaped colon (%3A) in userinfo as a
+		// password separator. TUIC share links commonly encode uuid:password
+		// as a single user field, so split after URL decoding.
+		if !hasPwd || pwd == "" {
+			if decoded, err := url.QueryUnescape(user); err == nil {
+				user = decoded
+			}
+			if parts := strings.SplitN(user, ":", 2); len(parts) == 2 {
+				n.UUID, n.Password = parts[0], parts[1]
+			} else {
+				n.UUID = user
+			}
 		} else {
 			n.UUID = user
-			n.Password, _ = p.User.Password()
+			n.Password = pwd
 		}
 		n.UDP, n.TLS = true, true
 		applyTLSOptions(n, q, n.Server)
@@ -643,8 +655,15 @@ func applyTransportOptions(node *ProxyNode, q url.Values) {
 			node.Options["ws-opts"] = opts
 		}
 	case "grpc":
+		opts := make(map[string]any)
 		if srv := firstNotEmpty(q.Get("serviceName"), q.Get("authority"), path); srv != "" {
-			node.Options["grpc-opts"] = map[string]any{"grpc-service-name": srv}
+			opts["grpc-service-name"] = srv
+		}
+		if mode := q.Get("mode"); mode != "" {
+			opts["grpc-mode"] = mode
+		}
+		if len(opts) > 0 {
+			node.Options["grpc-opts"] = opts
 		}
 	case "tcp":
 		if hType := q.Get("headerType"); hType != "" {
