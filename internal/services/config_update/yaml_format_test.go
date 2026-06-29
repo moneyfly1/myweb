@@ -210,7 +210,7 @@ func TestClashVLESSWSSampleKeepsTLSAndWSOptions(t *testing.T) {
 	if m["tfo"] != false {
 		t.Fatalf("tfo = %v, want false", m["tfo"])
 	}
-	if m["servername"] != "某站点" || m["client-fingerprint"] != "chrome" || m["skip-cert-verify"] != false {
+	if m["servername"] != "某站点" || m["client-fingerprint"] != "chrome" || m["skip-cert-verify"] != true {
 		t.Fatalf("tls opts servername=%v fp=%v skip=%v", m["servername"], m["client-fingerprint"], m["skip-cert-verify"])
 	}
 	ws, ok := m["ws-opts"].(map[string]any)
@@ -226,7 +226,7 @@ func TestClashVLESSWSSampleKeepsTLSAndWSOptions(t *testing.T) {
 	}
 
 	out := s.nodeToYAML(node, 0)
-	wantPrefix := "- {name: 日本01快橙, server: 某站点, port: 443, type: vless, uuid: 00000000-0000-4000-8000-000000000013, tls: true, tfo: false, skip-cert-verify: false, servername: 某站点, client-fingerprint: chrome, network: ws, ws-opts:"
+	wantPrefix := "- {name: 日本01快橙, server: 某站点, port: 443, type: vless, uuid: 00000000-0000-4000-8000-000000000013, tls: true, tfo: false, skip-cert-verify: true, servername: 某站点, client-fingerprint: chrome, network: ws, ws-opts:"
 	if !strings.HasPrefix(out, wantPrefix) {
 		t.Fatalf("unexpected yaml order:\n%s", out)
 	}
