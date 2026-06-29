@@ -187,3 +187,35 @@ func TestClashURLSamplesUseNativeOptions(t *testing.T) {
 		t.Fatalf("tuic congestion-controller = %v", m["congestion-controller"])
 	}
 }
+
+func TestClashVLESSWSSampleKeepsTLSAndWSOptions(t *testing.T) {
+	s := &ConfigUpdateService{}
+
+	raw := "vless://15884975-9b74-4502-b6a3-f69df7ec93d7@n1743918709.4u9ma.icu:443?encryption=none&security=tls&sni=n1743918709.4u9ma.icu&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=n1743918709.4u9ma.icu&path=%2F15884975-9b74-4502-b6a3-f69df7ec93d7#%E6%97%A5%E6%9C%AC01%E5%BF%AB%E6%A9%99"
+	node, err := ParseNodeLink(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := s.nodeToMap(node)
+
+	if m["type"] != "vless" || m["server"] != "n1743918709.4u9ma.icu" || m["port"] != 443 {
+		t.Fatalf("endpoint = type:%v server:%v port:%v", m["type"], m["server"], m["port"])
+	}
+	if m["uuid"] != "15884975-9b74-4502-b6a3-f69df7ec93d7" || m["tls"] != true || m["network"] != "ws" {
+		t.Fatalf("core fields uuid=%v tls=%v network=%v", m["uuid"], m["tls"], m["network"])
+	}
+	if m["servername"] != "n1743918709.4u9ma.icu" || m["client-fingerprint"] != "chrome" || m["skip-cert-verify"] != false {
+		t.Fatalf("tls opts servername=%v fp=%v skip=%v", m["servername"], m["client-fingerprint"], m["skip-cert-verify"])
+	}
+	ws, ok := m["ws-opts"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing ws-opts: %#v", m)
+	}
+	if ws["path"] != "/15884975-9b74-4502-b6a3-f69df7ec93d7" {
+		t.Fatalf("path = %v", ws["path"])
+	}
+	headers, ok := ws["headers"].(map[string]any)
+	if !ok || headers["Host"] != "n1743918709.4u9ma.icu" {
+		t.Fatalf("headers = %#v", ws["headers"])
+	}
+}
