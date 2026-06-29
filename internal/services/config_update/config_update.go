@@ -1320,6 +1320,7 @@ func (s *ConfigUpdateService) loadTemplateFile(path string) []byte {
 func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *SubscriptionContext) string {
 	var filtered []*ProxyNode
 	var proxyNames []string
+	var realProxyNames []string
 	used := make(map[string]bool)
 
 	for _, p := range proxies {
@@ -1340,6 +1341,9 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 			used[name] = true
 			filtered = append(filtered, p)
 			proxyNames = append(proxyNames, name)
+			if !isClashInfoNode(p) {
+				realProxyNames = append(realProxyNames, name)
+			}
 		}
 	}
 
@@ -1366,24 +1370,17 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 				tpl["name"] = subName
 				var proxyNodes []yaml.Node
 				for _, p := range filtered {
-					m := s.nodeToMap(p)
-					// 转成 yaml.Node 并设 FlowStyle 实现横排 compact 输出
-					data, err := yaml.Marshal(m)
+					flowNode, err := s.nodeToYAMLFlowNode(p)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "yaml.Marshal failed for node %s: %v\n", p.Name, err)
+						fmt.Fprintf(os.Stderr, "nodeToYAMLFlowNode failed for node %s: %v\n", p.Name, err)
 						continue
 					}
-					var doc yaml.Node
-					if yaml.Unmarshal(data, &doc) == nil && len(doc.Content) > 0 {
-						flowNode := *doc.Content[0]
-						flowNode.Style = yaml.FlowStyle
-						proxyNodes = append(proxyNodes, flowNode)
-					}
+					proxyNodes = append(proxyNodes, flowNode)
 				}
 				tpl["proxies"] = proxyNodes
 
 				if grps, ok := tpl["proxy-groups"].([]interface{}); ok {
-					s.updateProxyGroups(grps, proxyNames)
+					s.updateProxyGroups(grps, proxyNames, realProxyNames)
 					tpl["proxy-groups"] = grps
 				}
 				if out, err := yaml.Marshal(tpl); err == nil {
@@ -1392,10 +1389,31 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 			}
 		}
 	}
-	return s.generateDefaultClashYAML(filtered, proxyNames, subName)
+	return s.generateDefaultClashYAML(filtered, proxyNames, realProxyNames, subName)
 }
 
-func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames []string) {
+func isClashInfoNode(p *ProxyNode) bool {
+	return p != nil && p.Type == "ss" && p.Server == "baidu.com" && p.Port == 1234 && p.Password == "info"
+}
+
+func (s *ConfigUpdateService) nodeToYAMLFlowNode(p *ProxyNode) (yaml.Node, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(s.nodeToYAML(p, 0)), &doc); err != nil {
+		return yaml.Node{}, err
+	}
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+		return yaml.Node{}, fmt.Errorf("empty proxy yaml")
+	}
+	seq := doc.Content[0]
+	if seq.Kind != yaml.SequenceNode || len(seq.Content) == 0 {
+		return yaml.Node{}, fmt.Errorf("proxy yaml is not a sequence")
+	}
+	flowNode := *seq.Content[0]
+	flowNode.Style = yaml.FlowStyle
+	return flowNode, nil
+}
+
+func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames, realProxyNames []string) {
 	groupNames := make(map[string]bool)
 	for _, g := range groups {
 		if m, ok := g.(map[string]interface{}); ok {
@@ -1422,7 +1440,7 @@ func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames
 			if t == "select" {
 				m["proxies"] = append(exist, proxyNames...)
 			} else {
-				m["proxies"] = proxyNames
+				m["proxies"] = realProxyNames
 			}
 		}
 	}
@@ -1452,7 +1470,7 @@ func (s *ConfigUpdateService) GenerateSubscriptionName(ctx *SubscriptionContext)
 	return fmt.Sprintf("到期: %s", expireTimeStr)
 }
 
-func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames []string, subName string) string {
+func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, proxyNames, realProxyNames []string, subName string) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("name: %s\nport: 7890\nsocks-port: 7891\nallow-lan: true\nmode: Rule\nlog-level: info\nexternal-controller: 127.0.0.1:9090\n\nproxies:\n", s.escapeYAMLString(subName)))
 
@@ -1461,7 +1479,7 @@ func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, pro
 	}
 
 	b.WriteString("\nproxy-groups:\n  - name: \"🚀 节点选择\"\n    type: select\n    proxies:\n      - \"♻️ 自动选择\"\n")
-	for _, n := range proxyNames {
+	for _, n := range realProxyNames {
 		b.WriteString(fmt.Sprintf("      - %s\n", s.escapeYAMLString(n)))
 	}
 
