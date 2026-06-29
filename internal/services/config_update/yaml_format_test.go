@@ -53,9 +53,9 @@ func TestTemplateFlowStyleConversion(t *testing.T) {
 		Server: "203.0.113.33", Port: 5624, Password: "fg20mtCFHy", TLS: true,
 		UDP: true, Network: "tcp",
 		Options: map[string]interface{}{
-			"servername": "dsgvc.southbyte.xyz",
+			"servername":         "dsgvc.southbyte.xyz",
 			"client-fingerprint": "firefox",
-			"flow": "xtls-rprx-vision",
+			"flow":               "xtls-rprx-vision",
 		},
 	}
 	// Simulate template path: nodeToMap -> yaml.Marshal -> yaml.Unmarshal -> FlowStyle -> yaml.Marshal
@@ -111,7 +111,7 @@ func TestNodeToYAMLNestedOptions(t *testing.T) {
 		Options: map[string]interface{}{
 			"servername": "sni.example.com",
 			"ws-opts": map[string]interface{}{
-				"path": "/ws-path",
+				"path":    "/ws-path",
 				"headers": map[string]interface{}{"Host": "ws.example.com"},
 			},
 		},
@@ -129,5 +129,61 @@ func TestAlpnList(t *testing.T) {
 	t.Log(result)
 	if !strings.Contains(result, "[") || !strings.Contains(result, "]") {
 		t.Errorf("Expected inline list: %s", result)
+	}
+}
+
+func TestClashURLSamplesUseNativeOptions(t *testing.T) {
+	s := &ConfigUpdateService{}
+
+	vlessWS := "vless://00000000-0000-4000-8000-000000000028@node112.example.com:26823?encryption=none&security=tls&sni=node112.example.com&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=node112.example.com&path=%2Fzcxgws#%E4%B8%93%E7%BA%BF-%E7%BE%8E%E5%9B%BD%E6%90%AC%E7%93%A6%E5%B7%A5VLESS_WS"
+	node, err := ParseNodeLink(vlessWS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := s.nodeToMap(node)
+	if m["network"] != "ws" {
+		t.Fatalf("network = %v, want ws", m["network"])
+	}
+	ws, ok := m["ws-opts"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing ws-opts: %#v", m)
+	}
+	if ws["path"] != "/zcxgws" {
+		t.Fatalf("ws path = %v", ws["path"])
+	}
+	headers, ok := ws["headers"].(map[string]any)
+	if !ok || headers["Host"] != "node112.example.com" {
+		t.Fatalf("ws headers = %#v", ws["headers"])
+	}
+
+	vlessGRPC := "vless://00000000-0000-4000-8000-000000000028@node112.example.com:23435?encryption=none&security=reality&sni=node112.example.com&fp=chrome&pbk=lf2FVJzxSafTmEvbgJdGwc9-dAR_5OGP20JxDuimbgc&sid=6ba85179e30d4fc2&type=grpc&authority=&serviceName=grpc&mode=gun#%E4%B8%93%E7%BA%BF-%E7%BE%8E%E5%9B%BD%E6%90%AC%E7%93%A6%E5%B7%A5VLESS_Reality_gPRC"
+	node, err = ParseNodeLink(vlessGRPC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = s.nodeToMap(node)
+	reality, ok := m["reality-opts"].(map[string]any)
+	if !ok || reality["public-key"] != "lf2FVJzxSafTmEvbgJdGwc9-dAR_5OGP20JxDuimbgc" || reality["short-id"] != "6ba85179e30d4fc2" {
+		t.Fatalf("reality-opts = %#v", m["reality-opts"])
+	}
+	grpc, ok := m["grpc-opts"].(map[string]any)
+	if !ok || grpc["grpc-service-name"] != "grpc" || grpc["grpc-mode"] != "gun" {
+		t.Fatalf("grpc-opts = %#v", m["grpc-opts"])
+	}
+
+	tuic := "tuic://00000000-0000-4000-8000-000000000028%3A00000000-0000-4000-8000-000000000028@node112.example.com:15074?sni=node112.example.com&alpn=h3&insecure=0&allowInsecure=0&congestion_control=bbr#%E4%B8%93%E7%BA%BF-%E7%BE%8E%E5%9B%BD%E6%90%AC%E7%93%A6%E5%B7%A5singbox_tuic"
+	node, err = ParseNodeLink(tuic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = s.nodeToMap(node)
+	if m["server"] != "node112.example.com" || m["port"] != 15074 {
+		t.Fatalf("tuic endpoint = %v:%v", m["server"], m["port"])
+	}
+	if m["uuid"] != "00000000-0000-4000-8000-000000000028" || m["password"] != "00000000-0000-4000-8000-000000000028" {
+		t.Fatalf("tuic auth uuid=%v password=%v", m["uuid"], m["password"])
+	}
+	if m["congestion-controller"] != "bbr" {
+		t.Fatalf("tuic congestion-controller = %v", m["congestion-controller"])
 	}
 }
