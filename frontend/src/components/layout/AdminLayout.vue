@@ -3,7 +3,7 @@
     <header class="header">
       <div class="header-left">
         <button class="menu-toggle" @click.stop="toggleSidebar" type="button" aria-label="切换菜单">
-          <i :class="sidebarCollapsed ? 'el-icon-menu' : 'el-icon-close'"></i>
+          <el-icon class="layout-icon"><component :is="sidebarCollapsed ? Menu : Close" /></el-icon>
           <span class="menu-toggle-text">菜单</span>
         </button>
         <router-link to="/admin/dashboard" class="logo">
@@ -11,27 +11,18 @@
           <span class="logo-text" v-show="!sidebarCollapsed">CBoard 管理后台</span>
         </router-link>
       </div>
-      <div class="header-center">
-        <div class="quick-stats">
-          <div v-for="(val, key) in statConfig" :key="key" class="stat-item">
-            <i :class="val.icon"></i>
-            <span>{{ val.prefix }}{{ stats[key] || 0 }}</span>
-            <small>{{ val.label }}</small>
-          </div>
-        </div>
-      </div>
       <div class="header-right">
         <el-dropdown @command="handleThemeChange" class="theme-dropdown">
           <el-button type="text" class="theme-btn">
-            <i class="el-icon-brush"></i>
-            <span class="theme-text" :style="{ color: getCurrentThemeColor() }">{{ getCurrentThemeLabel() }}</span>
+            <el-icon class="layout-icon"><Brush /></el-icon>
+            <span class="theme-text">{{ getCurrentThemeLabel() }}</span>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item
                 v-for="theme in themes" :key="theme.value" :command="theme.value"
                 :class="{ active: currentTheme === theme.value }">
-                <i class="el-icon-check" v-if="currentTheme === theme.value"></i>
+                <el-icon class="dropdown-icon" v-if="currentTheme === theme.value"><Check /></el-icon>
                 {{ theme.label }}
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -44,19 +35,19 @@
           @click="flushCache"
           title="清理缓存"
         >
-          <i class="el-icon-delete" v-if="!cacheClearing"></i>
+          <el-icon class="layout-icon" v-if="!cacheClearing"><Delete /></el-icon>
           <span class="cache-btn-text">清理缓存</span>
         </el-button>
         <el-dropdown @command="handleAdminCommand" class="admin-dropdown">
           <div class="admin-info">
             <el-avatar :size="32" :src="adminAvatar">{{ adminInitials }}</el-avatar>
             <span class="admin-name" v-show="!isMobile">{{ admin.username }}</span>
-            <i class="el-icon-arrow-down"></i>
+            <el-icon class="layout-icon"><ArrowDown /></el-icon>
           </div>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item v-for="item in adminMenuOptions" :key="item.command" :command="item.command" :divided="item.divided">
-                <i :class="item.icon"></i> {{ item.label }}
+                <el-icon class="dropdown-icon"><component :is="getIcon(item.icon)" /></el-icon> {{ item.label }}
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -66,7 +57,9 @@
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="mobile-menu-header" v-if="isMobile">
         <span class="menu-title">菜单</span>
-        <button class="menu-close-btn" @click.stop="toggleSidebar" type="button"><i class="el-icon-close"></i></button>
+        <button class="menu-close-btn" @click.stop="toggleSidebar" type="button" aria-label="关闭菜单">
+          <el-icon class="layout-icon"><Close /></el-icon>
+        </button>
       </div>
       <nav class="sidebar-nav">
         <div v-for="section in menuSections" :key="section.title" class="nav-section">
@@ -82,13 +75,13 @@
             :aria-expanded="!collapsedSections[section.title]"
           >
             <span>{{ section.title }}</span>
-            <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
+            <el-icon v-if="section.collapsible" class="section-arrow"><ArrowDown /></el-icon>
           </div>
           <div class="nav-items" :class="{ 'is-collapsed': section.collapsible && collapsedSections[section.title] && (!sidebarCollapsed || isMobile) }">
             <router-link
               v-for="item in section.items" :key="item.path" :to="item.path"
               class="nav-item" :class="{ active: isRouteActive(item.path) }" @click="handleNavClick">
-              <i :class="item.icon"></i>
+              <el-icon class="nav-icon"><component :is="getIcon(item.icon)" /></el-icon>
               <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
               <el-badge
                 v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)"
@@ -105,15 +98,21 @@
     <main class="main-content">
       <div class="content-wrapper">
         <div class="mobile-nav-bar" v-if="isMobile">
-          <div class="mobile-nav-header" @click="mobileNavExpanded = !mobileNavExpanded">
+          <button
+            type="button"
+            class="mobile-nav-header"
+            :aria-expanded="mobileNavExpanded"
+            aria-controls="admin-mobile-nav-menu"
+            @click="mobileNavExpanded = !mobileNavExpanded"
+          >
             <div class="nav-current-path">
-              <i class="el-icon-location"></i>
+              <el-icon class="layout-icon"><Location /></el-icon>
               <span class="current-title">{{ currentPageTitle }}</span>
             </div>
-            <i class="el-icon-arrow-down nav-expand-icon" :class="{ 'expanded': mobileNavExpanded }"></i>
-          </div>
+            <el-icon class="layout-icon nav-expand-icon" :class="{ 'expanded': mobileNavExpanded }"><ArrowDown /></el-icon>
+          </button>
           <transition name="slide-down">
-            <div class="mobile-nav-menu" v-show="mobileNavExpanded">
+            <div id="admin-mobile-nav-menu" class="mobile-nav-menu" v-show="mobileNavExpanded">
               <div v-for="section in menuSections" :key="section.title" class="nav-section-menu">
                 <div
                   class="section-title"
@@ -126,15 +125,15 @@
                   :aria-expanded="!collapsedSections[section.title]"
                 >
                   <span>{{ section.title }}</span>
-                  <i v-if="section.collapsible" class="el-icon-arrow-down section-arrow"></i>
+                  <el-icon v-if="section.collapsible" class="section-arrow"><ArrowDown /></el-icon>
                 </div>
                 <div class="mobile-nav-items" :class="{ 'is-collapsed': section.collapsible && collapsedSections[section.title] }">
                   <router-link v-for="item in section.items" :key="item.path" :to="item.path"
                     class="nav-menu-item" :class="{ 'active': isRouteActive(item.path) }"
                     @click="navigateTo(item.path)">
-                    <i :class="item.icon"></i>
+                    <el-icon class="nav-icon"><component :is="getIcon(item.icon)" /></el-icon>
                     <span>{{ item.title }}</span>
-                    <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
+                    <el-icon class="active-check-icon" v-if="isRouteActive(item.path)"><Check /></el-icon>
                   </router-link>
                 </div>
               </div>
@@ -175,11 +174,45 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import {
+  ArrowDown,
+  Brush,
+  Cellphone,
+  Check,
+  Close,
+  Coin,
+  Connection,
+  DataAnalysis,
+  Delete,
+  Document,
+  Files,
+  Goods,
+  House,
+  Location,
+  Medal,
+  Menu,
+  Message,
+  Monitor,
+  PieChart,
+  Present,
+  Reading,
+  Refresh,
+  Setting,
+  ShoppingCart,
+  SwitchButton,
+  Ticket,
+  Tickets,
+  User,
+  UserFilled,
+  Wallet,
+  Warning
+} from '@element-plus/icons-vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { adminAPI, ticketAPI, api } from '@/utils/api'
+import { ticketAPI, api } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { confirmClear } from '@/utils/confirmAction'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -187,16 +220,41 @@ const themeStore = useThemeStore()
 const isMobile = useMobile()
 const sidebarCollapsed = ref(true)
 const mobileNavExpanded = ref(false)
-const stats = ref({ users: 0, subscriptions: 0, revenue: 0 })
-const statConfig = {
-  users: { label: '用户', icon: 'el-icon-user', prefix: '' },
-  subscriptions: { label: '订阅', icon: 'el-icon-connection', prefix: '' },
-  revenue: { label: '收入', icon: 'el-icon-money', prefix: '¥' }
+const iconMap = {
+  dashboard: House,
+  users: User,
+  subscriptions: Connection,
+  profile: User,
+  settings: Setting,
+  logout: SwitchButton,
+  abnormalUsers: Warning,
+  userLevels: Medal,
+  invites: UserFilled,
+  tickets: Tickets,
+  orders: ShoppingCart,
+  packages: Goods,
+  coupons: Ticket,
+  promotions: Present,
+  knowledge: Reading,
+  nodes: Monitor,
+  customNodes: Connection,
+  configUpdate: Refresh,
+  config: Setting,
+  paymentConfig: Wallet,
+  emailQueue: Message,
+  statistics: DataAnalysis,
+  analytics: PieChart,
+  logs: Document,
+  systemLogs: Files,
+  location: Location,
+  devices: Cellphone,
+  balance: Coin
 }
+const getIcon = (icon) => iconMap[icon] || Document
 const adminMenuOptions = [
-  { label: '个人资料', icon: 'el-icon-user', command: 'profile' },
-  { label: '系统设置', icon: 'el-icon-setting', command: 'settings' },
-  { label: '退出登录', icon: 'el-icon-switch-button', command: 'logout', divided: true }
+  { label: '个人资料', icon: 'profile', command: 'profile' },
+  { label: '系统设置', icon: 'settings', command: 'settings' },
+  { label: '退出登录', icon: 'logout', command: 'logout', divided: true }
 ]
 const unreadTicketCount = ref(0)
 const cacheClearing = ref(false)
@@ -222,19 +280,19 @@ const loadUnreadTicketCount = async () => {
 }
 const menuSections = computed(() => {
   const baseSections = [
-    { title: '概览', collapsible: false, items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }] },
+    { title: '概览', collapsible: false, items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'dashboard' }] },
     {
       title: '用户管理',
       collapsible: true,
       items: [
-        { path: '/admin/users', title: '用户列表', icon: 'el-icon-user' },
-        { path: '/admin/abnormal-users', title: '异常用户', icon: 'el-icon-warning' },
-        { path: '/admin/user-levels', title: '用户等级', icon: 'el-icon-medal' },
-        { path: '/admin/invites', title: '邀请管理', icon: 'el-icon-user-solid' },
+        { path: '/admin/users', title: '用户列表', icon: 'users' },
+        { path: '/admin/abnormal-users', title: '异常用户', icon: 'abnormalUsers' },
+        { path: '/admin/user-levels', title: '用户等级', icon: 'userLevels' },
+        { path: '/admin/invites', title: '邀请管理', icon: 'invites' },
         {
           path: '/admin/tickets',
           title: '工单管理',
-          icon: 'el-icon-s-order',
+          icon: 'tickets',
           badge: unreadTicketCount.value > 0 ? unreadTicketCount.value : null
         }
       ]
@@ -243,40 +301,40 @@ const menuSections = computed(() => {
       title: '业务管理',
       collapsible: true,
       items: [
-        { path: '/admin/subscriptions', title: '订阅管理', icon: 'el-icon-connection' },
-        { path: '/admin/orders', title: '订单列表', icon: 'el-icon-shopping-cart-2' },
-        { path: '/admin/packages', title: '套餐管理', icon: 'el-icon-goods' },
-        { path: '/admin/coupons', title: '优惠券管理', icon: 'el-icon-ticket' },
-        { path: '/admin/promotions', title: '营销活动', icon: 'el-icon-present' },
-        { path: '/admin/knowledge', title: '知识库管理', icon: 'el-icon-reading' }
+        { path: '/admin/subscriptions', title: '订阅管理', icon: 'subscriptions' },
+        { path: '/admin/orders', title: '订单列表', icon: 'orders' },
+        { path: '/admin/packages', title: '套餐管理', icon: 'packages' },
+        { path: '/admin/coupons', title: '优惠券管理', icon: 'coupons' },
+        { path: '/admin/promotions', title: '营销活动', icon: 'promotions' },
+        { path: '/admin/knowledge', title: '知识库管理', icon: 'knowledge' }
       ]
     },
     {
       title: '节点管理',
       collapsible: true,
       items: [
-        { path: '/admin/nodes', title: '节点列表', icon: 'el-icon-server' },
-        { path: '/admin/custom-nodes', title: '专线节点', icon: 'el-icon-connection' },
-        { path: '/admin/config-update', title: '节点更新', icon: 'el-icon-refresh' }
+        { path: '/admin/nodes', title: '节点列表', icon: 'nodes' },
+        { path: '/admin/custom-nodes', title: '专线节点', icon: 'customNodes' },
+        { path: '/admin/config-update', title: '节点更新', icon: 'configUpdate' }
       ]
     },
     {
       title: '系统配置',
       collapsible: true,
       items: [
-        { path: '/admin/config', title: '配置管理', icon: 'el-icon-setting' },
-        { path: '/admin/payment-config', title: '支付配置', icon: 'el-icon-wallet' },
-        { path: '/admin/email-queue', title: '邮件队列', icon: 'el-icon-message' }
+        { path: '/admin/config', title: '配置管理', icon: 'config' },
+        { path: '/admin/payment-config', title: '支付配置', icon: 'paymentConfig' },
+        { path: '/admin/email-queue', title: '邮件队列', icon: 'emailQueue' }
       ]
     },
     {
       title: '数据与日志',
       collapsible: true,
       items: [
-        { path: '/admin/statistics', title: '数据统计', icon: 'el-icon-data-analysis' },
-        { path: '/admin/analytics', title: '用户分析', icon: 'el-icon-pie-chart' },
-        { path: '/admin/logs', title: '日志管理', icon: 'el-icon-document' },
-        { path: '/admin/system-logs', title: '系统日志', icon: 'el-icon-tickets' }
+        { path: '/admin/statistics', title: '数据统计', icon: 'statistics' },
+        { path: '/admin/analytics', title: '用户分析', icon: 'analytics' },
+        { path: '/admin/logs', title: '日志管理', icon: 'logs' },
+        { path: '/admin/system-logs', title: '系统日志', icon: 'systemLogs' }
       ]
     }
   ]
@@ -320,11 +378,11 @@ const handleAdminCommand = (command) => {
     router.push(routes[command])
   }
 }
-const formatMoney = (val) => isNaN(parseFloat(val)) ? '0.00' : parseFloat(val).toFixed(2)
 const flushCache = async () => {
   try {
-    await ElMessageBox.confirm('确定要清除所有缓存吗？', '警告', {
-      confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
+    await confirmClear('所有缓存', {
+      title: '确认清除缓存',
+      confirmButtonText: '确认清除'
     })
     cacheClearing.value = true
     const res = await api.post('/admin/settings/cache/flush')
@@ -334,21 +392,6 @@ const flushCache = async () => {
     if (e !== 'cancel') ElMessage.error('清除失败: ' + (e.response?.data?.message || e.message))
   } finally {
     cacheClearing.value = false
-  }
-}
-const loadStats = async () => {
-  if (!authStore.isAuthenticated) return
-  try {
-    const { data } = await adminAPI.getDashboard()
-    if (data?.success && data.data) {
-      stats.value = {
-        users: Number(data.data.totalUsers) || 0,
-        subscriptions: Number(data.data.activeSubscriptions) || 0,
-        revenue: formatMoney(data.data.totalRevenue)
-      }
-    }
-  } catch (e) {
-    console.error('Stats load error:', e)
   }
 }
 const checkMobile = () => {
@@ -370,7 +413,6 @@ watch(() => route.path, () => {
 })
 onMounted(() => {
   checkMobile()
-  loadStats()
   loadUnreadTicketCount()
   unreadCheckInterval = setInterval(() => {
     loadUnreadTicketCount()
@@ -390,10 +432,25 @@ onUnmounted(() => {
   }
 })
 const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentTheme.value)?.label || '主题'
-const getCurrentThemeColor = () => themes.value.find(t => t.value === currentTheme.value)?.color || '#409EFF'
 </script>
 <style scoped lang="scss">
 @use '@/styles/global.scss' as *;
+.layout-icon,
+.dropdown-icon,
+.nav-icon,
+.active-check-icon,
+.section-arrow,
+.stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dropdown-icon {
+  margin-right: 6px;
+}
+
 .admin-layout {
   display: flex;
   height: 100vh;
@@ -411,7 +468,6 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   justify-content: space-between;
   padding: 0 20px;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   @include respond-to(sm) { height: 50px; padding: 0 12px; }
   .header-left {
     display: flex; align-items: center; gap: 16px;
@@ -422,18 +478,12 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       @include respond-to(sm) { display: flex; align-items: center; gap: 6px; }
     }
   }
-  .header-center {
-    @include respond-to(sm) { display: none; }
-    .quick-stats { display: flex; gap: 24px; }
-    .stat-item { 
-        display: flex; flex-direction: column; align-items: center;
-        :is(i) { color: var(--theme-primary); font-size: 20px; }
-        :is(span) { font-size: 18px; font-weight: 600; }
-        :is(small) { font-size: 12px; opacity: 0.7; }
-    }
-  }
   .header-right {
     display: flex; align-items: center; gap: 16px;
+    .theme-text {
+      color: var(--theme-primary, #409eff);
+      font-weight: 600;
+    }
     .cache-btn {
       color: var(--theme-text); font-size: 14px; padding: 6px 12px;
       border: 1px solid var(--theme-border); border-radius: 6px;
@@ -454,7 +504,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   height: calc(100vh - var(--header-height));
   background: var(--sidebar-bg-color, white);
   border-right: 1px solid var(--theme-border);
-  transition: all 0.3s ease;
+  transition: width 0.2s ease, transform 0.2s ease;
   z-index: 999;
   overflow-y: auto;
   &.collapsed { width: var(--sidebar-collapsed-width); }
@@ -471,7 +521,8 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
     &.collapsed { transform: translateX(-100%); }
     &:not(.collapsed) { 
       transform: translateX(0); 
-      box-shadow: 2px 0 16px rgba(0,0,0,0.15);
+      box-shadow: none;
+      border-right: 1px solid var(--theme-border);
       opacity: 1;
       visibility: visible;
     }
@@ -518,11 +569,11 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       padding: 12px 20px; 
       color: var(--theme-text); 
       text-decoration: none;
-      transition: 0.3s;
+      transition: background-color 0.16s ease, color 0.16s ease;
       position: relative;
       pointer-events: auto;
       z-index: 1;
-      :is(i) { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
+      .nav-icon { margin-right: 12px; font-size: 18px; width: 20px; }
       .nav-badge {
         position: absolute;
         right: 8px;
@@ -565,8 +616,9 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 40px;
-      min-height: 40px;
+      min-width: 44px;
+      min-height: 44px;
+      touch-action: manipulation;
       -webkit-tap-highlight-color: rgba(0,0,0,0.1);
       &:hover {
         background: var(--sidebar-hover-bg, #f5f7fa);
@@ -590,7 +642,7 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   width: calc(100% - var(--sidebar-width));
   height: calc(100vh - var(--header-height));
   overflow-y: auto;
-  transition: 0.3s;
+  transition: margin-left 0.2s ease, width 0.2s ease;
   .sidebar-collapsed & {
     margin-left: var(--sidebar-collapsed-width);
     width: calc(100% - var(--sidebar-collapsed-width));
@@ -602,8 +654,25 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   }
 }
 .mobile-nav-bar {
-  margin-bottom: 12px; background: var(--el-bg-color, #fff); border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  .mobile-nav-header { display: flex; justify-content: space-between; padding: 14px 16px; align-items: center; }
+  margin-bottom: 12px; background: var(--el-bg-color, #fff); border: 1px solid var(--theme-border, #dcdfe6); border-radius: 8px;
+  .mobile-nav-header {
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    justify-content: space-between;
+    padding: 14px 16px;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .mobile-nav-header:focus-visible {
+    outline: 2px solid var(--theme-primary, #409eff);
+    outline-offset: -2px;
+  }
   .nav-expand-icon.expanded { transform: rotate(180deg); }
   .mobile-nav-menu { border-top: 1px solid var(--el-border-color, #e4e7ed); max-height: 60vh; overflow-y: auto; }
   .nav-section-menu {
@@ -653,7 +722,6 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
   background: var(--theme-background, #fff);
   border-top: 1px solid var(--theme-border, #e8e8e8);
   padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
 }
 .mobile-tab {
   display: flex;
@@ -674,11 +742,12 @@ const getCurrentThemeColor = () => themes.value.find(t => t.value === currentThe
 .mobile-overlay {
   position: fixed; 
   inset: 50px 0 0 0; 
-  background: rgba(0,0,0,0.5); 
+  background: rgba(15, 23, 42, 0.48); 
   z-index: 1001; 
-  backdrop-filter: blur(2px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   pointer-events: auto;
 }
-.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s ease; }
+.slide-down-enter-active, .slide-down-leave-active { transition: opacity 0.2s ease, max-height 0.2s ease, transform 0.2s ease; }
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; max-height: 0; transform: translateY(-10px); }
 </style>

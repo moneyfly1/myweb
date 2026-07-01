@@ -4,16 +4,6 @@
       <template #header>
         <div class="header-content">
           <span>异常用户</span>
-          <div class="header-actions desktop-only">
-            <el-button type="primary" @click="applyFilters">
-              <el-icon><Search /></el-icon>
-              查询
-            </el-button>
-            <el-button @click="resetFilters">
-              <el-icon><Refresh /></el-icon>
-              重置
-            </el-button>
-          </div>
         </div>
       </template>
       <div class="filter-section">
@@ -55,6 +45,16 @@
               />
               <span class="filter-unit">次</span>
             </div>
+            <div class="desktop-filter-actions">
+              <el-button type="primary" @click="applyFilters">
+                <el-icon><Search /></el-icon>
+                查询
+              </el-button>
+              <el-button @click="resetFilters">
+                <el-icon><Refresh /></el-icon>
+                重置
+              </el-button>
+            </div>
             <div class="mobile-filter-actions">
               <el-button type="primary" @click="applyFilters" class="mobile-action-btn">
                 <el-icon><Search /></el-icon>
@@ -68,129 +68,161 @@
           </div>
         </el-card>
       </div>
-      <div class="table-wrapper desktop-only">
-        <el-table
-          :data="abnormalUsers"
-          style="width: 100%"
-          v-loading="loading"
-          stripe
-          border
-          :empty-text="abnormalUsers.length === 0 && !loading ? '暂无数据，请设置筛选条件后点击查询按钮' : ''"
-        >
-          <el-table-column prop="username" label="用户名" width="120">
-            <template #default="scope">
-              <el-button type="text" @click="viewUserDetails(scope.row.user_id)">
-                {{ scope.row.username }}
-              </el-button>
-            </template>
-          </el-table-column>
-          <el-table-column prop="email" label="邮箱" width="200">
-            <template #default="scope">
-              <el-button type="text" @click="viewUserDetails(scope.row.user_id)">
-                {{ scope.row.email }}
-              </el-button>
-            </template>
-          </el-table-column>
-          <el-table-column prop="abnormal_type" label="异常类型" width="150">
-            <template #default="scope">
-              <el-tag :type="abnormalTypeMap[scope.row.abnormal_type]?.tag || 'info'">
-                {{ abnormalTypeMap[scope.row.abnormal_type]?.text || scope.row.abnormal_type }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="abnormal_count" label="异常次数" width="120" />
-          <el-table-column prop="subscription_count" label="订阅次数" width="120" />
-          <el-table-column prop="reset_count" label="重置次数" width="120" />
-          <el-table-column prop="description" label="异常描述" />
-          <el-table-column prop="last_activity" label="最后活动时间" width="180" />
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="scope">
-              <el-button size="small" @click="viewUserDetails(scope.row.user_id)">
-                <el-icon><View /></el-icon>
-                查看详情
-              </el-button>
-              <el-button size="small" type="warning" @click="markAsNormal(scope.row)">
-                <el-icon><Check /></el-icon>
-                标记正常
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div class="mobile-card-list" v-if="isMobile">
-        <div v-if="abnormalUsers.length === 0 && !loading" class="empty-state">
-          <el-empty description="暂无数据，请设置筛选条件后点击查询按钮" />
-        </div>
-        <div v-for="user in abnormalUsers" :key="user.user_id" class="mobile-card">
-          <div class="card-header">
+      <ResponsiveDataView
+        class="abnormal-users-data"
+        :data="abnormalUsers"
+        :fields="mobileAbnormalFields"
+        :loading="loading"
+        empty-title="暂无异常用户"
+        empty-description="请设置筛选条件后点击查询按钮"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table
+              :data="abnormalUsers"
+              class="data-table"
+              v-loading="loading"
+              stripe
+              border
+              empty-text=" "
+            >
+              <el-table-column prop="username" label="用户名" width="120">
+                <template #default="scope">
+                  <el-button type="text" @click="viewUserDetails(scope.row.user_id)">
+                    {{ scope.row.username }}
+                  </el-button>
+                </template>
+              </el-table-column>
+              <el-table-column prop="email" label="邮箱" width="200">
+                <template #default="scope">
+                  <el-button type="text" @click="viewUserDetails(scope.row.user_id)">
+                    {{ scope.row.email }}
+                  </el-button>
+                </template>
+              </el-table-column>
+              <el-table-column prop="abnormal_type" label="异常类型" width="150">
+                <template #default="scope">
+                  <el-tag :type="abnormalTypeMap[scope.row.abnormal_type]?.tag || 'info'">
+                    {{ abnormalTypeMap[scope.row.abnormal_type]?.text || scope.row.abnormal_type }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="abnormal_count" label="异常次数" width="120" />
+              <el-table-column prop="subscription_count" label="订阅次数" width="120" />
+              <el-table-column prop="reset_count" label="重置次数" width="120" />
+              <el-table-column prop="description" label="异常描述" />
+              <el-table-column prop="last_activity" label="最后活动时间" width="180" />
+              <el-table-column label="操作" width="200" fixed="right">
+                <template #default="scope">
+                  <el-button size="small" @click="viewUserDetails(scope.row.user_id)">
+                    <el-icon><View /></el-icon>
+                    查看详情
+                  </el-button>
+                  <el-button size="small" type="warning" @click="markAsNormal(scope.row)">
+                    <el-icon><Check /></el-icon>
+                    标记正常
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <EmptyState
+              v-if="!loading && abnormalUsers.length === 0"
+              class="desktop-empty-state"
+              title="暂无异常用户"
+              description="请设置筛选条件后点击查询按钮"
+              action-text="查询"
+              :loading="loading"
+              @action="applyFilters"
+            />
+          </div>
+        </template>
+
+        <template #header="{ item }">
+          <div class="abnormal-card-header">
             <div class="user-info">
-              <el-avatar :size="40" :src="user.avatar">
-                {{ user.username?.charAt(0)?.toUpperCase() }}
+              <el-avatar :size="40" :src="item.avatar">
+                {{ item.username?.charAt(0)?.toUpperCase() }}
               </el-avatar>
-              <div class="user-text">
-                <div class="username">{{ user.username }}</div>
-                <div class="email">{{ user.email }}</div>
-              </div>
+              <button type="button" class="user-text-button" @click="viewUserDetails(item.user_id)">
+                <span class="username">{{ item.username }}</span>
+                <span class="email">{{ item.email }}</span>
+              </button>
             </div>
-            <el-tag :type="abnormalTypeMap[user.abnormal_type]?.tag || 'info'" size="small">
-              {{ abnormalTypeMap[user.abnormal_type]?.text || user.abnormal_type }}
+            <el-tag :type="abnormalTypeMap[item.abnormal_type]?.tag || 'info'" size="small">
+              {{ abnormalTypeMap[item.abnormal_type]?.text || item.abnormal_type }}
             </el-tag>
           </div>
-          <div class="card-body">
-            <div class="card-row">
-              <span class="label">异常次数</span>
-              <span class="value highlight">{{ user.abnormal_count }}</span>
-            </div>
-            <div class="card-row" v-if="user.subscription_count !== undefined && user.subscription_count !== null">
-              <span class="label">订阅次数</span>
-              <span class="value highlight">{{ user.subscription_count }}</span>
-            </div>
-            <div class="card-row" v-if="user.reset_count !== undefined && user.reset_count !== null">
-              <span class="label">重置次数</span>
-              <span class="value highlight">{{ user.reset_count }}</span>
-            </div>
-            <div class="card-row" v-if="user.description">
-              <span class="label">异常描述</span>
-              <span class="value">{{ user.description }}</span>
-            </div>
-            <div class="card-row">
-              <span class="label">最后活动</span>
-              <span class="value">{{ formatDate(user.last_activity) }}</span>
-            </div>
-          </div>
-          <div class="card-actions">
-            <el-button type="primary" @click="viewUserDetails(user.user_id)" class="mobile-action-btn">
+        </template>
+
+        <template #field-abnormal_type="{ item }">
+          <el-tag :type="abnormalTypeMap[item.abnormal_type]?.tag || 'info'" size="small">
+            {{ abnormalTypeMap[item.abnormal_type]?.text || item.abnormal_type }}
+          </el-tag>
+        </template>
+
+        <template #field-abnormal_count="{ item }">
+          <span class="mobile-highlight-value">{{ item.abnormal_count }}</span>
+        </template>
+
+        <template #field-subscription_count="{ item }">
+          <span class="mobile-highlight-value">
+            {{ item.subscription_count ?? '-' }}
+          </span>
+        </template>
+
+        <template #field-reset_count="{ item }">
+          <span class="mobile-highlight-value">
+            {{ item.reset_count ?? '-' }}
+          </span>
+        </template>
+
+        <template #field-description="{ item }">
+          <span class="mobile-description-value">{{ item.description || '-' }}</span>
+        </template>
+
+        <template #field-last_activity="{ item }">
+          {{ formatDate(item.last_activity) }}
+        </template>
+
+        <template #actions="{ item }">
+          <div class="mobile-abnormal-actions">
+            <el-button type="primary" @click="viewUserDetails(item.user_id)" class="mobile-action-btn">
               <el-icon><View /></el-icon>
               查看详情
             </el-button>
-            <el-button type="warning" @click="markAsNormal(user)" class="mobile-action-btn">
+            <el-button type="warning" @click="markAsNormal(item)" class="mobile-action-btn">
               <el-icon><Check /></el-icon>
               标记正常
             </el-button>
           </div>
-        </div>
-      </div>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+        </template>
+
+        <template #empty>
+          <EmptyState
+            title="暂无异常用户"
+            description="请设置筛选条件后点击查询按钮"
+            action-text="查询"
+            :loading="loading"
+            @action="applyFilters"
+          />
+        </template>
+      </ResponsiveDataView>
+      <PaginationBar
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="total"
+        @change="loadAbnormalUsers"
+      />
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="showUserDetailsDialog"
       title="用户详细信息"
-      :size="isMobile ? '92%' : '700px'"
-      direction="rtl"
-      :lock-scroll="false"
+      size="700px"
+      mobile-size="100%"
+      class="user-details-drawer"
     >
       <div v-if="userDetails" class="user-details">
-        <el-card style="margin-bottom: 20px;" shadow="never">
+        <el-card class="detail-card" shadow="never">
           <template #header>
             <span>基本信息</span>
           </template>
@@ -212,7 +244,7 @@
             <el-descriptions-item label="最后登录">{{ formatDate(userDetails.user_info.last_login) || '从未登录' }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
-        <el-card style="margin-bottom: 20px;" shadow="never">
+        <el-card class="detail-card" shadow="never">
           <template #header>
             <span>统计信息</span>
           </template>
@@ -243,11 +275,11 @@
             </el-col>
           </el-row>
         </el-card>
-        <el-card style="margin-bottom: 20px;" shadow="never" v-if="userDetails.subscription_resets && userDetails.subscription_resets.length > 0">
+        <el-card class="detail-card" shadow="never" v-if="userDetails.subscription_resets && userDetails.subscription_resets.length > 0">
           <template #header>
             <span>订阅重置记录</span>
           </template>
-          <el-table :data="userDetails.subscription_resets" style="width: 100%" :max-height="300" stripe border>
+          <el-table :data="userDetails.subscription_resets" class="data-table" :max-height="300" stripe border>
             <el-table-column prop="reset_type" label="重置类型" width="120" />
             <el-table-column prop="reason" label="重置原因" />
             <el-table-column prop="device_count_before" label="重置前设备数" width="120" />
@@ -264,7 +296,7 @@
           <template #header>
             <span>最近活动</span>
           </template>
-          <el-table :data="userDetails.recent_activities" style="width: 100%" :max-height="300" stripe border>
+          <el-table :data="userDetails.recent_activities" class="data-table" :max-height="300" stripe border>
             <el-table-column prop="activity_type" label="活动类型" width="120" />
             <el-table-column prop="description" label="描述" />
             <el-table-column prop="ip_address" label="IP地址" width="150" />
@@ -276,16 +308,21 @@
           </el-table>
         </el-card>
       </div>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import AppDrawer from '@/components/AppDrawer.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { confirmWarning } from '@/utils/confirmAction'
 const abnormalTypeMap = {
   disabled: { tag: 'danger', text: '账户禁用' },
   frequent_reset: { tag: 'warning', text: '频繁重置' },
@@ -298,7 +335,7 @@ const abnormalTypeMap = {
 export default {
   name: 'AbnormalUsers',
   components: {
-    Refresh, View, Check, Search
+    Refresh, View, Check, Search, AppDrawer, PaginationBar, EmptyState, ResponsiveDataView
   },
   setup() {
     const route = useRoute()
@@ -310,6 +347,14 @@ export default {
     const showUserDetailsDialog = ref(false)
     const userDetails = ref(null)
     const isMobile = useMobile()
+    const mobileAbnormalFields = computed(() => [
+      { key: 'abnormal_type', label: '异常类型' },
+      { key: 'abnormal_count', label: '异常次数' },
+      { key: 'subscription_count', label: '订阅次数' },
+      { key: 'reset_count', label: '重置次数' },
+      { key: 'description', label: '异常描述', fullWidth: true },
+      { key: 'last_activity', label: '最后活动' }
+    ])
     const getDefaultDateRange = () => {
       const now = new Date()
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -379,15 +424,6 @@ export default {
       pageSize.value = 10
       loadAbnormalUsers()
     }
-    const handleSizeChange = (val) => {
-      pageSize.value = val
-      currentPage.value = 1
-      loadAbnormalUsers()
-    }
-    const handleCurrentChange = (val) => {
-      currentPage.value = val
-      loadAbnormalUsers()
-    }
     const viewUserDetails = async (userId) => {
       try {
         const response = await adminAPI.getUserDetails(userId)
@@ -406,14 +442,9 @@ export default {
     }
     const markAsNormal = async (user) => {
       try {
-        await ElMessageBox.confirm(
+        await confirmWarning(
           `确定要将用户 ${user.username} 标记为正常吗？这将从异常列表中移除该用户。`,
-          '确认操作',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
+          { title: '确认操作' }
         )
         ElMessage.success('用户已标记为正常')
         loadAbnormalUsers()
@@ -454,11 +485,10 @@ export default {
       userDetails,
       isMobile,
       abnormalTypeMap,
+      mobileAbnormalFields,
       loadAbnormalUsers,
       applyFilters,
       resetFilters,
-      handleSizeChange,
-      handleCurrentChange,
       viewUserDetails,
       markAsNormal,
       formatDate
@@ -489,15 +519,20 @@ export default {
     margin-bottom: 16px;
   }
   .filter-card {
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
-    .filter-content {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+
+      .filter-content {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.3fr) minmax(180px, 0.85fr) minmax(180px, 0.85fr) max-content;
+      gap: 16px;
       align-items: flex-end;
+      @media (max-width: 1180px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       @media (max-width: 768px) {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         gap: 16px;
         align-items: stretch;
       }
@@ -505,8 +540,7 @@ export default {
         display: flex;
         align-items: center;
         gap: 8px;
-        flex: 1;
-        min-width: 200px;
+        min-width: 0;
         @media (max-width: 768px) {
           flex-direction: column;
           align-items: stretch;
@@ -548,15 +582,29 @@ export default {
           }
         }
       }
+      .desktop-filter-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        min-width: max-content;
+        @media (max-width: 768px) {
+          display: none;
+        }
+        .el-button {
+          margin-left: 0;
+        }
+      }
       .mobile-filter-actions {
         display: none;
         @media (max-width: 768px) {
-          display: flex;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
           width: 100%;
           margin-top: 8px;
           .mobile-action-btn {
-            flex: 1;
+            width: 100%;
+            min-width: 0;
             height: 44px;
             font-size: 16px;
           }
@@ -567,124 +615,96 @@ export default {
 }
 .table-wrapper {
   margin-top: 20px;
-  @media (max-width: 768px) {
-    display: none !important;
+}
+.data-table {
+  width: 100%;
+}
+.abnormal-users-data {
+  margin-top: 16px;
+  :deep(.field-full .field-value) {
+    width: 100%;
+    text-align: left;
   }
 }
-.mobile-card-list {
-  display: none;
-  @media (max-width: 768px) {
-    display: block;
-    margin-top: 16px;
-    .empty-state {
-      padding: 60px 20px;
-      text-align: center;
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
+.abnormal-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
   }
-  .mobile-card {
-    background: #fff;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #f0f0f0;
-      .user-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        .user-text {
-          flex: 1;
-          min-width: 0;
-          overflow: hidden;
-          .username {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 4px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-          .email {
-            font-size: 14px;
-            color: #666;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-        }
-      }
-    }
-    .card-body {
-      margin-bottom: 12px;
-        .card-row {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 12px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #f0f0f0;
-        gap: 8px;
-        &:last-of-type {
-          border-bottom: none;
-          margin-bottom: 0;
-          padding-bottom: 0;
-        }
-        .label {
-          flex: 0 0 80px;
-          font-size: 13px;
-          color: #666;
-          font-weight: 500;
-          flex-shrink: 0;
-        }
-        .value {
-          flex: 1;
-          min-width: 0;
-          font-size: 14px;
-          color: #333;
-          word-break: break-all;
-          overflow-wrap: break-word;
-          &.highlight {
-            color: #f56c6c;
-            font-weight: 600;
-            font-size: 16px;
-          }
-        }
-      }
-    }
-    .card-actions {
-      display: flex;
-      gap: 8px;
-      padding-top: 12px;
-      border-top: 1px solid #f0f0f0;
-      .mobile-action-btn {
-        flex: 1;
-        height: 44px;
-        font-size: 16px;
-        margin: 0;
-      }
-    }
+}
+.user-text-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+  .username {
+    max-width: 100%;
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .empty-state {
-    padding: 40px 20px;
-    text-align: center;
+  .email {
+    max-width: 100%;
+    font-size: 13px;
+    color: #909399;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  &:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+.mobile-highlight-value {
+  color: #f56c6c;
+  font-weight: 700;
+}
+.mobile-description-value {
+  color: #303133;
+  line-height: 1.5;
+}
+.mobile-abnormal-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  .mobile-action-btn {
+    flex: 1;
+    min-height: 44px;
+    margin: 0;
+    touch-action: manipulation;
   }
 }
 .user-details {
+  .detail-card {
+    margin-bottom: 20px;
+  }
+
   .stat-item {
     text-align: center;
-    padding: 20px;
+    padding: 16px;
   }
   .stat-item .stat-number {
     font-size: 1.5rem;
@@ -697,40 +717,40 @@ export default {
     font-size: 12px;
   }
 }
+.user-details-drawer {
+  .user-details {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .detail-card {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+  }
+
+  :deep(.el-table) {
+    min-width: 560px;
+  }
+}
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
   }
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-.pagination {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
+@media (max-width: 768px) {
+  .user-details-drawer {
+    .user-details {
+      :deep(.el-card__body) {
+        padding: 14px;
+      }
+    }
+
+    :deep(.el-table__inner-wrapper) {
+      overflow-x: auto;
+    }
+  }
 }
 </style>

@@ -23,9 +23,7 @@
         </el-button>
       </div>
     </div>
-    <div v-if="loading" class="loading-container">
-      <el-skeleton :rows="10" animated />
-    </div>
+    <LoadingState v-if="loading" class="loading-container" text="正在加载邮件详情..." />
     <div v-else-if="emailDetail" class="email-detail-content">
       <el-card class="detail-card">
         <template #header>
@@ -197,23 +195,30 @@
       </el-card>
     </div>
     <div v-else class="error-container">
-      <el-empty description="邮件不存在或已被删除">
-        <el-button type="primary" @click="$router.go(-1)">返回</el-button>
-      </el-empty>
+      <EmptyState
+        title="邮件不存在或已被删除"
+        description="请返回邮件队列确认最新状态。"
+        action-text="返回"
+        :icon-size="64"
+        @action="$router.go(-1)"
+      />
     </div>
   </div>
 </template>
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { ArrowLeft, Refresh, Delete, CopyDocument, Download } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
+import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
+import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
 export default {
   name: 'EmailDetail',
   components: {
-    ArrowLeft, Refresh, Delete, CopyDocument, Download
+    ArrowLeft, Refresh, Delete, CopyDocument, Download, EmptyState, LoadingState
   },
   setup() {
     const route = useRoute()
@@ -245,10 +250,9 @@ export default {
     const retryEmail = async () => {
       if (!emailDetail.value) return
       try {
-        await ElMessageBox.confirm(
+        await confirmWarning(
           `确定要重试发送邮件到 ${emailDetail.value.to_email} 吗？`,
-          '确认重试',
-          { type: 'warning' }
+          '确认重试'
         )
         retryLoading.value = true
         const response = await adminAPI.retryEmail(emailDetail.value.id)
@@ -269,10 +273,9 @@ export default {
     const deleteEmail = async () => {
       if (!emailDetail.value) return
       try {
-        await ElMessageBox.confirm(
+        await confirmDelete(
           `确定要删除发送到 ${emailDetail.value.to_email} 的邮件吗？`,
-          '确认删除',
-          { type: 'warning' }
+          '确认删除'
         )
         const response = await adminAPI.deleteEmailFromQueue(emailDetail.value.id)
         if (response.success) {
@@ -462,32 +465,6 @@ export default {
     flex-direction: column;
   }
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
 .email-content-preview {
   margin-top: 10px;
 }
@@ -510,10 +487,10 @@ export default {
 .email-html-preview :deep(.btn) {
   display: inline-block;
   padding: 12px 30px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--el-color-primary);
   color: white;
   text-decoration: none;
-  border-radius: 25px;
+  border-radius: 6px;
   font-weight: 500;
   margin: 20px 0;
 }

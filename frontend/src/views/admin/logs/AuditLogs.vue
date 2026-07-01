@@ -1,65 +1,93 @@
 <template>
-  <div class="audit-log-list">
+  <div class="audit-log-list logs-page">
     <div class="filter-bar desktop-only">
-      <el-input v-model="filter.keyword" placeholder="搜索操作描述/邮箱" clearable style="width: 220px" @keyup.enter="fetch" />
-      <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" style="width: 340px" />
+      <el-input v-model="filter.keyword" placeholder="搜索操作描述/邮箱" clearable class="filter-keyword" @keyup.enter="fetch" />
+      <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="filter-date" />
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
     </div>
-    <div class="table-wrapper desktop-only">
-      <el-table v-loading="loading" :data="list" stripe border>
-        <el-table-column prop="created_at" label="时间" width="170" />
-        <el-table-column label="操作类型" width="140">
-          <template #default="{ row }">{{ getActionTypeText(row.action_type) }}</template>
-        </el-table-column>
-        <el-table-column label="用户" width="180" show-overflow-tooltip>
-          <template #default="{ row }">
-            <template v-if="getTargetUser(row)">
-              {{ getTargetUser(row) }}
-            </template>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作描述" min-width="280" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.action_description || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="变更前" width="180" show-overflow-tooltip>
-          <template #default="{ row }"><div class="audit-data"><div v-for="(line, index) in fmtAuditData(row.before_data)" :key="`before-${row.id}-${index}`">{{ line }}</div></div></template>
-        </el-table-column>
-        <el-table-column label="变更后" width="180" show-overflow-tooltip>
-          <template #default="{ row }"><div class="audit-data"><div v-for="(line, index) in fmtAuditData(row.after_data)" :key="`after-${row.id}-${index}`">{{ line }}</div></div></template>
-        </el-table-column>
-        <el-table-column prop="ip_address" label="IP" width="135" show-overflow-tooltip />
-      </el-table>
-    </div>
-    <div class="mobile-only mobile-card-list">
-      <div v-loading="loading" class="mobile-list-inner">
-        <div v-for="row in list" :key="row.id" class="mobile-log-card">
-          <div class="mobile-card-row"><span class="mobile-label">时间</span><span class="mobile-value">{{ row.created_at }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">操作</span><span class="mobile-value">{{ getActionTypeText(row.action_type) }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">用户</span><span class="mobile-value">{{ getTargetUser(row) || '-' }}</span></div>
-          <div class="mobile-card-row"><span class="mobile-label">描述</span><span class="mobile-value mobile-value-wrap">{{ row.action_description || '-' }}</span></div>
-          <div class="mobile-card-row" v-if="row.before_data"><span class="mobile-label">变更前</span><span class="mobile-value mobile-value-wrap audit-data"><div v-for="(line, index) in fmtAuditData(row.before_data)" :key="`mobile-before-${row.id}-${index}`">{{ line }}</div></span></div>
-          <div class="mobile-card-row" v-if="row.after_data"><span class="mobile-label">变更后</span><span class="mobile-value mobile-value-wrap audit-data"><div v-for="(line, index) in fmtAuditData(row.after_data)" :key="`mobile-after-${row.id}-${index}`">{{ line }}</div></span></div>
+    <ResponsiveDataView
+      :data="list"
+      :loading="loading"
+      :fields="[]"
+      title-field="action_type"
+      empty-title="暂无操作记录"
+    >
+      <template #table>
+        <div class="table-wrapper">
+          <el-table v-loading="loading" :data="list" stripe border>
+            <el-table-column prop="created_at" label="时间" width="170" />
+            <el-table-column label="操作类型" width="140">
+              <template #default="{ row }">{{ getActionTypeText(row.action_type) }}</template>
+            </el-table-column>
+            <el-table-column label="用户" width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                <template v-if="getTargetUser(row)">
+                  {{ getTargetUser(row) }}
+                </template>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作描述" min-width="280" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.action_description || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="变更前" width="180" show-overflow-tooltip>
+              <template #default="{ row }"><div class="audit-data"><div v-for="(line, index) in fmtAuditData(row.before_data)" :key="`before-${row.id}-${index}`">{{ line }}</div></div></template>
+            </el-table-column>
+            <el-table-column label="变更后" width="180" show-overflow-tooltip>
+              <template #default="{ row }"><div class="audit-data"><div v-for="(line, index) in fmtAuditData(row.after_data)" :key="`after-${row.id}-${index}`">{{ line }}</div></div></template>
+            </el-table-column>
+            <el-table-column prop="ip_address" label="IP" width="135" show-overflow-tooltip />
+          </el-table>
         </div>
-        <el-empty v-if="list.length === 0 && !loading" description="暂无操作记录" />
-      </div>
-    </div>
-    <el-pagination
+      </template>
+      <template #header="{ item }">
+        <div class="mobile-log-title">{{ getActionTypeText(item.action_type) }}</div>
+        <div class="mobile-log-subtitle">{{ item.created_at || '-' }}</div>
+      </template>
+      <template #default="{ item }">
+        <MobileLogFields>
+          <div class="mobile-log-field">
+            <span class="mobile-log-label">用户</span>
+            <span class="mobile-log-value">{{ getTargetUser(item) || '-' }}</span>
+          </div>
+          <div class="mobile-log-field field-full">
+            <span class="mobile-log-label">描述</span>
+            <span class="mobile-log-value mobile-log-wrap">{{ item.action_description || '-' }}</span>
+          </div>
+          <div class="mobile-log-field field-full" v-if="item.before_data">
+            <span class="mobile-log-label">变更前</span>
+            <span class="mobile-log-value mobile-log-wrap audit-data">
+              <div v-for="(line, index) in fmtAuditData(item.before_data)" :key="`mobile-before-${item.id}-${index}`">{{ line }}</div>
+            </span>
+          </div>
+          <div class="mobile-log-field field-full" v-if="item.after_data">
+            <span class="mobile-log-label">变更后</span>
+            <span class="mobile-log-value mobile-log-wrap audit-data">
+              <div v-for="(line, index) in fmtAuditData(item.after_data)" :key="`mobile-after-${item.id}-${index}`">{{ line }}</div>
+            </span>
+          </div>
+        </MobileLogFields>
+      </template>
+    </ResponsiveDataView>
+    <PaginationBar
       v-model:current-page="page"
-      :page-size="pageSize"
+      v-model:page-size="pageSize"
       :total="total"
       layout="total, prev, pager, next"
+      mobile-layout="prev, pager, next"
+      :page-sizes="[10, 20, 50]"
       @current-change="fetch"
       @size-change="(s) => { pageSize = s; page = 1; fetch() }"
-      :page-sizes="[10, 20, 50]"
-      class="pagination"
     />
   </div>
 </template>
 <script setup>
 import { ref, onMounted } from 'vue'
 import { adminAPI } from '@/utils/api'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import MobileLogFields from '@/components/MobileLogFields.vue'
 
 const loading = ref(false)
 const list = ref([])
@@ -269,14 +297,12 @@ function resetFilter() {
 onMounted(() => fetch())
 </script>
 <style scoped>
-.audit-log-list { padding: 0; }
-.filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-.pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
-.mobile-log-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-.mobile-card-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-.mobile-label { color: #909399; flex-shrink: 0; margin-right: 12px; }
-.mobile-value { text-align: right; word-break: break-all; }
-.mobile-value-wrap { max-width: 65%; }
+.filter-keyword,
+.filter-date {
+  width: 100%;
+  min-width: 0;
+}
+.table-wrapper { display: block; min-width: 0; }
 .audit-data { font-size: 12px; line-height: 1.6; word-break: break-all; }
 .text-muted { color: #909399; font-size: 11px; }
 </style>

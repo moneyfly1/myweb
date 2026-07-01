@@ -1,14 +1,12 @@
 <template>
-  <el-drawer
+  <AppDrawer
     :model-value="visible"
     @update:model-value="$emit('update:visible', $event)"
     :title="`用户详情 - ${user?.user_info?.username || user?.username || user?.user_info?.email || user?.email || ''}`"
-    :size="isMobile ? '92%' : '780px'"
-    direction="rtl"
+    size="780px"
+    mobile-size="100%"
     class="user-detail-drawer"
-    :close-on-click-modal="true"
-    :append-to-body="true"
-    :lock-scroll="false"
+    close-on-click-modal
   >
     <div v-if="user" class="drawer-content">
       <!-- 用户基本信息 (始终可见) -->
@@ -171,7 +169,13 @@
           <el-divider v-if="index < user.subscriptions.length - 1" />
         </div>
       </div>
-      <el-empty v-else description="暂无订阅信息" :image-size="80" />
+      <EmptyState
+        v-else
+        title="暂无订阅信息"
+        description="该用户当前没有可展示的订阅。"
+        :icon-size="48"
+        class="detail-empty-state"
+      />
 
       <!-- 记录信息分隔线 -->
       <el-divider content-position="left">记录信息</el-divider>
@@ -185,7 +189,7 @@
             :data="orderRecords"
             size="small"
             max-height="240"
-            style="width: 100%"
+            class="data-table"
           >
             <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
             <el-table-column prop="amount" label="金额" width="100">
@@ -206,7 +210,13 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="暂无订单记录" :image-size="80" />
+          <EmptyState
+            v-else
+            title="暂无订单记录"
+            description="该用户当前没有订单记录。"
+            :icon-size="48"
+            class="detail-empty-state"
+          />
         </el-tab-pane>
 
         <!-- 设备记录 Tab -->
@@ -230,7 +240,7 @@
               :data="devices"
               size="small"
               max-height="300"
-              style="width: 100%"
+              class="data-table"
               v-loading="loadingDevices"
             >
               <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
@@ -267,14 +277,20 @@
                 </template>
               </el-table-column>
             </el-table>
-            <el-empty v-else-if="!loadingDevices" description="暂无在线设备" :image-size="80" />
+            <EmptyState
+              v-else-if="!loadingDevices"
+              title="暂无在线设备"
+              description="该用户当前没有在线设备。"
+              :icon-size="48"
+              class="detail-empty-state"
+            />
             <div v-if="uaRecords && uaRecords.length > 0" class="ua-records-section">
-              <el-divider content-position="left" style="margin: 16px 0 12px;">UA访问记录</el-divider>
+              <el-divider content-position="left" class="compact-divider">UA访问记录</el-divider>
               <el-table
                 :data="uaRecords"
                 size="small"
                 max-height="200"
-                style="width: 100%"
+                class="data-table"
               >
                 <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
                 <el-table-column prop="device_type" label="类型" width="80">
@@ -308,7 +324,7 @@
             :data="loginHistory"
             size="small"
             max-height="240"
-            style="width: 100%"
+            class="data-table"
           >
             <el-table-column prop="login_time" label="登录时间" width="160">
               <template #default="scope">
@@ -330,7 +346,13 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="暂无登录历史" :image-size="80" />
+          <EmptyState
+            v-else
+            title="暂无登录历史"
+            description="该用户当前没有登录历史。"
+            :icon-size="48"
+            class="detail-empty-state"
+          />
         </el-tab-pane>
 
         <!-- 重置记录 Tab -->
@@ -340,7 +362,7 @@
               :data="subscriptionResets"
               size="small"
               max-height="240"
-              style="width: 100%"
+              class="data-table"
             >
               <el-table-column prop="reset_by" label="重置人" width="100" />
               <el-table-column prop="reset_type" label="重置类型" width="110">
@@ -371,7 +393,13 @@
               </el-table-column>
             </el-table>
           </div>
-          <el-empty v-else description="暂无重置记录" :image-size="80" />
+          <EmptyState
+            v-else
+            title="暂无重置记录"
+            description="该用户当前没有订阅重置记录。"
+            :icon-size="48"
+            class="detail-empty-state"
+          />
         </el-tab-pane>
 
         <!-- 充值记录 Tab -->
@@ -381,7 +409,7 @@
             :data="rechargeRecords"
             size="small"
             max-height="240"
-            style="width: 100%"
+            class="data-table"
           >
             <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
             <el-table-column prop="amount" label="金额" width="100">
@@ -407,7 +435,13 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="暂无充值记录" :image-size="80" />
+          <EmptyState
+            v-else
+            title="暂无充值记录"
+            description="该用户当前没有充值记录。"
+            :icon-size="48"
+            class="detail-empty-state"
+          />
         </el-tab-pane>
 
         <!-- 签到日志 Tab -->
@@ -435,7 +469,7 @@
             :data="checkinLogs"
             size="small"
             max-height="240"
-            style="width: 100%"
+            class="data-table"
             v-loading="loadingCheckins"
           >
             <el-table-column prop="created_at" label="签到时间" width="180">
@@ -454,15 +488,18 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-else-if="!loadingCheckins" description="暂无签到日志" :image-size="80" />
+          <EmptyState
+            v-else-if="!loadingCheckins"
+            title="暂无签到日志"
+            description="该用户当前没有签到日志。"
+            :icon-size="48"
+            class="detail-empty-state"
+          />
           <div class="checkin-pagination">
-            <el-pagination
+            <PaginationBar
               v-model:current-page="checkinPagination.page"
               v-model:page-size="checkinPagination.size"
               :total="checkinPagination.total"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next"
-              small
               @size-change="handleCheckinSizeChange"
               @current-change="handleCheckinPageChange"
             />
@@ -496,7 +533,7 @@
               :data="customNodes"
               size="small"
               max-height="240"
-              style="width: 100%"
+              class="data-table"
             >
               <el-table-column prop="node_name" label="节点名称" min-width="150" />
               <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
@@ -523,19 +560,25 @@
                 </template>
               </el-table-column>
             </el-table>
-            <el-empty v-else description="暂无专线节点" :image-size="80" />
+            <EmptyState
+              v-else
+              title="暂无专线节点"
+              description="该用户当前没有分配专线节点。"
+              :icon-size="48"
+              class="detail-empty-state"
+            />
           </div>
         </el-tab-pane>
       </el-tabs>
     </div>
 
     <!-- 分配专线节点对话框 -->
-    <el-dialog
+    <AppDialog
       v-model="showAssignDialog"
       title="分配专线节点"
-      :width="isMobile ? '94%' : '720px'"
-      :close-on-click-modal="false"
-      append-to-body
+      width="720px"
+      mobile-width="94%"
+      :loading="assigning"
       class="assign-node-dialog"
     >
       <div class="assign-dialog-content">
@@ -590,7 +633,7 @@
             collapse-tags
             collapse-tags-tooltip
             placeholder="请选择用户"
-            style="width: 100%"
+            class="form-control"
             no-data-text="请先搜索用户"
             @change="handleSelectedUsersChange"
           >
@@ -639,7 +682,7 @@
             collapse-tags
             collapse-tags-tooltip
             placeholder="请选择专线节点"
-            style="width: 100%"
+            class="form-control"
             no-data-text="请先搜索专线节点"
             @change="handleSelectedNodesChange"
           >
@@ -658,7 +701,7 @@
               v-model="assignExpiresAt"
               type="datetime"
               placeholder="不填则跟随用户订阅"
-              style="width: 100%"
+              class="form-control"
               value-format="YYYY-MM-DDTHH:mm:ssZ"
               :default-time="assignDefaultTime"
               clearable
@@ -690,26 +733,28 @@
       </div>
 
       <template #footer>
-        <div class="assign-dialog-footer">
-          <el-button @click="showAssignDialog = false">取消</el-button>
-          <el-button
-            type="primary"
-            @click="assignNode"
-            :loading="assigning"
-            :disabled="assignButtonDisabled"
-          >
-            确认分配
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="assigning"
+          :disabled="assignButtonDisabled"
+          submit-text="确认分配"
+          @cancel="showAssignDialog = false"
+          @submit="assignNode"
+        />
       </template>
-    </el-dialog>
-  </el-drawer>
+    </AppDialog>
+  </AppDrawer>
 </template>
 
 <script>
 import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
+import PaginationBar from '@/components/PaginationBar.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
 import {
   Wallet,
   ShoppingCart,
@@ -809,7 +854,12 @@ export default {
     RefreshRight,
     CopyDocument,
     Monitor,
-    Delete
+    Delete,
+    PaginationBar,
+    AppDrawer,
+    AppDialog,
+    EmptyState,
+    FormActionBar
   },
   props: {
     visible: {
@@ -1363,14 +1413,9 @@ export default {
     },
     async deleteDevice(device) {
       try {
-        await ElMessageBox.confirm(
+        await confirmDelete(
           `确定要删除设备 "${device.device_name || '未知设备'}" 吗？删除后该设备将无法继续使用订阅。`,
-          '确认删除',
-          {
-            confirmButtonText: '确定删除',
-            cancelButtonText: '取消',
-            type: 'warning',
-          }
+          '确认删除'
         )
         this.deletingDeviceId = device.id
         const response = await adminAPI.removeDevice(device.id)
@@ -1521,10 +1566,9 @@ export default {
         // 如果是用户最后一个专线节点，弹出确认提示
         const isLastNode = this.customNodes.length === 1
         if (isLastNode) {
-          await ElMessageBox.confirm(
+          await confirmWarning(
             '这是该用户的最后一个专线节点。取消后用户将无法访问任何专线节点，系统将自动恢复其普通线路访问。\n\n确认取消分配？',
-            '取消分配专线节点',
-            { type: 'warning', confirmButtonText: '确认取消' }
+            '取消分配专线节点'
           )
         }
         const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
@@ -1548,13 +1592,27 @@ export default {
 <style lang="scss" scoped>
 .user-detail-drawer {
   .drawer-content {
-    padding: 20px;
+    padding: 0;
   }
 
   .balance-highlight {
     font-weight: 600;
     color: #409eff;
     font-size: 14px;
+  }
+
+  .data-table,
+  .form-control {
+    width: 100%;
+  }
+
+  .detail-empty-state {
+    min-height: 168px;
+    padding: 28px 16px;
+  }
+
+  .compact-divider {
+    margin: 16px 0 12px;
   }
 
   .expired-text {
@@ -1824,16 +1882,17 @@ export default {
   }
 
   .assign-option-group :deep(.el-radio-button__inner) {
-    min-height: 36px;
+    min-height: 44px;
     border-radius: 6px !important;
     border-left: 1px solid var(--el-border-color) !important;
     display: inline-flex;
     align-items: center;
+    touch-action: manipulation;
   }
 
   @media (max-width: 768px) {
     .drawer-content {
-      padding: 8px;
+      padding: 0;
     }
 
     .balance-highlight {
@@ -1906,14 +1965,26 @@ export default {
     .custom-nodes-section {
       .custom-nodes-actions {
         margin-bottom: 10px;
-        gap: 6px;
+        gap: 8px;
+        flex-wrap: wrap;
+
+        :deep(.el-button) {
+          min-height: 44px;
+          touch-action: manipulation;
+        }
       }
     }
 
     .devices-section {
       .devices-actions {
         margin-bottom: 8px;
-        gap: 6px;
+        gap: 8px;
+        flex-wrap: wrap;
+
+        :deep(.el-button) {
+          min-height: 44px;
+          touch-action: manipulation;
+        }
       }
       .device-count-tip {
         font-size: 11px;
@@ -1923,202 +1994,186 @@ export default {
     .el-button {
       font-size: 12px;
       padding: 4px 8px;
-      min-height: 28px;
+      min-height: 44px;
+      touch-action: manipulation;
+    }
+
+    .assign-option-group :deep(.el-radio-button__inner) {
+      min-height: 44px;
+      justify-content: center;
+      touch-action: manipulation;
     }
   }
 }
 
-:deep(.assign-node-dialog) {
-  .assign-dialog-content {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    max-height: 68vh;
-    overflow-y: auto;
-    padding-right: 4px;
+.assign-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 68vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.assign-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.assign-summary-item {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-extra-light);
+
+  span {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
   }
 
-  .assign-summary {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .assign-summary-item {
-    min-width: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: 8px;
-    background: var(--el-fill-color-extra-light);
-
-    span {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 12px;
-      color: var(--el-text-color-secondary);
-    }
-
-    strong {
-      display: block;
-      overflow: hidden;
-      color: var(--el-text-color-primary);
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.35;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-
-  .assign-section-card {
-    padding: 14px;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: 8px;
-    background: var(--el-bg-color);
-  }
-
-  .assign-section-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-
-  .section-title {
+  strong {
+    display: block;
+    overflow: hidden;
     color: var(--el-text-color-primary);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+}
 
-  .section-desc {
-    margin-top: 3px;
-    color: var(--el-text-color-secondary);
-    font-size: 12px;
-    line-height: 1.45;
+.assign-section-card {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+}
+
+.assign-section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.section-desc {
+  margin-top: 3px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.assign-dialog-content .search-input-group {
+  margin-bottom: 8px;
+}
+
+.assign-dialog-content .search-input-group :deep(.el-input-group__append) {
+  padding: 0;
+}
+
+.assign-dialog-content .search-input-group :deep(.el-input-group__append .el-button) {
+  min-width: 82px;
+}
+
+.search-button-text {
+  margin-left: 4px;
+}
+
+.assign-dialog-content .search-result-tip {
+  margin: 5px 0 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+
+  &.empty {
+    color: var(--el-color-danger);
   }
+}
 
-  .search-input-group {
-    margin-bottom: 8px;
-  }
+.assign-options-form {
+  padding: 14px 14px 0;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
 
-  .search-input-group .el-input-group__append {
-    padding: 0;
-  }
+.assign-dialog-content .toggle-hint {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
 
-  .search-input-group .el-input-group__append .el-button {
-    min-width: 82px;
-    border-radius: 0 var(--el-border-radius-base) var(--el-border-radius-base) 0;
-  }
+.assign-dialog-content .assign-option-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
-  .search-button-text {
-    margin-left: 4px;
-  }
+.assign-dialog-content .assign-option-group :deep(.el-radio-button__inner) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border-left: 1px solid var(--el-border-color) !important;
+  border-radius: 6px !important;
+  touch-action: manipulation;
+}
 
-  .search-result-tip {
-    margin: 5px 0 8px;
-    color: var(--el-text-color-secondary);
-    font-size: 12px;
-
-    &.empty {
-      color: var(--el-color-danger);
-    }
-  }
-
-  .assign-options-form {
-    padding: 14px 14px 0;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: 8px;
-    background: var(--el-fill-color-blank);
-  }
-
-  .toggle-hint {
-    margin-top: 6px;
-    color: var(--el-text-color-secondary);
-    font-size: 11px;
-    line-height: 1.5;
-  }
-
-  .assign-option-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .assign-option-group .el-radio-button__inner {
-    display: inline-flex;
-    align-items: center;
-    min-height: 36px;
-    border-left: 1px solid var(--el-border-color) !important;
-    border-radius: 6px !important;
-  }
-
-  .form-tip {
-    margin-top: 8px;
-    color: var(--el-text-color-secondary);
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .assign-dialog-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-  }
+.assign-dialog-content .form-tip {
+  margin-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 768px) {
-  :deep(.assign-node-dialog) {
-    .el-dialog {
-      margin-top: 5vh;
-    }
+  .assign-dialog-content {
+    max-height: 70vh;
+    padding-right: 0;
+  }
 
-    .assign-dialog-content {
-      max-height: 70vh;
-      padding-right: 0;
-    }
+  .assign-summary {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 
-    .assign-summary {
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
+  .assign-section-card,
+  .assign-options-form {
+    padding: 12px;
+  }
 
-    .assign-section-card,
-    .assign-options-form {
-      padding: 12px;
-    }
+  .assign-dialog-content .search-input-group :deep(.el-input-group__append .el-button) {
+    min-width: 68px;
+    min-height: 44px;
+    padding: 0 10px;
+    touch-action: manipulation;
+  }
 
-    .search-input-group .el-input-group__append .el-button {
-      min-width: 68px;
-      padding: 0 10px;
-    }
+  .assign-dialog-content .assign-option-group {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
 
-    .assign-option-group {
-      display: grid;
-      grid-template-columns: 1fr;
-      width: 100%;
-    }
+  .assign-dialog-content .assign-option-group :deep(.el-radio-button),
+  .assign-dialog-content .assign-option-group :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
 
-    .assign-option-group .el-radio-button,
-    .assign-option-group .el-radio-button__inner {
-      width: 100%;
-    }
-
-    .assign-option-group .el-radio-button__inner {
-      min-height: 44px;
-      justify-content: center;
-    }
-
-    .assign-dialog-footer {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      width: 100%;
-      gap: 8px;
-    }
-
-    .assign-dialog-footer .el-button {
-      width: 100%;
-      margin-left: 0;
-    }
+  .assign-dialog-content .assign-option-group :deep(.el-radio-button__inner) {
+    min-height: 44px;
+    justify-content: center;
+    touch-action: manipulation;
   }
 }
 </style>

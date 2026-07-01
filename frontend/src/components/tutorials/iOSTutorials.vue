@@ -6,7 +6,10 @@
           <h3>1. 软件下载</h3>
           <p>点击上方"立即下载"按钮下载 Shadowrocket 最新版本。</p>
           <div class="warning">
-            <h4>⚠️ 重要提示</h4>
+            <h4>
+              <el-icon><WarningFilled /></el-icon>
+              重要提示
+            </h4>
             <p>Shadowrocket 需要从 App Store 购买下载，或者使用企业证书版本。请确保从可信来源获取。</p>
           </div>
           <h3>2. 安装步骤</h3>
@@ -73,7 +76,10 @@
             </ol>
           </div>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>建议使用"配置"模式，支持自动分流</li>
               <li>可以在"规则"页面自定义分流规则</li>
@@ -83,10 +89,13 @@
             </ul>
           </div>
           <div class="troubleshooting">
-            <h4>🔧 常见问题解决</h4>
+            <h4>
+              <el-icon><Tools /></el-icon>
+              常见问题解决
+            </h4>
             <ul>
               <li><strong>无法连接：</strong>检查网络连接，尝试切换节点</li>
-              <li><strong>速度慢：</strong>尝试选择延迟较低的节点</li>
+              <li><strong>连接不稳定：</strong>尝试选择可正常连接的节点</li>
               <li><strong>订阅更新失败：</strong>检查订阅链接是否正确</li>
               <li><strong>应用闪退：</strong>重启应用或重新安装</li>
             </ul>
@@ -98,6 +107,7 @@
 </template>
 <script setup>
 import { ref } from 'vue'
+import { InfoFilled, WarningFilled, Tools } from '@element-plus/icons-vue'
 const activeNames = ref(['shadowrocket'])
 </script>
 <style scoped>
@@ -115,6 +125,9 @@ const activeNames = ref(['shadowrocket'])
   padding-left: 10px;
 }
 .tutorial-content :is(h4) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #34495e;
   margin-top: 15px;
   margin-bottom: 8px;

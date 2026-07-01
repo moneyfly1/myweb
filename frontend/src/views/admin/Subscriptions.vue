@@ -67,8 +67,9 @@
           </div>
         </div>
         <div class="mobile-quick-actions">
-          <div class="quick-sort-buttons">
+          <div class="mobile-toolbar-grid mobile-toolbar-grid--five">
             <el-button 
+              class="mobile-toolbar-item"
               size="small" 
               :type="currentSort === 'add_time_desc' ? 'primary' : 'default'"
               @click="sortByCreatedTime"
@@ -78,6 +79,7 @@
               最新
             </el-button>
             <el-button 
+              class="mobile-toolbar-item"
               size="small" 
               :type="currentSort.includes('apple') ? 'primary' : 'default'"
               @click="sortByApple"
@@ -87,6 +89,7 @@
               通用订阅
             </el-button>
             <el-button 
+              class="mobile-toolbar-item"
               size="small" 
               :type="currentSort.includes('online') ? 'primary' : 'default'"
               @click="sortByOnline"
@@ -95,8 +98,8 @@
               <el-icon><Monitor /></el-icon>
               在线
             </el-button>
-            <el-dropdown @command="handleSortCommand" trigger="click">
-              <el-button size="small" type="default" plain>
+            <el-dropdown class="mobile-toolbar-dropdown" @command="handleSortCommand" trigger="click">
+              <el-button class="mobile-toolbar-item" size="small" type="default" plain>
                 <el-icon><Sort /></el-icon>
                 更多
               </el-button>
@@ -111,10 +114,8 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-          </div>
-          <div class="action-buttons-group">
-            <el-dropdown @command="handleActionCommand" trigger="click" placement="bottom-end">
-              <el-button type="primary" size="small" plain>
+            <el-dropdown class="mobile-toolbar-dropdown mobile-toolbar-dropdown--wide" @command="handleActionCommand" trigger="click" placement="bottom-end">
+              <el-button class="mobile-toolbar-item" type="primary" size="small" plain>
                 <el-icon><Operation /></el-icon>
                 更多操作
               </el-button>
@@ -143,13 +144,13 @@
           <el-input 
             v-model="searchForm.keyword" 
             placeholder="输入QQ、订阅地址或旧订阅地址进行搜索"
-            style="width: 300px;"
+            class="subscription-search-input"
             clearable
             @keyup.enter="searchSubscriptions"
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="选择状态" clearable style="width: 120px;">
+          <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="subscription-status-select">
             <el-option label="全部" value="" />
             <el-option label="活跃" value="active" />
             <el-option label="已过期" value="expired" />
@@ -197,283 +198,289 @@
           </el-button>
         </div>
       </div>
-      <div class="table-wrapper">
-        <el-table 
-          ref="tableRef"
-          :data="subscriptions" 
-          style="width: 100%" 
-          v-loading="loading"
-          @selection-change="handleSelectionChange"
-          @sort-change="handleSortChange"
-          row-key="id"
-          stripe
-          border
-        >
-        <el-table-column type="selection" width="55" />
-        <el-table-column
-          v-if="visibleColumns.includes('qq')"
-          label="用户"
-          width="150"
-          fixed="left"
-        >
-          <template #default="scope">
-            <div class="qq-info">
-              <div class="qq-email">{{ scope.row.user?.email || '未知' }}</div>
-              <div class="qq-username">{{ scope.row.user?.username || '-' }}</div>
-              <el-button
-                size="small"
-                type="success"
-                @click="showUserDetails(scope.row)"
-                class="detail-btn"
-              >
-                详情
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('expire_time')" 
-          label="结束时间" 
-          width="160"
-          prop="expire_time"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending', null]"
-        >
-          <template #default="scope">
-            <div 
-              class="expire-time-section"
-              :class="{ 'expire-time-expired': isExpired(scope.row) }"
+      <ResponsiveDataView
+        class="subscriptions-data-view"
+        :data="subscriptions"
+        :fields="mobileSubscriptionFields"
+        :loading="loading"
+        title-field=""
+        empty-title="暂无订阅记录"
+        empty-description="可调整筛选条件后重试"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table 
+              ref="tableRef"
+              :data="subscriptions" 
+              class="admin-subscriptions-table"
+              v-loading="loading"
+              @selection-change="handleSelectionChange"
+              @sort-change="handleSortChange"
+              row-key="id"
+              stripe
+              border
             >
-              <el-date-picker
-                v-model="scope.row.expire_time"
-                type="date"
-                placeholder="年/月/日"
-                format="YYYY/MM/DD"
-                value-format="YYYY-MM-DD"
-                size="small"
-                @change="updateExpireTime(scope.row)"
-                class="expire-picker"
-              />
-              <div class="quick-buttons">
-                <el-button size="small" @click="addTime(scope.row, 180)">+半年</el-button>
-                <el-button size="small" @click="addTime(scope.row, 365)">+一年</el-button>
-                <el-button size="small" @click="addTime(scope.row, 730)">+两年</el-button>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('qr_code')" 
-          label="二维码" 
-          width="100" 
-          align="center"
-        >
-          <template #default="scope">
-            <div class="qr-code-section">
-              <div 
-                class="qr-code" 
-                @click="showQRCode(scope.row)"
-                v-if="scope.row.subscription_url || scope.row.universal_url"
-              >
-                <img :src="scope.row.qr_code_url" alt="QR Code" />
-              </div>
-              <el-text v-else type="info" size="small">无订阅</el-text>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-if="visibleColumns.includes('sub_urls')"
-          label="订阅链接"
-          min-width="200"
-        >
-          <template #default="scope">
-            <div class="sub-urls-stacked">
-              <div class="sub-url-row" v-if="scope.row.universal_url">
-                <span class="sub-url-label">通用</span>
-                <el-link
-                  @click="copyToClipboard(scope.row.universal_url)"
-                  type="primary"
-                  class="link-text copy-link"
-                  :title="'点击复制: ' + scope.row.universal_url"
-                >
-                  {{ scope.row.universal_url }}
-                </el-link>
-              </div>
-              <div class="sub-url-row" v-if="scope.row.clash_url">
-                <span class="sub-url-label">Clash</span>
-                <el-link
-                  @click="copyToClipboard(scope.row.clash_url)"
-                  type="primary"
-                  class="link-text copy-link"
-                  :title="'点击复制: ' + scope.row.clash_url"
-                >
-                  {{ scope.row.clash_url }}
-                </el-link>
-              </div>
-              <el-text v-if="!scope.row.universal_url && !scope.row.clash_url" type="info" size="small">未配置</el-text>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('created_at')" 
-          label="添加时间" 
-          width="160"
-          prop="created_at"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending', null]"
-        >
-          <template #default="scope">
-            <div class="created-time">
-              {{ formatDate(scope.row.created_at) }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-if="visibleColumns.includes('sub_count')"
-          label="订阅次数"
-          width="110"
-          align="center"
-          prop="apple_count"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending', null]"
-        >
-          <template #default="scope">
-            <div class="sub-count-stacked">
-              <div class="sub-count-row">
-                <span class="sub-count-label">通用</span>
-                <el-tag type="info" size="small">{{ scope.row.apple_count || 0 }}</el-tag>
-              </div>
-              <div class="sub-count-row">
-                <span class="sub-count-label">Clash</span>
-                <el-tag type="warning" size="small">{{ scope.row.clash_count || 0 }}</el-tag>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('online_devices')" 
-          label="在线" 
-          width="70" 
-          align="center"
-          prop="online_devices"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending', null]"
-        >
-          <template #default="scope">
-            <el-tooltip content="当前在线设备数" placement="top">
-              <el-tag type="success" size="small">{{ scope.row.online_devices || 0 }}</el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column 
-          v-if="visibleColumns.includes('device_limit')" 
-          label="最大设备数" 
-          width="130"
-          prop="device_limit"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending', null]"
-        >
-          <template #default="scope">
-            <div 
-              class="device-limit-section"
-              :class="{ 'device-limit-overlimit': isDeviceOverlimit(scope.row) }"
+            <el-table-column type="selection" width="55" />
+            <el-table-column
+              v-if="visibleColumns.includes('qq')"
+              label="用户"
+              width="150"
+              fixed="left"
             >
-              <el-input-number
-                v-model="scope.row.device_limit"
-                :min="0"
-                :max="999"
-                size="small"
-                @change="updateDeviceLimit(scope.row)"
-                class="device-limit-input"
-              />
-              <div class="quick-device-buttons">
-                <el-button size="small" @click="addDeviceLimit(scope.row, 1)">+1</el-button>
-                <el-button size="small" @click="addDeviceLimit(scope.row, 5)">+5</el-button>
-                <el-button size="small" @click="addDeviceLimit(scope.row, 10)">+10</el-button>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-if="visibleColumns.includes('notes')"
-          label="备注"
-          min-width="180"
-          class-name="notes-column"
-        >
-          <template #default="scope">
-            <div class="notes-input-wrapper">
-              <el-input
-                v-model="scope.row.user_notes"
-                type="textarea"
-                :rows="2"
-                placeholder="点击输入备注，自动保存"
-                class="notes-input"
-                @blur="saveSubNotes(scope.row)"
-                @input="debounceSaveSubNotes(scope.row)"
-                :maxlength="500"
-                show-word-limit
-              />
-              <div v-if="scope.row.savingNotes" class="saving-indicator">
-                <el-icon class="is-loading"><Loading /></el-icon>
-                <span>保存中...</span>
-              </div>
-              <div v-else-if="scope.row.notesSaved" class="saved-indicator">
-                <el-icon><CircleCheckFilled /></el-icon>
-                <span>已保存</span>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-if="visibleColumns.includes('actions')"
-          label="操作" 
-          width="220" 
-          fixed="right"
-        >
-          <template #default="scope">
-            <div class="action-buttons">
-              <div class="button-row">
-                <el-button size="small" type="success" @click="goToUserBackend(scope.row)">
-                  后台
-                </el-button>
-                <el-button size="small" type="primary" @click="resetSubscription(scope.row)">
-                  重置
-                </el-button>
-                <el-button size="small" type="info" @click="sendSubscriptionEmail(scope.row)">
-                  发送
-                </el-button>
-              </div>
-              <div class="button-row">
-                <el-button 
-                  size="small" 
-                  :type="scope.row.is_active ? 'warning' : 'success'"
-                  @click="toggleSubscriptionStatus(scope.row)"
+              <template #default="scope">
+                <div class="qq-info">
+                  <div class="qq-email">{{ scope.row.user?.email || '未知' }}</div>
+                  <div class="qq-username">{{ scope.row.user?.username || '-' }}</div>
+                  <el-button
+                    size="small"
+                    type="success"
+                    @click="showUserDetails(scope.row)"
+                    class="detail-btn"
+                  >
+                    详情
+                  </el-button>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column 
+              v-if="visibleColumns.includes('expire_time')" 
+              label="结束时间" 
+              width="160"
+              prop="expire_time"
+              sortable="custom"
+              :sort-orders="['descending', 'ascending', null]"
+            >
+              <template #default="scope">
+                <div 
+                  class="expire-time-section"
+                  :class="{ 'expire-time-expired': isExpired(scope.row) }"
                 >
-                  {{ scope.row.is_active ? '禁用' : '启用' }}
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  @click="deleteUser(scope.row)"
-                  :disabled="!scope.row.user?.id || scope.row.user?.id === 0 || scope.row.user?.deleted"
+                  <el-date-picker
+                    v-model="scope.row.expire_time"
+                    type="date"
+                    placeholder="年/月/日"
+                    format="YYYY/MM/DD"
+                    value-format="YYYY-MM-DD"
+                    size="small"
+                    @change="updateExpireTime(scope.row)"
+                    class="expire-picker"
+                  />
+                  <div class="quick-buttons">
+                    <el-button size="small" @click="addTime(scope.row, 180)">+半年</el-button>
+                    <el-button size="small" @click="addTime(scope.row, 365)">+一年</el-button>
+                    <el-button size="small" @click="addTime(scope.row, 730)">+两年</el-button>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column 
+              v-if="visibleColumns.includes('qr_code')" 
+              label="二维码" 
+              width="100" 
+              align="center"
+            >
+              <template #default="scope">
+                <div class="qr-code-section">
+                  <div 
+                    class="qr-code" 
+                    @click="showQRCode(scope.row)"
+                    v-if="scope.row.subscription_url || scope.row.universal_url"
+                  >
+                    <img :src="scope.row.qr_code_url" alt="QR Code" />
+                  </div>
+                  <el-text v-else type="info" size="small">无订阅</el-text>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column
+              v-if="visibleColumns.includes('sub_urls')"
+              label="订阅链接"
+              min-width="200"
+            >
+              <template #default="scope">
+                <div class="sub-urls-stacked">
+                  <div class="sub-url-row" v-if="scope.row.universal_url">
+                    <span class="sub-url-label">通用</span>
+                    <el-link
+                      @click="copyToClipboard(scope.row.universal_url)"
+                      type="primary"
+                      class="link-text copy-link"
+                      :title="'点击复制: ' + scope.row.universal_url"
+                    >
+                      {{ scope.row.universal_url }}
+                    </el-link>
+                  </div>
+                  <div class="sub-url-row" v-if="scope.row.clash_url">
+                    <span class="sub-url-label">Clash</span>
+                    <el-link
+                      @click="copyToClipboard(scope.row.clash_url)"
+                      type="primary"
+                      class="link-text copy-link"
+                      :title="'点击复制: ' + scope.row.clash_url"
+                    >
+                      {{ scope.row.clash_url }}
+                    </el-link>
+                  </div>
+                  <el-text v-if="!scope.row.universal_url && !scope.row.clash_url" type="info" size="small">未配置</el-text>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column 
+              v-if="visibleColumns.includes('created_at')" 
+              label="添加时间" 
+              width="160"
+              prop="created_at"
+              sortable="custom"
+              :sort-orders="['descending', 'ascending', null]"
+            >
+              <template #default="scope">
+                <div class="created-time">
+                  {{ formatDate(scope.row.created_at) }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column
+              v-if="visibleColumns.includes('sub_count')"
+              label="订阅次数"
+              width="110"
+              align="center"
+              prop="apple_count"
+              sortable="custom"
+              :sort-orders="['descending', 'ascending', null]"
+            >
+              <template #default="scope">
+                <div class="sub-count-stacked">
+                  <div class="sub-count-row">
+                    <span class="sub-count-label">通用</span>
+                    <el-tag type="info" size="small">{{ scope.row.apple_count || 0 }}</el-tag>
+                  </div>
+                  <div class="sub-count-row">
+                    <span class="sub-count-label">Clash</span>
+                    <el-tag type="warning" size="small">{{ scope.row.clash_count || 0 }}</el-tag>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column 
+              v-if="visibleColumns.includes('online_devices')" 
+              label="在线" 
+              width="70" 
+              align="center"
+              prop="online_devices"
+              sortable="custom"
+              :sort-orders="['descending', 'ascending', null]"
+            >
+              <template #default="scope">
+                <el-tooltip content="当前在线设备数" placement="top">
+                  <el-tag type="success" size="small">{{ scope.row.online_devices || 0 }}</el-tag>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column 
+              v-if="visibleColumns.includes('device_limit')" 
+              label="最大设备数" 
+              width="130"
+              prop="device_limit"
+              sortable="custom"
+              :sort-orders="['descending', 'ascending', null]"
+            >
+              <template #default="scope">
+                <div 
+                  class="device-limit-section"
+                  :class="{ 'device-limit-overlimit': isDeviceOverlimit(scope.row) }"
                 >
-                  删除
-                </el-button>
-                <el-button size="small" type="danger" @click="clearUserDevices(scope.row)">
-                  清理
-                </el-button>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-      </div>
-      <div class="mobile-card-list" v-if="subscriptions.length > 0">
-        <div 
-          v-for="subscription in subscriptions" 
-          :key="subscription.id"
-          class="mobile-card sub-card"
-        >
+                  <el-input-number
+                    v-model="scope.row.device_limit"
+                    :min="0"
+                    :max="999"
+                    size="small"
+                    @change="updateDeviceLimit(scope.row)"
+                    class="device-limit-input"
+                  />
+                  <div class="quick-device-buttons">
+                    <el-button size="small" @click="addDeviceLimit(scope.row, 1)">+1</el-button>
+                    <el-button size="small" @click="addDeviceLimit(scope.row, 5)">+5</el-button>
+                    <el-button size="small" @click="addDeviceLimit(scope.row, 10)">+10</el-button>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column
+              v-if="visibleColumns.includes('notes')"
+              label="备注"
+              min-width="180"
+              class-name="notes-column"
+            >
+              <template #default="scope">
+                <div class="notes-input-wrapper">
+                  <el-input
+                    v-model="scope.row.user_notes"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="点击输入备注，自动保存"
+                    class="notes-input"
+                    @blur="saveSubNotes(scope.row)"
+                    @input="debounceSaveSubNotes(scope.row)"
+                    :maxlength="500"
+                    show-word-limit
+                  />
+                  <div v-if="scope.row.savingNotes" class="saving-indicator">
+                    <el-icon class="is-loading"><Loading /></el-icon>
+                    <span>保存中...</span>
+                  </div>
+                  <div v-else-if="scope.row.notesSaved" class="saved-indicator">
+                    <el-icon><CircleCheckFilled /></el-icon>
+                    <span>已保存</span>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column
+              v-if="visibleColumns.includes('actions')"
+              label="操作" 
+              width="220" 
+              fixed="right"
+            >
+              <template #default="scope">
+                <div class="action-buttons">
+                  <div class="button-row">
+                    <el-button size="small" type="success" @click="goToUserBackend(scope.row)">
+                      后台
+                    </el-button>
+                    <el-button size="small" type="primary" @click="resetSubscription(scope.row)">
+                      重置
+                    </el-button>
+                    <el-button size="small" type="info" @click="sendSubscriptionEmail(scope.row)">
+                      发送
+                    </el-button>
+                  </div>
+                  <div class="button-row">
+                    <el-button 
+                      size="small" 
+                      :type="scope.row.is_active ? 'warning' : 'success'"
+                      @click="toggleSubscriptionStatus(scope.row)"
+                    >
+                      {{ scope.row.is_active ? '禁用' : '启用' }}
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="danger" 
+                      @click="deleteUser(scope.row)"
+                      :disabled="!scope.row.user?.id || scope.row.user?.id === 0 || scope.row.user?.deleted"
+                    >
+                      删除
+                    </el-button>
+                    <el-button size="small" type="danger" @click="clearUserDevices(scope.row)">
+                      清理
+                    </el-button>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+          </div>
+        </template>
+        <template #default="{ item: subscription }">
           <div class="sub-card-header">
             <div class="sub-user-info">
               <el-avatar :size="36" :src="subscription.user?.avatar">
@@ -485,10 +492,10 @@
                 </div>
                 <div class="sub-user-id">
                   ID: {{ subscription.user?.id || subscription.user_id || subscription.id }} · 
-                  <el-tag :type="getSubscriptionStatusType(subscription.status)" size="small" effect="plain" style="border: none; padding: 0 4px;">
+                  <el-tag :type="getSubscriptionStatusType(subscription.status)" size="small" effect="plain" class="compact-status-tag">
                     {{ getSubscriptionStatusText(subscription.status) }}
                   </el-tag>
-                  <el-tag v-if="subscription.user?.deleted" type="danger" size="small" style="margin-left: 4px;">已删除</el-tag>
+                  <el-tag v-if="subscription.user?.deleted" type="danger" size="small" class="deleted-user-tag">已删除</el-tag>
                 </div>
               </div>
             </div>
@@ -549,62 +556,68 @@
             </div>
           </div>
           <div class="sub-action-grid">
-            <div class="sub-action-item" @click="copyToClipboard(subscription.universal_url)">
-              <div class="sub-action-icon" style="background: #ecf5ff; color: #409eff;"><el-icon><DocumentCopy /></el-icon></div>
+            <button type="button" class="sub-action-item" @click="copyToClipboard(subscription.universal_url)">
+              <div class="sub-action-icon sub-action-copy"><el-icon><DocumentCopy /></el-icon></div>
               <span class="sub-action-text">复制通用</span>
-            </div>
-            <div class="sub-action-item" @click="copyToClipboard(subscription.clash_url)">
-              <div class="sub-action-icon" style="background: #fdf6ec; color: #e6a23c;"><el-icon><Link /></el-icon></div>
+            </button>
+            <button type="button" class="sub-action-item" @click="copyToClipboard(subscription.clash_url)">
+              <div class="sub-action-icon sub-action-link"><el-icon><Link /></el-icon></div>
               <span class="sub-action-text">复制Clash</span>
-            </div>
-            <div class="sub-action-item" @click="importToShadowrocket(subscription)">
-              <div class="sub-action-icon" style="background: #f0f9eb; color: #67c23a;"><el-icon><Download /></el-icon></div>
+            </button>
+            <button type="button" class="sub-action-item" @click="importToShadowrocket(subscription)">
+              <div class="sub-action-icon sub-action-success"><el-icon><Download /></el-icon></div>
               <span class="sub-action-text">导入小火箭</span>
-            </div>
-            <div class="sub-action-item" @click="showQRCode(subscription)">
-              <div class="sub-action-icon" style="background: #f4f4f5; color: #909399;"><el-icon><View /></el-icon></div>
+            </button>
+            <button type="button" class="sub-action-item" @click="showQRCode(subscription)">
+              <div class="sub-action-icon sub-action-neutral"><el-icon><View /></el-icon></div>
               <span class="sub-action-text">二维码</span>
-            </div>
+            </button>
           </div>
           <div class="sub-action-grid">
-            <div class="sub-action-item" @click="resetSubscription(subscription)">
-              <div class="sub-action-icon" style="background: #ecf5ff; color: #409eff;"><el-icon><Refresh /></el-icon></div>
+            <button type="button" class="sub-action-item" @click="resetSubscription(subscription)">
+              <div class="sub-action-icon sub-action-copy"><el-icon><Refresh /></el-icon></div>
               <span class="sub-action-text">重置订阅</span>
-            </div>
-            <div class="sub-action-item" @click="toggleSubscriptionStatus(subscription)">
-              <div class="sub-action-icon" :style="subscription.is_active ? 'background: #fef0f0; color: #f56c6c;' : 'background: #f0f9eb; color: #67c23a;'">
+            </button>
+            <button type="button" class="sub-action-item" @click="toggleSubscriptionStatus(subscription)">
+              <div class="sub-action-icon" :class="subscription.is_active ? 'sub-action-danger' : 'sub-action-success'">
                 <el-icon><Switch /></el-icon>
               </div>
               <span class="sub-action-text">{{ subscription.is_active ? '禁用' : '启用' }}</span>
-            </div>
-            <div class="sub-action-item" @click="sendSubscriptionEmail(subscription)">
-              <div class="sub-action-icon" style="background: #f0f9eb; color: #67c23a;"><el-icon><Message /></el-icon></div>
+            </button>
+            <button type="button" class="sub-action-item" @click="sendSubscriptionEmail(subscription)">
+              <div class="sub-action-icon sub-action-success"><el-icon><Message /></el-icon></div>
               <span class="sub-action-text">发邮件</span>
-            </div>
-            <div class="sub-action-item" @click="deleteUser(subscription)">
-              <div class="sub-action-icon" style="background: #fef0f0; color: #f56c6c;"><el-icon><Delete /></el-icon></div>
+            </button>
+            <button
+              type="button"
+              class="sub-action-item"
+              @click="deleteUser(subscription)"
+              :disabled="!subscription.user?.id || subscription.user?.id === 0 || subscription.user?.deleted"
+            >
+              <div class="sub-action-icon sub-action-danger"><el-icon><Delete /></el-icon></div>
               <span class="sub-action-text">删除用户</span>
-            </div>
+            </button>
           </div>
-        </div>
-      </div>
-      <div class="mobile-card-list" v-if="subscriptions.length === 0 && !loading">
-        <div class="empty-state">
-          <i class="el-icon-document"></i>
-          <p>暂无订阅记录</p>
-        </div>
-      </div>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+        </template>
+        <template #empty>
+          <EmptyState
+            title="暂无订阅记录"
+            description="可调整筛选条件后重试"
+            action-text="重置筛选"
+            :loading="loading"
+            @action="resetSearch"
+          />
+        </template>
+      </ResponsiveDataView>
+      <PaginationBar
+        v-if="total > 0"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
     <UserDetailDialog
       :visible="showUserDetailDialog"
@@ -612,19 +625,36 @@
       :user="selectedUser"
       :isMobile="isMobile"
     />
-    <el-dialog v-model="showQRDialog" title="订阅二维码" width="400px" center>
+    <AppDialog
+      v-model="showQRDialog"
+      title="订阅二维码"
+      width="400px"
+      mobile-width="92%"
+    >
       <div class="qr-dialog-content">
         <div class="qr-code-large">
-          <img :src="currentQRCode" alt="QR Code" />
+          <img :src="currentQRCode" alt="订阅二维码" />
         </div>
         <div class="qr-info">
           <p>扫描二维码即可在Shadowrocket中添加订阅</p>
           <p class="qr-tip">支持V2Ray和通用订阅格式，包含到期时间信息</p>
-          <el-button type="primary" @click="downloadQRCode">下载二维码</el-button>
         </div>
       </div>
-    </el-dialog>
-    <el-dialog v-model="showColumnSettings" title="列设置" width="600px">
+      <template #footer>
+        <FormActionBar
+          submit-text="下载二维码"
+          cancel-text="关闭"
+          @cancel="showQRDialog = false"
+          @submit="downloadQRCode"
+        />
+      </template>
+    </AppDialog>
+    <AppDialog
+      v-model="showColumnSettings"
+      title="列设置"
+      width="600px"
+      mobile-width="94%"
+    >
       <div class="column-settings">
         <div class="settings-header">
           <p>选择要显示的列，取消勾选将隐藏对应列：</p>
@@ -655,20 +685,30 @@
           </div>
         </el-checkbox-group>
         <div class="settings-footer">
-          <p class="tip">💡 提示：至少需要保留一列显示，建议保留"QQ号码"和"操作"列</p>
+          <p class="tip">
+            <el-icon><InfoFilled /></el-icon>
+            <span>提示：至少需要保留一列显示，建议保留"QQ号码"和"操作"列</span>
+          </p>
         </div>
       </div>
-    </el-dialog>
+      <template #footer>
+        <FormActionBar
+          submit-text="完成"
+          :show-cancel="false"
+          @submit="showColumnSettings = false"
+        />
+      </template>
+    </AppDialog>
   </div>
 </template>
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import {
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
   Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
-  Check, Close, Loading, CircleCheckFilled
+  Check, Close, Loading, CircleCheckFilled, InfoFilled
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
@@ -676,6 +716,12 @@ import { safeNavigate } from '@/utils/safeOpen'
 import { formatLocation } from '@/utils/date'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
+import { confirmWarning, confirmDelete, confirmReset, confirmClear } from '@/utils/confirmAction'
+import PaginationBar from '@/components/PaginationBar.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import UserDetailDialog from './components/UserDetailDialog.vue'
@@ -683,13 +729,16 @@ dayjs.extend(timezone)
 
 const LOGIN_HANDOFF_STORAGE_PREFIX = 'cboard_login_handoff_'
 const LOGIN_HANDOFF_TTL = 5 * 60 * 1000
+const ACCESS_TOKEN_TTL = 60 * 60 * 1000
+const USER_SESSION_TTL = 30 * 24 * 60 * 60 * 1000
 
 export default {
   name: 'AdminSubscriptions',
   components: {
     Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
     Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
-    Check, Close, Loading, CircleCheckFilled, UserDetailDialog
+    Check, Close, Loading, CircleCheckFilled, InfoFilled, UserDetailDialog, PaginationBar, AppDialog, FormActionBar,
+    EmptyState, ResponsiveDataView
   },
   setup() {
     const route = useRoute()
@@ -751,6 +800,12 @@ export default {
     const userDevices = ref([])
     const loadingDevices = ref(false)
     const deletingDevice = ref(null)
+    const mobileSubscriptionFields = computed(() => [
+      { key: 'user', label: '用户' },
+      { key: 'expire_time', label: '到期时间' },
+      { key: 'device_limit', label: '设备限制' },
+      { key: 'actions', label: '操作' }
+    ])
     const currentSortText = computed(() => {
       const sortMap = {
         'add_time_desc': '添加时间 (降序)',
@@ -1120,15 +1175,9 @@ export default {
     }
     const deleteDevice = async (device) => {
       try {
-        await ElMessageBox.confirm(
-          `确定要删除设备 "${device.device_name || '未知设备'}" 吗？删除后该设备将无法继续使用订阅，此操作不可恢复。`,
-          '确认删除',
-          {
-            confirmButtonText: '确定删除',
-            cancelButtonText: '取消',
-            type: 'warning',
-          }
-        )
+        await confirmDelete('设备', 1, {
+          message: `确定要删除设备 "${device.device_name || '未知设备'}" 吗？删除后该设备将无法继续使用订阅，此操作不可恢复。`
+        })
         deletingDevice.value = device.id
         const response = await adminAPI.removeDevice(device.id)
         if (response.data && response.data.success) {
@@ -1229,7 +1278,6 @@ export default {
       try {
         const userWindow = window.open('', '_blank')
         if (!userWindow) return null
-        userWindow.opener = null
         try {
           userWindow.document.title = '正在打开用户后台'
           const body = userWindow.document.body
@@ -1249,11 +1297,95 @@ export default {
       }
     }
 
+    const buildSecureStorageRecord = (value, maxAge) => ({
+      value,
+      expiry: Date.now() + maxAge,
+      timestamp: Date.now()
+    })
+
+    const writeUserBackendHandoffWindow = (userWindow, sessionData) => {
+      if (!userWindow || userWindow.closed) return false
+      try {
+        const storagePayload = {
+          token: buildSecureStorageRecord(sessionData.token, ACCESS_TOKEN_TTL),
+          user: buildSecureStorageRecord(sessionData.user, USER_SESSION_TTL),
+          refreshToken: sessionData.refreshToken
+            ? buildSecureStorageRecord(sessionData.refreshToken, USER_SESSION_TTL)
+            : null
+        }
+        const payloadJson = JSON.stringify(storagePayload).replace(/</g, '\\u003c')
+        const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>正在打开用户后台</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #303133; background: #f6f8fb; }
+    main { text-align: center; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <main>
+    <strong>正在打开用户后台</strong>
+    <div>请稍候...</div>
+  </main>
+  <script>
+    (function () {
+      var payload = ${payloadJson};
+      sessionStorage.setItem('cboard_secure_user_token', JSON.stringify(payload.token));
+      sessionStorage.setItem('cboard_secure_user_data', JSON.stringify(payload.user));
+      if (payload.refreshToken) {
+        sessionStorage.setItem('cboard_secure_user_refresh_token', JSON.stringify(payload.refreshToken));
+      }
+      sessionStorage.removeItem('cboard_secure_logout_marker_user');
+      sessionStorage.removeItem('cboard_secure_logout_marker');
+      localStorage.removeItem('cboard_secure_user_token');
+      localStorage.removeItem('cboard_secure_user_data');
+      localStorage.removeItem('cboard_secure_user_refresh_token');
+      try { window.opener = null; } catch (_) {}
+      window.location.replace('/dashboard');
+    })();
+  <\/script>
+</body>
+</html>`
+        userWindow.document.open()
+        userWindow.document.write(html)
+        userWindow.document.close()
+        return true
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('写入用户后台新标签页失败:', error)
+        }
+        return false
+      }
+    }
+
     const closeUserBackendWindow = (userWindow) => {
       if (!userWindow) return
       try {
         if (!userWindow.closed) userWindow.close()
       } catch (_) {}
+    }
+
+    const normalizeLoginAsResponse = (response) => {
+      const payload = response?.data?.data || response?.data || {}
+      const accessToken = payload.access_token || payload.token
+      const refreshToken = payload.refresh_token || payload.refreshToken
+      const user = payload.user || payload.user_data || payload.data?.user
+      return { accessToken, refreshToken, user }
+    }
+
+    const persistUserBackendSession = ({ accessToken, refreshToken, user }) => {
+      const userData = { ...user, is_admin: false }
+      secureStorage.set('user_token', accessToken, true, ACCESS_TOKEN_TTL)
+      secureStorage.set('user_data', userData, true, USER_SESSION_TTL)
+      if (refreshToken) {
+        secureStorage.set('user_refresh_token', refreshToken, true, USER_SESSION_TTL)
+      }
+      secureStorage.remove('logout_marker_user')
+      secureStorage.remove('logout_marker')
+      return userData
     }
 
     const shouldUseCurrentTabForUserBackend = () => {
@@ -1273,15 +1405,11 @@ export default {
           return
         }
         const userName = subscription.user?.username || subscription.user?.email || subscription.username || subscription.email || '未知用户'
-        await ElMessageBox.confirm(
-          `确定要以用户 ${userName} 的身份登录吗？将跳转到用户后台。`,
-          '确认登录',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'info'
-          }
-        )
+        await confirmWarning(`确定要以用户 ${userName} 的身份登录吗？将跳转到用户后台。`, {
+          title: '确认登录',
+          type: 'info',
+          confirmButtonText: '确认登录'
+        })
         if (!shouldUseCurrentTabForUserBackend()) {
           userBackendWindow = openUserBackendWindow()
         }
@@ -1294,24 +1422,16 @@ export default {
           ElMessage.error(response.data.message || '登录失败')
           return
         }
-        if (!response.data.data) {
+        const loginSession = normalizeLoginAsResponse(response)
+        if (!loginSession.accessToken || !loginSession.user) {
           ElMessage.error('登录失败：服务器返回数据不完整')
           return
         }
-        if (!response.data.data.access_token || !response.data.data.user) {
-          ElMessage.error('登录失败：服务器返回数据不完整')
-          return
-        }
-        const adminToken = secureStorage.get('admin_token')
-        const adminUser = secureStorage.get('admin_user')
-        const adminRefreshToken = secureStorage.get('admin_refresh_token')
-        const userToken = response.data.data.access_token
-        const userRefreshToken = response.data.data.refresh_token
-        const userData = response.data.data.user
+        const userData = persistUserBackendSession(loginSession)
         const sessionKey = `user_login_${Date.now()}`
         const sessionData = {
-          token: userToken,
-          refreshToken: userRefreshToken,
+          token: loginSession.accessToken,
+          refreshToken: loginSession.refreshToken,
           user: userData,
           storage: 'session',
           timestamp: Date.now()
@@ -1326,7 +1446,10 @@ export default {
         const finalUrl = `${dashboardUrl}?sessionKey=${sessionKey}`
         if (userBackendWindow) {
           ElMessage.success('正在打开用户后台...')
-          userBackendWindow.location.replace(finalUrl)
+          const handoffWritten = writeUserBackendHandoffWindow(userBackendWindow, sessionData)
+          if (!handoffWritten) {
+            userBackendWindow.location.replace(finalUrl)
+          }
           keepUserBackendWindow = true
         } else {
           ElMessage.success('当前浏览器不支持新标签页，正在当前页面进入用户后台...')
@@ -1356,7 +1479,8 @@ export default {
           ElMessage.warning('无法重置：用户信息不存在或已被删除')
           return
         }
-        await ElMessageBox.confirm('确定要重置该用户的订阅地址吗？重置后所有设备将无法继续使用，需要重新订阅。', '确认重置', {
+        await confirmReset('用户订阅地址', {
+          message: '确定要重置该用户的订阅地址吗？重置后旧订阅地址会失效，所有设备需要重新订阅。',
           type: 'warning'
         })
         await adminAPI.resetUserSubscription(userId)
@@ -1428,15 +1552,9 @@ export default {
         return
       }
       try {
-        await ElMessageBox.confirm(
-          '确定要删除该用户吗？这将删除用户的所有信息，包括设备记录、账号信息、邮件信息、UA记录等。此操作不可恢复！',
-          '确认删除',
-          {
-            type: 'error',
-            confirmButtonText: '确定删除',
-            cancelButtonText: '取消'
-          }
-        )
+        await confirmDelete('用户', 1, {
+          message: '确定要删除该用户吗？这将删除用户的所有信息，包括设备记录、账号信息、邮件信息、UA记录等。此操作不可恢复！'
+        })
         await adminAPI.deleteUser(userId)
         ElMessage.success('用户删除成功')
         loadSubscriptions()
@@ -1454,8 +1572,9 @@ export default {
           ElMessage.warning('无法清理：用户信息不存在或已被删除')
           return
         }
-        await ElMessageBox.confirm('确定要清理该用户的在线设备吗？这将清除所有设备记录和UA记录。', '确认清理', {
-          type: 'warning'
+        await confirmClear('该用户的在线设备', {
+          message: '确定要清理该用户的在线设备吗？这将清除所有设备记录和 UA 记录。',
+          confirmButtonText: '确认清理'
         })
         await adminAPI.clearUserDevices(userId)
         ElMessage.success('设备清理成功')
@@ -1472,8 +1591,9 @@ export default {
     }
     const clearAllDevices = async () => {
       try {
-        await ElMessageBox.confirm('确定要清理所有用户的设备吗？这将清除所有设备记录。', '确认清理', {
-          type: 'warning'
+        await confirmWarning('确定要清理当前列表中所有用户的设备吗？这将清除这些订阅对应的设备记录。', {
+          title: '确认批量清理',
+          confirmButtonText: '确认清理'
         })
         const subscriptionIds = subscriptions.value.map(sub => sub.id)
         if (subscriptionIds.length === 0) {
@@ -1493,6 +1613,12 @@ export default {
     const subNotesSaveTimers = new Map()
     const subNotesSavedTimers = new Map()
     const subOriginalNotes = new Map()
+    const clearSubNotesTimers = () => {
+      subNotesSaveTimers.forEach(timer => clearTimeout(timer))
+      subNotesSaveTimers.clear()
+      subNotesSavedTimers.forEach(timer => clearTimeout(timer))
+      subNotesSavedTimers.clear()
+    }
     const saveSubNotes = async (row) => {
       const userId = row.user?.id || row.user_id
       if (!userId || userId === 0) return
@@ -1647,15 +1773,9 @@ export default {
         return
       }
       try {
-        await ElMessageBox.confirm(
-          `确定要删除选中的 ${selectedSubscriptions.value.length} 个订阅吗？此操作不可恢复。`,
-          '确认批量删除',
-          {
-            type: 'warning',
-            confirmButtonText: '确定删除',
-            cancelButtonText: '取消'
-          }
-        )
+        await confirmDelete('订阅', selectedSubscriptions.value.length, {
+          title: '确认批量删除'
+        })
         batchOperating.value = true
         const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
         const response = await adminAPI.batchDeleteSubscriptions(subscriptionIds)
@@ -1702,15 +1822,10 @@ export default {
         return
       }
       try {
-        await ElMessageBox.confirm(
-          `确定要禁用选中的 ${selectedSubscriptions.value.length} 个订阅吗？`,
-          '确认批量禁用',
-          {
-            type: 'warning',
-            confirmButtonText: '确定禁用',
-            cancelButtonText: '取消'
-          }
-        )
+        await confirmWarning(`确定要禁用选中的 ${selectedSubscriptions.value.length} 个订阅吗？`, {
+          title: '确认批量禁用',
+          confirmButtonText: '确认禁用'
+        })
         batchOperating.value = true
         const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
         const response = await adminAPI.batchDisableSubscriptions(subscriptionIds)
@@ -1735,15 +1850,11 @@ export default {
         return
       }
       try {
-        await ElMessageBox.confirm(
-          `确定要重置选中的 ${selectedSubscriptions.value.length} 个订阅吗？这将生成新的订阅地址并清理所有设备。`,
-          '确认批量重置',
-          {
-            type: 'warning',
-            confirmButtonText: '确定重置',
-            cancelButtonText: '取消'
-          }
-        )
+        await confirmReset(`${selectedSubscriptions.value.length} 个订阅`, {
+          title: '确认批量重置',
+          message: `确定要重置选中的 ${selectedSubscriptions.value.length} 个订阅吗？这将生成新的订阅地址并清理所有设备。`,
+          type: 'warning'
+        })
         batchOperating.value = true
         const subscriptionIds = selectedSubscriptions.value.map(sub => sub.id)
         const response = await adminAPI.batchResetSubscriptions(subscriptionIds)
@@ -1848,6 +1959,9 @@ export default {
       }
       loadSubscriptions()
     })
+    onUnmounted(() => {
+      clearSubNotesTimers()
+    })
     return {
       isMobile,
       loading,
@@ -1867,6 +1981,7 @@ export default {
       selectedUser,
       currentQRCode,
       visibleColumns,
+      mobileSubscriptionFields,
       userDevices,
       loadingDevices,
       deletingDevice,
@@ -1952,6 +2067,112 @@ export default {
   width: 100%;
   max-width: 100%;
 }
+.admin-subscriptions :deep(.search-form.list-filter-form) {
+  grid-template-columns: minmax(280px, 1.5fr) minmax(160px, 0.7fr) max-content;
+  gap: 12px;
+}
+.admin-subscriptions :deep(.search-form.list-filter-form .el-form-item) {
+  margin: 0 !important;
+  min-width: 0;
+}
+.admin-subscriptions :deep(.search-form.list-filter-form .el-form-item:last-child) {
+  justify-self: end;
+}
+.admin-subscriptions :deep(.search-form.list-filter-form .el-form-item__content) {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.subscription-search-input,
+.subscription-status-select {
+  width: 100%;
+  min-width: 0;
+}
+.mobile-toolbar-grid {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.mobile-toolbar-grid--five {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mobile-toolbar-dropdown {
+  display: block;
+  min-width: 0;
+}
+.mobile-toolbar-dropdown--wide {
+  grid-column: span 2;
+}
+.mobile-toolbar-item,
+.mobile-toolbar-dropdown :deep(.mobile-toolbar-item) {
+  width: 100%;
+  min-width: 0 !important;
+  min-height: 44px;
+  margin-left: 0 !important;
+  padding: 6px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: normal;
+  touch-action: manipulation;
+}
+.mobile-toolbar-item :deep(span),
+.mobile-toolbar-dropdown :deep(.mobile-toolbar-item span) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.mobile-toolbar-item :deep(.el-icon),
+.mobile-toolbar-dropdown :deep(.mobile-toolbar-item .el-icon) {
+  flex: 0 0 auto;
+  margin-right: 0;
+}
+@media (max-width: 1280px) {
+  .admin-subscriptions :deep(.search-form.list-filter-form) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-subscriptions :deep(.search-form.list-filter-form .el-form-item:last-child) {
+    justify-self: start;
+  }
+}
+.admin-subscriptions-table {
+  width: 100%;
+}
+.compact-status-tag {
+  border: none;
+  padding: 0 4px;
+}
+.deleted-user-tag {
+  margin-left: 4px;
+}
+.sub-action-copy {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.sub-action-link {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+.sub-action-success {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.sub-action-neutral {
+  background: #f4f4f5;
+  color: #909399;
+}
+.sub-action-danger {
+  background: #fef0f0;
+  color: #f56c6c;
+}
 .qq-info {
   display: flex;
   flex-direction: column;
@@ -1978,11 +2199,10 @@ export default {
   gap: 8px;
   padding: 8px;
   border-radius: 6px;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   &.expire-time-expired {
     background: #fef0f0;
     border: 1px solid #f56c6c;
-    animation: pulse-alert 2s ease-in-out infinite;
   }
 }
 .expire-picker {
@@ -2005,10 +2225,10 @@ export default {
 }
 .qr-code {
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: opacity 0.2s ease;
 }
 .qr-code:hover {
-  transform: scale(1.1);
+  opacity: 0.82;
 }
 .qr-code img {
   width: 50px;
@@ -2023,15 +2243,11 @@ export default {
 }
 .copy-link {
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
 }
 .copy-link:hover {
   color: #409eff !important;
   text-decoration: underline !important;
-  transform: scale(1.02);
-}
-.copy-link:active {
-  transform: scale(0.98);
 }
 .device-limit-section {
   display: flex;
@@ -2039,11 +2255,10 @@ export default {
   gap: 8px;
   padding: 8px;
   border-radius: 6px;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   &.device-limit-overlimit {
     background: #fef0f0;
     border: 1px solid #f56c6c;
-    animation: pulse-alert 2s ease-in-out infinite;
   }
 }
 .device-limit-input {
@@ -2070,14 +2285,6 @@ export default {
   min-width: 0;
   padding: 6px 8px;
   font-size: 0.75rem;
-}
-@keyframes pulse-alert {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 4px rgba(245, 108, 108, 0);
-  }
 }
 .action-buttons {
   display: flex;
@@ -2261,10 +2468,13 @@ export default {
 }
 .device-table-wrapper {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   @media (max-width: 768px) {
-    margin: 0 -12px;
+    margin: 0;
     padding: 0 12px;
     .device-table {
       min-width: 800px;
@@ -2287,8 +2497,9 @@ export default {
   text-align: center;
 }
 .qr-code-large img {
-  width: 250px;
-  height: 250px;
+  width: min(250px, 100%);
+  aspect-ratio: 1;
+  height: auto;
   border-radius: 8px;
   margin-bottom: 16px;
 }
@@ -2304,274 +2515,214 @@ export default {
   margin-bottom: 16px !important;
 }
 @media (max-width: 768px) {
+  .mobile-toolbar-grid--five {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mobile-toolbar-dropdown--wide {
+    grid-column: span 2;
+  }
+
   .qr-code img {
     width: 40px;
     height: 40px;
   }
-  .mobile-card-list {
-    .mobile-card.sub-card {
+  .subscriptions-data-view {
+    :deep(.mobile-card) {
       padding: 0 !important;
-      border-radius: 14px;
-      .sub-card-header {
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    :deep(.mobile-card-body) {
+      padding: 0;
+    }
+
+    .sub-card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #f0f0f0;
+      .sub-user-info {
         display: flex;
         align-items: flex-start;
         gap: 10px;
-        padding: 14px 16px;
-        border-bottom: 1px solid #f0f0f0;
-        .sub-user-info {
-          display: flex;
-          align-items: flex-start;
-          gap: 10px;
-          flex: 1;
-          min-width: 0;
-        }
-        .el-avatar {
-          flex-shrink: 0;
-          margin-top: 2px;
-        }
-        .sub-user-meta {
-          flex: 1;
-          min-width: 0;
-        }
-        .sub-user-email {
-          font-weight: 600;
-          font-size: 14px;
-          color: #303133;
-          word-break: break-all;
-          line-height: 1.4;
-        }
-        .sub-user-id {
-          font-size: 12px;
-          color: #999;
-          margin-top: 3px;
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 2px;
-        }
-        .sub-goto-btn {
-          flex-shrink: 0;
-          align-self: center;
-          border-radius: 20px;
-          font-size: 12px;
-          padding: 6px 14px !important;
-          height: auto !important;
-          min-height: 0 !important;
-        }
+        flex: 1;
+        min-width: 0;
       }
-      .sub-section {
-        padding: 12px 16px;
-        border-bottom: 1px solid #f5f5f5;
-        border-radius: 0;
-        transition: background 0.3s;
-        &.expire-time-expired {
-          background: #fef0f0;
+      .el-avatar {
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .sub-user-meta {
+        flex: 1;
+        min-width: 0;
+      }
+      .sub-user-email {
+        font-weight: 600;
+        font-size: 14px;
+        color: #303133;
+        word-break: break-all;
+        line-height: 1.4;
+      }
+      .sub-user-id {
+        font-size: 12px;
+        color: #999;
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 2px;
+      }
+      .sub-goto-btn {
+        flex-shrink: 0;
+        align-self: center;
+        border-radius: 8px;
+        font-size: 12px;
+        padding: 6px 14px !important;
+        height: auto !important;
+        min-height: 44px !important;
+        touch-action: manipulation !important;
+      }
+    }
+
+    .sub-section {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f5f5f5;
+      border-radius: 0;
+      transition: background 0.3s;
+      &.expire-time-expired {
+        background: #fef0f0;
+      }
+      &.device-limit-overlimit {
+        background: #fef0f0;
+      }
+      .sub-section-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .sub-section-icon {
+        color: #909399;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+      }
+      .sub-section-label {
+        font-size: 13px;
+        color: #909399;
+        flex-shrink: 0;
+      }
+      .sub-section-value {
+        margin-left: auto;
+        font-size: 14px;
+        font-weight: 600;
+        color: #303133;
+        flex-shrink: 0;
+      }
+      .device-limit-input-inline {
+        width: 70px;
+        flex-shrink: 0;
+        margin-left: 8px;
+        :deep(.el-input__wrapper) {
+          padding: 0 8px;
         }
-        &.device-limit-overlimit {
-          background: #fef0f0;
-        }
-        .sub-section-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 10px;
-        }
-        .sub-section-icon {
-          color: #909399;
-          font-size: 16px;
-          display: flex;
-          align-items: center;
-        }
-        .sub-section-label {
+        :deep(.el-input__inner) {
+          text-align: center;
           font-size: 13px;
-          color: #909399;
-          flex-shrink: 0;
-        }
-        .sub-section-value {
-          margin-left: auto;
-          font-size: 14px;
           font-weight: 600;
-          color: #303133;
-          flex-shrink: 0;
-        }
-        .device-limit-input-inline {
-          width: 70px;
-          flex-shrink: 0;
-          margin-left: 8px;
-          :deep(.el-input__wrapper) {
-            padding: 0 8px;
-          }
-          :deep(.el-input__inner) {
-            text-align: center;
-            font-size: 13px;
-            font-weight: 600;
-          }
-        }
-        .sub-btn-row {
-          display: grid !important;
-          grid-template-columns: repeat(4, 1fr) !important;
-          gap: 6px;
-          margin-bottom: 8px;
-          .el-button {
-            margin: 0 !important;
-            padding: 0 4px !important;
-            font-size: 12px !important;
-            height: 32px !important;
-            min-height: 0 !important;
-            border-radius: 6px !important;
-            width: 100% !important;
-          }
-          &.first-btn-row {
-            grid-template-columns: 1.5fr 1fr !important;
-          }
-          &.second-btn-row {
-            grid-template-columns: repeat(4, 1fr) !important;
-          }
-        }
-        .sub-date-picker-row {
-          width: 100%;
-          :deep(.el-date-editor) {
-            width: 100% !important;
-            height: 32px !important;
-            .el-input__wrapper {
-              padding: 0 8px !important;
-            }
-            .el-input__inner {
-              font-size: 12px !important;
-              height: 30px !important;
-              min-height: 0 !important;
-            }
-          }
         }
       }
-      .sub-action-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 0;
-        padding: 12px 8px;
-        border-bottom: 1px solid #f5f5f5;
-        &:last-child {
-          border-bottom: none;
+      .sub-btn-row {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 8px;
+        margin-bottom: 8px;
+        .el-button {
+          margin: 0 !important;
+          padding: 0 4px !important;
+          font-size: 12px !important;
+          height: auto !important;
+          min-height: 44px !important;
+          border-radius: 6px !important;
+          touch-action: manipulation !important;
+          width: 100% !important;
         }
-        .sub-action-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 4px;
-          cursor: pointer;
-          border-radius: 8px;
-          transition: background 0.2s;
-          &:active {
-            background: #f5f7fa;
+        &.first-btn-row {
+          grid-template-columns: 1.5fr 1fr !important;
+        }
+        &.second-btn-row {
+          grid-template-columns: repeat(4, 1fr) !important;
+        }
+      }
+      .sub-date-picker-row {
+        width: 100%;
+        :deep(.el-date-editor) {
+          width: 100% !important;
+          min-height: 44px !important;
+          .el-input__wrapper {
+            padding: 0 8px !important;
           }
-          .sub-action-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            transition: transform 0.2s;
-          }
-          .sub-action-text {
-            font-size: 11px;
-            color: #606266;
-            text-align: center;
-            line-height: 1.3;
+          .el-input__inner {
+            font-size: 12px !important;
+            min-height: 44px !important;
+            touch-action: manipulation;
           }
         }
       }
     }
-    .mobile-card {
-      .card-row {
-        padding: 12px;
+
+    .sub-action-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      padding: 12px 8px;
+      border-bottom: 1px solid #f5f5f5;
+      &:last-child {
+        border-bottom: none;
+      }
+      .sub-action-item {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        color: inherit;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 4px;
+        cursor: pointer;
         border-radius: 8px;
-        transition: all 0.3s;
-        &.expire-time-expired {
-          background: #fef0f0;
-          border: 1px solid #f56c6c;
-          animation: pulse-alert 2s ease-in-out infinite;
+        transition: background 0.2s;
+        &:active {
+          background: #f5f7fa;
         }
-        &.device-limit-overlimit {
-          background: #fef0f0;
-          border: 1px solid #f56c6c;
-          animation: pulse-alert 2s ease-in-out infinite;
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.48;
         }
-        .value {
-          :deep(.el-date-picker) {
-            width: 100%;
-            .el-input__wrapper {
-              min-height: 40px;
-              border-radius: 6px;
-              background: rgba(255, 255, 255, 0.95);
-              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-              border: 1px solid rgba(66, 165, 245, 0.3);
-              &:hover {
-                border-color: rgba(66, 165, 245, 0.5);
-                box-shadow: 0 2px 6px rgba(66, 165, 245, 0.2);
-              }
-              &.is-focus {
-                border-color: #409eff;
-                box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
-              }
-            }
-            .el-input__inner {
-              font-size: 0.875rem;
-              color: #303133;
-            }
-          }
-          :deep(.el-input-number) {
-            width: 100px;
-            flex-shrink: 0;
-            .el-input__wrapper {
-              min-height: 40px;
-              border-radius: 6px;
-              background: rgba(255, 255, 255, 0.95);
-              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-              border: 1px solid rgba(66, 165, 245, 0.3);
-              &:hover {
-                border-color: rgba(66, 165, 245, 0.5);
-                box-shadow: 0 2px 6px rgba(66, 165, 245, 0.2);
-              }
-              &.is-focus {
-                border-color: #409eff;
-                box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
-              }
-            }
-            .el-input__inner {
-              font-size: 0.875rem;
-              text-align: center;
-            }
-          }
+        &:focus-visible {
+          outline: 2px solid var(--el-color-primary);
+          outline-offset: 2px;
+        }
+        .sub-action-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
           display: flex;
           align-items: center;
-          justify-content: flex-end;
-          gap: 8px;
-          flex-wrap: wrap;
-          .expire-time-section {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            .quick-time-buttons {
-              display: flex;
-              gap: 6px;
-              flex-wrap: wrap;
-              .el-button {
-                flex: 1;
-                min-width: 0;
-                font-size: 0.75rem;
-                padding: 6px 8px;
-                min-height: 32px;
-                border-radius: 6px;
-                &:active {
-                  transform: scale(0.96);
-                }
-              }
-            }
-          }
+          justify-content: center;
+          font-size: 20px;
+          transition: transform 0.2s;
+        }
+        .sub-action-text {
+          font-size: 11px;
+          color: #606266;
+          text-align: center;
+          line-height: 1.3;
         }
       }
     }
@@ -2585,8 +2736,8 @@ export default {
       right: 0 !important;
       width: 100% !important;
       max-width: 100% !important;
-      border-radius: 16px 16px 0 0 !important;
-      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
+      border-radius: 8px 8px 0 0 !important;
+      border: 1px solid var(--el-border-color-lighter, #ebeef5) !important;
       .el-picker__popper {
         width: 100% !important;
         max-width: 100% !important;
@@ -2777,10 +2928,17 @@ export default {
     padding-top: 15px;
     border-top: 1px solid #ebeef5;
     .tip {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
       margin: 0;
       color: #909399;
       font-size: 12px;
       line-height: 1.5;
+      .el-icon {
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
     }
   }
 }
@@ -2805,15 +2963,11 @@ export default {
   border-top: 2px solid rgba(66, 165, 245, 0.3);
 }
 .qrcode-card {
-  background: linear-gradient(135deg, rgba(66, 165, 245, 0.08) 0%, rgba(102, 126, 234, 0.08) 100%);
-  border: 2px solid rgba(66, 165, 245, 0.25);
-  border-radius: 16px;
+  background: #f8fbff;
+  border: 1px solid rgba(66, 165, 245, 0.25);
+  border-radius: 8px;
   padding: 20px;
-  transition: all 0.3s ease;
-  &:active {
-    transform: scale(0.98);
-    border-color: rgba(66, 165, 245, 0.4);
-  }
+  transition: border-color 0.2s ease, background-color 0.2s ease;
   .qrcode-header {
     display: flex;
     align-items: center;
@@ -2839,8 +2993,8 @@ export default {
       width: 100%;
       padding: 20px;
       background: #ffffff;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      border: 1px solid var(--el-border-color-lighter, #ebeef5);
       .qrcode-image {
         width: 100%;
         max-width: 320px;
@@ -2892,18 +3046,13 @@ export default {
         font-size: 1rem;
         font-weight: 600;
         border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
-        transition: all 0.3s ease;
+        transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0;
         padding: 0;
         box-sizing: border-box;
-        &:active {
-          transform: scale(0.96);
-          box-shadow: 0 1px 4px rgba(64, 158, 255, 0.2);
-        }
         :deep(.el-icon) {
           margin-right: 6px;
           flex-shrink: 0;
@@ -2916,11 +3065,11 @@ export default {
         }
       }
       .import-btn {
-        background: linear-gradient(135deg, #409eff 0%, #667eea 100%);
+        background: #409eff;
         border: none;
         color: #ffffff;
         &:hover {
-          background: linear-gradient(135deg, #66b1ff 0%, #7c8ff0 100%);
+          background: #66b1ff;
         }
       }
       .view-btn {
@@ -2946,15 +3095,11 @@ export default {
   gap: 12px;
 }
 .subscription-url-card {
-  background: linear-gradient(135deg, rgba(66, 165, 245, 0.05) 0%, rgba(102, 126, 234, 0.05) 100%);
-  border: 1.5px solid rgba(66, 165, 245, 0.2);
+  background: #fbfdff;
+  border: 1px solid rgba(66, 165, 245, 0.2);
   border-radius: 10px;
   padding: 12px;
-  transition: all 0.3s ease;
-  &:active {
-    transform: scale(0.98);
-    border-color: rgba(66, 165, 245, 0.4);
-  }
+  transition: border-color 0.2s ease, background-color 0.2s ease;
   .url-header {
     display: flex;
     align-items: center;
@@ -2994,19 +3139,15 @@ export default {
       font-size: 0.9rem;
       font-weight: 600;
       border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-      transition: all 0.2s ease;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
       :deep(.el-icon) {
         margin-right: 6px;
         font-size: 16px;
       }
-      &:active {
-        transform: scale(0.96);
-      }
     }
   }
   &:has(.url-header .el-icon[style*="f56c6c"]) {
-    background: linear-gradient(135deg, rgba(245, 108, 108, 0.05) 0%, rgba(255, 152, 0, 0.05) 100%);
+    background: #fff7ed;
     border-color: rgba(245, 108, 108, 0.2);
     .url-content .url-text {
       border-color: rgba(245, 108, 108, 0.15);
@@ -3031,11 +3172,12 @@ export default {
       .url-text {
         padding: 8px 10px;
         font-size: 0.8rem;
-        min-height: 40px;
+        min-height: 44px;
       }
       .copy-url-btn {
-        min-height: 40px;
+        min-height: 44px;
         font-size: 0.85rem;
+        touch-action: manipulation;
       }
     }
   }

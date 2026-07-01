@@ -15,10 +15,10 @@
             placeholder="搜索优惠券码或名称"
             class="mobile-search-input"
             clearable
-            @keyup.enter="loadCoupons"
+            @keyup.enter="searchCoupons"
           />
           <el-button 
-            @click="loadCoupons" 
+            @click="searchCoupons" 
             class="search-button-inside"
             type="default"
             plain
@@ -47,139 +47,156 @@
       <el-input
         v-model="filters.keyword"
         placeholder="搜索优惠券码或名称"
-        style="width: 200px"
+        class="filter-keyword"
         clearable
-        @clear="loadCoupons"
+        @clear="searchCoupons"
       />
-      <el-select v-model="filters.status" placeholder="状态筛选" clearable style="width: 150px">
+      <el-select v-model="filters.status" placeholder="状态筛选" clearable class="filter-select">
         <el-option label="有效" value="active" />
         <el-option label="无效" value="inactive" />
         <el-option label="已过期" value="expired" />
       </el-select>
-      <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 150px">
+      <el-select v-model="filters.type" placeholder="类型筛选" clearable class="filter-select">
         <el-option label="折扣" value="discount" />
         <el-option label="固定金额" value="fixed" />
         <el-option label="赠送天数" value="free_days" />
       </el-select>
-      <el-button @click="loadCoupons">搜索</el-button>
+      <el-button type="primary" @click="searchCoupons">
+        <el-icon><Search /></el-icon>
+        搜索
+      </el-button>
+      <el-button @click="resetFilters">
+        <el-icon><Refresh /></el-icon>
+        重置
+      </el-button>
     </div>
-    <el-drawer
+    <AppDrawer
       v-model="showFilterDrawer"
       title="筛选条件"
-      :size="isMobile ? '85%' : '400px'"
-      direction="rtl"
-      :lock-scroll="false"
+      size="400px"
+      mobile-size="85%"
+      class="coupon-filter-drawer"
     >
       <div class="filter-drawer-content">
         <el-form label-width="100px">
           <el-form-item label="状态">
-            <el-select v-model="filters.status" placeholder="选择状态" clearable style="width: 100%">
+            <el-select v-model="filters.status" placeholder="选择状态" clearable class="full-width-control">
               <el-option label="有效" value="active" />
               <el-option label="无效" value="inactive" />
               <el-option label="已过期" value="expired" />
             </el-select>
           </el-form-item>
           <el-form-item label="类型">
-            <el-select v-model="filters.type" placeholder="选择类型" clearable style="width: 100%">
+            <el-select v-model="filters.type" placeholder="选择类型" clearable class="full-width-control">
               <el-option label="折扣" value="discount" />
               <el-option label="固定金额" value="fixed" />
               <el-option label="赠送天数" value="free_days" />
             </el-select>
           </el-form-item>
         </el-form>
-        <div class="filter-drawer-actions">
-          <el-button @click="resetFilters" class="mobile-action-btn">重置</el-button>
-          <el-button type="primary" @click="applyFilters" class="mobile-action-btn">应用</el-button>
-        </div>
       </div>
-    </el-drawer>
-    <el-table :data="coupons" v-loading="loading" class="desktop-only" style="width: 100%" stripe border>
-      <el-table-column prop="code" label="优惠券码" width="150" />
-      <el-table-column prop="name" label="名称" />
-      <el-table-column prop="type" label="类型" width="100">
-        <template #default="{ row }">
-          <el-tag>{{ getTypeText(row.type) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="discount_value" label="优惠值" width="120">
-        <template #default="{ row }">
-          {{ formatDiscountValue(row) }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="valid_until" label="有效期至" width="180" />
-      <el-table-column prop="used_quantity" label="使用情况" width="120">
-        <template #default="{ row }">
-          {{ row.used_quantity }} / {{ row.total_quantity || '∞' }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getStatusTagType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200">
-        <template #default="{ row }">
-          <el-button size="small" @click="editCoupon(row)">编辑</el-button>
-          <el-button size="small" type="danger" @click="deleteCoupon(row.id)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="mobile-coupons-list" v-if="isMobile" v-loading="loading">
-      <div
-        v-for="coupon in coupons"
-        :key="coupon.id"
-        class="mobile-coupon-card"
-      >
+      <template #footer>
+        <FormActionBar
+          cancel-text="重置"
+          submit-text="应用"
+          :sticky="false"
+          @cancel="resetFilters"
+          @submit="applyFilters"
+        />
+      </template>
+    </AppDrawer>
+    <ResponsiveDataView
+      :data="coupons"
+      :loading="loading"
+      :fields="mobileCouponFields"
+      title-field="code"
+      empty-title="暂无优惠券数据"
+      empty-description="创建优惠券后可在这里统一管理有效期、类型和使用情况"
+    >
+      <template #table>
+        <el-table :data="coupons" v-loading="loading" class="coupons-table" stripe border empty-text=" ">
+          <template #empty>
+            <EmptyState
+              title="暂无优惠券数据"
+              description="创建优惠券后可在这里统一管理有效期、类型和使用情况"
+            />
+          </template>
+          <el-table-column prop="code" label="优惠券码" width="150" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="type" label="类型" width="100">
+            <template #default="{ row }">
+              <el-tag>{{ getTypeText(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="discount_value" label="优惠值" width="120">
+            <template #default="{ row }">
+              {{ formatDiscountValue(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="valid_until" label="有效期至" width="180">
+            <template #default="{ row }">
+              {{ formatTime(row.valid_until) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="used_quantity" label="使用情况" width="120">
+            <template #default="{ row }">
+              {{ row.used_quantity }} / {{ row.total_quantity || '∞' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getStatusTagType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button size="small" @click="editCoupon(row)">编辑</el-button>
+              <el-button size="small" type="danger" @click="deleteCoupon(row.id)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <template #header="{ item }">
         <div class="coupon-card-header">
-          <div class="coupon-code">{{ coupon.code }}</div>
-          <el-tag :type="getStatusTagType(coupon.status)" size="small">{{ getStatusText(coupon.status) }}</el-tag>
+          <div class="coupon-code">{{ item.code }}</div>
+          <el-tag :type="getStatusTagType(item.status)" size="small">
+            {{ getStatusText(item.status) }}
+          </el-tag>
         </div>
-        <div class="coupon-card-name">{{ coupon.name }}</div>
-        <div class="coupon-card-info">
-          <div class="info-row">
-            <span class="info-label">类型：</span>
-            <el-tag size="small">{{ getTypeText(coupon.type) }}</el-tag>
-          </div>
-          <div class="info-row">
-            <span class="info-label">优惠值：</span>
-            <span class="info-value highlight">{{ formatDiscountValue(coupon) }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">有效期至：</span>
-            <span class="info-value">{{ formatTime(coupon.valid_until) }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">使用情况：</span>
-            <span class="info-value">{{ coupon.used_quantity }} / {{ coupon.total_quantity || '∞' }}</span>
-          </div>
-        </div>
-        <div class="coupon-card-actions">
-          <el-button size="small" @click.stop="editCoupon(coupon)" class="mobile-action-btn">编辑</el-button>
-          <el-button size="small" type="danger" @click.stop="deleteCoupon(coupon.id)" class="mobile-action-btn">删除</el-button>
-        </div>
-      </div>
-      <div v-if="coupons.length === 0" class="empty-state">
-        <el-empty description="暂无优惠券数据" />
-      </div>
-    </div>
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.size"
-        :total="pagination.total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @size-change="loadCoupons"
-        @current-change="loadCoupons"
-      />
-    </div>
-    <el-drawer
+        <div class="coupon-card-name">{{ item.name }}</div>
+      </template>
+      <template #field-type="{ item }">
+        <el-tag size="small">{{ getTypeText(item.type) }}</el-tag>
+      </template>
+      <template #field-discount_value="{ item }">
+        <span class="coupon-value-highlight">{{ formatDiscountValue(item) }}</span>
+      </template>
+      <template #field-valid_until="{ item }">
+        {{ formatTime(item.valid_until) }}
+      </template>
+      <template #field-usage="{ item }">
+        {{ item.used_quantity }} / {{ item.total_quantity || '∞' }}
+      </template>
+      <template #actions="{ item }">
+        <el-button size="small" @click="editCoupon(item)" class="mobile-action-btn">编辑</el-button>
+        <el-button size="small" type="danger" @click="deleteCoupon(item.id)" class="mobile-action-btn">删除</el-button>
+      </template>
+    </ResponsiveDataView>
+    <PaginationBar
+      v-model:current-page="pagination.page"
+      v-model:page-size="pagination.size"
+      :page-sizes="[10, 20, 50, 100]"
+      :total="pagination.total"
+      @size-change="handlePageSizeChange"
+      @current-change="loadCoupons"
+    />
+    <AppDrawer
       v-model="showCreateDialog"
       :title="editingCoupon ? '编辑优惠券' : '创建优惠券'"
-      :size="isMobile ? '92%' : '500px'"
-      direction="rtl"
-      :class="{ 'mobile-dialog': isMobile }"
-      :lock-scroll="false"
+      size="500px"
+      mobile-size="100%"
+      :loading="saving"
+      class="coupon-form-drawer"
     >
       <el-form 
         :model="couponForm" 
@@ -210,7 +227,7 @@
           <template v-if="isMobile">
             <div class="mobile-label">类型 <span class="required">*</span></div>
           </template>
-          <el-select v-model="couponForm.type" placeholder="请选择类型" style="width: 100%">
+          <el-select v-model="couponForm.type" placeholder="请选择类型" class="full-width-control">
             <el-option label="折扣（百分比）" value="discount" />
             <el-option label="固定金额减免" value="fixed" />
             <el-option label="赠送天数" value="free_days" />
@@ -225,7 +242,7 @@
               v-model="couponForm.discount_value"
               :min="0"
               :precision="2"
-              style="width: 100%"
+              class="full-width-control"
             />
             <span v-if="couponForm.type === 'discount'" class="discount-unit">%</span>
             <span v-else-if="couponForm.type === 'fixed'" class="discount-unit">元</span>
@@ -240,7 +257,7 @@
             v-model="couponForm.min_amount"
             :min="0"
             :precision="2"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="最大折扣" prop="max_discount" v-if="couponForm.type === 'discount'">
@@ -251,7 +268,7 @@
             v-model="couponForm.max_discount"
             :min="0"
             :precision="2"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="生效时间" prop="valid_from">
@@ -262,7 +279,7 @@
             v-model="couponForm.valid_from"
             type="datetime"
             placeholder="选择生效时间"
-            style="width: 100%"
+            class="full-width-control"
             :teleported="isMobile"
             :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
           />
@@ -275,7 +292,7 @@
             v-model="couponForm.valid_until"
             type="datetime"
             placeholder="选择失效时间"
-            style="width: 100%"
+            class="full-width-control"
             :teleported="isMobile"
             :popper-class="isMobile ? 'mobile-date-picker-popper' : ''"
           />
@@ -288,7 +305,7 @@
             v-model="couponForm.total_quantity"
             :min="1"
             placeholder="留空表示无限制"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="每用户限用" prop="max_uses_per_user">
@@ -298,7 +315,7 @@
           <el-input-number
             v-model="couponForm.max_uses_per_user"
             :min="1"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="适用套餐" prop="applicable_packages">
@@ -309,7 +326,7 @@
             v-model="couponForm.applicable_packages"
             multiple
             placeholder="留空表示所有套餐"
-            style="width: 100%"
+            class="full-width-control"
           >
             <el-option label="自定义套餐" value="custom_package" />
             <el-option
@@ -322,20 +339,28 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
-          <el-button @click="showCreateDialog = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
-          <el-button type="primary" @click="saveCoupon" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">保存</el-button>
-        </div>
+        <FormActionBar
+          :loading="saving"
+          :sticky="false"
+          @cancel="showCreateDialog = false"
+          @submit="saveCoupon"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
 import { couponAPI, packageAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import AppDrawer from '@/components/AppDrawer.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { confirmDelete } from '@/utils/confirmAction'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import { formatTime as formatTimeUtil } from '@/utils/date'
@@ -359,6 +384,12 @@ const pagination = reactive({
   size: 10,
   total: 0
 })
+const mobileCouponFields = computed(() => [
+  { key: 'type', label: '类型' },
+  { key: 'discount_value', label: '优惠值' },
+  { key: 'valid_until', label: '有效期至' },
+  { key: 'usage', label: '使用情况' }
+])
 const couponForm = reactive({
   code: '',
   name: '',
@@ -403,6 +434,14 @@ const loadCoupons = async () => {
   } finally {
     loading.value = false
   }
+}
+const searchCoupons = () => {
+  pagination.page = 1
+  loadCoupons()
+}
+const handlePageSizeChange = () => {
+  pagination.page = 1
+  loadCoupons()
 }
 const loadPackages = async () => {
   try {
@@ -520,8 +559,8 @@ const editCoupon = (coupon) => {
 }
 const deleteCoupon = async (couponId) => {
   try {
-    await ElMessageBox.confirm('确定要删除此优惠券吗？', '提示', {
-      type: 'warning'
+    await confirmDelete('优惠券', 1, {
+      message: '确定要删除此优惠券吗？'
     })
     const response = await couponAPI.deleteCoupon(couponId)
     if (response.data.success) {
@@ -591,10 +630,12 @@ const resetFilters = () => {
   filters.keyword = ''
   filters.status = ''
   filters.type = ''
+  pagination.page = 1
   showFilterDrawer.value = false
   loadCoupons()
 }
 const applyFilters = () => {
+  pagination.page = 1
   showFilterDrawer.value = false
   loadCoupons()
 }
@@ -604,7 +645,7 @@ onMounted(() => {
 })
 </script>
 <style scoped lang="scss">
-.coupons-container {
+.admin-coupons {
   padding: 20px;
 }
 .page-header {
@@ -612,85 +653,49 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+
+  h1 {
+    margin: 0;
+    color: #303133;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
 }
 .filter-bar {
-  display: flex;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(150px, 0.8fr)) max-content max-content;
+  align-items: end;
+  gap: 12px;
   margin-bottom: 20px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  pointer-events: auto !important;
+
+.filter-keyword {
+  width: 100%;
+  min-width: 0;
 }
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-  pointer-events: auto !important;
+
+.filter-select {
+  width: 100%;
+  min-width: 0;
 }
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__wrapper.is-focus:hover) {
-  background-color: #ffffff !important;
-}
-:deep(.el-input__wrapper > *) {
-  background-color: transparent !important;
-  background: transparent !important;
-}
-:deep(.el-textarea__inner) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-textarea__inner:hover) {
-  border-color: #c0c4cc !important;
-}
-:deep(.el-textarea__inner:focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  pointer-events: auto !important;
+
+.coupons-table,
+.full-width-control {
+  width: 100%;
 }
 :deep(.el-input-number) {
   width: 100%;
 }
-:deep(.el-input-number .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  pointer-events: auto !important;
-}
 :deep(.el-date-editor) {
   width: 100%;
 }
-:deep(.el-date-editor .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  pointer-events: auto !important;
-}
 @media (max-width: 768px) {
-  .coupons-container {
+  .admin-coupons {
     padding: 12px;
   }
   .page-header {
@@ -710,264 +715,36 @@ onMounted(() => {
   .filter-bar.desktop-only {
     display: none;
   }
-  .mobile-coupons-list {
-    margin-top: 16px;
-    .mobile-coupon-card {
-      background: #fff;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      .coupon-card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        gap: 8px;
-        min-width: 0;
-        .coupon-code {
-          flex: 1;
-          min-width: 0;
-          font-weight: bold;
-          font-size: 16px;
-          color: #333;
-          font-family: 'Courier New', monospace;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-      }
-      .coupon-card-name {
-        font-size: 15px;
-        font-weight: 500;
-        color: #333;
-        margin-bottom: 12px;
-        line-height: 1.4;
-        word-break: break-word;
-        overflow-wrap: break-word;
-      }
-      .coupon-card-info {
-        margin-bottom: 12px;
-        .info-row {
-          display: flex;
-          align-items: center;
-          margin-bottom: 8px;
-          font-size: 14px;
-          .info-label {
-            color: #666;
-            min-width: 80px;
-          }
-          .info-value {
-            color: #333;
-            flex: 1;
-            min-width: 0;
-            word-break: break-all;
-            &.highlight {
-              color: #f56c6c;
-              font-weight: 600;
-              font-size: 16px;
-            }
-          }
-        }
-      }
-      .coupon-card-actions {
-        display: flex;
-        gap: 8px;
-        padding-top: 12px;
-        border-top: 1px solid #f0f0f0;
-        .mobile-action-btn {
-          flex: 1;
-          height: 40px;
-        }
-      }
-    }
-    .empty-state {
-      padding: 40px 20px;
-      text-align: center;
-    }
-  }
   .filter-drawer-content {
     padding: 20px 0;
-    .filter-drawer-actions {
-      display: flex;
-      gap: 12px;
-      margin-top: 24px;
-      padding-top: 20px;
-      border-top: 1px solid #f0f0f0;
-      .mobile-action-btn {
-        flex: 1;
-        height: 44px;
-      }
+  }
+  .mobile-label {
+    display: block;
+    margin-bottom: 8px;
+    color: #606266;
+    font-size: 14px;
+    font-weight: 600;
+
+    .required {
+      color: #f56c6c;
+      margin-left: 2px;
     }
   }
-  .coupon-form-dialog {
-    &.mobile-dialog {
-      :deep(.el-dialog) {
-        width: 95% !important;
-        margin: 2vh auto !important;
-        max-height: 96vh;
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-      }
-      :deep(.el-dialog__header) {
-        padding: 15px 15px 10px;
-        flex-shrink: 0;
-        border-bottom: 1px solid #ebeef5;
-        .el-dialog__title {
-          font-size: 18px;
-          font-weight: 600;
-        }
-        .el-dialog__headerbtn {
-          top: 8px;
-          right: 8px;
-          width: 32px;
-          height: 32px;
-          .el-dialog__close {
-            font-size: 18px;
-          }
-        }
-      }
-      :deep(.el-dialog__body) {
-        padding: 15px !important;
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        max-height: calc(96vh - 140px);
-      }
-      :deep(.el-dialog__footer) {
-        padding: 10px 15px 15px;
-        flex-shrink: 0;
-        border-top: 1px solid #ebeef5;
-      }
-    }
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 1vh auto !important;
-      max-height: 98vh;
-      border-radius: 12px;
-      display: flex;
-      flex-direction: column;
-    }
-    :deep(.el-dialog__header) {
-      padding: 16px 16px 12px;
-      flex-shrink: 0;
-      border-bottom: 1px solid #ebeef5;
-      .el-dialog__title {
-        font-size: 18px;
-        font-weight: 600;
-      }
-      .el-dialog__headerbtn {
-        top: 12px;
-        right: 12px;
-        width: 36px;
-        height: 36px;
-      }
-    }
-    :deep(.el-dialog__body) {
-      padding: 16px !important;
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      max-height: calc(98vh - 140px);
-    }
-    :deep(.el-dialog__footer) {
-      padding: 12px 16px 16px;
-      flex-shrink: 0;
-      border-top: 1px solid #ebeef5;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    :deep(.el-form-item) {
-      margin-bottom: 18px;
-      .el-form-item__label {
-        display: none; /* 移动端隐藏默认标签 */
-      }
-      .el-form-item__content {
-        margin-left: 0 !important;
-        width: 100%;
-      }
-    }
-    .mobile-label {
-      font-size: 14px;
-      font-weight: 600;
-      color: #606266;
-      margin-bottom: 8px;
-      display: block;
-      .required {
-        color: #f56c6c;
-        margin-left: 2px;
-      }
-    }
-    .discount-value-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-      .el-input-number {
-        flex: 1;
-      }
-      .discount-unit {
-        font-size: 14px;
-        color: #909399;
-        min-width: 30px;
-        flex-shrink: 0;
-      }
-    }
-    :deep(.el-input),
-    :deep(.el-select),
-    :deep(.el-textarea),
-    :deep(.el-input-number) {
-      width: 100%;
-      .el-input__wrapper,
-      .el-textarea__inner {
-        min-height: 40px;
-        font-size: 16px; /* 防止iOS自动缩放 */
-      }
-      .el-input__inner {
-        font-size: 16px !important; /* 防止iOS自动缩放 */
-        min-height: 40px;
-        padding: 0 12px;
-      }
-    }
-    :deep(.el-textarea .el-textarea__inner) {
-      min-height: 100px;
-      padding: 12px;
-      line-height: 1.6;
-      font-size: 16px; /* 防止iOS自动缩放 */
-    }
-    :deep(.el-input-number) {
-      .el-input__wrapper {
-        min-height: 40px;
-      }
-    }
-  }
-  .dialog-footer-buttons {
+  .discount-value-wrapper {
     display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    &.mobile-footer {
-      flex-direction: column;
-      gap: 10px;
-      .mobile-action-btn {
-        width: 100%;
-        min-height: 48px;
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0 !important;
-        border-radius: 8px;
-        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
-      }
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+
+    .el-input-number {
+      flex: 1;
     }
-    .mobile-action-btn {
-      width: 100%;
-      min-height: 48px;
-      font-size: 16px;
-      font-weight: 500;
-      margin: 0 !important;
-      border-radius: 8px;
-      -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+
+    .discount-unit {
+      font-size: 14px;
+      color: #909399;
+      min-width: 30px;
+      flex-shrink: 0;
     }
   }
   :deep(.mobile-date-picker-popper) {
@@ -985,11 +762,42 @@ onMounted(() => {
 }
 .mobile-action-btn {
   width: 100%;
-  height: 44px;
+  min-height: 44px;
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   border-radius: 6px;
   font-weight: 500;
+  touch-action: manipulation;
+}
+.coupon-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.coupon-code {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 15px;
+  color: #303133;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.coupon-card-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.coupon-value-highlight {
+  color: #f56c6c;
+  font-weight: 600;
 }
 .desktop-only {
   @media (max-width: 768px) {
@@ -997,14 +805,8 @@ onMounted(() => {
   }
 }
 @media (min-width: 769px) {
-  .mobile-action-bar,
-  .mobile-coupons-list {
+  .mobile-action-bar {
     display: none !important;
   }
-}
-.pagination {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
 }
 </style>

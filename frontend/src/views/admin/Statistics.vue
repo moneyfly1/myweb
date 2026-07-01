@@ -5,7 +5,7 @@
           <el-card class="stat-card">
             <div class="stat-content">
               <div class="stat-icon users">
-                <i class="el-icon-user"></i>
+                <el-icon><User /></el-icon>
               </div>
               <div class="stat-info">
                 <div class="stat-number">{{ statistics.totalUsers }}</div>
@@ -18,7 +18,7 @@
           <el-card class="stat-card">
             <div class="stat-content">
               <div class="stat-icon subscriptions">
-                <i class="el-icon-connection"></i>
+                <el-icon><Connection /></el-icon>
               </div>
               <div class="stat-info">
                 <div class="stat-number">{{ statistics.activeSubscriptions }}</div>
@@ -31,7 +31,7 @@
           <el-card class="stat-card">
             <div class="stat-content">
               <div class="stat-icon orders">
-                <i class="el-icon-shopping-cart-2"></i>
+                <el-icon><ShoppingCart /></el-icon>
               </div>
               <div class="stat-info">
                 <div class="stat-number">{{ statistics.totalOrders }}</div>
@@ -44,7 +44,7 @@
           <el-card class="stat-card">
             <div class="stat-content">
               <div class="stat-icon revenue">
-                <i class="el-icon-money"></i>
+                <el-icon><Money /></el-icon>
               </div>
               <div class="stat-info">
                 <div class="stat-number">¥{{ formatMoney(statistics.totalRevenue) }}</div>
@@ -54,7 +54,7 @@
           </el-card>
         </el-col>
       </el-row>
-      <el-tabs v-model="activeTab" type="border-card" class="statistics-tabs" style="margin-top: 20px;">
+      <el-tabs v-model="activeTab" type="border-card" class="statistics-tabs">
         <el-tab-pane label="用户统计" name="users">
           <el-row :gutter="20" class="charts-section">
         <el-col :xs="24" :sm="24" :md="12">
@@ -91,7 +91,7 @@
               </div>
             </template>
             <div class="desktop-only">
-              <el-table :data="userStats" style="width: 100%" v-if="userStats.length > 0">
+              <el-table :data="userStats" class="full-width-table" v-if="userStats.length > 0">
                 <el-table-column prop="label" label="统计项" />
                 <el-table-column prop="value" label="数值" />
                 <el-table-column prop="percentage" label="占比">
@@ -101,18 +101,23 @@
                       :color="row.color"
                       :show-text="false"
                     />
-                    <span style="margin-left: 10px">{{ Math.round(row.percentage * 10) / 10 }}%</span>
+                    <span class="percentage-text">{{ Math.round(row.percentage * 10) / 10 }}%</span>
                   </template>
                 </el-table-column>
               </el-table>
-              <el-empty v-else description="暂无数据" />
+              <EmptyState
+                v-else
+                title="暂无用户统计"
+                description="当前筛选范围内还没有可展示的用户统计数据。"
+                :icon-size="56"
+                class="compact-empty-state"
+              />
             </div>
-            <div class="mobile-stats-list mobile-only">
+            <div v-if="userStats.length > 0" class="mobile-stats-list mobile-only">
               <div 
                 v-for="stat in userStats" 
                 :key="stat.label"
                 class="mobile-stat-item"
-                v-if="userStats.length > 0"
               >
                 <div class="stat-item-header">
                   <span class="stat-item-label">{{ stat.label }}</span>
@@ -127,8 +132,14 @@
                   <span class="stat-item-percentage">{{ Math.round(stat.percentage * 10) / 10 }}%</span>
                 </div>
               </div>
-              <el-empty v-else description="暂无数据" />
             </div>
+            <EmptyState
+              v-else
+              title="暂无用户统计"
+              description="当前筛选范围内还没有可展示的用户统计数据。"
+              :icon-size="48"
+              class="compact-empty-state mobile-empty-state mobile-only"
+            />
           </el-card>
         </el-col>
         <el-col :xs="24" :sm="24" :md="12">
@@ -139,7 +150,7 @@
               </div>
             </template>
             <div class="desktop-only">
-              <el-table :data="subscriptionStats" style="width: 100%" v-if="subscriptionStats.length > 0">
+              <el-table :data="subscriptionStats" class="full-width-table" v-if="subscriptionStats.length > 0">
                 <el-table-column prop="label" label="统计项" />
                 <el-table-column prop="value" label="数值" />
                 <el-table-column prop="percentage" label="占比">
@@ -149,18 +160,23 @@
                       :color="row.color"
                       :show-text="false"
                     />
-                    <span style="margin-left: 10px">{{ Math.round(row.percentage * 10) / 10 }}%</span>
+                    <span class="percentage-text">{{ Math.round(row.percentage * 10) / 10 }}%</span>
                   </template>
                 </el-table-column>
               </el-table>
-              <el-empty v-else description="暂无数据" />
+              <EmptyState
+                v-else
+                title="暂无订阅统计"
+                description="当前筛选范围内还没有可展示的订阅统计数据。"
+                :icon-size="56"
+                class="compact-empty-state"
+              />
             </div>
-            <div class="mobile-stats-list mobile-only">
+            <div v-if="subscriptionStats.length > 0" class="mobile-stats-list mobile-only">
               <div 
                 v-for="stat in subscriptionStats" 
                 :key="stat.label"
                 class="mobile-stat-item"
-                v-if="subscriptionStats.length > 0"
               >
                 <div class="stat-item-header">
                   <span class="stat-item-label">{{ stat.label }}</span>
@@ -175,49 +191,56 @@
                   <span class="stat-item-percentage">{{ Math.round(stat.percentage * 10) / 10 }}%</span>
                 </div>
               </div>
-              <el-empty v-else description="暂无数据" />
             </div>
+            <EmptyState
+              v-else
+              title="暂无订阅统计"
+              description="当前筛选范围内还没有可展示的订阅统计数据。"
+              :icon-size="48"
+              class="compact-empty-state mobile-empty-state mobile-only"
+            />
           </el-card>
         </el-col>
       </el-row>
         </el-tab-pane>
         <el-tab-pane label="地区分析" name="regions">
-          <el-card style="margin-bottom: 20px;">
+          <el-card class="region-analysis-card">
             <template #header>
-              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0;">用户地区分布</h3>
+              <div class="card-header region-card-header-bar">
+                <h3>用户地区分布</h3>
                 <el-button type="primary" size="small" @click="loadRegionStats" :loading="loadingRegions">
-                  <el-icon style="margin-right: 4px;"><Refresh /></el-icon>
+                  <el-icon class="button-icon"><Refresh /></el-icon>
                   刷新数据
                 </el-button>
               </div>
             </template>
-            <div v-if="loadingRegions" style="text-align: center; padding: 40px;">
-              <el-icon class="is-loading" style="font-size: 32px; color: #409eff;"><Loading /></el-icon>
-              <p style="margin-top: 10px; color: #909399;">正在加载地区数据...</p>
-            </div>
+            <LoadingState
+              v-if="loadingRegions"
+              text="正在加载地区数据..."
+              class="region-loading-state"
+            />
             <div v-else>
               <el-row :gutter="20">
 						<el-col :xs="24" :sm="24" :md="12">
 							<div class="region-chart-wrapper">
-								<h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133; text-align: center;" v-if="regionStats.length > 0">用户地区分布图</h4>
-								<div v-if="regionStats.length === 0" style="text-align: center; padding: 60px; color: #909399;">
-									<el-icon style="font-size: 48px; margin-bottom: 10px;">
-										<DataAnalysis />
-									</el-icon>
-									<p>暂无地区分布数据</p>
-									<p style="font-size: 12px; margin-top: 5px;">请确保已启用 GeoIP 数据库并记录用户登录位置</p>
-								</div>
-								<div v-else class="region-chart-container" style="position: relative;">
-									<canvas ref="regionChart" style="width: 100%; height: 100%;"></canvas>
+								<h4 class="region-chart-title" v-if="regionStats.length > 0">用户地区分布图</h4>
+									<EmptyState
+										v-if="regionStats.length === 0"
+										title="暂无地区分布数据"
+										description="请确保已启用 GeoIP 数据库并记录用户登录位置。"
+										:icon-size="48"
+										class="region-empty-state"
+									/>
+								<div v-else class="region-chart-container">
+									<canvas ref="regionChart" class="chart-canvas"></canvas>
 								</div>
 							</div>
 						</el-col>
 						<el-col :xs="24" :sm="24" :md="12">
 							<div class="desktop-only">
 								<div class="region-stats-table">
-									<h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133;">地区统计列表</h4>
-									<el-table :data="regionStats" stripe style="width: 100%" :empty-text="'暂无地区数据'" max-height="400" :default-sort="{ prop: 'userCount', order: 'descending' }">
+									<h4 class="region-list-title">地区统计列表</h4>
+									<el-table :data="regionStats" stripe class="full-width-table" :empty-text="'暂无地区数据'" max-height="400" :default-sort="{ prop: 'userCount', order: 'descending' }">
 										<el-table-column prop="country" label="国家" min-width="100" sortable>
 											<template #default="{ row }">
 												<el-tag type="success" size="small">{{ row.country || '-' }}</el-tag>
@@ -235,17 +258,17 @@
 										</el-table-column>
 										<el-table-column prop="percentage" label="占比" width="100" align="right" sortable :sort-method="(a, b) => parseFloat(a.percentage || 0) - parseFloat(b.percentage || 0)">
 											<template #default="{ row }">
-												<span style="color: #606266;">{{ row.percentage || '0.0' }}%</span>
+												<span class="regular-text">{{ row.percentage || '0.0' }}%</span>
 											</template>
 										</el-table-column>
 										<el-table-column prop="loginCount" label="登录次数" width="120" align="right" sortable>
 											<template #default="{ row }">
-												<span style="color: #909399;">{{ row.loginCount || 0 }}</span>
+												<span class="secondary-text">{{ row.loginCount || 0 }}</span>
 											</template>
 										</el-table-column>
 										<el-table-column prop="lastLogin" label="最后登录" width="180" align="right" sortable>
 											<template #default="{ row }">
-												<span style="font-size: 12px; color: #909399;">{{ row.lastLogin }}</span>
+												<span class="table-time-text">{{ row.lastLogin }}</span>
 											</template>
 										</el-table-column>
 									</el-table>
@@ -253,17 +276,22 @@
 							</div>
 							<div class="mobile-only">
 								<div class="region-stats-list">
-									<h4 style="margin: 0 0 15px 0; font-size: 16px; color: #303133; font-weight: 600;">地区统计列表</h4>
-									<div v-if="regionStats.length === 0" style="text-align: center; padding: 40px; color: #909399;">
-										<el-empty description="暂无地区数据" :image-size="80" />
+									<h4 class="region-list-title">地区统计列表</h4>
+									<div v-if="regionStats.length === 0" class="region-list-empty">
+									<EmptyState
+										title="暂无地区数据"
+										description="启用 GeoIP 数据库并记录用户登录位置后，这里会显示地区统计。"
+										:icon-size="48"
+										class="compact-empty-state mobile-empty-state"
+									/>
 									</div>
 									<div v-else class="region-card-list">
 										<div v-for="(stat, index) in regionStats" :key="index" class="region-card-item">
 											<div class="region-card-header">
-												<el-tag type="info" size="small" style="font-size: 14px; padding: 4px 12px;">
+												<el-tag type="info" size="small" class="region-card-tag">
 													{{ stat.region || '未知' }}
 												</el-tag>
-												<el-tag type="primary" size="small" style="font-size: 14px; padding: 4px 12px;">
+												<el-tag type="primary" size="small" class="region-card-tag">
 													{{ stat.userCount || 0 }} 人
 												</el-tag>
 											</div>
@@ -278,7 +306,7 @@
 												</div>
 												<div class="region-card-stat">
 													<span class="stat-label">最后登录：</span>
-													<span class="stat-value" style="font-size: 12px;">{{ stat.lastLogin }}</span>
+													<span class="stat-value stat-time-value">{{ stat.lastLogin }}</span>
 												</div>
 											</div>
 										</div>
@@ -296,15 +324,21 @@
 <script>
 import { ref, reactive, onMounted, nextTick, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
-import { Refresh, Loading, DataAnalysis } from '@element-plus/icons-vue'
+import { Refresh, User, Connection, ShoppingCart, Money } from '@element-plus/icons-vue'
 import { statisticsAPI } from '@/utils/api'
+import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
 Chart.register(...registerables)
 export default {
 	name: 'AdminStatistics',
 	components: {
-		Refresh,
-		Loading,
-		DataAnalysis
+			Refresh,
+			User,
+			Connection,
+			ShoppingCart,
+			Money,
+			EmptyState,
+			LoadingState
 	},
 	setup() {
 		const userChart = ref(null)
@@ -580,51 +614,117 @@ export default {
   .stats-cards {
     margin-bottom: 20px;
   }
+  .statistics-tabs {
+    margin-top: 20px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .statistics-tabs :deep(.el-tabs__header) {
+    background: var(--el-fill-color-extra-light);
+  }
+  .statistics-tabs :deep(.el-tabs__content) {
+    padding: 16px;
+  }
+  .charts-section :deep(.el-card),
+  .detailed-stats :deep(.el-card),
+  .region-analysis-card {
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  .charts-section :deep(.el-card__header),
+  .detailed-stats :deep(.el-card__header),
+  .region-analysis-card :deep(.el-card__header) {
+    padding: 14px 16px;
+    background: var(--el-fill-color-extra-light);
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+  .full-width-table {
+    width: 100%;
+  }
+  .percentage-text {
+    margin-left: 10px;
+  }
+  .regular-text {
+    color: #606266;
+  }
+  .secondary-text {
+    color: #909399;
+  }
+  .table-time-text {
+    color: #909399;
+    font-size: 12px;
+  }
   .stat-card {
     height: 120px;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    box-shadow: none;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+  .stat-card:hover {
+    border-color: var(--el-border-color);
+    background: #fbfdff;
+  }
+  .stat-card :deep(.el-card__body) {
+    height: 100%;
   }
   .stat-content {
     display: flex;
     align-items: center;
     height: 100%;
+    min-width: 0;
   }
   .stat-icon {
     width: 60px;
     height: 60px;
-    border-radius: 50%;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-right: 20px;
+    flex: 0 0 60px;
+    color: var(--stat-icon-color, #409eff);
+    background: var(--stat-icon-bg, #ecf5ff);
   }
-  .stat-icon :is(i) {
+  .stat-icon :deep(.el-icon) {
     font-size: 24px;
-    color: white;
   }
   .stat-icon.users {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --stat-icon-color: #2563eb;
+    --stat-icon-bg: #eff6ff;
   }
   .stat-icon.subscriptions {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --stat-icon-color: #7c3aed;
+    --stat-icon-bg: #f5f3ff;
   }
   .stat-icon.orders {
-    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --stat-icon-color: #0891b2;
+    --stat-icon-bg: #ecfeff;
   }
   .stat-icon.revenue {
-    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    --stat-icon-color: #16a34a;
+    --stat-icon-bg: #f0fdf4;
   }
   .stat-info {
     flex: 1;
+    min-width: 0;
   }
   .stat-number {
-    font-size: 2rem;
+    font-size: 28px;
     font-weight: 700;
-    color: #333;
+    color: #303133;
     margin-bottom: 5px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .stat-label {
-    color: #666;
-    font-size: 0.9rem;
+    color: #909399;
+    font-size: 13px;
   }
   .charts-section {
     margin-bottom: 20px;
@@ -639,11 +739,47 @@ export default {
     align-items: center;
     justify-content: center;
   }
+  .region-analysis-card {
+    margin-bottom: 20px;
+  }
+  .region-card-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .region-card-header-bar :deep(.el-button) {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  .button-icon {
+    margin-right: 4px;
+  }
+  .region-list-empty {
+    color: #909399;
+    text-align: center;
+  }
+  .region-loading-state {
+    padding: 40px;
+  }
+  .region-chart-title {
+    margin: 0 0 15px;
+    color: #303133;
+    font-size: 16px;
+    text-align: center;
+  }
+  .region-empty-state {
+    padding: 60px;
+  }
   .region-chart-container {
     width: 100%;
     height: 500px;
     position: relative;
     padding: 20px;
+  }
+  .chart-canvas {
+    width: 100%;
+    height: 100%;
   }
   @media (max-width: 768px) {
     .region-chart-container {
@@ -653,6 +789,12 @@ export default {
   }
   .region-stats-table {
     padding: 10px 0;
+  }
+  .region-list-title {
+    margin: 0 0 15px;
+    color: #303133;
+    font-size: 16px;
+    font-weight: 600;
   }
   .region-stats-table h4 {
     font-weight: 600;
@@ -664,6 +806,17 @@ export default {
   .region-stats-list {
     padding: 10px 0;
   }
+  .region-list-empty {
+    padding: 40px;
+  }
+  .compact-empty-state {
+    min-height: 180px;
+    padding: 32px 16px;
+  }
+  .mobile-empty-state {
+    min-height: 160px;
+    padding: 28px 14px;
+  }
   .region-card-list {
     display: flex;
     flex-direction: column;
@@ -671,14 +824,14 @@ export default {
   }
   .region-card-item {
     padding: 14px;
-    background: #f8f9fa;
+    background: #fff;
     border-radius: 8px;
-    border: 1px solid #e9ecef;
-    transition: all 0.3s ease;
+    border: 1px solid #ebeef5;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
   }
   .region-card-item:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
+    background: #fafcff;
+    border-color: #c6e2ff;
   }
   .region-card-header {
     display: flex;
@@ -687,6 +840,10 @@ export default {
     margin-bottom: 12px;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .region-card-tag {
+    padding: 4px 12px;
+    font-size: 14px;
   }
   .region-card-body {
     display: flex;
@@ -707,6 +864,9 @@ export default {
     color: #303133;
     font-weight: 600;
   }
+  .region-card-stat .stat-time-value {
+    font-size: 12px;
+  }
   .region-details-list {
     display: flex;
     flex-direction: column;
@@ -716,12 +876,12 @@ export default {
     padding: 14px;
     background: #ffffff;
     border-radius: 8px;
-    border: 1px solid #e9ecef;
-    transition: all 0.3s ease;
+    border: 1px solid #ebeef5;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
   }
   .region-detail-card:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
+    background: #fafcff;
+    border-color: #c6e2ff;
   }
   .detail-card-header {
     margin-bottom: 12px;
@@ -800,6 +960,12 @@ export default {
     .statistics-admin-container {
       padding: 10px;
     }
+    .statistics-tabs {
+      margin-top: 12px;
+    }
+    .statistics-tabs :deep(.el-tabs__content) {
+      padding: 12px;
+    }
     .stats-cards {
       margin-bottom: 16px;
       .el-col {
@@ -875,6 +1041,15 @@ export default {
     }
     .region-card-header {
       margin-bottom: 10px;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .region-card-header-bar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .region-card-header-bar :deep(.el-button) {
+      width: 100%;
     }
     .region-card-stat {
       font-size: 13px;
@@ -964,30 +1139,4 @@ export default {
       margin-bottom: 8px;
     }
   }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
 </style>

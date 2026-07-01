@@ -142,44 +142,90 @@
           </div>
           <div class="security-section">
             <h3>登录历史</h3>
-            <el-table :data="loginHistory" style="width: 100%" v-loading="loginHistoryLoading">
-              <el-table-column prop="login_time" label="登录时间" width="180">
-                <template #default="{ row }">
-                  {{ formatDate(row.login_time) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址/地区" width="200">
-                <template #default="{ row }">
-                  <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <el-tag type="info" size="small">{{ row.ip_address || '未知' }}</el-tag>
-                    <el-tag 
-                      v-if="getLocationText(row.location, row.ip_address)" 
-                      type="success" 
-                      size="small"
-                    >
-                      {{ getLocationText(row.location, row.ip_address) }}
-                    </el-tag>
+            <ResponsiveDataView
+              class="login-history-view"
+              :data="loginHistory"
+              :fields="mobileLoginHistoryFields"
+              :loading="loginHistoryLoading"
+              title-field="user_agent"
+              empty-title="暂无登录历史记录"
+              empty-description="最近登录记录会显示在这里"
+            >
+              <template #table>
+                <el-table
+                  :data="loginHistory"
+                  class="login-history-table"
+                  v-loading="loginHistoryLoading"
+                >
+                  <el-table-column prop="login_time" label="登录时间" width="180">
+                    <template #default="{ row }">
+                      {{ formatDate(row.login_time) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="ip_address" label="IP地址/地区" width="200">
+                    <template #default="{ row }">
+                      <div class="login-location-stack">
+                        <el-tag type="info" size="small">{{ row.ip_address || '未知' }}</el-tag>
+                        <el-tag
+                          v-if="getLocationText(row.location, row.ip_address)"
+                          type="success"
+                          size="small"
+                        >
+                          {{ getLocationText(row.location, row.ip_address) }}
+                        </el-tag>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="设备信息" min-width="200">
+                    <template #default="{ row }">
+                      <el-tooltip :content="row.user_agent || '未知'" placement="top">
+                        <span>{{ getDeviceInfo(row.user_agent) }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="login_status" label="状态" width="100">
+                    <template #default="{ row }">
+                      <el-tag :type="row.login_status === 'success' ? 'success' : 'danger'">
+                        {{ row.login_status === 'success' ? '成功' : '失败' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <EmptyState
+                  v-if="loginHistory.length === 0 && !loginHistoryLoading"
+                  class="login-history-empty"
+                  title="暂无登录历史记录"
+                  description="最近登录记录会显示在这里"
+                  :icon-size="48"
+                />
+              </template>
+              <template #header="{ item }">
+                <div class="login-history-card-header">
+                  <div class="login-history-card-title">
+                    <span>{{ getDeviceInfo(item.user_agent) }}</span>
+                    <span class="login-history-time">{{ formatDate(item.login_time) }}</span>
                   </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="设备信息" min-width="200">
-                <template #default="{ row }">
-                  <el-tooltip :content="row.user_agent || '未知'" placement="top">
-                    <span>{{ getDeviceInfo(row.user_agent) }}</span>
-                  </el-tooltip>
-                </template>
-              </el-table-column>
-              <el-table-column prop="login_status" label="状态" width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.login_status === 'success' ? 'success' : 'danger'">
-                    {{ row.login_status === 'success' ? '成功' : '失败' }}
+                  <el-tag :type="item.login_status === 'success' ? 'success' : 'danger'" size="small">
+                    {{ item.login_status === 'success' ? '成功' : '失败' }}
                   </el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
-            <div v-if="loginHistory.length === 0 && !loginHistoryLoading" style="text-align: center; padding: 20px; color: #999;">
-              暂无登录历史记录
-            </div>
+                </div>
+              </template>
+              <template #field-location="{ item }">
+                <div class="login-location-stack mobile-location-stack">
+                  <el-tag type="info" size="small">{{ item.ip_address || '未知' }}</el-tag>
+                  <el-tag
+                    v-if="getLocationText(item.location, item.ip_address)"
+                    type="success"
+                    size="small"
+                  >
+                    {{ getLocationText(item.location, item.ip_address) }}
+                  </el-tag>
+                </div>
+              </template>
+              <template #field-user_agent="{ item }">
+                <span class="mobile-user-agent">{{ item.user_agent || '未知' }}</span>
+              </template>
+            </ResponsiveDataView>
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -188,13 +234,15 @@
 </template>
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { adminAPI } from '@/utils/api'
 import { formatLocation } from '@/utils/date'
 import router from '@/router'
 import { secureStorage } from '@/utils/api'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 function getCookie(name) {
   const value = `; ${document.cookie}`
   const parts = value.split(`; ${name}=`)
@@ -204,7 +252,9 @@ function getCookie(name) {
 export default {
   name: 'AdminProfile',
   components: {
-    Plus
+    EmptyState,
+    Plus,
+    ResponsiveDataView
   },
   setup() {
     const activeTab = ref('basic')
@@ -247,6 +297,10 @@ export default {
     })
     const loginHistory = ref([])
     const loginHistoryLoading = ref(false)
+    const mobileLoginHistoryFields = [
+      { key: 'location', label: 'IP地址/地区' },
+      { key: 'user_agent', label: 'User Agent', fullWidth: true }
+    ]
     const basicRules = {
       display_name: [
         { required: true, message: '请输入显示名称', trigger: 'blur' },
@@ -614,6 +668,7 @@ export default {
       securityForm,
       loginHistory,
       loginHistoryLoading,
+      mobileLoginHistoryFields,
       basicRules,
       passwordRules,
       uploadUrl,
@@ -677,6 +732,18 @@ export default {
   border-bottom: 1px solid #eee;
   padding-bottom: 10px;
 }
+.login-history-table {
+  width: 100%;
+}
+.login-location-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.login-history-empty {
+  min-height: 180px;
+  padding: 24px 16px;
+}
 @media (max-width: 768px) {
   .admin-profile-container {
     padding: 10px;
@@ -689,44 +756,40 @@ export default {
   .profile-form {
     max-width: 100%;
   }
+  .login-history-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .login-history-card-title {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: #303133;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .login-history-time {
+    color: #909399;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .mobile-location-stack {
+    align-items: flex-end;
+  }
+.mobile-user-agent {
+    color: #606266;
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  padding: 0 !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  padding: 0 !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-  padding: 0 11px !important;
-}
-:deep(.el-input__prefix),
-:deep(.el-input__suffix) {
-  background-color: transparent !important;
-  border: none !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-:deep(.el-textarea__inner) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
+@media (min-width: 769px) {
+  .login-history-view :deep(.responsive-data-view__cards) {
+    display: none !important;
+  }
 }
 </style>

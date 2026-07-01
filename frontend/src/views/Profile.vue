@@ -1,257 +1,269 @@
 <template>
   <div class="list-container profile">
+    <div class="breadcrumb">首页 / 个人资料</div>
     <div class="page-header">
-      <h1>个人资料</h1>
-      <p>管理您的账户信息</p>
+      <div class="page-title">
+        <h1>个人资料</h1>
+      </div>
+      <div class="actions">
+        <el-button @click="viewLoginHistory">
+          登录历史
+        </el-button>
+        <router-link to="/settings">
+          <el-button type="primary">
+            编辑资料
+          </el-button>
+        </router-link>
+      </div>
     </div>
-    <div class="profile-content">
-      <el-card class="profile-card" v-loading="pageLoading">
-        <template #header>
-          <div class="card-header">
-            <i class="el-icon-user"></i>
-            基本信息
-          </div>
-        </template>
-        <el-form
-          ref="profileFormRef"
-          :model="profileForm"
-          :rules="profileRules"
-          :label-width="isMobile ? '0' : '120px'"
-          class="profile-form"
-        >
-          <el-form-item prop="username" :label="!isMobile ? '用户名' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>用户名</span>
-              </div>
-            </template>
-            <el-input 
-              v-model="profileForm.username" 
-              disabled
-              placeholder="用户名"
-            >
-              <template #prepend>
-                <i class="el-icon-user"></i>
-              </template>
-            </el-input>
-            <div class="form-tip">用户名不可修改</div>
-          </el-form-item>
-          <el-form-item prop="email" :label="!isMobile ? '邮箱' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>邮箱</span>
-              </div>
-            </template>
-            <el-input 
-              v-model="profileForm.email" 
-              disabled
-              placeholder="邮箱"
-            >
-              <template #prepend>
-                <i class="el-icon-message"></i>
-              </template>
-            </el-input>
-            <div class="form-tip">邮箱不可修改</div>
-          </el-form-item>
-          <el-form-item :label="!isMobile ? '注册时间' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>注册时间</span>
-              </div>
-            </template>
-            <el-input 
-              :value="formatTime(userInfo.created_at)" 
-              disabled
-            >
-              <template #prepend>
-                <i class="el-icon-time"></i>
-              </template>
-            </el-input>
-          </el-form-item>
-          <el-form-item :label="!isMobile ? '最后登录' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>最后登录</span>
-              </div>
-            </template>
-            <el-input 
-              :value="formatTime(userInfo.last_login)" 
-              disabled
-            >
-              <template #prepend>
-                <i class="el-icon-time"></i>
-              </template>
-            </el-input>
-          </el-form-item>
-          <el-form-item :label="!isMobile ? '账户状态' : ''">
-            <template v-if="isMobile">
-              <div class="mobile-label">
-                <span>账户状态</span>
-              </div>
-            </template>
-            <el-tag :type="getAccountStatusType(userInfo)">
-              {{ getAccountStatusText(userInfo) }}
-            </el-tag>
-          </el-form-item>
-        </el-form>
-      </el-card>
-      <el-card class="security-card">
-        <template #header>
-          <div class="card-header">
-            <i class="el-icon-shield"></i>
-            账户安全
-          </div>
-        </template>
-        <div class="security-items">
-          <div class="security-item">
-            <div class="security-info">
-              <div class="security-title">
-                <i class="el-icon-time"></i>
-                登录记录
-              </div>
-              <div class="security-desc">
-                最后登录时间：{{ formatTime(userInfo.last_login) }}
-              </div>
+
+    <div class="profile-grid">
+      <div class="card profile-summary-card">
+        <div class="card-body">
+          <img v-if="userInfo.avatar" :src="userInfo.avatar" class="profile-avatar-img" alt="头像" />
+          <div v-else class="profile-avatar">{{ displayName.slice(0, 2).toUpperCase() }}</div>
+          <h2>{{ displayName }}</h2>
+          <el-tag :type="getAccountStatusType(userInfo)">{{ getAccountStatusText(userInfo) }}</el-tag>
+          <div class="item-meta">{{ getProfileMetaText() }}</div>
+          <div class="summary-list profile-status-list">
+            <div class="summary-row">
+              <span>邮箱状态</span>
+              <strong>
+                <el-tag :type="userInfo.is_verified ? 'success' : 'warning'" size="small">
+                  {{ userInfo.is_verified ? '已验证' : '未验证' }}
+                </el-tag>
+              </strong>
             </div>
-            <div class="security-action">
-              <el-button 
-                type="info" 
-                size="small"
-                @click="viewLoginHistory"
-              >
-                查看登录历史
+            <div class="summary-row">
+              <span>订阅状态</span>
+              <strong>{{ getSubscriptionStatusText() }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>最近登录</span>
+              <strong>{{ formatTime(userInfo.last_login) }}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-stack">
+        <div class="card profile-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">
+                <el-icon class="card-header-icon"><User /></el-icon>
+                账户信息
+              </h2>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-wrap">
+              <table class="table profile-info-table">
+                <tbody>
+                  <tr>
+                    <th>用户名</th>
+                    <td>{{ profileForm.username || '未设置用户名' }}</td>
+                  </tr>
+                  <tr>
+                    <th>邮箱</th>
+                    <td>
+                      <span>{{ profileForm.email || '未设置邮箱' }}</span>
+                      <router-link to="/settings">
+                        <el-button size="small">修改邮箱</el-button>
+                      </router-link>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>昵称</th>
+                    <td>{{ profileForm.nickname || '未设置昵称' }}</td>
+                  </tr>
+                  <tr>
+                    <th>头像</th>
+                    <td>
+                      <router-link to="/settings">
+                        <el-button>修改头像</el-button>
+                      </router-link>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>最近登录</th>
+                    <td>{{ formatTime(userInfo.last_login) }}</td>
+                  </tr>
+                  <tr>
+                    <th>注册时间</th>
+                    <td>{{ formatTime(userInfo.created_at) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card password-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">
+                <el-icon class="card-header-icon"><Lock /></el-icon>
+                安全设置
+              </h2>
+            </div>
+          </div>
+          <div class="card-body">
+            <el-form
+              ref="passwordFormRef"
+              :model="passwordForm"
+              :rules="passwordRules"
+              :label-width="0"
+              class="password-inline-form"
+            >
+              <div class="form-row password-form-row">
+                <el-form-item prop="oldPassword">
+                  <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="当前密码" />
+                </el-form-item>
+                <el-form-item prop="newPassword">
+                  <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="新密码" />
+                </el-form-item>
+                <el-form-item prop="confirmPassword">
+                  <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="确认密码" />
+                </el-form-item>
+              </div>
+            </el-form>
+            <div class="notice password-notice">
+              密码修改成功后会清空当前输入。
+            </div>
+            <div class="button-row password-actions">
+              <el-button type="primary" :loading="passwordLoading" @click="changePassword">
+                保存密码
               </el-button>
+              <el-button @click="viewLoginHistory">登录历史</el-button>
             </div>
           </div>
         </div>
-      </el-card>
-      <el-card class="subscription-card" v-if="subscriptionInfo">
-        <template #header>
-          <div class="card-header">
-            <i class="el-icon-link"></i>
-            订阅信息
-          </div>
-        </template>
-        <div class="subscription-info">
-          <div class="info-item">
-            <span class="label">剩余时长：</span>
-            <span class="value">{{ subscriptionInfo.remainingDays || 0 }} 天</span>
-          </div>
-          <div class="info-item">
-            <span class="label">到期时间：</span>
-            <span class="value">{{ subscriptionInfo.expiryDate || '未设置' }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">设备限制：</span>
-            <span class="value">{{ subscriptionInfo.currentDevices || 0 }}/{{ subscriptionInfo.maxDevices || 0 }} 个</span>
-          </div>
-          <div class="info-item">
-            <span class="label">订阅状态：</span>
-            <span class="value">
-              <el-tag :type="subscriptionInfo.status === 'active' ? (subscriptionInfo.isExpiring ? 'warning' : 'success') : 'danger'">
-                {{ subscriptionInfo.status === 'active' ? (subscriptionInfo.isExpiring ? '即将到期' : '正常') : '已过期' }}
-              </el-tag>
-            </span>
-          </div>
-        </div>
-        <div class="subscription-actions">
-          <router-link to="/subscription">
-            <el-button type="primary">
-              管理订阅
-            </el-button>
-          </router-link>
-          <router-link to="/packages">
-            <el-button type="success">
-              续费订阅
-            </el-button>
-          </router-link>
-        </div>
-      </el-card>
+
+      </div>
     </div>
-    <el-dialog
+    <AppDialog
       v-model="loginHistoryDialogVisible"
       title="登录历史"
-      width="90%"
-      :close-on-click-modal="false"
+      width="900px"
+      mobile-width="94%"
       class="login-history-dialog"
     >
-      <div v-if="loginHistoryLoading" class="loading-container">
-        <el-skeleton :rows="5" animated />
-      </div>
-      <el-table 
-        v-else-if="loginHistory.length > 0"
-        :data="loginHistory" 
-        stripe
-        style="width: 100%"
-        max-height="400"
-      >
-        <el-table-column prop="login_time" label="登录时间" width="180">
-          <template #default="scope">
-            {{ formatTime(scope.row.login_time) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="ip_address" label="IP地址/地区" width="180">
-          <template #default="scope">
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-              <el-tag type="info" size="small">{{ scope.row.ip_address || '未知' }}</el-tag>
-              <el-tag 
-                v-if="getLocationText(scope.row.location, scope.row.ip_address)" 
-                type="success" 
-                size="small"
-              >
-                {{ getLocationText(scope.row.location, scope.row.ip_address) }}
+      <LoadingState
+        v-if="loginHistoryLoading"
+        text="正在加载登录历史..."
+        :size="32"
+        class="loading-container"
+      />
+      <template v-else-if="loginHistory.length > 0">
+        <el-table
+          :data="loginHistory"
+          stripe
+          class="login-history-table desktop-login-history"
+          max-height="400"
+        >
+          <el-table-column prop="login_time" label="登录时间" width="180">
+            <template #default="scope">
+              {{ formatTime(scope.row.login_time) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="ip_address" label="IP地址/地区" width="180">
+            <template #default="scope">
+              <div class="login-location-stack">
+                <el-tag type="info" size="small">{{ scope.row.ip_address || '未知' }}</el-tag>
+                <el-tag
+                  v-if="getLocationText(scope.row.location, scope.row.ip_address)"
+                  type="success"
+                  size="small"
+                >
+                  {{ getLocationText(scope.row.location, scope.row.ip_address) }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="user_agent" label="设备信息" min-width="150">
+            <template #default="scope">
+              <el-tooltip :content="scope.row.user_agent" placement="top">
+                <span class="user-agent-text">
+                  {{ getDeviceInfo(scope.row.user_agent) }}
+                </span>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column prop="login_status" label="状态" width="80">
+            <template #default="scope">
+              <el-tag :type="scope.row.login_status === 'success' ? 'success' : 'danger'" size="small">
+                {{ scope.row.login_status === 'success' ? '成功' : '失败' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="mobile-login-history">
+          <div
+            v-for="(item, index) in loginHistory"
+            :key="`${item.login_time}-${item.ip_address}-${index}`"
+            class="login-history-card"
+          >
+            <div class="login-history-card__header">
+              <span>{{ formatTime(item.login_time) }}</span>
+              <el-tag :type="item.login_status === 'success' ? 'success' : 'danger'" size="small">
+                {{ item.login_status === 'success' ? '成功' : '失败' }}
               </el-tag>
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="user_agent" label="设备信息" min-width="150">
-          <template #default="scope">
-            <el-tooltip :content="scope.row.user_agent" placement="top">
-              <span class="user-agent-text">
-                {{ getDeviceInfo(scope.row.user_agent) }}
-              </span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column prop="login_status" label="状态" width="80">
-          <template #default="scope">
-            <el-tag :type="scope.row.login_status === 'success' ? 'success' : 'danger'" size="small">
-              {{ scope.row.login_status === 'success' ? '成功' : '失败' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-else description="暂无登录记录" />
-      <template #footer>
-        <el-button @click="loginHistoryDialogVisible = false">关闭</el-button>
+            <div class="login-history-card__row">
+              <span>IP地址</span>
+              <strong>{{ item.ip_address || '未知' }}</strong>
+            </div>
+            <div v-if="getLocationText(item.location, item.ip_address)" class="login-history-card__row">
+              <span>地区</span>
+              <strong>{{ getLocationText(item.location, item.ip_address) }}</strong>
+            </div>
+            <div class="login-history-card__row">
+              <span>设备</span>
+              <strong>{{ getDeviceInfo(item.user_agent) }}</strong>
+            </div>
+          </div>
+        </div>
       </template>
-    </el-dialog>
+      <EmptyState
+        v-else
+        title="暂无登录记录"
+        description="当前账户还没有可展示的登录历史。"
+        :icon-size="52"
+        class="profile-empty-state"
+      />
+      <template #footer>
+        <FormActionBar
+          :sticky="false"
+          :show-submit="false"
+          cancel-text="关闭"
+          @cancel="loginHistoryDialogVisible = false"
+        />
+      </template>
+    </AppDialog>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
 import { formatLocation } from '@/utils/date'
 import dayjs from 'dayjs'
+import { Lock, User } from '@element-plus/icons-vue'
+import AppDialog from '@/components/AppDialog.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import LoadingState from '@/components/LoadingState.vue'
+import { useMobile } from '@/composables/useMobile'
 export default {
   name: 'Profile',
+  components: { AppDialog, EmptyState, FormActionBar, LoadingState, Lock, User },
   setup() {
     const router = useRouter()
     const authStore = useAuthStore()
-    const windowWidth = ref(window.innerWidth)
-    const isMobile = computed(() => windowWidth.value <= 768)
-    const handleResize = () => {
-      windowWidth.value = window.innerWidth
-    }
-    onMounted(() => {
-      window.addEventListener('resize', handleResize)
-    })
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
-    })
+    const isMobile = useMobile()
     const passwordLoading = ref(false)
     const emailLoading = ref(false)
     const profileFormRef = ref(null)
@@ -262,6 +274,8 @@ export default {
     const userInfo = ref({
       username: '',
       email: '',
+      nickname: '',
+      avatar: '',
       is_verified: false,
       last_login: null,
       created_at: null,
@@ -270,8 +284,13 @@ export default {
     const subscriptionInfo = ref(null)
     const profileForm = reactive({
       username: '',
-      email: ''
+      email: '',
+      nickname: '',
+      avatar: ''
     })
+    const displayName = computed(() => (
+      profileForm.nickname || profileForm.username || userInfo.value.nickname || userInfo.value.username || '用户'
+    ))
     const passwordForm = reactive({
       oldPassword: '',
       newPassword: '',
@@ -282,8 +301,12 @@ export default {
       if (authUser) {
         userInfo.value.username = authUser.username || ''
         userInfo.value.email = authUser.email || ''
+        userInfo.value.nickname = authUser.nickname || ''
+        userInfo.value.avatar = authUser.avatar || authUser.avatar_url || ''
         profileForm.username = userInfo.value.username
         profileForm.email = userInfo.value.email
+        profileForm.nickname = userInfo.value.nickname
+        profileForm.avatar = userInfo.value.avatar
         }
     }
     const profileRules = {
@@ -344,6 +367,8 @@ export default {
           userInfo.value = {
             username: data.username || '',
             email: data.email || '',
+            nickname: data.nickname || '',
+            avatar: data.avatar || data.avatar_url || '',
             is_verified: data.is_verified !== undefined ? data.is_verified : false,
             last_login: data.last_login || data.lastLogin || data.last_login_time || null,
             created_at: data.created_at || data.createdAt || null,
@@ -351,13 +376,19 @@ export default {
           }
           profileForm.username = userInfo.value.username || ''
           profileForm.email = userInfo.value.email || ''
+          profileForm.nickname = userInfo.value.nickname || ''
+          profileForm.avatar = userInfo.value.avatar || ''
         } else {
           const authUser = authStore.user
           if (authUser) {
             userInfo.value.username = authUser.username || ''
             userInfo.value.email = authUser.email || ''
+            userInfo.value.nickname = authUser.nickname || ''
+            userInfo.value.avatar = authUser.avatar || authUser.avatar_url || ''
             profileForm.username = userInfo.value.username
             profileForm.email = userInfo.value.email
+            profileForm.nickname = userInfo.value.nickname
+            profileForm.avatar = userInfo.value.avatar
           } else {
             ElMessage.error('获取用户信息失败：无法解析响应数据')
           }
@@ -367,8 +398,12 @@ export default {
         if (authUser) {
           userInfo.value.username = authUser.username || ''
           userInfo.value.email = authUser.email || ''
+          userInfo.value.nickname = authUser.nickname || ''
+          userInfo.value.avatar = authUser.avatar || authUser.avatar_url || ''
           profileForm.username = userInfo.value.username
           profileForm.email = userInfo.value.email
+          profileForm.nickname = userInfo.value.nickname
+          profileForm.avatar = userInfo.value.avatar
         } else {
           ElMessage.error(`获取用户信息失败: ${error.response?.data?.message || error.message || '未知错误'}`)
         }
@@ -560,6 +595,23 @@ export default {
           return '未知'
       }
     }
+    const getProfileMetaText = () => {
+      const parts = []
+      if (profileForm.username) {
+        parts.push(`@${profileForm.username}`)
+      }
+      if (userInfo.value.email) {
+        parts.push(userInfo.value.email)
+      }
+      return parts.join(' · ')
+    }
+    const getSubscriptionStatusText = () => {
+      const status = subscriptionInfo.value?.status
+      if (!status || status === 'expired') return '未订阅'
+      if (status === 'active') return '已开通'
+      if (status === 'pending') return '待生效'
+      return status
+    }
     onMounted(() => {
       initUserInfo()
       fetchUserInfo()
@@ -569,6 +621,7 @@ export default {
       userInfo,
       subscriptionInfo,
       profileForm,
+      displayName,
       passwordForm,
       profileFormRef,
       passwordFormRef,
@@ -584,6 +637,8 @@ export default {
       viewLoginHistory,
       fetchLoginHistory,
       getDeviceInfo,
+      getProfileMetaText,
+      getSubscriptionStatusText,
       formatTime,
       getLocationText,
       getAccountStatusType,
@@ -593,48 +648,269 @@ export default {
 }
 </script>
 <style scoped>
-.profile-container {
+.profile {
   padding: 0;
   max-width: none;
   margin: 0;
   width: 100%;
 }
+.breadcrumb {
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.4;
+}
 .page-header {
-  margin-bottom: 1rem;
-  text-align: center;
-  @media (max-width: 768px) {
-    margin-bottom: 0.75rem;
-  }
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
 }
 .page-header h1 {
-  color: #1677ff;
-  font-size: 1.5rem;
-  margin-bottom: 0.25rem;
-  @media (max-width: 768px) {
-    font-size: 1.25rem;
-  }
+  margin: 0;
+  color: #303133;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 700;
 }
-.page-header :is(p) {
-  color: #666;
-  font-size: 0.875rem;
-  @media (max-width: 768px) {
-    font-size: 0.8125rem;
-  }
+.page-header p {
+  margin: 6px 0 0;
+  color: #606266;
+  line-height: 1.5;
 }
-.profile-content {
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.profile-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.section-stack {
+  display: grid;
+  gap: 14px;
+}
+.card {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+  min-width: 0;
+}
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 700;
+}
+.card-sub,
+.item-meta {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.card-body {
+  padding: 16px;
+}
+.profile-summary-card {
+  text-align: center;
+}
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 12px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 22px;
+  font-weight: 800;
+}
+.profile-avatar-img {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 12px;
+  display: block;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #dcdfe6;
+}
+.profile-summary-card h2 {
+  margin: 0 0 8px;
+  color: #303133;
+  font-size: 20px;
+  line-height: 1.3;
+}
+.profile-status-list {
+  margin-top: 16px;
+}
+.summary-list {
+  margin-top: 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+}
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebeef5;
+  color: #606266;
+  font-size: 13px;
+}
+.summary-row:last-child {
+  border-bottom: none;
+}
+.summary-row strong {
+  min-width: 0;
+  color: #303133;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 14px;
+}
+.table th,
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid #ebeef5;
+  text-align: left;
+  vertical-align: middle;
+}
+.table th {
+  width: 150px;
+  color: #606266;
+  background: #f5f7fa;
+  font-weight: 700;
+}
+.table tr:last-child th,
+.table tr:last-child td {
+  border-bottom: 0;
+}
+.profile-info-table td {
+  color: #303133;
+}
+.profile-info-table td > span {
+  display: inline-block;
+  margin-right: 10px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.password-inline-form :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+.notice {
+  padding: 12px 14px;
+  border: 1px solid #faecd8;
+  border-radius: 6px;
+  background: #fdf6ec;
+  color: #b88230;
+  line-height: 1.55;
+}
+.password-actions {
+  margin-top: 12px;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.login-history-table {
+  width: 100%;
+}
+.mobile-login-history {
+  display: none;
+}
+.login-history-card {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  padding: 12px;
+}
+.login-history-card + .login-history-card {
+  margin-top: 10px;
+}
+.login-history-card__header,
+.login-history-card__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.login-history-card__header {
+  margin-bottom: 10px;
+  color: var(--theme-text, #303133);
+  font-size: 14px;
+  font-weight: 600;
+}
+.login-history-card__row {
+  padding: 7px 0;
+  border-top: 1px solid #f0f2f5;
+  font-size: 13px;
+}
+.login-history-card__row span {
+  flex-shrink: 0;
+  color: #909399;
+}
+.login-history-card__row strong {
+  min-width: 0;
+  color: #303133;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-word;
+}
+.login-location-stack {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  @media (max-width: 768px) {
-    gap: 0.75rem;
-  }
+  gap: 4px;
+}
+.profile-empty-state {
+  min-height: 220px;
+  padding: 36px 16px;
 }
 .profile-card,
 .password-card,
 .security-card,
 .subscription-card {
   border-radius: 8px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--el-border-color-lighter);
   :deep(.el-card__header) {
     padding: 12px 16px;
     font-size: 0.9375rem;
@@ -651,6 +927,15 @@ export default {
       padding: 10px 12px;
     }
   }
+}
+.card-header {
+  font-weight: 600;
+}
+.card-header-icon,
+.security-title-icon {
+  flex-shrink: 0;
+  color: #409eff;
+  font-size: 16px;
 }
 .form-tip {
   font-size: 0.8125rem;
@@ -720,65 +1005,43 @@ export default {
   }
 }
 .subscription-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-  @media (max-width: 768px) {
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
-}
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.375rem 0;
-  @media (max-width: 768px) {
-    padding: 0.25rem 0;
-  }
-}
-.info-item .label {
-  color: #666;
-  font-weight: 500;
-  font-size: 0.875rem;
-  @media (max-width: 768px) {
-    font-size: 0.8125rem;
-  }
-}
-.info-item .value {
-  color: #333;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  @media (max-width: 768px) {
-    font-size: 0.875rem;
-  }
+  margin-bottom: 14px;
 }
 .subscription-actions {
   display: flex;
   gap: 0.75rem;
-  justify-content: center;
+  justify-content: flex-start;
   @media (max-width: 768px) {
     gap: 0.5rem;
   }
 }
 @media (max-width: 768px) {
-  .profile-container {
-    padding: 0;
-  }
   .page-header {
-    margin-bottom: 0.75rem;
-    padding: 0 12px;
+    flex-direction: column;
+    padding: 14px;
+  }
+  .actions,
+  .actions .el-button,
+  .actions a {
+    width: 100%;
+  }
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  .table th {
+    width: 112px;
   }
   .profile-card,
   .password-card,
   .security-card,
   .subscription-card {
-    border-radius: 0;
-    margin: 0 -12px 0.75rem -12px;
-    box-shadow: none;
-    border-left: none;
-    border-right: none;
+    border-radius: 8px;
+    margin: 0;
+    border-left: 1px solid #dcdfe6;
+    border-right: 1px solid #dcdfe6;
   }
   .profile-card:first-child {
     margin-top: 0;
@@ -798,29 +1061,21 @@ export default {
       }
       .el-form-item__content {
         width: 100%;
-        .el-input,
-        .el-select {
-          width: 100%;
-          :deep(.el-input__wrapper) {
-            height: 48px;
-            border-radius: 12px;
-            border: 1px solid #dcdfe6;
-            transition: all 0.3s ease;
+          .el-input,
+          .el-select {
+            width: 100%;
+            :deep(.el-input__wrapper) {
+              min-height: 44px;
+              border-radius: 8px;
+              transition: border-color 0.16s ease, box-shadow 0.16s ease;
+            }
+            :deep(.el-input__inner) {
+              font-size: 15px;
+              min-height: 42px;
+              line-height: 42px;
+              padding: 0 12px;
+            }
           }
-          :deep(.el-input__wrapper:hover) {
-            border-color: #c0c4cc;
-          }
-          :deep(.el-input__wrapper.is-focus) {
-            border-color: var(--theme-primary, #409EFF);
-            box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
-          }
-          :deep(.el-input__inner) {
-            font-size: 15px;
-            height: 48px;
-            line-height: 48px;
-            padding: 0 12px;
-          }
-        }
       }
     }
   }
@@ -883,15 +1138,11 @@ export default {
     }
   }
   .el-button {
-    border-radius: 16px;
-    padding: 14px 24px;
-    font-weight: 600;
+    border-radius: 8px;
+    min-height: 44px;
+    padding: 10px 16px;
     font-size: 15px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    &:active {
-      transform: scale(0.98);
-    }
+    touch-action: manipulation;
   }
   .security-items {
     gap: 0.5rem;
@@ -954,35 +1205,17 @@ export default {
       width: 100%;
       margin: 0;
       height: 44px;
-      border-radius: 12px;
+      border-radius: 8px;
       font-size: 0.875rem;
-      font-weight: 600;
     }
   }
   .submit-btn {
     width: 100%;
     height: 44px;
-    border-radius: 12px;
+    border-radius: 8px;
     font-size: 0.875rem;
-    font-weight: 600;
-    background: linear-gradient(135deg, var(--theme-primary, #409EFF) 0%, var(--theme-primary, #409EFF) 100%);
-    box-shadow: 0 3px 10px rgba(64, 158, 255, 0.25);
-    &:active {
-      transform: scale(0.98);
-      box-shadow: 0 2px 6px rgba(64, 158, 255, 0.2);
-    }
   }
   .login-history-dialog {
-    :deep(.el-dialog) {
-      border-radius: 16px;
-    }
-    :deep(.el-dialog__header) {
-      padding: 20px 20px 10px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-    :deep(.el-dialog__body) {
-      padding: 20px;
-    }
     .loading-container {
       padding: 20px;
     }
@@ -996,22 +1229,12 @@ export default {
   }
   @media (max-width: 768px) {
     .login-history-dialog {
-      :deep(.el-dialog) {
-        width: 95% !important;
-        margin: 5vh auto !important;
-        max-height: 90vh;
+      .desktop-login-history {
+        display: none;
       }
-      :deep(.el-dialog__body) {
-        padding: 16px;
-        max-height: calc(90vh - 120px);
-        overflow-y: auto;
-      }
-      :deep(.el-table) {
-        font-size: 13px;
-      }
-      :deep(.el-table th),
-      :deep(.el-table td) {
-        padding: 8px 4px;
+
+      .mobile-login-history {
+        display: block;
       }
     }
   }
@@ -1029,84 +1252,14 @@ export default {
     }
   }
 }
-:deep(.el-input__wrapper) {
-  
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  pointer-events: auto !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  pointer-events: auto !important;
-}
-:deep(.el-input__inner) {
-  
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-  pointer-events: auto !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-disabled) {
-  pointer-events: none !important;
-}
-:deep(.el-input.is-disabled .el-input__inner) {
-  pointer-events: none !important;
-}
-:deep(.password-input) {
-  pointer-events: auto !important;
-}
-:deep(.password-input .el-input__wrapper) {
-  pointer-events: auto !important;
-  cursor: text !important;
-}
-:deep(.password-input .el-input__inner) {
-  pointer-events: auto !important;
-  cursor: text !important;
-  color: #606266 !important;
-}
-:deep(.password-input .el-input__wrapper:not(.is-disabled)) {
-  pointer-events: auto !important;
-}
-:deep(.password-input .el-input__wrapper:not(.is-disabled) .el-input__inner) {
-  pointer-events: auto !important;
-  color: #606266 !important;
-}
-:deep(.password-input .el-input__suffix) {
-  pointer-events: auto !important;
-}
-:deep(.password-input .el-input__suffix .el-input__password) {
-  pointer-events: auto !important;
-  cursor: pointer !important;
-}
-:deep(.password-input.is-focus .el-input__wrapper) {
-  pointer-events: auto !important;
-}
-:deep(.password-input.is-focus .el-input__inner) {
-  pointer-events: auto !important;
-}
 :deep(.el-input-group__prepend),
 :deep(.el-input-group__append) {
-  
-  border: none !important;
-  background-color: #f5f7fa !important;
-  pointer-events: none !important;
+  background-color: #f5f7fa;
 }
 :deep(.el-input-group__prepend) {
-  border-right: 1px solid #dcdfe6 !important;
+  border-right: 1px solid #dcdfe6;
 }
 :deep(.el-input-group__append) {
-  border-left: 1px solid #dcdfe6 !important;
+  border-left: 1px solid #dcdfe6;
 }
 </style> 

@@ -43,7 +43,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Flash 是专为 macOS 设计的轻量级代理软件</li>
               <li>启动速度快，资源占用少</li>
@@ -95,7 +98,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Mihomo Part 是 Clash 的增强版本，功能更强大</li>
               <li>支持更多协议和功能</li>
@@ -147,7 +153,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Clash Verge 界面简洁，操作简单</li>
               <li>支持自动更新订阅</li>
@@ -162,6 +171,7 @@
 </template>
 <script setup>
 import { ref } from 'vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 const activeNames = ref(['flash-macos'])
 </script>
 <style scoped>
@@ -179,6 +189,9 @@ const activeNames = ref(['flash-macos'])
   padding-left: 10px;
 }
 .tutorial-content :is(h4) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #34495e;
   margin-top: 15px;
   margin-bottom: 8px;

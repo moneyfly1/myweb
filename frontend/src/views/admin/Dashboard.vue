@@ -34,7 +34,7 @@
         </el-card>
       </el-col>
     </el-row>
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20" class="dashboard-section-row">
       <el-col :span="8">
         <el-card class="dashboard-card">
           <template #header>
@@ -46,7 +46,7 @@
           <div class="table-container">
             <el-table
               :data="recentUsers.slice(0, 10)"
-              style="width: 100%"
+              class="dashboard-table"
               :show-header="false"
               size="small"
               @row-click="goToUserSubscription"
@@ -93,7 +93,7 @@
           <div class="table-container">
             <el-table
               :data="recentOrders.slice(0, 10)"
-              style="width: 100%"
+              class="dashboard-table"
               :show-header="false"
               size="small"
               @row-click="goToOrderUserSubscription"
@@ -146,7 +146,7 @@
           <div class="table-container">
             <el-table 
               :data="abnormalUsers.slice(0, 10)" 
-              style="width: 100%"
+              class="dashboard-table"
               :show-header="false"
               size="small"
               @row-click="handleAbnormalUserClick"
@@ -160,7 +160,7 @@
               </el-table-column>
               <el-table-column>
                 <template #default="scope">
-                  <div class="abnormal-info" style="cursor: pointer;">
+                  <div class="abnormal-info clickable-row">
                     <div class="abnormal-user">{{ scope.row.username }}</div>
                     <div class="abnormal-email">{{ scope.row.email }}</div>
                   </div>
@@ -182,7 +182,7 @@
         </el-card>
       </el-col>
     </el-row>
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20" class="dashboard-section-row">
       <el-col :span="24">
         <el-card class="dashboard-card expiring-card">
           <template #header>
@@ -216,7 +216,7 @@
           <div class="table-container expiring-table-container desktop-only">
             <el-table 
               :data="expiringSubscriptions" 
-              style="width: 100%"
+              class="dashboard-table"
               @selection-change="handleExpiringSelectionChange"
             >
               <el-table-column type="selection" width="55" />
@@ -225,7 +225,7 @@
               <el-table-column prop="last_login" label="最后登录" width="160">
                 <template #default="scope">
                   <span v-if="scope.row.last_login">{{ scope.row.last_login }}</span>
-                  <span v-else style="color: #999;">未登录</span>
+                  <span v-else class="muted-text">未登录</span>
                 </template>
               </el-table-column>
               <el-table-column prop="expire_time" label="到期时间" width="180">
@@ -237,7 +237,7 @@
               </el-table-column>
               <el-table-column prop="days_until_expire" label="剩余天数" width="100" align="center">
                 <template #default="scope">
-                  <span :style="{ color: getExpireColor(scope.row.days_until_expire) }">
+                  <span class="expire-status-text" :class="getExpireStatusClass(scope.row.days_until_expire)">
                     {{ scope.row.days_until_expire }} 天
                   </span>
                 </template>
@@ -254,14 +254,22 @@
                 </template>
               </el-table-column>
             </el-table>
-            <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" class="empty-state">
-              暂无即将到期的客户
-            </div>
+            <EmptyState
+              v-if="!expiringSubscriptions || expiringSubscriptions.length === 0"
+              class="expiring-empty-state"
+              title="暂无即将到期的客户"
+              description="当前筛选条件下没有需要提醒的订阅。"
+              :icon-size="48"
+            />
           </div>
           <div class="mobile-expiring-list mobile-only">
-            <div v-if="!expiringSubscriptions || expiringSubscriptions.length === 0" class="empty-state-mobile">
-              暂无即将到期的客户
-            </div>
+            <EmptyState
+              v-if="!expiringSubscriptions || expiringSubscriptions.length === 0"
+              class="expiring-empty-state expiring-empty-state-mobile"
+              title="暂无即将到期的客户"
+              description="当前筛选条件下没有需要提醒的订阅。"
+              :icon-size="48"
+            />
             <div 
               v-for="item in expiringSubscriptions" 
               :key="item.user_id || item.id"
@@ -292,7 +300,7 @@
                 </div>
                 <div class="expiring-item-row">
                   <span class="expiring-label">到期时间:</span>
-                  <span class="expiring-value" :style="{ color: getExpireColor(item.days_until_expire) }">
+                  <span class="expiring-value expire-status-text" :class="getExpireStatusClass(item.days_until_expire)">
                     {{ item.expire_time }}
                   </span>
                 </div>
@@ -316,15 +324,18 @@
 </template>
 <script>
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
+import { confirmAction } from '@/utils/confirmAction'
 import { ArrowRight, ShoppingCart, Warning } from '@element-plus/icons-vue'
+import EmptyState from '@/components/EmptyState.vue'
 export default {
   name: 'AdminDashboard',
   components: {
     ArrowRight,
+    EmptyState,
     ShoppingCart,
     Warning
   },
@@ -490,7 +501,7 @@ export default {
       router.push('/admin/abnormal-users')
     }
     const handleAbnormalUserClick = (row) => {
-      ElMessageBox.confirm(
+      confirmAction(
         `选择操作：`,
         `用户 ${row.username || row.email}`,
         {
@@ -604,11 +615,10 @@ export default {
       if (days <= 3) return 'warning'
       return 'info'
     }
-    const getExpireColor = (days) => {
-      if (days <= 0) return '#f56c6c'
-      if (days <= 1) return '#e6a23c'
-      if (days <= 3) return '#e6a23c'
-      return '#409eff'
+    const getExpireStatusClass = (days) => {
+      if (days <= 0) return 'is-expired'
+      if (days <= 3) return 'is-urgent'
+      return 'is-upcoming'
     }
     const sendExpireReminder = async (ids) => {
       try {
@@ -670,7 +680,7 @@ export default {
       handleExpiringSelectionChange,
       toggleExpiringSelection,
       getExpireTagType,
-      getExpireColor,
+      getExpireStatusClass,
       sendExpireReminder,
       batchSendExpireReminder
     }
@@ -683,6 +693,14 @@ export default {
 }
 .stat-card {
   text-align: center;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  box-shadow: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.stat-card:hover {
+  border-color: var(--el-border-color);
+  background: #fbfdff;
 }
 .stat-content {
   padding: 20px;
@@ -695,6 +713,15 @@ export default {
 .stat-label {
   margin-top: 10px;
   color: var(--el-text-color-regular, #666);
+}
+.dashboard-section-row {
+  margin-top: 20px;
+}
+.dashboard-table {
+  width: 100%;
+}
+.muted-text {
+  color: #999;
 }
 @media (max-width: 768px) {
   .admin-dashboard {
@@ -843,6 +870,15 @@ export default {
   height: 400px;
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  box-shadow: none;
+  overflow: hidden;
+}
+.dashboard-card :deep(.el-card__header) {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-extra-light);
 }
 .dashboard-card .el-card__body {
   flex: 1;
@@ -865,14 +901,17 @@ export default {
   padding: 4px 8px;
   font-size: 12px;
   color: var(--el-color-primary, #409EFF);
+  min-height: 32px;
+  touch-action: manipulation;
 }
 .view-all-btn:hover {
   color: #66b1ff;
 }
 .table-container {
   flex: 1;
-  overflow: clip;
+  overflow: auto;
   padding: 16px;
+  overscroll-behavior: contain;
 }
 .table-container .el-table {
   height: 100%;
@@ -980,7 +1019,7 @@ export default {
   cursor: pointer;
 }
 .table-container .el-tag {
-  border-radius: 12px;
+  border-radius: 8px;
   font-size: 11px;
   padding: 2px 8px;
   height: 20px;
@@ -1000,32 +1039,6 @@ export default {
 .table-container .el-table__body-wrapper::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
-:deep(.el-input__wrapper) {
-  
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
-}
 .expiring-card {
   min-height: auto !important;
 }
@@ -1042,23 +1055,21 @@ export default {
 }
 .batch-send-btn {
   white-space: nowrap;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 .batch-send-text {
   font-size: 13px;
 }
-.empty-state {
-  text-align: center;
-  padding: 40px;
-  color: #999;
+.expiring-empty-state {
+  min-height: 180px;
+  padding: 28px 16px;
 }
 .mobile-expiring-list {
   padding: 12px;
 }
-.empty-state-mobile {
-  text-align: center;
-  padding: 60px 20px;
-  color: #999;
-  font-size: 14px;
+.expiring-empty-state-mobile {
+  min-height: 220px;
 }
 .expiring-item-card {
   background: var(--el-fill-color-light, #f8f9fa);
@@ -1123,6 +1134,18 @@ export default {
   flex: 1;
   word-break: break-all;
 }
+.expire-status-text {
+  font-weight: 600;
+}
+.expire-status-text.is-expired {
+  color: var(--el-color-danger, #f56c6c);
+}
+.expire-status-text.is-urgent {
+  color: var(--el-color-warning, #e6a23c);
+}
+.expire-status-text.is-upcoming {
+  color: var(--el-color-primary, #409eff);
+}
 .expiring-item-actions {
   display: flex;
   gap: 8px;
@@ -1131,8 +1154,30 @@ export default {
 .expiring-item-actions .action-btn {
   flex: 1;
   min-width: 100px;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 @media (max-width: 768px) {
+  .admin-dashboard {
+    padding: 10px;
+  }
+  .dashboard-section-row {
+    margin-top: 12px;
+  }
+  .dashboard-card :deep(.el-card__header) {
+    padding: 12px;
+  }
+  .card-header,
+  .expiring-header {
+    align-items: stretch;
+  }
+  .header-actions,
+  .expiring-actions {
+    gap: 8px;
+  }
+  .view-all-btn {
+    min-height: 44px;
+  }
   .expiring-card {
     margin-bottom: 16px;
   }
@@ -1151,6 +1196,7 @@ export default {
   }
   .batch-send-btn {
     width: 100%;
+    min-height: 44px;
   }
   .batch-send-text {
     font-size: 14px;
@@ -1163,6 +1209,8 @@ export default {
   }
   .expiring-item-card {
     padding: 14px;
+    background: #fff;
+    box-shadow: none;
   }
   .expiring-username {
     font-size: 16px;
@@ -1186,6 +1234,13 @@ export default {
   }
 }
 @media (max-width: 480px) {
+  .admin-dashboard {
+    padding: 8px;
+  }
+  .stat-row :deep(.el-col) {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
   .expiring-item-card {
     padding: 12px;
   }

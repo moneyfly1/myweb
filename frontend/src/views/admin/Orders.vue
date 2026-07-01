@@ -69,13 +69,13 @@
           <el-input 
             v-model="searchForm.keyword" 
             placeholder="输入订单号、时间戳、用户邮箱或用户名进行搜索"
-            style="width: 350px;"
+            class="desktop-search-input"
             clearable
             @keyup.enter="searchOrders"
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="选择状态" style="width: 120px;">
+          <el-select v-model="searchForm.status" placeholder="选择状态" class="status-filter-select">
             <el-option label="全部" value="" />
             <el-option label="待支付" value="pending" />
             <el-option label="已支付" value="paid" />
@@ -103,225 +103,205 @@
         </el-tab-pane>
       </el-tabs>
 
-      <!-- 电脑端表格 (保持不变) -->
-      <div class="table-wrapper" v-if="!isMobile">
-        <el-table 
-          :data="activeTab === 'orders' ? allRecords : recharges" 
-          style="width: 100%" 
-          v-loading="loading" 
-          stripe
-          border
-          @selection-change="handleSelectionChange"
-        >
-          <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" :selectable="isOrderSelectable" />
-          <el-table-column prop="order_no" label="订单号" width="180" />
-          <el-table-column label="用户邮箱">
-            <template #default="scope">
-              {{ activeTab === 'orders' ? (scope.row.user?.email || '-') : (scope.row.user?.email || '-') }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="activeTab === 'orders' ? '套餐名称/类型' : '类型'">
-            <template #default="scope">
-              <span v-if="activeTab === 'orders'">
-                <el-tag v-if="scope.row.record_type === 'recharge'" type="success" size="small">充值</el-tag>
-                <span v-else>{{ scope.row.package_name || '-' }}</span>
-              </span>
-              <span v-else>账户充值</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="amount" label="金额">
-            <template #default="scope">
-              <span :class="(activeTab === 'recharges' || scope.row.record_type === 'recharge') ? 'positive-amount' : ''">
-                {{ (activeTab === 'recharges' || scope.row.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="payment_method" label="支付方式" />
-          <el-table-column prop="status" label="状态">
-            <template #default="scope">
-              <el-tag :type="getStatusType(scope.row.status)">
-                {{ getStatusText(scope.row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" />
-          <el-table-column :label="activeTab === 'orders' ? '支付时间' : '支付时间'">
-            <template #default="scope">
-              {{ (activeTab === 'orders' ? scope.row.payment_time : scope.row.paid_at) || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right">
-            <template #default="scope">
-              <div class="action-buttons-grid" v-if="!isRechargeRecord(scope.row)">
-                <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
-                  <el-icon><View /></el-icon> 查看
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="success" 
-                  @click="markAsPaid(scope.row)"
-                  v-if="scope.row.status === 'pending'"
-                  class="action-btn"
-                >
-                  <el-icon><Check /></el-icon> 标记已付
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="warning" 
-                  @click="refundOrder(scope.row)"
-                  v-if="scope.row.status === 'paid' && canRefundOrder(scope.row)"
-                  class="action-btn"
-                >
-                  <el-icon><Money /></el-icon> 退款
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  @click="deleteOrder(scope.row)"
-                  class="action-btn"
-                >
-                  <el-icon><Delete /></el-icon> 删除
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  @click="cancelOrder(scope.row)"
-                  v-if="scope.row.status === 'pending'"
-                  class="action-btn"
-                >
-                  <el-icon><Close /></el-icon> 取消
-                </el-button>
-              </div>
-              <el-button v-else size="small" @click="viewOrder(scope.row)" class="action-btn">
-                <el-icon><View /></el-icon> 查看充值
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-
-      <!-- 手机端卡片列表 (完全重构优化) -->
-      <div class="mobile-card-list" v-if="isMobile && ((activeTab === 'orders' && allRecords.length > 0) || (activeTab === 'recharges' && recharges.length > 0))">
-        <div 
-          v-for="item in (activeTab === 'orders' ? allRecords : recharges)" 
-          :key="item.id || item.order_no"
-          class="mobile-card-optimized"
-        >
-          <!-- 卡片头部：订单号与状态 -->
-          <div class="mc-header">
-            <div class="mc-id">
-              <span class="label">#</span>
-              <span class="value">{{ item.order_no }}</span>
-              <el-tag v-if="item.record_type === 'recharge'" type="success" size="small" effect="plain" class="ml-1">充值</el-tag>
+      <ResponsiveDataView
+        class="orders-data-view"
+        :data="activeTab === 'orders' ? allRecords : recharges"
+        :fields="activeTab === 'orders' ? mobileOrderFields : mobileRechargeFields"
+        :loading="loading"
+        id-field="order_no"
+        title-field="order_no"
+        :empty-title="activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录'"
+        empty-description="可调整搜索条件后重试"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table 
+              :data="activeTab === 'orders' ? allRecords : recharges" 
+              class="orders-table"
+              v-loading="loading" 
+              stripe
+              border
+              @selection-change="handleSelectionChange"
+            >
+              <el-table-column type="selection" width="55" v-if="activeTab === 'orders'" :selectable="isOrderSelectable" />
+              <el-table-column prop="order_no" label="订单号" width="180" />
+              <el-table-column label="用户邮箱">
+                <template #default="scope">
+                  {{ activeTab === 'orders' ? (scope.row.user?.email || '-') : (scope.row.user?.email || '-') }}
+                </template>
+              </el-table-column>
+              <el-table-column :label="activeTab === 'orders' ? '套餐名称/类型' : '类型'">
+                <template #default="scope">
+                  <span v-if="activeTab === 'orders'">
+                    <el-tag v-if="scope.row.record_type === 'recharge'" type="success" size="small">充值</el-tag>
+                    <span v-else>{{ scope.row.package_name || '-' }}</span>
+                  </span>
+                  <span v-else>账户充值</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="amount" label="金额">
+                <template #default="scope">
+                  <span :class="(activeTab === 'recharges' || scope.row.record_type === 'recharge') ? 'positive-amount' : ''">
+                    {{ (activeTab === 'recharges' || scope.row.record_type === 'recharge') ? '+' : '' }}¥{{ formatMoney(scope.row.amount) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="payment_method" label="支付方式" />
+              <el-table-column prop="status" label="状态">
+                <template #default="scope">
+                  <el-tag :type="getStatusType(scope.row.status)">
+                    {{ getStatusText(scope.row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" />
+              <el-table-column :label="activeTab === 'orders' ? '支付时间' : '支付时间'">
+                <template #default="scope">
+                  {{ (activeTab === 'orders' ? scope.row.payment_time : scope.row.paid_at) || '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="280" fixed="right">
+                <template #default="scope">
+                  <div class="action-buttons-grid" v-if="!isRechargeRecord(scope.row)">
+                    <el-button size="small" @click="viewOrder(scope.row)" class="action-btn">
+                      <el-icon><View /></el-icon> 查看
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="success" 
+                      @click="markAsPaid(scope.row)"
+                      v-if="scope.row.status === 'pending'"
+                      class="action-btn"
+                    >
+                      <el-icon><Check /></el-icon> 标记已付
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="warning" 
+                      @click="refundOrder(scope.row)"
+                      v-if="scope.row.status === 'paid' && canRefundOrder(scope.row)"
+                      class="action-btn"
+                    >
+                      <el-icon><Money /></el-icon> 退款
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="danger" 
+                      @click="deleteOrder(scope.row)"
+                      class="action-btn"
+                    >
+                      <el-icon><Delete /></el-icon> 删除
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="danger" 
+                      @click="cancelOrder(scope.row)"
+                      v-if="scope.row.status === 'pending'"
+                      class="action-btn"
+                    >
+                      <el-icon><Close /></el-icon> 取消
+                    </el-button>
+                  </div>
+                  <el-button v-else size="small" @click="viewOrder(scope.row)" class="action-btn">
+                    <el-icon><View /></el-icon> 查看充值
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
+        <template #header="{ item }">
+          <div class="mobile-order-header">
+            <div class="mobile-order-title">
+              <CopyableField class="mobile-order-no-copy" :value="item.order_no" />
+              <el-tag v-if="isRechargeRecord(item)" type="success" size="small" effect="plain">充值</el-tag>
             </div>
             <el-tag :type="getStatusType(item.status)" size="small" effect="dark">
               {{ getStatusText(item.status) }}
             </el-tag>
           </div>
-
-          <!-- 卡片主体：左右布局 -->
-          <div class="mc-body">
-            <div class="mc-main-info">
-              <div class="mc-amount" :class="{'is-plus': activeTab === 'recharges' || item.record_type === 'recharge'}">
-                <span class="currency">¥</span>
-                <span class="num">{{ formatMoney(item.amount) }}</span>
-              </div>
-              <div class="mc-title">
-                {{ activeTab === 'orders' ? (item.package_name || '账户充值') : '账户充值' }}
-              </div>
-            </div>
-            <div class="mc-sub-info">
-              <div class="mc-row">
-                <el-icon><User /></el-icon>
-                <span class="text-truncate">{{ item.user?.email || '未知用户' }}</span>
-              </div>
-              <div class="mc-row">
-                <el-icon><Wallet /></el-icon>
-                <span>{{ item.payment_method || '未知支付' }}</span>
-              </div>
-              <div class="mc-row">
-                <el-icon><Timer /></el-icon>
-                <span>{{ formatDateTime(item.created_at) }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 卡片底部：操作区 -->
-          <div class="mc-footer">
-            <el-button-group class="mc-actions">
-              <el-button size="small" @click="viewOrder(item)">
-                 详情
-              </el-button>
-              <el-button 
-                v-if="item.status === 'paid' && canRefundOrder(item)"
-                size="small" 
-                type="warning" 
-                plain
-                @click="refundOrder(item)"
-              >
-                退款
-              </el-button>
-              <el-button 
-                v-if="!isRechargeRecord(item) && item.status === 'pending'"
-                size="small" 
-                type="success" 
-                plain
-                @click="markAsPaid(item)"
-              >
-                已付
-              </el-button>
-              <el-button 
-                v-if="!isRechargeRecord(item) && item.status === 'pending'"
-                size="small" 
-                type="warning" 
-                plain
-                @click="cancelOrder(item)"
-              >
-                取消
-              </el-button>
-              <el-button 
-                size="small" 
-                type="danger" 
-                plain
-                icon="Delete"
-                v-if="!isRechargeRecord(item)"
-                @click="deleteOrder(item)"
-              />
-            </el-button-group>
-          </div>
-        </div>
-      </div>
-
-      <!-- 空状态 -->
-      <div class="mobile-card-list" v-if="((activeTab === 'orders' && allRecords.length === 0) || (activeTab === 'recharges' && recharges.length === 0)) && !loading">
-        <div class="empty-state">
-          <el-icon class="empty-icon"><component :is="activeTab === 'orders' ? 'ShoppingCart' : 'Wallet'" /></el-icon>
-          <p>{{ activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录' }}</p>
-        </div>
-      </div>
+        </template>
+        <template #field-amount="{ item }">
+          <span class="mobile-order-amount" :class="{ 'is-plus': activeTab === 'recharges' || isRechargeRecord(item) }">
+            {{ (activeTab === 'recharges' || isRechargeRecord(item)) ? '+' : '' }}¥{{ formatMoney(item.amount) }}
+          </span>
+        </template>
+        <template #field-status="{ item }">
+          <el-tag :type="getStatusType(item.status)" size="small">
+            {{ getStatusText(item.status) }}
+          </el-tag>
+        </template>
+        <template #empty>
+          <EmptyState
+            :title="activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录'"
+            description="可调整搜索条件后重试"
+            action-text="重置筛选"
+            :loading="loading"
+            @action="resetSearch"
+          />
+        </template>
+        <template #actions="{ item }">
+          <el-button size="small" @click="viewOrder(item)">
+            <el-icon><View /></el-icon>
+            {{ isRechargeRecord(item) ? '查看充值' : '查看' }}
+          </el-button>
+          <el-button 
+            v-if="item.status === 'paid' && canRefundOrder(item)"
+            size="small" 
+            type="warning" 
+            @click="refundOrder(item)"
+          >
+            <el-icon><Money /></el-icon>
+            退款
+          </el-button>
+          <el-button 
+            v-if="!isRechargeRecord(item) && item.status === 'pending'"
+            size="small" 
+            type="success" 
+            @click="markAsPaid(item)"
+          >
+            <el-icon><Check /></el-icon>
+            标记已付
+          </el-button>
+          <el-button 
+            v-if="!isRechargeRecord(item) && item.status === 'pending'"
+            size="small" 
+            type="warning" 
+            @click="cancelOrder(item)"
+          >
+            <el-icon><Close /></el-icon>
+            取消
+          </el-button>
+          <el-button 
+            v-if="!isRechargeRecord(item)"
+            size="small" 
+            type="danger" 
+            @click="deleteOrder(item)"
+          >
+            <el-icon><Delete /></el-icon>
+            删除
+          </el-button>
+        </template>
+      </ResponsiveDataView>
 
       <!-- 分页 -->
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="activeTab === 'recharges' ? rechargeTotal : total"
-          :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+      <PaginationBar
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="activeTab === 'recharges' ? rechargeTotal : total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
 
     <!-- 详情抽屉 -->
-    <el-drawer
+    <AppDrawer
       v-model="showOrderDialog"
       :title="detailTitle"
-      :size="isMobile ? '94%' : '720px'"
-      direction="rtl"
+      size="720px"
+      mobile-size="100%"
       class="order-detail-drawer"
-      :lock-scroll="false"
     >
       <div class="order-detail-content" v-if="selectedOrder && selectedOrder.order_no">
         <div class="detail-hero" :class="{ 'is-recharge': isRechargeRecord(selectedOrder) }">
@@ -676,11 +656,25 @@
 
         <div v-if="selectedOrder.payment_proof" class="payment-proof-section">
           <div class="detail-section-title">支付凭证</div>
-          <img :src="selectedOrder.payment_proof" class="proof-image" @click="previewImage(selectedOrder.payment_proof)" />
+          <img
+            :src="selectedOrder.payment_proof"
+            class="proof-image"
+            alt="支付凭证，点击预览大图"
+            role="button"
+            tabindex="0"
+            @click="previewImage(selectedOrder.payment_proof)"
+            @keydown.enter.prevent="previewImage(selectedOrder.payment_proof)"
+            @keydown.space.prevent="previewImage(selectedOrder.payment_proof)"
+          />
         </div>
       </div>
-    </el-drawer>
-    <el-dialog v-model="showStatisticsDialog" title="订单统计" width="600px">
+    </AppDrawer>
+    <AppDialog
+      v-model="showStatisticsDialog"
+      title="订单统计"
+      width="600px"
+      mobile-width="94%"
+    >
       <div class="statistics-content">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -696,7 +690,7 @@
             </el-card>
           </el-col>
         </el-row>
-        <el-row :gutter="20" style="margin-top: 20px;">
+        <el-row :gutter="20" class="stat-row-spaced">
           <el-col :span="12">
             <el-card class="stat-card">
               <div class="stat-number">{{ statistics.paidOrders }}</div>
@@ -710,7 +704,7 @@
             </el-card>
           </el-col>
         </el-row>
-        <el-row :gutter="20" style="margin-top: 20px;">
+        <el-row :gutter="20" class="stat-row-spaced">
           <el-col :span="12">
             <el-card class="stat-card">
               <div class="stat-number">¥{{ formatMoney(statistics.totalRevenue) }}</div>
@@ -719,7 +713,14 @@
           </el-col>
         </el-row>
       </div>
-    </el-dialog>
+      <template #footer>
+        <FormActionBar
+          submit-text="关闭"
+          :show-cancel="false"
+          @submit="showStatisticsDialog = false"
+        />
+      </template>
+    </AppDialog>
 
     <!-- 图片预览 -->
     <el-image-viewer 
@@ -733,7 +734,7 @@
 <script>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import {
   Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
   Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
@@ -741,6 +742,14 @@ import {
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
+import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
+import PaginationBar from '@/components/PaginationBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import CopyableField from '@/components/CopyableField.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 
@@ -750,7 +759,14 @@ export default {
   name: 'AdminOrders',
   components: {
     Download, Operation, DataAnalysis, View, Check, Money, Close, Search, HomeFilled,
-    Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
+    Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer,
+    PaginationBar,
+    EmptyState,
+    ResponsiveDataView,
+    CopyableField,
+    AppDrawer,
+    AppDialog,
+    FormActionBar
   },
   setup() {
     const route = useRoute()
@@ -847,6 +863,82 @@ export default {
       cancelledOrders: 0,
       totalRevenue: 0
     })
+    const mobileOrderFields = computed(() => [
+      {
+        key: 'package_name',
+        label: '套餐名称/类型',
+        type: 'copy',
+        copyValue: (_value, item) => isRechargeRecord(item) ? '账户充值' : (item.package_name || ''),
+        formatter: (_value, item) => isRechargeRecord(item) ? '账户充值' : (item.package_name || '-')
+      },
+      {
+        key: 'user',
+        label: '用户邮箱',
+        type: 'copy',
+        copyValue: (_value, item) => item.user?.email || '',
+        formatter: (_value, item) => item.user?.email || '-'
+      },
+      {
+        key: 'amount',
+        label: '金额'
+      },
+      {
+        key: 'payment_method',
+        label: '支付方式',
+        type: 'copy',
+        copyValue: value => value || '',
+        formatter: value => value || '-'
+      },
+      {
+        key: 'status',
+        label: '状态'
+      },
+      {
+        key: 'created_at',
+        label: '创建时间',
+        type: 'copy',
+        copyValue: value => value ? formatDateTime(value) : '',
+        formatter: value => formatDateTime(value)
+      }
+    ])
+    const mobileRechargeFields = computed(() => [
+      {
+        key: 'user',
+        label: '用户邮箱',
+        type: 'copy',
+        copyValue: (_value, item) => item.user?.email || '',
+        formatter: (_value, item) => item.user?.email || '-'
+      },
+      {
+        key: 'amount',
+        label: '金额'
+      },
+      {
+        key: 'payment_method',
+        label: '支付方式',
+        type: 'copy',
+        copyValue: value => value || '',
+        formatter: value => value || '-'
+      },
+      {
+        key: 'status',
+        label: '状态'
+      },
+      {
+        key: 'created_at',
+        label: '创建时间',
+        type: 'copy',
+        copyValue: value => value ? formatDateTime(value) : '',
+        formatter: value => formatDateTime(value)
+      },
+      {
+        key: 'paid_at',
+        label: '支付时间',
+        type: 'copy',
+        copyValue: value => value ? formatDateTime(value) : '',
+        formatter: value => formatDateTime(value)
+      }
+    ])
 
     // Data Loading Functions
     const loadOrders = async () => {
@@ -961,13 +1053,20 @@ export default {
       showImageViewer.value = true
     }
 
-    const confirmAction = async (message, actionFn) => {
+    const confirmAction = async (message, actionFn, options = {}) => {
       try {
-        await ElMessageBox.confirm(message, '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
+        if (options.danger) {
+          await confirmDelete(options.entityName || '订单', options.count || 1, {
+            message,
+            title: options.title || '确认删除',
+            confirmButtonText: options.confirmButtonText || '确认删除'
+          })
+        } else {
+          await confirmWarning(message, {
+            title: options.title || '确认操作',
+            confirmButtonText: options.confirmButtonText || '确认操作'
+          })
+        }
         await actionFn()
         ElMessage.success('操作成功')
         searchOrders() // Reload current view
@@ -981,19 +1080,19 @@ export default {
     const markAsPaid = (order) => {
       confirmAction('确定要将此订单标记为已支付吗？', async () => {
         await api.put(`/admin/orders/${order.id}`, { status: 'paid' })
-      })
+      }, { title: '确认标记已付', confirmButtonText: '确认标记' })
     }
 
     const cancelOrder = (order) => {
       confirmAction('确定要取消此订单吗？', async () => {
         await api.put(`/admin/orders/${order.id}`, { status: 'cancelled' })
-      })
+      }, { title: '确认取消订单', confirmButtonText: '确认取消' })
     }
 
     const deleteOrder = (order) => {
       confirmAction('确定要删除此订单吗？删除后无法恢复。', async () => {
         await api.delete(`/admin/orders/${order.id}`)
-      })
+      }, { danger: true, title: '确认删除订单', confirmButtonText: '确认删除' })
     }
 
     const isRechargeRecord = (record) => {
@@ -1192,7 +1291,7 @@ export default {
     const refundOrder = (order) => {
       confirmAction('确定要退款此订单吗？退款后会回退订阅/设备数量和相关优惠占用。', async () => {
         await api.post(`/admin/orders/${order.id}/refund`)
-      })
+      }, { title: '确认退款订单', confirmButtonText: '确认退款' })
     }
 
     // Bulk Actions
@@ -1206,7 +1305,10 @@ export default {
       if (selectedOrders.value.length === 0) return
       
       try {
-        await ElMessageBox.confirm(confirmMsg, '提示', { type: 'warning' })
+        await confirmWarning(confirmMsg, {
+          title: '批量操作确认',
+          confirmButtonText: '确认执行'
+        })
         bulkLoading.value = true
         const orderIds = selectedOrders.value
           .filter(o => o.record_type !== 'recharge')
@@ -1324,6 +1426,7 @@ export default {
       searchForm, statistics, isMobile, bulkLoading,
       showOrderDialog, showStatisticsDialog, showImageViewer, imageViewerUrl,
       selectedOrder, selectedOrders,
+      mobileOrderFields, mobileRechargeFields,
       
       // Actions
       searchOrders, resetSearch, handleTabChange,
@@ -1350,6 +1453,42 @@ export default {
 .positive-amount { color: #67c23a; font-weight: 600; }
 .text-muted { color: #909399; font-size: 12px; }
 .ml-1 { margin-left: 4px; }
+.admin-orders :deep(.search-form.list-filter-form) {
+  grid-template-columns: minmax(300px, 1.5fr) minmax(160px, 0.7fr) max-content;
+  gap: 12px;
+}
+.admin-orders :deep(.search-form.list-filter-form .el-form-item) {
+  margin: 0 !important;
+  min-width: 0;
+}
+.admin-orders :deep(.search-form.list-filter-form .el-form-item:last-child) {
+  justify-self: end;
+}
+.admin-orders :deep(.search-form.list-filter-form .el-form-item__content) {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.desktop-search-input,
+.status-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 1280px) {
+  .admin-orders :deep(.search-form.list-filter-form) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-orders :deep(.search-form.list-filter-form .el-form-item:last-child) {
+    justify-self: start;
+  }
+}
+.orders-table {
+  width: 100%;
+}
+.stat-row-spaced {
+  margin-top: 20px;
+}
 
 .selected-count { color: #409eff; font-weight: 600; font-size: 14px; }
 .action-buttons-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -1365,11 +1504,11 @@ export default {
   padding: 20px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%);
+  background: #f8fafc;
   margin-bottom: 18px;
 
   &.is-recharge {
-    background: linear-gradient(135deg, #f7fdf8 0%, #ecf8f0 100%);
+    background: #f7fdf8;
   }
 }
 
@@ -1568,6 +1707,12 @@ export default {
   border: 1px solid #e5e7eb;
   cursor: pointer;
   background: #f8fafc;
+  touch-action: manipulation;
+}
+
+.proof-image:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 3px;
 }
 
 @media (max-width: 768px) {
@@ -1600,140 +1745,59 @@ export default {
     transform: rotate(90deg);
   }
 
-  .mobile-card-optimized {
-    .mc-header {
-      padding: 12px 16px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #ebeef5;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+  .orders-data-view {
+    margin-top: 12px;
+  }
 
-      .mc-id {
-        font-family: monospace;
-        color: #606266;
-        display: flex;
-        align-items: center;
-        .label { color: #909399; margin-right: 2px; }
-        .value { font-weight: 600; }
-      }
+  .mobile-order-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .mobile-order-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .mobile-order-no-copy {
+    min-width: 0;
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #303133;
+
+    :deep(.copyable-field__value) {
+      min-width: 0;
+      word-break: break-all;
     }
 
-    .mc-body {
-      padding: 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-
-    .mc-main-info {
-      flex: 1;
-      .mc-amount {
-        font-size: 20px;
-        font-weight: 700;
-        color: #303133;
-        line-height: 1.2;
-        margin-bottom: 4px;
-        &.is-plus { color: #67c23a; }
-        .currency { font-size: 14px; margin-right: 2px; }
-      }
-      .mc-title {
-        font-size: 14px;
-        color: #606266;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-      }
-    }
-
-    .mc-sub-info {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      align-items: flex-end;
-      min-width: 100px;
-
-      .mc-row {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 12px;
-        color: #909399;
-        
-        .text-truncate {
-          max-width: 120px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-      }
-    }
-
-    .mc-footer {
-      padding: 10px 16px;
-      border-top: 1px solid #f0f2f5;
-      display: flex;
-      justify-content: flex-end;
-      
-      .mc-actions {
-        width: 100%;
-        display: flex;
-        :deep(.el-button) {
-          flex: 1;
-        }
-      }
-    }
-    .mc-footer-info {
-      padding: 8px 16px;
-      background: #fafafa;
-      text-align: right;
-      font-size: 12px;
+    :deep(.el-button) {
+      min-width: 40px;
+      padding-inline: 0;
     }
   }
 
-  .mobile-order-detail {
-    .detail-header-block {
-      text-align: center;
-      padding: 20px 0;
-      background: #f8fafc;
-      margin: -20px -20px 20px -20px; // 抵消 dialog padding
-      border-bottom: 1px solid #ebeef5;
-      
-      .amount {
-        font-size: 28px;
-        font-weight: 700;
-        color: #303133;
-        margin-bottom: 8px;
-      }
-    }
-    
-    .detail-list-block {
-      .d-item {
-        display: flex;
-        justify-content: space-between;
-        padding: 12px 0;
-        border-bottom: 1px dashed #ebeef5;
-        font-size: 14px;
-        &:last-child { border-bottom: none; }
-        
-        .label { color: #909399; }
-        .val { 
-          color: #303133; 
-          font-weight: 500; 
-          text-align: right; 
-          max-width: 70%;
-          word-break: break-all;
-        }
-      }
-    }
-    
-    .payment-proof-section {
-      margin-top: 20px;
-      .section-title { font-weight: 600; margin-bottom: 10px; }
-      .proof-image { width: 100%; border-radius: 8px; border: 1px solid #eee; }
+  .order-no {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #303133;
+    word-break: break-all;
+  }
+
+  .mobile-order-amount {
+    font-weight: 700;
+    color: #303133;
+
+    &.is-plus {
+      color: #67c23a;
     }
   }
+
 }
 </style>

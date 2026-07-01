@@ -11,7 +11,7 @@
   @media (max-width: 768px) {
     justify-content: center;
 
-    :deep(.el-pagination) {
+    .el-pagination {
       .el-pagination__sizes,
       .el-pagination__jump {
         display: none;
@@ -19,7 +19,7 @@
     }
   }
 
-  :deep(.el-pagination) {
+  .el-pagination {
     .el-pager li {
       min-width: 32px;
       height: 32px;
@@ -134,11 +134,11 @@
 .records-tabs {
   margin-bottom: 16px;
 
-  :deep(.el-tabs__header) {
+  .el-tabs__header {
     margin-bottom: 16px;
   }
 
-  :deep(.el-tabs__item) {
+  .el-tabs__item {
     font-size: 14px;
     height: 40px;
     line-height: 40px;
@@ -149,7 +149,7 @@
   padding: 60px 0;
   text-align: center;
 
-  :deep(.el-empty) {
+  .el-empty {
     .el-empty__description {
       font-size: 14px;
       color: #909399;

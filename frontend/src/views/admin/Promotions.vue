@@ -12,79 +12,129 @@
       </template>
 
       <div class="filter-bar">
-        <el-select v-model="filter.type" placeholder="活动类型" clearable style="width: 150px" @change="loadData">
+        <el-select v-model="filter.type" placeholder="活动类型" clearable class="filter-type" @change="loadData">
           <el-option label="限时抢购" value="flash_sale" />
           <el-option label="新用户优惠" value="new_user" />
           <el-option label="召回活动" value="recall" />
           <el-option label="会员日" value="member_day" />
         </el-select>
-        <el-select v-model="filter.is_active" placeholder="状态" clearable style="width: 120px" @change="loadData">
+        <el-select v-model="filter.is_active" placeholder="状态" clearable class="filter-status" @change="loadData">
           <el-option label="启用" :value="true" />
           <el-option label="禁用" :value="false" />
         </el-select>
+        <div class="filter-actions">
+          <el-button type="primary" @click="loadData">搜索</el-button>
+          <el-button @click="resetFilter">重置</el-button>
+        </div>
       </div>
 
-      <el-table :data="promotions" v-loading="loading" stripe border>
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="name" label="活动名称" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="type" label="类型" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getTypeTagType(row.type)" size="small">
-              {{ typeMap[row.type] || row.type }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="折扣" width="140">
-          <template #default="{ row }">
-            <el-tag type="danger" size="small">
-              {{ formatDiscount(row) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="活动时间" min-width="200">
-          <template #default="{ row }">
-            <div class="time-range">
-              <div>{{ formatDate(row.start_time) }}</div>
-              <div style="color: #909399">至</div>
-              <div>{{ formatDate(row.end_time) }}</div>
+      <ResponsiveDataView
+        class="promotions-data"
+        :data="promotions"
+        :fields="mobilePromotionFields"
+        :loading="loading"
+        empty-title="暂无营销活动"
+        empty-description="可新建活动或调整筛选条件"
+      >
+        <template #table>
+          <el-table :data="promotions" v-loading="loading" stripe border class="promotions-table">
+            <el-table-column prop="id" label="ID" width="60" />
+            <el-table-column prop="name" label="活动名称" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="type" label="类型" width="120">
+              <template #default="{ row }">
+                <el-tag :type="getTypeTagType(row.type)" size="small">
+                  {{ typeMap[row.type] || row.type }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="折扣" width="140">
+              <template #default="{ row }">
+                <el-tag type="danger" size="small">
+                  {{ formatDiscount(row) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="活动时间" min-width="200">
+              <template #default="{ row }">
+                <div class="time-range">
+                  <div>{{ formatDate(row.start_time) }}</div>
+                  <div class="time-separator">至</div>
+                  <div>{{ formatDate(row.end_time) }}</div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getStatusType(row)" size="small">
+                  {{ getStatusText(row) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" @click="showDrawer(row)">编辑</el-button>
+                <el-button size="small" type="danger" @click="remove(row.id)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+
+        <template #header="{ item }">
+          <div class="mobile-promotion-header">
+            <div class="mobile-promotion-title">
+              <span class="promotion-name">{{ item.name }}</span>
+              <span class="promotion-id">#{{ item.id }}</span>
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row)" size="small">
-              {{ getStatusText(row) }}
+            <el-tag :type="getStatusType(item)" size="small">
+              {{ getStatusText(item) }}
             </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" @click="showDrawer(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row.id)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </template>
 
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.page_size"
-          :total="pagination.total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="loadData"
-          @current-change="loadData"
-        />
-      </div>
+        <template #field-type="{ item }">
+          <el-tag :type="getTypeTagType(item.type)" size="small" effect="plain">
+            {{ typeMap[item.type] || item.type }}
+          </el-tag>
+        </template>
+
+        <template #field-discount="{ item }">
+          <el-tag type="danger" size="small" effect="plain">
+            {{ formatDiscount(item) }}
+          </el-tag>
+        </template>
+
+        <template #field-time_range="{ item }">
+          <div class="mobile-time-range">
+            <span>{{ formatDate(item.start_time) }}</span>
+            <span class="time-separator">至</span>
+            <span>{{ formatDate(item.end_time) }}</span>
+          </div>
+        </template>
+
+        <template #actions="{ item }">
+          <div class="mobile-promotion-actions">
+            <el-button size="small" @click="showDrawer(item)">编辑</el-button>
+            <el-button size="small" type="danger" @click="remove(item.id)">删除</el-button>
+          </div>
+        </template>
+      </ResponsiveDataView>
+
+      <PaginationBar
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.page_size"
+        :total="pagination.total"
+        @change="loadData"
+      />
     </el-card>
 
     <!-- 活动抽屉 -->
-    <el-drawer
+    <AppDrawer
       v-model="drawerVisible"
       :title="form.id ? '编辑活动' : '新建活动'"
-      :size="isMobile ? '100%' : '600px'"
-      direction="rtl"
-      :lock-scroll="false"
+      size="600px"
+      mobile-size="100%"
+      :loading="saving"
+      class="promotion-form-drawer"
     >
       <el-form :model="form" label-width="100px" :rules="rules" ref="formRef">
         <el-form-item label="活动名称" prop="name">
@@ -92,7 +142,7 @@
         </el-form-item>
 
         <el-form-item label="活动类型" prop="type">
-          <el-select v-model="form.type" placeholder="请选择活动类型" style="width: 100%">
+          <el-select v-model="form.type" placeholder="请选择活动类型" class="form-control">
             <el-option label="限时抢购" value="flash_sale">
               <div class="option-item">
                 <span>限时抢购</span>
@@ -135,21 +185,21 @@
             :max="form.discount_type === 'percentage' ? 100 : 99999"
             :precision="form.discount_type === 'free_days' ? 0 : 2"
             :step="form.discount_type === 'percentage' ? 5 : 10"
-            style="width: 200px"
+            class="number-input"
           />
-          <span style="margin-left: 12px; color: #909399">
+          <span class="form-hint">
             {{ getDiscountUnit() }}
           </span>
         </el-form-item>
 
         <el-form-item label="最低消费" v-if="form.discount_type !== 'free_days'">
-          <el-input-number v-model="form.min_amount" :min="0" :precision="2" style="width: 200px" />
-          <span style="margin-left: 12px; color: #909399">元（0表示无限制）</span>
+          <el-input-number v-model="form.min_amount" :min="0" :precision="2" class="number-input" />
+          <span class="form-hint">元（0表示无限制）</span>
         </el-form-item>
 
         <el-form-item label="最高优惠" v-if="form.discount_type === 'percentage'">
-          <el-input-number v-model="form.max_discount" :min="0" :precision="2" style="width: 200px" />
-          <span style="margin-left: 12px; color: #909399">元（0表示无限制）</span>
+          <el-input-number v-model="form.max_discount" :min="0" :precision="2" class="number-input" />
+          <span class="form-hint">元（0表示无限制）</span>
         </el-form-item>
 
         <el-form-item label="开始时间" prop="start_time">
@@ -157,7 +207,7 @@
             v-model="form.start_time"
             type="datetime"
             placeholder="选择开始时间"
-            style="width: 100%"
+            class="form-control"
             format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DD HH:mm:ss"
           />
@@ -168,7 +218,7 @@
             v-model="form.end_time"
             type="datetime"
             placeholder="选择结束时间"
-            style="width: 100%"
+            class="form-control"
             format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DD HH:mm:ss"
           />
@@ -187,30 +237,35 @@
 
         <el-form-item label="启用状态">
           <el-switch v-model="form.is_active" />
-          <span style="margin-left: 12px; color: #909399">
+          <span class="form-hint">
             {{ form.is_active ? '启用' : '禁用' }}
           </span>
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <div class="drawer-footer">
-          <el-button @click="drawerVisible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="save">保存</el-button>
-        </div>
+        <FormActionBar
+          :loading="saving"
+          submit-text="保存"
+          @cancel="drawerVisible = false"
+          @submit="save"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { promotionAPI } from '@/utils/api'
-import { useMobile } from '@/composables/useMobile'
+import AppDrawer from '@/components/AppDrawer.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { confirmDelete } from '@/utils/confirmAction'
 
-const isMobile = useMobile()
 const loading = ref(false)
 const saving = ref(false)
 const promotions = ref([])
@@ -256,6 +311,12 @@ const typeMap = {
   recall: '召回活动',
   member_day: '会员日'
 }
+
+const mobilePromotionFields = [
+  { key: 'type', label: '活动类型' },
+  { key: 'discount', label: '折扣' },
+  { key: 'time_range', label: '活动时间', fullWidth: true }
+]
 
 const formatDate = (d) => {
   if (!d) return ''
@@ -410,8 +471,9 @@ const save = async () => {
 }
 
 const remove = async (id) => {
-  await ElMessageBox.confirm('确定删除该活动？', '确认删除', {
-    type: 'warning'
+  await confirmDelete('活动', 1, {
+    message: '确定删除该活动吗？删除后不可恢复。',
+    title: '确认删除活动'
   })
   try {
     await promotionAPI.remove(id)
@@ -420,6 +482,13 @@ const remove = async (id) => {
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '删除失败')
   }
+}
+
+const resetFilter = () => {
+  filter.type = null
+  filter.is_active = null
+  pagination.page = 1
+  loadData()
 }
 
 onMounted(() => {
@@ -434,15 +503,63 @@ onMounted(() => {
 
 .list-card {
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--el-border-color-lighter);
 }
 
 .filter-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) minmax(150px, max-content);
+  align-items: end;
   gap: 12px;
   margin-top: 16px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
+}
+
+.filter-actions {
+  display: flex;
+  justify-self: end;
+  align-items: center;
+  gap: 8px;
+
+  .el-button {
+    margin-left: 0;
+  }
+}
+
+.filter-type {
+  width: 100%;
+  min-width: 0;
+}
+
+.filter-status {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .filter-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: stretch;
+    width: 100%;
+
+    .el-button {
+      width: 100%;
+      margin-left: 0;
+    }
+  }
+}
+
+.promotions-data {
+  min-width: 0;
+}
+
+.promotions-table {
+  width: 100%;
 }
 
 .time-range {
@@ -452,10 +569,22 @@ onMounted(() => {
   font-size: 13px;
 }
 
-.drawer-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
+.time-separator {
+  color: #909399;
+}
+
+.form-control {
+  width: 100%;
+}
+
+.number-input {
+  width: 100%;
+  max-width: 220px;
+}
+
+.form-hint {
+  margin-left: 12px;
+  color: #909399;
 }
 
 .option-item {
@@ -469,6 +598,54 @@ onMounted(() => {
   color: #909399;
 }
 
+.mobile-promotion-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-promotion-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.promotion-name {
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.promotion-id {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.mobile-time-range {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.45;
+}
+
+.mobile-promotion-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+
+  .el-button {
+    margin: 0;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+
 /* 移动端适配 */
 @media (max-width: 768px) {
   .card-header {
@@ -478,31 +655,40 @@ onMounted(() => {
   }
 
   .filter-bar {
-    flex-direction: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .filter-bar .el-select {
-    width: 100% !important;
-  }
-
-  :deep(.el-table) {
-    font-size: 12px;
-  }
-
-  :deep(.el-table .el-button) {
-    padding: 5px 8px;
-    font-size: 12px;
+    width: 100%;
   }
 
   .time-range {
     font-size: 12px;
   }
 
-  .pagination-wrapper {
-  }
-
   :deep(.el-pagination) {
     flex-wrap: wrap;
+  }
+
+  .promotion-form-drawer {
+    :deep(.el-form-item) {
+      align-items: flex-start;
+    }
+
+    :deep(.el-form-item__content) {
+      gap: 8px;
+    }
+
+    .number-input {
+      width: 100%;
+    }
+
+    .form-hint {
+      display: block;
+      width: 100%;
+      margin-left: 0;
+      line-height: 1.5;
+    }
   }
 }
 </style>

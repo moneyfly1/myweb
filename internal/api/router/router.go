@@ -25,10 +25,12 @@ func SetupRouter() *gin.Engine {
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(middleware.RequestIDMiddleware())
 
-	r.GET("/static/*filepath", func(c *gin.Context) {
+	serveImmutableAsset := func(c *gin.Context) {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		c.File("./frontend/dist/assets" + c.Param("filepath"))
-	})
+	}
+	r.GET("/assets/*filepath", serveImmutableAsset)
+	r.GET("/static/*filepath", serveImmutableAsset)
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
 
