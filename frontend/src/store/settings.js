@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { settingsAPI } from '@/utils/api'
+import { cachedAPI } from '@/utils/api'
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
 const PASSWORD_PATTERNS = {
   letter: /[a-zA-Z]/,
@@ -49,7 +49,7 @@ export const useSettingsStore = defineStore('settings', {
       this.loading = true
       this.error = null
       try {
-        const response = await settingsAPI.getPublicSettings()
+        const response = await cachedAPI.getPublicSettings()
         const settings = response.data?.data || response.data || {}
         this.siteName = settings.site_name || 'CBoard'
         this.siteDescription = settings.site_description || '高性能面板系统'

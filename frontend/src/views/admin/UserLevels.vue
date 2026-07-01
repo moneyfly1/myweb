@@ -9,7 +9,7 @@
               v-model="statusFilter" 
               placeholder="状态筛选" 
               clearable 
-              style="width: 150px;"
+              class="status-filter-select"
               @change="loadLevels"
             >
               <el-option label="全部" value="all" />
@@ -47,12 +47,12 @@
           </el-button>
         </div>
       </div>
-      <el-drawer
+      <AppDrawer
         v-model="showStatusFilterDrawer"
         title="状态筛选"
-        :size="isMobile ? '85%' : '400px'"
-        direction="rtl"
-        :lock-scroll="false"
+        size="400px"
+        mobile-size="85%"
+        class="level-filter-drawer"
       >
         <div class="filter-drawer-content">
           <el-form label-width="100px">
@@ -61,7 +61,7 @@
                 v-model="statusFilter" 
                 placeholder="选择状态" 
                 clearable 
-                style="width: 100%;"
+                class="full-width-control"
                 @change="applyStatusFilter"
               >
                 <el-option label="全部" value="all" />
@@ -70,32 +70,32 @@
               </el-select>
             </el-form-item>
           </el-form>
-          <div class="filter-drawer-actions">
-            <el-button @click="resetStatusFilter" class="mobile-action-btn">重置</el-button>
-            <el-button type="primary" @click="applyStatusFilter" class="mobile-action-btn">应用</el-button>
-          </div>
         </div>
-      </el-drawer>
+        <template #footer>
+          <FormActionBar
+            cancel-text="重置"
+            submit-text="应用"
+            :sticky="false"
+            @cancel="resetStatusFilter"
+            @submit="applyStatusFilter"
+          />
+        </template>
+      </AppDrawer>
       <div class="table-wrapper desktop-only" v-show="!isMobile">
       <el-table 
         :data="levels" 
         v-loading="loading"
         border
-        style="width: 100%"
+        class="levels-table"
       >
         <el-table-column prop="level_name" label="等级名称" min-width="150">
           <template #default="scope">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div 
-                v-if="scope.row.color" 
-                :style="{ 
-                  width: '16px', 
-                  height: '16px', 
-                  borderRadius: '50%', 
-                  backgroundColor: scope.row.color 
-                }"
+            <div class="level-name-cell" :style="levelStyle(scope.row)">
+              <div
+                v-if="scope.row.color"
+                class="level-color-dot"
               ></div>
-              <span :style="{ color: scope.row.color || '#333' }">{{ scope.row.level_name }}</span>
+              <span class="level-name-text">{{ scope.row.level_name }}</span>
             </div>
           </template>
         </el-table-column>
@@ -129,17 +129,20 @@
       </el-table>
       </div>
       <div class="mobile-level-cards" v-if="isMobile" v-loading="loading">
-        <div v-if="levels.length === 0 && !loading" class="empty-state">
-          <el-empty description="暂无等级数据" />
-        </div>
-        <div v-for="level in levels" :key="level.id" class="level-card">
+        <EmptyState
+          v-if="levels.length === 0 && !loading"
+          title="暂无等级数据"
+          description="添加用户等级后，可配置消费门槛、折扣与状态。"
+          :icon-size="56"
+          class="level-empty-state"
+        />
+        <div v-for="level in levels" :key="level.id" class="level-card" :style="levelStyle(level)">
           <div class="level-card-header">
             <div 
               v-if="level.color" 
               class="level-color-dot"
-              :style="{ backgroundColor: level.color }"
             ></div>
-            <span class="level-name" :style="{ color: level.color || '#333' }">{{ level.level_name }}</span>
+            <span class="level-name">{{ level.level_name }}</span>
             <el-tag :type="level.is_active ? 'success' : 'danger'" size="small">{{ level.is_active ? '启用' : '禁用' }}</el-tag>
           </div>
           <div class="level-card-body">
@@ -167,16 +170,19 @@
         </div>
       </div>
     </el-card>
-    <el-card class="usage-guide-card" style="margin-top: 20px;">
+    <el-card class="usage-guide-card">
       <template #header>
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="guide-card-header">
           <el-icon><InfoFilled /></el-icon>
           <span>用户等级系统使用说明</span>
         </div>
       </template>
       <div class="usage-guide-content">
         <div class="guide-section">
-          <h4>📋 功能说明</h4>
+          <h4>
+            <el-icon><Document /></el-icon>
+            功能说明
+          </h4>
           <ul>
             <li><strong>自动升级：</strong>用户累计消费达到等级要求时，系统会自动升级用户等级</li>
             <li><strong>等级折扣：</strong>不同等级享受不同的套餐折扣（如VIP 9折，100元套餐只需支付90元）</li>
@@ -185,7 +191,10 @@
           </ul>
         </div>
         <div class="guide-section">
-          <h4>👤 客户端显示位置</h4>
+          <h4>
+            <el-icon><User /></el-icon>
+            客户端显示位置
+          </h4>
           <ul>
             <li><strong>用户仪表盘：</strong>在首页顶部显示当前等级（带颜色标识）</li>
             <li><strong>升级进度条：</strong>显示距离下一级还需消费的金额和进度百分比</li>
@@ -193,7 +202,10 @@
           </ul>
         </div>
         <div class="guide-section">
-          <h4>⚙️ 配置建议</h4>
+          <h4>
+            <el-icon><Setting /></el-icon>
+            配置建议
+          </h4>
           <ul>
             <li><strong>等级排序：</strong>数字越小等级越高（1为最高等级）</li>
             <li><strong>最低消费：</strong>建议从低到高递增设置（如：0元、100元、500元）</li>
@@ -202,7 +214,10 @@
           </ul>
         </div>
         <div class="guide-section">
-          <h4>💡 使用示例</h4>
+          <h4>
+            <el-icon><Opportunity /></el-icon>
+            使用示例
+          </h4>
           <div class="example-box">
             <p><strong>示例配置：</strong></p>
             <ul>
@@ -210,20 +225,21 @@
               <li>VIP会员：排序5，最低消费100元，折扣0.95（95折，100元套餐只需支付95元）</li>
               <li>超级VIP：排序2，最低消费500元，折扣0.9（9折，100元套餐只需支付90元）</li>
             </ul>
-            <p style="margin-top: 10px; color: #909399; font-size: 12px;">
-              💡 用户累计消费达到100元时，自动从"普通会员"升级到"VIP会员"，享受95折优惠。购买套餐时系统会自动计算并显示折扣金额，提醒用户如何获取优惠价格。
+            <p class="example-tip">
+              <el-icon><InfoFilled /></el-icon>
+              <span>用户累计消费达到100元时，自动从"普通会员"升级到"VIP会员"，享受95折优惠。购买套餐时系统会自动计算并显示折扣金额，提醒用户如何获取优惠价格。</span>
             </p>
           </div>
         </div>
       </div>
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="showDialog"
       :title="editingLevel ? '编辑等级' : '添加等级'"
-      :size="isMobile ? '92%' : '500px'"
-      direction="rtl"
-      :class="{ 'mobile-dialog': isMobile }"
-      :lock-scroll="false"
+      size="500px"
+      mobile-size="100%"
+      :loading="saving"
+      class="level-form-drawer"
     >
       <el-form 
         :model="levelForm" 
@@ -246,7 +262,7 @@
             :min="1" 
             :max="100"
             placeholder="数字越小等级越高"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-tip">数字越小，等级越高（1为最高等级）</div>
         </el-form-item>
@@ -259,7 +275,7 @@
             :min="0" 
             :precision="2"
             placeholder="累计消费达到此金额可升级"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-tip">用户累计消费达到此金额可升级到此等级（元）</div>
         </el-form-item>
@@ -274,7 +290,7 @@
             :step="0.05"
             :precision="2"
             placeholder="0.9表示9折"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-tip">0.9表示9折，1.0表示无折扣</div>
         </el-form-item>
@@ -311,19 +327,26 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
-          <el-button @click="showDialog = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
-          <el-button type="primary" @click="saveLevel" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">保存</el-button>
-        </div>
+        <FormActionBar
+          :loading="saving"
+          :sticky="false"
+          @cancel="showDialog = false"
+          @submit="saveLevel"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Plus, InfoFilled, Filter, Refresh } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
+import { Plus, InfoFilled, Filter, Refresh, Document, User, Setting, Opportunity } from '@element-plus/icons-vue'
 import { userLevelAPI } from '@/utils/api'
+import { confirmDelete } from '@/utils/confirmAction'
+import AppDrawer from '@/components/AppDrawer.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import { useMobile } from '@/composables/useMobile'
 const loading = ref(false)
 const saving = ref(false)
 const levels = ref([])
@@ -331,7 +354,7 @@ const showDialog = ref(false)
 const editingLevel = ref(null)
 const levelFormRef = ref(null)
 const statusFilter = ref('all')
-const isMobile = ref(window.innerWidth <= 992)
+const isMobile = useMobile(992)
 const showStatusFilterDrawer = ref(false)
 const levelForm = reactive({
   level_name: '',
@@ -342,6 +365,17 @@ const levelForm = reactive({
   icon_url: '',
   benefits: '',
   is_active: true
+})
+
+const DEFAULT_LEVEL_COLOR = '#303133'
+const LEVEL_COLOR_PATTERN = /^(#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%degturnrad]+\))$/
+const normalizeLevelColor = (color) => {
+  if (typeof color !== 'string') return DEFAULT_LEVEL_COLOR
+  const trimmedColor = color.trim()
+  return LEVEL_COLOR_PATTERN.test(trimmedColor) ? trimmedColor : DEFAULT_LEVEL_COLOR
+}
+const levelStyle = (level) => ({
+  '--level-color': normalizeLevelColor(level?.color)
 })
 const loadLevels = async () => {
   loading.value = true
@@ -490,10 +524,13 @@ const saveLevel = async () => {
 }
 const deleteLevel = async (level) => {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除等级 "${level.level_name}" 吗？${level.user_count > 0 ? `（仍有 ${level.user_count} 个用户使用此等级）` : ''}`,
-      '确认删除',
-      { type: 'warning' }
+    await confirmDelete(
+      '等级',
+      1,
+      {
+        message: `确定要删除等级 "${level.level_name}" 吗？${level.user_count > 0 ? `（仍有 ${level.user_count} 个用户使用此等级）` : ''}`,
+        title: '确认删除'
+      }
     )
     await userLevelAPI.deleteLevel(level.id)
     ElMessage.success('删除成功')
@@ -521,15 +558,8 @@ const applyStatusFilter = () => {
   showStatusFilterDrawer.value = false
   loadLevels()
 }
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 992
-}
 onMounted(() => {
   loadLevels()
-  window.addEventListener('resize', handleResize)
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 <style scoped>
@@ -544,15 +574,35 @@ onUnmounted(() => {
     display: none !important;
   }
 }
+.user-levels-admin > :deep(.el-card) {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.user-levels-admin > :deep(.el-card > .el-card__header) {
+  background: var(--el-fill-color-extra-light);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.table-wrapper {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.levels-table :deep(.el-table__cell) {
+  padding: 10px 8px;
+}
+.levels-table :deep(.el-button) {
+  touch-action: manipulation;
+}
 .mobile-level-cards {
   display: none;
   @media (max-width: 992px) {
     display: block;
     margin-top: 16px;
-    .empty-state {
-      padding: 40px 20px;
-      text-align: center;
+    .level-empty-state {
+      min-height: 220px;
+      padding: 36px 20px;
       background: #fff;
+      border: 1px solid #ebeef5;
       border-radius: 8px;
     }
     .level-card {
@@ -561,6 +611,7 @@ onUnmounted(() => {
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 12px;
+      min-width: 0;
       .level-card-header {
         display: flex;
         align-items: center;
@@ -574,12 +625,14 @@ onUnmounted(() => {
           height: 14px;
           border-radius: 50%;
           flex-shrink: 0;
+          background: var(--level-color);
         }
         .level-name {
           flex: 1;
           min-width: 0;
           font-size: 16px;
           font-weight: 600;
+          color: var(--level-color);
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -614,6 +667,13 @@ onUnmounted(() => {
         gap: 8px;
         padding-top: 12px;
         border-top: 1px solid #f0f0f0;
+        .el-button {
+          flex: 1;
+          min-width: 0;
+          min-height: 44px;
+          margin-left: 0;
+          touch-action: manipulation;
+        }
       }
     }
   }
@@ -623,145 +683,6 @@ onUnmounted(() => {
   color: #909399;
   margin-top: 4px;
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #409eff !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 11px !important;
-  height: 32px !important;
-  line-height: 32px !important;
-}
-:deep(.el-textarea__inner) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-:deep(.el-textarea__inner:hover) {
-  border-color: #c0c4cc !important;
-}
-:deep(.el-textarea__inner:focus) {
-  border-color: #409eff !important;
-  box-shadow: none !important;
-}
-:deep(.el-input-number) {
-  border-radius: 0 !important;
-}
-:deep(.el-input-number .el-input__wrapper) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-:deep(.el-input-number .el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-}
-:deep(.el-input-number .el-input__wrapper.is-focus) {
-  border-color: #409eff !important;
-  box-shadow: none !important;
-}
-:deep(.el-input-number .el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 11px !important;
-  height: 32px !important;
-  line-height: 32px !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-:deep(.el-select .el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-}
-:deep(.el-select .el-input__wrapper.is-focus) {
-  border-color: #409eff !important;
-  box-shadow: none !important;
-}
-:deep(.el-select .el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 11px !important;
-  height: 32px !important;
-  line-height: 32px !important;
-}
-:deep(.el-dialog .el-input__wrapper) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-:deep(.el-dialog .el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 11px !important;
-  height: 32px !important;
-  line-height: 32px !important;
-}
-:deep(.el-dialog .el-textarea__inner) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-:deep(.el-dialog .el-input-number .el-input__wrapper) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-:deep(.el-dialog .el-input-number .el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 11px !important;
-  height: 32px !important;
-  line-height: 32px !important;
-}
-:deep(.el-dialog .el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  border: 1px solid #dcdfe6 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-:deep(.el-dialog .el-select .el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 11px !important;
-  height: 32px !important;
-  line-height: 32px !important;
-}
 .card-title {
   font-size: 16px;
   font-weight: 600;
@@ -770,8 +691,38 @@ onUnmounted(() => {
 .add-button {
   flex-shrink: 0;
 }
+.status-filter-select {
+  width: clamp(170px, 18vw, 240px);
+  min-width: 0;
+}
+.full-width-control,
+.levels-table {
+  width: 100%;
+}
+.level-name-cell,
+.guide-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.level-name-cell .level-color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--level-color);
+  flex: 0 0 16px;
+}
+.level-name-text {
+  color: var(--level-color);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .usage-guide-card {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  margin-top: 20px;
+  border: 1px solid #ebeef5;
+  background: #fff;
 }
 .usage-guide-content {
   line-height: 1.8;
@@ -781,13 +732,16 @@ onUnmounted(() => {
 .guide-section {
   margin-bottom: 20px;
   padding: 15px;
-  background: white;
+  background: #f8fafc;
   border-radius: 8px;
-  border-left: 4px solid #409eff;
+  border: 1px solid #ebeef5;
   overflow-wrap: break-word;
   word-break: break-word;
 }
 .guide-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 12px 0;
   color: #303133;
   font-size: 16px;
@@ -808,7 +762,8 @@ onUnmounted(() => {
   color: #303133;
 }
 .example-box {
-  background: #f5f7fa;
+  background: #fff;
+  border: 1px solid #ebeef5;
   padding: 15px;
   border-radius: 6px;
   margin-top: 10px;
@@ -817,6 +772,18 @@ onUnmounted(() => {
   margin: 0 0 10px 0;
   color: #303133;
   font-size: 14px;
+}
+.example-box .example-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  color: #909399;
+  font-size: 12px;
+}
+.example-box .example-tip .el-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
 }
 .example-box ul {
   margin: 0;
@@ -829,17 +796,6 @@ onUnmounted(() => {
 }
 .filter-drawer-content {
   padding: 20px 0;
-}
-.filter-drawer-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #f0f0f0;
-}
-.filter-drawer-actions .mobile-action-btn {
-  flex: 1;
-  height: 44px;
 }
 .desktop-only {
   @media (max-width: 992px) {
@@ -903,129 +859,47 @@ onUnmounted(() => {
       margin-left: 5px;
     }
   }
-  .level-form-dialog {
-    &.mobile-dialog {
-      :deep(.el-dialog) {
-        width: 95% !important;
-        margin: 2vh auto !important;
-        max-height: 96vh;
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-      }
-      :deep(.el-dialog__header) {
-        padding: 15px 15px 10px;
-        flex-shrink: 0;
-        border-bottom: 1px solid #ebeef5;
-        .el-dialog__title {
-          font-size: 18px;
-          font-weight: 600;
-        }
-        .el-dialog__headerbtn {
-          top: 8px;
-          right: 8px;
-          width: 32px;
-          height: 32px;
-          .el-dialog__close {
-            font-size: 18px;
-          }
-        }
-      }
-      :deep(.el-dialog__body) {
-        padding: 15px !important;
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        max-height: calc(96vh - 140px);
-      }
-      :deep(.el-dialog__footer) {
-        padding: 10px 15px 15px;
-        flex-shrink: 0;
-        border-top: 1px solid #ebeef5;
-      }
-    }
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 5vh auto !important;
-      .el-dialog__body {
-        padding: 15px;
-        max-height: 70vh;
-        overflow-y: auto;
-      }
-    }
+  .level-form-drawer :deep(.el-form-item) {
+    margin-bottom: 18px;
   }
-  .level-form-dialog {
-    :deep(.el-form) {
-      .el-form-item {
-        margin-bottom: 18px;
-        .el-form-item__label {
-          display: none; /* 移动端隐藏默认标签 */
-        }
-        .el-form-item__content {
-          margin-left: 0 !important;
-          width: 100%;
-        }
-      }
-      .mobile-label {
-        font-size: 14px;
-        font-weight: 600;
-        color: #606266;
-        margin-bottom: 8px;
-        display: block;
-        .required {
-          color: #f56c6c;
-          margin-left: 2px;
-        }
-      }
-      .el-input,
-      .el-input-number,
-      .el-select,
-      .el-textarea {
-        width: 100% !important;
-      }
-      .el-input__wrapper,
-      .el-textarea__inner {
-        min-height: 40px;
-        font-size: 16px; /* 防止iOS自动缩放 */
-      }
-      .el-input__inner {
-        font-size: 16px !important; /* 防止iOS自动缩放 */
-        min-height: 40px;
-      }
-      .form-tip {
-        font-size: 12px;
-        margin-top: 5px;
-        color: #909399;
-        line-height: 1.4;
-      }
-    }
-    .dialog-footer-buttons {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      &.mobile-footer {
-        flex-direction: column;
-        gap: 10px;
-        .mobile-action-btn {
-          width: 100%;
-          min-height: 48px;
-          font-size: 16px;
-          font-weight: 500;
-          margin: 0 !important;
-          border-radius: 8px;
-          -webkit-tap-highlight-color: rgba(0,0,0,0.1);
-        }
-      }
-      .mobile-action-btn {
-        width: 100%;
-        min-height: 48px;
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0 !important;
-        border-radius: 8px;
-        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
-      }
-    }
+  .level-form-drawer :deep(.el-form-item__label) {
+    display: none;
+  }
+  .level-form-drawer :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+  .level-form-drawer :deep(.el-input),
+  .level-form-drawer :deep(.el-input-number),
+  .level-form-drawer :deep(.el-select),
+  .level-form-drawer :deep(.el-textarea) {
+    width: 100% !important;
+  }
+  .level-form-drawer :deep(.el-input__wrapper),
+  .level-form-drawer :deep(.el-textarea__inner) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .level-form-drawer :deep(.el-input__inner) {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+  .level-form-drawer .mobile-label {
+    display: block;
+    margin-bottom: 8px;
+    color: #606266;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .level-form-drawer .mobile-label .required {
+    color: #f56c6c;
+    margin-left: 2px;
+  }
+  .level-form-drawer .form-tip {
+    margin-top: 5px;
+    color: #909399;
+    font-size: 12px;
+    line-height: 1.4;
   }
   .card-header {
     flex-direction: column;
@@ -1044,8 +918,9 @@ onUnmounted(() => {
     margin-bottom: 10px;
   }
   .mobile-filter-buttons .el-button {
-    height: 38px;
+    min-height: 44px;
     font-size: 13px;
+    touch-action: manipulation;
   }
   :deep(.el-card__header) {
     padding: 15px;
@@ -1066,12 +941,13 @@ onUnmounted(() => {
     padding: 10px;
   }
   .mobile-filter-buttons .el-button {
-    height: 36px;
+    min-height: 44px;
     font-size: 12px;
   }
   .mobile-action-btn {
-    height: 42px;
+    min-height: 44px;
     font-size: 15px;
+    touch-action: manipulation;
   }
   .usage-guide-card {
     :deep(.el-card__body) {
@@ -1101,13 +977,6 @@ onUnmounted(() => {
   :deep(.el-button) {
     padding: 5px 8px;
     font-size: 11px;
-  }
-  :deep(.el-dialog) {
-    width: 98% !important;
-    margin: 2vh auto !important;
-    .el-dialog__body {
-      padding: 12px;
-    }
   }
 }
 @media (min-width: 993px) {

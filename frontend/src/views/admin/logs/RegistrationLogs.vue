@@ -1,8 +1,8 @@
 <template>
   <div class="log-list logs-page">
     <div class="filter-bar desktop-only">
-      <el-input v-model="filter.keyword" placeholder="用户名/邮箱/邀请码" clearable style="width: 220px" @keyup.enter="fetch" />
-      <el-select v-model="filter.status" placeholder="状态" clearable style="width: 120px">
+      <el-input v-model="filter.keyword" placeholder="用户名/邮箱/邀请码" clearable class="filter-keyword" @keyup.enter="fetch" />
+      <el-select v-model="filter.status" placeholder="状态" clearable class="filter-select-sm">
         <el-option label="成功" value="success" />
         <el-option label="失败" value="failed" />
       </el-select>
@@ -13,7 +13,7 @@
         start-placeholder="开始时间"
         end-placeholder="结束时间"
         value-format="YYYY-MM-DD HH:mm:ss"
-        style="width: 360px"
+        class="filter-date"
       />
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
@@ -24,7 +24,7 @@
           <el-input v-model="filter.keyword" placeholder="用户名/邮箱/邀请码" clearable @keyup.enter="fetch" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="filter.status" placeholder="状态" clearable style="width: 100%">
+          <el-select v-model="filter.status" placeholder="状态" clearable class="full-width-control">
             <el-option label="成功" value="success" />
             <el-option label="失败" value="failed" />
           </el-select>
@@ -37,7 +37,7 @@
             start-placeholder="开始"
             end-placeholder="结束"
             value-format="YYYY-MM-DD HH:mm:ss"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <div class="mobile-filter-actions">
@@ -46,64 +46,66 @@
         </div>
       </el-form>
     </div>
-    <div class="table-wrapper desktop-only">
-      <el-table v-loading="loading" :data="list" stripe border class="resizable-table">
-        <el-table-column prop="created_at" label="时间" width="180" />
-        <el-table-column prop="username" label="用户" width="120" />
-        <el-table-column prop="email" label="邮箱" width="180" />
-        <el-table-column prop="ip_address" label="IP" width="130" />
-        <el-table-column prop="location" label="地区" width="120">
-          <template #default="{ row }">{{ displayLocation(row.location) }}</template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="80" />
-        <el-table-column prop="invite_code" label="邀请码" width="100" />
-        <el-table-column prop="inviter_name" label="邀请人" width="100" />
-        <el-table-column prop="reason" :min-width="reasonColWidth || 180" show-overflow-tooltip>
-          <template #header>
-            <div class="th-resizable">
-              <span>失败原因</span>
-              <span class="resize-handle" @mousedown.prevent="startResize($event, 'reason')" title="拖拽调整列宽">⋮</span>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-    <div class="mobile-only mobile-card-list">
-      <div v-loading="loading" class="mobile-list-inner">
-        <div v-for="row in list" :key="row.id" class="mobile-log-card">
-          <div class="mobile-card-row">
-            <span class="mobile-label">时间</span>
-            <span class="mobile-value">{{ row.created_at || '-' }}</span>
-          </div>
-          <div class="mobile-card-row">
-            <span class="mobile-label">用户</span>
-            <span class="mobile-value">{{ row.username || row.email || '-' }}</span>
-          </div>
-          <div class="mobile-card-row">
-            <span class="mobile-label">状态</span>
-            <span class="mobile-value">{{ row.status || '-' }}</span>
-          </div>
-          <div class="mobile-card-row" v-if="row.location">
-            <span class="mobile-label">地区</span>
-            <span class="mobile-value">{{ displayLocation(row.location) }}</span>
-          </div>
-          <div class="mobile-card-row" v-if="row.reason">
-            <span class="mobile-label">失败原因</span>
-            <span class="mobile-value mobile-value-wrap">{{ row.reason }}</span>
-          </div>
+    <ResponsiveDataView
+      :data="list"
+      :loading="loading"
+      :fields="[]"
+      title-field="username"
+      empty-title="暂无数据"
+    >
+      <template #table>
+        <div class="table-wrapper">
+          <el-table v-loading="loading" :data="list" stripe border class="resizable-table">
+            <el-table-column prop="created_at" label="时间" width="180" />
+            <el-table-column prop="username" label="用户" width="120" />
+            <el-table-column prop="email" label="邮箱" width="180" />
+            <el-table-column prop="ip_address" label="IP" width="130" />
+            <el-table-column prop="location" label="地区" width="120">
+              <template #default="{ row }">{{ displayLocation(row.location) }}</template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="80" />
+            <el-table-column prop="invite_code" label="邀请码" width="100" />
+            <el-table-column prop="inviter_name" label="邀请人" width="100" />
+            <el-table-column prop="reason" :min-width="reasonColWidth || 180" show-overflow-tooltip>
+              <template #header>
+                <div class="th-resizable">
+                  <span>失败原因</span>
+                  <span class="resize-handle" @mousedown.prevent="startResize($event, 'reason')" title="拖拽调整列宽">⋮</span>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-        <el-empty v-if="list.length === 0 && !loading" description="暂无数据" />
-      </div>
-    </div>
-    <el-pagination
+      </template>
+      <template #header="{ item }">
+        <div class="mobile-log-title">{{ item.username || item.email || '-' }}</div>
+        <div class="mobile-log-subtitle">{{ item.created_at || '-' }}</div>
+      </template>
+      <template #default="{ item }">
+        <MobileLogFields>
+          <div class="mobile-log-field">
+            <span class="mobile-log-label">状态</span>
+            <span class="mobile-log-value">{{ item.status || '-' }}</span>
+          </div>
+          <div class="mobile-log-field" v-if="item.location">
+            <span class="mobile-log-label">地区</span>
+            <span class="mobile-log-value">{{ displayLocation(item.location) }}</span>
+          </div>
+          <div class="mobile-log-field field-full" v-if="item.reason">
+            <span class="mobile-log-label">失败原因</span>
+            <span class="mobile-log-value mobile-log-wrap">{{ item.reason }}</span>
+          </div>
+        </MobileLogFields>
+      </template>
+    </ResponsiveDataView>
+    <PaginationBar
       v-model:current-page="page"
-      :page-size="pageSize"
+      v-model:page-size="pageSize"
       :total="total"
       :layout="paginationLayout"
       :page-sizes="[10, 20, 50]"
       @current-change="fetch"
       @size-change="onSizeChange"
-      class="pagination"
     />
   </div>
 </template>
@@ -112,6 +114,9 @@ import { ref, onMounted, computed } from 'vue'
 import { adminAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import { formatLocation } from '@/utils/date'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import MobileLogFields from '@/components/MobileLogFields.vue'
 
 const displayLocation = (loc) => {
   if (!loc) return '-'
@@ -192,37 +197,14 @@ onMounted(() => {
 })
 </script>
 <style scoped>
-.log-list { padding: 0; }
-.filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center; }
-.pagination { margin-top: 16px; justify-content: flex-end; }
+.filter-keyword,
+.filter-select-sm,
+.filter-date {
+  width: 100%;
+  min-width: 0;
+}
 .th-resizable { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 4px; }
 .th-resizable span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .resize-handle { cursor: col-resize; padding: 0 4px; color: #909399; user-select: none; }
 .resize-handle:hover { color: #409eff; }
-
-.desktop-only { display: block; }
-.mobile-only { display: none; }
-.mobile-filter-form { width: 100%; }
-.mobile-filter-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-.mobile-action-btn { width: 100%; min-height: 44px; }
-.table-wrapper { overflow-x: auto; }
-
-@media (max-width: 768px) {
-  .logs-page { padding: 0 4px; }
-  .desktop-only { display: none !important; }
-  .mobile-only { display: block !important; }
-  .filter-bar.mobile-only { margin-bottom: 12px; }
-  .mobile-list-inner { display: flex; flex-direction: column; gap: 12px; min-height: 120px; }
-  .mobile-log-card {
-    background: #fff; border: 1px solid #ebeef5; border-radius: 8px;
-    padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
-  }
-  .mobile-card-row { display: flex; margin-bottom: 8px; font-size: 14px; }
-  .mobile-card-row:last-child { margin-bottom: 0; }
-  .mobile-label { flex: 0 0 72px; color: #909399; }
-  .mobile-value { flex: 1; word-break: break-all; }
-  .mobile-value-wrap { white-space: pre-wrap; word-break: break-word; }
-  .pagination { flex-wrap: wrap; justify-content: center; padding: 12px 0; }
-  .pagination :deep(.el-pagination__sizes) { margin: 0; }
-}
 </style>

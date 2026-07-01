@@ -18,7 +18,7 @@
                 <el-radio-button label="vertical">纵向</el-radio-button>
               </el-radio-group>
               <template v-if="gridOrientation === 'horizontal'">
-                <el-select v-model="gridColumns" size="small" style="width: 90px; margin-right: 8px;" class="grid-columns-select">
+                <el-select v-model="gridColumns" size="small" class="grid-columns-select">
                   <el-option label="2列" :value="2" />
                   <el-option label="3列" :value="3" />
                   <el-option label="4列" :value="4" />
@@ -56,7 +56,7 @@
                   <el-dropdown-item command="batch_assign" :disabled="!selectedNodes.length" :icon="User">批量分配</el-dropdown-item>
                   <el-dropdown-item command="batch_unassign" :disabled="!selectedNodes.length" :icon="Close">批量取消分配</el-dropdown-item>
                   <el-dropdown-item command="migrate_assignments" :disabled="selectedNodes.length !== 1" :icon="Connection">迁移分配</el-dropdown-item>
-                  <el-dropdown-item command="batch_delete" :disabled="!selectedNodes.length" :icon="Delete" divided style="color: var(--el-color-danger)">批量删除</el-dropdown-item>
+                  <el-dropdown-item command="batch_delete" :disabled="!selectedNodes.length" :icon="Delete" divided class="danger-menu-item">批量删除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -97,6 +97,16 @@
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
           </div>
+          <div class="filter-actions">
+            <el-button type="primary" @click="handleFilterChange">
+              <el-icon><Search /></el-icon>
+              搜索
+            </el-button>
+            <el-button @click="resetFilters">
+              <el-icon><Refresh /></el-icon>
+              重置
+            </el-button>
+          </div>
         </div>
       </div>
       <div v-if="selectedNodes.length > 0 && !isMobile" class="batch-actions-bar">
@@ -125,7 +135,7 @@
           class="desktop-table"
           ref="tableRef"
         >
-          <el-table-column type="selection" :width="columnWidths.selection" resizable />
+          <el-table-column type="selection" column-key="selection" :width="columnWidths.selection" resizable />
           <el-table-column prop="name" label="名称" :min-width="columnWidths.name" resizable show-overflow-tooltip />
           <el-table-column prop="display_name" label="显示名称" :min-width="columnWidths.display_name" resizable show-overflow-tooltip>
             <template #default="{ row }">
@@ -139,31 +149,31 @@
               <el-tag size="small" effect="plain">{{ getProtocolLabel(row.protocol) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="domain" label="服务器IP" :min-width="columnWidths.server_ip" resizable show-overflow-tooltip>
+          <el-table-column prop="domain" column-key="server_ip" label="服务器IP" :min-width="columnWidths.server_ip" resizable show-overflow-tooltip>
             <template #default="{ row }">
               <span :class="getNodeServer(row) ? 'server-address' : 'text-secondary'">
                 {{ getNodeServer(row) || '-' }}
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" :width="columnWidths.status" resizable>
+          <el-table-column label="状态" column-key="status" :width="columnWidths.status" resizable>
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)" size="small" effect="light">
                 {{ getStatusText(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="激活" :width="columnWidths.is_active" resizable>
+          <el-table-column label="激活" column-key="is_active" :width="columnWidths.is_active" resizable>
             <template #default="{ row }">
               <el-switch v-model="row.is_active" @change="toggleNodeStatus(row)" size="small" />
             </template>
           </el-table-column>
-          <el-table-column label="到期" :width="columnWidths.expire_time" resizable>
+          <el-table-column label="到期" column-key="expire_time" :width="columnWidths.expire_time" resizable>
             <template #default="{ row }">
               <span class="text-xs">{{ formatExpire(row) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
+          <el-table-column label="操作" column-key="actions" :width="columnWidths.actions" fixed="right" resizable>
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button size="small" @click="testNode(row)" :loading="row.testing">测试</el-button>
@@ -182,7 +192,11 @@
           'grid-cols-' + gridColumns
         ]">
           <template v-if="customNodes.length === 0">
-            <el-empty description="暂无专线节点" class="grid-empty" />
+            <EmptyState
+              class="grid-empty"
+              title="暂无专线节点"
+              description="创建专线节点或调整筛选条件后可在这里查看"
+            />
           </template>
           <template v-else>
             <div
@@ -298,38 +312,37 @@
                       <el-dropdown-item @click="viewLink(node)" :icon="Link">链接</el-dropdown-item>
                       <el-dropdown-item @click="openMigrateDialog(node)" :icon="Connection">迁移分配</el-dropdown-item>
                       <el-dropdown-item @click="editNode(node)" :icon="Edit">编辑</el-dropdown-item>
-                      <el-dropdown-item @click="deleteNode(node)" :icon="Delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
+                      <el-dropdown-item @click="deleteNode(node)" :icon="Delete" class="danger-menu-item">删除</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
               </div>
             </div>
           </div>
-          <el-empty v-if="customNodes.length === 0" description="暂无专线节点" />
+          <EmptyState
+            v-if="customNodes.length === 0"
+            title="暂无专线节点"
+            description="创建专线节点或调整筛选条件后可在这里查看"
+          />
         </div>
       </div>
       <div class="pagination-wrapper">
-        <el-pagination
+        <PaginationBar
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.size"
           :total="pagination.total"
-          :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
-          :pager-count="isMobile ? 5 : 7"
           background
           @current-change="loadCustomNodes"
           @size-change="loadCustomNodes"
         />
       </div>
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="showAddDialog"
       :title="editingNode ? '编辑专线节点' : '添加专线节点'"
-      :size="isMobile ? '92%' : '600px'"
-      direction="rtl"
-      destroy-on-close
-      append-to-body
-      :lock-scroll="false"
-      @closed="handleNodeDrawerClosed"
+      size="600px"
+      mobile-size="100%"
+      :loading="saving || parsing"
     >
       <div class="dialog-scroll-content">
         <el-tabs v-model="addNodeTab" v-if="!editingNode" class="compact-tabs">
@@ -369,7 +382,7 @@
             <el-input v-model="nodeForm.display_name" placeholder="客户端显示的名称 (可选)" />
           </el-form-item>
           <el-form-item label="节点类型" prop="protocol">
-            <el-select v-model="nodeForm.protocol" placeholder="选择节点类型" style="width: 100%">
+            <el-select v-model="nodeForm.protocol" placeholder="选择节点类型" class="full-width-control">
               <el-option-group v-for="group in nodeTypeGroups" :key="group.label" :label="group.label">
                 <el-option
                   v-for="type in group.options"
@@ -396,7 +409,7 @@
                 v-model="nodeForm.expire_time"
                 type="datetime"
                 placeholder="永久有效"
-                style="width: 100%"
+                class="full-width-control"
                 format="YYYY-MM-DD HH:mm"
                 value-format="YYYY-MM-DDTHH:mm:ssZ"
               />
@@ -408,22 +421,34 @@
         </el-form>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="showAddDialog = false">取消</el-button>
-          <template v-if="!editingNode && addNodeTab === 'link'">
+        <FormActionBar
+          v-if="!editingNode && addNodeTab === 'link'"
+          :loading="saving"
+          :disabled="!nodeLinkInput"
+          submit-text="批量导入"
+          cancel-text="取消"
+          @cancel="showAddDialog = false"
+          @submit="batchImportLinks"
+        >
+          <template #left>
             <el-button type="warning" plain @click="parseNodeLink" :loading="parsing">仅解析</el-button>
-            <el-button type="primary" @click="batchImportLinks" :loading="saving" :disabled="!nodeLinkInput">批量导入</el-button>
           </template>
-          <el-button v-else type="primary" @click="saveNode" :loading="saving">保存</el-button>
-        </div>
+        </FormActionBar>
+        <FormActionBar
+          v-else
+          :loading="saving"
+          submit-text="保存"
+          @cancel="showAddDialog = false"
+          @submit="saveNode"
+        />
       </template>
-    </el-drawer>
-    <el-dialog
+    </AppDrawer>
+    <AppDialog
       v-model="showLinkDialog"
       title="节点链接"
-      :width="isMobile ? '90%' : '500px'"
-      append-to-body
-      class="responsive-dialog"
+      width="500px"
+      mobile-width="92%"
+      :loading="testingFromLink"
     >
       <div v-if="nodeLink" class="link-view-content">
         <el-input
@@ -433,21 +458,24 @@
           readonly
           class="code-input"
         />
-        <div class="link-actions">
-          <el-button type="primary" @click="copyLink" icon="DocumentCopy">复制链接</el-button>
-          <el-button @click="testNodeFromLink" :loading="testingFromLink" icon="Connection">测试连接</el-button>
-        </div>
       </div>
-    </el-dialog>
-    <el-drawer
+      <template #footer>
+        <FormActionBar
+          :loading="testingFromLink"
+          submit-text="测试连接"
+          cancel-text="复制链接"
+          @cancel="copyLink"
+          @submit="testNodeFromLink"
+        />
+      </template>
+    </AppDialog>
+    <AppDrawer
       v-model="showAssignDialog"
       :title="assignMode === 'single' ? '分配节点' : '批量分配'"
-      :size="isMobile ? '88%' : '760px'"
-      :direction="isMobile ? 'btt' : 'rtl'"
+      size="760px"
+      mobile-size="100%"
       class="assign-drawer"
-      append-to-body
-      destroy-on-close
-      :lock-scroll="false"
+      :loading="batchAssigning || batchUnassigning"
     >
       <div class="dialog-scroll-content">
         <div v-if="assignMode === 'single'" class="assigned-section">
@@ -462,7 +490,7 @@
             :data="assignedUsers" 
             size="small" 
             empty-text="暂无分配"
-            style="margin-bottom: 15px"
+            class="assigned-users-table"
           >
             <el-table-column prop="username" label="用户" />
             <el-table-column prop="email" label="邮箱" show-overflow-tooltip />
@@ -489,7 +517,13 @@
                </div>
                <el-button type="danger" circle size="small" icon="Close" @click="handleUnassign(u)" />
              </div>
-             <el-empty v-if="!assignedUsers.length" description="暂无分配" :image-size="60" />
+             <EmptyState
+               v-if="!assignedUsers.length"
+               title="暂无分配"
+               description="该专线节点还没有分配给任何用户"
+               :icon-size="56"
+               class="compact-empty-state"
+             />
           </div>
         </div>
         <div class="assign-form">
@@ -513,7 +547,7 @@
             v-model="selectedUserIds"
             multiple
             placeholder="请从搜索结果中选择用户"
-            style="width: 100%; margin: 10px 0"
+            class="user-select"
             no-data-text="请先搜索"
           >
             <el-option
@@ -543,7 +577,7 @@
                   v-model="assignExtraData.expires_at"
                   type="datetime"
                   placeholder="默认跟随用户订阅"
-                  style="width: 100%"
+                  class="full-width-control"
                   value-format="YYYY-MM-DDTHH:mm:ssZ"
                 />
              </el-form-item>
@@ -551,20 +585,22 @@
         </div>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="showAssignDialog = false">取消</el-button>
-          <el-button type="primary" @click="handleAssign" :loading="batchAssigning" :disabled="!selectedUserIds.length">确定分配</el-button>
-        </div>
+        <FormActionBar
+          :loading="batchAssigning"
+          :disabled="!selectedUserIds.length"
+          submit-text="确定分配"
+          @cancel="showAssignDialog = false"
+          @submit="handleAssign"
+        />
       </template>
-    </el-drawer>
-    <el-drawer
+    </AppDrawer>
+    <AppDrawer
       v-model="showMigrateDialog"
       title="迁移分配"
-      :size="isMobile ? '82%' : '520px'"
-      :direction="isMobile ? 'btt' : 'rtl'"
+      size="520px"
+      mobile-size="100%"
       class="assign-drawer"
-      append-to-body
-      :lock-scroll="false"
+      :loading="migratingAssignments"
     >
       <div class="dialog-scroll-content">
         <div class="migrate-summary" v-if="migratingNode">
@@ -578,7 +614,7 @@
               v-model="migrateTargetNodeId"
               filterable
               placeholder="选择新的专线节点"
-              style="width: 100%"
+              class="full-width-control"
             >
               <el-option
                 v-for="node in migrateTargetNodes"
@@ -594,33 +630,47 @@
         </el-form>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="showMigrateDialog = false">取消</el-button>
-          <el-button type="primary" :loading="migratingAssignments" :disabled="!migrateTargetNodeId" @click="migrateAssignments">
-            确认迁移
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="migratingAssignments"
+          :disabled="!migrateTargetNodeId"
+          submit-text="确认迁移"
+          @cancel="showMigrateDialog = false"
+          @submit="migrateAssignments"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
   DocumentCopy, Edit, MoreFilled, User, Link,
   ArrowDown, Close
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
+import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
+import PaginationBar from '@/components/PaginationBar.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { useMobile } from '@/composables/useMobile'
 export default {
   name: 'AdminCustomNodes',
   components: { 
     Plus, Refresh, Search, Connection, Delete, 
-    DocumentCopy, Edit, MoreFilled, User, Link, ArrowDown, Close
+    DocumentCopy, Edit, MoreFilled, User, Link, ArrowDown, Close,
+    PaginationBar,
+    AppDrawer,
+    AppDialog,
+    FormActionBar,
+    EmptyState
   },
   setup() {
-    const isMobile = ref(false)
+    const isMobile = useMobile()
     const viewMode = ref('table') // 'table' | 'grid'
     const gridOrientation = ref('horizontal') // 'horizontal' | 'vertical'
     const gridColumns = ref(3) // 2-6 columns for horizontal
@@ -628,8 +678,7 @@ export default {
     const tableRef = ref(null)
     const loading = ref(false)
     
-    // 列宽状态（动态绑定）
-    const columnWidths = reactive({
+    const defaultColumnWidths = {
       selection: 50,
       name: 140,
       display_name: 120,
@@ -639,7 +688,13 @@ export default {
       is_active: 80,
       expire_time: 150,
       actions: 440  // 增加操作列宽度以容纳更多按钮
-    })
+    }
+    const columnKeys = Object.keys(defaultColumnWidths)
+    const { columnWidths, handleColumnResize } = usePersistentTableColumns(
+      'customNodes_table_column_widths',
+      defaultColumnWidths,
+      columnKeys
+    )
     
     // 从 localStorage 加载设置
     const STORAGE_KEY = 'customNodes_table_settings'
@@ -652,9 +707,6 @@ export default {
           if (settings.gridOrientation) gridOrientation.value = settings.gridOrientation
           if (settings.gridColumns) gridColumns.value = settings.gridColumns
           if (settings.gridSize) gridSize.value = settings.gridSize
-          if (settings.columnWidths) {
-            Object.assign(columnWidths, settings.columnWidths)
-          }
         }
       } catch (e) {
         console.warn('加载设置失败:', e)
@@ -668,8 +720,7 @@ export default {
           viewMode: viewMode.value,
           gridOrientation: gridOrientation.value,
           gridColumns: gridColumns.value,
-          gridSize: gridSize.value,
-          columnWidths: { ...columnWidths }
+          gridSize: gridSize.value
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
       } catch (e) {
@@ -677,24 +728,6 @@ export default {
       }
     }
     
-    // 列宽调整事件处理（延迟保存，避免频繁触发）
-    let resizeTimer = null
-    const handleColumnResize = (newWidth, oldWidth, column, event) => {
-      if (resizeTimer) clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => {
-        // 获取所有列的当前宽度
-        if (tableRef.value && tableRef.value.$el) {
-          const headerCells = tableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
-          const keys = ['selection', 'name', 'display_name', 'protocol', 'server_ip', 'status', 'is_active', 'expire_time', 'actions']
-          headerCells.forEach((cell, index) => {
-            if (keys[index] && cell.offsetWidth > 0) {
-              columnWidths[keys[index]] = cell.offsetWidth
-            }
-          })
-          saveSettings()
-        }
-      }, 300)
-    }
     const saving = ref(false)
     const parsing = ref(false)
     const customNodes = ref([])
@@ -804,7 +837,6 @@ export default {
       const config = parseConfigValue(node.config)
       return config?.server || config?.Server || config?.add || ''
     }
-    const checkMobile = () => { isMobile.value = window.innerWidth <= 768 }
     const loadCustomNodes = async () => {
       loading.value = true
       try {
@@ -829,6 +861,12 @@ export default {
       }
     }
     const handleFilterChange = () => {
+      pagination.page = 1
+      loadCustomNodes()
+    }
+    const resetFilters = () => {
+      Object.assign(filters, { status: '', protocol: '', is_active: '' })
+      searchKeyword.value = ''
       pagination.page = 1
       loadCustomNodes()
     }
@@ -925,7 +963,10 @@ export default {
             }
           }
         } catch (e) { /* 获取用户列表失败，使用默认提示 */ }
-        await ElMessageBox.confirm(warningMsg, '删除专线节点', { type: 'warning', confirmButtonText: '确认删除', dangerouslyUseHTMLString: false })
+        await confirmDelete('专线节点', 1, {
+          message: warningMsg,
+          title: '删除专线节点'
+        })
         await adminAPI.deleteCustomNode(node.id)
         ElMessage.success('已删除')
         loadCustomNodes()
@@ -989,7 +1030,10 @@ export default {
             }
           }
         } catch (e) { /* 获取用户列表失败，使用默认提示 */ }
-        await ElMessageBox.confirm(warningMsg, '批量删除专线节点', { type: 'error', confirmButtonText: '确认删除' })
+        await confirmDelete('专线节点', selectedNodes.value.length, {
+          message: warningMsg,
+          title: '批量删除专线节点'
+        })
         await adminAPI.batchDeleteCustomNodes(selectedNodes.value.map(n => n.id))
         ElMessage.success('批量删除成功')
         selectedNodes.value = []
@@ -1018,7 +1062,10 @@ export default {
           return
         }
         const warningMsg = `将取消 ${selectedNodes.value.length} 个专线节点的分配关系，影响 ${affectedUsers.length} 个用户。\n\n如果某个用户取消后没有其他专线节点，系统会自动恢复普通线路访问。\n\n确认继续？`
-        await ElMessageBox.confirm(warningMsg, '批量取消分配', { type: 'warning', confirmButtonText: '确认取消分配' })
+        await confirmWarning(warningMsg, {
+          title: '批量取消分配',
+          confirmButtonText: '确认取消分配'
+        })
         batchUnassigning.value = true
         const res = await adminAPI.batchUnassignCustomNodes(selectedNodes.value.map(n => n.id))
         ElMessage.success(res.data?.message || '批量取消成功')
@@ -1126,11 +1173,10 @@ export default {
     const batchUnassignAssignedUsers = async () => {
       if (!assigningNode.value || !assignedUsers.value.length) return
       try {
-        await ElMessageBox.confirm(
-          `确认取消 ${assignedUsers.value.length} 个用户与「${assigningNode.value.name}」的分配关系？`,
-          '批量取消分配',
-          { type: 'warning', confirmButtonText: '确认取消' }
-        )
+        await confirmWarning(`确认取消 ${assignedUsers.value.length} 个用户与「${assigningNode.value.name}」的分配关系？`, {
+          title: '批量取消分配',
+          confirmButtonText: '确认取消'
+        })
         batchUnassigning.value = true
         await adminAPI.batchUnassignCustomNodes([assigningNode.value.id], assignedUsers.value.map(u => u.id))
         ElMessage.success('已批量取消分配')
@@ -1172,11 +1218,10 @@ export default {
       if (!migratingNode.value || !migrateTargetNodeId.value) return
       const target = migrateTargetNodes.value.find(node => node.id === migrateTargetNodeId.value)
       try {
-        await ElMessageBox.confirm(
-          `确认把「${migratingNode.value.name}」上的用户迁移到「${target?.name || '目标节点'}」？`,
-          '迁移专线分配',
-          { type: 'warning', confirmButtonText: '确认迁移' }
-        )
+        await confirmWarning(`确认把「${migratingNode.value.name}」上的用户迁移到「${target?.name || '目标节点'}」？`, {
+          title: '迁移专线分配',
+          confirmButtonText: '确认迁移'
+        })
         migratingAssignments.value = true
         const res = await adminAPI.migrateCustomNodeAssignments(
           migratingNode.value.id,
@@ -1217,14 +1262,14 @@ export default {
     watch([viewMode, gridOrientation, gridColumns, gridSize], () => {
       saveSettings()
     })
+    watch(showAddDialog, (visible) => {
+      if (!visible) handleNodeDrawerClosed()
+    })
 
     onMounted(() => {
-      checkMobile()
-      window.addEventListener('resize', checkMobile)
       loadSettings() // 先加载保存的设置
       loadCustomNodes()
     })
-    onUnmounted(() => window.removeEventListener('resize', checkMobile))
     return {
       isMobile, viewMode, gridOrientation, gridColumns, gridSize, tableRef, columnWidths, loading, saving, parsing, customNodes, selectedNodes,
       handleColumnResize,
@@ -1237,7 +1282,7 @@ export default {
       batchTesting, batchDeleting, batchUnassigning,
       showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes,
       deactivateSourceAfterMigrate, migratingAssignments,
-      loadCustomNodes, handleFilterChange, handleSelectionChange, handleMobileSelect, handleGridSelect,
+      loadCustomNodes, handleFilterChange, resetFilters, handleSelectionChange, handleMobileSelect, handleGridSelect,
       handleCommand, openCreateNodeDialog, handleNodeDrawerClosed, editNode, saveNode, deleteNode, toggleNodeStatus,
       batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
@@ -1271,7 +1316,23 @@ export default {
 .view-mode-group { margin-right: 8px; }
 .grid-orientation-group { margin-right: 8px; }
 .grid-size-group { margin-right: 8px; }
-.grid-columns-select { margin-right: 8px; }
+.grid-columns-select {
+  width: 90px;
+  margin-right: 8px;
+}
+.full-width-control {
+  width: 100%;
+}
+.danger-menu-item {
+  color: var(--el-color-danger);
+}
+.assigned-users-table {
+  margin-bottom: 15px;
+}
+.user-select {
+  width: 100%;
+  margin: 10px 0;
+}
 .batch-tip {
   font-size: 13px;
   color: var(--el-color-primary);
@@ -1291,7 +1352,7 @@ export default {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 8px;
 }
 /* 桌面端方格视图（可调大小和方向） */
 .desktop-grid-view {
@@ -1336,23 +1397,26 @@ export default {
   grid-column: 1 / -1;
   padding: 40px 0;
 }
+.compact-empty-state {
+  min-height: 140px;
+  padding: 16px 0;
+}
 .grid-node-card {
   background: #fff;
   border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
 }
 .grid-node-card:hover {
   border-color: var(--el-border-color);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  background: #fbfdff;
 }
 .grid-node-card.is-selected {
   border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 .grid-node-card .gnc-header {
   padding: 12px 16px;
@@ -1411,7 +1475,7 @@ export default {
 .grid-node-card .gnc-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .mobile-list {
@@ -1428,7 +1492,6 @@ export default {
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
   padding: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }
 .card-header-row {
   display: flex;
@@ -1481,19 +1544,13 @@ export default {
 }
 .right-buttons {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 .code-input :deep(.el-textarea__inner) {
   font-family: monospace;
   font-size: 12px;
   background-color: var(--el-fill-color-darker);
   color: var(--el-text-color-primary);
-}
-.link-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 10px;
 }
 .mini-user-card {
   display: flex;
@@ -1527,11 +1584,12 @@ export default {
   gap: 8px;
 }
 .option-radio-group :deep(.el-radio-button__inner) {
-  min-height: 36px;
+  min-height: 44px;
   border-radius: 6px !important;
   border-left: 1px solid var(--el-border-color) !important;
   display: inline-flex;
   align-items: center;
+  touch-action: manipulation;
 }
 .search-button-text {
   margin-left: 4px;
@@ -1581,33 +1639,12 @@ export default {
   overflow-y: auto;
   padding-right: 4px;
 }
-.assign-drawer :deep(.el-drawer__body) {
-  padding: 16px 20px;
-}
-.assign-drawer :deep(.el-drawer__footer) {
-  padding: 12px 20px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
 @media (max-width: 768px) {
   .batch-actions-bar {
     display: none;
   }
-  .assign-drawer :deep(.el-drawer) {
-    border-radius: 14px 14px 0 0;
-  }
-  .assign-drawer :deep(.el-drawer__body) {
-    padding: 12px;
-  }
-  .assign-drawer :deep(.el-drawer__footer) {
-    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  }
   .dialog-scroll-content {
-    max-height: calc(88vh - 120px);
+    max-height: none;
   }
   .assign-form .el-select {
     width: 100%;
@@ -1625,10 +1662,6 @@ export default {
     min-height: 44px;
     justify-content: center;
   }
-  .dialog-footer .el-button {
-    min-height: 44px;
-    flex: 1;
-  }
   .card-actions-row {
     align-items: stretch;
     gap: 8px;
@@ -1640,7 +1673,16 @@ export default {
     flex-wrap: wrap;
   }
   .right-buttons .el-button {
-    min-height: 36px;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  .card-actions-row :deep(.el-button) {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  .search-user-row :deep(.el-button) {
+    min-height: 44px;
+    touch-action: manipulation;
   }
 }
 </style>

@@ -68,6 +68,8 @@ temp/
 *.bak
 *.backup
 *.backup.*
+.playwright-cli/
+output/
 cboard-server
 cboard-go
 

@@ -42,7 +42,7 @@
                 <el-dropdown-item command="inactive">待激活</el-dropdown-item>
                 <el-dropdown-item command="disabled">禁用</el-dropdown-item>
                 <el-dropdown-item command="device_overlimit" divided>
-                  <span style="color: #f56c6c; font-weight: bold;">⚠️ 设备超限</span>
+                  <span class="danger-filter-option">设备超限</span>
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -93,7 +93,7 @@
           <el-input
             v-model="searchForm.keyword"
             placeholder="搜索邮箱、用户名或备注"
-            style="width: 300px;"
+            class="keyword-search-input"
             clearable
             @input="debouncedSearch"
             @keyup.enter="searchUsers"
@@ -101,7 +101,7 @@
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="选择状态" clearable style="width: 180px;" @change="searchUsers">
+          <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="status-filter-select" @change="searchUsers">
             <el-option label="全部" value="" />
             <el-option label="活跃" value="active" />
             <el-option label="待激活" value="inactive" />
@@ -159,306 +159,334 @@
           </el-button>
         </div>
       </div>
-      <div class="table-wrapper desktop-only">
-        <el-table 
-          ref="tableRef"
-          :data="users" 
-          style="width: 100%" 
-          v-loading="loading"
-          @selection-change="handleSelectionChange"
-          @sort-change="handleSortChange"
-          stripe
-          table-layout="auto"
-          border
-          :default-sort="defaultSort"
-        >
-          <el-table-column type="selection" width="50" />
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip>
-            <template #default="scope">
-              <div class="user-email">
-                <el-avatar :size="28" :src="scope.row.avatar">
-                  {{ scope.row.username?.charAt(0)?.toUpperCase() }}
-                </el-avatar>
-                <div class="email-info">
-                  <div class="email">
-                    <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
-                      {{ scope.row.email }}
-                    </el-button>
-                  </div>
-                  <div class="username">
-                    <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
-                      {{ scope.row.username }}
-                    </el-button>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="90">
-            <template #default="scope">
-              <el-tag :type="getStatusType(scope.row.status)" size="small">
-                {{ getStatusText(scope.row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column 
-            prop="balance" 
-            label="余额" 
-            width="100" 
-            sortable="custom" 
-            align="right"
-            :sort-orders="['ascending', 'descending', null]"
-            @sort-change="handleSortChange"
-          >
-            <template #default="scope">
-              <el-button type="text" class="balance-link" @click="viewUserBalance(scope.row.id)">
-                ¥{{ (scope.row.balance || 0).toFixed(2) }}
-              </el-button>
-            </template>
-          </el-table-column>
-          <el-table-column label="设备信息" width="120" align="center">
-            <template #default="scope">
-              <div class="device-info">
-                <div class="device-stats" :class="{ 'device-overlimit-alert': isDeviceOverlimit(scope.row) }">
-                  <el-tooltip content="已订阅设备数量" placement="top">
-                    <div class="device-item online">
-                      <el-icon class="device-icon online-icon"><Monitor /></el-icon>
-                      <span class="device-count" :class="{ 'device-overlimit-count': isDeviceOverlimit(scope.row) }">
-                        {{ scope.row.online_devices || 0 }}
-                      </span>
+      <ResponsiveDataView
+        class="admin-users-data"
+        :data="users"
+        :fields="mobileUserFields"
+        :loading="loading"
+        empty-title="暂无用户数据"
+        empty-description="可调整筛选条件后重试"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table 
+              ref="tableRef"
+              :data="users" 
+              class="users-table"
+              v-loading="loading"
+              @selection-change="handleSelectionChange"
+              @sort-change="handleSortChange"
+              stripe
+              table-layout="auto"
+              border
+              :default-sort="defaultSort"
+            >
+              <el-table-column type="selection" width="50" />
+              <el-table-column prop="id" label="ID" width="70" />
+              <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip>
+                <template #default="scope">
+                  <div class="user-email">
+                    <el-avatar :size="28" :src="scope.row.avatar">
+                      {{ scope.row.username?.charAt(0)?.toUpperCase() }}
+                    </el-avatar>
+                    <div class="email-info">
+                      <div class="email">
+                        <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
+                          {{ scope.row.email }}
+                        </el-button>
+                      </div>
+                      <div class="username">
+                        <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
+                          {{ scope.row.username }}
+                        </el-button>
+                      </div>
                     </div>
-                  </el-tooltip>
-                  <div class="device-separator">/</div>
-                  <el-tooltip content="允许最大设备数量" placement="top">
-                    <div class="device-item total">
-                      <el-icon class="device-icon total-icon"><Connection /></el-icon>
-                      <span class="device-count">{{ scope.row.subscription?.device_limit || 0 }}</span>
-                    </div>
-                  </el-tooltip>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="订阅状态" width="130" align="center">
-            <template #default="scope">
-              <div v-if="scope.row.subscription" class="subscription-info">
-                <div class="subscription-status">
-                  <el-tag :type="getSubscriptionStatusType(scope.row.subscription.status)" size="small" effect="dark">
-                    {{ getSubscriptionStatusText(scope.row.subscription.status) }}
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="90">
+                <template #default="scope">
+                  <el-tag :type="getStatusType(scope.row.status)" size="small">
+                    {{ getStatusText(scope.row.status) }}
                   </el-tag>
-                </div>
-                <div v-if="scope.row.subscription.days_until_expire !== null" class="expire-info">
-                  <el-text 
-                    size="small" 
-                    :type="getExpireTextType(scope.row.subscription)"
-                  >
-                    {{ getExpireText(scope.row.subscription) }}
-                  </el-text>
-                </div>
-              </div>
-              <div v-else class="no-subscription">
-                <el-tag type="info" size="small" effect="plain">无订阅</el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="注册时间" width="180" show-overflow-tooltip sortable="custom" :sort-orders="['ascending', 'descending', null]">
-            <template #default="scope">
-              {{ formatDate(scope.row.created_at) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="notes" label="备注" min-width="200" class-name="notes-column">
-            <template #default="scope">
-              <div class="notes-input-wrapper">
-                <el-input
-                  v-model="scope.row.notes"
-                  type="textarea"
-                  :rows="2"
-                  placeholder="点击输入备注，自动保存"
-                  class="notes-input"
-                  @blur="saveNotes(scope.row)"
-                  @input="debounceSaveNotes(scope.row)"
-                  :maxlength="500"
-                  show-word-limit
-                />
-                <div v-if="scope.row.savingNotes" class="saving-indicator">
-                  <el-icon class="is-loading"><Loading /></el-icon>
-                  <span>保存中...</span>
-                </div>
-                <div v-else-if="scope.row.notesSaved" class="saved-indicator">
-                  <el-icon><CircleCheck /></el-icon>
-                  <span>已保存</span>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="到期时间" width="160" show-overflow-tooltip>
-            <template #default="scope">
-              <div v-if="scope.row.subscription && scope.row.subscription.expire_time" class="expire-time-info">
-                <div class="expire-date">{{ formatDate(scope.row.subscription.expire_time) }}</div>
-                <div class="expire-countdown">
-                  <el-text size="small" :type="getExpireTextType(scope.row.subscription)">
-                    {{ getExpireText(scope.row.subscription) }}
-                  </el-text>
-                </div>
-              </div>
-              <div v-else class="no-expire">
-                <el-text type="info" size="small">无订阅</el-text>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="240" fixed="right">
-            <template #default="scope">
-              <div class="action-buttons">
-                <div class="button-row">
-                  <el-button size="small" type="primary" @click="editUser(scope.row)">
-                    <el-icon><Edit /></el-icon>
-                    编辑
+                </template>
+              </el-table-column>
+              <el-table-column 
+                prop="balance" 
+                label="余额" 
+                width="100" 
+                sortable="custom" 
+                align="right"
+                :sort-orders="['ascending', 'descending', null]"
+                @sort-change="handleSortChange"
+              >
+                <template #default="scope">
+                  <el-button type="text" class="balance-link" @click="viewUserBalance(scope.row.id)">
+                    ¥{{ (scope.row.balance || 0).toFixed(2) }}
                   </el-button>
-                  <el-button size="small" :type="scope.row.status === 'active' ? 'warning' : 'success'" @click="toggleUserStatus(scope.row)">
-                    <el-icon><Switch /></el-icon>
-                    {{ scope.row.status === 'active' ? '禁用' : '启用' }}
-                  </el-button>
-                </div>
-                <div class="button-row">
-                  <el-button size="small" type="info" @click="resetUserPassword(scope.row)">
-                    <el-icon><Key /></el-icon>
-                    重置密码
-                  </el-button>
-                  <el-button size="small" type="warning" @click="unlockUserLogin(scope.row)">
-                    <el-icon><Unlock /></el-icon>
-                    解除限制
-                  </el-button>
-                </div>
-                <div class="button-row">
-                  <el-button size="small" type="danger" @click="deleteUser(scope.row)">
-                    <el-icon><Delete /></el-icon>
-                    删除
-                  </el-button>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div class="mobile-card-list" v-if="users.length > 0 && isMobile">
-        <div v-for="user in users" :key="user.id" class="mobile-card">
-          <div class="card-row">
-            <span class="label">用户ID</span>
-            <span class="value">#{{ user.id }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="设备信息" width="120" align="center">
+                <template #default="scope">
+                  <div class="device-info">
+                    <div class="device-stats" :class="{ 'device-overlimit-alert': isDeviceOverlimit(scope.row) }">
+                      <el-tooltip content="已订阅设备数量" placement="top">
+                        <div class="device-item online">
+                          <el-icon class="device-icon online-icon"><Monitor /></el-icon>
+                          <span class="device-count" :class="{ 'device-overlimit-count': isDeviceOverlimit(scope.row) }">
+                            {{ scope.row.online_devices || 0 }}
+                          </span>
+                        </div>
+                      </el-tooltip>
+                      <div class="device-separator">/</div>
+                      <el-tooltip content="允许最大设备数量" placement="top">
+                        <div class="device-item total">
+                          <el-icon class="device-icon total-icon"><Connection /></el-icon>
+                          <span class="device-count">{{ scope.row.subscription?.device_limit || 0 }}</span>
+                        </div>
+                      </el-tooltip>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="订阅状态" width="130" align="center">
+                <template #default="scope">
+                  <div v-if="scope.row.subscription" class="subscription-info">
+                    <div class="subscription-status">
+                      <el-tag :type="getSubscriptionStatusType(scope.row.subscription.status)" size="small" effect="dark">
+                        {{ getSubscriptionStatusText(scope.row.subscription.status) }}
+                      </el-tag>
+                    </div>
+                    <div v-if="scope.row.subscription.days_until_expire !== null" class="expire-info">
+                      <el-text 
+                        size="small" 
+                        :type="getExpireTextType(scope.row.subscription)"
+                      >
+                        {{ getExpireText(scope.row.subscription) }}
+                      </el-text>
+                    </div>
+                  </div>
+                  <div v-else class="no-subscription">
+                    <el-tag type="info" size="small" effect="plain">无订阅</el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="注册时间" width="180" show-overflow-tooltip sortable="custom" :sort-orders="['ascending', 'descending', null]">
+                <template #default="scope">
+                  {{ formatDate(scope.row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="notes" label="备注" min-width="200" class-name="notes-column">
+                <template #default="scope">
+                  <div class="notes-input-wrapper">
+                    <el-input
+                      v-model="scope.row.notes"
+                      type="textarea"
+                      :rows="2"
+                      placeholder="点击输入备注，自动保存"
+                      class="notes-input"
+                      @blur="saveNotes(scope.row)"
+                      @input="debounceSaveNotes(scope.row)"
+                      :maxlength="500"
+                      show-word-limit
+                    />
+                    <div v-if="scope.row.savingNotes" class="saving-indicator">
+                      <el-icon class="is-loading"><Loading /></el-icon>
+                      <span>保存中...</span>
+                    </div>
+                    <div v-else-if="scope.row.notesSaved" class="saved-indicator">
+                      <el-icon><CircleCheck /></el-icon>
+                      <span>已保存</span>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="到期时间" width="160" show-overflow-tooltip>
+                <template #default="scope">
+                  <div v-if="scope.row.subscription && scope.row.subscription.expire_time" class="expire-time-info">
+                    <div class="expire-date">{{ formatDate(scope.row.subscription.expire_time) }}</div>
+                    <div class="expire-countdown">
+                      <el-text size="small" :type="getExpireTextType(scope.row.subscription)">
+                        {{ getExpireText(scope.row.subscription) }}
+                      </el-text>
+                    </div>
+                  </div>
+                  <div v-else class="no-expire">
+                    <el-text type="info" size="small">无订阅</el-text>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="240" fixed="right">
+                <template #default="scope">
+                  <div class="action-buttons">
+                    <div class="button-row">
+                      <el-button size="small" type="primary" @click="editUser(scope.row)">
+                        <el-icon><Edit /></el-icon>
+                        编辑
+                      </el-button>
+                      <el-button size="small" :type="scope.row.status === 'active' ? 'warning' : 'success'" @click="toggleUserStatus(scope.row)">
+                        <el-icon><Switch /></el-icon>
+                        {{ scope.row.status === 'active' ? '禁用' : '启用' }}
+                      </el-button>
+                    </div>
+                    <div class="button-row">
+                      <el-button size="small" type="info" @click="resetUserPassword(scope.row)">
+                        <el-icon><Key /></el-icon>
+                        重置密码
+                      </el-button>
+                      <el-button size="small" type="warning" @click="unlockUserLogin(scope.row)">
+                        <el-icon><Unlock /></el-icon>
+                        解除限制
+                      </el-button>
+                    </div>
+                    <div class="button-row">
+                      <el-button size="small" type="danger" @click="deleteUser(scope.row)">
+                        <el-icon><Delete /></el-icon>
+                        删除
+                      </el-button>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
-          <div class="card-row">
-            <span class="label">邮箱/用户名</span>
-            <span class="value">
-              <div class="user-info-mobile">
-                <el-avatar :size="24" :src="user.avatar">
-                  {{ user.username?.charAt(0)?.toUpperCase() }}
-                </el-avatar>
-                <div @click="viewUserDetails(user.id)" style="cursor: pointer;">
-                  <div class="user-email-mobile">{{ user.email }}</div>
-                  <div class="user-name-mobile">{{ user.username }}</div>
-                </div>
-              </div>
-            </span>
+        </template>
+
+        <template #header="{ item }">
+          <div class="mobile-user-header">
+            <div class="user-info-mobile">
+              <el-avatar :size="28" :src="item.avatar">
+                {{ item.username?.charAt(0)?.toUpperCase() }}
+              </el-avatar>
+              <button type="button" class="user-mobile-link" @click="viewUserDetails(item.id)">
+                <div class="user-email-mobile">{{ item.email }}</div>
+                <div class="user-name-mobile">{{ item.username }}</div>
+              </button>
+            </div>
+            <el-tag :type="getStatusType(item.status)" size="small">
+              {{ getStatusText(item.status) }}
+            </el-tag>
           </div>
-          <div class="card-row">
-            <span class="label">状态</span>
-            <span class="value">
-              <el-tag :type="getStatusType(user.status)" size="small">
-                {{ getStatusText(user.status) }}
-              </el-tag>
-            </span>
+        </template>
+
+        <template #field-status="{ item }">
+          <el-tag :type="getStatusType(item.status)" size="small">
+            {{ getStatusText(item.status) }}
+          </el-tag>
+        </template>
+
+        <template #field-balance="{ item }">
+          <el-button type="text" class="balance-link" @click="viewUserBalance(item.id)">
+            ¥{{ Number(item.balance || 0).toFixed(2) }}
+          </el-button>
+        </template>
+
+        <template #field-device_info="{ item }">
+          <span class="mobile-device-summary" :class="{ 'device-overlimit-count': isDeviceOverlimit(item) }">
+            {{ item.online_devices || 0 }}/{{ item.subscription?.device_limit || 0 }}
+          </span>
+        </template>
+
+        <template #field-subscription="{ item }">
+          <div v-if="item.subscription" class="mobile-subscription-summary">
+            <el-tag :type="getSubscriptionStatusType(item.subscription.status)" size="small" effect="plain">
+              {{ getSubscriptionStatusText(item.subscription.status) }}
+            </el-tag>
+            <el-text
+              v-if="item.subscription.days_until_expire !== null"
+              size="small"
+              :type="getExpireTextType(item.subscription)"
+            >
+              {{ getExpireText(item.subscription) }}
+            </el-text>
           </div>
-          <div class="card-row">
-            <span class="label">余额</span>
-            <span class="value">¥{{ Number(user.balance || 0).toFixed(2) }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">注册时间</span>
-            <span class="value">{{ formatDate(user.created_at) }}</span>
-          </div>
-          <div class="card-row notes-row">
-            <span class="label">备注</span>
-            <div class="notes-input-wrapper-mobile">
-              <el-input
-                v-model="user.notes"
-                type="textarea"
-                :rows="1"
-                placeholder="点击输入备注"
-                class="notes-input-mobile"
-                @blur="saveNotes(user)"
-                @input="debounceSaveNotes(user)"
-                :maxlength="500"
-              />
-              <div v-if="user.savingNotes" class="saving-indicator-mobile">
-                <el-icon class="is-loading"><Loading /></el-icon>
-                <span>保存中...</span>
-              </div>
-              <div v-else-if="user.notesSaved" class="saved-indicator-mobile">
-                <el-icon><CircleCheck /></el-icon>
-                <span>已保存</span>
-              </div>
+          <el-tag v-else type="info" size="small" effect="plain">无订阅</el-tag>
+        </template>
+
+        <template #field-notes="{ item }">
+          <div class="notes-input-wrapper-mobile">
+            <el-input
+              v-model="item.notes"
+              type="textarea"
+              :rows="1"
+              placeholder="点击输入备注"
+              class="notes-input-mobile"
+              @blur="saveNotes(item)"
+              @input="debounceSaveNotes(item)"
+              :maxlength="500"
+            />
+            <div v-if="item.savingNotes" class="saving-indicator-mobile">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>保存中...</span>
+            </div>
+            <div v-else-if="item.notesSaved" class="saved-indicator-mobile">
+              <el-icon><CircleCheck /></el-icon>
+              <span>已保存</span>
             </div>
           </div>
-          <div class="card-actions">
+        </template>
+
+        <template #actions="{ item }">
+          <div class="mobile-user-actions">
             <div class="action-buttons-row">
-              <el-button type="primary" @click="viewUserDetails(user.id)" class="mobile-action-btn">
+              <el-button type="primary" @click="viewUserDetails(item.id)" class="mobile-action-btn">
                 <el-icon><View /></el-icon>
                 详情
               </el-button>
-              <el-button type="primary" @click="editUser(user)" class="mobile-action-btn" plain>
+              <el-button type="primary" @click="editUser(item)" class="mobile-action-btn" plain>
                 <el-icon><Edit /></el-icon>
                 编辑
               </el-button>
-              <el-button :type="user.status === 'active' ? 'warning' : 'success'" @click="toggleUserStatus(user)" class="mobile-action-btn">
+              <el-button :type="item.status === 'active' ? 'warning' : 'success'" @click="toggleUserStatus(item)" class="mobile-action-btn">
                 <el-icon><Switch /></el-icon>
-                {{ user.status === 'active' ? '禁用' : '启用' }}
+                {{ item.status === 'active' ? '禁用' : '启用' }}
               </el-button>
             </div>
             <div class="action-buttons-row">
-              <el-button type="info" @click="resetUserPassword(user)" class="mobile-action-btn">
+              <el-button type="info" @click="resetUserPassword(item)" class="mobile-action-btn">
                 <el-icon><Key /></el-icon>
                 重置密码
               </el-button>
-              <el-button type="warning" @click="unlockUserLogin(user)" class="mobile-action-btn">
+              <el-button type="warning" @click="unlockUserLogin(item)" class="mobile-action-btn">
                 <el-icon><Unlock /></el-icon>
                 解除限制
               </el-button>
-              <el-button type="danger" @click="deleteUser(user)" class="mobile-action-btn">
+              <el-button type="danger" @click="deleteUser(item)" class="mobile-action-btn">
                 <el-icon><Delete /></el-icon>
                 删除
               </el-button>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="mobile-card-list" v-if="users.length === 0 && !loading && isMobile">
-        <div class="empty-state">
-          <i class="el-icon-user"></i>
-          <p>暂无用户数据</p>
-        </div>
-      </div>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+        </template>
+
+        <template #empty>
+          <EmptyState
+            title="暂无用户数据"
+            description="可调整筛选条件后重试"
+            action-text="重置筛选"
+            :loading="loading"
+            @action="resetSearch"
+          />
+        </template>
+      </ResponsiveDataView>
+      <PaginationBar
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
     <!-- 添加/编辑用户抽屉 -->
-    <el-drawer
+    <AppDrawer
       v-model="showAddUserDialog"
       :title="editingUser ? '编辑用户' : '添加用户'"
-      :size="isMobile ? '92%' : '500px'"
-      direction="rtl"
+      size="500px"
+      mobile-size="100%"
       class="user-form-drawer"
-      @closed="onFormDrawerClosed"
-      :lock-scroll="false"
+      :loading="savingUser"
     >
       <el-form
         :model="userForm"
@@ -495,7 +523,7 @@
           <template v-if="isMobile">
             <div class="form-mobile-label">状态 <span class="required">*</span></div>
           </template>
-          <el-select v-model="userForm.status" placeholder="选择状态" style="width: 100%">
+          <el-select v-model="userForm.status" placeholder="选择状态" class="full-width-control">
             <el-option label="活跃" value="active" />
             <el-option label="待激活" value="inactive" />
             <el-option label="禁用" value="disabled" />
@@ -511,7 +539,7 @@
             :max="100"
             placeholder="请输入最大设备数量"
             controls-position="right"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
         </el-form-item>
@@ -525,7 +553,7 @@
             placeholder="选择到期时间"
             format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DDTHH:mm:ss"
-            style="width: 100%"
+            class="full-width-control"
             :teleported="isMobile"
             :default-time="defaultTime"
           />
@@ -550,7 +578,7 @@
             :min="0"
             :precision="2"
             :step="10"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-item-hint">用户账户余额（元）</div>
         </el-form-item>
@@ -562,7 +590,7 @@
             v-model="userForm.device_limit"
             :min="0"
             :max="100"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
         </el-form-item>
@@ -576,7 +604,7 @@
             placeholder="选择到期时间"
             format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DDTHH:mm:ss"
-            style="width: 100%"
+            class="full-width-control"
             :teleported="isMobile"
             :default-time="defaultTime"
           />
@@ -595,14 +623,14 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
-          <el-button @click="showAddUserDialog = false" :class="{ 'mobile-form-btn': isMobile }">取消</el-button>
-          <el-button type="primary" @click="saveUser" :loading="savingUser" :class="{ 'mobile-form-btn': isMobile }">
-            {{ editingUser ? '更新' : '创建' }}
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="savingUser"
+          :submit-text="editingUser ? '更新' : '创建'"
+          @cancel="showAddUserDialog = false"
+          @submit="saveUser"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
     <!-- 用户详情抽屉 -->
     <UserDetailDialog
       :visible="showUserDialog"
@@ -611,12 +639,64 @@
       :isMobile="isMobile"
     />
 
+    <!-- 重置用户密码 -->
+    <AppDialog
+      v-model="showResetPasswordDialog"
+      title="重置密码"
+      width="460px"
+      mobile-width="94%"
+      :loading="resettingPassword"
+    >
+      <el-form
+        ref="resetPasswordFormRef"
+        :model="resetPasswordForm"
+        :rules="resetPasswordRules"
+        label-width="96px"
+        class="reset-password-form"
+      >
+        <el-alert
+          v-if="resetPasswordUser"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="reset-password-alert"
+        >
+          <template #title>
+            正在为用户 {{ resetPasswordUser.username }} 设置新密码
+          </template>
+        </el-alert>
+        <el-form-item label="新密码" prop="password">
+          <el-input
+            v-model="resetPasswordForm.password"
+            type="password"
+            placeholder="请输入新密码（至少8位）"
+            show-password
+            autocomplete="new-password"
+            @keyup.enter="submitResetUserPassword"
+          />
+          <div class="form-item-hint">
+            需包含大小写字母、数字和特殊字符中的至少三种。
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <FormActionBar
+          :loading="resettingPassword"
+          cancel-text="取消"
+          submit-text="确认重置"
+          @cancel="closeResetPasswordDialog"
+          @submit="submitResetUserPassword"
+        />
+      </template>
+    </AppDialog>
+
     <!-- 分配专线节点对话框 -->
-    <el-dialog
+    <AppDialog
       v-model="showAssignNodeDialog"
       title="分配专线节点"
       width="500px"
-      :close-on-click-modal="false"
+      mobile-width="94%"
+      :loading="assigningNode"
     >
       <div class="node-search-section">
         <div class="search-input-group">
@@ -636,13 +716,13 @@
         </div>
       </div>
 
-      <el-form label-width="100px">
+      <el-form label-width="100px" class="assign-node-form">
         <el-form-item label="选择节点">
           <el-select
             v-model="selectedNodeId"
             placeholder="请选择要分配的节点"
             filterable
-            style="width: 100%"
+            class="full-width-control"
           >
             <el-option
               v-for="node in (nodeSearchKeyword ? searchedNodes : availableNodes)"
@@ -673,15 +753,19 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="showAssignNodeDialog = false">取消</el-button>
-        <el-button type="primary" @click="assignCustomNode" :loading="assigningNode">确定分配</el-button>
+        <FormActionBar
+          :loading="assigningNode"
+          submit-text="确定分配"
+          @cancel="showAssignNodeDialog = false"
+          @submit="assignCustomNode"
+        />
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
@@ -690,6 +774,13 @@ import { adminAPI } from '@/utils/api'
 import { formatDate as formatDateUtil } from '@/utils/date'
 import { debounce } from '@/composables/useDebounce'
 import { useMobile } from '@/composables/useMobile'
+import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
+import PaginationBar from '@/components/PaginationBar.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import UserDetailDialog from './components/UserDetailDialog.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -709,13 +800,19 @@ const STATUS_FILTER_MAP = {
   'active': '活跃',
   'inactive': '待激活',
   'disabled': '禁用',
-  'device_overlimit': '⚠️ 设备超限'
+  'device_overlimit': '设备超限'
 }
 const normalizeBoolean = (val) => val === true || val === 1 || val === '1'
 export default {
   name: 'AdminUsers',
   components: {
     UserDetailDialog,
+    PaginationBar,
+    AppDrawer,
+    AppDialog,
+    FormActionBar,
+    EmptyState,
+    ResponsiveDataView,
     Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
     Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
   },
@@ -747,6 +844,13 @@ export default {
     const assigningNode = ref(false)
     const assignSubscriptionType = ref('both')
     const assignDeviceLimitMode = ref('system')
+    const showResetPasswordDialog = ref(false)
+    const resetPasswordUser = ref(null)
+    const resettingPassword = ref(false)
+    const resetPasswordFormRef = ref()
+    const resetPasswordForm = reactive({
+      password: ''
+    })
     const isMobile = useMobile()
     const defaultSort = ref({ prop: 'created_at', order: 'descending' })
     const tableRef = ref(null)
@@ -805,6 +909,41 @@ export default {
         { required: true, message: '请选择到期时间', trigger: 'change' }
       ]
     }
+    const validateResetPassword = (value) => {
+      if (!value) return '密码不能为空'
+      if (value.length < 8) return '密码长度不能少于8位'
+
+      let complexityCount = 0
+      if (/[A-Z]/.test(value)) complexityCount += 1
+      if (/[a-z]/.test(value)) complexityCount += 1
+      if (/\d/.test(value)) complexityCount += 1
+      if (/[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(value)) complexityCount += 1
+      if (complexityCount < 3) return '密码需包含大小写字母、数字和特殊字符中的至少三种'
+
+      const weakPasswords = [
+        'password', '123456', '123456789', 'qwerty', 'abc123',
+        'password123', 'admin', 'root', 'user', 'test',
+        '12345678', 'password1', 'qwerty123', 'admin123'
+      ]
+      if (weakPasswords.includes(value.toLowerCase())) return '密码过于简单，请使用更复杂的密码'
+
+      return true
+    }
+    const resetPasswordRules = {
+      password: [
+        {
+          validator: (_rule, value, callback) => {
+            const result = validateResetPassword(value)
+            if (result === true) {
+              callback()
+              return
+            }
+            callback(new Error(result))
+          },
+          trigger: ['blur', 'change']
+        }
+      ]
+    }
     const resetUserForm = () => {
       Object.assign(userForm, {
         email: '', username: '', password: '', status: 'active',
@@ -819,6 +958,9 @@ export default {
       editingUser.value = null
       resetUserForm()
     }
+    watch(showAddUserDialog, (visible) => {
+      if (!visible) onFormDrawerClosed()
+    })
     watch(editingUser, async (user) => {
       if (user) {
         let status = user.status
@@ -928,6 +1070,15 @@ export default {
     const getExpireText = (subscription) => {
       return subscription.is_expired ? '已过期' : `${subscription.days_until_expire}天后到期`
     }
+    const mobileUserFields = computed(() => [
+      { key: 'id', label: '用户ID', formatter: value => `#${value}` },
+      { key: 'status', label: '状态' },
+      { key: 'balance', label: '余额' },
+      { key: 'device_info', label: '设备信息' },
+      { key: 'subscription', label: '订阅状态' },
+      { key: 'created_at', label: '注册时间', formatter: value => formatDate(value) },
+      { key: 'notes', label: '备注', fullWidth: true }
+    ])
     let resizeTimer = null
     const buildSearchParams = () => {
       const params = {
@@ -1182,11 +1333,9 @@ export default {
     }
     const deleteDevice = async (device) => {
       try {
-        await ElMessageBox.confirm(
-          `确定要删除设备 "${device.device_name || '未知设备'}" 吗？`,
-          '确认删除',
-          { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
-        )
+        await confirmDelete('设备', 1, {
+          message: `确定要删除设备 "${device.device_name || '未知设备'}" 吗？删除后不可恢复。`
+        })
         deletingDevice.value = device.id
         const response = await adminAPI.removeDevice(device.id)
         if (response.data && response.data.success) {
@@ -1297,10 +1446,8 @@ export default {
         return
       }
       try {
-        await ElMessageBox.confirm('确定要取消分配此专线节点吗？', '确认操作', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
+        await confirmWarning('确定要取消分配此专线节点吗？', {
+          confirmButtonText: '确定取消'
         })
         const userId = selectedUser.value.user.id
         const response = await adminAPI.unassignCustomNodeFromUser(userId, nodeId)
@@ -1378,24 +1525,18 @@ export default {
       if (!location) return '-'
       return location
     }
-    const handleConfirmAction = async (message, title, type = 'warning') => {
-      try {
-        await ElMessageBox.confirm(message, title, { type })
-        return true
-      } catch {
-        return false
-      }
-    }
     const deleteUser = async (user) => {
       if (!user?.id) {
         ElMessage.warning('无效的用户ID，无法删除')
         return
       }
-      const confirmed = await handleConfirmAction(
-        `确定要删除用户 "${user.username || user.email || '未知用户'}" 吗？此操作不可恢复。`,
-        '确认删除'
-      )
-      if (!confirmed) return
+      try {
+        await confirmDelete('用户', 1, {
+          message: `确定要删除用户 "${user.username || user.email || '未知用户'}" 吗？删除后不可恢复。`
+        })
+      } catch {
+        return
+      }
       try {
         await adminAPI.deleteUser(user.id)
         ElMessage.success('用户删除成功')
@@ -1407,11 +1548,14 @@ export default {
     const toggleUserStatus = async (user) => {
       const newStatus = user.status === 'active' ? 'disabled' : 'active'
       const action = newStatus === 'active' ? '启用' : '禁用'
-      const confirmed = await handleConfirmAction(
-        `确定要${action}用户 "${user.username}" 吗？`,
-        `确认${action}`
-      )
-      if (!confirmed) return
+      try {
+        await confirmWarning(`确定要${action}用户 "${user.username}" 吗？`, {
+          title: `确认${action}`,
+          confirmButtonText: `确认${action}`
+        })
+      } catch {
+        return
+      }
       try {
         await adminAPI.updateUserStatus(user.id, newStatus)
         ElMessage.success(`用户${action}成功`)
@@ -1420,53 +1564,48 @@ export default {
         ElMessage.error(`状态更新失败: ${error.response?.data?.message || error.message}`)
       }
     }
-    const validateResetPassword = (value) => {
-      if (!value) return '密码不能为空'
-      if (value.length < 8) return '密码长度不能少于8位'
-
-      let complexityCount = 0
-      if (/[A-Z]/.test(value)) complexityCount += 1
-      if (/[a-z]/.test(value)) complexityCount += 1
-      if (/\d/.test(value)) complexityCount += 1
-      if (/[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(value)) complexityCount += 1
-      if (complexityCount < 3) return '密码需包含大小写字母、数字和特殊字符中的至少三种'
-
-      const weakPasswords = [
-        'password', '123456', '123456789', 'qwerty', 'abc123',
-        'password123', 'admin', 'root', 'user', 'test',
-        '12345678', 'password1', 'qwerty123', 'admin123'
-      ]
-      if (weakPasswords.includes(value.toLowerCase())) return '密码过于简单，请使用更复杂的密码'
-
-      return true
-    }
     const resetUserPassword = async (user) => {
+      resetPasswordUser.value = user
+      resetPasswordForm.password = ''
+      showResetPasswordDialog.value = true
+      await nextTick()
+      resetPasswordFormRef.value?.clearValidate()
+    }
+    const closeResetPasswordDialog = () => {
+      if (resettingPassword.value) return
+      showResetPasswordDialog.value = false
+      resetPasswordUser.value = null
+      resetPasswordForm.password = ''
+      resetPasswordFormRef.value?.clearValidate()
+    }
+    const submitResetUserPassword = async () => {
+      if (!resetPasswordUser.value) return
       try {
-        const { value: newPassword } = await ElMessageBox.prompt(
-          `为用户 ${user.username} 设置新密码`,
-          '重置密码',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            inputType: 'password',
-            inputPlaceholder: '请输入新密码（至少8位）',
-            inputValidator: validateResetPassword
-          }
-        )
-        await adminAPI.resetUserPassword(user.id, newPassword)
+        await resetPasswordFormRef.value?.validate()
+        resettingPassword.value = true
+        await adminAPI.resetUserPassword(resetPasswordUser.value.id, resetPasswordForm.password)
         ElMessage.success('密码重置成功')
+        showResetPasswordDialog.value = false
+        resetPasswordUser.value = null
+        resetPasswordForm.password = ''
+        resetPasswordFormRef.value?.clearValidate()
       } catch (error) {
-        if (error !== 'cancel') {
+        if (error?.response || error?.message) {
           ElMessage.error(`密码重置失败: ${error.response?.data?.message || error.message}`)
         }
+      } finally {
+        resettingPassword.value = false
       }
     }
     const unlockUserLogin = async (user) => {
-      const confirmed = await handleConfirmAction(
-        `确定要解除用户 "${user.username}" 的登录限制吗？这将清除该用户的所有登录失败记录。`,
-        '解除登录限制'
-      )
-      if (!confirmed) return
+      try {
+        await confirmWarning(`确定要解除用户 "${user.username}" 的登录限制吗？这将清除该用户的所有登录失败记录。`, {
+          title: '解除登录限制',
+          confirmButtonText: '确认解除'
+        })
+      } catch {
+        return
+      }
       try {
         const result = await adminAPI.unlockUserLogin(user.id)
         ElMessage.success(result.message || '登录限制已解除')
@@ -1520,12 +1659,14 @@ export default {
         return
       }
       if (!checkAdminUsers('删除')) return
-      const confirmed = await handleConfirmAction(
-        `确定要删除选中的 ${selectedUsers.value.length} 个用户吗？此操作将清空这些用户的所有数据（订阅、设备、日志等），且不可恢复。`,
-        '确认批量删除',
-        'warning'
-      )
-      if (!confirmed) return
+      try {
+        await confirmDelete('用户', selectedUsers.value.length, {
+          message: `确定要删除选中的 ${selectedUsers.value.length} 个用户吗？此操作将清空这些用户的所有数据（订阅、设备、日志等），且不可恢复。`,
+          title: '确认批量删除'
+        })
+      } catch {
+        return
+      }
       try {
         batchDeleting.value = true
         const userIds = selectedUsers.value.map(user => user.id)
@@ -1551,11 +1692,14 @@ export default {
         return
       }
       if (!checkAdminUsers('禁用')) return
-      const confirmed = await handleConfirmAction(
-        `确定要禁用选中的 ${selectedUsers.value.length} 个用户吗？`,
-        '确认批量禁用'
-      )
-      if (!confirmed) return
+      try {
+        await confirmWarning(`确定要禁用选中的 ${selectedUsers.value.length} 个用户吗？`, {
+          title: '确认批量禁用',
+          confirmButtonText: '确认禁用'
+        })
+      } catch {
+        return
+      }
       await executeBatchOperation(
         (userIds) => adminAPI.batchDisableUsers(userIds),
         `成功禁用 ${selectedUsers.value.length} 个用户`
@@ -1623,9 +1767,14 @@ export default {
       userRules,
       userFormRef,
       savingUser,
+      showResetPasswordDialog,
+      resetPasswordUser,
+      resettingPassword,
+      resetPasswordFormRef,
+      resetPasswordForm,
+      resetPasswordRules,
       defaultTime,
       saveUser,
-      onFormDrawerClosed,
       searchUsers,
       resetSearch,
       handleStatusFilter,
@@ -1662,6 +1811,8 @@ export default {
       getStatusText,
       formatDate,
       resetUserPassword,
+      closeResetPasswordDialog,
+      submitResetUserPassword,
       unlockUserLogin,
       getSubscriptionStatusType,
       getSubscriptionStatusText,
@@ -1675,6 +1826,7 @@ export default {
       batchSendSubEmail,
       batchSendExpireReminder,
       isDeviceOverlimit,
+      mobileUserFields,
       handleUserSaved,
       saveNotes,
       debounceSaveNotes,
@@ -1694,17 +1846,137 @@ export default {
     padding: 0 12px !important;
   }
 }
-.mobile-filter-row {
+.admin-users :deep(.search-form.list-filter-form) {
+  display: grid !important;
+  grid-template-columns: minmax(240px, 1.35fr) minmax(150px, 0.75fr) minmax(300px, 1.25fr) minmax(144px, max-content);
+  align-items: end;
+  column-gap: 16px;
+  row-gap: 12px;
+  width: 100%;
+}
+.admin-users :deep(.search-form.list-filter-form .el-form-item) {
+  min-width: 0;
+  margin: 0 !important;
+}
+.admin-users :deep(.search-form.list-filter-form .el-form-item:last-child) {
+  justify-self: end;
+}
+.admin-users :deep(.search-form.list-filter-form .el-form-item__content) {
   display: flex;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.admin-users :deep(.search-form.list-filter-form .el-form-item__label) {
+  flex: 0 0 auto;
+  padding-right: 8px;
+}
+.keyword-search-input,
+.status-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+.admin-users :deep(.search-form.list-filter-form .el-date-editor) {
+  width: 100%;
+  min-width: 0;
+}
+.admin-users :deep(.search-form.list-filter-form .el-date-editor .el-range-input) {
+  min-width: 0;
+}
+.admin-users :deep(.search-form.list-filter-form .el-date-editor .el-range-separator) {
+  flex: 0 0 auto;
+  padding: 0 6px;
+}
+.admin-users :deep(.search-form.list-filter-form .el-button + .el-button) {
+  margin-left: 0;
+}
+@media (max-width: 1440px) {
+  .admin-users :deep(.search-form.list-filter-form) {
+    grid-template-columns: minmax(240px, 1fr) minmax(150px, 0.7fr) minmax(280px, 1fr);
+  }
+  .admin-users :deep(.search-form.list-filter-form .el-form-item:last-child) {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+@media (max-width: 1180px) {
+  .admin-users :deep(.search-form.list-filter-form) {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+  .admin-users :deep(.search-form.list-filter-form .el-form-item:last-child) {
+    justify-self: start;
+  }
+}
+.full-width-control,
+.users-table {
+  width: 100%;
+}
+.reset-password-form {
+  .reset-password-alert {
+    margin-bottom: 16px;
+  }
+
+  .form-item-hint {
+    margin-top: 6px;
+    color: var(--el-text-color-secondary, #909399);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 768px) {
+    :deep(.el-form-item) {
+      display: block;
+    }
+
+    :deep(.el-form-item__label) {
+      justify-content: flex-start;
+      width: auto !important;
+      margin-bottom: 6px;
+      padding: 0;
+      line-height: 1.4;
+    }
+
+    :deep(.el-form-item__content) {
+      margin-left: 0 !important;
+    }
+  }
+}
+.danger-filter-option {
+  color: var(--el-color-danger);
+  font-weight: 600;
+}
+.mobile-filter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 88px);
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
   .mobile-filter-dropdown {
-    flex: 1;
-    :deep(.el-button) { width: 100%; justify-content: center; }
+    min-width: 0;
+    max-width: 100%;
+    :deep(.el-button) {
+      width: 100%;
+      min-width: 0;
+      height: 34px;
+      justify-content: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
   .mobile-filter-reset-btn {
-    flex-shrink: 0;
-    min-width: 72px;
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  .mobile-filter-row {
+    grid-template-columns: 1fr;
   }
 }
 .empty-state {
@@ -1745,10 +2017,26 @@ export default {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  > div:last-child {
+  > :last-child {
     min-width: 0;
     overflow: hidden;
   }
+}
+.user-mobile-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  display: block;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.user-mobile-link:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .user-email-mobile {
   font-weight: 600;
@@ -1777,7 +2065,7 @@ export default {
   padding: 4px 8px;
   background: var(--el-fill-color-light, #f5f7fa);
   border-radius: 6px;
-  transition: all 0.3s;
+  transition: background-color 0.2s, border-color 0.2s;
   &.device-overlimit-alert {
     background: #fef0f0;
     border: 1px solid #f56c6c;
@@ -1786,10 +2074,10 @@ export default {
 }
 @keyframes pulse-alert {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4);
+    border-color: #f56c6c;
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(245, 108, 108, 0);
+    border-color: #f8b4b4;
   }
 }
 .device-item {
@@ -1879,63 +2167,11 @@ export default {
   .admin-users {
     padding: 12px;
   }
-  .table-wrapper.desktop-only {
-    display: none;
-  }
-  .mobile-card-list {
+  .admin-users-data {
     margin-top: 10px;
-    .mobile-card {
-      background: var(--el-bg-color, #fff);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-      .card-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 6px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid #f5f5f5;
-        font-size: 13px;
-        &:last-of-type {
-          border-bottom: none;
-          margin-bottom: 0;
-          padding-bottom: 0;
-        }
-        .label {
-          flex: 0 0 72px;
-          color: var(--el-text-color-placeholder, #999);
-          font-size: 12px;
-          flex-shrink: 0;
-        }
-        .value {
-          flex: 1;
-          min-width: 0;
-          color: var(--el-text-color-primary, #333);
-          word-break: break-all;
-          overflow-wrap: break-word;
-        }
-      }
-      .card-actions {
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid #f0f0f0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        .action-buttons-row {
-          display: flex;
-          gap: 6px;
-          width: 100%;
-          .mobile-action-btn {
-            flex: 1;
-            height: 32px;
-            font-size: 13px;
-            margin: 0;
-            padding: 0 4px;
-          }
-        }
-      }
+    :deep(.field-full .field-value) {
+      width: 100%;
+      text-align: left;
     }
     .empty-state {
       padding: 40px 20px;
@@ -1972,17 +2208,16 @@ export default {
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.5;
-  transition: all 0.3s;
+  transition: border-color 0.2s, background-color 0.2s;
   background-color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 .notes-input :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background: #fbfdff;
 }
 .notes-input :deep(.el-textarea__inner:focus) {
   border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  background: #ffffff;
   outline: none;
 }
 .notes-input :deep(.el-input__count) {
@@ -2018,8 +2253,67 @@ export default {
 .saved-indicator .el-icon {
   font-size: 14px;
 }
-.notes-row {
-  margin-top: 12px;
+.mobile-user-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.mobile-device-summary {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.mobile-subscription-summary {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 4px;
+}
+.mobile-user-actions {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+
+  .action-buttons-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+
+    .mobile-action-btn {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      min-height: 44px;
+      font-size: 12px;
+      margin: 0;
+      padding: 6px 3px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
+      touch-action: manipulation;
+
+      :deep(span) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        min-width: 0;
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.25;
+      }
+
+      :deep(.el-icon) {
+        flex: 0 0 auto;
+        margin-right: 0;
+      }
+    }
+  }
 }
 .notes-input-wrapper-mobile {
   position: relative;
@@ -2035,18 +2329,18 @@ export default {
   padding: 6px 8px;
   font-size: 12px;
   line-height: 1.5;
-  transition: all 0.3s;
+  transition: border-color 0.2s, background-color 0.2s;
   background-color: #fff;
-  box-shadow: none;
-  min-height: 40px;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 .notes-input-mobile :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background: #fbfdff;
 }
 .notes-input-mobile :deep(.el-textarea__inner:focus) {
   border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  background: #ffffff;
   outline: none;
 }
 .notes-input-mobile :deep(.el-input__count) {
@@ -2180,8 +2474,9 @@ export default {
     :deep(.el-tabs__item) {
       font-size: 12px;
       padding: 0 10px;
-      height: 36px;
-      line-height: 36px;
+      height: 44px;
+      line-height: 44px;
+      touch-action: manipulation;
     }
 
     :deep(.el-table) {
@@ -2226,13 +2521,33 @@ export default {
   gap: 8px;
 }
 .assign-option-group :deep(.el-radio-button__inner) {
-  min-height: 36px;
+  min-height: 44px;
   border-radius: 6px !important;
   border-left: 1px solid var(--el-border-color) !important;
   display: inline-flex;
   align-items: center;
+  touch-action: manipulation;
 }
 @media (max-width: 768px) {
+  .assign-node-form {
+    :deep(.el-form-item) {
+      display: block;
+      margin-bottom: 18px;
+    }
+
+    :deep(.el-form-item__label) {
+      width: auto !important;
+      justify-content: flex-start;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    :deep(.el-form-item__content) {
+      margin-left: 0 !important;
+      width: 100%;
+    }
+  }
+
   .assign-option-group {
     display: grid;
     grid-template-columns: 1fr;
@@ -2270,6 +2585,24 @@ export default {
   }
 }
 
+@media (max-width: 768px) {
+  .node-search-section {
+    margin-bottom: 18px;
+
+    .search-input-group {
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .search-input-group .el-button {
+      width: 100%;
+      min-height: 44px;
+      margin-left: 0;
+      touch-action: manipulation;
+    }
+  }
+}
+
 // 用户表单抽屉样式
 .form-mobile-label {
   font-size: 14px;
@@ -2287,22 +2620,5 @@ export default {
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
-}
-.dialog-footer-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  &.mobile-footer {
-    flex-direction: column;
-    gap: 8px;
-    .mobile-form-btn {
-      width: 100%;
-      min-height: 36px;
-      font-size: 14px;
-      font-weight: 500;
-      margin: 0 !important;
-      border-radius: 6px;
-    }
-  }
 }
 </style>

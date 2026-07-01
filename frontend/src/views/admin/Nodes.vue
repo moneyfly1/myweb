@@ -33,7 +33,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="refresh" :icon="Refresh">刷新列表</el-dropdown-item>
                   <el-dropdown-item command="test" :icon="Connection" :disabled="!selectedNodes.length">批量测试</el-dropdown-item>
-                  <el-dropdown-item command="delete" :icon="Delete" :disabled="!selectedNodes.length" divided style="color: var(--el-color-danger)">批量删除</el-dropdown-item>
+                  <el-dropdown-item command="delete" :icon="Delete" :disabled="!selectedNodes.length" divided class="danger-menu-item">批量删除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -42,27 +42,27 @@
       </template>
       <div class="filter-wrapper">
         <div class="filter-grid">
-          <el-select v-model="filters.status" placeholder="状态" clearable @change="loadNodes">
+          <el-select v-model="filters.status" placeholder="状态" clearable @change="applyNodeFilters">
             <el-option label="全部状态" value="" />
             <el-option label="在线" value="online" />
             <el-option label="离线" value="offline" />
             <el-option label="超时" value="timeout" />
           </el-select>
-          <el-select v-model="filters.is_active" placeholder="激活" clearable @change="loadNodes">
+          <el-select v-model="filters.is_active" placeholder="激活" clearable @change="applyNodeFilters">
             <el-option label="全部" value="" />
             <el-option label="已激活" value="true" />
             <el-option label="已禁用" value="false" />
           </el-select>
-          <el-select v-model="filters.is_manual" placeholder="来源" clearable @change="loadNodes">
+          <el-select v-model="filters.is_manual" placeholder="来源" clearable @change="applyNodeFilters">
             <el-option label="所有来源" value="" />
             <el-option label="手动添加" value="true" />
             <el-option label="自动采集" value="false" />
           </el-select>
-          <el-select v-model="filters.region" placeholder="地区" clearable @change="loadNodes">
+          <el-select v-model="filters.region" placeholder="地区" clearable @change="applyNodeFilters">
             <el-option label="所有地区" value="" />
             <el-option v-for="r in regions" :key="r" :label="r" :value="r" />
           </el-select>
-          <el-select v-model="filters.type" placeholder="类型" clearable @change="loadNodes">
+          <el-select v-model="filters.type" placeholder="类型" clearable @change="applyNodeFilters">
             <el-option label="所有类型" value="" />
             <el-option v-for="t in allNodeTypes" :key="t" :label="t" :value="t" />
           </el-select>
@@ -71,149 +71,168 @@
               v-model="searchKeyword"
               placeholder="搜索节点名称、服务器地址或域名..."
               clearable
-              @keyup.enter="loadNodes"
+              @keyup.enter="applyNodeFilters"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
           </div>
+          <div class="filter-actions">
+            <el-button type="primary" @click="applyNodeFilters">
+              <el-icon><Search /></el-icon>
+              搜索
+            </el-button>
+            <el-button @click="resetNodeFilters">
+              <el-icon><Refresh /></el-icon>
+              重置
+            </el-button>
+          </div>
         </div>
       </div>
       <div class="content-view" v-loading="loading">
-        <el-table
-          v-if="!isMobile"
-          :data="nodes"
-          stripe
-          border
-          @selection-change="handleSelectionChange"
-          class="desktop-table"
-        >
-          <el-table-column type="selection" width="50" />
-          <el-table-column prop="name" label="节点名称" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="region" label="地区" width="100" />
-          <el-table-column label="来源" width="80">
-            <template #default="{ row }">
-              <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ row.is_manual ? '手动' : '采集' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="订阅#" width="70">
-            <template #default="{ row }">
-              <span v-if="!row.is_manual && row.source_index">#{{ row.source_index }}</span>
-              <span v-else style="color: var(--el-text-color-placeholder)">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="type" label="类型" width="90">
-            <template #default="{ row }">
-              <el-tag effect="plain" size="small">{{ row.type?.toUpperCase() }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <el-badge :is-dot="true" :type="getStatusType(row.status)" class="status-badge">
-                <span>{{ getStatusText(row.status) }}</span>
-              </el-badge>
-            </template>
-          </el-table-column>
-          <el-table-column label="激活" width="80">
-            <template #default="{ row }">
-              <el-switch v-model="row.is_active" @change="toggleNodeStatus(row)" size="small" />
-            </template>
-          </el-table-column>
-          <el-table-column label="延迟" width="100">
-            <template #default="{ row }">
-              <span :class="getLatencyClass(row.latency)">{{ formatLatency(row.latency) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
-            <template #default="{ row }">
-              <el-button-group>
-                <el-button size="small" @click="testNode(row)" :loading="row.testing" :icon="Connection" title="测试" />
-                <el-button size="small" type="primary" @click="editNode(row)" :icon="Edit" title="编辑" />
-                <el-button size="small" type="danger" @click="deleteNode(row)" :icon="Delete" title="删除" />
-              </el-button-group>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-else class="mobile-list">
-          <div class="mobile-selection-bar" v-if="nodes.length > 0">
-            <el-checkbox 
-              v-model="isAllSelected" 
-              :indeterminate="isIndeterminate" 
-              @change="toggleMobileSelectAll"
-            >全选 ({{ selectedNodes.length }})</el-checkbox>
-          </div>
-          <div v-for="node in nodes" :key="node.id" class="node-card">
-            <div class="card-header-row">
-              <el-checkbox 
-                :model-value="isSelected(node)" 
-                @change="(val) => handleMobileSelect(node, val)"
-                class="card-checkbox" 
-              />
-              <div class="node-title">{{ node.name }}</div>
-              <el-tag size="small" :type="getStatusType(node.status)" effect="light">{{ getStatusText(node.status) }}</el-tag>
-            </div>
-            <div class="card-info-grid">
-              <div class="info-item">
-                <span class="label">地区</span>
-                <span class="value">{{ node.region }}</span>
-              </div>
-              <div class="info-item">
-                <span class="label">类型</span>
-                <span class="value">{{ node.type?.toUpperCase() }}</span>
-              </div>
-              <div class="info-item">
-                <span class="label">来源</span>
-                <el-tag :type="node.is_manual ? 'warning' : 'success'" size="small" effect="light">
-                  {{ node.is_manual ? '手动' : '采集' }}
-                  <span v-if="!node.is_manual && node.source_index"> #{{ node.source_index }}</span>
-                </el-tag>
-              </div>
-              <div class="info-item">
-                <span class="label">延迟</span>
-                <span class="value" :class="getLatencyClass(node.latency)">{{ formatLatency(node.latency) }}</span>
-              </div>
-            </div>
-            <div class="card-actions-row">
-              <div class="left-actions">
-                <el-switch 
-                  v-model="node.is_active" 
-                  @change="toggleNodeStatus(node)" 
-                  size="small"
-                  inline-prompt
-                  active-text="开启"
-                  inactive-text="关闭"
-                />
-              </div>
-              <div class="right-buttons">
-                <el-button size="small" text bg @click="testNode(node)" :loading="node.testing">测试</el-button>
-                <el-button size="small" text bg type="primary" @click="editNode(node)">编辑</el-button>
-                <el-button size="small" text bg type="danger" @click="deleteNode(node)">删除</el-button>
-              </div>
-            </div>
-          </div>
-          <el-empty v-if="nodes.length === 0" description="暂无数据" />
+        <div class="mobile-selection-bar" v-if="isMobile && nodes.length > 0">
+          <el-checkbox
+            v-model="isAllSelected"
+            :indeterminate="isIndeterminate"
+            @change="toggleMobileSelectAll"
+          >全选 ({{ selectedNodes.length }})</el-checkbox>
         </div>
+        <ResponsiveDataView
+          :data="nodes"
+          :fields="mobileNodeFields"
+          :loading="loading"
+          title-field="name"
+          empty-title="暂无节点数据"
+          empty-description="添加节点或调整筛选条件后可在这里查看节点列表"
+        >
+          <template #table>
+            <el-table
+              :data="nodes"
+              stripe
+              border
+              @selection-change="handleSelectionChange"
+              class="desktop-table"
+            >
+              <el-table-column type="selection" width="50" />
+              <el-table-column prop="name" label="节点名称" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="region" label="地区" width="100" />
+              <el-table-column label="来源" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ row.is_manual ? '手动' : '采集' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="订阅#" width="70">
+                <template #default="{ row }">
+                  <span v-if="!row.is_manual && row.source_index">#{{ row.source_index }}</span>
+                  <span v-else class="text-placeholder">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="type" label="类型" width="90">
+                <template #default="{ row }">
+                  <el-tag effect="plain" size="small">{{ row.type?.toUpperCase() }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="100">
+                <template #default="{ row }">
+                  <el-badge :is-dot="true" :type="getStatusType(row.status)" class="status-badge">
+                    <span>{{ getStatusText(row.status) }}</span>
+                  </el-badge>
+                </template>
+              </el-table-column>
+              <el-table-column label="激活" width="80">
+                <template #default="{ row }">
+                  <el-switch v-model="row.is_active" @change="toggleNodeStatus(row)" size="small" />
+                </template>
+              </el-table-column>
+              <el-table-column label="延迟" width="100">
+                <template #default="{ row }">
+                  <span :class="getLatencyClass(row.latency)">{{ formatLatency(row.latency) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="180" fixed="right">
+                <template #default="{ row }">
+                  <el-button-group>
+                    <el-button size="small" @click="testNode(row)" :loading="row.testing" :icon="Connection" title="测试" />
+                    <el-button size="small" type="primary" @click="editNode(row)" :icon="Edit" title="编辑" />
+                    <el-button size="small" type="danger" @click="deleteNode(row)" :icon="Delete" title="删除" />
+                  </el-button-group>
+                </template>
+              </el-table-column>
+            </el-table>
+            <EmptyState
+              v-if="!loading && nodes.length === 0"
+              class="desktop-empty-state"
+              title="暂无节点数据"
+              description="添加节点或调整筛选条件后可在这里查看节点列表"
+            />
+          </template>
+          <template #header="{ item }">
+            <div class="mobile-node-header">
+              <el-checkbox
+                :model-value="isSelected(item)"
+                @change="(val) => handleMobileSelect(item, val)"
+                class="mobile-node-checkbox"
+              />
+              <div class="mobile-node-title" :title="item.name">{{ item.name || '-' }}</div>
+              <el-tag size="small" :type="getStatusType(item.status)" effect="light">
+                {{ getStatusText(item.status) }}
+              </el-tag>
+            </div>
+          </template>
+          <template #field-type="{ item }">
+            <el-tag effect="plain" size="small">{{ item.type?.toUpperCase() || '-' }}</el-tag>
+          </template>
+          <template #field-source="{ item }">
+            <el-tag :type="item.is_manual ? 'warning' : 'success'" size="small" effect="light">
+              {{ item.is_manual ? '手动' : '采集' }}
+              <span v-if="!item.is_manual && item.source_index"> #{{ item.source_index }}</span>
+            </el-tag>
+          </template>
+          <template #field-latency="{ item }">
+            <span :class="getLatencyClass(item.latency)">{{ formatLatency(item.latency) }}</span>
+          </template>
+          <template #actions="{ item }">
+            <div class="mobile-node-actions">
+              <el-switch
+                v-model="item.is_active"
+                @change="toggleNodeStatus(item)"
+                size="small"
+                inline-prompt
+                active-text="开"
+                inactive-text="关"
+              />
+              <div class="mobile-node-buttons">
+                <el-button size="small" text bg @click="testNode(item)" :loading="item.testing">测试</el-button>
+                <el-button size="small" text bg type="primary" @click="editNode(item)">编辑</el-button>
+                <el-button size="small" text bg type="danger" @click="deleteNode(item)">删除</el-button>
+              </div>
+            </div>
+          </template>
+          <template #empty>
+            <EmptyState
+              title="暂无节点数据"
+              description="添加节点或调整筛选条件后可在这里查看节点列表"
+            />
+          </template>
+        </ResponsiveDataView>
       </div>
       <div class="pagination-wrapper">
-        <el-pagination
+        <PaginationBar
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.size"
           :total="pagination.total"
-          :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
-          :pager-count="isMobile ? 5 : 7"
           background
           @current-change="loadNodes"
           @size-change="loadNodes"
         />
       </div>
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="showAddDialog"
       :title="editingNode ? '编辑节点' : '添加节点'"
-      :size="isMobile ? '92%' : '600px'"
-      direction="rtl"
-      destroy-on-close
-      append-to-body
-      :lock-scroll="false"
+      size="600px"
+      mobile-size="100%"
+      :loading="saving || parsing"
+      class="node-form-drawer"
     >
       <div class="dialog-scroll-content">
         <el-tabs v-model="addNodeTab" v-if="!editingNode" class="compact-tabs">
@@ -259,7 +278,7 @@
             </el-col>
             <el-col :span="24">
               <el-form-item label="类型" required>
-                <el-select v-model="nodeForm.type" placeholder="选择节点类型" style="width: 100%">
+                <el-select v-model="nodeForm.type" placeholder="选择节点类型" class="full-width-control">
                   <el-option-group label="代理协议">
                     <el-option label="VMess" value="vmess" />
                     <el-option label="VLESS" value="vless" />
@@ -319,31 +338,38 @@
         </el-form>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="showAddDialog = false">取消</el-button>
+        <FormActionBar :loading="saving || parsing">
+          <el-button :disabled="saving || parsing" @click="showAddDialog = false">取消</el-button>
           <template v-if="!editingNode && addNodeTab === 'link'">
             <el-button type="warning" plain @click="parseNodeLink" :loading="parsing">仅解析预览</el-button>
             <el-button type="primary" @click="batchImportLinks" :loading="saving" :disabled="!nodeLinkInput">批量导入</el-button>
           </template>
           <el-button v-else type="primary" @click="saveNode" :loading="saving">保存节点</el-button>
-        </div>
+        </FormActionBar>
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
   DocumentCopy, Edit, MoreFilled 
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import AppDrawer from '@/components/AppDrawer.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { confirmDelete } from '@/utils/confirmAction'
+import { useMobile } from '@/composables/useMobile'
 export default {
   name: 'AdminNodes',
   components: { 
     Plus, Refresh, Search, Connection, Delete, 
-    DocumentCopy, Edit, MoreFilled 
+    DocumentCopy, Edit, MoreFilled, AppDrawer, FormActionBar, PaginationBar, EmptyState, ResponsiveDataView
   },
   setup() {
     // 所有支持的节点类型（完整列表）
@@ -353,7 +379,7 @@ export default {
       'socks', 'socks5', 'http', 'https', 'wg', 'wireguard'
     ]
     
-    const isMobile = ref(false)
+    const isMobile = useMobile()
     const loading = ref(false)
     const testing = ref(false)
     const deleting = ref(false)
@@ -372,13 +398,16 @@ export default {
     const parsedNode = ref(null)
     const filters = reactive({ status: '', is_active: '', is_manual: '', region: '', type: '' })
     const pagination = reactive({ page: 1, size: 10, total: 0 })
+    const mobileNodeFields = computed(() => [
+      { key: 'region', label: '地区' },
+      { key: 'type', label: '类型' },
+      { key: 'source', label: '来源' },
+      { key: 'latency', label: '延迟' }
+    ])
     const nodeForm = reactive({
       name: '', region: '', type: 'vmess', config: '',
       description: '', is_recommended: false, is_active: true
     })
-    const checkMobile = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
     const loadNodes = async () => {
       loading.value = true
       try {
@@ -408,6 +437,16 @@ export default {
       } finally {
         loading.value = false
       }
+    }
+    const applyNodeFilters = () => {
+      pagination.page = 1
+      loadNodes()
+    }
+    const resetNodeFilters = () => {
+      Object.assign(filters, { status: '', is_active: '', is_manual: '', region: '', type: '' })
+      searchKeyword.value = ''
+      pagination.page = 1
+      loadNodes()
     }
     const handleMobileSelect = (node, checked) => {
       if (checked) {
@@ -482,7 +521,9 @@ export default {
     }
     const deleteNode = async (node) => {
       try {
-        await ElMessageBox.confirm(`确认删除节点 "${node.name}"?`, '警告', { type: 'warning' })
+        await confirmDelete('节点', 1, {
+          message: `确认删除节点 "${node.name}"?`
+        })
         await adminAPI.deleteNode(node.id)
         ElMessage.success('删除成功')
         loadNodes()
@@ -504,7 +545,9 @@ export default {
     }
     const batchDelete = async () => {
       try {
-        await ElMessageBox.confirm(`确认删除选中的 ${selectedNodes.value.length} 个节点?`, '警告', { type: 'error' })
+        await confirmDelete('节点', selectedNodes.value.length, {
+          message: `确认删除选中的 ${selectedNodes.value.length} 个节点?`
+        })
         deleting.value = true
         await adminAPI.batchDeleteNodes(selectedNodes.value.map(n => n.id))
         ElMessage.success('批量删除成功')
@@ -583,17 +626,14 @@ export default {
       ElMessage.success('复制成功')
     }
     onMounted(() => {
-      checkMobile()
-      window.addEventListener('resize', checkMobile)
       loadNodes()
     })
-    onUnmounted(() => window.removeEventListener('resize', checkMobile))
     return {
       isMobile, loading, testing, deleting, saving, parsing,
       nodes, selectedNodes, showAddDialog, editingNode,
       filters, pagination, nodeForm, regions, types, allNodeTypes,
-      searchKeyword, addNodeTab, nodeLinkInput, parsedNode,
-      loadNodes, handleSelectionChange, handleMobileSelect,
+      searchKeyword, addNodeTab, nodeLinkInput, parsedNode, mobileNodeFields,
+      loadNodes, applyNodeFilters, resetNodeFilters, handleSelectionChange, handleMobileSelect,
       handleAdd, handleCommand, editNode, saveNode, deleteNode,
       batchTest, batchDelete, testNode, toggleNodeStatus,
       parseNodeLink, batchImportLinks, copyNodeLink, nodeLink,
@@ -617,6 +657,15 @@ export default {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
+.danger-menu-item {
+  color: var(--el-color-danger);
+}
+.text-placeholder {
+  color: var(--el-text-color-placeholder);
+}
+.full-width-control {
+  width: 100%;
+}
 @media (max-width: 768px) {
   .search-box {
     grid-column: 1 / -1;
@@ -628,92 +677,51 @@ export default {
 .text-green { color: var(--el-color-success); font-weight: 500; }
 .text-orange { color: var(--el-color-warning); }
 .text-red { color: var(--el-color-danger); }
-.mobile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 .mobile-selection-bar {
-  padding: 0 4px;
-  margin-bottom: 4px;
+  display: none;
+  padding: 0 4px 10px;
 }
-.node-card {
-  background: #fff;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-  transition: all 0.2s;
-}
-.node-card:active {
-  background: var(--el-fill-color-lighter);
-}
-.card-header-row {
+.mobile-node-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed var(--el-border-color-lighter);
+  min-width: 0;
 }
-.node-title {
+.mobile-node-title {
   font-weight: 600;
   font-size: 15px;
   flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: clip;
   text-overflow: ellipsis;
 }
-.card-checkbox {
+.mobile-node-checkbox {
   margin-right: 0;
   height: auto;
 }
-.card-info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.info-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: var(--el-fill-color-extra-light);
-  padding: 6px;
-  border-radius: 4px;
-}
-.info-item .label {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 2px;
-}
-.info-item .value {
-  font-size: 13px;
-  font-weight: 500;
-}
-.card-actions-row {
+.mobile-node-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
 }
-.right-buttons {
+.mobile-node-buttons {
   display: flex;
   gap: 4px;
-}
-.responsive-dialog :deep(.el-dialog__body) {
-  padding: 10px 20px;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .dialog-scroll-content {
-  max-height: 70vh;
-  overflow-y: auto;
-  padding-right: 4px;
+  min-width: 0;
 }
 @media (max-width: 768px) {
-  .responsive-dialog :deep(.el-dialog__body) {
-    padding: 12px;
+  .mobile-selection-bar {
+    display: block;
   }
-  .dialog-scroll-content {
-    max-height: calc(100vh - 120px);
+  .mobile-node-actions {
+    align-items: flex-start;
   }
   .link-generator {
     margin-top: 10px;

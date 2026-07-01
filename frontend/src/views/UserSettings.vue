@@ -1,50 +1,42 @@
 <template>
   <div class="list-container user-settings">
+    <div class="breadcrumb">首页 / 设置</div>
     <div class="page-header">
-      <h1>用户设置</h1>
-      <p>管理您的账户设置和偏好</p>
+      <div class="page-title">
+        <h1>用户设置</h1>
+      </div>
+      <div class="actions">
+        <el-button type="primary" @click="saveCurrentSetting" :loading="currentSettingSaving">
+          保存当前设置
+        </el-button>
+      </div>
     </div>
-    <el-row :gutter="20" class="settings-desktop">
-      <el-col :span="6">
-        <el-card class="settings-menu">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Setting /></el-icon>
-              设置分类
-            </div>
-          </template>
-          <el-menu
-            :default-active="activeSetting"
-            @select="handleSettingSelect"
-            class="settings-menu-list"
-          >
-            <el-menu-item index="profile">
-              <el-icon><User /></el-icon>
-              <span>个人资料</span>
-            </el-menu-item>
-            <el-menu-item index="security">
-              <el-icon><Lock /></el-icon>
-              <span>安全设置</span>
-            </el-menu-item>
-            <el-menu-item index="notifications">
-              <el-icon><Bell /></el-icon>
-              <span>通知设置</span>
-            </el-menu-item>
-            <el-menu-item index="preferences">
-              <el-icon><Star /></el-icon>
-              <span>偏好设置</span>
-            </el-menu-item>
-          </el-menu>
-        </el-card>
-      </el-col>
-      <el-col :span="18">
-        <el-card v-if="activeSetting === 'profile'" class="setting-content">
-          <template #header>
-            <div class="card-header">
-              <el-icon><User /></el-icon>
-              个人资料
-            </div>
-          </template>
+    <div class="settings-workspace">
+      <aside class="settings-nav-card">
+        <button
+          v-for="item in settingNavItems"
+          :key="item.name"
+          type="button"
+          class="settings-nav-button"
+          :class="{ active: activeSetting === item.name }"
+          @click="handleSettingSelect(item.name)"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.label }}</span>
+        </button>
+      </aside>
+
+      <div class="card settings-tabs-card settings-panel-card">
+        <div class="settings-panel-header">
+          <div>
+            <h2>
+              <el-icon><component :is="activeSettingMeta.icon" /></el-icon>
+              {{ activeSettingMeta.label }}
+            </h2>
+          </div>
+        </div>
+        <div class="settings-tab-body section-stack">
+        <section v-if="activeSetting === 'profile'" class="setting-content setting-section" data-setting-section="profile">
           <el-form :model="profileForm" :rules="profileRules" ref="profileFormRef" label-width="100px">
             <el-form-item label="用户名" prop="username">
               <el-input v-model="profileForm.username" placeholder="请输入用户名"></el-input>
@@ -67,7 +59,9 @@
                 :before-upload="beforeAvatarUpload"
               >
                 <img v-if="profileForm.avatar" :src="profileForm.avatar" class="avatar" />
-                <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+                <div v-else class="avatar-uploader-icon avatar-fallback-text">
+                  {{ (profileForm.nickname || profileForm.username || '用户').slice(0, 2).toUpperCase() }}
+                </div>
               </el-upload>
             </el-form-item>
             <el-form-item>
@@ -76,14 +70,8 @@
               </el-button>
             </el-form-item>
           </el-form>
-        </el-card>
-        <el-card v-if="activeSetting === 'security'" class="setting-content">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Lock /></el-icon>
-              安全设置
-            </div>
-          </template>
+        </section>
+        <section v-else-if="activeSetting === 'security'" class="setting-content setting-section" data-setting-section="security">
           <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" label-width="100px">
             <el-form-item label="当前密码" prop="currentPassword">
               <el-input
@@ -119,49 +107,42 @@
               </el-button>
             </el-form-item>
           </el-form>
-        </el-card>
-        <el-card v-if="activeSetting === 'notifications'" class="setting-content">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Bell /></el-icon>
-              通知设置
-            </div>
-          </template>
-          <div class="notification-settings">
-            <h4>邮件通知</h4>
-            <el-switch
-              v-model="notificationForm.emailNotifications"
-              active-text="启用邮件通知"
-              inactive-text="禁用邮件通知"
-            ></el-switch>
-            <el-divider></el-divider>
-            <h4>异常登录/设备告警</h4>
-            <p class="setting-hint">当检测到新设备或异地登录时，可通过邮件和站内通知提醒您。关闭后将不再发送此类告警。</p>
-            <el-switch
-              v-model="notificationForm.abnormalLoginAlert"
-              active-text="接收告警通知"
-              inactive-text="不接收告警通知"
-            ></el-switch>
-            <el-divider></el-divider>
-            <h4>通知类型</h4>
-            <el-checkbox-group v-model="notificationForm.notificationTypes">
-              <el-checkbox v-for="item in notificationTypeOptions" :key="item.value" :label="item.value">{{ item.label }}</el-checkbox>
-            </el-checkbox-group>
-            <el-divider></el-divider>
-            <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving">
-              保存设置
-            </el-button>
-          </div>
-        </el-card>
-        <el-card v-if="activeSetting === 'preferences'" class="setting-content">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Star /></el-icon>
-              偏好设置
-            </div>
-          </template>
+        </section>
+        <section v-else-if="activeSetting === 'notifications'" class="setting-content setting-section" data-setting-section="notifications">
+          <el-form class="notification-settings settings-control-form" label-width="100px">
+            <el-form-item label="邮件通知">
+              <div class="setting-control-block">
+                <el-switch
+                  v-model="notificationForm.emailNotifications"
+                  active-text="启用邮件通知"
+                  inactive-text="禁用邮件通知"
+                ></el-switch>
+              </div>
+            </el-form-item>
+            <el-form-item label="登录告警">
+              <div class="setting-control-block">
+                <el-switch
+                  v-model="notificationForm.abnormalLoginAlert"
+                  active-text="接收告警通知"
+                  inactive-text="不接收告警通知"
+                ></el-switch>
+                <div class="setting-hint">当检测到新设备或异地登录时，可通过邮件和站内通知提醒您。关闭后将不再发送此类告警。</div>
+              </div>
+            </el-form-item>
+            <el-form-item label="通知类型">
+              <el-checkbox-group v-model="notificationForm.notificationTypes" class="notification-type-grid">
+                <el-checkbox v-for="item in notificationTypeOptions" :key="item.value" :label="item.value">{{ item.label }}</el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving">
+                保存设置
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </section>
+        <section v-else class="setting-content setting-section" data-setting-section="preferences">
           <div class="preference-settings">
-            <h4>界面设置</h4>
             <el-form label-width="120px">
               <el-form-item label="主题模式">
                 <el-radio-group v-model="preferenceForm.theme">
@@ -190,197 +171,33 @@
               保存设置
             </el-button>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    <div class="settings-mobile">
-      <el-card class="mobile-tabs-card">
-        <el-tabs v-model="activeSetting" class="mobile-settings-tabs">
-          <el-tab-pane label="个人资料" name="profile">
-            <template #label>
-              <span class="tab-label"><el-icon><User /></el-icon>个人资料</span>
-            </template>
-          </el-tab-pane>
-          <el-tab-pane label="安全设置" name="security">
-            <template #label>
-              <span class="tab-label"><el-icon><Lock /></el-icon>安全设置</span>
-            </template>
-          </el-tab-pane>
-          <el-tab-pane label="通知设置" name="notifications">
-            <template #label>
-              <span class="tab-label"><el-icon><Bell /></el-icon>通知设置</span>
-            </template>
-          </el-tab-pane>
-          <el-tab-pane label="偏好设置" name="preferences">
-            <template #label>
-              <span class="tab-label"><el-icon><Star /></el-icon>偏好设置</span>
-            </template>
-          </el-tab-pane>
-        </el-tabs>
-      </el-card>
-      <div class="mobile-settings-content">
-        <el-card v-if="activeSetting === 'profile'" class="setting-content mobile-setting-card">
-          <template #header>
-            <div class="card-header">
-              <el-icon><User /></el-icon>
-              个人资料
-            </div>
-          </template>
-          <el-form :model="profileForm" :rules="profileRules" ref="profileFormRef" class="mobile-form">
-            <el-form-item label="用户名" prop="username">
-              <el-input v-model="profileForm.username" placeholder="请输入用户名"></el-input>
-            </el-form-item>
-            <el-form-item label="邮箱" prop="email">
-              <el-input v-model="profileForm.email" placeholder="请输入邮箱" disabled>
-                <template #append>
-                  <el-button @click="showEmailChangeDialog" size="small">修改</el-button>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="昵称" prop="nickname">
-              <el-input v-model="profileForm.nickname" placeholder="请输入昵称"></el-input>
-            </el-form-item>
-            <el-form-item label="头像">
-              <el-upload
-                class="avatar-uploader"
-                action="#"
-                :show-file-list="false"
-                :before-upload="beforeAvatarUpload"
-              >
-                <img v-if="profileForm.avatar" :src="profileForm.avatar" class="avatar" />
-                <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
-              </el-upload>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="saveProfile" :loading="profileSaving" style="width: 100%">
-                保存修改
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-card>
-        <el-card v-if="activeSetting === 'security'" class="setting-content mobile-setting-card">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Lock /></el-icon>
-              安全设置
-            </div>
-          </template>
-          <el-form :model="securityForm" :rules="securityRules" ref="securityFormRef" class="mobile-form">
-            <el-form-item label="当前密码" prop="currentPassword">
-              <el-input
-                v-model="securityForm.currentPassword"
-                type="password"
-                placeholder="请输入当前密码"
-                show-password
-                autocomplete="current-password"
-              ></el-input>
-            </el-form-item>
-            <el-form-item label="新密码" prop="newPassword">
-              <el-input
-                v-model="securityForm.newPassword"
-                type="password"
-                :placeholder="`请输入新密码（至少 ${minPasswordLength} 位）`"
-                show-password
-                autocomplete="new-password"
-              ></el-input>
-              <div class="password-requirement">{{ passwordRequirementText }}</div>
-            </el-form-item>
-            <el-form-item label="确认密码" prop="confirmPassword">
-              <el-input
-                v-model="securityForm.confirmPassword"
-                type="password"
-                placeholder="请再次输入新密码"
-                show-password
-                autocomplete="new-password"
-              ></el-input>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="changePassword" :loading="passwordChanging" style="width: 100%">
-                修改密码
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-card>
-        <el-card v-if="activeSetting === 'notifications'" class="setting-content mobile-setting-card">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Bell /></el-icon>
-              通知设置
-            </div>
-          </template>
-          <div class="notification-settings">
-            <h4>邮件通知</h4>
-            <el-switch
-              v-model="notificationForm.emailNotifications"
-              active-text="启用邮件通知"
-              inactive-text="禁用邮件通知"
-            ></el-switch>
-            <el-divider></el-divider>
-            <h4>异常登录/设备告警</h4>
-            <p class="setting-hint">当检测到新设备或异地登录时，可通过邮件和站内通知提醒您。关闭后将不再发送此类告警。</p>
-            <el-switch
-              v-model="notificationForm.abnormalLoginAlert"
-              active-text="接收告警通知"
-              inactive-text="不接收告警通知"
-            ></el-switch>
-            <el-divider></el-divider>
-            <h4>通知类型</h4>
-            <el-checkbox-group v-model="notificationForm.notificationTypes" class="mobile-checkbox-group">
-              <el-checkbox v-for="item in notificationTypeOptions" :key="item.value" :label="item.value">{{ item.label }}</el-checkbox>
-            </el-checkbox-group>
-            <el-divider></el-divider>
-            <el-button type="primary" @click="saveNotificationSettings" :loading="notificationSaving" style="width: 100%">
-              保存设置
-            </el-button>
+        </section>
+        </div>
+      </div>
+      <div class="section-stack settings-side">
+        <div class="settings-summary-card">
+          <div class="settings-summary-avatar">
+            {{ (profileForm.nickname || profileForm.username || '用户').slice(0, 2).toUpperCase() }}
           </div>
-        </el-card>
-        <el-card v-if="activeSetting === 'preferences'" class="setting-content mobile-setting-card">
-          <template #header>
-            <div class="card-header">
-              <el-icon><Star /></el-icon>
-              偏好设置
-            </div>
-          </template>
-          <div class="preference-settings">
-            <h4>界面设置</h4>
-            <el-form class="mobile-form">
-              <el-form-item label="主题模式">
-                <el-radio-group v-model="preferenceForm.theme" class="mobile-radio-group">
-                  <el-radio label="light">浅色主题</el-radio>
-                  <el-radio label="dark">深色主题</el-radio>
-                  <el-radio label="blue">蓝色主题</el-radio>
-                  <el-radio label="green">绿色主题</el-radio>
-                  <el-radio label="purple">紫色主题</el-radio>
-                  <el-radio label="orange">橙色主题</el-radio>
-                  <el-radio label="red">红色主题</el-radio>
-                  <el-radio label="cyan">青色主题</el-radio>
-                  <el-radio label="luck">Luck主题</el-radio>
-                  <el-radio label="aurora">Aurora主题</el-radio>
-                  <el-radio label="auto">跟随系统</el-radio>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item label="时区">
-                <el-select v-model="preferenceForm.timezone" placeholder="选择时区" style="width: 100%">
-                  <el-option label="UTC+8 (北京时间)" value="Asia/Shanghai"></el-option>
-                  <el-option label="UTC+0 (格林威治时间)" value="UTC"></el-option>
-                </el-select>
-              </el-form-item>
-            </el-form>
-            <el-divider></el-divider>
-            <el-button type="primary" @click="savePreferenceSettings" :loading="preferenceSaving" style="width: 100%">
-              保存设置
-            </el-button>
-          </div>
-        </el-card>
+          <div class="settings-summary-title">{{ profileForm.nickname || profileForm.username || '未设置昵称' }}</div>
+          <div class="settings-summary-sub">{{ profileForm.email || '未绑定邮箱' }}</div>
+        </div>
       </div>
     </div>
-    <el-dialog
+    <AppDialog
       v-model="emailChangeDialogVisible"
       title="修改邮箱"
-      :width="isMobile ? '90%' : '500px'"
-      :close-on-click-modal="false"
+      width="500px"
+      mobile-width="92%"
+      :loading="emailChanging"
     >
-      <el-form :model="emailChangeForm" :rules="emailChangeRules" ref="emailChangeFormRef" label-width="100px">
+      <el-form
+        :model="emailChangeForm"
+        :rules="emailChangeRules"
+        ref="emailChangeFormRef"
+        label-width="100px"
+        class="email-change-form"
+      >
         <el-form-item label="新邮箱" prop="newEmail">
           <el-input v-model="emailChangeForm.newEmail" placeholder="请输入新邮箱"></el-input>
         </el-form-item>
@@ -395,24 +212,26 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="emailChangeDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmEmailChange" :loading="emailChanging">
-            确认修改
-          </el-button>
-        </span>
+        <FormActionBar
+          :loading="emailChanging"
+          submit-text="确认修改"
+          @cancel="emailChangeDialogVisible = false"
+          @submit="confirmEmailChange"
+        />
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { Bell, Lock, Plus, Setting, Star, User } from '@element-plus/icons-vue'
+import { Bell, Lock, Setting, Star, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { api, userAPI, settingsAPI } from '@/utils/api'
+import { api, authAPI, userAPI, settingsAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import FormActionBar from '@/components/FormActionBar.vue'
+import AppDialog from '@/components/AppDialog.vue'
 const notificationTypeOptions = [
   { value: 'system', label: '系统通知' },
   { value: 'security', label: '安全/密码通知' },
@@ -422,9 +241,15 @@ const notificationTypeOptions = [
   { value: 'marketing', label: '营销通知' }
 ]
 const defaultNotificationTypes = notificationTypeOptions.map(item => item.value)
+const settingNavItems = [
+  { name: 'profile', label: '个人资料', icon: User },
+  { name: 'security', label: '安全设置', icon: Lock },
+  { name: 'notifications', label: '通知设置', icon: Bell },
+  { name: 'preferences', label: '偏好设置', icon: Star }
+]
 export default {
   name: 'UserSettings',
-  components: { Bell, Lock, Plus, Setting, Star, User },
+  components: { Bell, Lock, Setting, Star, User, FormActionBar, AppDialog },
   setup() {
     const authStore = useAuthStore()
     const themeStore = useThemeStore()
@@ -552,6 +377,16 @@ export default {
     const handleSettingSelect = (key) => {
       activeSetting.value = key
     }
+    const currentSettingSaving = computed(() => {
+      if (activeSetting.value === 'profile') return profileSaving.value
+      if (activeSetting.value === 'security') return passwordChanging.value
+      if (activeSetting.value === 'notifications') return notificationSaving.value
+      if (activeSetting.value === 'preferences') return preferenceSaving.value
+      return false
+    })
+    const activeSettingMeta = computed(() => (
+      settingNavItems.find(item => item.name === activeSetting.value) || settingNavItems[0]
+    ))
     const loadPasswordSettings = async () => {
       try {
         const response = await settingsAPI.getPublicSettings()
@@ -824,7 +659,7 @@ export default {
           return
         }
         codeSending.value = true
-        await userAPI.sendVerificationCode({ email: emailChangeForm.newEmail, type: 'email_change' })
+        await authAPI.sendVerificationCode({ email: emailChangeForm.newEmail, type: 'email_change' })
         ElMessage.success('验证码已发送到您的新邮箱')
       } catch (error) {
         const msg = error?.response?.data?.message || error.message || '发送失败'
@@ -837,11 +672,24 @@ export default {
       try {
         await emailChangeFormRef.value.validate()
         emailChanging.value = true
-        ElMessage.success('邮箱修改成功')
-        emailChangeDialogVisible.value = false
-        profileForm.email = emailChangeForm.newEmail
+        const response = await userAPI.updateProfile({
+          username: profileForm.username || '',
+          nickname: profileForm.nickname || '',
+          avatar: profileForm.avatar || '',
+          email: emailChangeForm.newEmail,
+          verification_code: emailChangeForm.verificationCode
+        })
+        if (response.data && response.data.success !== false) {
+          profileForm.email = emailChangeForm.newEmail
+          emailChangeDialogVisible.value = false
+          await loadUserInfo()
+          ElMessage.success(response.data.message || '邮箱修改成功')
+        } else {
+          ElMessage.error(response.data?.message || '邮箱修改失败')
+        }
       } catch (error) {
-        ElMessage.error('邮箱修改失败：' + error.message)
+        const msg = error.response?.data?.message || error.response?.data?.detail || error.message || '邮箱修改失败'
+        ElMessage.error('邮箱修改失败：' + msg)
       } finally {
         emailChanging.value = false
       }
@@ -856,6 +704,15 @@ export default {
         ElMessage.error('上传头像图片大小不能超过 2MB!')
       }
       return isJPG && isLt2M
+    }
+    const saveCurrentSetting = () => {
+      const actions = {
+        profile: saveProfile,
+        security: changePassword,
+        notifications: saveNotificationSettings,
+        preferences: savePreferenceSettings
+      }
+      actions[activeSetting.value]?.()
     }
     onMounted(() => {
       loadPasswordSettings()
@@ -881,6 +738,8 @@ export default {
       securityForm,
       notificationForm,
       notificationTypeOptions,
+      settingNavItems,
+      activeSettingMeta,
       preferenceForm,
       emailChangeForm,
       profileRules,
@@ -888,10 +747,12 @@ export default {
       emailChangeRules,
       passwordRequirementText,
       handleSettingSelect,
+      currentSettingSaving,
       saveProfile,
       changePassword,
       saveNotificationSettings,
       savePreferenceSettings,
+      saveCurrentSetting,
       showEmailChangeDialog,
       sendVerificationCode,
       confirmEmailChange,
@@ -901,41 +762,99 @@ export default {
 }
 </script>
 <style scoped>
-.page-header {
+.user-settings {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+}
+.breadcrumb {
   margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.4;
 }
-
-.settings-desktop {
+.page-header {
+  display: flex;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+}
+.page-header h1 {
+  margin: 0;
+  color: #303133;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.page-header p {
+  margin: 6px 0 0;
+  color: #606266;
+  line-height: 1.5;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.settings-menu {
-  position: sticky;
-  top: 76px;
-
-  :deep(.el-card__header) {
-    padding: 14px 16px;
-  }
+.settings-main-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+  align-items: start;
+  gap: 14px;
 }
 
-.settings-menu-list {
-  border-right: none;
+.settings-tabs-card {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.settings-menu-list :deep(.el-menu-item) {
-  height: 42px;
-  border-radius: 6px;
-  color: #4b5563;
-  font-weight: 500;
+.settings-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
 }
 
-.settings-menu-list :deep(.el-menu-item.is-active) {
-  background: #ecf5ff;
-  color: var(--el-color-primary);
+.settings-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.settings-tabs :deep(.el-tabs__item) {
+  height: 46px;
+  color: #606266;
+  font-weight: 600;
+}
+
+.settings-tabs :deep(.el-tabs__item.is-active) {
+  color: #409eff;
+}
+
+.settings-tab-body {
+  padding: 16px;
 }
 
 .setting-content {
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  background: transparent !important;
+  overflow: visible;
+}
+
+.setting-content :deep(.el-card) {
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .card-header,
@@ -953,15 +872,16 @@ export default {
 }
 
 .setting-content :deep(.el-card__header) {
-  padding: 14px 16px;
+  padding: 0 0 14px;
+  border-bottom: 0;
 }
 
 .setting-content :deep(.el-card__body) {
-  padding: 18px;
+  padding: 0;
 }
 
 .setting-content :deep(.el-form) {
-  max-width: 720px;
+  max-width: none;
 }
 
 .setting-content :deep(.el-form-item__label) {
@@ -971,8 +891,9 @@ export default {
 
 :deep(.el-input__wrapper),
 :deep(.el-textarea__inner) {
+  border: 1px solid #dcdfe6;
   border-radius: 6px;
-  box-shadow: 0 0 0 1px #dcdfe6 inset;
+  box-shadow: none;
 }
 
 .password-requirement {
@@ -983,10 +904,15 @@ export default {
 }
 
 :deep(.el-input__wrapper:hover),
+:deep(.el-textarea__inner:hover) {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.08);
+}
+
 :deep(.el-input__wrapper.is-focus),
-:deep(.el-textarea__inner:hover),
 :deep(.el-textarea__inner:focus) {
-  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
 }
 
 .avatar-uploader {
@@ -1025,11 +951,6 @@ export default {
   object-fit: cover;
 }
 
-.notification-settings,
-.preference-settings {
-  margin-top: 4px;
-}
-
 .notification-settings h4,
 .preference-settings h4 {
   margin: 0 0 12px;
@@ -1039,32 +960,81 @@ export default {
 }
 
 .setting-hint {
-  margin: -4px 0 12px;
+  margin: 8px 0 0;
   color: #606266;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.settings-control-form {
+  max-width: 720px;
+}
+
+.setting-control-block {
+  width: 100%;
+  min-width: 0;
+  padding-top: 1px;
 }
 
 .notification-channel-form {
   max-width: 520px;
 }
 
-.notification-settings :deep(.el-checkbox-group) {
+.notification-settings :deep(.el-checkbox-group),
+.notification-type-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 10px;
+  width: 100%;
 }
 
 .notification-settings :deep(.el-checkbox) {
   margin-right: 0;
+  min-width: 0;
 }
 
 .el-divider {
   margin: 20px 0;
 }
 
-.dialog-footer {
-  text-align: right;
+.full-width-control,
+.mobile-full-width {
+  width: 100%;
+}
+
+.email-change-form {
+  max-width: 100%;
+}
+
+.section-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.dialog-body {
+  padding: 16px;
+}
+
+
+.notice {
+  padding: 12px 14px;
+  border: 1px solid #faecd8;
+  border-radius: 6px;
+  background: #fdf6ec;
+  color: #b88230;
+  line-height: 1.55;
 }
 
 .settings-mobile {
@@ -1072,6 +1042,14 @@ export default {
 }
 
 @media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    padding: 14px;
+  }
+  .actions,
+  .actions .el-button {
+    width: 100%;
+  }
   .settings-desktop {
     display: none;
   }
@@ -1210,12 +1188,307 @@ export default {
 
   .mobile-setting-card :deep(.el-button) {
     width: 100%;
-    min-height: 40px;
+    min-height: 44px;
     margin: 0;
+    touch-action: manipulation;
+  }
+
+  .email-change-form {
+    :deep(.el-form-item) {
+      display: block;
+    }
+
+    :deep(.el-form-item__label) {
+      width: auto !important;
+      justify-content: flex-start;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    :deep(.el-form-item__content) {
+      margin-left: 0 !important;
+    }
+
+    :deep(.el-input-group__append) {
+      padding: 0;
+    }
+
+    :deep(.el-input-group__append .el-button) {
+      min-width: 96px;
+      min-height: 44px;
+      margin: 0;
+      touch-action: manipulation;
+    }
   }
 
   :deep(.el-divider) {
     margin: 16px 0;
+  }
+}
+
+/* Refined user settings layout */
+.settings-main-aside {
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+  align-items: start;
+}
+.settings-tabs-card {
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.settings-tabs-card :deep(.el-tabs__header) {
+  margin: 0;
+  padding: 0 16px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+}
+.settings-tabs-card :deep(.el-tabs__item) {
+  height: 48px;
+  color: #606266;
+  font-weight: 600;
+}
+.settings-tabs-card :deep(.el-tabs__item.is-active) {
+  color: #409eff;
+}
+.settings-tab-body {
+  padding: 0;
+}
+.settings-tab-body .setting-section {
+  padding: 20px;
+  border-bottom: 0;
+}
+.settings-tab-body .subsection-title {
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+  color: #303133;
+  font-size: 16px;
+}
+.settings-tab-body .subsection-title .el-icon {
+  color: #409eff;
+}
+.settings-tab-body :deep(.el-form) {
+  max-width: 720px;
+}
+.settings-tab-body :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+.avatar-uploader {
+  display: inline-block;
+}
+.avatar-uploader .avatar,
+.avatar-fallback-text {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 20px;
+  font-weight: 800;
+  object-fit: cover;
+}
+.settings-summary-card {
+  padding: 18px 16px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  text-align: center;
+}
+.settings-summary-avatar {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 10px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 20px;
+  font-weight: 800;
+}
+.settings-summary-title {
+  color: #303133;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.settings-summary-sub {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.notification-settings h4,
+.preference-settings h4 {
+  margin-top: 0;
+  color: #303133;
+}
+.notification-settings :deep(.el-checkbox-group),
+.preference-settings :deep(.el-radio-group) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.notification-settings :deep(.el-checkbox),
+.preference-settings :deep(.el-radio) {
+  margin-right: 0;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .settings-main-aside {
+    grid-template-columns: 1fr;
+  }
+  .settings-side {
+    order: -1;
+  }
+  .settings-summary-card {
+    display: none;
+  }
+}
+@media (max-width: 768px) {
+  .settings-desktop {
+    display: block;
+  }
+  .settings-mobile {
+    display: none;
+  }
+  .settings-tabs-card :deep(.el-tabs__header) {
+    overflow-x: auto;
+    padding: 0 10px;
+  }
+  .settings-tab-body .setting-section {
+    padding: 16px 12px;
+  }
+  .settings-tab-body :deep(.el-form) {
+    max-width: none;
+  }
+  .settings-tab-body :deep(.el-form-item) {
+    display: block;
+  }
+  .settings-tab-body :deep(.el-form-item__label) {
+    width: 100% !important;
+    justify-content: flex-start;
+    margin-bottom: 8px;
+  }
+  .settings-tab-body :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+  }
+  .notification-settings :deep(.el-checkbox-group),
+  .preference-settings :deep(.el-radio-group) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final single-panel settings navigation */
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  gap: 14px;
+  align-items: start;
+}
+.settings-nav-card,
+.settings-panel-card,
+.settings-side {
+  min-width: 0;
+}
+.settings-nav-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+}
+.settings-nav-button {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #606266;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-nav-button:hover {
+  background: #f5f7fa;
+  border-color: #ebeef5;
+}
+.settings-nav-button.active {
+  background: #ecf5ff;
+  border-color: #c6e2ff;
+  color: #409eff;
+}
+.settings-panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+  background: #f5f7fa;
+}
+.settings-panel-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #303133;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.settings-panel-header h2 .el-icon {
+  color: #409eff;
+}
+.settings-panel-header p {
+  margin: 6px 0 0;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.settings-panel-card .settings-tab-body {
+  padding: 0;
+}
+.settings-panel-card .setting-section {
+  padding: 20px;
+}
+.settings-panel-card .subsection-title {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .settings-workspace {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+  .settings-side {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}
+@media (max-width: 768px) {
+  .settings-workspace {
+    grid-template-columns: 1fr;
+  }
+  .settings-nav-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settings-nav-button {
+    justify-content: center;
+    text-align: center;
+  }
+  .settings-panel-header {
+    padding: 14px 12px;
+  }
+  .settings-panel-card .setting-section {
+    padding: 16px 12px;
   }
 }
 </style>

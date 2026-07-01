@@ -1,11 +1,11 @@
 <template>
-  <div class="empty-state">
+  <div class="empty-state" :data-type="type" role="status" aria-live="polite">
     <div class="empty-icon">
       <el-icon :size="iconSize">
         <component :is="iconComponent" />
       </el-icon>
     </div>
-    <div class="empty-title">{{ title }}</div>
+    <div class="empty-title">{{ defaultTitle }}</div>
     <div v-if="description" class="empty-description">{{ description }}</div>
     <div v-if="showAction" class="empty-action">
       <el-button
@@ -22,7 +22,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, useSlots } from 'vue'
 import { Document, Warning, CircleClose, InfoFilled } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -65,6 +65,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['action'])
+const slots = useSlots()
 
 // 根据类型选择图标
 const iconComponent = computed(() => {
@@ -79,7 +80,7 @@ const iconComponent = computed(() => {
 
 // 是否显示操作区域
 const showAction = computed(() => {
-  return props.actionText || !!emit.action
+  return props.actionText || !!slots.action
 })
 
 // 处理操作按钮点击
@@ -106,41 +107,54 @@ const defaultTitle = computed(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 48px 20px;
   text-align: center;
-  min-height: 300px;
+  min-height: 260px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overscroll-behavior: contain;
 }
 
 .empty-icon {
-  margin-bottom: 20px;
-  color: #c0c4cc;
-}
-
-.empty-icon :deep(.el-icon) {
-  transition: transform 0.3s;
-}
-
-.empty-state:hover .empty-icon :deep(.el-icon) {
-  transform: scale(1.1);
+  margin-bottom: 16px;
+  color: var(--el-text-color-placeholder, #c0c4cc);
+  flex: 0 0 auto;
 }
 
 .empty-title {
   font-size: 16px;
-  font-weight: 500;
-  color: #606266;
+  font-weight: 600;
+  color: var(--el-text-color-regular, #606266);
   margin-bottom: 8px;
+  line-height: 1.4;
+  max-width: min(420px, 100%);
+  overflow-wrap: anywhere;
 }
 
 .empty-description {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary, #909399);
   margin-bottom: 20px;
   max-width: 400px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .empty-action {
   margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+
+  :deep(.el-button) {
+    margin-left: 0;
+    white-space: normal;
+    min-height: 36px;
+    touch-action: manipulation;
+  }
 }
 
 /* 不同类型的颜色 */
@@ -158,8 +172,8 @@ const defaultTitle = computed(() => {
 
 @media (max-width: 768px) {
   .empty-state {
-    padding: 40px 16px;
-    min-height: 240px;
+    padding: 32px 16px;
+    min-height: 180px;
   }
 
   .empty-icon {
@@ -174,5 +188,23 @@ const defaultTitle = computed(() => {
     font-size: 13px;
     margin-bottom: 16px;
   }
+
+  .empty-action {
+    width: 100%;
+  }
+
+  .empty-action :deep(.el-button) {
+    flex: 1;
+    min-height: 44px;
+    min-width: 0;
+  }
 }
+
+@media (max-width: 420px) {
+  .empty-state {
+    padding: 28px 12px;
+    min-height: 160px;
+  }
+}
+
 </style>

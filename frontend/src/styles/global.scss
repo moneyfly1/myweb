@@ -921,19 +921,37 @@ $breakpoints: (
   }
 }
 
-// 全局统一输入框样式：wrapper 负责边框，inner 不再有边框
-.el-input__wrapper {
+// 全局统一输入框样式：所有表单控件必须有清晰边框，避免输入区域不明显。
+.el-input__wrapper,
+.el-select__wrapper,
+.el-date-editor.el-input__wrapper,
+.el-date-editor .el-input__wrapper {
+  min-width: 0;
+  border: 1px solid var(--el-border-color, #dcdfe6) !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
-  border: none !important;
-  border-radius: 4px !important;
+  background: var(--el-fill-color-blank, #fff) !important;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
-.el-input__wrapper:hover {
+.el-input__wrapper:hover,
+.el-select__wrapper:hover,
+.el-date-editor.el-input__wrapper:hover,
+.el-date-editor .el-input__wrapper:hover {
+  border-color: var(--el-border-color-hover, #c0c4cc) !important;
   box-shadow: none !important;
-  border: none !important;
 }
-.el-input__wrapper.is-focus {
-  box-shadow: none !important;
-  border: none !important;
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-select__wrapper.is-focus,
+.el-date-editor.el-input__wrapper.is-focus,
+.el-date-editor .el-input__wrapper.is-focus {
+  border-color: var(--el-color-primary, #409eff) !important;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12) !important;
+}
+.el-input.is-disabled .el-input__wrapper,
+.el-select.is-disabled .el-select__wrapper {
+  border-color: var(--el-disabled-border-color, #e4e7ed) !important;
+  background: var(--el-disabled-bg-color, #f5f7fa) !important;
 }
 .el-input__inner {
   border: none !important;
@@ -941,13 +959,55 @@ $breakpoints: (
   outline: none !important;
   background: transparent !important;
 }
+
+// Element Plus 的 append/prepend 默认会把按钮做成半边圆角。
+// 本后台大量搜索框把 append 当作右侧操作按钮使用，统一改成独立圆角按钮，避免一边方形一边圆角。
+.el-input-group {
+  display: flex !important;
+  align-items: stretch;
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+.el-input-group__prepend,
+.el-input-group__append {
+  display: inline-flex !important;
+  align-items: stretch;
+  flex: 0 0 auto;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.el-input-group__prepend {
+  margin-right: 8px;
+}
+.el-input-group__append {
+  margin-left: 8px;
+}
+.el-input-group__prepend .el-button,
+.el-input-group__append .el-button {
+  height: 100%;
+  min-height: var(--el-component-size, 32px);
+  margin: 0 !important;
+  border-radius: var(--border-radius, 8px) !important;
+  border: 1px solid var(--el-button-border-color, var(--el-border-color, #dcdfe6)) !important;
+  box-shadow: none !important;
+}
+.el-input-group--prepend > .el-input__wrapper,
+.el-input-group--append > .el-input__wrapper,
+.el-input-group--prepend .el-input__wrapper,
+.el-input-group--append .el-input__wrapper {
+  border-radius: 6px !important;
+}
 .el-textarea__inner {
   box-shadow: none !important;
   border: 1px solid var(--el-border-color, #dcdfe6) !important;
-  border-radius: 4px !important;
+  border-radius: 6px !important;
+  background: var(--el-fill-color-blank, #fff) !important;
 }
 .el-textarea__inner:focus {
-  box-shadow: none !important;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12) !important;
   border-color: var(--el-color-primary, #409eff) !important;
 }
 .el-table {
@@ -1149,20 +1209,23 @@ $breakpoints: (
   .mobile-filter-select,
   .mobile-status-select,
   .mobile-date-picker-item {
-    :deep(.el-input__wrapper),
-    :deep(.el-select__wrapper),
     .el-input__wrapper,
     .el-select__wrapper {
+      border: 1px solid var(--el-border-color, #dcdfe6) !important;
+      box-shadow: none !important;
+      background: var(--el-fill-color-blank, #fff) !important;
+    }
+
+    .el-input__inner {
       border: none !important;
       box-shadow: none !important;
       background: transparent !important;
     }
 
-    :deep(.el-input__inner),
-    .el-input__inner {
-      border: none !important;
-      box-shadow: none !important;
-      background: transparent !important;
+    .el-input__wrapper.is-focus,
+    .el-select__wrapper.is-focused {
+      border-color: var(--el-color-primary, #409eff) !important;
+      box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12) !important;
     }
   }
 }

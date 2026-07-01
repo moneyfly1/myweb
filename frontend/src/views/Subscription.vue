@@ -1,5 +1,36 @@
 <template>
   <div class="list-container subscription-container">
+    <div class="breadcrumb">首页 / 订阅管理</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>订阅管理</h1>
+      </div>
+      <div class="actions">
+        <el-button
+          v-if="subscription && subscription.universal_url"
+          type="primary"
+          @click="copyUrl(buildSubscriptionUrl(subscription.universal_url))"
+        >
+          复制默认订阅
+        </el-button>
+        <el-button
+          v-if="subscription && (subscription.subscription_id || subscription.clash_url)"
+          @click="sendSubscriptionToEmail"
+          :loading="sendEmailLoading"
+        >
+          发送到邮箱
+        </el-button>
+        <el-button
+          v-if="subscription && (subscription.subscription_id || subscription.clash_url)"
+          type="danger"
+          plain
+          @click="resetSubscription"
+          :loading="resetLoading"
+        >
+          重置订阅
+        </el-button>
+      </div>
+    </div>
     <!-- 到期预警横幅 -->
     <el-alert
       v-if="subscription && getRemainingDays(subscription) > 0 && getRemainingDays(subscription) <= 7"
@@ -7,22 +38,16 @@
       type="warning"
       show-icon
       :closable="false"
-      style="margin-bottom: 16px;"
+      class="subscription-alert"
     >
       <template #default>
         <router-link to="/packages">
-          <el-button type="warning" size="small" style="margin-top:4px;">立即续费</el-button>
+          <el-button type="warning" size="small" class="alert-action-button">立即续费</el-button>
         </router-link>
       </template>
     </el-alert>
-    <el-card class="subscription-card" v-loading="loading">
-      <template #header>
-        <div class="card-header">
-          <h2>订阅管理</h2>
-          <p>管理您的订阅信息和订阅地址</p>
-        </div>
-      </template>
-      <div class="subscription-status" v-if="subscription">
+    <div class="subscription-page-body" v-loading="loading">
+      <template v-if="subscription">
         <el-alert
           v-if="subscription.has_special_nodes"
           type="success"
@@ -37,33 +62,34 @@
             当前账号已开通专线节点，{{ getSpecialNodeModeText(subscription) }}。
           </template>
         </el-alert>
-        <el-row :gutter="20">
-          <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
-            <div class="status-item">
-              <div class="status-label">账号状态</div>
-              <div class="status-value">
-                <el-tag :type="getStatusType(subscription)">
-                  {{ getStatusText(subscription) }}
-                </el-tag>
+        <div class="stats-row subscription-stats-row">
+          <div class="stat-card">
+            <div class="stat-icon">A</div>
+            <div>
+              <div class="stat-value">
+                {{ getStatusText(subscription) }}
               </div>
+              <div class="stat-label">账号状态</div>
             </div>
-          </el-col>
-          <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
-            <div class="status-item">
-              <div class="status-label">到期时间</div>
-              <div class="status-value">{{ formatDate(subscription.expire_time) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">E</div>
+            <div>
+              <div class="stat-value">{{ formatDate(subscription.expire_time) }}</div>
+              <div class="stat-label">到期时间</div>
             </div>
-          </el-col>
-          <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
-            <div class="status-item">
-              <div class="status-label">到期天数</div>
-              <div class="status-value">{{ getRemainingDays(subscription) }} 天</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">T</div>
+            <div>
+              <div class="stat-value">{{ getRemainingDays(subscription) }} 天</div>
+              <div class="stat-label">到期天数</div>
             </div>
-          </el-col>
-          <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
-            <div class="status-item">
-              <div class="status-label">设备使用</div>
-              <div class="status-value">
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">D</div>
+            <div>
+              <div class="stat-value">
                 <el-tooltip content="在线设备数 / 允许最大设备数" placement="top">
                   <span>{{ subscription.onlineDevices || subscription.current_devices || 0 }}/{{ subscription.device_limit || subscription.maxDevices || 0 }}</span>
                 </el-tooltip>
@@ -71,251 +97,309 @@
                   :percentage="Math.min(100, Math.round(((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) * 100))"
                   :color="((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) >= 0.9 ? '#f56c6c' : ((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) >= 0.7 ? '#e6a23c' : '#67c23a'"
                   :show-text="false"
-                  style="margin-top:4px;"
+                  class="device-progress"
+                />
+              </div>
+              <div class="stat-label">设备使用</div>
+            </div>
+          </div>
+        </div>
+        <el-alert
+          v-if="subscription && isDeviceFull(subscription) && isSubscriptionActive(subscription)"
+          title="设备数量已达上限，无法连接新设备"
+          type="error"
+          show-icon
+          :closable="false"
+          class="subscription-alert"
+        >
+          <template #default>
+            <el-button type="danger" size="small" class="alert-action-button" @click="showUpgradeDrawer = true">
+              立即升级设备数量
+            </el-button>
+          </template>
+        </el-alert>
+        <div class="subscription-main-aside" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
+          <div class="section-stack">
+            <div class="card protocol-card" v-if="availableProtocolOptions.length">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">协议排除</h2>
+                  <div class="card-sub">
+                    {{ selectedExcludedProtocols.length ? `已排除 ${selectedExcludedProtocols.length} 种协议` : '默认遵循后台系统协议过滤' }}
+                  </div>
+                </div>
+                <el-button
+                  text
+                  type="primary"
+                  size="small"
+                  :disabled="!selectedExcludedProtocols.length"
+                  @click="clearExcludedProtocols"
+                >
+                  清空
+                </el-button>
+              </div>
+              <div class="card-body">
+                <el-checkbox-group v-model="selectedExcludedProtocols" class="protocol-checkboxes chip-row">
+                  <el-checkbox-button
+                    v-for="protocol in availableProtocolOptions"
+                    :key="protocol.value"
+                    :label="protocol.value"
+                  >
+                    {{ protocol.label }}
+                  </el-checkbox-button>
+                </el-checkbox-group>
+                <div class="item-meta protocol-meta">
+                  当前{{ selectedExcludedProtocols.length ? `已排除 ${selectedExcludedProtocols.length} 种协议` : '未手动排除协议' }}。用户选择不同协议时，下方所有客户端订阅同步更新。
+                </div>
+              </div>
+            </div>
+            <div class="card subscription-urls-card">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">订阅地址</h2>
+                </div>
+                <el-tag :type="getStatusType(subscription)" size="small">{{ getStatusText(subscription) }}</el-tag>
+              </div>
+              <div class="table-wrapper subscription-desktop-list">
+                <table class="subscription-table">
+                  <thead>
+                    <tr>
+                      <th>客户端</th>
+                      <th>订阅类型</th>
+                      <th>地址</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in primarySubscriptionRows" :key="item.key">
+                      <td>{{ item.client }}</td>
+                      <td><el-tag size="small">{{ item.type }}</el-tag></td>
+                      <td>
+                        <el-input :model-value="buildSubscriptionUrl(item.url)" readonly size="small" />
+                      </td>
+                      <td>
+                        <el-button type="primary" size="small" @click="copyUrl(buildSubscriptionUrl(item.url))">
+                          <el-icon><DocumentCopy /></el-icon>
+                          复制
+                        </el-button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="subscription-mobile-list">
+                <div
+                  v-for="item in primarySubscriptionRows"
+                  :key="item.key"
+                  class="subscription-mobile-item"
+                >
+                  <div class="subscription-mobile-head">
+                    <div>
+                      <div class="subscription-mobile-title">{{ item.client }}</div>
+                      <div class="subscription-mobile-sub">{{ item.type }}</div>
+                    </div>
+                    <el-button type="primary" size="small" @click="copyUrl(buildSubscriptionUrl(item.url))">
+                      <el-icon><DocumentCopy /></el-icon>
+                      复制
+                    </el-button>
+                  </div>
+                  <el-input :model-value="buildSubscriptionUrl(item.url)" readonly size="small" />
+                </div>
+              </div>
+            </div>
+            <div class="card more-clients-card" v-if="moreClientSubscriptionRows.length">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">更多客户端订阅</h2>
+                  <div class="card-sub">共 {{ moreClientSubscriptionRows.length }} 个客户端</div>
+                </div>
+                <el-tag size="small">{{ moreClientSubscriptionRows.length }} 项</el-tag>
+              </div>
+              <div class="table-wrapper subscription-desktop-list">
+                <table class="subscription-table">
+                  <thead>
+                    <tr>
+                      <th>客户端</th>
+                      <th>适用系统</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in moreClientSubscriptionRows" :key="item.key">
+                      <td>{{ item.client }}</td>
+                      <td>{{ item.platform }}</td>
+                      <td>
+                        <el-button type="primary" size="small" @click="copyUrl(buildSubscriptionUrl(item.url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+                        <el-button v-if="item.qr" size="small" @click="scrollToQrCode">二维码</el-button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <el-collapse v-model="activeMoreClientPanels" class="subscription-mobile-collapse">
+                <el-collapse-item name="more-clients">
+                  <template #title>
+                    <span>展开更多客户端</span>
+                  </template>
+                  <div class="subscription-mobile-list">
+                    <div
+                      v-for="item in moreClientSubscriptionRows"
+                      :key="item.key"
+                      class="subscription-mobile-item"
+                    >
+                      <div class="subscription-mobile-head">
+                        <div>
+                          <div class="subscription-mobile-title">{{ item.client }}</div>
+                          <div class="subscription-mobile-sub">{{ item.platform }}</div>
+                        </div>
+                        <div class="subscription-mobile-actions">
+                          <el-button type="primary" size="small" @click="copyUrl(buildSubscriptionUrl(item.url))">
+                            <el-icon><DocumentCopy /></el-icon>
+                            复制
+                          </el-button>
+                          <el-button v-if="item.qr" size="small" @click="scrollToQrCode">二维码</el-button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+          </div>
+          <div class="section-stack">
+            <div class="card qr-card">
+              <div class="card-header">
+                <h2 class="card-title">订阅二维码</h2>
+              </div>
+              <div class="card-body">
+                <div class="qr-codes">
+                  <div class="qr-item">
+                    <canvas ref="subscriptionQrCanvas"></canvas>
+                    <p v-if="subscription.expire_time && subscription.expire_time !== '未设置'">
+                      到期时间：{{ formatDate(subscription.expire_time) }}
+                    </p>
+                    <p v-else>通用订阅</p>
+                  </div>
+                </div>
+                <div class="subscription-side-actions">
+                  <el-button v-if="subscription.universal_url" @click="copyUrl(buildSubscriptionUrl(subscription.universal_url))">
+                    复制链接
+                  </el-button>
+                  <el-button v-if="subscriptionQrReady" @click="downloadSubscriptionQr">
+                    下载二维码
+                  </el-button>
+                </div>
+              </div>
+            </div>
+            <div class="card actions-card">
+              <div class="card-header">
+                <h2 class="card-title">订阅操作</h2>
+              </div>
+              <div class="card-body">
+                <div class="subscription-actions subscription-operation-actions">
+                  <el-button
+                    type="danger"
+                    class="action-btn reset-btn"
+                    @click="resetSubscription"
+                    :loading="resetLoading"
+                  >
+                    重置订阅地址
+                  </el-button>
+                  <el-button
+                    class="action-btn email-btn"
+                    @click="sendSubscriptionToEmail"
+                    :loading="sendEmailLoading"
+                  >
+                    发送到邮箱
+                  </el-button>
+                  <router-link to="/packages">
+                    <el-button
+                      type="success"
+                      class="action-btn renew-btn"
+                    >
+                      立即续费
+                    </el-button>
+                  </router-link>
+                  <el-button
+                    type="warning"
+                    class="action-btn upgrade-btn"
+                    @click="showUpgradeDrawer = true"
+                    v-if="isSubscriptionActive(subscription)"
+                  >
+                    升级设备数量
+                  </el-button>
+                </div>
+                <el-alert
+                  v-if="subscription && !isSubscriptionActive(subscription)"
+                  title="订阅已过期"
+                  type="warning"
+                  :description="`您的订阅已于 ${formatDate(subscription.expire_time)} 过期，请及时续费以继续使用服务。`"
+                  show-icon
+                  :closable="false"
                 />
               </div>
             </div>
-          </el-col>
-        </el-row>
-      </div>
-      <div class="subscription-urls" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
-        <h3>订阅地址</h3>
-        <div class="protocol-exclude-panel" v-if="availableProtocolOptions.length">
-          <div class="protocol-exclude-header">
-            <div>
-              <div class="exclude-title">协议排除</div>
-              <div class="exclude-subtitle">
-                {{ selectedExcludedProtocols.length ? `已排除 ${selectedExcludedProtocols.length} 种协议` : '默认遵循后台系统协议过滤' }}
-              </div>
+          </div>
+        </div>
+        <div class="no-subscription card" v-else>
+          <div class="card-body">
+            <EmptyState
+              title="您还没有可用订阅"
+              description="购买套餐后会生成订阅地址、二维码和各客户端订阅入口。"
+            />
+            <div class="subscription-actions empty-subscription-actions">
+              <router-link to="/packages">
+                <el-button type="primary">购买套餐</el-button>
+              </router-link>
+              <router-link to="/orders">
+                <el-button>查看订单</el-button>
+              </router-link>
             </div>
-            <el-button
-              text
-              type="primary"
-              size="small"
-              :disabled="!selectedExcludedProtocols.length"
-              @click="clearExcludedProtocols"
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="stats-row subscription-stats-row">
+          <div class="stat-card"><div class="stat-icon">A</div><div><div class="stat-value">未激活</div><div class="stat-label">账号状态</div></div></div>
+          <div class="stat-card"><div class="stat-icon">E</div><div><div class="stat-value">未设置</div><div class="stat-label">到期时间</div></div></div>
+          <div class="stat-card"><div class="stat-icon">T</div><div><div class="stat-value">0 天</div><div class="stat-label">到期天数</div></div></div>
+          <div class="stat-card"><div class="stat-icon">D</div><div><div class="stat-value">0/0</div><div class="stat-label">设备使用</div></div></div>
+        </div>
+        <div class="no-subscription card">
+          <div class="card-body">
+            <EmptyState
+              title="您还没有订阅"
+              description="选择套餐后即可生成订阅地址和二维码。"
+              :icon-size="64"
             >
-              清空
-            </el-button>
-          </div>
-          <el-checkbox-group v-model="selectedExcludedProtocols" class="protocol-checkboxes">
-            <el-checkbox-button
-              v-for="protocol in availableProtocolOptions"
-              :key="protocol.value"
-              :label="protocol.value"
-            >
-              {{ protocol.label }}
-            </el-checkbox-button>
-          </el-checkbox-group>
-        </div>
-        <div class="url-list">
-          <div class="url-item">
-            <div class="url-label">通用订阅 (V2Ray/Shadowrocket)：</div>
-            <div class="url-content">
-              <el-input
-                :model-value="buildSubscriptionUrl(subscription.universal_url)"
-                readonly
-                size="large"
-              >
-                <template #append>
-                  <el-button @click="copyUrl(buildSubscriptionUrl(subscription.universal_url))">
-                    <el-icon><DocumentCopy /></el-icon>
-                    复制
+              <template #action>
+                <router-link to="/packages">
+                  <el-button type="primary">
+                    立即订阅
                   </el-button>
-                </template>
-              </el-input>
-            </div>
-          </div>
-          <div class="url-item">
-            <div class="url-label">Clash / Clash Meta：</div>
-            <div class="url-content">
-              <el-input
-                :model-value="buildSubscriptionUrl(subscription.clash_url)"
-                readonly
-                size="large"
-              >
-                <template #append>
-                  <el-button @click="copyUrl(buildSubscriptionUrl(subscription.clash_url))">
-                    <el-icon><DocumentCopy /></el-icon>
-                    复制
-                  </el-button>
-                </template>
-              </el-input>
-            </div>
+                </router-link>
+              </template>
+            </EmptyState>
           </div>
         </div>
-        <!-- 更多客户端订阅 -->
-        <el-collapse v-if="subscription.stash_url || subscription.surge_url || subscription.quantumultx_url || subscription.loon_url || subscription.singbox_url || subscription.shadowrocket_url" class="more-clients-collapse">
-          <el-collapse-item title="更多客户端订阅 ▼" name="more">
-            <div class="url-list more-url-list">
-              <div class="url-item" v-if="subscription.stash_url">
-                <div class="url-label">Stash：</div>
-                <div class="url-content">
-                  <el-input :model-value="buildSubscriptionUrl(subscription.stash_url)" readonly size="default">
-                    <template #append>
-                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.stash_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </div>
-              <div class="url-item" v-if="subscription.surge_url">
-                <div class="url-label">Surge：</div>
-                <div class="url-content">
-                  <el-input :model-value="buildSubscriptionUrl(subscription.surge_url)" readonly size="default">
-                    <template #append>
-                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.surge_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </div>
-              <div class="url-item" v-if="subscription.quantumultx_url">
-                <div class="url-label">Quantumult X：</div>
-                <div class="url-content">
-                  <el-input :model-value="buildSubscriptionUrl(subscription.quantumultx_url)" readonly size="default">
-                    <template #append>
-                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.quantumultx_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </div>
-              <div class="url-item" v-if="subscription.loon_url">
-                <div class="url-label">Loon：</div>
-                <div class="url-content">
-                  <el-input :model-value="buildSubscriptionUrl(subscription.loon_url)" readonly size="default">
-                    <template #append>
-                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.loon_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </div>
-              <div class="url-item" v-if="subscription.singbox_url">
-                <div class="url-label">Sing-Box：</div>
-                <div class="url-content">
-                  <el-input :model-value="buildSubscriptionUrl(subscription.singbox_url)" readonly size="default">
-                    <template #append>
-                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.singbox_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </div>
-              <div class="url-item" v-if="subscription.shadowrocket_url">
-                <div class="url-label">Shadowrocket：</div>
-                <div class="url-content">
-                  <el-input :model-value="buildSubscriptionUrl(subscription.shadowrocket_url)" readonly size="default">
-                    <template #append>
-                      <el-button @click="copyUrl(buildSubscriptionUrl(subscription.shadowrocket_url))"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-                    </template>
-                  </el-input>
-                </div>
-              </div>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-        <div class="qr-code-section">
-          <h4>订阅二维码（Shadowrocket扫码）</h4>
-          <div class="qr-codes">
-            <div class="qr-item">
-              <canvas id="subscription-qrcode"></canvas>
-              <p v-if="subscription.expire_time && subscription.expire_time !== '未设置'">
-                到期时间：{{ formatDate(subscription.expire_time) }}
-              </p>
-              <p v-else>通用订阅</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="no-subscription" v-else>
-        <el-empty description="您还没有订阅">
-          <router-link to="/packages">
-            <el-button type="primary">
-              立即订阅
-            </el-button>
-          </router-link>
-        </el-empty>
-      </div>
-      <!-- 设备满载提示 -->
-      <el-alert
-        v-if="subscription && isDeviceFull(subscription) && isSubscriptionActive(subscription)"
-        title="设备数量已达上限，无法连接新设备"
-        type="error"
-        show-icon
-        :closable="false"
-        style="margin-bottom: 16px;"
-      >
-        <template #default>
-          <el-button type="danger" size="small" style="margin-top:4px;" @click="showUpgradeDrawer = true">
-            立即升级设备数量
-          </el-button>
-        </template>
-      </el-alert>
-      <div class="subscription-actions" v-if="subscription && (subscription.subscription_id || subscription.clash_url)">
-        <el-button
-          type="primary"
-          class="action-btn reset-btn"
-          @click="resetSubscription"
-          :loading="resetLoading"
-        >
-          重置订阅地址
-        </el-button>
-        <el-button
-          type="success"
-          class="action-btn email-btn"
-          @click="sendSubscriptionToEmail"
-          :loading="sendEmailLoading"
-        >
-          发送到邮箱
-        </el-button>
-        <router-link to="/packages">
-          <el-button
-            type="warning"
-            class="action-btn renew-btn"
-          >
-            续费订阅
-          </el-button>
-        </router-link>
-        <el-button
-          type="primary"
-          class="action-btn upgrade-btn"
-          @click="showUpgradeDrawer = true"
-          v-if="isSubscriptionActive(subscription)"
-        >
-          升级设备数量
-        </el-button>
-      </div>
+      </template>
       <UpgradeDevicesDrawer
         v-model="showUpgradeDrawer"
         :subscription="subscription"
         :on-success="handleUpgradeSuccess"
       />
-      <div class="renewal-prompt" v-if="subscription && !isSubscriptionActive(subscription)">
-        <el-alert
-          title="订阅已过期"
-          type="warning"
-          :description="`您的订阅已于 ${formatDate(subscription.expire_time)} 过期，请及时续费以继续使用服务。`"
-          show-icon
-          :closable="false"
-        >
-          <template #default>
-            <div class="renewal-actions">
-              <router-link to="/packages">
-                <el-button type="primary">
-                  立即续费
-                </el-button>
-              </router-link>
-            </div>
-          </template>
-        </el-alert>
-      </div>
-    </el-card>
+    </div>
   </div>
 </template>
 <script>
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { subscriptionAPI, userAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
+import { confirmReset } from '@/utils/confirmAction'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
+import EmptyState from '@/components/EmptyState.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { drawQRCodeToCanvas } from '@/utils/qrcode'
 import dayjs from 'dayjs'
@@ -325,6 +409,7 @@ export default {
   name: 'Subscription',
   components: {
     DocumentCopy,
+    EmptyState,
     UpgradeDevicesDrawer
   },
   setup() {
@@ -335,6 +420,9 @@ export default {
     const sendEmailRequesting = ref(false)
     const showUpgradeDrawer = ref(false)
     const selectedExcludedProtocols = ref([])
+    const activeMoreClientPanels = ref([])
+    const subscriptionQrCanvas = ref(null)
+    const subscriptionQrReady = ref(false)
     const availableProtocolOptions = [
       { label: 'AnyTLS', value: 'anytls' },
       { label: 'VMess', value: 'vmess' },
@@ -346,6 +434,59 @@ export default {
       { label: 'SOCKS', value: 'socks' },
       { label: 'HTTP', value: 'http' }
     ]
+    const primarySubscriptionRows = computed(() => [
+      {
+        key: 'universal',
+        client: '通用订阅',
+        type: 'V2Ray / Shadowrocket',
+        url: subscription.value?.universal_url
+      },
+      {
+        key: 'clash',
+        client: 'Clash / Clash Meta',
+        type: '规则订阅',
+        url: subscription.value?.clash_url
+      }
+    ].filter(item => item.url))
+    const moreClientSubscriptionRows = computed(() => [
+      {
+        key: 'stash',
+        client: 'Stash',
+        platform: 'iOS / macOS',
+        url: subscription.value?.stash_url
+      },
+      {
+        key: 'surge',
+        client: 'Surge',
+        platform: 'iOS / macOS',
+        url: subscription.value?.surge_url
+      },
+      {
+        key: 'quantumultx',
+        client: 'Quantumult X',
+        platform: 'iOS',
+        url: subscription.value?.quantumultx_url
+      },
+      {
+        key: 'loon',
+        client: 'Loon',
+        platform: 'iOS',
+        url: subscription.value?.loon_url
+      },
+      {
+        key: 'singbox',
+        client: 'Sing-Box',
+        platform: '全平台',
+        url: subscription.value?.singbox_url
+      },
+      {
+        key: 'shadowrocket',
+        client: 'Shadowrocket',
+        platform: 'iOS',
+        url: subscription.value?.shadowrocket_url,
+        qr: true
+      }
+    ].filter(item => item.url))
     let refreshPromise = null
     const handleUpgradeSuccess = async () => {
       await refreshSubscription()
@@ -466,6 +607,7 @@ export default {
     const generateQRCodes = async () => {
       if (!subscription.value) return
       try {
+        subscriptionQrReady.value = false
         let qrData = selectedExcludedProtocols.value.length ? '' : subscription.value.qrcode_url
         if (!qrData && subscription.value.universal_url) {
           const baseUrl = window.location.origin
@@ -488,7 +630,7 @@ export default {
           qrData = `sub://${encodedUrl}#${encodeURIComponent(expiryDisplayName)}`
         }
         await nextTick()
-        const qrElement = document.getElementById('subscription-qrcode')
+        const qrElement = subscriptionQrCanvas.value
         if (qrElement && qrData) {
           await drawQRCodeToCanvas(qrElement, qrData, {
             width: 200,
@@ -496,13 +638,17 @@ export default {
             color: { dark: '#000000', light: '#FFFFFF' },
             errorCorrectionLevel: 'M'
           })
+          subscriptionQrReady.value = true
         }
       } catch (error) {
         console.error('生成二维码失败:', error)
       }
     }
     const copyUrl = async (url) => {
-      await copyText(url, '链接已复制到剪贴板')
+      const message = selectedExcludedProtocols.value.length
+        ? `链接已复制，已排除 ${selectedExcludedProtocols.value.join(', ')}`
+        : '链接已复制到剪贴板'
+      await copyText(url, message)
     }
     const buildSubscriptionUrl = (url) => {
       if (!url) return ''
@@ -513,17 +659,24 @@ export default {
     const clearExcludedProtocols = () => {
       selectedExcludedProtocols.value = []
     }
+    const scrollToQrCode = async () => {
+      await nextTick()
+      subscriptionQrCanvas.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    const downloadSubscriptionQr = () => {
+      const canvas = subscriptionQrCanvas.value
+      if (!canvas) return
+      const link = document.createElement('a')
+      link.href = canvas.toDataURL('image/png')
+      link.download = 'subscription-qrcode.png'
+      link.click()
+    }
     const resetSubscription = async () => {
       try {
-        await ElMessageBox.confirm(
-          '重置订阅地址将清空所有设备记录，确定要继续吗？',
-          '确认重置',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await confirmReset('订阅地址', {
+          message: '重置订阅地址后，旧订阅链接会立即失效，已连接设备需要重新复制或扫码订阅。确认继续重置吗？',
+          confirmButtonText: '确认重置'
+        })
         resetLoading.value = true
         const response = await subscriptionAPI.resetSubscription()
         if (response?.data?.success === false) {
@@ -609,10 +762,17 @@ export default {
       sendEmailLoading,
       showUpgradeDrawer,
       selectedExcludedProtocols,
+      activeMoreClientPanels,
+      subscriptionQrCanvas,
+      subscriptionQrReady,
       availableProtocolOptions,
+      primarySubscriptionRows,
+      moreClientSubscriptionRows,
       copyUrl,
       buildSubscriptionUrl,
       clearExcludedProtocols,
+      scrollToQrCode,
+      downloadSubscriptionQr,
       resetSubscription,
       sendSubscriptionToEmail,
       formatDate,
@@ -635,6 +795,209 @@ export default {
 }
 .subscription-card {
   margin-bottom: 20px;
+}
+.subscription-page-body {
+  min-height: 260px;
+}
+.subscription-container > .page-header .actions {
+  min-width: 0;
+}
+.subscription-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.subscription-main-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+  align-items: start;
+  gap: 14px;
+}
+.section-stack {
+  display: grid;
+  gap: 14px;
+}
+.card {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+.card-title {
+  margin: 0;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 700;
+}
+.card-sub {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 13px;
+}
+.card-body {
+  padding: 16px;
+}
+.subscription-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 14px;
+}
+.subscription-table th,
+.subscription-table td {
+  padding: 12px;
+  border-bottom: 1px solid #ebeef5;
+  text-align: left;
+  vertical-align: middle;
+}
+.subscription-table th {
+  background: #f5f7fa;
+  color: #606266;
+  font-weight: 700;
+}
+.subscription-table td:nth-child(3) {
+  min-width: 260px;
+}
+.more-clients-card .subscription-table td:nth-child(3) {
+  min-width: 0;
+}
+.more-clients-card .subscription-table td:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.subscription-mobile-list,
+.subscription-mobile-collapse {
+  display: none;
+}
+.subscription-mobile-item {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+}
+.subscription-mobile-item + .subscription-mobile-item {
+  margin-top: 10px;
+}
+.subscription-mobile-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+.subscription-mobile-title {
+  color: #303133;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.subscription-mobile-sub {
+  margin-top: 3px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.subscription-mobile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.subscription-mobile-item :deep(.el-input) {
+  margin-top: 10px;
+  width: 100%;
+}
+.subscription-mobile-item :deep(.el-input__inner) {
+  font-size: 12px;
+}
+.protocol-meta {
+  margin-top: 12px;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chip.active {
+  border-color: #409eff;
+  background: #ecf5ff;
+  color: #409eff;
+}
+.masked-url {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #909399;
+  letter-spacing: 1px;
+}
+.empty-subscription-notice {
+  margin-top: 14px;
+}
+.subscription-side-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.qr-card .card-body {
+  text-align: center;
+}
+.qr-codes {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.qr-item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  text-align: center;
+}
+.qr-item canvas {
+  display: block;
+  margin: 0 auto;
+}
+.qr-item p {
+  width: 100%;
+  margin: 10px 0 0;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.subscription-alert {
+  margin-bottom: 16px;
+}
+.alert-action-button,
+.device-progress {
+  margin-top: 4px;
 }
 .card-header {
   :is(p) {
@@ -731,7 +1094,6 @@ export default {
     :deep(.el-checkbox-button__inner) {
       border: 1px solid #dcdfe6;
       border-radius: 6px;
-      box-shadow: none;
       padding: 7px 12px;
       line-height: 1;
     }
@@ -797,6 +1159,22 @@ export default {
     .el-icon {
       margin-right: 6px;
     }
+  }
+}
+.subscription-operation-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  .el-button,
+  :deep(.el-button) {
+    width: 100%;
+    margin: 0;
+  }
+  :deep(a),
+  a {
+    display: block;
+    width: 100%;
   }
 }
 .no-subscription {
@@ -929,10 +1307,33 @@ export default {
     width: 100% !important;
     max-width: 100% !important;
   }
+  .subscription-container > .page-header .actions {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .subscription-container > .page-header .actions .el-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px;
+    margin-left: 0 !important;
+    padding: 6px 4px;
+    font-size: 12px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .subscription-container > .page-header .actions .el-button :deep(span) {
+    min-width: 0;
+    max-width: 100%;
+    line-height: 1.25;
+    white-space: normal;
+  }
   .subscription-card {
     border-radius: 8px;
     margin: 0;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid var(--el-border-color-lighter);
     width: 100%;
     box-sizing: border-box;
     :deep(.el-card__header) {
@@ -973,6 +1374,49 @@ export default {
       margin-bottom: 16px;
     }
   }
+  .subscription-desktop-list {
+    display: none !important;
+  }
+  .subscription-mobile-list {
+    display: block;
+  }
+  .subscription-mobile-collapse {
+    display: block;
+    border-top: 0;
+
+    :deep(.el-collapse-item__header) {
+      height: auto;
+      min-height: 44px;
+      padding: 0 12px;
+      color: #303133;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    :deep(.el-collapse-item__wrap) {
+      border-bottom: 0;
+    }
+
+    :deep(.el-collapse-item__content) {
+      padding: 12px;
+    }
+  }
+  .more-clients-card > .subscription-mobile-collapse {
+    margin-top: 0;
+  }
+  .subscription-mobile-head {
+    grid-template-columns: 1fr;
+  }
+  .subscription-mobile-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+
+    .el-button {
+      width: 100%;
+      margin-left: 0;
+    }
+  }
   .url-item {
     flex-direction: column;
     align-items: flex-start;
@@ -1008,7 +1452,8 @@ export default {
     }
   }
   .subscription-actions {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     .action-btn {
       width: 100%;
@@ -1016,11 +1461,25 @@ export default {
       min-width: auto;
     }
   }
+  .subscription-operation-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    .action-btn {
+      min-height: 40px;
+      padding: 10px 8px;
+      font-size: 0.875rem;
+    }
+    :deep(a),
+    a {
+      min-width: 0;
+    }
+  }
   .payment-qr-dialog {
     :deep(.el-dialog) {
-      margin: 5vh auto !important;
-      border-radius: 12px;
-      max-width: 95% !important;
+      width: 92% !important;
+      margin: 4vh auto !important;
+      border-radius: 8px;
+      max-width: 420px !important;
     }
     :deep(.el-dialog__body) {
       padding: 20px 15px;
@@ -1038,11 +1497,11 @@ export default {
       padding: 0; /* 移除容器内边距 */
       gap: 12px;
       .payment-btn {
-        width: 100%; /* 强制占满宽度 */
-        height: 46px; /* 统一高度，更易点击 */
+        width: 100%;
+        min-height: 46px;
         font-size: 16px;
-        margin: 0 !important; /* 强制移除 Element Plus 默认的 margin-left */
-        border-radius: 8px; /* 统一圆角 */
+        margin: 0 !important;
+        border-radius: 8px;
       }
       .alipay-btn {
         order: 1;
