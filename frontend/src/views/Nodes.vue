@@ -1,30 +1,32 @@
 <template>
   <div class="list-container nodes-container">
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-number">{{ nodeStats.total }}</div>
-        <div class="stat-label">总节点数</div>
+    <div class="breadcrumb">首页 / 节点列表</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>节点列表</h1>
       </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ nodeStats.online }}</div>
-        <div class="stat-label">在线节点</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ nodeStats.regions }}</div>
-        <div class="stat-label">地区数量</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ nodeStats.types }}</div>
-        <div class="stat-label">节点类型</div>
+      <div class="actions">
+        <el-button @click="refreshNodes" :loading="loading">
+          刷新
+        </el-button>
       </div>
     </div>
-    <el-card class="list-card">
-      <template #header>
-        <div class="card-header">
-          <i class="el-icon-connection"></i>
-          节点列表
-          <div class="header-actions list-filter-form">
-            <el-select v-model="filterRegion" placeholder="选择地区" clearable>
+
+    <div class="card list-filter-card nodes-filter-card">
+      <div class="card-body nodes-filter-body">
+        <el-form :inline="true" class="nodes-filter-form list-filter-form">
+          <el-form-item label="搜索">
+            <el-input
+              v-model="filterKeyword"
+              placeholder="节点名称、地区、类型、说明"
+              clearable
+              class="nodes-keyword-input"
+              @keyup.enter="applyFilters"
+              @clear="applyFilters"
+            />
+          </el-form-item>
+          <el-form-item label="地区筛选">
+            <el-select v-model="filterRegion" placeholder="全部地区" clearable class="nodes-filter-select">
               <el-option
                 v-for="region in regions"
                 :key="region"
@@ -32,7 +34,9 @@
                 :value="region"
               />
             </el-select>
-            <el-select v-model="filterType" placeholder="选择类型" clearable>
+          </el-form-item>
+          <el-form-item label="类型筛选">
+            <el-select v-model="filterType" placeholder="全部类型" clearable class="nodes-filter-select">
               <el-option
                 v-for="type in nodeTypes"
                 :key="type"
@@ -40,220 +44,176 @@
                 :value="type"
               />
             </el-select>
-            <el-select v-model="filterSource" placeholder="选择来源" clearable>
-              <el-option label="手动添加" value="manual" />
+          </el-form-item>
+          <el-form-item label="来源筛选">
+            <el-select v-model="filterSource" placeholder="全部来源" clearable class="nodes-filter-select">
+              <el-option label="后台配置" value="manual" />
               <el-option label="自动采集" value="collect" />
             </el-select>
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="refreshNodes"
-              :loading="loading"
-            >
-              <i class="el-icon-refresh"></i>
-              刷新
-            </el-button>
-          </div>
-        </div>
-      </template>
-      <div class="table-wrapper">
-        <el-table 
-          ref="nodeTableRef"
-          :data="paginatedNodes" 
-          v-loading="loading"
-          style="width: 100%"
-          class="desktop-table"
-          border
-          stripe
-          @header-dragend="handleNodeColumnResize"
-        >
-          <el-table-column prop="name" label="节点名称" :min-width="columnWidths.name" resizable>
-            <template #default="{ row }">
-              <div class="node-name">
-                <i :class="getNodeIcon(row.type)"></i>
-                <span>{{ row.name }}</span>
-                <el-tag 
-                  v-if="row.is_recommended" 
-                  type="success" 
-                  size="small"
-                >
-                  推荐
-                </el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="region" label="地区" :width="columnWidths.region" resizable>
-            <template #default="{ row }">
-              <el-tag :type="getRegionColor(row.region)">
-                {{ row.region || '未知' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="type" label="类型" :width="columnWidths.type" resizable>
-            <template #default="{ row }">
-              <el-tag :type="getTypeColor(row.type)">
-                {{ row.type || '未知' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="来源" :width="columnWidths.source" resizable>
-            <template #default="{ row }">
-              <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">
-                {{ row.is_manual ? '手动' : '采集' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" :width="columnWidths.status" resizable>
-            <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)" size="small">
-                {{ getStatusText(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="pagination-wrapper" v-if="filteredNodes.length > 0">
-          <el-pagination
-            v-model:current-page="pagination.page"
-            v-model:page-size="pagination.size"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="filteredNodes.length"
-            :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
-            @size-change="handleSizeChange"
-            @current-change="handlePageChange"
-          />
-        </div>
-      </div>
-      <el-empty 
-        v-if="!loading && filteredNodes.length === 0" 
-        description="暂无节点信息"
-      >
-        <el-button type="primary" @click="refreshNodes">
-          刷新节点列表
-        </el-button>
-      </el-empty>
-    </el-card>
-    <div class="mobile-card-list" v-if="paginatedNodes.length > 0">
-      <div 
-        v-for="node in paginatedNodes" 
-        :key="node.id"
-        class="mobile-node-card"
-      >
-        <div class="card-row">
-          <span class="label">节点名称</span>
-          <span class="value">
-            <i :class="getNodeIcon(node.type)"></i>
-            {{ node.name }}
-            <el-tag 
-              v-if="node.is_recommended" 
-              type="success" 
-              size="small"
-              style="margin-left: 8px;"
-            >
-              推荐
-            </el-tag>
-          </span>
-        </div>
-        <div class="card-row">
-          <span class="label">地区</span>
-          <span class="value">
-            <el-tag :type="getRegionColor(node.region)" size="small">
-              {{ node.region || '未知' }}
-            </el-tag>
-          </span>
-        </div>
-        <div class="card-row">
-          <span class="label">类型</span>
-          <span class="value">
-            <el-tag :type="getTypeColor(node.type)" size="small">
-              {{ node.type || '未知' }}
-            </el-tag>
-          </span>
-        </div>
-        <div class="card-row">
-          <span class="label">来源</span>
-          <span class="value">
-            <el-tag :type="node.is_manual ? 'warning' : 'success'" size="small" effect="light">
-              {{ node.is_manual ? '手动' : '采集' }}
-            </el-tag>
-          </span>
-        </div>
-        <div class="card-row">
-          <span class="label">状态</span>
-          <span class="value">
-            <el-tag :type="getStatusType(node.status)" size="small">
-              {{ getStatusText(node.status) }}
-            </el-tag>
-          </span>
-        </div>
-      </div>
-      <div class="mobile-pagination" v-if="filteredNodes.length > 0">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.size"
-          :page-sizes="[10, 20, 50]"
-          :total="filteredNodes.length"
-          layout="prev, pager, next"
-          @size-change="handleSizeChange"
-          @current-change="handlePageChange"
-        />
+          </el-form-item>
+          <el-form-item class="nodes-filter-actions">
+            <el-button type="primary" @click="applyFilters">搜索</el-button>
+            <el-button :disabled="!hasActiveFilters" @click="resetFilters">重置</el-button>
+          </el-form-item>
+        </el-form>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+            <el-icon class="header-icon"><Connection /></el-icon>
+          可用节点
+        </h2>
+      </div>
+      <div class="table-wrap">
+        <ResponsiveDataView
+          :data="paginatedNodes"
+          :fields="mobileNodeFields"
+          :loading="loading"
+          title-field="name"
+          empty-title="暂无节点信息"
+          empty-description="可刷新后重试"
+        >
+          <template #table>
+            <div class="table-wrapper">
+              <el-table
+                ref="nodeTableRef"
+                :data="paginatedNodes"
+                v-loading="loading"
+                class="desktop-table nodes-table"
+                border
+                stripe
+                @header-dragend="handleNodeColumnResize"
+              >
+                <template #empty>
+                  <EmptyState
+                    title="暂无节点信息"
+                    description="可刷新后重试"
+                    action-text="刷新节点列表"
+                    :loading="loading"
+                    @action="refreshNodes"
+                  />
+                </template>
+                <el-table-column prop="name" label="节点名称" :min-width="columnWidths.name" resizable>
+                  <template #default="{ row }">
+                    <div class="node-name">
+                      <el-icon class="node-type-icon"><Connection /></el-icon>
+                      <span>{{ row.name }}</span>
+                      <el-tag
+                        v-if="row.is_recommended"
+                        type="success"
+                        size="small"
+                      >
+                        推荐
+                      </el-tag>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="region" label="地区" :width="columnWidths.region" resizable>
+                  <template #default="{ row }">
+                    <el-tag :type="getRegionColor(row.region)">
+                      {{ row.region || '未知' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="type" label="类型" :width="columnWidths.type" resizable>
+                  <template #default="{ row }">
+                    <el-tag :type="getTypeColor(row.type)">
+                      {{ row.type || '未知' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" :width="columnWidths.status" resizable>
+                  <template #default="{ row }">
+                    <el-tag :type="getStatusType(row.status)" size="small">
+                      {{ getStatusText(row.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="说明" min-width="180" resizable>
+                  <template #default="{ row }">
+                    {{ row.description || row.remark || row.info || '适合日常使用' }}
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </template>
+          <template #header="{ item }">
+            <div class="mobile-node-header">
+              <span>
+                <el-icon class="node-type-icon"><Connection /></el-icon>
+                {{ item.name }}
+              </span>
+              <el-tag v-if="item.is_recommended" type="success" size="small">
+                推荐
+              </el-tag>
+            </div>
+          </template>
+          <template #empty>
+            <EmptyState
+              class="mobile-node-empty"
+              title="暂无节点信息"
+              description="可刷新后重试"
+              action-text="刷新节点列表"
+              :loading="loading"
+              @action="refreshNodes"
+            />
+          </template>
+        </ResponsiveDataView>
+      </div>
+    </div>
+
+    <PaginationBar
+      v-if="filteredNodes.length > 0"
+      v-model:current-page="pagination.page"
+      v-model:page-size="pagination.size"
+      :total="filteredNodes.length"
+      :page-sizes="[10, 20, 50, 100]"
+      @size-change="handleSizeChange"
+      @current-change="handlePageChange"
+    />
   </div>
 </template>
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { Connection } from '@element-plus/icons-vue'
 import { nodeAPI } from '@/utils/api'
+import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
+import EmptyState from '@/components/EmptyState.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 const NODES_TABLE_STORAGE_KEY = 'user_nodes_table_settings'
 export default {
   name: 'Nodes',
+  components: {
+    EmptyState,
+    PaginationBar,
+    ResponsiveDataView,
+    Connection
+  },
   setup() {
     const loading = ref(false)
     const nodes = ref([])
     const nodeTableRef = ref(null)
-    const columnWidths = reactive({
+    const NODE_COLUMN_KEYS = ['name', 'region', 'type', 'source', 'status']
+    const { columnWidths, handleColumnResize: handleNodeColumnResize } = usePersistentTableColumns(
+      NODES_TABLE_STORAGE_KEY,
+      {
       name: 200,
       region: 120,
       type: 120,
       source: 100,
       status: 120
-    })
-    const loadNodeTableSettings = () => {
-      try {
-        const saved = localStorage.getItem(NODES_TABLE_STORAGE_KEY)
-        if (saved) {
-          const s = JSON.parse(saved)
-          if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
-        }
-      } catch (e) {
-        console.warn('加载节点表设置失败:', e)
-      }
-    }
-    const saveNodeTableSettings = () => {
-      try {
-        localStorage.setItem(NODES_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
-      } catch (e) {
-        console.warn('保存节点表设置失败:', e)
-      }
-    }
-    const NODE_COLUMN_KEYS = ['name', 'region', 'type', 'source', 'status']
-    let nodeResizeTimer = null
-    const handleNodeColumnResize = () => {
-      if (nodeResizeTimer) clearTimeout(nodeResizeTimer)
-      nodeResizeTimer = setTimeout(() => {
-        if (nodeTableRef.value && nodeTableRef.value.$el) {
-          const cells = nodeTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
-          cells.forEach((cell, index) => {
-            if (NODE_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[NODE_COLUMN_KEYS[index]] = cell.offsetWidth
-          })
-          saveNodeTableSettings()
-        }
-      }, 300)
-    }
+      },
+      NODE_COLUMN_KEYS
+    )
     const filterRegion = ref('')
     const filterType = ref('')
     const filterSource = ref('')
-    const isMobile = ref(window.innerWidth <= 768)
+    const filterKeyword = ref('')
+    const hasActiveFilters = computed(() => Boolean(filterKeyword.value || filterRegion.value || filterType.value || filterSource.value))
     const pagination = reactive({
       page: 1,
       size: 10,
@@ -267,6 +227,18 @@ export default {
     })
     const filteredNodes = computed(() => {
       let result = nodes.value
+      const keyword = String(filterKeyword.value || '').trim().toLowerCase()
+      if (keyword) {
+        result = result.filter(node => [
+          node.name,
+          node.region,
+          node.type,
+          node.status,
+          node.description,
+          node.remark,
+          node.info
+        ].filter(Boolean).join(' ').toLowerCase().includes(keyword))
+      }
       if (filterRegion.value) {
         result = result.filter(node => node.region === filterRegion.value)
       }
@@ -287,6 +259,34 @@ export default {
       const end = start + pagination.size
       return filteredNodes.value.slice(start, end)
     })
+    const mobileNodeFields = computed(() => [
+      {
+        key: 'region',
+        label: '地区',
+        type: 'tag',
+        tagType: value => getRegionColor(value),
+        formatter: value => value || '未知'
+      },
+      {
+        key: 'type',
+        label: '类型',
+        type: 'tag',
+        tagType: value => getTypeColor(value),
+        formatter: value => value || '未知'
+      },
+      {
+        key: 'status',
+        label: '状态',
+        type: 'tag',
+        tagType: value => getStatusType(value),
+        formatter: value => getStatusText(value)
+      },
+      {
+        key: 'description',
+        label: '说明',
+        formatter: (_value, item) => item.description || item.remark || item.info || '适合日常使用'
+      }
+    ])
     watch([filterRegion, filterType, filterSource], () => {
       pagination.page = 1
     })
@@ -299,6 +299,16 @@ export default {
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
+    }
+    const resetFilters = () => {
+      filterKeyword.value = ''
+      filterRegion.value = ''
+      filterType.value = ''
+      filterSource.value = ''
+      pagination.page = 1
+    }
+    const applyFilters = () => {
+      pagination.page = 1
     }
     const regions = computed(() => {
       const regionList = nodes.value
@@ -371,36 +381,6 @@ export default {
     const refreshNodes = () => {
       fetchNodes()
     }
-    const fetchSpeedMonitorStatus = async () => {
-      try {
-      } catch (error) {
-      }
-    }
-    const getNodeIcon = (type) => {
-      const icons = {
-        // 代理协议
-        vmess: 'el-icon-connection',
-        vless: 'el-icon-connection',
-        trojan: 'el-icon-connection',
-        ss: 'el-icon-connection',
-        ssr: 'el-icon-connection',
-        hysteria: 'el-icon-connection',
-        hysteria2: 'el-icon-connection',
-        tuic: 'el-icon-connection',
-        naive: 'el-icon-connection',
-        anytls: 'el-icon-connection',
-        // SOCKS 代理
-        socks: 'el-icon-connection',
-        socks5: 'el-icon-connection',
-        // HTTP 代理
-        http: 'el-icon-connection',
-        https: 'el-icon-connection',
-        // VPN 协议
-        wg: 'el-icon-connection',
-        wireguard: 'el-icon-connection'
-      }
-      return icons[type] || 'el-icon-connection'
-    }
     const getRegionColor = (region) => {
       const colors = {
         '香港': 'success',
@@ -456,45 +436,34 @@ export default {
       }
       return statusMap[status?.toLowerCase()] || status || '未知'
     }
-    const handleResize = () => {
-      if (typeof window !== 'undefined') {
-        isMobile.value = window.innerWidth <= 768
-      }
-    }
     onMounted(() => {
-      loadNodeTableSettings()
       fetchNodes()
-      if (typeof window !== 'undefined') {
-        window.addEventListener('resize', handleResize)
-      }
-    })
-    onUnmounted(() => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', handleResize)
-      }
     })
     return {
       loading,
       nodes,
+      filterKeyword,
       filterRegion,
       filterType,
       filterSource,
+      hasActiveFilters,
       nodeStats,
       filteredNodes,
       paginatedNodes,
+      mobileNodeFields,
       pagination,
       regions,
       nodeTypes,
       fetchNodes,
       refreshNodes,
+      resetFilters,
+      applyFilters,
       handleSizeChange,
       handlePageChange,
-      getNodeIcon,
       getRegionColor,
       getTypeColor,
       getStatusType,
       getStatusText,
-      isMobile,
       nodeTableRef,
       columnWidths,
       handleNodeColumnResize
@@ -509,28 +478,15 @@ export default {
   margin: 0;
   width: 100%;
 }
-.page-header {
-  margin-bottom: 2rem;
-  text-align: left;
-}
-.page-header h1 {
-  color: #1677ff;
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
-}
-.page-header :is(p) {
-  color: #666;
-  font-size: 1rem;
-}
 .stats-card {
   margin-bottom: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
 }
 .speed-status-card {
   margin-bottom: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
 }
 .speed-status-content {
   display: grid;
@@ -565,53 +521,130 @@ export default {
 .stat-item {
   text-align: center;
 }
-.stat-number {
-  font-size: 2.5rem;
-  font-weight: bold;
-  color: #1677ff;
-  margin-bottom: 0.5rem;
-}
 .stat-label {
   color: #666;
   font-size: 0.9rem;
 }
 .nodes-card {
-  margin-bottom: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  margin-bottom: 14px;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+}
+.nodes-filter-card {
+  margin-bottom: 14px;
+}
+.nodes-filter-body {
+  padding: 16px;
+}
+.nodes-filter-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(150px, 0.8fr)) minmax(150px, max-content);
+  align-items: end;
+  gap: 12px;
+  width: 100%;
+
+  :deep(.el-form-item) {
+    margin: 0;
+    min-width: 0;
+  }
+
+  :deep(.el-form-item__label) {
+    color: #606266;
+    font-weight: 600;
+  }
+
+  :deep(.el-form-item__content) {
+    width: 100%;
+    min-width: 0;
+  }
+}
+.nodes-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+.nodes-keyword-input {
+  width: 100%;
+  min-width: 0;
+}
+.nodes-filter-actions {
+  justify-self: end;
+
+  :deep(.el-form-item__content) {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+}
+@media (max-width: 1100px) {
+  .nodes-filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nodes-filter-actions {
+    justify-self: start;
+  }
+}
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  text-align: left;
+}
+.stat-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-weight: 900;
+}
+.stat-value {
+  color: #409eff;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.list-card {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
 }
 .node-name {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-.node-name :is(i) {
-  font-size: 1.2rem;
+.header-icon,
+.node-type-icon {
+  flex-shrink: 0;
   color: #1677ff;
 }
-.latency-cell {
-  font-weight: 500;
+.header-icon {
+  margin-right: 6px;
 }
-.latency-excellent {
-  color: #52c41a;
+.nodes-table {
+  width: 100%;
 }
-.latency-good {
-  color: #1890ff;
+.recommended-tag {
+  margin-left: 8px;
 }
-.latency-medium {
-  color: #faad14;
-}
-.latency-poor {
-  color: #ff4d4f;
+.node-type-icon {
+  font-size: 1.2rem;
 }
 .last-test-time {
   color: #666;
   font-size: 0.875rem;
-}
-.speed-text {
-  font-family: 'Courier New', monospace;
-  color: #1677ff;
-  font-weight: 500;
 }
 .node-detail {
   padding: 1rem 0;
@@ -636,27 +669,55 @@ export default {
 }
 .table-wrapper {
   display: block;
-  @media (max-width: 768px) {
-    display: none;
-  }
+  min-width: 0;
 }
-.mobile-node-card {
-  .card-row {
+.mobile-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  span {
+    display: inline-flex;
     align-items: center;
-    .value {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
-      flex-wrap: wrap;
-      :is(i) {
-        font-size: 16px;
-        color: #409eff;
-      }
+    gap: 8px;
+    min-width: 0;
+    word-break: break-word;
+    .node-type-icon {
+      color: #409eff;
+      font-size: 16px;
     }
   }
 }
+.mobile-node-empty {
+  min-height: 180px;
+  padding: 24px 16px;
+}
 @media (max-width: 768px) {
   .nodes-container { padding: 10px; }
+  .nodes-filter-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .nodes-filter-actions {
+    justify-self: stretch;
+  }
+  .nodes-filter-select,
+  .nodes-keyword-input,
+  .nodes-filter-actions,
+  .nodes-filter-actions :deep(.el-form-item__content),
+  .nodes-filter-actions :deep(.el-button) {
+    width: 100%;
+  }
+  .stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
-</style> 
+
+@media (max-width: 480px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

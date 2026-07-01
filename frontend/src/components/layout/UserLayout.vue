@@ -3,26 +3,26 @@
     <header class="header">
       <div class="header-left">
         <button class="menu-toggle" @click.stop="toggleSidebar" type="button" aria-label="切换菜单">
-          <i :class="sidebarCollapsed ? 'el-icon-menu' : 'el-icon-close'"></i>
+          <el-icon class="layout-icon"><component :is="sidebarCollapsed ? Menu : Close" /></el-icon>
           <span class="menu-toggle-text">菜单</span>
         </button>
         <router-link to="/dashboard" class="logo">
-          <img src="/vite.svg" alt="Logo" class="logo-img">
-          <span class="logo-text" v-show="!sidebarCollapsed">CBoard 用户中心</span>
+          <span class="logo-mark">C</span>
+          <span class="logo-text">CBoard</span>
         </router-link>
       </div>
       <div class="header-right">
         <el-dropdown @command="handleThemeChange" class="theme-dropdown">
-          <el-button type="text" class="theme-btn">
-            <i class="el-icon-brush"></i>
-            <span class="theme-text" :style="{ color: getCurrentThemeColor() }">{{ getCurrentThemeLabel() }}</span>
+          <el-button class="theme-btn">
+            <el-icon class="layout-icon"><Brush /></el-icon>
+            <span class="theme-text">主题</span>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item 
                 v-for="theme in themes" :key="theme.value" :command="theme.value"
                 :class="{ active: currentTheme === theme.value }">
-                <i class="el-icon-check" v-if="currentTheme === theme.value"></i>
+                <el-icon class="dropdown-icon" v-if="currentTheme === theme.value"><Check /></el-icon>
                 {{ theme.label }}
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -30,23 +30,20 @@
         </el-dropdown>
         <el-dropdown @command="handleUserCommand" class="user-dropdown">
           <div class="user-info">
-            <el-avatar :size="32" :src="userAvatar">{{ userInitials }}</el-avatar>
-            <span class="user-name" v-show="!isMobile">{{ user.username }}</span>
-            <i class="el-icon-arrow-down"></i>
+            <el-avatar :size="28" :src="userAvatar">{{ userInitials }}</el-avatar>
+            <span class="user-name" v-show="!isMobile">{{ displayUsername }}</span>
+            <el-icon class="layout-icon"><ArrowDown /></el-icon>
           </div>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item v-if="hasAdminAccess" command="backToAdmin" divided>
-                <i class="el-icon-back"></i> 返回管理后台
-              </el-dropdown-item>
-              <el-dropdown-item command="profile">
-                <i class="el-icon-user"></i> 个人资料
+                <el-icon class="dropdown-icon"><Back /></el-icon> 返回管理后台
               </el-dropdown-item>
               <el-dropdown-item command="settings">
-                <i class="el-icon-setting"></i> 设置
+                <el-icon class="dropdown-icon"><Setting /></el-icon> 设置
               </el-dropdown-item>
               <el-dropdown-item divided command="logout">
-                <i class="el-icon-switch-button"></i> 退出登录
+                <el-icon class="dropdown-icon"><SwitchButton /></el-icon> 退出登录
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -56,7 +53,9 @@
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="mobile-menu-header" v-if="isMobile">
         <span class="menu-title">菜单</span>
-        <button class="menu-close-btn" @click.stop="toggleSidebar" type="button"><i class="el-icon-close"></i></button>
+        <button class="menu-close-btn" @click.stop="toggleSidebar" type="button" aria-label="关闭菜单">
+          <el-icon class="layout-icon"><Close /></el-icon>
+        </button>
       </div>
       <nav class="sidebar-nav">
         <div v-for="section in menuSections" :key="section.title" class="nav-section">
@@ -65,14 +64,14 @@
             <div v-if="item.isAdminBack"
               class="nav-item admin-back"
               @click="returnToAdmin()">
-              <i :class="item.icon"></i>
+              <el-icon class="nav-icon"><component :is="getIcon(item.icon)" /></el-icon>
               <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
             </div>
             <router-link v-else
               :to="item.path"
               class="nav-item" :class="{ active: isRouteActive(item.path) }"
               @click="handleNavClick">
-              <i :class="item.icon"></i>
+              <el-icon class="nav-icon"><component :is="getIcon(item.icon)" /></el-icon>
               <span class="nav-text" v-show="!sidebarCollapsed || isMobile">{{ item.title }}</span>
               <el-badge
                 v-if="item.badge && item.badge > 0 && (!sidebarCollapsed || isMobile)"
@@ -89,40 +88,41 @@
     <main class="main-content">
       <div class="content-wrapper">
         <div class="mobile-nav-bar" v-if="isMobile">
-          <div class="mobile-nav-header" @click="mobileNavExpanded = !mobileNavExpanded">
+          <button
+            type="button"
+            class="mobile-nav-header"
+            :aria-expanded="mobileNavExpanded"
+            aria-controls="user-mobile-nav-menu"
+            @click="mobileNavExpanded = !mobileNavExpanded"
+          >
             <div class="nav-current-path">
-              <i class="el-icon-location"></i>
+              <el-icon class="layout-icon"><Location /></el-icon>
               <span class="current-title">{{ currentPageTitle }}</span>
             </div>
-            <i class="el-icon-arrow-down nav-expand-icon" :class="{ 'expanded': mobileNavExpanded }"></i>
-          </div>
+            <el-icon class="layout-icon nav-expand-icon" :class="{ 'expanded': mobileNavExpanded }"><ArrowDown /></el-icon>
+          </button>
           <transition name="slide-down">
-            <div class="mobile-nav-menu" v-show="mobileNavExpanded">
+            <div id="user-mobile-nav-menu" class="mobile-nav-menu" v-show="mobileNavExpanded">
               <div v-for="section in menuSections" :key="section.title" class="nav-section-menu">
                 <div class="section-title">{{ section.title }}</div>
                 <template v-for="item in section.items" :key="item.path">
                   <div v-if="item.isAdminBack"
                     class="nav-menu-item admin-back"
                     @click="returnToAdmin()">
-                    <i :class="item.icon"></i>
+                    <el-icon class="nav-icon"><component :is="getIcon(item.icon)" /></el-icon>
                     <span>{{ item.title }}</span>
                   </div>
                   <router-link v-else :to="item.path"
                     class="nav-menu-item" :class="{ 'active': isRouteActive(item.path) }"
                     @click="navigateTo(item.path)">
-                    <i :class="item.icon"></i>
+                    <el-icon class="nav-icon"><component :is="getIcon(item.icon)" /></el-icon>
                     <span>{{ item.title }}</span>
-                    <i class="el-icon-check" v-if="isRouteActive(item.path)"></i>
+                    <el-icon class="active-check-icon" v-if="isRouteActive(item.path)"><Check /></el-icon>
                   </router-link>
                 </template>
               </div>
             </div>
           </transition>
-        </div>
-        <div class="breadcrumb" v-if="showBreadcrumb && !isMobile">
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item v-for="item in breadcrumbItems" :key="item.path" :to="item.path">{{ item.title }}</el-breadcrumb-item>
-          </el-breadcrumb>
         </div>
         <div class="page-content">
           <router-view />
@@ -143,24 +143,55 @@
         <svg viewBox="0 0 512 512" class="tab-icon"><rect x="128" y="16" width="256" height="480" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M176 16h24a8 8 0 018 8h0a16 16 0 0016 16h64a16 16 0 0016-16h0a8 8 0 018-8h24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
         <span class="mobile-tab-label">设备管理</span>
       </router-link>
+      <router-link to="/subscription" class="mobile-tab" :class="{ active: isRouteActive('/subscription') }">
+        <svg viewBox="0 0 512 512" class="tab-icon"><path d="M208 352h-64a96 96 0 010-192h64M304 160h64a96 96 0 010 192h-64M176 256h160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">订阅</span>
+      </router-link>
+      <router-link to="/orders" class="mobile-tab" :class="{ active: isRouteActive('/orders') }">
+        <svg viewBox="0 0 512 512" class="tab-icon"><path d="M160 96h192a48 48 0 0148 48v272l-48-32-48 32-48-32-48 32-48-32-48 32V144a48 48 0 0148-48z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32"/><path d="M192 192h128M192 256h128M192 320h80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="32"/></svg>
+        <span class="mobile-tab-label">订单</span>
+      </router-link>
     </div>
   </div>
 </template>
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import {
+  ArrowDown,
+  Back,
+  Brush,
+  Cellphone,
+  Check,
+  Close,
+  Connection,
+  Document,
+  House,
+  Location,
+  Menu,
+  QuestionFilled,
+  Reading,
+  Setting,
+  ShoppingCart,
+  SwitchButton,
+  Tickets,
+  User
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { secureStorage } from '@/utils/api'
 import { ticketAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { initTextSelection, cleanupTextSelection } from '@/utils/textSelection'
+import '@/styles/user-client-polish.scss'
+import '@/styles/text-selection.css'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const isMobile = useMobile()
-const sidebarCollapsed = ref(true)
+const sidebarCollapsed = ref(false)
 const mobileNavExpanded = ref(false)
 const unreadTicketReplies = ref(0)
 let unreadCheckInterval = null
@@ -170,30 +201,47 @@ const currentTheme = computed(() => themeStore.currentTheme)
 const themes = computed(() => themeStore.availableThemes)
 const userAvatar = computed(() => user.value?.avatar || '')
 const userInitials = computed(() => user.value?.username?.substring(0, 2).toUpperCase() || '')
+const displayUsername = computed(() => user.value?.username || '用户')
 const hasAdminAccess = computed(() => !!(secureStorage.get('admin_token') && secureStorage.get('admin_user')))
-const showBreadcrumb = computed(() => route.meta.showBreadcrumb !== false)
-const breadcrumbItems = computed(() => route.meta.breadcrumb || [])
+const iconMap = {
+  dashboard: House,
+  subscription: Connection,
+  devices: Cellphone,
+  nodes: Location,
+  packages: ShoppingCart,
+  orders: Document,
+  tickets: Tickets,
+  invites: User,
+  knowledge: Reading,
+  help: QuestionFilled,
+  tutorials: Reading,
+  profile: User,
+  loginHistory: Document,
+  settings: Setting,
+  back: Back
+}
+const getIcon = (icon) => iconMap[icon] || Document
 const menuSections = computed(() => {
   const baseSections = [
     { 
       title: '概览', 
       items: [
-        { path: '/dashboard', title: '仪表盘', icon: 'el-icon-s-home' }
+        { path: '/dashboard', title: '仪表盘', icon: 'dashboard' }
       ] 
     },
     { 
       title: '服务管理', 
       items: [
-        { path: '/subscription', title: '订阅管理', icon: 'el-icon-connection' },
-        { path: '/devices', title: '设备管理', icon: 'el-icon-mobile-phone' },
-        { path: '/nodes', title: '节点列表', icon: 'el-icon-location' }
+        { path: '/subscription', title: '订阅管理', icon: 'subscription' },
+        { path: '/devices', title: '设备管理', icon: 'devices' },
+        { path: '/nodes', title: '节点列表', icon: 'nodes' }
       ] 
     },
     { 
       title: '订单服务', 
       items: [
-        { path: '/packages', title: '套餐购买', icon: 'el-icon-shopping-cart-2' },
-        { path: '/orders', title: '订单记录', icon: 'el-icon-document' }
+        { path: '/packages', title: '套餐购买', icon: 'packages' },
+        { path: '/orders', title: '订单记录', icon: 'orders' }
       ] 
     },
     { 
@@ -202,12 +250,15 @@ const menuSections = computed(() => {
         { 
           path: '/tickets', 
           title: '工单中心', 
-          icon: 'el-icon-s-ticket',
+          icon: 'tickets',
           badge: unreadTicketReplies.value > 0 ? unreadTicketReplies.value : null
         },
-        { path: '/invites', title: '我的邀请', icon: 'el-icon-user' },
-        { path: '/knowledge', title: '知识库', icon: 'el-icon-reading' },
-        { path: '/help', title: '帮助中心', icon: 'el-icon-question' }
+        { path: '/invites', title: '我的邀请', icon: 'invites' },
+        { path: '/knowledge', title: '知识库', icon: 'knowledge' },
+        { path: '/help', title: '帮助中心', icon: 'help' },
+        { path: '/tutorials', title: '软件教程', icon: 'tutorials' },
+        { path: '/login-history', title: '登录历史', icon: 'loginHistory' },
+        { path: '/settings', title: '用户设置', icon: 'settings' }
       ] 
     }
   ]
@@ -215,7 +266,7 @@ const menuSections = computed(() => {
     baseSections.push({
       title: '管理功能',
       items: [
-        { path: '#admin', title: '返回管理后台', icon: 'el-icon-back', isAdminBack: true }
+        { path: '#admin', title: '返回管理后台', icon: 'back', isAdminBack: true }
       ]
     })
   }
@@ -249,14 +300,12 @@ const handleNavClick = () => {
 const handleUserCommand = (command) => {
   const actions = {
     backToAdmin: returnToAdmin,
-    profile: () => router.push('/profile'),
     settings: () => router.push('/settings'),
     logout: () => { authStore.logout('user'); router.push('/login') }
   }
   actions[command]?.()
 }
 const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentTheme.value)?.label || '主题'
-const getCurrentThemeColor = () => themes.value.find(t => t.value === currentTheme.value)?.color || '#409EFF'
 const loadUnreadTicketReplies = async () => {
   if (unreadRepliesRequest) return unreadRepliesRequest
   try {
@@ -293,8 +342,8 @@ const checkMobile = () => {
   if (isMobile.value) {
     sidebarCollapsed.value = true
   } else {
-    const saved = localStorage.getItem('userSidebarCollapsed')
-    sidebarCollapsed.value = saved === 'true'
+    sidebarCollapsed.value = false
+    localStorage.setItem('userSidebarCollapsed', 'false')
   }
 }
 watch(isMobile, () => {
@@ -311,6 +360,7 @@ watch(() => route.path, () => {
 })
 onMounted(() => {
   checkMobile()
+  initTextSelection()
   loadUnreadTicketReplies()
   unreadCheckInterval = setInterval(() => {
     loadUnreadTicketReplies()
@@ -319,6 +369,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   window.removeEventListener('ticket-viewed', loadUnreadTicketReplies)
+  cleanupTextSelection()
   if (unreadCheckInterval) {
     clearInterval(unreadCheckInterval)
     unreadCheckInterval = null
@@ -327,45 +378,112 @@ onUnmounted(() => {
 </script>
 <style scoped lang="scss">
 @use '@/styles/global.scss' as *;
+.layout-icon,
+.dropdown-icon,
+.nav-icon,
+.active-check-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dropdown-icon {
+  margin-right: 6px;
+}
+
 .user-layout {
+  --header-height: 60px;
+  --sidebar-width: 200px;
+  --sidebar-collapsed-width: 64px;
+  --content-padding: 20px;
   display: flex;
   height: 100vh;
-  background-color: var(--theme-background);
+  background-color: #f5f7fa;
   overflow-x: clip;
 }
 .header {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: var(--header-height);
-  background: var(--theme-background);
-  border-bottom: 1px solid var(--theme-border);
+  background: #fff;
+  border-bottom: 1px solid #dcdfe6;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   @include respond-to(sm) { height: 50px; padding: 0 12px; }
   .header-left {
     display: flex; align-items: center; gap: 16px;
-    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; }
-    .logo-img { width: 32px; height: 32px; }
-    .logo-text { font-size: 18px; font-weight: 600; color: var(--theme-primary); }
+    .logo {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      text-decoration: none;
+      color: var(--theme-primary, #409eff);
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .logo-text { color: var(--theme-primary, #409eff); }
     .menu-toggle {
-      display: none; border: 1px solid var(--theme-border); background: none; padding: 8px 12px; border-radius: 6px;
-      @include respond-to(sm) { display: flex; align-items: center; gap: 6px; }
+      width: 34px;
+      height: 34px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--theme-border);
+      background: #fff;
+      padding: 0;
+      border-radius: 6px;
+      color: #606266;
+      cursor: pointer;
+      transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+      &:hover {
+        border-color: #c6e2ff;
+        background: #f5f7fa;
+        color: var(--theme-primary, #409eff);
+      }
+      .menu-toggle-text {
+        display: none;
+      }
+      @include respond-to(sm) {
+        display: flex;
+      }
     }
   }
   .header-right {
     display: flex; align-items: center; gap: 16px;
     .theme-dropdown, .user-dropdown {
       .theme-btn, .user-info {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 12px; border-radius: 6px;
-        cursor: pointer; transition: 0.3s;
-        &:hover { background: var(--theme-background); }
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        border: 1px solid #dcdfe6;
+        border-radius: 6px;
+        background: #fff;
+        color: #303133;
+        cursor: pointer;
+        transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+        &:hover { background: #f5f7fa; }
+      }
+      .theme-btn {
+        height: 34px;
+        --el-button-bg-color: #fff;
+        --el-button-border-color: #dcdfe6;
+        --el-button-hover-bg-color: #f5f7fa;
+        --el-button-hover-border-color: #c6e2ff;
+        --el-button-text-color: #303133;
+        --el-button-hover-text-color: var(--theme-primary, #409eff);
+      }
+      .theme-text {
+        color: inherit;
+        font-weight: 500;
       }
       .user-info {
+        height: 34px;
         .user-name { margin: 0 8px; }
       }
     }
@@ -377,9 +495,9 @@ onUnmounted(() => {
   left: 0;
   width: var(--sidebar-width);
   height: calc(100vh - var(--header-height));
-  background: var(--sidebar-bg-color, white);
-  border-right: 1px solid var(--theme-border);
-  transition: all 0.3s ease;
+  background: #fff;
+  border-right: 1px solid #dcdfe6;
+  transition: width 0.2s ease, transform 0.2s ease;
   z-index: 999;
   overflow-y: auto;
   &.collapsed { width: var(--sidebar-collapsed-width); }
@@ -396,25 +514,27 @@ onUnmounted(() => {
     &.collapsed { transform: translateX(-100%); }
     &:not(.collapsed) { 
       transform: translateX(0); 
-      box-shadow: 2px 0 16px rgba(0,0,0,0.15);
+      box-shadow: none;
+      border-right: 1px solid var(--theme-border);
       opacity: 1;
       visibility: visible;
     }
   }
   .nav-section {
-    margin-bottom: 24px;
-    .nav-section-title { padding: 12px 20px 8px; font-size: 12px; font-weight: 600; color: #909399; }
+    margin-bottom: 8px;
+    .nav-section-title { padding: 14px 20px 8px; font-size: 12px; font-weight: 700; color: #909399; }
     .nav-item {
       display: flex; 
       align-items: center; 
-      padding: 12px 20px; 
+      min-height: 42px;
+      padding: 0 20px; 
       color: var(--theme-text); 
       text-decoration: none;
-      transition: 0.3s;
+      transition: background-color 0.16s ease, color 0.16s ease;
       position: relative;
       pointer-events: auto;
       z-index: 1;
-      :is(i) { margin-right: 12px; font-size: 18px; width: 20px; text-align: center; }
+      .nav-icon { margin-right: 12px; font-size: 18px; width: 20px; flex-shrink: 0; }
       .nav-badge {
         position: absolute;
         right: 8px;
@@ -458,8 +578,9 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 40px;
-      min-height: 40px;
+      min-width: 44px;
+      min-height: 44px;
+      touch-action: manipulation;
       -webkit-tap-highlight-color: rgba(0,0,0,0.1);
       &:hover {
         background: var(--sidebar-hover-bg, #f5f7fa);
@@ -481,7 +602,7 @@ onUnmounted(() => {
   margin-left: var(--sidebar-width);
   margin-top: var(--header-height);
   width: calc(100% - var(--sidebar-width));
-  transition: 0.3s;
+  transition: margin-left 0.2s ease, width 0.2s ease;
   .sidebar-collapsed & { 
     margin-left: var(--sidebar-collapsed-width); 
     width: calc(100% - var(--sidebar-collapsed-width));
@@ -493,17 +614,34 @@ onUnmounted(() => {
   }
 }
 .mobile-nav-bar {
-  margin-bottom: 12px; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  .mobile-nav-header { display: flex; justify-content: space-between; padding: 14px 16px; align-items: center; }
+  margin-bottom: 12px; background: #fff; border: 1px solid #dcdfe6; border-radius: 8px;
+  .mobile-nav-header {
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    justify-content: space-between;
+    padding: 14px 16px;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .mobile-nav-header:focus-visible {
+    outline: 2px solid var(--theme-primary, #409eff);
+    outline-offset: -2px;
+  }
   .nav-expand-icon.expanded { transform: rotate(180deg); }
   .mobile-nav-menu { border-top: 1px solid #e4e7ed; max-height: 60vh; overflow-y: auto; }
   .nav-section-menu {
     .section-title { padding: 12px 16px; font-size: 12px; font-weight: 600; color: #909399; }
     .nav-menu-item {
       display: flex; align-items: center; padding: 14px 16px; gap: 12px;
-      cursor: pointer; transition: 0.2s; text-decoration: none; color: inherit;
-      :is(i:first-child) { font-size: 18px; width: 20px; text-align: center; }
-      :is(i:last-child) { margin-left: auto; color: var(--theme-primary); }
+      cursor: pointer; transition: background-color 0.16s ease, color 0.16s ease; text-decoration: none; color: inherit;
+      .nav-icon { font-size: 18px; width: 20px; flex-shrink: 0; }
+      .active-check-icon { margin-left: auto; color: var(--theme-primary); }
       &:hover { background: #f5f7fa; }
       &.active { background: #ecf5ff; color: var(--theme-primary); }
       &.admin-back { background: #fff7e6; color: #faad14; }
@@ -523,7 +661,6 @@ onUnmounted(() => {
   background: var(--theme-background, #fff);
   border-top: 1px solid var(--theme-border, #e8e8e8);
   padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
 }
 .mobile-tab {
   display: flex;
@@ -544,11 +681,12 @@ onUnmounted(() => {
 .mobile-overlay {
   position: fixed; 
   inset: 50px 0 0 0; 
-  background: rgba(0,0,0,0.5); 
+  background: rgba(15, 23, 42, 0.48); 
   z-index: 1001; 
-  backdrop-filter: blur(2px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   pointer-events: auto;
 }
-.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s ease; }
+.slide-down-enter-active, .slide-down-leave-active { transition: opacity 0.2s ease, max-height 0.2s ease, transform 0.2s ease; }
 .slide-down-enter-from, .slide-down-leave-to { opacity: 0; max-height: 0; transform: translateY(-10px); }
 </style>

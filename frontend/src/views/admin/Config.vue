@@ -300,6 +300,32 @@ export default {
 .config-admin-container {
   padding: 20px;
 }
+.admin-config > :deep(.el-card) {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.admin-config > :deep(.el-card > .el-card__header) {
+  background: var(--el-fill-color-extra-light);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.admin-config :deep(.el-tabs) {
+  border-radius: 8px;
+  box-shadow: none;
+  overflow: hidden;
+}
+.admin-config :deep(.el-tabs__header) {
+  background: var(--el-fill-color-extra-light);
+}
+.admin-config :deep(.el-input__wrapper),
+.admin-config :deep(.el-select .el-input__wrapper),
+.admin-config :deep(.el-input-number .el-input__wrapper) {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+.admin-config :deep(.el-button) {
+  touch-action: manipulation;
+}
 .config-section {
   margin-bottom: 30px;
 }
@@ -390,6 +416,22 @@ export default {
     width: 100%;
     box-sizing: border-box;
   }
+  .admin-config {
+    padding: 10px;
+  }
+  .admin-config :deep(.el-tabs__content) {
+    padding: 12px !important;
+  }
+  .admin-config :deep(.el-tabs__item) {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .admin-config :deep(.el-input__wrapper),
+  .admin-config :deep(.el-select .el-input__wrapper),
+  .admin-config :deep(.el-input-number .el-input__wrapper) {
+    min-height: 44px;
+  }
   .card-header {
     flex-direction: column;
     gap: 10px;
@@ -445,6 +487,7 @@ export default {
         .el-button:not(.email-action-btn) {
           width: 100% !important;
           min-width: 100% !important;
+          min-height: 44px;
           box-sizing: border-box;
           margin-bottom: 10px;
           margin-right: 0 !important;
@@ -559,6 +602,7 @@ export default {
       width: 100% !important;
       min-width: 100% !important;
       max-width: 100% !important;
+      min-height: 44px !important;
       display: block !important;
       box-sizing: border-box !important;
       margin: 0 !important;
@@ -613,6 +657,7 @@ export default {
         width: 100% !important;
         min-width: 100% !important;
         max-width: 100% !important;
+        min-height: 44px;
         margin-bottom: 10px;
         margin-right: 0 !important;
         box-sizing: border-box;
@@ -628,31 +673,5 @@ export default {
 }
 .payment-form .el-divider:first-child {
   margin-top: 0;
-}
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
 }
 </style> 

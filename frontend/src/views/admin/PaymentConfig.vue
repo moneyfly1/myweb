@@ -15,7 +15,7 @@
                 <el-radio-button label="vertical">纵向</el-radio-button>
               </el-radio-group>
               <template v-if="gridOrientation === 'horizontal'">
-                <el-select v-model="gridColumns" size="small" style="width: 90px; margin-right: 8px;" class="grid-columns-select">
+                <el-select v-model="gridColumns" size="small" class="grid-columns-select">
                   <el-option label="2列" :value="2" />
                   <el-option label="3列" :value="3" />
                   <el-option label="4列" :value="4" />
@@ -85,185 +85,186 @@
           </el-button>
         </div>
       </div>
-      <div class="table-wrapper desktop-only" v-if="viewMode === 'table'">
-        <el-table 
-          ref="tableRef"
-          :data="paymentConfigs" 
-          style="width: 100%" 
-          v-loading="loading" 
-          stripe
-          border
-          :empty-text="paymentConfigs.length === 0 ? '暂无支付配置' : '暂无数据'"
-          @selection-change="handleSelectionChange"
-          @header-dragend="handleColumnResize"
-        >
-          <el-table-column type="selection" :width="columnWidths.selection" resizable />
-          <el-table-column prop="id" label="ID" :width="columnWidths.id" resizable />
-          <el-table-column prop="pay_type" label="支付类型" :width="columnWidths.pay_type" resizable>
-            <template #default="scope">
-              <el-tag :type="getPaymentTypeConfig(scope.row.pay_type).tag">
-                {{ getPaymentTypeConfig(scope.row.pay_type).label }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="app_id" label="应用ID/商户ID" :min-width="columnWidths.app_id" resizable show-overflow-tooltip>
-            <template #default="scope">
-              <span v-if="scope.row.app_id">{{ scope.row.app_id }}</span>
-              <span v-else-if="scope.row.config_json?.yipay_pid">
-                {{ scope.row.config_json.yipay_pid }} ({{ getPaymentTypeConfig(scope.row.pay_type).label }})
-              </span>
-              <span v-else class="text-muted">未配置</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" :width="columnWidths.status" resizable align="center">
-            <template #default="scope">
-              <el-switch
-                v-model="scope.row.status"
-                :active-value="1"
-                :inactive-value="0"
-                @change="(val) => toggleStatus(scope.row, val)"
-              />
-              <span class="status-text">
-                {{ scope.row.status === 1 ? '已启用' : '已禁用' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" :width="columnWidths.created_at" resizable />
-          <el-table-column label="操作" :width="columnWidths.actions" resizable align="center">
-            <template #default="scope">
-              <el-button size="small" type="primary" @click="editConfig(scope.row)">
-                编辑
-              </el-button>
-              <el-button size="small" type="danger" @click="deleteConfig(scope.row)">
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div v-if="viewMode === 'grid' && !isMobile" class="desktop-grid-view" :class="[
-        gridOrientation === 'horizontal' ? 'grid-horizontal' : 'grid-vertical',
-        gridOrientation === 'vertical' ? 'grid-size-' + gridSize : '',
-        'grid-cols-' + gridColumns
-      ]" v-loading="loading">
-        <template v-if="paymentConfigs.length === 0">
-          <el-empty description="暂无支付配置" class="grid-empty" />
-        </template>
-        <template v-else>
-          <div
-            v-for="config in paymentConfigs"
-            :key="config.id"
-            class="grid-config-card"
-            :class="{ 'is-selected': isSelected(config) }"
-          >
-            <div class="gcc-header">
-              <el-checkbox
-                :model-value="isSelected(config)"
-                @change="(val) => handleGridSelect(config, val)"
-                class="gcc-checkbox"
-              />
-              <span class="gcc-title">#{{ config.id }}</span>
-              <el-tag :type="getPaymentTypeConfig(config.pay_type).tag" size="small" effect="dark">
-                {{ getPaymentTypeConfig(config.pay_type).label }}
-              </el-tag>
-            </div>
-            <div class="gcc-body">
-              <div class="gcc-row">
-                <span class="label">应用ID/商户ID</span>
-                <span class="value">
-                  <span v-if="config.app_id">{{ config.app_id }}</span>
-                  <span v-else-if="config.config_json?.yipay_pid">{{ config.config_json.yipay_pid }}</span>
+      <ResponsiveDataView
+        class="payment-config-data-view"
+        :data="paymentConfigs"
+        :fields="mobilePaymentConfigFields"
+        :loading="loading"
+        title-field="id"
+        empty-title="暂无支付配置"
+        empty-description="可添加支付宝、微信、易支付或码支付配置"
+      >
+        <template #table>
+          <div class="table-wrapper desktop-only" v-if="viewMode === 'table'">
+            <el-table
+              ref="tableRef"
+              :data="paymentConfigs"
+              class="payment-config-table"
+              v-loading="loading"
+              stripe
+              border
+              :empty-text="paymentConfigs.length === 0 ? '暂无支付配置' : '暂无数据'"
+              @selection-change="handleSelectionChange"
+              @header-dragend="handleColumnResize"
+            >
+              <el-table-column type="selection" :width="columnWidths.selection" resizable />
+              <el-table-column prop="id" label="ID" :width="columnWidths.id" resizable />
+              <el-table-column prop="pay_type" label="支付类型" :width="columnWidths.pay_type" resizable>
+                <template #default="scope">
+                  <el-tag :type="getPaymentTypeConfig(scope.row.pay_type).tag">
+                    {{ getPaymentTypeConfig(scope.row.pay_type).label }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="app_id" label="应用ID/商户ID" :min-width="columnWidths.app_id" resizable show-overflow-tooltip>
+                <template #default="scope">
+                  <span v-if="scope.row.app_id">{{ scope.row.app_id }}</span>
+                  <span v-else-if="scope.row.config_json?.yipay_pid">
+                    {{ scope.row.config_json.yipay_pid }} ({{ getPaymentTypeConfig(scope.row.pay_type).label }})
+                  </span>
                   <span v-else class="text-muted">未配置</span>
-                </span>
-              </div>
-              <div class="gcc-row">
-                <span class="label">创建时间</span>
-                <span class="value text-xs">{{ config.created_at || '-' }}</span>
-              </div>
-            </div>
-            <div class="gcc-footer">
-              <el-switch
-                v-model="config.status"
-                :active-value="1"
-                :inactive-value="0"
-                @change="(val) => toggleStatus(config, val)"
-                size="small"
-                inline-prompt
-                active-text="启用"
-                inactive-text="禁用"
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" :width="columnWidths.status" resizable align="center">
+                <template #default="scope">
+                  <el-switch
+                    v-model="scope.row.status"
+                    :active-value="1"
+                    :inactive-value="0"
+                    @change="(val) => toggleStatus(scope.row, val)"
+                  />
+                  <span class="status-text">
+                    {{ scope.row.status === 1 ? '已启用' : '已禁用' }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" :width="columnWidths.created_at" resizable />
+              <el-table-column label="操作" :width="columnWidths.actions" resizable align="center">
+                <template #default="scope">
+                  <el-button size="small" type="primary" @click="editConfig(scope.row)">
+                    编辑
+                  </el-button>
+                  <el-button size="small" type="danger" @click="deleteConfig(scope.row)">
+                    删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div v-if="viewMode === 'grid' && !isMobile" class="desktop-grid-view" :class="[
+            gridOrientation === 'horizontal' ? 'grid-horizontal' : 'grid-vertical',
+            gridOrientation === 'vertical' ? 'grid-size-' + gridSize : '',
+            'grid-cols-' + gridColumns
+          ]" v-loading="loading">
+            <template v-if="paymentConfigs.length === 0">
+              <EmptyState
+                class="grid-empty"
+                title="暂无支付配置"
+                description="可添加支付宝、微信、易支付或码支付配置"
+                action-text="添加支付配置"
+                :loading="loading"
+                @action="openAddDialog"
               />
-              <div class="gcc-actions">
-                <el-button size="small" type="primary" @click="editConfig(config)">编辑</el-button>
-                <el-button size="small" type="danger" @click="deleteConfig(config)">删除</el-button>
+            </template>
+            <template v-else>
+              <div
+                v-for="config in paymentConfigs"
+                :key="config.id"
+                class="grid-config-card"
+                :class="{ 'is-selected': isSelected(config) }"
+              >
+                <div class="gcc-header">
+                  <el-checkbox
+                    :model-value="isSelected(config)"
+                    @change="(val) => handleGridSelect(config, val)"
+                    class="gcc-checkbox"
+                  />
+                  <span class="gcc-title">#{{ config.id }}</span>
+                  <el-tag :type="getPaymentTypeConfig(config.pay_type).tag" size="small" effect="dark">
+                    {{ getPaymentTypeConfig(config.pay_type).label }}
+                  </el-tag>
+                </div>
+                <div class="gcc-body">
+                  <div class="gcc-row">
+                    <span class="label">应用ID/商户ID</span>
+                    <span class="value">
+                      <span v-if="config.app_id">{{ config.app_id }}</span>
+                      <span v-else-if="config.config_json?.yipay_pid">{{ config.config_json.yipay_pid }}</span>
+                      <span v-else class="text-muted">未配置</span>
+                    </span>
+                  </div>
+                  <div class="gcc-row">
+                    <span class="label">创建时间</span>
+                    <span class="value text-xs">{{ config.created_at || '-' }}</span>
+                  </div>
+                </div>
+                <div class="gcc-footer">
+                  <el-switch
+                    v-model="config.status"
+                    :active-value="1"
+                    :inactive-value="0"
+                    @change="(val) => toggleStatus(config, val)"
+                    size="small"
+                    inline-prompt
+                    active-text="启用"
+                    inactive-text="禁用"
+                  />
+                  <div class="gcc-actions">
+                    <el-button size="small" type="primary" @click="editConfig(config)">编辑</el-button>
+                    <el-button size="small" type="danger" @click="deleteConfig(config)">删除</el-button>
+                  </div>
+                </div>
               </div>
-            </div>
+            </template>
           </div>
         </template>
-      </div>
-      <div class="mobile-card-list mobile-only" v-if="paymentConfigs.length > 0">
-        <div v-for="config in paymentConfigs" :key="config.id" class="mobile-card">
-          <div class="card-row">
-            <span class="label">ID</span>
-            <span class="value">#{{ config.id }}</span>
+        <template #header="{ item }">
+          <div class="mobile-payment-header">
+            <span>#{{ item.id }}</span>
+            <el-tag :type="getPaymentTypeConfig(item.pay_type).tag" size="small">
+              {{ getPaymentTypeConfig(item.pay_type).label }}
+            </el-tag>
           </div>
-          <div class="card-row">
-            <span class="label">支付类型</span>
-            <span class="value">
-              <el-tag :type="getPaymentTypeConfig(config.pay_type).tag">
-                {{ getPaymentTypeConfig(config.pay_type).label }}
-              </el-tag>
+        </template>
+        <template #field-status="{ item }">
+          <div class="mobile-status-control">
+            <el-switch
+              v-model="item.status"
+              :active-value="1"
+              :inactive-value="0"
+              @change="(val) => toggleStatus(item, val)"
+            />
+            <span class="status-text">
+              {{ item.status === 1 ? '已启用' : '已禁用' }}
             </span>
           </div>
-          <div class="card-row">
-            <span class="label">应用ID</span>
-            <span class="value">
-              <span v-if="config.app_id">{{ config.app_id }}</span>
-              <span v-else-if="config.config_json?.yipay_pid">
-                {{ config.config_json.yipay_pid }}
-              </span>
-              <span v-else class="text-muted">未配置</span>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">状态</span>
-            <span class="value">
-              <el-switch
-                v-model="config.status"
-                :active-value="1"
-                :inactive-value="0"
-                @change="(val) => toggleStatus(config, val)"
-              />
-              <span class="status-text">
-                {{ config.status === 1 ? '已启用' : '已禁用' }}
-              </span>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">创建时间</span>
-            <span class="value">{{ config.created_at || '-' }}</span>
-          </div>
-          <div class="card-actions">
-            <el-button size="small" type="primary" @click="editConfig(config)">
-              <el-icon><Edit /></el-icon> 编辑
-            </el-button>
-            <el-button size="small" type="danger" @click="deleteConfig(config)">
-              <el-icon><Delete /></el-icon> 删除
-            </el-button>
-          </div>
-        </div>
-      </div>
-      <div class="mobile-card-list mobile-only" v-if="paymentConfigs.length === 0 && !loading">
-        <div class="empty-state">
-          <el-empty description="暂无支付配置，请点击右上角【添加】按钮添加" :image-size="80" />
-        </div>
-      </div>
+        </template>
+        <template #empty>
+          <EmptyState
+            title="暂无支付配置"
+            description="可添加支付宝、微信、易支付或码支付配置"
+            action-text="添加支付配置"
+            :loading="loading"
+            @action="openAddDialog"
+          />
+        </template>
+        <template #actions="{ item }">
+          <el-button size="small" type="primary" @click="editConfig(item)">
+            <el-icon><Edit /></el-icon> 编辑
+          </el-button>
+          <el-button size="small" type="danger" @click="deleteConfig(item)">
+            <el-icon><Delete /></el-icon> 删除
+          </el-button>
+        </template>
+      </ResponsiveDataView>
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="showAddDialog"
       :title="editingConfig ? '编辑支付配置' : '添加支付配置'"
-      :size="isMobile ? '92%' : '500px'"
-      direction="rtl"
-      :lock-scroll="false"
+      size="500px"
+      mobile-size="100%"
+      :loading="saving"
+      class="payment-config-drawer"
     >
       <el-form :model="configForm" :label-width="isMobile ? '0' : '120px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="支付类型">
@@ -271,7 +272,7 @@
           <el-select 
             v-model="configForm.pay_type" 
             placeholder="选择支付类型"
-            style="width: 100%"
+            class="full-width-control"
             :teleported="isMobile"
             :popper-class="isMobile ? 'mobile-select-popper' : ''"
           >
@@ -295,7 +296,7 @@
         <template v-if="['alipay', 'wechat'].includes(configForm.pay_type)">
           <el-form-item label="应用ID">
             <template v-if="isMobile"><div class="mobile-label">应用ID</div></template>
-            <el-input v-model="configForm.app_id" placeholder="请输入应用ID" style="width: 100%" />
+            <el-input v-model="configForm.app_id" placeholder="请输入应用ID" class="full-width-control" />
             <div class="form-tip" v-if="configForm.pay_type === 'alipay'">
               <div>请确保已签约“当面付”产品并应用已上线。</div>
               <div>回调地址需同时在支付宝后台的应用网关中配置。</div>
@@ -305,7 +306,7 @@
         <template v-if="configForm.pay_type.startsWith('yipay')">
           <el-form-item label="商户ID">
             <template v-if="isMobile"><div class="mobile-label">商户ID</div></template>
-            <el-input v-model="configForm.app_id" placeholder="请输入易支付商户ID (pid)" style="width: 100%" />
+            <el-input v-model="configForm.app_id" placeholder="请输入易支付商户ID (pid)" class="full-width-control" />
           </el-form-item>
         </template>
         <template v-if="['yipay', 'yipay_alipay', 'yipay_wxpay', 'yipay_qqpay'].includes(configForm.pay_type)">
@@ -316,19 +317,19 @@
                type="password"
                show-password
                placeholder="请输入易支付商户密钥 (key)" 
-               style="width: 100%"
+               class="full-width-control"
              />
            </el-form-item>
         </template>
         <template v-if="configForm.pay_type === 'yipay'">
           <el-form-item label="网关地址">
             <template v-if="isMobile"><div class="mobile-label">网关地址</div></template>
-            <el-input v-model="configForm.yipay_gateway_url" placeholder="请输入易支付网关地址" style="width: 100%" />
+            <el-input v-model="configForm.yipay_gateway_url" placeholder="请输入易支付网关地址" class="full-width-control" />
             <div class="form-tip">填写官网地址，系统自动拼接 API 路径。</div>
           </el-form-item>
           <el-form-item label="签名方式">
             <template v-if="isMobile"><div class="mobile-label">签名方式</div></template>
-            <el-select v-model="configForm.yipay_sign_type" style="width: 100%" :teleported="!isMobile">
+            <el-select v-model="configForm.yipay_sign_type" class="full-width-control" :teleported="!isMobile">
               <el-option label="MD5签名" value="MD5" />
               <el-option label="RSA签名" value="RSA" />
               <el-option label="MD5+RSA签名" value="MD5+RSA" />
@@ -354,12 +355,12 @@
           </el-form-item>
         </template>
         <template v-if="['yipay_alipay', 'yipay_wxpay'].includes(configForm.pay_type)">
-          <el-alert title="建议使用“易支付（统一配置）”以获得更好的兼容性" type="warning" :closable="false" style="margin-bottom: 20px;" />
+          <el-alert title="建议使用“易支付（统一配置）”以获得更好的兼容性" type="warning" :closable="false" class="form-alert" />
           <el-form-item label="商户ID">
             <el-input v-model="configForm.yipay_pid" placeholder="请输入易支付商户ID" />
           </el-form-item>
           <el-form-item label="签名类型">
-             <el-select v-model="configForm.yipay_sign_type" style="width: 100%" :teleported="!isMobile">
+             <el-select v-model="configForm.yipay_sign_type" class="full-width-control" :teleported="!isMobile">
                <el-option label="RSA签名" value="RSA" />
                <el-option label="MD5签名" value="MD5" />
              </el-select>
@@ -384,7 +385,7 @@
         <template v-if="configForm.pay_type === 'codepay'">
           <el-form-item label="商户ID">
             <template v-if="isMobile"><div class="mobile-label">商户ID</div></template>
-            <el-input v-model="configForm.app_id" placeholder="请输入码支付商户ID (pid)" style="width: 100%" />
+            <el-input v-model="configForm.app_id" placeholder="请输入码支付商户ID (pid)" class="full-width-control" />
           </el-form-item>
           <el-form-item label="商户密钥">
             <template v-if="isMobile"><div class="mobile-label">商户密钥</div></template>
@@ -393,12 +394,12 @@
               type="password"
               show-password
               placeholder="请输入码支付商户密钥 (key)"
-              style="width: 100%"
+              class="full-width-control"
             />
           </el-form-item>
           <el-form-item label="网关地址">
             <template v-if="isMobile"><div class="mobile-label">网关地址</div></template>
-            <el-input v-model="configForm.codepay_gateway_url" placeholder="请输入码支付网关地址" style="width: 100%" />
+            <el-input v-model="configForm.codepay_gateway_url" placeholder="请输入码支付网关地址" class="full-width-control" />
             <div class="form-tip">填写官网地址，系统自动拼接 API 路径（/xpay/epay/mapi.php）。</div>
           </el-form-item>
           <el-form-item label="支持支付方式">
@@ -457,32 +458,34 @@
         </el-form-item>
         <el-form-item label="状态">
           <template v-if="isMobile"><div class="mobile-label">状态</div></template>
-          <el-select v-model="configForm.status" style="width: 100%" :teleported="!isMobile">
+          <el-select v-model="configForm.status" class="full-width-control" :teleported="!isMobile">
             <el-option label="启用" :value="1" />
             <el-option label="禁用" :value="0" />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
-          <el-button @click="showAddDialog = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
-          <el-button type="primary" @click="saveConfig" :loading="saving" :class="{ 'mobile-action-btn': isMobile }">
-            {{ editingConfig ? '更新' : '创建' }}
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="saving"
+          :submit-text="editingConfig ? '更新' : '创建'"
+          :sticky="false"
+          @cancel="showAddDialog = false"
+          @submit="saveConfig"
+        />
       </template>
-    </el-drawer>
-    <el-dialog
+    </AppDrawer>
+    <AppDialog
       v-model="showBulkOperationsDialog"
       title="批量操作"
-      :width="isMobile ? '95%' : '500px'"
-      :class="isMobile ? 'mobile-dialog' : ''"
+      width="500px"
+      mobile-width="94%"
+      :loading="batchOperating"
     >
       <div v-if="selectedConfigs.length === 0" class="no-selection">
         <el-alert title="请先选择要操作的配置" type="warning" :closable="false" show-icon />
       </div>
       <div v-else>
-        <el-alert :title="`已选择 ${selectedConfigs.length} 个配置`" type="info" :closable="false" show-icon style="margin-bottom: 20px;" />
+        <el-alert :title="`已选择 ${selectedConfigs.length} 个配置`" type="info" :closable="false" show-icon class="bulk-selection-alert" />
         <div class="bulk-actions-list">
           <el-button type="success" @click="handleBatchAction('enable')" :loading="batchOperating" class="bulk-btn">
             <el-icon><Check /></el-icon> 批量启用
@@ -496,16 +499,27 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="showBulkOperationsDialog = false">关闭</el-button>
+        <FormActionBar
+          submit-text="关闭"
+          :show-cancel="false"
+          @submit="showBulkOperationsDialog = false"
+        />
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Operation, Plus, Edit, Delete, Check, Close, Loading } from '@element-plus/icons-vue'
 import { paymentAPI } from '@/utils/api'
+import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
+import { confirmWarning, confirmDelete } from '@/utils/confirmAction'
+import AppDialog from '@/components/AppDialog.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -572,7 +586,7 @@ const utils = {
 }
 export default {
   name: 'AdminPaymentConfig',
-  components: { Operation, Plus, Edit, Delete, Check, Close, Loading },
+  components: { Operation, Plus, Edit, Delete, Check, Close, Loading, AppDialog, AppDrawer, EmptyState, FormActionBar, ResponsiveDataView },
   setup() {
     const loading = ref(false)
     const saving = ref(false)
@@ -590,18 +604,22 @@ export default {
     const tableRef = ref(null)
     const configForm = reactive({ ...DEFAULT_FORM_STATE })
     
-    // 列宽状态（动态绑定）
-    const columnWidths = reactive({
-      selection: 50,
-      id: 80,
-      pay_type: 120,
-      app_id: 200,
-      status: 120,
-      created_at: 180,
-      actions: 180
-    })
-    
-    // 从 localStorage 加载设置
+    const PAYMENT_CONFIG_COLUMN_KEYS = ['selection', 'id', 'pay_type', 'app_id', 'status', 'created_at', 'actions']
+    const { columnWidths, handleColumnResize } = usePersistentTableColumns(
+      'paymentConfig_table_column_widths',
+      {
+        selection: 50,
+        id: 80,
+        pay_type: 120,
+        app_id: 200,
+        status: 120,
+        created_at: 180,
+        actions: 180
+      },
+      PAYMENT_CONFIG_COLUMN_KEYS
+    )
+
+    // 从 localStorage 加载视图设置
     const STORAGE_KEY = 'paymentConfig_table_settings'
     const loadSettings = () => {
       try {
@@ -612,48 +630,25 @@ export default {
           if (settings.gridOrientation) gridOrientation.value = settings.gridOrientation
           if (settings.gridColumns) gridColumns.value = settings.gridColumns
           if (settings.gridSize) gridSize.value = settings.gridSize
-          if (settings.columnWidths) {
-            Object.assign(columnWidths, settings.columnWidths)
-          }
         }
       } catch (e) {
         console.warn('加载设置失败:', e)
       }
     }
     
-    // 保存设置到 localStorage
+    // 保存视图设置到 localStorage
     const saveSettings = () => {
       try {
         const settings = {
           viewMode: viewMode.value,
           gridOrientation: gridOrientation.value,
           gridColumns: gridColumns.value,
-          gridSize: gridSize.value,
-          columnWidths: { ...columnWidths }
+          gridSize: gridSize.value
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
       } catch (e) {
         console.warn('保存设置失败:', e)
       }
-    }
-    
-    // 列宽调整事件处理（延迟保存，避免频繁触发）
-    let resizeTimer = null
-    const handleColumnResize = (newWidth, oldWidth, column, event) => {
-      if (resizeTimer) clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => {
-        // 获取所有列的当前宽度
-        if (tableRef.value && tableRef.value.$el) {
-          const headerCells = tableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
-          const keys = ['selection', 'id', 'pay_type', 'app_id', 'status', 'created_at', 'actions']
-          headerCells.forEach((cell, index) => {
-            if (keys[index] && cell.offsetWidth > 0) {
-              columnWidths[keys[index]] = cell.offsetWidth
-            }
-          })
-          saveSettings()
-        }
-      }, 300)
     }
     
     // 网格视图选择处理
@@ -671,6 +666,34 @@ export default {
     const baseUrl = computed(() => typeof window !== 'undefined' ? window.location.origin : '')
     const checkMobile = () => isMobile.value = window.innerWidth <= 768
     const getPaymentTypeConfig = (type) => PAYMENT_TYPES[type] || { label: type, tag: 'info' }
+    const getDisplayAppId = (config) => {
+      if (config.app_id) return config.app_id
+      if (config.config_json?.yipay_pid) return config.config_json.yipay_pid
+      return ''
+    }
+    const mobilePaymentConfigFields = computed(() => [
+      {
+        key: 'pay_type',
+        label: '支付类型',
+        type: 'tag',
+        tagType: value => getPaymentTypeConfig(value).tag,
+        formatter: value => getPaymentTypeConfig(value).label
+      },
+      {
+        key: 'app_id',
+        label: '应用ID',
+        formatter: (_value, item) => getDisplayAppId(item) || '未配置'
+      },
+      {
+        key: 'status',
+        label: '状态'
+      },
+      {
+        key: 'created_at',
+        label: '创建时间',
+        formatter: value => value || '-'
+      }
+    ])
     const loadPaymentConfigs = async () => {
       loading.value = true
       try {
@@ -840,7 +863,9 @@ export default {
     }
     const deleteConfig = async (config) => {
       try {
-        await ElMessageBox.confirm(`确定要删除 ${getPaymentTypeConfig(config.pay_type).label} 配置吗？`, '确认删除', { type: 'warning' })
+        await confirmDelete('支付配置', 1, {
+          message: `确定要删除 ${getPaymentTypeConfig(config.pay_type).label} 配置吗？删除后该支付方式将不可用。`
+        })
         await paymentAPI.deletePaymentConfig(config.id)
         ElMessage.success('删除成功')
         loadPaymentConfigs()
@@ -849,14 +874,21 @@ export default {
       }
     }
     const toggleStatus = async (config, newValue) => {
-      const originalStatus = config.status
       const targetStatus = newValue !== undefined ? newValue : config.status
+      const originalStatus = targetStatus === 1 ? 0 : 1
       try {
+        if (targetStatus === 0) {
+          await confirmWarning('确定要禁用该支付配置吗？禁用后用户将无法继续使用该支付方式发起支付。', {
+            title: '确认禁用支付配置',
+            confirmButtonText: '确认禁用'
+          })
+        }
         const response = await paymentAPI.updatePaymentConfig(config.id, { status: targetStatus })
         config.status = response.data?.status ?? targetStatus
         ElMessage.success(targetStatus === 1 ? '已启用' : '已禁用')
       } catch (error) {
         config.status = originalStatus
+        if (error === 'cancel' || error === 'close') return
         utils.handleApiError(error, '状态更新失败')
       }
     }
@@ -869,11 +901,16 @@ export default {
       }
       const conf = actionMap[action]
       try {
-        await ElMessageBox.confirm(
-          `确定要${conf.title} ${selectedConfigs.value.length} 个配置吗？`, 
-          conf.title, 
-          { type: conf.type || 'warning' }
-        )
+        if (action === 'delete') {
+          await confirmDelete('支付配置', selectedConfigs.value.length, {
+            title: conf.title
+          })
+        } else {
+          await confirmWarning(`确定要${conf.title} ${selectedConfigs.value.length} 个配置吗？`, {
+            title: conf.title,
+            confirmButtonText: `确认${action === 'enable' ? '启用' : '禁用'}`
+          })
+        }
         batchOperating.value = true
         await conf.api(selectedConfigs.value.map(c => c.id))
         ElMessage.success(`${conf.title}成功`)
@@ -941,6 +978,7 @@ export default {
       handleSelectionChange,
       handleGridSelect,
       isSelected,
+      mobilePaymentConfigFields,
       handleColumnResize,
       clearSelection,
       handleBatchAction,
@@ -956,13 +994,40 @@ export default {
 .view-mode-group { margin-right: 8px; }
 .grid-orientation-group { margin-right: 8px; }
 .grid-size-group { margin-right: 8px; }
-.grid-columns-select { margin-right: 8px; }
+.grid-columns-select {
+  width: 90px;
+  margin-right: 8px;
+}
+.payment-config-table,
+.full-width-control {
+  width: 100%;
+}
+.form-alert,
+.bulk-selection-alert {
+  margin-bottom: 20px;
+}
 .text-muted { color: #909399; font-style: italic; }
 .status-text { margin-left: 8px; font-size: 12px; color: #909399; }
 .form-tip { font-size: 12px; color: #909399; margin-top: 4px; line-height: 1.5; }
 .desktop-only { @media (max-width: 768px) { display: none !important; } }
 .mobile-only { display: none; @media (max-width: 768px) { display: block; } }
 .bulk-btn { width: 100%; margin-bottom: 10px; margin-left: 0 !important; }
+.mobile-payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.mobile-status-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
 
 /* 桌面端方格视图（可调大小和方向） */
 .desktop-grid-view {
@@ -1005,25 +1070,23 @@ export default {
 }
 .grid-empty {
   grid-column: 1 / -1;
-  padding: 40px 0;
 }
 .grid-config-card {
   background: #fff;
   border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 .grid-config-card:hover {
   border-color: var(--el-border-color);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  background: #fbfdff;
 }
 .grid-config-card.is-selected {
   border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px var(--el-color-primary);
+  background: var(--el-color-primary-light-9, #ecf5ff);
 }
 .grid-config-card .gcc-header {
   padding: 12px 16px;
@@ -1088,15 +1151,6 @@ export default {
   .header-content { flex-direction: column; gap: 12px; }
   .header-actions { width: 100%; }
   .header-actions .el-button { flex: 1; }
-  .mobile-card-list { display: flex; flex-direction: column; gap: 12px; }
-  .mobile-card { background: #fff; border: 1px solid #e4e7ed; border-radius: 8px; padding: 16px; }
-  .card-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
-  .card-row:last-of-type { border-bottom: none; }
-  .card-actions { display: flex; gap: 12px; margin-top: 12px; border-top: 1px solid #f0f0f0; padding-top: 12px; }
-  .card-actions .el-button { flex: 1; }
-  .mobile-dialog :deep(.el-dialog__body) { padding: 15px !important; }
   .mobile-label { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #606266; }
-  .mobile-footer { flex-direction: column; }
-  .mobile-footer .el-button { width: 100%; margin: 0; }
 }
 </style>

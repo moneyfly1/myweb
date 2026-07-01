@@ -8,9 +8,8 @@
         </div>
       </template>
       <div class="logs-filter">
-        <div class="desktop-only">
-          <el-row :gutter="20">
-            <el-col :span="6">
+        <div class="desktop-only system-log-filter-grid">
+          <div class="system-log-filter-field">
               <el-form-item label="日志类型">
                 <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable>
                   <el-option label="全部" value="" />
@@ -20,8 +19,8 @@
                   <el-option label="调试" value="debug" />
                 </el-select>
               </el-form-item>
-            </el-col>
-            <el-col :span="6">
+          </div>
+          <div class="system-log-filter-field">
               <el-form-item label="日志级别">
                 <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable>
                   <el-option label="全部" value="" />
@@ -32,8 +31,8 @@
                   <el-option label="调试" value="debug" />
                 </el-select>
               </el-form-item>
-            </el-col>
-            <el-col :span="6">
+          </div>
+          <div class="system-log-filter-field">
               <el-form-item label="开始时间">
                 <el-date-picker
                   v-model="filterForm.start_time"
@@ -43,8 +42,8 @@
                   value-format="YYYY-MM-DD HH:mm:ss"
                 />
               </el-form-item>
-            </el-col>
-            <el-col :span="6">
+          </div>
+          <div class="system-log-filter-field">
               <el-form-item label="结束时间">
                 <el-date-picker
                   v-model="filterForm.end_time"
@@ -54,10 +53,8 @@
                   value-format="YYYY-MM-DD HH:mm:ss"
                 />
               </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="20">
-            <el-col :span="8">
+          </div>
+          <div class="system-log-filter-field keyword-field">
               <el-form-item label="关键词搜索">
                 <el-input
                   v-model="filterForm.keyword"
@@ -65,8 +62,8 @@
                   clearable
                 />
               </el-form-item>
-            </el-col>
-            <el-col :span="8">
+          </div>
+          <div class="system-log-filter-field">
               <el-form-item label="任务类型">
                 <el-select v-model="filterForm.task_type" placeholder="选择任务类型" clearable>
                   <el-option label="全部" value="" />
@@ -79,8 +76,7 @@
                   <el-option label="系统错误" value="system_error" />
                 </el-select>
               </el-form-item>
-            </el-col>
-          </el-row>
+          </div>
           <div class="filter-actions">
             <el-button type="primary" @click="applyFilter" :loading="loading">
               <el-icon><Search /></el-icon>
@@ -103,7 +99,7 @@
         <div class="mobile-only">
           <el-form :model="filterForm" label-position="top">
             <el-form-item label="日志类型">
-              <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable style="width: 100%">
+              <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable class="full-width-control">
                 <el-option label="全部" value="" />
                 <el-option label="错误" value="error" />
                 <el-option label="警告" value="warning" />
@@ -112,7 +108,7 @@
               </el-select>
             </el-form-item>
             <el-form-item label="日志级别">
-              <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable style="width: 100%">
+              <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable class="full-width-control">
                 <el-option label="全部" value="" />
                 <el-option label="严重" value="critical" />
                 <el-option label="错误" value="error" />
@@ -128,7 +124,7 @@
                 placeholder="选择开始时间"
                 format="YYYY-MM-DD HH:mm:ss"
                 value-format="YYYY-MM-DD HH:mm:ss"
-                style="width: 100%"
+                class="full-width-control"
               />
             </el-form-item>
             <el-form-item label="结束时间">
@@ -138,7 +134,7 @@
                 placeholder="选择结束时间"
                 format="YYYY-MM-DD HH:mm:ss"
                 value-format="YYYY-MM-DD HH:mm:ss"
-                style="width: 100%"
+                class="full-width-control"
               />
             </el-form-item>
             <el-form-item label="关键词搜索">
@@ -149,7 +145,7 @@
               />
             </el-form-item>
             <el-form-item label="模块">
-              <el-select v-model="filterForm.module" placeholder="选择模块" clearable style="width: 100%">
+              <el-select v-model="filterForm.module" placeholder="选择模块" clearable class="full-width-control">
                 <el-option label="全部" value="" />
                 <el-option label="用户管理" value="user" />
                 <el-option label="订单管理" value="order" />
@@ -224,13 +220,21 @@
         </el-row>
       </div>
       <div class="logs-table">
-        <div class="desktop-only">
+        <ResponsiveDataView
+          :data="logsList"
+          :loading="loading"
+          :fields="mobileLogFields"
+          empty-title="暂无日志数据"
+          empty-description="调整筛选条件后可重新查询系统日志"
+        >
+          <template #table>
           <el-table
             :data="logsList"
             v-loading="loading"
-            style="width: 100%"
+            class="logs-data-table"
             stripe
             border
+            empty-text=" "
             :default-sort="{ prop: 'timestamp', order: 'descending' }"
           >
             <el-table-column prop="timestamp" label="时间" width="180" sortable>
@@ -299,76 +303,44 @@
               </template>
             </el-table-column>
           </el-table>
-        </div>
-        <div class="mobile-only">
-          <div v-loading="loading" class="mobile-logs-list">
-            <div 
-              v-for="log in logsList" 
-              :key="log.id || log.timestamp"
-              class="mobile-log-card"
-              @click="showLogDetails(log)"
-            >
-              <div class="log-card-header">
-                <el-tag :type="getLogLevelTagType(log.level)" size="small">
-                  {{ getLogLevelText(log.level) }}
-                </el-tag>
-                <span class="log-time">{{ formatDate(log.timestamp) }}</span>
-              </div>
-              <div class="log-card-body">
-                <div class="log-card-row">
-                  <span class="log-label">模块：</span>
-                  <span class="log-value">{{ log.module || '-' }}</span>
-                </div>
-                <div class="log-card-row">
-                  <span class="log-label">内容：</span>
-                  <span class="log-value log-message-text">{{ truncateText(log.message, 50) }}</span>
-                </div>
-                <div class="log-card-row" v-if="log.failure_reason">
-                  <span class="log-label">失败原因：</span>
-                  <el-tag type="warning" size="small">{{ log.failure_reason }}</el-tag>
-                </div>
-                <div class="log-card-row" v-if="log.username">
-                  <span class="log-label">用户：</span>
-                  <span class="log-value">{{ log.username }}</span>
-                </div>
-                <div class="log-card-row" v-if="log.ip_address">
-                  <span class="log-label">IP：</span>
-                  <span class="log-value">{{ log.ip_address }}</span>
-                </div>
-                <div class="log-card-row" v-if="log.location">
-                  <span class="log-label">地理位置：</span>
-                  <el-tag size="small" type="info">{{ displayLocation(log.location) }}</el-tag>
-                </div>
-              </div>
-              <div class="log-card-footer">
-                <el-button size="small" type="primary" @click.stop="showLogDetails(log)">
-                  查看详情
-                </el-button>
-              </div>
+          </template>
+          <template #header="{ item }">
+            <div class="mobile-log-header">
+              <el-tag :type="getLogLevelTagType(item.level)" size="small">
+                {{ getLogLevelText(item.level) }}
+              </el-tag>
+              <span class="mobile-log-time">{{ formatDate(item.timestamp) }}</span>
             </div>
-            <el-empty v-if="logsList.length === 0 && !loading" description="暂无日志数据" />
-          </div>
-        </div>
+          </template>
+          <template #actions="{ item }">
+            <el-button size="small" type="primary" @click="showLogDetails(item)">
+              查看详情
+            </el-button>
+          </template>
+          <template #empty>
+            <EmptyState
+              title="暂无日志数据"
+              description="调整筛选条件后可重新查询系统日志"
+            />
+          </template>
+        </ResponsiveDataView>
         <div class="pagination-wrapper">
-          <el-pagination
+          <PaginationBar
             v-model:current-page="pagination.page"
             v-model:page-size="pagination.size"
             :page-sizes="[10, 20, 50, 100]"
             :total="pagination.total"
-            layout="total, sizes, prev, pager, next, jumper"
             @size-change="handleSizeChange"
             @current-change="handleCurrentChange"
           />
         </div>
       </div>
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="logDetailsVisible"
       title="日志详情"
-      :size="isMobile ? '92%' : '600px'"
-      direction="rtl"
-      :before-close="closeLogDetails"
-      :lock-scroll="false"
+      size="600px"
+      mobile-size="100%"
     >
       <div v-if="selectedLog" class="log-details">
         <el-descriptions :column="isMobile ? 1 : 2" border>
@@ -425,37 +397,76 @@
         </div>
       </div>
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="closeLogDetails" :class="{ 'mobile-action-btn': isMobile }" :style="isMobile ? { width: '100%', marginBottom: '10px' } : {}">关闭</el-button>
-          <el-button type="primary" @click="copyLogDetails" :class="{ 'mobile-action-btn': isMobile }" :style="isMobile ? { width: '100%' } : {}">
-            复制详情
-          </el-button>
-        </div>
+        <FormActionBar
+          cancel-text="关闭"
+          submit-text="复制详情"
+          :sticky="false"
+          @cancel="closeLogDetails"
+          @submit="copyLogDetails"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatLocation } from '@/utils/date'
+import { confirmClear } from '@/utils/confirmAction'
+import AppDrawer from '@/components/AppDrawer.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { useMobile } from '@/composables/useMobile'
 export default {
   name: 'AdminSystemLogs',
   components: {
-    Search, Refresh, Download, Delete
+    Search, Refresh, Download, Delete, AppDrawer, FormActionBar, PaginationBar, EmptyState, ResponsiveDataView
   },
   setup() {
-    const isMobile = ref(window.innerWidth <= 768)
+    const isMobile = useMobile()
     const loading = ref(false)
-    const handleResize = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
     const logsList = ref([])
     const logsStats = ref({})
     const logDetailsVisible = ref(false)
     const selectedLog = ref(null)
+    const mobileLogFields = computed(() => [
+      {
+        key: 'action_type',
+        label: '任务类型',
+        type: 'tag',
+        tagType: () => 'info',
+        formatter: value => value ? getTaskTypeName(value) : '-'
+      },
+      { key: 'module', label: '模块' },
+      {
+        key: 'message',
+        label: '内容',
+        fullWidth: true,
+        formatter: value => truncateText(value, 50) || '-'
+      },
+      {
+        key: 'failure_reason',
+        label: '失败原因',
+        type: 'tag',
+        hideTagWhenEmpty: true,
+        tagType: () => 'warning',
+        formatter: value => value || '-'
+      },
+      { key: 'username', label: '用户' },
+      { key: 'ip_address', label: 'IP' },
+      {
+        key: 'location',
+        label: '地理位置',
+        type: 'tag',
+        hideTagWhenEmpty: true,
+        tagType: () => 'info',
+        formatter: value => value ? displayLocation(value) : '-'
+      }
+    ])
     const filterForm = reactive({
       log_type: '',
       log_level: '',
@@ -569,15 +580,11 @@ export default {
     }
     const clearLogs = async () => {
       try {
-        await ElMessageBox.confirm(
-          '确定要清理所有日志吗？此操作不可恢复！',
-          '确认清理',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await confirmClear('系统日志', {
+          message: '确定要清理所有日志吗？此操作不可恢复。',
+          title: '确认清理日志',
+          confirmButtonText: '确认清理'
+        })
         const response = await adminAPI.clearLogs()
         if (response && response.data && response.data.success) {
           ElMessage.success(response.data.message || '日志清理成功')
@@ -730,16 +737,13 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
     onMounted(() => {
       loadLogs()
       loadLogsStats()
-      window.addEventListener('resize', handleResize)
-    })
-    onUnmounted(() => {
-      window.removeEventListener('resize', handleResize)
     })
     return {
       isMobile,
       loading,
       logsList,
       logsStats,
+      mobileLogFields,
       filterForm,
       pagination,
       logDetailsVisible,
@@ -765,40 +769,92 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
 }
 </script>
 <style scoped>
-.system-logs-container {
+.admin-system-logs {
   padding: 20px;
+}
+.admin-system-logs > :deep(.el-card) {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: none;
 }
 .logs-filter {
   margin-bottom: 20px;
-  padding: 20px;
-  background: #f8f9fa;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #ebeef5;
   border-radius: 8px;
 }
+.logs-filter :deep(.el-select),
+.logs-filter :deep(.el-input),
+.logs-filter :deep(.el-date-editor) {
+  width: 100%;
+}
+.system-log-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.system-log-filter-field,
+.system-log-filter-grid :deep(.el-form-item),
+.system-log-filter-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+.system-log-filter-grid :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+.system-log-filter-grid .keyword-field {
+  grid-column: span 2;
+}
+@media (max-width: 1180px) {
+  .system-log-filter-grid .keyword-field {
+    grid-column: auto;
+  }
+}
+.full-width-control,
+.logs-data-table {
+  width: 100%;
+}
 .filter-actions {
-  margin-top: 20px;
-  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  align-self: end;
+}
+.filter-actions .el-button {
+  margin-left: 0;
 }
 .logs-stats {
   margin-bottom: 20px;
 }
+.logs-stats :deep(.el-card__body) {
+  padding: 0;
+}
 .stat-card {
   text-align: center;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: none;
 }
 .stat-card.clickable {
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 .stat-card.clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: #fafcff;
+  border-color: #c6e2ff;
 }
 .stat-content {
-  padding: 20px;
+  padding: 18px;
 }
 .stat-number {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #333;
+  font-size: 26px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1.2;
 }
 .stat-number.error {
   color: #f56c6c;
@@ -810,9 +866,9 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
   color: #409eff;
 }
 .stat-label {
-  font-size: 0.9rem;
-  color: #666;
-  margin-top: 10px;
+  font-size: 13px;
+  color: #909399;
+  margin-top: 8px;
 }
 .logs-table {
   margin-top: 20px;
@@ -898,7 +954,7 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
   }
 }
 @media (max-width: 768px) {
-  .system-logs-container {
+  .admin-system-logs {
     padding: 10px;
   }
   .card-header {
@@ -917,16 +973,19 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
     margin-bottom: 16px;
   }
   .mobile-filter-actions {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     margin-top: 16px;
   }
   .mobile-action-btn {
     width: 100%;
+    min-width: 0;
     min-height: 44px;
-    font-size: 16px;
-    margin: 0 !important;
+    font-size: 14px;
+    margin: 0;
+    border-radius: 6px;
+    touch-action: manipulation;
   }
   .logs-stats {
     margin-bottom: 16px;
@@ -944,69 +1003,6 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       margin-top: 8px;
     }
   }
-  .mobile-logs-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .mobile-log-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    &:active {
-      transform: scale(0.98);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    }
-  }
-  .log-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #f0f0f0;
-    .log-time {
-      font-size: 12px;
-      color: #909399;
-    }
-  }
-  .log-card-body {
-    margin-bottom: 12px;
-  }
-  .log-card-row {
-    display: flex;
-    margin-bottom: 8px;
-    font-size: 14px;
-    &:last-child {
-      margin-bottom: 0;
-    }
-    .log-label {
-      font-weight: 600;
-      color: #606266;
-      min-width: 60px;
-      flex-shrink: 0;
-    }
-    .log-value {
-      color: #303133;
-      flex: 1;
-      word-break: break-word;
-      &.log-message-text {
-        line-height: 1.5;
-      }
-    }
-  }
-  .log-card-footer {
-    padding-top: 10px;
-    border-top: 1px solid #f0f0f0;
-    .el-button {
-      width: 100%;
-      min-height: 40px;
-      font-size: 14px;
-    }
-  }
   .pagination-wrapper {
     margin-top: 16px;
     :deep(.el-pagination) {
@@ -1018,30 +1014,17 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
     }
   }
 }
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
+.mobile-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #1677ff !important;
-  box-shadow: none !important;
+.mobile-log-time {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
 }
 </style>

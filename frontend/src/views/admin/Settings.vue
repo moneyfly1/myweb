@@ -97,21 +97,56 @@
                   </div>
                 </el-form-item>
                 <el-form-item label="已安装数据库" v-if="geoipStatus && geoipStatus.databases && geoipStatus.databases.length > 0">
-                  <el-table :data="geoipStatus.databases" border size="small" style="width: 100%;">
-                    <el-table-column prop="name" label="名称" min-width="120">
-                      <template #default="scope">
-                        <span>{{ scope.row.name }}</span>
-                        <el-tag v-if="scope.row.active" type="success" size="small" style="margin-left: 6px;">使用中</el-tag>
-                      </template>
-                    </el-table-column>
-                    <el-table-column prop="size" label="大小" width="70" />
-                    <el-table-column prop="modified" label="更新" width="110" />
-                    <el-table-column label="操作" width="60" align="center">
-                      <template #default="scope">
-                        <el-button v-if="!scope.row.active" type="primary" link size="small" @click="switchDatabase(scope.row.path)" :loading="switchingDatabase">切换</el-button>
-                      </template>
-                    </el-table-column>
-                  </el-table>
+                  <ResponsiveDataView
+                    :data="geoipStatus.databases"
+                    :fields="geoipDatabaseMobileFields"
+                    :loading="false"
+                    id-field="path"
+                    title-field="name"
+                    empty-title="暂无数据库"
+                  >
+                    <template #table>
+                      <el-table :data="geoipStatus.databases" border size="small" class="full-width-table settings-table-desktop">
+                        <el-table-column prop="name" label="名称" min-width="120">
+                          <template #default="scope">
+                            <span>{{ scope.row.name }}</span>
+                            <el-tag v-if="scope.row.active" type="success" size="small" class="inline-status-tag">使用中</el-tag>
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="size" label="大小" width="70" />
+                        <el-table-column prop="modified" label="更新" width="110" />
+                        <el-table-column label="操作" width="60" align="center">
+                          <template #default="scope">
+                            <el-button v-if="!scope.row.active" type="primary" link size="small" @click="switchDatabase(scope.row.path)" :loading="switchingDatabase">切换</el-button>
+                          </template>
+                        </el-table-column>
+                      </el-table>
+                    </template>
+                    <template #header="{ item }">
+                      <div class="settings-mobile-card-header">
+                        <div class="mobile-card-title">
+                          <span>{{ item.name }}</span>
+                          <el-tag v-if="item.active" type="success" size="small">使用中</el-tag>
+                        </div>
+                        <el-button
+                          v-if="!item.active"
+                          type="primary"
+                          link
+                          size="small"
+                          @click="switchDatabase(item.path)"
+                          :loading="switchingDatabase"
+                        >
+                          切换
+                        </el-button>
+                      </div>
+                    </template>
+                    <template #field-size="{ item }">
+                      <strong>{{ item.size || '-' }}</strong>
+                    </template>
+                    <template #field-modified="{ item }">
+                      <strong>{{ item.modified || '-' }}</strong>
+                    </template>
+                  </ResponsiveDataView>
                 </el-form-item>
                 <el-form-item label="更新数据库">
                   <el-radio-group v-model="geoipDatabaseType" class="radio-block-group radio-block-vertical">
@@ -128,7 +163,7 @@
                       </div>
                     </el-radio>
                   </el-radio-group>
-                  <div style="margin-top: 12px;">
+                  <div class="mt-3">
                     <el-button type="primary" plain @click="updateGeoIPDatabase" :loading="geoipUpdating" :class="{ 'full-width': isMobile }">
                       {{ geoipUpdating ? '下载中...' : '下载/更新数据库' }}
                     </el-button>
@@ -258,14 +293,34 @@
                 </div>
 
                 <div class="settings-section-title text-sm">客户事件通知矩阵</div>
-                <el-table :data="customerEventSwitches" border stripe size="small" class="matrix-table">
-                  <el-table-column prop="label" label="触发事件" min-width="140" />
-                  <el-table-column label="邮件" width="80" align="center">
-                    <template #default="{ row }">
-                      <el-switch v-model="notificationSettings[row.channels.email]" size="small" />
-                    </template>
-                  </el-table-column>
-                </el-table>
+                <ResponsiveDataView
+                  class="settings-responsive-list event-switch-list"
+                  :data="customerEventSwitches"
+                  :fields="customerEventMobileFields"
+                  id-field="base"
+                  title-field="label"
+                  empty-title="暂无客户事件"
+                >
+                  <template #table>
+                    <el-table :data="customerEventSwitches" border stripe size="small" class="matrix-table settings-table-desktop">
+                      <el-table-column prop="label" label="触发事件" min-width="140" />
+                      <el-table-column label="邮件" width="80" align="center">
+                        <template #default="{ row }">
+                          <el-switch v-model="notificationSettings[row.channels.email]" size="small" />
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </template>
+                  <template #header="{ item }">
+                    <div class="settings-mobile-card-header">
+                      <div class="mobile-card-title">{{ item.label }}</div>
+                      <el-switch v-model="notificationSettings[item.channels.email]" size="small" />
+                    </div>
+                  </template>
+                  <template #field-channel>
+                    <span class="mobile-card-caption">邮件通知</span>
+                  </template>
+                </ResponsiveDataView>
 
                 <div class="settings-section-title text-sm">到期提醒规则</div>
                 <div class="switch-card mb-3">
@@ -306,7 +361,7 @@
               </div>
 
               <el-form :model="adminNotificationSettings" label-position="top" class="compact-form">
-                <div class="switch-card master-switch mb-4" style="border-color: var(--el-color-warning-light-5);">
+                <div class="switch-card master-switch warning-master-switch mb-4">
                   <div class="switch-card-content">
                     <span class="title">开启管理员告警</span>
                     <span class="desc">控制所有管理员通知的总开关，渠道配置保留不受影响。</span>
@@ -372,18 +427,50 @@
 
                 <div class="settings-section-title text-sm">管理员事件矩阵</div>
                 <!-- 优雅的多渠道矩阵 -->
-                <el-table :data="adminNotificationEvents" border stripe size="small" class="matrix-table">
-                  <el-table-column prop="label" label="触发事件" min-width="120" />
-                  <el-table-column label="邮件" width="65" align="center">
-                    <template #default="{ row }"><el-switch v-model="adminNotificationSettings[row.channels.email]" size="small" /></template>
-                  </el-table-column>
-                  <el-table-column label="TG" width="65" align="center">
-                    <template #default="{ row }"><el-switch v-model="adminNotificationSettings[row.channels.telegram]" size="small" /></template>
-                  </el-table-column>
-                  <el-table-column label="Bark" width="65" align="center">
-                    <template #default="{ row }"><el-switch v-model="adminNotificationSettings[row.channels.bark]" size="small" /></template>
-                  </el-table-column>
-                </el-table>
+                <ResponsiveDataView
+                  class="settings-responsive-list event-switch-list"
+                  :data="adminNotificationEvents"
+                  :fields="adminEventMobileFields"
+                  id-field="key"
+                  title-field="label"
+                  empty-title="暂无管理员事件"
+                >
+                  <template #table>
+                    <el-table :data="adminNotificationEvents" border stripe size="small" class="matrix-table settings-table-desktop">
+                      <el-table-column prop="label" label="触发事件" min-width="120" />
+                      <el-table-column label="邮件" width="65" align="center">
+                        <template #default="{ row }"><el-switch v-model="adminNotificationSettings[row.channels.email]" size="small" /></template>
+                      </el-table-column>
+                      <el-table-column label="TG" width="65" align="center">
+                        <template #default="{ row }"><el-switch v-model="adminNotificationSettings[row.channels.telegram]" size="small" /></template>
+                      </el-table-column>
+                      <el-table-column label="Bark" width="65" align="center">
+                        <template #default="{ row }"><el-switch v-model="adminNotificationSettings[row.channels.bark]" size="small" /></template>
+                      </el-table-column>
+                    </el-table>
+                  </template>
+                  <template #header="{ item }">
+                    <div class="settings-mobile-card-header">
+                      <div class="mobile-card-title">{{ item.label }}</div>
+                    </div>
+                  </template>
+                  <template #default="{ item }">
+                    <div class="admin-event-channels">
+                      <div class="channel-switch-row">
+                        <span>邮件</span>
+                        <el-switch v-model="adminNotificationSettings[item.channels.email]" size="small" />
+                      </div>
+                      <div class="channel-switch-row">
+                        <span>Telegram</span>
+                        <el-switch v-model="adminNotificationSettings[item.channels.telegram]" size="small" />
+                      </div>
+                      <div class="channel-switch-row">
+                        <span>Bark</span>
+                        <el-switch v-model="adminNotificationSettings[item.channels.bark]" size="small" />
+                      </div>
+                    </div>
+                  </template>
+                </ResponsiveDataView>
 
                 <div class="mt-4">
                   <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">保存告警设置</el-button>
@@ -429,7 +516,7 @@
                   <el-form-item label="全局默认主题" prop="default_theme">
                     <el-select v-model="themeSettings.default_theme" class="input-full">
                       <el-option v-for="theme in themeOptions" :key="theme.value" :label="theme.label" :value="theme.value">
-                        <span :style="{ backgroundColor: theme.color }" class="theme-color-block"></span>
+                        <span :style="themeColorStyle(theme)" class="theme-color-block"></span>
                         {{ theme.label }}
                       </el-option>
                     </el-select>
@@ -444,7 +531,7 @@
                 <el-checkbox-group v-model="themeSettings.available_themes" class="theme-checkbox-group">
                   <el-checkbox v-for="theme in themeOptions" :key="theme.value" :label="theme.value" border>
                     <span class="flex-align-center">
-                      <span :style="{ backgroundColor: theme.color }" class="theme-color-block-sm"></span>
+                      <span :style="themeColorStyle(theme)" class="theme-color-block-sm"></span>
                       {{ theme.label }}
                     </span>
                   </el-checkbox>
@@ -549,7 +636,7 @@
               </div>
 
               <el-form :model="backupSettings" label-position="top" class="compact-form">
-                <el-radio-group v-model="backupSettings.backup_target" class="radio-block-group mb-3" style="width: 100%;">
+                <el-radio-group v-model="backupSettings.backup_target" class="radio-block-group mb-3 full-width-control">
                   <el-radio label="gitee">
                     <div class="radio-content">
                       <div class="radio-title">Gitee (码云)</div>
@@ -635,8 +722,8 @@
 
                 <el-collapse-transition>
                   <el-form-item label="执行间隔" v-show="backupSettings.backup_auto_enabled">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <el-input-number v-model="backupSettings.backup_auto_interval" :min="1" size="small" style="width: 120px;" />
+                    <div class="inline-control-row">
+                      <el-input-number v-model="backupSettings.backup_auto_interval" :min="1" size="small" class="interval-input" />
                       <span class="unit-text">小时</span>
                     </div>
                     <div class="form-tip">推荐 12 或 24 小时。</div>
@@ -661,14 +748,14 @@
                           :status="uploadStatus?.status === 'uploading' ? null : uploadStatus?.status === 'success' ? 'success' : 'exception'"
                           :stroke-width="6"
                         />
-                        <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                        <div class="upload-status-message">
                           {{ uploadStatus?.message || '正在准备上传...' }}
                           <span v-if="uploadStatus?.file_size"> | {{ (uploadStatus.file_size / 1024 / 1024).toFixed(2) }} MB</span>
                         </div>
                       </div>
                       <div v-else>
                         <div>{{ uploadStatus.message }}</div>
-                        <div v-if="uploadStatus.error" style="margin-top: 4px; font-size: 12px; color: #f56c6c;">{{ uploadStatus.error }}</div>
+                        <div v-if="uploadStatus.error" class="upload-error-message">{{ uploadStatus.error }}</div>
                       </div>
                     </template>
                   </el-alert>
@@ -676,21 +763,21 @@
               </el-form>
 
               <!-- 本地恢复 -->
-              <div class="settings-section-title text-sm" style="margin-top: 20px;">本地恢复</div>
+              <div class="settings-section-title text-sm section-title-spaced">本地恢复</div>
               <el-form label-position="top" class="compact-form">
                 <el-form-item label="选择本地备份文件">
-                  <div style="display: flex; gap: 8px; width: 100%;">
+                  <div class="restore-file-row">
                     <el-select v-model="restoreLocal.selectedFile" placeholder="请选择备份文件" class="input-full" @focus="loadLocalBackups">
                       <el-option v-for="f in restoreLocal.files" :key="f.filename" :label="`${f.filename} (${formatFileSize(f.size)})`" :value="f.filename" />
                     </el-select>
-                    <el-button type="text" :icon="Refresh" @click="loadLocalBackups" :loading="restoreLocal.loading" style="padding: 0 8px;" />
+                    <el-button type="text" :icon="Refresh" @click="loadLocalBackups" :loading="restoreLocal.loading" class="compact-icon-button" />
                   </div>
                 </el-form-item>
                 <el-button type="warning" plain @click="doRestoreLocal" :loading="restoreLocal.restoring" :disabled="!restoreLocal.selectedFile" :class="{ 'full-width': isMobile }">恢复此备份</el-button>
               </el-form>
 
               <!-- 远程恢复 -->
-              <div class="settings-section-title text-sm" style="margin-top: 20px;">远程恢复 ({{ backupSettings.backup_target === 'github' ? 'GitHub' : 'Gitee' }})</div>
+              <div class="settings-section-title text-sm section-title-spaced">远程恢复 ({{ backupSettings.backup_target === 'github' ? 'GitHub' : 'Gitee' }})</div>
               <el-form label-position="top" class="compact-form">
                 <div class="backup-fields-row">
                   <el-form-item label="年份">
@@ -749,12 +836,14 @@
 
 <script>
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
+import { confirmClear, confirmWarning } from '@/utils/confirmAction'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 
 const ALL_PROTOCOLS = [
   'vmess', 'vless', 'trojan', 'ss', 'ssr', 'hysteria', 'hysteria2',
@@ -849,7 +938,7 @@ const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key
 
 export default {
   name: 'AdminSettings',
-  components: { Check, Plus, Refresh, Message, Bell },
+  components: { Check, Plus, Refresh, Message, Bell, ResponsiveDataView },
   setup() {
     const api = useApi()
     const isMobile = useMobile()
@@ -900,6 +989,17 @@ export default {
       labelPosition: isMobile.value ? 'top' : 'right'
     }))
     const settingsTabPosition = computed(() => (isMobile.value ? 'top' : 'left'))
+    const themeColorStyle = (theme) => ({
+      '--theme-preview-color': theme?.color || '#409eff'
+    })
+    const geoipDatabaseMobileFields = computed(() => [
+      { key: 'size', label: '大小' },
+      { key: 'modified', label: '更新' }
+    ])
+    const customerEventMobileFields = computed(() => [
+      { key: 'channel', label: '渠道' }
+    ])
+    const adminEventMobileFields = computed(() => [])
 
     const generalSettings = reactive({
       site_name: '', site_description: '', domain_name: '', site_logo: '',
@@ -1163,7 +1263,11 @@ export default {
     }
     const flushCache = async () => {
       try {
-        await ElMessageBox.confirm('确定要清除所有缓存吗？此操作不可撤销。', '警告', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
+        await confirmClear('所有缓存', {
+          message: '确定要清除所有缓存吗？清除后系统会自动重新缓存。',
+          title: '确认清除缓存',
+          confirmButtonText: '确认清除'
+        })
         cacheClearing.value = true
         const res = await api.post('/admin/settings/cache/flush')
         if (res.data.success) ElMessage.success('缓存已清除')
@@ -1291,10 +1395,10 @@ export default {
     const doRestoreLocal = async () => {
       if (!restoreLocal.selectedFile) return
       try {
-        await ElMessageBox.confirm(
-          `确定要从本地备份 "${restoreLocal.selectedFile}" 恢复数据库吗？\n\n此操作将替换当前数据库，系统会自动创建恢复前快照。`,
-          '确认恢复', { confirmButtonText: '确认恢复', cancelButtonText: '取消', type: 'warning' }
-        )
+        await confirmWarning(`确定要从本地备份 "${restoreLocal.selectedFile}" 恢复数据库吗？\n\n此操作将替换当前数据库，系统会自动创建恢复前快照。`, {
+          title: '确认恢复',
+          confirmButtonText: '确认恢复'
+        })
       } catch { return }
       restoreLocal.restoring = true
       try {
@@ -1348,10 +1452,10 @@ export default {
       if (!restoreRemote.selectedFile) return
       const remotePath = `${restoreRemote.selectedYear}/${restoreRemote.selectedMonth}/${restoreRemote.selectedFile}`
       try {
-        await ElMessageBox.confirm(
-          `确定要从远程备份恢复数据库吗？\n\n文件: ${remotePath}\n来源: ${backupSettings.backup_target === 'github' ? 'GitHub' : 'Gitee'}\n\n此操作将下载远程文件并替换当前数据库，系统会自动创建恢复前快照。`,
-          '确认远程恢复', { confirmButtonText: '确认恢复', cancelButtonText: '取消', type: 'warning' }
-        )
+        await confirmWarning(`确定要从远程备份恢复数据库吗？\n\n文件: ${remotePath}\n来源: ${backupSettings.backup_target === 'github' ? 'GitHub' : 'Gitee'}\n\n此操作将下载远程文件并替换当前数据库，系统会自动创建恢复前快照。`, {
+          title: '确认远程恢复',
+          confirmButtonText: '确认恢复'
+        })
       } catch { return }
       restoreRemote.restoring = true
       try {
@@ -1382,7 +1486,7 @@ export default {
       activeTab, isMobile, formLayout, settingsTabPosition, pageLoading, savingCurrent, Refresh, Check,
       generalSettings, generalRules, generalFormRef, registrationSettings, inviteSettings, notificationSettings, securitySettings,
       themeSettings, adminNotificationSettings, announcementSettings, nodeHealthSettings, backupSettings,
-      uploadUrl, themeOptions: THEME_OPTIONS,
+      uploadUrl, themeOptions: THEME_OPTIONS, themeColorStyle, geoipDatabaseMobileFields, customerEventMobileFields, adminEventMobileFields,
       customerMethodSwitches, customerEventSwitches, adminNotificationEvents,
       testingStates, geoipStatus, geoipUpdating, geoipDatabaseType, switchingDatabase, creatingBackup, cacheClearing,
       uploadStatus, uploadTaskId, uploadTarget, stopStatusPolling,
@@ -1425,7 +1529,7 @@ export default {
 
 /* ========== Tabs 与主体表单容器 ========== */
 .settings-shell {
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid var(--el-border-color-light);
 }
 
@@ -1471,6 +1575,93 @@ export default {
 .input-medium { width: 100%; max-width: 380px; }
 .input-large { width: 100%; max-width: 600px; }
 .input-full { width: 100%; }
+.full-width-control,
+.full-width-table {
+  width: 100%;
+}
+.inline-status-tag {
+  margin-left: 6px;
+}
+.settings-responsive-list {
+  width: 100%;
+}
+.settings-mobile-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.mobile-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.channel-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+}
+.channel-switch-row span,
+.mobile-card-caption {
+  color: var(--el-text-color-secondary);
+}
+.settings-responsive-list strong {
+  min-width: 0;
+  color: var(--el-text-color-primary);
+  font-weight: 500;
+  text-align: right;
+  word-break: break-word;
+}
+.event-switch-list {
+  gap: 10px;
+}
+.mobile-card-caption {
+  font-size: 12px;
+}
+.admin-event-channels {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.section-title-spaced {
+  margin-top: 20px;
+}
+.inline-control-row,
+.restore-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.interval-input {
+  width: 120px;
+}
+.compact-icon-button {
+  padding: 0 8px;
+}
+.upload-status-message {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.upload-error-message {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-color-danger);
+}
 
 .unit-text {
   margin-left: 12px;
@@ -1509,10 +1700,13 @@ export default {
   background: var(--el-fill-color-blank);
   border: 1px solid var(--el-border-color);
   border-radius: 8px;
-  transition: all 0.2s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .switch-card:hover { border-color: var(--el-color-primary-light-5); background: var(--el-color-primary-light-9); }
 .switch-card.master-switch { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.switch-card.warning-master-switch {
+  border-color: var(--el-color-warning-light-5);
+}
 
 .switch-card-content { display: flex; flex-direction: column; min-width: 0; gap: 2px; padding-right: 12px; }
 .switch-card .title { font-weight: 600; font-size: 13px; color: var(--el-text-color-primary); }
@@ -1593,7 +1787,7 @@ export default {
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
   overflow: hidden;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 }
 .channel-config-card.is-disabled { opacity: 0.8; background: var(--el-fill-color-lighter); }
 .channel-header {
@@ -1611,7 +1805,7 @@ export default {
 .radio-block-group :deep(.el-radio) {
   margin: 0; padding: 8px 14px 8px 8px; height: auto;
   border: 1px solid var(--el-border-color); border-radius: 8px;
-  background: var(--el-bg-color); transition: all 0.2s;
+  background: var(--el-bg-color); transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .radio-block-group :deep(.el-radio.is-checked) {
   border-color: var(--el-color-primary); background: var(--el-color-primary-light-9);
@@ -1625,9 +1819,9 @@ export default {
   border-radius: 10px;
   overflow: hidden;
   opacity: 0.6;
-  transition: opacity 0.3s, box-shadow 0.3s;
+  transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
 }
-.platform-config-block.is-active { opacity: 1; box-shadow: var(--el-box-shadow-light); }
+.platform-config-block.is-active { opacity: 1; border-color: var(--el-color-primary-light-7); background: #fbfdff; }
 .platform-config-block .block-header {
   padding: 16px 20px; background: var(--el-fill-color-light);
   display: flex; justify-content: space-between; align-items: center;
@@ -1643,13 +1837,29 @@ export default {
 .avatar-uploader .avatar { width: 56px; height: 56px; display: block; object-fit: cover; border-radius: 6px;}
 .avatar-uploader :deep(.el-upload) {
   border: 1px dashed var(--el-border-color); border-radius: 6px;
-  cursor: pointer; overflow: hidden; transition: all 0.2s;
+  cursor: pointer; overflow: hidden; transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .avatar-uploader :deep(.el-upload:hover) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .avatar-uploader-icon { width: 56px; height: 56px; color: var(--el-text-color-secondary); font-size: 18px; line-height: 56px; text-align: center; }
 
-.theme-color-block { display: inline-block; width: 14px; height: 14px; margin-right: 8px; border-radius: 4px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.1); }
-.theme-color-block-sm { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
+.theme-color-block {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  background-color: var(--theme-preview-color, #409eff);
+  border-radius: 4px;
+  vertical-align: middle;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+.theme-color-block-sm {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-color: var(--theme-preview-color, #409eff);
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+}
 .flex-align-center { display: inline-flex; align-items: center; gap: 8px; }
 
 /* ========== 移动端响应式 (≤ 768px) ========== */
@@ -1680,6 +1890,10 @@ export default {
   .expiry-config-row { grid-template-columns: 1fr; }
   .inline-fields-row { grid-template-columns: 1fr; }
   .backup-fields-row { grid-template-columns: 1fr; }
+  .settings-table-desktop { display: none; }
+  .settings-responsive-list :deep(.responsive-data-view__cards) {
+    display: flex;
+  }
   
   .settings-section-title { font-size: 15px; margin: 24px 0 16px; }
   .platform-config-block .block-header { padding: 14px 12px; }

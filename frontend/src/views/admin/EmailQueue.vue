@@ -80,7 +80,7 @@
     <el-card class="filter-section desktop-only">
       <el-form :inline="true" :model="filterForm" class="filter-form">
         <el-form-item label="状态">
-          <el-select v-model="filterForm.status" placeholder="选择状态" clearable style="width: 180px">
+          <el-select v-model="filterForm.status" placeholder="选择状态" clearable class="status-filter-select">
             <el-option label="待发送" value="pending" />
             <el-option label="发送中" value="sending" />
             <el-option label="已发送" value="sent" />
@@ -104,7 +104,7 @@
       <template #header>
         <div class="card-header">
           <span>邮件队列列表</span>
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="queue-header-tools">
             <div class="header-info">
               共 {{ pagination.total }} 条记录，第 {{ pagination.page }}/{{ pagination.pages }} 页
             </div>
@@ -133,129 +133,147 @@
           </div>
         </div>
       </template>
-      <div class="table-wrapper desktop-only">
-        <el-table :data="emailList" v-loading="loading" stripe border empty-text="暂无数据" @selection-change="handleSelectionChange">
-          <el-table-column type="selection" width="55" />
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column prop="to_email" label="收件人" min-width="200" />
-          <el-table-column prop="subject" label="主题" min-width="250" />
-          <el-table-column prop="email_type" label="邮件类型" width="120">
-            <template #default="{ row }">
-              {{ getEmailTypeText(row.email_type) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag :type="getStatusTagType(row.status)">
-                {{ getStatusText(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="retry_count" label="重试次数" width="100">
-            <template #default="{ row }">
-              <span :class="{ 'text-danger': row.retry_count > 0 }">
-                {{ row.retry_count }}/{{ row.max_retries || 3 }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180">
-            <template #default="{ row }">
-              {{ formatDate(row.created_at) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="{ row }">
-              <div class="action-buttons">
-                <el-button size="small" @click="viewEmailDetail(row)">
-                  <el-icon><View /></el-icon>
-                  详情
-                </el-button>
-                <el-button 
-                  v-if="row.status === 'failed'" 
-                  size="small" 
-                  type="warning" 
-                  @click="retryEmail(row)"
-                >
-                  <el-icon><Refresh /></el-icon>
-                  重试
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  @click="deleteEmail(row)"
-                >
-                  <el-icon><Delete /></el-icon>
-                  删除
-                </el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div class="mobile-card-list mobile-only" v-if="emailList.length > 0">
-        <div
-          v-for="email in emailList"
-          :key="email.id"
-          class="mobile-card"
-          :class="{ 'selected': isSelected(email.id) }"
-          @click="toggleSelection(email)"
-        >
-          <div class="card-row">
-            <span class="label">
-              <el-checkbox :model-value="isSelected(email.id)" @click.stop />
-              ID
-            </span>
-            <span class="value">#{{ email.id }}</span>
+      <ResponsiveDataView
+        :data="emailList"
+        :fields="mobileEmailFields"
+        :loading="loading"
+        title-field="subject"
+        empty-title="暂无邮件数据"
+        empty-description="可调整筛选条件或刷新队列"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table :data="emailList" v-loading="loading" stripe border empty-text=" " @selection-change="handleSelectionChange">
+              <template #empty>
+                <EmptyState
+                  title="暂无邮件数据"
+                  description="可调整筛选条件或刷新队列"
+                  action-text="刷新"
+                  :loading="loading"
+                  @action="refreshQueue"
+                />
+              </template>
+              <el-table-column type="selection" width="55" />
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="to_email" label="收件人" min-width="200" />
+              <el-table-column prop="subject" label="主题" min-width="250" />
+              <el-table-column prop="email_type" label="邮件类型" width="120">
+                <template #default="{ row }">
+                  {{ getEmailTypeText(row.email_type) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="getStatusTagType(row.status)">
+                    {{ getStatusText(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="retry_count" label="重试次数" width="100">
+                <template #default="{ row }">
+                  <span :class="{ 'text-danger': row.retry_count > 0 }">
+                    {{ row.retry_count }}/{{ row.max_retries || 3 }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" width="180">
+                <template #default="{ row }">
+                  {{ formatDate(row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
+                <template #default="{ row }">
+                  <div class="action-buttons">
+                    <el-button size="small" @click="viewEmailDetail(row)">
+                      <el-icon><View /></el-icon>
+                      详情
+                    </el-button>
+                    <el-button 
+                      v-if="row.status === 'failed'" 
+                      size="small" 
+                      type="warning" 
+                      @click="retryEmail(row)"
+                    >
+                      <el-icon><Refresh /></el-icon>
+                      重试
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="danger" 
+                      @click="deleteEmail(row)"
+                    >
+                      <el-icon><Delete /></el-icon>
+                      删除
+                    </el-button>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
-          <div class="card-row"><span class="label">收件人</span><span class="value">{{ email.to_email }}</span></div>
-          <div class="card-row"><span class="label">主题</span><span class="value">{{ email.subject }}</span></div>
-          <div class="card-row"><span class="label">邮件类型</span><span class="value">{{ getEmailTypeText(email.email_type) }}</span></div>
-          <div class="card-row">
-            <span class="label">状态</span>
-            <span class="value">
-              <el-tag :type="getStatusTagType(email.status)">
-                {{ getStatusText(email.status) }}
-              </el-tag>
-            </span>
+        </template>
+        <template #header="{ item }">
+          <div
+            class="mobile-email-header"
+            :class="{ selected: isSelected(item.id) }"
+            @click="toggleSelection(item)"
+          >
+            <div class="mobile-email-title">
+              <el-checkbox
+                :model-value="isSelected(item.id)"
+                @change="() => toggleSelection(item)"
+                @click.stop
+              />
+              <span>#{{ item.id }}</span>
+              <span>{{ item.subject || '无主题' }}</span>
+            </div>
+            <el-tag :type="getStatusTagType(item.status)" size="small">
+              {{ getStatusText(item.status) }}
+            </el-tag>
           </div>
-          <div class="card-row">
-            <span class="label">重试次数</span>
-            <span class="value" :class="{ 'text-danger': email.retry_count > 0 }">
-              {{ email.retry_count }}/{{ email.max_retries || 3 }}
-            </span>
-          </div>
-          <div class="card-row"><span class="label">创建时间</span><span class="value">{{ formatDate(email.created_at) }}</span></div>
-          <div class="card-actions">
-            <el-button size="small" @click="viewEmailDetail(email)">
-              <el-icon><View /></el-icon>
-              详情
-            </el-button>
-            <el-button 
-              v-if="email.status === 'failed'" 
-              size="small" 
-              type="warning" 
-              @click="retryEmail(email)"
-            >
-              <el-icon><Refresh /></el-icon>
-              重试
-            </el-button>
-            <el-button 
-              size="small" 
-              type="danger" 
-              @click="deleteEmail(email)"
-            >
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
-          </div>
-        </div>
-      </div>
-      <div class="mobile-card-list mobile-only" v-if="emailList.length === 0 && !loading">
-        <div class="empty-state">
-          <i class="el-icon-message"></i>
-          <p>暂无邮件数据</p>
-        </div>
-      </div>
+        </template>
+        <template #field-status="{ item }">
+          <el-tag :type="getStatusTagType(item.status)" size="small">
+            {{ getStatusText(item.status) }}
+          </el-tag>
+        </template>
+        <template #field-retry_count="{ item }">
+          <span :class="{ 'text-danger': item.retry_count > 0 }">
+            {{ item.retry_count }}/{{ item.max_retries || 3 }}
+          </span>
+        </template>
+        <template #empty>
+          <EmptyState
+            title="暂无邮件数据"
+            description="可调整筛选条件或刷新队列"
+            action-text="刷新"
+            :loading="loading"
+            @action="refreshQueue"
+          />
+        </template>
+        <template #actions="{ item }">
+          <el-button size="small" @click="viewEmailDetail(item)">
+            <el-icon><View /></el-icon>
+            详情
+          </el-button>
+          <el-button 
+            v-if="item.status === 'failed'" 
+            size="small" 
+            type="warning" 
+            @click="retryEmail(item)"
+          >
+            <el-icon><Refresh /></el-icon>
+            重试
+          </el-button>
+          <el-button 
+            size="small" 
+            type="danger" 
+            @click="deleteEmail(item)"
+          >
+            <el-icon><Delete /></el-icon>
+            删除
+          </el-button>
+        </template>
+      </ResponsiveDataView>
       <div class="mobile-batch-actions mobile-only" v-if="selectedEmails.length > 0">
         <el-button type="warning" @click="batchRetry">
           <el-icon><Refresh /></el-icon>
@@ -266,24 +284,21 @@
           批量删除({{ selectedEmails.length }})
         </el-button>
       </div>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.size"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="pagination.total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+      <PaginationBar
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.size"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="pagination.total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="detailDialogVisible"
       title="邮件详情"
-      :size="isMobile ? '92%' : '600px'"
-      direction="rtl"
-      :lock-scroll="false"
+      size="600px"
+      mobile-size="100%"
+      :loading="detailLoading"
     >
       <div v-if="emailDetail" class="email-detail" v-loading="detailLoading">
         <el-descriptions :column="isMobile ? 1 : 2" border class="desktop-only">
@@ -331,7 +346,12 @@
           <h4>邮件内容</h4>
           <div v-if="emailDetail.content_type === 'html'" class="email-content-html">
             <div v-if="!emailDetail.content || !sanitizedEmailContent" class="email-content-empty">
-              <el-empty description="邮件内容为空" />
+              <EmptyState
+                title="邮件内容为空"
+                description="该邮件没有可预览的 HTML 内容。"
+                :icon-size="48"
+                class="email-content-empty-state"
+              />
             </div>
             <iframe
               v-else-if="isEmailFullHtml && sanitizedEmailContent"
@@ -386,28 +406,36 @@
         </div>
       </div>
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="detailDialogVisible = false" class="mobile-action-btn">关闭</el-button>
+        <FormActionBar
+          :sticky="false"
+        >
           <el-button 
             v-if="emailDetail && emailDetail.status === 'failed'" 
             type="warning" 
             @click="retryEmailFromDetail"
-            class="mobile-action-btn"
           >
             重试发送
           </el-button>
-        </div>
+          <el-button @click="detailDialogVisible = false">关闭</el-button>
+        </FormActionBar>
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script>
 import { ref, reactive, onMounted, computed, onUnmounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search, View, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
 import { formatDateTime } from '@/utils/date'
 import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
+import { confirmDelete, confirmWarning, confirmClear } from '@/utils/confirmAction'
+import AppDrawer from '@/components/AppDrawer.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 const STATUS_MAP = {
   pending: { tag: 'warning', text: '待发送' },
   sending: { tag: 'info', text: '发送中' },
@@ -432,17 +460,14 @@ const handleResponse = (response, defaultErrorMsg) => {
 export default {
   name: 'EmailQueue',
   components: {
-    Refresh, Search, View, Delete
+    Refresh, Search, View, Delete, AppDrawer, EmptyState, FormActionBar, PaginationBar, ResponsiveDataView
   },
   setup() {
     const loading = ref(false)
     const detailDialogVisible = ref(false)
     const emailDetail = ref(null)
-    const isMobile = ref(false)
+    const isMobile = useMobile()
     const detailLoading = ref(false)
-    const checkMobile = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
     const filterForm = reactive({
       status: '',
       email: ''
@@ -461,6 +486,30 @@ export default {
       sent: 0,
       failed: 0
     })
+    const mobileEmailFields = computed(() => [
+      {
+        key: 'to_email',
+        label: '收件人'
+      },
+      {
+        key: 'email_type',
+        label: '邮件类型',
+        formatter: value => getEmailTypeText(value)
+      },
+      {
+        key: 'status',
+        label: '状态'
+      },
+      {
+        key: 'retry_count',
+        label: '重试次数'
+      },
+      {
+        key: 'created_at',
+        label: '创建时间',
+        formatter: value => formatDate(value)
+      }
+    ])
     const sanitizeCache = new Map()
     let iframeLoadTimeout = null
     const isFullHtmlDocument = (html) => {
@@ -607,7 +656,10 @@ export default {
     }
     const retryEmail = async (row) => {
       try {
-        await ElMessageBox.confirm(`确定要重试发送邮件到 ${row.to_email} 吗？`, '确认重试', { type: 'warning' })
+        await confirmWarning(`确定要重试发送邮件到 ${row.to_email} 吗？`, {
+          title: '确认重试',
+          confirmButtonText: '确认重试'
+        })
         const response = await adminAPI.retryEmail(row.id)
         const result = handleResponse(response, '邮件重试失败')
         if (result.success) {
@@ -628,7 +680,9 @@ export default {
     }
     const deleteEmail = async (row) => {
       try {
-        await ElMessageBox.confirm(`确定要删除发送到 ${row.to_email} 的邮件吗？`, '确认删除', { type: 'warning' })
+        await confirmDelete('邮件', 1, {
+          message: `确定要删除发送到 ${row.to_email} 的邮件吗？删除后不可恢复。`
+        })
         const response = await adminAPI.deleteEmailFromQueue(row.id)
         const result = handleResponse(response, '邮件删除失败')
         if (result.success) {
@@ -643,7 +697,19 @@ export default {
     }
     const clearEmails = async (status, title, confirmText, type) => {
       try {
-        await ElMessageBox.confirm(confirmText, title, { type })
+        if (type === 'error') {
+          await confirmDelete('邮件', pagination.total || 1, {
+            message: confirmText,
+            title,
+            confirmButtonText: '确认清空'
+          })
+        } else {
+          await confirmClear('邮件', {
+            message: confirmText,
+            title,
+            confirmButtonText: '确认清空'
+          })
+        }
         const response = await adminAPI.clearEmailQueue(status)
         const result = handleResponse(response, `${title}失败`)
         if (result.success) {
@@ -681,7 +747,10 @@ export default {
     }
     const batchRetry = async () => {
       try {
-        await ElMessageBox.confirm(`确定要重试发送选中的 ${selectedEmails.value.length} 封邮件吗？`, '确认批量重试', { type: 'warning' })
+        await confirmWarning(`确定要重试发送选中的 ${selectedEmails.value.length} 封邮件吗？`, {
+          title: '确认批量重试',
+          confirmButtonText: '确认重试'
+        })
         const promises = selectedEmails.value.map(email => adminAPI.retryEmail(email.id))
         await Promise.all(promises)
         ElMessage.success('批量重试成功')
@@ -693,7 +762,10 @@ export default {
     }
     const batchDelete = async () => {
       try {
-        await ElMessageBox.confirm(`确定要删除选中的 ${selectedEmails.value.length} 封邮件吗？`, '确认批量删除', { type: 'warning' })
+        await confirmDelete('邮件', selectedEmails.value.length, {
+          message: `确定要删除选中的 ${selectedEmails.value.length} 封邮件吗？删除后不可恢复。`,
+          title: '确认批量删除'
+        })
         const promises = selectedEmails.value.map(email => adminAPI.deleteEmailFromQueue(email.id))
         await Promise.all(promises)
         ElMessage.success('批量删除成功')
@@ -758,12 +830,9 @@ export default {
       return formatDateTime(dateString, 'YYYY-MM-DD HH:mm:ss')
     }
     onMounted(() => {
-      checkMobile()
-      window.addEventListener('resize', checkMobile)
       refreshQueue()
     })
     onUnmounted(() => {
-      window.removeEventListener('resize', checkMobile)
       if (iframeLoadTimeout) clearTimeout(iframeLoadTimeout)
     })
     return {
@@ -779,6 +848,7 @@ export default {
       selectedEmails,
       statistics,
       isMobile,
+      mobileEmailFields,
       onIframeLoad,
       refreshQueue,
       applyFilter,
@@ -825,44 +895,75 @@ export default {
 .stats-overview {
   margin-bottom: 20px;
 }
+.stats-overview :deep(.el-card__body) {
+  padding: 0;
+}
+.stat-card {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: none;
+}
 .stat-card.clickable {
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: #fafcff;
+    border-color: #c6e2ff;
   }
 }
 .stat-content {
-  padding: 20px;
+  padding: 18px;
 }
 .stat-number {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 10px;
+  font-size: 26px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1.2;
+  margin-bottom: 8px;
   &.success { color: #67c23a; }
   &.warning { color: #e6a23c; }
   &.danger { color: #f56c6c; }
 }
 .stat-label {
-  color: #666;
-  font-size: 0.9rem;
+  color: #909399;
+  font-size: 13px;
 }
 .filter-section {
   margin-bottom: 20px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: none;
 }
 .filter-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr) max-content;
+  gap: 12px;
+  align-items: end;
+}
+.filter-form :deep(.el-form-item) {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.filter-form :deep(.el-form-item__content) {
   display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.filter-form :deep(.el-input),
+.filter-form :deep(.el-select) {
+  width: 100%;
+  min-width: 0;
 }
 .queue-list {
   margin-bottom: 20px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: none;
 }
 .header-info {
-  color: #666;
-  font-size: 0.9rem;
+  color: #909399;
+  font-size: 13px;
 }
 .email-detail {
   display: flex;
@@ -932,7 +1033,6 @@ export default {
     width: 100% !important;
     margin: 0 auto !important;
     background-color: #ffffff !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
     flex-shrink: 0 !important;
   }
   :deep(style) {
@@ -958,19 +1058,21 @@ export default {
 .text-danger {
   color: #f56c6c;
 }
+.status-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+.queue-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .desktop-only {
   @media (max-width: 768px) { display: none !important; }
 }
 .mobile-only {
   display: none;
   @media (max-width: 768px) { display: block; }
-  &.mobile-card-list {
-    @media (max-width: 768px) {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-  }
 }
 .mobile-detail-info {
   display: none;
@@ -1002,48 +1104,31 @@ export default {
     }
   }
 }
-.mobile-card-list {
-  .mobile-card {
-    background: #fff;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    cursor: pointer;
-    transition: all 0.2s;
-    &.selected {
-      border-color: #409eff;
-      background: #ecf5ff;
-    }
+.mobile-email-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+  transition: color 0.16s ease;
+
+  &.selected {
+    color: var(--el-color-primary);
   }
-  .card-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid #f0f0f0;
-    &:last-of-type { border-bottom: none; }
-    .label {
-      font-weight: 600;
-      color: #606266;
-      font-size: 14px;
-      min-width: 100px;
-      flex-shrink: 0;
-    }
-    .value {
-      flex: 1;
-      text-align: right;
-      color: #303133;
-      font-size: 14px;
-      word-break: break-all;
-    }
-  }
-  .card-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 100%;
-    margin-top: 12px;
+}
+.mobile-email-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+
+  span:last-child {
+    min-width: 0;
+    word-break: break-word;
   }
 }
 .mobile-batch-actions {
@@ -1058,22 +1143,40 @@ export default {
 }
 @media (max-width: 768px) {
   .email-queue-admin { padding: 10px; }
-  .header-actions, .action-buttons, .dialog-footer-buttons {
+  .stats-overview {
+    margin-bottom: 16px;
+  }
+  .stats-overview :deep(.el-col) {
+    flex: 0 0 50%;
+    max-width: 50%;
+    margin-bottom: 10px;
+  }
+  .stat-content {
+    padding: 14px 12px;
+  }
+  .stat-number {
+    font-size: 22px;
+    margin-bottom: 6px;
+  }
+  .header-actions, .action-buttons {
     display: flex;
     flex-direction: column;
     gap: 12px;
     width: 100%;
   }
-  .email-queue-admin .el-button:not(.search-button-inside) {
-    width: 100% !important;
-    min-width: 100% !important;
-    max-width: 100% !important;
-    height: 44px !important;
-    font-size: 16px !important;
-    font-weight: 500 !important;
-    margin: 0 !important;
-    border-radius: 6px !important;
-    padding: 0 16px !important;
+  .header-actions .el-button,
+  .action-buttons .el-button,
+  .mobile-filter-buttons .el-button,
+  .mobile-batch-actions .el-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+    border-radius: 6px;
+    padding: 0 14px;
+    touch-action: manipulation;
     :deep(.el-icon) {
       margin-right: 6px;
       font-size: 16px;
@@ -1090,10 +1193,10 @@ export default {
   }
   .mobile-dialog {
     :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 5vh auto !important;
+      width: 92% !important;
+      margin: 4vh auto !important;
       max-height: 90vh;
-      border-radius: 12px;
+      border-radius: 8px;
     }
     :deep(.el-dialog__body) {
       padding: 16px;
@@ -1108,25 +1211,5 @@ export default {
   flex-direction: column;
   overflow: hidden;
   padding-bottom: 0;
-}
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-  &:hover { border-color: #c0c4cc !important; }
-  &.is-focus { border-color: #1677ff !important; }
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
 }
 </style>

@@ -1,33 +1,74 @@
 <template>
   <div class="list-container help-container">
+    <div class="breadcrumb">首页 / 帮助中心</div>
     <div class="page-header">
-      <h1>帮助文档</h1>
-      <p>使用指南和常见问题解答</p>
+      <div class="page-title">
+        <h1>帮助中心</h1>
+      </div>
     </div>
-    <div class="help-content">
-      <el-card class="nav-card">
+    <div class="help-layout">
+      <aside class="help-nav-card">
+        <button
+          v-for="section in sections"
+          :key="section.id"
+          type="button"
+          class="help-nav-button"
+          @click="scrollToSection(section.id)"
+        >
+          <el-icon><component :is="section.icon" /></el-icon>
+          <span>{{ section.title }}</span>
+        </button>
+      </aside>
+      <main class="help-content">
+      <el-card class="clients-card help-section-card" id="clients">
         <template #header>
           <div class="card-header">
-            <i class="el-icon-menu"></i>
-            快速导航
+            客户端下载
           </div>
         </template>
-        <div class="nav-links">
-          <el-button 
-            v-for="section in sections" 
-            :key="section.id"
-            type="primary" 
-            plain
-            @click="scrollToSection(section.id)"
+        <div class="help-client-grid">
+          <div
+            v-for="client in clients"
+            :key="client.id"
+            class="client-row"
           >
-            {{ section.title }}
-          </el-button>
+            <div class="client-title">
+              <div class="client-name-line">
+                <el-icon class="client-icon"><component :is="getClientIcon(client.icon)" /></el-icon>
+                <span>{{ client.name }}</span>
+              </div>
+              <div class="client-tags">
+                <el-tag
+                  v-for="platform in client.platforms"
+                  :key="platform"
+                  size="small"
+                >
+                  {{ platform }}
+                </el-tag>
+              </div>
+              <div class="item-meta">{{ client.description }}</div>
+            </div>
+            <div class="button-row client-actions">
+              <el-button
+                type="primary"
+                size="small"
+                @click="downloadClient(client)"
+              >
+                下载
+              </el-button>
+              <el-button
+                size="small"
+                @click="openClientGuide(client.id)"
+              >
+                教程
+              </el-button>
+            </div>
+          </div>
         </div>
       </el-card>
-      <el-card class="guide-card" id="guide">
+      <el-card class="guide-card help-section-card" id="guide">
         <template #header>
           <div class="card-header">
-            <i class="el-icon-guide"></i>
             使用指南
           </div>
         </template>
@@ -42,10 +83,9 @@
           </el-collapse-item>
         </el-collapse>
       </el-card>
-      <el-card class="faq-card" id="faq">
+      <el-card class="faq-card help-section-card" id="faq">
         <template #header>
           <div class="card-header">
-            <i class="el-icon-question"></i>
             常见问题
           </div>
         </template>
@@ -60,59 +100,9 @@
           </el-collapse-item>
         </el-collapse>
       </el-card>
-      <el-card class="clients-card" id="clients">
+      <el-card class="client-guides-card help-section-card" id="client-guides">
         <template #header>
           <div class="card-header">
-            <i class="el-icon-download"></i>
-            客户端下载
-          </div>
-        </template>
-        <div class="clients-grid">
-          <div 
-            v-for="client in clients" 
-            :key="client.id"
-            class="client-item"
-          >
-            <div class="client-icon">
-              <i :class="client.icon"></i>
-            </div>
-            <div class="client-info">
-              <h4>{{ client.name }}</h4>
-              <p>{{ client.description }}</p>
-              <div class="client-platforms">
-                <el-tag 
-                  v-for="platform in client.platforms" 
-                  :key="platform"
-                  size="small"
-                  style="margin-right: 5px;"
-                >
-                  {{ platform }}
-                </el-tag>
-              </div>
-            </div>
-            <div class="client-actions">
-              <el-button 
-                type="primary" 
-                size="small"
-                @click="downloadClient(client)"
-              >
-                下载
-              </el-button>
-              <el-button 
-                type="info" 
-                size="small"
-                @click="openClientGuide(client.id)"
-              >
-                教程
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </el-card>
-      <el-card class="client-guides-card" id="client-guides">
-        <template #header>
-          <div class="card-header">
-            <i class="el-icon-document"></i>
             客户端安装教程
           </div>
         </template>
@@ -133,30 +123,29 @@
           </el-collapse-item>
         </el-collapse>
       </el-card>
-      <el-card class="contact-card" id="contact">
+      <el-card class="contact-card help-section-card" id="contact">
         <template #header>
           <div class="card-header">
-            <i class="el-icon-service"></i>
             联系我们
           </div>
         </template>
         <div class="contact-info">
           <div class="contact-item" v-if="contactEmail">
-            <i class="el-icon-message"></i>
+            <el-icon class="contact-icon"><Message /></el-icon>
             <div class="contact-details">
               <h4>售后邮箱</h4>
               <p>{{ contactEmail }}</p>
             </div>
           </div>
           <div class="contact-item" v-if="contactQQ">
-            <i class="el-icon-chat-dot-round"></i>
+            <el-icon class="contact-icon"><ChatDotRound /></el-icon>
             <div class="contact-details">
               <h4>售后联系方式</h4>
               <p>{{ contactQQ }}</p>
             </div>
           </div>
           <div class="contact-item">
-            <i class="el-icon-time"></i>
+            <el-icon class="contact-icon"><Clock /></el-icon>
             <div class="contact-details">
               <h4>服务时间</h4>
               <p>周一至周日 9:00-22:00</p>
@@ -164,12 +153,27 @@
           </div>
         </div>
       </el-card>
+      </main>
     </div>
   </div>
 </template>
 <script>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  Cellphone,
+  ChatDotRound,
+  Clock,
+  Document,
+  Download,
+  Guide,
+  Iphone,
+  Menu,
+  Message,
+  Monitor,
+  QuestionFilled,
+  Service
+} from '@element-plus/icons-vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { safeOpen } from '@/utils/safeOpen'
 import { sanitizeBasicHtml } from '@/utils/sanitizeHtml'
@@ -180,8 +184,8 @@ export default {
     const route = useRoute()
     const router = useRouter()
     const sanitizeHtml = sanitizeBasicHtml
-    const activeNames = ref(['guide-1'])
-    const activeFAQ = ref(['faq-1'])
+    const activeNames = ref([])
+    const activeFAQ = ref([])
     const activeClientGuides = ref([])
     const contactEmail = ref('')
     const contactQQ = ref('')
@@ -217,302 +221,75 @@ export default {
       }
     }
     const sections = [
-      { id: 'guide', title: '使用指南' },
-      { id: 'faq', title: '常见问题' },
-      { id: 'clients', title: '客户端下载' },
-      { id: 'client-guides', title: '安装教程' },
-      { id: 'contact', title: '联系我们' }
+      { id: 'clients', title: '客户端下载', icon: Download },
+      { id: 'guide', title: '使用指南', icon: Guide },
+      { id: 'faq', title: '常见问题', icon: QuestionFilled },
+      { id: 'client-guides', title: '安装教程', icon: Document },
+      { id: 'contact', title: '联系我们', icon: Service }
     ]
     const guides = [
       {
         id: 'guide-1',
-        title: '如何注册账户？',
+        title: '注册与登录',
         content: `
-          <div style="line-height: 1.8;">
-            <p><strong>注册步骤：</strong></p>
+          <div>
             <ol>
-              <li>点击页面右上角的"注册"按钮</li>
-              <li>输入您的邮箱地址（建议使用常用邮箱，用于接收验证邮件和重要通知）</li>
-              <li>设置密码（不少于8位，建议包含字母和数字，提高账户安全性）</li>
-              <li>确认密码（确保两次输入的密码一致）</li>
-              <li>点击"注册"按钮提交注册信息</li>
-              <li>查收邮箱验证邮件（如未收到，请检查垃圾邮件文件夹）</li>
-              <li>点击邮件中的验证链接完成邮箱验证</li>
-              <li>验证成功后返回登录页面，使用注册的邮箱和密码登录</li>
+              <li>使用邮箱注册账户，按页面提示完成验证。</li>
+              <li>登录后进入仪表盘查看余额、订阅、设备和订单入口。</li>
+              <li>忘记密码时在登录页发起找回，按邮件提示重置密码。</li>
             </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>邮箱验证是必须的，未验证的账户无法使用订阅服务。如果长时间未收到验证邮件，请联系客服。
-            </p>
           </div>
         `
       },
       {
         id: 'guide-2',
-        title: '如何购买套餐？',
+        title: '购买套餐',
         content: `
-          <div style="line-height: 1.8;">
-            <p><strong>购买流程：</strong></p>
+          <div>
             <ol>
-              <li>登录账户后，点击导航栏中的"套餐订阅"</li>
-              <li>浏览可用的套餐列表，查看每个套餐的流量、时长、价格等信息</li>
-              <li>选择适合您需求的套餐（可根据使用场景选择不同流量和时长的套餐）</li>
-              <li>点击"立即购买"按钮</li>
-              <li>选择支付方式（支持支付宝、微信支付等）</li>
-              <li>使用手机扫描二维码完成支付</li>
-              <li>支付成功后，系统会自动开通服务并发送通知邮件</li>
-              <li>在"仪表板"页面可以查看订阅状态和到期时间</li>
+              <li>进入套餐购买页面，选择普通套餐或自定义套餐。</li>
+              <li>确认设备数量、周期、优惠券和支付方式。</li>
+              <li>支付完成后，套餐订单会进入订单记录统一管理。</li>
             </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>套餐购买后立即生效，订阅地址会自动生成。建议在购买前先查看套餐详情，确认流量和时长是否符合需求。
-            </p>
           </div>
         `
       },
       {
         id: 'guide-3',
-        title: '如何获取订阅地址？',
+        title: '导入订阅',
         content: `
-          <div style="line-height: 1.8;">
-            <p><strong>获取步骤：</strong></p>
+          <div>
             <ol>
-              <li>登录账户后，进入"订阅管理"页面</li>
-              <li>在页面中找到"订阅地址"区域</li>
-              <li>可以看到两种订阅地址：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li><strong>Clash订阅地址：</strong>适用于Clash系列客户端</li>
-                  <li><strong>通用订阅地址：</strong>适用于其他客户端</li>
-                </ul>
-              </li>
-              <li>点击对应地址右侧的"复制"按钮复制订阅地址</li>
-              <li>订阅地址已复制到剪贴板，可以直接粘贴到客户端软件中使用</li>
-              <li>也可以扫描页面上的二维码，直接导入到Shadowrocket等支持扫码的客户端</li>
+              <li>进入订阅管理，复制对应客户端的订阅地址。</li>
+              <li>在客户端中选择从 URL 导入或扫描二维码。</li>
+              <li>需要隐藏某些协议时，在订阅管理中使用协议排除。</li>
             </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #fff7e6; border-left: 3px solid #faad14; border-radius: 4px;">
-              <strong>⚠️ 重要提示：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>订阅地址包含您的账户信息，请勿分享给他人</li>
-                <li>每个账户的订阅地址是唯一的</li>
-                <li>如果订阅地址泄露，请及时重置订阅地址</li>
-                <li>订阅地址重置后，旧地址将立即失效</li>
-              </ul>
-            </p>
           </div>
         `
       },
       {
         id: 'guide-4',
-        title: '如何重置订阅地址？',
+        title: '设备管理',
         content: `
-          <div style="line-height: 1.8;">
-            <p><strong>重置步骤：</strong></p>
+          <div>
             <ol>
-              <li>登录账户后，进入"订阅管理"页面</li>
-              <li>在页面底部找到"重置订阅地址"按钮（蓝色按钮）</li>
-              <li>点击"重置订阅地址"按钮</li>
-              <li>系统会弹出确认对话框，提示"重置订阅地址将清空所有设备记录"</li>
-              <li>仔细阅读提示信息，确认是否继续</li>
-              <li>点击"确定"按钮确认重置操作（重置后旧地址将立即失效）</li>
-              <li>重置成功后，系统会生成新的订阅地址</li>
-              <li>复制新的订阅地址，重新配置所有使用该订阅的设备</li>
-              <li>更新所有客户端软件的订阅配置</li>
+              <li>进入设备管理查看当前设备、可用设备和最近访问记录。</li>
+              <li>移除不再使用的设备，释放可用设备数量。</li>
+              <li>设备数量不足时，可从设备管理或仪表盘升级设备数量。</li>
             </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #fff1f0; border-left: 3px solid #ff4d4f; border-radius: 4px;">
-              <strong>⚠️ 注意事项：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>重置后，所有使用旧订阅地址的设备将无法连接</li>
-                <li>需要重新配置所有设备（手机、电脑、路由器等）</li>
-                <li>建议在重置前记录当前使用的设备列表</li>
-                <li>重置操作不可撤销，请谨慎操作</li>
-              </ul>
-            </p>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 何时需要重置：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>设备数量达到上限时</li>
-                <li>订阅地址可能泄露时</li>
-                <li>需要清理所有设备连接时</li>
-              </ul>
-            </p>
           </div>
         `
       },
       {
         id: 'guide-5',
-        title: '如何查看设备列表？',
+        title: '充值与订单',
         content: `
-          <div style="line-height: 1.8;">
-            <p><strong>查看步骤：</strong></p>
+          <div>
             <ol>
-              <li>登录账户后，点击导航栏中的"设备管理"</li>
-              <li>在设备管理页面可以查看所有已连接的设备</li>
-              <li>设备列表显示以下信息：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li>设备名称或标识</li>
-                  <li>设备类型（手机、电脑、路由器等）</li>
-                  <li>IP地址</li>
-                  <li>最后访问时间</li>
-                  <li>在线状态</li>
-                </ul>
-              </li>
-              <li>可以点击"移除"按钮删除不需要的设备</li>
-              <li>移除设备后，该设备将无法继续使用订阅服务</li>
+              <li>在仪表盘点击充值，选择金额和支付方式。</li>
+              <li>余额充值、套餐购买、设备升级都会进入订单记录。</li>
+              <li>待支付订单可在订单记录中继续支付或取消。</li>
             </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>定期检查设备列表，移除不使用的设备，可以释放设备配额，让新设备能够连接。
-            </p>
-          </div>
-        `
-      },
-      {
-        id: 'guide-6',
-        title: '如何修改密码？',
-        content: `
-          <div style="line-height: 1.8;">
-            <p><strong>修改步骤：</strong></p>
-            <ol>
-              <li>登录账户后，点击右上角的用户头像或用户名</li>
-              <li>进入"个人资料"或"账户设置"页面</li>
-              <li>找到"修改密码"区域</li>
-              <li>输入当前密码（用于验证身份）</li>
-              <li>输入新密码（不少于8位，建议包含字母和数字）</li>
-              <li>确认新密码（再次输入新密码确保一致）</li>
-              <li>点击"修改密码"或"保存"按钮</li>
-              <li>修改成功后，系统会提示您重新登录</li>
-            </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 安全提示：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>定期更换密码可以提高账户安全性</li>
-                <li>不要使用过于简单的密码（如123456、password等）</li>
-                <li>不要在多个网站使用相同的密码</li>
-                <li>如果忘记密码，可以使用"忘记密码"功能重置</li>
-              </ul>
-            </p>
-          </div>
-        `
-      },
-      {
-        id: 'guide-7',
-        title: '如何充值账户余额？',
-        content: `
-          <div style="line-height: 1.8;">
-            <p><strong>充值步骤：</strong></p>
-            <ol>
-              <li>登录账户后，进入"仪表板"页面</li>
-              <li>在"账户余额"卡片中，点击"充值"按钮</li>
-              <li>在弹出的充值对话框中，输入充值金额（默认20元，可自定义）</li>
-              <li>可以选择快速金额（20、50、100、200、500、1000元）或自定义金额</li>
-              <li>点击"确认充值"按钮</li>
-              <li>系统会生成支付二维码，使用手机支付宝扫描二维码完成支付</li>
-              <li>支付成功后，余额会自动到账，可以用于购买套餐</li>
-            </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>默认充值金额20元，支持自定义任意金额</li>
-                <li>充值成功后，余额可用于购买套餐或升级设备数量</li>
-                <li>可以在"订单记录"页面查看充值记录</li>
-                <li>如果支付后余额未到账，请联系客服处理</li>
-              </ul>
-            </p>
-          </div>
-        `
-      },
-      {
-        id: 'guide-8',
-        title: '如何升级设备数量？',
-        content: `
-          <div style="line-height: 1.8;">
-            <p><strong>升级步骤：</strong></p>
-            <ol>
-              <li>登录账户后，进入"订阅管理"页面</li>
-              <li>在页面中找到"升级设备数量"按钮（仅在订阅有效时显示）</li>
-              <li>点击"升级设备数量"按钮</li>
-              <li>在弹出的对话框中，选择要升级到的设备数量</li>
-              <li>系统会显示升级费用（根据当前设备数量和目标设备数量计算）</li>
-              <li>确认升级信息后，点击"确认升级"按钮</li>
-              <li>如果账户余额充足，系统会直接从余额扣除费用并完成升级</li>
-              <li>如果余额不足，系统会引导您先充值，然后完成升级</li>
-              <li>升级成功后，设备数量限制会立即更新</li>
-            </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>升级设备数量需要订阅处于有效状态</li>
-                <li>升级费用根据设备数量差异计算</li>
-                <li>可以使用账户余额支付，也可以先充值再支付</li>
-                <li>升级后立即生效，无需等待</li>
-              </ul>
-            </p>
-          </div>
-        `
-      },
-      {
-        id: 'guide-9',
-        title: '什么是套餐折算？如何折算？',
-        content: `
-          <div style="line-height: 1.8;">
-            <p><strong>套餐折算说明：</strong></p>
-            <p>当您已有套餐，想要购买不同类型的套餐时，系统会将当前套餐的剩余时间折算成余额，返还到您的账户。</p>
-            <p><strong>折算规则：</strong></p>
-            <ul style="margin: 10px 0 0 20px;">
-              <li>系统会根据您当前套餐的剩余天数和价值计算折算金额</li>
-              <li><strong>折算公式：折算金额 = 剩余天数 × (原套餐价格 ÷ 原套餐天数)</strong></li>
-              <li>折算后的金额会返还到您的账户余额</li>
-              <li>折算后，当前套餐的设备和时间都会清零</li>
-            </ul>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>📐 折算公式详解：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li><strong>剩余天数</strong>：当前套餐到期时间减去当前时间的剩余天数（向上取整）</li>
-                <li><strong>原套餐价格</strong>：您购买当前套餐时支付的原价</li>
-                <li><strong>原套餐天数</strong>：当前套餐的有效期天数</li>
-                <li><strong>每天单价</strong>：原套餐价格 ÷ 原套餐天数</li>
-                <li><strong>折算金额</strong>：剩余天数 × 每天单价（保留两位小数）</li>
-              </ul>
-              <p style="margin-top: 10px;"><strong>示例：</strong></p>
-              <p style="margin-left: 20px;">
-                假设您购买了一个 30 天、价格 ¥100 的套餐，使用了 10 天后想要折算：<br>
-                剩余天数 = 20 天<br>
-                每天单价 = ¥100 ÷ 30 = ¥3.33<br>
-                折算金额 = 20 × ¥3.33 = ¥66.60
-              </p>
-            </p>
-            <p><strong>折算步骤：</strong></p>
-            <ol>
-              <li>登录账户后，进入"套餐订阅"页面</li>
-              <li>选择要购买的新套餐，点击"立即购买"</li>
-              <li>如果系统检测到您已有套餐，会弹出折算提示对话框</li>
-              <li>对话框会显示：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li>当前套餐的剩余天数</li>
-                  <li>可折算的金额</li>
-                  <li>折算后的操作说明</li>
-                </ul>
-              </li>
-              <li>仔细阅读提示信息，确认是否进行折算</li>
-              <li>点击"立即折算"按钮确认折算</li>
-              <li>系统会将剩余时间折算成余额返还到您的账户</li>
-              <li>折算完成后，可以继续购买新套餐</li>
-            </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #fff1f0; border-left: 3px solid #ff4d4f; border-radius: 4px;">
-              <strong>⚠️ 重要提示：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>折算后，当前套餐的所有设备和时间都会清零</li>
-                <li>需要重新配置所有设备使用新的订阅地址</li>
-                <li>折算操作不可撤销，请谨慎操作</li>
-                <li>建议在折算前记录当前使用的设备列表</li>
-              </ul>
-            </p>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 何时需要折算：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>想要从流量套餐切换到时长套餐时</li>
-                <li>想要从时长套餐切换到流量套餐时</li>
-                <li>想要更换不同类型的套餐时</li>
-                <li>如果购买相同类型的套餐，系统会自动累加时间，无需折算</li>
-              </ul>
-            </p>
           </div>
         `
       }
@@ -520,261 +297,37 @@ export default {
     const faqs = [
       {
         id: 'faq-1',
-        question: '为什么我的订阅无法使用？',
+        question: '订阅地址可以分享给他人吗？',
         answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>可能的原因和解决方法：</strong></p>
-            <ul>
-              <li><strong>订阅已过期：</strong>请检查订阅到期时间，如果已过期需要续费</li>
-              <li><strong>设备数量超限：</strong>您的订阅可能已达到最大设备数量限制，请重置订阅地址或移除不使用的设备</li>
-              <li><strong>网络连接问题：</strong>请检查您的网络连接是否正常，尝试切换网络环境</li>
-              <li><strong>客户端配置错误：</strong>请检查客户端配置是否正确，尝试重新导入订阅</li>
-              <li><strong>节点故障：</strong>当前使用的节点可能暂时不可用，请尝试切换其他节点</li>
-              <li><strong>订阅地址失效：</strong>如果订阅地址已重置，需要使用新的订阅地址重新配置</li>
-            </ul>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 排查步骤：</strong>1. 检查订阅状态和到期时间 2. 查看设备列表是否超限 3. 尝试更新订阅 4. 切换节点测试 5. 重新配置客户端
-            </p>
-          </div>
+          <div><p>不建议分享。订阅地址和账户权益绑定，分享后可能占用设备数量。发现泄露时，请在订阅管理中重置订阅地址。</p></div>
         `
       },
       {
         id: 'faq-2',
-        question: '如何查看我的设备列表？',
+        question: '订单在哪里查看？',
         answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>查看步骤：</strong></p>
-            <ol>
-              <li>登录账户后，点击导航栏中的"设备管理"</li>
-              <li>在设备管理页面可以查看所有已连接的设备</li>
-            </ol>
-            <p><strong>设备信息包括：</strong></p>
-            <ul>
-              <li>设备名称或标识</li>
-              <li>设备类型（手机、电脑、路由器等）</li>
-              <li>IP地址</li>
-              <li>最后访问时间</li>
-              <li>在线状态（是否当前在线）</li>
-            </ul>
-            <p><strong>设备管理操作：</strong></p>
-            <ul>
-              <li>可以点击"移除"按钮删除不需要的设备</li>
-              <li>移除设备后，该设备将无法继续使用订阅服务</li>
-              <li>移除设备可以释放设备配额，让新设备能够连接</li>
-            </ul>
-          </div>
+          <div><p>套餐购买、升级设备数量和账户充值都会进入订单记录。订单记录中可查看状态、金额、时间，并对待支付订单继续支付。</p></div>
         `
       },
       {
         id: 'faq-3',
-        question: '支持哪些客户端软件？',
+        question: '设备数量不够怎么办？',
         answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>我们支持以下主流客户端软件：</strong></p>
-            <ul>
-              <li><strong>iOS平台：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>Shadowrocket（推荐，功能强大，需在App Store购买）</li>
-                  <li>其他iOS客户端请参考App Store上的相关应用</li>
-                </ul>
-              </li>
-              <li><strong>Android平台：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>Clash Meta for Android（推荐，功能强大）</li>
-                  <li>V2RayNG（轻量级，简单易用）</li>
-                  <li>Hiddify（跨平台支持）</li>
-                  <li>FlClash（Flutter开发）</li>
-                </ul>
-              </li>
-              <li><strong>Windows平台：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>Clash Party（推荐，基于Mihomo内核，功能强大）</li>
-                  <li>Clash Verge Rev（界面现代化）</li>
-                  <li>Clash Verge（轻量级，性能优异）</li>
-                  <li>Hiddify（跨平台支持）</li>
-                  <li>FlClash（Flutter开发）</li>
-                  <li>V2rayN（轻量级）</li>
-                </ul>
-              </li>
-              <li><strong>Mac平台：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>Clash Party（推荐，基于Mihomo内核）</li>
-                  <li>Clash Verge Rev（界面现代化）</li>
-                  <li>Clash Verge（轻量级）</li>
-                  <li>Hiddify（跨平台支持）</li>
-                  <li>FlClash（Flutter开发）</li>
-                </ul>
-              </li>
-              <li><strong>Linux平台：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>Clash Party（推荐）</li>
-                  <li>Clash Verge Rev</li>
-                </ul>
-              </li>
-            </ul>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>所有客户端都支持订阅链接导入，具体使用方法请查看各客户端的详细教程。
-            </p>
-          </div>
+          <div><p>可以先在设备管理中移除不用的设备；仍不够时，点击升级设备数量并完成支付。</p></div>
         `
       },
       {
         id: 'faq-4',
-        question: '如何修改密码？',
+        question: '支持哪些客户端？',
         answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>修改密码步骤：</strong></p>
-            <ol>
-              <li>登录账户后，点击右上角的用户头像或用户名</li>
-              <li>进入"个人资料"或"账户设置"页面</li>
-              <li>找到"修改密码"区域</li>
-              <li>输入当前密码（用于验证身份）</li>
-              <li>输入新密码（不少于8位，建议包含字母和数字）</li>
-              <li>确认新密码（再次输入新密码确保一致）</li>
-              <li>点击"修改密码"或"保存"按钮</li>
-              <li>修改成功后，系统会提示您重新登录</li>
-            </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #fff7e6; border-left: 3px solid #faad14; border-radius: 4px;">
-              <strong>⚠️ 安全提示：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>不要使用过于简单的密码（如123456、password等）</li>
-                <li>建议使用包含大小写字母、数字和特殊字符的复杂密码</li>
-                <li>不要在多个网站使用相同的密码</li>
-                <li>定期更换密码可以提高账户安全性</li>
-              </ul>
-            </p>
-          </div>
+          <div><p>页面提供 Clash for Windows、Clash Verge、Hiddify、V2rayN、V2rayNG、Shadowrocket、FlClash、Clash Party 等客户端的下载和教程入口。</p></div>
         `
       },
       {
         id: 'faq-5',
-        question: '忘记密码怎么办？',
+        question: '如何修改密码或邮箱？',
         answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>找回密码步骤：</strong></p>
-            <ol>
-              <li>在登录页面，点击"忘记密码？"链接</li>
-              <li>输入您注册时使用的邮箱地址</li>
-              <li>点击"发送重置邮件"按钮</li>
-              <li>查收邮箱中的重置密码邮件（如未收到，请检查垃圾邮件文件夹）</li>
-              <li>点击邮件中的重置密码链接</li>
-              <li>在重置页面输入新密码（不少于8位）</li>
-              <li>确认新密码</li>
-              <li>点击"重置密码"按钮完成重置</li>
-              <li>使用新密码登录账户</li>
-            </ol>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>如果长时间未收到重置邮件，请检查邮箱是否正确，或联系客服协助处理。
-            </p>
-          </div>
-        `
-      },
-      {
-        id: 'faq-6',
-        question: '订阅地址可以分享给他人吗？',
-        answer: `
-          <div style="line-height: 1.8;">
-            <p style="padding: 10px; background: #fff1f0; border-left: 3px solid #ff4d4f; border-radius: 4px;">
-              <strong>⚠️ 重要提示：订阅地址绝对不能分享给他人！</strong>
-            </p>
-            <p><strong>原因：</strong></p>
-            <ul>
-              <li>订阅地址包含您的账户信息和访问凭证</li>
-              <li>他人使用您的订阅地址会占用您的设备配额</li>
-              <li>可能导致您的设备无法连接</li>
-              <li>存在账户安全风险</li>
-            </ul>
-            <p><strong>如果订阅地址泄露：</strong></p>
-            <ol>
-              <li>立即登录账户</li>
-              <li>进入"订阅管理"页面</li>
-              <li>点击"重置订阅地址"按钮</li>
-              <li>确认重置操作</li>
-              <li>使用新的订阅地址重新配置所有设备</li>
-            </ol>
-          </div>
-        `
-      },
-      {
-        id: 'faq-7',
-        question: '如何测试节点速度？',
-        answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>不同客户端的测试方法：</strong></p>
-            <ul>
-              <li><strong>Clash Party / Clash Verge Rev：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>在"代理"页面，右键点击节点</li>
-                  <li>选择"延迟测试"或"速度测试"</li>
-                  <li>等待测试完成，选择延迟最低的节点</li>
-                </ul>
-              </li>
-              <li><strong>Clash Meta for Android：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>在"代理"页面，长按节点</li>
-                  <li>选择"延迟测试"</li>
-                  <li>或使用"自动选择"功能</li>
-                </ul>
-              </li>
-              <li><strong>Shadowrocket：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>长按节点名称</li>
-                  <li>选择"测试连接"</li>
-                  <li>查看延迟和速度信息</li>
-                </ul>
-              </li>
-              <li><strong>V2RayN：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>右键点击节点</li>
-                  <li>选择"测试真链接延迟"</li>
-                  <li>等待测试完成</li>
-                </ul>
-              </li>
-            </ul>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>建议定期测试节点速度，选择延迟最低、速度最快的节点，以获得最佳使用体验。
-            </p>
-          </div>
-        `
-      },
-      {
-        id: 'faq-8',
-        question: '为什么连接后无法访问某些网站？',
-        answer: `
-          <div style="line-height: 1.8;">
-            <p><strong>可能的原因和解决方法：</strong></p>
-            <ul>
-              <li><strong>规则模式问题：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>某些网站可能被规则判定为直连，但实际需要代理</li>
-                  <li>尝试切换到"全局模式"测试</li>
-                  <li>如果全局模式可以访问，说明是规则问题</li>
-                </ul>
-              </li>
-              <li><strong>节点问题：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>当前节点可能无法访问该网站</li>
-                  <li>尝试切换其他节点</li>
-                  <li>选择不同地区的节点测试</li>
-                </ul>
-              </li>
-              <li><strong>DNS问题：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>DNS解析可能有问题</li>
-                  <li>在客户端设置中更换DNS服务器（如8.8.8.8、1.1.1.1）</li>
-                </ul>
-              </li>
-              <li><strong>网站本身问题：</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                  <li>网站可能暂时无法访问</li>
-                  <li>尝试直接访问（不使用代理）测试</li>
-                </ul>
-              </li>
-            </ul>
-            <p style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 排查步骤：</strong>1. 切换节点测试 2. 切换代理模式测试 3. 检查DNS设置 4. 查看客户端日志
-            </p>
-          </div>
+          <div><p>进入个人资料或用户设置，按页面表单填写当前密码、新密码或邮箱验证码，保存后系统会同步账号状态。</p></div>
         `
       }
     ]
@@ -784,37 +337,20 @@ export default {
         aliases: ['clash_windows', 'clash-for-windows'],
         name: 'Clash for Windows',
         description: 'Windows 平台 Clash 客户端',
-        icon: 'el-icon-monitor',
+        icon: 'desktop',
         platforms: ['Windows'],
         githubKey: null,
         downloadKeys: ['clash_windows_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash for Windows 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，打开管理员配置的 Clash for Windows 下载链接</li>
-              <li>下载完成后，双击安装包并按提示安装</li>
-              <li>安装完成后打开 Clash for Windows</li>
+              <li>下载并安装 Clash for Windows。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 Clash for Windows 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、导入订阅</h4>
-            <ol>
-              <li>复制仪表盘中的 Clash 订阅地址</li>
-              <li>打开 Profiles 页面</li>
-              <li>在输入框粘贴订阅地址并点击 Download</li>
-              <li>下载完成后选择刚添加的配置</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、开启代理</h4>
-            <ol>
-              <li>进入 Proxies 页面选择节点</li>
-              <li>回到 General 页面开启 System Proxy</li>
-              <li>需要接管全部流量时，可按需开启 TUN Mode</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 提示：</strong>Clash for Windows 已停止维护，如遇兼容问题，建议改用 Clash Verge、Clash Party 或 FlClash。
-            </p>
           </div>
         `
       },
@@ -822,65 +358,20 @@ export default {
         id: 'clash-party',
         name: 'Clash Party',
         description: 'Windows/Mac/Linux平台功能强大的代理客户端，基于Mihomo内核',
-        icon: 'el-icon-monitor',
+        icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-party',
         downloadKeys: ['mihomo_windows_url', 'mihomo_macos_url', 'clash_windows_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Party 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，根据您的系统（Windows/Mac/Linux）和芯片架构自动下载对应版本</li>
-              <li>Windows：下载 .exe 安装包，双击运行安装</li>
-              <li>Mac：下载 .pkg 或 .dmg 文件，双击打开并按照提示安装</li>
-              <li>Linux：下载 .deb 文件，使用包管理器安装（如：sudo dpkg -i *.deb）</li>
-              <li>安装完成后，在应用列表中找到 Clash Party</li>
+              <li>下载并安装 Clash Party。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 Clash Party 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 Clash Party 软件</li>
-              <li>在设置中找到"订阅"或"配置"选项</li>
-              <li>点击"添加订阅"或"从URL导入"</li>
-              <li>粘贴您的订阅地址</li>
-              <li>输入订阅名称（可自定义）</li>
-              <li>点击"确定"或"保存"</li>
-              <li>等待配置下载完成</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在应用主界面可以看到所有可用节点</li>
-              <li>选择一个节点（可以测试延迟选择最快的）</li>
-              <li>开启系统代理或TUN模式</li>
-              <li>连接成功后，状态会显示为已连接</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
-            <ol>
-              <li>在应用中可以切换代理模式：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li><strong>规则模式：</strong>根据规则自动选择代理或直连</li>
-                  <li><strong>全局模式：</strong>所有流量都走代理</li>
-                  <li><strong>直连模式：</strong>所有流量都直连</li>
-                </ul>
-              </li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
-            <ol>
-              <li>在订阅设置中，点击"更新"按钮</li>
-              <li>等待更新完成，新的节点会自动同步</li>
-              <li>建议定期更新订阅以获取最新节点</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"功能</li>
-                <li>可以使用"延迟测试"功能选择最快的节点</li>
-                <li>定期更新订阅以获取最新节点</li>
-                <li>Clash Party 基于 Mihomo 内核，性能优异</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -889,64 +380,20 @@ export default {
         aliases: ['clash-verge-rev'],
         name: 'Clash Verge',
         description: 'Windows/Mac/Linux平台优秀的代理客户端，界面现代化',
-        icon: 'el-icon-monitor',
+        icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-verge',
         downloadKeys: ['clash_verge_windows_url', 'clash_verge_macos_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Verge 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，根据您的系统（Windows/Mac/Linux）和芯片架构自动下载对应版本</li>
-              <li>Windows：下载 .exe 安装包，双击运行安装</li>
-              <li>Mac：下载 .dmg 文件，双击打开后将 Clash Verge Rev 拖拽到"应用程序"文件夹</li>
-              <li>Linux：下载 .deb 或 .rpm 文件，使用包管理器安装</li>
-              <li>首次运行可能需要授予权限，按照系统提示操作</li>
+              <li>下载并安装 Clash Verge。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 Clash Verge 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 Clash Verge Rev 应用</li>
-              <li>在设置中找到"订阅"或"配置"选项</li>
-              <li>点击"添加订阅"或"从URL导入"</li>
-              <li>粘贴您的订阅地址</li>
-              <li>输入订阅名称（可自定义）</li>
-              <li>点击"确定"或"保存"</li>
-              <li>等待配置下载完成</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在应用主界面可以看到所有可用节点</li>
-              <li>选择一个节点（可以测试延迟选择最快的）</li>
-              <li>开启系统代理或TUN模式</li>
-              <li>连接成功后，状态会显示为已连接</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
-            <ol>
-              <li>在应用中可以切换代理模式：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li><strong>规则模式：</strong>根据规则自动选择代理或直连</li>
-                  <li><strong>全局模式：</strong>所有流量都走代理</li>
-                  <li><strong>直连模式：</strong>所有流量都直连</li>
-                </ul>
-              </li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
-            <ol>
-              <li>在订阅设置中，点击"更新"按钮</li>
-              <li>等待更新完成，新的节点会自动同步</li>
-              <li>建议定期更新订阅以获取最新节点</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"功能</li>
-                <li>可以使用"延迟测试"功能选择最快的节点</li>
-                <li>定期更新订阅以获取最新节点</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -955,63 +402,20 @@ export default {
         aliases: ['clash-android'],
         name: 'Clash Meta',
         description: 'Android 平台代理客户端',
-        icon: 'el-icon-monitor',
+        icon: 'android',
         platforms: ['Android'],
         githubKey: null,
         downloadKeys: ['clash_android_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Clash Meta 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，下载管理员配置的 Android 安装包或下载页面</li>
-              <li>下载完成后，在手机上打开 APK 文件</li>
-              <li>如果系统提示禁止安装未知来源应用，请先允许当前浏览器安装应用</li>
-              <li>安装完成后打开 Clash Meta</li>
+              <li>下载并安装 Clash Meta。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 Clash Meta 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 Clash Meta 应用</li>
-              <li>进入配置或订阅页面</li>
-              <li>点击"添加订阅"或"从URL导入"</li>
-              <li>粘贴您的订阅地址</li>
-              <li>输入订阅名称（可自定义）</li>
-              <li>保存后等待配置下载完成</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在应用主界面可以看到所有可用节点</li>
-              <li>选择一个节点（可以测试延迟选择最快的）</li>
-              <li>开启 VPN 或代理连接</li>
-              <li>连接成功后，状态会显示为已连接</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
-            <ol>
-              <li>在应用中可以切换代理模式：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li><strong>规则模式：</strong>根据规则自动选择代理或直连</li>
-                  <li><strong>全局模式：</strong>所有流量都走代理</li>
-                  <li><strong>直连模式：</strong>所有流量都直连</li>
-                </ul>
-              </li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
-            <ol>
-              <li>在订阅设置中，点击"更新"按钮</li>
-              <li>等待更新完成，新的节点会自动同步</li>
-              <li>建议定期更新订阅以获取最新节点</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"功能</li>
-                <li>可以使用"延迟测试"功能选择最快的节点</li>
-                <li>定期更新订阅以获取最新节点</li>
-                <li>优先复制 Clash 订阅地址导入</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -1019,65 +423,20 @@ export default {
         id: 'hiddify',
         name: 'Hiddify',
         description: '跨平台代理客户端，支持Windows/Mac/Android',
-        icon: 'el-icon-monitor',
+        icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Android'],
         githubKey: 'hiddify',
         downloadKeys: ['hiddify_windows_url', 'hiddify_android_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Hiddify 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，根据您的系统（Windows/Mac/Android）和芯片架构自动下载对应版本</li>
-              <li>Windows：下载 .exe 安装包，双击运行安装</li>
-              <li>Mac：下载 .dmg 文件，双击打开后将 Hiddify 拖拽到"应用程序"文件夹</li>
-              <li>Android：下载 .apk 文件，在手机上安装（需要允许安装未知来源应用）</li>
-              <li>首次运行可能需要授予权限，按照系统提示操作</li>
+              <li>下载并安装 Hiddify。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 Hiddify 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 Hiddify 应用</li>
-              <li>在设置中找到"订阅"或"配置"选项</li>
-              <li>点击"添加订阅"或"从URL导入"</li>
-              <li>粘贴您的订阅地址</li>
-              <li>输入订阅名称（可自定义）</li>
-              <li>点击"确定"或"保存"</li>
-              <li>等待配置下载完成</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在应用主界面可以看到所有可用节点</li>
-              <li>选择一个节点（可以测试延迟选择最快的）</li>
-              <li>开启系统代理或VPN模式（Android需要授予VPN权限）</li>
-              <li>连接成功后，状态会显示为已连接</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、规则配置</h4>
-            <ol>
-              <li>在应用中可以切换代理模式：
-                <ul style="margin: 10px 0 0 20px;">
-                  <li><strong>规则模式：</strong>根据规则自动选择代理或直连</li>
-                  <li><strong>全局模式：</strong>所有流量都走代理</li>
-                  <li><strong>直连模式：</strong>所有流量都直连</li>
-                </ul>
-              </li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">五、更新订阅</h4>
-            <ol>
-              <li>在订阅设置中，点击"更新"按钮</li>
-              <li>等待更新完成，新的节点会自动同步</li>
-              <li>建议定期更新订阅以获取最新节点</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"功能</li>
-                <li>可以使用"延迟测试"功能选择最快的节点</li>
-                <li>定期更新订阅以获取最新节点</li>
-                <li>Hiddify 支持多平台，界面统一，使用方便</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -1085,48 +444,20 @@ export default {
         id: 'flclash',
         name: 'FlClash',
         description: 'Windows/Mac/Android平台Flutter开发的代理客户端',
-        icon: 'el-icon-monitor',
+        icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Android'],
         githubKey: 'flclash',
         downloadKeys: ['flash_windows_url', 'flash_macos_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">FlClash 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，根据您的系统（Windows/Mac/Android）和芯片架构自动下载对应版本</li>
-              <li>Windows：下载 .exe 安装包，双击运行安装</li>
-              <li>Mac：下载 .dmg 文件，双击打开后将 FlClash 拖拽到"应用程序"文件夹</li>
-              <li>Android：下载 .apk 文件，在手机上安装（需要允许安装未知来源应用）</li>
-              <li>首次运行可能需要授予权限，按照系统提示操作</li>
+              <li>下载并安装 FlClash。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 FlClash 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 FlClash 应用</li>
-              <li>在设置中找到"订阅"或"配置"选项</li>
-              <li>点击"添加订阅"或"从URL导入"</li>
-              <li>粘贴您的订阅地址</li>
-              <li>输入订阅名称（可自定义）</li>
-              <li>点击"确定"或"保存"</li>
-              <li>等待配置下载完成</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在应用主界面可以看到所有可用节点</li>
-              <li>选择一个节点（可以测试延迟选择最快的）</li>
-              <li>开启系统代理或TUN模式</li>
-              <li>连接成功后，状态会显示为已连接</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"功能</li>
-                <li>可以使用"延迟测试"功能选择最快的节点</li>
-                <li>定期更新订阅以获取最新节点</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -1134,57 +465,20 @@ export default {
         id: 'v2rayn',
         name: 'V2rayN',
         description: 'Windows平台轻量级代理客户端，资源占用低',
-        icon: 'el-icon-monitor',
+        icon: 'desktop',
         platforms: ['Windows'],
         githubKey: 'v2rayn',
         downloadKeys: ['v2rayn_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">V2rayN 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，根据您的系统架构（64位/32位）下载对应版本</li>
-              <li>下载完成后，解压到任意文件夹（建议解压到非系统盘）</li>
-              <li>解压后找到 v2rayN.exe 文件，双击运行</li>
-              <li>首次运行会提示选择语言，选择"中文"</li>
+              <li>下载并安装 V2rayN。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 V2rayN 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 V2rayN 软件</li>
-              <li>点击顶部菜单栏的"订阅" → "订阅设置"</li>
-              <li>点击"添加"按钮</li>
-              <li>在"备注"输入框中输入订阅名称（可自定义）</li>
-              <li>在"地址（URL）"输入框中粘贴您的订阅地址</li>
-              <li>点击"确定"按钮保存订阅</li>
-              <li>返回主界面，点击"订阅" → "更新订阅"</li>
-              <li>等待更新完成，节点会自动出现在服务器列表中</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在服务器列表中，可以看到所有可用的节点</li>
-              <li>双击节点名称可以选择该节点</li>
-              <li>选中的节点会显示为蓝色背景</li>
-              <li>点击系统托盘中的 V2rayN 图标</li>
-              <li>选择"Http代理" → "开启Http代理"</li>
-              <li>或者选择"系统代理" → "自动配置系统代理"</li>
-              <li>连接成功后，系统托盘图标会显示为绿色</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、更新订阅</h4>
-            <ol>
-              <li>点击顶部菜单栏的"订阅" → "更新订阅"</li>
-              <li>或者右键点击系统托盘图标，选择"更新订阅"</li>
-              <li>等待更新完成，新的节点会自动同步</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"和"自动配置系统代理"功能</li>
-                <li>可以使用"测试真链接延迟"功能选择最快的节点</li>
-                <li>建议定期更新订阅和软件版本</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -1192,51 +486,20 @@ export default {
         id: 'v2rayng',
         name: 'V2rayNG',
         description: 'Android平台轻量级代理客户端，简单易用',
-        icon: 'el-icon-mobile-phone',
+        icon: 'android',
         platforms: ['Android'],
         githubKey: 'v2rayng',
         downloadKeys: ['v2rayng_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">V2rayNG 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>点击下载按钮，下载最新版本的 APK 文件</li>
-              <li>下载完成后，在手机上找到下载的 APK 文件</li>
-              <li>如果系统提示"禁止安装未知来源应用"，需要先允许安装</li>
-              <li>点击 APK 文件开始安装</li>
-              <li>安装完成后，在应用列表中找到 V2rayNG</li>
+              <li>下载并安装 V2rayNG。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 V2rayNG 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 V2rayNG 应用</li>
-              <li>点击右上角的"+"按钮</li>
-              <li>选择"从剪贴板导入"或"订阅设置"</li>
-              <li>在订阅设置中，点击"+"添加订阅</li>
-              <li>粘贴您的订阅地址</li>
-              <li>输入订阅名称（可自定义）</li>
-              <li>点击"确定"保存</li>
-              <li>返回主界面，点击"更新订阅"</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在主界面可以看到所有可用节点</li>
-              <li>点击节点名称可以选择该节点</li>
-              <li>点击右下角的开关按钮，开启代理</li>
-              <li>首次开启会提示创建VPN连接，点击"确定"</li>
-              <li>授予VPN权限（这是Android系统要求）</li>
-              <li>连接成功后，开关会显示为绿色</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"开机自启"和"后台运行"功能</li>
-                <li>可以使用"延迟测试"功能选择最快的节点</li>
-                <li>定期更新订阅以获取最新节点</li>
-              </ul>
-            </p>
           </div>
         `
       },
@@ -1244,62 +507,31 @@ export default {
         id: 'shadowrocket',
         name: 'Shadowrocket',
         description: 'iOS平台优秀的代理客户端，界面简洁，操作便捷',
-        icon: 'el-icon-iphone',
+        icon: 'ios',
         platforms: ['iOS'],
         githubKey: null,
         downloadKeys: ['shadowrocket_url'],
         downloadUrl: 'https://apps.apple.com/app/shadowrocket/id932747118',
         guideUrl: '#',
         guide: `
-          <div style="line-height: 1.8;">
-            <h3 style="color: #1677ff; margin-bottom: 15px;">Shadowrocket 使用教程</h3>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">一、下载和安装</h4>
+          <div>
             <ol>
-              <li>Shadowrocket 是付费应用，需要在 App Store 购买（价格约 $2.99）</li>
-              <li>打开 App Store，搜索"Shadowrocket"</li>
-              <li>点击"获取"或"购买"按钮进行购买和下载</li>
-              <li>下载完成后，在主屏幕找到 Shadowrocket 图标</li>
-              <li>首次打开需要授予VPN权限</li>
+              <li>下载并安装 Shadowrocket。</li>
+              <li>复制订阅管理中的对应订阅地址。</li>
+              <li>在 Shadowrocket 中选择从 URL 导入或添加订阅。</li>
+              <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">二、配置订阅</h4>
-            <ol>
-              <li>打开 Shadowrocket 应用</li>
-              <li>点击右上角的"+"按钮</li>
-              <li>选择"类型"为"Subscribe"（订阅）</li>
-              <li>在"URL"输入框中粘贴您的订阅地址</li>
-              <li>在"备注"输入框中输入配置名称（可自定义）</li>
-              <li>点击右上角的"完成"按钮</li>
-              <li>应用会自动下载订阅配置</li>
-              <li>下载完成后，节点列表会自动出现在"首页"</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">三、选择节点和连接</h4>
-            <ol>
-              <li>在应用首页，可以看到所有可用的节点</li>
-              <li>点击节点名称可以选择该节点</li>
-              <li>选中的节点会显示为蓝色</li>
-              <li>点击右上角的开关按钮，开启代理</li>
-              <li>首次开启会提示添加VPN配置，点击"允许"</li>
-              <li>输入设备密码或使用Face ID/Touch ID确认</li>
-              <li>连接成功后，开关会显示为绿色，状态栏会显示VPN图标</li>
-            </ol>
-            <h4 style="color: #333; margin-top: 20px; margin-bottom: 10px;">四、更新订阅</h4>
-            <ol>
-              <li>在"首页"，向下拉刷新订阅</li>
-              <li>或者在"订阅"页面，点击订阅右侧的刷新图标</li>
-              <li>等待更新完成，新的节点会自动同步</li>
-            </ol>
-            <p style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 3px solid #1677ff; border-radius: 4px;">
-              <strong>💡 使用技巧：</strong>
-              <ul style="margin: 10px 0 0 20px;">
-                <li>建议开启"自动选择"功能，应用会自动选择延迟最低的节点</li>
-                <li>可以使用"节点测试"功能批量测试节点速度</li>
-                <li>在"设置"中可以开启"后台运行"，保持代理连接</li>
-              </ul>
-            </p>
           </div>
         `
       }
     ]
+    const clientIconMap = {
+      desktop: Monitor,
+      android: Cellphone,
+      mobile: Cellphone,
+      ios: Iphone
+    }
+    const getClientIcon = (icon) => clientIconMap[icon] || Monitor
     const clients = computed(() => baseClients)
     const clientAliasMap = computed(() => {
       const map = new Map()
@@ -1474,6 +706,7 @@ export default {
       scrollToSection,
       downloadClient,
       openClientGuide,
+      getClientIcon,
       sanitizeHtml
     }
   }
@@ -1496,51 +729,106 @@ export default {
     margin-top: 0 !important;
   }
 }
+.breadcrumb {
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
 .page-header {
-  margin-bottom: 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
   text-align: left;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
   @media (max-width: 768px) {
     margin-top: 0 !important;
-    padding-top: 0 !important;
     margin-bottom: 0.75rem;
   }
 }
 .page-header :is(h1) {
-  color: #1677ff;
-  font-size: 1.5rem;
-  margin-bottom: 0.25rem;
+  margin: 0;
+  color: #303133;
+  font-size: 22px;
+  line-height: 1.25;
   @media (max-width: 768px) {
     font-size: 1.25rem;
   }
 }
 .page-header :is(p) {
-  color: #666;
-  font-size: 0.875rem;
+  margin: 6px 0 0;
+  color: #606266;
+  line-height: 1.5;
   @media (max-width: 768px) {
     font-size: 0.8125rem;
   }
 }
 .help-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  display: grid;
+  gap: 14px;
   @media (max-width: 768px) {
     gap: 0.75rem;
   }
 }
-.nav-card,
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.quick-item {
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+.quick-item:hover {
+  border-color: #c6e2ff;
+  background: #fbfdff;
+}
+.quick-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-weight: 800;
+}
+.quick-name {
+  color: #303133;
+  font-size: 15px;
+  font-weight: 700;
+}
+.quick-desc {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .guide-card,
 .faq-card,
 .clients-card,
+.client-guides-card,
 .contact-card {
   border-radius: 8px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid #dcdfe6;
   :deep(.el-card__header) {
-    padding: 12px 16px;
-    font-size: 0.9375rem;
+    padding: 14px 16px;
+    border-bottom: 1px solid #ebeef5;
+    font-size: 16px;
+    font-weight: 700;
   }
   :deep(.el-card__body) {
-    padding: 12px 16px;
+    padding: 16px;
   }
   @media (max-width: 768px) {
     :deep(.el-card__header) {
@@ -1570,7 +858,7 @@ export default {
     border-radius: 8px;
     font-weight: 600;
     font-size: 0.875rem;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
     white-space: nowrap;
     overflow: clip;
     text-overflow: ellipsis;
@@ -1578,10 +866,8 @@ export default {
       padding: 10px 12px;
       font-size: 0.8125rem;
       border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
       &:active {
-        transform: scale(0.98);
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        background: var(--el-color-primary-light-9, #ecf5ff);
       }
     }
     @media (max-width: 480px) {
@@ -1593,23 +879,84 @@ export default {
 }
 .guide-content,
 .faq-content {
-  line-height: 1.6;
   color: #333;
-}
-.client-guides-card {
-  border-radius: 8px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
-
-  :deep(.el-card__header) {
-    padding: 12px 16px;
-    font-size: 0.9375rem;
-  }
-
-  :deep(.el-card__body) {
-    padding: 12px 16px;
-  }
+  font-size: 0.875rem;
+  line-height: 1.7;
 }
 
+.guide-content :deep(p),
+.faq-content :deep(p) {
+  margin: 0.75rem 0;
+  color: #374151;
+  line-height: 1.7;
+}
+
+.guide-content :deep(p:has(> strong:only-child)),
+.faq-content :deep(p:has(> strong:only-child)) {
+  margin-top: 0.25rem;
+  margin-bottom: 0.625rem;
+}
+
+.guide-content :deep(p:has(> strong:first-child):not(:has(+ ol)):not(:has(+ ul))),
+.faq-content :deep(p:has(> strong:first-child):not(:has(+ ol)):not(:has(+ ul))) {
+  padding: 10px 12px;
+  background: #f0f9ff;
+  border-left: 3px solid #1677ff;
+  border-radius: 6px;
+}
+
+.guide-content :deep(p:has(> strong:first-child):has(ul)),
+.faq-content :deep(p:has(> strong:first-child):has(ul)) {
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
+  border-radius: 6px;
+}
+
+.guide-content :deep(h3),
+.faq-content :deep(h3) {
+  margin: 0 0 14px;
+  color: #409eff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.guide-content :deep(h4),
+.faq-content :deep(h4) {
+  margin: 18px 0 10px;
+  color: #1f2937;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.guide-content :deep(strong),
+.faq-content :deep(strong) {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.guide-content :deep(pre),
+.faq-content :deep(pre) {
+  margin: 0.75rem 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.guide-content :deep(code),
+.faq-content :deep(code) {
+  padding: 2px 4px;
+  background: #f0f2f5;
+  border-radius: 4px;
+  color: #b45309;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
 .client-guide-title {
   color: #1f2937;
   font-weight: 600;
@@ -1621,64 +968,85 @@ export default {
   margin-bottom: 12px;
 }
 
-.guide-content :is(ol),
-.faq-content :is(ol) {
+.guide-content :deep(ol),
+.faq-content :deep(ol) {
   padding-left: 1.25rem;
   margin: 0.5rem 0;
 }
-.guide-content :is(ul),
-.faq-content :is(ul) {
+.guide-content :deep(ul),
+.faq-content :deep(ul) {
   padding-left: 1.25rem;
   margin: 0.5rem 0;
 }
-.guide-content :is(li),
-.faq-content :is(li) {
+.guide-content :deep(li),
+.faq-content :deep(li) {
   margin-bottom: 0.375rem;
   font-size: 0.875rem;
   line-height: 1.5;
 }
 .clients-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  gap: 0;
   @media (max-width: 768px) {
-    gap: 0.5rem;
+    gap: 0;
   }
 }
 .client-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  background: #f8f9fa;
-  border-radius: 6px;
-  transition: all 0.3s ease;
+  gap: 12px;
+  padding: 14px 0;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+  border-radius: 0;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   @media (max-width: 768px) {
-    padding: 0.625rem;
-    gap: 0.5rem;
+    padding: 12px 0;
+    gap: 10px;
   }
+}
+.client-item:last-child {
+  border-bottom: 0;
 }
 .client-item:hover {
-  background: #e3f2fd;
-  transform: translateY(-2px);
+  background: #fbfdff;
 }
 .client-icon {
-  font-size: 1.5rem;
-  color: #1677ff;
-  width: 40px;
-  text-align: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #ecf5ff;
+  color: #409eff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   @media (max-width: 768px) {
-    font-size: 1.25rem;
-    width: 35px;
+    width: 40px;
+    height: 40px;
   }
+}
+
+.client-icon-symbol,
+.contact-icon,
+.card-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.client-icon-symbol {
+  font-size: 1.5rem;
 }
 .client-info {
   flex: 1;
 }
 .client-info h4 {
   margin: 0 0 0.25rem 0;
-  color: #333;
-  font-weight: 600;
+  color: #303133;
+  font-weight: 700;
   font-size: 0.9375rem;
   @media (max-width: 768px) {
     font-size: 0.875rem;
@@ -1686,7 +1054,7 @@ export default {
 }
 .client-info :is(p) {
   margin: 0 0 0.25rem 0;
-  color: #666;
+  color: #909399;
   font-size: 0.8125rem;
   @media (max-width: 768px) {
     font-size: 0.75rem;
@@ -1697,8 +1065,10 @@ export default {
 }
 .client-actions {
   display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
+  flex-direction: row;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   @media (max-width: 768px) {
     gap: 0.25rem;
   }
@@ -1723,14 +1093,16 @@ export default {
     gap: 0.5rem;
   }
 }
-.contact-item :is(i) {
+.contact-icon {
   font-size: 1.5rem;
-  color: #1677ff;
+  color: #409eff;
   width: 40px;
+  height: 40px;
   text-align: center;
   @media (max-width: 768px) {
     font-size: 1.25rem;
-    width: 35px;
+    width: 40px;
+    height: 40px;
   }
 }
 .contact-details h4 {
@@ -1776,8 +1148,8 @@ export default {
   .client-guides-card,
   .contact-card {
     margin-bottom: 0.75rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    border: 1px solid #dcdfe6;
     :deep(.el-card__header) {
       padding: 14px 16px;
       font-size: 0.9375rem;
@@ -1788,11 +1160,14 @@ export default {
     }
   }
   .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 0.9375rem;
     font-weight: 600;
-    :is(i) {
-      font-size: 1.1rem;
-    }
+  }
+  .card-header-icon {
+    font-size: 1.1rem;
   }
   .nav-links {
     grid-template-columns: repeat(2, 1fr);
@@ -1811,7 +1186,7 @@ export default {
       text-overflow: ellipsis;
       margin: 0; /* 移除按钮默认边距 */
       &:active {
-        transform: scale(0.97);
+        background: var(--el-color-primary-light-9, #ecf5ff);
       }
     }
   }
@@ -1819,34 +1194,42 @@ export default {
   .faq-content {
     font-size: 0.875rem;
     line-height: 1.7;
-    :is(ol), :is(ul) {
+
+    :deep(ol),
+    :deep(ul) {
       padding-left: 1.25rem;
       margin: 0.75rem 0;
     }
-    :is(li) {
+
+    :deep(li) {
       margin-bottom: 0.5rem;
       line-height: 1.6;
     }
-    :is(p) {
+
+    :deep(p) {
       margin: 0.75rem 0;
       line-height: 1.7;
     }
-    h3, h4 {
+
+    :deep(h3),
+    :deep(h4) {
       font-size: 1rem;
       margin-top: 1rem;
       margin-bottom: 0.75rem;
     }
-    :is(pre) {
+
+    :deep(pre) {
       background: #f5f7fa;
       padding: 10px;
       border-radius: 6px;
       overflow-x: auto;
       font-family: monospace;
       font-size: 0.85em;
-      border: 1px solid #ebeef5;
+      border: 1px solid #dcdfe6;
       margin: 0.75rem 0;
     }
-    :is(code) {
+
+    :deep(code) {
       background: #f0f2f5;
       padding: 2px 4px;
       border-radius: 4px;
@@ -1863,24 +1246,26 @@ export default {
     align-items: flex-start;
     text-align: left;
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 8px;
     background: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid #dcdfe6;
     &:active {
-      transform: scale(0.98);
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      background: #f8fafc;
+      border-color: #dbeafe;
     }
   }
   .client-icon {
-    font-size: 1.75rem;
-    width: 40px;
+    width: 44px;
     margin-bottom: 0;
     margin-right: 12px;
     flex-shrink: 0;
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 40px; /* 保持图标区域正方形 */
+    height: 44px; /* 保持图标区域正方形 */
+  }
+  .client-icon-symbol {
+    font-size: 1.75rem;
   }
   .client-info {
     width: auto;
@@ -1928,13 +1313,14 @@ export default {
     :deep(.el-button) {
       flex: none;
       width: 70px;
-      padding: 6px 0; /* 减小内边距 */
+      padding: 8px 0;
       font-size: 0.8125rem;
       border-radius: 6px;
       margin: 0;
-      height: 28px;
+      min-height: 44px;
+      touch-action: manipulation;
       &:active {
-        transform: scale(0.95);
+        background: var(--el-color-primary-light-9, #ecf5ff);
       }
     }
   }
@@ -1946,12 +1332,13 @@ export default {
     flex-direction: column;
     text-align: center;
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 8px;
     background: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    :is(i) {
+    border: 1px solid #dcdfe6;
+    .contact-icon {
       font-size: 2rem;
       width: auto;
+      height: auto;
       margin-bottom: 12px;
     }
   }
@@ -1992,9 +1379,9 @@ export default {
 :deep(.client-guide-dialog) {
   @media (max-width: 768px) {
     .el-dialog {
-      width: 95% !important;
-      margin: 5vh auto !important;
-      max-height: 90vh;
+      width: 92% !important;
+      margin: 4vh auto !important;
+      max-height: calc(100dvh - 8vh);
     }
     .el-dialog__header {
       padding: 16px;
@@ -2005,15 +1392,16 @@ export default {
       }
     }
     .el-dialog__body {
-      max-height: calc(90vh - 120px);
+      max-height: calc(100dvh - 8vh - 124px);
       overflow-y: auto;
       padding: 16px;
       -webkit-overflow-scrolling: touch;
     }
     .el-dialog__footer {
-      padding: 12px 16px;
+      padding: 12px 16px max(14px, env(safe-area-inset-bottom));
       border-top: 1px solid #f0f0f0;
       .el-button {
+        min-height: 44px;
         padding: 10px 20px;
         font-size: 0.875rem;
       }
@@ -2023,7 +1411,7 @@ export default {
     line-height: 1.8;
     color: #333;
     :is(h3) {
-      color: #1677ff;
+      color: #409eff;
       margin-bottom: 15px;
       font-size: 1.25rem;
       font-weight: 600;
@@ -2071,6 +1459,387 @@ export default {
         line-height: 1.7;
       }
     }
+  }
+}
+
+.help-container {
+  .help-quick-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 0;
+  }
+
+  .guide-card,
+  .faq-card,
+  .clients-card,
+  .client-guides-card,
+  .contact-card {
+    border: 1px solid #dcdfe6 !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    overflow: hidden;
+
+    :deep(.el-card__header) {
+      padding: 14px 16px !important;
+      border-bottom: 1px solid #ebeef5 !important;
+      background: #fff !important;
+    }
+
+    :deep(.el-card__body) {
+      padding: 16px !important;
+    }
+  }
+
+  .card-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    color: #303133 !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+  }
+
+  .help-client-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 16px;
+  }
+
+  .client-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 14px 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid #ebeef5 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .client-row:nth-last-child(-n + 2) {
+    border-bottom: 0 !important;
+  }
+
+  .client-title {
+    min-width: 0;
+    color: #303133;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+
+  .client-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .item-meta {
+    margin-top: 4px;
+    color: #909399;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.45;
+  }
+
+  .client-actions {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    justify-content: flex-end !important;
+  }
+
+  .client-actions .el-button {
+    min-width: 58px;
+    margin-left: 0 !important;
+  }
+
+  .el-collapse {
+    border-top: 0;
+    border-bottom: 0;
+  }
+
+  .el-collapse-item:last-child {
+    :deep(.el-collapse-item__wrap) {
+      border-bottom: 0;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .help-container {
+    .help-quick-grid,
+    .help-client-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .client-row {
+      grid-template-columns: 1fr !important;
+      align-items: stretch !important;
+      gap: 10px !important;
+      padding: 14px 12px !important;
+      overflow: hidden !important;
+    }
+
+    .client-row:nth-last-child(-n + 2) {
+      border-bottom: 1px solid #ebeef5 !important;
+    }
+
+    .client-row:last-child {
+      border-bottom: 0 !important;
+    }
+
+    .client-actions,
+    .client-actions .el-button {
+      width: 100% !important;
+    }
+
+    .client-actions {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 8px !important;
+    }
+
+    .client-actions .el-button {
+      min-width: 0 !important;
+      margin: 0 !important;
+    }
+  }
+}
+
+/* Final help center layout */
+.help-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.help-nav-card {
+  position: sticky;
+  top: 76px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+}
+.help-nav-button {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #606266;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.help-nav-button:hover {
+  background: #f5f7fa;
+  border-color: #ebeef5;
+  color: #409eff;
+}
+.help-content {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.help-section-card {
+  scroll-margin-top: 86px;
+}
+.help-section-card :deep(.el-card__header) {
+  padding: 14px 16px !important;
+  background: #f5f7fa !important;
+}
+.help-section-card :deep(.el-card__body) {
+  padding: 0 !important;
+}
+.help-section-card .card-header {
+  color: #303133 !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+.help-client-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0 !important;
+  min-width: 0;
+  max-width: 100%;
+}
+.client-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 16px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  border: 0 !important;
+  border-right: 1px solid #ebeef5 !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  background: #fff !important;
+}
+.client-title {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+.client-row:nth-child(2n) {
+  border-right: 0 !important;
+}
+.client-row:nth-last-child(-n + 2) {
+  border-bottom: 0 !important;
+}
+.client-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #303133;
+  font-size: 15px;
+  font-weight: 700;
+}
+.client-name-line span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.client-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: #ecf5ff;
+  color: #409eff;
+}
+.client-tags {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0 !important;
+}
+.client-row .item-meta {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.client-actions {
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+.client-actions .el-button {
+  width: 72px;
+  margin: 0 !important;
+}
+.guide-card :deep(.el-collapse),
+.faq-card :deep(.el-collapse),
+.client-guides-card :deep(.el-collapse) {
+  border: 0;
+}
+.guide-card :deep(.el-collapse-item__header),
+.faq-card :deep(.el-collapse-item__header),
+.client-guides-card :deep(.el-collapse-item__header) {
+  height: auto;
+  min-height: 48px;
+  padding: 0 16px;
+  color: #303133;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.guide-card :deep(.el-collapse-item__content),
+.faq-card :deep(.el-collapse-item__content),
+.client-guides-card :deep(.el-collapse-item__content) {
+  padding: 0 16px 16px;
+}
+.client-guide-actions {
+  justify-content: flex-start;
+}
+.contact-info {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0 !important;
+}
+.contact-item {
+  padding: 16px !important;
+  border-right: 1px solid #ebeef5;
+  border-radius: 0 !important;
+  background: #fff !important;
+}
+.contact-item:last-child {
+  border-right: 0;
+}
+@media (max-width: 980px) {
+  .help-layout {
+    grid-template-columns: 1fr;
+  }
+  .help-nav-card {
+    position: static;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .help-nav-button {
+    justify-content: center;
+    padding: 0 8px;
+    text-align: center;
+  }
+}
+@media (max-width: 768px) {
+  .help-nav-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .help-client-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .client-row,
+  .client-row:nth-child(2n),
+  .client-row:nth-last-child(-n + 2) {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 14px 12px !important;
+    overflow: hidden !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #ebeef5 !important;
+  }
+  .client-row:last-child {
+    border-bottom: 0 !important;
+  }
+  .client-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+  }
+  .client-actions .el-button {
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+  .contact-info {
+    grid-template-columns: 1fr !important;
+  }
+  .contact-item {
+    border-right: 0;
+    border-bottom: 1px solid #ebeef5;
+  }
+  .contact-item:last-child {
+    border-bottom: 0;
   }
 }
 </style>

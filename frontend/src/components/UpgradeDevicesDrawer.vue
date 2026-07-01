@@ -1,10 +1,10 @@
 <template>
-  <el-drawer
+  <AppDrawer
     v-model="drawerVisible"
     title="升级设备数量"
-    direction="rtl"
-    :size="isMobile ? '92%' : '500px'"
-    :close-on-click-modal="false"
+    size="500px"
+    mobile-size="100%"
+    :loading="upgradeLoading"
     class="upgrade-drawer"
     @open="handleUpgradeDialogOpen"
   >
@@ -96,8 +96,8 @@
               <span>升级后 {{ targetDeviceLimit }} 个</span>
             </div>
             <div class="bar-track">
-              <div class="bar-fill bar-existing" :style="{ width: existingPercent + '%' }" />
-              <div class="bar-fill bar-new" :style="{ width: newPercent + '%', left: existingPercent + '%' }" />
+              <div class="bar-fill bar-existing" :style="barProgressStyle" />
+              <div class="bar-fill bar-new" :style="barProgressStyle" />
             </div>
           </div>
         </div>
@@ -123,7 +123,10 @@
           <!-- 到期日预览 -->
           <div class="expire-preview" v-if="subscription?.expire_time">
             <div class="expire-preview-row">
-              <span class="expire-label">📅 到期日</span>
+              <span class="expire-label">
+                <el-icon><Timer /></el-icon>
+                到期日
+              </span>
               <span class="expire-old">{{ formatDate(subscription.expire_time) }}</span>
               <el-icon class="expire-arrow"><Right /></el-icon>
               <span class="expire-new">{{ formatDate(newExpireDate) }}</span>
@@ -206,16 +209,14 @@
         </el-button>
       </div>
     </template>
-  </el-drawer>
-  <el-dialog
+  </AppDrawer>
+  <AppDialog
     v-model="paymentQRVisible"
     title="扫码支付"
-    :width="isMobile ? '92%' : '520px'"
-    :close-on-click-modal="false"
-    :close-on-press-escape="false"
+    width="520px"
+    mobile-width="92%"
     class="payment-qr-dialog"
-    :center="true"
-    append-to-body
+    :loading="false"
   >
     <div class="payment-qr-container" v-if="upgradeOrder">
       <div class="payment-summary-card">
@@ -278,7 +279,6 @@
             size="large"
             class="payment-btn alipay-btn"
             @click="openAlipayApp"
-            style="width: 100%;"
           >
             <el-icon class="btn-icon"><Wallet /></el-icon>
             跳转支付宝App支付
@@ -286,7 +286,7 @@
         </div>
       </div>
     </div>
-  </el-dialog>
+  </AppDialog>
 </template>
 
 <script setup>
@@ -298,6 +298,8 @@ import { getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import { createQRCodeDataURL } from '@/utils/qrcode'
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
 
 const props = defineProps({
   modelValue: {
@@ -376,9 +378,14 @@ const newExpireDate = computed(() => {
 // 设备进度条百分比 (用于 >30 设备时的条形图)
 const existingPercent = computed(() => {
   if (!targetDeviceLimit.value) return 100
-  return Math.round((currentDeviceLimit.value / targetDeviceLimit.value) * 100)
+  const percentage = Math.round((currentDeviceLimit.value / targetDeviceLimit.value) * 100)
+  return Math.min(Math.max(percentage, 0), 100)
 })
 const newPercent = computed(() => 100 - existingPercent.value)
+const barProgressStyle = computed(() => ({
+  '--existing-device-percent': `${existingPercent.value}%`,
+  '--new-device-percent': `${newPercent.value}%`
+}))
 
 // 格式化日期显示
 const formatDate = (dateStr) => {
@@ -683,36 +690,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.upgrade-drawer {
-  :deep(.el-drawer__header) {
-    margin-bottom: 0;
-    padding: 18px 22px;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  :deep(.el-drawer__title) {
-    font-size: 17px;
-    font-weight: 700;
-    color: #111827;
-  }
-
-  :deep(.el-drawer__body) {
-    padding: 18px 20px 22px;
-    background: #f7f9fc;
-    overflow-y: auto;
-  }
-
-  :deep(.el-drawer__footer) {
-    padding: 14px 18px;
-    border-top: 1px solid #e5e7eb;
-    background: #ffffff;
-  }
-}
-
 .upgrade-content {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  margin: -4px -2px 0;
+  padding: 0 0 4px;
 }
 
 .upgrade-hero {
@@ -723,7 +706,7 @@ onUnmounted(() => {
   padding: 18px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
-  background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
+  background: #f8fafc;
 }
 
 .hero-eyebrow {
@@ -893,7 +876,7 @@ onUnmounted(() => {
   width: 48px;
   height: 48px;
   border: 2px solid #dbe4f0;
-  border-radius: 14px;
+  border-radius: 8px;
   background: #ffffff;
   color: #374151;
   font-size: 20px;
@@ -901,18 +884,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.18s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
   user-select: none;
 }
 .stepper-btn:hover:not(:disabled) {
   border-color: #2563eb;
   background: #eff6ff;
   color: #2563eb;
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
 }
 .stepper-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: translateY(1px);
 }
 .stepper-btn:disabled {
   opacity: 0.35;
@@ -935,7 +916,7 @@ onUnmounted(() => {
   align-items: center;
   min-width: 100px;
   padding: 8px 24px;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #f0f5ff;
   border: 2px dashed #bfd4f7;
 }
@@ -945,7 +926,7 @@ onUnmounted(() => {
   line-height: 1.1;
   font-weight: 900;
   color: #1d4ed8;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 
@@ -985,21 +966,13 @@ onUnmounted(() => {
   height: 14px;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease;
 }
 .dot-existing {
   background: #94a3b8;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
 }
 .dot-new {
   background: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
-  animation: dotPopIn 0.3s ease;
-}
-@keyframes dotPopIn {
-  0% { transform: scale(0); opacity: 0; }
-  60% { transform: scale(1.3); }
-  100% { transform: scale(1); opacity: 1; }
 }
 
 /* 设备条形进度 (>30 设备) */
@@ -1021,6 +994,8 @@ onUnmounted(() => {
 }
 
 .bar-track {
+  --existing-device-percent: 100%;
+  --new-device-percent: 0%;
   position: relative;
   height: 12px;
   border-radius: 6px;
@@ -1037,11 +1012,13 @@ onUnmounted(() => {
 }
 .bar-existing {
   left: 0;
+  width: var(--existing-device-percent);
   background: #94a3b8;
 }
 .bar-new {
+  left: var(--existing-device-percent);
+  width: var(--new-device-percent);
   background: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
 /* ======== 月份卡片选择器 ======== */
@@ -1063,10 +1040,10 @@ onUnmounted(() => {
   justify-content: center;
   padding: 14px 6px;
   border: 2px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 8px;
   background: #ffffff;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
   user-select: none;
   gap: 4px;
   font-family: inherit;
@@ -1074,14 +1051,10 @@ onUnmounted(() => {
 .month-card:hover {
   border-color: #93b4f0;
   background: #f8faff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
 }
 .month-card.is-active {
   border-color: #2563eb;
   background: #eff6ff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
-  transform: translateY(-2px);
 }
 .month-card.is-zero {
   border-style: dashed;
@@ -1090,7 +1063,6 @@ onUnmounted(() => {
   border-style: solid;
   border-color: #94a3b8;
   background: #f1f5f9;
-  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.14);
   color: #475569;
 }
 
@@ -1137,6 +1109,9 @@ onUnmounted(() => {
 }
 
 .expire-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-weight: 600;
   color: #374151;
   flex-shrink: 0;
@@ -1164,7 +1139,7 @@ onUnmounted(() => {
   gap: 6px;
   margin-top: 10px;
   padding: 6px 12px;
-  border-radius: 20px;
+  border-radius: 8px;
   background: #dcfce7;
   color: #16a34a;
   font-size: 13px;
@@ -1312,37 +1287,6 @@ onUnmounted(() => {
   min-width: 104px;
 }
 
-.payment-qr-dialog {
-  :deep(.el-dialog) {
-    border-radius: 24px;
-    overflow: hidden;
-    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
-  }
-
-  :deep(.el-dialog__header) {
-    margin-right: 0;
-    padding: 22px 24px 12px;
-    border-bottom: 1px solid rgba(37, 99, 235, 0.08);
-  }
-
-  :deep(.el-dialog__title) {
-    font-size: 24px;
-    font-weight: 700;
-    color: #0f172a;
-    letter-spacing: 0.02em;
-  }
-
-  :deep(.el-dialog__headerbtn) {
-    top: 22px;
-    right: 20px;
-  }
-
-  :deep(.el-dialog__body) {
-    padding: 0 24px 24px;
-  }
-}
-
 .payment-qr-container {
   display: flex;
   flex-direction: column;
@@ -1351,9 +1295,9 @@ onUnmounted(() => {
 
 .payment-summary-card {
   padding: 18px 20px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
-  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #dbe4f0;
 }
 
 .summary-header {
@@ -1414,10 +1358,9 @@ onUnmounted(() => {
 
 .qr-panel {
   padding: 20px;
-  border-radius: 24px;
+  border-radius: 10px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .qr-panel-header {
@@ -1451,7 +1394,7 @@ onUnmounted(() => {
   width: 100%;
   min-height: 560px;
   border: 1px solid #dbeafe;
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   background: #fff;
 }
@@ -1466,10 +1409,9 @@ onUnmounted(() => {
 .qr-loading {
   width: 280px;
   min-height: 280px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 8px;
+  background: #ffffff;
   border: 1px solid #dbeafe;
-  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1479,7 +1421,7 @@ onUnmounted(() => {
   width: 232px;
   height: 232px;
   display: block;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -1514,7 +1456,7 @@ onUnmounted(() => {
 
 .alipay-btn {
   height: 46px;
-  border-radius: 14px;
+  border-radius: 8px;
   font-weight: 600;
 }
 
@@ -1523,20 +1465,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .upgrade-drawer {
-    :deep(.el-drawer__header) {
-      padding: 14px 16px;
-    }
-
-    :deep(.el-drawer__body) {
-      padding: 14px;
-    }
-
-    :deep(.el-drawer__footer) {
-      padding: 12px 14px 14px;
-    }
-  }
-
   .upgrade-hero {
     padding: 16px;
   }
@@ -1579,7 +1507,7 @@ onUnmounted(() => {
   .stepper-btn {
     width: 42px;
     height: 42px;
-    border-radius: 12px;
+    border-radius: 8px;
   }
   .stepper-display {
     min-width: 84px;
@@ -1629,28 +1557,10 @@ onUnmounted(() => {
     margin: 0;
   }
 
-  .payment-qr-dialog {
-    :deep(.el-dialog) {
-      border-radius: 20px;
-    }
-
-    :deep(.el-dialog__header) {
-      padding: 18px 18px 10px;
-    }
-
-    :deep(.el-dialog__title) {
-      font-size: 20px;
-    }
-
-    :deep(.el-dialog__body) {
-      padding: 0 18px 18px;
-    }
-  }
-
   .payment-summary-card,
   .qr-panel {
     padding: 16px;
-    border-radius: 18px;
+    border-radius: 8px;
   }
 
   .summary-header,
@@ -1677,5 +1587,59 @@ onUnmounted(() => {
     width: min(220px, 100% - 32px);
     height: min(220px, 100% - 32px);
   }
+}
+
+.upgrade-hero,
+.upgrade-panel,
+.payment-summary-card,
+.qr-panel {
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.hero-metric,
+.summary-item,
+.month-card,
+.device-stepper-card,
+.payment-radio-card,
+.stepper-display,
+.qr-code,
+.qr-loading {
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.hero-metric {
+  border: 1px solid #d9ecff !important;
+  background: #ecf5ff !important;
+  color: #409eff !important;
+}
+
+.hero-metric small {
+  color: #606266 !important;
+}
+
+.stepper-btn {
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.stepper-number,
+.summary-amount,
+.footer-price,
+.month-card-price {
+  color: #409eff !important;
+  font-size: 22px !important;
+  line-height: 1.2 !important;
+}
+
+.qr-code-wrapper,
+.recharge-qr-section .qr-code-wrapper {
+  border: 1px dashed #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #f8fafc !important;
 }
 </style>

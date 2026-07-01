@@ -1,43 +1,81 @@
 <template>
   <div class="list-container orders-container">
-    <div class="stats-row" style="margin-top: 0;">
-      <div class="stat-card">
-        <div class="stat-number">{{ orderStats.total }}</div>
-        <div class="stat-label">总订单数</div>
+    <div class="breadcrumb">首页 / 订单记录</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>订单记录</h1>
       </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ orderStats.pending }}</div>
-        <div class="stat-label">待支付</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ orderStats.paid }}</div>
-        <div class="stat-label">已支付</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ formatAmount(orderStats.totalAmount) }}</div>
-        <div class="stat-label">总金额(元)</div>
+      <div class="actions">
+        <el-button @click="refreshOrders">
+          刷新
+        </el-button>
+        <router-link to="/dashboard">
+          <el-button type="primary">
+            充值
+          </el-button>
+        </router-link>
       </div>
     </div>
-    <el-card class="filter-card list-filters">
-      <div class="filter-desktop">
-        <el-row class="list-filter-form" :gutter="16" align="middle">
-          <el-col :span="5">
-            <el-select v-model="filters.status" placeholder="订单状态" clearable>
+    <div class="stats-row orders-stats-row">
+      <div class="stat-card">
+        <div class="stat-icon">O</div>
+        <div>
+          <div class="stat-value">{{ orderStats.total }}</div>
+          <div class="stat-label">总订单数</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">P</div>
+        <div>
+          <div class="stat-value">{{ orderStats.pending }}</div>
+          <div class="stat-label">待支付</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">S</div>
+        <div>
+          <div class="stat-value">{{ orderStats.paid }}</div>
+          <div class="stat-label">已支付</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">¥</div>
+        <div>
+          <div class="stat-value amount-stat">{{ formatMoney(orderStats.totalAmount) }}</div>
+          <div class="stat-label">总金额</div>
+        </div>
+      </div>
+    </div>
+    <div class="card list-filter-card orders-filter-card">
+      <div class="card-body orders-filter-body">
+        <el-form :inline="true" :model="filters" class="orders-filter-form list-filter-form">
+          <el-form-item label="搜索">
+            <el-input
+              v-model="filters.keyword"
+              placeholder="订单号、套餐、类型"
+              clearable
+              class="orders-keyword-input"
+              @keyup.enter="applyFilters"
+              @clear="applyFilters"
+            />
+          </el-form-item>
+          <el-form-item label="订单状态">
+            <el-select v-model="filters.status" placeholder="全部状态" clearable class="orders-status-select">
               <el-option label="全部状态" value="" />
               <el-option label="待支付" value="pending" />
               <el-option label="已支付" value="paid" />
               <el-option label="已取消" value="cancelled" />
               <el-option label="支付失败" value="failed" />
             </el-select>
-          </el-col>
-          <el-col :span="5">
-            <el-select v-model="filters.payment_method" placeholder="支付方式" clearable>
+          </el-form-item>
+          <el-form-item label="支付方式">
+            <el-select v-model="filters.payment_method" placeholder="全部方式" clearable class="orders-payment-select">
               <el-option label="全部方式" value="" />
               <el-option label="支付宝" value="alipay" />
               <el-option label="微信支付" value="wechat" />
             </el-select>
-          </el-col>
-          <el-col :span="10">
+          </el-form-item>
+          <el-form-item label="时间筛选">
             <el-date-picker
               v-model="filters.date_range"
               type="daterange"
@@ -46,360 +84,246 @@
               end-placeholder="结束日期"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
-              style="width: 100%"
+              class="orders-date-filter"
             />
-          </el-col>
-          <el-col :span="4" class="filter-buttons-col list-filter-actions">
-            <el-button type="primary" @click="applyFilters" size="default">筛选</el-button>
-            <el-button @click="resetFilters" size="default">重置</el-button>
-          </el-col>
-        </el-row>
+          </el-form-item>
+          <el-form-item class="orders-filter-actions">
+            <el-button type="primary" @click="applyFilters">筛选</el-button>
+            <el-button @click="resetFilters">重置</el-button>
+          </el-form-item>
+        </el-form>
       </div>
-      <div class="filter-mobile">
-        <div class="filter-row">
-          <el-select 
-            v-model="filters.status" 
-            placeholder="订单状态" 
-            clearable
-            class="filter-select"
-          >
-            <el-option label="全部状态" value="" />
-            <el-option label="待支付" value="pending" />
-            <el-option label="已支付" value="paid" />
-            <el-option label="已取消" value="cancelled" />
-            <el-option label="支付失败" value="failed" />
-          </el-select>
-        </div>
-        <div class="filter-row">
-          <el-select 
-            v-model="filters.payment_method" 
-            placeholder="支付方式" 
-            clearable
-            class="filter-select"
-          >
-            <el-option label="全部方式" value="" />
-            <el-option label="支付宝" value="alipay" />
-            <el-option label="微信支付" value="wechat" />
-          </el-select>
-        </div>
-        <div class="filter-row">
-          <el-date-picker
-            v-model="filters.date_range"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            class="filter-date"
-          />
-        </div>
-        <div class="filter-actions list-filter-actions">
-          <el-button 
-            type="primary" 
-            @click="applyFilters" 
-            class="filter-btn"
-            size="default"
-          >
-            筛选
-          </el-button>
-          <el-button 
-            @click="resetFilters" 
-            class="filter-btn"
-            size="default"
-          >
-            重置
-          </el-button>
-        </div>
-      </div>
-    </el-card>
+    </div>
     <el-card class="list-card orders-list">
-      <template #header>
-        <div class="card-header">
-          <span>订单记录</span>
-          <el-button type="primary" @click="refreshOrders">
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-        </div>
-      </template>
       <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="records-tabs">
         <el-tab-pane label="全部记录" name="all">
-          <template #label>
-            <span><el-icon><Wallet /></el-icon> 全部记录</span>
-          </template>
+          <template #label>全部记录</template>
         </el-tab-pane>
         <el-tab-pane label="订单记录" name="orders">
-          <template #label>
-            <span><el-icon><ShoppingCart /></el-icon> 订单记录</span>
-          </template>
+          <template #label>订单记录</template>
         </el-tab-pane>
         <el-tab-pane label="充值记录" name="recharges">
-          <template #label>
-            <span><el-icon><Wallet /></el-icon> 充值记录</span>
-          </template>
+          <template #label>充值记录</template>
         </el-tab-pane>
       </el-tabs>
-      <div class="table-wrapper">
-        <el-table 
-          ref="orderTableRef"
-          :data="displayRecords" 
-          style="width: 100%"
-          v-loading="isLoading || isLoadingRecharges"
-          :empty-text="emptyText"
-          stripe
-          border
-          @header-dragend="handleOrderColumnResize"
-        >
-          <el-table-column prop="record_type" label="类型" :width="orderColumnWidths.record_type" resizable>
-            <template #default="scope">
-              <el-tag 
-                :type="scope.row.record_type === 'recharge' ? 'success' : 'primary'"
-                size="small"
-              >
-                {{ scope.row.record_type === 'recharge' ? '充值' : '订单' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="display_no" label="订单号" :width="orderColumnWidths.display_no" resizable>
-            <template #default="scope">
-              <el-tag size="small" type="info">{{ scope.row.display_no }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="package_name" label="套餐名称/类型" :min-width="orderColumnWidths.package_name" resizable>
-            <template #default="scope">
-              {{ scope.row.package_name || (scope.row.record_type === 'recharge' ? '账户充值' : '-') }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="display_amount" label="金额" :width="orderColumnWidths.display_amount" resizable>
-            <template #default="scope">
-              <span 
-                class="amount" 
-                :class="{ 'positive': scope.row.record_type === 'recharge', 'negative': scope.row.record_type === 'order' }"
-              >
-                {{ scope.row.record_type === 'recharge' ? '+' : '-' }}¥{{ scope.row.display_amount }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="payment_method" label="支付方式" :width="orderColumnWidths.payment_method" resizable>
-            <template #default="scope">
-              <el-tag 
-                :type="getPaymentMethodType(scope.row.payment_method)"
-                size="small"
-              >
-                {{ getPaymentMethodText(scope.row.payment_method) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" :width="orderColumnWidths.status" resizable>
-            <template #default="scope">
-              <el-tag 
-                :type="getOrderStatusType(scope.row.status)"
-                size="small"
-              >
-                {{ getOrderStatusText(scope.row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" :width="orderColumnWidths.created_at" resizable>
-            <template #default="scope">
-              {{ formatDateTime(scope.row.created_at) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="paid_at" label="支付时间" :width="orderColumnWidths.paid_at" resizable>
-            <template #default="scope">
-              {{ (scope.row.paid_at || scope.row.payment_time) ? formatDateTime(scope.row.paid_at || scope.row.payment_time) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" :width="orderColumnWidths.actions" fixed="right" resizable>
-            <template #default="scope">
-              <div class="action-buttons" v-if="scope.row.record_type === 'order'">
-                <el-button 
-                  v-if="scope.row.status === 'pending'"
-                  size="small" 
-                  type="primary"
-                  @click.stop="payOrder(scope.row)"
-                >
-                  立即支付
-                </el-button>
-                <el-button 
-                  v-if="scope.row.status === 'pending'"
-                  size="small" 
-                  @click.stop="cancelOrder(scope.row)"
-                >
-                  取消订单
-                </el-button>
-                <el-button 
-                  v-if="scope.row.status === 'paid'"
-                  size="small" 
-                  type="success"
-                  @click.stop="viewOrderDetail(scope.row)"
-                >
-                  查看详情
-                </el-button>
-              </div>
-              <div class="action-buttons" v-else-if="scope.row.record_type === 'recharge'">
-                <el-button 
-                  v-if="scope.row.status === 'pending'"
-                  size="small" 
-                  type="primary"
-                  @click.stop="payRecharge(scope.row)"
-                >
-                  立即支付
-                </el-button>
-                <el-button 
-                  v-if="scope.row.status === 'pending'"
-                  size="small" 
-                  @click.stop="cancelRecharge(scope.row)"
-                >
-                  取消充值
-                </el-button>
-              </div>
-              <span v-else style="color: var(--el-text-color-secondary, #6b7280); font-size: 12px;">-</span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      <div class="mobile-card-list" v-if="displayRecords.length > 0">
-        <div 
-          v-for="record in displayRecords" 
-          :key="record.id || record.order_no"
-          class="mobile-card"
-          :class="{ 'recharge-card': record.record_type === 'recharge', 'order-card': record.record_type === 'order' }"
-        >
-          <div class="card-row">
-            <span class="label">类型</span>
-            <span class="value">
-              <el-tag 
-                :type="record.record_type === 'recharge' ? 'success' : 'primary'"
-                size="small"
-              >
-                {{ record.record_type === 'recharge' ? '充值' : '订单' }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">订单号</span>
-            <span class="value">
-              <el-tag size="small" type="info">{{ record.display_no || record.order_no }}</el-tag>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">{{ record.record_type === 'recharge' ? '充值类型' : '套餐名称' }}</span>
-            <span class="value">{{ record.package_name || (record.record_type === 'recharge' ? '账户充值' : '-') }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">金额</span>
-            <span 
-              class="value amount" 
-              :class="{ 'positive': record.record_type === 'recharge', 'negative': record.record_type === 'order' }"
+      <ResponsiveDataView
+        class="orders-data-view"
+        :data="displayRecords"
+        :fields="mobileOrderFields"
+        :loading="isLoading || isLoadingRecharges"
+        :empty-title="emptyText"
+        title-field="display_no"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table 
+              ref="orderTableRef"
+              :data="displayRecords" 
+              class="orders-table"
+              v-loading="isLoading || isLoadingRecharges"
+              :empty-text="emptyText"
+              stripe
+              border
+              @header-dragend="handleOrderColumnResize"
             >
-              {{ record.record_type === 'recharge' ? '+' : '-' }}¥{{ record.display_amount || record.amount }}
+              <el-table-column prop="record_type" label="类型" :width="orderColumnWidths.record_type" resizable>
+                <template #default="scope">
+                  <el-tag 
+                    :type="scope.row.record_type === 'recharge' ? 'success' : 'primary'"
+                    size="small"
+                  >
+                    {{ scope.row.record_type === 'recharge' ? '充值' : '订单' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="display_no" label="订单号" :width="orderColumnWidths.display_no" resizable>
+                <template #default="scope">
+                  <el-tag size="small" type="info">{{ scope.row.display_no }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="package_name" label="套餐名称/类型" :min-width="orderColumnWidths.package_name" resizable>
+                <template #default="scope">
+                  {{ scope.row.package_name || (scope.row.record_type === 'recharge' ? '账户充值' : '-') }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="display_amount" label="金额" :width="orderColumnWidths.display_amount" resizable>
+                <template #default="scope">
+                  <span
+                    class="order-amount"
+                    :class="{ 'positive': scope.row.record_type === 'recharge' }"
+                  >
+                    <span v-if="getRecordAmountParts(scope.row).prefix" class="order-amount-sign">
+                      {{ getRecordAmountParts(scope.row).prefix }}
+                    </span>
+                    <span class="order-amount-currency">{{ getRecordAmountParts(scope.row).currency }}</span>
+                    <span class="order-amount-value">{{ getRecordAmountParts(scope.row).value }}</span>
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="payment_method" label="支付方式" :width="orderColumnWidths.payment_method" resizable>
+                <template #default="scope">
+                  <el-tag 
+                    :type="getPaymentMethodType(scope.row.payment_method)"
+                    size="small"
+                  >
+                    {{ getPaymentMethodText(scope.row.payment_method) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" :width="orderColumnWidths.status" resizable>
+                <template #default="scope">
+                  <el-tag 
+                    :type="getOrderStatusType(scope.row.status)"
+                    size="small"
+                  >
+                    {{ getOrderStatusText(scope.row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" :width="orderColumnWidths.created_at" resizable>
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="paid_at" label="支付时间" :width="orderColumnWidths.paid_at" resizable>
+                <template #default="scope">
+                  {{ (scope.row.paid_at || scope.row.payment_time) ? formatDateTime(scope.row.paid_at || scope.row.payment_time) : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" :width="orderColumnWidths.actions" fixed="right" resizable>
+                <template #default="scope">
+                  <div class="action-buttons" v-if="scope.row.record_type === 'order'">
+                    <el-button 
+                      v-if="scope.row.status === 'pending'"
+                      size="small" 
+                      type="primary"
+                      @click.stop="payOrder(scope.row)"
+                    >
+                      立即支付
+                    </el-button>
+                    <el-button 
+                      v-if="scope.row.status === 'pending'"
+                      size="small" 
+                      @click.stop="cancelOrder(scope.row)"
+                    >
+                      取消订单
+                    </el-button>
+                    <el-button 
+                      v-if="scope.row.status === 'paid'"
+                      size="small" 
+                      type="success"
+                      @click.stop="viewOrderDetail(scope.row)"
+                    >
+                      查看详情
+                    </el-button>
+                  </div>
+                  <div class="action-buttons" v-else-if="scope.row.record_type === 'recharge'">
+                    <el-button 
+                      v-if="scope.row.status === 'pending'"
+                      size="small" 
+                      type="primary"
+                      @click.stop="payRecharge(scope.row)"
+                    >
+                      立即支付
+                    </el-button>
+                    <el-button 
+                      v-if="scope.row.status === 'pending'"
+                      size="small" 
+                      @click.stop="cancelRecharge(scope.row)"
+                    >
+                      取消充值
+                    </el-button>
+                  </div>
+                  <span v-else class="text-muted text-xs">-</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
+        <template #header="{ item }">
+          <div class="order-mobile-header">
+            <span>{{ item.display_no || item.order_no }}</span>
+            <el-tag :type="item.record_type === 'recharge' ? 'success' : 'primary'" size="small">
+              {{ item.record_type === 'recharge' ? '充值' : '订单' }}
+            </el-tag>
+          </div>
+        </template>
+        <template #field-display_amount="{ item }">
+          <span class="order-amount" :class="{ positive: item.record_type === 'recharge' }">
+            <span v-if="getRecordAmountParts(item).prefix" class="order-amount-sign">
+              {{ getRecordAmountParts(item).prefix }}
             </span>
-          </div>
-          <div class="card-row">
-            <span class="label">支付方式</span>
-            <span class="value">
-              <el-tag 
-                :type="getPaymentMethodType(record.payment_method)"
-                size="small"
-              >
-                {{ getPaymentMethodText(record.payment_method) }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">状态</span>
-            <span class="value">
-              <el-tag 
-                :type="getOrderStatusType(record.status)"
-                size="small"
-              >
-                {{ getOrderStatusText(record.status) }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">创建时间</span>
-            <span class="value">{{ formatDateTime(record.created_at) }}</span>
-          </div>
-          <div class="card-row" v-if="record.paid_at || record.payment_time">
-            <span class="label">支付时间</span>
-            <span class="value">{{ formatDateTime(record.paid_at || record.payment_time) }}</span>
-          </div>
-          <div class="card-actions" v-if="record.record_type === 'order'">
+            <span class="order-amount-currency">{{ getRecordAmountParts(item).currency }}</span>
+            <span class="order-amount-value">{{ getRecordAmountParts(item).value }}</span>
+          </span>
+        </template>
+        <template #actions="{ item }">
+          <div class="card-actions" v-if="item.record_type === 'order'">
             <el-button 
-              v-if="record.status === 'pending'"
+              v-if="item.status === 'pending'"
               size="small" 
               type="primary"
-              @click.stop="payOrder(record)"
+              @click.stop="payOrder(item)"
             >
               立即支付
             </el-button>
             <el-button 
-              v-if="record.status === 'pending'"
+              v-if="item.status === 'pending'"
               size="small" 
-              @click.stop="cancelOrder(record)"
+              @click.stop="cancelOrder(item)"
             >
               取消订单
             </el-button>
             <el-button 
-              v-if="record.status === 'paid'"
+              v-if="item.status === 'paid'"
               size="small" 
               type="success"
-              @click.stop="viewOrderDetail(record)"
+              @click.stop="viewOrderDetail(item)"
             >
               查看详情
             </el-button>
           </div>
-          <div class="card-actions" v-else-if="record.record_type === 'recharge'">
+          <div class="card-actions" v-else-if="item.record_type === 'recharge'">
             <el-button 
-              v-if="record.status === 'pending'"
+              v-if="item.status === 'pending'"
               size="small" 
               type="primary"
-              @click.stop="payRecharge(record)"
+              @click.stop="payRecharge(item)"
             >
               立即支付
             </el-button>
             <el-button 
-              v-if="record.status === 'pending'"
+              v-if="item.status === 'pending'"
               size="small" 
-              @click.stop="cancelRecharge(record)"
+              @click.stop="cancelRecharge(item)"
             >
               取消充值
             </el-button>
           </div>
-        </div>
-      </div>
-      <div class="mobile-card-list" v-if="displayRecords.length === 0 && !isLoading && !isLoadingRecharges">
-        <div class="empty-state">
-          <i class="el-icon-document"></i>
-          <p>{{ emptyText }}</p>
-        </div>
-      </div>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="pagination.current"
-          v-model:page-size="pagination.size"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="pagination.total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+        </template>
+      </ResponsiveDataView>
+      <PaginationBar
+        v-if="pagination.total > 0"
+        v-model:current-page="pagination.current"
+        v-model:page-size="pagination.size"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="pagination.total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
-    <el-dialog
+    <AppDialog
       v-model="detailDialogVisible"
       title="订单详情"
-      :width="isMobile ? '90%' : '600px'"
+      width="600px"
+      mobile-width="94%"
       class="order-detail-dialog"
     >
       <div v-if="selectedOrder" class="order-detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="订单号">{{ selectedOrder.order_no }}</el-descriptions-item>
           <el-descriptions-item label="套餐名称">{{ selectedOrder.package_name }}</el-descriptions-item>
-          <el-descriptions-item label="订单金额">¥{{ selectedOrder.amount }}</el-descriptions-item>
+          <el-descriptions-item label="订单金额">{{ formatMoney(selectedOrder.amount) }}</el-descriptions-item>
           <el-descriptions-item label="支付方式">{{ getPaymentMethodText(selectedOrder.payment_method) }}</el-descriptions-item>
           <el-descriptions-item label="订单状态">
             <el-tag :type="getOrderStatusType(selectedOrder.status)">
@@ -415,13 +339,13 @@
           </el-descriptions-item>
         </el-descriptions>
       </div>
-    </el-dialog>
-    <el-dialog
+    </AppDialog>
+    <AppDialog
       v-model="paymentQRVisible"
       title="扫码支付"
-      :width="isMobile ? '92%' : '450px'"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
+      width="450px"
+      mobile-width="92%"
+      :loading="isCheckingPayment"
       class="payment-qr-dialog"
     >
       <div class="payment-qr-container">
@@ -432,7 +356,7 @@
           </div>
           <div class="info-row">
             <span class="label">金额</span>
-            <span class="value amount">¥{{ parseFloat(selectedOrder?.amount || 0).toFixed(2) }}</span>
+            <span class="value payment-amount">{{ formatMoney(selectedOrder?.amount || 0) }}</span>
           </div>
         </div>
         <div class="qr-code-wrapper-compact">
@@ -454,32 +378,50 @@
             type="success"
             size="default"
             @click="openAlipayApp"
-            style="width: 100%;"
+            class="full-width-button"
           >
-            <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
+            <el-icon class="button-icon"><Wallet /></el-icon>
             打开支付宝App
           </el-button>
         </div>
       </div>
-    </el-dialog>
+      <template #footer>
+        <FormActionBar
+          :loading="isCheckingPayment"
+          cancel-text="关闭"
+          submit-text="检查支付状态"
+          @cancel="closePaymentQR"
+          @submit="checkPaymentStatus"
+        />
+      </template>
+    </AppDialog>
   </div>
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Loading, Refresh, Wallet, ShoppingCart } from '@element-plus/icons-vue'
+import { ElMessage } from '@/utils/elementPlusServices'
+import { Loading, Wallet } from '@element-plus/icons-vue'
 import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
+import { formatMoney } from '@/utils/format'
+import { confirmWarning } from '@/utils/confirmAction'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
+import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import { createQRCodeDataURL } from '@/utils/qrcode'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
 export default {
   name: 'Orders',
   components: {
     Loading,
-    Refresh,
     Wallet,
-    ShoppingCart
+    ResponsiveDataView,
+    PaginationBar,
+    AppDialog,
+    FormActionBar
   },
   setup() {
     const api = useApi()
@@ -496,6 +438,7 @@ export default {
       totalAmount: 0
     })
     const filters = reactive({
+      keyword: '',
       status: '',
       payment_method: '',
       date_range: []
@@ -517,49 +460,22 @@ export default {
     let paymentManualFocusHandler = null
     const orderTableRef = ref(null)
     const ORDER_TABLE_STORAGE_KEY = 'user_orders_table_settings'
-    const orderColumnWidths = reactive({
-      record_type: 80,
-      display_no: 180,
-      package_name: 160,
-      display_amount: 120,
-      payment_method: 120,
-      status: 120,
-      created_at: 180,
-      paid_at: 180,
-      actions: 200
-    })
-    const loadOrderTableSettings = () => {
-      try {
-        const saved = localStorage.getItem(ORDER_TABLE_STORAGE_KEY)
-        if (saved) {
-          const s = JSON.parse(saved)
-          if (s.columnWidths) Object.assign(orderColumnWidths, s.columnWidths)
-        }
-      } catch (e) {
-        console.warn('加载订单表设置失败:', e)
-      }
-    }
-    const saveOrderTableSettings = () => {
-      try {
-        localStorage.setItem(ORDER_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...orderColumnWidths } }))
-      } catch (e) {
-        console.warn('保存订单表设置失败:', e)
-      }
-    }
     const ORDER_COLUMN_KEYS = ['record_type', 'display_no', 'package_name', 'display_amount', 'payment_method', 'status', 'created_at', 'paid_at', 'actions']
-    let orderResizeTimer = null
-    const handleOrderColumnResize = () => {
-      if (orderResizeTimer) clearTimeout(orderResizeTimer)
-      orderResizeTimer = setTimeout(() => {
-        if (orderTableRef.value && orderTableRef.value.$el) {
-          const cells = orderTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
-          cells.forEach((cell, index) => {
-            if (ORDER_COLUMN_KEYS[index] && cell.offsetWidth > 0) orderColumnWidths[ORDER_COLUMN_KEYS[index]] = cell.offsetWidth
-          })
-          saveOrderTableSettings()
-        }
-      }, 300)
-    }
+    const { columnWidths: orderColumnWidths, handleColumnResize: handleOrderColumnResize } = usePersistentTableColumns(
+      ORDER_TABLE_STORAGE_KEY,
+      {
+        record_type: 80,
+        display_no: 180,
+        package_name: 160,
+        display_amount: 120,
+        payment_method: 120,
+        status: 120,
+        created_at: 180,
+        paid_at: 180,
+        actions: 200
+      },
+      ORDER_COLUMN_KEYS
+    )
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     const isMobile = computed(() => {
       return windowWidth.value <= 768
@@ -571,7 +487,7 @@ export default {
     }
     const emptyText = computed(() => {
       if (isLoading.value) return '加载中...'
-      if (filters.status || filters.payment_method || filters.date_range.length > 0) {
+      if (filters.keyword || filters.status || filters.payment_method || filters.date_range.length > 0) {
         return '没有找到符合条件的订单'
       }
       return '暂无订单记录'
@@ -709,6 +625,34 @@ export default {
         return allRecords.value
       }
     })
+    const mobileOrderFields = computed(() => [
+      {
+        key: 'record_type',
+        label: '类型',
+        type: 'tag',
+        tagType: value => value === 'recharge' ? 'success' : 'primary',
+        formatter: value => value === 'recharge' ? '充值' : '订单'
+      },
+      { key: 'display_no', label: '订单号', formatter: value => value || '-' },
+      { key: 'package_name', label: '套餐/类型', formatter: (_value, row) => row.package_name || (row.record_type === 'recharge' ? '账户充值' : '-') },
+      { key: 'display_amount', label: '金额', formatter: (_value, row) => formatRecordAmount(row) },
+      {
+        key: 'payment_method',
+        label: '支付方式',
+        type: 'tag',
+        tagType: value => getPaymentMethodType(value),
+        formatter: value => getPaymentMethodText(value)
+      },
+      {
+        key: 'status',
+        label: '状态',
+        type: 'tag',
+        tagType: value => getOrderStatusType(value),
+        formatter: value => getOrderStatusText(value)
+      },
+      { key: 'created_at', label: '创建时间', formatter: value => formatDateTime(value) || '-' },
+      { key: 'paid_at', label: '支付时间', formatter: (_value, row) => row.paid_at || row.payment_time ? formatDateTime(row.paid_at || row.payment_time) : '-' }
+    ])
     const handleTabChange = (tabName) => {
       if (tabName === 'recharges') {
         if (recharges.value.length === 0) {
@@ -742,6 +686,9 @@ export default {
           page: pagination.current,
           size: pagination.size,
           ...filters
+        }
+        if (!params.keyword) {
+          delete params.keyword
         }
         if (filters.date_range && filters.date_range.length === 2) {
           params.start_date = filters.date_range[0]
@@ -837,6 +784,7 @@ export default {
       loadOrders()
     }
     const resetFilters = () => {
+      filters.keyword = ''
       filters.status = ''
       filters.payment_method = ''
       filters.date_range = []
@@ -1231,15 +1179,10 @@ export default {
     }
     const cancelOrder = async (order) => {
       try {
-        await ElMessageBox.confirm(
-          '确定要取消这个订单吗？取消后无法恢复。',
-          '确认取消',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await confirmWarning('确定要取消这个订单吗？取消后该订单无法继续支付，需要重新下单。', {
+          title: '确认取消订单',
+          confirmButtonText: '确认取消'
+        })
         await api.post(`/orders/${order.order_no}/cancel`)
         ElMessage.success('订单已取消')
         pendingPaymentStorage.clear()
@@ -1287,15 +1230,10 @@ export default {
           ElMessage.error('充值记录ID不存在，无法取消')
           return
         }
-        await ElMessageBox.confirm(
-          '确定要取消这个充值订单吗？取消后无法恢复。',
-          '确认取消',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await confirmWarning('确定要取消这个充值订单吗？取消后该充值记录无法继续支付，需要重新发起充值。', {
+          title: '确认取消充值',
+          confirmButtonText: '确认取消'
+        })
         await rechargeAPI.cancelRecharge(rechargeId)
         ElMessage.success('充值订单已取消')
         pendingPaymentStorage.clear()
@@ -1411,14 +1349,24 @@ export default {
       }
       return typeMap[method] || 'info'
     }
-    const formatAmount = (amount) => {
-      if (amount === null || amount === undefined || amount === '') return '0.00'
-      const num = typeof amount === 'string' ? parseFloat(amount) : amount
-      if (isNaN(num)) return '0.00'
-      return num.toFixed(2)
+    const formatRecordAmount = (record) => {
+      const amount = record?.display_amount ?? record?.amount ?? 0
+      const prefix = record?.record_type === 'recharge' ? '+' : ''
+      return `${prefix}${formatMoney(amount)}`
+    }
+    const getRecordAmountParts = (record) => {
+      const formatted = formatRecordAmount(record)
+      const prefix = formatted.startsWith('+') ? '+' : ''
+      const moneyText = prefix ? formatted.slice(1) : formatted
+      const currency = moneyText.startsWith('¥') ? '¥' : ''
+      const value = currency ? moneyText.slice(1) : moneyText
+      return {
+        prefix,
+        currency,
+        value
+      }
     }
     onMounted(async () => {
-      loadOrderTableSettings()
       await Promise.all([loadOrderStats(), loadOrders()])
       if (typeof window !== 'undefined') {
         windowWidth.value = window.innerWidth
@@ -1475,10 +1423,13 @@ export default {
       getOrderStatusText,
       getPaymentMethodType,
       getPaymentMethodText,
-      formatAmount,
+      formatMoney,
+      formatRecordAmount,
+      getRecordAmountParts,
       getPaymentMethodName,
       isAlipayPayment,
       formatDateTime,
+      mobileOrderFields,
       isMobile,
       orderTableRef,
       orderColumnWidths,
@@ -1488,15 +1439,205 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-.amount {
-  color: #f56c6c;
-  font-weight: bold;
-  &.positive {
-    color: #67c23a;
+.orders-stats-row {
+  margin-top: 0;
+}
+
+.orders-filter-panel {
+  margin-bottom: 12px;
+}
+
+.orders-filter-card {
+  margin-bottom: 14px;
+}
+
+.orders-table,
+.orders-date-filter {
+  width: 100%;
+}
+
+.orders-filter-body {
+  padding: 16px;
+  background: #fff;
+}
+
+.orders-filter-form {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1.25fr) minmax(140px, 0.7fr) minmax(140px, 0.7fr) minmax(280px, 1.3fr) minmax(150px, max-content);
+  align-items: end;
+  gap: 12px;
+  min-width: 0;
+
+  :deep(.el-form-item) {
+    margin-bottom: 0;
+    min-width: 0;
   }
-  &.negative {
-    color: #f56c6c;
+
+  :deep(.el-form-item__label) {
+    font-weight: 500;
+    color: #606266;
   }
+
+  :deep(.el-form-item__content) {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.orders-status-select,
+.orders-payment-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.orders-keyword-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.orders-date-filter {
+  width: 100%;
+  min-width: 0;
+}
+
+.orders-filter-actions {
+  margin-right: 0 !important;
+  white-space: nowrap;
+  justify-self: end;
+
+  :deep(.el-form-item__content) {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  :deep(.el-button) {
+    margin-left: 0;
+  }
+}
+
+.orders-list,
+.orders-list :deep(.el-card__body),
+.orders-data-view,
+.orders-data-view .table-wrapper {
+  min-width: 0;
+  width: 100%;
+}
+
+.orders-list :deep(.el-card__body) {
+  padding: 0;
+}
+
+.records-tabs {
+  padding: 0 16px;
+}
+
+.records-tabs :deep(.el-tabs__header) {
+  margin: 0 0 12px;
+}
+
+.orders-data-view {
+  box-sizing: border-box;
+  padding: 0 16px 16px;
+}
+
+:global(.user-layout) .orders-container .orders-filter-form {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1.25fr) minmax(140px, 0.7fr) minmax(140px, 0.7fr) minmax(280px, 1.3fr) minmax(150px, max-content) !important;
+  align-items: end !important;
+  gap: 12px !important;
+}
+
+:global(.user-layout) .orders-container .orders-filter-actions {
+  flex-wrap: nowrap !important;
+}
+
+.order-mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+}
+
+.full-width-button {
+  width: 100%;
+}
+
+.button-icon {
+  margin-right: 5px;
+}
+
+.order-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 82px;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.order-amount-sign,
+.order-amount-currency {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  color: currentColor;
+}
+
+.order-amount-value {
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: currentColor;
+}
+
+.order-amount.positive {
+  color: #67c23a;
+}
+
+:global(.user-layout) .orders-container .order-amount {
+  color: #303133 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  font-family: inherit !important;
+  line-height: 1.4 !important;
+  letter-spacing: 0 !important;
+}
+
+:global(.user-layout) .orders-container .order-amount-sign,
+:global(.user-layout) .orders-container .order-amount-currency {
+  font-size: 12px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+}
+
+:global(.user-layout) .orders-container .order-amount-value {
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  font-weight: 700 !important;
+}
+
+:global(.user-layout) .orders-container .order-amount.positive {
+  color: #67c23a !important;
+}
+.amount-stat {
+  color: #303133;
+  font-variant-numeric: tabular-nums;
 }
 .action-buttons {
   display: flex;
@@ -1506,14 +1647,14 @@ export default {
   align-items: center;
   position: relative;
   z-index: 100;
-  min-height: 40px;
+  min-height: 44px;
   white-space: nowrap;
   .el-button {
     position: relative;
     z-index: 101;
     pointer-events: auto !important;
     cursor: pointer !important;
-    min-height: 32px;
+    min-height: 44px;
     padding: 8px 12px;
     line-height: 1;
     display: inline-flex;
@@ -1522,6 +1663,7 @@ export default {
     vertical-align: middle;
     flex-shrink: 0;
     white-space: nowrap;
+    touch-action: manipulation;
     :deep(*) {
       pointer-events: none;
     }
@@ -1586,93 +1728,29 @@ export default {
     }
   }
 }
-.mobile-card {
-  &.recharge-card {
-    border-left: 4px solid #67c23a;
-  }
-  &.order-card {
-    border-left: 4px solid #409eff;
-  }
-  .card-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-    position: relative;
-    z-index: 10;
-    .el-button {
-      position: relative;
-      z-index: 11;
-      pointer-events: auto !important;
-      cursor: pointer !important;
-      flex: 1;
-      min-height: 44px; /* 增加最小高度，方便手机端点击 */
-      padding: 10px 15px;
-      line-height: 1.5;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      touch-action: manipulation; /* 优化移动端触摸 */
-      -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1); /* 添加点击反馈 */
-      :deep(*) {
-        pointer-events: auto; /* 改为auto，允许点击 */
-      }
-      &:hover, &:active {
-        z-index: 12;
-      }
-    }
+.card-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+
+  .el-button {
+    min-height: 44px;
+    flex: 1;
+    touch-action: manipulation;
   }
 }
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: #999;
-  :is(i) {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    display: block;
-  }
-  :is(p) {
-    font-size: 0.9rem;
-    margin: 0;
-  }
-}
+
 .order-detail {
   padding: 20px 0;
-}
-.dialog-footer {
-  text-align: right;
-  .el-button {
-    margin-left: 10px;
-  }
 }
 .payment-qr-container {
   text-align: center;
 }
-.payment-qr-container .order-info {
-  margin-bottom: 20px;
-}
-.payment-qr-container .order-info h3 {
-  margin-bottom: 15px;
+.payment-qr-container .payment-amount {
   color: #303133;
-  font-size: 16px;
-}
-.payment-qr-container .amount {
-  color: #f56c6c;
   font-size: 18px;
-  font-weight: bold;
-}
-.qr-code-wrapper {
-  margin: 20px 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 200px;
-}
-.qr-code img {
-  max-width: 200px;
-  max-height: 200px;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .qr-loading {
   display: flex;
@@ -1684,46 +1762,29 @@ export default {
   font-size: 24px;
   margin-bottom: 10px;
 }
-.payment-tips {
-  margin: 20px 0;
-}
-.payment-actions {
-  margin-top: 20px;
-}
-.payment-actions .el-button {
-  margin: 0 10px;
-}
-.order-detail-dialog,
-.payment-qr-dialog {
-  :deep(.el-dialog) {
-    @media (max-width: 768px) {
-      width: 90% !important;
-      margin: 5vh auto !important;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-  }
-  :deep(.el-dialog__body) {
-    @media (max-width: 768px) {
-      padding: 15px !important;
-      max-height: calc(90vh - 120px);
-      overflow-y: auto;
-    }
-  }
-  :deep(.el-dialog__header) {
-    @media (max-width: 768px) {
-      padding: 15px !important;
-    }
-  }
-  :deep(.el-dialog__footer) {
-    @media (max-width: 768px) {
-      padding: 15px !important;
-    }
-  }
-}
 .order-detail {
+  :deep(.el-descriptions__body) {
+    background: transparent;
+  }
+
   @media (max-width: 768px) {
     padding: 10px 0;
+
+    :deep(.el-descriptions__table) {
+      display: block;
+    }
+
+    :deep(.el-descriptions__table tbody),
+    :deep(.el-descriptions__table tr) {
+      display: block;
+    }
+
+    :deep(.el-descriptions__cell) {
+      display: flex;
+      width: 100% !important;
+      box-sizing: border-box;
+    }
+
     :deep(.el-descriptions) {
       font-size: 14px;
     }
@@ -1739,51 +1800,7 @@ export default {
 }
 .payment-qr-container {
   @media (max-width: 768px) {
-    .order-info {
-      margin-bottom: 15px;
-      :is(h3) {
-        font-size: 14px;
-        margin-bottom: 10px;
-      }
-      :deep(.el-descriptions) {
-        font-size: 13px;
-      }
-      :deep(.el-descriptions__label) {
-        width: 40% !important;
-        font-size: 12px;
-      }
-      :deep(.el-descriptions__content) {
-        width: 60% !important;
-        font-size: 12px;
-      }
-    }
-    .qr-code-wrapper {
-      margin: 15px 0;
-      min-height: 180px;
-      .qr-code img {
-        max-width: 180px;
-        max-height: 180px;
-      }
-    }
-    .payment-tips {
-      margin: 15px 0;
-      :deep(.el-alert) {
-        font-size: 12px;
-        padding: 10px;
-      }
-    }
-    .payment-actions {
-      margin-top: 15px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      .el-button {
-        width: 100%;
-        margin: 0 !important;
-        min-height: 44px;
-        font-size: 16px;
-      }
-    }
+    text-align: center;
   }
   // 紧凑布局样式
   .order-info-compact {
@@ -1806,10 +1823,11 @@ export default {
         font-size: 13px;
         color: #333;
         font-weight: 500;
-        &.amount {
-          color: #f56c6c;
+        &.payment-amount {
+          color: #303133;
           font-size: 16px;
-          font-weight: 600;
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
         }
       }
     }
@@ -1847,6 +1865,47 @@ export default {
       display: flex;
       gap: 8px;
     }
+  }
+}
+
+@media (max-width: 1100px) {
+  .orders-filter-form,
+  :global(.user-layout) .orders-container .orders-filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .orders-filter-actions {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 768px) {
+  .orders-filter-form {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0;
+
+    :deep(.el-form-item) {
+      margin-right: 0;
+    }
+  }
+
+  :global(.user-layout) .orders-container .orders-filter-form {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .orders-status-select,
+  .orders-payment-select,
+  .orders-keyword-input,
+  .orders-date-filter,
+  .orders-filter-actions,
+  .orders-filter-actions :deep(.el-form-item__content) {
+    width: 100%;
+  }
+
+  .orders-filter-actions :deep(.el-button) {
+    flex: 1 1 0;
   }
 }
 </style> 

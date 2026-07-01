@@ -1,323 +1,333 @@
 <template>
   <div class="list-container devices-container">
-    <div class="stats-row">
+    <div class="breadcrumb">首页 / 设备管理</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>设备管理</h1>
+      </div>
+      <div class="actions">
+        <el-button type="success" @click="openUpgradeDrawer" :loading="upgradeSubscriptionLoading">
+          升级设备数量
+        </el-button>
+        <el-button @click="refreshDevices" :loading="loading">
+          刷新
+        </el-button>
+      </div>
+    </div>
+    <div class="stats-row devices-stats-row grid cols-4">
       <div class="stat-card">
-        <div class="stat-number">{{ deviceStats.total }}</div>
-        <div class="stat-label">总设备数</div>
+        <div class="stat-icon">D</div>
+        <div>
+          <div class="stat-value">{{ deviceStats.total }}</div>
+          <div class="stat-label">当前设备</div>
+        </div>
       </div>
       <div class="stat-card">
-        <div class="stat-number">{{ deviceStats.online }}</div>
-        <div class="stat-label">在线设备</div>
+        <div class="stat-icon">O</div>
+        <div>
+          <div class="stat-value">{{ deviceStats.online }}</div>
+          <div class="stat-label">在线设备</div>
+        </div>
       </div>
       <div class="stat-card">
-        <div class="stat-number">{{ deviceStats.mobile }}</div>
-        <div class="stat-label">移动设备</div>
+        <div class="stat-icon">+</div>
+        <div>
+          <div class="stat-value">可升级</div>
+          <div class="stat-label">设备数量</div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-number">{{ deviceStats.desktop }}</div>
-        <div class="stat-label">桌面设备</div>
+      <div class="stat-card device-type-stat-card">
+        <div class="stat-icon">T</div>
+        <div class="device-type-stat-content">
+          <div class="device-type-stat-title">设备类型统计</div>
+          <div class="device-type-stat-list">
+            <span>移动 {{ deviceStats.mobile }}</span>
+            <span>桌面 {{ deviceStats.desktop }}</span>
+            <span>其他 {{ otherDeviceCount }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card list-filter-card devices-filter-card">
+      <div class="card-body devices-filter-body">
+        <el-form :inline="true" :model="filters" class="devices-filter-form list-filter-form">
+          <el-form-item label="关键词">
+            <el-input
+              v-model="filters.keyword"
+              placeholder="设备名、系统、IP、备注"
+              clearable
+              class="devices-keyword-input"
+              @keyup.enter="applyDeviceFilters"
+              @clear="applyDeviceFilters"
+            />
+          </el-form-item>
+          <el-form-item label="设备类型">
+            <el-select v-model="filters.device_type" placeholder="全部类型" clearable class="devices-filter-select" @change="applyDeviceFilters">
+              <el-option label="手机" value="mobile" />
+              <el-option label="电脑" value="desktop" />
+              <el-option label="平板" value="tablet" />
+              <el-option label="路由器" value="router" />
+              <el-option label="电视盒子" value="tv_box" />
+              <el-option label="服务器" value="server" />
+              <el-option label="未知" value="unknown" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="在线状态">
+            <el-select v-model="filters.online_status" placeholder="全部状态" clearable class="devices-filter-select" @change="applyDeviceFilters">
+              <el-option label="在线" value="online" />
+              <el-option label="离线" value="offline" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="devices-filter-actions">
+            <el-button type="primary" @click="applyDeviceFilters">筛选</el-button>
+            <el-button :disabled="!hasActiveFilters" @click="resetDeviceFilters">重置</el-button>
+          </el-form-item>
+        </el-form>
       </div>
     </div>
     <el-card class="list-card devices-card">
       <template #header>
         <div class="card-header">
           <span>
-            <i class="el-icon-monitor"></i>
+            <el-icon class="card-header-icon"><Monitor /></el-icon>
             设备列表
           </span>
           <el-button 
-            type="primary" 
             size="small" 
             @click="refreshDevices"
             :loading="loading"
           >
-            <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
         </div>
       </template>
-      <div class="table-wrapper">
-        <el-table 
-          ref="deviceTableRef"
-          :data="devices" 
-          v-loading="loading"
-          style="width: 100%"
-          stripe
-          border
-          @header-dragend="handleDeviceColumnResize"
-        >
-          <el-table-column prop="device_name" label="设备名称" :min-width="columnWidths.device_name" resizable>
-          <template #default="{ row }">
-            <div class="device-name">
-              <i :class="getDeviceIcon(row.device_type)"></i>
-              <div class="device-name-details">
-                <div class="device-main-name">
-                  <span class="device-name-text">{{ row.device_name || '未知设备' }}</span>
-                  <el-tag v-if="row.software_name" type="info" size="small" style="margin-left: 8px;">
-                    {{ row.software_name }}{{ row.software_version ? ' ' + row.software_version : '' }}
-                  </el-tag>
-                </div>
-                <div v-if="row.device_model" class="device-model-info">
-                  <el-tag type="success" size="small" style="margin-top: 4px;">
-                    {{ row.device_model }}{{ row.device_brand && row.device_brand !== 'Apple' ? ' (' + row.device_brand + ')' : '' }}
-                  </el-tag>
-                </div>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="device_type" label="设备类型" :width="columnWidths.device_type" resizable>
-          <template #default="{ row }">
-            <el-tag :type="getDeviceTypeColor(row.device_type)">
-              {{ getDeviceTypeName(row.device_type) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="os_name" label="操作系统" :width="columnWidths.os_name" resizable>
-          <template #default="{ row }">
-            <div class="os-info">
-              <div class="os-name">{{ row.os_name || '-' }}</div>
-              <div v-if="row.os_version" class="os-version">
-                <el-tag type="primary" size="small" style="margin-top: 4px;">
-                  {{ row.os_version }}
-                </el-tag>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="ip_address" label="IP地址" :width="columnWidths.ip_address" resizable>
-          <template #default="{ row }">
-            <div class="ip-location-cell">
-              <span class="ip-address">{{ row.ip_address || '-' }}</span>
-              <el-tag v-if="row.location" type="info" size="small" style="margin-left: 8px;">
-                <i class="el-icon-location"></i>
-                {{ formatLocation(row.location) }}
-              </el-tag>
-              <span v-else class="no-location-text">位置信息不可用</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_access" label="最后访问" :width="columnWidths.last_access" resizable>
-          <template #default="{ row }">
-            <span>{{ formatTime(row.last_access) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="user_agent" label="User Agent" :min-width="columnWidths.user_agent" :width="columnWidths.user_agent" resizable>
-          <template #default="{ row }">
-            <el-tooltip :content="row.user_agent" placement="top">
-              <span class="user-agent">{{ truncateUserAgent(row.user_agent) }}</span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" :width="columnWidths.remark" resizable>
-          <template #default="{ row }">
-            <div class="remark-cell" @click="startEditRemark(row)" v-if="editingRemarkId !== row.id">
-              <span v-if="row.remark" class="remark-text">{{ row.remark }}</span>
-              <span v-else class="remark-placeholder">点击添加备注</span>
-            </div>
-            <div class="remark-edit" v-else>
-              <el-input
-                v-model="editingRemarkValue"
-                size="small"
-                maxlength="200"
-                show-word-limit
-                placeholder="输入设备备注，自动保存"
-                @blur="saveRemark(row)"
-                @keyup.enter="saveRemark(row)"
-                @keyup.escape="cancelEditRemark"
-                @input="onRemarkInput(row)"
-                ref="remarkInputRef"
-              />
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button 
-                type="danger" 
-                size="small" 
-                @click="removeDevice(row.id)"
-                :loading="row.removing"
-              >
-                移除
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-      </div>
-      <div class="pagination" v-if="total > pageSize">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
-      <div class="mobile-card-list" v-if="devices.length > 0">
-        <div 
-          v-for="device in devices" 
-          :key="device.id"
-          class="mobile-card"
-        >
-          <div class="card-row">
-            <span class="label">设备名称</span>
-            <span class="value">
-              <div class="device-name-details">
-                <div class="device-main-name">
-                  <i :class="getDeviceIcon(device.device_type)"></i>
-                  <span class="device-name-text">{{ device.device_name || '未知设备' }}</span>
-                  <el-tag v-if="device.software_name" type="info" size="small" class="software-tag">
-                    {{ device.software_name }}{{ device.software_version ? ' ' + device.software_version : '' }}
-                  </el-tag>
-                </div>
-                <div v-if="device.device_model" class="device-model-info">
-                  <el-tag type="success" size="small" class="model-tag">
-                    {{ device.device_model }}{{ device.device_brand && device.device_brand !== 'Apple' ? ' (' + device.device_brand + ')' : '' }}
-                  </el-tag>
-                </div>
-              </div>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">设备类型</span>
-            <span class="value">
-              <el-tag v-if="device.device_type && device.device_type !== 'unknown'" 
-                      :type="getDeviceTypeColor(device.device_type)">
-                {{ getDeviceTypeName(device.device_type) }}
-              </el-tag>
-              <span v-else style="color: var(--el-text-color-secondary, #6b7280); font-size: 12px;">-</span>
-            </span>
-          </div>
-          <div class="card-row" v-if="device.os_name || device.os_version">
-            <span class="label">操作系统</span>
-            <span class="value">
-              <div class="os-info">
-                <div class="os-name">{{ device.os_name || '-' }}</div>
-                <div v-if="device.os_version" class="os-version">
-                  <el-tag type="primary" size="small" style="margin-top: 4px;">
-                    {{ device.os_version }}
-                  </el-tag>
-                </div>
-              </div>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">IP地址</span>
-            <span class="value">
-              <div class="ip-location-cell">
-                <span class="ip-address">{{ device.ip_address || '-' }}</span>
-                <el-tag v-if="device.location" type="info" size="small">
-                  <i class="el-icon-location"></i>
-                  {{ formatLocation(device.location) }}
-                </el-tag>
-                <span v-else class="no-location">位置信息不可用</span>
-              </div>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">最后访问</span>
-            <span class="value time-value">{{ formatTime(device.last_access) }}</span>
-          </div>
-          <div class="card-row" v-if="device.user_agent">
-            <span class="label">User Agent</span>
-            <span class="value user-agent">{{ truncateUserAgent(device.user_agent) }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">备注</span>
-            <span class="value">
-              <div class="remark-cell" @click="startEditRemark(device)" v-if="editingRemarkId !== device.id">
-                <span v-if="device.remark" class="remark-text">{{ device.remark }}</span>
-                <span v-else class="remark-placeholder">点击添加备注</span>
-              </div>
-              <div class="remark-edit" v-else>
-                <el-input
-                  v-model="editingRemarkValue"
-                  size="small"
-                  maxlength="200"
-                  show-word-limit
-                  placeholder="输入设备备注，自动保存"
-                  @blur="saveRemark(device)"
-                  @keyup.enter="saveRemark(device)"
-                  @keyup.escape="cancelEditRemark"
-                  @input="onRemarkInput(device)"
-                />
-              </div>
-            </span>
-          </div>
-          <div class="card-actions">
-            <el-button 
-              type="danger" 
-              size="small" 
-              @click="removeDevice(device.id)"
-              :loading="device.removing"
+      <ResponsiveDataView
+        :data="displayedDevices"
+        :fields="mobileDeviceFields"
+        :loading="loading"
+        title-field="device_name"
+        empty-title="暂无设备记录"
+        empty-description="刷新后可查看最近连接过的设备"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table
+              ref="deviceTableRef"
+              :data="displayedDevices"
+              v-loading="loading"
+              class="devices-table"
+              stripe
+              border
+              @header-dragend="handleDeviceColumnResize"
             >
-              移除
-            </el-button>
+              <template #empty>
+                <EmptyState
+                  title="暂无设备记录"
+                  description="刷新后可查看最近连接过的设备"
+                  action-text="刷新设备列表"
+                  :loading="loading"
+                  @action="refreshDevices"
+                />
+              </template>
+              <el-table-column prop="device_name" label="设备名称" :min-width="columnWidths.device_name" resizable>
+                <template #default="{ row }">
+                  <div class="device-name">
+                    <el-icon class="device-type-icon">
+                      <component :is="getDeviceIcon(row.device_type)" />
+                    </el-icon>
+                    <div class="device-name-details">
+                      <div class="device-main-name">
+                        <span class="device-name-text">{{ row.device_name || '未知设备' }}</span>
+                        <el-tag v-if="row.software_name" type="info" size="small" class="software-tag">
+                          {{ row.software_name }}{{ row.software_version ? ' ' + row.software_version : '' }}
+                        </el-tag>
+                      </div>
+                      <div v-if="row.device_model" class="device-model-info">
+                        <el-tag type="success" size="small" class="stacked-tag">
+                          {{ row.device_model }}{{ row.device_brand && row.device_brand !== 'Apple' ? ' (' + row.device_brand + ')' : '' }}
+                        </el-tag>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="device_type" label="设备类型" :width="columnWidths.device_type" resizable>
+                <template #default="{ row }">
+                  <el-tag :type="getDeviceTypeColor(row.device_type)">
+                    {{ getDeviceTypeName(row.device_type) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="os_name" label="操作系统" :width="columnWidths.os_name" resizable>
+                <template #default="{ row }">
+                  <div class="os-info">
+                    <div class="os-name">{{ row.os_name || '-' }}</div>
+                    <div v-if="row.os_version" class="os-version">
+                      <el-tag type="primary" size="small" class="stacked-tag">
+                        {{ row.os_version }}
+                      </el-tag>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" :width="columnWidths.ip_address" resizable>
+                <template #default="{ row }">
+                  <div class="ip-location-cell">
+                    <span class="ip-address">{{ row.ip_address || '-' }}</span>
+                    <el-tag v-if="row.location" type="info" size="small" class="location-tag">
+                      <el-icon><Location /></el-icon>
+                      {{ formatLocation(row.location) }}
+                    </el-tag>
+                    <span v-else class="no-location-text">位置信息不可用</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最后访问" :width="columnWidths.last_access" resizable>
+                <template #default="{ row }">
+                  <span>{{ formatTime(row.last_access) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="user_agent" label="User Agent" :min-width="columnWidths.user_agent" :width="columnWidths.user_agent" resizable>
+                <template #default="{ row }">
+                  <el-tooltip :content="row.user_agent" placement="top">
+                    <span class="user-agent">{{ truncateUserAgent(row.user_agent) }}</span>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" :width="columnWidths.remark" resizable>
+                <template #default="{ row }">
+                  <DeviceRemarkEditor :device="row" />
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
+                <template #default="{ row }">
+                  <div class="action-buttons">
+                    <el-button
+                      type="danger"
+                      size="small"
+                      @click="removeDevice(row.id)"
+                      :loading="row.removing"
+                    >
+                      移除
+                    </el-button>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
-        </div>
-      </div>
-      <div class="mobile-card-list" v-if="!loading && devices.length === 0">
-        <div class="empty-state">
-          <i class="el-icon-monitor"></i>
-          <p>暂无设备记录</p>
-          <el-button type="primary" @click="refreshDevices" style="margin-top: 1rem;">
-            刷新设备列表
+        </template>
+        <template #header="{ item }">
+          <div class="mobile-device-header">
+              <div class="device-name-details">
+                <div class="device-main-name">
+                <el-icon class="device-type-icon">
+                  <component :is="getDeviceIcon(item.device_type)" />
+                </el-icon>
+                <span class="device-name-text">{{ item.device_name || '未知设备' }}</span>
+                <el-tag v-if="item.software_name" type="info" size="small" class="software-tag">
+                  {{ item.software_name }}{{ item.software_version ? ' ' + item.software_version : '' }}
+                </el-tag>
+              </div>
+              <div v-if="item.device_model" class="device-model-info">
+                <el-tag type="success" size="small" class="stacked-tag">
+                  {{ item.device_model }}{{ item.device_brand && item.device_brand !== 'Apple' ? ' (' + item.device_brand + ')' : '' }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template #field-ip_address="{ item }">
+          <div class="ip-location-cell mobile-ip-cell">
+            <span class="ip-address">{{ item.ip_address || '-' }}</span>
+            <el-tag v-if="item.location" type="info" size="small">
+              <el-icon><Location /></el-icon>
+              {{ formatLocation(item.location) }}
+            </el-tag>
+            <span v-else class="no-location">位置信息不可用</span>
+          </div>
+        </template>
+        <template #field-remark="{ item }">
+          <DeviceRemarkEditor :device="item" />
+        </template>
+        <template #empty>
+          <EmptyState
+            title="暂无设备记录"
+            description="刷新后可查看最近连接过的设备"
+            action-text="刷新设备列表"
+            :loading="loading"
+            @action="refreshDevices"
+          />
+        </template>
+        <template #actions="{ item }">
+          <el-button 
+            type="danger" 
+            size="small" 
+            @click="removeDevice(item.id)"
+            :loading="item.removing"
+          >
+            移除
           </el-button>
-        </div>
-      </div>
-      <div class="pagination mobile-pagination" v-if="total > pageSize">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, prev, pager, next"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+        </template>
+      </ResponsiveDataView>
+      <PaginationBar
+        v-if="displayTotal > pageSize"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="displayTotal"
+        :page-sizes="[10, 20, 50, 100]"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
-    <el-card class="chart-card">
-      <template #header>
-        <div class="card-header">
-          <i class="el-icon-pie-chart"></i>
-          设备类型统计
-        </div>
-      </template>
-      <div class="chart-container">
-        <div class="chart-item" v-for="(count, type) in deviceTypeStats" :key="type">
-          <div class="chart-label">{{ getDeviceTypeName(type) }}</div>
-          <div class="chart-bar">
-            <div 
-              class="chart-fill" 
-              :style="{ width: getPercentage(count) + '%' }"
-            ></div>
-          </div>
-          <div class="chart-count">{{ count }}</div>
-        </div>
-      </div>
-    </el-card>
+    <UpgradeDevicesDrawer
+      v-model="showUpgradeDrawer"
+      :subscription="upgradeSubscription"
+      :on-success="handleUpgradeSuccess"
+      @success="refreshDevices"
+    />
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Refresh } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted, computed, defineComponent, h } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
+import {
+  Box,
+  Cellphone,
+  Connection,
+  Iphone,
+  Location,
+  Monitor,
+  QuestionFilled,
+  VideoCamera
+} from '@element-plus/icons-vue'
 import { subscriptionAPI } from '@/utils/api'
 import { formatDateTime as formatTimeUtil } from '@/utils/date'
 import { formatLocation } from '@/utils/date'
+import { confirmWarning } from '@/utils/confirmAction'
+import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
+import InlineEditableText from '@/components/InlineEditableText.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
 export default {
   name: 'Devices',
   components: {
-    Refresh
+    EmptyState,
+    ResponsiveDataView,
+    Box,
+    Cellphone,
+    Connection,
+    Iphone,
+    Location,
+    Monitor,
+    QuestionFilled,
+    VideoCamera,
+    PaginationBar,
+    UpgradeDevicesDrawer
   },
   setup() {
     const loading = ref(false)
@@ -326,11 +336,16 @@ export default {
     const currentPage = ref(1)
     const pageSize = ref(10)
     const total = ref(0)
-    const editingRemarkId = ref(null)
-    const editingRemarkValue = ref('')
-    const remarkInputRef = ref(null)
+    const filters = reactive({
+      keyword: '',
+      device_type: '',
+      online_status: ''
+    })
+    const showUpgradeDrawer = ref(false)
+    const upgradeSubscription = ref(null)
+    const upgradeSubscriptionLoading = ref(false)
     const DEVICES_TABLE_STORAGE_KEY = 'user_devices_table_settings'
-    const columnWidths = reactive({
+    const defaultColumnWidths = {
       device_name: 220,
       device_type: 120,
       os_name: 180,
@@ -339,52 +354,96 @@ export default {
       user_agent: 200,
       remark: 160,
       actions: 120
-    })
-    const loadDeviceTableSettings = () => {
-      try {
-        const saved = localStorage.getItem(DEVICES_TABLE_STORAGE_KEY)
-        if (saved) {
-          const s = JSON.parse(saved)
-          if (s.columnWidths) Object.assign(columnWidths, s.columnWidths)
-        }
-      } catch (e) {
-        console.warn('加载设备表设置失败:', e)
-      }
-    }
-    const saveDeviceTableSettings = () => {
-      try {
-        localStorage.setItem(DEVICES_TABLE_STORAGE_KEY, JSON.stringify({ columnWidths: { ...columnWidths } }))
-      } catch (e) {
-        console.warn('保存设备表设置失败:', e)
-      }
     }
     const DEVICE_COLUMN_KEYS = ['device_name', 'device_type', 'os_name', 'ip_address', 'last_access', 'user_agent', 'remark', 'actions']
-    let deviceResizeTimer = null
-    const handleDeviceColumnResize = () => {
-      if (deviceResizeTimer) clearTimeout(deviceResizeTimer)
-      deviceResizeTimer = setTimeout(() => {
-        if (deviceTableRef.value && deviceTableRef.value.$el) {
-          const cells = deviceTableRef.value.$el.querySelectorAll('.el-table__header-wrapper thead th')
-          cells.forEach((cell, index) => {
-            if (DEVICE_COLUMN_KEYS[index] && cell.offsetWidth > 0) columnWidths[DEVICE_COLUMN_KEYS[index]] = cell.offsetWidth
-          })
-          saveDeviceTableSettings()
-        }
-      }, 300)
-    }
+    const { columnWidths, handleColumnResize: handleDeviceColumnResize } = usePersistentTableColumns(
+      DEVICES_TABLE_STORAGE_KEY,
+      defaultColumnWidths,
+      DEVICE_COLUMN_KEYS
+    )
     const deviceStats = reactive({
       total: 0,
       online: 0,
       mobile: 0,
       desktop: 0
     })
-    const deviceTypeStats = computed(() => {
-      const stats = {}
-      devices.value.forEach(device => {
-        const type = device.device_type || 'unknown'
-        stats[type] = (stats[type] || 0) + 1
+    const otherDeviceCount = computed(() => Math.max(
+      0,
+      deviceStats.total - deviceStats.mobile - deviceStats.desktop
+    ))
+    const hasActiveFilters = computed(() => Boolean(filters.keyword || filters.device_type || filters.online_status))
+    const filteredDevices = computed(() => {
+      const keyword = String(filters.keyword || '').trim().toLowerCase()
+      return devices.value.filter(device => {
+        if (filters.device_type && device.device_type !== filters.device_type) {
+          return false
+        }
+        if (filters.online_status) {
+          const online = isOnline(device.last_access)
+          if (filters.online_status === 'online' && !online) return false
+          if (filters.online_status === 'offline' && online) return false
+        }
+        if (keyword) {
+          const haystack = [
+            device.device_name,
+            device.device_model,
+            device.device_brand,
+            device.software_name,
+            device.software_version,
+            device.os_name,
+            device.os_version,
+            device.ip_address,
+            device.location,
+            device.user_agent,
+            device.remark
+          ].filter(Boolean).join(' ').toLowerCase()
+          return haystack.includes(keyword)
+        }
+        return true
       })
-      return stats
+    })
+    const paginatedFilteredDevices = computed(() => {
+      const start = (currentPage.value - 1) * pageSize.value
+      const end = start + pageSize.value
+      return filteredDevices.value.slice(start, end)
+    })
+    const displayedDevices = computed(() => hasActiveFilters.value ? paginatedFilteredDevices.value : devices.value)
+    const displayTotal = computed(() => hasActiveFilters.value ? filteredDevices.value.length : total.value)
+    const mobileDeviceFields = computed(() => [
+      {
+        key: 'device_type',
+        label: '设备类型',
+        type: 'tag',
+        tagType: value => getDeviceTypeColor(value),
+        formatter: value => value && value !== 'unknown' ? getDeviceTypeName(value) : '-'
+      },
+      { key: 'os_name', label: '操作系统', formatter: (_value, row) => [row.os_name, row.os_version].filter(Boolean).join(' ') || '-' },
+      { key: 'ip_address', label: 'IP地址', fullWidth: true },
+      { key: 'last_access', label: '最后访问', formatter: value => formatTime(value) },
+      { key: 'user_agent', label: 'User Agent', formatter: value => truncateUserAgent(value), fullWidth: true },
+      { key: 'remark', label: '备注', fullWidth: true }
+    ])
+    const DeviceRemarkEditor = defineComponent({
+      name: 'DeviceRemarkEditor',
+      props: {
+        device: {
+          type: Object,
+          required: true
+        }
+      },
+      setup(props) {
+        return () => {
+          const device = props.device
+          return h(InlineEditableText, {
+            value: device.remark || '',
+            emptyText: '点击添加备注',
+            placeholder: '输入设备备注，回车或失焦保存',
+            maxlength: 200,
+            loading: !!device.savingRemark,
+            onSave: value => saveRemark(device, value)
+          })
+        }
+      }
     })
     const fetchDevices = async () => {
       loading.value = true
@@ -457,27 +516,70 @@ export default {
     const handleSizeChange = (val) => {
       pageSize.value = val
       currentPage.value = 1
-      fetchDevices()
+      if (!hasActiveFilters.value) {
+        fetchDevices()
+      }
     }
     const handleCurrentChange = (val) => {
       currentPage.value = val
-      fetchDevices()
+      if (!hasActiveFilters.value) {
+        fetchDevices()
+      }
     }
     const refreshDevices = () => {
       currentPage.value = 1
       fetchDevices()
     }
+    const applyDeviceFilters = () => {
+      currentPage.value = 1
+    }
+    const resetDeviceFilters = () => {
+      filters.keyword = ''
+      filters.device_type = ''
+      filters.online_status = ''
+      currentPage.value = 1
+    }
+    const normalizeUpgradeSubscription = (data) => ({
+      device_limit: data?.device_limit || data?.total_devices || data?.maxDevices || 0,
+      maxDevices: data?.device_limit || data?.total_devices || data?.maxDevices || 0,
+      expire_time: data?.expire_time || data?.expiryDate || data?.expires_at,
+      expiryDate: data?.expire_time || data?.expiryDate || data?.expires_at
+    })
+    const loadUpgradeSubscription = async () => {
+      upgradeSubscriptionLoading.value = true
+      try {
+        const response = await subscriptionAPI.getUserSubscription()
+        const data = response?.data?.data || response?.data || null
+        if (!data || response?.data?.success === false) {
+          upgradeSubscription.value = null
+          return null
+        }
+        upgradeSubscription.value = normalizeUpgradeSubscription(data)
+        return upgradeSubscription.value
+      } catch (error) {
+        upgradeSubscription.value = null
+        return null
+      } finally {
+        upgradeSubscriptionLoading.value = false
+      }
+    }
+    const openUpgradeDrawer = async () => {
+      const subscription = upgradeSubscription.value || await loadUpgradeSubscription()
+      if (!subscription?.device_limit && !subscription?.maxDevices) {
+        ElMessage.warning('当前没有可升级的订阅，请先购买套餐')
+        return
+      }
+      showUpgradeDrawer.value = true
+    }
+    const handleUpgradeSuccess = async () => {
+      await Promise.all([fetchDevices(), loadUpgradeSubscription()])
+    }
     const removeDevice = async (deviceId) => {
       try {
-        await ElMessageBox.confirm(
-          '确定要移除这个设备吗？移除后该设备将无法继续使用订阅服务。',
-          '确认移除',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await confirmWarning('确定要移除这个设备吗？移除后该设备将需要重新连接并重新获取订阅。', {
+          title: '确认移除设备',
+          confirmButtonText: '确认移除'
+        })
         const device = devices.value.find(d => d.id === deviceId)
         if (device) {
           device.removing = true
@@ -493,13 +595,13 @@ export default {
     }
     const getDeviceIcon = (deviceType) => {
       const icons = {
-        mobile: 'el-icon-mobile-phone',
-        desktop: 'el-icon-monitor',
-        tablet: 'el-icon-tablet',
-        router: 'el-icon-connection',
-        tv_box: 'el-icon-video-camera',
-        server: 'el-icon-box',
-        unknown: 'el-icon-question'
+        mobile: Cellphone,
+        desktop: Monitor,
+        tablet: Iphone,
+        router: Connection,
+        tv_box: VideoCamera,
+        server: Box,
+        unknown: QuestionFilled
       }
       return icons[deviceType] || icons.unknown
     }
@@ -545,67 +647,64 @@ export default {
         return false
       }
     }
-    const getPercentage = (count) => {
-      if (deviceStats.total === 0) return 0
-      return Math.round((count / deviceStats.total) * 100)
+    const getChartFillStyle = (count) => {
+      if (deviceStats.total === 0) {
+        return { '--chart-fill-width': '0%' }
+      }
+      const percentage = Math.round((count / deviceStats.total) * 100)
+      return {
+        '--chart-fill-width': `${Math.min(Math.max(percentage, 0), 100)}%`
+      }
     }
-    const startEditRemark = (device) => {
-      editingRemarkId.value = device.id
-      editingRemarkValue.value = device.remark || ''
-      // Focus input after DOM update
-      setTimeout(() => {
-        if (remarkInputRef.value) {
-          remarkInputRef.value.focus()
-        }
-      }, 50)
-    }
-    let remarkDebounceTimer = null
-    const onRemarkInput = (device) => {
-      // 防抖：停止输入1.5秒后自动保存
-      if (remarkDebounceTimer) clearTimeout(remarkDebounceTimer)
-      remarkDebounceTimer = setTimeout(() => {
-        saveRemark(device, true)
-      }, 1500)
-    }
-    const saveRemark = async (device, silent = false) => {
-      if (remarkDebounceTimer) clearTimeout(remarkDebounceTimer)
-      const newRemark = editingRemarkValue.value.trim()
-      // If unchanged, just cancel edit mode
-      if (newRemark === (device.remark || '')) {
-        cancelEditRemark()
+    const saveRemark = async (device, value) => {
+      const newRemark = String(value || '').trim()
+      const oldRemark = device.remark || ''
+      if (newRemark === oldRemark) {
+        return
+      }
+      const deviceId = device.id || device.device_id || device.deviceId
+      if (!deviceId) {
+        ElMessage.error('更新备注失败: 缺少设备ID')
         return
       }
       try {
-        await subscriptionAPI.updateDeviceRemark(device.id, newRemark)
+        device.savingRemark = true
+        const response = await subscriptionAPI.updateDeviceRemark(deviceId, newRemark)
+        if (response?.data?.success === false) {
+          throw new Error(response.data.message || '后端拒绝更新备注')
+        }
         device.remark = newRemark || ''
-        if (!silent) {
-          ElMessage.success('备注已更新')
-        }
+        ElMessage.success('备注已更新')
       } catch (error) {
-        if (!silent) {
-          ElMessage.error('更新备注失败: ' + (error.response?.data?.message || error.message))
-        }
+        device.remark = oldRemark
+        ElMessage.error('更新备注失败: ' + (error.response?.data?.message || error.response?.data?.detail || error.message))
+        return
+      } finally {
+        device.savingRemark = false
       }
-      cancelEditRemark()
-    }
-    const cancelEditRemark = () => {
-      editingRemarkId.value = null
-      editingRemarkValue.value = ''
     }
     onMounted(() => {
-      loadDeviceTableSettings()
       fetchDevices()
+      loadUpgradeSubscription()
     })
     return {
       loading,
       devices,
       deviceStats,
-      deviceTypeStats,
+      otherDeviceCount,
+      filters,
+      hasActiveFilters,
+      filteredDevices,
+      displayedDevices,
+      displayTotal,
+      mobileDeviceFields,
       currentPage,
       pageSize,
       total,
       fetchDevices,
       refreshDevices,
+      applyDeviceFilters,
+      resetDeviceFilters,
       removeDevice,
       handleSizeChange,
       handleCurrentChange,
@@ -614,59 +713,191 @@ export default {
       getDeviceTypeColor,
       formatTime,
       truncateUserAgent,
-      getPercentage,
+      getChartFillStyle,
       formatLocation,
       deviceTableRef,
       columnWidths,
       handleDeviceColumnResize,
-      editingRemarkId,
-      editingRemarkValue,
-      remarkInputRef,
-      startEditRemark,
+      showUpgradeDrawer,
+      upgradeSubscription,
+      upgradeSubscriptionLoading,
+      openUpgradeDrawer,
+      handleUpgradeSuccess,
       saveRemark,
-      cancelEditRemark,
-      onRemarkInput
+      DeviceRemarkEditor
     }
   }
 }
 </script>
 <style scoped lang="scss">
-.remark-cell {
-  cursor: pointer;
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px dashed transparent;
-  transition: all 0.2s ease;
-  &:hover {
-    border-color: var(--el-color-primary-light-5);
-    background: var(--el-color-primary-light-9);
+.devices-table {
+  width: 100%;
+}
+.devices-filter-card {
+  margin-bottom: 14px;
+}
+.devices-filter-body {
+  padding: 16px;
+}
+.devices-filter-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(150px, 0.8fr)) minmax(150px, max-content);
+  align-items: end;
+  gap: 12px;
+  width: 100%;
+
+  :deep(.el-form-item) {
+    margin: 0;
+    min-width: 0;
+  }
+
+  :deep(.el-form-item__label) {
+    color: #606266;
+    font-weight: 600;
   }
 }
-.remark-text {
-  color: #303133;
-  font-size: 13px;
-  word-break: break-word;
-}
-.remark-placeholder {
-  color: #c0c4cc;
-  font-size: 12px;
-  font-style: italic;
-}
-.remark-edit {
+.devices-keyword-input {
   width: 100%;
+  min-width: 0;
+}
+.devices-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+.devices-filter-actions {
+  justify-self: end;
+
+  :deep(.el-form-item__content) {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+}
+@media (max-width: 1100px) {
+  .devices-filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .devices-filter-actions {
+    justify-self: start;
+  }
+}
+.grid {
+  display: grid;
+  gap: 14px;
+}
+.grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.devices-container .grid.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.card {
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+  color: #303133;
+  font-weight: 800;
+}
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 700;
+}
+.card-body {
+  padding: 16px;
+}
+.summary-list {
+  display: grid;
+  gap: 8px;
+}
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ebeef5;
+  color: #606266;
+}
+.summary-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.summary-row strong {
+  color: #303133;
+  text-align: right;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.device-type-stat-card {
+  align-items: flex-start;
+}
+.device-type-stat-content {
+  min-width: 0;
+}
+.device-type-stat-title {
+  color: #303133;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.device-type-stat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.device-type-stat-list span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f5f7fa;
+  white-space: nowrap;
+}
+.devices-table :deep(.inline-editable-text__display) {
+  border-color: #dcdfe6;
+  background: #f8fafc;
+}
+.devices-table :deep(.inline-editable-text__display .el-icon) {
+  opacity: 1;
+}
+.software-tag,
+.location-tag {
+  margin-left: 8px;
+}
+.stacked-tag {
+  margin-top: 4px;
 }
 .device-name {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  :is(i) {
-    font-size: 1.2rem;
-    color: var(--primary-color);
-    margin-top: 2px;
-  }
+}
+.card-header-icon,
+.device-type-icon {
+  flex-shrink: 0;
+  color: var(--primary-color);
+}
+.device-type-icon {
+  font-size: 1.2rem;
+  margin-top: 2px;
 }
 .device-name-details {
   flex: 1;
@@ -724,7 +955,7 @@ export default {
     align-items: center;
     gap: 4px;
     margin-left: 0;
-    :is(i) {
+    .el-icon {
       font-size: 12px;
     }
   }
@@ -744,10 +975,30 @@ export default {
   color: #666;
   font-size: 0.9rem;
 }
+.mobile-device-header {
+  min-width: 0;
+  .device-main-name {
+    font-size: 15px;
+    line-height: 1.45;
+    .device-type-icon {
+      font-size: 16px;
+      margin-top: 0;
+    }
+  }
+}
+.mobile-ip-cell {
+  align-items: flex-start;
+  .ip-address {
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #f5f7fa;
+  }
+}
 .chart-card {
   background: var(--card-bg);
   border-radius: var(--border-radius);
-  box-shadow: var(--card-shadow);
+  border: 1px solid var(--color-border, #e5e7eb);
   margin-bottom: 1.5rem;
 }
 .pagination {
@@ -771,11 +1022,20 @@ export default {
       display: flex;
     }
   }
-  .table-wrapper + .pagination {
-    display: none;
-  }
   .devices-container {
     padding: 10px;
+  }
+  .devices-filter-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .devices-keyword-input,
+  .devices-filter-select,
+  .devices-filter-actions,
+  .devices-filter-actions :deep(.el-form-item__content),
+  .devices-filter-actions :deep(.el-button) {
+    width: 100%;
   }
   .stats-row {
     display: grid;
@@ -784,14 +1044,16 @@ export default {
     margin-bottom: 12px;
     .stat-card {
       padding: 12px;
-      .stat-number {
-        font-size: 1.5rem;
-        margin-bottom: 4px;
-      }
       .stat-label {
         font-size: 0.75rem;
       }
     }
+  }
+  .grid.cols-2 {
+    grid-template-columns: 1fr;
+  }
+  .devices-container .grid.cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .devices-card {
     :deep(.el-card__header) {
@@ -814,230 +1076,30 @@ export default {
   .table-wrapper {
     display: none;
   }
-  .mobile-card-list {
-    display: block;
-    width: 100%;
-    .mobile-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  .mobile-device-header {
+    .device-name-details {
+      gap: 8px;
+    }
+    .software-tag {
+      margin-left: 0;
     }
   }
-  .mobile-card {
-    padding: 16px;
-    margin-bottom: 12px;
-    border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-    background: #fff;
-    border: 1px solid #f0f0f0;
-    .card-row {
-      display: flex;
-      flex-direction: row;
-      align-items: flex-start;
-      padding: 12px 0;
-      border-bottom: 1px solid #f5f5f5;
-      gap: 12px;
-      &:last-of-type:not(.card-actions) {
-        border-bottom: none;
-      }
-      .label {
-        font-weight: 600;
-        color: #666;
-        font-size: 13px;
-        min-width: 85px;
-        width: 85px;
-        flex-shrink: 0;
-        display: block;
-        line-height: 1.5;
-        padding-top: 2px;
-        text-align: left;
-      }
-      .value {
-        color: #333;
-        word-break: break-word;
-        font-size: 14px;
-        line-height: 1.5;
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        .device-name-details {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          width: 100%;
-          .device-main-name {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            color: #303133;
-            line-height: 1.6;
-            width: 100%;
-            :is(i) {
-              font-size: 18px;
-              color: var(--primary-color);
-              flex-shrink: 0;
-              line-height: 1;
-              margin-right: 0;
-            }
-            .device-name-text {
-              flex: 1 1 auto;
-              min-width: 0;
-              word-break: break-all;
-              white-space: normal;
-              line-height: 1.6;
-              display: block;
-              overflow-wrap: break-word;
-            }
-            :deep(.software-tag) {
-              flex-shrink: 0;
-              font-size: 11px;
-              padding: 4px 8px;
-              height: auto;
-              line-height: 1.3;
-              white-space: nowrap;
-              display: inline-flex;
-              align-items: center;
-              margin-left: 0;
-            }
-          }
-          .device-model-info {
-            margin-top: 0;
-            display: flex;
-            align-items: center;
-            :deep(.el-tag) {
-              font-size: 11px;
-              padding: 4px 10px;
-              height: auto;
-              line-height: 1.3;
-              white-space: nowrap;
-              display: inline-block;
-            }
-          }
-        }
-        .os-info {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          width: 100%;
-          .os-name {
-            font-size: 14px;
-            font-weight: 500;
-            color: #303133;
-            line-height: 1.5;
-          }
-          .os-version {
-            margin-top: 0;
-            :deep(.el-tag) {
-              font-size: 11px;
-              padding: 4px 10px;
-              height: auto;
-              line-height: 1.3;
-            }
-          }
-        }
-        :deep(.el-tag) {
-          font-size: 12px;
-          padding: 5px 12px;
-          height: auto;
-          line-height: 1.4;
-          border-radius: 6px;
-          display: inline-block;
-        }
-        .ip-location-cell {
-          display: flex;
-          flex-direction: row;
-          flex-wrap: wrap;
-          gap: 8px;
-          align-items: center;
-          width: 100%;
-          .ip-address {
-            font-family: 'Courier New', monospace;
-            color: #303133;
-            font-size: 14px;
-            font-weight: 500;
-            padding: 6px 10px;
-            background: #f5f7fa;
-            border-radius: 6px;
-            display: inline-block;
-            border: 1px solid #e5e7eb;
-            flex-shrink: 0;
-          }
-          :deep(.el-tag) {
-            margin-left: 0;
-            margin-top: 0;
-            font-size: 12px;
-            padding: 5px 12px;
-            height: auto;
-            line-height: 1.4;
-            border-radius: 6px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            flex-shrink: 0;
-            :is(i) {
-              font-size: 12px;
-            }
-          }
-          .no-location {
-            font-size: 12px;
-            color: var(--el-text-color-secondary, #6b7280);
-            font-style: italic;
-            padding: 4px 0;
-            flex-shrink: 0;
-          }
-        }
-        &.time-value {
-          font-size: 13px;
-          color: #606266;
-          font-weight: 500;
-        }
-        &.user-agent {
-          font-family: 'Courier New', monospace;
-          font-size: 12px;
-          color: #666;
-          background: #f9f9f9;
-          padding: 10px;
-          border-radius: 6px;
-          word-break: break-all;
-          line-height: 1.5;
-          border: 1px solid #e5e7eb;
-        }
-      }
-    }
-    .card-actions {
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #e5e7eb;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      .el-button {
-        width: 100%;
-        min-height: 44px;
-        font-size: 15px;
-        font-weight: 500;
-        border-radius: 8px;
-        margin: 0;
-      }
-    }
+  :deep(.mobile-card-actions .el-button) {
+    min-height: 44px;
+    touch-action: manipulation;
   }
   :deep(.el-dialog) {
-    width: 90% !important;
-    margin: 5vh auto !important;
-    max-height: 90vh;
+    width: 92% !important;
+    margin: 4vh auto !important;
+    max-height: calc(100dvh - 8vh);
   }
   :deep(.el-dialog__body) {
     padding: 15px !important;
-    max-height: calc(90vh - 120px);
+    max-height: calc(100dvh - 8vh - 124px);
     overflow-y: auto;
   }
   :deep(.el-dialog__footer) {
-    padding: 12px 15px !important;
+    padding: 12px 15px max(14px, env(safe-area-inset-bottom)) !important;
     .el-button {
       width: 100%;
       margin: 0 0 10px 0 !important;
@@ -1086,7 +1148,8 @@ export default {
 }
 .chart-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+  width: var(--chart-fill-width, 0%);
+  background: var(--primary-color);
   border-radius: 10px;
   transition: width 0.3s ease;
 }
@@ -1098,20 +1161,6 @@ export default {
   @media (max-width: 768px) {
     width: 40px;
     font-size: 0.9rem;
-  }
-}
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: #999;
-  :is(i) {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    display: block;
-  }
-  :is(p) {
-    font-size: 0.9rem;
-    margin: 0 0 1rem 0;
   }
 }
 </style> 

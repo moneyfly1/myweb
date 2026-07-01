@@ -1,43 +1,98 @@
 @media (max-width: 768px) {
 
   .mobile-action-buttons,
-  .mobile-filter-buttons {
-    display: flex;
-    flex-direction: column;
+  .mobile-filter-buttons,
+  .mobile-filter-actions {
+    display: grid !important;
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
     width: 100%;
+    min-width: 0;
     box-sizing: border-box;
+
+    > * {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    > a,
+    > .el-dropdown {
+      display: block;
+    }
+
+    &:has(> :nth-child(1):last-child) {
+      grid-template-columns: 1fr !important;
+    }
+
+    &:has(> :nth-child(2):last-child),
+    &:has(> :nth-child(3):last-child),
+    &:has(> :nth-child(4):last-child) {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    &:has(> :nth-child(3):last-child) > :nth-child(3),
+    &:has(> :nth-child(5):last-child) > :nth-child(4) {
+      grid-column: span 2 !important;
+    }
 
     .mobile-action-btn,
     .el-button {
       width: 100% !important;
-      height: 36px !important;
+      min-width: 0 !important;
+      max-width: 100%;
+      min-height: 44px !important;
+      height: auto !important;
       margin: 0 !important;
       font-size: 13px !important;
       border-radius: 6px !important;
       font-weight: 500;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
     }
   }
 
-  .mobile-action-buttons.horizontal,
-  .mobile-filter-buttons.horizontal {
-    flex-direction: row;
-    gap: 6px;
+  .mobile-action-buttons {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .mobile-filter-buttons,
+  .mobile-filter-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .mobile-action-buttons.horizontal {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px;
 
     .mobile-action-btn,
     .el-button {
-      flex: 1;
+      width: 100%;
+    }
+  }
+
+  .mobile-filter-buttons.horizontal,
+  .mobile-filter-actions.horizontal {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px;
+
+    .mobile-action-btn,
+    .el-button {
+      width: 100%;
     }
   }
 
   .mobile-action-btn {
     width: 100% !important;
-    height: 36px !important;
+    min-height: 44px !important;
+    height: auto !important;
     margin: 0 !important;
     font-size: 13px !important;
     border-radius: 6px !important;
     font-weight: 500;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .dialog-footer-buttons {
@@ -53,15 +108,19 @@
     .el-button {
       flex: 1 !important;
       width: auto !important;
-      height: 34px !important;
+      min-height: 44px !important;
+      height: auto !important;
       margin: 0 !important;
       font-size: 13px !important;
       border-radius: 6px !important;
       font-weight: 500;
+      line-height: 1.25;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
   }
 
-  :deep(.el-dialog__footer) {
+  .el-dialog__footer {
     .dialog-footer-buttons {
       display: flex !important;
       gap: 8px !important;
@@ -69,8 +128,12 @@
 
       .el-button {
         flex: 1 !important;
-        height: 34px !important;
+        min-height: 44px !important;
+        height: auto !important;
         margin: 0 !important;
+        line-height: 1.25;
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
     }
   }
@@ -84,8 +147,12 @@
 
     .el-button {
       width: 100% !important;
-      height: 34px !important;
+      min-height: 44px !important;
+      height: auto !important;
       margin: 0 !important;
+      line-height: 1.25;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
   }
 
@@ -97,8 +164,12 @@
 
     .el-button {
       flex: 1 !important;
-      height: 34px !important;
+      min-height: 44px !important;
+      height: auto !important;
       margin: 0 !important;
+      line-height: 1.25;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
   }
 }

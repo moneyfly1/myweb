@@ -1,39 +1,55 @@
 <template>
-  <div class="payment-return-container">
-    <div class="payment-return-content">
-      <div v-if="isLoading" class="loading-container">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <p>正在处理支付结果...</p>
+  <div class="list-container payment-return-container">
+    <div class="breadcrumb">首页 / 支付返回</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>支付返回</h1>
       </div>
-      <div v-else-if="paymentSuccess" class="success-container">
-        <div class="success-content">
+    </div>
+    <div class="payment-return-grid payment-state-grid">
+      <div v-if="isLoading" class="payment-state-card active">
+        <div class="dialog-title">
+          正在处理支付结果
+          <el-tag type="warning">当前状态</el-tag>
+        </div>
+        <LoadingState
+          text="正在轮询订单状态，请稍候..."
+          :size="32"
+          class="dialog-body loading-container"
+        />
+      </div>
+      <div v-else-if="paymentSuccess" class="payment-state-card active">
+        <div class="dialog-title">
+          支付成功
+          <el-tag type="success">当前状态</el-tag>
+        </div>
+        <div class="dialog-body success-content">
           <el-icon class="success-icon"><CircleCheckFilled /></el-icon>
-          <h2 class="success-title">支付成功！</h2>
-          <p class="success-subtitle">订单已支付，{{ orderConfig.subtitle }}</p>
-          <el-descriptions :column="1" border style="max-width: 500px; margin: 30px auto;">
-            <el-descriptions-item label="订单号">{{ orderNo }}</el-descriptions-item>
-            <el-descriptions-item label="支付金额">¥{{ amount }}</el-descriptions-item>
-            <el-descriptions-item label="支付状态">
-              <el-tag type="success">已支付</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="订单类型">
-              <el-tag :type="orderConfig.tagType">{{ orderConfig.label }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="套餐状态" v-if="orderType !== 'recharge' && orderType !== 'device_upgrade'">
-              <el-tag type="success">已开通</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
-          <div class="success-actions" style="margin-top: 30px;">
-            <el-button type="primary" size="large" @click="goToOrders">查看订单</el-button>
-            <el-button size="large" @click="goToDashboard" style="margin-left: 10px;">前往仪表盘</el-button>
+          <h2 class="success-title">订单已支付</h2>
+          <p class="success-subtitle">{{ orderConfig.subtitle }}</p>
+          <div class="summary-list">
+            <div class="summary-row"><span>订单号</span><strong>{{ orderNo || '-' }}</strong></div>
+            <div class="summary-row"><span>支付金额</span><strong>¥{{ amount }}</strong></div>
+            <div class="summary-row"><span>订单类型</span><strong>{{ orderConfig.label }}</strong></div>
+            <div class="summary-row"><span>状态</span><strong><el-tag type="success">已支付</el-tag></strong></div>
+          </div>
+          <div class="button-row">
+            <el-button type="primary" @click="goToOrders">查看订单</el-button>
+            <el-button @click="goToDashboard">前往仪表盘</el-button>
           </div>
         </div>
       </div>
-      <div v-else-if="errorMessage" class="error-container">
-        <el-alert :title="errorMessage" type="error" :closable="false" show-icon />
-        <div class="error-actions" style="margin-top: 20px; text-align: center;">
-          <el-button type="primary" @click="goToDashboard">前往仪表盘</el-button>
-          <el-button @click="goToOrders" style="margin-left: 10px;">查看订单</el-button>
+      <div v-else class="payment-state-card active">
+        <div class="dialog-title">
+          处理失败
+          <el-tag type="danger">当前状态</el-tag>
+        </div>
+        <div class="dialog-body error-container">
+          <el-alert :title="errorMessage || '等待支付结果返回'" type="error" :closable="false" show-icon />
+          <div class="button-row">
+            <el-button type="primary" @click="goToOrders">查看订单</el-button>
+            <el-button @click="goToDashboard">前往仪表盘</el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -43,11 +59,12 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { Loading, CircleCheckFilled } from '@element-plus/icons-vue'
+import { CircleCheckFilled } from '@element-plus/icons-vue'
+import LoadingState from '@/components/LoadingState.vue'
 import { useApi, pendingPaymentStorage } from '@/utils/api'
 export default {
   name: 'PaymentReturn',
-  components: { Loading, CircleCheckFilled },
+  components: { LoadingState, CircleCheckFilled },
   setup() {
     const route = useRoute()
     const router = useRouter()
@@ -231,16 +248,65 @@ export default {
 </script>
 <style scoped lang="scss">
 .payment-return-container {
-  min-height: 100vh;
-  background: #f5f7fa;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-}
-.payment-return-content {
+  padding: 0;
+  max-width: none;
+  margin: 0;
   width: 100%;
-  max-width: 800px;
+}
+.breadcrumb {
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+}
+.page-header h1 {
+  margin: 0;
+  color: #303133;
+  font-size: 22px;
+  line-height: 1.25;
+}
+.page-header p {
+  margin: 6px 0 0;
+  color: #606266;
+  line-height: 1.5;
+}
+.payment-return-grid {
+  display: grid;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.payment-state-card {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.payment-state-card.active {
+  border-color: #409eff;
+}
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 700;
+}
+.dialog-body {
+  padding: 16px;
 }
 .loading-container {
   display: flex;
@@ -248,7 +314,7 @@ export default {
   align-items: center;
   justify-content: center;
   color: #909399;
-  min-height: 400px;
+  min-height: 260px;
   .el-icon {
     font-size: 48px;
     margin-bottom: 20px;
@@ -258,17 +324,8 @@ export default {
     font-size: 16px;
   }
 }
-.success-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 400px;
-  padding: 40px 20px;
-}
 .success-content {
   text-align: center;
-  max-width: 600px;
-  width: 100%;
 }
 .success-subtitle {
   font-size: 16px;
@@ -276,32 +333,77 @@ export default {
   margin: 10px 0 20px 0;
 }
 .success-icon {
-  font-size: 80px;
+  font-size: 72px;
   color: #67c23a;
   margin-bottom: 20px;
 }
 .success-title {
-  font-size: 28px;
+  font-size: 24px;
   color: #303133;
   margin: 0 0 20px 0;
   font-weight: 600;
 }
-.success-actions {
-  margin-top: 40px;
+.summary-list {
+  margin: 18px 0;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+}
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebeef5;
+  color: #606266;
+  font-size: 13px;
+}
+.summary-row:last-child {
+  border-bottom: none;
+}
+.summary-row strong {
+  min-width: 0;
+  color: #303133;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .error-container {
-  text-align: center;
-  padding: 40px 20px;
-}
-.error-actions {
-  margin-top: 20px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 @media (max-width: 768px) {
+  .page-header {
+    padding: 14px;
+  }
+  .cols-3 {
+    grid-template-columns: 1fr;
+  }
+  .loading-container,
+  .error-container {
+    min-height: 220px;
+  }
   .success-icon {
     font-size: 60px;
   }
   .success-title {
     font-size: 24px;
+  }
+  .button-row {
+    flex-direction: column;
+    .el-button {
+      width: 100%;
+      margin-left: 0;
+    }
   }
 }
 </style>

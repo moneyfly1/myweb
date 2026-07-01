@@ -9,110 +9,35 @@
         </el-button>
       </div>
     </div>
-    <div class="mobile-action-bar" v-if="isMobile">
-      <div class="mobile-search-section">
-        <div class="search-input-wrapper">
-          <el-input
-            v-model="filters.keyword"
-            placeholder="搜索工单编号、标题或内容"
-            class="mobile-search-input"
-            clearable
-            @keyup.enter="loadTickets"
-          />
-          <el-button 
-            @click="loadTickets" 
-            class="search-button-inside"
-            type="default"
-            plain
-          >
-            <el-icon><Search /></el-icon>
-          </el-button>
-        </div>
-      </div>
-      <div class="mobile-filter-buttons">
-        <el-button
-          size="small"
-          :type="showFilterDrawer ? 'primary' : 'default'"
-          plain
-          @click="showFilterDrawer = true"
-        >
-          <el-icon><Filter /></el-icon>
-          筛选
-        </el-button>
-        <el-button size="small" type="default" plain @click="resetFilters">
-          <el-icon><Refresh /></el-icon>
-          重置
-        </el-button>
-      </div>
-    </div>
-    <div class="filter-bar desktop-only">
+    <div class="filter-bar">
       <el-input
         v-model="filters.keyword"
         placeholder="搜索工单编号、标题或内容"
-        style="width: 250px"
+        class="keyword-input"
         clearable
         @clear="loadTickets"
       />
-      <el-select v-model="filters.status" placeholder="状态筛选" clearable style="width: 150px">
+      <el-select v-model="filters.status" placeholder="状态筛选" clearable class="filter-select">
         <el-option label="待处理" value="pending" />
         <el-option label="处理中" value="processing" />
         <el-option label="已解决" value="resolved" />
         <el-option label="已关闭" value="closed" />
       </el-select>
-      <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 150px">
+      <el-select v-model="filters.type" placeholder="类型筛选" clearable class="filter-select">
         <el-option label="技术问题" value="technical" />
         <el-option label="账单问题" value="billing" />
         <el-option label="账户问题" value="account" />
         <el-option label="其他" value="other" />
       </el-select>
-      <el-select v-model="filters.priority" placeholder="优先级筛选" clearable style="width: 150px">
+      <el-select v-model="filters.priority" placeholder="优先级筛选" clearable class="filter-select">
         <el-option label="低" value="low" />
         <el-option label="普通" value="normal" />
         <el-option label="高" value="high" />
         <el-option label="紧急" value="urgent" />
       </el-select>
       <el-button type="primary" @click="loadTickets">搜索</el-button>
+      <el-button @click="resetFilters">重置</el-button>
     </div>
-    <el-drawer
-      v-model="showFilterDrawer"
-      title="筛选条件"
-      :size="isMobile ? '85%' : '400px'"
-      direction="rtl"
-      :lock-scroll="false"
-    >
-      <div class="filter-drawer-content">
-        <el-form label-width="100px">
-          <el-form-item label="状态">
-            <el-select v-model="filters.status" placeholder="选择状态" clearable style="width: 100%">
-              <el-option label="待处理" value="pending" />
-              <el-option label="处理中" value="processing" />
-              <el-option label="已解决" value="resolved" />
-              <el-option label="已关闭" value="closed" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="类型">
-            <el-select v-model="filters.type" placeholder="选择类型" clearable style="width: 100%">
-              <el-option label="技术问题" value="technical" />
-              <el-option label="账单问题" value="billing" />
-              <el-option label="账户问题" value="account" />
-              <el-option label="其他" value="other" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="优先级">
-            <el-select v-model="filters.priority" placeholder="选择优先级" clearable style="width: 100%">
-              <el-option label="低" value="low" />
-              <el-option label="普通" value="normal" />
-              <el-option label="高" value="high" />
-              <el-option label="紧急" value="urgent" />
-            </el-select>
-          </el-form-item>
-        </el-form>
-        <div class="filter-drawer-actions">
-          <el-button @click="resetFilters" style="width: 48%">重置</el-button>
-          <el-button type="primary" @click="applyFilters" style="width: 48%">应用</el-button>
-        </div>
-      </div>
-    </el-drawer>
     <div class="stats-cards" v-if="statistics">
       <el-card class="stat-card">
         <div class="stat-item">
@@ -139,123 +64,130 @@
         </div>
       </el-card>
     </div>
-    <el-table :data="tickets" v-loading="loading" class="desktop-only" style="width: 100%; margin-top: 20px" stripe border>
-      <el-table-column prop="ticket_no" label="工单编号" width="180" />
-      <el-table-column prop="title" label="标题" min-width="200">
-        <template #default="{ row }">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span>{{ row.title }}</span>
-            <el-badge 
-              v-if="row.has_unread && (row.unread_replies > 0 || row.has_new_ticket)" 
-              :value="row.unread_replies > 0 ? row.unread_replies : (row.has_new_ticket ? '新' : '')" 
-              :max="99"
-              type="danger"
-            />
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="type" label="类型" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getTypeTagType(row.type)">{{ getTypeText(row.type) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getStatusTagType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="priority" label="优先级" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getPriorityTagType(row.priority)">{{ getPriorityText(row.priority) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="提交用户" min-width="160">
-        <template #default="{ row }">
-          <span v-if="row.user && row.user.email">{{ row.user.email }}</span>
-          <span v-else>用户ID: {{ row.user_id }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="replies_count" label="回复数" width="80" />
-      <el-table-column prop="created_at" label="创建时间" width="180" />
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button size="small" @click="viewTicket(row.id)">
-            查看
-            <el-badge 
-              v-if="row.has_unread && (row.unread_replies > 0 || row.has_new_ticket)" 
-              :value="row.unread_replies > 0 ? row.unread_replies : (row.has_new_ticket ? '新' : '')" 
-              :max="99"
-              type="danger"
-              style="margin-left: 4px;"
-            />
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="mobile-tickets-list" v-if="isMobile" v-loading="loading">
-      <div
-        v-for="ticket in tickets"
-        :key="ticket.id"
-        class="mobile-ticket-card"
-        @click="viewTicket(ticket.id)"
-      >
+    <ResponsiveDataView
+      class="tickets-data-view"
+      :data="tickets"
+      :loading="loading"
+      :fields="mobileTicketFields"
+      title-field="ticket_no"
+      empty-title="暂无工单数据"
+      empty-description="当前筛选条件下没有工单，调整筛选后可重新查询"
+    >
+      <template #table>
+        <el-table :data="tickets" v-loading="loading" class="tickets-table" stripe border empty-text=" ">
+          <el-table-column prop="ticket_no" label="工单编号" width="180" />
+          <el-table-column prop="title" label="标题" min-width="200">
+            <template #default="{ row }">
+              <div class="ticket-title-cell">
+                <span>{{ row.title }}</span>
+                <el-badge
+                  v-if="row.has_unread && (row.unread_replies > 0 || row.has_new_ticket)"
+                  :value="row.unread_replies > 0 ? row.unread_replies : (row.has_new_ticket ? '新' : '')"
+                  :max="99"
+                  type="danger"
+                />
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="type" label="类型" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getTypeTagType(row.type)">{{ getTypeText(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getStatusTagType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="priority" label="优先级" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getPriorityTagType(row.priority)">{{ getPriorityText(row.priority) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="提交用户" min-width="160">
+            <template #default="{ row }">
+              <span v-if="row.user && row.user.email">{{ row.user.email }}</span>
+              <span v-else>用户ID: {{ row.user_id }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="replies_count" label="回复数" width="80" />
+          <el-table-column prop="created_at" label="创建时间" width="180" />
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" @click="viewTicket(row.id)">
+                查看
+                <el-badge
+                  v-if="row.has_unread && (row.unread_replies > 0 || row.has_new_ticket)"
+                  :value="row.unread_replies > 0 ? row.unread_replies : (row.has_new_ticket ? '新' : '')"
+                  :max="99"
+                  type="danger"
+                  class="button-badge"
+                />
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <EmptyState
+          v-if="!loading && tickets.length === 0"
+          class="desktop-empty-state"
+          title="暂无工单数据"
+          description="当前筛选条件下没有工单，调整筛选后可重新查询"
+        />
+      </template>
+      <template #header="{ item }">
         <div class="ticket-card-header">
-          <div class="ticket-no">{{ ticket.ticket_no }}</div>
+          <div class="ticket-no">{{ item.ticket_no }}</div>
           <div class="ticket-badges">
-            <el-tag :type="getStatusTagType(ticket.status)" size="small">{{ getStatusText(ticket.status) }}</el-tag>
-            <el-tag :type="getTypeTagType(ticket.type)" size="small">{{ getTypeText(ticket.type) }}</el-tag>
-            <el-badge 
-              v-if="ticket.has_unread && (ticket.unread_replies > 0 || ticket.has_new_ticket)" 
-              :value="ticket.unread_replies > 0 ? ticket.unread_replies : (ticket.has_new_ticket ? '新' : '')" 
+            <el-tag :type="getStatusTagType(item.status)" size="small">{{ getStatusText(item.status) }}</el-tag>
+            <el-tag :type="getTypeTagType(item.type)" size="small">{{ getTypeText(item.type) }}</el-tag>
+            <el-badge
+              v-if="item.has_unread && (item.unread_replies > 0 || item.has_new_ticket)"
+              :value="item.unread_replies > 0 ? item.unread_replies : (item.has_new_ticket ? '新' : '')"
               :max="99"
               type="danger"
             />
           </div>
         </div>
-        <div class="ticket-card-title">
-          {{ ticket.title }}
-        </div>
-        <div class="ticket-card-info">
-          <span class="info-item">
-            <el-icon><User /></el-icon>
-            {{ ticket.user && ticket.user.email ? ticket.user.email : '用户ID: ' + ticket.user_id }}
-          </span>
-          <span class="info-item">
-            <el-icon><ChatLineRound /></el-icon>
-            {{ ticket.replies_count || 0 }}条回复
-          </span>
-          <span class="info-item">
-            <el-icon><Clock /></el-icon>
-            {{ formatTime(ticket.created_at) }}
-          </span>
-        </div>
-        <div class="ticket-card-actions">
-          <el-button size="small" @click.stop="viewTicket(ticket.id)">查看</el-button>
-        </div>
-      </div>
-      <div v-if="tickets.length === 0" class="empty-state">
-        <el-empty description="暂无工单数据" />
-      </div>
-    </div>
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.size"
-        :total="pagination.total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @size-change="loadTickets"
-        @current-change="loadTickets"
-      />
-    </div>
-    <el-drawer
-      v-model="showDetailDialog"
+        <div class="ticket-card-title">{{ item.title }}</div>
+      </template>
+      <template #field-user="{ item }">
+        {{ item.user && item.user.email ? item.user.email : '用户ID: ' + item.user_id }}
+      </template>
+      <template #field-priority="{ item }">
+        <el-tag :type="getPriorityTagType(item.priority)" size="small">{{ getPriorityText(item.priority) }}</el-tag>
+      </template>
+      <template #field-replies_count="{ item }">
+        {{ item.replies_count || 0 }}条回复
+      </template>
+      <template #field-created_at="{ item }">
+        {{ formatTime(item.created_at) }}
+      </template>
+      <template #actions="{ item }">
+        <el-button size="small" @click="viewTicket(item.id)">
+          查看
+          <el-badge
+            v-if="item.has_unread && (item.unread_replies > 0 || item.has_new_ticket)"
+            :value="item.unread_replies > 0 ? item.unread_replies : (item.has_new_ticket ? '新' : '')"
+            :max="99"
+            type="danger"
+            class="button-badge"
+          />
+        </el-button>
+      </template>
+    </ResponsiveDataView>
+    <PaginationBar
+      v-model:current-page="pagination.page"
+      v-model:page-size="pagination.size"
+      :total="pagination.total"
+      @change="loadTickets"
+    />
+    <AppDrawer
+      :model-value="showDetailDialog"
       :title="currentTicket ? `工单详情 - ${currentTicket.ticket_no}` : '工单详情'"
-      :size="isMobile ? '92%' : '780px'"
-      direction="rtl"
-      @close="closeDetailDialog"
+      size="780px"
+      mobile-size="100%"
       class="ticket-detail-drawer"
-      :lock-scroll="false"
+      @update:model-value="handleDetailDrawerChange"
     >
       <div v-if="currentTicket" class="ticket-detail">
         <div class="mobile-ticket-header" v-if="isMobile">
@@ -336,7 +268,7 @@
                     v-if="reply.is_unread" 
                     value="新" 
                     type="danger"
-                    style="margin-left: 8px;"
+                    class="reply-badge"
                   />
                   <span class="reply-user-id" :class="{ 'mobile-hidden': isMobile }">用户ID: {{ reply.user_id }}</span>
                   <span class="reply-user-id mobile-only" v-if="isMobile">{{ reply.user_id }}</span>
@@ -345,9 +277,13 @@
               </div>
               <div class="reply-content" :class="{ 'unread-content': reply.is_unread }">{{ reply.content }}</div>
             </div>
-            <div v-if="!currentTicket.replies || currentTicket.replies.length === 0" class="empty-replies">
-              <el-empty description="暂无回复" :image-size="80" />
-            </div>
+            <EmptyState
+              v-if="!currentTicket.replies || currentTicket.replies.length === 0"
+              class="empty-replies"
+              title="暂无回复"
+              description="该工单还没有回复记录"
+              :icon-size="56"
+            />
           </div>
         </el-card>
         <div class="ticket-actions" :class="{ 'mobile-card': isMobile }">
@@ -392,7 +328,8 @@
             <el-button 
               type="primary" 
               @click="addReply" 
-              :style="isMobile ? { marginTop: '12px', width: '100%' } : { marginTop: '10px' }" 
+              class="reply-submit-btn"
+              :class="{ 'is-mobile': isMobile }"
               :loading="replying"
               :block="isMobile"
             >
@@ -401,22 +338,36 @@
           </el-card>
         </div>
       </div>
-    </el-drawer>
-    <el-dialog v-model="showStatusDialog" title="更新工单状态" :width="isMobile ? '90%' : '400px'">
-      <el-select v-model="newStatus" placeholder="选择新状态" style="width: 100%">
+    </AppDrawer>
+    <AppDialog
+      v-model="showStatusDialog"
+      title="更新工单状态"
+      width="400px"
+      mobile-width="92%"
+      :loading="statusUpdating"
+    >
+      <el-select v-model="newStatus" placeholder="选择新状态" class="form-control">
         <el-option label="待处理" value="pending" />
         <el-option label="处理中" value="processing" />
         <el-option label="已解决" value="resolved" />
         <el-option label="已关闭" value="closed" />
       </el-select>
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showStatusDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="updateStatus" class="mobile-action-btn">确定</el-button>
-        </div>
+        <FormActionBar
+          :loading="statusUpdating"
+          submit-text="确定"
+          @cancel="showStatusDialog = false"
+          @submit="updateStatus"
+        />
       </template>
-    </el-dialog>
-    <el-dialog v-model="showNotesDialog" title="添加管理员备注" :width="isMobile ? '90%' : '500px'">
+    </AppDialog>
+    <AppDialog
+      v-model="showNotesDialog"
+      title="添加管理员备注"
+      width="500px"
+      mobile-width="92%"
+      :loading="notesUpdating"
+    >
       <el-input
         v-model="adminNotes"
         type="textarea"
@@ -424,27 +375,36 @@
         placeholder="输入管理员备注..."
       />
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showNotesDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button type="primary" @click="updateNotes" class="mobile-action-btn">确定</el-button>
-        </div>
+        <FormActionBar
+          :loading="notesUpdating"
+          submit-text="确定"
+          @cancel="showNotesDialog = false"
+          @submit="updateNotes"
+        />
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { Refresh, Search, Filter, User, ChatLineRound, Clock } from '@element-plus/icons-vue'
+import { Refresh, Search } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import PaginationBar from '@/components/PaginationBar.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 const loading = ref(false)
 const replying = ref(false)
+const statusUpdating = ref(false)
+const notesUpdating = ref(false)
 const tickets = ref([])
 const showDetailDialog = ref(false)
 const showStatusDialog = ref(false)
 const showNotesDialog = ref(false)
-const showFilterDrawer = ref(false)
 const currentTicket = ref(null)
 const replyContent = ref('')
 const newStatus = ref('')
@@ -462,6 +422,12 @@ const pagination = reactive({
   size: 10,
   total: 0
 })
+const mobileTicketFields = computed(() => [
+  { key: 'user', label: '提交用户' },
+  { key: 'priority', label: '优先级' },
+  { key: 'replies_count', label: '回复数' },
+  { key: 'created_at', label: '创建时间' }
+])
 const loadTickets = async () => {
   loading.value = true
   try {
@@ -556,6 +522,7 @@ const addReply = async () => {
 }
 const updateStatus = async () => {
   if (!currentTicket.value || !newStatus.value) return
+  statusUpdating.value = true
   try {
     const response = await ticketAPI.updateTicket(currentTicket.value.id, { status: newStatus.value })
     if (response.data.success) {
@@ -567,10 +534,13 @@ const updateStatus = async () => {
     }
   } catch (error) {
     ElMessage.error('更新状态失败')
+  } finally {
+    statusUpdating.value = false
   }
 }
 const updateNotes = async () => {
   if (!currentTicket.value) return
+  notesUpdating.value = true
   try {
     const response = await ticketAPI.updateTicket(currentTicket.value.id, { admin_notes: adminNotes.value })
     if (response.data.success) {
@@ -581,13 +551,23 @@ const updateNotes = async () => {
     }
   } catch (error) {
     ElMessage.error('添加备注失败')
+  } finally {
+    notesUpdating.value = false
   }
 }
 const closeDetailDialog = () => {
+  showDetailDialog.value = false
   currentTicket.value = null
   replyContent.value = ''
   newStatus.value = ''
   adminNotes.value = ''
+}
+const handleDetailDrawerChange = (value) => {
+  if (value) {
+    showDetailDialog.value = true
+    return
+  }
+  closeDetailDialog()
 }
 const formatTime = (timeStr) => {
   if (!timeStr) return '-'
@@ -651,11 +631,6 @@ const resetFilters = () => {
   filters.status = ''
   filters.type = ''
   filters.priority = ''
-  showFilterDrawer.value = false
-  loadTickets()
-}
-const applyFilters = () => {
-  showFilterDrawer.value = false
   loadTickets()
 }
 onMounted(async () => {
@@ -673,9 +648,48 @@ onMounted(async () => {
   margin-bottom: 20px;
 }
 .filter-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) repeat(3, minmax(150px, 0.8fr)) max-content max-content;
+  align-items: end;
   gap: 10px;
   margin-bottom: 20px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+}
+.keyword-input {
+  width: 100%;
+  min-width: 0;
+}
+.filter-select {
+  width: 100%;
+  min-width: 0;
+}
+.form-control {
+  width: 100%;
+}
+.tickets-table {
+  width: 100%;
+  margin-top: 20px;
+}
+.ticket-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.button-badge {
+  margin-left: 4px;
+}
+.reply-badge {
+  margin-left: 8px;
+}
+.reply-submit-btn {
+  margin-top: 10px;
+  &.is-mobile {
+    width: 100%;
+    margin-top: 12px;
+  }
 }
 .stats-cards {
   display: grid;
@@ -731,32 +745,16 @@ onMounted(async () => {
   .replies-list {
     .reply-item {
       &.unread-reply {
-        background: linear-gradient(135deg, #fff7e6 0%, #ffecc7 100%);
+        background: #fff8e6;
         border-left: 4px solid #faad14;
-        box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
-        animation: highlightUnreadReply 0.5s ease;
       }
       &.user-reply.unread-reply {
-        background: linear-gradient(135deg, #fff7e6 0%, #ffecc7 100%);
+        background: #fff8e6;
         border-left: 4px solid #faad14;
       }
       .unread-content {
         font-weight: 500;
         color: #1a1a1a;
-      }
-    }
-    @keyframes highlightUnreadReply {
-      0% {
-        transform: scale(1);
-        box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
-      }
-      50% {
-        transform: scale(1.02);
-        box-shadow: 0 4px 16px rgba(250, 173, 20, 0.4);
-      }
-      100% {
-        transform: scale(1);
-        box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
       }
     }
     .reply-item {
@@ -791,8 +789,7 @@ onMounted(async () => {
       }
     }
     .empty-replies {
-      padding: 20px;
-      text-align: center;
+      min-height: 180px;
     }
   }
   .action-buttons {
@@ -889,87 +886,29 @@ onMounted(async () => {
       padding: 8px 12px;
     }
   }
-  .filter-bar.desktop-only {
-    display: none;
+  .filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 12px;
+
+    .keyword-input {
+      grid-column: 1 / -1;
+    }
+
+    .filter-select {
+      width: 100%;
+    }
+
+    .el-button {
+      width: 100%;
+      min-width: 0;
+      min-height: 44px;
+      margin-left: 0;
+    }
   }
-  .mobile-tickets-list {
+  .tickets-data-view {
     margin-top: 16px;
-    .mobile-ticket-card {
-      background: #fff;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      cursor: pointer;
-      transition: all 0.3s;
-      &:active {
-        transform: scale(0.98);
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-      }
-      .ticket-card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        .ticket-no {
-          font-weight: bold;
-          font-size: 14px;
-          color: #333;
-        }
-        .ticket-badges {
-          display: flex;
-          gap: 6px;
-        }
-      }
-      .ticket-card-title {
-        font-size: 16px;
-        font-weight: 500;
-        color: #333;
-        margin-bottom: 12px;
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: clip;
-      }
-      .ticket-card-info {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-bottom: 12px;
-        font-size: 12px;
-        color: #666;
-        .info-item {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-      }
-      .ticket-card-actions {
-        display: flex;
-        gap: 8px;
-        padding-top: 12px;
-        border-top: 1px solid #f0f0f0;
-        .el-button {
-          flex: 1;
-        }
-      }
-    }
-    .empty-state {
-      padding: 40px 20px;
-      text-align: center;
-    }
-  }
-  .filter-drawer-content {
-    padding: 20px 0;
-    .filter-drawer-actions {
-      display: flex;
-      gap: 12px;
-      margin-top: 24px;
-      padding-top: 20px;
-      border-top: 1px solid #f0f0f0;
-    }
   }
   .ticket-detail-drawer {
     .ticket-detail {
@@ -989,14 +928,54 @@ onMounted(async () => {
     }
   }
 }
+.ticket-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 10px;
+}
+.ticket-no {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticket-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ticket-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.desktop-empty-state {
+  border: 1px solid #ebeef5;
+  border-top: none;
+  min-height: 220px;
+}
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
   }
 }
 @media (min-width: 769px) {
-  .mobile-action-bar,
-  .mobile-tickets-list {
+  .tickets-data-view :deep(.responsive-data-view__cards) {
     display: none !important;
   }
 }

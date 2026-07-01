@@ -1,7 +1,7 @@
 <template>
-  <div class="error-state">
+  <div class="error-state" role="alert" aria-live="assertive">
     <div class="error-icon">
-      <el-icon :size="iconSize" color="#f56c6c">
+      <el-icon :size="iconSize">
         <CircleClose />
       </el-icon>
     </div>
@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { CircleClose } from '@element-plus/icons-vue'
 
@@ -53,6 +53,14 @@ const props = defineProps({
 const emit = defineEmits(['retry'])
 const router = useRouter()
 const retrying = ref(false)
+let retryResetTimer = null
+
+const clearRetryResetTimer = () => {
+  if (retryResetTimer) {
+    clearTimeout(retryResetTimer)
+    retryResetTimer = null
+  }
+}
 
 // 处理重试
 const handleRetry = async () => {
@@ -60,9 +68,11 @@ const handleRetry = async () => {
   try {
     await emit('retry')
   } finally {
-    // 延迟重置状态，避免闪烁
-    setTimeout(() => {
+    // 稍后重置状态，避免闪烁
+    clearRetryResetTimer()
+    retryResetTimer = setTimeout(() => {
       retrying.value = false
+      retryResetTimer = null
     }, 500)
   }
 }
@@ -71,6 +81,10 @@ const handleRetry = async () => {
 const handleBack = () => {
   router.back()
 }
+
+onUnmounted(() => {
+  clearRetryResetTimer()
+})
 </script>
 
 <style scoped>
@@ -82,50 +96,56 @@ const handleBack = () => {
   padding: 60px 20px;
   text-align: center;
   min-height: 300px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overscroll-behavior: contain;
 }
 
 .error-icon {
   margin-bottom: 20px;
-  animation: shake 0.5s;
-}
-
-@keyframes shake {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-10px);
-  }
-  75% {
-    transform: translateX(10px);
-  }
+  color: var(--el-color-danger, #f56c6c);
+  flex: 0 0 auto;
 }
 
 .error-title {
   font-size: 18px;
   font-weight: 500;
-  color: #303133;
+  color: var(--el-text-color-primary, #303133);
   margin-bottom: 12px;
+  max-width: min(460px, 100%);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .error-message {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary, #909399);
   margin-bottom: 24px;
   max-width: 500px;
   line-height: 1.6;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .error-actions {
   display: flex;
   gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 100%;
+
+  :deep(.el-button) {
+    margin-left: 0;
+    white-space: normal;
+    min-height: 36px;
+    touch-action: manipulation;
+  }
 }
 
 @media (max-width: 768px) {
   .error-state {
     padding: 40px 16px;
-    min-height: 240px;
+    min-height: 200px;
   }
 
   .error-icon {
@@ -153,4 +173,12 @@ const handleBack = () => {
     min-height: 44px;
   }
 }
+
+@media (max-width: 420px) {
+  .error-state {
+    padding: 32px 12px;
+    min-height: 180px;
+  }
+}
+
 </style>

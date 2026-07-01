@@ -1,0 +1,2206 @@
+.user-layout {
+  --theme-primary: #409eff;
+  --theme-success: #67c23a;
+  --theme-warning: #e6a23c;
+  --theme-danger: #f56c6c;
+  --theme-info: #909399;
+  --theme-background: #f5f7fa;
+  --theme-text: #303133;
+  --theme-border: #dcdfe6;
+  --user-card-bg: #fff;
+  --user-card-border: #dcdfe6;
+  --user-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  --user-muted: #909399;
+  --user-text-secondary: #606266;
+  background: var(--theme-background);
+  color: var(--theme-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif;
+}
+
+.user-layout .sidebar {
+  background: #fff !important;
+  border-right: 1px solid #dcdfe6 !important;
+}
+
+.user-layout > .header {
+  height: 60px !important;
+  padding: 0 20px !important;
+  border-bottom: 1px solid #dcdfe6 !important;
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+.user-layout > .header .header-left {
+  gap: 14px !important;
+}
+
+.user-layout > .header .menu-toggle {
+  display: none !important;
+}
+
+.user-layout > .header .menu-toggle:hover {
+  border-color: #c6e2ff !important;
+  background: #f5f7fa !important;
+  color: #409eff !important;
+}
+
+.user-layout > .header .menu-toggle-text {
+  display: none !important;
+}
+
+.user-layout > .header .logo {
+  gap: 8px !important;
+  color: #409eff !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.user-layout > .header .logo-mark {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  display: grid !important;
+  place-items: center !important;
+  background: #409eff !important;
+  color: #fff !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+.user-layout > .header .logo-text {
+  color: #409eff !important;
+}
+
+.user-layout > .header .header-right {
+  gap: 12px !important;
+}
+
+.user-layout > .header .theme-btn,
+.user-layout > .header .user-info {
+  height: 34px !important;
+  min-height: 34px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 10px !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+  color: #303133 !important;
+  box-shadow: none !important;
+}
+
+.user-layout:not(.is-mobile).sidebar-collapsed .sidebar {
+  width: 200px !important;
+}
+
+.user-layout:not(.is-mobile).sidebar-collapsed .main-content {
+  margin-left: 200px !important;
+  width: calc(100% - 200px) !important;
+}
+
+.user-layout:not(.is-mobile).sidebar-collapsed .nav-section-title,
+.user-layout:not(.is-mobile).sidebar-collapsed .nav-text {
+  display: inline !important;
+}
+
+.user-layout .sidebar .mobile-menu-header {
+  background: #fff !important;
+}
+
+.user-layout .page-content {
+  max-width: none;
+  margin: 0 auto;
+}
+
+.user-layout .list-container {
+  padding: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  width: 100%;
+}
+
+.user-layout .settings-tabs-card .setting-content {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.user-layout .settings-tabs-card .setting-content > .el-card__header {
+  display: none !important;
+}
+
+.user-layout .settings-tabs-card .setting-content > .el-card__body {
+  padding: 0 !important;
+}
+
+.user-layout .settings-tabs-card .setting-content .el-form {
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.user-layout .settings-tabs-card .setting-content .el-form-item {
+  margin-bottom: 0 !important;
+}
+
+.user-layout .settings-tabs-card .setting-section {
+  display: block !important;
+  padding: 0 0 16px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+}
+
+.user-layout .settings-tabs-card .setting-section:last-child {
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.user-layout .settings-tabs-card .subsection-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 0 14px !important;
+  color: #303133 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.user-layout .ticket-filter-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: start !important;
+}
+
+.user-layout .page-header,
+.user-layout .welcome-banner,
+.user-layout .el-card,
+.user-layout .card,
+.user-layout .filter-card,
+.user-layout .list-filters,
+.user-layout .filter-wrapper,
+.user-layout .search-section,
+.user-layout .upgrade-panel,
+.user-layout .upgrade-hero,
+.user-layout .order-entry-card,
+.user-layout .quick-action-card,
+.user-layout .client-card,
+.user-layout .tutorial-card,
+.user-layout .profile-card,
+.user-layout .settings-card {
+  border: 1px solid var(--user-card-border);
+  border-radius: 8px !important;
+  background: var(--user-card-bg) !important;
+  box-shadow: var(--user-card-shadow);
+}
+
+.user-layout .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.user-layout .welcome-banner {
+  color: var(--theme-text) !important;
+  padding: 16px !important;
+  margin-bottom: 14px !important;
+  overflow: hidden;
+}
+
+.user-layout .welcome-banner::before,
+.user-layout .stat-card::before,
+.user-layout .level-card::before {
+  display: none !important;
+}
+
+.user-layout .banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.user-layout .page-header h1,
+.user-layout .welcome-title {
+  margin: 0;
+  color: var(--theme-text, #303133);
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.user-layout .page-header p,
+.user-layout .welcome-subtitle {
+  margin: 6px 0 0;
+  color: var(--user-text-secondary);
+  opacity: 1 !important;
+  line-height: 1.5;
+}
+
+.user-layout .welcome-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #ecf5ff;
+  color: var(--theme-primary);
+  font-size: 22px !important;
+  opacity: 1 !important;
+}
+
+.user-layout .page-header .header-actions,
+.user-layout .page-header .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.user-layout .page-header a {
+  text-decoration: none;
+}
+
+.user-layout .page-header .page-search-input {
+  width: 320px;
+  max-width: 100%;
+}
+
+.user-layout .stats-grid,
+.user-layout .stats-row,
+.user-layout .orders-stats-row,
+.user-layout .history-stats-row,
+.user-layout .invites-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.user-layout .devices-stats-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.user-layout .stat-card {
+  min-width: 0;
+  border: 1px solid var(--user-card-border);
+  border-radius: 8px !important;
+  background: var(--user-card-bg) !important;
+  box-shadow: var(--user-card-shadow);
+  color: var(--theme-text) !important;
+  overflow: hidden;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.user-layout .stat-card:hover {
+  background: #fbfdff !important;
+  border-color: #c6e2ff !important;
+  transform: none !important;
+}
+
+.user-layout .dashboard-container .subscription-buttons {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-bottom: 14px !important;
+}
+
+.user-layout .dashboard-container .page-header .actions .el-button {
+  min-width: 86px !important;
+}
+
+.user-layout .dashboard-container .subscription-group {
+  display: flex !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+.user-layout .dashboard-container .subscription-group .el-button {
+  width: auto !important;
+  min-height: 32px !important;
+  margin-left: 0 !important;
+}
+
+.user-layout .dashboard-container .software-category {
+  margin-bottom: 14px !important;
+}
+
+.user-layout .dashboard-container .category-title,
+.user-layout .dashboard-container .section-title {
+  margin: 0 0 12px !important;
+  color: #303133 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.user-layout .dashboard-container .subscription-urls-section {
+  margin-bottom: 14px !important;
+}
+
+.user-layout .dashboard-container .url-display {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+.user-layout .dashboard-container .qr-code-section {
+  padding: 16px !important;
+  border: 1px solid #ebeef5 !important;
+  border-radius: 8px !important;
+  background: #f8fbff !important;
+  text-align: center !important;
+}
+
+.user-layout .dashboard-container .compact-order-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.user-layout .dashboard-container .compact-order-table .dashboard-table {
+  min-width: 620px !important;
+}
+
+.user-layout .dashboard-container .compact-order-table .el-button {
+  min-width: 66px !important;
+}
+
+.user-layout .dashboard-client-list {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+.user-layout .dashboard-client-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px !important;
+  border: 1px solid #ebeef5 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+}
+
+.user-layout .dashboard-client-row .button-row {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+}
+
+.user-layout .stats-row .stat-card,
+.user-layout .orders-stats-row .stat-card,
+.user-layout .history-stats-row .stat-card,
+.user-layout .invites-stats-row .stat-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 92px;
+  padding: 16px;
+  text-align: left;
+}
+
+.user-layout .dashboard-container .stats-grid .stat-card {
+  min-height: 80px;
+  align-items: center;
+  padding: 16px !important;
+  border-width: 1px !important;
+}
+
+.user-layout .stat-icon,
+.user-layout .level-icon,
+.user-layout .device-icon {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px;
+  display: grid !important;
+  place-items: center;
+  margin-right: 14px !important;
+  border-radius: 8px !important;
+  background: #ecf5ff !important;
+  color: var(--theme-primary) !important;
+  font-size: 20px !important;
+  box-shadow: none !important;
+}
+
+.user-layout .stat-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.user-layout .stat-title,
+.user-layout .stat-number,
+.user-layout .stat-value {
+  color: var(--theme-primary, #409eff);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0 !important;
+}
+
+.user-layout .stat-label,
+.user-layout .stat-subtitle {
+  margin-top: 4px;
+  color: var(--user-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.user-layout .level-name,
+.user-layout .device-count,
+.user-layout .remaining-time-value .time-number,
+.user-layout .amount,
+.user-layout .balance-amount {
+  color: var(--theme-primary) !important;
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0 !important;
+}
+
+.user-layout .time-unit,
+.user-layout .currency {
+  color: #909399 !important;
+  font-size: 13px !important;
+}
+
+.user-layout .progress-bar,
+.user-layout .usage-bar {
+  height: 8px !important;
+  border-radius: 4px !important;
+  background: #ebeef5 !important;
+}
+
+.user-layout .progress-fill,
+.user-layout .usage-progress {
+  border-radius: 4px !important;
+  background: var(--theme-primary) !important;
+}
+
+.user-layout .main-content,
+.user-layout .profile-grid,
+.user-layout .purchase-confirm-horizontal {
+  gap: 14px;
+}
+
+.user-layout .help-content {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 14px !important;
+}
+
+.user-layout .el-card__header,
+.user-layout .card-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.user-layout .el-card__body,
+.user-layout .card-body {
+  padding: 16px;
+}
+
+.user-layout .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 700;
+}
+
+.user-layout .el-table {
+  font-size: 14px;
+}
+
+.user-layout .el-table th.el-table__cell {
+  background: #f5f7fa;
+  color: #606266;
+  font-weight: 700;
+}
+
+.user-layout .table-wrapper,
+.user-layout .table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.user-layout .el-button {
+  border-radius: 4px;
+}
+
+.user-layout .el-button--primary,
+.user-layout .el-button--success,
+.user-layout .el-button--warning,
+.user-layout .el-button--danger {
+  box-shadow: none !important;
+}
+
+.user-layout .el-dialog,
+.user-layout .app-dialog,
+.user-layout .el-drawer {
+  border-radius: 8px;
+}
+
+.user-layout .el-tabs__item {
+  font-weight: 600;
+}
+
+.user-layout .records-tabs,
+.user-layout .settings-tabs,
+.user-layout .mobile-settings-tabs,
+.user-layout .tutorial-tabs {
+  --design-tab-active-bg: #ecf5ff;
+}
+
+.user-layout .records-tabs .el-tabs__header,
+.user-layout .settings-tabs .el-tabs__header,
+.user-layout .mobile-settings-tabs .el-tabs__header,
+.user-layout .tutorial-tabs .el-tabs__header {
+  margin: 0 !important;
+  padding: 0 16px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  background: #fff !important;
+}
+
+.user-layout .records-tabs .el-tabs__nav-wrap::after,
+.user-layout .settings-tabs .el-tabs__nav-wrap::after,
+.user-layout .mobile-settings-tabs .el-tabs__nav-wrap::after,
+.user-layout .tutorial-tabs .el-tabs__nav-wrap::after {
+  display: none !important;
+}
+
+.user-layout .records-tabs .el-tabs__active-bar,
+.user-layout .settings-tabs .el-tabs__active-bar,
+.user-layout .mobile-settings-tabs .el-tabs__active-bar,
+.user-layout .tutorial-tabs .el-tabs__active-bar {
+  height: 2px !important;
+  background: #409eff !important;
+}
+
+.user-layout .records-tabs .el-tabs__item,
+.user-layout .settings-tabs .el-tabs__item,
+.user-layout .mobile-settings-tabs .el-tabs__item,
+.user-layout .tutorial-tabs .el-tabs__item {
+  height: 42px !important;
+  padding: 0 16px !important;
+  color: #606266 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+.user-layout .records-tabs .el-tabs__item.is-active,
+.user-layout .settings-tabs .el-tabs__item.is-active,
+.user-layout .mobile-settings-tabs .el-tabs__item.is-active,
+.user-layout .tutorial-tabs .el-tabs__item.is-active {
+  color: #409eff !important;
+  background: var(--design-tab-active-bg) !important;
+}
+
+.user-layout .records-tabs .el-tabs__content,
+.user-layout .settings-tabs .el-tabs__content,
+.user-layout .mobile-settings-tabs .el-tabs__content,
+.user-layout .tutorial-tabs .el-tabs__content {
+  padding: 16px !important;
+}
+
+.user-layout .orders-list .records-tabs .el-tabs__content {
+  display: none !important;
+}
+
+.user-layout .card-header-icon,
+.user-layout .card-title .header-icon {
+  display: none !important;
+}
+
+.user-layout .protocol-exclude-panel,
+.user-layout .payment-summary-card,
+.user-layout .price-summary,
+.user-layout .package-summary,
+.user-layout .custom-package-form,
+.user-layout .order-info-compact,
+.user-layout .qr-panel,
+.user-layout .recharge-qr-section,
+.user-layout .price-summary-custom,
+.user-layout .level-discount-tip,
+.user-layout .level-upgrade-tip,
+.user-layout .payment-method-section,
+.user-layout .notification-settings,
+.user-layout .preference-settings,
+.user-layout .max-level-tip,
+.user-layout .progress-tip,
+.user-layout .upgrade-summary,
+.user-layout .order-summary,
+.user-layout .payment-info {
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.user-layout .protocol-exclude-panel,
+.user-layout .payment-summary-card,
+.user-layout .price-summary,
+.user-layout .package-summary,
+.user-layout .qr-panel {
+  padding: 14px;
+}
+
+.user-layout .purchase-dialog .purchase-confirm-horizontal,
+.user-layout .payment-qr-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.82fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.user-layout .payment-qr-dialog .payment-qr-container,
+.user-layout .order-detail-dialog .order-detail {
+  grid-template-columns: 1fr;
+}
+
+.user-layout .purchase-section,
+.user-layout .price-summary-custom,
+.user-layout .recharge-qr-section {
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.user-layout .summary-header,
+.user-layout .info-row,
+.user-layout .meta-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.user-layout .summary-amount,
+.user-layout .final-amount,
+.user-layout .balance-amount {
+  color: var(--theme-primary, #409eff);
+  font-weight: 800;
+}
+
+.user-layout .qr-code-wrapper,
+.user-layout .qr-code-wrapper-compact,
+.user-layout .recharge-qr-section .qr-code-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.user-layout .qr-code img,
+.user-layout .qr-code-img {
+  display: block;
+  max-width: min(240px, 100%);
+  height: auto;
+}
+
+.user-layout .payment-page-iframe,
+.user-layout .payment-iframe {
+  width: 100%;
+  min-height: 420px;
+}
+
+.user-layout .el-descriptions__label {
+  color: #606266;
+  font-weight: 600;
+}
+
+.user-layout .packages-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 0 !important;
+}
+
+.user-layout .package-card {
+  overflow: hidden;
+  text-align: left !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: var(--user-card-shadow) !important;
+}
+
+.user-layout .package-card.popular,
+.user-layout .package-card.recommended,
+.user-layout .custom-package-card {
+  border-color: var(--theme-primary, #409eff);
+}
+
+.user-layout .package-card:hover {
+  transform: none !important;
+  background: #fbfdff !important;
+  border-color: #c6e2ff !important;
+}
+
+.user-layout .package-header {
+  padding: 16px !important;
+  margin-bottom: 0 !important;
+  border-bottom: 1px solid #ebeef5;
+  background: #f8fbff !important;
+}
+
+.user-layout .package-name {
+  font-size: 17px !important;
+  font-weight: 800 !important;
+}
+
+.user-layout .package-price,
+.user-layout .price {
+  margin: 14px 0 !important;
+  color: var(--theme-primary) !important;
+}
+
+.user-layout .amount {
+  font-size: 28px !important;
+}
+
+.user-layout .clients-grid,
+.user-layout .tutorial-content,
+.user-layout .software-tutorials-grid {
+  gap: 12px;
+}
+
+.user-layout .client-item,
+.user-layout .tutorial-app,
+.user-layout .device-card,
+.user-layout .mobile-card,
+.user-layout .mobile-card-optimized,
+.user-layout .node-card,
+.user-layout .order-card,
+.user-layout .invite-card {
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--user-card-shadow);
+}
+
+.user-layout .upgrade-hero {
+  background: #fff !important;
+  border-color: #dcdfe6 !important;
+}
+
+.user-layout .hero-metric {
+  border-radius: 8px !important;
+  background: #ecf5ff !important;
+  color: var(--theme-primary) !important;
+}
+
+.user-layout .hero-metric small {
+  color: #606266 !important;
+}
+
+.user-layout .popular-badge,
+.user-layout .recommended-badge,
+.user-layout .level-discount-tag,
+.user-layout .level-tag {
+  border-radius: 4px !important;
+}
+
+.user-layout .url-item,
+.user-layout .ticket-item,
+.user-layout .knowledge-item,
+.user-layout .contact-item {
+  border-bottom-color: #ebeef5;
+}
+
+.user-layout .mobile-card-list,
+.user-layout .mobile-only {
+  min-width: 0;
+}
+
+.user-layout .mobile-tabbar {
+  height: calc(58px + env(safe-area-inset-bottom));
+  background: #fff !important;
+  border-top: 1px solid #dcdfe6 !important;
+}
+
+.user-layout .mobile-tab {
+  min-width: 0;
+}
+
+.user-layout .mobile-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .user-layout .stats-grid,
+  .user-layout .stats-row,
+  .user-layout .orders-stats-row,
+  .user-layout .history-stats-row,
+  .user-layout .invites-stats-row,
+  .user-layout .packages-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .user-layout .content-wrapper {
+    padding: 10px;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  .user-layout .page-header {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .user-layout .page-header .header-actions,
+  .user-layout .page-header .actions {
+    justify-content: stretch;
+  }
+
+  .user-layout .page-header .header-actions .el-button,
+  .user-layout .page-header .actions .el-button,
+  .user-layout .page-header .page-search-input,
+  .user-layout .page-header a {
+    width: 100%;
+  }
+
+  .user-layout .page-header h1,
+  .user-layout .welcome-title {
+    font-size: 18px;
+  }
+
+  .user-layout .page-header p,
+  .user-layout .welcome-subtitle {
+    font-size: 13px;
+  }
+
+  .user-layout .stats-grid,
+  .user-layout .stats-row,
+  .user-layout .orders-stats-row,
+  .user-layout .history-stats-row,
+  .user-layout .invites-stats-row,
+  .user-layout .packages-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .user-layout .stat-card,
+  .user-layout .stats-row .stat-card,
+  .user-layout .orders-stats-row .stat-card,
+  .user-layout .history-stats-row .stat-card,
+  .user-layout .invites-stats-row .stat-card {
+    min-height: auto;
+    padding: 12px;
+  }
+
+  .user-layout .stat-number,
+  .user-layout .stat-value {
+    font-size: 20px;
+  }
+
+  .user-layout .el-card__header,
+  .user-layout .card-header,
+  .user-layout .el-card__body,
+  .user-layout .card-body {
+    padding: 12px;
+  }
+
+  .user-layout .card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .user-layout .el-button {
+    min-height: 36px;
+  }
+
+  .user-layout .el-button + .el-button {
+    margin-left: 0;
+  }
+
+  .user-layout .el-input,
+  .user-layout .el-select,
+  .user-layout .el-date-editor,
+  .user-layout .full-width-control {
+    width: 100% !important;
+  }
+
+  .user-layout .action-buttons,
+  .user-layout .header-actions,
+  .user-layout .balance-actions,
+  .user-layout .client-actions,
+  .user-layout .app-actions,
+  .user-layout .payment-actions-container,
+  .user-layout .coupon-buttons,
+  .user-layout .coupon-input-group,
+  .user-layout .recharge-quick-amounts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .user-layout .action-buttons .el-button,
+  .user-layout .header-actions .el-button,
+  .user-layout .client-actions .el-button,
+  .user-layout .app-actions .el-button,
+  .user-layout .coupon-buttons .el-button {
+    flex: 1 1 auto;
+    min-width: 112px;
+  }
+
+  .user-layout .purchase-dialog .purchase-confirm-horizontal,
+  .user-layout .payment-qr-container {
+    grid-template-columns: 1fr;
+  }
+
+  .user-layout .summary-header,
+  .user-layout .info-row,
+  .user-layout .meta-item {
+    align-items: flex-start;
+  }
+
+  .user-layout .qr-code-wrapper,
+  .user-layout .qr-code-wrapper-compact,
+  .user-layout .recharge-qr-section .qr-code-wrapper {
+    min-height: 180px;
+  }
+
+  .user-layout .payment-page-iframe,
+  .user-layout .payment-iframe {
+    min-height: 360px;
+  }
+
+  .user-layout .el-dialog {
+    width: 94vw !important;
+    max-width: 94vw;
+    margin: 6vh auto 0 !important;
+  }
+
+  .user-layout .el-dialog__body {
+    max-height: 68vh;
+    overflow-y: auto;
+  }
+
+  .user-layout .el-drawer {
+    width: 94vw !important;
+  }
+
+  .user-layout .el-table {
+    font-size: 13px;
+  }
+
+  .user-layout .mobile-nav-bar {
+    border-radius: 8px;
+  }
+
+  .user-layout .mobile-tabbar {
+    overflow: hidden;
+    justify-content: space-around;
+  }
+
+  .user-layout .mobile-tab {
+    flex: 1 1 20%;
+    padding: 6px 2px;
+  }
+}
+
+@media (max-width: 380px) {
+  .user-layout .mobile-tab-label {
+    font-size: 9px;
+  }
+
+  .user-layout .mobile-tab .tab-icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .user-layout .subscription-container > .page-header .actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .user-layout .subscription-container > .page-header .actions > *,
+  .user-layout .subscription-container > .page-header .actions .el-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .user-layout .subscription-container > .page-header .actions .el-button {
+    min-height: 44px !important;
+    padding: 6px 4px !important;
+    font-size: 12px !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+  }
+}
+
+.user-layout .page-header,
+.user-layout .welcome-banner,
+.user-layout .el-card,
+.user-layout .card,
+.user-layout .filter-card,
+.user-layout .list-filters,
+.user-layout .filter-wrapper,
+.user-layout .search-section,
+.user-layout .upgrade-panel,
+.user-layout .upgrade-hero,
+.user-layout .order-entry-card,
+.user-layout .quick-action-card,
+.user-layout .client-card,
+.user-layout .tutorial-card,
+.user-layout .profile-card,
+.user-layout .settings-card,
+.user-layout .payment-summary-card,
+.user-layout .price-summary,
+.user-layout .package-summary,
+.user-layout .custom-package-form,
+.user-layout .order-info-compact,
+.user-layout .qr-panel,
+.user-layout .recharge-qr-section,
+.user-layout .price-summary-custom,
+.user-layout .payment-method-section,
+.user-layout .notification-settings,
+.user-layout .preference-settings,
+.user-layout .upgrade-summary,
+.user-layout .order-summary,
+.user-layout .payment-info,
+.user-layout .package-card,
+.user-layout .device-card,
+.user-layout .mobile-card,
+.user-layout .mobile-card-optimized,
+.user-layout .node-card,
+.user-layout .order-card,
+.user-layout .invite-card,
+.user-layout .quick-item,
+.user-layout .client-row {
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+.user-layout .page-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  padding: 16px !important;
+  margin-bottom: 14px !important;
+}
+
+.user-layout .page-header h1,
+.user-layout .page-header .page-title h1,
+.user-layout .welcome-title {
+  margin: 0 !important;
+  color: #303133 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+.user-layout .page-header p,
+.user-layout .page-header .page-title p,
+.user-layout .welcome-subtitle {
+  margin: 6px 0 0 !important;
+  color: #606266 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+.user-layout .page-header .actions,
+.user-layout .page-header .header-actions,
+.user-layout .button-row,
+.user-layout .chip-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.user-layout .page-header .actions,
+.user-layout .page-header .header-actions {
+  justify-content: flex-end !important;
+}
+
+.user-layout .grid,
+.user-layout .section-stack,
+.user-layout .summary-list,
+.user-layout .timeline {
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.user-layout .grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.user-layout .grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.user-layout .grid.cols-4,
+.user-layout .quick-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.user-layout .grid.main-aside,
+.user-layout .dashboard-main-aside,
+.user-layout .subscription-main-aside,
+.user-layout .tickets-main-aside {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr) !important;
+  align-items: start !important;
+  gap: 14px !important;
+}
+
+.user-layout .card-header,
+.user-layout .el-card__header,
+.user-layout .dialog-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 14px 16px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  font-weight: 800 !important;
+}
+
+.user-layout .card-title {
+  margin: 0 !important;
+  color: #303133 !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+.user-layout .card-sub {
+  margin-top: 4px !important;
+  color: #909399 !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+.user-layout .card-body,
+.user-layout .el-card__body,
+.user-layout .dialog-body {
+  padding: 16px !important;
+}
+
+.user-layout .stat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 16px !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+  transform: none !important;
+}
+
+.user-layout .stat-icon,
+.user-layout .quick-icon,
+.user-layout .device-icon,
+.user-layout .level-icon {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: #ecf5ff !important;
+  color: #409eff !important;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  box-shadow: none !important;
+}
+
+.user-layout .stat-value,
+.user-layout .stat-number,
+.user-layout .stat-title {
+  color: #303133 !important;
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
+
+.user-layout .stat-label,
+.user-layout .stat-subtitle,
+.user-layout .item-meta,
+.user-layout .quick-desc,
+.user-layout .device-meta {
+  margin-top: 4px !important;
+  color: #909399 !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+.user-layout .notice {
+  padding: 12px 14px !important;
+  border: 1px solid #faecd8 !important;
+  border-radius: 6px !important;
+  background: #fdf6ec !important;
+  color: #b88230 !important;
+  line-height: 1.55 !important;
+}
+
+.user-layout .notice.success {
+  border-color: #e1f3d8 !important;
+  background: #f0f9eb !important;
+  color: #529b2e !important;
+}
+
+.user-layout .notice.danger {
+  border-color: #fde2e2 !important;
+  background: #fef0f0 !important;
+  color: #c45656 !important;
+}
+
+.user-layout .chip,
+.user-layout .el-checkbox-button__inner,
+.user-layout .el-tag {
+  min-height: 24px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  white-space: nowrap !important;
+}
+
+.user-layout .summary-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 1px dashed #ebeef5 !important;
+  color: #606266 !important;
+}
+
+.user-layout .summary-row:last-child {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.user-layout .summary-row strong {
+  color: #303133 !important;
+}
+
+.user-layout .table,
+.user-layout .subscription-table,
+.user-layout .dashboard-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  background: #fff !important;
+  font-size: 14px !important;
+}
+
+.user-layout .table th,
+.user-layout .table td,
+.user-layout .subscription-table th,
+.user-layout .subscription-table td,
+.user-layout .dashboard-table th,
+.user-layout .dashboard-table td {
+  padding: 12px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  text-align: left !important;
+  vertical-align: middle !important;
+}
+
+.user-layout .table th,
+.user-layout .subscription-table th,
+.user-layout .dashboard-table th,
+.user-layout .el-table th.el-table__cell {
+  background: #f5f7fa !important;
+  color: #606266 !important;
+  font-weight: 700 !important;
+}
+
+.user-layout .tabs,
+.user-layout .records-tabs .el-tabs__header,
+.user-layout .tutorial-tabs .el-tabs__header,
+.user-layout .mobile-settings-tabs .el-tabs__header {
+  display: flex !important;
+  gap: 8px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  padding: 0 16px !important;
+  background: #fff !important;
+  margin: 0 !important;
+}
+
+.user-layout .tab,
+.user-layout .el-tabs__item {
+  padding: 13px 8px !important;
+  color: #606266 !important;
+  border-bottom: 2px solid transparent !important;
+  font-weight: 600 !important;
+}
+
+.user-layout .tab.active,
+.user-layout .el-tabs__item.is-active {
+  color: #409eff !important;
+  border-bottom-color: #409eff !important;
+}
+
+.user-layout .el-tabs__nav-wrap::after {
+  display: none !important;
+}
+
+.user-layout .el-tabs__active-bar {
+  height: 2px !important;
+  background: #409eff !important;
+}
+
+.user-layout .quick-item {
+  min-height: 108px !important;
+  padding: 14px !important;
+}
+
+.user-layout .quick-item.featured {
+  border-color: #b3d8ff !important;
+  background: #ecf5ff !important;
+}
+
+.user-layout .quick-name,
+.user-layout .item-title,
+.user-layout .device-title,
+.user-layout .client-title {
+  color: #303133 !important;
+  font-weight: 700 !important;
+}
+
+.user-layout .client-grid,
+.user-layout .client-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.user-layout .client-row {
+  display: grid !important;
+  gap: 8px !important;
+  padding: 12px !important;
+  box-shadow: none !important;
+}
+
+.user-layout .tutorial-tabs .el-collapse {
+  border: 0 !important;
+}
+
+.user-layout .tutorial-tabs .el-collapse-item {
+  margin-bottom: 10px !important;
+  border: 1px solid #ebeef5 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  overflow: hidden !important;
+}
+
+.user-layout .tutorial-tabs .el-collapse-item__header {
+  min-height: 44px !important;
+  padding: 0 12px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  color: #303133 !important;
+  font-weight: 800 !important;
+}
+
+.user-layout .tutorial-tabs .el-collapse-item__content {
+  padding: 12px !important;
+  color: #606266 !important;
+  line-height: 1.55 !important;
+}
+
+.user-layout .tutorial-tabs .tutorial-content {
+  display: grid !important;
+  gap: 8px !important;
+}
+
+.user-layout .tutorial-tabs .subscription-methods,
+.user-layout .tutorial-tabs .tips {
+  border: 1px solid #ebeef5 !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  background: #fff !important;
+}
+
+.user-layout .package-card.popular,
+.user-layout .package-card.recommended,
+.user-layout .custom-package-card {
+  border-color: #409eff !important;
+  box-shadow: 0 2px 14px rgba(64, 158, 255, 0.16) !important;
+}
+
+.user-layout .package-head,
+.user-layout .package-header {
+  padding: 16px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  background: #f8fbff !important;
+}
+
+.user-layout .package-name {
+  color: #303133 !important;
+  font-size: 17px !important;
+  font-weight: 800 !important;
+}
+
+.user-layout .price,
+.user-layout .package-price,
+.user-layout .package-price .amount,
+.user-layout .price-line .amount {
+  color: #409eff !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+}
+
+.user-layout .package-price {
+  margin-top: 10px !important;
+}
+
+.user-layout .price-line {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 2px !important;
+}
+
+.user-layout .price-line .currency,
+.user-layout .price-line .period {
+  color: #909399 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.user-layout .features {
+  display: grid !important;
+  gap: 9px !important;
+  padding: 14px 16px !important;
+  color: #606266 !important;
+}
+
+.user-layout .qr-box,
+.user-layout .qr-code-wrapper,
+.user-layout .qr-code-wrapper-compact,
+.user-layout .recharge-qr-section .qr-code-wrapper {
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 6px !important;
+  background-color: #f5f7fa !important;
+  box-shadow: none !important;
+}
+
+.user-layout .qr-box {
+  width: 140px !important;
+  height: 140px !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  border-style: dashed !important;
+}
+
+.user-layout .profile-grid {
+  display: grid !important;
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.user-layout .profile-avatar {
+  width: 72px !important;
+  height: 72px !important;
+  margin: 0 auto 12px !important;
+  border-radius: 50% !important;
+  background: #409eff !important;
+  color: #fff !important;
+}
+
+.user-layout .el-button {
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 900px) {
+  .user-layout > .header .menu-toggle {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    display: inline-flex !important;
+    padding: 0 !important;
+    border: 1px solid #dcdfe6 !important;
+    border-radius: 6px !important;
+    background: #fff !important;
+    color: #606266 !important;
+  }
+
+  .user-layout .content-wrapper {
+    padding: 12px !important;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .user-layout .page-header {
+    display: grid !important;
+  }
+
+  .user-layout .grid.main-aside,
+  .user-layout .dashboard-main-aside,
+  .user-layout .subscription-main-aside,
+  .user-layout .tickets-main-aside,
+  .user-layout .grid.cols-2,
+  .user-layout .grid.cols-3,
+  .user-layout .grid.cols-4,
+  .user-layout .quick-list,
+  .user-layout .form-row,
+  .user-layout .profile-grid,
+  .user-layout .client-grid,
+  .user-layout .client-list {
+    grid-template-columns: 1fr !important;
+  }
+
+  .user-layout .page-header .actions .el-button,
+  .user-layout .page-header .header-actions .el-button {
+    flex: 1 1 0 !important;
+  }
+}
+
+.admin-layout .logs-page {
+  padding: 0;
+
+  .filter-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    align-items: end;
+    margin-bottom: 16px;
+  }
+
+  .filter-keyword,
+  .filter-select-xs,
+  .filter-select-sm,
+  .filter-select-md,
+  .filter-date {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .desktop-only {
+    display: block;
+  }
+
+  .mobile-only {
+    display: none;
+  }
+
+  .mobile-filter-form,
+  .full-width-control {
+    width: 100%;
+  }
+
+  .mobile-filter-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 12px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mobile-action-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-layout .logs-page {
+    padding: 0 4px;
+
+    .desktop-only {
+      display: none !important;
+    }
+
+    .mobile-only {
+      display: block !important;
+    }
+
+    .filter-bar.mobile-only {
+      margin-bottom: 12px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-layout .sidebar,
+  .user-layout .main-content,
+  .user-layout .slide-down-enter-active,
+  .user-layout .slide-down-leave-active,
+  .admin-layout .sidebar,
+  .admin-layout .main-content,
+  .admin-layout .nav-items,
+  .admin-layout .section-arrow,
+  .admin-layout .slide-down-enter-active,
+  .admin-layout .slide-down-leave-active,
+  .lux-auth-page .fade-enter-active,
+  .lux-auth-page .fade-leave-active,
+  .lux-auth-page .el-input__wrapper,
+  .lux-auth-page .lux-btn-gold,
+  .lux-auth-page .lux-btn-outline,
+  .lux-auth-page .lux-btn-white {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* User mobile final pass: keep page-level layouts consistent after legacy overrides. */
+@media (max-width: 768px) {
+  .user-layout {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .user-layout *,
+  .user-layout *::before,
+  .user-layout *::after {
+    box-sizing: border-box;
+  }
+
+  .user-layout .main-content,
+  .user-layout .content-wrapper,
+  .user-layout .page-content,
+  .user-layout .list-container,
+  .user-layout .card,
+  .user-layout .el-card,
+  .user-layout .mobile-card,
+  .user-layout .mobile-card-list {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .user-layout .content-wrapper {
+    padding: 10px !important;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .user-layout .breadcrumb {
+    margin-bottom: 8px !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .user-layout .page-header,
+  .user-layout .welcome-banner {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    padding: 12px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .user-layout .page-header .page-title,
+  .user-layout .page-header .title-section,
+  .user-layout .page-header .header-main,
+  .user-layout .welcome-content,
+  .user-layout .banner-content {
+    min-width: 0 !important;
+  }
+
+  .user-layout .page-header h1,
+  .user-layout .page-header .page-title h1,
+  .user-layout .welcome-title {
+    font-size: 18px !important;
+    line-height: 1.3 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .user-layout .page-header p,
+  .user-layout .page-header .page-title p,
+  .user-layout .welcome-subtitle {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .user-layout .page-header .actions,
+  .user-layout .page-header .header-actions,
+  .user-layout .button-row,
+  .user-layout .actions,
+  .user-layout .action-buttons,
+  .user-layout .card-actions,
+  .user-layout .client-actions,
+  .user-layout .app-actions,
+  .user-layout .payment-actions-container,
+  .user-layout .coupon-buttons,
+  .user-layout .filter-actions,
+  .user-layout .orders-filter-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    justify-content: stretch !important;
+    align-items: stretch !important;
+  }
+
+  .user-layout .page-header .actions:has(> :nth-child(1):last-child),
+  .user-layout .page-header .header-actions:has(> :nth-child(1):last-child),
+  .user-layout .button-row:has(> :nth-child(1):last-child),
+  .user-layout .actions:has(> :nth-child(1):last-child),
+  .user-layout .action-buttons:has(> :nth-child(1):last-child),
+  .user-layout .card-actions:has(> :nth-child(1):last-child),
+  .user-layout .client-actions:has(> :nth-child(1):last-child),
+  .user-layout .app-actions:has(> :nth-child(1):last-child),
+  .user-layout .payment-actions-container:has(> :nth-child(1):last-child),
+  .user-layout .coupon-buttons:has(> :nth-child(1):last-child),
+  .user-layout .filter-actions:has(> :nth-child(1):last-child),
+  .user-layout .orders-filter-actions:has(> :nth-child(1):last-child) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .user-layout .page-header .actions:has(> :nth-child(2):last-child),
+  .user-layout .page-header .actions:has(> :nth-child(3):last-child),
+  .user-layout .page-header .actions:has(> :nth-child(4):last-child),
+  .user-layout .page-header .header-actions:has(> :nth-child(2):last-child),
+  .user-layout .page-header .header-actions:has(> :nth-child(3):last-child),
+  .user-layout .page-header .header-actions:has(> :nth-child(4):last-child),
+  .user-layout .button-row:has(> :nth-child(2):last-child),
+  .user-layout .button-row:has(> :nth-child(3):last-child),
+  .user-layout .button-row:has(> :nth-child(4):last-child),
+  .user-layout .actions:has(> :nth-child(2):last-child),
+  .user-layout .actions:has(> :nth-child(3):last-child),
+  .user-layout .actions:has(> :nth-child(4):last-child),
+  .user-layout .action-buttons:has(> :nth-child(2):last-child),
+  .user-layout .action-buttons:has(> :nth-child(3):last-child),
+  .user-layout .action-buttons:has(> :nth-child(4):last-child),
+  .user-layout .card-actions:has(> :nth-child(2):last-child),
+  .user-layout .card-actions:has(> :nth-child(3):last-child),
+  .user-layout .card-actions:has(> :nth-child(4):last-child),
+  .user-layout .client-actions:has(> :nth-child(2):last-child),
+  .user-layout .client-actions:has(> :nth-child(3):last-child),
+  .user-layout .client-actions:has(> :nth-child(4):last-child),
+  .user-layout .app-actions:has(> :nth-child(2):last-child),
+  .user-layout .app-actions:has(> :nth-child(3):last-child),
+  .user-layout .app-actions:has(> :nth-child(4):last-child),
+  .user-layout .payment-actions-container:has(> :nth-child(2):last-child),
+  .user-layout .payment-actions-container:has(> :nth-child(3):last-child),
+  .user-layout .payment-actions-container:has(> :nth-child(4):last-child),
+  .user-layout .coupon-buttons:has(> :nth-child(2):last-child),
+  .user-layout .coupon-buttons:has(> :nth-child(3):last-child),
+  .user-layout .coupon-buttons:has(> :nth-child(4):last-child),
+  .user-layout .filter-actions:has(> :nth-child(2):last-child),
+  .user-layout .filter-actions:has(> :nth-child(3):last-child),
+  .user-layout .filter-actions:has(> :nth-child(4):last-child),
+  .user-layout .orders-filter-actions:has(> :nth-child(2):last-child),
+  .user-layout .orders-filter-actions:has(> :nth-child(3):last-child),
+  .user-layout .orders-filter-actions:has(> :nth-child(4):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .user-layout .page-header .actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .page-header .header-actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .button-row:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .action-buttons:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .card-actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .client-actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .app-actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .payment-actions-container:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .coupon-buttons:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .filter-actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .orders-filter-actions:has(> :nth-child(3):last-child) > :nth-child(3),
+  .user-layout .page-header .actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .page-header .header-actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .button-row:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .action-buttons:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .card-actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .client-actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .app-actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .payment-actions-container:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .coupon-buttons:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .filter-actions:has(> :nth-child(5):last-child) > :nth-child(4),
+  .user-layout .orders-filter-actions:has(> :nth-child(5):last-child) > :nth-child(4) {
+    grid-column: span 2 !important;
+  }
+
+  .user-layout .page-header .actions > *,
+  .user-layout .page-header .header-actions > *,
+  .user-layout .button-row > *,
+  .user-layout .actions > *,
+  .user-layout .action-buttons > *,
+  .user-layout .card-actions > *,
+  .user-layout .client-actions > *,
+  .user-layout .app-actions > *,
+  .user-layout .payment-actions-container > *,
+  .user-layout .coupon-buttons > *,
+  .user-layout .filter-actions > *,
+  .user-layout .orders-filter-actions > * {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .user-layout .el-button,
+  .user-layout .el-button.is-round {
+    width: auto;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    padding: 8px 10px !important;
+    white-space: normal !important;
+    line-height: 1.25 !important;
+  }
+
+  .user-layout .el-button > span {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    text-align: center !important;
+  }
+
+  .user-layout .el-button + .el-button {
+    margin-left: 0 !important;
+  }
+
+  .user-layout .form-row,
+  .user-layout .filter-row,
+  .user-layout .orders-filter-row,
+  .user-layout .ticket-filter-row,
+  .user-layout .search-row,
+  .user-layout .recharge-form,
+  .user-layout .coupon-input-group {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .user-layout .el-input,
+  .user-layout .el-select,
+  .user-layout .el-date-editor,
+  .user-layout .el-input-number,
+  .user-layout .el-cascader,
+  .user-layout .el-textarea,
+  .user-layout .full-width-control,
+  .user-layout .orders-date-filter {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .user-layout .el-input__inner,
+  .user-layout .el-textarea__inner {
+    font-size: 16px !important;
+  }
+
+  .user-layout .stats-grid,
+  .user-layout .stats-row,
+  .user-layout .orders-stats-row,
+  .user-layout .history-stats-row,
+  .user-layout .invites-stats-row,
+  .user-layout .devices-stats-row,
+  .user-layout .packages-grid,
+  .user-layout .quick-list,
+  .user-layout .client-grid,
+  .user-layout .client-list,
+  .user-layout .dashboard-main-aside,
+  .user-layout .subscription-main-aside,
+  .user-layout .tickets-main-aside,
+  .user-layout .settings-workspace,
+  .user-layout .profile-grid,
+  .user-layout .help-layout,
+  .user-layout .help-client-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .user-layout .stat-card {
+    min-height: 72px !important;
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .user-layout .stat-icon,
+  .user-layout .quick-icon,
+  .user-layout .device-icon,
+  .user-layout .level-icon {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    margin-right: 0 !important;
+    font-size: 18px !important;
+  }
+
+  .user-layout .stat-value,
+  .user-layout .stat-number,
+  .user-layout .stat-title,
+  .user-layout .level-name,
+  .user-layout .device-count,
+  .user-layout .remaining-time-value .time-number,
+  .user-layout .balance-amount {
+    font-size: 19px !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .user-layout .amount {
+    font-size: inherit !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .user-layout .price,
+  .user-layout .package-price,
+  .user-layout .package-price .amount,
+  .user-layout .price-line .amount {
+    font-size: 22px !important;
+  }
+
+  .user-layout .card-header,
+  .user-layout .el-card__header,
+  .user-layout .dialog-title {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    align-items: start !important;
+    padding: 12px !important;
+  }
+
+  .user-layout .card-body,
+  .user-layout .el-card__body,
+  .user-layout .dialog-body {
+    padding: 12px !important;
+  }
+
+  .user-layout .summary-row,
+  .user-layout .summary-header,
+  .user-layout .info-row,
+  .user-layout .meta-item {
+    display: grid !important;
+    grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    align-items: start !important;
+  }
+
+  .user-layout .summary-row > :last-child,
+  .user-layout .summary-header > :last-child,
+  .user-layout .info-row > :last-child,
+  .user-layout .meta-item > :last-child {
+    min-width: 0 !important;
+    text-align: right !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .user-layout .records-tabs .el-tabs__header,
+  .user-layout .settings-tabs .el-tabs__header,
+  .user-layout .mobile-settings-tabs .el-tabs__header,
+  .user-layout .tutorial-tabs .el-tabs__header,
+  .user-layout .tabs {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 0 8px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-layout .el-tabs__nav {
+    white-space: nowrap !important;
+  }
+
+  .user-layout .el-tabs__item,
+  .user-layout .tab {
+    height: 40px !important;
+    padding: 0 10px !important;
+    font-size: 13px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .user-layout .responsive-data-view,
+  .user-layout .mobile-card-list,
+  .user-layout .mobile-card,
+  .user-layout .mobile-card-header,
+  .user-layout .mobile-card-body,
+  .user-layout .mobile-card-actions {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .user-layout .mobile-card-header,
+  .user-layout .order-mobile-header {
+    min-width: 0 !important;
+  }
+
+  .user-layout .order-mobile-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+  }
+
+  .user-layout .order-mobile-header span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .user-layout .table-wrapper,
+  .user-layout .table-wrap,
+  .user-layout .compact-order-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-layout .el-dialog {
+    width: min(420px, calc(100dvw - 20px)) !important;
+    max-width: calc(100dvw - 20px) !important;
+    margin: 5vh auto 0 !important;
+  }
+
+  .user-layout .el-dialog__body {
+    max-height: 70vh !important;
+    overflow: auto !important;
+    padding: 12px !important;
+  }
+
+  .user-layout .el-drawer {
+    width: min(100%, 100dvw) !important;
+    max-width: 100dvw !important;
+    box-sizing: border-box !important;
+  }
+
+  .user-layout .el-drawer__header,
+  .user-layout .el-drawer__body,
+  .user-layout .el-drawer__footer {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .user-layout .qr-code-wrapper,
+  .user-layout .qr-code-wrapper-compact,
+  .user-layout .recharge-qr-section .qr-code-wrapper {
+    min-height: 168px !important;
+  }
+
+  .user-layout .mobile-nav-bar {
+    margin-bottom: 10px !important;
+  }
+
+  .user-layout .mobile-nav-header {
+    min-width: 0 !important;
+  }
+
+  .user-layout .nav-current-path,
+  .user-layout .current-title {
+    min-width: 0 !important;
+  }
+
+  .user-layout .current-title {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .user-layout .mobile-nav-menu {
+    max-height: min(62vh, 520px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-layout.is-mobile .sidebar.collapsed {
+    visibility: hidden !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    transform: translateX(calc(-100% - 1px)) !important;
+  }
+
+  .user-layout.is-mobile .sidebar:not(.collapsed) {
+    visibility: visible !important;
+    pointer-events: auto !important;
+    overflow-x: clip !important;
+  }
+
+  .user-layout .tutorial-tabs .el-tabs__nav-scroll {
+    overflow: hidden !important;
+  }
+
+  .user-layout .tutorial-tabs .el-tabs__nav {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    transform: none !important;
+  }
+
+  .user-layout .tutorial-tabs .el-tabs__item {
+    min-width: 0 !important;
+    padding: 0 6px !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .user-layout .mobile-tabbar {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    height: calc(60px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: env(safe-area-inset-bottom) !important;
+  }
+
+  .user-layout .mobile-tab {
+    min-width: 0 !important;
+    padding: 6px 2px !important;
+  }
+
+  .user-layout .mobile-tab .tab-icon {
+    width: 21px !important;
+    height: 21px !important;
+  }
+
+  .user-layout .mobile-tab-label {
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .user-layout .page-header .actions,
+  .user-layout .page-header .header-actions,
+  .user-layout .button-row,
+  .user-layout .actions,
+  .user-layout .action-buttons,
+  .user-layout .card-actions,
+  .user-layout .client-actions,
+  .user-layout .app-actions,
+  .user-layout .payment-actions-container,
+  .user-layout .coupon-buttons,
+  .user-layout .filter-actions,
+  .user-layout .orders-filter-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .user-layout .summary-row,
+  .user-layout .summary-header,
+  .user-layout .info-row,
+  .user-layout .meta-item {
+    grid-template-columns: 1fr !important;
+  }
+
+  .user-layout .summary-row > :last-child,
+  .user-layout .summary-header > :last-child,
+  .user-layout .info-row > :last-child,
+  .user-layout .meta-item > :last-child {
+    text-align: left !important;
+  }
+}

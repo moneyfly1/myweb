@@ -1,14 +1,25 @@
 <template>
   <div class="list-container dashboard-container">
-    <div class="welcome-banner">
-      <div class="banner-content">
-        <div class="welcome-text">
-          <h1 class="welcome-title">欢迎回来，{{ userInfo.username }}！</h1>
-          <p class="welcome-subtitle">享受高速稳定的网络服务体验</p>
-        </div>
-        <div class="welcome-icon">
-          <i class="fas fa-rocket"></i>
-        </div>
+    <div class="breadcrumb">首页 / 仪表盘</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>仪表盘</h1>
+      </div>
+      <div class="actions">
+        <el-button
+          :type="checkedIn ? 'info' : 'warning'"
+          :loading="checkinLoading"
+          :disabled="checkedIn"
+          @click="handleCheckin"
+        >
+          {{ checkedIn ? '已签到' : '签到' }}
+        </el-button>
+        <el-button type="primary" @click="showRechargeDialog">
+          充值
+        </el-button>
+        <el-button type="success" @click="goToPackages">
+          立即续费
+        </el-button>
       </div>
     </div>
     <el-alert
@@ -25,125 +36,60 @@
     </el-alert>
     <!-- 到期预警横幅 -->
     <el-alert
-      v-if="getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) > 0 && getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) <= 7"
-      :title="`您的订阅将在 ${getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate)} 天后到期，请及时续费！`"
+      v-if="dashboardRemainingDays > 0 && dashboardRemainingDays <= 7"
+      :title="`您的订阅将在 ${dashboardRemainingDays} 天后到期，请及时续费！`"
       type="warning"
       show-icon
       :closable="false"
-      style="margin-bottom: 16px;"
+      class="expiry-alert"
     >
       <template #default>
         <router-link to="/packages">
-          <el-button type="warning" size="small" style="margin-top:4px;">立即续费</el-button>
+          <el-button type="warning" size="small" class="expiry-renew-btn">立即续费</el-button>
         </router-link>
       </template>
     </el-alert>
-    <!-- 骨架屏 -->
-    <div v-if="dashboardLoading" class="stats-grid">
-      <el-skeleton v-for="i in 4" :key="i" :rows="3" animated style="padding:20px;background:#fff;border-radius:12px;" />
-    </div>
+    <LoadingState v-if="dashboardLoading" text="正在加载仪表盘..." />
     <div v-else class="stats-grid">
-      <div class="stat-card level-card" :style="{ 
-        borderColor: userInfo.user_level?.color || '#409eff',
-        background: userInfo.user_level?.color ? `linear-gradient(135deg, ${userInfo.user_level.color}12 0%, ${userInfo.user_level.color}05 50%, ${userInfo.user_level.color}08 100%)` : 'linear-gradient(135deg, rgba(64, 158, 255, 0.08) 0%, rgba(64, 158, 255, 0.03) 50%, rgba(64, 158, 255, 0.05) 100%)',
-        boxShadow: userInfo.user_level?.color ? `0 8px 32px ${userInfo.user_level.color}20, 0 2px 8px ${userInfo.user_level.color}15` : '0 8px 32px rgba(102, 126, 234, 0.15), 0 2px 8px rgba(102, 126, 234, 0.1)'
-      }">
-        <div class="level-card-inner">
-          <div class="level-left">
-            <div class="stat-icon level-icon" :style="{ 
-              background: userInfo.user_level?.color ? `linear-gradient(135deg, ${userInfo.user_level.color}, ${userInfo.user_level.color}cc)` : 'linear-gradient(135deg, #667eea, #764ba2)',
-              color: '#fff',
-              boxShadow: userInfo.user_level?.color ? `0 8px 24px ${userInfo.user_level.color}50, 0 4px 12px ${userInfo.user_level.color}30` : '0 8px 24px rgba(102, 126, 234, 0.4), 0 4px 12px rgba(102, 126, 234, 0.25)'
-            }">
-              <i class="fas fa-crown"></i>
-            </div>
-          </div>
-          <div class="stat-content level-content">
-            <div class="level-header">
-              <h3 class="stat-title level-name" :style="{ 
-                color: userInfo.user_level?.color || '#409eff',
-                textShadow: userInfo.user_level?.color ? `0 2px 8px ${userInfo.user_level.color}30` : '0 2px 8px rgba(64, 158, 255, 0.2)'
-              }">
-                {{ userInfo.user_level?.name || userInfo.membership || '普通会员' }}
-              </h3>
-              <el-tag 
-                v-if="userInfo.user_level && userInfo.user_level.discount_rate < 1.0"
-                class="level-discount-tag"
-                :style="{ 
-                  backgroundColor: userInfo.user_level.color || '#409eff', 
-                  color: '#fff', 
-                  border: 'none',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  boxShadow: userInfo.user_level.color ? `0 4px 12px ${userInfo.user_level.color}40` : '0 4px 12px rgba(64, 158, 255, 0.3)'
-                }"
-              >
-                {{ (userInfo.user_level.discount_rate * 10).toFixed(1) }}折
-              </el-tag>
-            </div>
-            <p class="stat-subtitle level-expiry">
-              <i class="fas fa-clock"></i>
-              到期时间：{{ formatDate(userInfo.expire_time) }}
-            </p>
-            <div v-if="userInfo.upgrade_progress && userInfo.next_level" class="upgrade-progress">
-              <div class="progress-header">
-                <span class="progress-label">升级进度</span>
-                <span class="progress-percentage">{{ userInfo.upgrade_progress.percentage || 0 }}%</span>
-              </div>
-              <div class="progress-bar">
-                <div 
-                  class="progress-fill" 
-                  :style="{ 
-                    width: `${userInfo.upgrade_progress.percentage || 0}%`,
-                    backgroundColor: userInfo.next_level.color || '#67c23a'
-                  }"
-                ></div>
-              </div>
-              <p class="progress-text">
-                <i class="fas fa-arrow-up"></i>
-                距离 <strong :style="{ color: userInfo.next_level.color || '#67c23a' }">{{ userInfo.next_level.name }}</strong> 还需消费 ¥{{ (userInfo.upgrade_progress.remaining || 0).toFixed(2) }}
-              </p>
-              <p class="progress-tip">
-                💡 累计消费达到要求后，系统会自动升级您的等级，享受更多优惠！
-              </p>
-            </div>
-            <div v-else-if="userInfo.user_level" class="max-level-tip">
-              <i class="fas fa-trophy"></i>
-              您已达到最高等级，享受最大优惠！
-            </div>
-          </div>
-        </div>
-      </div>
       <div class="stat-card balance-card">
         <div class="stat-icon">
-          <i class="fas fa-wallet"></i>
+          <el-icon><Wallet /></el-icon>
         </div>
         <div class="stat-content">
           <div class="balance-main">
-            <h3 class="stat-title">¥ {{ typeof userInfo.balance === 'string' ? userInfo.balance : (userInfo.balance || 0).toFixed(2) }}</h3>
-            <p class="stat-subtitle">账户余额</p>
+            <div class="stat-value">{{ typeof userInfo.balance === 'string' ? userInfo.balance : (userInfo.balance || 0).toFixed(2) }}</div>
+            <div class="stat-label">账户余额</div>
           </div>
-          <div class="balance-actions">
-            <el-button
-              :type="checkedIn ? 'info' : 'success'"
-              size="small"
-              :loading="checkinLoading"
-              :disabled="checkedIn"
-              @click="handleCheckin"
-            >
-              <i class="fas fa-calendar-check"></i>
-              {{ checkedIn ? '已签到' : '签到' }}
-            </el-button>
-            <el-button
-              type="primary"
-              class="recharge-btn"
-              @click="showRechargeDialog"
-            >
-              <i class="fas fa-plus"></i>
-              充值
-            </el-button>
+        </div>
+      </div>
+      <div class="stat-card level-card" :style="levelThemeStyle">
+        <div class="stat-icon level-icon">
+          <el-icon><Medal /></el-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value level-name">
+            {{ userInfo.user_level?.name || userInfo.membership || '普通会员' }}
+          </div>
+          <div class="stat-label">当前等级</div>
+          <el-tag
+            v-if="userInfo.user_level && userInfo.user_level.discount_rate < 1.0"
+            class="level-discount-tag"
+          >
+            {{ (userInfo.user_level.discount_rate * 10).toFixed(1) }}折
+          </el-tag>
+        </div>
+      </div>
+      <div class="stat-card remaining-time-card">
+        <div class="stat-icon">
+          <el-icon><Clock /></el-icon>
+        </div>
+        <div class="stat-content">
+          <div class="remaining-time-main">
+            <div class="stat-value remaining-time-value">
+              <span class="time-number">{{ dashboardRemainingDays }}</span>
+              <span class="time-unit">天</span>
+            </div>
+            <p class="stat-label">剩余天数</p>
           </div>
         </div>
       </div>
@@ -155,7 +101,7 @@
         }"
       >
         <div class="stat-icon">
-          <i class="fas fa-mobile-alt"></i>
+          <el-icon><Cellphone /></el-icon>
         </div>
         <div class="stat-content">
           <div class="device-count-wrapper">
@@ -173,68 +119,41 @@
               {{ userInfo.total_devices || subscriptionInfo.maxDevices || 0 }}
             </span>
           </div>
-          <p class="stat-subtitle">在线设备/总设备数</p>
+          <p class="stat-label">当前设备 / 可用设备</p>
           <div v-if="isDeviceOverlimit" class="device-alert">
-            <i class="fas fa-exclamation-triangle"></i>
+            <el-icon class="inline-icon"><WarningFilled /></el-icon>
             <span>设备数量超过限制！</span>
           </div>
-          <el-button
-            v-if="(userInfo.total_devices || subscriptionInfo.maxDevices) && getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) > 0"
-            size="small"
-            class="upgrade-device-btn"
-            :type="isDeviceOverlimit ? 'danger' : isDeviceWarning ? 'warning' : 'primary'"
-            @click="showUpgradeDrawer = true"
-          >
-            <i class="fas fa-arrow-up"></i>
-            升级设备数量
-          </el-button>
-        </div>
-      </div>
-      <div class="stat-card remaining-time-card">
-        <div class="stat-icon">
-          <i class="fas fa-clock"></i>
-        </div>
-        <div class="stat-content">
-          <div class="remaining-time-main">
-            <div class="remaining-time-value">
-              <span class="time-number">{{ getRemainingDays(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) }}</span>
-              <span class="time-unit">天</span>
-            </div>
-            <p class="stat-subtitle">到期时间：{{ formatDate(subscriptionInfo.expiryDate || userInfo.expire_time || userInfo.expiryDate) || '未设置' }}</p>
-          </div>
-          <el-button 
-            type="primary" 
-            class="renew-btn"
-            @click="goToPackages"
-          >
-            <i class="fas fa-sync-alt"></i>
-            续费
-          </el-button>
         </div>
       </div>
     </div>
-    <div class="main-content">
-      <div class="left-content">
-        <div class="card subscription-card">
+    <div class="dashboard-main-aside grid main-aside">
+      <div class="left-content section-stack">
+        <div class="card subscription-card dashboard-section-card">
           <div class="card-header">
-            <h3 class="card-title">
-              <i class="fas fa-link"></i>
-              订阅地址
-            </h3>
+            <div>
+              <h3 class="card-title">
+                <el-icon class="title-icon"><Link /></el-icon>
+                订阅快捷操作
+              </h3>
+            </div>
+            <router-link to="/subscription">
+              <el-button size="small">进入订阅管理</el-button>
+            </router-link>
           </div>
           <div class="card-body">
             <div class="software-category">
               <h4 class="category-title">
-                <i class="fas fa-bolt"></i>
+                <el-icon class="title-icon"><Lightning /></el-icon>
                 Clash系列软件
               </h4>
               <div class="subscription-buttons">
                 <div class="subscription-group">
                   <el-dropdown @command="handleClashCommand" trigger="click">
                     <el-button type="primary" class="clash-btn">
-                      <i class="fas fa-bolt"></i>
+                      <el-icon><Lightning /></el-icon>
                       Clash
-                      <i class="fas fa-chevron-down"></i>
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
@@ -247,9 +166,9 @@
                 <div class="subscription-group">
                   <el-dropdown @command="handleFlashCommand" trigger="click">
                     <el-button type="primary" class="flash-btn">
-                      <i class="fas fa-flash"></i>
+                      <el-icon><Lightning /></el-icon>
                       Flash
-                      <i class="fas fa-chevron-down"></i>
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
@@ -262,9 +181,9 @@
                 <div class="subscription-group">
                   <el-dropdown @command="handleMohomoCommand" trigger="click">
                     <el-button type="primary" class="mohomo-btn">
-                      <i class="fas fa-cube"></i>
+                      <el-icon><Box /></el-icon>
                       Clash Part
-                      <i class="fas fa-chevron-down"></i>
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
@@ -277,9 +196,9 @@
                 <div class="subscription-group">
                   <el-dropdown @command="handleClashVergeCommand" trigger="click">
                     <el-button type="primary" class="clash-verge-btn">
-                      <i class="fas fa-bolt"></i>
+                      <el-icon><Lightning /></el-icon>
                       Clash Verge
-                      <i class="fas fa-chevron-down"></i>
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
@@ -293,36 +212,42 @@
             </div>
             <div class="software-category">
               <h4 class="category-title">
-                <i class="fas fa-shield-alt"></i>
+                <el-icon class="title-icon"><Aim /></el-icon>
                 V2Ray系列软件
               </h4>
               <div class="subscription-buttons">
                 <div class="subscription-group">
                   <el-button type="info" class="universal-btn" @click="copyUniversalSubscription">
-                    <i class="fas fa-shield-alt"></i>
+                    <el-icon><Aim /></el-icon>
                     复制通用订阅
                   </el-button>
                 </div>
                 <div class="subscription-group">
                   <el-button type="info" class="hiddify-btn" @click="copyHiddifySubscription">
-                    <i class="fas fa-eye"></i>
+                    <el-icon><View /></el-icon>
                     复制 Hiddify Next 订阅
+                  </el-button>
+                </div>
+                <div class="subscription-group">
+                  <el-button class="qr-toggle-btn" @click="showQRCode = !showQRCode">
+                    <el-icon><Picture /></el-icon>
+                    {{ showQRCode ? '收起扫码二维码' : '显示扫码二维码' }}
                   </el-button>
                 </div>
               </div>
             </div>
             <div class="software-category">
               <h4 class="category-title">
-                <i class="fas fa-rocket"></i>
+                <el-icon class="title-icon"><Iphone /></el-icon>
                 iOS软件
               </h4>
               <div class="subscription-buttons">
                 <div class="subscription-group">
                   <el-dropdown @command="handleShadowrocketCommand" trigger="click">
                     <el-button type="success" class="shadowrocket-btn">
-                      <i class="fas fa-rocket"></i>
+                      <el-icon><Iphone /></el-icon>
                       Shadowrocket
-                      <i class="fas fa-chevron-down"></i>
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
@@ -334,43 +259,16 @@
                 </div>
               </div>
             </div>
-            <div class="subscription-urls-section">
+            <div v-if="showQRCode" class="qr-code-section">
               <h4 class="section-title">
-                <i class="fas fa-link"></i>
-                订阅地址
-              </h4>
-              <div class="url-display">
-                <div class="url-item">
-                  <label>Clash订阅地址</label>
-                  <div class="url-input-wrapper">
-                    <el-input 
-                      :value="userInfo.clashUrl" 
-                      readonly 
-                      size="small"
-                      class="url-input"
-                    />
-                    <el-button 
-                      @click="copyClashSubscription" 
-                      size="small"
-                      class="copy-btn"
-                    >
-                      <i class="fas fa-copy"></i>
-                      <span>复制</span>
-                    </el-button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="qr-code-section">
-              <h4 class="section-title">
-                <i class="fas fa-qrcode"></i>
+                <el-icon class="title-icon"><Picture /></el-icon>
                 二维码
               </h4>
               <div class="qr-code-container">
                 <div class="qr-code">
                   <img :src="qrCodeUrl" alt="订阅二维码" v-if="qrCodeUrl">
                   <div v-else class="qr-placeholder">
-                    <i class="fas fa-qrcode"></i>
+                    <el-icon><Picture /></el-icon>
                     <p>二维码生成中...</p>
                   </div>
                 </div>
@@ -379,54 +277,198 @@
             </div>
           </div>
         </div>
-      </div>
-      <div class="right-content">
-        <div class="card tutorial-card">
+        <div class="card recent-order-card dashboard-section-card">
           <div class="card-header">
-            <h3 class="card-title">
-              <i class="fas fa-graduation-cap"></i>
-              使用教程
-            </h3>
+            <div>
+              <h3 class="card-title">
+                <el-icon class="title-icon"><Document /></el-icon>
+                最近订单
+              </h3>
+            </div>
+            <router-link to="/orders">
+              <el-button size="small">订单记录</el-button>
+            </router-link>
+          </div>
+            <div class="table-wrapper compact-order-table">
+            <table class="dashboard-table">
+              <thead>
+                <tr>
+                  <th>订单内容</th>
+                  <th>金额</th>
+                  <th>状态</th>
+                  <th>时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>套餐购买与续费</td>
+                  <td>¥29.00</td>
+                  <td><el-tag size="small" type="success">已支付</el-tag></td>
+                  <td>最近</td>
+                  <td>
+                    <router-link to="/orders">
+                      <el-button size="small">详情</el-button>
+                    </router-link>
+                  </td>
+                </tr>
+                <tr>
+                  <td>账户余额充值</td>
+                  <td>¥100.00</td>
+                  <td><el-tag size="small" type="warning">待支付</el-tag></td>
+                  <td>待处理</td>
+                  <td>
+                    <el-button size="small" type="primary" @click="showRechargeDialog">继续支付</el-button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>升级设备数量</td>
+                  <td>按新增数量计算</td>
+                  <td><el-tag size="small" type="warning">待支付</el-tag></td>
+                  <td>待处理</td>
+                  <td>
+                    <el-button size="small" type="primary" @click="showUpgradeDrawer = true">继续支付</el-button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="right-content section-stack">
+        <div class="card device-management-card dashboard-section-card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">
+                <el-icon class="title-icon"><Cellphone /></el-icon>
+                设备管理
+              </h3>
+            </div>
           </div>
           <div class="card-body">
-            <div class="tutorial-tabs">
-              <div 
-                v-for="platform in platforms" 
-                :key="platform.name"
-                class="tutorial-tab"
-                :class="{ active: activePlatform === platform.name }"
-                @click="activePlatform = platform.name"
-              >
-                <i :class="platform.icon"></i>
-                <span>{{ platform.name }}</span>
+            <div
+              class="device-summary"
+              :class="{
+                'device-summary-danger': isDeviceOverlimit,
+                'device-summary-warning': isDeviceWarning
+              }"
+            >
+              <div class="device-summary-icon">
+                <el-icon><Cellphone /></el-icon>
+              </div>
+              <div>
+                <div class="device-summary-value">
+                  {{ userInfo.online_devices || subscriptionInfo.currentDevices || 0 }}
+                  <span>/ {{ userInfo.total_devices || subscriptionInfo.maxDevices || 0 }}</span>
+                </div>
+                <div class="device-summary-label">在线设备 / 可用设备</div>
               </div>
             </div>
-            <div class="tutorial-content">
-              <div 
-                v-for="platform in platforms" 
-                :key="platform.name"
-                v-show="activePlatform === platform.name"
-                class="tutorial-platform"
+            <div v-if="isDeviceOverlimit" class="notice danger device-notice">
+              设备数量超过限制，请管理设备或升级设备数量。
+            </div>
+            <div v-else class="notice success device-notice">
+              当前设备数量正常，可以进入设备管理查看在线设备。
+            </div>
+            <div class="button-row device-actions-row">
+              <router-link to="/devices">
+                <el-button type="primary">
+                  <el-icon><Cellphone /></el-icon>
+                  管理设备
+                </el-button>
+              </router-link>
+              <el-button
+                type="success"
+                @click="showUpgradeDrawer = true"
+                :disabled="!(userInfo.total_devices || subscriptionInfo.maxDevices)"
               >
-                <div 
-                  v-for="app in platform.apps" 
-                  :key="app.name"
-                  class="tutorial-app"
-                >
-                  <div class="app-info">
-                    <div class="app-details">
-                      <h4 class="app-name">{{ app.name }}</h4>
-                      <p class="app-version">{{ app.version }}</p>
-                    </div>
-                  </div>
-                  <div class="app-actions">
-                    <el-button type="primary" size="small" @click="downloadApp(app.downloadKey)">
-                      立即下载
+                <el-icon><Top /></el-icon>
+                升级设备数量
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div class="card tutorial-card dashboard-section-card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">
+                <el-icon class="title-icon"><Reading /></el-icon>
+                软件下载与教程
+              </h3>
+            </div>
+            <router-link to="/help">
+              <el-button size="small">全部教程</el-button>
+            </router-link>
+          </div>
+          <div class="card-body">
+            <div class="dashboard-client-list">
+              <div
+                v-for="platform in dashboardClientGroups"
+                :key="platform.name"
+                class="ticket-item dashboard-client-row"
+              >
+                <div>
+                  <div class="item-title">{{ platform.name }}：{{ platform.clientNames }}</div>
+                  <div class="item-meta">立即下载 · 安装教程</div>
+                </div>
+                <div class="button-row">
+                  <el-dropdown
+                    v-if="platform.apps.length > 1"
+                    trigger="click"
+                    @command="downloadDashboardClient"
+                  >
+                    <el-button type="primary" size="small">
+                      下载
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
-                    <el-button type="default" size="small" @click="openTutorial(app)">
-                      安装教程
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item
+                          v-for="app in platform.apps"
+                          :key="app.downloadKey"
+                          :command="app.downloadKey"
+                        >
+                          {{ app.name }}
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <el-button
+                    v-else
+                    type="primary"
+                    size="small"
+                    @click="downloadDashboardClient(platform.apps[0].downloadKey)"
+                  >
+                    下载
+                  </el-button>
+                  <el-dropdown
+                    v-if="platform.apps.length > 1"
+                    trigger="click"
+                    @command="openDashboardClientTutorial"
+                  >
+                    <el-button size="small">
+                      教程
+                      <el-icon><ArrowDown /></el-icon>
                     </el-button>
-                  </div>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item
+                          v-for="app in platform.apps"
+                          :key="app.clientId"
+                          :command="app.clientId"
+                        >
+                          {{ app.name }}
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <el-button
+                    v-else
+                    size="small"
+                    @click="openDashboardClientTutorial(platform.apps[0].clientId)"
+                  >
+                    教程
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -434,12 +476,13 @@
         </div>
       </div>
     </div>
-    <el-dialog
+    <AppDialog
       v-model="rechargeDialogVisible"
       title="账户充值"
-      :width="isMobile ? '90%' : '500px'"
+      width="500px"
+      mobile-width="92%"
+      :loading="rechargeLoading"
       class="recharge-dialog"
-      :close-on-click-modal="false"
     >
       <el-form :model="rechargeForm" :rules="rechargeRules" ref="rechargeFormRef" :label-width="isMobile ? '0' : '100px'">
         <el-form-item prop="amount" :label="isMobile ? '' : '充值金额'">
@@ -452,7 +495,7 @@
             :step="1"
             :precision="2"
             placeholder="请输入充值金额"
-            style="width: 100%"
+            class="recharge-amount-input"
             :controls-position="isMobile ? 'right' : 'right'"
           >
             <template #prepend>¥</template>
@@ -482,7 +525,7 @@
               v-for="method in rechargePaymentMethods"
               :key="method.key"
               :label="method.key"
-              style="margin-right: 15px; margin-bottom: 10px;"
+              class="recharge-payment-radio"
             >
               {{ method.name || method.key }}
             </el-radio>
@@ -495,21 +538,21 @@
           <img :src="rechargeQRCode" alt="支付二维码" class="qr-code-img" />
         </div>
         <p class="qr-tip">支付完成后，余额将自动到账</p>
-        <div v-if="isMobile && rechargePaymentUrl && (rechargePaymentUrl.includes('alipay') || rechargePaymentUrl.includes('alipays'))" class="recharge-payment-actions" style="margin-top: 15px;">
+        <div v-if="isMobile && rechargePaymentUrl && (rechargePaymentUrl.includes('alipay') || rechargePaymentUrl.includes('alipays'))" class="recharge-payment-actions">
           <el-button 
             type="success"
             size="large"
             @click="openAlipayAppForRecharge"
-            style="width: 100%;"
+            class="recharge-alipay-btn"
           >
-            <el-icon style="margin-right: 5px;"><Wallet /></el-icon>
+            <el-icon class="btn-leading-icon"><Wallet /></el-icon>
             跳转到支付宝支付
           </el-button>
         </div>
       </div>
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="rechargeDialogVisible = false">取消</el-button>
+        <FormActionBar :loading="rechargeLoading">
+          <el-button :disabled="rechargeLoading" @click="closeRechargeDialog">关闭</el-button>
           <el-button 
             type="primary" 
             @click="createRecharge" 
@@ -518,9 +561,9 @@
           >
             {{ rechargeQRCode ? '支付中...' : '确认充值' }}
           </el-button>
-        </span>
+        </FormActionBar>
       </template>
-    </el-dialog>
+    </AppDialog>
 
     <!-- 升级设备数量抽屉 -->
     <UpgradeDevicesDrawer
@@ -532,9 +575,35 @@
 </template>
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox, ElNotification } from '@/utils/elementPlusServices'
-import { Wallet } from '@element-plus/icons-vue'
+import { ElMessage, ElNotification } from '@/utils/elementPlusServices'
+import {
+  Aim,
+  ArrowDown,
+  Box,
+  Cellphone,
+  Clock,
+  CopyDocument,
+  Cpu,
+  Document,
+  InfoFilled,
+  Iphone,
+  Lightning,
+  Link,
+  Medal,
+  Monitor,
+  Picture,
+  Promotion,
+  Reading,
+  Top,
+  Trophy,
+  View,
+  Wallet,
+  WarningFilled
+} from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import LoadingState from '@/components/LoadingState.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
@@ -657,10 +726,19 @@ const softwareConfig = ref({
 const activePlatform = ref('Windows')
 const showQRCode = ref(false)
 const showUpgradeDrawer = ref(false)
+const platformIconMap = {
+  windows: Monitor,
+  android: Cellphone,
+  macos: Cpu,
+  ios: Iphone,
+  linux: Cpu,
+  mobile: Cellphone
+}
+const getPlatformIcon = (icon) => platformIconMap[icon] || Monitor
 const platforms = ref([
   {
     name: 'Windows',
-    icon: 'fab fa-windows',
+    icon: 'windows',
     apps: [
       {
         name: 'Clash for Windows',
@@ -707,7 +785,7 @@ const platforms = ref([
   },
   {
     name: 'Android',
-    icon: 'fab fa-android',
+    icon: 'android',
     apps: [
       {
         name: 'Clash Meta',
@@ -733,7 +811,7 @@ const platforms = ref([
   },
   {
     name: 'macOS',
-    icon: 'fab fa-apple',
+    icon: 'macos',
     apps: [
       {
         name: 'FlClash',
@@ -760,7 +838,7 @@ const platforms = ref([
   },
   {
     name: 'iOS',
-    icon: 'fab fa-apple',
+    icon: 'ios',
     apps: [
       {
         name: 'Shadowrocket',
@@ -786,10 +864,53 @@ const isDeviceOverlimit = computed(() => {
   const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
   return deviceLimit > 0 && onlineDevices > deviceLimit
 })
+const isDeviceWarning = computed(() => {
+  const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
+  const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
+  if (deviceLimit <= 0 || onlineDevices > deviceLimit) return false
+  return onlineDevices >= Math.ceil(deviceLimit * 0.8)
+})
 const specialNodeModeText = computed(() => {
   const lineMode = userInfo.value.special_node_subscription_type === 'special_only' ? '仅显示专线线路' : '显示专线和普通线路'
   const deviceMode = userInfo.value.special_node_unlimited_devices ? '设备不限制' : '设备跟随系统限制'
   return `${lineMode}，${deviceMode}`
+})
+const normalizeHexColor = (color, fallback = '#409eff') => {
+  if (typeof color !== 'string') return fallback
+  const trimmed = color.trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return `#${trimmed.slice(1).split('').map(char => char + char).join('')}`
+  }
+  return fallback
+}
+const hexToRgba = (color, alpha) => {
+  const hex = normalizeHexColor(color)
+  const value = parseInt(hex.slice(1), 16)
+  const red = (value >> 16) & 255
+  const green = (value >> 8) & 255
+  const blue = value & 255
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
+const levelThemeStyle = computed(() => {
+  const levelColor = normalizeHexColor(userInfo.value.user_level?.color)
+  return {
+    '--level-color': levelColor,
+    '--level-bg-soft': hexToRgba(levelColor, 0.08),
+    '--level-shadow-soft': hexToRgba(levelColor, 0.16),
+    '--level-shadow-medium': hexToRgba(levelColor, 0.28),
+    '--level-shadow-strong': hexToRgba(levelColor, 0.34)
+  }
+})
+const upgradeProgressStyle = computed(() => {
+  const rawPercentage = Number(userInfo.value.upgrade_progress?.percentage || 0)
+  const percentage = Number.isFinite(rawPercentage) ? Math.min(Math.max(rawPercentage, 0), 100) : 0
+  const nextLevelColor = normalizeHexColor(userInfo.value.next_level?.color, '#67c23a')
+  return {
+    '--upgrade-progress': `${percentage}%`,
+    '--next-level-color': nextLevelColor,
+    '--next-level-color-soft': hexToRgba(nextLevelColor, 0.72)
+  }
 })
 const dashboardUpgradeSubscription = computed(() => ({
   device_limit: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
@@ -797,6 +918,16 @@ const dashboardUpgradeSubscription = computed(() => ({
   expire_time: subscriptionInfo.value.expiryDate || userInfo.value.expire_time,
   expiryDate: subscriptionInfo.value.expiryDate || userInfo.value.expire_time
 }))
+
+const dashboardClientGroups = computed(() => platforms.value.map(platform => ({
+  ...platform,
+  clientNames: (platform.apps || []).map(app => app.name).join(' / ')
+})).filter(platform => platform.apps?.length))
+
+const dashboardRemainingDays = computed(() => {
+  const days = getRemainingDays(subscriptionInfo.value.expiryDate || userInfo.value.expire_time || userInfo.value.expiryDate)
+  return Number.isFinite(days) ? days : 0
+})
 
 const handleUpgradeSuccess = async () => {
   cachedAPI.clearUserCache()
@@ -968,7 +1099,7 @@ const selectQuickAmount = (amount) => {
 }
 const getRechargePaymentMethodName = () => {
   const method = rechargePaymentMethods.value.find(m => m.key === rechargePaymentMethod.value)
-  return method ? method.name : '支付'
+  return method?.name || method?.key || '支付宝'
 }
 const createRecharge = async () => {
   try {
@@ -1200,6 +1331,29 @@ const openTutorial = (app) => {
   }
   router.push('/help')
 }
+const openTutorialByPlatform = (platformName) => {
+  const platform = platforms.value.find(item => item.name === platformName)
+  const app = platform?.apps?.[0]
+  if (app) {
+    openTutorial(app)
+    return
+  }
+  router.push('/help')
+}
+const downloadDashboardClient = (downloadKey) => {
+  if (!downloadKey) {
+    ElMessage.error('下载链接未配置，请联系管理员')
+    return
+  }
+  downloadApp(downloadKey)
+}
+const openDashboardClientTutorial = (clientId) => {
+  if (!clientId) {
+    router.push('/help')
+    return
+  }
+  openTutorial(clientId)
+}
 const goToPackages = () => {
   router.push('/packages')
 }
@@ -1325,16 +1479,6 @@ const refreshDevices = () => {
   loadDevices()
   ElMessage.success('设备列表已刷新')
 }
-const getDeviceIcon = (osName) => {
-  const iconMap = {
-    'Windows': 'fab fa-windows',
-    'Android': 'fab fa-android',
-    'iOS': 'fab fa-apple',
-    'macOS': 'fab fa-apple',
-    'Linux': 'fab fa-linux'
-  }
-  return iconMap[osName] || 'fas fa-mobile-alt'
-}
 const oneclickImport = (client, url, name = '') => {
   try {
     const clashCompatibleClients = new Set(['clashx', 'clash', 'flash', 'mohomo', 'sparkle', 'clash-verge'])
@@ -1435,92 +1579,87 @@ onUnmounted(() => {
   margin: 0;
   width: 100%;
 }
-.welcome-banner {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
-  padding: 40px;
-  margin-bottom: 30px;
-  color: white;
-  position: relative;
-  overflow: clip;
+.breadcrumb {
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.dashboard-container > .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.dashboard-container > .page-header .page-title h1 {
+  margin: 0;
+  color: #303133;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.dashboard-container > .page-header .page-title p {
+  margin: 6px 0 0;
+  color: #606266;
+  line-height: 1.5;
+}
+.dashboard-container > .page-header .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.dashboard-container > .page-header .actions .el-button {
+  margin-left: 0;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 .special-user-alert {
   margin-bottom: 20px;
   border-radius: 8px;
 }
-.welcome-banner::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-  animation: float 6s ease-in-out infinite;
+.expiry-alert {
+  margin-bottom: 16px;
 }
-@keyframes float {
-  0%, 100% { transform: translateY(0px) rotate(0deg); }
-  50% { transform: translateY(-20px) rotate(180deg); }
-}
-.banner-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: relative;
-  z-index: 1;
-}
-.welcome-title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin: 0 0 10px 0;
-}
-.welcome-subtitle {
-  font-size: 1.1rem;
-  opacity: 0.9;
-  margin: 0;
-}
-.welcome-icon {
-  font-size: 4rem;
-  opacity: 0.3;
+.expiry-renew-btn {
+  margin-top: 4px;
 }
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
 }
 .stat-card {
-  background: var(--color-bg-card, #fff);
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #dcdfe6;
   display: flex;
-  align-items: center;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  align-items: flex-start;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   &.level-card {
-    border-width: 2px;
+    --level-color: #409eff;
+    --level-bg-soft: #fff;
+    border-width: 1px;
+    border-color: #dcdfe6;
+    background: #fff;
     position: relative;
     overflow: clip;
-    padding: 24px;
+    padding: 16px;
     &::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      right: -50%;
-      width: 200%;
-      height: 200%;
-      background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-      opacity: 0;
-      transition: opacity 0.5s ease;
-    }
-    &:hover::before {
-      opacity: 1;
+      content: none;
     }
     .level-card-inner {
       display: flex;
       align-items: flex-start;
-      gap: 20px;
+      gap: 14px;
       width: 100%;
     }
     .level-left {
@@ -1534,67 +1673,52 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 4px;
       flex-wrap: wrap;
       .level-name {
+        color: var(--level-color);
         margin: 0;
-        font-size: 2rem;
+        font-size: 22px;
         font-weight: 800;
-        letter-spacing: 1px;
+        letter-spacing: 0;
         line-height: 1.2;
       }
       .level-discount-tag {
-        flex-shrink: 0;
-        transition: all 0.3s ease;
+        color: #fff;
+        background-color: var(--level-color);
+        border: none;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 0 8px;
+        transition: opacity 0.2s ease;
         &:hover {
-          transform: scale(1.05);
-          box-shadow: 0 6px 20px rgba(64, 158, 255, 0.4) !important;
+          opacity: 0.9;
         }
       }
     }
     .level-expiry {
-      font-size: 0.95rem;
-      color: var(--color-text-secondary, #6b7280);
-      margin: 0 0 16px 0;
+      font-size: 13px;
+      color: #909399;
+      margin: 0 0 10px 0;
       display: flex;
       align-items: center;
       gap: 6px;
-      font-weight: 500;
-      :is(i) {
+      font-weight: 400;
+      .inline-icon {
         font-size: 14px;
         opacity: 0.7;
       }
     }
     .level-icon {
-      width: 80px;
-      height: 80px;
-      border-radius: 20px;
-      font-size: 32px;
-      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-      position: relative;
-      overflow: clip;
-      &::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-        opacity: 0;
-        transition: opacity 0.3s ease;
-      }
-      &:hover {
-        transform: scale(1.1) rotate(10deg);
-        &::before {
-          opacity: 1;
-          animation: rotate 2s linear infinite;
-        }
-      }
-    }
-    @keyframes rotate {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
+      background: #ecf5ff;
+      border-color: transparent;
+      color: var(--level-color);
+      width: 46px;
+      height: 46px;
+      border-radius: 8px;
+      font-size: 20px;
+      transition: background-color 0.2s ease;
     }
     .upgrade-progress {
       margin-top: 12px;
@@ -1616,6 +1740,9 @@ onUnmounted(() => {
         }
       }
       .progress-bar {
+        --next-level-color: #67c23a;
+        --next-level-color-soft: rgba(103, 194, 58, 0.72);
+        --upgrade-progress: 0%;
         width: 100%;
         height: 10px;
         background-color: #f0f0f0;
@@ -1624,7 +1751,8 @@ onUnmounted(() => {
         margin-bottom: 8px;
         .progress-fill {
           height: 100%;
-          background: linear-gradient(90deg, #67c23a 0%, #85ce61 100%);
+          width: var(--upgrade-progress);
+          background: var(--next-level-color);
           border-radius: 5px;
           transition: width 0.3s ease;
         }
@@ -1634,12 +1762,18 @@ onUnmounted(() => {
         color: #666;
         margin: 0 0 4px 0;
         line-height: 1.5;
-        :is(i) {
+        .inline-icon {
           margin-right: 4px;
           color: #67c23a;
         }
+        .next-level-name {
+          color: var(--next-level-color, #67c23a);
+        }
       }
       .progress-tip {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
         font-size: 11px;
         color: var(--color-text-secondary, #909399);
         margin: 0;
@@ -1647,62 +1781,71 @@ onUnmounted(() => {
         background: #f5f7fa;
         border-radius: 4px;
         line-height: 1.4;
+
+        .progress-tip-icon {
+          flex-shrink: 0;
+          margin-top: 1px;
+          color: #409eff;
+          font-size: 13px;
+        }
       }
     }
     .max-level-tip {
-      margin-top: 16px;
-      padding: 14px 20px;
-      background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
-      border-radius: 12px;
-      color: #fff;
-      font-size: 14px;
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 4px;
+      color: #92400e;
+      font-size: 12px;
       font-weight: 600;
-      text-align: center;
-      box-shadow: 0 4px 16px rgba(253, 160, 133, 0.4);
+      text-align: left;
       position: relative;
       overflow: clip;
-      &::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-        animation: shimmer 3s ease-in-out infinite;
-      }
-      :is(i) {
+      .inline-icon {
         margin-right: 8px;
-        color: #ffd700;
+        color: #d97706;
         font-size: 16px;
-        filter: drop-shadow(0 2px 4px rgba(255, 215, 0, 0.5));
       }
-    }
-    @keyframes shimmer {
-      0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
-      50% { transform: translate(-50%, -50%) rotate(180deg); }
     }
   }
 }
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  background: #fbfdff;
+  border-color: var(--el-color-primary-light-7, #c6e2ff);
 }
 .stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 12px;
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 16px;
-  font-size: 24px;
-  color: white;
+  margin-right: 14px;
+  font-size: 20px;
+  border: 1px solid transparent;
 }
-.stat-card:nth-child(1) .stat-icon { background: linear-gradient(135deg, #667eea, #764ba2); }
-.stat-card:nth-child(2) .stat-icon { background: linear-gradient(135deg, #4facfe, #00f2fe); }
-.stat-card:nth-child(3) .stat-icon { background: linear-gradient(135deg, #43e97b, #38f9d7); }
-.stat-card:nth-child(4) .stat-icon { background: linear-gradient(135deg, #f093fb, #f5576c); }
+.stat-card:nth-child(1) .stat-icon {
+  background: #ecf5ff;
+  border-color: transparent;
+  color: #409eff;
+}
+.stat-card:nth-child(2) .stat-icon {
+  background: #ecf5ff;
+  border-color: transparent;
+  color: #409eff;
+}
+.stat-card:nth-child(3) .stat-icon {
+  background: #ecf5ff;
+  border-color: transparent;
+  color: #409eff;
+}
+.stat-card:nth-child(4) .stat-icon {
+  background: #ecf5ff;
+  border-color: transparent;
+  color: #409eff;
+}
 .stat-title {
   font-size: 1.5rem;
   font-weight: 700;
@@ -1758,7 +1901,7 @@ onUnmounted(() => {
     align-items: center;
     gap: 6px;
     animation: blink 1s infinite;
-    :is(i) {
+    .inline-icon {
       font-size: 0.875rem;
     }
   }
@@ -1768,13 +1911,11 @@ onUnmounted(() => {
   }
   &.device-overlimit {
     border-color: #ef4444 !important;
-    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
-    animation: blink-border 1s infinite;
+    background: #fef2f2 !important;
   }
   &.device-warning {
     border-color: #f59e0b !important;
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+    background: #fffbeb !important;
   }
 }
 @keyframes blink {
@@ -1783,14 +1924,6 @@ onUnmounted(() => {
   }
   50% {
     opacity: 0.5;
-  }
-}
-@keyframes blink-border {
-  0%, 100% {
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.6);
   }
 }
 .expiry-subtitle {
@@ -1836,7 +1969,7 @@ onUnmounted(() => {
     box-sizing: border-box;
     height: auto;
   }
-  .balance-actions .el-button i {
+  .balance-actions .el-button .el-icon {
     margin-right: 4px;
     font-size: 12px;
   }
@@ -1851,7 +1984,7 @@ onUnmounted(() => {
     box-sizing: border-box;
     max-width: fit-content;
     height: auto;
-    :is(i) {
+    .el-icon {
       margin-right: 4px;
       font-size: 12px;
     }
@@ -1859,7 +1992,7 @@ onUnmounted(() => {
       padding: 6px 12px;
       font-size: 0.75rem;
       margin-left: 0;
-      :is(i) {
+      .el-icon {
         margin-right: 3px;
         font-size: 11px;
       }
@@ -1868,7 +2001,7 @@ onUnmounted(() => {
       padding: 8px 16px;
       font-size: 0.8125rem;
       border-radius: 8px;
-      :is(i) {
+      .el-icon {
         margin-right: 4px;
         font-size: 12px;
       }
@@ -1934,7 +2067,7 @@ onUnmounted(() => {
     box-sizing: border-box;
     max-width: fit-content;
     height: auto;
-    :is(i) {
+    .el-icon {
       margin-right: 4px;
       font-size: 12px;
     }
@@ -1942,7 +2075,7 @@ onUnmounted(() => {
       padding: 6px 12px;
       font-size: 0.75rem;
       margin-left: 0;
-      :is(i) {
+      .el-icon {
         margin-right: 3px;
         font-size: 11px;
       }
@@ -1951,7 +2084,7 @@ onUnmounted(() => {
       padding: 8px 16px;
       font-size: 0.8125rem;
       border-radius: 8px;
-      :is(i) {
+      .el-icon {
         margin-right: 4px;
         font-size: 12px;
       }
@@ -1989,7 +2122,7 @@ onUnmounted(() => {
       box-sizing: border-box;
       max-width: fit-content;
       height: auto;
-      :is(i) {
+      .el-icon {
         margin-right: 3px;
         font-size: 11px;
       }
@@ -2036,7 +2169,7 @@ onUnmounted(() => {
       box-sizing: border-box;
       max-width: fit-content;
       align-self: center;
-      :is(i) {
+      .el-icon {
         margin-right: 4px;
         font-size: 12px;
       }
@@ -2044,33 +2177,6 @@ onUnmounted(() => {
   }
 }
 .recharge-dialog {
-  :deep(.el-dialog__body) {
-    padding: 20px;
-    @media (max-width: 768px) {
-      padding: 16px;
-    }
-  }
-  :deep(.el-dialog) {
-    @media (max-width: 768px) {
-      width: 90% !important;
-      margin: 5vh auto !important;
-      max-width: 400px;
-    }
-    @media (max-width: 480px) {
-      width: 95% !important;
-      margin: 2vh auto !important;
-    }
-  }
-  :deep(.el-dialog__header) {
-    @media (max-width: 768px) {
-      padding: 16px 16px 12px;
-    }
-  }
-  :deep(.el-dialog__title) {
-    @media (max-width: 768px) {
-      font-size: 18px;
-    }
-  }
   :deep(.el-form-item) {
     margin-bottom: 20px;
     @media (max-width: 768px) {
@@ -2117,6 +2223,34 @@ onUnmounted(() => {
         font-size: 16px; /* 防止iOS自动缩放 */
         height: 44px;
       }
+    }
+  }
+  .recharge-amount-input {
+    width: 100%;
+  }
+  :deep(.el-radio-group) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 100%;
+  }
+.recharge-payment-radio {
+  margin: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  touch-action: manipulation;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+
+    &:hover {
+      background-color: #f5f9ff;
+      border-color: #c6e2ff;
+    }
+
+    &.is-checked {
+      background-color: #ecf5ff;
+      border-color: var(--el-color-primary);
     }
   }
   .amount-tips {
@@ -2242,103 +2376,147 @@ onUnmounted(() => {
           font-size: 16px;
         }
       }
-    }
-  }
-  :deep(.el-dialog__footer) {
-    padding: 16px 20px;
-    border-top: 1px solid #e5e7eb;
-    @media (max-width: 768px) {
-      padding: 12px 16px;
-      display: flex;
-      gap: 10px;
-    }
-    .dialog-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      width: 100%;
-      @media (max-width: 768px) {
-        flex-direction: row;
-        gap: 10px;
+      .recharge-alipay-btn {
+        width: 100%;
       }
-    }
-    .el-button {
-      @media (max-width: 768px) {
-        flex: 1;
-        margin: 0;
-        padding: 10px 16px;
-        font-size: 14px;
-        border-radius: 6px;
-      }
-      @media (max-width: 480px) {
-        padding: 12px 16px;
-        font-size: 15px;
+      .btn-leading-icon {
+        margin-right: 5px;
       }
     }
   }
 }
-.main-content {
+.dashboard-main-aside {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+  align-items: start;
+  gap: 14px;
+}
+.section-stack {
+  display: grid;
+  gap: 14px;
+}
+.dashboard-section-card {
+  margin-bottom: 0;
 }
 .card {
-  background: var(--color-bg-card, #fff);
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--color-border, #e5e7eb);
-  margin-bottom: 20px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+  margin-bottom: 14px;
+  overflow: hidden;
 }
 .card-header {
-  padding: 20px 24px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
 }
 .card-title {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   margin: 0;
-  color: var(--color-text, #1f2937);
+  color: #303133;
   display: flex;
   align-items: center;
   gap: 8px;
 }
+.card-sub {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.45;
+}
 .card-body {
-  padding: 20px 24px 24px;
+  padding: 16px;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.notice {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+  color: #606266;
+  background: #f5f7fa;
+  line-height: 1.5;
+}
+.notice.success {
+  border-color: #e1f3d8;
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.notice.danger {
+  border-color: #fde2e2;
+  background: #fef0f0;
+  color: #f56c6c;
+}
+.table-wrapper {
+  overflow-x: auto;
+}
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 14px;
+}
+.dashboard-table th,
+.dashboard-table td {
+  padding: 12px;
+  border-bottom: 1px solid #ebeef5;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.dashboard-table th {
+  background: #f5f7fa;
+  color: #606266;
+  font-weight: 700;
+}
+.dashboard-table tr:last-child td {
+  border-bottom: 0;
 }
 .tutorial-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
 }
 .tutorial-tab {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   font-size: 0.875rem;
   font-weight: 500;
 }
 .tutorial-tab:hover {
-  border-color: #3b82f6;
-  background-color: #f8fafc;
+  border-color: #409eff;
+  background-color: #ecf5ff;
 }
 .tutorial-tab.active {
-  border-color: #3b82f6;
-  background-color: #3b82f6;
+  border-color: #409eff;
+  background-color: #409eff;
   color: white;
 }
 .tutorial-app {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+.tutorial-app:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 .app-info {
   display: flex;
@@ -2359,94 +2537,90 @@ onUnmounted(() => {
 .app-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .subscription-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
   @media (max-width: 768px) {
-    grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-bottom: 16px;
   }
   @media (max-width: 480px) {
-    grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
 }
 .subscription-group {
   display: flex;
+  min-width: 0;
   @media (max-width: 768px) {
     width: 100%;
   }
 }
+.subscription-group .el-button,
+.subscription-group :deep(.el-button) {
+  margin-left: 0;
+  min-height: 44px;
+  touch-action: manipulation;
+}
 .clash-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  border: none;
   width: 100%;
 }
 .shadowrocket-btn {
-  background: linear-gradient(135deg, #f093fb, #f5576c);
-  border: none;
   width: 100%;
 }
 .v2ray-btn {
-  background: linear-gradient(135deg, #4facfe, #00f2fe);
-  border: none;
   width: 100%;
 }
 .universal-btn {
-  background: linear-gradient(135deg, #43e97b, #38f9d7);
-  border: none;
   width: 100%;
 }
 .qr-code-section {
   text-align: center;
-  padding-top: 20px;
-  border-top: 1px solid #e5e7eb;
+  padding: 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #f8fbff;
 }
 .qr-code-container {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 .software-category {
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 .category-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #f0f0f0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #303133;
+  margin: 0 0 12px;
 }
-.category-title :is(i) {
-  color: #667eea;
+.category-title .title-icon {
+  color: #409eff;
 }
 .subscription-urls-section {
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 .section-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #f0f0f0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #303133;
+  margin: 0 0 12px;
 }
-.section-title :is(i) {
-  color: #667eea;
+.section-title .title-icon {
+  color: #409eff;
 }
 .url-display {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  gap: 10px;
 }
 .url-item {
   display: flex;
@@ -2473,8 +2647,8 @@ onUnmounted(() => {
 .copy-btn {
   min-width: 48px !important;
   max-width: 48px !important;
-  height: 28px !important;
-  padding: 4px 6px !important;
+  height: 44px !important;
+  padding: 8px 6px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -2483,8 +2657,9 @@ onUnmounted(() => {
   border-radius: 4px;
   background-color: var(--color-bg-card, #fff) !important;
   border: 1px solid #dcdfe6 !important;
+  touch-action: manipulation !important;
   color: var(--color-text, #000) !important;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   font-size: 11px !important;
   white-space: nowrap;
   overflow: clip;
@@ -2497,7 +2672,7 @@ onUnmounted(() => {
   &:active {
     background-color: #ebedf0 !important;
   }
-  :is(i) {
+  .el-icon {
     font-size: 11px !important;
     color: var(--color-text, #000) !important;
     flex-shrink: 0;
@@ -2518,10 +2693,10 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 12px;
-  border: 2px dashed #e0e0e0;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
 }
 .qr-code {
   width: 200px;
@@ -2530,8 +2705,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: var(--color-bg-card, #fff);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
 }
 .qr-code img {
   width: 100%;
@@ -2546,7 +2721,7 @@ onUnmounted(() => {
   gap: 8px;
   color: #999;
 }
-.qr-placeholder :is(i) {
+.qr-placeholder .el-icon {
   font-size: 48px;
 }
 .qr-tip {
@@ -2556,76 +2731,47 @@ onUnmounted(() => {
   margin: 0;
 }
 .flash-btn {
-  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-  border: none;
   width: 100%;
-  border-radius: 12px;
-  padding: 14px 20px;
+  border-radius: 4px;
+  padding: 10px 14px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
-    &:active {
-      transform: scale(0.98);
-    }
   }
 }
 .mohomo-btn {
-  background: linear-gradient(135deg, #4834d4, #686de0);
-  border: none;
   width: 100%;
-  border-radius: 12px;
-  padding: 14px 20px;
+  border-radius: 4px;
+  padding: 10px 14px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(72, 52, 212, 0.3);
-    &:active {
-      transform: scale(0.98);
-    }
   }
 }
 .clash-verge-btn {
-  background: linear-gradient(135deg, #feca57, #ff9ff3);
-  border: none;
   width: 100%;
-  border-radius: 12px;
-  padding: 14px 20px;
+  border-radius: 4px;
+  padding: 10px 14px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(254, 202, 87, 0.3);
-    &:active {
-      transform: scale(0.98);
-    }
   }
 }
 .hiddify-btn {
-  background: linear-gradient(135deg, #a8edea, #fed6e3);
-  border: none;
   width: 100%;
-  color: #333;
-  border-radius: 12px;
-  padding: 14px 20px;
+  border-radius: 4px;
+  padding: 10px 14px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   @media (max-width: 768px) {
     padding: 16px 20px;
     font-size: 15px;
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(168, 237, 234, 0.3);
-    &:active {
-      transform: scale(0.98);
-    }
   }
 }
 .qr-code img {
@@ -2661,11 +2807,12 @@ onUnmounted(() => {
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #4f46e5;
   font-size: 18px;
 }
 .device-name {
@@ -2684,7 +2831,7 @@ onUnmounted(() => {
   padding: 40px 20px;
   color: var(--color-text-secondary, #9ca3af);
 }
-.no-devices :is(i) {
+.no-devices .el-icon {
   font-size: 3rem;
   margin-bottom: 16px;
   display: block;
@@ -2692,29 +2839,6 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .dashboard-container {
     padding: 0;
-  }
-  .welcome-banner {
-    margin: 0 -12px 12px -12px;
-    border-radius: 0;
-    padding: 16px 12px;
-    .banner-content {
-      flex-direction: column;
-      text-align: center;
-      gap: 8px;
-      .welcome-text {
-        .welcome-title {
-          font-size: 1.25rem;
-          margin-bottom: 4px;
-        }
-        .welcome-subtitle {
-          font-size: 0.8125rem;
-        }
-      }
-      .welcome-icon {
-        font-size: 1.5rem;
-        opacity: 0.2;
-      }
-    }
   }
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -2772,12 +2896,12 @@ onUnmounted(() => {
       .level-card-inner {
         gap: 14px;
       }
-      .level-icon {
-        width: 56px;
-        height: 56px;
-        font-size: 26px;
-        border-radius: 12px;
-      }
+    .level-icon {
+      width: 56px;
+      height: 56px;
+      font-size: 26px;
+      border-radius: 8px;
+    }
       .level-content {
         .level-header {
           margin-bottom: 10px;
@@ -2876,7 +3000,7 @@ onUnmounted(() => {
       }
     }
   }
-  .main-content {
+  .dashboard-main-aside {
     grid-template-columns: 1fr;
     gap: 12px;
     .left-content,
@@ -2890,7 +3014,7 @@ onUnmounted(() => {
       padding: 12px 16px;
       .card-title {
         font-size: 1rem;
-        :is(i) {
+        .title-icon {
           font-size: 16px;
           margin-right: 6px;
         }
@@ -2916,7 +3040,7 @@ onUnmounted(() => {
       font-size: 0.8125rem;
       flex: 0 0 auto; /* 防止压缩 */
       white-space: nowrap;
-      :is(i) {
+      .platform-icon {
         font-size: 14px;
       }
     }
@@ -2928,18 +3052,13 @@ onUnmounted(() => {
     .el-button {
       padding: 14px 12px;
       font-size: 14px;
-      border-radius: 16px;
+      border-radius: 8px;
       font-weight: 600;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background-color 0.2s ease, border-color 0.2s ease;
       white-space: nowrap;
       overflow: clip;
       text-overflow: ellipsis;
-      &:active {
-        transform: scale(0.98);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      }
-      :is(i) {
+      .el-icon {
         font-size: 14px;
         margin-right: 4px;
       }
@@ -2972,12 +3091,12 @@ onUnmounted(() => {
     .copy-btn {
       min-width: 48px !important;
       max-width: 48px !important;
-      height: 28px !important;
-      padding: 4px 6px !important;
+      height: 44px !important;
+      padding: 8px 6px !important;
       font-size: 11px !important;
       flex-shrink: 0 !important;
       gap: 3px !important;
-      :is(i) {
+      .el-icon {
         font-size: 11px !important;
       }
       :is(span) {
@@ -3020,12 +3139,6 @@ onUnmounted(() => {
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 12px;
-  }
-  .welcome-title {
-    font-size: 1.25rem;
-  }
-  .welcome-subtitle {
-    font-size: 0.8125rem;
   }
   .stat-card {
     padding: 16px;
@@ -3125,8 +3238,8 @@ onUnmounted(() => {
     .el-button {
       padding: 12px 10px;
       font-size: 13px;
-      border-radius: 14px;
-      :is(i) {
+      border-radius: 8px;
+      .el-icon {
         font-size: 12px;
         margin-right: 3px;
       }
@@ -3135,13 +3248,13 @@ onUnmounted(() => {
   .url-input-wrapper {
     gap: 6px !important;
     .copy-btn {
-      min-width: 46px !important;
-      max-width: 46px !important;
-      height: 28px !important;
-      padding: 4px 5px !important;
+      min-width: 44px !important;
+      max-width: 44px !important;
+      height: 44px !important;
+      padding: 8px 5px !important;
       font-size: 10px !important;
       gap: 2px !important;
-      :is(i) {
+      .el-icon {
         font-size: 10px !important;
       }
       :is(span) {
@@ -3154,6 +3267,399 @@ onUnmounted(() => {
       width: 140px;
       height: 140px;
     }
+  }
+}
+
+.order-entry-card {
+  margin-bottom: 16px;
+}
+
+.order-entry-list {
+  display: grid;
+  gap: 10px;
+}
+
+.order-entry-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #303133;
+  font-size: 14px;
+}
+
+.device-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #e1f3d8;
+  border-radius: 8px;
+  background: #f0f9eb;
+}
+
+.device-summary-warning {
+  border-color: #faecd8;
+  background: #fdf6ec;
+}
+
+.device-summary-danger {
+  border-color: #fde2e2;
+  background: #fef0f0;
+}
+
+.device-summary-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 20px;
+}
+
+.device-summary-value {
+  color: #303133;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.device-summary-value span {
+  color: #606266;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.device-summary-label {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 13px;
+}
+
+.device-notice {
+  margin-top: 12px;
+}
+
+.device-actions-row {
+  margin-top: 14px;
+}
+
+.device-actions-row .el-button {
+  margin-left: 0;
+}
+
+.compact-order-table .el-button {
+  margin-left: 0;
+}
+
+.level-card {
+  --level-bg-soft: #fff !important;
+  border-width: 1px !important;
+  border-color: #dcdfe6 !important;
+  background: #fff !important;
+  padding: 16px !important;
+}
+
+.level-card::before,
+.level-icon::before {
+  content: none !important;
+  display: none !important;
+}
+
+.level-card .level-name {
+  font-size: 22px !important;
+  letter-spacing: 0 !important;
+}
+
+.level-card .level-discount-tag {
+  border-radius: 4px !important;
+}
+
+.stat-icon,
+.level-icon {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 8px !important;
+  margin-right: 14px !important;
+  background: #ecf5ff !important;
+  border: 1px solid #d9ecff !important;
+  color: #409eff !important;
+  font-size: 20px !important;
+}
+
+.progress-bar {
+  height: 8px !important;
+  border-radius: 4px !important;
+}
+
+.progress-fill {
+  background: #409eff !important;
+  border-radius: 4px !important;
+}
+
+.dashboard-container .stats-grid {
+  align-items: stretch;
+}
+
+.dashboard-container .stat-card {
+  min-height: 80px;
+  align-items: center !important;
+  gap: 14px;
+}
+
+.dashboard-container .stat-card .stat-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.dashboard-container .stat-value,
+.dashboard-container .device-count,
+.dashboard-container .device-limit,
+.dashboard-container .time-number {
+  color: #303133 !important;
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
+
+.dashboard-container .time-unit {
+  color: #303133 !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-container .stat-label {
+  margin: 4px 0 0 !important;
+  color: #909399 !important;
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+
+.dashboard-container .balance-card,
+.dashboard-container .remaining-time-card {
+  justify-content: flex-start !important;
+}
+
+.dashboard-container .balance-card .stat-content,
+.dashboard-container .remaining-time-card .stat-content {
+  display: block !important;
+}
+
+.dashboard-container .remaining-time-value {
+  margin: 0 !important;
+}
+
+.dashboard-container .device-count-wrapper {
+  margin-bottom: 0 !important;
+}
+
+.dashboard-container .level-card .level-discount-tag {
+  margin-top: 6px;
+}
+
+.dashboard-container > .breadcrumb {
+  margin: 0 0 12px !important;
+  color: #606266 !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+.dashboard-container > .page-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  min-height: auto !important;
+  padding: 16px !important;
+  margin: 0 0 14px !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.dashboard-container > .page-header::before,
+.dashboard-container > .page-header::after {
+  display: none !important;
+  content: none !important;
+}
+
+.dashboard-container > .page-header .page-title {
+  min-width: 0 !important;
+  max-width: 720px !important;
+}
+
+.dashboard-container > .page-header .page-title h1 {
+  margin: 0 !important;
+  color: #303133 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+.dashboard-container > .page-header .page-title p {
+  margin: 6px 0 0 !important;
+  color: #606266 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  opacity: 1 !important;
+}
+
+.dashboard-container > .page-header .actions {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  margin: 0 !important;
+}
+
+.dashboard-container > .page-header .actions .el-button {
+  min-width: 86px !important;
+  min-height: 44px !important;
+  margin: 0 !important;
+  border-radius: 4px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+  touch-action: manipulation !important;
+}
+
+.dashboard-container .stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin: 0 0 14px !important;
+}
+
+.dashboard-container .stat-card {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 80px !important;
+  padding: 16px !important;
+  gap: 14px !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  color: #303133 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.dashboard-container .stat-card:hover {
+  background: #fbfdff !important;
+  border-color: #c6e2ff !important;
+  transform: none !important;
+}
+
+.dashboard-container .stat-icon,
+.dashboard-container .level-icon {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: #ecf5ff !important;
+  color: #409eff !important;
+  box-shadow: none !important;
+}
+
+.dashboard-container .stat-value,
+.dashboard-container .level-name,
+.dashboard-container .device-count,
+.dashboard-container .device-separator,
+.dashboard-container .device-limit,
+.dashboard-container .time-number,
+.dashboard-container .time-unit {
+  color: #409eff !important;
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
+
+.dashboard-container .time-unit {
+  margin-left: 4px !important;
+}
+
+.dashboard-container .stat-label {
+  margin: 4px 0 0 !important;
+  color: #909399 !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+.dashboard-container .dashboard-main-aside {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr) !important;
+  gap: 14px !important;
+  align-items: start !important;
+}
+
+.dashboard-container .dashboard-section-card {
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.dashboard-container .card-header {
+  min-height: auto !important;
+  padding: 14px 16px !important;
+  border-bottom: 1px solid #ebeef5 !important;
+  background: #fff !important;
+}
+
+.dashboard-container .card-title {
+  margin: 0 !important;
+  color: #303133 !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+}
+
+.dashboard-container .card-title .title-icon {
+  display: none !important;
+}
+
+.dashboard-container .card-sub {
+  margin: 4px 0 0 !important;
+  color: #909399 !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+@media (max-width: 768px) {
+  .dashboard-container > .page-header {
+    display: grid !important;
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-container > .page-header .actions,
+  .dashboard-container > .page-header .actions .el-button {
+    width: 100% !important;
+  }
+
+  .dashboard-container > .page-header .actions .el-button {
+    min-height: 44px !important;
+  }
+
+  .recharge-payment-radio,
+  .subscription-group .el-button,
+  .subscription-group :deep(.el-button) {
+    min-height: 44px;
+  }
+
+  .dashboard-container .stats-grid,
+  .dashboard-container .dashboard-main-aside {
+    grid-template-columns: 1fr !important;
   }
 }
 </style>

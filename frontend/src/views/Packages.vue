@@ -1,5 +1,23 @@
 <template>
   <div class="list-container packages-container">
+    <div class="breadcrumb">首页 / 套餐购买</div>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>套餐购买</h1>
+      </div>
+      <div class="actions">
+        <router-link to="/dashboard">
+          <el-button type="primary">
+            充值余额
+          </el-button>
+        </router-link>
+        <router-link to="/orders">
+          <el-button>
+            订单记录
+          </el-button>
+        </router-link>
+      </div>
+    </div>
     <!-- 加载状态 -->
     <LoadingState v-if="isLoading" text="正在加载套餐列表..." />
 
@@ -10,41 +28,63 @@
       @retry="loadPackages"
     />
 
-    <!-- 空状态 -->
-    <EmptyState
-      v-else-if="packages.length === 0 && !customPackageEnabled"
-      type="empty"
-      title="暂无可用套餐"
-      description="当前没有可购买的套餐，请稍后再试"
-    />
+    <!-- 空状态：只展示接口返回的真实状态 -->
+    <div v-else-if="packages.length === 0 && !customPackageEnabled" class="packages-empty-design-state">
+      <EmptyState
+        title="暂无可购买套餐"
+        description="当前没有可购买的套餐或自定义套餐配置，管理员上架后会自动显示。"
+      />
+      <div class="button-row empty-package-actions">
+        <router-link to="/orders">
+          <el-button>查看订单</el-button>
+        </router-link>
+        <router-link to="/tickets">
+          <el-button type="primary">联系支持</el-button>
+        </router-link>
+      </div>
+    </div>
 
     <!-- 套餐列表 -->
     <div v-else class="packages-grid">
       <!-- 自定义套餐卡片 -->
-      <el-card
+      <div
         v-if="customPackageEnabled"
         class="package-card custom-package-card"
       >
-        <div class="package-header">
-          <h3 class="package-name">自定义套餐</h3>
-          <div class="custom-badge">灵活配置</div>
-        </div>
-        <div class="package-price">
-          <div style="display: flex; align-items: baseline; gap: 4px;">
-            <span class="currency">¥</span>
-            <span class="amount">{{ customPackageConfig.price_per_device_year }}</span>
-            <span class="period">/设备/年</span>
+        <div class="package-head">
+          <div class="package-title-row">
+            <h3 class="package-name">自定义套餐</h3>
+            <div class="custom-badge">灵活配置</div>
+          </div>
+          <div class="package-price">
+            <div class="price-line">
+              <span class="currency">¥</span>
+              <span class="amount">{{ customPackageConfig.price_per_device_year }}</span>
+              <span class="period">/设备/年</span>
+            </div>
           </div>
         </div>
-        <div class="package-description">
-          <p>根据您的需求自由选择设备数量和购买时长</p>
-        </div>
-        <div class="package-features">
+        <div class="features package-features">
+          <div class="package-description">
+            根据您的需求自由选择设备数量和购买时长
+          </div>
           <ul>
-            <li><i class="el-icon-check"></i>设备数：{{ customPackageConfig.min_devices }}-{{ customPackageConfig.max_devices }}个</li>
-            <li><i class="el-icon-check"></i>最少购买：{{ customPackageConfig.min_months }}个月</li>
-            <li><i class="el-icon-check"></i>购买越久，折扣越多</li>
-            <li><i class="el-icon-check"></i>灵活配置，按需购买</li>
+            <li>
+              <el-icon class="feature-icon"><Check /></el-icon>
+              <span>设备数：{{ customPackageConfig.min_devices }}-{{ customPackageConfig.max_devices }}个</span>
+            </li>
+            <li>
+              <el-icon class="feature-icon"><Check /></el-icon>
+              <span>最少购买：{{ customPackageConfig.min_months }}个月</span>
+            </li>
+            <li>
+              <el-icon class="feature-icon"><Check /></el-icon>
+              <span>购买越久，折扣越多</span>
+            </li>
+            <li>
+              <el-icon class="feature-icon"><Check /></el-icon>
+              <span>灵活配置，按需购买</span>
+            </li>
           </ul>
         </div>
         <div class="package-actions">
@@ -54,54 +94,63 @@
             @click.stop.prevent="openCustomPackageDialog"
             :loading="isProcessing"
             :disabled="isProcessing"
-            style="width: 100%"
+            class="full-width-button"
           >
             {{ isProcessing ? '处理中...' : '自定义购买' }}
           </el-button>
         </div>
-      </el-card>
+      </div>
 
       <!-- 普通套餐卡片 -->
-      <el-card
+      <div
         v-for="pkg in packages"
         :key="pkg.id"
         class="package-card"
         :class="{ 'popular': pkg.is_popular, 'recommended': pkg.is_recommended }"
       >
-        <div class="package-header">
-          <h3 class="package-name">{{ pkg.name }}</h3>
-          <div v-if="pkg.is_popular" class="popular-badge">热门</div>
-          <div v-if="pkg.is_recommended" class="recommended-badge">推荐</div>
-        </div>
-        <div class="package-price">
-          <div v-if="userLevel && levelDiscountRate < 1.0" style="display: flex; flex-direction: column; gap: 4px;">
-            <div style="display: flex; align-items: baseline; gap: 4px;">
-              <span style="text-decoration: line-through; color: #909399; font-size: 14px;">¥{{ pkg.price }}</span>
-              <span class="currency">¥</span>
-              <span class="amount" style="color: #f56c6c;">{{ (pkg.price * levelDiscountRate).toFixed(2) }}</span>
-              <span class="period">/{{ pkg.duration_days }}天</span>
-              <el-tooltip :content="`原价 ¥${pkg.price}，${userLevel.name}等级享 ${(levelDiscountRate * 10).toFixed(1)} 折优惠`" placement="top">
-                <el-icon style="color:#909399;cursor:pointer;font-size:13px;"><QuestionFilled /></el-icon>
-              </el-tooltip>
+        <div class="package-head">
+          <div class="package-title-row">
+            <h3 class="package-name">{{ pkg.name }}</h3>
+            <div class="package-badges">
+              <div v-if="pkg.is_popular" class="popular-badge">热门</div>
+              <div v-if="pkg.is_recommended" class="recommended-badge">推荐</div>
             </div>
-            <el-tag :type="userLevel.color ? 'info' : 'success'" size="small" :style="{ backgroundColor: userLevel.color || '#67c23a', color: '#fff', border: 'none', alignSelf: 'flex-start' }">
-              {{ userLevel.name }} {{ (levelDiscountRate * 10).toFixed(1) }}折
-            </el-tag>
           </div>
-          <div v-else style="display: flex; align-items: baseline; gap: 4px;">
-            <span class="currency">¥</span>
-            <span class="amount">{{ pkg.price }}</span>
-            <span class="period">/{{ pkg.duration_days }}天</span>
+          <div class="package-price">
+            <div v-if="userLevel && levelDiscountRate < 1.0" class="discount-price-stack">
+              <div class="price-line">
+                <span class="original-price">¥{{ pkg.price }}</span>
+                <span class="currency">¥</span>
+                <span class="amount discounted-amount">{{ (pkg.price * levelDiscountRate).toFixed(2) }}</span>
+                <span class="period">/{{ pkg.duration_days }}天</span>
+                <el-tooltip :content="`原价 ¥${pkg.price}，${userLevel.name}等级享 ${(levelDiscountRate * 10).toFixed(1)} 折优惠`" placement="top">
+                  <el-icon class="price-help-icon"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </div>
+              <el-tag
+                :type="userLevel.color ? 'info' : 'success'"
+                size="small"
+                class="level-discount-tag"
+                :style="levelAccentStyle"
+              >
+                {{ userLevel.name }} {{ (levelDiscountRate * 10).toFixed(1) }}折
+              </el-tag>
+            </div>
+            <div v-else class="price-line">
+              <span class="currency">¥</span>
+              <span class="amount">{{ pkg.price }}</span>
+              <span class="period">/{{ pkg.duration_days }}天</span>
+            </div>
           </div>
         </div>
-        <div v-if="pkg.description && pkg.description.trim()" class="package-description">
-          <p>{{ pkg.description }}</p>
-        </div>
-        <div v-else class="package-features">
+        <div class="features package-features">
+          <div v-if="pkg.description && pkg.description.trim()" class="package-description">
+            {{ pkg.description }}
+          </div>
           <ul>
             <li v-for="feature in pkg.features" :key="feature">
-              <i class="el-icon-check"></i>
-              {{ feature }}
+              <el-icon class="feature-icon"><Check /></el-icon>
+              <span>{{ feature }}</span>
             </li>
           </ul>
         </div>
@@ -112,21 +161,20 @@
             @click.stop.prevent="selectPackage(pkg)"
             :loading="isProcessing"
             :disabled="isProcessing || !pkg || !pkg.id"
-            style="width: 100%"
+            class="full-width-button"
           >
             {{ isProcessing ? '处理中...' : '立即购买' }}
           </el-button>
         </div>
-      </el-card>
+      </div>
     </div>
-    <el-dialog
+    <AppDialog
       v-model="purchaseDialogVisible"
       title="确认购买"
-      :width="isMobile ? '95%' : '800px'"
-      :close-on-click-modal="false"
+      width="800px"
+      mobile-width="92%"
+      :loading="isProcessing"
       class="purchase-dialog"
-      :class="{ 'mobile-purchase-dialog': isMobile }"
-      :show-close="true"
     >
       <div class="purchase-confirm-horizontal">
         <div class="purchase-left">
@@ -136,17 +184,17 @@
               <el-descriptions-item label="套餐名称">{{ selectedPackage?.name }}</el-descriptions-item>
               <el-descriptions-item label="套餐单价">
                 <span>¥{{ selectedPackage?.price }}</span>
-                <span style="color: #909399; margin-left: 8px;">/{{ packageType?.type === 'monthly' ? '月' : packageType?.type === 'yearly' ? '年' : packageType?.type === 'half_yearly' ? '半年' : packageType?.type === 'quarterly' ? '季度' : `${selectedPackage?.duration_days || 30}天` }}</span>
+                <span class="period-inline">/{{ packageType?.type === 'monthly' ? '月' : packageType?.type === 'yearly' ? '年' : packageType?.type === 'half_yearly' ? '半年' : packageType?.type === 'quarterly' ? '季度' : `${selectedPackage?.duration_days || 30}天` }}</span>
               </el-descriptions-item>
               <el-descriptions-item label="设备限制">{{ selectedPackage?.device_limit }}个</el-descriptions-item>
             </el-descriptions>
           </div>
-          <div class="duration-selection" style="margin-top: 12px;">
+          <div class="duration-selection purchase-section">
             <h4>购买时长</h4>
             <el-select
               v-model="selectedQuantity"
               @change="handleQuantityChange"
-              style="width: 100%"
+              class="full-width-control"
               :placeholder="durationPlaceholder"
               :size="isMobile ? 'large' : 'default'"
             >
@@ -157,12 +205,12 @@
                 :value="option.value"
               />
             </el-select>
-            <div class="form-hint" style="margin-top: 4px; color: #909399; font-size: 11px;">
+            <div class="form-hint">
               {{ durationHint }}
             </div>
           </div>
-          <div class="coupon-section" style="margin-top: 12px; padding: 12px; background: #f5f7fa; border-radius: 4px">
-            <h4 style="margin-bottom: 8px; font-size: 14px;">优惠券（可选）</h4>
+          <div class="coupon-section purchase-section">
+            <h4>优惠券（可选）</h4>
             <div class="coupon-input-group">
               <el-input
                 v-model="couponCode"
@@ -192,7 +240,7 @@
                 </el-button>
               </div>
             </div>
-            <div v-if="couponInfo" style="margin-top: 8px">
+            <div v-if="couponInfo" class="coupon-feedback">
               <el-alert
                 :title="couponInfo.message"
                 :type="couponInfo.valid ? 'success' : 'error'"
@@ -200,10 +248,10 @@
                 show-icon
                 :effect="'plain'"
               />
-              <div v-if="couponInfo.valid && couponInfo.discount_amount" style="margin-top: 6px; color: #67c23a; font-weight: bold; font-size: 13px;">
+              <div v-if="couponInfo.valid && couponInfo.discount_amount" class="coupon-benefit">
                 优惠金额：¥{{ couponInfo.discount_amount.toFixed(2) }}
               </div>
-              <div v-if="couponInfo.valid && couponInfo.free_days" style="margin-top: 6px; color: #67c23a; font-weight: bold; font-size: 13px;">
+              <div v-if="couponInfo.valid && couponInfo.free_days" class="coupon-benefit">
                 赠送时长：{{ couponInfo.free_days }} 天
               </div>
             </div>
@@ -228,7 +276,7 @@
                     :type="userLevel.color ? 'info' : 'success'"
                     size="small"
                     class="level-tag"
-                    :style="{ backgroundColor: userLevel.color || '#67c23a', color: '#fff', border: 'none' }"
+                    :style="levelAccentStyle"
                   >
                     {{ userLevel.name }} {{ (levelDiscountRate * 10).toFixed(1) }}折
                   </el-tag>
@@ -247,18 +295,18 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-          <div v-if="userLevel && levelDiscountRate < 1.0" class="level-discount-tip" style="margin-top: 12px;">
+          <div v-if="userLevel && levelDiscountRate < 1.0" class="level-discount-tip purchase-section">
             <div class="tip-header">
               <el-icon class="tip-icon"><StarFilled /></el-icon>
               <span class="tip-title">
-                您当前是 <span class="level-name-highlight" :style="{ color: userLevel.color || '#4caf50' }">{{ userLevel.name }}</span>，享受 {{ (levelDiscountRate * 10).toFixed(1) }}折优惠！
+                您当前是 <span class="level-name-highlight" :style="levelAccentStyle">{{ userLevel.name }}</span>，享受 {{ (levelDiscountRate * 10).toFixed(1) }}折优惠！
               </span>
             </div>
             <div class="tip-content">
-              💡 本次购买可节省 ¥{{ calculateLevelDiscount(totalOriginalPrice).toFixed(2) }}，累计消费达到更高等级可享受更多优惠！
+              本次购买可节省 ¥{{ calculateLevelDiscount(totalOriginalPrice).toFixed(2) }}，累计消费达到更高等级可享受更多优惠。
             </div>
           </div>
-          <div v-else-if="!userLevel || levelDiscountRate >= 1.0" class="level-upgrade-tip" style="margin-top: 12px;">
+          <div v-else-if="!userLevel || levelDiscountRate >= 1.0" class="level-upgrade-tip purchase-section">
             <div class="tip-header">
               <el-icon class="tip-icon upgrade-icon"><Promotion /></el-icon>
               <span class="tip-title upgrade-title">
@@ -266,10 +314,10 @@
               </span>
             </div>
             <div class="tip-content upgrade-content">
-              💡 累计消费达到一定金额即可升级会员等级，享受专属折扣优惠。立即购买即可开始累计消费！
+              累计消费达到一定金额即可升级会员等级，享受专属折扣优惠。立即购买即可开始累计消费。
             </div>
           </div>
-          <div class="payment-method-section" style="margin-top: 12px;">
+          <div class="payment-method-section purchase-section">
             <h4 class="payment-section-title">支付方式</h4>
             <div class="balance-info">
               <div class="balance-row">
@@ -277,7 +325,7 @@
                 <span class="balance-amount">¥{{ userBalance.toFixed(2) }}</span>
               </div>
             </div>
-            <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" style="width: 100%">
+            <el-radio-group v-model="paymentMethod" @change="handlePaymentMethodChange" class="full-width-control">
               <el-radio
                 label="balance"
                 :disabled="userBalance < finalAmount"
@@ -321,7 +369,7 @@
                 </div>
               </el-radio>
             </el-radio-group>
-            <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" style="margin-top: 8px; padding: 8px; background: #e1f3d8; border-radius: 4px">
+            <div v-if="paymentMethod === 'balance' && userBalance >= finalAmount" class="balance-payment-alert">
               <el-alert
                 title="将使用余额全额支付"
                 type="success"
@@ -331,21 +379,33 @@
               />
             </div>
           </div>
-          <div class="purchase-actions" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e4e7ed;">
-            <el-button @click="purchaseDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
-            <el-button type="primary" @click="confirmPurchase" :loading="isProcessing" :size="isMobile ? 'large' : 'default'">
-              确认购买
-            </el-button>
-          </div>
         </div>
       </div>
-    </el-dialog>
-    <el-dialog
+      <template #footer>
+        <FormActionBar
+          :loading="isProcessing"
+          cancel-text="取消"
+          submit-text="确认购买"
+          @cancel="purchaseDialogVisible = false"
+          @submit="confirmPurchase"
+        >
+          <template #left>
+            <div class="purchase-footer-summary">
+              <div class="purchase-footer-amount">实付金额 ¥{{ finalAmount.toFixed(2) }}</div>
+              <div class="purchase-footer-meta">
+                {{ durationDisplayText }} / {{ getPaymentMethodDisplayName(paymentMethod) }}
+              </div>
+            </div>
+          </template>
+        </FormActionBar>
+      </template>
+    </AppDialog>
+    <AppDialog
       v-model="paymentQRVisible"
       title="扫码支付"
-      :width="isMobile ? '92%' : '520px'"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
+      width="520px"
+      mobile-width="92%"
+      :loading="isCheckingPayment"
       class="payment-qr-dialog"
     >
       <div class="payment-qr-container">
@@ -384,7 +444,7 @@
                 :src="paymentUrl"
                 frameborder="0"
                 scrolling="auto"
-                style="width: 100%; min-height: 600px; border: none;"
+                class="payment-iframe"
                 @load="onIframeLoad"
               ></iframe>
             </div>
@@ -411,7 +471,6 @@
               size="default"
               class="payment-btn alipay-btn"
               @click="openAlipayApp"
-              style="width: 100%;"
             >
               <el-icon class="btn-icon"><Wallet /></el-icon>
               打开支付宝App
@@ -419,30 +478,45 @@
           </div>
         </div>
       </div>
-    </el-dialog>
-    <el-dialog
+      <template #footer>
+        <FormActionBar
+          :loading="isCheckingPayment"
+          cancel-text="关闭"
+          submit-text="检查支付状态"
+          @cancel="paymentQRVisible = false"
+          @submit="checkPaymentStatus"
+        />
+      </template>
+    </AppDialog>
+    <AppDialog
       v-model="successDialogVisible"
       title="购买成功"
       width="400px"
-      :close-on-click-modal="false"
+      mobile-width="92%"
     >
       <div class="success-message">
         <el-icon class="success-icon"><CircleCheckFilled /></el-icon>
         <h3>恭喜！购买成功</h3>
         <p>您的订阅已激活，可以正常使用了。</p>
-        <div class="success-actions">
-          <el-button type="primary" @click="goToSubscription">查看订阅</el-button>
-          <el-button @click="successDialogVisible = false">关闭</el-button>
-        </div>
       </div>
-    </el-dialog>
+      <template #footer>
+        <FormActionBar
+          :sticky="false"
+          cancel-text="关闭"
+          submit-text="查看订阅"
+          @cancel="successDialogVisible = false"
+          @submit="goToSubscription"
+        />
+      </template>
+    </AppDialog>
 
     <!-- 自定义套餐对话框 -->
-    <el-dialog
+    <AppDialog
       v-model="customPackageDialogVisible"
       title="自定义套餐购买"
-      :width="isMobile ? '95%' : '600px'"
-      :close-on-click-modal="false"
+      width="600px"
+      mobile-width="92%"
+      :loading="isProcessing"
       class="custom-package-dialog"
     >
       <div class="custom-package-form">
@@ -456,7 +530,7 @@
               :step="1"
               @change="handleCustomPackageAmountChange"
               :size="isMobile ? 'large' : 'default'"
-              style="width: 100%"
+              class="full-width-control"
             />
             <div class="form-hint">
               可选范围：{{ customPackageConfig.min_devices }}-{{ customPackageConfig.max_devices }}个设备
@@ -472,7 +546,7 @@
               :step="1"
               @change="handleCustomPackageAmountChange"
               :size="isMobile ? 'large' : 'default'"
-              style="width: 100%"
+              class="full-width-control"
             />
             <div class="form-hint">
               最少购买{{ customPackageConfig.min_months }}个月，最多120个月
@@ -497,7 +571,7 @@
                 验证
               </el-button>
             </div>
-            <div v-if="customCouponInfo" style="margin-top: 8px">
+            <div v-if="customCouponInfo" class="coupon-feedback">
               <el-alert
                 :title="customCouponInfo.message"
                 :type="customCouponInfo.valid ? 'success' : 'error'"
@@ -510,7 +584,7 @@
           <el-divider />
 
           <div class="price-summary-custom">
-            <h4 style="margin: 0 0 12px 0; font-size: 15px; color: #303133;">费用明细</h4>
+            <h4>费用明细</h4>
             <el-descriptions :column="1" border size="small">
               <el-descriptions-item label="单价">
                 ¥{{ customPackageConfig.price_per_device_year }}/设备/年
@@ -545,27 +619,31 @@
       </div>
 
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="customPackageDialogVisible = false" :size="isMobile ? 'large' : 'default'">取消</el-button>
-          <el-button
-            type="primary"
-            @click="confirmCustomPackage"
-            :loading="isProcessing"
-            :disabled="isProcessing"
-            :size="isMobile ? 'large' : 'default'"
-          >
-            确认购买
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="isProcessing"
+          cancel-text="取消"
+          submit-text="确认购买"
+          @cancel="customPackageDialogVisible = false"
+          @submit="confirmCustomPackage"
+        >
+          <template #left>
+            <div class="purchase-footer-summary">
+              <div class="purchase-footer-amount">实付金额 ¥{{ customPackagePrice.finalPrice.toFixed(2) }}</div>
+              <div class="purchase-footer-meta">
+                {{ customPackageForm.devices }}个设备 / {{ customPackageForm.months }}个月
+              </div>
+            </div>
+          </template>
+        </FormActionBar>
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { CircleCheckFilled, Loading, Wallet, CreditCard, Money, StarFilled, Promotion, QuestionFilled } from '@element-plus/icons-vue'
+import { ElMessage } from '@/utils/elementPlusServices'
+import { Check, CircleCheckFilled, Loading, Wallet, CreditCard, StarFilled, Promotion, QuestionFilled, InfoFilled } from '@element-plus/icons-vue'
 import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -573,19 +651,26 @@ import { createQRCodeDataURL } from '@/utils/qrcode'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import ErrorState from '@/components/ErrorState.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import { confirmAction, confirmWarning } from '@/utils/confirmAction'
 export default {
   name: 'Packages',
   components: {
+    Check,
     CircleCheckFilled,
     Loading,
     Wallet,
     CreditCard,
-    Money,
     StarFilled,
     Promotion,
+    QuestionFilled,
+    InfoFilled,
     EmptyState,
     LoadingState,
-    ErrorState
+    ErrorState,
+    AppDialog,
+    FormActionBar
   },
   setup() {
     const router = useRouter()
@@ -646,6 +731,9 @@ export default {
     const userBalance = ref(0)
     const userLevel = ref(null)
     const levelDiscountRate = ref(1.0)
+    const levelAccentStyle = computed(() => ({
+      '--level-accent-color': userLevel.value?.color || '#67c23a'
+    }))
     const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
     const isMobile = computed(() => {
       return windowWidth.value <= 768
@@ -964,7 +1052,7 @@ export default {
               `有效期 ${pkg.duration_days} 天`,
               `支持 ${pkg.device_limit} 个设备`,
               '7×24小时技术支持',
-              '高速稳定节点'
+              '支持常用客户端订阅'
             ],
             is_recommended: pkg.is_recommended === true || pkg.is_recommended === 1 || pkg.is_recommended === '1' || pkg.is_recommended === 'true',
             is_popular: pkg.is_popular === true || pkg.is_popular === 1 || pkg.is_popular === '1' || pkg.is_popular === 'true' || pkg.sort_order === 2
@@ -1254,7 +1342,7 @@ export default {
         } else {
           const errorMsg = order.payment_error || order.note || '支付链接生成失败，订单已自动标记为失败，优惠券和活动占用已释放'
           const orderNo = order.order_no || order.orderNo || '未知'
-          ElMessageBox.confirm(
+          confirmAction(
             `${errorMsg}（订单号：${orderNo}）。您可以重新下单，或前往订单页面查看记录。`,
             '支付链接生成失败',
             {
@@ -1275,22 +1363,21 @@ export default {
           const remainingValue = error.remainingValue || 0
           const errorMessage = error.message || '您当前有高级套餐，无法购买低等级套餐'
           const conversionMessage = `${errorMessage}\n\n` +
-            `📊 折算详情：\n` +
+            `折算详情：\n` +
             `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
             `剩余天数：${remainingDays} 天\n` +
             `可折算金额：¥${remainingValue.toFixed(2)}\n\n` +
-            `📐 折算公式：\n` +
+            `折算公式：\n` +
             `折算金额 = 剩余天数 × (原套餐价格 ÷ 原套餐天数)\n\n` +
-            `⚠️ 重要提示：\n` +
+            `重要提示：\n` +
             `折算后，您的设备和时间都将清零，然后可以购买新套餐。\n` +
             `折算操作不可撤销，请谨慎操作。`
-          ElMessageBox.confirm(
+          confirmWarning(
             conversionMessage,
-            '需要折算套餐',
             {
+              title: '需要折算套餐',
               confirmButtonText: '立即折算',
               cancelButtonText: '取消',
-              type: 'warning',
               distinguishCancelAndClose: true,
               dangerouslyUseHTMLString: false
             }
@@ -1319,14 +1406,15 @@ export default {
                 ElMessage.success(successMessage)
                 await loadUserBalance()
                 purchaseDialogVisible.value = false
-                ElMessageBox.alert(
+                confirmAction(
                   '套餐已折算成余额，您现在可以购买新套餐了。',
                   '折算成功',
                   {
-                    confirmButtonText: '确定',
+                    confirmButtonText: '继续购买',
+                    showCancelButton: false,
                     type: 'success'
                   }
-                )
+                ).catch(() => {})
               } else {
                 ElMessage.error(response.data?.message || '折算失败，请重试')
               }
@@ -1862,6 +1950,7 @@ export default {
       getPaymentMethodDisplayName,
       userLevel,
       levelDiscountRate,
+      levelAccentStyle,
       calculateLevelDiscount,
       getOrderPayAmount,
       selectedQuantity,
@@ -1894,19 +1983,22 @@ export default {
 <style scoped lang="scss">
 .packages-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 30px;
-  margin-top: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 0;
 }
 .package-card {
   position: relative;
-  text-align: center;
-  transition: all 0.3s ease;
-  border: 2px solid transparent;
+  text-align: left;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
 }
 .package-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  background: #fbfdff;
+  border-color: var(--el-color-primary-light-7, #c6e2ff);
 }
 .package-card.popular {
   border-color: #409EFF;
@@ -1914,23 +2006,112 @@ export default {
 .package-card.recommended {
   border-color: #67C23A;
 }
-.package-header {
-  position: relative;
-  margin-bottom: 20px;
+.packages-empty-design-state {
+  display: grid;
+  gap: 14px;
+}
+.empty-package-actions {
+  justify-content: center;
+  margin-top: 14px;
+}
+.grid {
+  display: grid;
+  gap: 14px;
+}
+.grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebeef5;
+  color: #303133;
+  font-weight: 800;
+}
+.dialog-body {
+  padding: 16px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.summary-list {
+  display: grid;
+  gap: 8px;
+}
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ebeef5;
+  color: #606266;
+}
+.summary-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.summary-row strong {
+  color: #303133;
+  text-align: right;
+}
+.item-meta {
+  margin-top: 10px;
+  color: #909399;
+  font-size: 13px;
+}
+.notice {
+  padding: 12px 14px;
+  border: 1px solid #faecd8;
+  border-radius: 6px;
+  background: #fdf6ec;
+  color: #b88230;
+  line-height: 1.55;
+}
+.notice.success {
+  border-color: #e1f3d8;
+  background: #f0f9eb;
+  color: #529b2e;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.package-head {
+  padding: 16px;
+  border-bottom: 1px solid #ebeef5;
+  background: #f8fbff;
+}
+.package-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.package-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .package-name {
   margin: 0;
   color: #303133;
-  font-size: 20px;
-  font-weight: bold;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 .popular-badge,
-.recommended-badge {
-  position: absolute;
-  top: -10px;
-  right: -10px;
+.recommended-badge,
+.custom-badge {
   padding: 4px 8px;
-  border-radius: 12px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: bold;
   color: white;
@@ -1941,8 +2122,53 @@ export default {
 .recommended-badge {
   background: #67C23A;
 }
+.custom-badge {
+  background: #e6a23c;
+}
 .package-price {
-  margin-bottom: 30px;
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+.price-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.discount-price-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.level-discount-tag {
+  align-self: flex-start;
+}
+.level-discount-tag,
+.price-summary .level-tag {
+  --level-accent-color: #67c23a;
+  background-color: var(--level-accent-color) !important;
+  color: #fff !important;
+  border: none !important;
+}
+.original-price {
+  color: #909399;
+  font-size: 14px;
+  text-decoration: line-through;
+}
+.discounted-amount {
+  color: #f56c6c;
+}
+.price-help-icon {
+  color: #909399;
+  cursor: pointer;
+  font-size: 13px;
+}
+.full-width-button,
+.full-width-control {
+  width: 100%;
 }
 .currency {
   font-size: 18px;
@@ -1950,18 +2176,22 @@ export default {
   vertical-align: top;
 }
 .amount {
-  font-size: 36px;
-  font-weight: bold;
+  font-size: 28px;
+  font-weight: 900;
   color: #409EFF;
-  margin: 0 5px;
+  margin: 0 3px;
+  line-height: 1.2;
 }
 .period {
-  font-size: 16px;
+  font-size: 13px;
   color: #909399;
 }
 .package-features {
-  margin-bottom: 30px;
+  padding: 14px 16px;
+  margin-bottom: 0;
   text-align: left;
+  display: grid;
+  gap: 9px;
 }
 .package-features :is(ul) {
   list-style: none;
@@ -1969,18 +2199,25 @@ export default {
   margin: 0;
 }
 .package-features :is(li) {
-  padding: 8px 0;
+  padding: 0;
   color: #606266;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  gap: 10px;
 }
-.package-features :is(li) :is(i) {
+.feature-icon {
+  flex-shrink: 0;
   color: #67C23A;
-  margin-right: 10px;
   font-size: 16px;
+  margin-top: 2px;
+}
+.package-features :is(li) span {
+  min-width: 0;
+  line-height: 1.55;
 }
 .package-actions {
-  margin-bottom: 20px;
+  padding: 0 16px 16px;
+  margin-bottom: 0;
 }
 .package-actions .el-button {
   cursor: pointer;
@@ -1995,8 +2232,6 @@ export default {
   display: flex;
   gap: 16px;
   padding: 10px 0;
-  max-height: calc(80vh - 120px);
-  overflow-y: auto;
 }
 .purchase-left {
   flex: 1;
@@ -2009,30 +2244,68 @@ export default {
 .purchase-confirm {
   padding: 10px 0;
 }
+.purchase-footer-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.purchase-footer-amount {
+  color: #303133;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.purchase-footer-meta {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.purchase-section {
+  margin-top: 12px;
+}
 .package-summary :is(h4),
 .duration-selection :is(h4),
 .price-summary :is(h4),
-.payment-section-title {
+.payment-section-title,
+.coupon-section :is(h4),
+.price-summary-custom :is(h4) {
   margin-bottom: 8px;
   margin-top: 0;
   color: #303133;
   font-size: 14px;
   font-weight: 600;
 }
+.period-inline {
+  color: #909399;
+  margin-left: 8px;
+}
+.form-hint {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.coupon-section {
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.coupon-feedback {
+  margin-top: 8px;
+}
+.coupon-benefit {
+  margin-top: 6px;
+  color: #67c23a;
+  font-size: 13px;
+  font-weight: 700;
+}
 .amount {
   color: #f56c6c;
   font-weight: bold;
-}
-.purchase-actions {
-  text-align: center;
-  margin-top: 12px;
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-.purchase-actions .el-button {
-  margin: 0;
-  min-width: 100px;
 }
 .success-message {
   text-align: center;
@@ -2051,12 +2324,6 @@ export default {
   margin-bottom: 20px;
   color: #606266;
 }
-.success-actions {
-  margin-top: 20px;
-}
-.success-actions .el-button {
-  margin: 0 10px;
-}
 .package-description {
   margin: 15px 0;
   padding: 10px;
@@ -2070,23 +2337,12 @@ export default {
   font-size: 14px;
   line-height: 1.5;
 }
-.purchase-dialog {
-  :deep(.el-dialog) {
-    margin: 3vh auto !important;
-    max-height: 92vh;
-    overflow-y: auto;
-  }
-  :deep(.el-dialog__body) {
-    padding: 12px 20px !important;
-    max-height: calc(92vh - 100px);
-    overflow-y: auto;
-  }
-}
 .level-discount-tip {
   margin-top: 0;
   padding: 10px;
-  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  background: #f0fdf4;
   border-radius: 4px;
+  border: 1px solid #bbf7d0;
   border-left: 3px solid #4caf50;
 }
 .level-discount-tip .tip-header {
@@ -2107,6 +2363,7 @@ export default {
   line-height: 1.4;
 }
 .level-discount-tip .level-name-highlight {
+  color: var(--level-accent-color, #67c23a);
   font-weight: bold;
 }
 .level-discount-tip .tip-content {
@@ -2118,8 +2375,9 @@ export default {
 .level-upgrade-tip {
   margin-top: 0;
   padding: 10px;
-  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  background: #fffbeb;
   border-radius: 4px;
+  border: 1px solid #fde68a;
   border-left: 3px solid #ff9800;
 }
 .level-upgrade-tip .tip-header {
@@ -2181,7 +2439,7 @@ export default {
   padding: 10px;
   border: 1px solid #e4e7ed;
   border-radius: 6px;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   &:hover {
     border-color: #409eff;
     background-color: #f0f9ff;
@@ -2253,6 +2511,12 @@ export default {
   color: #409eff;
   font-weight: 700;
 }
+.balance-payment-alert {
+  margin-top: 8px;
+  padding: 8px;
+  background: #e1f3d8;
+  border-radius: 4px;
+}
 .coupon-input-group {
   display: flex;
   gap: 10px;
@@ -2268,35 +2532,37 @@ export default {
   gap: 8px;
   flex-shrink: 0;
 }
+.payment-iframe {
+  width: 100%;
+  min-height: 600px;
+  border: none;
+}
+.payment-btn {
+  width: 100%;
+}
 @media (max-width: 768px) {
-  .purchase-dialog {
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 1vh auto !important;
-      max-height: 98vh;
-    }
-    :deep(.el-dialog__header) {
-      padding: 12px 12px 8px 12px;
-    }
-    :deep(.el-dialog__title) {
-      font-size: 15px;
-      font-weight: 600;
-    }
-    :deep(.el-dialog__body) {
-      padding: 8px 12px 12px 12px !important;
-      max-height: calc(98vh - 70px);
-      overflow-y: auto;
-    }
+  .grid.cols-2,
+  .form-row {
+    grid-template-columns: 1fr;
   }
+
   .purchase-confirm-horizontal {
     flex-direction: column;
     gap: 10px;
     padding: 0;
-    max-height: calc(98vh - 100px);
   }
   .purchase-left,
   .purchase-right {
     width: 100%;
+  }
+  .purchase-footer-summary {
+    gap: 4px;
+  }
+  .purchase-footer-amount {
+    font-size: 16px;
+  }
+  .purchase-footer-meta {
+    white-space: normal;
   }
   .package-summary :is(h4),
   .duration-selection :is(h4),
@@ -2345,14 +2611,16 @@ export default {
   }
   .coupon-buttons .el-button {
     flex: 1;
-    min-height: 40px;
+    min-height: 44px;
     font-size: 14px;
+    touch-action: manipulation;
   }
   .duration-selection {
     margin-top: 10px !important;
     :deep(.el-select) {
       .el-input__wrapper {
-        min-height: 40px;
+        min-height: 44px;
+        touch-action: manipulation;
       }
       .el-input__inner {
         font-size: 14px;
@@ -2438,20 +2706,6 @@ export default {
       font-size: 14px;
     }
   }
-  .purchase-actions {
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    margin-top: 10px !important;
-    padding-top: 10px !important;
-  }
-  .purchase-actions .el-button {
-    flex: 1;
-    min-height: 44px;
-    font-size: 15px;
-    font-weight: 600;
-    margin: 0 !important;
-  }
   .price-summary {
     .final-amount {
       font-size: 18px;
@@ -2479,15 +2733,12 @@ export default {
   }
   .package-card {
     margin: 0;
-    border-radius: 12px;
-    :deep(.el-card__body) {
+    border-radius: 8px;
+    .package-head {
       padding: 16px;
-    }
-    .package-header {
-      margin-bottom: 16px;
       .package-name {
         font-size: 18px;
-        font-weight: 600;
+        font-weight: 700;
       }
     }
     .package-price {
@@ -2506,7 +2757,7 @@ export default {
       margin-bottom: 16px;
       text-align: left;
       ul {
-        padding-left: 20px;
+        padding-left: 0;
         li {
           font-size: 14px;
           line-height: 1.8;
@@ -2542,15 +2793,12 @@ export default {
   }
   .package-card {
     margin: 0;
-    border-radius: 12px;
-    :deep(.el-card__body) {
-      padding: 20px 16px;
-    }
-    .package-header {
+    border-radius: 8px;
+    .package-head {
       flex-direction: column;
       align-items: flex-start;
       gap: 12px;
-      margin-bottom: 16px;
+      padding: 16px;
       .package-name {
         font-size: 1.25rem;
         margin: 0;
@@ -2579,9 +2827,9 @@ export default {
         :is(li) {
           padding: 8px 0;
           font-size: 0.875rem;
-          :is(i) {
+          .feature-icon {
             font-size: 14px;
-            margin-right: 8px;
+            margin-top: 3px;
           }
         }
       }
@@ -2610,9 +2858,9 @@ export default {
   }
 }
 :deep(.el-input__wrapper) {
-  
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
+  border-radius: 6px !important;
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
@@ -2625,12 +2873,12 @@ export default {
 }
 :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 1px rgba(192, 196, 204, 0.2) !important;
   background-color: #ffffff !important;
 }
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
   background-color: #ffffff !important;
 }
 :deep(.el-input__wrapper.is-focus:hover) {
@@ -2641,8 +2889,8 @@ export default {
   background: transparent !important;
 }
 :deep(.el-textarea__inner) {
-  
   border: 1px solid #dcdfe6 !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
@@ -2651,7 +2899,7 @@ export default {
 }
 :deep(.el-textarea__inner:focus) {
   border-color: #1677ff !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
 }
 .coupon-section {
   position: relative;
@@ -2721,32 +2969,6 @@ export default {
 .coupon-input :deep(.el-input__inner) {
   pointer-events: auto !important;
 }
-.payment-qr-dialog {
-  :deep(.el-dialog) {
-    border-radius: 24px;
-    overflow: hidden;
-    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
-  }
-  :deep(.el-dialog__header) {
-    padding: 22px 24px 12px;
-    border-bottom: 1px solid rgba(37, 99, 235, 0.08);
-  }
-  :deep(.el-dialog__title) {
-    font-size: 24px;
-    font-weight: 700;
-    color: #0f172a;
-    letter-spacing: 0.02em;
-  }
-  :deep(.el-dialog__headerbtn) {
-    top: 22px;
-    right: 20px;
-  }
-  :deep(.el-dialog__body) {
-    padding: 0 24px 24px;
-  }
-}
-
 .payment-qr-container {
   display: flex;
   flex-direction: column;
@@ -2755,8 +2977,8 @@ export default {
 
 .payment-summary-card {
   padding: 18px 20px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border-radius: 8px;
+  background: #f8fbff;
   border: 1px solid rgba(59, 130, 246, 0.14);
 }
 
@@ -2822,10 +3044,9 @@ export default {
 
 .qr-panel {
   padding: 20px;
-  border-radius: 24px;
+  border-radius: 8px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .qr-panel-header {
@@ -2859,10 +3080,9 @@ export default {
 .qr-loading {
   width: 280px;
   min-height: 280px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 8px;
+  background: #ffffff;
   border: 1px solid #dbeafe;
-  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2872,7 +3092,7 @@ export default {
   width: 232px;
   height: 232px;
   display: block;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -2886,10 +3106,9 @@ export default {
   width: 100%;
   min-height: 600px;
   border: 1px solid #dbeafe;
-  border-radius: 20px;
+  border-radius: 8px;
   overflow: hidden;
   background: #fff;
-  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
 }
 
 .payment-page-iframe iframe {
@@ -2924,7 +3143,7 @@ export default {
 
 .alipay-btn {
   height: 46px;
-  border-radius: 14px;
+  border-radius: 8px;
   font-weight: 600;
 }
 
@@ -2933,27 +3152,10 @@ export default {
 }
 
 @media (max-width: 768px) {
-  .payment-qr-dialog {
-    :deep(.el-dialog) {
-      width: 92% !important;
-      margin: 5vh auto !important;
-      border-radius: 20px;
-    }
-    :deep(.el-dialog__header) {
-      padding: 18px 18px 10px;
-    }
-    :deep(.el-dialog__title) {
-      font-size: 20px;
-    }
-    :deep(.el-dialog__body) {
-      padding: 0 18px 18px;
-    }
-  }
-
   .payment-summary-card,
   .qr-panel {
     padding: 16px;
-    border-radius: 18px;
+    border-radius: 8px;
   }
 
   .summary-header,
@@ -2993,12 +3195,12 @@ export default {
 
 /* 自定义套餐卡片样式 */
 .packages-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .custom-package-card {
   border: 2px solid #67c23a !important;
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  background: #f0fdf4;
   position: relative;
 }
 
@@ -3006,13 +3208,12 @@ export default {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+  background: #67c23a;
   color: white;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: bold;
-  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
   z-index: 1;
 }
 
@@ -3074,10 +3275,6 @@ export default {
 }
 
 .custom-package-dialog {
-  :deep(.el-dialog__body) {
-    padding: 20px;
-  }
-
   :deep(.el-form-item__label) {
     font-weight: 600;
     color: #303133;
@@ -3094,7 +3291,7 @@ export default {
 
 @media (max-width: 768px) {
   .packages-container {
-    padding: 12px;
+    padding: 0;
   }
 
   .packages-grid {
@@ -3103,13 +3300,10 @@ export default {
   }
 
   .custom-package-card {
-    .package-header {
-      padding-right: 100px;
-      margin-bottom: 16px;
-
+    .package-head {
       .package-name {
         font-size: 18px;
-        font-weight: 600;
+        font-weight: 700;
         margin: 0;
       }
     }
@@ -3182,59 +3376,6 @@ export default {
   }
 
   .custom-package-dialog {
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 2vh auto !important;
-      max-height: 96vh;
-      border-radius: 12px;
-    }
-
-    :deep(.el-dialog__header) {
-      padding: 16px 20px 12px;
-      border-bottom: 1px solid #ebeef5;
-
-      .el-dialog__title {
-        font-size: 18px;
-        font-weight: 600;
-      }
-
-      .el-dialog__headerbtn {
-        top: 12px;
-        right: 12px;
-        width: 36px;
-        height: 36px;
-
-        .el-dialog__close {
-          font-size: 20px;
-        }
-      }
-    }
-
-    :deep(.el-dialog__body) {
-      padding: 16px 20px !important;
-      max-height: calc(96vh - 140px);
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    :deep(.el-dialog__footer) {
-      padding: 12px 20px 16px;
-      border-top: 1px solid #ebeef5;
-
-      .dialog-footer {
-        display: flex;
-        gap: 10px;
-
-        .el-button {
-          flex: 1;
-          height: 44px;
-          font-size: 16px;
-          font-weight: 500;
-          border-radius: 8px;
-        }
-      }
-    }
-
     :deep(.el-form) {
       .el-form-item {
         margin-bottom: 20px;
@@ -3366,5 +3507,18 @@ export default {
       }
     }
   }
+}
+
+.payment-summary-card,
+.qr-panel,
+.package-summary,
+.price-summary,
+.price-summary-custom,
+.payment-method-section,
+.custom-package-form {
+  border-radius: 8px !important;
+  background: #fff !important;
+  border: 1px solid #dcdfe6 !important;
+  box-shadow: none !important;
 }
 </style>

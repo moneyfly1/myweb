@@ -180,6 +180,24 @@ export function getTicketStatusType(status) {
 }
 
 /**
+ * 获取工单优先级文本
+ * @param {string} priority - 优先级值
+ * @returns {string} 优先级文本
+ */
+export function getTicketPriorityText(priority) {
+  return getStatusText(priority, TICKET_PRIORITY_MAP)
+}
+
+/**
+ * 获取工单优先级类型
+ * @param {string} priority - 优先级值
+ * @returns {string} 优先级类型
+ */
+export function getTicketPriorityType(priority) {
+  return getStatusType(priority, TICKET_PRIORITY_MAP)
+}
+
+/**
  * 获取节点状态文本
  * @param {string} status - 状态值
  * @returns {string} 状态文本

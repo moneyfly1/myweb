@@ -113,7 +113,7 @@
                     <span class="index-badge" v-if="!isMobile">{{ index + 1 }}</span>
                     <el-icon><User /></el-icon>
                     <span>手动节点</span>
-                    <el-tag size="small" type="warning" style="margin-left: 8px;">固定</el-tag>
+                    <el-tag size="small" type="warning" class="fixed-tag">固定</el-tag>
                   </div>
                 </template>
                 <template v-else>
@@ -275,7 +275,7 @@
 
     <!-- 移动端底部固定保存按钮 -->
     <div class="mobile-save-bar mobile-only">
-      <el-button type="primary" @click="saveConfig" :loading="loading.save" size="large" style="width: 100%;">
+      <el-button type="primary" @click="saveConfig" :loading="loading.save" size="large" class="mobile-save-btn">
         <el-icon><Check /></el-icon>
         <span>保存配置</span>
       </el-button>
@@ -285,13 +285,15 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import {
   VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
   Connection, Filter, Warning, Document, Rank, Monitor, User
 } from '@element-plus/icons-vue'
 import { configUpdateAPI } from '@/utils/api'
+import { useMobile } from '@/composables/useMobile'
+import { confirmClear } from '@/utils/confirmAction'
 import Sortable from 'sortablejs'
 
 export default {
@@ -319,7 +321,7 @@ export default {
     const intervalValue = ref(1)
     const logs = ref([])
     const isLogPolling = ref(false)
-    const isMobile = ref(false)
+    const isMobile = useMobile()
     
     const urlListRef = ref(null)
     const logViewerRef = ref(null)
@@ -333,10 +335,6 @@ export default {
     const MANUAL_NODE_UID = '__manual_node__'
 
     const realUrlCount = computed(() => config.urls.filter(item => !item.isManual).length)
-
-    const checkMobile = () => {
-      isMobile.value = window.innerWidth <= 768
-    }
 
     const generateUid = () => {
       return Date.now().toString(36) + Math.random().toString(36).substring(2)
@@ -614,7 +612,10 @@ export default {
 
     const clearLogs = async () => {
       try {
-        await ElMessageBox.confirm('确定清空日志吗？', '提示', { type: 'warning' })
+        await confirmClear('日志', {
+          title: '提示',
+          confirmButtonText: '确认清空'
+        })
         const response = await configUpdateAPI.clearLogs()
         if (response.data.success) {
           logs.value = []
@@ -649,9 +650,6 @@ export default {
 
     // ========== 生命周期 ==========
     onMounted(async () => {
-      checkMobile()
-      window.addEventListener('resize', checkMobile)
-      
       // 并发加载配置、状态和日志，提高页面加载速度
       await Promise.all([
         getConfig(),
@@ -688,9 +686,6 @@ export default {
         sortableInstance = null
       }
     })
-    
-    onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
-
 
     return {
       status, config, logs, loading, isLogPolling, isMobile, realUrlCount,
@@ -770,9 +765,9 @@ $primary-color: #409eff;
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
     @media (max-width: $mobile-break) { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .grid-btn {
-      height: auto; padding: 10px 8px; width: 100%; border-radius: 6px; transition: all 0.2s;
+      height: auto; padding: 10px 8px; width: 100%; border-radius: 6px; transition: background-color 0.2s, border-color 0.2s;
       .btn-content { display: flex; flex-direction: column; align-items: center; gap: 4px; span { font-size: 12px; font-weight: 500; } }
-      &:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+      &:hover { background: #fbfdff; border-color: var(--el-color-primary-light-7); }
       @media (max-width: $mobile-break) { padding: 8px 6px; margin: 0; .btn-content span { font-size: 11px; } }
     }
   }
@@ -800,7 +795,7 @@ $primary-color: #409eff;
     }
   }
   
-  .add-item-btn { width: 100%; border-style: dashed; margin-top: 4px; height: 40px; }
+  .add-item-btn { width: 100%; border-style: dashed; margin-top: 4px; min-height: 44px; touch-action: manipulation; }
 
   /* 新增：过滤关键词网格布局 */
   .keyword-grid {
@@ -832,8 +827,8 @@ $primary-color: #409eff;
     .interval-inputs {
       flex: 1; display: flex; min-width: 0;
       .unit-select, .value-input { flex: 1; min-width: 0; }
-      .unit-select { :deep(.el-input), :deep(.el-input__wrapper) { height: 36px !important; min-height: 36px !important; } :deep(.el-input__wrapper) { border: none !important; border-radius: 0 !important; border-right: 1px solid #ebeef5; box-shadow: none !important; background: transparent !important; } :deep(.el-input__inner) { border: none !important; box-shadow: none !important; } }
-      .value-input { :deep(.el-input-number), :deep(.el-input), :deep(.el-input__wrapper) { height: 36px !important; min-height: 36px !important; } :deep(.el-input__wrapper) { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; } :deep(.el-input__inner) { height: 34px; line-height: 34px; border: none !important; box-shadow: none !important; } :deep(.el-input-number__decrease), :deep(.el-input-number__increase) { border-radius: 0 !important; } }
+      .unit-select { :deep(.el-input), :deep(.el-input__wrapper) { height: 44px !important; min-height: 44px !important; } :deep(.el-input__wrapper) { border: none !important; border-radius: 0 !important; border-right: 1px solid #ebeef5; box-shadow: none !important; background: transparent !important; touch-action: manipulation; } :deep(.el-input__inner) { border: none !important; box-shadow: none !important; } }
+      .value-input { :deep(.el-input-number), :deep(.el-input), :deep(.el-input__wrapper) { height: 44px !important; min-height: 44px !important; } :deep(.el-input__wrapper) { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; touch-action: manipulation; } :deep(.el-input__inner) { height: 42px; line-height: 42px; border: none !important; box-shadow: none !important; } :deep(.el-input-number__decrease), :deep(.el-input-number__increase) { border-radius: 0 !important; touch-action: manipulation; } }
     }
     .desc-text { font-size: 12px; color: #909399; margin-top: 8px; padding-left: 2px; }
     
@@ -843,7 +838,7 @@ $primary-color: #409eff;
       .switch-item { justify-content: space-between; }
       .schedule-divider { display: none; }
       .interval-item { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 14px; .schedule-label { margin-bottom: 0; } }
-      .interval-inputs { .unit-select, .value-input { :deep(.el-input__wrapper) { height: 40px !important; min-height: 40px !important; } } .value-input { :deep(.el-input__inner) { height: 38px; line-height: 38px; } :deep(.el-input-number__decrease), :deep(.el-input-number__increase) { border-radius: 0 !important; } } }
+      .interval-inputs { .unit-select, .value-input { :deep(.el-input__wrapper) { height: 44px !important; min-height: 44px !important; } } .value-input { :deep(.el-input__inner) { height: 42px; line-height: 42px; } :deep(.el-input-number__decrease), :deep(.el-input-number__increase) { border-radius: 0 !important; touch-action: manipulation; } } }
     }
   }
   .mini-alert { margin-bottom: 12px; padding: 8px 16px; }
@@ -942,6 +937,7 @@ $primary-color: #409eff;
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px;
     font-size: 14px; color: #e6a23c; font-weight: 500;
     .index-badge { color: #909399; font-size: 12px; margin-right: 4px; font-weight: 600; }
+    .fixed-tag { margin-left: 8px; }
   }
   .placeholder-btn { width: 44px; flex-shrink: 0; }
 }
@@ -959,7 +955,11 @@ $primary-color: #409eff;
   right: 0;
   padding: 12px 16px;
   background: #fff;
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--el-border-color-lighter);
   z-index: 999;
+
+  .mobile-save-btn {
+    width: 100%;
+  }
 }
 </style>

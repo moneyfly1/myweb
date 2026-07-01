@@ -30,12 +30,10 @@
             </el-select>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="handleSearch">
-              <i class="el-icon-search"></i>
+            <el-button type="primary" @click="handleSearch" :icon="Search">
               搜索
             </el-button>
-            <el-button @click="resetSearch">
-              <i class="el-icon-refresh"></i>
+            <el-button @click="resetSearch" :icon="Refresh">
               重置
             </el-button>
           </el-form-item>
@@ -81,148 +79,132 @@
           </el-button>
         </div>
       </div>
-      <div class="table-wrapper desktop-only">
-        <el-table
-          :data="packages"
-          v-loading="loading"
-          style="width: 100%"
-          stripe
-          border
-        >
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="name" label="套餐名称" />
-        <el-table-column prop="price" label="价格">
-          <template #default="{ row }">
-            ¥{{ row.price }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="duration_days" label="时长">
-          <template #default="{ row }">
-            {{ row.duration_days }} 天
-          </template>
-        </el-table-column>
-        <el-table-column prop="device_limit" label="设备限制" />
-        <el-table-column prop="is_recommended" label="推荐">
-          <template #default="{ row }">
-            <el-tag :type="row.is_recommended ? 'success' : 'info'">
-              {{ row.is_recommended ? '是' : '否' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="is_active" label="状态">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'danger'">
-              {{ row.is_active ? '启用' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button
-                type="primary"
-                size="small"
-                @click="editPackage(row)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                type="danger"
-                size="small"
-                @click="deletePackage(row.id)"
-              >
-                删除
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-      </div>
-      <div class="mobile-card-list" v-if="packages.length > 0 && isMobile">
-        <div 
-          v-for="pkg in packages" 
-          :key="pkg.id"
-          class="mobile-card"
-        >
-          <div class="card-row">
-            <span class="label">ID</span>
-            <span class="value">#{{ pkg.id }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">套餐名称</span>
-            <span class="value">{{ pkg.name }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">价格</span>
-            <span class="value">¥{{ pkg.price }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">时长</span>
-            <span class="value">{{ pkg.duration_days }} 天</span>
-          </div>
-          <div class="card-row">
-            <span class="label">设备限制</span>
-            <span class="value">{{ pkg.device_limit }}</span>
-          </div>
-          <div class="card-row">
-            <span class="label">推荐</span>
-            <span class="value">
-              <el-tag :type="pkg.is_recommended ? 'success' : 'info'">
-                {{ pkg.is_recommended ? '是' : '否' }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="card-row">
-            <span class="label">状态</span>
-            <span class="value">
-              <el-tag :type="pkg.is_active ? 'success' : 'danger'">
-                {{ pkg.is_active ? '启用' : '禁用' }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="card-actions">
-            <el-button
-              type="primary"
-              @click="editPackage(pkg)"
-              class="mobile-action-btn"
+      <ResponsiveDataView
+        :data="packages"
+        :fields="mobilePackageFields"
+        :loading="loading"
+        title-field="name"
+        empty-title="暂无套餐数据"
+        empty-description="可添加新套餐或调整筛选条件"
+      >
+        <template #table>
+          <div class="table-wrapper">
+            <el-table
+              :data="packages"
+              v-loading="loading"
+              class="packages-table"
+              stripe
+              border
             >
-              编辑
-            </el-button>
-            <el-button
-              type="danger"
-              @click="deletePackage(pkg.id)"
-              class="mobile-action-btn"
-            >
-              删除
-            </el-button>
+              <template #empty>
+                <EmptyState
+                  title="暂无套餐数据"
+                  description="可添加新套餐或调整筛选条件"
+                  action-text="添加套餐"
+                  :loading="loading"
+                  @action="showAddDialog"
+                />
+              </template>
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="name" label="套餐名称" />
+              <el-table-column prop="price" label="价格">
+                <template #default="{ row }">
+                  ¥{{ row.price }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="duration_days" label="时长">
+                <template #default="{ row }">
+                  {{ row.duration_days }} 天
+                </template>
+              </el-table-column>
+              <el-table-column prop="device_limit" label="设备限制" />
+              <el-table-column prop="is_recommended" label="推荐">
+                <template #default="{ row }">
+                  <el-tag :type="row.is_recommended ? 'success' : 'info'">
+                    {{ row.is_recommended ? '是' : '否' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="is_active" label="状态">
+                <template #default="{ row }">
+                  <el-tag :type="row.is_active ? 'success' : 'danger'">
+                    {{ row.is_active ? '启用' : '禁用' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
+                <template #default="{ row }">
+                  <div class="action-buttons">
+                    <el-button
+                      type="primary"
+                      size="small"
+                      @click="editPackage(row)"
+                    >
+                      编辑
+                    </el-button>
+                    <el-button
+                      type="danger"
+                      size="small"
+                      @click="deletePackage(row.id)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
-        </div>
-      </div>
-      <div class="mobile-card-list" v-if="packages.length === 0 && !loading && isMobile">
-        <div class="empty-state">
-          <i class="el-icon-goods"></i>
-          <p>暂无套餐数据</p>
-        </div>
-      </div>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.size"
-          :total="pagination.total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+        </template>
+        <template #header="{ item }">
+          <div class="mobile-package-header">
+            <span>{{ item.name }}</span>
+            <el-tag :type="item.is_active ? 'success' : 'danger'" size="small">
+              {{ item.is_active ? '启用' : '禁用' }}
+            </el-tag>
+          </div>
+        </template>
+        <template #empty>
+          <EmptyState
+            title="暂无套餐数据"
+            description="可添加新套餐或调整筛选条件"
+            action-text="添加套餐"
+            :loading="loading"
+            @action="showAddDialog"
+          />
+        </template>
+        <template #actions="{ item }">
+          <el-button
+            type="primary"
+            size="small"
+            @click="editPackage(item)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            type="danger"
+            size="small"
+            @click="deletePackage(item.id)"
+          >
+            删除
+          </el-button>
+        </template>
+      </ResponsiveDataView>
+      <PaginationBar
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.size"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="pagination.total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="dialogVisible"
       :title="isEdit ? '编辑套餐' : '添加套餐'"
-      :size="isMobile ? '92%' : '500px'"
-      direction="rtl"
-      :class="{ 'mobile-dialog': isMobile }"
-      :lock-scroll="false"
+      size="500px"
+      mobile-size="100%"
+      :loading="submitLoading"
+      class="package-drawer"
     >
       <el-form
         ref="formRef"
@@ -248,7 +230,7 @@
             :step="0.01"
             placeholder="请输入价格"
             @change="autoGenerateDescription"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="时长(天)" prop="duration_days">
@@ -261,7 +243,7 @@
             :precision="0"
             placeholder="请输入时长"
             @change="autoGenerateDescription"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="设备限制" prop="device_limit">
@@ -274,7 +256,7 @@
             :precision="0"
             placeholder="请输入设备限制（0表示不限制）"
             @change="autoGenerateDescription"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
         <el-form-item label="推荐套餐" prop="is_recommended">
@@ -287,7 +269,7 @@
           <template v-if="isMobile">
             <div class="mobile-label">状态 <span class="required">*</span></div>
           </template>
-          <el-select v-model="form.is_active" placeholder="选择状态" style="width: 100%">
+          <el-select v-model="form.is_active" placeholder="选择状态" class="full-width-control">
             <el-option label="启用" :value="true" />
             <el-option label="禁用" :value="false" />
           </el-select>
@@ -303,34 +285,31 @@
             placeholder="自动生成描述，或手动输入自定义描述"
             @input="handleDescriptionInput"
           />
-          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+          <div class="form-tip">
             <span v-if="!isDescriptionManuallyEdited">描述将根据价格、时长、设备数量自动生成</span>
             <span v-else>已手动编辑，将使用您输入的描述</span>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
-          <el-button @click="dialogVisible = false" :class="{ 'mobile-action-btn': isMobile }">取消</el-button>
-          <el-button
-            type="primary"
-            @click="handleSubmit"
-            :loading="submitLoading"
-            :class="{ 'mobile-action-btn': isMobile }">
-            {{ isEdit ? '更新' : '添加' }}
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="submitLoading"
+          :submit-text="isEdit ? '更新' : '添加'"
+          :sticky="false"
+          @cancel="dialogVisible = false"
+          @submit="handleSubmit"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
 
     <!-- 自定义套餐设置对话框 -->
-    <el-drawer
+    <AppDrawer
       v-model="customPackageDialogVisible"
       title="自定义套餐设置"
-      :size="isMobile ? '95%' : '600px'"
-      direction="rtl"
-      :class="{ 'mobile-dialog': isMobile }"
-      :lock-scroll="false"
+      size="600px"
+      mobile-size="100%"
+      :loading="customPackageLoading"
+      class="package-drawer custom-package-drawer"
     >
       <el-form
         ref="customPackageFormRef"
@@ -357,7 +336,7 @@
             :step="1"
             placeholder="例如: 40.00"
             :size="isMobile ? 'large' : 'default'"
-            style="width: 100%"
+            class="full-width-control"
           />
           <div class="form-tip">例如 40 表示每台设备每年 40 元</div>
         </el-form-item>
@@ -372,7 +351,7 @@
             :precision="0"
             placeholder="例如: 5"
             :size="isMobile ? 'large' : 'default'"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
 
@@ -386,7 +365,7 @@
             :precision="0"
             placeholder="例如: 100"
             :size="isMobile ? 'large' : 'default'"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
 
@@ -400,7 +379,7 @@
             :precision="0"
             placeholder="例如: 6"
             :size="isMobile ? 'large' : 'default'"
-            style="width: 100%"
+            class="full-width-control"
           />
         </el-form-item>
 
@@ -421,7 +400,7 @@
                   :precision="0"
                   placeholder="月数"
                   :size="isMobile ? 'default' : 'default'"
-                  :style="isMobile ? 'width: 100%' : 'width: 120px'"
+                  class="discount-number-input"
                 />
                 <span class="discount-separator">个月</span>
               </div>
@@ -433,7 +412,7 @@
                   :precision="1"
                   placeholder="折扣"
                   :size="isMobile ? 'default' : 'default'"
-                  :style="isMobile ? 'width: 100%' : 'width: 120px'"
+                  class="discount-number-input"
                 />
                 <span class="discount-separator">% 优惠</span>
               </div>
@@ -453,7 +432,6 @@
               @click="addDiscount"
               :icon="Plus"
               class="discount-add-btn"
-              style="margin-top: 10px"
             >
               添加折扣
             </el-button>
@@ -462,34 +440,29 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-buttons" :class="{ 'mobile-footer': isMobile }">
-          <el-button
-            @click="customPackageDialogVisible = false"
-            :size="isMobile ? 'large' : 'default'"
-            :class="{ 'mobile-action-btn': isMobile }"
-          >
-            取消
-          </el-button>
-          <el-button
-            type="primary"
-            @click="saveCustomPackageSettings"
-            :loading="customPackageLoading"
-            :size="isMobile ? 'large' : 'default'"
-            :class="{ 'mobile-action-btn': isMobile }"
-          >
-            保存设置
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="customPackageLoading"
+          submit-text="保存设置"
+          :sticky="false"
+          @cancel="customPackageDialogVisible = false"
+          @submit="saveCustomPackageSettings"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { computed, ref, reactive, onMounted, watch } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, HomeFilled, Search, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { adminAPI, configAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import AppDrawer from '@/components/AppDrawer.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { confirmDelete } from '@/utils/confirmAction'
 export default {
   name: 'AdminPackages',
   components: {
@@ -498,7 +471,12 @@ export default {
     Search,
     Refresh,
     Setting,
-    Delete
+    Delete,
+    AppDrawer,
+    EmptyState,
+    FormActionBar,
+    PaginationBar,
+    ResponsiveDataView
   },
   setup() {
     const loading = ref(false)
@@ -535,6 +513,26 @@ export default {
       size: 10,
       total: 0
     })
+    const mobilePackageFields = computed(() => [
+      { key: 'id', label: 'ID', formatter: value => `#${value}` },
+      { key: 'price', label: '价格', formatter: value => `¥${value}` },
+      { key: 'duration_days', label: '时长', formatter: value => `${value} 天` },
+      { key: 'device_limit', label: '设备限制', formatter: value => value },
+      {
+        key: 'is_recommended',
+        label: '推荐',
+        type: 'tag',
+        tagType: value => value ? 'success' : 'info',
+        formatter: value => value ? '是' : '否'
+      },
+      {
+        key: 'is_active',
+        label: '状态',
+        type: 'tag',
+        tagType: value => value ? 'success' : 'danger',
+        formatter: value => value ? '启用' : '禁用'
+      }
+    ])
     const form = reactive({
       id: null,
       name: '',
@@ -740,15 +738,9 @@ export default {
     }
     const deletePackage = async (id) => {
       try {
-        await ElMessageBox.confirm(
-          '确定要删除这个套餐吗？',
-          '确认删除',
-          {
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }
-        )
+        await confirmDelete('套餐', 1, {
+          message: '确定要删除这个套餐吗？'
+        })
         const response = await adminAPI.deletePackage(id)
         if (response.data && response.data.success !== false) {
           ElMessage.success(response.data.message || '套餐删除成功')
@@ -881,6 +873,7 @@ export default {
       isEdit,
       formRef,
       packages,
+      mobilePackageFields,
       searchForm,
       pagination,
       form,
@@ -913,19 +906,30 @@ export default {
 .packages-admin-container {
   padding: 20px;
 }
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: #999;
-  :is(i) {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    display: block;
-  }
-  :is(p) {
-    font-size: 0.9rem;
-    margin: 0;
-    line-height: 1.5;
+
+.packages-table,
+.full-width-control {
+  width: 100%;
+}
+
+.status-select-item {
+  min-width: 0;
+}
+
+.status-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.mobile-package-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  span {
+    min-width: 0;
+    word-break: break-word;
   }
 }
 .card-header {
@@ -976,6 +980,11 @@ export default {
 
   .discount-add-btn {
     width: auto;
+    margin-top: 10px;
+  }
+
+  .discount-number-input {
+    width: 120px;
   }
 }
 
@@ -1014,8 +1023,10 @@ export default {
         gap: 8px;
         width: 100%;
 
-        .el-input-number {
+        .el-input-number,
+        .discount-number-input {
           flex: 1;
+          width: 100%;
         }
 
         .discount-separator {
@@ -1027,8 +1038,9 @@ export default {
 
       .discount-delete-btn {
         width: 100%;
-        height: 40px;
+        min-height: 44px;
         font-size: 15px;
+        touch-action: manipulation;
       }
 
       :deep(.el-input-number) {
@@ -1043,40 +1055,14 @@ export default {
 
     .discount-add-btn {
       width: 100%;
-      height: 44px;
+      min-height: 44px;
       font-size: 15px;
       margin-top: 10px;
+      touch-action: manipulation;
     }
   }
 
-  // 自定义套餐设置drawer移动端优化
-  .mobile-dialog {
-    :deep(.el-drawer__header) {
-      padding: 16px 20px;
-      margin-bottom: 0;
-      border-bottom: 1px solid #ebeef5;
-
-      .el-drawer__title {
-        font-size: 18px;
-        font-weight: 600;
-      }
-
-      .el-drawer__close-btn {
-        font-size: 20px;
-      }
-    }
-
-    :deep(.el-drawer__body) {
-      padding: 16px 20px;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    :deep(.el-drawer__footer) {
-      padding: 12px 20px 16px;
-      border-top: 1px solid #ebeef5;
-    }
-
+  .package-drawer {
     :deep(.el-form) {
       .el-form-item {
         margin-bottom: 20px;
@@ -1139,172 +1125,13 @@ export default {
   .search-section.desktop-only {
     display: none;
   }
-  .mobile-card-list {
-    margin-top: 16px;
-    .mobile-card {
-      background: #fff;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      .card-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 12px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #f0f0f0;
-        &:last-of-type {
-          border-bottom: none;
-          margin-bottom: 0;
-          padding-bottom: 0;
-        }
-        .label {
-          flex: 0 0 90px;
-          font-size: 14px;
-          color: #666;
-          font-weight: 500;
-        }
-        .value {
-          flex: 1;
-          font-size: 14px;
-          color: #333;
-          word-break: break-word;
-        }
-      }
-      .card-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 12px;
-        padding-top: 12px;
-        border-top: 1px solid #f0f0f0;
-        .mobile-action-btn {
-          flex: 1;
-          height: 44px;
-          font-size: 16px;
-          margin: 0;
-        }
-      }
-    }
-    .empty-state {
-      padding: 40px 20px;
-      text-align: center;
-    }
-  }
-  .package-form-dialog {
-    &.mobile-dialog {
-      :deep(.el-dialog) {
-        width: 95% !important;
-        margin: 2vh auto !important;
-        max-height: 96vh;
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-      }
-      :deep(.el-dialog__header) {
-        padding: 15px 15px 10px;
-        flex-shrink: 0;
-        border-bottom: 1px solid #ebeef5;
-        .el-dialog__title {
-          font-size: 18px;
-          font-weight: 600;
-        }
-        .el-dialog__headerbtn {
-          top: 8px;
-          right: 8px;
-          width: 32px;
-          height: 32px;
-          .el-dialog__close {
-            font-size: 18px;
-          }
-        }
-      }
-      :deep(.el-dialog__body) {
-        padding: 15px !important;
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        max-height: calc(96vh - 140px);
-      }
-      :deep(.el-dialog__footer) {
-        padding: 10px 15px 15px;
-        flex-shrink: 0;
-        border-top: 1px solid #ebeef5;
-      }
-    }
-    :deep(.el-dialog__body) {
-      padding: 16px;
-      max-height: calc(100vh - 200px);
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    :deep(.el-form-item) {
-      margin-bottom: 18px;
-      .el-form-item__label {
-        display: none; /* 移动端隐藏默认标签 */
-      }
-      .el-form-item__content {
-        margin-left: 0 !important;
-        width: 100%;
-      }
-    }
-    .mobile-label {
-      font-size: 14px;
-      font-weight: 600;
-      color: #606266;
-      margin-bottom: 8px;
-      display: block;
-      .required {
-        color: #f56c6c;
-        margin-left: 2px;
-      }
-    }
-    :deep(.el-input),
-    :deep(.el-select),
-    :deep(.el-textarea),
-    :deep(.el-input-number) {
-      width: 100%;
-      .el-input__wrapper,
-      .el-textarea__inner {
-        min-height: 40px;
-        font-size: 16px; /* 防止iOS自动缩放 */
-      }
-      .el-input__inner {
-        font-size: 16px !important; /* 防止iOS自动缩放 */
-        min-height: 40px;
-      }
-    }
-    .dialog-footer-buttons {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      &.mobile-footer {
-        flex-direction: column;
-        gap: 10px;
-        .mobile-action-btn {
-          width: 100%;
-          min-height: 48px;
-          font-size: 16px;
-          font-weight: 500;
-          margin: 0 !important;
-          border-radius: 8px;
-          -webkit-tap-highlight-color: rgba(0,0,0,0.1);
-        }
-      }
-      .mobile-action-btn {
-        width: 100%;
-        min-height: 48px;
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0 !important;
-        border-radius: 8px;
-        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
-      }
-    }
+  :deep(.mobile-card-actions .el-button) {
+    min-height: 44px;
+    touch-action: manipulation;
   }
 }
 @media (min-width: 769px) {
-  .mobile-search-section,
-  .mobile-card-list {
+  .mobile-search-section {
     display: none !important;
   }
 }
@@ -1314,13 +1141,13 @@ export default {
   }
 }
 :deep(.el-input__wrapper) {
-  border-radius: 0 !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
 :deep(.el-input__inner) {
-  border-radius: 0 !important;
+  border-radius: 6px !important;
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
@@ -1331,6 +1158,6 @@ export default {
 }
 :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
 }
 </style> 

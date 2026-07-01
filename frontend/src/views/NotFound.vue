@@ -28,19 +28,24 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--el-fill-color-lighter, #f5f7fa);
   padding: 20px;
 }
 .not-found-content {
   text-align: center;
-  color: white;
+  color: var(--el-text-color-primary, #303133);
   max-width: 500px;
+  padding: 32px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 8px;
+  background: var(--el-bg-color, #fff);
 }
 .error-code {
   font-size: 8rem;
   font-weight: bold;
   margin-bottom: 1rem;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  color: var(--el-color-primary, #409eff);
+  line-height: 1;
 }
 .not-found-content h1 {
   font-size: 2rem;
@@ -50,7 +55,7 @@ export default {
 .not-found-content :is(p) {
   font-size: 1.1rem;
   margin-bottom: 2rem;
-  opacity: 0.9;
+  color: var(--el-text-color-secondary, #606266);
 }
 .actions {
   display: flex;
@@ -59,6 +64,14 @@ export default {
   flex-wrap: wrap;
 }
 @media (max-width: 768px) {
+  .not-found-container {
+    align-items: flex-start;
+    padding-top: 15vh;
+  }
+  .not-found-content {
+    width: 100%;
+    padding: 24px 16px;
+  }
   .error-code {
     font-size: 6rem;
   }

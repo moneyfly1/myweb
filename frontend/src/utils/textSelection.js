@@ -43,11 +43,13 @@ export const copyToClipboard = async (text, successMessage = '已复制到剪贴
   }
 }
 let initialized = false
+let observer = null
+let scanTimer = null
+let scanHandler = null
 export function initTextSelection() {
   if (initialized) return
   initialized = true
   if (isMobileDevice) return
-  let timer = null
   const scan = () => {
     document.querySelectorAll('.el-table td .cell').forEach(cell => {
       const td = cell.closest('td')
@@ -64,12 +66,13 @@ export function initTextSelection() {
     })
   }
   scan()
-  const ob = new MutationObserver(() => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(scan, 500)
+  observer = new MutationObserver(() => {
+    if (scanTimer) clearTimeout(scanTimer)
+    scanTimer = setTimeout(scan, 500)
   })
-  ob.observe(document.body, { childList: true, subtree: true })
-  window.addEventListener('popstate', scan)
+  observer.observe(document.body, { childList: true, subtree: true })
+  scanHandler = scan
+  window.addEventListener('popstate', scanHandler)
 }
 function showMenu(e, text, cell) {
   let old = document.getElementById('_ctx')
@@ -117,6 +120,18 @@ function showMenu(e, text, cell) {
   }, 10)
 }
 export function cleanupTextSelection() {
+  if (observer) {
+    observer.disconnect()
+    observer = null
+  }
+  if (scanTimer) {
+    clearTimeout(scanTimer)
+    scanTimer = null
+  }
+  if (scanHandler) {
+    window.removeEventListener('popstate', scanHandler)
+    scanHandler = null
+  }
   initialized = false
 }
 export function useTextSelection() {

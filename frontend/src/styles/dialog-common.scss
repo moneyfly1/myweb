@@ -4,7 +4,7 @@
  */
 
 // 弹窗基础样式
-:deep(.el-dialog) {
+.el-dialog {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
@@ -58,7 +58,7 @@
 
 // 移动端适配
 @media (max-width: 768px) {
-  :deep(.el-dialog) {
+  .el-dialog {
     width: 92% !important;
     margin: 5vh auto !important;
     max-height: 90vh;

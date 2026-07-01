@@ -17,8 +17,6 @@ import { useAuthStore } from './store/auth'
 import { useThemeStore } from './store/theme'
 import { initApi, cachedAPI } from './utils/api'
 import './styles/global.scss'
-import './styles/text-selection.css'
-import { initTextSelection } from './utils/textSelection'
 
 // 尽早预热公共设置缓存，让路由守卫直接命中缓存
 cachedAPI.getPublicSettings().catch(() => {})
@@ -45,9 +43,6 @@ app.mount('#app')
 
 // 并发初始化所有任务，避免串行延迟
 Promise.all([
-  // 初始化文本选择功能
-  Promise.resolve().then(() => initTextSelection()),
-
   // 加载设置并应用主题
   (async () => {
     try {

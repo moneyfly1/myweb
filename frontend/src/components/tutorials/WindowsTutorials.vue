@@ -38,7 +38,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>建议使用"规则模式"，可以自动分流国内外网站</li>
               <li>可以在"规则"页面自定义分流规则</li>
@@ -83,7 +86,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>建议使用"路由"模式，支持自动分流</li>
               <li>可以在"路由设置"中自定义分流规则</li>
@@ -127,7 +133,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Mihomo Part 是 Clash 的增强版本，功能更强大</li>
               <li>支持更多协议和功能</li>
@@ -171,7 +180,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Clash Verge 界面简洁，操作简单</li>
               <li>支持自动更新订阅</li>
@@ -215,7 +227,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Hiddify 支持多种协议</li>
               <li>界面友好，操作简单</li>
@@ -259,7 +274,10 @@
             <li>开始使用代理服务</li>
           </ol>
           <div class="tips">
-            <h4>💡 使用技巧</h4>
+            <h4>
+              <el-icon><InfoFilled /></el-icon>
+              使用技巧
+            </h4>
             <ul>
               <li>Flash 是轻量级的代理软件</li>
               <li>启动速度快，资源占用少</li>
@@ -273,6 +291,7 @@
 </template>
 <script setup>
 import { ref } from 'vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 const activeNames = ref(['clash-windows'])
 </script>
 <style scoped>
@@ -290,6 +309,9 @@ const activeNames = ref(['clash-windows'])
   padding-left: 10px;
 }
 .tutorial-content :is(h4) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #34495e;
   margin-top: 15px;
   margin-bottom: 8px;

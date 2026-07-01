@@ -1,6 +1,6 @@
 <template>
   <div class="list-container admin-invites">
-    <el-card>
+    <el-card shadow="never" class="list-card invites-card">
       <template #header>
         <div class="card-header-wrapper">
           <span>邀请管理</span>
@@ -71,14 +71,14 @@
               </el-button>
             </div>
           </div>
-          <div class="desktop-only" style="margin-bottom: 20px;">
+          <div class="desktop-only filter-section">
             <el-form :inline="true" :model="codeFilterForm" class="filter-form">
               <el-form-item label="邀请人">
                 <el-input 
                   v-model="codeFilterForm.user_query" 
                   placeholder="账号或邮箱"
                   clearable
-                  style="width: 200px;"
+                  class="filter-input"
                 />
               </el-form-item>
               <el-form-item label="邀请码">
@@ -86,11 +86,11 @@
                   v-model="codeFilterForm.code" 
                   placeholder="搜索邀请码"
                   clearable
-                  style="width: 200px;"
+                  class="filter-input"
                 />
               </el-form-item>
               <el-form-item label="状态">
-                <el-select v-model="codeFilterForm.is_active" clearable placeholder="全部" style="width: 120px;">
+                <el-select v-model="codeFilterForm.is_active" clearable placeholder="全部" class="status-filter">
                   <el-option label="启用" :value="true" />
                   <el-option label="禁用" :value="false" />
                 </el-select>
@@ -101,7 +101,7 @@
               </el-form-item>
             </el-form>
           </div>
-          <div class="batch-actions" v-if="selectedCodes.length > 0" style="margin-bottom: 16px;">
+          <div class="batch-actions" v-if="selectedCodes.length > 0">
             <div class="batch-info">
               <span>已选择 {{ selectedCodes.length }} 个邀请码</span>
             </div>
@@ -116,84 +116,89 @@
               </el-button>
             </div>
           </div>
-          <el-table 
-            :data="inviteCodes" 
-            v-loading="codesLoading"
-            border
-            stripe
-            style="width: 100%"
-            :default-sort="{ prop: 'created_at', order: 'descending' }"
-            @selection-change="handleCodeSelectionChange"
+          <ResponsiveDataView
+            class="admin-invites-data"
+            :data="inviteCodes"
+            :fields="mobileCodeFields"
+            :loading="codesLoading"
+            title-field="code"
+            empty-title="暂无邀请码"
           >
-            <el-table-column type="selection" width="50" />
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="code" label="邀请码" min-width="120">
-              <template #default="scope">
-                <el-tag>{{ scope.row.code }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="username" label="邀请人" min-width="150">
-              <template #default="scope">
-                <div>
-                  <div>{{ scope.row.username || '未知用户' }}</div>
-                  <div style="color: #909399; font-size: 12px;">{{ scope.row.user_email || scope.row.email || '无邮箱' }}</div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="used_count" label="已使用" width="100" align="center">
-              <template #default="scope">
-                <span>{{ scope.row.used_count }} / {{ scope.row.max_uses || '∞' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="inviter_reward" label="邀请人奖励" width="120" align="right">
-              <template #default="scope">
-                <span style="color: #67c23a; font-weight: bold;">¥{{ (scope.row.inviter_reward || 0).toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="invitee_reward" label="被邀请人奖励" width="140" align="right">
-              <template #default="scope">
-                <span style="color: #409eff; font-weight: bold;">¥{{ (scope.row.invitee_reward || 0).toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="expires_at" label="过期时间" width="180" class-name="expires-column">
-              <template #default="scope">
-                <span v-if="scope.row.expires_at">{{ formatDate(scope.row.expires_at) }}</span>
-                <span v-else style="color: #909399;">永不过期</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="is_active" label="状态" width="100" align="center">
-              <template #default="scope">
-                <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
-                  {{ scope.row.is_active ? '启用' : '禁用' }}
+            <template #table>
+              <el-table
+                :data="inviteCodes"
+                v-loading="codesLoading"
+                border
+                stripe
+                class="data-table"
+                :default-sort="{ prop: 'created_at', order: 'descending' }"
+                @selection-change="handleCodeSelectionChange"
+              >
+                <el-table-column type="selection" width="50" />
+                <el-table-column prop="id" label="ID" width="80" />
+                <el-table-column prop="code" label="邀请码" min-width="120">
+                  <template #default="scope">
+                    <el-tag>{{ scope.row.code }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="username" label="邀请人" min-width="150">
+                  <template #default="scope">
+                    <div>
+                      <div>{{ scope.row.username || '未知用户' }}</div>
+                      <div class="muted-cell">{{ scope.row.user_email || scope.row.email || '无邮箱' }}</div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="used_count" label="已使用" width="100" align="center">
+                  <template #default="scope">
+                    <span>{{ scope.row.used_count }} / {{ scope.row.max_uses || '∞' }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="inviter_reward" label="邀请人奖励" width="120" align="right">
+                  <template #default="scope">
+                    <span class="money-value money-success">¥{{ (scope.row.inviter_reward || 0).toFixed(2) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="invitee_reward" label="被邀请人奖励" width="140" align="right">
+                  <template #default="scope">
+                    <span class="money-value money-primary">¥{{ (scope.row.invitee_reward || 0).toFixed(2) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="expires_at" label="过期时间" width="180" class-name="expires-column">
+                  <template #default="scope">
+                    <span v-if="scope.row.expires_at">{{ formatDate(scope.row.expires_at) }}</span>
+                    <span v-else class="muted-text">永不过期</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="is_active" label="状态" width="100" align="center">
+                  <template #default="scope">
+                    <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
+                      {{ scope.row.is_active ? '启用' : '禁用' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="180" sortable="custom">
+                  <template #default="scope">
+                    {{ formatDate(scope.row.created_at) }}
+                  </template>
+                </el-table-column>
+              </el-table>
+            </template>
+            <template #header="{ item }">
+              <div class="mobile-invite-header">
+                <span>{{ item.code }}</span>
+                <el-tag :type="item.is_active ? 'success' : 'danger'" size="small">
+                  {{ item.is_active ? '启用' : '禁用' }}
                 </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="180" sortable="custom">
-              <template #default="scope">
-                {{ formatDate(scope.row.created_at) }}
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="mobile-card-list" v-if="isMobile">
-            <div v-for="row in inviteCodes" :key="row.id" class="mobile-card">
-              <div class="mobile-card-row"><span class="mobile-label">邀请码</span><span class="mobile-value">{{ row.code }}</span></div>
-              <div class="mobile-card-row"><span class="mobile-label">邀请人</span><span class="mobile-value">{{ row.username || '-' }}</span></div>
-              <div class="mobile-card-row"><span class="mobile-label">已使用</span><span class="mobile-value">{{ row.used_count || 0 }}</span></div>
-              <div class="mobile-card-row"><span class="mobile-label">状态</span><span class="mobile-value"><el-tag :type="row.is_active ? 'success' : 'danger'" size="small">{{ row.is_active ? '启用' : '禁用' }}</el-tag></span></div>
-            </div>
-            <el-empty v-if="inviteCodes.length === 0" description="暂无数据" />
-          </div>
-          <div class="pagination">
-            <el-pagination
-              v-model:current-page="codePage"
-              v-model:page-size="codePageSize"
-              :page-sizes="[10, 20, 50, 100]"
-              :total="codeTotal"
-              layout="total, sizes, prev, pager, next, jumper"
-              @size-change="loadInviteCodes"
-              @current-change="loadInviteCodes"
-            />
-          </div>
+              </div>
+            </template>
+          </ResponsiveDataView>
+          <PaginationBar
+            v-model:current-page="codePage"
+            v-model:page-size="codePageSize"
+            :total="codeTotal"
+            @change="loadInviteCodes"
+          />
         </el-tab-pane>
         <el-tab-pane label="邀请关系" name="relations">
           <div class="mobile-action-bar" v-if="isMobile">
@@ -227,7 +232,7 @@
                 重置
               </el-button>
             </div>
-            <div class="mobile-search-section" style="margin-top: 12px;">
+            <div class="mobile-search-section secondary-search">
               <div class="search-input-wrapper">
                 <el-input
                   v-model="relationFilterForm.invitee_query"
@@ -247,14 +252,14 @@
               </div>
             </div>
           </div>
-          <div class="desktop-only" style="margin-bottom: 20px;">
+          <div class="desktop-only filter-section">
             <el-form :inline="true" :model="relationFilterForm" class="filter-form">
               <el-form-item label="邀请人">
                 <el-input 
                   v-model="relationFilterForm.inviter_query" 
                   placeholder="账号或邮箱"
                   clearable
-                  style="width: 200px;"
+                  class="filter-input"
                 />
               </el-form-item>
               <el-form-item label="被邀请人">
@@ -262,7 +267,7 @@
                   v-model="relationFilterForm.invitee_query" 
                   placeholder="账号或邮箱"
                   clearable
-                  style="width: 200px;"
+                  class="filter-input"
                 />
               </el-form-item>
               <el-form-item>
@@ -271,7 +276,7 @@
               </el-form-item>
             </el-form>
           </div>
-          <div class="batch-actions" v-if="selectedRelations.length > 0" style="margin-bottom: 16px;">
+          <div class="batch-actions" v-if="selectedRelations.length > 0">
             <div class="batch-info">
               <span>已选择 {{ selectedRelations.length }} 条邀请关系</span>
             </div>
@@ -286,103 +291,108 @@
               </el-button>
             </div>
           </div>
-          <el-table 
-            :data="inviteRelations" 
-            v-loading="relationsLoading"
-            border
-            stripe
-            style="width: 100%"
-            @selection-change="handleRelationSelectionChange"
+          <ResponsiveDataView
+            class="admin-invites-data"
+            :data="inviteRelations"
+            :fields="mobileRelationFields"
+            :loading="relationsLoading"
+            title-field="invite_code"
+            empty-title="暂无邀请关系"
           >
-            <el-table-column type="selection" width="50" />
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="invite_code" label="邀请码" width="150">
-              <template #default="scope">
-                <el-tag>{{ scope.row.invite_code }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="inviter_username" label="邀请人" width="180">
-              <template #default="scope">
-                <div>
-                  <div>{{ scope.row.inviter_username }}</div>
-                  <div style="color: #909399; font-size: 12px;">{{ scope.row.inviter_email || '无邮箱' }}</div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="invitee_username" label="被邀请人" width="180">
-              <template #default="scope">
-                <div>
-                  <div>{{ scope.row.invitee_username }}</div>
-                  <div style="color: #909399; font-size: 12px;">{{ scope.row.invitee_email || '无邮箱' }}</div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="inviter_reward_amount" label="邀请人奖励" width="140" align="right">
-              <template #default="scope">
-                <div>
-                  <span style="color: #67c23a; font-weight: bold;">¥{{ (scope.row.inviter_reward_amount || 0).toFixed(2) }}</span>
-                  <el-tag 
-                    :type="scope.row.inviter_reward_given ? 'success' : 'warning'" 
-                    size="small" 
-                    style="margin-left: 8px;"
-                  >
-                    {{ scope.row.inviter_reward_given ? '已发放' : '未发放' }}
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="invitee_reward_amount" label="被邀请人奖励" width="140" align="right">
-              <template #default="scope">
-                <div>
-                  <span style="color: #409eff; font-weight: bold;">¥{{ (scope.row.invitee_reward_amount || 0).toFixed(2) }}</span>
-                  <el-tag 
-                    :type="scope.row.invitee_reward_given ? 'success' : 'warning'" 
-                    size="small" 
-                    style="margin-left: 8px;"
-                  >
-                    {{ scope.row.invitee_reward_given ? '已发放' : '未发放' }}
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="invitee_total_consumption" label="累计消费" width="120" align="right">
-              <template #default="scope">
-                <span style="color: #e6a23c; font-weight: bold;">¥{{ (scope.row.invitee_total_consumption || 0).toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="注册时间" width="180">
-              <template #default="scope">
-                {{ formatDate(scope.row.created_at) }}
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="mobile-card-list" v-if="isMobile">
-            <div v-for="row in inviteRelations" :key="row.id" class="mobile-card">
-              <div class="mobile-card-row"><span class="mobile-label">邀请码</span><span class="mobile-value">{{ row.invite_code || '-' }}</span></div>
-              <div class="mobile-card-row"><span class="mobile-label">邀请人</span><span class="mobile-value">{{ row.inviter_username || '-' }}</span></div>
-              <div class="mobile-card-row"><span class="mobile-label">被邀请人</span><span class="mobile-value">{{ row.invitee_username || '-' }}</span></div>
-              <div class="mobile-card-row"><span class="mobile-label">注册时间</span><span class="mobile-value">{{ row.created_at || '-' }}</span></div>
-            </div>
-            <el-empty v-if="inviteRelations.length === 0" description="暂无数据" />
-          </div>
-          <div class="pagination">
-            <el-pagination
-              v-model:current-page="relationPage"
-              v-model:page-size="relationPageSize"
-              :page-sizes="[10, 20, 50, 100]"
-              :total="relationTotal"
-              layout="total, sizes, prev, pager, next, jumper"
-              @size-change="loadInviteRelations"
-              @current-change="loadInviteRelations"
-            />
-          </div>
+            <template #table>
+              <el-table
+                :data="inviteRelations"
+                v-loading="relationsLoading"
+                border
+                stripe
+                class="data-table"
+                @selection-change="handleRelationSelectionChange"
+              >
+                <el-table-column type="selection" width="50" />
+                <el-table-column prop="id" label="ID" width="80" />
+                <el-table-column prop="invite_code" label="邀请码" width="150">
+                  <template #default="scope">
+                    <el-tag>{{ scope.row.invite_code }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="inviter_username" label="邀请人" width="180">
+                  <template #default="scope">
+                    <div>
+                      <div>{{ scope.row.inviter_username }}</div>
+                      <div class="muted-cell">{{ scope.row.inviter_email || '无邮箱' }}</div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="invitee_username" label="被邀请人" width="180">
+                  <template #default="scope">
+                    <div>
+                      <div>{{ scope.row.invitee_username }}</div>
+                      <div class="muted-cell">{{ scope.row.invitee_email || '无邮箱' }}</div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="inviter_reward_amount" label="邀请人奖励" width="140" align="right">
+                  <template #default="scope">
+                    <div>
+                      <span class="money-value money-success">¥{{ (scope.row.inviter_reward_amount || 0).toFixed(2) }}</span>
+                      <el-tag
+                        :type="scope.row.inviter_reward_given ? 'success' : 'warning'"
+                        size="small"
+                        class="reward-status-tag"
+                      >
+                        {{ scope.row.inviter_reward_given ? '已发放' : '未发放' }}
+                      </el-tag>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="invitee_reward_amount" label="被邀请人奖励" width="140" align="right">
+                  <template #default="scope">
+                    <div>
+                      <span class="money-value money-primary">¥{{ (scope.row.invitee_reward_amount || 0).toFixed(2) }}</span>
+                      <el-tag
+                        :type="scope.row.invitee_reward_given ? 'success' : 'warning'"
+                        size="small"
+                        class="reward-status-tag"
+                      >
+                        {{ scope.row.invitee_reward_given ? '已发放' : '未发放' }}
+                      </el-tag>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="invitee_total_consumption" label="累计消费" width="120" align="right">
+                  <template #default="scope">
+                    <span class="money-value money-warning">¥{{ (scope.row.invitee_total_consumption || 0).toFixed(2) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="created_at" label="注册时间" width="180">
+                  <template #default="scope">
+                    {{ formatDate(scope.row.created_at) }}
+                  </template>
+                </el-table-column>
+              </el-table>
+            </template>
+            <template #header="{ item }">
+              <div class="mobile-invite-header">
+                <span>{{ item.invite_code || '-' }}</span>
+                <el-tag :type="item.invitee_reward_given ? 'success' : 'warning'" size="small">
+                  {{ item.invitee_reward_given ? '奖励已发放' : '奖励未发放' }}
+                </el-tag>
+              </div>
+            </template>
+          </ResponsiveDataView>
+          <PaginationBar
+            v-model:current-page="relationPage"
+            v-model:page-size="relationPageSize"
+            :total="relationTotal"
+            @change="loadInviteRelations"
+          />
         </el-tab-pane>
         <el-tab-pane label="邀请统计" name="statistics">
           <el-row :gutter="20" class="statistics-row">
             <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="hover" class="stat-card">
+              <el-card shadow="never" class="stat-card">
                 <div class="stat-content">
-                  <div class="stat-value" style="color: #409eff;">
+                  <div class="stat-value stat-primary">
                     {{ statistics?.total_codes || 0 }}
                   </div>
                   <div class="stat-label">总邀请码数</div>
@@ -390,9 +400,9 @@
               </el-card>
             </el-col>
             <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="hover" class="stat-card">
+              <el-card shadow="never" class="stat-card">
                 <div class="stat-content">
-                  <div class="stat-value" style="color: #67c23a;">
+                  <div class="stat-value stat-success">
                     {{ statistics?.total_relations || 0 }}
                   </div>
                   <div class="stat-label">总邀请关系数</div>
@@ -400,9 +410,9 @@
               </el-card>
             </el-col>
             <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="hover" class="stat-card">
+              <el-card shadow="never" class="stat-card">
                 <div class="stat-content">
-                  <div class="stat-value" style="color: #e6a23c;">
+                  <div class="stat-value stat-warning">
                     ¥{{ (statistics?.total_reward || 0).toFixed(2) }}
                   </div>
                   <div class="stat-label">总奖励金额</div>
@@ -410,9 +420,9 @@
               </el-card>
             </el-col>
             <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="hover" class="stat-card">
+              <el-card shadow="never" class="stat-card">
                 <div class="stat-content">
-                  <div class="stat-value" style="color: #f56c6c;">
+                  <div class="stat-value stat-danger">
                     ¥{{ (statistics?.total_consumption || 0).toFixed(2) }}
                   </div>
                   <div class="stat-label">被邀请人总消费</div>
@@ -423,12 +433,13 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
-    <el-drawer
+    <AppDrawer
       v-model="showSettingsDialog"
       title="邀请设置"
-      :size="isMobile ? '92%' : '500px'"
-      direction="rtl"
-      :lock-scroll="false"
+      size="500px"
+      mobile-size="100%"
+      :loading="savingSettings"
+      class="settings-drawer"
     >
       <div class="settings-dialog-content">
         <el-alert
@@ -477,28 +488,29 @@
         </el-form>
       </div>
       <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="showSettingsDialog = false" class="mobile-action-btn">取消</el-button>
-          <el-button 
-            type="primary" 
-            @click="saveInviteSettings" 
-            :loading="savingSettings"
-            class="mobile-action-btn"
-          >
-            保存设置
-          </el-button>
-        </div>
+        <FormActionBar
+          :loading="savingSettings"
+          submit-text="保存设置"
+          :sticky="false"
+          @cancel="showSettingsDialog = false"
+          @submit="saveInviteSettings"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { computed, ref, reactive, onMounted } from 'vue'
+import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import AppDrawer from '@/components/AppDrawer.vue'
+import FormActionBar from '@/components/FormActionBar.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { confirmDelete } from '@/utils/confirmAction'
 const api = useApi()
 const activeTab = ref('codes')
 const codesLoading = ref(false)
@@ -555,6 +567,46 @@ const relationFilterForm = reactive({
   inviter_query: '',
   invitee_query: ''
 })
+const mobileCodeFields = computed(() => [
+  { key: 'username', label: '邀请人', formatter: value => value || '-' },
+  { key: 'user_email', label: '邮箱', formatter: value => value || '-' },
+  { key: 'used_count', label: '已使用', formatter: (_value, row) => `${row.used_count || 0} / ${row.max_uses_display || row.max_uses || '∞'}` },
+  { key: 'inviter_reward', label: '邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
+  { key: 'invitee_reward', label: '被邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
+  { key: 'expires_at', label: '过期时间', formatter: value => value ? formatDate(value) : '永不过期' },
+  {
+    key: 'is_active',
+    label: '状态',
+    type: 'tag',
+    tagType: value => value ? 'success' : 'danger',
+    formatter: value => value ? '启用' : '禁用'
+  },
+  { key: 'created_at', label: '创建时间', formatter: value => formatDate(value) }
+])
+const mobileRelationFields = computed(() => [
+  { key: 'inviter_username', label: '邀请人', formatter: value => value || '-' },
+  { key: 'inviter_email', label: '邀请人邮箱', formatter: value => value || '-' },
+  { key: 'invitee_username', label: '被邀请人', formatter: value => value || '-' },
+  { key: 'invitee_email', label: '被邀请人邮箱', formatter: value => value || '-' },
+  { key: 'inviter_reward_amount', label: '邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
+  {
+    key: 'inviter_reward_given',
+    label: '邀请人奖励状态',
+    type: 'tag',
+    tagType: value => value ? 'success' : 'warning',
+    formatter: value => value ? '已发放' : '未发放'
+  },
+  { key: 'invitee_reward_amount', label: '被邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
+  {
+    key: 'invitee_reward_given',
+    label: '被邀请人奖励状态',
+    type: 'tag',
+    tagType: value => value ? 'success' : 'warning',
+    formatter: value => value ? '已发放' : '未发放'
+  },
+  { key: 'invitee_total_consumption', label: '累计消费', formatter: value => `¥${(value || 0).toFixed(2)}` },
+  { key: 'created_at', label: '注册时间', formatter: value => formatDate(value) }
+])
 const statistics = reactive({
   total_codes: 0,
   total_relations: 0,
@@ -787,14 +839,9 @@ const batchDeleteCodes = async () => {
     return
   }
   try {
-    await ElMessageBox.confirm(
+    await confirmDelete(
       `确定要删除选中的 ${selectedCodes.value.length} 个邀请码吗？已使用的邀请码将被禁用而不是删除。`,
-      '确认批量删除',
-      {
-        type: 'warning',
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消'
-      }
+      '确认批量删除'
     )
     batchDeleting.value = true
     const codeIds = selectedCodes.value.map(code => code.id)
@@ -823,14 +870,9 @@ const batchDeleteRelations = async () => {
     return
   }
   try {
-    await ElMessageBox.confirm(
+    await confirmDelete(
       `确定要删除选中的 ${selectedRelations.value.length} 条邀请关系吗？此操作不可恢复。`,
-      '确认批量删除',
-      {
-        type: 'warning',
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消'
-      }
+      '确认批量删除'
     )
     batchDeleting.value = true
     const relationIds = selectedRelations.value.map(relation => relation.id)
@@ -920,6 +962,108 @@ onMounted(() => {
   color: #606266;
   font-weight: 500;
 }
+.filter-section {
+  margin-bottom: 20px;
+}
+.filter-input {
+  width: 100%;
+  min-width: 0;
+}
+.status-filter {
+  width: 100%;
+  min-width: 0;
+}
+.filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  gap: 12px;
+  width: 100%;
+}
+.filter-form :deep(.el-form-item) {
+  margin: 0;
+  min-width: 0;
+}
+.filter-form :deep(.el-form-item__content) {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.filter-form :deep(.el-input),
+.filter-form :deep(.el-select) {
+  width: 100%;
+  min-width: 0;
+}
+.filter-form :deep(.el-form-item:last-child) {
+  justify-self: end;
+  min-width: max-content;
+}
+.batch-actions {
+  margin-bottom: 16px;
+}
+.data-table {
+  width: 100%;
+}
+.muted-cell {
+  color: #909399;
+  font-size: 12px;
+}
+.muted-text {
+  color: #909399;
+}
+.money-value {
+  font-weight: 700;
+}
+.money-success,
+.stat-success {
+  color: #67c23a;
+}
+.money-primary,
+.stat-primary {
+  color: #409eff;
+}
+.money-warning,
+.stat-warning {
+  color: #e6a23c;
+}
+.stat-danger {
+  color: #f56c6c;
+}
+.reward-status-tag {
+  margin-left: 8px;
+}
+.secondary-search {
+  margin-top: 12px;
+}
+.statistics-row {
+  row-gap: 12px;
+}
+.stat-card {
+  border: 1px solid var(--theme-border, #dcdfe6);
+  border-radius: var(--border-radius, 8px);
+
+  :deep(.el-card__body) {
+    padding: 16px;
+  }
+}
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.stat-label {
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.4;
+}
 @media (max-width: 768px) {
   .batch-buttons {
     width: 100%;
@@ -929,52 +1073,13 @@ onMounted(() => {
     width: 100%;
   }
 }
-.filter-form {
-  :deep(.el-form-item) {
-    margin-bottom: 10px;
-  }
-}
-:deep(.el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
 :deep(.el-input-number) {
-  width: 100%;
-  box-sizing: border-box;
-}
-:deep(.el-input-number .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
   width: 100%;
   box-sizing: border-box;
 }
 :deep(.el-input-number__increase),
 :deep(.el-input-number__decrease) {
   box-sizing: border-box;
-}
-:deep(.el-select .el-input__wrapper) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: 1px solid #dcdfe6 !important;
-  background-color: #ffffff !important;
-}
-:deep(.el-input__inner) {
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-:deep(.el-input__wrapper:hover) {
-  border-color: #c0c4cc !important;
-  box-shadow: none !important;
-}
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #409eff !important;
-  box-shadow: none !important;
 }
 :deep(.el-table) {
   .el-table__cell {
@@ -1015,20 +1120,36 @@ onMounted(() => {
     box-sizing: border-box;
     overflow-x: clip;
   }
-  :deep(.el-card) {
+  .invites-card {
     width: 100%;
     box-sizing: border-box;
     margin: 0;
-    .el-card__header {
+
+    :deep(.el-card__header) {
       padding: 12px 10px;
       font-size: 14px;
     }
-    .el-card__body {
+
+    :deep(.el-card__body) {
       padding: 12px 10px;
       width: 100%;
       box-sizing: border-box;
       overflow-x: clip;
     }
+  }
+  .statistics-row {
+    margin-left: -5px !important;
+    margin-right: -5px !important;
+  }
+  .stat-card {
+    margin-bottom: 10px;
+
+    :deep(.el-card__body) {
+      padding: 12px;
+    }
+  }
+  .stat-value {
+    font-size: 20px;
   }
   .mobile-action-bar {
     display: block !important;
@@ -1068,14 +1189,16 @@ onMounted(() => {
     }
   }
   .search-button-inside {
-    height: 36px;
+    min-height: 44px;
     padding: 6px 10px;
+    touch-action: manipulation;
   }
   .mobile-filter-buttons {
     margin-bottom: 12px;
     .el-button {
-      height: 40px;
+      min-height: 44px;
       font-size: 14px;
+      touch-action: manipulation;
     }
   }
   .mobile-filter-form {
@@ -1130,37 +1253,10 @@ onMounted(() => {
   .settings-button,
   .refresh-button {
     flex: 1;
-    height: 40px;
+    min-height: 44px;
     font-size: 14px;
     justify-content: center;
-  }
-  .settings-dialog {
-    :deep(.el-dialog) {
-      width: 95% !important;
-      margin: 2vh auto !important;
-      max-height: 96vh;
-      display: flex;
-      flex-direction: column;
-      .el-dialog__header {
-        padding: 15px 15px 10px 15px;
-        font-size: 16px;
-        flex-shrink: 0;
-        border-bottom: 1px solid #ebeef5;
-      }
-      .el-dialog__body {
-        padding: 15px;
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: clip;
-        -webkit-overflow-scrolling: touch;
-        min-height: 0;
-      }
-      .el-dialog__footer {
-        padding: 10px 15px 15px 15px;
-        flex-shrink: 0;
-        border-top: 1px solid #ebeef5;
-      }
-    }
+    touch-action: manipulation;
   }
   .settings-dialog-content {
     width: 100%;
@@ -1246,6 +1342,7 @@ onMounted(() => {
         width: 32px;
         height: 22px;
         right: 1px;
+        touch-action: manipulation;
       }
     }
   }
@@ -1305,18 +1402,6 @@ onMounted(() => {
     word-wrap: break-word;
     word-break: break-all;
   }
-  .dialog-footer-buttons {
-    display: flex;
-    gap: 12px;
-    width: 100%;
-    box-sizing: border-box;
-    .mobile-action-btn {
-      flex: 1;
-      height: 44px;
-      font-size: 15px;
-      margin: 0;
-    }
-  }
   .filter-form {
     :deep(.el-form-item) {
       margin-bottom: 15px;
@@ -1359,21 +1444,6 @@ onMounted(() => {
     max-width: 800px;
     margin: 0 auto;
     padding: 0 10px;
-  }
-  .settings-dialog {
-    :deep(.el-dialog) {
-      .el-dialog__header {
-        padding: 20px 20px 15px 20px;
-        border-bottom: 1px solid #ebeef5;
-      }
-      .el-dialog__body {
-        padding: 20px;
-      }
-      .el-dialog__footer {
-        padding: 15px 20px 20px 20px;
-        border-top: 1px solid #ebeef5;
-      }
-    }
   }
   .settings-dialog-content {
     width: 100%;
@@ -1418,14 +1488,6 @@ onMounted(() => {
       }
     }
   }
-  .dialog-footer-buttons {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-    .mobile-action-btn {
-      min-width: 100px;
-    }
-  }
   .settings-alert {
     margin-bottom: 24px;
     max-width: 600px;
@@ -1453,13 +1515,6 @@ onMounted(() => {
     color: #909399 !important;
     margin-top: 10px !important;
     font-size: 13px !important;
-  }
-  :deep(.el-dialog) {
-    width: 95% !important;
-    margin: 5vh auto !important;
-    .el-dialog__body {
-      padding: 15px;
-    }
   }
   :deep(.el-pagination) {
     flex-wrap: wrap;
@@ -1491,31 +1546,13 @@ onMounted(() => {
     gap: 10px;
   }
   .header-buttons {
-    gap: 6px;
+    gap: 8px;
   }
   .settings-button,
   .refresh-button {
-    height: 38px;
+    min-height: 44px;
     font-size: 13px;
     padding: 0 10px;
-  }
-  .settings-dialog {
-    :deep(.el-dialog) {
-      width: 98% !important;
-      margin: 1vh auto !important;
-      max-height: 98vh;
-      .el-dialog__header {
-        padding: 12px 12px 8px 12px;
-        font-size: 15px;
-      }
-      .el-dialog__body {
-        padding: 12px;
-        max-height: calc(98vh - 120px);
-      }
-      .el-dialog__footer {
-        padding: 8px 12px 12px 12px;
-      }
-    }
   }
   .invite-settings-form {
     .form-item-wrapper {
@@ -1574,15 +1611,15 @@ onMounted(() => {
       margin: 0 !important;
       box-sizing: border-box !important;
       :deep(.el-input__wrapper) {
-        height: 42px;
+        height: 44px;
         width: 100% !important;
         max-width: 100% !important;
         padding: 0 38px 0 10px;
         box-sizing: border-box !important;
       }
       :deep(.el-input__inner) {
-        height: 42px;
-        line-height: 42px;
+        height: 44px;
+        line-height: 44px;
         font-size: 15px;
         text-align: left !important;
         padding: 0 !important;
@@ -1592,7 +1629,8 @@ onMounted(() => {
       :deep(.el-input-number__increase),
       :deep(.el-input-number__decrease) {
         width: 30px;
-        height: 21px;
+        height: 22px;
+        touch-action: manipulation;
       }
     }
     .form-item-tip {
@@ -1605,13 +1643,14 @@ onMounted(() => {
       margin: 0 !important;
     }
     .save-settings-btn {
-      height: 42px;
+      min-height: 44px;
       font-size: 14px;
       width: 100% !important;
       max-width: 100% !important;
       margin: 14px 0 0 0 !important;
       padding: 0 12px;
       box-sizing: border-box !important;
+      touch-action: manipulation;
     }
   }
   .settings-alert {
@@ -1656,13 +1695,6 @@ onMounted(() => {
       font-size: 11px;
     }
   }
-  :deep(.el-dialog) {
-    width: 98% !important;
-    margin: 2vh auto !important;
-    .el-dialog__body {
-      padding: 12px;
-    }
-  }
 }
 @media (min-width: 769px) {
   .mobile-action-bar {
@@ -1673,10 +1705,10 @@ onMounted(() => {
   margin-bottom: 20px;
   .stat-card {
     height: 100%;
-    transition: all 0.3s ease;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
     &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      border-color: var(--el-color-primary-light-7, #c6e2ff);
+      background: #fbfdff;
     }
   }
   .stat-content {
@@ -1729,9 +1761,18 @@ onMounted(() => {
     }
   }
 }
-.mobile-card-list { margin-bottom: 16px; }
-.mobile-card { background: var(--el-bg-color, #fff); border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-.mobile-card-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-.mobile-label { color: var(--el-text-color-secondary, #909399); flex-shrink: 0; margin-right: 12px; }
-.mobile-value { text-align: right; word-break: break-all; }
+.admin-invites-data {
+  margin-bottom: 16px;
+}
+.mobile-invite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  span {
+    min-width: 0;
+    word-break: break-all;
+  }
+}
 </style>

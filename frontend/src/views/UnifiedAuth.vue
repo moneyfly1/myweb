@@ -40,7 +40,14 @@
               <el-form-item prop="password">
                 <el-input v-model="loginForm.password" :type="isPasswordVisible ? 'text' : 'password'" placeholder="输入密码" size="large" :prefix-icon="Lock" clearable autocomplete="current-password" @keyup.enter="handleLogin" @focus="isPasswordFocused = true" @blur="isPasswordFocused = false">
                   <template #suffix>
-                    <el-icon style="cursor:pointer" @click="isPasswordVisible = !isPasswordVisible"><View v-if="!isPasswordVisible" /><Hide v-else /></el-icon>
+                    <button
+                      type="button"
+                      class="password-toggle-button"
+                      :aria-label="isPasswordVisible ? '隐藏密码' : '显示密码'"
+                      @click="isPasswordVisible = !isPasswordVisible"
+                    >
+                      <el-icon class="password-toggle-icon"><View v-if="!isPasswordVisible" /><Hide v-else /></el-icon>
+                    </button>
                   </template>
                 </el-input>
               </el-form-item>
@@ -61,7 +68,7 @@
           </div>
           <div v-else-if="currentView === 'register'" key="register" class="lux-form">
             <h3 class="form-heading">注册</h3>
-            <el-alert v-if="!registrationEnabled" title="注册功能已禁用" type="warning" :closable="false" show-icon style="margin-bottom: 20px;">
+            <el-alert v-if="!registrationEnabled" title="注册功能已禁用" type="warning" :closable="false" show-icon class="auth-alert">
               <template #default><p>系统管理员已关闭用户注册功能，请联系管理员获取账户。</p></template>
             </el-alert>
             <el-form v-if="registrationEnabled" ref="registerFormRef" :model="registerForm" :rules="registerRules" @submit.prevent="handleRegister" label-position="top">
@@ -80,18 +87,36 @@
               <el-form-item v-if="inviteCodeRequired" prop="inviteCode" required>
                 <el-input v-model="registerForm.inviteCode" placeholder="邀请码（必填）" size="large" :prefix-icon="Ticket" clearable />
                 <div v-if="inviteCodeInfo" class="invite-tip">
-                  <span v-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" class="tip-ok">✓ 邀请码有效，注册后可获得 {{ inviteCodeInfo.invitee_reward || inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励</span>
-                  <span v-else class="tip-err">✗ {{ inviteCodeInfo.message }}</span>
+                  <span v-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" class="tip-ok">邀请码有效，注册后可获得 {{ inviteCodeInfo.invitee_reward || inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励</span>
+                  <span v-else class="tip-err">{{ inviteCodeInfo.message }}</span>
                 </div>
               </el-form-item>
               <el-form-item prop="password">
                 <el-input v-model="registerForm.password" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="设置密码（8位以上）" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
-                  <template #suffix><el-icon style="cursor:pointer" @click="isRegPasswordVisible = !isRegPasswordVisible"><View v-if="!isRegPasswordVisible" /><Hide v-else /></el-icon></template>
+                  <template #suffix>
+                    <button
+                      type="button"
+                      class="password-toggle-button"
+                      :aria-label="isRegPasswordVisible ? '隐藏密码' : '显示密码'"
+                      @click="isRegPasswordVisible = !isRegPasswordVisible"
+                    >
+                      <el-icon class="password-toggle-icon"><View v-if="!isRegPasswordVisible" /><Hide v-else /></el-icon>
+                    </button>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item prop="confirmPassword">
                 <el-input v-model="registerForm.confirmPassword" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="确认密码" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @keyup.enter="handleRegister" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
-                  <template #suffix><el-icon style="cursor:pointer" @click="isRegPasswordVisible = !isRegPasswordVisible"><View v-if="!isRegPasswordVisible" /><Hide v-else /></el-icon></template>
+                  <template #suffix>
+                    <button
+                      type="button"
+                      class="password-toggle-button"
+                      :aria-label="isRegPasswordVisible ? '隐藏密码' : '显示密码'"
+                      @click="isRegPasswordVisible = !isRegPasswordVisible"
+                    >
+                      <el-icon class="password-toggle-icon"><View v-if="!isRegPasswordVisible" /><Hide v-else /></el-icon>
+                    </button>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item>
@@ -118,12 +143,30 @@
               </el-form-item>
               <el-form-item prop="newPassword">
                 <el-input v-model="forgotForm.newPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="新密码（8位以上）" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
-                  <template #suffix><el-icon style="cursor:pointer" @click="isForgotPasswordVisible = !isForgotPasswordVisible"><View v-if="!isForgotPasswordVisible" /><Hide v-else /></el-icon></template>
+                  <template #suffix>
+                    <button
+                      type="button"
+                      class="password-toggle-button"
+                      :aria-label="isForgotPasswordVisible ? '隐藏密码' : '显示密码'"
+                      @click="isForgotPasswordVisible = !isForgotPasswordVisible"
+                    >
+                      <el-icon class="password-toggle-icon"><View v-if="!isForgotPasswordVisible" /><Hide v-else /></el-icon>
+                    </button>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item prop="confirmPassword">
                 <el-input v-model="forgotForm.confirmPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="确认新密码" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @keyup.enter="handleReset" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
-                  <template #suffix><el-icon style="cursor:pointer" @click="isForgotPasswordVisible = !isForgotPasswordVisible"><View v-if="!isForgotPasswordVisible" /><Hide v-else /></el-icon></template>
+                  <template #suffix>
+                    <button
+                      type="button"
+                      class="password-toggle-button"
+                      :aria-label="isForgotPasswordVisible ? '隐藏密码' : '显示密码'"
+                      @click="isForgotPasswordVisible = !isForgotPasswordVisible"
+                    >
+                      <el-icon class="password-toggle-icon"><View v-if="!isForgotPasswordVisible" /><Hide v-else /></el-icon>
+                    </button>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item>
@@ -715,9 +758,13 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-$gold: #D4AF37;
-$gold-dark: #AA8825;
-$gold-light: #F3E5AB;
+$auth-primary: #6366f1;
+$auth-primary-dark: #4f46e5;
+$auth-primary-soft: #e0e7ff;
+$auth-panel: #111827;
+$auth-panel-muted: #1f2937;
+$auth-border: rgba(226, 232, 240, 0.16);
+$auth-text-muted: #cbd5e1;
 
 .lux-auth-page {
   min-height: 100vh;
@@ -725,7 +772,7 @@ $gold-light: #F3E5AB;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000 url('https://images.unsplash.com/photo-1540339832862-474599807836?q=80&w=2000&auto=format&fit=crop') center/cover fixed;
+  background: #f3f4f6;
   position: relative;
   font-family: 'Noto Sans SC', sans-serif;
 }
@@ -733,7 +780,7 @@ $gold-light: #F3E5AB;
 .lux-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(10,10,10,0.85) 0%, rgba(20,25,35,0.65) 100%);
+  background: transparent;
 }
 
 .lux-container {
@@ -744,12 +791,11 @@ $gold-light: #F3E5AB;
   margin: 16px;
   display: flex;
   min-height: 580px;
-  background: rgba(20,20,20,0.5);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 24px;
+  background: $auth-panel;
+  border: 1px solid $auth-border;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
+  box-shadow: none;
 }
 
 .lux-brand {
@@ -760,7 +806,7 @@ $gold-light: #F3E5AB;
   justify-content: space-between;
   position: relative;
   overflow: hidden;
-  border-right: 1px solid rgba(255,255,255,0.1);
+  border-right: 1px solid $auth-border;
 
   @media (max-width: 768px) { display: none; }
 }
@@ -768,7 +814,7 @@ $gold-light: #F3E5AB;
 .brand-glow {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba($gold, 0.08) 0%, transparent 60%);
+  background: rgba(99, 102, 241, 0.06);
   pointer-events: none;
 }
 
@@ -778,15 +824,15 @@ $gold-light: #F3E5AB;
   .brand-name {
     font-size: 28px;
     font-weight: 600;
-    color: $gold;
-    letter-spacing: 4px;
+    color: #fff;
+    letter-spacing: 0;
     margin: 0;
   }
   .brand-tagline {
     font-size: 12px;
-    font-weight: 300;
-    letter-spacing: 3px;
-    color: rgba(255,255,255,0.4);
+    font-weight: 500;
+    letter-spacing: 0;
+    color: $auth-text-muted;
     margin-top: 4px;
   }
 }
@@ -796,17 +842,17 @@ $gold-light: #F3E5AB;
   z-index: 1;
   margin: 48px 0;
   .brand-headline {
-    font-size: 36px;
-    font-weight: 300;
+    font-size: 32px;
+    font-weight: 600;
     line-height: 1.3;
     color: #fff;
     margin: 0 0 16px;
   }
   .brand-desc {
     font-size: 14px;
-    font-weight: 300;
+    font-weight: 400;
     line-height: 1.8;
-    color: rgba(255,255,255,0.5);
+    color: $auth-text-muted;
     margin: 0;
   }
 }
@@ -818,11 +864,11 @@ $gold-light: #F3E5AB;
   gap: 24px;
   .brand-link {
     font-size: 13px;
-    font-weight: 300;
-    color: rgba(255,255,255,0.4);
+    font-weight: 400;
+    color: $auth-text-muted;
     text-decoration: none;
-    transition: color 0.3s;
-    &:hover { color: $gold; }
+    transition: color 0.2s ease;
+    &:hover { color: #fff; }
   }
 }
 
@@ -833,7 +879,7 @@ $gold-light: #F3E5AB;
   flex-direction: column;
   justify-content: center;
   position: relative;
-  background: rgba(0,0,0,0.2);
+  background: $auth-panel-muted;
 
   @media (max-width: 768px) { padding: 32px 24px; }
 }
@@ -842,8 +888,8 @@ $gold-light: #F3E5AB;
   display: none;
   text-align: center;
   margin-bottom: 32px;
-  h1 { font-size: 22px; color: $gold; letter-spacing: 3px; margin: 0; }
-  p { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 2px; margin-top: 4px; }
+  h1 { font-size: 22px; color: #fff; letter-spacing: 0; margin: 0; }
+  p { font-size: 11px; color: $auth-text-muted; letter-spacing: 0; margin-top: 4px; }
   @media (max-width: 768px) { display: block; }
 }
 
@@ -855,41 +901,84 @@ $gold-light: #F3E5AB;
 
 .form-heading {
   font-size: 24px;
-  font-weight: 500;
+  font-weight: 600;
   color: #fff;
-  letter-spacing: 2px;
+  letter-spacing: 0;
   margin: 0 0 28px;
 }
 
 .form-desc {
   font-size: 13px;
-  color: rgba(255,255,255,0.5);
-  font-weight: 300;
+  color: $auth-text-muted;
+  font-weight: 400;
   margin: -16px 0 24px;
+}
+
+.auth-alert {
+  margin-bottom: 20px;
+}
+
+.password-toggle-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: $auth-text-muted;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba($auth-primary-soft, 0.65);
+    outline-offset: 2px;
+  }
+}
+
+.password-toggle-icon {
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .password-toggle-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
 }
 
 .back-link {
   display: inline-flex;
   align-items: center;
   font-size: 13px;
-  color: rgba(255,255,255,0.5);
+  color: $auth-text-muted;
   text-decoration: none;
   margin-bottom: 20px;
-  transition: color 0.3s;
+  transition: color 0.2s ease;
   &:hover { color: #fff; }
 }
 
 // Element Plus 深色主题覆盖
 :deep(.el-input__wrapper) {
-  background: rgba(255,255,255,0.05) !important;
-  border: none !important;
-  border-radius: 12px !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  border: 1px solid $auth-border !important;
+  border-radius: 8px !important;
   box-shadow: none !important;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   &:hover, &.is-focus {
-    background: rgba(255,255,255,0.08) !important;
-    border: none !important;
-    box-shadow: 0 0 12px rgba($gold, 0.15) !important;
+    background: rgba(15, 23, 42, 0.88) !important;
+    border-color: rgba($auth-primary-soft, 0.45) !important;
+    box-shadow: none !important;
   }
 }
 :deep(.el-input__inner) {
@@ -898,22 +987,22 @@ $gold-light: #F3E5AB;
 }
 :deep(.el-input__prefix .el-icon),
 :deep(.el-input__suffix .el-icon) {
-  color: rgba(255,255,255,0.4) !important;
+  color: $auth-text-muted !important;
 }
 :deep(.el-form-item__error) {
-  color: #f87171 !important;
+  color: #fca5a5 !important;
 }
 :deep(.el-checkbox__label) {
-  color: rgba(255,255,255,0.5) !important;
+  color: $auth-text-muted !important;
   font-size: 13px !important;
 }
 :deep(.el-checkbox__inner) {
   background: transparent !important;
-  border-color: rgba(255,255,255,0.3) !important;
+  border-color: $auth-border !important;
 }
 :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-  background: $gold !important;
-  border-color: $gold !important;
+  background: $auth-primary !important;
+  border-color: $auth-primary !important;
 }
 
 .form-options {
@@ -925,37 +1014,37 @@ $gold-light: #F3E5AB;
 
 .lux-link {
   font-size: 13px;
-  color: $gold;
+  color: $auth-primary-soft;
   text-decoration: none;
-  transition: color 0.3s;
-  &:hover { color: $gold-light; }
+  transition: color 0.2s ease;
+  &:hover { color: #fff; }
 }
 
 .lux-link-gold {
-  color: $gold;
-  font-weight: 500;
+  color: $auth-primary-soft;
+  font-weight: 600;
   text-decoration: none;
   margin-left: 4px;
-  transition: color 0.3s;
-  &:hover { color: $gold-light; }
+  transition: color 0.2s ease;
+  &:hover { color: #fff; }
 }
 
 .lux-btn-gold {
   width: 100%;
   padding: 14px;
   border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, $gold-dark, $gold);
-  color: #000;
+  border-radius: 8px;
+  background: $auth-primary;
+  color: #fff;
   font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 4px;
+  font-weight: 600;
+  letter-spacing: 0;
   cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 0 15px rgba($gold, 0.3);
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+  box-shadow: none;
   &:hover:not(:disabled) {
-    background: linear-gradient(135deg, $gold, $gold-light);
-    box-shadow: 0 0 25px rgba($gold, 0.5);
+    background: $auth-primary-dark;
+    box-shadow: none;
   }
   &:disabled { opacity: 0.6; cursor: not-allowed; }
 }
@@ -963,18 +1052,18 @@ $gold-light: #F3E5AB;
 .lux-btn-outline {
   width: 100%;
   padding: 14px;
-  border: 1px solid $gold;
-  border-radius: 12px;
+  border: 1px solid rgba($auth-primary-soft, 0.55);
+  border-radius: 8px;
   background: transparent;
-  color: $gold;
+  color: $auth-primary-soft;
   font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 4px;
+  font-weight: 600;
+  letter-spacing: 0;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
   &:hover:not(:disabled) {
-    background: $gold;
-    color: #000;
+    background: rgba($auth-primary, 0.2);
+    color: #fff;
   }
   &:disabled { opacity: 0.6; cursor: not-allowed; }
 }
@@ -983,15 +1072,15 @@ $gold-light: #F3E5AB;
   width: 100%;
   padding: 14px;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   background: #fff;
-  color: #000;
+  color: #111827;
   font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 4px;
+  font-weight: 600;
+  letter-spacing: 0;
   cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 4px 16px rgba(255,255,255,0.1);
+  transition: background-color 0.3s ease, opacity 0.2s ease;
+  box-shadow: none;
   &:hover:not(:disabled) { background: #e5e5e5; }
   &:disabled { opacity: 0.6; cursor: not-allowed; }
 }
@@ -1000,8 +1089,8 @@ $gold-light: #F3E5AB;
   margin-top: 28px;
   text-align: center;
   font-size: 14px;
-  color: rgba(255,255,255,0.5);
-  font-weight: 300;
+  color: $auth-text-muted;
+  font-weight: 400;
 }
 
 .code-group {
@@ -1011,7 +1100,7 @@ $gold-light: #F3E5AB;
   .code-input { flex: 1; }
   .code-btn {
     flex-shrink: 0;
-    border-radius: 12px !important;
+    border-radius: 8px !important;
     min-width: 110px;
   }
 }
@@ -1019,8 +1108,8 @@ $gold-light: #F3E5AB;
 .invite-tip {
   margin-top: 6px;
   font-size: 12px;
-  .tip-ok { color: #34d399; }
-  .tip-err { color: #f87171; }
+  .tip-ok { color: #86efac; }
+  .tip-err { color: #fca5a5; }
 }
 
 .lux-copyright {
@@ -1029,8 +1118,8 @@ $gold-light: #F3E5AB;
   width: 100%;
   text-align: center;
   font-size: 12px;
-  color: rgba(255,255,255,0.3);
-  font-weight: 300;
+  color: rgba(226,232,240,0.5);
+  font-weight: 400;
   z-index: 10;
 }
 

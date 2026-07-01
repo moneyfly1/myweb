@@ -38,21 +38,16 @@
       <circle cx="122" cy="108" r="17" fill="white"/>
 
       <!-- 瞳孔（跟踪用户名输入） -->
-      <circle :cx="leftPupilX" :cy="pupilY" r="9" fill="#222"
-        :style="{ transition: 'cx 0.1s ease-out' }"/>
-      <circle :cx="leftPupilX + 3" :cy="pupilY - 3" r="3" fill="white"
-        :style="{ transition: 'cx 0.1s ease-out' }"/>
-      <circle :cx="rightPupilX" :cy="pupilY" r="9" fill="#222"
-        :style="{ transition: 'cx 0.1s ease-out' }"/>
-      <circle :cx="rightPupilX + 3" :cy="pupilY - 3" r="3" fill="white"
-        :style="{ transition: 'cx 0.1s ease-out' }"/>
+      <circle :cx="leftPupilX" :cy="pupilY" r="9" fill="#222" class="pupil"/>
+      <circle :cx="leftPupilX + 3" :cy="pupilY - 3" r="3" fill="white" class="pupil"/>
+      <circle :cx="rightPupilX" :cy="pupilY" r="9" fill="#222" class="pupil"/>
+      <circle :cx="rightPupilX + 3" :cy="pupilY - 3" r="3" fill="white" class="pupil"/>
 
       <!-- 鼻子 -->
       <ellipse cx="100" cy="125" rx="6" ry="4" fill="#E8907A"/>
 
       <!-- 嘴巴 -->
-      <path :d="mouthPath" fill="none" stroke="#C87060" stroke-width="2.5" stroke-linecap="round"
-        style="transition: d 0.3s ease"/>
+      <path :d="mouthPath" fill="none" stroke="#C87060" stroke-width="2.5" stroke-linecap="round" class="mouth"/>
 
       <!-- 腮红 -->
       <ellipse cx="62" cy="128" rx="13" ry="8" fill="#FF9BAC" opacity="0.4"/>
@@ -121,13 +116,13 @@ const rightArmStyle = computed(() => {
 .character-svg {
   width: 140px;
   height: 154px;
-  animation: breathe 3.5s ease-in-out infinite;
   transform-origin: center bottom;
   overflow: visible;
 }
-
-@keyframes breathe {
-  0%, 100% { transform: scaleY(1) translateY(0); }
-  50%       { transform: scaleY(1.025) translateY(-2px); }
+.pupil {
+  transition: cx 0.1s ease-out;
+}
+.mouth {
+  transition: d 0.3s ease;
 }
 </style>
