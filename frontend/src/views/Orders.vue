@@ -1551,14 +1551,14 @@ export default {
   -webkit-overflow-scrolling: touch;
 }
 
-:global(.user-layout) .orders-container .orders-filter-form {
+:global(.user-layout .orders-container .orders-filter-form) {
   display: grid !important;
   grid-template-columns: minmax(220px, 1.25fr) minmax(140px, 0.7fr) minmax(140px, 0.7fr) minmax(280px, 1.3fr) minmax(150px, max-content) !important;
   align-items: end !important;
   gap: 12px !important;
 }
 
-:global(.user-layout) .orders-container .orders-filter-actions {
+:global(.user-layout .orders-container .orders-filter-actions) {
   flex-wrap: nowrap !important;
 }
 
@@ -1620,7 +1620,7 @@ export default {
   color: #67c23a;
 }
 
-:global(.user-layout) .orders-container .order-amount {
+:global(.user-layout .orders-container .order-amount) {
   color: #303133 !important;
   font-size: 14px !important;
   font-weight: 600 !important;
@@ -1629,20 +1629,20 @@ export default {
   letter-spacing: 0 !important;
 }
 
-:global(.user-layout) .orders-container .order-amount-sign,
-:global(.user-layout) .orders-container .order-amount-currency {
+:global(.user-layout .orders-container .order-amount-sign),
+:global(.user-layout .orders-container .order-amount-currency) {
   font-size: 12px !important;
   line-height: 1 !important;
   font-weight: 600 !important;
 }
 
-:global(.user-layout) .orders-container .order-amount-value {
+:global(.user-layout .orders-container .order-amount-value) {
   font-size: 14px !important;
   line-height: 1.4 !important;
   font-weight: 700 !important;
 }
 
-:global(.user-layout) .orders-container .order-amount.positive {
+:global(.user-layout .orders-container .order-amount.positive) {
   color: #67c23a !important;
 }
 .amount-stat {
@@ -1880,7 +1880,7 @@ export default {
 
 @media (max-width: 1100px) {
   .orders-filter-form,
-  :global(.user-layout) .orders-container .orders-filter-form {
+  :global(.user-layout .orders-container .orders-filter-form) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
@@ -1900,7 +1900,7 @@ export default {
     }
   }
 
-  :global(.user-layout) .orders-container .orders-filter-form {
+  :global(.user-layout .orders-container .orders-filter-form) {
     display: grid !important;
     grid-template-columns: 1fr !important;
   }
