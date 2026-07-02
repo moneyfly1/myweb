@@ -548,7 +548,7 @@ const handleFilterChange = () => {
   padding: 0;
 }
 
-:global(.user-layout) .tickets-container {
+:global(.user-layout .tickets-container) {
   display: block !important;
   max-width: none !important;
   width: 100% !important;
@@ -562,7 +562,7 @@ const handleFilterChange = () => {
   width: 100%;
 }
 
-:global(.user-layout) .tickets-container .tickets-workspace {
+:global(.user-layout .tickets-container .tickets-workspace) {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) !important;
   gap: 14px !important;
@@ -570,7 +570,7 @@ const handleFilterChange = () => {
   max-width: none !important;
 }
 
-:global(.user-layout) .tickets-container .list-card {
+:global(.user-layout .tickets-container .list-card) {
   min-width: 0;
   width: 100% !important;
   max-width: none !important;
@@ -582,8 +582,8 @@ const handleFilterChange = () => {
   width: 100%;
 }
 
-:global(.user-layout) .tickets-container .table-wrapper,
-:global(.user-layout) .tickets-container .ticket-table {
+:global(.user-layout .tickets-container .table-wrapper),
+:global(.user-layout .tickets-container .ticket-table) {
   width: 100% !important;
 }
 .section-stack {
@@ -653,7 +653,7 @@ const handleFilterChange = () => {
   width: 120px;
 }
 
-:global(.user-layout) .tickets-container .ticket-filter-form {
+:global(.user-layout .tickets-container .ticket-filter-form) {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(150px, 1fr)) !important;
   align-items: end !important;
@@ -661,7 +661,7 @@ const handleFilterChange = () => {
 }
 @media (max-width: 1100px) {
   .ticket-filter-form,
-  :global(.user-layout) .tickets-container .ticket-filter-form {
+  :global(.user-layout .tickets-container .ticket-filter-form) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
@@ -733,12 +733,12 @@ const handleFilterChange = () => {
   }
 }
 
-:global(.user-layout) .tickets-container .mobile-card-actions {
+:global(.user-layout .tickets-container .mobile-card-actions) {
   padding: 12px 16px;
   border-top: 1px solid #ebeef5;
 }
 
-:global(.user-layout) .tickets-container .mobile-card-actions .el-button {
+:global(.user-layout .tickets-container .mobile-card-actions .el-button) {
   width: 100%;
   min-height: 44px;
 }
@@ -881,7 +881,7 @@ const handleFilterChange = () => {
     }
   }
 
-  :global(.user-layout) .tickets-container .ticket-filter-form {
+  :global(.user-layout .tickets-container .ticket-filter-form) {
     display: grid !important;
     grid-template-columns: 1fr !important;
   }

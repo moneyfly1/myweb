@@ -575,7 +575,7 @@ const getIsValid = (row) => {
   align-items: start;
   gap: 14px;
 }
-:global(.user-layout) .invites-container .invites-workspace {
+:global(.user-layout .invites-container .invites-workspace) {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) !important;
   gap: 14px !important;
