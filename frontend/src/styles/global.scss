@@ -326,7 +326,7 @@
     background-color: rgba(26, 22, 37, 0.8) !important;
     border-color: #4B0082 !important;
     &:hover { border-color: #7B68EE !important; }
-    &.is-focus { border-color: #7B68EE !important; box-shadow: 0 0 0 2px rgba(123, 104, 238, 0.2) !important; }
+    &.is-focus { border-color: #7B68EE !important; box-shadow: none !important; }
   }
   .el-input__inner {
     color: #E6E6FA;
@@ -946,7 +946,7 @@ $breakpoints: (
 .el-date-editor.el-input__wrapper.is-focus,
 .el-date-editor .el-input__wrapper.is-focus {
   border-color: var(--el-color-primary, #409eff) !important;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12) !important;
+  box-shadow: none !important;
 }
 .el-input.is-disabled .el-input__wrapper,
 .el-select.is-disabled .el-select__wrapper {
@@ -1007,7 +1007,7 @@ $breakpoints: (
   background: var(--el-fill-color-blank, #fff) !important;
 }
 .el-textarea__inner:focus {
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12) !important;
+  box-shadow: none !important;
   border-color: var(--el-color-primary, #409eff) !important;
 }
 .el-table {
@@ -1225,13 +1225,13 @@ $breakpoints: (
     .el-input__wrapper.is-focus,
     .el-select__wrapper.is-focused {
       border-color: var(--el-color-primary, #409eff) !important;
-      box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12) !important;
+      box-shadow: none !important;
     }
   }
 }
 
 /* Focus visibility for keyboard navigation */
-:focus-visible {
+:focus-visible:not(.el-input__inner):not(.el-textarea__inner) {
   outline: 2px solid var(--theme-primary, #409EFF) !important;
   outline-offset: 2px;
 }
