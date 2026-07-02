@@ -930,6 +930,7 @@ $breakpoints: (
   border: 1px solid var(--el-border-color, #dcdfe6) !important;
   border-radius: 6px !important;
   box-shadow: none !important;
+  -webkit-box-shadow: none !important;
   background: var(--el-fill-color-blank, #fff) !important;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
@@ -939,6 +940,7 @@ $breakpoints: (
 .el-date-editor .el-input__wrapper:hover {
   border-color: var(--el-border-color-hover, #c0c4cc) !important;
   box-shadow: none !important;
+  -webkit-box-shadow: none !important;
 }
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused,
@@ -947,17 +949,25 @@ $breakpoints: (
 .el-date-editor .el-input__wrapper.is-focus {
   border-color: var(--el-color-primary, #409eff) !important;
   box-shadow: none !important;
+  -webkit-box-shadow: none !important;
 }
 .el-input.is-disabled .el-input__wrapper,
 .el-select.is-disabled .el-select__wrapper {
   border-color: var(--el-disabled-border-color, #e4e7ed) !important;
   background: var(--el-disabled-bg-color, #f5f7fa) !important;
 }
-.el-input__inner {
+.el-input__inner,
+.el-input__inner:focus,
+.el-input__inner:focus-visible,
+.el-textarea__inner,
+.el-textarea__inner:focus,
+.el-textarea__inner:focus-visible {
   border: none !important;
   box-shadow: none !important;
+  -webkit-box-shadow: none !important;
   outline: none !important;
   background: transparent !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 // Element Plus 的 append/prepend 默认会把按钮做成半边圆角。

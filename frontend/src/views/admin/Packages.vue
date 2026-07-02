@@ -1158,6 +1158,6 @@ export default {
 }
 .packages-admin-container :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
+  box-shadow: none !important;
 }
 </style> 
