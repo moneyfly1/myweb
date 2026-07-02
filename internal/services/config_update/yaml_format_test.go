@@ -361,7 +361,7 @@ func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
 	proxies := []*ProxyNode{
 		{Name: "SS Node", Type: "ss", Server: "某站点", Port: 8388, Cipher: "aes-128-gcm", Password: "secret"},
 		{Name: "Trojan Node", Type: "trojan", Server: "某站点", Port: 443, Password: "secret", TLS: true, Options: map[string]any{"sni": "某站点"}},
-		{Name: "VMess Node", Type: "vmess", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000076", Cipher: "auto", TLS: true},
+		{Name: "VMess Node", Type: "vmess", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000076", Cipher: "auto", TLS: true, Network: "ws", Options: map[string]any{"ws-opts": map[string]any{"path": "/ws", "headers": map[string]any{"Host": "某站点"}}}},
 		{Name: "VLESS Node", Type: "vless", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000028", TLS: true},
 		{Name: "TUIC Node", Type: "tuic", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000028", Password: "tuic-secret", TLS: true},
 		{Name: "Hysteria2 Node", Type: "hysteria2", Server: "某站点", Port: 443, Password: "hy2-secret", TLS: true},
@@ -372,8 +372,7 @@ func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
 		"[Proxy]",
 		"SS Node = ss, 某站点, 8388, encrypt-method=aes-128-gcm, password=secret",
 		"Trojan Node = trojan, 某站点, 443, password=secret",
-		"VMess Node = vmess, 某站点, 443, username=00000000-0000-4000-8000-000000000076",
-		"VLESS Node = vless, 某站点, 443, username=00000000-0000-4000-8000-000000000028",
+		"VMess Node = vmess, 某站点, 443, username=00000000-0000-4000-8000-000000000076, tls=true, vmess-aead=true, ws=true, ws-path=/ws, sni=某站点, ws-headers=Host:某站点",
 		"TUIC Node = tuic, 某站点, 443",
 		"Hysteria2 Node = hysteria2, 某站点, 443",
 		"[Proxy Group]",
@@ -382,32 +381,43 @@ func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
 			t.Fatalf("surge output missing %q:\n%s", want, surge)
 		}
 	}
+	if strings.Contains(surge, "VLESS Node") || strings.Contains(surge, " = vless,") {
+		t.Fatalf("surge output must not contain unsupported VLESS nodes:\n%s", surge)
+	}
+	if strings.Contains(surge, "encrypt-method=auto") {
+		t.Fatalf("surge vmess output must not use unsupported auto encryption:\n%s", surge)
+	}
 
 	quantumultX := s.generateQuantumultXConfig(proxies, "https://example.com")
 	for _, want := range []string{
 		"[server_local]",
-		`shadowsocks=某站点,8388,aes-128-gcm,"secret",SS Node`,
-		"trojan=某站点,443,password=secret,over-tls=true",
-		"vmess=某站点,443,method=auto,password=00000000-0000-4000-8000-000000000076",
+		"shadowsocks = 某站点:8388, method=aes-128-gcm, password=secret, fast-open=false, udp-relay=false, tag=SS Node",
+		"trojan = 某站点:443, password=secret, over-tls=true, tls-host=某站点",
+		"vmess = 某站点:443, method=chacha20-ietf-poly1305, password=00000000-0000-4000-8000-000000000076, obfs=wss, obfs-host=某站点, obfs-uri=/ws",
 		"[policy]",
 	} {
 		if !strings.Contains(quantumultX, want) {
 			t.Fatalf("quantumult x output missing %q:\n%s", want, quantumultX)
 		}
 	}
+	if strings.Contains(quantumultX, "VLESS Node") || strings.Contains(quantumultX, "TUIC Node") || strings.Contains(quantumultX, "Hysteria2 Node") {
+		t.Fatalf("quantumult x policies must not reference unsupported skipped nodes:\n%s", quantumultX)
+	}
 
 	loon := s.generateLoonConfig(proxies, "https://example.com")
 	for _, want := range []string{
 		"[Proxy]",
-		"SS Node = Shadowsocks, 某站点, 8388, aes-128-gcm, secret",
-		"Trojan Node = Trojan, 某站点, 443, secret",
-		"VMess Node = VMess, 某站点, 443, 00000000-0000-4000-8000-000000000076",
-		"VLESS Node = VLESS, 某站点, 443, 00000000-0000-4000-8000-000000000028",
+		`SS Node = Shadowsocks,某站点,8388,aes-128-gcm,"secret"`,
+		`Trojan Node = trojan,某站点,443,"secret",tls-name=某站点`,
+		`VMess Node = vmess,某站点,443,chacha20-ietf-poly1305,"00000000-0000-4000-8000-000000000076",over-tls=true,transport=ws,path=/ws,host=某站点`,
 		"[Remote Rule]",
 	} {
 		if !strings.Contains(loon, want) {
 			t.Fatalf("loon output missing %q:\n%s", want, loon)
 		}
+	}
+	if strings.Contains(loon, "VLESS Node") {
+		t.Fatalf("loon output must not contain unsupported VLESS nodes:\n%s", loon)
 	}
 
 	var links []string

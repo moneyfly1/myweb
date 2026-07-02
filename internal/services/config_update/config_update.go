@@ -1601,6 +1601,39 @@ func stringSliceFromAny(value interface{}) []string {
 	}
 }
 
+func nestedString(opts map[string]interface{}, key, subkey string) string {
+	if opts == nil {
+		return ""
+	}
+	if nested, ok := opts[key].(map[string]interface{}); ok {
+		if value, ok := nested[subkey].(string); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func wsPathAndHost(opts map[string]interface{}) (path, host string) {
+	path = nestedString(opts, "ws-opts", "path")
+	if wsOpts, ok := opts["ws-opts"].(map[string]interface{}); ok {
+		if headers, ok := wsOpts["headers"].(map[string]interface{}); ok {
+			host, _ = headers["Host"].(string)
+		}
+	}
+	return path, host
+}
+
+func sniFromMap(opts map[string]interface{}, fallback string) string {
+	sni := optVal[string](opts, "sni")
+	if sni == "" {
+		sni = optVal[string](opts, "servername")
+	}
+	if sni == "" {
+		sni = fallback
+	}
+	return sni
+}
+
 func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	ind := strings.Repeat(" ", indent)
 	m := s.nodeToMap(node)
@@ -2367,45 +2400,42 @@ func (s *ConfigUpdateService) proxyNodeToSurgeLine(n *ProxyNode) string {
 
 	case "trojan":
 		password := optVal[string](m, "password")
-		sni := optVal[string](m, "sni")
-		if sni == "" {
-			sni = fmt.Sprintf("%v", m["servername"])
-		}
-		if sni == "" {
-			sni = host
-		}
+		sni := sniFromMap(m, host)
 		parts := []string{fmt.Sprintf("%s = trojan, %s, %s, password=%s, sni=%s", name, host, port, password, sni)}
 		if optVal[bool](m, "skip-cert-verify") {
 			parts = append(parts, "skip-cert-verify=true")
 		}
-		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
-			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", optVal[string](m, "ws-opts.path")))
+		if network := optVal[string](m, "network"); network == "ws" {
+			path, host := wsPathAndHost(m)
+			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", path))
+			if host != "" {
+				parts = append(parts, fmt.Sprintf("ws-headers=Host:%s", host))
+			}
 		}
 		return strings.Join(parts, ", ")
 
 	case "vmess":
 		uuid := optVal[string](m, "uuid")
-		tlsStr := ""
-		if optVal[bool](m, "tls") {
-			tlsStr = ", tls=true"
+		parts := []string{fmt.Sprintf("%s = vmess, %s, %s, username=%s, tls=%t, vmess-aead=true", name, host, port, uuid, optVal[bool](m, "tls"))}
+		if network := optVal[string](m, "network"); network == "ws" {
+			path, wsHost := wsPathAndHost(m)
+			sni := wsHost
+			if sni == "" {
+				sni = host
+			}
+			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s, sni=%s", path, sni))
+			if wsHost != "" {
+				parts = append(parts, fmt.Sprintf("ws-headers=Host:%s", wsHost))
+			}
 		}
-		parts := []string{fmt.Sprintf("%s = vmess, %s, %s, username=%s, encrypt-method=auto%s", name, host, port, uuid, tlsStr)}
-		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
-			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", optVal[string](m, "ws-opts.path")))
+		if optVal[bool](m, "skip-cert-verify") {
+			parts = append(parts, "skip-cert-verify=true")
 		}
 		return strings.Join(parts, ", ")
 
 	case "vless":
-		uuid := optVal[string](m, "uuid")
-		tlsStr := ""
-		if optVal[bool](m, "tls") {
-			tlsStr = ", tls=true"
-		}
-		parts := []string{fmt.Sprintf("%s = vless, %s, %s, username=%s, encrypt-method=none%s", name, host, port, uuid, tlsStr)}
-		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
-			parts = append(parts, fmt.Sprintf("ws=true, ws-path=%s", optVal[string](m, "ws-opts.path")))
-		}
-		return strings.Join(parts, ", ")
+		// Surge does not document VLESS as a supported proxy policy type.
+		return ""
 
 	case "socks", "socks5":
 		user := optVal[string](m, "username")
@@ -2528,13 +2558,7 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 
 		// TLS
 		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" {
-			sni := optVal[string](m, "sni")
-			if sni == "" {
-				sni = fmt.Sprintf("%v", m["servername"])
-			}
-			if sni == "" {
-				sni = ob.Server
-			}
+			sni := sniFromMap(m, ob.Server)
 			ob.TLS = &struct {
 				Enabled    bool     `json:"enabled"`
 				ServerName string   `json:"server_name,omitempty"`
@@ -2611,6 +2635,7 @@ func (s *ConfigUpdateService) generateQuantumultXConfig(proxies []*ProxyNode, si
 	sb.WriteString(fmt.Sprintf("# %s Quantumult X Config\n", siteURL))
 	sb.WriteString("[server_local]\n")
 
+	var allNames []string
 	for _, n := range proxies {
 		if n.Server == "baidu.com" {
 			continue
@@ -2623,35 +2648,49 @@ func (s *ConfigUpdateService) generateQuantumultXConfig(proxies []*ProxyNode, si
 		case "ss":
 			cipher := optVal[string](m, "cipher")
 			password := optVal[string](m, "password")
-			sb.WriteString(fmt.Sprintf("shadowsocks=%s,%d,%s,%s,%s\n", host, n.Port, cipher, fmt.Sprintf(`"%s"`, password), name))
+			sb.WriteString(fmt.Sprintf("shadowsocks = %s:%d, method=%s, password=%s, fast-open=false, udp-relay=false, tag=%s\n",
+				host, n.Port, cipher, password, name))
+			allNames = append(allNames, name)
 		case "trojan":
 			password := optVal[string](m, "password")
 			sni := optVal[string](m, "sni")
 			if sni == "" {
 				sni = host
 			}
-			sb.WriteString(fmt.Sprintf("trojan=%s,%d,password=%s,over-tls=true,tls-host=%s,fast-open=false,udp-relay=false,tag=%s\n",
+			sb.WriteString(fmt.Sprintf("trojan = %s:%d, password=%s, over-tls=true, tls-host=%s, fast-open=false, udp-relay=false, tag=%s\n",
 				host, n.Port, password, sni, name))
+			allNames = append(allNames, name)
 		case "vmess":
 			uuid := optVal[string](m, "uuid")
-			tlsStr := "false"
-			if optVal[bool](m, "tls") {
-				tlsStr = "true"
+			method := optVal[string](m, "cipher")
+			if method == "" || method == "auto" {
+				method = "chacha20-ietf-poly1305"
 			}
-			sb.WriteString(fmt.Sprintf("vmess=%s,%d,method=auto,password=%s,over-tls=%s,fast-open=false,udp-relay=false,tag=%s\n",
-				host, n.Port, uuid, tlsStr, name))
+			parts := []string{fmt.Sprintf("vmess = %s:%d, method=%s, password=%s", host, n.Port, method, uuid)}
+			if network := optVal[string](m, "network"); network == "ws" {
+				path, wsHost := wsPathAndHost(m)
+				if optVal[bool](m, "tls") {
+					parts = append(parts, "obfs=wss")
+				} else {
+					parts = append(parts, "obfs=ws")
+				}
+				if wsHost != "" {
+					parts = append(parts, fmt.Sprintf("obfs-host=%s", wsHost))
+				}
+				if path != "" {
+					parts = append(parts, fmt.Sprintf("obfs-uri=%s", path))
+				}
+			} else if optVal[bool](m, "tls") {
+				sni := sniFromMap(m, host)
+				parts = append(parts, "obfs=over-tls", fmt.Sprintf("obfs-host=%s", sni))
+			}
+			parts = append(parts, "fast-open=false", "udp-relay=false", fmt.Sprintf("tag=%s", name))
+			sb.WriteString(strings.Join(parts, ", ") + "\n")
+			allNames = append(allNames, name)
 		}
 	}
 
 	sb.WriteString("\n[policy]\n")
-	var allNames []string
-	for _, n := range proxies {
-		if n.Server == "baidu.com" {
-			continue
-		}
-		name := strings.ReplaceAll(n.Name, ",", " ")
-		allNames = append(allNames, name)
-	}
 	if len(allNames) > 0 {
 		sb.WriteString(fmt.Sprintf("static=🚀 节点选择, %s, img-url=system\n", strings.Join(allNames, ", ")))
 		sb.WriteString(fmt.Sprintf("available=♻️ 自动选择, %s, img-url=bolt.circle\n", strings.Join(allNames, ", ")))
@@ -2680,20 +2719,38 @@ func (s *ConfigUpdateService) generateLoonConfig(proxies []*ProxyNode, siteURL s
 		case "ss":
 			cipher := optVal[string](m, "cipher")
 			password := optVal[string](m, "password")
-			sb.WriteString(fmt.Sprintf("%s = Shadowsocks, %s, %d, %s, %s\n", name, host, n.Port, cipher, password))
+			sb.WriteString(fmt.Sprintf("%s = Shadowsocks,%s,%d,%s,\"%s\"\n", name, host, n.Port, cipher, password))
 		case "trojan":
 			password := optVal[string](m, "password")
 			sni := optVal[string](m, "sni")
 			if sni == "" {
 				sni = host
 			}
-			sb.WriteString(fmt.Sprintf("%s = Trojan, %s, %d, %s, sni=%s\n", name, host, n.Port, password, sni))
+			sb.WriteString(fmt.Sprintf("%s = trojan,%s,%d,\"%s\",tls-name=%s\n", name, host, n.Port, password, sni))
 		case "vmess":
 			uuid := optVal[string](m, "uuid")
-			sb.WriteString(fmt.Sprintf("%s = VMess, %s, %d, %s, method=auto\n", name, host, n.Port, uuid))
-		case "vless":
-			uuid := optVal[string](m, "uuid")
-			sb.WriteString(fmt.Sprintf("%s = VLESS, %s, %d, %s\n", name, host, n.Port, uuid))
+			method := optVal[string](m, "cipher")
+			if method == "" || method == "auto" {
+				method = "chacha20-ietf-poly1305"
+			}
+			parts := []string{fmt.Sprintf("%s = vmess,%s,%d,%s,\"%s\",over-tls=%t", name, host, n.Port, method, uuid, optVal[bool](m, "tls"))}
+			sni := sniFromMap(m, "")
+			if optVal[bool](m, "tls") && sni != "" {
+				parts = append(parts, fmt.Sprintf("tls-name=%s", sni))
+			}
+			if network := optVal[string](m, "network"); network == "ws" {
+				path, wsHost := wsPathAndHost(m)
+				parts = append(parts, "transport=ws")
+				if path != "" {
+					parts = append(parts, fmt.Sprintf("path=%s", path))
+				}
+				if wsHost != "" {
+					parts = append(parts, fmt.Sprintf("host=%s", wsHost))
+				}
+			} else {
+				parts = append(parts, "transport=tcp")
+			}
+			sb.WriteString(strings.Join(parts, ",") + "\n")
 		}
 	}
 
