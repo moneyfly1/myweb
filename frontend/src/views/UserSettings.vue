@@ -906,13 +906,13 @@ export default {
 .user-settings :deep(.el-input__wrapper:hover),
 .user-settings :deep(.el-textarea__inner:hover) {
   border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.08);
+  box-shadow: none;
 }
 
 .user-settings :deep(.el-input__wrapper.is-focus),
 .user-settings :deep(.el-textarea__inner:focus) {
   border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
+  box-shadow: none;
 }
 
 .avatar-uploader {
