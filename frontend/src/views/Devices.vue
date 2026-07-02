@@ -1084,21 +1084,21 @@ export default {
       margin-left: 0;
     }
   }
-  :deep(.mobile-card-actions .el-button) {
+  .devices-container :deep(.mobile-card-actions .el-button) {
     min-height: 44px;
     touch-action: manipulation;
   }
-  :deep(.el-dialog) {
+  .devices-container :deep(.el-dialog) {
     width: 92% !important;
     margin: 4vh auto !important;
     max-height: calc(100dvh - 8vh);
   }
-  :deep(.el-dialog__body) {
+  .devices-container :deep(.el-dialog__body) {
     padding: 15px !important;
     max-height: calc(100dvh - 8vh - 124px);
     overflow-y: auto;
   }
-  :deep(.el-dialog__footer) {
+  .devices-container :deep(.el-dialog__footer) {
     padding: 12px 15px max(14px, env(safe-area-inset-bottom)) !important;
     .el-button {
       width: 100%;

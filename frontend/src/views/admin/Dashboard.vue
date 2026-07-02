@@ -830,7 +830,7 @@ export default {
       margin-top: 3px;
     }
   }
-  :deep(.el-col) {
+  .admin-dashboard :deep(.el-col) {
     flex: 0 0 100% !important;
     max-width: 100% !important;
     width: 100% !important;

@@ -688,10 +688,10 @@ onMounted(() => {
 .full-width-control {
   width: 100%;
 }
-:deep(.el-input-number) {
+.admin-coupons :deep(.el-input-number) {
   width: 100%;
 }
-:deep(.el-date-editor) {
+.admin-coupons :deep(.el-date-editor) {
   width: 100%;
 }
 @media (max-width: 768px) {

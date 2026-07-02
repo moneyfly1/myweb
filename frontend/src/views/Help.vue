@@ -713,7 +713,7 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-:deep(.list-container) {
+.help-container {
   @media (max-width: 768px) {
     padding-top: 0 !important;
     margin-top: 0 !important;
@@ -1355,7 +1355,7 @@ export default {
       color: #666;
     }
   }
-  :deep(.el-collapse) {
+  .help-container :deep(.el-collapse) {
     border: none;
     .el-collapse-item {
       border-bottom: 1px solid #f0f0f0;
@@ -1376,7 +1376,7 @@ export default {
     }
   }
 }
-:deep(.client-guide-dialog) {
+.help-container :deep(.client-guide-dialog) {
   @media (max-width: 768px) {
     .el-dialog {
       width: 92% !important;

@@ -722,7 +722,7 @@ const getIsValid = (row) => {
       line-height: 1.5;
     }
   }
-  :deep(.el-input-number) {
+  .invites-container :deep(.el-input-number) {
     width: 100% !important;
     .el-input {
       width: 100% !important;
@@ -776,7 +776,7 @@ const getIsValid = (row) => {
   }
 }
 @media (max-width: 480px) {
-  :deep(.el-card__body) {
+  .invites-container :deep(.el-card__body) {
     padding: 10px;
   }
 }

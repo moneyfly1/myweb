@@ -452,7 +452,7 @@ export default {
       box-sizing: border-box;
     }
   }
-  :deep(.el-form) {
+  .admin-config :deep(.el-form) {
     width: 100% !important;
     box-sizing: border-box;
     .el-form-item {
@@ -521,20 +521,20 @@ export default {
       }
     }
   }
-  :deep(.el-tabs__content) {
+  .admin-config :deep(.el-tabs__content) {
     width: 100% !important;
     box-sizing: border-box;
   }
-  :deep(.el-card__body) {
+  .admin-config :deep(.el-card__body) {
     width: 100% !important;
     padding: 12px !important;
     box-sizing: border-box;
   }
-  :deep(.el-table) {
+  .admin-config :deep(.el-table) {
     width: 100% !important;
     box-sizing: border-box;
   }
-  :deep(.el-row) {
+  .admin-config :deep(.el-row) {
     .el-col {
       width: 100% !important;
       max-width: 100% !important;

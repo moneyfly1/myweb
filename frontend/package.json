@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --ignore-path ../.gitignore --quiet",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
-    "audit:clicks": "node scripts/audit-click-handlers.mjs"
+    "audit:clicks": "node scripts/audit-click-handlers.mjs",
+    "audit:style-scope": "node scripts/audit-style-scope.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.1.0",

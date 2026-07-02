@@ -1519,13 +1519,17 @@ export default {
 .orders-list,
 .orders-list :deep(.el-card__body),
 .orders-data-view,
+.orders-data-view :deep(.responsive-data-view__table),
 .orders-data-view .table-wrapper {
   min-width: 0;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .orders-list :deep(.el-card__body) {
   padding: 0;
+  overflow-x: hidden;
 }
 
 .records-tabs {
@@ -1539,6 +1543,12 @@ export default {
 .orders-data-view {
   box-sizing: border-box;
   padding: 0 16px 16px;
+  overflow-x: hidden;
+}
+
+.orders-data-view .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 :global(.user-layout) .orders-container .orders-filter-form {
@@ -1687,7 +1697,7 @@ export default {
     }
   }
 }
-:deep(.el-table__fixed-right) {
+.orders-container :deep(.el-table__fixed-right) {
   .action-buttons {
     z-index: 100;
     .el-button {
@@ -1695,7 +1705,7 @@ export default {
     }
   }
 }
-:deep(.el-table__fixed) {
+.orders-container :deep(.el-table__fixed) {
   .action-buttons {
     z-index: 100;
     .el-button {
@@ -1703,7 +1713,7 @@ export default {
     }
   }
 }
-:deep(.el-table__body-wrapper) {
+.orders-container :deep(.el-table__body-wrapper) {
   .el-table__cell {
     .action-buttons {
       position: relative;

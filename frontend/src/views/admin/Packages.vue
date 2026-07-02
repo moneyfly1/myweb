@@ -1125,7 +1125,7 @@ export default {
   .search-section.desktop-only {
     display: none;
   }
-  :deep(.mobile-card-actions .el-button) {
+  .packages-admin-container :deep(.mobile-card-actions .el-button) {
     min-height: 44px;
     touch-action: manipulation;
   }
@@ -1140,23 +1140,23 @@ export default {
     display: none !important;
   }
 }
-:deep(.el-input__wrapper) {
+.packages-admin-container :deep(.el-input__wrapper) {
   border-radius: 6px !important;
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   background-color: #ffffff !important;
 }
-:deep(.el-input__inner) {
+.packages-admin-container :deep(.el-input__inner) {
   border-radius: 6px !important;
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
 }
-:deep(.el-input__wrapper:hover) {
+.packages-admin-container :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: none !important;
 }
-:deep(.el-input__wrapper.is-focus) {
+.packages-admin-container :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
 }
