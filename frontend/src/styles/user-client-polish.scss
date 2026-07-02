@@ -93,12 +93,12 @@
 }
 
 .user-layout:not(.is-mobile).sidebar-collapsed .sidebar {
-  width: 200px !important;
+  width: var(--sidebar-collapsed-width, 64px) !important;
 }
 
 .user-layout:not(.is-mobile).sidebar-collapsed .main-content {
-  margin-left: 200px !important;
-  width: calc(100% - 200px) !important;
+  margin-left: var(--sidebar-collapsed-width, 64px) !important;
+  width: calc(100% - var(--sidebar-collapsed-width, 64px)) !important;
 }
 
 .user-layout:not(.is-mobile).sidebar-collapsed .nav-section-title,
@@ -120,6 +120,31 @@
   max-width: none !important;
   margin: 0 !important;
   width: 100%;
+}
+
+@media (min-width: 769px) {
+  .user-layout:not(.is-mobile) {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .user-layout:not(.is-mobile) .main-content {
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .user-layout:not(.is-mobile):not(.sidebar-collapsed) .main-content {
+    margin-left: var(--sidebar-width, 200px) !important;
+    width: calc(100% - var(--sidebar-width, 200px)) !important;
+  }
+
+  .user-layout:not(.is-mobile) .content-wrapper,
+  .user-layout:not(.is-mobile) .page-content,
+  .user-layout:not(.is-mobile) .list-container {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
 }
 
 .user-layout .settings-tabs-card .setting-content {
