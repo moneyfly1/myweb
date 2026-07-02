@@ -1,5 +1,5 @@
 <template>
-  <div class="list-container">
+  <div class="list-container admin-promotions">
     <el-card class="list-card">
       <template #header>
         <div class="card-header">
@@ -666,7 +666,7 @@ onMounted(() => {
     font-size: 12px;
   }
 
-  :deep(.el-pagination) {
+  .admin-promotions :deep(.el-pagination) {
     flex-wrap: wrap;
   }
 

@@ -299,6 +299,7 @@
       size="600px"
       mobile-size="100%"
       :loading="detailLoading"
+      drawer-class="email-detail-drawer"
     >
       <div v-if="emailDetail" class="email-detail" v-loading="detailLoading">
         <el-descriptions :column="isMobile ? 1 : 2" border class="desktop-only">
@@ -1206,7 +1207,7 @@ export default {
   }
 }
 // 让抽屉body撑满以便邮件内容区自适应高度
-:deep(.el-drawer__body) {
+:deep(.email-detail-drawer .el-drawer__body) {
   display: flex;
   flex-direction: column;
   overflow: hidden;

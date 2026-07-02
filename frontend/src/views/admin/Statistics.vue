@@ -1130,10 +1130,10 @@ export default {
       color: #666;
       line-height: 1.5;
     }
-    :deep(.el-timeline-item) {
+    .admin-statistics :deep(.el-timeline-item) {
       padding-bottom: 16px;
     }
-    :deep(.el-timeline-item__timestamp) {
+    .admin-statistics :deep(.el-timeline-item__timestamp) {
       font-size: 12px;
       color: #909399;
       margin-bottom: 8px;

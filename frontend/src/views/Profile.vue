@@ -1252,14 +1252,14 @@ export default {
     }
   }
 }
-:deep(.el-input-group__prepend),
-:deep(.el-input-group__append) {
+.profile :deep(.el-input-group__prepend),
+.profile :deep(.el-input-group__append) {
   background-color: #f5f7fa;
 }
-:deep(.el-input-group__prepend) {
+.profile :deep(.el-input-group__prepend) {
   border-right: 1px solid #dcdfe6;
 }
-:deep(.el-input-group__append) {
+.profile :deep(.el-input-group__append) {
   border-left: 1px solid #dcdfe6;
 }
 </style> 

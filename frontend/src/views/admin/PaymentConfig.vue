@@ -1140,10 +1140,10 @@ export default {
   gap: 4px;
   flex-wrap: wrap;
 }
-:deep(.el-input__wrapper), :deep(.el-textarea__inner) {
+.admin-payment-config :deep(.el-input__wrapper), .admin-payment-config :deep(.el-textarea__inner) {
   border-radius: 0; box-shadow: none; border: 1px solid #dcdfe6; background-color: #fff;
 }
-:deep(.el-input__wrapper:hover), :deep(.el-input__wrapper.is-focus) {
+.admin-payment-config :deep(.el-input__wrapper:hover), .admin-payment-config :deep(.el-input__wrapper.is-focus) {
   border-color: #409EFF;
 }
 @media (max-width: 768px) {

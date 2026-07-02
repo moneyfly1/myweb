@@ -599,16 +599,24 @@ onUnmounted(() => {
 }
 .main-content {
   flex: 1;
+  min-width: 0;
   margin-left: var(--sidebar-width);
   margin-top: var(--header-height);
   width: calc(100% - var(--sidebar-width));
+  max-width: calc(100% - var(--sidebar-width));
+  overflow-x: clip;
   transition: margin-left 0.2s ease, width 0.2s ease;
   .sidebar-collapsed & { 
     margin-left: var(--sidebar-collapsed-width); 
     width: calc(100% - var(--sidebar-collapsed-width));
+    max-width: calc(100% - var(--sidebar-collapsed-width));
   }
-  @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; }
+  @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; max-width: 100% !important; }
   .content-wrapper {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: var(--content-padding);
     @include respond-to(sm) { padding: 12px; padding-bottom: 72px; }
   }

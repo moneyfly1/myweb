@@ -2059,11 +2059,11 @@ export default {
   justify-content: space-between;
   align-items: center;
 }
-:deep(.el-card) {
+.admin-subscriptions :deep(.el-card) {
   width: 100%;
   max-width: 100%;
 }
-:deep(.list-card) {
+.admin-subscriptions :deep(.list-card) {
   width: 100%;
   max-width: 100%;
 }
