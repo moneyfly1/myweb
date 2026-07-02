@@ -361,7 +361,7 @@ func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
 	proxies := []*ProxyNode{
 		{Name: "SS Node", Type: "ss", Server: "ss.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "secret"},
 		{Name: "Trojan Node", Type: "trojan", Server: "trojan.example.com", Port: 443, Password: "secret", TLS: true, Options: map[string]any{"sni": "trojan.example.com"}},
-		{Name: "VMess Node", Type: "vmess", Server: "vmess.example.com", Port: 443, UUID: "b831381d-6324-4d53-ad4f-8cda48b30836", Cipher: "auto", TLS: true},
+		{Name: "VMess Node", Type: "vmess", Server: "vmess.example.com", Port: 443, UUID: "b831381d-6324-4d53-ad4f-8cda48b30836", Cipher: "auto", TLS: true, Network: "ws", Options: map[string]any{"ws-opts": map[string]any{"path": "/ws", "headers": map[string]any{"Host": "ws.example.com"}}}},
 		{Name: "VLESS Node", Type: "vless", Server: "vless.example.com", Port: 443, UUID: "33c41229-3e5a-456f-bf62-e050d2b84d81", TLS: true},
 		{Name: "TUIC Node", Type: "tuic", Server: "tuic.example.com", Port: 443, UUID: "33c41229-3e5a-456f-bf62-e050d2b84d81", Password: "tuic-secret", TLS: true},
 		{Name: "Hysteria2 Node", Type: "hysteria2", Server: "hy2.example.com", Port: 443, Password: "hy2-secret", TLS: true},
@@ -372,8 +372,7 @@ func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
 		"[Proxy]",
 		"SS Node = ss, ss.example.com, 8388, encrypt-method=aes-128-gcm, password=secret",
 		"Trojan Node = trojan, trojan.example.com, 443, password=secret",
-		"VMess Node = vmess, vmess.example.com, 443, username=b831381d-6324-4d53-ad4f-8cda48b30836",
-		"VLESS Node = vless, vless.example.com, 443, username=33c41229-3e5a-456f-bf62-e050d2b84d81",
+		"VMess Node = vmess, vmess.example.com, 443, username=b831381d-6324-4d53-ad4f-8cda48b30836, tls=true, vmess-aead=true, ws=true, ws-path=/ws, sni=ws.example.com, ws-headers=Host:ws.example.com",
 		"TUIC Node = tuic, tuic.example.com, 443",
 		"Hysteria2 Node = hysteria2, hy2.example.com, 443",
 		"[Proxy Group]",
@@ -382,32 +381,43 @@ func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
 			t.Fatalf("surge output missing %q:\n%s", want, surge)
 		}
 	}
+	if strings.Contains(surge, "VLESS Node") || strings.Contains(surge, " = vless,") {
+		t.Fatalf("surge output must not contain unsupported VLESS nodes:\n%s", surge)
+	}
+	if strings.Contains(surge, "encrypt-method=auto") {
+		t.Fatalf("surge vmess output must not use unsupported auto encryption:\n%s", surge)
+	}
 
 	quantumultX := s.generateQuantumultXConfig(proxies, "https://example.com")
 	for _, want := range []string{
 		"[server_local]",
-		`shadowsocks=ss.example.com,8388,aes-128-gcm,"secret",SS Node`,
-		"trojan=trojan.example.com,443,password=secret,over-tls=true",
-		"vmess=vmess.example.com,443,method=auto,password=b831381d-6324-4d53-ad4f-8cda48b30836",
+		"shadowsocks = ss.example.com:8388, method=aes-128-gcm, password=secret, fast-open=false, udp-relay=false, tag=SS Node",
+		"trojan = trojan.example.com:443, password=secret, over-tls=true, tls-host=trojan.example.com",
+		"vmess = vmess.example.com:443, method=chacha20-ietf-poly1305, password=b831381d-6324-4d53-ad4f-8cda48b30836, obfs=wss, obfs-host=ws.example.com, obfs-uri=/ws",
 		"[policy]",
 	} {
 		if !strings.Contains(quantumultX, want) {
 			t.Fatalf("quantumult x output missing %q:\n%s", want, quantumultX)
 		}
 	}
+	if strings.Contains(quantumultX, "VLESS Node") || strings.Contains(quantumultX, "TUIC Node") || strings.Contains(quantumultX, "Hysteria2 Node") {
+		t.Fatalf("quantumult x policies must not reference unsupported skipped nodes:\n%s", quantumultX)
+	}
 
 	loon := s.generateLoonConfig(proxies, "https://example.com")
 	for _, want := range []string{
 		"[Proxy]",
-		"SS Node = Shadowsocks, ss.example.com, 8388, aes-128-gcm, secret",
-		"Trojan Node = Trojan, trojan.example.com, 443, secret",
-		"VMess Node = VMess, vmess.example.com, 443, b831381d-6324-4d53-ad4f-8cda48b30836",
-		"VLESS Node = VLESS, vless.example.com, 443, 33c41229-3e5a-456f-bf62-e050d2b84d81",
+		`SS Node = Shadowsocks,ss.example.com,8388,aes-128-gcm,"secret"`,
+		`Trojan Node = trojan,trojan.example.com,443,"secret",tls-name=trojan.example.com`,
+		`VMess Node = vmess,vmess.example.com,443,chacha20-ietf-poly1305,"b831381d-6324-4d53-ad4f-8cda48b30836",over-tls=true,transport=ws,path=/ws,host=ws.example.com`,
 		"[Remote Rule]",
 	} {
 		if !strings.Contains(loon, want) {
 			t.Fatalf("loon output missing %q:\n%s", want, loon)
 		}
+	}
+	if strings.Contains(loon, "VLESS Node") {
+		t.Fatalf("loon output must not contain unsupported VLESS nodes:\n%s", loon)
 	}
 
 	var links []string
