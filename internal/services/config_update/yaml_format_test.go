@@ -355,3 +355,71 @@ func TestGenerateSingBoxConfigUsesValidOutboundFields(t *testing.T) {
 		t.Fatalf("reality = %#v", tls["reality"])
 	}
 }
+
+func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
+	s := &ConfigUpdateService{}
+	proxies := []*ProxyNode{
+		{Name: "SS Node", Type: "ss", Server: "某站点", Port: 8388, Cipher: "aes-128-gcm", Password: "secret"},
+		{Name: "Trojan Node", Type: "trojan", Server: "某站点", Port: 443, Password: "secret", TLS: true, Options: map[string]any{"sni": "某站点"}},
+		{Name: "VMess Node", Type: "vmess", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000076", Cipher: "auto", TLS: true},
+		{Name: "VLESS Node", Type: "vless", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000028", TLS: true},
+		{Name: "TUIC Node", Type: "tuic", Server: "某站点", Port: 443, UUID: "00000000-0000-4000-8000-000000000028", Password: "tuic-secret", TLS: true},
+		{Name: "Hysteria2 Node", Type: "hysteria2", Server: "某站点", Port: 443, Password: "hy2-secret", TLS: true},
+	}
+
+	surge := s.generateSurgeConfig(proxies, "https://example.com")
+	for _, want := range []string{
+		"[Proxy]",
+		"SS Node = ss, 某站点, 8388, encrypt-method=aes-128-gcm, password=secret",
+		"Trojan Node = trojan, 某站点, 443, password=secret",
+		"VMess Node = vmess, 某站点, 443, username=00000000-0000-4000-8000-000000000076",
+		"VLESS Node = vless, 某站点, 443, username=00000000-0000-4000-8000-000000000028",
+		"TUIC Node = tuic, 某站点, 443",
+		"Hysteria2 Node = hysteria2, 某站点, 443",
+		"[Proxy Group]",
+	} {
+		if !strings.Contains(surge, want) {
+			t.Fatalf("surge output missing %q:\n%s", want, surge)
+		}
+	}
+
+	quantumultX := s.generateQuantumultXConfig(proxies, "https://example.com")
+	for _, want := range []string{
+		"[server_local]",
+		`shadowsocks=某站点,8388,aes-128-gcm,"secret",SS Node`,
+		"trojan=某站点,443,password=secret,over-tls=true",
+		"vmess=某站点,443,method=auto,password=00000000-0000-4000-8000-000000000076",
+		"[policy]",
+	} {
+		if !strings.Contains(quantumultX, want) {
+			t.Fatalf("quantumult x output missing %q:\n%s", want, quantumultX)
+		}
+	}
+
+	loon := s.generateLoonConfig(proxies, "https://example.com")
+	for _, want := range []string{
+		"[Proxy]",
+		"SS Node = Shadowsocks, 某站点, 8388, aes-128-gcm, secret",
+		"Trojan Node = Trojan, 某站点, 443, secret",
+		"VMess Node = VMess, 某站点, 443, 00000000-0000-4000-8000-000000000076",
+		"VLESS Node = VLESS, 某站点, 443, 00000000-0000-4000-8000-000000000028",
+		"[Remote Rule]",
+	} {
+		if !strings.Contains(loon, want) {
+			t.Fatalf("loon output missing %q:\n%s", want, loon)
+		}
+	}
+
+	var links []string
+	for _, proxy := range proxies {
+		if link := s.nodeToLink(proxy); link != "" {
+			links = append(links, link)
+		}
+	}
+	universal := strings.Join(links, "\n")
+	for _, want := range []string{"ss://", "trojan://", "vmess://", "vless://", "tuic://", "hysteria2://"} {
+		if !strings.Contains(universal, want) {
+			t.Fatalf("universal output missing %q:\n%s", want, universal)
+		}
+	}
+}
