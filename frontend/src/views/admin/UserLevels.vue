@@ -829,7 +829,7 @@ onMounted(() => {
       margin-bottom: 6px;
     }
   }
-  :deep(.el-table) {
+  .user-levels-admin :deep(.el-table) {
     font-size: 12px;
     .el-table__cell {
       padding: 8px 4px;
@@ -852,7 +852,7 @@ onMounted(() => {
     .el-table__cell:nth-child(6) { min-width: 60px; }  /* 状态 */
     .el-table__cell:nth-child(7) { min-width: 120px; } /* 操作 */
   }
-  :deep(.el-button) {
+  .user-levels-admin :deep(.el-button) {
     padding: 6px 10px;
     font-size: 12px;
     & + .el-button {
@@ -922,7 +922,7 @@ onMounted(() => {
     font-size: 13px;
     touch-action: manipulation;
   }
-  :deep(.el-card__header) {
+  .user-levels-admin :deep(.el-card__header) {
     padding: 15px;
     font-size: 14px;
   }
@@ -964,7 +964,7 @@ onMounted(() => {
       font-size: 12px;
     }
   }
-  :deep(.el-table) {
+  .user-levels-admin :deep(.el-table) {
     font-size: 11px;
     .el-table__cell {
       padding: 6px 2px;
@@ -974,7 +974,7 @@ onMounted(() => {
       font-size: 11px;
     }
   }
-  :deep(.el-button) {
+  .user-levels-admin :deep(.el-button) {
     padding: 5px 8px;
     font-size: 11px;
   }

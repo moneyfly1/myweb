@@ -1073,15 +1073,15 @@ onMounted(() => {
     width: 100%;
   }
 }
-:deep(.el-input-number) {
+.admin-invites :deep(.el-input-number) {
   width: 100%;
   box-sizing: border-box;
 }
-:deep(.el-input-number__increase),
-:deep(.el-input-number__decrease) {
+.admin-invites :deep(.el-input-number__increase),
+.admin-invites :deep(.el-input-number__decrease) {
   box-sizing: border-box;
 }
-:deep(.el-table) {
+.admin-invites :deep(.el-table) {
   .el-table__cell {
     padding: 12px 0;
   }
@@ -1214,7 +1214,7 @@ onMounted(() => {
       font-size: 15px;
     }
   }
-  :deep(.el-tabs) {
+  .admin-invites :deep(.el-tabs) {
     width: 100%;
     box-sizing: border-box;
     overflow-x: clip;
@@ -1424,7 +1424,7 @@ onMounted(() => {
       width: 100% !important;
     }
   }
-  :deep(.el-table) {
+  .admin-invites :deep(.el-table) {
     font-size: 12px;
     .el-table__cell {
       padding: 8px 4px;
@@ -1516,7 +1516,7 @@ onMounted(() => {
     margin-top: 10px !important;
     font-size: 13px !important;
   }
-  :deep(.el-pagination) {
+  .admin-invites :deep(.el-pagination) {
     flex-wrap: wrap;
     .el-pagination__sizes,
     .el-pagination__jump {
@@ -1533,7 +1533,7 @@ onMounted(() => {
     box-sizing: border-box;
     overflow-x: clip;
   }
-  :deep(.el-card) {
+  .admin-invites :deep(.el-card) {
     .el-card__header {
       padding: 10px 8px;
       font-size: 13px;
@@ -1685,7 +1685,7 @@ onMounted(() => {
     text-align: left !important;
     line-height: 1.4 !important;
   }
-  :deep(.el-table) {
+  .admin-invites :deep(.el-table) {
     font-size: 11px;
     .el-table__cell {
       padding: 6px 2px;

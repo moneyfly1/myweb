@@ -2715,7 +2715,7 @@ export default {
     }
   }
   // 优化 Alert 组件
-  :deep(.el-alert) {
+  .packages-container :deep(.el-alert) {
     padding: 8px 10px !important;
     font-size: 12px !important;
     .el-alert__title {
@@ -2857,47 +2857,47 @@ export default {
     }
   }
 }
-:deep(.el-input__wrapper) {
+.packages-container :deep(.el-input__wrapper) {
   box-shadow: none !important;
   border: 1px solid #dcdfe6 !important;
   border-radius: 6px !important;
   background-color: #ffffff !important;
   pointer-events: auto !important;
 }
-:deep(.el-input__inner) {
+.packages-container :deep(.el-input__inner) {
   
   border: none !important;
   box-shadow: none !important;
   background-color: transparent !important;
   pointer-events: auto !important;
 }
-:deep(.el-input__wrapper:hover) {
+.packages-container :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
   box-shadow: 0 0 0 1px rgba(192, 196, 204, 0.2) !important;
   background-color: #ffffff !important;
 }
-:deep(.el-input__wrapper.is-focus) {
+.packages-container :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
   background-color: #ffffff !important;
 }
-:deep(.el-input__wrapper.is-focus:hover) {
+.packages-container :deep(.el-input__wrapper.is-focus:hover) {
   background-color: #ffffff !important;
 }
-:deep(.el-input__wrapper > *) {
+.packages-container :deep(.el-input__wrapper > *) {
   background-color: transparent !important;
   background: transparent !important;
 }
-:deep(.el-textarea__inner) {
+.packages-container :deep(.el-textarea__inner) {
   border: 1px solid #dcdfe6 !important;
   border-radius: 6px !important;
   box-shadow: none !important;
   background-color: #ffffff !important;
 }
-:deep(.el-textarea__inner:hover) {
+.packages-container :deep(.el-textarea__inner:hover) {
   border-color: #c0c4cc !important;
 }
-:deep(.el-textarea__inner:focus) {
+.packages-container :deep(.el-textarea__inner:focus) {
   border-color: #1677ff !important;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
 }

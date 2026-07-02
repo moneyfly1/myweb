@@ -889,8 +889,8 @@ export default {
   font-weight: 600;
 }
 
-:deep(.el-input__wrapper),
-:deep(.el-textarea__inner) {
+.user-settings :deep(.el-input__wrapper),
+.user-settings :deep(.el-textarea__inner) {
   border: 1px solid #dcdfe6;
   border-radius: 6px;
   box-shadow: none;
@@ -903,14 +903,14 @@ export default {
   line-height: 1.5;
 }
 
-:deep(.el-input__wrapper:hover),
-:deep(.el-textarea__inner:hover) {
+.user-settings :deep(.el-input__wrapper:hover),
+.user-settings :deep(.el-textarea__inner:hover) {
   border-color: var(--el-color-primary);
   box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.08);
 }
 
-:deep(.el-input__wrapper.is-focus),
-:deep(.el-textarea__inner:focus) {
+.user-settings :deep(.el-input__wrapper.is-focus),
+.user-settings :deep(.el-textarea__inner:focus) {
   border-color: var(--el-color-primary);
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
 }
@@ -1171,7 +1171,7 @@ export default {
     border-color: var(--el-color-primary);
   }
 
-  :deep(.el-switch) {
+  .user-settings :deep(.el-switch) {
     width: 100%;
     min-height: 42px;
     justify-content: space-between;
@@ -1181,7 +1181,7 @@ export default {
     margin-bottom: 10px;
   }
 
-  :deep(.el-switch__label) {
+  .user-settings :deep(.el-switch__label) {
     flex: 1;
     font-size: 14px;
   }
@@ -1221,7 +1221,7 @@ export default {
     }
   }
 
-  :deep(.el-divider) {
+  .user-settings :deep(.el-divider) {
     margin: 16px 0;
   }
 }

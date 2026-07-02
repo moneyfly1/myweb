@@ -1,7 +1,7 @@
 <template>
   <el-drawer
     v-model="visible"
-    class="app-drawer"
+    :class="['app-drawer', drawerClass]"
     :title="title"
     :size="computedSize"
     :direction="direction"
@@ -55,6 +55,10 @@ const props = defineProps({
   closeOnClickModal: {
     type: Boolean,
     default: false,
+  },
+  drawerClass: {
+    type: String,
+    default: '',
   },
 })
 

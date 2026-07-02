@@ -969,7 +969,7 @@ $auth-text-muted: #cbd5e1;
 }
 
 // Element Plus 深色主题覆盖
-:deep(.el-input__wrapper) {
+.lux-auth-page :deep(.el-input__wrapper) {
   background: rgba(15, 23, 42, 0.72) !important;
   border: 1px solid $auth-border !important;
   border-radius: 8px !important;
@@ -981,26 +981,26 @@ $auth-text-muted: #cbd5e1;
     box-shadow: none !important;
   }
 }
-:deep(.el-input__inner) {
+.lux-auth-page :deep(.el-input__inner) {
   color: #fff !important;
   &::placeholder { color: rgba(255,255,255,0.35) !important; }
 }
-:deep(.el-input__prefix .el-icon),
-:deep(.el-input__suffix .el-icon) {
+.lux-auth-page :deep(.el-input__prefix .el-icon),
+.lux-auth-page :deep(.el-input__suffix .el-icon) {
   color: $auth-text-muted !important;
 }
-:deep(.el-form-item__error) {
+.lux-auth-page :deep(.el-form-item__error) {
   color: #fca5a5 !important;
 }
-:deep(.el-checkbox__label) {
+.lux-auth-page :deep(.el-checkbox__label) {
   color: $auth-text-muted !important;
   font-size: 13px !important;
 }
-:deep(.el-checkbox__inner) {
+.lux-auth-page :deep(.el-checkbox__inner) {
   background: transparent !important;
   border-color: $auth-border !important;
 }
-:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+.lux-auth-page :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
   background: $auth-primary !important;
   border-color: $auth-primary !important;
 }

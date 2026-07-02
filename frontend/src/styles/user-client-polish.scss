@@ -111,8 +111,12 @@
 }
 
 .user-layout .page-content {
+  width: 100%;
+  min-width: 0;
   max-width: none;
   margin: 0 auto;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 .user-layout .list-container {
@@ -129,6 +133,8 @@
   }
 
   .user-layout:not(.is-mobile) .main-content {
+    overflow-x: clip !important;
+    width: calc(100% - var(--sidebar-width, 200px)) !important;
     min-width: 0 !important;
     max-width: none !important;
   }
@@ -144,6 +150,7 @@
     width: 100% !important;
     max-width: none !important;
     min-width: 0 !important;
+    box-sizing: border-box !important;
   }
 }
 
