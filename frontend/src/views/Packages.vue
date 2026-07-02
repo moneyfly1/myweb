@@ -2873,12 +2873,12 @@ export default {
 }
 .packages-container :deep(.el-input__wrapper:hover) {
   border-color: #c0c4cc !important;
-  box-shadow: 0 0 0 1px rgba(192, 196, 204, 0.2) !important;
+  box-shadow: none !important;
   background-color: #ffffff !important;
 }
 .packages-container :deep(.el-input__wrapper.is-focus) {
   border-color: #1677ff !important;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
+  box-shadow: none !important;
   background-color: #ffffff !important;
 }
 .packages-container :deep(.el-input__wrapper.is-focus:hover) {
@@ -2899,7 +2899,7 @@ export default {
 }
 .packages-container :deep(.el-textarea__inner:focus) {
   border-color: #1677ff !important;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12) !important;
+  box-shadow: none !important;
 }
 .coupon-section {
   position: relative;
