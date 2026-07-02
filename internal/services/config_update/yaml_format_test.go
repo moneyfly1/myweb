@@ -355,3 +355,71 @@ func TestGenerateSingBoxConfigUsesValidOutboundFields(t *testing.T) {
 		t.Fatalf("reality = %#v", tls["reality"])
 	}
 }
+
+func TestDedicatedSubscriptionFormatsGenerateUsableOutput(t *testing.T) {
+	s := &ConfigUpdateService{}
+	proxies := []*ProxyNode{
+		{Name: "SS Node", Type: "ss", Server: "ss.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "secret"},
+		{Name: "Trojan Node", Type: "trojan", Server: "trojan.example.com", Port: 443, Password: "secret", TLS: true, Options: map[string]any{"sni": "trojan.example.com"}},
+		{Name: "VMess Node", Type: "vmess", Server: "vmess.example.com", Port: 443, UUID: "b831381d-6324-4d53-ad4f-8cda48b30836", Cipher: "auto", TLS: true},
+		{Name: "VLESS Node", Type: "vless", Server: "vless.example.com", Port: 443, UUID: "33c41229-3e5a-456f-bf62-e050d2b84d81", TLS: true},
+		{Name: "TUIC Node", Type: "tuic", Server: "tuic.example.com", Port: 443, UUID: "33c41229-3e5a-456f-bf62-e050d2b84d81", Password: "tuic-secret", TLS: true},
+		{Name: "Hysteria2 Node", Type: "hysteria2", Server: "hy2.example.com", Port: 443, Password: "hy2-secret", TLS: true},
+	}
+
+	surge := s.generateSurgeConfig(proxies, "https://example.com")
+	for _, want := range []string{
+		"[Proxy]",
+		"SS Node = ss, ss.example.com, 8388, encrypt-method=aes-128-gcm, password=secret",
+		"Trojan Node = trojan, trojan.example.com, 443, password=secret",
+		"VMess Node = vmess, vmess.example.com, 443, username=b831381d-6324-4d53-ad4f-8cda48b30836",
+		"VLESS Node = vless, vless.example.com, 443, username=33c41229-3e5a-456f-bf62-e050d2b84d81",
+		"TUIC Node = tuic, tuic.example.com, 443",
+		"Hysteria2 Node = hysteria2, hy2.example.com, 443",
+		"[Proxy Group]",
+	} {
+		if !strings.Contains(surge, want) {
+			t.Fatalf("surge output missing %q:\n%s", want, surge)
+		}
+	}
+
+	quantumultX := s.generateQuantumultXConfig(proxies, "https://example.com")
+	for _, want := range []string{
+		"[server_local]",
+		`shadowsocks=ss.example.com,8388,aes-128-gcm,"secret",SS Node`,
+		"trojan=trojan.example.com,443,password=secret,over-tls=true",
+		"vmess=vmess.example.com,443,method=auto,password=b831381d-6324-4d53-ad4f-8cda48b30836",
+		"[policy]",
+	} {
+		if !strings.Contains(quantumultX, want) {
+			t.Fatalf("quantumult x output missing %q:\n%s", want, quantumultX)
+		}
+	}
+
+	loon := s.generateLoonConfig(proxies, "https://example.com")
+	for _, want := range []string{
+		"[Proxy]",
+		"SS Node = Shadowsocks, ss.example.com, 8388, aes-128-gcm, secret",
+		"Trojan Node = Trojan, trojan.example.com, 443, secret",
+		"VMess Node = VMess, vmess.example.com, 443, b831381d-6324-4d53-ad4f-8cda48b30836",
+		"VLESS Node = VLESS, vless.example.com, 443, 33c41229-3e5a-456f-bf62-e050d2b84d81",
+		"[Remote Rule]",
+	} {
+		if !strings.Contains(loon, want) {
+			t.Fatalf("loon output missing %q:\n%s", want, loon)
+		}
+	}
+
+	var links []string
+	for _, proxy := range proxies {
+		if link := s.nodeToLink(proxy); link != "" {
+			links = append(links, link)
+		}
+	}
+	universal := strings.Join(links, "\n")
+	for _, want := range []string{"ss://", "trojan://", "vmess://", "vless://", "tuic://", "hysteria2://"} {
+		if !strings.Contains(universal, want) {
+			t.Fatalf("universal output missing %q:\n%s", want, universal)
+		}
+	}
+}
