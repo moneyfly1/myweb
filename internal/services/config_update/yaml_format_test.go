@@ -1,6 +1,7 @@
 package config_update
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -256,5 +257,101 @@ func TestClashTemplateFlowNodeKeepsConverterLikeVLESSOrder(t *testing.T) {
 	want := "{name: 日本01快橙, server: n1743918709.4u9ma.icu, port: 443, type: vless, uuid: 15884975-9b74-4502-b6a3-f69df7ec93d7, tls: true, tfo: false, skip-cert-verify: true, servername: n1743918709.4u9ma.icu, client-fingerprint: chrome, network: ws"
 	if !strings.Contains(out, want) {
 		t.Fatalf("expected converter-like VLESS order in template flow node:\nwant: %s\noutput:\n%s", want, out)
+	}
+}
+
+func TestGenerateSingBoxConfigUsesValidOutboundFields(t *testing.T) {
+	s := &ConfigUpdateService{}
+	proxies := []*ProxyNode{
+		{
+			Name:    "VMess WS",
+			Type:    "vmess",
+			Server:  "vmess.example.com",
+			Port:    443,
+			UUID:    "b831381d-6324-4d53-ad4f-8cda48b30836",
+			Cipher:  "auto",
+			Network: "ws",
+			Options: map[string]any{
+				"tls": true,
+				"ws-opts": map[string]any{
+					"path":    "/ws",
+					"headers": map[string]any{"Host": "host.example.com"},
+				},
+			},
+		},
+		{
+			Name:   "VLESS Reality",
+			Type:   "vless",
+			Server: "203.0.113.10",
+			Port:   443,
+			UUID:   "33c41229-3e5a-456f-bf62-e050d2b84d81",
+			TLS:    true,
+			Options: map[string]any{
+				"flow":               "xtls-rprx-vision",
+				"servername":         "apple.com",
+				"client-fingerprint": "chrome",
+				"reality-opts": map[string]any{
+					"public-key": "public-key-value",
+					"short-id":   "ef0cb521",
+				},
+			},
+		},
+	}
+
+	var config struct {
+		Outbounds []map[string]any `json:"outbounds"`
+	}
+	if err := json.Unmarshal([]byte(s.generateSingBoxConfig(proxies)), &config); err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Outbounds) != 3 {
+		t.Fatalf("outbounds len = %d, want 3", len(config.Outbounds))
+	}
+
+	direct := config.Outbounds[0]
+	if direct["type"] != "direct" || direct["tag"] != "DIRECT" {
+		t.Fatalf("unexpected direct outbound: %#v", direct)
+	}
+	if _, ok := direct["server"]; ok {
+		t.Fatalf("direct outbound must not contain server: %#v", direct)
+	}
+	if _, ok := direct["server_port"]; ok {
+		t.Fatalf("direct outbound must not contain server_port: %#v", direct)
+	}
+
+	vmess := config.Outbounds[1]
+	if vmess["security"] != "auto" {
+		t.Fatalf("vmess security = %v, want auto", vmess["security"])
+	}
+	if _, ok := vmess["method"]; ok {
+		t.Fatalf("vmess outbound must not contain method: %#v", vmess)
+	}
+	transport, ok := vmess["transport"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing vmess transport: %#v", vmess)
+	}
+	if _, ok := transport["host"]; ok {
+		t.Fatalf("sing-box ws transport must not contain host: %#v", transport)
+	}
+	headers, ok := transport["headers"].(map[string]any)
+	if !ok || headers["Host"] != "host.example.com" {
+		t.Fatalf("ws headers = %#v", transport["headers"])
+	}
+
+	vless := config.Outbounds[2]
+	if vless["flow"] != "xtls-rprx-vision" {
+		t.Fatalf("vless flow = %v", vless["flow"])
+	}
+	tls, ok := vless["tls"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing vless tls: %#v", vless)
+	}
+	utls, ok := tls["utls"].(map[string]any)
+	if !ok || utls["fingerprint"] != "chrome" {
+		t.Fatalf("utls = %#v", tls["utls"])
+	}
+	reality, ok := tls["reality"].(map[string]any)
+	if !ok || reality["public_key"] != "public-key-value" || reality["short_id"] != "ef0cb521" {
+		t.Fatalf("reality = %#v", tls["reality"])
 	}
 }

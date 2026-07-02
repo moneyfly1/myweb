@@ -1572,6 +1572,35 @@ func optVal[T any](opts map[string]interface{}, key string) T {
 	return zero
 }
 
+func stringSliceFromAny(value interface{}) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		values := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				values = append(values, s)
+			}
+		}
+		return values
+	case string:
+		if v == "" {
+			return nil
+		}
+		parts := strings.Split(v, ",")
+		values := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if part = strings.TrimSpace(part); part != "" {
+				values = append(values, part)
+			}
+		}
+		return values
+	default:
+		return nil
+	}
+}
+
 func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	ind := strings.Repeat(" ", indent)
 	m := s.nodeToMap(node)
@@ -2428,21 +2457,33 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 	type singOutbound struct {
 		Type     string `json:"type"`
 		Tag      string `json:"tag"`
-		Server   string `json:"server"`
-		Port     int    `json:"server_port"`
+		Server   string `json:"server,omitempty"`
+		Port     int    `json:"server_port,omitempty"`
 		Password string `json:"password,omitempty"`
 		UUID     string `json:"uuid,omitempty"`
 		Method   string `json:"method,omitempty"`
+		Security string `json:"security,omitempty"`
+		Flow     string `json:"flow,omitempty"`
 		TLS      *struct {
 			Enabled    bool     `json:"enabled"`
 			ServerName string   `json:"server_name,omitempty"`
 			Insecure   bool     `json:"insecure,omitempty"`
 			ALPN       []string `json:"alpn,omitempty"`
+			UTLS       *struct {
+				Enabled     bool   `json:"enabled"`
+				Fingerprint string `json:"fingerprint,omitempty"`
+			} `json:"utls,omitempty"`
+			Reality *struct {
+				Enabled   bool   `json:"enabled"`
+				PublicKey string `json:"public_key,omitempty"`
+				ShortID   string `json:"short_id,omitempty"`
+			} `json:"reality,omitempty"`
 		} `json:"tls,omitempty"`
 		Transport *struct {
-			Type string `json:"type"`
-			Path string `json:"path,omitempty"`
-			Host string `json:"host,omitempty"`
+			Type        string            `json:"type"`
+			Path        string            `json:"path,omitempty"`
+			Headers     map[string]string `json:"headers,omitempty"`
+			ServiceName string            `json:"service_name,omitempty"`
 		} `json:"transport,omitempty"`
 	}
 
@@ -2467,12 +2508,13 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 		case "vmess":
 			ob.Type = "vmess"
 			ob.UUID = optVal[string](m, "uuid")
-			if ob.Method = optVal[string](m, "cipher"); ob.Method == "" {
-				ob.Method = "auto"
+			if ob.Security = optVal[string](m, "cipher"); ob.Security == "" {
+				ob.Security = "auto"
 			}
 		case "vless":
 			ob.Type = "vless"
 			ob.UUID = optVal[string](m, "uuid")
+			ob.Flow = optVal[string](m, "flow")
 		case "hysteria", "hysteria2":
 			ob.Type = "hysteria2"
 			ob.Password = optVal[string](m, "password")
@@ -2498,15 +2540,45 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 				ServerName string   `json:"server_name,omitempty"`
 				Insecure   bool     `json:"insecure,omitempty"`
 				ALPN       []string `json:"alpn,omitempty"`
+				UTLS       *struct {
+					Enabled     bool   `json:"enabled"`
+					Fingerprint string `json:"fingerprint,omitempty"`
+				} `json:"utls,omitempty"`
+				Reality *struct {
+					Enabled   bool   `json:"enabled"`
+					PublicKey string `json:"public_key,omitempty"`
+					ShortID   string `json:"short_id,omitempty"`
+				} `json:"reality,omitempty"`
 			}{Enabled: true, ServerName: sni, Insecure: optVal[bool](m, "skip-cert-verify")}
+			if alpn := stringSliceFromAny(m["alpn"]); len(alpn) > 0 {
+				ob.TLS.ALPN = alpn
+			}
+			if fingerprint := optVal[string](m, "client-fingerprint"); fingerprint != "" {
+				ob.TLS.UTLS = &struct {
+					Enabled     bool   `json:"enabled"`
+					Fingerprint string `json:"fingerprint,omitempty"`
+				}{Enabled: true, Fingerprint: fingerprint}
+			}
+			if realityOpts, ok := m["reality-opts"].(map[string]interface{}); ok {
+				publicKey, _ := realityOpts["public-key"].(string)
+				shortID, _ := realityOpts["short-id"].(string)
+				if publicKey != "" {
+					ob.TLS.Reality = &struct {
+						Enabled   bool   `json:"enabled"`
+						PublicKey string `json:"public_key,omitempty"`
+						ShortID   string `json:"short_id,omitempty"`
+					}{Enabled: true, PublicKey: publicKey, ShortID: shortID}
+				}
+			}
 		}
 
 		// Transport
 		if network := optVal[string](m, "network"); network != "" && network != "tcp" {
 			tr := &struct {
-				Type string `json:"type"`
-				Path string `json:"path,omitempty"`
-				Host string `json:"host,omitempty"`
+				Type        string            `json:"type"`
+				Path        string            `json:"path,omitempty"`
+				Headers     map[string]string `json:"headers,omitempty"`
+				ServiceName string            `json:"service_name,omitempty"`
 			}{Type: network}
 			if wsOpts, ok := m["ws-opts"].(map[string]interface{}); ok {
 				if p, _ := wsOpts["path"].(string); p != "" {
@@ -2514,13 +2586,13 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 				}
 				if hdrs, ok := wsOpts["headers"].(map[string]interface{}); ok {
 					if h, _ := hdrs["Host"].(string); h != "" {
-						tr.Host = h
+						tr.Headers = map[string]string{"Host": h}
 					}
 				}
 			}
 			if grpcOpts, ok := m["grpc-opts"].(map[string]interface{}); ok {
 				if p, _ := grpcOpts["grpc-service-name"].(string); p != "" {
-					tr.Path = p
+					tr.ServiceName = p
 				}
 			}
 			ob.Transport = tr
