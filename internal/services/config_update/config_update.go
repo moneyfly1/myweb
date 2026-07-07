@@ -45,6 +45,19 @@ const (
 	configKeyLastUpd = "config_update_last_update"
 )
 
+type subscriptionRequestProfile struct {
+	Name      string
+	UserAgent string
+	Accept    string
+}
+
+var subscriptionRequestProfiles = []subscriptionRequestProfile{
+	{Name: "v2rayN", UserAgent: "v2rayN/6.23", Accept: "*/*"},
+	{Name: "Clash", UserAgent: "clash-verge/v1.7.7", Accept: "*/*"},
+	{Name: "curl", UserAgent: "curl/8.0.1", Accept: "*/*"},
+	{Name: "browser", UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", Accept: "*/*"},
+}
+
 // 将15个单独的正则合并为一个，极大提高匹配性能
 var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
 
@@ -654,40 +667,47 @@ func (s *ConfigUpdateService) FetchNodesFromURLs(urls []string) ([]map[string]in
 
 func (s *ConfigUpdateService) fetchURLContent(client *http.Client, rawURL string) ([]byte, error) {
 	maxRetries, delay := 3, 2*time.Second
+	var lastErr error
 	for i := 1; i <= maxRetries; i++ {
-		req, err := http.NewRequest("GET", rawURL, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-		if strings.Contains(rawURL, "gist.githubusercontent.com") {
-			req.Header.Set("Connection", "close")
-		}
+		for _, profile := range subscriptionRequestProfiles {
+			req, err := http.NewRequest("GET", rawURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("User-Agent", profile.UserAgent)
+			req.Header.Set("Accept", profile.Accept)
+			if strings.Contains(rawURL, "gist.githubusercontent.com") {
+				req.Header.Set("Connection", "close")
+			}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			if i < maxRetries {
-				s.warnf("⚠️ 节点源连接异常 (尝试 %d/%d)，%v 后重试...", i, maxRetries, delay)
-				time.Sleep(delay)
-				delay *= 2
+			resp, err := client.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
 			}
-			continue
-		}
-		body, readErr := func() ([]byte, error) {
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return nil, fmt.Errorf("status %d", resp.StatusCode)
+			body, readErr := func() ([]byte, error) {
+				defer resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					return nil, fmt.Errorf("%s profile status %d", profile.Name, resp.StatusCode)
+				}
+				return io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+			}()
+			if readErr == nil {
+				if profile.Name != subscriptionRequestProfiles[0].Name {
+					s.infof("✓ 节点源使用 %s 请求头下载成功", profile.Name)
+				}
+				return body, nil
 			}
-			return io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-		}()
-		if readErr == nil {
-			return body, nil
+			lastErr = readErr
 		}
 		if i < maxRetries {
-			s.warnf("⚠️ 节点源连接异常 (尝试 %d/%d)，%v 后重试...", i, maxRetries, delay)
+			s.warnf("⚠️ 节点源连接异常 (尝试 %d/%d): %v，%v 后重试...", i, maxRetries, lastErr, delay)
 			time.Sleep(delay)
 			delay *= 2
 		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("达到最大重试次数: %w", lastErr)
 	}
 	return nil, fmt.Errorf("达到最大重试次数")
 }
