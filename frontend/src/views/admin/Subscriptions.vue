@@ -1629,7 +1629,7 @@ export default {
       row.savingNotes = true
       row.notesSaved = false
       try {
-        await adminAPI.updateUser(userId, { notes: currentNotes || null })
+        await adminAPI.updateUser(userId, { notes: currentNotes })
         subOriginalNotes.set(userId, currentNotes)
         row.notesSaved = true
         if (subNotesSavedTimers.has(userId)) clearTimeout(subNotesSavedTimers.get(userId))
