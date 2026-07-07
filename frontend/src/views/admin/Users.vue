@@ -1007,7 +1007,7 @@ export default {
             is_active: userForm.status === 'active',
             is_verified: Boolean(userForm.is_verified),
             is_admin: userForm.is_admin,
-            notes: userForm.note || null,
+            notes: userForm.note || '',
             balance: userForm.balance,
             device_limit: userForm.device_limit,
             expire_time: userForm.expire_time,
@@ -1236,7 +1236,7 @@ export default {
       user.savingNotes = true
       user.notesSaved = false
       try {
-        await adminAPI.updateUser(user.id, { notes: currentNotes || null })
+        await adminAPI.updateUser(user.id, { notes: currentNotes })
         originalNotes.set(user.id, currentNotes)
         user.notesSaved = true
         if (savedIndicatorTimers.has(user.id)) {
