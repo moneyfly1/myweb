@@ -1160,7 +1160,21 @@ func UpdateUser(c *gin.Context) {
 		ExpireTime  *string  `json:"expire_time"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	body, err := c.GetRawData()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+	if strings.TrimSpace(string(body)) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", nil)
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+	var rawPayload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rawPayload); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
@@ -1222,11 +1236,20 @@ func UpdateUser(c *gin.Context) {
 		}
 		user.Password = hashedPassword
 	}
-	if req.Notes != nil {
-		if *req.Notes == "" {
+	if rawNotes, notesProvided := rawPayload["notes"]; notesProvided {
+		if string(rawNotes) == "null" {
 			user.Notes = sql.NullString{Valid: false}
 		} else {
-			user.Notes = database.NullString(*req.Notes)
+			var notes string
+			if err := json.Unmarshal(rawNotes, &notes); err != nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, "备注格式错误", err)
+				return
+			}
+			if notes == "" {
+				user.Notes = sql.NullString{Valid: false}
+			} else {
+				user.Notes = database.NullString(notes)
+			}
 		}
 	}
 
