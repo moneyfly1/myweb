@@ -290,7 +290,7 @@ func GetRechargeStatusByNo(c *gin.Context) {
 		return
 	}
 
-	if record.Status == "pending" && shouldQueryPaymentStatus(record.CreatedAt) {
+	if shouldRefreshRechargePaymentStatus(record) {
 		if success, err := performPaymentStatusQuery(db, orderNo, true); success {
 			db.Where("order_no = ?", orderNo).First(&record)
 		} else if err != nil {

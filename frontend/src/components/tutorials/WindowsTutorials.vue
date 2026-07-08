@@ -98,14 +98,14 @@
           </div>
         </div>
       </el-collapse-item>
-      <el-collapse-item title="Mihomo Part" name="mihomo-windows">
+      <el-collapse-item title="Clash Part" name="clash-party-windows">
         <div class="tutorial-content">
           <h3>1. 软件下载</h3>
-          <p>点击上方"立即下载"按钮下载 Mihomo Part 最新版本。</p>
+          <p>点击上方"立即下载"按钮下载 Clash Part 最新版本。</p>
           <h3>2. 安装步骤</h3>
           <ol>
             <li>下载完成后，解压到任意文件夹</li>
-            <li>双击 mihomo.exe 启动软件</li>
+            <li>双击 Clash Part 启动软件</li>
             <li>首次运行会提示创建桌面快捷方式</li>
           </ol>
           <h3>3. 导入订阅</h3>
@@ -113,14 +113,14 @@
             <h4>方法一：复制订阅链接</h4>
             <ol>
               <li>在用户仪表盘中，复制"Clash订阅地址"</li>
-              <li>打开 Mihomo Part</li>
+              <li>打开 Clash Part</li>
               <li>点击"配置" → "从URL下载"</li>
               <li>粘贴订阅链接，点击"下载"</li>
               <li>选择下载的配置文件</li>
             </ol>
             <h4>方法二：一键导入</h4>
             <ol>
-              <li>在用户仪表盘中，点击"Mihomo Part"按钮</li>
+              <li>在用户仪表盘中，点击"Clash Part"按钮</li>
               <li>选择"一键导入"</li>
               <li>软件会自动打开并导入配置</li>
             </ol>
@@ -138,7 +138,7 @@
               使用技巧
             </h4>
             <ul>
-              <li>Mihomo Part 是 Clash 的增强版本，功能更强大</li>
+              <li>Clash Part 是 Clash 系列客户端，适合导入 Clash 订阅使用</li>
               <li>支持更多协议和功能</li>
               <li>建议使用"规则模式"进行智能分流</li>
             </ul>
@@ -239,29 +239,29 @@
           </div>
         </div>
       </el-collapse-item>
-      <el-collapse-item title="Flash" name="flash-windows">
+      <el-collapse-item title="FlClash" name="flash-windows">
         <div class="tutorial-content">
           <h3>1. 软件下载</h3>
-          <p>点击上方"立即下载"按钮下载 Flash 最新版本。</p>
+          <p>点击上方"立即下载"按钮下载 FlClash 最新版本。</p>
           <h3>2. 安装步骤</h3>
           <ol>
             <li>下载完成后，双击安装包</li>
             <li>按照安装向导完成安装</li>
-            <li>安装完成后，桌面会出现 Flash 图标</li>
+            <li>安装完成后，桌面会出现 FlClash 图标</li>
           </ol>
           <h3>3. 导入订阅</h3>
           <div class="subscription-methods">
             <h4>方法一：复制订阅链接</h4>
             <ol>
               <li>在用户仪表盘中，复制"Clash订阅地址"</li>
-              <li>打开 Flash</li>
+              <li>打开 FlClash</li>
               <li>点击"配置" → "从URL下载"</li>
               <li>粘贴订阅链接，点击"下载"</li>
               <li>选择下载的配置文件</li>
             </ol>
             <h4>方法二：一键导入</h4>
             <ol>
-              <li>在用户仪表盘中，点击"Flash"按钮</li>
+              <li>在用户仪表盘中，点击"FlClash"按钮</li>
               <li>选择"一键导入"</li>
               <li>软件会自动打开并导入配置</li>
             </ol>
@@ -279,7 +279,7 @@
               使用技巧
             </h4>
             <ul>
-              <li>Flash 是轻量级的代理软件</li>
+              <li>FlClash 是轻量级的代理软件</li>
               <li>启动速度快，资源占用少</li>
               <li>建议使用"规则模式"进行智能分流</li>
             </ul>

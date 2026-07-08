@@ -222,7 +222,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 func detectClientType(ua string) string {
 	uaLower := strings.ToLower(ua)
 	switch {
-	case strings.Contains(uaLower, "clash") || strings.Contains(uaLower, "mihomo"):
+	case strings.Contains(uaLower, "clash"):
 		return "clash"
 	case strings.Contains(uaLower, "stash"):
 		return "stash"

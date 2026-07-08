@@ -5,7 +5,7 @@ const DEFAULT_GITHUB_PROXY_PREFIXES = [
 ]
 const CLIENT_CONFIGS = {
   'clash-party': {
-    name: 'Clash Party',
+    name: 'Clash Part',
     repo: 'mihomo-party-org/clash-party',
     platforms: {
       windows: {
@@ -48,24 +48,6 @@ const CLIENT_CONFIGS = {
       windows: {
         x64: { pattern: /(windows|win).*x64|.*x64.*\.(exe|msi)$/i, installer: true },
         arm64: { pattern: /(windows|win).*arm64|arm64.*\.(exe|msi)$/i, installer: true }
-      },
-      macos: {
-        intel: { pattern: /(intel|x64|amd64).*\.dmg$/i, installer: true },
-        apple: { pattern: /(apple|silicon|m\d+|arm64|aarch64).*\.dmg$/i, installer: true }
-      },
-      linux: {
-        x64: { pattern: /linux.*x64|amd64.*\.(deb|rpm|AppImage)$/i, installer: true },
-        arm64: { pattern: /linux.*arm64|aarch64.*\.(deb|rpm|AppImage)$/i, installer: true }
-      }
-    }
-  },
-  'sparkle': {
-    name: 'Sparkle',
-    repo: 'xishang0128/sparkle',
-    platforms: {
-      windows: {
-        x64: { pattern: /(windows|win).*x64|.*x64.*\.exe$/i, installer: true },
-        arm64: { pattern: /(windows|win).*arm64|arm64.*\.exe$/i, installer: true }
       },
       macos: {
         intel: { pattern: /(intel|x64|amd64).*\.dmg$/i, installer: true },
@@ -352,9 +334,8 @@ export async function getGitHubDownloadUrl(repo, os, arch, configKey = null, sof
 export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
   const { os, arch } = detectSystem()
   const clientMap = {
-    'clash-party': { repo: 'mihomo-party-org/clash-party', name: 'Clash Party', configKey: 'clash-party' },
+    'clash-party': { repo: 'mihomo-party-org/clash-party', name: 'Clash Part', configKey: 'clash-party' },
     'clash-verge': { repo: 'clash-verge-rev/clash-verge-rev', name: 'Clash Verge', configKey: 'clash-verge' },
-    'sparkle': { repo: 'xishang0128/sparkle', name: 'Sparkle', configKey: 'sparkle' },
     'hiddify': { repo: 'hiddify/hiddify-app', name: 'Hiddify', configKey: 'hiddify-app' },
     'flclash': { repo: 'chen08209/FlClash', name: 'FlClash', configKey: 'FlClash' },
     'v2rayng': { repo: '2dust/v2rayNG', name: 'V2rayNG', configKey: 'v2rayNG' },
@@ -389,7 +370,6 @@ export function getClientReleasesUrl(clientKey) {
   const clientMap = {
     'clash-party': 'mihomo-party-org/clash-party',
     'clash-verge': 'clash-verge-rev/clash-verge-rev',
-    'sparkle': 'xishang0128/sparkle',
     'hiddify': 'hiddify/hiddify-app',
     'flclash': 'chen08209/FlClash',
     'v2rayng': '2dust/v2rayNG',

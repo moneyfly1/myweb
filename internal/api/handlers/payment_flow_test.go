@@ -839,6 +839,84 @@ func TestProcessPaidRechargeIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestProcessPaidRechargeRecoversFailedRechargeAfterProviderSuccess(t *testing.T) {
+	db := setupPaymentFlowTestDB(t)
+	user := models.User{Username: "pay_recharge_failed", Email: "pay_recharge_failed@example.com", Password: "x", Balance: 3}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	recharge := models.RechargeRecord{
+		UserID:        user.ID,
+		OrderNo:       "RCHFAILED001",
+		Amount:        18,
+		Status:        "failed",
+		PaymentMethod: database.NullString("yipay_alipay"),
+		CreatedAt:     time.Now().Add(-time.Minute),
+	}
+	if err := db.Create(&recharge).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.PaymentTransaction{
+		OrderID:         0,
+		UserID:          user.ID,
+		PaymentMethodID: 2,
+		Amount:          1800,
+		TransactionID:   database.NullString(recharge.OrderNo),
+		Status:          "failed",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		"out_trade_no": recharge.OrderNo,
+		"trade_no":     "TRADE-FAILED-001",
+		"money":        "18.00",
+		"trade_status": "TRADE_SUCCESS",
+	}
+	if _, err := processPaidRecharge(db, recharge.OrderNo, "yipay_alipay", 2, "TRADE-FAILED-001", params, ""); err != nil {
+		t.Fatalf("recover failed recharge: %v", err)
+	}
+
+	var freshRecharge models.RechargeRecord
+	if err := db.Where("order_no = ?", recharge.OrderNo).First(&freshRecharge).Error; err != nil {
+		t.Fatal(err)
+	}
+	if freshRecharge.Status != "paid" {
+		t.Fatalf("expected recharge to recover to paid, got %s", freshRecharge.Status)
+	}
+	var freshUser models.User
+	if err := db.First(&freshUser, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if freshUser.Balance != 21 {
+		t.Fatalf("expected balance 21 after recovered recharge, got %.2f", freshUser.Balance)
+	}
+	var freshTx models.PaymentTransaction
+	if err := db.Where("transaction_id = ?", recharge.OrderNo).First(&freshTx).Error; err != nil {
+		t.Fatal(err)
+	}
+	if freshTx.Status != "success" {
+		t.Fatalf("expected failed payment transaction to recover to success, got %s", freshTx.Status)
+	}
+}
+
+func TestShouldRefreshRechargePaymentStatusIncludesRecentFailed(t *testing.T) {
+	recentFailed := models.RechargeRecord{Status: "failed", CreatedAt: time.Now().Add(-time.Minute)}
+	if !shouldRefreshRechargePaymentStatus(recentFailed) {
+		t.Fatal("expected recent failed recharge to be eligible for provider status query")
+	}
+
+	cancelled := models.RechargeRecord{Status: "cancelled", CreatedAt: time.Now().Add(-time.Minute)}
+	if shouldRefreshRechargePaymentStatus(cancelled) {
+		t.Fatal("cancelled recharge should not be eligible for provider status query")
+	}
+
+	oldFailed := models.RechargeRecord{Status: "failed", CreatedAt: time.Now().Add(-25 * time.Hour)}
+	if shouldRefreshRechargePaymentStatus(oldFailed) {
+		t.Fatal("old failed recharge should not be eligible for provider status query")
+	}
+}
+
 func TestProcessPaidRechargeUpdatesTransactionByOrderNo(t *testing.T) {
 	db := setupPaymentFlowTestDB(t)
 	user := models.User{Username: "pay_recharge_same_amount", Email: "pay_recharge_same_amount@example.com", Password: "x", Balance: 0}
