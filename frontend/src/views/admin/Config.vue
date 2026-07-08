@@ -30,8 +30,8 @@
               </el-row>
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="Mihomo Part">
-                    <el-input v-model="softwareForm.mihomo_windows_url" placeholder="请输入下载链接" />
+                  <el-form-item label="Clash Part">
+                    <el-input v-model="softwareForm.clash_party_windows_url" placeholder="请输入下载链接" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
@@ -47,7 +47,7 @@
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="Flash">
+                  <el-form-item label="FlClash">
                     <el-input v-model="softwareForm.flash_windows_url" placeholder="请输入下载链接" />
                   </el-form-item>
                 </el-col>
@@ -76,13 +76,13 @@
               <el-divider content-position="left">macOS 软件</el-divider>
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="Flash">
+                  <el-form-item label="FlClash">
                     <el-input v-model="softwareForm.flash_macos_url" placeholder="请输入下载链接" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="Mihomo Part">
-                    <el-input v-model="softwareForm.mihomo_macos_url" placeholder="请输入下载链接" />
+                  <el-form-item label="Clash Part">
+                    <el-input v-model="softwareForm.clash_party_macos_url" placeholder="请输入下载链接" />
                   </el-form-item>
                 </el-col>
               </el-row>
@@ -189,18 +189,16 @@ export default {
     const softwareForm = reactive({
       clash_windows_url: '',
       v2rayn_url: '',
-      mihomo_windows_url: '',
+      clash_party_windows_url: '',
       clash_verge_windows_url: '',
-      sparkle_windows_url: '',
       hiddify_windows_url: '',
       flash_windows_url: '',
       clash_android_url: '',
       v2rayng_url: '',
       hiddify_android_url: '',
       flash_macos_url: '',
-      mihomo_macos_url: '',
+      clash_party_macos_url: '',
       clash_verge_macos_url: '',
-      sparkle_macos_url: '',
       shadowrocket_url: ''
     })
     const saveSoftwareConfig = async () => {
