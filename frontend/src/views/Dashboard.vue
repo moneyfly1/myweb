@@ -179,16 +179,16 @@
                   </el-dropdown>
                 </div>
                 <div class="subscription-group">
-                  <el-dropdown @command="handleMohomoCommand" trigger="click">
-                    <el-button type="primary" class="mohomo-btn">
+                  <el-dropdown @command="handleClashPartyCommand" trigger="click">
+                    <el-button type="primary" class="clash-party-btn">
                       <el-icon><Box /></el-icon>
                       Clash Part
                       <el-icon><ArrowDown /></el-icon>
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="copy-mohomo">复制订阅</el-dropdown-item>
-                        <el-dropdown-item command="import-mohomo">一键导入</el-dropdown-item>
+                        <el-dropdown-item command="copy-clash-party">复制订阅</el-dropdown-item>
+                        <el-dropdown-item command="import-clash-party">一键导入</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
@@ -709,18 +709,16 @@ const handleRechargePaymentMethodChange = (value) => {
 const softwareConfig = ref({
   clash_windows_url: '',
   v2rayn_url: '',
-  mihomo_windows_url: '',
+  clash_party_windows_url: '',
   clash_verge_windows_url: '',
-  sparkle_windows_url: '',
   hiddify_windows_url: '',
   flash_windows_url: '',
   clash_android_url: '',
   v2rayng_url: '',
   hiddify_android_url: '',
   flash_macos_url: '',
-  mihomo_macos_url: '',
+  clash_party_macos_url: '',
   clash_verge_macos_url: '',
-  sparkle_macos_url: '',
   shadowrocket_url: ''
 })
 const activePlatform = ref('Windows')
@@ -754,9 +752,9 @@ const platforms = ref([
         githubKey: 'v2rayn'
       },
       {
-        name: 'Clash Party',
+        name: 'Clash Part',
         version: 'Latest',
-        downloadKey: 'mihomo_windows_url',
+        downloadKey: 'clash_party_windows_url',
         clientId: 'clash-party',
         githubKey: 'clash-party'
       },
@@ -821,9 +819,9 @@ const platforms = ref([
         githubKey: 'flclash'
       },
       {
-        name: 'Clash Party',
+        name: 'Clash Part',
         version: 'Latest',
-        downloadKey: 'mihomo_macos_url',
+        downloadKey: 'clash_party_macos_url',
         clientId: 'clash-party',
         githubKey: 'clash-party'
       },
@@ -1241,11 +1239,11 @@ const checkRechargeStatus = async () => {
       await loadUserInfo()
       window.dispatchEvent(new CustomEvent('user-info-updated'))
       closeRechargeDialog()
-    } else if (rechargeData.status === 'cancelled' || rechargeData.status === 'failed') {
+    } else if (rechargeData.status === 'cancelled') {
       cleanupRechargeStatusCheck()
       pendingPaymentStorage.clear()
       closeRechargeDialog()
-      ElMessage.warning('充值订单已取消或失败')
+      ElMessage.warning('充值订单已取消')
     }
   } catch (error) {
     if (error.response?.status === 404) {
@@ -1262,7 +1260,7 @@ const loadSoftwareConfig = async () => {
     // 使用缓存的 API，减少重复请求
     const response = await cachedAPI.getSoftwareConfig()
     if (response.data && response.data.success) {
-      softwareConfig.value = response.data.data
+      softwareConfig.value = response.data.data || {}
     }
   } catch (error) {
     }
@@ -1271,12 +1269,10 @@ const downloadApp = async (appName) => {
   const clientKeyMap = {
     'clash_windows_url': null, // Clash for Windows 使用配置的链接
     'v2rayn_url': 'v2rayn',
-    'mihomo_windows_url': 'clash-party',
-    'mihomo_macos_url': 'clash-party',
+    'clash_party_windows_url': 'clash-party',
+    'clash_party_macos_url': 'clash-party',
     'clash_verge_windows_url': 'clash-verge',
     'clash_verge_macos_url': 'clash-verge',
-    'sparkle_windows_url': 'sparkle',
-    'sparkle_macos_url': 'sparkle',
     'hiddify_windows_url': 'hiddify',
     'hiddify_android_url': 'hiddify',
     'flash_windows_url': 'flclash',
@@ -1416,9 +1412,9 @@ const handleFlashCommand = (command) => executeCommand(command, {
   'copy-flash': copyFlashSubscription,
   'import-flash': importFlashSubscription
 })
-const handleMohomoCommand = (command) => executeCommand(command, {
-  'copy-mohomo': copyMohomoSubscription,
-  'import-mohomo': importMohomoSubscription
+const handleClashPartyCommand = (command) => executeCommand(command, {
+  'copy-clash-party': copyClashPartySubscription,
+  'import-clash-party': importClashPartySubscription
 })
 const handleClashVergeCommand = (command) => executeCommand(command, {
   'copy-clash-verge': copyClashVergeSubscription,
@@ -1437,7 +1433,7 @@ const copyFlashSubscription = () => copySubscriptionUrl(
   userInfo.value?.clashUrl,
   'Flash 订阅地址已复制到剪贴板'
 )
-const copyMohomoSubscription = () => copySubscriptionUrl(
+const copyClashPartySubscription = () => copySubscriptionUrl(
   userInfo.value?.clashUrl,
   'Clash Part 订阅地址已复制到剪贴板'
 )
@@ -1461,7 +1457,7 @@ const copyShadowrocketSubscription = () => copySubscriptionUrl(
 )
 const importClashSubscription = () => importClashBasedSubscription('clashx', '正在打开 Clash 客户端...')
 const importFlashSubscription = () => importClashBasedSubscription('flash', '正在打开 Flash 客户端...')
-const importMohomoSubscription = () => importClashBasedSubscription('mohomo', '正在打开 Clash Part 客户端...')
+const importClashPartySubscription = () => importClashBasedSubscription('clash-party', '正在打开 Clash Part 客户端...')
 const importClashVergeSubscription = () => importClashBasedSubscription('clash-verge', '正在打开 Clash Verge 客户端...')
 const importShadowrocketSubscription = () => {
   const universalUrl = userInfo.value?.universalUrl
@@ -1481,7 +1477,7 @@ const refreshDevices = () => {
 }
 const oneclickImport = (client, url, name = '') => {
   try {
-    const clashCompatibleClients = new Set(['clashx', 'clash', 'flash', 'mohomo', 'sparkle', 'clash-verge'])
+    const clashCompatibleClients = new Set(['clashx', 'clash', 'flash', 'clash-party', 'clash-verge'])
     if (clashCompatibleClients.has(client)) {
       const baseUrl = `clash://install-config?url=${encodeURIComponent(url)}`
       const targetUrl = name ? `${baseUrl}&name=${encodeURIComponent(name)}` : baseUrl
@@ -2741,7 +2737,7 @@ onUnmounted(() => {
     font-size: 15px;
   }
 }
-.mohomo-btn {
+.clash-party-btn {
   width: 100%;
   border-radius: 4px;
   padding: 10px 14px;

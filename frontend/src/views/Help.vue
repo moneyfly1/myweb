@@ -320,7 +320,7 @@ export default {
         id: 'faq-4',
         question: '支持哪些客户端？',
         answer: `
-          <div><p>页面提供 Clash for Windows、Clash Verge、Hiddify、V2rayN、V2rayNG、Shadowrocket、FlClash、Clash Party 等客户端的下载和教程入口。</p></div>
+          <div><p>页面提供 Clash for Windows、Clash Verge、Hiddify、V2rayN、V2rayNG、Shadowrocket、FlClash、Clash Part 等客户端的下载和教程入口。</p></div>
         `
       },
       {
@@ -356,20 +356,20 @@ export default {
       },
       {
         id: 'clash-party',
-        name: 'Clash Party',
-        description: 'Windows/Mac/Linux平台功能强大的代理客户端，基于Mihomo内核',
+        name: 'Clash Part',
+        description: 'Windows/Mac/Linux 平台功能强大的 Clash 客户端',
         icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-party',
-        downloadKeys: ['mihomo_windows_url', 'mihomo_macos_url', 'clash_windows_url'],
+        downloadKeys: ['clash_party_windows_url', 'clash_party_macos_url', 'clash_windows_url'],
         downloadUrl: '',
         guideUrl: '#',
         guide: `
           <div>
             <ol>
-              <li>下载并安装 Clash Party。</li>
+              <li>下载并安装 Clash Part。</li>
               <li>复制订阅管理中的对应订阅地址。</li>
-              <li>在 Clash Party 中选择从 URL 导入或添加订阅。</li>
+              <li>在 Clash Part 中选择从 URL 导入或添加订阅。</li>
               <li>保存配置后启用连接，需要更新时刷新订阅。</li>
             </ol>
           </div>

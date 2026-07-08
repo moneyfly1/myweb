@@ -347,7 +347,7 @@ func parseXMLPaymentParams(body []byte) (map[string]string, error) {
 
 func updatePaymentTransactionTx(tx *gorm.DB, orderID uint, userID uint, amountCents int, externalTransactionID string, paymentMethodID uint, callbackData string, transactionID string) error {
 	var paymentTx models.PaymentTransaction
-	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("status = ?", "pending")
+	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("status IN ?", []string{"pending", "failed"})
 	if orderID > 0 {
 		query = query.Where("order_id = ?", orderID)
 	} else if transactionID != "" {
@@ -390,7 +390,7 @@ func processPaidRecharge(db *gorm.DB, orderNo string, paymentType string, paymen
 			result = recharge
 			return nil
 		}
-		if recharge.Status != "pending" {
+		if recharge.Status != "pending" && recharge.Status != "failed" {
 			return fmt.Errorf("充值订单状态不允许入账: %s", recharge.Status)
 		}
 

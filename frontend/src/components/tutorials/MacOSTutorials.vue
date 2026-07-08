@@ -1,15 +1,15 @@
 <template>
   <div class="macos-tutorials">
     <el-collapse v-model="activeNames">
-      <el-collapse-item title="Flash" name="flash-macos">
+      <el-collapse-item title="FlClash" name="flash-macos">
         <div class="tutorial-content">
           <h3>1. 软件下载</h3>
-          <p>点击上方"立即下载"按钮下载 Flash 最新版本。</p>
+          <p>点击上方"立即下载"按钮下载 FlClash 最新版本。</p>
           <h3>2. 安装步骤</h3>
           <ol>
             <li>下载完成后，双击 .dmg 文件</li>
-            <li>将 Flash 拖拽到 Applications 文件夹</li>
-            <li>在应用程序文件夹中找到 Flash 并双击启动</li>
+            <li>将 FlClash 拖拽到 Applications 文件夹</li>
+            <li>在应用程序文件夹中找到 FlClash 并双击启动</li>
             <li>首次运行可能提示"无法验证开发者"，请按以下步骤操作：
               <ul>
                 <li>打开"系统偏好设置" → "安全性与隐私"</li>
@@ -23,14 +23,14 @@
             <h4>方法一：复制订阅链接</h4>
             <ol>
               <li>在用户仪表盘中，复制"Clash订阅地址"</li>
-              <li>打开 Flash</li>
+              <li>打开 FlClash</li>
               <li>点击"配置" → "从URL下载"</li>
               <li>粘贴订阅链接，点击"下载"</li>
               <li>选择下载的配置文件</li>
             </ol>
             <h4>方法二：一键导入</h4>
             <ol>
-              <li>在用户仪表盘中，点击"Flash"按钮</li>
+              <li>在用户仪表盘中，点击"FlClash"按钮</li>
               <li>选择"一键导入"</li>
               <li>软件会自动打开并导入配置</li>
             </ol>
@@ -48,7 +48,7 @@
               使用技巧
             </h4>
             <ul>
-              <li>Flash 是专为 macOS 设计的轻量级代理软件</li>
+              <li>FlClash 是专为 macOS 设计的轻量级代理软件</li>
               <li>启动速度快，资源占用少</li>
               <li>建议使用"规则模式"进行智能分流</li>
               <li>可以设置开机自启动</li>
@@ -56,15 +56,15 @@
           </div>
         </div>
       </el-collapse-item>
-      <el-collapse-item title="Mihomo Part" name="mihomo-macos">
+      <el-collapse-item title="Clash Part" name="clash-party-macos">
         <div class="tutorial-content">
           <h3>1. 软件下载</h3>
-          <p>点击上方"立即下载"按钮下载 Mihomo Part 最新版本。</p>
+          <p>点击上方"立即下载"按钮下载 Clash Part 最新版本。</p>
           <h3>2. 安装步骤</h3>
           <ol>
             <li>下载完成后，双击 .dmg 文件</li>
-            <li>将 Mihomo Part 拖拽到 Applications 文件夹</li>
-            <li>在应用程序文件夹中找到 Mihomo Part 并双击启动</li>
+            <li>将 Clash Part 拖拽到 Applications 文件夹</li>
+            <li>在应用程序文件夹中找到 Clash Part 并双击启动</li>
             <li>首次运行可能提示"无法验证开发者"，请按以下步骤操作：
               <ul>
                 <li>打开"系统偏好设置" → "安全性与隐私"</li>
@@ -78,14 +78,14 @@
             <h4>方法一：复制订阅链接</h4>
             <ol>
               <li>在用户仪表盘中，复制"Clash订阅地址"</li>
-              <li>打开 Mihomo Part</li>
+              <li>打开 Clash Part</li>
               <li>点击"配置" → "从URL下载"</li>
               <li>粘贴订阅链接，点击"下载"</li>
               <li>选择下载的配置文件</li>
             </ol>
             <h4>方法二：一键导入</h4>
             <ol>
-              <li>在用户仪表盘中，点击"Mihomo Part"按钮</li>
+              <li>在用户仪表盘中，点击"Clash Part"按钮</li>
               <li>选择"一键导入"</li>
               <li>软件会自动打开并导入配置</li>
             </ol>
@@ -103,7 +103,7 @@
               使用技巧
             </h4>
             <ul>
-              <li>Mihomo Part 是 Clash 的增强版本，功能更强大</li>
+              <li>Clash Part 是 Clash 系列客户端，适合导入 Clash 订阅使用</li>
               <li>支持更多协议和功能</li>
               <li>建议使用"规则模式"进行智能分流</li>
               <li>可以设置开机自启动</li>

@@ -452,6 +452,14 @@ func shouldQueryPaymentStatus(createdAt time.Time) bool {
 	return timeSince < 30*time.Minute
 }
 
+func shouldRefreshRechargePaymentStatus(record models.RechargeRecord) bool {
+	if record.Status != "pending" && record.Status != "failed" {
+		return false
+	}
+	timeSince := time.Since(record.CreatedAt)
+	return timeSince >= 0 && timeSince < 24*time.Hour
+}
+
 func performAlipayQuery(db *gorm.DB, orderNo string, isRecharge bool) (bool, *payment.AlipayQueryResult, error) {
 	configModel, err := paymentConfigForOrderStatusQuery(db, orderNo, "alipay")
 	if err != nil {

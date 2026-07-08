@@ -103,7 +103,6 @@ func (dm *DeviceManager) IsGenericClashWindowsUA(userAgent string) bool {
 		!strings.Contains(uaLower, "clash for windows") &&
 		!strings.Contains(uaLower, "clash meta") &&
 		!strings.Contains(uaLower, "clashmeta") &&
-		!strings.Contains(uaLower, "mihomo") &&
 		!strings.Contains(uaLower, "clash-verge") &&
 		!strings.Contains(uaLower, "clash verge")
 }
@@ -279,14 +278,7 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Clash Verge"
 	}
 
-	// Mihomo 系列
-	if strings.Contains(uaLower, "mihomo.party") || strings.Contains(uaLower, "mihomo/") {
-		return "Mihomo Party"
-	}
-	if strings.Contains(uaLower, "mihomo") {
-		return "Mihomo"
-	}
-
+	// Clash Part 系列
 	// 路由器和软路由客户端
 	if strings.Contains(uaLower, "openwrt") {
 		if strings.Contains(uaLower, "clash") {
@@ -451,7 +443,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
 	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard"}
-	windowsSoftware := []string{"clash for windows", "clash-verge", "clash verge", "v2rayn", "qv2ray", "mihomo party"}
+	windowsSoftware := []string{"clash for windows", "clash-verge", "clash verge", "v2rayn", "qv2ray", "clash part"}
 	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu"}
 	routerSoftware := []string{"openclash", "passwall", "ssr plus+", "ssrplus"}
 
@@ -490,11 +482,6 @@ func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]str
 		if strings.Contains(swLower, sw) {
 			return map[string]string{"os_name": "macOS", "os_version": ""}
 		}
-	}
-
-	// Mihomo 可能在多个平台
-	if strings.Contains(swLower, "mihomo") {
-		return map[string]string{"os_name": "Linux", "os_version": ""}
 	}
 
 	return nil
@@ -708,7 +695,7 @@ func (dm *DeviceManager) determineDeviceType(userAgent string, info *DeviceInfo)
 		}
 		return "mobile"
 	}
-	if strings.Contains(swName, "mihomo") || strings.Contains(swName, "clash for windows") || strings.Contains(swName, "v2rayn") {
+	if strings.Contains(swName, "clash part") || strings.Contains(swName, "clash for windows") || strings.Contains(swName, "v2rayn") {
 		return "desktop"
 	}
 
@@ -752,8 +739,8 @@ func (dm *DeviceManager) isRouter(userAgent, uaLower, osName string) bool {
 		return true
 	}
 
-	// 软路由常见特征：clash/mihomo + mips/arm/aarch64 架构
-	if (strings.Contains(uaLower, "clash") || strings.Contains(uaLower, "mihomo")) &&
+	// 软路由常见特征：clash 系列 + mips/arm/aarch64 架构
+	if strings.Contains(uaLower, "clash") &&
 		(strings.Contains(uaLower, "mips") || strings.Contains(uaLower, "arm") ||
 			strings.Contains(uaLower, "aarch64") || strings.Contains(uaLower, "armv7")) {
 		return true
@@ -952,7 +939,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			if strings.Contains(uaLower, keyword) {
 				subscriptionSoftwareKeywords := []string{
 					"shadowrocket", "quantumult", "surge", "loon", "stash",
-					"v2rayn", "clash", "hiddify", "v2ray", "mihomo",
+					"v2rayn", "clash", "hiddify", "v2ray",
 				}
 				hasSubscriptionSoftware := false
 				for _, swKeyword := range subscriptionSoftwareKeywords {

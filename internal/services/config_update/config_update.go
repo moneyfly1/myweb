@@ -1658,7 +1658,7 @@ func (s *ConfigUpdateService) nodeToYAML(node *ProxyNode, indent int) string {
 	ind := strings.Repeat(" ", indent)
 	m := s.nodeToMap(node)
 
-	// Keep proxy fields in the conventional Clash/Mihomo order. Some clients
+	// Keep proxy fields in the conventional Clash order. Some clients
 	// are lax, but this also makes generated output line up with common
 	// converter output and avoids fragile user-side parsing/display code.
 	ordered := make([]string, 0, len(m))
@@ -2277,7 +2277,7 @@ func (s *ConfigUpdateService) nodeToSSRLink(n *ProxyNode) string {
 // ===========================================================================
 
 // GenerateClientConfig 根据客户端类型生成对应的订阅配置
-// subType: clash, clashmeta, mihomo, stash, surge, quantumultx, loon, singbox, shadowrocket, universal
+// subType: clash, clashmeta, stash, surge, quantumultx, loon, singbox, shadowrocket, universal
 func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, subType string) (responseData, contentType, fileName string) {
 	return s.generateClientConfig(token, clientIP, userAgent, subType, nil)
 }
@@ -2308,7 +2308,7 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 	siteURL := s.siteURL
 
 	switch subType {
-	case "clash", "clashmeta", "mihomo", "stash":
+	case "clash", "clashmeta", "stash":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
 		config := s.generateClashYAML(nodes, ctx)
