@@ -1534,11 +1534,13 @@ func upsertSystemConfig(db *gorm.DB, category, key, value string) error {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			config = models.SystemConfig{Key: key, Category: category, Value: value}
+			ensureSystemConfigMetadata(&config, value)
 			return db.Create(&config).Error
 		}
 		return err
 	}
 	config.Value = value
+	ensureSystemConfigMetadata(&config, value)
 	return db.Save(&config).Error
 }
 

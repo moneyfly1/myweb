@@ -84,6 +84,7 @@ func updateSettingsCommon(c *gin.Context, category string) {
 			conf.Key = key
 			conf.Category = targetCat
 			conf.Value = valStr
+			ensureSystemConfigMetadata(&conf, val)
 
 			if err := tx.Save(&conf).Error; err != nil {
 				return err
@@ -119,6 +120,28 @@ func updateSettingsCommon(c *gin.Context, category string) {
 
 	utils.CreateAuditLogSimple(c, "update_settings", "settings", 0, fmt.Sprintf("管理员操作: 更新设置 category=%s", category))
 	utils.SuccessResponse(c, http.StatusOK, "设置已保存", nil)
+}
+
+func ensureSystemConfigMetadata(conf *models.SystemConfig, value interface{}) {
+	if conf.Type == "" {
+		conf.Type = inferSystemConfigType(value)
+	}
+	if conf.DisplayName == "" {
+		conf.DisplayName = conf.Key
+	}
+}
+
+func inferSystemConfigType(value interface{}) string {
+	switch value.(type) {
+	case bool:
+		return "boolean"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return "number"
+	case []interface{}, []string:
+		return "json"
+	default:
+		return "string"
+	}
 }
 
 func GetSystemConfigs(c *gin.Context) {
@@ -166,6 +189,7 @@ func CreateSystemConfig(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "配置已存在", nil)
 		return
 	}
+	ensureSystemConfigMetadata(&req, req.Value)
 
 	if err := db.Create(&req).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建配置失败", err)
@@ -192,10 +216,12 @@ func UpdateSystemConfig(c *gin.Context) {
 			for k, v := range req {
 				val := fmt.Sprintf("%v", v)
 				// Assuming 'key' is unique enough or schema allows this Upsert
+				conf := models.SystemConfig{Key: k, Value: val, Category: CatSystem}
+				ensureSystemConfigMetadata(&conf, v)
 				if err := tx.Clauses(clause.OnConflict{
 					Columns:   []clause.Column{{Name: "key"}},
 					DoUpdates: clause.Assignments(map[string]interface{}{"value": val}),
-				}).Create(&models.SystemConfig{Key: k, Value: val, Category: CatSystem}).Error; err != nil {
+				}).Create(&conf).Error; err != nil {
 					return err
 				}
 			}
@@ -239,9 +265,7 @@ func UpdateSystemConfig(c *gin.Context) {
 	if req.DisplayName != "" {
 		config.DisplayName = req.DisplayName
 	}
-	if config.Type == "" {
-		config.Type = "string"
-	}
+	ensureSystemConfigMetadata(&config, req.Value)
 
 	if err := db.Save(&config).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存配置失败", err)
