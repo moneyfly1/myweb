@@ -84,17 +84,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
   const saveToken = (accessToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    const useSession = isAdmin ? true : !remember
+    const useSession = !remember
     secureStorage.set(isAdmin ? 'admin_token' : 'user_token', accessToken, useSession, TOKEN_TTL)
   }
   const saveUser = (userData, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
-    const useSession = isAdmin ? true : !remember
+    const useSession = !remember
     secureStorage.set(isAdmin ? 'admin_user' : 'user_data', userData, useSession, REFRESH_TOKEN_TTL)
   }
   const saveRefreshToken = (refreshToken, isAdmin = false, remember = getRememberPreference(isAdmin)) => {
     if (!refreshToken) return
     const key = isAdmin ? 'admin_refresh_token' : 'user_refresh_token'
-    const useSession = isAdmin ? true : !remember
+    const useSession = !remember
     secureStorage.set(key, refreshToken, useSession, REFRESH_TOKEN_TTL)
   }
   const token = ref(getInitialToken())
