@@ -393,8 +393,33 @@
                     </div>
                     <el-collapse-transition>
                       <div v-show="adminNotificationSettings.admin_telegram_notification" class="channel-body">
-                        <el-input v-model="adminNotificationSettings.admin_telegram_bot_token" type="password" show-password placeholder="Bot Token" size="small" class="mb-2" />
-                        <el-input v-model="adminNotificationSettings.admin_telegram_chat_id" type="password" show-password placeholder="Chat ID" size="small" />
+                        <el-input
+                          v-model="adminNotificationSettings.admin_telegram_bot_token"
+                          type="password"
+                          show-password
+                          placeholder="Bot Token"
+                          size="small"
+                          class="mb-2"
+                          autocomplete="new-password"
+                          name="cboard-admin-telegram-bot-token"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          data-form-type="other"
+                          spellcheck="false"
+                        />
+                        <el-input
+                          v-model="adminNotificationSettings.admin_telegram_chat_id"
+                          type="password"
+                          show-password
+                          placeholder="Chat ID"
+                          size="small"
+                          autocomplete="new-password"
+                          name="cboard-admin-telegram-chat-id"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          data-form-type="other"
+                          spellcheck="false"
+                        />
                         <el-button size="small" plain @click="testNotification('telegram')" :loading="testingStates.telegram" class="mt-2 full-width">测试 Telegram</el-button>
                       </div>
                     </el-collapse-transition>
@@ -409,7 +434,19 @@
                     <el-collapse-transition>
                       <div v-show="adminNotificationSettings.admin_bark_notification" class="channel-body">
                         <el-input v-model="adminNotificationSettings.admin_bark_server_url" placeholder="服务器URL (默认 https://api.day.app)" size="small" class="mb-2" />
-                        <el-input v-model="adminNotificationSettings.admin_bark_device_key" type="password" show-password placeholder="Device Key" size="small" />
+                        <el-input
+                          v-model="adminNotificationSettings.admin_bark_device_key"
+                          type="password"
+                          show-password
+                          placeholder="Device Key"
+                          size="small"
+                          autocomplete="new-password"
+                          name="cboard-admin-bark-device-key"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          data-form-type="other"
+                          spellcheck="false"
+                        />
                         <el-button size="small" plain @click="testNotification('bark')" :loading="testingStates.bark" class="mt-2 full-width">测试 Bark</el-button>
                       </div>
                     </el-collapse-transition>
