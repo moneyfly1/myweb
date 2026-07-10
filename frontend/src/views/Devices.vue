@@ -196,7 +196,14 @@
               </el-table-column>
               <el-table-column prop="remark" label="备注" :width="columnWidths.remark" resizable>
                 <template #default="{ row }">
-                  <DeviceRemarkEditor :device="row" />
+                  <InlineEditableText
+                    :value="row.remark || ''"
+                    empty-text="点击添加备注"
+                    placeholder="输入设备备注，回车或失焦保存"
+                    :maxlength="200"
+                    :loading="!!row.savingRemark"
+                    @save="value => saveRemark(row, value)"
+                  />
                 </template>
               </el-table-column>
               <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
@@ -247,7 +254,14 @@
           </div>
         </template>
         <template #field-remark="{ item }">
-          <DeviceRemarkEditor :device="item" />
+          <InlineEditableText
+            :value="item.remark || ''"
+            empty-text="点击添加备注"
+            placeholder="输入设备备注，回车或失焦保存"
+            :maxlength="200"
+            :loading="!!item.savingRemark"
+            @save="value => saveRemark(item, value)"
+          />
         </template>
         <template #empty>
           <EmptyState
@@ -288,7 +302,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed, defineComponent, h } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
   Box,
@@ -327,7 +341,8 @@ export default {
     QuestionFilled,
     VideoCamera,
     PaginationBar,
-    UpgradeDevicesDrawer
+    UpgradeDevicesDrawer,
+    InlineEditableText
   },
   setup() {
     const loading = ref(false)
@@ -423,28 +438,6 @@ export default {
       { key: 'user_agent', label: 'User Agent', formatter: value => truncateUserAgent(value), fullWidth: true },
       { key: 'remark', label: '备注', fullWidth: true }
     ])
-    const DeviceRemarkEditor = defineComponent({
-      name: 'DeviceRemarkEditor',
-      props: {
-        device: {
-          type: Object,
-          required: true
-        }
-      },
-      setup(props) {
-        return () => {
-          const device = props.device
-          return h(InlineEditableText, {
-            value: device.remark || '',
-            emptyText: '点击添加备注',
-            placeholder: '输入设备备注，回车或失焦保存',
-            maxlength: 200,
-            loading: !!device.savingRemark,
-            onSave: value => saveRemark(device, value)
-          })
-        }
-      }
-    })
     const fetchDevices = async () => {
       loading.value = true
       try {
@@ -723,8 +716,7 @@ export default {
       upgradeSubscriptionLoading,
       openUpgradeDrawer,
       handleUpgradeSuccess,
-      saveRemark,
-      DeviceRemarkEditor
+      saveRemark
     }
   }
 }
