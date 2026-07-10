@@ -301,33 +301,25 @@
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>套餐购买与续费</td>
-                  <td>¥29.00</td>
-                  <td><el-tag size="small" type="success">已支付</el-tag></td>
-                  <td>最近</td>
+                <tr v-if="recentOrdersLoading">
+                  <td colspan="5" class="table-empty-cell">订单加载中...</td>
+                </tr>
+                <tr v-else-if="recentOrders.length === 0">
+                  <td colspan="5" class="table-empty-cell">暂无订单记录</td>
+                </tr>
+                <tr v-for="order in recentOrders" :key="order.id || order.order_no">
+                  <td>{{ getRecentOrderTitle(order) }}</td>
+                  <td>{{ getRecentOrderAmount(order) }}</td>
+                  <td>
+                    <el-tag size="small" :type="getOrderStatusType(order.status)">
+                      {{ getOrderStatusText(order.status) }}
+                    </el-tag>
+                  </td>
+                  <td>{{ formatDate(order.created_at) }}</td>
                   <td>
                     <router-link to="/orders">
-                      <el-button size="small">详情</el-button>
+                      <el-button size="small">{{ order.status === 'pending' ? '处理' : '详情' }}</el-button>
                     </router-link>
-                  </td>
-                </tr>
-                <tr>
-                  <td>账户余额充值</td>
-                  <td>¥100.00</td>
-                  <td><el-tag size="small" type="warning">待支付</el-tag></td>
-                  <td>待处理</td>
-                  <td>
-                    <el-button size="small" type="primary" @click="showRechargeDialog">继续支付</el-button>
-                  </td>
-                </tr>
-                <tr>
-                  <td>升级设备数量</td>
-                  <td>按新增数量计算</td>
-                  <td><el-tag size="small" type="warning">待支付</el-tag></td>
-                  <td>待处理</td>
-                  <td>
-                    <el-button size="small" type="primary" @click="showUpgradeDrawer = true">继续支付</el-button>
                   </td>
                 </tr>
               </tbody>
@@ -605,8 +597,10 @@ import AppDialog from '@/components/AppDialog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
-import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage } from '@/utils/api'
+import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage, orderAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
+import { formatMoney } from '@/utils/format'
+import { getOrderStatusText, getOrderStatusType } from '@/utils/statusMaps'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
@@ -643,6 +637,8 @@ const subscriptionInfo = ref({
 const checkinLoading = ref(false)
 const dashboardLoading = ref(true)
 const checkedIn = ref(false)
+const recentOrders = ref([])
+const recentOrdersLoading = ref(false)
 const handleCheckin = async () => {
   checkinLoading.value = true
   try {
@@ -936,6 +932,32 @@ const formatDate = (dateString) => {
   if (!dateString) return '未知'
   const date = new Date(dateString)
   return date.toLocaleString('zh-CN')
+}
+const getRecentOrderTitle = (order) => {
+  return order?.package_name || order?.package?.name || order?.order_no || '订单'
+}
+const getRecentOrderAmount = (order) => {
+  const amount = order?.amount ?? order?.display_amount ?? order?.final_amount
+  return formatMoney(amount)
+}
+const normalizeRecentOrdersResponse = (response) => {
+  const data = response?.data?.data ?? response?.data ?? {}
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data.orders)) return data.orders
+  if (Array.isArray(data.list)) return data.list
+  return []
+}
+const loadRecentOrders = async () => {
+  recentOrdersLoading.value = true
+  try {
+    const response = await orderAPI.getUserOrders({ page: 1, size: 3 })
+    recentOrders.value = normalizeRecentOrdersResponse(response).slice(0, 3)
+  } catch (error) {
+    console.error('加载最近订单失败:', error)
+    recentOrders.value = []
+  } finally {
+    recentOrdersLoading.value = false
+  }
 }
 const loadUserInfo = async () => {
   dashboardLoading.value = true
@@ -1533,6 +1555,7 @@ const checkAndShowAnnouncement = async () => {
 onMounted(() => {
   Promise.all([
     loadUserInfo(),
+    loadRecentOrders(),
     loadSoftwareConfig(),
     loadCheckinStatus(),
     checkAndShowAnnouncement()
@@ -2474,6 +2497,10 @@ onUnmounted(() => {
 }
 .dashboard-table tr:last-child td {
   border-bottom: 0;
+}
+.dashboard-table .table-empty-cell {
+  color: #909399;
+  text-align: center;
 }
 .tutorial-tabs {
   display: flex;
