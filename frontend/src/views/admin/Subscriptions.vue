@@ -1712,16 +1712,6 @@ export default {
         }
       }
     }
-    const showAppleStats = () => {
-      ElMessage.info('通用订阅统计功能待实现')
-    }
-    const showOnlineStats = () => {
-      ElMessage.info('在线设备统计功能待实现')
-    }
-    const truncateText = (text, maxLength) => {
-      if (!text) return ''
-      return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
-    }
     const truncateUserAgent = (userAgent) => {
       if (!userAgent) return '未知'
       return userAgent.length > 50 ? userAgent.substring(0, 50) + '...' : userAgent
@@ -2021,8 +2011,6 @@ export default {
       clearUserDevices,
       clearAllDevices,
       exportSubscriptions,
-      showAppleStats,
-      showOnlineStats,
       getSubscriptionStatusType,
       getSubscriptionStatusText,
       formatDate,

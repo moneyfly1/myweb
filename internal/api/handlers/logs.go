@@ -17,10 +17,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	DefaultPageSize = 10
-)
-
 const systemLogsBaseWhere = "(audit_logs.action_type = ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type = ? OR audit_logs.resource_type = ?)"
 
 // PaginationParams 分页参数结构
@@ -600,8 +596,12 @@ func GetLoginAttempts(c *gin.Context) {
 			Success:   a.Success,
 			CreatedAt: utils.FormatBeijingTime(a.CreatedAt),
 		}
-		if a.IPAddress.Valid { item.IPAddress = a.IPAddress.String }
-		if a.UserAgent.Valid { item.UserAgent = a.UserAgent.String }
+		if a.IPAddress.Valid {
+			item.IPAddress = a.IPAddress.String
+		}
+		if a.UserAgent.Valid {
+			item.UserAgent = a.UserAgent.String
+		}
 		items = append(items, item)
 	}
 
@@ -947,7 +947,7 @@ func GetBalanceLogs(c *gin.Context) {
 			"id":               log.ID,
 			"user_id":          log.UserID,
 			"username":         getCommonUserName(&log.User),
-				"user_email":      log.User.Email,
+			"user_email":       log.User.Email,
 			"change_type":      log.ChangeType,
 			"amount":           utils.RoundFloat(log.Amount, 2),
 			"balance_before":   utils.RoundFloat(log.BalanceBefore, 2),
@@ -1028,10 +1028,10 @@ func GetCommissionLogs(c *gin.Context) {
 			"id":               log.ID,
 			"inviter_id":       log.InviterID,
 			"inviter_name":     getCommonUserName(&log.Inviter),
-				"inviter_email":    log.Inviter.Email,
+			"inviter_email":    log.Inviter.Email,
 			"invitee_id":       log.InviteeID,
 			"invitee_name":     getCommonUserName(&log.Invitee),
-				"invitee_email":    log.Invitee.Email,
+			"invitee_email":    log.Invitee.Email,
 			"commission_type":  log.CommissionType,
 			"amount":           utils.RoundFloat(log.Amount, 2),
 			"related_order_id": getNullableInt64(log.RelatedOrderID),

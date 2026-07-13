@@ -23,21 +23,12 @@ import (
 	"cboard-go/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
-
-func Base64Encode(str string) string {
-	return base64.StdEncoding.EncodeToString([]byte(str))
-}
 
 // NormalizeEmail 将邮箱转为小写并去空格，用于注册/登录等场景防止同一邮箱不同写法重复注册
 func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
-}
-
-func GenerateUUID() string {
-	return uuid.New().String()
 }
 
 func GenerateSubscriptionURL() string {
@@ -282,29 +273,7 @@ func GenerateTicketNo(userID uint) string {
 
 // ========== 常量定义 ==========
 
-const (
-	DefaultDeviceLimit    = 0
-	DefaultDurationMonths = 0
-)
-
-const (
-	SubscriptionStatusActive   = "active"
-	SubscriptionStatusInactive = "inactive"
-	SubscriptionStatusExpired  = "expired"
-)
-
-const (
-	OrderStatusPending  = "pending"
-	OrderStatusPaid     = "paid"
-	OrderStatusFailed   = "failed"
-	OrderStatusCanceled = "canceled"
-)
-
-const (
-	VerificationPurposeRegister      = "register"
-	VerificationPurposeResetPassword = "reset_password"
-	VerificationPurposeChangeEmail   = "change_email"
-)
+const SubscriptionStatusActive = "active"
 
 // ========== 时区相关 ==========
 
@@ -347,30 +316,6 @@ func FormatNullTimeBeijing(nt sql.NullTime) string {
 		return ""
 	}
 	return FormatBeijingTime(nt.Time)
-}
-
-func ResolveTimezone(timezone string) *time.Location {
-	tz := strings.TrimSpace(timezone)
-	if tz == "" {
-		return BeijingTZ
-	}
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return BeijingTZ
-	}
-	return loc
-}
-
-func FormatTimeInTimezone(t time.Time, timezone string) string {
-	loc := ResolveTimezone(timezone)
-	return t.In(loc).Format("2006-01-02 15:04:05")
-}
-
-func FormatNullTimeInTimezone(nt sql.NullTime, timezone string) string {
-	if !nt.Valid {
-		return ""
-	}
-	return FormatTimeInTimezone(nt.Time, timezone)
 }
 
 // ========== Token哈希 ==========
@@ -434,43 +379,6 @@ func GetStringValue(ptr *string) string {
 		return *ptr
 	}
 	return ""
-}
-
-// ========== 订单查询相关 ==========
-
-func orderRevenueQuery(db *gorm.DB) *gorm.DB {
-	return db.Table("orders")
-}
-
-func applyStatusFilter(query *gorm.DB, status string) *gorm.DB {
-	if status != "" {
-		return query.Where("status = ?", status)
-	}
-	return query
-}
-
-func CalculateOrderRevenue(db *gorm.DB, status string) float64 {
-	var total float64
-	query := applyStatusFilter(orderRevenueQuery(db), status)
-
-	query.Select("COALESCE(SUM(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END), 0)").
-		Scan(&total)
-
-	return total
-}
-
-func CalculateRechargeRevenue(db *gorm.DB, status string) float64 {
-	var total float64
-	query := applyStatusFilter(db.Table("recharge_records"), status)
-
-	query.Select("COALESCE(SUM(amount), 0)").
-		Scan(&total)
-
-	return total
-}
-
-func CalculateTotalRevenue(db *gorm.DB, status string) float64 {
-	return RoundFloat(CalculateOrderRevenue(db, status)+CalculateRechargeRevenue(db, status), 2)
 }
 
 type PaymentSummary struct {
@@ -796,11 +704,6 @@ func VerifyToken(tokenString string) (*JWTClaims, error) {
 	}
 
 	return nil, errors.New("无效的令牌")
-}
-
-func CalculateTodayRevenue(db *gorm.DB, status string) float64 {
-	start, end := GetDayRange(GetBeijingTime())
-	return CalculatePaymentSummary(db, start, end).RangeRevenue
 }
 
 type UserPaymentSummary struct {

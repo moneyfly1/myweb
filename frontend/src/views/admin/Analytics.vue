@@ -322,14 +322,12 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, User, TrendCharts, DataAnalysis, Monitor, Download, Top, Bottom } from '@element-plus/icons-vue'
 import { api } from '@/utils/api'
-import { useRouter } from 'vue-router'
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { useMobile } from '@/composables/useMobile'
 
-const router = useRouter()
 const loading = ref(false)
 const exporting = ref(false)
 const sending = ref(false)
@@ -556,10 +554,6 @@ const sendEmail = async () => {
   } finally {
     sending.value = false
   }
-}
-
-const contactUser = (user) => {
-  router.push(`/admin/users?search=${user.email}`)
 }
 
 const loadData = async () => {

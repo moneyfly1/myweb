@@ -160,16 +160,6 @@ func AdminNotificationDefaultSettings() map[string]interface{} {
 	return defaults
 }
 
-func AdminNotificationEventKeys() []string {
-	keys := make([]string, 0, len(adminNotificationEvents))
-	for _, event := range adminNotificationEvents {
-		if key, ok := adminNotificationKeyMap[event]; ok {
-			keys = append(keys, key)
-		}
-	}
-	return keys
-}
-
 func CustomerNotificationDefaultSettings() map[string]interface{} {
 	return map[string]interface{}{
 		"email_notifications":                         "true",

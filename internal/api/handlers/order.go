@@ -972,30 +972,6 @@ func GetOrder(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", order)
 }
 
-func CancelOrder(c *gin.Context) {
-	id := c.Param("id")
-	user, ok := middleware.GetCurrentUser(c)
-	if !ok {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
-		return
-	}
-
-	db := database.GetDB()
-	var order models.Order
-	if err := db.Where("id = ? AND user_id = ?", id, user.ID).First(&order).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "订单不存在", nil)
-		return
-	}
-
-	cancelledOrder, err := orderServicePkg.NewOrderService().CancelPendingOrder(order.OrderNo, user.ID)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
-		return
-	}
-
-	utils.SuccessResponse(c, http.StatusOK, "订单已取消", cancelledOrder)
-}
-
 func CancelOrderByNo(c *gin.Context) {
 	orderNo := c.Param("orderNo")
 	user, ok := middleware.GetCurrentUser(c)

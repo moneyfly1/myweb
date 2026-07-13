@@ -44,13 +44,6 @@ type LoginJSONRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func isSecureRequest(c *gin.Context) bool {
-	if c.Request != nil && c.Request.TLS != nil {
-		return true
-	}
-	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
-}
-
 func getMinPasswordLength(db *gorm.DB) int {
 	var config models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", "min_password_length", "registration").First(&config).Error; err == nil {

@@ -57,7 +57,7 @@
         </div>
         <div class="stat-content">
           <div class="balance-main">
-            <div class="stat-value">{{ typeof userInfo.balance === 'string' ? userInfo.balance : (userInfo.balance || 0).toFixed(2) }}</div>
+            <div class="stat-value">{{ dashboardBalanceText }}</div>
             <div class="stat-label">账户余额</div>
           </div>
         </div>
@@ -68,7 +68,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value level-name">
-            {{ userInfo.user_level?.name || userInfo.membership || '普通会员' }}
+            {{ dashboardLevelName }}
           </div>
           <div class="stat-label">当前等级</div>
           <el-tag
@@ -512,7 +512,7 @@
           <template v-if="isMobile">
             <div class="mobile-label">支付方式</div>
           </template>
-          <el-radio-group v-model="rechargePaymentMethod" @change="handleRechargePaymentMethodChange">
+          <el-radio-group v-model="rechargePaymentMethod">
             <el-radio
               v-for="method in rechargePaymentMethods"
               :key="method.key"
@@ -575,14 +575,12 @@ import {
   Cellphone,
   Clock,
   CopyDocument,
-  Cpu,
   Document,
   InfoFilled,
   Iphone,
   Lightning,
   Link,
   Medal,
-  Monitor,
   Picture,
   Promotion,
   Reading,
@@ -610,28 +608,29 @@ import { createQRCodeDataURL } from '@/utils/qrcode'
 const router = useRouter()
 const api = useApi()
 const sanitizeHtml = sanitizeBasicHtml
-const userInfo = ref({
-  username: '用户',
+const createEmptyUserInfo = () => ({
+  username: '',
   email: '',
-  membership: '普通会员',
+  membership: '',
   expire_time: null,
-  expiryDate: '未设置',
+  expiryDate: null,
   remaining_days: 0,
-  online_devices: 0,
-  total_devices: 0,
-  balance: '0.00',
-  speed_limit: '不限速',
+  online_devices: null,
+  total_devices: null,
+  balance: null,
+  speed_limit: '',
   subscription_url: '',
   subscription_status: 'inactive',
   clashUrl: '',
   universalUrl: '',
   qrcodeUrl: ''
 })
+const userInfo = ref(createEmptyUserInfo())
 const subscriptionInfo = ref({
-  currentDevices: 0,
-  maxDevices: 0,
+  currentDevices: null,
+  maxDevices: null,
   remainingDays: 0,
-  expiryDate: '未设置',
+  expiryDate: null,
   status: 'inactive'
 })
 const checkinLoading = ref(false)
@@ -700,8 +699,6 @@ const loadRechargePaymentMethods = async () => {
     rechargePaymentMethods.value = [{ key: 'alipay', name: '支付宝' }]
   }
 }
-const handleRechargePaymentMethodChange = (value) => {
-}
 const softwareConfig = ref({
   clash_windows_url: '',
   v2rayn_url: '',
@@ -717,18 +714,8 @@ const softwareConfig = ref({
   clash_verge_macos_url: '',
   shadowrocket_url: ''
 })
-const activePlatform = ref('Windows')
 const showQRCode = ref(false)
 const showUpgradeDrawer = ref(false)
-const platformIconMap = {
-  windows: Monitor,
-  android: Cellphone,
-  macos: Cpu,
-  ios: Iphone,
-  linux: Cpu,
-  mobile: Cellphone
-}
-const getPlatformIcon = (icon) => platformIconMap[icon] || Monitor
 const platforms = ref([
   {
     name: 'Windows',
@@ -922,6 +909,8 @@ const dashboardRemainingDays = computed(() => {
   const days = getRemainingDays(subscriptionInfo.value.expiryDate || userInfo.value.expire_time || userInfo.value.expiryDate)
   return Number.isFinite(days) ? days : 0
 })
+const dashboardBalanceText = computed(() => formatMoney(userInfo.value.balance, { prefix: '', empty: '0.00' }))
+const dashboardLevelName = computed(() => userInfo.value.user_level?.name || userInfo.value.membership || '未开通等级')
 
 const handleUpgradeSuccess = async () => {
   cachedAPI.clearUserCache()
@@ -947,6 +936,39 @@ const normalizeRecentOrdersResponse = (response) => {
   if (Array.isArray(data.list)) return data.list
   return []
 }
+const normalizeApiData = (response) => {
+  if (!response?.data) return null
+  if (response.data.success && response.data.data) return response.data.data
+  return response.data.data || response.data
+}
+const loadUserProfileSnapshot = async () => {
+  try {
+    return normalizeApiData(await userAPI.getProfile()) || {}
+  } catch (error) {
+    return {}
+  }
+}
+const buildFallbackDashboardUserInfo = (subscriptionData, profileData = {}) => ({
+  ...createEmptyUserInfo(),
+  username: profileData.username || '',
+  email: profileData.email || '',
+  membership: profileData.membership || '',
+  balance: profileData.balance ?? null,
+  expire_time: subscriptionData.expire_time || subscriptionData.expiryDate || null,
+  expiryDate: subscriptionData.expiryDate || subscriptionData.expire_time || null,
+  remaining_days: subscriptionData.remainingDays ?? subscriptionData.remaining_days ?? 0,
+  online_devices: subscriptionData.currentDevices ?? subscriptionData.current_devices ?? null,
+  total_devices: subscriptionData.maxDevices ?? subscriptionData.max_devices ?? subscriptionData.device_limit ?? null,
+  subscription_url: subscriptionData.subscription_url || '',
+  subscription_status: subscriptionData.status || 'inactive',
+  clashUrl: subscriptionData.clashUrl || '',
+  universalUrl: subscriptionData.universalUrl || '',
+  qrcodeUrl: subscriptionData.qrcodeUrl || '',
+  has_special_nodes: !!subscriptionData.has_special_nodes,
+  special_node_count: subscriptionData.special_node_count || 0,
+  special_node_subscription_type: subscriptionData.special_node_subscription_type || 'both',
+  special_node_unlimited_devices: !!subscriptionData.special_node_unlimited_devices
+})
 const loadRecentOrders = async () => {
   recentOrdersLoading.value = true
   try {
@@ -968,25 +990,25 @@ const loadUserInfo = async () => {
       const dashboardData = dashboardResponse.data.data
       userInfo.value = {
         ...dashboardData,
-        balance: dashboardData.balance || '0.00',
+        balance: dashboardData.balance ?? null,
         clashUrl: dashboardData.clashUrl || dashboardData.subscription?.clashUrl || '',
         universalUrl: dashboardData.universalUrl || dashboardData.subscription?.universalUrl || '',
         qrcodeUrl: dashboardData.qrcodeUrl || dashboardData.subscription?.qrcodeUrl || '',
-        expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
-        expire_time: dashboardData.expire_time || dashboardData.expiryDate || dashboardData.subscription?.expire_time || dashboardData.subscription?.expiryDate || '未设置',
-        remaining_days: dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0,
+        expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || null,
+        expire_time: dashboardData.expire_time || dashboardData.expiryDate || dashboardData.subscription?.expire_time || dashboardData.subscription?.expiryDate || null,
+        remaining_days: dashboardData.remainingDays ?? dashboardData.remaining_days ?? dashboardData.subscription?.remainingDays ?? dashboardData.subscription?.remaining_days ?? 0,
         subscription_status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive',
         has_special_nodes: !!(dashboardData.has_special_nodes || dashboardData.subscription?.has_special_nodes),
         special_node_count: dashboardData.special_node_count || dashboardData.subscription?.special_node_count || 0,
         special_node_subscription_type: dashboardData.special_node_subscription_type || dashboardData.subscription?.special_node_subscription_type || 'both',
         special_node_unlimited_devices: !!(dashboardData.special_node_unlimited_devices || dashboardData.subscription?.special_node_unlimited_devices)
       }
-      const calculatedRemainingDays = dashboardData.remainingDays || dashboardData.remaining_days || dashboardData.subscription?.remainingDays || dashboardData.subscription?.remaining_days || 0
+      const calculatedRemainingDays = dashboardData.remainingDays ?? dashboardData.remaining_days ?? dashboardData.subscription?.remainingDays ?? dashboardData.subscription?.remaining_days ?? 0
       subscriptionInfo.value = {
-        currentDevices: dashboardData.subscription?.currentDevices || 0,
-        maxDevices: dashboardData.subscription?.maxDevices || 0,
+        currentDevices: dashboardData.subscription?.currentDevices ?? 0,
+        maxDevices: dashboardData.subscription?.maxDevices ?? 0,
         remainingDays: calculatedRemainingDays,
-        expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || '未设置',
+        expiryDate: dashboardData.expiryDate || dashboardData.expire_time || dashboardData.subscription?.expiryDate || dashboardData.subscription?.expire_time || null,
         status: dashboardData.subscription?.status || dashboardData.subscription_status || 'inactive'
       }
       if (dashboardData.notice) {
@@ -1001,26 +1023,8 @@ const loadUserInfo = async () => {
       const subscriptionResponse = await subscriptionAPI.getUserSubscription()
       if (subscriptionResponse.data && subscriptionResponse.data.success) {
         const subscriptionData = subscriptionResponse.data.data
-        userInfo.value = {
-          username: '用户',
-          email: '',
-          membership: '普通会员',
-          expire_time: null,
-          expiryDate: subscriptionData.expiryDate || '未设置',
-          remaining_days: subscriptionData.remainingDays || 0,
-          online_devices: 0,
-          total_devices: 0,
-          balance: '0.00',
-          subscription_url: subscriptionData.subscription_url || '',
-          subscription_status: subscriptionData.status || 'inactive',
-          clashUrl: subscriptionData.clashUrl || '',
-          universalUrl: subscriptionData.universalUrl || '',
-          qrcodeUrl: subscriptionData.qrcodeUrl || '',
-          has_special_nodes: !!subscriptionData.has_special_nodes,
-          special_node_count: subscriptionData.special_node_count || 0,
-          special_node_subscription_type: subscriptionData.special_node_subscription_type || 'both',
-          special_node_unlimited_devices: !!subscriptionData.special_node_unlimited_devices
-        }
+        const profileData = await loadUserProfileSnapshot()
+        userInfo.value = buildFallbackDashboardUserInfo(subscriptionData, profileData)
         ElMessage.warning('部分信息加载失败，但订阅地址可用')
       } else {
         throw new Error('订阅API也返回空数据')
@@ -1061,7 +1065,7 @@ const loadSubscriptionInfo = async () => {
         currentDevices: 0,
         maxDevices: 0,
         remainingDays: 0,
-        expiryDate: '未设置',
+        expiryDate: null,
         status: 'inactive'
       }
     }
@@ -1070,7 +1074,7 @@ const loadSubscriptionInfo = async () => {
       currentDevices: 0,
       maxDevices: 0,
       remainingDays: 0,
-      expiryDate: '未设置',
+      expiryDate: null,
       status: 'inactive'
     }
   }
@@ -1349,15 +1353,6 @@ const openTutorial = (app) => {
   }
   router.push('/help')
 }
-const openTutorialByPlatform = (platformName) => {
-  const platform = platforms.value.find(item => item.name === platformName)
-  const app = platform?.apps?.[0]
-  if (app) {
-    openTutorial(app)
-    return
-  }
-  router.push('/help')
-}
 const downloadDashboardClient = (downloadKey) => {
   if (!downloadKey) {
     ElMessage.error('下载链接未配置，请联系管理员')
@@ -1374,12 +1369,6 @@ const openDashboardClientTutorial = (clientId) => {
 }
 const goToPackages = () => {
   router.push('/packages')
-}
-const loadDevices = async () => {
-  try {
-    await loadUserInfo()
-  } catch (error) {
-  }
 }
 const executeCommand = (command, handlers) => {
   const handler = handlers[command]
@@ -1492,10 +1481,6 @@ const importShadowrocketSubscription = () => {
   } catch (error) {
     ElMessage.error('一键导入失败，请手动复制订阅地址')
   }
-}
-const refreshDevices = () => {
-  loadDevices()
-  ElMessage.success('设备列表已刷新')
 }
 const oneclickImport = (client, url, name = '') => {
   try {

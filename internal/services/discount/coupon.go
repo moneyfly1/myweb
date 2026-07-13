@@ -122,10 +122,6 @@ func quoteCouponWithPreparedAmount(db *gorm.DB, code string, userID uint, packag
 	}, nil
 }
 
-func GetCouponQuoteByCode(db *gorm.DB, code string, userID uint, packageID uint, amountBeforeCoupon float64) (*CouponQuote, error) {
-	return QuoteCouponForPreparedAmount(db, code, userID, packageID, amountBeforeCoupon)
-}
-
 func ValidateCoupon(db *gorm.DB, coupon *models.Coupon, userID uint, packageID uint, amountBeforeCoupon float64) error {
 	if coupon == nil || coupon.ID == 0 {
 		return fmt.Errorf("优惠券不存在或已失效")
