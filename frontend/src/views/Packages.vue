@@ -1610,13 +1610,6 @@ export default {
           const response = await api.get(`/orders/${currentOrder.value.order_no}/status`, {
             timeout: 10000
           })
-          if (process.env.NODE_ENV === 'development') {
-            console.log('订单状态检查:', {
-              order_no: currentOrder.value.order_no,
-              response: response.data,
-              status: response.data?.data?.status
-            })
-          }
           if (!response || !response.data) {
             return
           }

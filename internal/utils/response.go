@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,24 +13,22 @@ import (
 
 // APIResponse 统一API响应格式
 type APIResponse struct {
-	Success    bool        `json:"success"`
-	Code       int         `json:"code"`
-	Message    string      `json:"message"`
-	Data       interface{} `json:"data,omitempty"`
-	Timestamp  int64       `json:"timestamp"`
-	RequestID  string      `json:"request_id,omitempty"`
+	Success   bool        `json:"success"`
+	Code      int         `json:"code"`
+	Message   string      `json:"message"`
+	Data      interface{} `json:"data,omitempty"`
+	Timestamp int64       `json:"timestamp"`
+	RequestID string      `json:"request_id,omitempty"`
 }
 
 // Standard error codes
 const (
-	ErrCodeSuccess = 0
-	ErrCodeBadRequest = 400
+	ErrCodeSuccess      = 0
+	ErrCodeBadRequest   = 400
 	ErrCodeUnauthorized = 401
-	ErrCodeForbidden = 403
-	ErrCodeNotFound = 404
-	ErrCodeInternal = 500
-	ErrCodeValidation = 1000
-	ErrCodeDatabase = 2000
+	ErrCodeForbidden    = 403
+	ErrCodeNotFound     = 404
+	ErrCodeInternal     = 500
 )
 
 // GetRequestID 从上下文中获取请求ID
@@ -69,9 +66,9 @@ func ErrorResponse(c *gin.Context, code int, message string, err error) {
 	// 记录详细错误到日志
 	if err != nil {
 		LogError(message, err, map[string]interface{}{
-			"path":   c.Request.URL.Path,
-			"method": c.Request.Method,
-			"code":   code,
+			"path":     c.Request.URL.Path,
+			"method":   c.Request.Method,
+			"code":     code,
 			"err_code": errCode,
 		})
 	}
@@ -203,43 +200,6 @@ func ParsePagination(c *gin.Context) PaginationParams {
 
 func (p PaginationParams) GetOffset() int {
 	return (p.Page - 1) * p.Size
-}
-
-// ========== 错误处理相关 ==========
-
-type SafeError struct {
-	UserMessage string // 返回给用户的消息
-	InternalErr error  // 内部错误（仅记录到日志）
-}
-
-func (e *SafeError) Error() string {
-	return e.UserMessage
-}
-
-func HandleError(err error, userMessage string) error {
-	if err == nil {
-		return nil
-	}
-
-	log.Printf("Error: %v", err)
-
-	return &SafeError{
-		UserMessage: userMessage,
-		InternalErr: err,
-	}
-}
-
-func GetSafeErrorMessage(err error, defaultMessage string) string {
-	if err == nil {
-		return defaultMessage
-	}
-
-	var safeErr *SafeError
-	if errors.As(err, &safeErr) {
-		return safeErr.UserMessage
-	}
-
-	return defaultMessage
 }
 
 // 敏感字段列表，这些字段在日志中会被隐藏

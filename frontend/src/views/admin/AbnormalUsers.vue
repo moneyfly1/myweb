@@ -6,7 +6,7 @@
           <span>异常用户</span>
         </div>
       </template>
-      <div class="filter-section">
+      <div class="filter-section abnormal-filter-section">
         <el-card shadow="never" class="filter-card">
           <div class="filter-content">
             <div class="filter-item">
@@ -44,6 +44,29 @@
                 class="filter-input-number"
               />
               <span class="filter-unit">次</span>
+            </div>
+            <div class="filter-item">
+              <label class="filter-label">风险等级：</label>
+              <el-select v-model="filters.riskLevel" placeholder="全部" clearable class="filter-select">
+                <el-option label="高危" value="high" />
+                <el-option label="中危" value="medium" />
+                <el-option label="低危" value="low" />
+              </el-select>
+            </div>
+            <div class="filter-item">
+              <label class="filter-label">异常类型：</label>
+              <el-select v-model="filters.abnormalType" placeholder="全部" clearable class="filter-select">
+                <el-option label="账户禁用" value="disabled" />
+                <el-option label="设备超限" value="device_over_limit" />
+                <el-option label="多IP访问" value="multi_ip" />
+                <el-option label="多地区访问" value="multi_location" />
+                <el-option label="登录失败" value="login_failed" />
+                <el-option label="频繁重置" value="frequent_reset" />
+                <el-option label="频繁订阅" value="frequent_subscription" />
+                <el-option label="未验证邮箱" value="unverified" />
+                <el-option label="长期未登录" value="inactive" />
+                <el-option label="多重异常" value="multiple_abnormal" />
+              </el-select>
             </div>
             <div class="desktop-filter-actions">
               <el-button type="primary" @click="applyFilters">
@@ -107,6 +130,13 @@
                   </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column prop="risk_level" label="风险等级" width="110">
+                <template #default="scope">
+                  <el-tag :type="riskLevelMap[scope.row.risk_level]?.tag || 'info'">
+                    {{ riskLevelMap[scope.row.risk_level]?.text || scope.row.risk_level || '低危' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column prop="abnormal_count" label="异常次数" width="120" />
               <el-table-column prop="subscription_count" label="订阅次数" width="120" />
               <el-table-column prop="reset_count" label="重置次数" width="120" />
@@ -157,6 +187,12 @@
         <template #field-abnormal_type="{ item }">
           <el-tag :type="abnormalTypeMap[item.abnormal_type]?.tag || 'info'" size="small">
             {{ abnormalTypeMap[item.abnormal_type]?.text || item.abnormal_type }}
+          </el-tag>
+        </template>
+
+        <template #field-risk_level="{ item }">
+          <el-tag :type="riskLevelMap[item.risk_level]?.tag || 'info'" size="small">
+            {{ riskLevelMap[item.risk_level]?.text || item.risk_level || '低危' }}
           </el-tag>
         </template>
 
@@ -325,12 +361,21 @@ import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmWarning } from '@/utils/confirmAction'
 const abnormalTypeMap = {
   disabled: { tag: 'danger', text: '账户禁用' },
+  device_over_limit: { tag: 'danger', text: '设备超限' },
   frequent_reset: { tag: 'warning', text: '频繁重置' },
   frequent_subscription: { tag: 'danger', text: '频繁订阅' },
   inactive: { tag: 'info', text: '长期未登录' },
+  login_failed: { tag: 'warning', text: '登录失败' },
+  multi_ip: { tag: 'danger', text: '多IP访问' },
+  multi_location: { tag: 'warning', text: '多地区访问' },
   multiple_abnormal: { tag: 'error', text: '多重异常' },
   unverified: { tag: 'warning', text: '未验证邮箱' },
   unknown: { tag: 'info', text: '未知异常' }
+}
+const riskLevelMap = {
+  high: { tag: 'danger', text: '高危' },
+  medium: { tag: 'warning', text: '中危' },
+  low: { tag: 'info', text: '低危' }
 }
 export default {
   name: 'AbnormalUsers',
@@ -349,6 +394,7 @@ export default {
     const isMobile = useMobile()
     const mobileAbnormalFields = computed(() => [
       { key: 'abnormal_type', label: '异常类型' },
+      { key: 'risk_level', label: '风险等级' },
       { key: 'abnormal_count', label: '异常次数' },
       { key: 'subscription_count', label: '订阅次数' },
       { key: 'reset_count', label: '重置次数' },
@@ -367,7 +413,9 @@ export default {
     const filters = reactive({
       dateRange: getDefaultDateRange(),  // 默认：本月1号到今天
       subscriptionCount: 10,  // 默认：订阅次数>=10次
-      resetCount: 3  // 默认：重置次数>=3次
+      resetCount: 3,  // 默认：重置次数>=3次
+      riskLevel: '',
+      abnormalType: ''
     })
     const loadAbnormalUsers = async () => {
       loading.value = true
@@ -384,6 +432,12 @@ export default {
         }
         if (filters.resetCount !== null && filters.resetCount !== undefined && filters.resetCount > 0) {
           params.reset_count = filters.resetCount.toString()
+        }
+        if (filters.riskLevel) {
+          params.risk_level = filters.riskLevel
+        }
+        if (filters.abnormalType) {
+          params.abnormal_type = filters.abnormalType
         }
         const response = await adminAPI.getAbnormalUsers(params)
         if (response.data && response.data.success) {
@@ -420,6 +474,8 @@ export default {
       filters.dateRange = getDefaultDateRange()  // 重置为默认日期范围
       filters.subscriptionCount = 10  // 重置为默认值
       filters.resetCount = 3  // 重置为默认值
+      filters.riskLevel = ''
+      filters.abnormalType = ''
       currentPage.value = 1
       pageSize.value = 10
       loadAbnormalUsers()
@@ -485,6 +541,7 @@ export default {
       userDetails,
       isMobile,
       abnormalTypeMap,
+      riskLevelMap,
       mobileAbnormalFields,
       loadAbnormalUsers,
       applyFilters,
@@ -516,18 +573,34 @@ export default {
 .filter-section {
   margin-bottom: 20px;
   @media (max-width: 768px) {
+    display: block !important;
     margin-bottom: 16px;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
   .filter-card {
     background: #fff;
     border: 1px solid #ebeef5;
     border-radius: 8px;
+    @media (max-width: 768px) {
+      width: 100%;
+      overflow: visible;
+
+      :deep(.el-card__body) {
+        padding: 12px;
+      }
+    }
 
       .filter-content {
       display: grid;
-      grid-template-columns: minmax(260px, 1.3fr) minmax(180px, 0.85fr) minmax(180px, 0.85fr) max-content;
+      grid-template-columns: minmax(260px, 1.3fr) repeat(4, minmax(160px, 0.85fr)) max-content;
       gap: 16px;
       align-items: flex-end;
+      @media (max-width: 1440px) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
       @media (max-width: 1180px) {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -563,14 +636,27 @@ export default {
           flex: 1;
           width: 100%;
           @media (max-width: 768px) {
-            width: 100%;
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
           }
         }
         .filter-input-number {
           flex: 1;
           width: 100%;
           @media (max-width: 768px) {
-            width: 100%;
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
+          }
+        }
+        .filter-select {
+          flex: 1;
+          width: 100%;
+          @media (max-width: 768px) {
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
           }
         }
         .filter-unit {
@@ -610,6 +696,31 @@ export default {
           }
         }
       }
+    }
+  }
+}
+@media (max-width: 768px) {
+  .abnormal-users .abnormal-filter-section {
+    display: block !important;
+  }
+
+  .abnormal-users {
+    :deep(.filter-date-picker.el-date-editor) {
+      width: 100% !important;
+      max-width: 100%;
+      min-width: 0 !important;
+      box-sizing: border-box;
+    }
+
+    :deep(.filter-date-picker .el-range-input) {
+      min-width: 0;
+      font-size: 13px;
+    }
+
+    :deep(.filter-date-picker .el-range-separator) {
+      flex: 0 0 auto;
+      padding: 0 4px;
+      font-size: 13px;
     }
   }
 }

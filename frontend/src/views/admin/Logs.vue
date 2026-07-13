@@ -7,7 +7,7 @@
           <p>查看和管理各类系统日志</p>
         </div>
       </template>
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+      <el-tabs v-model="activeTab">
         <el-tab-pane label="注册日志" name="registration">
           <RegistrationLogs />
         </el-tab-pane>
@@ -43,8 +43,4 @@ import SubscriptionResetLogs from './logs/SubscriptionResetLogs.vue'
 import EmailLogs from './logs/EmailLogs.vue'
 import AuditLogs from './logs/AuditLogs.vue'
 const activeTab = ref('registration')
-const handleTabChange = () => {}
 </script>
-<style scoped>
-.logs-container { padding: 20px; }
-</style>

@@ -161,15 +161,6 @@ func GetSystemConfigs(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", configs)
 }
 
-func GetSystemConfig(c *gin.Context) {
-	var config models.SystemConfig
-	if err := database.GetDB().Where("key = ?", c.Param("key")).First(&config).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "配置不存在", err)
-		return
-	}
-	utils.SuccessResponse(c, http.StatusOK, "", config)
-}
-
 func CreateSystemConfig(c *gin.Context) {
 	var req models.SystemConfig
 	if err := c.ShouldBindJSON(&req); err != nil {

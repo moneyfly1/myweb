@@ -13,12 +13,6 @@ func ValidateEmail(email string) bool {
 	return matched
 }
 
-func ValidatePhone(phone string) bool {
-	pattern := `^1[3-9]\d{9}$`
-	matched, _ := regexp.MatchString(pattern, phone)
-	return matched
-}
-
 func SanitizeInput(input string) string {
 	if input == "" {
 		return ""
@@ -62,15 +56,6 @@ func ValidateUsername(username string) bool {
 	pattern := `^[a-zA-Z0-9_\x{4e00}-\x{9fa5}]{2,20}$`
 	matched, _ := regexp.MatchString(pattern, username)
 	return matched
-}
-
-func ValidatePath(path string, baseDir string) bool {
-	target := strings.TrimSpace(path)
-	base := strings.TrimSpace(baseDir)
-	if target == "" || base == "" {
-		return false
-	}
-	return IsWithinBaseDir(base, target)
 }
 
 func IsWithinBaseDir(baseDir, targetPath string) bool {
