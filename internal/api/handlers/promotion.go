@@ -4,7 +4,6 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
-	promotionService "cboard-go/internal/services/promotion"
 	"cboard-go/internal/utils"
 	"fmt"
 	"net/http"
@@ -282,9 +281,4 @@ func GetAvailablePromotionDiscounts(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", participations)
-}
-
-// 应用活动折扣到订单（内部函数，在创建订单时调用）
-func ApplyPromotionDiscount(userID uint, packageID uint, baseAmount float64) (float64, *models.PromotionParticipation, error) {
-	return promotionService.NewService(database.GetDB()).ApplyDiscount(userID, packageID, baseAmount)
 }

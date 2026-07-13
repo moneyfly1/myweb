@@ -1544,30 +1544,6 @@ func upsertSystemConfig(db *gorm.DB, category, key, value string) error {
 	return db.Save(&config).Error
 }
 
-func getSystemConfigValue(db *gorm.DB, category, key string) (string, error) {
-	var config models.SystemConfig
-	if err := db.Where("category = ? AND key = ?", category, key).First(&config).Error; err != nil {
-		return "", err
-	}
-	return config.Value, nil
-}
-
-func updateSingleConfig(c *gin.Context, category, key, label string) {
-	var req struct {
-		Content string `json:"content"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
-		return
-	}
-	if err := upsertSystemConfig(database.GetDB(), category, key, req.Content); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("%s更新失败", label), err)
-		return
-	}
-	utils.CreateAuditLogSimple(c, "update_single_config", "settings", 0, fmt.Sprintf("管理员操作: 更新配置 %s", label))
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%s已更新", label), nil)
-}
-
 func safeNullString(ns sql.NullString) string {
 	if ns.Valid {
 		return ns.String
