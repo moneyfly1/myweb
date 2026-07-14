@@ -818,6 +818,12 @@ func GetUserDetails(c *gin.Context) {
 		formattedLoginHistory = append(formattedLoginHistory, entry)
 	}
 
+	abnormalDetails := []gin.H{}
+	if currentUser.IsAdmin {
+		startTime, endTime, minSub, minReset := parseAbnormalDetailFilters(c)
+		abnormalDetails = buildUserAbnormalDetails(db, &u, startTime, endTime, minSub, minReset)
+	}
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"user_info":        userInfo,
 		"subscriptions":    formattedSubs,
@@ -833,7 +839,421 @@ func GetUserDetails(c *gin.Context) {
 		"subscription_resets": formattedResets,
 		"ua_records":          uaRecords,
 		"login_history":       formattedLoginHistory,
+		"abnormal_details":    abnormalDetails,
 	})
+}
+
+func parseAbnormalDetailFilters(c *gin.Context) (time.Time, time.Time, int, int) {
+	now := utils.GetBeijingTime()
+	startTime := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	endTime := now
+
+	dateRange := c.QueryArray("date_range[]")
+	if len(dateRange) == 0 {
+		dateRange = c.QueryArray("date_range")
+	}
+	if len(dateRange) == 0 {
+		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
+		if startDate != "" && endDate != "" {
+			dateRange = []string{startDate, endDate}
+		}
+	}
+	if len(dateRange) == 2 {
+		if parsedStart, err := time.ParseInLocation("2006-01-02", dateRange[0], now.Location()); err == nil {
+			startTime = parsedStart
+		}
+		if parsedEnd, err := time.ParseInLocation("2006-01-02", dateRange[1], now.Location()); err == nil {
+			endTime = time.Date(parsedEnd.Year(), parsedEnd.Month(), parsedEnd.Day(), 23, 59, 59, 0, parsedEnd.Location())
+		}
+	}
+
+	minSub, minReset := 10, 3
+	if value, err := strconv.Atoi(c.DefaultQuery("subscription_count", "10")); err == nil && value > 0 {
+		minSub = value
+	}
+	if value, err := strconv.Atoi(c.DefaultQuery("reset_count", "3")); err == nil && value > 0 {
+		minReset = value
+	}
+
+	return startTime, endTime, minSub, minReset
+}
+
+func buildUserAbnormalDetails(db *gorm.DB, user *models.User, startTime, endTime time.Time, minSub, minReset int) []gin.H {
+	metrics := loadAbnormalUserRiskMetrics(db, []uint{user.ID}, startTime, endTime)
+	resetCount := metrics.resetCounts[user.ID]
+	subscriptionCount := metrics.subscriptionCounts[user.ID]
+	ipCount := metrics.ipCounts[user.ID]
+	locationCount := metrics.locationCounts[user.ID]
+	loginFailedCount := metrics.loginFailedCounts[user.ID]
+	activeDeviceCount := metrics.activeDeviceCounts[user.ID]
+	deviceLimit := metrics.deviceLimits[user.ID]
+
+	period := fmt.Sprintf("%s 至 %s", utils.FormatBeijingTime(startTime), utils.FormatBeijingTime(endTime))
+	details := make([]gin.H, 0)
+
+	if !user.IsActive {
+		details = append(details, gin.H{
+			"type":    "disabled",
+			"title":   "账户禁用",
+			"level":   "danger",
+			"summary": "账户当前处于禁用状态",
+			"period":  "账户状态",
+			"columns": abnormalDetailColumns("字段", "内容"),
+			"items": []gin.H{
+				{"label": "账户状态", "value": "禁用"},
+				{"label": "注册时间", "value": utils.FormatBeijingTime(user.CreatedAt)},
+			},
+		})
+	}
+	if deviceLimit > 0 && activeDeviceCount > int64(deviceLimit) {
+		details = append(details, buildDeviceOverLimitDetail(db, user.ID, activeDeviceCount, deviceLimit))
+	}
+	if ipCount >= abnormalIPThreshold {
+		details = append(details, buildMultiIPDetail(db, user.ID, ipCount, startTime, endTime, period))
+	}
+	if locationCount >= abnormalLocationThreshold {
+		details = append(details, buildMultiLocationDetail(db, user.ID, locationCount, startTime, endTime, period))
+	}
+	if loginFailedCount >= abnormalLoginFailedThreshold {
+		details = append(details, buildLoginFailedDetail(db, user, loginFailedCount, startTime, endTime, period))
+	}
+	if resetCount >= int64(minReset) {
+		details = append(details, buildFrequentResetDetail(db, user.ID, resetCount, startTime, endTime, period))
+	}
+	if subscriptionCount >= int64(minSub) {
+		details = append(details, buildFrequentSubscriptionDetail(db, user.ID, subscriptionCount, startTime, endTime, period))
+	}
+	if !user.IsVerified && user.CreatedAt.Before(utils.GetBeijingTime().AddDate(0, 0, -unverifiedAccountAgeDays)) {
+		details = append(details, gin.H{
+			"type":    "unverified",
+			"title":   "邮箱未验证",
+			"level":   "warning",
+			"summary": fmt.Sprintf("注册超过 %d 天仍未验证邮箱", unverifiedAccountAgeDays),
+			"period":  "账户状态",
+			"columns": abnormalDetailColumns("字段", "内容"),
+			"items": []gin.H{
+				{"label": "邮箱", "value": user.Email},
+				{"label": "注册时间", "value": utils.FormatBeijingTime(user.CreatedAt)},
+				{"label": "验证状态", "value": "未验证"},
+			},
+		})
+	}
+	if !user.LastLogin.Valid && user.CreatedAt.Before(utils.GetBeijingTime().AddDate(0, -1, 0)) {
+		details = append(details, gin.H{
+			"type":    "inactive",
+			"title":   "长期未登录",
+			"level":   "info",
+			"summary": "注册超过 1 个月且从未登录",
+			"period":  "账户状态",
+			"columns": abnormalDetailColumns("字段", "内容"),
+			"items": []gin.H{
+				{"label": "注册时间", "value": utils.FormatBeijingTime(user.CreatedAt)},
+				{"label": "最后登录", "value": "从未登录"},
+			},
+		})
+	}
+
+	return details
+}
+
+func abnormalDetailColumns(firstLabel, secondLabel string) []gin.H {
+	return []gin.H{
+		{"prop": "label", "label": firstLabel, "width": 140},
+		{"prop": "value", "label": secondLabel, "min_width": 240},
+	}
+}
+
+func buildMultiIPDetail(db *gorm.DB, userID uint, count int64, startTime, endTime time.Time, period string) gin.H {
+	var rows []models.LoginHistory
+	db.Where("user_id = ? AND login_status = ? AND ip_address IS NOT NULL AND ip_address != '' AND login_time >= ? AND login_time <= ?", userID, "success", startTime, endTime).
+		Order("login_time DESC").
+		Limit(100).
+		Find(&rows)
+
+	var deviceRows []models.Device
+	db.Where("user_id = ? AND is_active = ? AND ip_address IS NOT NULL AND ip_address != '' AND last_access >= ? AND last_access <= ?", userID, true, startTime, endTime).
+		Order("last_access DESC").
+		Limit(100).
+		Find(&deviceRows)
+
+	items := make([]gin.H, 0, len(rows)+len(deviceRows))
+	for _, row := range rows {
+		items = append(items, gin.H{
+			"time":       utils.FormatBeijingTime(row.LoginTime),
+			"source":     "登录",
+			"ip_address": normalizeNullableIP(row.IPAddress),
+			"location":   nullableString(row.Location),
+			"user_agent": nullableString(row.UserAgent),
+		})
+	}
+	for _, row := range deviceRows {
+		items = append(items, gin.H{
+			"time":       utils.FormatBeijingTime(row.LastAccess),
+			"source":     "设备访问",
+			"ip_address": normalizePointerIP(row.IPAddress),
+			"location":   stringPointerValue(row.Location),
+			"user_agent": stringPointerValue(row.UserAgent),
+		})
+	}
+
+	return gin.H{
+		"type":    "multi_ip",
+		"title":   "多 IP 访问",
+		"level":   "danger",
+		"summary": fmt.Sprintf("时间段内出现 %d 个不同 IP，以下为最近成功登录记录", count),
+		"period":  period,
+		"columns": []gin.H{
+			{"prop": "time", "label": "时间", "width": 170},
+			{"prop": "source", "label": "来源", "width": 100},
+			{"prop": "ip_address", "label": "IP 地址", "width": 150},
+			{"prop": "location", "label": "地点", "min_width": 180},
+			{"prop": "user_agent", "label": "User-Agent", "min_width": 240},
+		},
+		"items": items,
+	}
+}
+
+func buildMultiLocationDetail(db *gorm.DB, userID uint, count int64, startTime, endTime time.Time, period string) gin.H {
+	var rows []models.LoginHistory
+	db.Where("user_id = ? AND login_status = ? AND location IS NOT NULL AND location != '' AND login_time >= ? AND login_time <= ?", userID, "success", startTime, endTime).
+		Order("login_time DESC").
+		Limit(100).
+		Find(&rows)
+
+	var deviceRows []models.Device
+	db.Where("user_id = ? AND is_active = ? AND location IS NOT NULL AND location != '' AND last_access >= ? AND last_access <= ?", userID, true, startTime, endTime).
+		Order("last_access DESC").
+		Limit(100).
+		Find(&deviceRows)
+
+	items := make([]gin.H, 0, len(rows)+len(deviceRows))
+	for _, row := range rows {
+		items = append(items, gin.H{
+			"time":       utils.FormatBeijingTime(row.LoginTime),
+			"source":     "登录",
+			"location":   nullableString(row.Location),
+			"ip_address": normalizeNullableIP(row.IPAddress),
+			"user_agent": nullableString(row.UserAgent),
+		})
+	}
+	for _, row := range deviceRows {
+		items = append(items, gin.H{
+			"time":       utils.FormatBeijingTime(row.LastAccess),
+			"source":     "设备访问",
+			"location":   stringPointerValue(row.Location),
+			"ip_address": normalizePointerIP(row.IPAddress),
+			"user_agent": stringPointerValue(row.UserAgent),
+		})
+	}
+
+	return gin.H{
+		"type":    "multi_location",
+		"title":   "多地区访问",
+		"level":   "warning",
+		"summary": fmt.Sprintf("时间段内出现 %d 个不同地区，以下为具体登录地点和时间", count),
+		"period":  period,
+		"columns": []gin.H{
+			{"prop": "time", "label": "时间", "width": 170},
+			{"prop": "source", "label": "来源", "width": 100},
+			{"prop": "location", "label": "地点", "min_width": 180},
+			{"prop": "ip_address", "label": "IP 地址", "width": 150},
+			{"prop": "user_agent", "label": "User-Agent", "min_width": 240},
+		},
+		"items": items,
+	}
+}
+
+func buildLoginFailedDetail(db *gorm.DB, user *models.User, count int64, startTime, endTime time.Time, period string) gin.H {
+	var rows []models.LoginAttempt
+	db.Where("(lower(username) = lower(?) OR lower(username) = lower(?)) AND success = ? AND created_at >= ? AND created_at <= ?",
+		user.Email, user.Username, false, startTime, endTime).
+		Order("created_at DESC").
+		Limit(100).
+		Find(&rows)
+
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, gin.H{
+			"time":       utils.FormatBeijingTime(row.CreatedAt),
+			"username":   row.Username,
+			"ip_address": normalizeNullableIP(row.IPAddress),
+			"user_agent": nullableString(row.UserAgent),
+		})
+	}
+
+	return gin.H{
+		"type":    "login_failed",
+		"title":   "登录失败过多",
+		"level":   "warning",
+		"summary": fmt.Sprintf("时间段内登录失败 %d 次", count),
+		"period":  period,
+		"columns": []gin.H{
+			{"prop": "time", "label": "失败时间", "width": 170},
+			{"prop": "username", "label": "登录账号", "min_width": 160},
+			{"prop": "ip_address", "label": "IP 地址", "width": 150},
+			{"prop": "user_agent", "label": "User-Agent", "min_width": 240},
+		},
+		"items": items,
+	}
+}
+
+func buildFrequentResetDetail(db *gorm.DB, userID uint, count int64, startTime, endTime time.Time, period string) gin.H {
+	var rows []models.SubscriptionReset
+	db.Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, startTime, endTime).
+		Order("created_at DESC").
+		Limit(100).
+		Find(&rows)
+
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, gin.H{
+			"time":                utils.FormatBeijingTime(row.CreatedAt),
+			"subscription_id":     row.SubscriptionID,
+			"reset_type":          row.ResetType,
+			"reason":              row.Reason,
+			"device_count_before": row.DeviceCountBefore,
+			"device_count_after":  row.DeviceCountAfter,
+			"reset_by":            stringPointerValue(row.ResetBy),
+		})
+	}
+
+	return gin.H{
+		"type":    "frequent_reset",
+		"title":   "频繁重置",
+		"level":   "warning",
+		"summary": fmt.Sprintf("时间段内重置订阅 %d 次", count),
+		"period":  period,
+		"columns": []gin.H{
+			{"prop": "time", "label": "重置时间", "width": 170},
+			{"prop": "subscription_id", "label": "订阅ID", "width": 90},
+			{"prop": "reset_type", "label": "类型", "width": 120},
+			{"prop": "reason", "label": "原因", "min_width": 180},
+			{"prop": "device_count_before", "label": "重置前设备", "width": 110},
+			{"prop": "device_count_after", "label": "重置后设备", "width": 110},
+			{"prop": "reset_by", "label": "操作者", "width": 120},
+		},
+		"items": items,
+	}
+}
+
+func buildFrequentSubscriptionDetail(db *gorm.DB, userID uint, count int64, startTime, endTime time.Time, period string) gin.H {
+	var rows []models.Subscription
+	db.Preload("Package").
+		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, startTime, endTime).
+		Order("created_at DESC").
+		Limit(100).
+		Find(&rows)
+
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		packageName := ""
+		if row.Package.ID > 0 {
+			packageName = row.Package.Name
+		}
+		items = append(items, gin.H{
+			"time":            utils.FormatBeijingTime(row.CreatedAt),
+			"subscription_id": row.ID,
+			"package_name":    packageName,
+			"status":          row.Status,
+			"device_limit":    row.DeviceLimit,
+			"expire_time":     utils.FormatBeijingTime(row.ExpireTime),
+		})
+	}
+
+	return gin.H{
+		"type":    "frequent_subscription",
+		"title":   "频繁创建订阅",
+		"level":   "danger",
+		"summary": fmt.Sprintf("时间段内创建订阅 %d 次", count),
+		"period":  period,
+		"columns": []gin.H{
+			{"prop": "time", "label": "创建时间", "width": 170},
+			{"prop": "subscription_id", "label": "订阅ID", "width": 90},
+			{"prop": "package_name", "label": "套餐", "min_width": 140},
+			{"prop": "status", "label": "状态", "width": 100},
+			{"prop": "device_limit", "label": "设备限制", "width": 100},
+			{"prop": "expire_time", "label": "到期时间", "width": 170},
+		},
+		"items": items,
+	}
+}
+
+func buildDeviceOverLimitDetail(db *gorm.DB, userID uint, activeDeviceCount int64, deviceLimit int) gin.H {
+	var rows []models.Device
+	db.Table("devices").
+		Select("devices.*").
+		Joins("JOIN subscriptions ON subscriptions.id = devices.subscription_id").
+		Where("subscriptions.user_id = ? AND subscriptions.is_active = ? AND devices.is_active = ?", userID, true, true).
+		Order("devices.last_access DESC").
+		Limit(100).
+		Find(&rows)
+
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, gin.H{
+			"subscription_id": row.SubscriptionID,
+			"device_name":     stringPointerValue(row.DeviceName),
+			"device_type":     stringPointerValue(row.DeviceType),
+			"ip_address":      normalizePointerIP(row.IPAddress),
+			"location":        stringPointerValue(row.Location),
+			"last_access":     utils.FormatBeijingTime(row.LastAccess),
+			"access_count":    row.AccessCount,
+		})
+	}
+
+	return gin.H{
+		"type":    "device_over_limit",
+		"title":   "设备超限",
+		"level":   "danger",
+		"summary": fmt.Sprintf("活跃设备 %d 台，超过限制 %d 台", activeDeviceCount, deviceLimit),
+		"period":  "当前活跃设备",
+		"columns": []gin.H{
+			{"prop": "subscription_id", "label": "订阅ID", "width": 90},
+			{"prop": "device_name", "label": "设备名称", "min_width": 140},
+			{"prop": "device_type", "label": "设备类型", "width": 120},
+			{"prop": "ip_address", "label": "IP 地址", "width": 150},
+			{"prop": "location", "label": "地点", "min_width": 160},
+			{"prop": "last_access", "label": "最后访问", "width": 170},
+			{"prop": "access_count", "label": "访问次数", "width": 100},
+		},
+		"items": items,
+	}
+}
+
+func nullableString(value sql.NullString) string {
+	if value.Valid {
+		return value.String
+	}
+	return ""
+}
+
+func stringPointerValue(value *string) string {
+	if value != nil {
+		return *value
+	}
+	return ""
+}
+
+func normalizeNullableIP(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return normalizeIP(value.String)
+}
+
+func normalizePointerIP(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return normalizeIP(*value)
+}
+
+func normalizeIP(ip string) string {
+	if ip == "::1" {
+		return "127.0.0.1"
+	}
+	return strings.TrimPrefix(ip, "::ffff:")
 }
 
 func buildUserCheckinLogsQuery(db *gorm.DB, c *gin.Context, userID uint) (*gorm.DB, error) {

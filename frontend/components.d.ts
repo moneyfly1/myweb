@@ -42,6 +42,7 @@ declare module 'vue' {
     ElDropdown: typeof import('element-plus/es/components/dropdown/index.mjs')['ElDropdown']
     ElDropdownItem: typeof import('element-plus/es/components/dropdown/index.mjs')['ElDropdownItem']
     ElDropdownMenu: typeof import('element-plus/es/components/dropdown/index.mjs')['ElDropdownMenu']
+    ElEmpty: typeof import('element-plus/es/components/empty/index.mjs')['ElEmpty']
     ElForm: typeof import('element-plus/es/components/form/index.mjs')['ElForm']
     ElFormItem: typeof import('element-plus/es/components/form/index.mjs')['ElFormItem']
     ElIcon: typeof import('element-plus/es/components/icon/index.mjs')['ElIcon']

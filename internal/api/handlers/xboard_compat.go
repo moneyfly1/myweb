@@ -108,6 +108,11 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 }
 
 func GetClientSubscribeXBoardCompat(c *gin.Context) {
+	if shouldBlockBrowserSubscriptionAccess(c) {
+		respondEmptySubscriptionForBrowser(c)
+		return
+	}
+
 	token := c.Query("token")
 	if token == "" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 token 参数", nil)
