@@ -55,9 +55,40 @@ export const NODE_STATUS_MAP = {
 // 邮件状态映射
 export const EMAIL_STATUS_MAP = {
   pending: { text: '待发送', type: 'warning' },
+  sending: { text: '发送中', type: 'info' },
   sent: { text: '已发送', type: 'success' },
   failed: { text: '发送失败', type: 'danger' },
-  bounced: { text: '被退回', type: 'info' }
+  bounced: { text: '被退回', type: 'info' },
+  cancelled: { text: '已取消', type: 'info' }
+}
+
+// 邮件类型映射
+export const EMAIL_TYPE_MAP = {
+  verification: '邮箱验证',
+  password_reset: '密码重置',
+  password_changed: '密码已更改',
+  welcome: '欢迎注册',
+  subscription: '订阅配置',
+  subscription_sent: '订阅发送',
+  subscription_reset: '订阅重置',
+  subscription_created: '订阅创建',
+  subscription_expired: '订阅过期',
+  expiration_reminder: '到期提醒',
+  expiry_reminder: '到期提醒(旧)',
+  renewal_confirmation: '续费确认',
+  order_created: '订单创建',
+  order_paid: '订单支付',
+  payment_success: '支付成功',
+  recharge_success: '充值到账',
+  admin_notification: '管理员通知',
+  admin_manual: '管理员手动邮件',
+  account_deletion: '账号删除',
+  user_created: '账户创建',
+  abnormal_login_alert: '异常登录提醒',
+  ticket_created: '工单创建',
+  ticket_reply: '工单回复',
+  ticket_replied: '工单回复',
+  marketing: '营销推广'
 }
 
 // 套餐状态映射
@@ -105,6 +136,16 @@ export function getStatusType(status, map) {
 export function getStatusConfig(status, map) {
   if (!status) return { text: '-', type: 'info' }
   return map[status] || { text: status, type: 'info' }
+}
+
+/**
+ * 获取邮件类型文本
+ * @param {string} type - 邮件类型
+ * @returns {string} 邮件类型中文名称
+ */
+export function getEmailTypeText(type) {
+  if (!type) return '-'
+  return EMAIL_TYPE_MAP[type] || type
 }
 
 /**

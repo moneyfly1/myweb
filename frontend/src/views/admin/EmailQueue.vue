@@ -67,6 +67,14 @@
           <el-option label="发送失败" value="failed" />
           <el-option label="已取消" value="cancelled" />
         </el-select>
+        <el-select
+          v-model="filterForm.email_type"
+          placeholder="邮件类型"
+          clearable
+          class="mobile-status-select"
+        >
+          <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
+        </el-select>
         <el-button 
           @click="resetFilter" 
           type="default"
@@ -90,6 +98,11 @@
         </el-form-item>
         <el-form-item label="邮箱">
           <el-input v-model="filterForm.email" placeholder="搜索邮箱地址" clearable />
+        </el-form-item>
+        <el-form-item label="邮件类型">
+          <el-select v-model="filterForm.email_type" placeholder="选择邮件类型" clearable class="status-filter-select">
+            <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
+          </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="applyFilter">
@@ -432,6 +445,7 @@ import { useMobile } from '@/composables/useMobile'
 import { formatDateTime } from '@/utils/date'
 import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
 import { confirmDelete, confirmWarning, confirmClear } from '@/utils/confirmAction'
+import { EMAIL_TYPE_MAP, getEmailTypeText } from '@/utils/statusMaps'
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -471,7 +485,8 @@ export default {
     const detailLoading = ref(false)
     const filterForm = reactive({
       status: '',
-      email: ''
+      email: '',
+      email_type: ''
     })
     const pagination = reactive({
       page: 1,
@@ -625,7 +640,7 @@ export default {
       fetchStatistics() // 筛选时也更新统计数据
     }
     const resetFilter = () => {
-      Object.assign(filterForm, { status: '', email: '' })
+      Object.assign(filterForm, { status: '', email: '', email_type: '' })
       pagination.page = 1
       fetchEmailQueue()
       fetchStatistics() // 重置时也更新统计数据
@@ -791,26 +806,6 @@ export default {
     const getStatusText = (status) => {
       return STATUS_MAP[status]?.text || status
     }
-    const EMAIL_TYPE_MAP = {
-      verification: '邮箱验证',
-      password_reset: '密码重置',
-      password_changed: '密码已更改',
-      welcome: '欢迎注册',
-      subscription: '订阅配置',
-      subscription_reset: '订阅重置',
-      expiration_reminder: '到期提醒',
-      expiry_reminder: '到期提醒(旧)',
-      payment_success: '支付成功',
-      admin_notification: '管理员通知',
-      admin_manual: '管理员手动邮件',
-      account_deletion: '账号删除',
-      user_created: '账户创建',
-      abnormal_login_alert: '异常登录提醒',
-      marketing: '营销推广'
-    }
-    const getEmailTypeText = (type) => {
-      return EMAIL_TYPE_MAP[type] || type || '-'
-    }
     // 处理 Go sql.NullString JSON 序列化格式 {"String":"...","Valid":true}
     const getErrorMessage = (val) => {
       if (!val) return ''
@@ -849,6 +844,7 @@ export default {
       selectedEmails,
       statistics,
       isMobile,
+      EMAIL_TYPE_MAP,
       mobileEmailFields,
       onIframeLoad,
       refreshQueue,
@@ -937,7 +933,7 @@ export default {
 }
 .filter-form {
   display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr) max-content;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.1fr) minmax(180px, 0.9fr) max-content;
   gap: 12px;
   align-items: end;
 }
