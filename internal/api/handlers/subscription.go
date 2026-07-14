@@ -1634,6 +1634,11 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 }
 
 func GetSubscriptionConfig(c *gin.Context) {
+	if shouldBlockBrowserSubscriptionAccess(c) {
+		respondEmptySubscriptionForBrowser(c)
+		return
+	}
+
 	// Clash 订阅是公开的，通过 subscription_url 访问，不需要登录
 	clashURL := c.Param("url")
 	db := database.GetDB()
@@ -1896,6 +1901,11 @@ func generateErrorConfigBase64(title, message string, baseURL string) string {
 }
 
 func GetUniversalSubscription(c *gin.Context) {
+	if shouldBlockBrowserSubscriptionAccess(c) {
+		respondEmptySubscriptionForBrowser(c)
+		return
+	}
+
 	uurl := c.Param("url")
 	db := database.GetDB()
 	baseURL := utils.GetBuildBaseURL(c.Request, db)

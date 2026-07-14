@@ -142,16 +142,18 @@
               <el-table-column prop="reset_count" label="重置次数" width="120" />
               <el-table-column prop="description" label="异常描述" />
               <el-table-column prop="last_activity" label="最后活动时间" width="180" />
-              <el-table-column label="操作" width="200" fixed="right">
+              <el-table-column label="操作" width="220" fixed="right">
                 <template #default="scope">
-                  <el-button size="small" @click="viewUserDetails(scope.row.user_id)">
-                    <el-icon><View /></el-icon>
-                    查看详情
-                  </el-button>
-                  <el-button size="small" type="warning" @click="markAsNormal(scope.row)">
-                    <el-icon><Check /></el-icon>
-                    标记正常
-                  </el-button>
+                  <div class="table-action-buttons">
+                    <el-button size="small" @click="viewUserDetails(scope.row.user_id)">
+                      <el-icon><View /></el-icon>
+                      查看详情
+                    </el-button>
+                    <el-button size="small" type="warning" @click="markAsNormal(scope.row)">
+                      <el-icon><Check /></el-icon>
+                      标记正常
+                    </el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -279,6 +281,51 @@
             <el-descriptions-item label="注册时间">{{ formatDate(userDetails.user_info.created_at) }}</el-descriptions-item>
             <el-descriptions-item label="最后登录">{{ formatDate(userDetails.user_info.last_login) || '从未登录' }}</el-descriptions-item>
           </el-descriptions>
+        </el-card>
+        <el-card
+          class="detail-card abnormal-detail-card"
+          shadow="never"
+          v-if="userDetails.abnormal_details && userDetails.abnormal_details.length > 0"
+        >
+          <template #header>
+            <span>异常明细</span>
+          </template>
+          <div class="abnormal-detail-list">
+            <section
+              v-for="detail in userDetails.abnormal_details"
+              :key="detail.type"
+              class="abnormal-detail-section"
+            >
+              <div class="abnormal-detail-heading">
+                <div class="abnormal-detail-title">
+                  <el-tag :type="detail.level || abnormalTypeMap[detail.type]?.tag || 'warning'" size="small">
+                    {{ detail.title || abnormalTypeMap[detail.type]?.text || detail.type }}
+                  </el-tag>
+                  <span>{{ detail.summary }}</span>
+                </div>
+                <span v-if="detail.period" class="abnormal-detail-period">{{ detail.period }}</span>
+              </div>
+              <el-table
+                v-if="detail.items && detail.items.length > 0"
+                :data="detail.items"
+                class="data-table abnormal-evidence-table"
+                :max-height="260"
+                stripe
+                border
+              >
+                <el-table-column
+                  v-for="column in detail.columns"
+                  :key="column.prop"
+                  :prop="column.prop"
+                  :label="column.label"
+                  :min-width="column.min_width || column.minWidth || 120"
+                  :width="column.width"
+                  show-overflow-tooltip
+                />
+              </el-table>
+              <el-empty v-else description="暂无可展示的明细记录" :image-size="64" />
+            </section>
+          </div>
         </el-card>
         <el-card class="detail-card" shadow="never">
           <template #header>
@@ -482,7 +529,17 @@ export default {
     }
     const viewUserDetails = async (userId) => {
       try {
-        const response = await adminAPI.getUserDetails(userId)
+        const params = {}
+        if (filters.dateRange && filters.dateRange.length === 2) {
+          params['date_range[]'] = filters.dateRange
+        }
+        if (filters.subscriptionCount !== null && filters.subscriptionCount !== undefined && filters.subscriptionCount > 0) {
+          params.subscription_count = filters.subscriptionCount.toString()
+        }
+        if (filters.resetCount !== null && filters.resetCount !== undefined && filters.resetCount > 0) {
+          params.reset_count = filters.resetCount.toString()
+        }
+        const response = await adminAPI.getUserDetails(userId, params)
         if (response && response.data && response.data.success) {
           userDetails.value = response.data.data
           showUserDetailsDialog.value = true
@@ -737,6 +794,17 @@ export default {
     text-align: left;
   }
 }
+.table-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+
+  .el-button {
+    margin-left: 0;
+  }
+}
 .abnormal-card-header {
   display: flex;
   justify-content: space-between;
@@ -827,6 +895,55 @@ export default {
     color: #606266;
     font-size: 12px;
   }
+
+  .abnormal-detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .abnormal-detail-section {
+    padding: 14px;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fafafa;
+    min-width: 0;
+  }
+
+  .abnormal-detail-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    min-width: 0;
+  }
+
+  .abnormal-detail-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: #303133;
+    line-height: 1.5;
+
+    span:last-child {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .abnormal-detail-period {
+    flex: 0 0 auto;
+    color: #909399;
+    font-size: 12px;
+    line-height: 22px;
+    white-space: nowrap;
+  }
+
+  .abnormal-evidence-table {
+    width: 100%;
+  }
 }
 .user-details-drawer {
   .user-details {
@@ -861,6 +978,26 @@ export default {
 
     :deep(.el-table__inner-wrapper) {
       overflow-x: auto;
+    }
+
+    .abnormal-detail-section {
+      padding: 12px;
+    }
+
+    .abnormal-detail-heading {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+
+    .abnormal-detail-title {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .abnormal-detail-period {
+      white-space: normal;
     }
   }
 }

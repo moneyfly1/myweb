@@ -356,7 +356,7 @@
           <div class="detail-info-row" v-if="emailDetail.sent_at && emailDetail.sent_at.Valid !== false"><span class="detail-label">发送时间</span><span class="detail-value">{{ formatDate(emailDetail.sent_at) }}</span></div>
           <div class="detail-info-row" v-if="emailDetail.processing_time"><span class="detail-label">处理时间</span><span class="detail-value">{{ emailDetail.processing_time }}ms</span></div>
         </div>
-        <div class="detail-section">
+        <div class="detail-section email-content-section">
           <h4>邮件内容</h4>
           <div v-if="emailDetail.content_type === 'html'" class="email-content-html">
             <div v-if="!emailDetail.content || !sanitizedEmailContent" class="email-content-empty">
@@ -591,7 +591,7 @@ export default {
                 doc.documentElement?.offsetHeight || 0
               )
               if (scrollHeight > 0) {
-                iframe.style.height = Math.min(scrollHeight + 40, 1200) + 'px'
+                iframe.style.minHeight = Math.min(Math.max(scrollHeight + 24, 360), 900) + 'px'
               }
             } catch (e) {
             }
@@ -962,15 +962,25 @@ export default {
   color: #909399;
   font-size: 13px;
 }
+:deep(.email-detail-drawer .el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+}
+:deep(.email-detail-drawer .app-drawer__body) {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
 .email-detail {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   height: 100%;
   min-height: 0;
 }
 .detail-section {
   margin-top: 12px;
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -981,11 +991,15 @@ export default {
     flex-shrink: 0;
   }
 }
+.email-content-section {
+  flex: 1 1 auto;
+  min-height: 360px;
+}
 .email-content-html {
   border: 1px solid #ddd;
   border-radius: 4px;
   flex: 1;
-  min-height: 120px;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: clip;
   background-color: #f4f4f4;
@@ -995,7 +1009,7 @@ export default {
 .email-html-iframe {
   width: 100%;
   height: 100%;
-  min-height: 120px;
+  min-height: 360px;
   border: none;
   background-color: #f4f4f4;
   border-radius: 4px;
@@ -1006,7 +1020,7 @@ export default {
 }
 .email-html-content {
   width: 100%;
-  min-height: 80px;
+  min-height: 360px;
   padding: 16px;
   background-color: #f4f4f4;
   display: flex;
