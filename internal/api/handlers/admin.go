@@ -814,6 +814,9 @@ func GetAdminEmailQueue(c *gin.Context) {
 		escapedEmail := utils.EscapeLikePattern(sanitizedEmail)
 		query = query.Where("to_email LIKE ?", "%"+escapedEmail+"%")
 	}
+	if emailType := strings.TrimSpace(c.Query("email_type")); emailType != "" {
+		query = query.Where("email_type = ?", emailType)
+	}
 
 	var total int64
 	query.Count(&total)
