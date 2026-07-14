@@ -117,20 +117,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { adminAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { EMAIL_TYPE_MAP, getEmailTypeText } from '@/utils/statusMaps'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
 
 const loading = ref(false)
-const EMAIL_TYPE_MAP = {
-  verification: '邮箱验证', password_reset: '密码重置', password_changed: '密码已更改',
-  welcome: '欢迎注册', subscription: '订阅配置', subscription_reset: '订阅重置',
-  expiration_reminder: '到期提醒', expiry_reminder: '到期提醒(旧)', payment_success: '支付成功',
-  admin_notification: '管理员通知', admin_manual: '管理员手动邮件', account_deletion: '账号删除',
-  user_created: '账户创建',
-  abnormal_login_alert: '异常登录提醒', marketing: '营销推广'
-}
-const getEmailTypeText = (type) => EMAIL_TYPE_MAP[type] || type || '-'
 const getStatusText = (status) => {
   const map = { pending: '待发送', sent: '已发送', failed: '失败' }
   return map[status] || status || '-'
