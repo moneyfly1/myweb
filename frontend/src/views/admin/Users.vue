@@ -194,6 +194,9 @@
                         <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
                           {{ scope.row.email }}
                         </el-button>
+                        <el-tag v-if="scope.row.is_special_node_user" type="warning" size="small" effect="plain" class="special-user-tag">
+                          {{ getSpecialUserTagText(scope.row) }}
+                        </el-tag>
                       </div>
                       <div class="username">
                         <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
@@ -360,7 +363,12 @@
               </el-avatar>
               <button type="button" class="user-mobile-link" @click="viewUserDetails(item.id)">
                 <div class="user-email-mobile">{{ item.email }}</div>
-                <div class="user-name-mobile">{{ item.username }}</div>
+                <div class="user-name-mobile">
+                  <span>{{ item.username }}</span>
+                  <el-tag v-if="item.is_special_node_user" type="warning" size="small" effect="plain" class="special-user-tag">
+                    {{ getSpecialUserTagText(item) }}
+                  </el-tag>
+                </div>
               </button>
             </div>
             <el-tag :type="getStatusType(item.status)" size="small">
@@ -635,6 +643,7 @@
     <UserDetailDialog
       :visible="showUserDialog"
       @update:visible="showUserDialog = $event"
+      @custom-nodes-updated="handleCustomNodesUpdated"
       :user="selectedUser"
       :isMobile="isMobile"
     />
@@ -1070,6 +1079,9 @@ export default {
     const getExpireText = (subscription) => {
       return subscription.is_expired ? '已过期' : `${subscription.days_until_expire}天后到期`
     }
+    const getSpecialUserTagText = (user) => {
+      return user?.special_node_subscription_type === 'special_only' ? '仅专线' : '专线+普通'
+    }
     const mobileUserFields = computed(() => [
       { key: 'id', label: '用户ID', formatter: value => `#${value}` },
       { key: 'status', label: '状态' },
@@ -1431,6 +1443,7 @@ export default {
           assignSubscriptionType.value = 'both'
           assignDeviceLimitMode.value = 'system'
           await loadUserCustomNodes()
+          await loadUsers()
         } else {
           throw new Error(response.data?.message || '分配失败')
         }
@@ -1454,6 +1467,7 @@ export default {
         if (response.data && response.data.success) {
           ElMessage.success('已取消分配')
           await loadUserCustomNodes()
+          await loadUsers()
         } else {
           throw new Error(response.data?.message || '取消分配失败')
         }
@@ -1615,6 +1629,9 @@ export default {
     }
     const handleSelectionChange = (selection) => {
       selectedUsers.value = selection
+    }
+    const handleCustomNodesUpdated = async () => {
+      await loadUsers()
     }
     const clearSelection = () => {
       selectedUsers.value = []
@@ -1793,6 +1810,7 @@ export default {
       handleNodeSearchClear,
       assignCustomNode,
       unassignCustomNode,
+      handleCustomNodesUpdated,
       getDeviceTypeTag,
       getDeviceTypeText,
       getResetTypeTag,
@@ -1818,6 +1836,7 @@ export default {
       getSubscriptionStatusText,
       getExpireTextType,
       getExpireText,
+      getSpecialUserTagText,
       handleSelectionChange,
       clearSelection,
       batchDeleteUsers,
@@ -2006,9 +2025,18 @@ export default {
   min-width: 0;
 }
 .email, .username {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
   overflow: clip;
   text-overflow: ellipsis;
+}
+.special-user-tag {
+  flex: 0 0 auto;
+  border-color: #e6a23c;
+  color: #9a6200;
+  background: #fdf6ec;
 }
 .user-info-mobile {
   display: flex;

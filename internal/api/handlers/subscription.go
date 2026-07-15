@@ -445,6 +445,22 @@ func GetAdminSubscriptions(c *gin.Context) {
 		}
 	}
 
+	if lineType := c.Query("line_type"); lineType != "" {
+		customNodeUserSubQuery := db.Model(&models.UserCustomNode{}).Select("DISTINCT user_id")
+		switch lineType {
+		case "normal":
+			query = query.Where("subscriptions.user_id NOT IN (?)", customNodeUserSubQuery)
+		case "special_only":
+			query = query.
+				Where("subscriptions.user_id IN (?)", customNodeUserSubQuery).
+				Where("subscriptions.user_id IN (?)", db.Model(&models.User{}).Select("id").Where("special_node_subscription_type = ?", "special_only"))
+		case "special_with_normal":
+			query = query.
+				Where("subscriptions.user_id IN (?)", customNodeUserSubQuery).
+				Where("subscriptions.user_id IN (?)", db.Model(&models.User{}).Select("id").Where("special_node_subscription_type <> ? OR special_node_subscription_type IS NULL OR special_node_subscription_type = ?", "special_only", ""))
+		}
+	}
+
 	var total int64
 	query.Count(&total)
 
@@ -512,6 +528,22 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 		}
 	}
 
+	var customNodeCounts []struct {
+		UserID          uint
+		CustomNodeCount int64
+	}
+	if len(userIDs) > 0 {
+		db.Model(&models.UserCustomNode{}).
+			Select("user_id, COUNT(*) as custom_node_count").
+			Where("user_id IN ?", userIDs).
+			Group("user_id").
+			Scan(&customNodeCounts)
+	}
+	customNodeCountMap := make(map[uint]int64)
+	for _, cc := range customNodeCounts {
+		customNodeCountMap[cc.UserID] = cc.CustomNodeCount
+	}
+
 	// 优化：一次性查询统计信息
 	type Stat struct {
 		SubID uint
@@ -564,12 +596,14 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 			if sub.User.Notes.Valid {
 				userNotes = sub.User.Notes.String
 			}
-			userInfo = gin.H{"id": sub.User.ID, "username": sub.User.Username, "email": sub.User.Email, "notes": userNotes}
+			customNodeCount := customNodeCountMap[sub.User.ID]
+			userInfo = gin.H{"id": sub.User.ID, "username": sub.User.Username, "email": sub.User.Email, "notes": userNotes, "custom_node_count": customNodeCount, "is_special_node_user": customNodeCount > 0, "special_node_subscription_type": sub.User.SpecialNodeSubscriptionType}
 		} else if user, ok := userMap[sub.UserID]; ok {
 			if user.Notes.Valid {
 				userNotes = user.Notes.String
 			}
-			userInfo = gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "notes": userNotes}
+			customNodeCount := customNodeCountMap[user.ID]
+			userInfo = gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "notes": userNotes, "custom_node_count": customNodeCount, "is_special_node_user": customNodeCount > 0, "special_node_subscription_type": user.SpecialNodeSubscriptionType}
 		} else {
 			userInfo = gin.H{
 				"id":       0,
