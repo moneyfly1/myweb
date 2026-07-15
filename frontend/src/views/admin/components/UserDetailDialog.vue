@@ -844,6 +844,7 @@ const COUNTRY_ALIASES_ZH = {
 
 export default {
   name: 'UserDetailDialog',
+  emits: ['update:visible', 'custom-nodes-updated'],
   components: {
     Wallet,
     ShoppingCart,
@@ -1542,10 +1543,17 @@ export default {
         }
         const response = await adminAPI.batchAssignCustomNodes(this.selectedNodeIds, this.selectedUserIds, extraData)
         if (response.data && response.data.success) {
+          const affectedUserIds = [...this.selectedUserIds]
+          const subscriptionType = this.assignSubscriptionType
           ElMessage.success(response.data.message || '分配成功')
           this.showAssignDialog = false
           this.resetAssignForm()
           await this.loadUserCustomNodes()
+          this.$emit('custom-nodes-updated', {
+            userIds: affectedUserIds,
+            hasCustomNodes: true,
+            subscriptionType
+          })
         } else {
           ElMessage.error(response.data?.message || '分配失败')
         }
@@ -1575,6 +1583,11 @@ export default {
         if (response.data && response.data.success) {
           ElMessage.success('取消分配成功')
           await this.loadUserCustomNodes()
+          this.$emit('custom-nodes-updated', {
+            userIds: [userId],
+            hasCustomNodes: this.customNodes.length > 0,
+            subscriptionType: this.customNodes.length > 0 ? this.user?.special_node_subscription_type : ''
+          })
         } else {
           ElMessage.error(response.data?.message || '取消分配失败')
         }

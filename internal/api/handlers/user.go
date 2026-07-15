@@ -315,10 +315,27 @@ func GetUsers(c *gin.Context) {
 		deviceCountMap[dc.SubscriptionID] = dc.Count
 	}
 
+	var customNodeCounts []struct {
+		UserID          uint
+		CustomNodeCount int64
+	}
+	if len(userIDs) > 0 {
+		db.Model(&models.UserCustomNode{}).
+			Select("user_id, COUNT(*) as custom_node_count").
+			Where("user_id IN ?", userIDs).
+			Group("user_id").
+			Scan(&customNodeCounts)
+	}
+	customNodeCountMap := make(map[uint]int64)
+	for _, cc := range customNodeCounts {
+		customNodeCountMap[cc.UserID] = cc.CustomNodeCount
+	}
+
 	list := make([]gin.H, 0, len(users))
 	now := utils.GetBeijingTime()
 	for _, u := range users {
 		sub := subMap[u.ID]
+		customNodeCount := customNodeCountMap[u.ID]
 
 		var online int64
 		var deviceLimit int
@@ -381,11 +398,14 @@ func GetUsers(c *gin.Context) {
 				}
 				return "active"
 			}(),
-			"online_devices": online,
-			"created_at":     utils.FormatBeijingTime(u.CreatedAt),
-			"last_login":     lastLogin,
-			"subscription":   subscriptionInfo,
-			"notes":          notes,
+			"online_devices":                 online,
+			"custom_node_count":              customNodeCount,
+			"is_special_node_user":           customNodeCount > 0,
+			"special_node_subscription_type": u.SpecialNodeSubscriptionType,
+			"created_at":                     utils.FormatBeijingTime(u.CreatedAt),
+			"last_login":                     lastLogin,
+			"subscription":                   subscriptionInfo,
+			"notes":                          notes,
 		})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": list, "total": total, "page": page, "size": size})
