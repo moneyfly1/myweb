@@ -114,6 +114,20 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-dropdown class="mobile-toolbar-dropdown" @command="handleLineTypeFilter" trigger="click">
+              <el-button class="mobile-toolbar-item" size="small" :type="searchForm.line_type ? 'primary' : 'default'" plain>
+                <el-icon><Connection /></el-icon>
+                {{ getLineTypeFilterText() }}
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="">全部线路</el-dropdown-item>
+                  <el-dropdown-item command="special_only">仅专线</el-dropdown-item>
+                  <el-dropdown-item command="special_with_normal">专线+普通线路</el-dropdown-item>
+                  <el-dropdown-item command="normal">普通线路</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-dropdown class="mobile-toolbar-dropdown mobile-toolbar-dropdown--wide" @command="handleActionCommand" trigger="click" placement="bottom-end">
               <el-button class="mobile-toolbar-item" type="primary" size="small" plain>
                 <el-icon><Operation /></el-icon>
@@ -154,6 +168,14 @@
             <el-option label="全部" value="" />
             <el-option label="活跃" value="active" />
             <el-option label="已过期" value="expired" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="线路">
+          <el-select v-model="searchForm.line_type" placeholder="选择线路类型" clearable class="subscription-status-select">
+            <el-option label="全部" value="" />
+            <el-option label="仅专线" value="special_only" />
+            <el-option label="专线+普通线路" value="special_with_normal" />
+            <el-option label="普通线路" value="normal" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -229,7 +251,12 @@
             >
               <template #default="scope">
                 <div class="qq-info">
-                  <div class="qq-email">{{ scope.row.user?.email || '未知' }}</div>
+                  <div class="qq-email">
+                    <span>{{ scope.row.user?.email || '未知' }}</span>
+                    <el-tag :type="getLineTypeTagType(scope.row.user)" size="small" effect="plain" class="special-user-tag">
+                      {{ getLineTypeTagText(scope.row.user) }}
+                    </el-tag>
+                  </div>
                   <div class="qq-username">{{ scope.row.user?.username || '-' }}</div>
                   <el-button
                     size="small"
@@ -488,7 +515,10 @@
               </el-avatar>
               <div class="sub-user-meta">
                 <div class="sub-user-email">
-                  {{ subscription.user?.email || subscription.user?.username || '未知用户' }}
+                  <span>{{ subscription.user?.email || subscription.user?.username || '未知用户' }}</span>
+                  <el-tag :type="getLineTypeTagType(subscription.user)" size="small" effect="plain" class="special-user-tag">
+                    {{ getLineTypeTagText(subscription.user) }}
+                  </el-tag>
                 </div>
                 <div class="sub-user-id">
                   ID: {{ subscription.user?.id || subscription.user_id || subscription.id }} · 
@@ -622,6 +652,7 @@
     <UserDetailDialog
       :visible="showUserDetailDialog"
       @update:visible="showUserDetailDialog = $event"
+      @custom-nodes-updated="handleCustomNodesUpdated"
       :user="selectedUser"
       :isMobile="isMobile"
     />
@@ -707,7 +738,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
-  Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
+  Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch, Connection,
   Check, Close, Loading, CircleCheckFilled, InfoFilled
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
@@ -736,7 +767,7 @@ export default {
   name: 'AdminSubscriptions',
   components: {
     Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
-    Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch,
+    Search, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch, Connection,
     Check, Close, Loading, CircleCheckFilled, InfoFilled, UserDetailDialog, PaginationBar, AppDialog, FormActionBar,
     EmptyState, ResponsiveDataView
   },
@@ -753,7 +784,8 @@ export default {
     const currentSort = ref('add_time_desc')
     const searchForm = reactive({
       keyword: '',
-      status: ''
+      status: '',
+      line_type: ''
     })
     const showUserDetailDialog = ref(false)
     const showQRDialog = ref(false)
@@ -838,6 +870,9 @@ export default {
         if (searchForm.status) {
           params.status = searchForm.status
         }
+        if (searchForm.line_type) {
+          params.line_type = searchForm.line_type
+        }
         const response = await adminAPI.getSubscriptions(params)
         if (response.data?.success !== false) {
           const subscriptionList = response.data?.data?.subscriptions || []
@@ -875,12 +910,18 @@ export default {
     const resetSearch = () => {
       searchForm.keyword = ''
       searchForm.status = ''
+      searchForm.line_type = ''
       searchQuery.value = ''
       currentPage.value = 1
       loadSubscriptions()
     }
     const handleStatusFilter = (status) => {
       searchForm.status = status
+      currentPage.value = 1
+      loadSubscriptions()
+    }
+    const handleLineTypeFilter = (lineType) => {
+      searchForm.line_type = lineType
       currentPage.value = 1
       loadSubscriptions()
     }
@@ -891,6 +932,28 @@ export default {
         'expired': '已过期'
       }
       return statusMap[searchForm.status] || '状态筛选'
+    }
+    const getLineTypeFilterText = () => {
+      const lineTypeMap = {
+        '': '线路',
+        normal: '普通线路',
+        special_only: '仅专线',
+        special_with_normal: '专线+普通'
+      }
+      return lineTypeMap[searchForm.line_type] || '线路'
+    }
+    const getLineTypeTagText = (user) => {
+      const hasSpecialNodes = Boolean(user?.is_special_node_user) || Number(user?.custom_node_count || 0) > 0
+      if (!hasSpecialNodes && user?.special_node_subscription_type !== 'special_only') return '普通线路'
+      return user.special_node_subscription_type === 'special_only' ? '仅专线' : '专线+普通'
+    }
+    const getLineTypeTagType = (user) => {
+      const hasSpecialNodes = Boolean(user?.is_special_node_user) || Number(user?.custom_node_count || 0) > 0
+      if (!hasSpecialNodes && user?.special_node_subscription_type !== 'special_only') return 'info'
+      return user.special_node_subscription_type === 'special_only' ? 'danger' : 'warning'
+    }
+    const handleCustomNodesUpdated = async () => {
+      await loadSubscriptions()
     }
     const handleSortCommand = (command) => {
       currentSort.value = command
@@ -1979,7 +2042,12 @@ export default {
       searchSubscriptions,
       resetSearch,
       handleStatusFilter,
+      handleLineTypeFilter,
       getStatusFilterText,
+      getLineTypeFilterText,
+      getLineTypeTagText,
+      getLineTypeTagType,
+      handleCustomNodesUpdated,
       handleSortCommand,
       clearSort,
       updateExpireTime,
@@ -2056,8 +2124,10 @@ export default {
   max-width: 100%;
 }
 .admin-subscriptions :deep(.search-form.list-filter-form) {
-  grid-template-columns: minmax(280px, 1.5fr) minmax(160px, 0.7fr) max-content;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 132px 184px max-content;
   gap: 12px;
+  align-items: center;
 }
 .admin-subscriptions :deep(.search-form.list-filter-form .el-form-item) {
   margin: 0 !important;
@@ -2065,12 +2135,21 @@ export default {
 }
 .admin-subscriptions :deep(.search-form.list-filter-form .el-form-item:last-child) {
   justify-self: end;
+  min-width: max-content;
 }
 .admin-subscriptions :deep(.search-form.list-filter-form .el-form-item__content) {
   display: flex;
   gap: 8px;
   width: 100%;
   min-width: 0;
+}
+.admin-subscriptions :deep(.search-form.list-filter-form .el-form-item:last-child .el-form-item__content) {
+  width: auto;
+  flex-wrap: nowrap;
+}
+.admin-subscriptions :deep(.search-form.list-filter-form .el-form-item:last-child .el-button) {
+  flex: 0 0 auto;
+  margin-left: 0;
 }
 .subscription-search-input,
 .subscription-status-select {
@@ -2125,10 +2204,11 @@ export default {
 }
 @media (max-width: 1280px) {
   .admin-subscriptions :deep(.search-form.list-filter-form) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(220px, 1fr) 124px 168px max-content;
+    gap: 10px;
   }
   .admin-subscriptions :deep(.search-form.list-filter-form .el-form-item:last-child) {
-    justify-self: start;
+    justify-self: end;
   }
 }
 .admin-subscriptions-table {
@@ -2167,11 +2247,17 @@ export default {
   gap: 4px;
 }
 .qq-email {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 500;
   color: #303133;
   word-break: break-all;
   line-height: 1.3;
+}
+.special-user-tag {
+  flex: 0 0 auto;
 }
 .qq-username {
   font-size: 11px;
