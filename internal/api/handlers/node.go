@@ -225,7 +225,9 @@ func GetNodes(c *gin.Context) {
 		}
 
 		var nodeIDs []uint
-		db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Pluck("custom_node_id", &nodeIDs)
+		if user.SpecialNodeSubscriptionType == "special_only" || user.SpecialNodeSubscriptionType == "both" {
+			db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Pluck("custom_node_id", &nodeIDs)
+		}
 		if len(nodeIDs) > 0 {
 			var customNodes []models.CustomNode
 			if err := db.Where("id IN ? AND is_active = ?", nodeIDs, true).Find(&customNodes).Error; err == nil {
@@ -317,7 +319,7 @@ func GetNodeStats(c *gin.Context) {
 	base.Where("status = ?", "online").Count(&stats.OnlineNodes)
 	db.Model(&models.Node{}).Where("is_active = ?", true).Distinct().Pluck("region", &stats.Regions)
 	db.Model(&models.Node{}).Where("is_active = ?", true).Distinct().Pluck("type", &stats.Types)
-	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
+	if user, ok := middleware.GetCurrentUser(c); ok && user != nil && (user.SpecialNodeSubscriptionType == "special_only" || user.SpecialNodeSubscriptionType == "both") {
 		var nodeIDs []uint
 		db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Pluck("custom_node_id", &nodeIDs)
 		if len(nodeIDs) > 0 {
