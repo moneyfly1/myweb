@@ -253,9 +253,22 @@
                 <div class="qq-info">
                   <div class="qq-email">
                     <span>{{ scope.row.user?.email || '未知' }}</span>
-                    <el-tag :type="getLineTypeTagType(scope.row.user)" size="small" effect="plain" class="special-user-tag">
-                      {{ getLineTypeTagText(scope.row.user) }}
-                    </el-tag>
+                    <el-dropdown
+                      trigger="click"
+                      @command="mode => updateUserLineMode(scope.row.user, mode)"
+                      :disabled="!scope.row.user?.id || scope.row.user?.deleted || lineModeSaving[scope.row.user?.id]"
+                    >
+                      <el-tag :type="getLineTypeTagType(scope.row.user)" size="small" effect="plain" class="special-user-tag line-mode-tag">
+                        {{ getLineTypeTagText(scope.row.user) }}
+                      </el-tag>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item command="normal">普通线路</el-dropdown-item>
+                          <el-dropdown-item command="both" :disabled="!hasAssignedCustomNodes(scope.row.user)">专线+普通线路</el-dropdown-item>
+                          <el-dropdown-item command="special_only" :disabled="!hasAssignedCustomNodes(scope.row.user)">仅专线</el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
                   </div>
                   <div class="qq-username">{{ scope.row.user?.username || '-' }}</div>
                   <el-button
@@ -516,9 +529,22 @@
               <div class="sub-user-meta">
                 <div class="sub-user-email">
                   <span>{{ subscription.user?.email || subscription.user?.username || '未知用户' }}</span>
-                  <el-tag :type="getLineTypeTagType(subscription.user)" size="small" effect="plain" class="special-user-tag">
-                    {{ getLineTypeTagText(subscription.user) }}
-                  </el-tag>
+                  <el-dropdown
+                    trigger="click"
+                    @command="mode => updateUserLineMode(subscription.user, mode)"
+                    :disabled="!subscription.user?.id || subscription.user?.deleted || lineModeSaving[subscription.user?.id]"
+                  >
+                    <el-tag :type="getLineTypeTagType(subscription.user)" size="small" effect="plain" class="special-user-tag line-mode-tag">
+                      {{ getLineTypeTagText(subscription.user) }}
+                    </el-tag>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="normal">普通线路</el-dropdown-item>
+                        <el-dropdown-item command="both" :disabled="!hasAssignedCustomNodes(subscription.user)">专线+普通线路</el-dropdown-item>
+                        <el-dropdown-item command="special_only" :disabled="!hasAssignedCustomNodes(subscription.user)">仅专线</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
                 <div class="sub-user-id">
                   ID: {{ subscription.user?.id || subscription.user_id || subscription.id }} · 
@@ -832,6 +858,7 @@ export default {
     const userDevices = ref([])
     const loadingDevices = ref(false)
     const deletingDevice = ref(null)
+    const lineModeSaving = ref({})
     const mobileSubscriptionFields = computed(() => [
       { key: 'user', label: '用户' },
       { key: 'expire_time', label: '到期时间' },
@@ -943,14 +970,41 @@ export default {
       return lineTypeMap[searchForm.line_type] || '线路'
     }
     const getLineTypeTagText = (user) => {
-      const hasSpecialNodes = Boolean(user?.is_special_node_user) || Number(user?.custom_node_count || 0) > 0
-      if (!hasSpecialNodes && user?.special_node_subscription_type !== 'special_only') return '普通线路'
-      return user.special_node_subscription_type === 'special_only' ? '仅专线' : '专线+普通'
+      const mode = getUserLineMode(user)
+      if (mode === 'normal') return '普通线路'
+      if (mode === 'special_only') return '仅专线'
+      return '专线+普通'
     }
     const getLineTypeTagType = (user) => {
-      const hasSpecialNodes = Boolean(user?.is_special_node_user) || Number(user?.custom_node_count || 0) > 0
-      if (!hasSpecialNodes && user?.special_node_subscription_type !== 'special_only') return 'info'
-      return user.special_node_subscription_type === 'special_only' ? 'danger' : 'warning'
+      const mode = getUserLineMode(user)
+      if (mode === 'normal') return 'info'
+      return mode === 'special_only' ? 'danger' : 'warning'
+    }
+    const hasAssignedCustomNodes = (user) => {
+      return Boolean(user?.is_special_node_user) || Number(user?.custom_node_count || 0) > 0
+    }
+    const getUserLineMode = (user) => {
+      if (user?.special_node_subscription_type === 'special_only') return 'special_only'
+      if (user?.special_node_subscription_type === 'both' && hasAssignedCustomNodes(user)) return 'both'
+      return 'normal'
+    }
+    const updateUserLineMode = async (user, mode) => {
+      if (!user?.id) return
+      if (mode !== 'normal' && !hasAssignedCustomNodes(user)) {
+        ElMessage.warning('请先给用户分配专线节点')
+        return
+      }
+      if (getUserLineMode(user) === mode) return
+      lineModeSaving.value[user.id] = true
+      try {
+        await adminAPI.updateUser(user.id, { special_node_subscription_type: mode })
+        ElMessage.success('线路模式已更新')
+        await loadSubscriptions()
+      } catch (error) {
+        ElMessage.error(`线路模式更新失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        lineModeSaving.value[user.id] = false
+      }
     }
     const handleCustomNodesUpdated = async () => {
       await loadSubscriptions()
@@ -2038,6 +2092,7 @@ export default {
       userDevices,
       loadingDevices,
       deletingDevice,
+      lineModeSaving,
       loadSubscriptions,
       searchSubscriptions,
       resetSearch,
@@ -2047,6 +2102,8 @@ export default {
       getLineTypeFilterText,
       getLineTypeTagText,
       getLineTypeTagType,
+      hasAssignedCustomNodes,
+      updateUserLineMode,
       handleCustomNodesUpdated,
       handleSortCommand,
       clearSort,
@@ -2258,6 +2315,10 @@ export default {
 }
 .special-user-tag {
   flex: 0 0 auto;
+}
+.line-mode-tag {
+  cursor: pointer;
+  user-select: none;
 }
 .qq-username {
   font-size: 11px;

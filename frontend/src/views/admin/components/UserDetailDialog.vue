@@ -509,6 +509,28 @@
         <!-- 专线节点 Tab -->
         <el-tab-pane label="专线节点" name="custom-nodes">
           <div class="custom-nodes-section">
+            <div class="line-mode-panel">
+              <div class="line-mode-heading">
+                <div>
+                  <div class="line-mode-title">线路模式</div>
+                  <div class="line-mode-meta">切换模式不会删除已分配的专线节点。</div>
+                </div>
+                <el-tag :type="getLineModeTagType(lineModeForm)" effect="plain" size="small">
+                  {{ getLineModeText(lineModeForm) }}
+                </el-tag>
+              </div>
+              <el-radio-group
+                v-model="lineModeForm"
+                size="small"
+                class="line-mode-control"
+                :disabled="savingLineMode"
+                @change="updateLineMode"
+              >
+                <el-radio-button label="normal">普通线路</el-radio-button>
+                <el-radio-button label="both" :disabled="!hasAssignedCustomNodes">专线 + 普通线路</el-radio-button>
+                <el-radio-button label="special_only" :disabled="!hasAssignedCustomNodes">仅专线</el-radio-button>
+              </el-radio-group>
+            </div>
             <div class="custom-nodes-actions">
               <el-button
                 type="primary"
@@ -844,7 +866,6 @@ const COUNTRY_ALIASES_ZH = {
 
 export default {
   name: 'UserDetailDialog',
-  emits: ['update:visible', 'custom-nodes-updated'],
   components: {
     Wallet,
     ShoppingCart,
@@ -880,7 +901,7 @@ export default {
       default: 'orders'
     }
   },
-  emits: ['update:visible'],
+  emits: ['update:visible', 'custom-nodes-updated'],
   data() {
     return {
       activeTab: this.initialTab,
@@ -900,6 +921,8 @@ export default {
       hasUserSearched: false,
       hasNodeSearched: false,
       loadingNodes: false,
+      lineModeForm: 'normal',
+      savingLineMode: false,
       assignSubscriptionType: 'both',
       assignDeviceLimitMode: 'system',
       assignExpiresAt: '',
@@ -973,6 +996,10 @@ export default {
     },
     assignButtonDisabled() {
       return !this.selectedUserIds.length || !this.selectedNodeIds.length
+    },
+    hasAssignedCustomNodes() {
+      const info = this.user?.user_info || this.user || {}
+      return (this.customNodes && this.customNodes.length > 0) || Boolean(info.is_special_node_user) || Number(info.custom_node_count || 0) > 0
     }
   },
   watch: {
@@ -987,6 +1014,7 @@ export default {
         this.checkinPagination.page = 1
         this.checkinPagination.size = 20
         this.checkinPagination.total = 0
+        this.syncLineModeForm()
         if (this.activeTab === 'devices') {
           this.loadDevices()
         } else if (this.activeTab === 'custom-nodes') {
@@ -1250,6 +1278,59 @@ export default {
       this.assignDeviceLimitMode = 'system'
       this.assignExpiresAt = ''
     },
+    getUserLineMode() {
+      const info = this.user?.user_info || this.user || {}
+      if (info.special_node_subscription_type === 'special_only') return 'special_only'
+      if (info.special_node_subscription_type === 'both' && this.hasAssignedCustomNodes) return 'both'
+      return 'normal'
+    },
+    syncLineModeForm() {
+      this.lineModeForm = this.getUserLineMode()
+    },
+    getLineModeText(mode) {
+      if (mode === 'special_only') return '仅专线'
+      if (mode === 'both') return '专线+普通'
+      return '普通线路'
+    },
+    getLineModeTagType(mode) {
+      if (mode === 'special_only') return 'danger'
+      if (mode === 'both') return 'warning'
+      return 'info'
+    },
+    async updateLineMode(mode) {
+      const userId = this.currentUserId
+      if (!userId) {
+        this.syncLineModeForm()
+        ElMessage.error('用户ID不存在')
+        return
+      }
+      if (mode !== 'normal' && !this.hasAssignedCustomNodes) {
+        this.syncLineModeForm()
+        ElMessage.warning('请先给用户分配专线节点')
+        return
+      }
+      if (mode === this.getUserLineMode()) return
+      this.savingLineMode = true
+      try {
+        await adminAPI.updateUser(userId, { special_node_subscription_type: mode })
+        const info = this.user?.user_info || this.user
+        if (info) {
+          info.special_node_subscription_type = mode
+        }
+        this.lineModeForm = mode
+        ElMessage.success('线路模式已更新')
+        this.$emit('custom-nodes-updated', {
+          userIds: [userId],
+          hasCustomNodes: this.hasAssignedCustomNodes,
+          subscriptionType: mode
+        })
+      } catch (error) {
+        this.syncLineModeForm()
+        ElMessage.error('线路模式更新失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        this.savingLineMode = false
+      }
+    },
     async openAssignDialog() {
       this.resetAssignForm()
       this.showAssignDialog = true
@@ -1444,12 +1525,15 @@ export default {
         const response = await adminAPI.getUserCustomNodes(userId)
         if (response.data && response.data.success) {
           this.customNodes = response.data.data || []
+          this.syncLineModeForm()
         } else {
           this.customNodes = []
+          this.syncLineModeForm()
         }
       } catch (error) {
         console.error('加载专线节点失败:', error)
         this.customNodes = []
+        this.syncLineModeForm()
       } finally {
         this.loadingNodes = false
       }
@@ -1549,6 +1633,13 @@ export default {
           this.showAssignDialog = false
           this.resetAssignForm()
           await this.loadUserCustomNodes()
+          const info = this.user?.user_info || this.user
+          if (info && affectedUserIds.includes(this.currentUserId)) {
+            info.special_node_subscription_type = subscriptionType
+            info.custom_node_count = this.customNodes.length
+            info.is_special_node_user = this.customNodes.length > 0
+            this.lineModeForm = subscriptionType
+          }
           this.$emit('custom-nodes-updated', {
             userIds: affectedUserIds,
             hasCustomNodes: true,
@@ -1583,10 +1674,19 @@ export default {
         if (response.data && response.data.success) {
           ElMessage.success('取消分配成功')
           await this.loadUserCustomNodes()
+          const info = this.user?.user_info || this.user
+          if (info) {
+            info.custom_node_count = this.customNodes.length
+            info.is_special_node_user = this.customNodes.length > 0
+            if (this.customNodes.length === 0) {
+              info.special_node_subscription_type = 'normal'
+              this.lineModeForm = 'normal'
+            }
+          }
           this.$emit('custom-nodes-updated', {
             userIds: [userId],
             hasCustomNodes: this.customNodes.length > 0,
-            subscriptionType: this.customNodes.length > 0 ? this.user?.special_node_subscription_type : ''
+            subscriptionType: this.customNodes.length > 0 ? this.getUserLineMode() : 'normal'
           })
         } else {
           ElMessage.error(response.data?.message || '取消分配失败')
@@ -1808,6 +1908,47 @@ export default {
   }
 
   .custom-nodes-section {
+    .line-mode-panel {
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 1px solid var(--el-border-color-light);
+      border-radius: 6px;
+      background: var(--el-fill-color-lighter);
+    }
+
+    .line-mode-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .line-mode-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+      line-height: 1.3;
+    }
+
+    .line-mode-meta {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      line-height: 1.3;
+    }
+
+    .line-mode-control {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+
+      :deep(.el-radio-button) {
+        margin-right: 0;
+      }
+    }
+
     .custom-nodes-actions {
       margin-bottom: 15px;
       display: flex;

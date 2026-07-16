@@ -49,9 +49,9 @@ type User struct {
 	TotalConsumption float64       `gorm:"type:decimal(10,2);default:0;not null" json:"total_consumption"`
 	LevelExpiresAt   sql.NullTime  `json:"level_expires_at,omitempty"`
 
-	SpecialNodeSubscriptionType  string       `gorm:"type:varchar(20);default:both" json:"special_node_subscription_type"`   // both, special_only
-	SpecialNodeExpiresAt         sql.NullTime `json:"special_node_expires_at,omitempty"`
-	SpecialNodeUnlimitedDevices  bool         `gorm:"default:false" json:"special_node_unlimited_devices"`                      // true = 不限制设备数量, false = 跟随系统设备限制
+	SpecialNodeSubscriptionType string       `gorm:"type:varchar(20);default:both" json:"special_node_subscription_type"` // normal, both, special_only
+	SpecialNodeExpiresAt        sql.NullTime `json:"special_node_expires_at,omitempty"`
+	SpecialNodeUnlimitedDevices bool         `gorm:"default:false" json:"special_node_unlimited_devices"` // true = 不限制设备数量, false = 跟随系统设备限制
 
 	TelegramID       sql.NullInt64  `gorm:"index" json:"telegram_id,omitempty"`
 	TelegramUsername sql.NullString `gorm:"type:varchar(100)" json:"telegram_username,omitempty"`

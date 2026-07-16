@@ -194,9 +194,22 @@
                         <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
                           {{ scope.row.email }}
                         </el-button>
-                        <el-tag v-if="scope.row.is_special_node_user" type="warning" size="small" effect="plain" class="special-user-tag">
-                          {{ getSpecialUserTagText(scope.row) }}
-                        </el-tag>
+                        <el-dropdown
+                          trigger="click"
+                          @command="mode => updateUserLineMode(scope.row, mode)"
+                          :disabled="lineModeSaving[scope.row.id]"
+                        >
+                          <el-tag :type="getLineModeTagType(scope.row)" size="small" effect="plain" class="special-user-tag line-mode-tag">
+                            {{ getLineModeTagText(scope.row) }}
+                          </el-tag>
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item command="normal">普通线路</el-dropdown-item>
+                              <el-dropdown-item command="both" :disabled="!hasAssignedCustomNodes(scope.row)">专线+普通线路</el-dropdown-item>
+                              <el-dropdown-item command="special_only" :disabled="!hasAssignedCustomNodes(scope.row)">仅专线</el-dropdown-item>
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
                       </div>
                       <div class="username">
                         <el-button type="text" @click="viewUserDetails(scope.row.id)" class="clickable-text">
@@ -365,9 +378,22 @@
                 <div class="user-email-mobile">{{ item.email }}</div>
                 <div class="user-name-mobile">
                   <span>{{ item.username }}</span>
-                  <el-tag v-if="item.is_special_node_user" type="warning" size="small" effect="plain" class="special-user-tag">
-                    {{ getSpecialUserTagText(item) }}
-                  </el-tag>
+                  <el-dropdown
+                    trigger="click"
+                    @command="mode => updateUserLineMode(item, mode)"
+                    :disabled="lineModeSaving[item.id]"
+                  >
+                    <el-tag :type="getLineModeTagType(item)" size="small" effect="plain" class="special-user-tag line-mode-tag">
+                      {{ getLineModeTagText(item) }}
+                    </el-tag>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="normal">普通线路</el-dropdown-item>
+                        <el-dropdown-item command="both" :disabled="!hasAssignedCustomNodes(item)">专线+普通线路</el-dropdown-item>
+                        <el-dropdown-item command="special_only" :disabled="!hasAssignedCustomNodes(item)">仅专线</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
               </button>
             </div>
@@ -853,6 +879,7 @@ export default {
     const assigningNode = ref(false)
     const assignSubscriptionType = ref('both')
     const assignDeviceLimitMode = ref('system')
+    const lineModeSaving = ref({})
     const showResetPasswordDialog = ref(false)
     const resetPasswordUser = ref(null)
     const resettingPassword = ref(false)
@@ -1079,8 +1106,41 @@ export default {
     const getExpireText = (subscription) => {
       return subscription.is_expired ? '已过期' : `${subscription.days_until_expire}天后到期`
     }
-    const getSpecialUserTagText = (user) => {
-      return user?.special_node_subscription_type === 'special_only' ? '仅专线' : '专线+普通'
+    const hasAssignedCustomNodes = (user) => {
+      return Boolean(user?.is_special_node_user) || Number(user?.custom_node_count || 0) > 0
+    }
+    const getUserLineMode = (user) => {
+      if (user?.special_node_subscription_type === 'special_only') return 'special_only'
+      if (user?.special_node_subscription_type === 'both' && hasAssignedCustomNodes(user)) return 'both'
+      return 'normal'
+    }
+    const getLineModeTagText = (user) => {
+      const mode = getUserLineMode(user)
+      if (mode === 'normal') return '普通线路'
+      return mode === 'special_only' ? '仅专线' : '专线+普通'
+    }
+    const getLineModeTagType = (user) => {
+      const mode = getUserLineMode(user)
+      if (mode === 'normal') return 'info'
+      return mode === 'special_only' ? 'danger' : 'warning'
+    }
+    const updateUserLineMode = async (user, mode) => {
+      if (!user?.id) return
+      if (mode !== 'normal' && !hasAssignedCustomNodes(user)) {
+        ElMessage.warning('请先给用户分配专线节点')
+        return
+      }
+      if (getUserLineMode(user) === mode) return
+      lineModeSaving.value[user.id] = true
+      try {
+        await adminAPI.updateUser(user.id, { special_node_subscription_type: mode })
+        ElMessage.success('线路模式已更新')
+        await loadUsers()
+      } catch (error) {
+        ElMessage.error(`线路模式更新失败: ${error.response?.data?.message || error.message}`)
+      } finally {
+        lineModeSaving.value[user.id] = false
+      }
     }
     const mobileUserFields = computed(() => [
       { key: 'id', label: '用户ID', formatter: value => `#${value}` },
@@ -1779,6 +1839,7 @@ export default {
       assigningNode,
       assignSubscriptionType,
       assignDeviceLimitMode,
+      lineModeSaving,
       // 用户表单
       userForm,
       userRules,
@@ -1836,7 +1897,10 @@ export default {
       getSubscriptionStatusText,
       getExpireTextType,
       getExpireText,
-      getSpecialUserTagText,
+      getLineModeTagText,
+      getLineModeTagType,
+      hasAssignedCustomNodes,
+      updateUserLineMode,
       handleSelectionChange,
       clearSelection,
       batchDeleteUsers,
@@ -2034,9 +2098,10 @@ export default {
 }
 .special-user-tag {
   flex: 0 0 auto;
-  border-color: #e6a23c;
-  color: #9a6200;
-  background: #fdf6ec;
+}
+.line-mode-tag {
+  cursor: pointer;
+  user-select: none;
 }
 .user-info-mobile {
   display: flex;

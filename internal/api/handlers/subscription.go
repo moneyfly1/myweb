@@ -449,7 +449,9 @@ func GetAdminSubscriptions(c *gin.Context) {
 		customNodeUserSubQuery := db.Model(&models.UserCustomNode{}).Select("DISTINCT user_id")
 		switch lineType {
 		case "normal":
-			query = query.Where("subscriptions.user_id NOT IN (?)", customNodeUserSubQuery)
+			query = query.Where("subscriptions.user_id NOT IN (?) OR subscriptions.user_id IN (?)",
+				customNodeUserSubQuery,
+				db.Model(&models.User{}).Select("id").Where("special_node_subscription_type = ? OR special_node_subscription_type = ?", "normal", ""))
 		case "special_only":
 			query = query.
 				Where("subscriptions.user_id IN (?)", customNodeUserSubQuery).
@@ -457,7 +459,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 		case "special_with_normal":
 			query = query.
 				Where("subscriptions.user_id IN (?)", customNodeUserSubQuery).
-				Where("subscriptions.user_id IN (?)", db.Model(&models.User{}).Select("id").Where("special_node_subscription_type <> ? OR special_node_subscription_type IS NULL OR special_node_subscription_type = ?", "special_only", ""))
+				Where("subscriptions.user_id IN (?)", db.Model(&models.User{}).Select("id").Where("special_node_subscription_type = ?", "both"))
 		}
 	}
 

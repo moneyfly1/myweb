@@ -1144,14 +1144,16 @@ func (s *ConfigUpdateService) fetchProxiesForUser(user models.User, sub models.S
 	hasSpecialExpire := user.SpecialNodeExpiresAt.Valid
 	specialExpired := hasSpecialExpire && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).Before(now)
 
-	// 专线到期判断：设置了专线时间则用专线时间，否则跟随订阅到期
-	customExpired := specialExpired || (!hasSpecialExpire && subExpired)
-	s.appendCustomNodes(user.ID, now, customExpired, &proxies, processed)
+	useCustomNodes := user.SpecialNodeSubscriptionType == "special_only" || user.SpecialNodeSubscriptionType == "both"
+	if useCustomNodes {
+		// 专线到期判断：设置了专线时间则用专线时间，否则跟随订阅到期
+		customExpired := specialExpired || (!hasSpecialExpire && subExpired)
+		s.appendCustomNodes(user.ID, now, customExpired, &proxies, processed)
+	}
 
-	// 仅专线模式 或 设置了专线到期时间且未过期 → 只显示专线节点；否则同时显示普通节点
-	specialActive := hasSpecialExpire && !specialExpired
+	// normal: 只下发普通线路；both: 普通线路 + 专线；special_only: 只下发专线。
 	specialOnly := user.SpecialNodeSubscriptionType == "special_only"
-	if !specialOnly && !specialActive && !subExpired {
+	if !specialOnly && !subExpired {
 		s.appendSystemNodes(&proxies, processed)
 	}
 	return proxies, nil
