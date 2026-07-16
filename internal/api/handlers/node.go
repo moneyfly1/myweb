@@ -111,9 +111,9 @@ func findExistingNode(db *gorm.DB, targetKey string, nodeType string) *models.No
 	return nil
 }
 
-func findDuplicateAutoNodeIDsByKey(db *gorm.DB, key string) []uint {
+func findNodeIDsByKey(db *gorm.DB, key string) []uint {
 	var nodes []models.Node
-	if err := db.Where("is_manual = ?", false).Find(&nodes).Error; err != nil {
+	if err := db.Find(&nodes).Error; err != nil {
 		return nil
 	}
 
@@ -139,11 +139,9 @@ func collectEquivalentNodeIDs(db *gorm.DB, selectedIDs []uint) ([]uint, error) {
 	idSet := make(map[uint]bool)
 	for _, node := range selected {
 		idSet[node.ID] = true
-		if !node.IsManual {
-			key := generateNodeKey(node.Type, node.Name, node.Config)
-			for _, id := range findDuplicateAutoNodeIDsByKey(db, key) {
-				idSet[id] = true
-			}
+		key := generateNodeKey(node.Type, node.Name, node.Config)
+		for _, id := range findNodeIDsByKey(db, key) {
+			idSet[id] = true
 		}
 	}
 
@@ -514,9 +512,16 @@ func CreateNode(c *gin.Context) {
 		Node     models.Node `json:"node"`
 		Preview  bool        `json:"preview"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	body, _ := c.GetRawData()
+	if err := json.Unmarshal(body, &req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
+	}
+	if req.NodeLink == "" && req.Node.Name == "" {
+		var node models.Node
+		if err := json.Unmarshal(body, &node); err == nil {
+			req.Node = node
+		}
 	}
 	db := database.GetDB()
 	if req.NodeLink != "" {
@@ -545,6 +550,10 @@ func CreateNode(c *gin.Context) {
 		clearNodeCaches()
 
 		utils.SuccessResponse(c, http.StatusCreated, "", newNode)
+		return
+	}
+	if strings.TrimSpace(req.Node.Name) == "" || strings.TrimSpace(req.Node.Region) == "" || strings.TrimSpace(req.Node.Type) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请填写节点名称、地区和类型", nil)
 		return
 	}
 	req.Node.Status, req.Node.IsManual, req.Node.IsActive = "offline", true, true
@@ -713,13 +722,10 @@ func DeleteNode(c *gin.Context) {
 		return
 	}
 
-	nodeIDs := []uint{node.ID}
-	if !node.IsManual {
-		key := generateNodeKey(node.Type, node.Name, node.Config)
-		nodeIDs = findDuplicateAutoNodeIDsByKey(db, key)
-		if len(nodeIDs) == 0 {
-			nodeIDs = []uint{node.ID}
-		}
+	key := generateNodeKey(node.Type, node.Name, node.Config)
+	nodeIDs := findNodeIDsByKey(db, key)
+	if len(nodeIDs) == 0 {
+		nodeIDs = []uint{node.ID}
 	}
 
 	result := db.Where("id IN ?", nodeIDs).Delete(&models.Node{})
@@ -921,6 +927,11 @@ func BatchDeleteNodes(c *gin.Context) {
 			return
 		}
 		deletedCount += int(result.RowsAffected)
+	}
+
+	if deletedCount == 0 {
+		utils.ErrorResponse(c, http.StatusNotFound, "未删除任何节点，请刷新列表后重试", nil)
+		return
 	}
 
 	// 清理所有节点和订阅缓存
