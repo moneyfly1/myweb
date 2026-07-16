@@ -549,10 +549,14 @@ export default {
           message: `确认删除选中的 ${selectedNodes.value.length} 个节点?`
         })
         deleting.value = true
-        await adminAPI.batchDeleteNodes(selectedNodes.value.map(n => n.id))
-        ElMessage.success('批量删除成功')
+        const res = await adminAPI.batchDeleteNodes(selectedNodes.value.map(n => n.id))
+        const deletedCount = res.data?.data?.deleted_count ?? 0
+        if (!res.data?.success || deletedCount <= 0) {
+          throw new Error(res.data?.message || '未删除任何节点')
+        }
+        ElMessage.success(`批量删除成功，已删除 ${deletedCount} 个节点`)
         selectedNodes.value = [] // 重置选中
-        loadNodes()
+        await loadNodes()
       } catch (error) {
         if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
       } finally {
