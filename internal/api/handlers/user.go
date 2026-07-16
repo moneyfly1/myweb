@@ -472,20 +472,25 @@ func GetUserDetails(c *gin.Context) {
 	// 根据用户权限返回不同的信息
 	var userInfo gin.H
 	if currentUser.IsAdmin {
+		var specialNodeCount int64
+		db.Model(&models.UserCustomNode{}).Where("user_id = ?", u.ID).Count(&specialNodeCount)
 		// 管理员可以看到所有信息
 		userInfo = gin.H{
-			"id":          u.ID,
-			"username":    u.Username,
-			"email":       u.Email,
-			"balance":     u.Balance,
-			"is_active":   u.IsActive,
-			"is_verified": u.IsVerified,
-			"is_admin":    u.IsAdmin,
-			"created_at":  utils.FormatBeijingTime(u.CreatedAt),
-			"last_login":  lastLogin,
-			"theme":       u.Theme,
-			"language":    u.Language,
-			"timezone":    u.Timezone,
+			"id":                             u.ID,
+			"username":                       u.Username,
+			"email":                          u.Email,
+			"balance":                        u.Balance,
+			"is_active":                      u.IsActive,
+			"is_verified":                    u.IsVerified,
+			"is_admin":                       u.IsAdmin,
+			"created_at":                     utils.FormatBeijingTime(u.CreatedAt),
+			"last_login":                     lastLogin,
+			"theme":                          u.Theme,
+			"language":                       u.Language,
+			"timezone":                       u.Timezone,
+			"custom_node_count":              specialNodeCount,
+			"is_special_node_user":           specialNodeCount > 0,
+			"special_node_subscription_type": u.SpecialNodeSubscriptionType,
 		}
 	} else {
 		// 普通用户只能看到自己的基本信息（不包括敏感字段）
@@ -1588,16 +1593,17 @@ func UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		Username    string   `json:"username"`
-		Email       string   `json:"email"`
-		IsActive    *bool    `json:"is_active"`
-		IsVerified  *bool    `json:"is_verified"`
-		IsAdmin     *bool    `json:"is_admin"`
-		Balance     *float64 `json:"balance"`
-		Password    string   `json:"password"`
-		Notes       *string  `json:"notes"` // 备注
-		DeviceLimit *int     `json:"device_limit"`
-		ExpireTime  *string  `json:"expire_time"`
+		Username                    string   `json:"username"`
+		Email                       string   `json:"email"`
+		IsActive                    *bool    `json:"is_active"`
+		IsVerified                  *bool    `json:"is_verified"`
+		IsAdmin                     *bool    `json:"is_admin"`
+		Balance                     *float64 `json:"balance"`
+		Password                    string   `json:"password"`
+		Notes                       *string  `json:"notes"` // 备注
+		DeviceLimit                 *int     `json:"device_limit"`
+		ExpireTime                  *string  `json:"expire_time"`
+		SpecialNodeSubscriptionType *string  `json:"special_node_subscription_type"`
 	}
 
 	body, err := c.GetRawData()
@@ -1627,12 +1633,13 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	beforeData := map[string]interface{}{
-		"username":    user.Username,
-		"email":       user.Email,
-		"is_active":   user.IsActive,
-		"is_verified": user.IsVerified,
-		"is_admin":    user.IsAdmin,
-		"balance":     user.Balance,
+		"username":                       user.Username,
+		"email":                          user.Email,
+		"is_active":                      user.IsActive,
+		"is_verified":                    user.IsVerified,
+		"is_admin":                       user.IsAdmin,
+		"balance":                        user.Balance,
+		"special_node_subscription_type": user.SpecialNodeSubscriptionType,
 	}
 
 	if req.Username != "" {
@@ -1690,6 +1697,18 @@ func UpdateUser(c *gin.Context) {
 			} else {
 				user.Notes = database.NullString(notes)
 			}
+		}
+	}
+	if req.SpecialNodeSubscriptionType != nil {
+		mode := strings.TrimSpace(*req.SpecialNodeSubscriptionType)
+		switch mode {
+		case "", "normal":
+			user.SpecialNodeSubscriptionType = "normal"
+		case "both", "special_only":
+			user.SpecialNodeSubscriptionType = mode
+		default:
+			utils.ErrorResponse(c, http.StatusBadRequest, "线路模式无效", nil)
+			return
 		}
 	}
 
@@ -1753,12 +1772,13 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	afterData := map[string]interface{}{
-		"username":    user.Username,
-		"email":       user.Email,
-		"is_active":   user.IsActive,
-		"is_verified": user.IsVerified,
-		"is_admin":    user.IsAdmin,
-		"balance":     user.Balance,
+		"username":                       user.Username,
+		"email":                          user.Email,
+		"is_active":                      user.IsActive,
+		"is_verified":                    user.IsVerified,
+		"is_admin":                       user.IsAdmin,
+		"balance":                        user.Balance,
+		"special_node_subscription_type": user.SpecialNodeSubscriptionType,
 	}
 
 	description := fmt.Sprintf("管理员更新用户: %s (%s)", user.Username, user.Email)
@@ -1766,6 +1786,9 @@ func UpdateUser(c *gin.Context) {
 		description += " (包含密码重置)"
 	}
 	utils.CreateAuditLogWithData(c, "update_user", "user", user.ID, description, beforeData, afterData)
+	if req.SpecialNodeSubscriptionType != nil {
+		clearUserCustomNodeCache(user.ID)
+	}
 
 	// 如果余额有变更，记录余额日志
 	if req.Balance != nil && oldBalance != user.Balance {
