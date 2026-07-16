@@ -111,6 +111,49 @@ func findExistingNode(db *gorm.DB, targetKey string, nodeType string) *models.No
 	return nil
 }
 
+func findDuplicateAutoNodeIDsByKey(db *gorm.DB, key string) []uint {
+	var nodes []models.Node
+	if err := db.Where("is_manual = ?", false).Find(&nodes).Error; err != nil {
+		return nil
+	}
+
+	ids := make([]uint, 0)
+	for _, node := range nodes {
+		if generateNodeKey(node.Type, node.Name, node.Config) == key {
+			ids = append(ids, node.ID)
+		}
+	}
+	return ids
+}
+
+func collectEquivalentNodeIDs(db *gorm.DB, selectedIDs []uint) ([]uint, error) {
+	if len(selectedIDs) == 0 {
+		return nil, nil
+	}
+
+	var selected []models.Node
+	if err := db.Where("id IN ?", selectedIDs).Find(&selected).Error; err != nil {
+		return nil, err
+	}
+
+	idSet := make(map[uint]bool)
+	for _, node := range selected {
+		idSet[node.ID] = true
+		if !node.IsManual {
+			key := generateNodeKey(node.Type, node.Name, node.Config)
+			for _, id := range findDuplicateAutoNodeIDsByKey(db, key) {
+				idSet[id] = true
+			}
+		}
+	}
+
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 func processAndImportLinks(db *gorm.DB, links []string) int {
 	// 预加载所有活跃节点到 map，避免循环内 N+1 查询
 	var allActive []models.Node
@@ -669,16 +712,27 @@ func DeleteNode(c *gin.Context) {
 		}
 		return
 	}
-	if err := db.Delete(&node).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", err)
+
+	nodeIDs := []uint{node.ID}
+	if !node.IsManual {
+		key := generateNodeKey(node.Type, node.Name, node.Config)
+		nodeIDs = findDuplicateAutoNodeIDsByKey(db, key)
+		if len(nodeIDs) == 0 {
+			nodeIDs = []uint{node.ID}
+		}
+	}
+
+	result := db.Where("id IN ?", nodeIDs).Delete(&models.Node{})
+	if result.Error != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", result.Error)
 		return
 	}
 
 	// 清除节点和订阅配置缓存
 	clearNodeCaches()
 
-	utils.CreateAuditLogSimple(c, "delete_node", "node", node.ID, fmt.Sprintf("管理员操作: 删除节点 %s", node.Name))
-	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
+	utils.CreateAuditLogSimple(c, "delete_node", "node", node.ID, fmt.Sprintf("管理员操作: 删除节点 %s，实际删除 %d 条", node.Name, result.RowsAffected))
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", gin.H{"deleted_count": result.RowsAffected})
 }
 
 func TestNode(c *gin.Context) {
@@ -843,7 +897,16 @@ func BatchDeleteNodes(c *gin.Context) {
 	deletedCount := 0
 
 	if len(normalNodeIDs) > 0 {
-		result := db.Where("id IN ?", normalNodeIDs).Delete(&models.Node{})
+		equivalentIDs, err := collectEquivalentNodeIDs(db, normalNodeIDs)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点失败", err)
+			return
+		}
+		if len(equivalentIDs) == 0 {
+			utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", nil)
+			return
+		}
+		result := db.Where("id IN ?", equivalentIDs).Delete(&models.Node{})
 		if result.Error != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", result.Error)
 			return

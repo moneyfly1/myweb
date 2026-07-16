@@ -1019,8 +1019,21 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 	var existing []models.Node
 	db.Where("is_manual = ?", false).Find(&existing)
 	existingMap := make(map[string]*models.Node)
+	var duplicateExistingIDs []uint
 	for i := range existing {
-		existingMap[s.generateNodeKey(existing[i].Type, existing[i].Name, existing[i].Config)] = &existing[i]
+		key := s.generateNodeKey(existing[i].Type, existing[i].Name, existing[i].Config)
+		if _, ok := existingMap[key]; ok {
+			duplicateExistingIDs = append(duplicateExistingIDs, existing[i].ID)
+			continue
+		}
+		existingMap[key] = &existing[i]
+	}
+	if len(duplicateExistingIDs) > 0 {
+		if err := db.Where("id IN ?", duplicateExistingIDs).Delete(&models.Node{}).Error; err != nil {
+			s.warnf("清理重复采集节点失败: %v", err)
+		} else {
+			stats.Skipped += len(duplicateExistingIDs)
+		}
 	}
 
 	// 预加载所有手动节点的 type+name 用于去重检查
