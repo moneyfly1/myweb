@@ -170,7 +170,7 @@ export const useAuthStore = defineStore('auth', () => {
         theme: userData.theme,
         language: userData.language
       }
-      const remember = isAdminUser ? true : !!credentials.remember
+      const remember = true
       saveRememberPreference(remember, isAdminUser)
       saveToken(access_token, isAdminUser, remember)
       saveUser(safeUserData, isAdminUser, remember)

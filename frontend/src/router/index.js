@@ -123,6 +123,35 @@ const readLoginHandoff = (sessionKey) => {
     return null
   }
 }
+
+const restoreAuthFromRefresh = async (isAdminPath, authStore) => {
+  const refreshKey = isAdminPath ? 'admin_refresh_token' : 'user_refresh_token'
+  const tokenKey = isAdminPath ? 'admin_token' : 'user_token'
+  const userKey = isAdminPath ? 'admin_user' : 'user_data'
+  const storedRefresh = secureStorage.get(refreshKey)
+  const storedUser = secureStorage.get(userKey)
+  if (!storedRefresh || !storedUser) return null
+
+  const { default: axios } = await import('axios')
+  const refreshResponse = await axios.post(
+    '/api/v1/auth/refresh',
+    { refresh_token: storedRefresh },
+    { timeout: 5000 }
+  )
+  const { access_token, refresh_token: newRefresh } = refreshResponse.data?.data || refreshResponse.data || {}
+  if (!access_token) return null
+
+  const storageMode = getStorageMode(refreshKey) || getStorageMode(userKey) || 'session'
+  const useSessionStorage = isAdminPath ? false : storageMode !== 'local'
+  secureStorage.set(tokenKey, access_token, useSessionStorage, ACCESS_TOKEN_TTL)
+  if (newRefresh) secureStorage.set(refreshKey, newRefresh, useSessionStorage, ADMIN_USER_TTL)
+
+  const userData = typeof storedUser === 'string' ? JSON.parse(storedUser) : storedUser
+  authStore.setAuth(access_token, userData, useSessionStorage)
+  if (newRefresh) secureStorage.set(refreshKey, newRefresh, useSessionStorage, ADMIN_USER_TTL)
+  return { accessToken: access_token, userData }
+}
+
 router.beforeEach(async (to, from, next) => {
   if (to.meta.title) document.title = `${to.meta.title} - CBoard`
   try {
@@ -134,10 +163,24 @@ router.beforeEach(async (to, from, next) => {
         if (secureStorage.get('admin_token') && secureStorage.get('admin_user')) {
           return next('/admin/dashboard')
         }
+        try {
+          const restored = await restoreAuthFromRefresh(true, authStore)
+          if (restored?.accessToken) return next('/admin/dashboard')
+        } catch {
+          secureStorage.remove('admin_token')
+          secureStorage.remove('admin_refresh_token')
+        }
         return next()
       }
       if (secureStorage.get('user_token') && secureStorage.get('user_data')) {
         return next('/dashboard')
+      }
+      try {
+        const restored = await restoreAuthFromRefresh(false, authStore)
+        if (restored?.accessToken) return next(restored.userData?.is_admin ? '/admin/dashboard' : '/dashboard')
+      } catch {
+        secureStorage.remove('user_token')
+        secureStorage.remove('user_refresh_token')
       }
       return next()
     }
@@ -174,56 +217,20 @@ router.beforeEach(async (to, from, next) => {
       // 如果访问管理员路径但admin_token不存在，尝试刷新admin token
       if (isAdminPath) {
         try {
-          const storedRefresh = secureStorage.get('admin_refresh_token')
-          if (!storedRefresh) {
-            return next('/admin/login')
-          }
-          const { default: axios } = await import('axios')
-          const refreshResponse = await axios.post(
-            '/api/v1/auth/refresh',
-            { refresh_token: storedRefresh },
-            { timeout: 5000 }
-          )
-          const { access_token, refresh_token: newRefresh } = refreshResponse.data?.data || refreshResponse.data || {}
-          if (access_token) {
-            secureStorage.set('admin_token', access_token, false, ACCESS_TOKEN_TTL)
-            if (newRefresh) secureStorage.set('admin_refresh_token', newRefresh, false, ADMIN_USER_TTL)
-            storedToken = access_token
-            storedUser = secureStorage.get('admin_user')
-            if (!storedUser) {
-              return next('/admin/login')
-            }
-          } else {
-            return next('/admin/login')
-          }
+          const restored = await restoreAuthFromRefresh(true, authStore)
+          if (!restored?.accessToken) return next('/admin/login')
+          storedToken = restored.accessToken
+          storedUser = restored.userData
         } catch {
           return next('/admin/login')
         }
       } else {
         // 访问用户路径但user_token不存在，尝试用用户 refresh token 刷新
         try {
-          const storedRefresh = secureStorage.get('user_refresh_token')
-          if (!storedRefresh) {
-            // 无 refresh token，让后续的 requiresAuth 检查处理
-          } else {
-            const { default: axios } = await import('axios')
-            const refreshResponse = await axios.post(
-              '/api/v1/auth/refresh',
-              { refresh_token: storedRefresh },
-              { timeout: 5000 }
-            )
-            const { access_token, refresh_token: newRefresh } = refreshResponse.data?.data || refreshResponse.data || {}
-            if (access_token) {
-              const useSessionStorage = userStorageMode !== 'local'
-              secureStorage.set('user_token', access_token, useSessionStorage, ACCESS_TOKEN_TTL)
-              if (newRefresh) secureStorage.set('user_refresh_token', newRefresh, useSessionStorage, ADMIN_USER_TTL)
-              storedToken = access_token
-              storedUser = secureStorage.get('user_data')
-              if (!storedUser) {
-                // user_data也过期了，无法恢复身份
-                // 不做跳转，让后续的 requiresAuth 检查处理
-              }
-            }
+          const restored = await restoreAuthFromRefresh(false, authStore)
+          if (restored?.accessToken) {
+            storedToken = restored.accessToken
+            storedUser = restored.userData
           }
         } catch {
           // 用户refresh也失败，不做跳转，让后续的 requiresAuth 检查处理
