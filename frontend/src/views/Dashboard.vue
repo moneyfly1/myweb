@@ -49,6 +49,24 @@
         </router-link>
       </template>
     </el-alert>
+    <div class="package-purchase-cta">
+      <div class="package-purchase-copy">
+        <div class="package-purchase-kicker">套餐中心</div>
+        <div class="package-purchase-title">购买或续费套餐</div>
+        <div class="package-purchase-desc">
+          选择适合当前设备数量和使用周期的套餐，开通后订阅会自动生效。
+        </div>
+      </div>
+      <el-button
+        type="success"
+        size="large"
+        class="package-purchase-button"
+        @click="goToPackages"
+      >
+        <el-icon><Promotion /></el-icon>
+        立即购买套餐
+      </el-button>
+    </div>
     <LoadingState v-if="dashboardLoading" text="正在加载仪表盘..." />
     <div v-else class="stats-grid">
       <div class="stat-card balance-card">
@@ -1633,6 +1651,44 @@ onUnmounted(() => {
 }
 .expiry-renew-btn {
   margin-top: 4px;
+}
+.package-purchase-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 18px 20px;
+  border: 1px solid #b7eb8f;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecf5ff 100%);
+}
+.package-purchase-copy {
+  min-width: 0;
+}
+.package-purchase-kicker {
+  margin-bottom: 4px;
+  color: #389e0d;
+  font-size: 13px;
+  font-weight: 700;
+}
+.package-purchase-title {
+  color: #1f2d3d;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+.package-purchase-desc {
+  margin-top: 6px;
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.package-purchase-button {
+  min-width: 168px;
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 700;
 }
 .stats-grid {
   display: grid;
@@ -3648,6 +3704,23 @@ onUnmounted(() => {
     display: grid !important;
     gap: 10px !important;
     padding: 12px !important;
+  }
+
+  .dashboard-container .package-purchase-cta {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    padding: 16px !important;
+  }
+
+  .dashboard-container .package-purchase-title {
+    font-size: 20px !important;
+  }
+
+  .dashboard-container .package-purchase-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 50px !important;
   }
 
   .dashboard-container > .page-header .actions,

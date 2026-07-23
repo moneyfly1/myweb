@@ -40,6 +40,25 @@
         </el-form>
       </div>
       <div class="mobile-action-bar">
+        <div class="mobile-management-actions">
+          <el-button
+            type="success"
+            plain
+            @click="showCustomPackageDialog"
+            :icon="Setting"
+            class="mobile-management-btn"
+          >
+            自定义套餐设置
+          </el-button>
+          <el-button
+            type="primary"
+            @click="showAddDialog"
+            :icon="Plus"
+            class="mobile-management-btn"
+          >
+            添加套餐
+          </el-button>
+        </div>
         <div class="mobile-search-section">
           <div class="search-input-wrapper">
             <el-input
@@ -945,6 +964,9 @@ export default {
     }
   }
 }
+.mobile-management-actions {
+  display: none;
+}
 .form-tip {
   font-size: 12px;
   color: #909399;
@@ -991,6 +1013,20 @@ export default {
 @media (max-width: 768px) {
   .packages-admin-container {
     padding: 12px;
+  }
+  .mobile-management-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+
+    .mobile-management-btn {
+      width: 100%;
+      min-height: 44px;
+      margin-left: 0;
+      font-weight: 600;
+      touch-action: manipulation;
+    }
   }
   .card-header {
     .header-title {
@@ -1128,6 +1164,11 @@ export default {
   .packages-admin-container :deep(.mobile-card-actions .el-button) {
     min-height: 44px;
     touch-action: manipulation;
+  }
+}
+@media (max-width: 420px) {
+  .mobile-management-actions {
+    grid-template-columns: 1fr;
   }
 }
 @media (min-width: 769px) {
