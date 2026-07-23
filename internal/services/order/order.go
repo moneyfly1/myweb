@@ -1119,10 +1119,7 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 		if subscription.PackageID != nil {
 			oldPackageID = *subscription.PackageID
 		}
-		if isCustomPackage {
-			// 自定义套餐按本次购买时长重新开通，避免把已有剩余时间重复叠加成双倍时长。
-			subscription.ExpireTime = now.AddDate(0, 0, totalDurationDays)
-		} else if subscription.ExpireTime.Before(now) {
+		if subscription.ExpireTime.Before(now) {
 			subscription.ExpireTime = now.AddDate(0, 0, totalDurationDays)
 		} else {
 			subscription.ExpireTime = subscription.ExpireTime.AddDate(0, 0, totalDurationDays)
