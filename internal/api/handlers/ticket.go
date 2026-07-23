@@ -159,9 +159,30 @@ func asyncNotifyTicketReply(db *gorm.DB, ticket *models.Ticket, user *models.Use
 						utils.LogErrorMsg("创建工单回复站内通知失败: ticket=%s, user_id=%d, error=%v", ticket.TicketNo, ticketOwner.ID, err)
 					}
 				}
+
+				var replies []models.TicketReply
+				if err := db.Preload("User").Where("ticket_id = ?", ticket.ID).Order("created_at ASC").Find(&replies).Error; err != nil {
+					utils.LogErrorMsg("查询工单回复记录失败: ticket=%s, error=%v", ticket.TicketNo, err)
+				}
+				replyHistory := make([]email.TicketReplyHistoryItem, 0, len(replies))
+				for _, reply := range replies {
+					author := "用户"
+					if reply.IsAdmin {
+						author = "管理员"
+					} else if reply.User.Username != "" {
+						author = reply.User.Username
+					}
+					replyHistory = append(replyHistory, email.TicketReplyHistoryItem{
+						Author:    author,
+						Content:   reply.Content,
+						CreatedAt: utils.FormatBeijingTime(reply.CreatedAt),
+						IsAdmin:   reply.IsAdmin,
+					})
+				}
+
 				emailService := email.NewEmailService()
 				templateBuilder := email.NewEmailTemplateBuilder()
-				emailContent := templateBuilder.GetAdminReplyNotificationTemplate(ticket.TicketNo, ticket.Title, replyContent)
+				emailContent := templateBuilder.GetAdminReplyNotificationTemplate(ticket.TicketNo, ticket.Title, ticket.Content, replyContent, replyHistory)
 				if notification.ShouldSendCustomerNotificationToUser(&ticketOwner, "ticket_reply", notification.ChannelEmail) {
 					if err := emailService.QueueEmail(ticketOwner.Email, "您的工单有新回复", emailContent, "ticket_reply"); err != nil {
 						utils.LogErrorMsg("发送工单回复邮件失败: ticket=%s, email=%s, error=%v", ticket.TicketNo, ticketOwner.Email, err)

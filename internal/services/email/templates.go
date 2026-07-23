@@ -1078,7 +1078,42 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
 	return b.GetBaseTemplate(title, content, "此邮件由系统自动发送，请勿回复。")
 }
 
-func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title, replyContent string) string {
+type TicketReplyHistoryItem struct {
+	Author    string
+	Content   string
+	CreatedAt string
+	IsAdmin   bool
+}
+
+func formatEmailMultilineText(text string) string {
+	return strings.ReplaceAll(template.HTMLEscapeString(text), "\n", "<br>")
+}
+
+func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title, ticketContent, replyContent string, replyHistory []TicketReplyHistoryItem) string {
+	historyContent := `<p style="line-height:1.8; color:#777;">暂无历史回复记录</p>`
+	if len(replyHistory) > 0 {
+		var historyBuilder strings.Builder
+		for _, reply := range replyHistory {
+			authorColor := "#409eff"
+			if reply.IsAdmin {
+				authorColor = "#67c23a"
+			}
+			historyBuilder.WriteString(fmt.Sprintf(`<div style="border-bottom:1px solid #e9ecef; padding:12px 0;">
+                    <div style="font-size:13px; color:#777; margin-bottom:8px;">
+                        <strong style="color:%s;">%s</strong>
+                        <span style="margin-left:8px;">%s</span>
+                    </div>
+                    <div style="line-height:1.8; color:#555;">%s</div>
+                </div>`,
+				authorColor,
+				template.HTMLEscapeString(reply.Author),
+				template.HTMLEscapeString(reply.CreatedAt),
+				formatEmailMultilineText(reply.Content),
+			))
+		}
+		historyContent = historyBuilder.String()
+	}
+
 	content := fmt.Sprintf(`<h2>💬 您的工单有新回复</h2>
             <p>您提交的工单已收到管理员回复，请登录查看详情。</p>
             <div class="info-box">
@@ -1089,12 +1124,26 @@ func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title
                 </table>
             </div>
             <div class="info-box">
-                <h3>📝 回复内容</h3>
+                <h3>📝 工单内容</h3>
                 <p style="line-height:1.8; color:#555;">%s</p>
             </div>
             <div class="info-box">
+                <h3>💬 本次回复</h3>
+                <p style="line-height:1.8; color:#555;">%s</p>
+            </div>
+            <div class="info-box">
+                <h3>📜 回复记录</h3>
+                %s
+            </div>
+            <div class="info-box">
                 <p><strong>💡 提示：</strong>请登录用户中心查看完整回复并继续沟通。</p>
-            </div>`, ticketNo, title, strings.ReplaceAll(replyContent, "\n", "<br>"))
+            </div>`,
+		template.HTMLEscapeString(ticketNo),
+		template.HTMLEscapeString(title),
+		formatEmailMultilineText(ticketContent),
+		formatEmailMultilineText(replyContent),
+		historyContent,
+	)
 	return b.GetBaseTemplate("工单新回复", content, "此邮件由系统自动发送，请勿回复。")
 }
 
