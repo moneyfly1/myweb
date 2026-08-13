@@ -541,6 +541,26 @@
                 分配专线节点
               </el-button>
               <el-button
+                type="danger"
+                size="small"
+                :icon="Delete"
+                :disabled="selectedCustomNodes.length === 0"
+                :loading="batchUnassigning"
+                @click="batchUnassignSelectedNodes"
+              >
+                批量取消分配{{ selectedCustomNodes.length > 0 ? ` (${selectedCustomNodes.length})` : '' }}
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                plain
+                :disabled="!(customNodes && customNodes.length > 0)"
+                :loading="clearingNodes"
+                @click="clearAllCustomNodes"
+              >
+                清空专线节点
+              </el-button>
+              <el-button
                 size="small"
                 :icon="RefreshRight"
                 @click="loadUserCustomNodes"
@@ -556,7 +576,9 @@
               size="small"
               max-height="240"
               class="data-table"
+              @selection-change="handleCustomNodeSelectionChange"
             >
+              <el-table-column type="selection" width="40" />
               <el-table-column prop="node_name" label="节点名称" min-width="150" />
               <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
               <el-table-column label="专线到期" width="160">
@@ -776,7 +798,7 @@ import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
-import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
+import { confirmDelete, confirmWarning, confirmDanger } from '@/utils/confirmAction'
 import {
   Wallet,
   ShoppingCart,
@@ -906,6 +928,9 @@ export default {
     return {
       activeTab: this.initialTab,
       customNodes: [],
+      selectedCustomNodes: [],
+      batchUnassigning: false,
+      clearingNodes: false,
       searchedUsers: [],
       selectedUserIds: [],
       selectedUserCache: [],
@@ -1008,6 +1033,7 @@ export default {
         this.activeTab = this.initialTab
         this.devices = []
         this.customNodes = []
+        this.selectedCustomNodes = []
         this.checkinLogs = []
         this.checkinLoaded = false
         this.subscriptionExcludedProtocols = {}
@@ -1536,6 +1562,7 @@ export default {
         this.syncLineModeForm()
       } finally {
         this.loadingNodes = false
+        this.selectedCustomNodes = []
       }
     },
     async handleUserSearch() {
@@ -1697,6 +1724,99 @@ export default {
           ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
         }
       }
+    },
+    handleCustomNodeSelectionChange(selection) {
+      this.selectedCustomNodes = selection || []
+    },
+    getSelectedNodeIds() {
+      return this.selectedCustomNodes
+        .map(node => node.node_id || node.id)
+        .filter(Boolean)
+    },
+    async batchUnassignSelectedNodes() {
+      const userId = this.user.user_info?.id || this.user.id
+      const nodeIds = this.getSelectedNodeIds()
+      if (!userId || nodeIds.length === 0) {
+        ElMessage.warning('请先勾选要取消分配的专线节点')
+        return
+      }
+      try {
+        await confirmWarning(
+          `确定要取消分配选中的 ${nodeIds.length} 个专线节点吗？取消后该用户将无法继续使用这些节点。`,
+          {
+            title: '批量取消分配',
+            confirmButtonText: '确定取消'
+          }
+        )
+      } catch {
+        return
+      }
+      this.batchUnassigning = true
+      try {
+        const response = await adminAPI.batchUnassignCustomNodes(nodeIds, [userId])
+        if (response.data && response.data.success) {
+          ElMessage.success(response.data.message || `成功取消 ${nodeIds.length} 个节点分配`)
+          this.handleCustomNodesCleared(userId)
+        } else {
+          ElMessage.error(response.data?.message || '批量取消分配失败')
+        }
+      } catch (error) {
+        console.error('批量取消分配失败:', error)
+        ElMessage.error('批量取消分配失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        this.batchUnassigning = false
+      }
+    },
+    async clearAllCustomNodes() {
+      const userId = this.user.user_info?.id || this.user.id
+      const nodeIds = (this.customNodes || []).map(node => node.node_id || node.id).filter(Boolean)
+      if (!userId || nodeIds.length === 0) {
+        ElMessage.warning('该用户当前没有已分配的专线节点')
+        return
+      }
+      try {
+        await confirmDanger(
+          `确定要清空该用户的全部 ${nodeIds.length} 个专线节点吗？清空后用户将无法访问任何专线节点，系统会自动恢复其普通线路访问。`,
+          {
+            title: '清空专线节点',
+            confirmButtonText: '确定清空'
+          }
+        )
+      } catch {
+        return
+      }
+      this.clearingNodes = true
+      try {
+        const response = await adminAPI.batchUnassignCustomNodes(nodeIds, [userId])
+        if (response.data && response.data.success) {
+          ElMessage.success(response.data.message || `已清空 ${nodeIds.length} 个专线节点`)
+          this.handleCustomNodesCleared(userId)
+        } else {
+          ElMessage.error(response.data?.message || '清空专线节点失败')
+        }
+      } catch (error) {
+        console.error('清空专线节点失败:', error)
+        ElMessage.error('清空专线节点失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        this.clearingNodes = false
+      }
+    },
+    async handleCustomNodesCleared(userId) {
+      await this.loadUserCustomNodes()
+      const info = this.user?.user_info || this.user
+      if (info) {
+        info.custom_node_count = this.customNodes.length
+        info.is_special_node_user = this.customNodes.length > 0
+        if (this.customNodes.length === 0) {
+          info.special_node_subscription_type = 'normal'
+          this.lineModeForm = 'normal'
+        }
+      }
+      this.$emit('custom-nodes-updated', {
+        userIds: [userId],
+        hasCustomNodes: this.customNodes.length > 0,
+        subscriptionType: this.customNodes.length > 0 ? this.getUserLineMode() : 'normal'
+      })
     }
   }
 }
@@ -1952,6 +2072,7 @@ export default {
     .custom-nodes-actions {
       margin-bottom: 15px;
       display: flex;
+      flex-wrap: wrap;
       gap: 10px;
     }
   }
