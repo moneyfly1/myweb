@@ -385,7 +385,7 @@
             </div>
             <div class="detail-field">
               <span class="field-label">余额抵扣</span>
-              <span class="field-value discount">-{{ moneyField(extraValue(selectedOrder, 'balance_used'), 0) }}</span>
+              <span class="field-value discount">{{ balanceOffsetField(selectedOrder) }}</span>
             </div>
             <div class="detail-field">
               <span class="field-label">折后应付</span>
@@ -1282,6 +1282,15 @@ export default {
       return discount > 0 ? paid + discount : paid
     }
 
+    const balanceOffsetField = (order) => {
+      // 仅创建订单时抵扣（balance_deducted=true）的余额才算“余额抵扣”；
+      // 支付环节使用余额（如余额支付）属于支付方式，不计入抵扣，避免与订单金额重复。
+      const deducted = extraValue(order, 'balance_deducted')
+      if (deducted !== true && deducted !== 'true') return '-'
+      const used = extraValue(order, 'balance_used')
+      return hasValue(used) ? `-${moneyField(used)}` : '-'
+    }
+
     const canRefundOrder = (order) => {
       if (!order || isRechargeRecord(order) || order.status !== 'paid') return false
       const method = String(order.payment_method || '').toLowerCase()
@@ -1440,7 +1449,7 @@ export default {
       orderExtra, extraValue, numberOrZero, numberOrDash,
       isDeviceUpgradeOrder, isCustomPackageOrder, isPackageLikeOrder,
       detailKindLabel, detailPrimaryName, detailPaidTime, detailAddedDays,
-      activationModeText, orderOriginalAmount, moneyField, percentField, boolText,
+      activationModeText, orderOriginalAmount, balanceOffsetField, moneyField, percentField, boolText,
       fieldOrDash, daysText, deviceCountText, monthCountText, packageTypeText,
       expireDeltaText, hasDiscountOrBalance, qrSummary, fulfillmentText, extraEntries
     }

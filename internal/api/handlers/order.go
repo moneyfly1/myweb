@@ -101,15 +101,21 @@ func formatOrderData(order models.Order) gin.H {
 	}
 
 	var balanceUsed float64
+	var balanceDeducted bool
 	var parsedExtraData map[string]interface{}
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
 		if err := json.Unmarshal([]byte(order.ExtraData.String), &parsedExtraData); err == nil {
 			if balanceUsedVal, ok := parsedExtraData["balance_used"].(float64); ok {
 				balanceUsed = balanceUsedVal
 			}
+			if deductedVal, ok := parsedExtraData["balance_deducted"].(bool); ok {
+				balanceDeducted = deductedVal
+			}
 		}
 	}
-	if balanceUsed > 0 {
+	// 仅当创建订单时余额已从 FinalAmount 中抵扣（balance_deducted=true）才加回展示；
+	// 支付环节使用余额（如 PayOrder 余额支付后写入的 balance_used）不会重复加回，避免金额翻倍。
+	if balanceUsed > 0 && balanceDeducted {
 		amount = utils.RoundFloat(amount+balanceUsed, 2)
 	}
 
