@@ -521,7 +521,7 @@ func DeleteCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除失败: "+err.Error(), err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s", node.Name))
+	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s，同时取消 %d 个用户的分配", node.Name, len(affectedUserIDs)))
 	for _, uid := range affectedUserIDs {
 		clearUserCustomNodeCache(uid)
 		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
@@ -545,13 +545,17 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 	var batchAffectedUserIDs []uint
 	db.Model(&models.UserCustomNode{}).Where("custom_node_id IN ?", req.NodeIDs).Pluck("user_id", &batchAffectedUserIDs)
 
+	// 删除前记录节点名称，用于操作日志
+	var deletingNodes []models.CustomNode
+	db.Where("id IN ?", req.NodeIDs).Find(&deletingNodes)
+
 	db.Where("custom_node_id IN ?", req.NodeIDs).Delete(&models.UserCustomNode{})
 
 	if err := db.Where("id IN ?", req.NodeIDs).Delete(&models.CustomNode{}).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败: "+err.Error(), err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个", len(req.NodeIDs)))
+	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个 [%s]，同时取消 %d 个用户的分配", len(req.NodeIDs), joinNodeNames(deletingNodes), len(batchAffectedUserIDs)))
 	for _, uid := range batchAffectedUserIDs {
 		clearUserCustomNodeCache(uid)
 		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
@@ -642,7 +646,10 @@ func BatchAssignCustomNodes(c *gin.Context) {
 			}
 		}
 	}
-	utils.CreateAuditLogSimple(c, "batch_assign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量分配专线节点 节点 %d 个 用户 %d 个 分配关系 %d", len(req.NodeIDs), len(req.UserIDs), assignedCount))
+	// 记录详细操作日志：节点名称与用户信息
+	var assignedNodes []models.CustomNode
+	db.Where("id IN ?", req.NodeIDs).Find(&assignedNodes)
+	utils.CreateAuditLogSimple(c, "batch_assign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量分配专线节点 [%s] 给用户 %s 共 %d 个分配关系", joinNodeNames(assignedNodes), joinUserNames(db, req.UserIDs), assignedCount))
 	// 清除所有相关用户的缓存
 	for _, userID := range req.UserIDs {
 		clearUserCustomNodeCache(userID)
@@ -695,7 +702,9 @@ func BatchUnassignCustomNodes(c *gin.Context) {
 		clearUserCustomNodeCache(uid)
 		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
 	}
-	utils.CreateAuditLogSimple(c, "batch_unassign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量取消专线节点分配 节点 %d 个 用户 %d 个 分配关系 %d", len(req.NodeIDs), len(affectedUserIDs), result.RowsAffected))
+	var unassignedNodes []models.CustomNode
+	db.Where("id IN ?", req.NodeIDs).Find(&unassignedNodes)
+	utils.CreateAuditLogSimple(c, "batch_unassign_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量取消专线节点 [%s] 对用户 %s 的分配，共取消 %d 个分配关系", joinNodeNames(unassignedNodes), joinUserNames(db, affectedUserIDs), result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功取消 %d 个分配关系", result.RowsAffected), gin.H{
 		"unassigned": result.RowsAffected,
 		"user_count": len(affectedUserIDs),
@@ -833,6 +842,8 @@ func TestCustomNode(c *gin.Context) {
 	db.Save(&node)
 	clearNodeCaches()
 
+	utils.CreateAuditLogSimple(c, "test_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 测试专线节点 %s 结果 %s", node.Name, node.Status))
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"status":  "active",
 		"latency": 100, // 模拟延迟
@@ -909,6 +920,15 @@ func BatchTestCustomNodes(c *gin.Context) {
 	}
 
 	clearNodeCaches()
+
+	successCount := 0
+	for _, r := range results {
+		if status, ok := r["status"].(string); ok && status == "active" {
+			successCount++
+		}
+	}
+	utils.CreateAuditLogSimple(c, "batch_test_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 成功 %d 个", len(req.NodeIDs), successCount))
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"results": results,
 		"total":   len(req.NodeIDs),
@@ -1065,6 +1085,28 @@ func AssignCustomNodeToUser(c *gin.Context) {
 		db.Save(&user)
 	}
 
+	// 记录管理员操作日志
+	nodeName := fmt.Sprintf("节点#%d", req.CustomNodeID)
+	var node models.CustomNode
+	if err := db.First(&node, req.CustomNodeID).Error; err == nil && node.Name != "" {
+		nodeName = node.Name
+	}
+	userDesc := fmt.Sprintf("用户#%d", parseUint(userID))
+	if user.ID > 0 {
+		if user.Email != "" {
+			userDesc = fmt.Sprintf("%s (%s)", user.Username, user.Email)
+		} else {
+			userDesc = user.Username
+		}
+	}
+	modeDesc := ""
+	if req.SubscriptionType == "special_only" {
+		modeDesc = "，线路模式：仅专线"
+	} else if req.SubscriptionType == "both" {
+		modeDesc = "，线路模式：专线+普通"
+	}
+	utils.CreateAuditLogSimple(c, "assign_custom_node", "custom_node", req.CustomNodeID, fmt.Sprintf("管理员操作: 给用户 %s 分配专线节点 %s%s", userDesc, nodeName, modeDesc))
+
 	utils.SuccessResponse(c, http.StatusOK, "分配成功", userNode)
 	clearUserCustomNodeCache(parseUint(userID))
 }
@@ -1083,12 +1125,69 @@ func UnassignCustomNodeFromUser(c *gin.Context) {
 	clearUserCustomNodeCache(uid)
 	resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
 
+	// 记录管理员操作日志
+	nid := parseUint(nodeID)
+	nodeName := fmt.Sprintf("节点#%d", nid)
+	var node models.CustomNode
+	if err := db.First(&node, nid).Error; err == nil && node.Name != "" {
+		nodeName = node.Name
+	}
+	userDesc := fmt.Sprintf("用户#%d", uid)
+	var user models.User
+	if err := db.First(&user, uid).Error; err == nil && user.ID > 0 {
+		if user.Email != "" {
+			userDesc = fmt.Sprintf("%s (%s)", user.Username, user.Email)
+		} else {
+			userDesc = user.Username
+		}
+	}
+	utils.CreateAuditLogSimple(c, "unassign_custom_node", "custom_node", nid, fmt.Sprintf("管理员操作: 取消用户 %s 的专线节点 %s 分配", userDesc, nodeName))
+
 	utils.SuccessResponse(c, http.StatusOK, "取消分配成功", nil)
 }
 
 func parseUint(s string) uint {
 	i, _ := strconv.ParseUint(s, 10, 32)
 	return uint(i)
+}
+
+// joinNodeNames 将节点名称拼接为日志用描述，超出长度截断
+func joinNodeNames(nodes []models.CustomNode) string {
+	names := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Name != "" {
+			names = append(names, n.Name)
+		}
+	}
+	return truncateDesc(strings.Join(names, "、"))
+}
+
+// joinUserNames 将用户列表拼接为日志用描述（用户名+邮箱），超出长度截断
+func joinUserNames(db *gorm.DB, userIDs []uint) string {
+	if len(userIDs) == 0 {
+		return "无"
+	}
+	var users []models.User
+	db.Where("id IN ?", userIDs).Find(&users)
+	parts := make([]string, 0, len(users))
+	for _, u := range users {
+		if u.Email != "" {
+			parts = append(parts, fmt.Sprintf("%s(%s)", u.Username, u.Email))
+		} else {
+			parts = append(parts, u.Username)
+		}
+	}
+	return truncateDesc(strings.Join(parts, "、"))
+}
+
+// truncateDesc 截断过长的日志描述
+func truncateDesc(desc string) string {
+	const maxLen = 500
+	runes := []rune(desc)
+	if len(runes) <= maxLen {
+		return desc
+	}
+	return string(runes[:maxLen]) + "..."
 }
 
 // clearUserCustomNodeCache 清除用户专线节点相关缓存

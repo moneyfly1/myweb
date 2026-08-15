@@ -803,6 +803,8 @@ func TestNode(c *gin.Context) {
 		}
 		clearNodeCaches()
 
+		utils.CreateAuditLogSimple(c, "test_custom_node", "custom_node", customNode.ID, fmt.Sprintf("管理员操作: 测试专线节点 %s 结果 %s 延迟 %dms", customNode.Name, res.Status, res.Latency))
+
 		utils.SuccessResponse(c, http.StatusOK, "", res)
 		return
 	}
@@ -826,6 +828,7 @@ func TestNode(c *gin.Context) {
 		log.Printf("failed to update node status: %v", err)
 	}
 	clearNodeCaches()
+	utils.CreateAuditLogSimple(c, "test_node", "node", node.ID, fmt.Sprintf("管理员操作: 测试节点 %s 结果 %s 延迟 %dms", node.Name, res.Status, res.Latency))
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
@@ -860,6 +863,13 @@ func BatchTestNodes(c *gin.Context) {
 		}
 	}
 	clearNodeCaches()
+	successCount := 0
+	for _, res := range results {
+		if res != nil && res.Status == "online" {
+			successCount++
+		}
+	}
+	utils.CreateAuditLogSimple(c, "batch_test_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量测试节点 %d 个 在线 %d 个", len(req.NodeIDs), successCount))
 	utils.SuccessResponse(c, http.StatusOK, "", results)
 }
 
@@ -900,6 +910,27 @@ func BatchDeleteNodes(c *gin.Context) {
 		}
 	}
 
+	// 删除前记录节点名称，用于操作日志
+	var deletingNodeNames []string
+	if len(normalNodeIDs) > 0 {
+		var normalNodes []models.Node
+		db.Where("id IN ?", normalNodeIDs).Find(&normalNodes)
+		for _, n := range normalNodes {
+			if n.Name != "" {
+				deletingNodeNames = append(deletingNodeNames, n.Name)
+			}
+		}
+	}
+	if len(customNodeIDs) > 0 {
+		var customNodes []models.CustomNode
+		db.Where("id IN ?", customNodeIDs).Find(&customNodes)
+		for _, n := range customNodes {
+			if n.Name != "" {
+				deletingNodeNames = append(deletingNodeNames, n.Name+"(专线)")
+			}
+		}
+	}
+
 	deletedCount := 0
 
 	if len(normalNodeIDs) > 0 {
@@ -937,7 +968,7 @@ func BatchDeleteNodes(c *gin.Context) {
 	// 清理所有节点和订阅缓存
 	clearNodeCaches()
 
-	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个", deletedCount))
+	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个 [%s]", deletedCount, truncateDesc(strings.Join(deletingNodeNames, "、"))))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
 }
 
