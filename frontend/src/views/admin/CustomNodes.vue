@@ -98,6 +98,8 @@
               v-model="searchKeyword"
               placeholder="搜索名称/域名/用户..."
               clearable
+              @input="debouncedSearch"
+              @clear="handleFilterChange"
               @keyup.enter="handleFilterChange"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
@@ -697,6 +699,7 @@ import AppDialog from '@/components/AppDialog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 export default {
   name: 'AdminCustomNodes',
   components: { 
@@ -921,6 +924,8 @@ export default {
       pagination.page = 1
       loadCustomNodes()
     }
+    // 搜索输入实时生效，无需再点击搜索按钮（500ms 防抖）
+    const debouncedSearch = debounce(handleFilterChange, 500)
     const resetFilters = () => {
       Object.assign(filters, { status: '', protocol: '', is_active: '', source: '' })
       searchKeyword.value = ''
@@ -1369,7 +1374,7 @@ export default {
       batchTesting, batchDeleting, batchUnassigning,
       showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes,
       deactivateSourceAfterMigrate, migratingAssignments,
-      loadCustomNodes, handleFilterChange, resetFilters, handleSelectionChange, handleMobileSelect, handleGridSelect,
+      loadCustomNodes, handleFilterChange, debouncedSearch, resetFilters, handleSelectionChange, handleMobileSelect, handleGridSelect,
       handleCommand, openCreateNodeDialog, handleNodeDrawerClosed, editNode, saveNode, deleteNode, toggleNodeStatus,
       batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, importSubscription, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
