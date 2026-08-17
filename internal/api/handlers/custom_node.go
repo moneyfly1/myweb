@@ -406,9 +406,9 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 	}
 
 	svc := config_update.NewConfigUpdateService()
-	nodes, err := fetchSubscriptionNodes(svc, urlStr)
+	nodes, err := svc.FetchNodesFromURLs([]string{urlStr})
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败: "+err.Error(), nil)
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
 		return
 	}
 	if len(nodes) == 0 {
@@ -416,7 +416,7 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 			"imported":    0,
 			"error_count": 0,
 			"errors":      []string{},
-			"message":     "订阅内容中没有解析到节点",
+			"message":     "订阅获取失败或内容中没有解析到节点，请检查订阅链接是否可访问",
 		})
 		return
 	}
@@ -454,42 +454,6 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 		"total":       len(links),
 		"message":     fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imported),
 	})
-}
-
-// subscriptionMirrors 公共 GitHub 加速镜像前缀，用于直连失败时的兜底尝试
-var subscriptionMirrors = []string{
-	"https://ghfast.top/",
-	"https://ghproxy.net/",
-	"https://gh-proxy.com/",
-}
-
-// subscriptionCandidateURLs 生成订阅拉取的候选地址：原地址 +（GitHub 托管时）镜像加速地址
-func subscriptionCandidateURLs(rawURL string) []string {
-	candidates := []string{rawURL}
-	lower := strings.ToLower(rawURL)
-	if strings.Contains(lower, "raw.githubusercontent.com") ||
-		strings.Contains(lower, "github.com") ||
-		strings.Contains(lower, "gist.github.com") {
-		for _, mirror := range subscriptionMirrors {
-			candidates = append(candidates, mirror+rawURL)
-		}
-	}
-	return candidates
-}
-
-// fetchSubscriptionNodes 依次尝试候选地址拉取订阅，任一地址成功解析出节点即返回。
-// 注意: FetchNodesFromURLs 对单地址失败只记录日志不返回错误，因此需按返回节点数判断是否成功。
-func fetchSubscriptionNodes(svc *config_update.ConfigUpdateService, rawURL string) ([]map[string]interface{}, error) {
-	for _, candidate := range subscriptionCandidateURLs(rawURL) {
-		nodes, err := svc.FetchNodesFromURLs([]string{candidate})
-		if err != nil {
-			continue
-		}
-		if len(nodes) > 0 {
-			return nodes, nil
-		}
-	}
-	return nil, fmt.Errorf("无法连接订阅源（网络可能无法访问该地址，已尝试直连与加速镜像），请检查订阅链接或为服务器配置 HTTP(S)_PROXY 代理")
 }
 
 // importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细。
