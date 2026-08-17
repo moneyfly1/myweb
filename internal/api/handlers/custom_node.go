@@ -40,6 +40,14 @@ func GetCustomNodes(c *gin.Context) {
 			query = query.Where("is_active = ?", false)
 		}
 	}
+	if source := c.Query("source"); source != "" {
+		if source == "manual" {
+			// 历史数据未记录来源（空值），按手动添加处理
+			query = query.Where("source = ? OR source = '' OR source IS NULL", source)
+		} else {
+			query = query.Where("source = ?", source)
+		}
+	}
 	if search := c.Query("search"); search != "" {
 		sanitizedSearch := utils.SanitizeSearchKeyword(search)
 		escapedSearch := utils.EscapeLikePattern(sanitizedSearch)
@@ -303,6 +311,7 @@ func CreateCustomNode(c *gin.Context) {
 			IsActive:         true,
 			ExpireTime:       req.ExpireTime,
 			FollowUserExpire: req.FollowUserExpire,
+			Source:           "manual",
 		}
 
 		if req.Preview {
@@ -343,6 +352,7 @@ func CreateCustomNode(c *gin.Context) {
 		IsActive:         true,
 		ExpireTime:       req.ExpireTime,
 		FollowUserExpire: req.FollowUserExpire,
+		Source:           "manual",
 	}
 
 	if err := db.Create(&customNode).Error; err != nil {
@@ -365,7 +375,7 @@ func ImportCustomNodeLinks(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	imported, errorCount, errors := importCustomNodesFromLinks(db, req.Links)
+	imported, errorCount, errors := importCustomNodesFromLinks(db, req.Links, "link")
 	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
 	if imported > 0 {
 		clearNodeCaches()
@@ -432,7 +442,7 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	imported, errorCount, errors := importCustomNodesFromLinks(db, links)
+	imported, errorCount, errors := importCustomNodesFromLinks(db, links, "subscription")
 	utils.CreateAuditLogSimple(c, "import_custom_node_subscription", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点订阅 %s 解析 %d 个 成功 %d 失败 %d", urlStr, len(links), imported, errorCount))
 	if imported > 0 {
 		clearNodeCaches()
@@ -446,8 +456,9 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 	})
 }
 
-// importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细
-func importCustomNodesFromLinks(db *gorm.DB, links []string) (imported, errorCount int, errors []string) {
+// importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细。
+// source 标识节点来源: manual / link / subscription
+func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imported, errorCount int, errors []string) {
 	for _, link := range links {
 		link = strings.TrimSpace(link)
 		if link == "" {
@@ -478,6 +489,7 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string) (imported, errorCou
 			Config:   configStr,
 			Status:   "inactive",
 			IsActive: true,
+			Source:   source,
 		}
 
 		if err := db.Create(&customNode).Error; err != nil {

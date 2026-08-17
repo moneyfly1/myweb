@@ -18,6 +18,7 @@ type CustomNode struct {
 	LastTest         *time.Time `json:"last_test,omitempty"`      // 最后测试时间
 	ExpireTime       *time.Time `json:"expire_time,omitempty"`
 	FollowUserExpire bool       `gorm:"default:false" json:"follow_user_expire"`
+	Source           string     `gorm:"type:varchar(20);default:''" json:"source"` // 节点来源: manual / link / subscription
 	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
