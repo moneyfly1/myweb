@@ -363,6 +363,20 @@
               </div>
             </div>
           </el-tab-pane>
+          <el-tab-pane label="订阅导入" name="subscription">
+            <div class="import-section">
+              <el-alert title="粘贴订阅链接，系统自动拉取并解析（支持 base64 订阅、Clash YAML、节点链接列表等格式）" type="info" :closable="false" show-icon />
+              <el-input
+                v-model="subUrlInput"
+                placeholder="请输入订阅链接，如 https://example.com/sub?token=xxx"
+                class="subscription-url-input"
+                clearable
+              />
+              <div class="subscription-tip">
+                导入前请确认订阅链接可正常访问；解析出的节点将自动添加为专线节点。
+              </div>
+            </div>
+          </el-tab-pane>
           <el-tab-pane label="手动填写" name="manual">
           </el-tab-pane>
         </el-tabs>
@@ -435,7 +449,16 @@
           </template>
         </FormActionBar>
         <FormActionBar
-          v-else
+          v-if="!editingNode && addNodeTab === 'subscription'"
+          :loading="importingSubscription"
+          :disabled="!subUrlInput"
+          submit-text="导入订阅"
+          cancel-text="取消"
+          @cancel="showAddDialog = false"
+          @submit="importSubscription"
+        />
+        <FormActionBar
+          v-if="editingNode || addNodeTab === 'manual'"
           :loading="saving"
           submit-text="保存"
           @cancel="showAddDialog = false"
@@ -730,6 +753,8 @@ export default {
     
     const saving = ref(false)
     const parsing = ref(false)
+    const importingSubscription = ref(false)
+    const subUrlInput = ref('')
     const customNodes = ref([])
     const selectedNodes = ref([])
     const showAddDialog = ref(false)
@@ -903,6 +928,7 @@ export default {
       editingNode.value = null
       addNodeTab.value = 'link'
       nodeLinkInput.value = ''
+      subUrlInput.value = ''
       parsedNode.value = null
       resetNodeForm()
       showAddDialog.value = true
@@ -911,6 +937,7 @@ export default {
       editingNode.value = null
       resetNodeForm()
       nodeLinkInput.value = ''
+      subUrlInput.value = ''
       parsedNode.value = null
     }
     const editNode = (node) => {
@@ -1105,6 +1132,31 @@ export default {
       } catch { ElMessage.error('导入失败') }
       finally { saving.value = false }
     }
+    const importSubscription = async () => {
+      const url = (subUrlInput.value || '').trim()
+      if (!url) {
+        ElMessage.warning('请输入订阅链接')
+        return
+      }
+      importingSubscription.value = true
+      try {
+        const res = await adminAPI.importCustomNodeSubscription(url)
+        const data = res.data?.data ?? {}
+        const imported = data.imported ?? 0
+        const total = data.total ?? imported
+        if (imported > 0) {
+          ElMessage.success(`订阅解析出 ${total} 个节点，成功导入 ${imported} 个`)
+          showAddDialog.value = false
+          loadCustomNodes()
+        } else {
+          ElMessage.warning(res.data?.message || '订阅中没有解析到节点')
+        }
+      } catch (e) {
+        ElMessage.error('导入订阅失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        importingSubscription.value = false
+      }
+    }
     const viewLink = async (node) => {
       try {
         const res = await adminAPI.getCustomNodeLink(node.id)
@@ -1276,7 +1328,7 @@ export default {
       showAddDialog, showLinkDialog, showAssignDialog, addNodeTab,
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
       nodeTypeGroups,
-      nodeLinkInput, parsedNode, nodeLink, testingFromLink,
+      nodeLinkInput, parsedNode, nodeLink, testingFromLink, subUrlInput, importingSubscription,
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
       loadingUsers, batchAssigning, assignExtraData, subscriptionTypeDesc, deviceLimitDesc,
       batchTesting, batchDeleting, batchUnassigning,
@@ -1284,7 +1336,7 @@ export default {
       deactivateSourceAfterMigrate, migratingAssignments,
       loadCustomNodes, handleFilterChange, resetFilters, handleSelectionChange, handleMobileSelect, handleGridSelect,
       handleCommand, openCreateNodeDialog, handleNodeDrawerClosed, editNode, saveNode, deleteNode, toggleNodeStatus,
-      batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, viewLink, copyLink,
+      batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, importSubscription, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
       handleUserSearch, handleUnassign, batchUnassignAssignedUsers, openMigrateDialog, migrateAssignments,
       getStatusType, getStatusText, getProtocolLabel, getNodeServer, formatExpire, formatTime, isExpired,
@@ -1683,6 +1735,52 @@ export default {
   .search-user-row :deep(.el-button) {
     min-height: 44px;
     touch-action: manipulation;
+  }
+}
+
+.import-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  .link-textarea {
+    width: 100%;
+  }
+
+  .subscription-url-input {
+    width: 100%;
+  }
+
+  .subscription-tip {
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.5;
+  }
+
+  .parsed-preview {
+    padding: 12px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #f5f7fa;
+
+    .preview-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 6px;
+    }
+
+    .preview-row {
+      font-size: 12px;
+      color: #606266;
+      line-height: 1.8;
+      word-break: break-all;
+
+      span {
+        color: #909399;
+        margin-right: 4px;
+      }
+    }
   }
 }
 </style>

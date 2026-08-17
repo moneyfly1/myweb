@@ -365,11 +365,90 @@ func ImportCustomNodeLinks(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	imported := 0
-	errorCount := 0
-	errors := make([]string, 0)
+	imported, errorCount, errors := importCustomNodesFromLinks(db, req.Links)
+	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
+	if imported > 0 {
+		clearNodeCaches()
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"imported":    imported,
+		"error_count": errorCount,
+		"errors":      errors,
+		"message":     fmt.Sprintf("成功导入 %d 个节点", imported),
+	})
+}
 
-	for _, link := range req.Links {
+// ImportCustomNodeSubscription 从订阅链接拉取并自动解析节点，导入为专线节点
+func ImportCustomNodeSubscription(c *gin.Context) {
+	var req struct {
+		URL string `json:"url" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+
+	urlStr := strings.TrimSpace(req.URL)
+	if urlStr == "" || (!strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://")) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请输入有效的 http/https 订阅链接", nil)
+		return
+	}
+
+	svc := config_update.NewConfigUpdateService()
+	nodes, err := svc.FetchNodesFromURLs([]string{urlStr})
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		return
+	}
+	if len(nodes) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"imported":    0,
+			"error_count": 0,
+			"errors":      []string{},
+			"message":     "订阅内容中没有解析到节点",
+		})
+		return
+	}
+
+	links := make([]string, 0, len(nodes))
+	seen := make(map[string]bool)
+	for _, n := range nodes {
+		link, _ := n["url"].(string)
+		link = strings.TrimSpace(link)
+		if link != "" && !seen[link] {
+			seen[link] = true
+			links = append(links, link)
+		}
+	}
+	if len(links) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"imported":    0,
+			"error_count": 0,
+			"errors":      []string{},
+			"message":     "订阅内容中没有解析到节点",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	imported, errorCount, errors := importCustomNodesFromLinks(db, links)
+	utils.CreateAuditLogSimple(c, "import_custom_node_subscription", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点订阅 %s 解析 %d 个 成功 %d 失败 %d", urlStr, len(links), imported, errorCount))
+	if imported > 0 {
+		clearNodeCaches()
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"imported":    imported,
+		"error_count": errorCount,
+		"errors":      errors,
+		"total":       len(links),
+		"message":     fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imported),
+	})
+}
+
+// importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细
+func importCustomNodesFromLinks(db *gorm.DB, links []string) (imported, errorCount int, errors []string) {
+	for _, link := range links {
 		link = strings.TrimSpace(link)
 		if link == "" {
 			continue
@@ -409,16 +488,7 @@ func ImportCustomNodeLinks(c *gin.Context) {
 
 		imported++
 	}
-	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
-	if imported > 0 {
-		clearNodeCaches()
-	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"imported":    imported,
-		"error_count": errorCount,
-		"errors":      errors,
-		"message":     fmt.Sprintf("成功导入 %d 个节点", imported),
-	})
+	return imported, errorCount, errors
 }
 
 func UpdateCustomNode(c *gin.Context) {

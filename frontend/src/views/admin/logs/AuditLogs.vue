@@ -127,6 +127,7 @@ const ACTION_TYPE_MAP = {
   batch_assign_custom_nodes: '批量分配专线节点', batch_unassign_custom_nodes: '批量取消专线分配',
   migrate_custom_node_assignments: '迁移专线分配',
   assign_custom_node: '分配专线节点', unassign_custom_node: '取消专线分配',
+  import_custom_node_subscription: '导入专线订阅',
   test_node: '测试节点', batch_test_nodes: '批量测试节点',
   test_custom_node: '测试专线节点', batch_test_custom_nodes: '批量测试专线节点',
   create_admin_notification: '创建通知', delete_admin_notification: '删除通知',
