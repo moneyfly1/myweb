@@ -1,8 +1,8 @@
 <template>
   <div class="audit-log-list logs-page">
     <div class="filter-bar desktop-only">
-      <el-input v-model="filter.keyword" placeholder="搜索操作描述/邮箱" clearable class="filter-keyword" @keyup.enter="fetch" />
-      <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="filter-date" />
+      <el-input v-model="filter.keyword" placeholder="搜索操作描述/邮箱" clearable class="filter-keyword" @input="debouncedFetch" @clear="fetch" @keyup.enter="fetch" />
+      <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="filter-date" @change="fetch" />
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
     </div>
@@ -84,6 +84,7 @@
 </template>
 <script setup>
 import { ref, onMounted } from 'vue'
+import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
@@ -291,6 +292,9 @@ async function fetch() {
     loading.value = false
   }
 }
+
+// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+const debouncedFetch = debounce(fetch, 500)
 
 function resetFilter() {
   filter.value = { keyword: '', timeRange: null }

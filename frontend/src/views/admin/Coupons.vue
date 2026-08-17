@@ -15,6 +15,8 @@
             placeholder="搜索优惠券码或名称"
             class="mobile-search-input"
             clearable
+            @input="debouncedSearchCoupons"
+            @clear="searchCoupons"
             @keyup.enter="searchCoupons"
           />
           <el-button 
@@ -49,14 +51,16 @@
         placeholder="搜索优惠券码或名称"
         class="filter-keyword"
         clearable
+        @input="debouncedSearchCoupons"
         @clear="searchCoupons"
+        @keyup.enter="searchCoupons"
       />
-      <el-select v-model="filters.status" placeholder="状态筛选" clearable class="filter-select">
+      <el-select v-model="filters.status" placeholder="状态筛选" clearable class="filter-select" @change="searchCoupons">
         <el-option label="有效" value="active" />
         <el-option label="无效" value="inactive" />
         <el-option label="已过期" value="expired" />
       </el-select>
-      <el-select v-model="filters.type" placeholder="类型筛选" clearable class="filter-select">
+      <el-select v-model="filters.type" placeholder="类型筛选" clearable class="filter-select" @change="searchCoupons">
         <el-option label="折扣" value="discount" />
         <el-option label="固定金额" value="fixed" />
         <el-option label="赠送天数" value="free_days" />
@@ -80,14 +84,14 @@
       <div class="filter-drawer-content">
         <el-form label-width="100px">
           <el-form-item label="状态">
-            <el-select v-model="filters.status" placeholder="选择状态" clearable class="full-width-control">
+            <el-select v-model="filters.status" placeholder="选择状态" clearable class="full-width-control" @change="searchCoupons">
               <el-option label="有效" value="active" />
               <el-option label="无效" value="inactive" />
               <el-option label="已过期" value="expired" />
             </el-select>
           </el-form-item>
           <el-form-item label="类型">
-            <el-select v-model="filters.type" placeholder="选择类型" clearable class="full-width-control">
+            <el-select v-model="filters.type" placeholder="选择类型" clearable class="full-width-control" @change="searchCoupons">
               <el-option label="折扣" value="discount" />
               <el-option label="固定金额" value="fixed" />
               <el-option label="赠送天数" value="free_days" />
@@ -355,6 +359,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
 import { couponAPI, packageAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -439,6 +444,8 @@ const searchCoupons = () => {
   pagination.page = 1
   loadCoupons()
 }
+// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+const debouncedSearchCoupons = debounce(searchCoupons, 500)
 const handlePageSizeChange = () => {
   pagination.page = 1
   loadCoupons()

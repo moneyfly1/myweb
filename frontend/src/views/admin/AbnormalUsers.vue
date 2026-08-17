@@ -21,6 +21,7 @@
                 value-format="YYYY-MM-DD"
                 class="filter-date-picker"
                 clearable
+                @change="applyFilters"
               />
             </div>
             <div class="filter-item">
@@ -31,6 +32,7 @@
                 :max="100"
                 placeholder="大于等于"
                 class="filter-input-number"
+                @change="applyFilters"
               />
               <span class="filter-unit">次</span>
             </div>
@@ -42,12 +44,13 @@
                 :max="100"
                 placeholder="大于等于"
                 class="filter-input-number"
+                @change="applyFilters"
               />
               <span class="filter-unit">次</span>
             </div>
             <div class="filter-item">
               <label class="filter-label">风险等级：</label>
-              <el-select v-model="filters.riskLevel" placeholder="全部" clearable class="filter-select">
+              <el-select v-model="filters.riskLevel" placeholder="全部" clearable class="filter-select" @change="applyFilters">
                 <el-option label="高危" value="high" />
                 <el-option label="中危" value="medium" />
                 <el-option label="低危" value="low" />
@@ -55,7 +58,7 @@
             </div>
             <div class="filter-item">
               <label class="filter-label">异常类型：</label>
-              <el-select v-model="filters.abnormalType" placeholder="全部" clearable class="filter-select">
+              <el-select v-model="filters.abnormalType" placeholder="全部" clearable class="filter-select" @change="applyFilters">
                 <el-option label="账户禁用" value="disabled" />
                 <el-option label="设备超限" value="device_over_limit" />
                 <el-option label="多IP访问" value="multi_ip" />

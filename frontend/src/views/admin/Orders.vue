@@ -33,11 +33,13 @@
       <!-- 手机端搜索/筛选栏 (优化布局) -->
       <div class="mobile-action-bar" v-if="isMobile">
         <div class="mobile-search-row">
-          <el-input 
-            v-model="searchForm.keyword" 
-            placeholder="搜索订单..." 
+          <el-input
+            v-model="searchForm.keyword"
+            placeholder="搜索订单..."
             class="mobile-search-input"
             clearable
+            @input="debouncedSearchOrders"
+            @clear="searchOrders"
             @keyup.enter="searchOrders"
           >
             <template #prefix>
@@ -66,16 +68,18 @@
       <!-- 电脑端搜索表单 (保持不变) -->
       <el-form :inline="true" :model="searchForm" class="search-form list-filter-form" v-else>
         <el-form-item label="搜索">
-          <el-input 
-            v-model="searchForm.keyword" 
+          <el-input
+            v-model="searchForm.keyword"
             placeholder="输入订单号、时间戳、用户邮箱或用户名进行搜索"
             class="desktop-search-input"
             clearable
+            @input="debouncedSearchOrders"
+            @clear="searchOrders"
             @keyup.enter="searchOrders"
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="选择状态" class="status-filter-select">
+          <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="status-filter-select" @change="searchOrders">
             <el-option label="全部" value="" />
             <el-option label="待支付" value="pending" />
             <el-option label="已支付" value="paid" />
@@ -742,6 +746,7 @@ import {
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
 import PaginationBar from '@/components/PaginationBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -1025,6 +1030,8 @@ export default {
       currentPage.value = 1
       activeTab.value === 'recharges' ? loadRecharges() : loadOrders()
     }
+    // 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+    const debouncedSearchOrders = debounce(searchOrders, 500)
 
     const resetSearch = () => {
       searchForm.keyword = ''
@@ -1438,7 +1445,7 @@ export default {
       mobileOrderFields, mobileRechargeFields,
       
       // Actions
-      searchOrders, resetSearch, handleTabChange,
+      searchOrders, debouncedSearchOrders, resetSearch, handleTabChange,
       handleSizeChange, handleCurrentChange, handleSelectionChange,
       isOrderSelectable, isRechargeRecord,
       viewOrder, previewImage, markAsPaid, cancelOrder, deleteOrder, refundOrder, canRefundOrder,

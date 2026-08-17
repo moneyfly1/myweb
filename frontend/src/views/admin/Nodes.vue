@@ -71,6 +71,8 @@
               v-model="searchKeyword"
               placeholder="搜索节点名称、服务器地址或域名..."
               clearable
+              @input="debouncedApplyNodeFilters"
+              @clear="applyNodeFilters"
               @keyup.enter="applyNodeFilters"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
@@ -365,6 +367,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmDelete } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 export default {
   name: 'AdminNodes',
   components: { 
@@ -442,6 +445,8 @@ export default {
       pagination.page = 1
       loadNodes()
     }
+    // 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+    const debouncedApplyNodeFilters = debounce(applyNodeFilters, 500)
     const resetNodeFilters = () => {
       Object.assign(filters, { status: '', is_active: '', is_manual: '', region: '', type: '' })
       searchKeyword.value = ''
@@ -637,7 +642,7 @@ export default {
       nodes, selectedNodes, showAddDialog, editingNode,
       filters, pagination, nodeForm, regions, types, allNodeTypes,
       searchKeyword, addNodeTab, nodeLinkInput, parsedNode, mobileNodeFields,
-      loadNodes, applyNodeFilters, resetNodeFilters, handleSelectionChange, handleMobileSelect,
+      loadNodes, applyNodeFilters, debouncedApplyNodeFilters, resetNodeFilters, handleSelectionChange, handleMobileSelect,
       handleAdd, handleCommand, editNode, saveNode, deleteNode,
       batchTest, batchDelete, testNode, toggleNodeStatus,
       parseNodeLink, batchImportLinks, copyNodeLink, nodeLink,
