@@ -67,7 +67,8 @@ func ParseNodeLink(link string) (*ProxyNode, error) {
 			if err != nil {
 				return nil, err
 			}
-			if node != nil && node.Name == "" && fragment != "" {
+			// #fragment 是订阅中的原始节点名称，必须原样保留，覆盖解析器生成的默认名
+			if node != nil && fragment != "" {
 				node.Name = fragment
 			}
 			return node, err
