@@ -42,6 +42,8 @@
             placeholder="搜索邮箱地址"
             class="mobile-search-input"
             clearable
+            @input="debouncedApplyFilter"
+            @clear="applyFilter"
             @keyup.enter="applyFilter"
           />
           <el-button 
@@ -55,11 +57,12 @@
         </div>
       </div>
       <div class="mobile-filter-buttons">
-        <el-select 
-          v-model="filterForm.status" 
-          placeholder="选择状态" 
+        <el-select
+          v-model="filterForm.status"
+          placeholder="选择状态"
           clearable
           class="mobile-status-select"
+          @change="applyFilter"
         >
           <el-option label="待发送" value="pending" />
           <el-option label="发送中" value="sending" />
@@ -72,6 +75,7 @@
           placeholder="邮件类型"
           clearable
           class="mobile-status-select"
+          @change="applyFilter"
         >
           <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
         </el-select>
@@ -88,7 +92,7 @@
     <el-card class="filter-section desktop-only">
       <el-form :inline="true" :model="filterForm" class="filter-form">
         <el-form-item label="状态">
-          <el-select v-model="filterForm.status" placeholder="选择状态" clearable class="status-filter-select">
+          <el-select v-model="filterForm.status" placeholder="选择状态" clearable class="status-filter-select" @change="applyFilter">
             <el-option label="待发送" value="pending" />
             <el-option label="发送中" value="sending" />
             <el-option label="已发送" value="sent" />
@@ -97,10 +101,10 @@
           </el-select>
         </el-form-item>
         <el-form-item label="邮箱">
-          <el-input v-model="filterForm.email" placeholder="搜索邮箱地址" clearable />
+          <el-input v-model="filterForm.email" placeholder="搜索邮箱地址" clearable @input="debouncedApplyFilter" @clear="applyFilter" />
         </el-form-item>
         <el-form-item label="邮件类型">
-          <el-select v-model="filterForm.email_type" placeholder="选择邮件类型" clearable class="status-filter-select">
+          <el-select v-model="filterForm.email_type" placeholder="选择邮件类型" clearable class="status-filter-select" @change="applyFilter">
             <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
@@ -451,6 +455,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { debounce } from '@/composables/useDebounce'
 const STATUS_MAP = {
   pending: { tag: 'warning', text: '待发送' },
   sending: { tag: 'info', text: '发送中' },
@@ -639,6 +644,8 @@ export default {
       fetchEmailQueue()
       fetchStatistics() // 筛选时也更新统计数据
     }
+    // 搜索输入实时生效，无需再次点击筛选按钮（500ms 防抖）
+    const debouncedApplyFilter = debounce(applyFilter, 500)
     const resetFilter = () => {
       Object.assign(filterForm, { status: '', email: '', email_type: '' })
       pagination.page = 1
@@ -849,6 +856,7 @@ export default {
       onIframeLoad,
       refreshQueue,
       applyFilter,
+      debouncedApplyFilter,
       resetFilter,
       filterByStatus,
       viewEmailDetail,

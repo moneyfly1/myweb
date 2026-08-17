@@ -1,11 +1,11 @@
 <template>
   <div class="log-list logs-page">
     <div class="filter-bar desktop-only">
-      <el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable class="filter-keyword" @keyup.enter="fetch" />
-      <el-select v-model="filter.email_type" placeholder="邮件类型" clearable class="filter-select-md">
+      <el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable class="filter-keyword" @input="debouncedFetch" @clear="fetch" @keyup.enter="fetch" />
+      <el-select v-model="filter.email_type" placeholder="邮件类型" clearable class="filter-select-md" @change="fetch">
         <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
       </el-select>
-      <el-select v-model="filter.status" placeholder="状态" clearable class="filter-select-sm">
+      <el-select v-model="filter.status" placeholder="状态" clearable class="filter-select-sm" @change="fetch">
         <el-option label="待发送" value="pending" />
         <el-option label="已发送" value="sent" />
         <el-option label="发送失败" value="failed" />
@@ -18,27 +18,28 @@
         end-placeholder="结束时间"
         value-format="YYYY-MM-DD HH:mm:ss"
         class="filter-date"
+        @change="fetch"
       />
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
     </div>
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
-        <el-form-item label="收件人"><el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable /></el-form-item>
+        <el-form-item label="收件人"><el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable @input="debouncedFetch" @clear="fetch" /></el-form-item>
         <el-form-item label="邮件类型">
-          <el-select v-model="filter.email_type" placeholder="邮件类型" clearable class="full-width-control">
+          <el-select v-model="filter.email_type" placeholder="邮件类型" clearable class="full-width-control" @change="fetch">
             <el-option v-for="(label, value) in EMAIL_TYPE_MAP" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="filter.status" placeholder="状态" clearable class="full-width-control">
+          <el-select v-model="filter.status" placeholder="状态" clearable class="full-width-control" @change="fetch">
             <el-option label="待发送" value="pending" />
             <el-option label="已发送" value="sent" />
             <el-option label="发送失败" value="failed" />
           </el-select>
         </el-form-item>
         <el-form-item label="时间范围">
-          <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="full-width-control" />
+          <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="full-width-control" @change="fetch" />
         </el-form-item>
         <div class="mobile-filter-actions">
           <el-button type="primary" @click="fetch" :loading="loading" class="mobile-action-btn">搜索</el-button>
@@ -115,6 +116,7 @@
 </template>
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import { EMAIL_TYPE_MAP, getEmailTypeText } from '@/utils/statusMaps'
@@ -166,6 +168,9 @@ async function fetch() {
     loading.value = false
   }
 }
+
+// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+const debouncedFetch = debounce(fetch, 500)
 
 function resetFilter() {
   filter.value = { keyword: '', email_type: '', status: '', timeRange: null }

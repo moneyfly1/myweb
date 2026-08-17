@@ -11,7 +11,7 @@
         <div class="desktop-only system-log-filter-grid">
           <div class="system-log-filter-field">
               <el-form-item label="日志类型">
-                <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable>
+                <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable @change="applyFilter">
                   <el-option label="全部" value="" />
                   <el-option label="错误" value="error" />
                   <el-option label="警告" value="warning" />
@@ -22,7 +22,7 @@
           </div>
           <div class="system-log-filter-field">
               <el-form-item label="日志级别">
-                <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable>
+                <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable @change="applyFilter">
                   <el-option label="全部" value="" />
                   <el-option label="严重" value="critical" />
                   <el-option label="错误" value="error" />
@@ -40,6 +40,7 @@
                   placeholder="选择开始时间"
                   format="YYYY-MM-DD HH:mm:ss"
                   value-format="YYYY-MM-DD HH:mm:ss"
+                  @change="applyFilter"
                 />
               </el-form-item>
           </div>
@@ -51,6 +52,7 @@
                   placeholder="选择结束时间"
                   format="YYYY-MM-DD HH:mm:ss"
                   value-format="YYYY-MM-DD HH:mm:ss"
+                  @change="applyFilter"
                 />
               </el-form-item>
           </div>
@@ -60,12 +62,14 @@
                   v-model="filterForm.keyword"
                   placeholder="搜索日志内容、模块、用户等"
                   clearable
+                  @input="debouncedApplyFilter"
+                  @clear="applyFilter"
                 />
               </el-form-item>
           </div>
           <div class="system-log-filter-field">
               <el-form-item label="任务类型">
-                <el-select v-model="filterForm.task_type" placeholder="选择任务类型" clearable>
+                <el-select v-model="filterForm.task_type" placeholder="选择任务类型" clearable @change="applyFilter">
                   <el-option label="全部" value="" />
                   <el-option label="定时任务调度器" value="scheduler" />
                   <el-option label="邮件队列" value="email_queue" />
@@ -99,7 +103,7 @@
         <div class="mobile-only">
           <el-form :model="filterForm" label-position="top">
             <el-form-item label="日志类型">
-              <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable class="full-width-control">
+              <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable class="full-width-control" @change="applyFilter">
                 <el-option label="全部" value="" />
                 <el-option label="错误" value="error" />
                 <el-option label="警告" value="warning" />
@@ -108,7 +112,7 @@
               </el-select>
             </el-form-item>
             <el-form-item label="日志级别">
-              <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable class="full-width-control">
+              <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable class="full-width-control" @change="applyFilter">
                 <el-option label="全部" value="" />
                 <el-option label="严重" value="critical" />
                 <el-option label="错误" value="error" />
@@ -125,6 +129,7 @@
                 format="YYYY-MM-DD HH:mm:ss"
                 value-format="YYYY-MM-DD HH:mm:ss"
                 class="full-width-control"
+                @change="applyFilter"
               />
             </el-form-item>
             <el-form-item label="结束时间">
@@ -135,6 +140,7 @@
                 format="YYYY-MM-DD HH:mm:ss"
                 value-format="YYYY-MM-DD HH:mm:ss"
                 class="full-width-control"
+                @change="applyFilter"
               />
             </el-form-item>
             <el-form-item label="关键词搜索">
@@ -142,10 +148,12 @@
                 v-model="filterForm.keyword"
                 placeholder="搜索日志内容、模块、用户等"
                 clearable
+                @input="debouncedApplyFilter"
+                @clear="applyFilter"
               />
             </el-form-item>
             <el-form-item label="模块">
-              <el-select v-model="filterForm.module" placeholder="选择模块" clearable class="full-width-control">
+              <el-select v-model="filterForm.module" placeholder="选择模块" clearable class="full-width-control" @change="applyFilter">
                 <el-option label="全部" value="" />
                 <el-option label="用户管理" value="user" />
                 <el-option label="订单管理" value="order" />
@@ -160,6 +168,8 @@
                 v-model="filterForm.username"
                 placeholder="输入用户名"
                 clearable
+                @input="debouncedApplyFilter"
+                @clear="applyFilter"
               />
             </el-form-item>
           </el-form>
@@ -421,6 +431,7 @@ import PaginationBar from '@/components/PaginationBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 export default {
   name: 'AdminSystemLogs',
   components: {
@@ -529,6 +540,8 @@ export default {
       loadLogs()
       loadLogsStats()
     }
+    // 关键词输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+    const debouncedApplyFilter = debounce(applyFilter, 500)
     const resetFilter = () => {
       Object.keys(filterForm).forEach(key => {
         filterForm[key] = ''
@@ -749,6 +762,7 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       logDetailsVisible,
       selectedLog,
       applyFilter,
+      debouncedApplyFilter,
       resetFilter,
       filterByLevel,
       exportLogs,
