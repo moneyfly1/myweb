@@ -617,6 +617,7 @@ export const adminAPI = {
   getCustomNodes: (params) => api.get('/admin/custom-nodes', { params }),
   createCustomNode: (data) => api.post('/admin/custom-nodes', data),
   importCustomNodeLinks: (links) => api.post('/admin/custom-nodes/import-links', { links }),
+  importCustomNodeSubscription: (url) => api.post('/admin/custom-nodes/import-subscription', { url }),
   updateCustomNode: (id, data) => api.put(`/admin/custom-nodes/${id}`, data),
   deleteCustomNode: (id) => api.delete(`/admin/custom-nodes/${id}`),
   batchDeleteCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-delete', { node_ids: nodeIds }),

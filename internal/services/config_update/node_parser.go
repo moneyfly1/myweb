@@ -48,9 +48,29 @@ var protocolParsers = map[string]nodeParser{
 // ParseNodeLink 解析任意支持的代理链接
 func ParseNodeLink(link string) (*ProxyNode, error) {
 	link = strings.TrimSpace(link)
+
+	// 剥离 #fragment（节点备注名），避免影响 base64 等负载解析；
+	// 解析成功后若无名称，则使用 fragment 作为节点名。
+	baseLink := link
+	fragment := ""
+	if idx := strings.Index(link, "#"); idx >= 0 {
+		baseLink = link[:idx]
+		fragment = strings.TrimSpace(link[idx+1:])
+		if decoded, err := url.QueryUnescape(fragment); err == nil {
+			fragment = decoded
+		}
+	}
+
 	for prefix, parser := range protocolParsers {
-		if strings.HasPrefix(link, prefix) {
-			return parser(link)
+		if strings.HasPrefix(baseLink, prefix) {
+			node, err := parser(baseLink)
+			if err != nil {
+				return nil, err
+			}
+			if node != nil && node.Name == "" && fragment != "" {
+				node.Name = fragment
+			}
+			return node, err
 		}
 	}
 	if len(link) > 10 {
