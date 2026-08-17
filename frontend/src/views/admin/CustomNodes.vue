@@ -1192,7 +1192,11 @@ export default {
           ElMessage.warning(res.data?.message || '订阅中没有解析到节点')
         }
       } catch (e) {
-        ElMessage.error('导入订阅失败: ' + (e.response?.data?.message || e.message))
+        if (e.code === 'ECONNABORTED' || (e.message && e.message.includes('timeout'))) {
+          ElMessage.error('订阅导入超时：订阅源响应过慢，请检查链接是否可访问后重试')
+        } else {
+          ElMessage.error('导入订阅失败: ' + (e.response?.data?.message || e.message))
+        }
       } finally {
         importingSubscription.value = false
       }
