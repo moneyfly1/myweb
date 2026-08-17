@@ -617,7 +617,10 @@ export const adminAPI = {
   getCustomNodes: (params) => api.get('/admin/custom-nodes', { params }),
   createCustomNode: (data) => api.post('/admin/custom-nodes', data),
   importCustomNodeLinks: (links) => api.post('/admin/custom-nodes/import-links', { links }),
-  importCustomNodeSubscription: (url) => api.post('/admin/custom-nodes/import-subscription', { url }),
+  // 订阅导入需要从外部订阅源拉取并解析，耗时远超普通请求：
+  // 后端最多 3 次重试、每次最长 60s（最坏约 186s），故超时设 200s；
+  // _retry 标记跳过 axios 超时自动重试，避免慢订阅源被重复导入。
+  importCustomNodeSubscription: (url) => api.post('/admin/custom-nodes/import-subscription', { url }, { timeout: 200000, _retry: true }),
   updateCustomNode: (id, data) => api.put(`/admin/custom-nodes/${id}`, data),
   deleteCustomNode: (id) => api.delete(`/admin/custom-nodes/${id}`),
   batchDeleteCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-delete', { node_ids: nodeIds }),
