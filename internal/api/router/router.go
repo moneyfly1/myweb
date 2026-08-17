@@ -399,6 +399,7 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/custom-nodes/:id/users", handlers.GetCustomNodeUsers)
 			admin.POST("/custom-nodes", handlers.CreateCustomNode)
 			admin.POST("/custom-nodes/import-links", handlers.ImportCustomNodeLinks)
+			admin.POST("/custom-nodes/import-subscription", handlers.ImportCustomNodeSubscription)
 			admin.POST("/custom-nodes/batch-delete", handlers.BatchDeleteCustomNodes)
 			admin.POST("/custom-nodes/batch-assign", handlers.BatchAssignCustomNodes)
 			admin.POST("/custom-nodes/batch-unassign", handlers.BatchUnassignCustomNodes)
