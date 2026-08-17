@@ -87,6 +87,12 @@
             <el-option label="已激活" value="true" />
             <el-option label="已禁用" value="false" />
           </el-select>
+          <el-select v-model="filters.source" placeholder="来源" clearable @change="handleFilterChange">
+            <el-option label="全部来源" value="" />
+            <el-option label="手动添加" value="manual" />
+            <el-option label="链接导入" value="link" />
+            <el-option label="订阅导入" value="subscription" />
+          </el-select>
           <div class="search-box">
             <el-input
               v-model="searchKeyword"
@@ -142,6 +148,11 @@
               <span :class="row.display_name ? '' : 'text-secondary'">
                 {{ row.display_name || row.name || '-' }}
               </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="来源" :width="90" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="getSourceTagType(row.source)" effect="plain">{{ getSourceText(row.source) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="protocol" label="协议" :width="columnWidths.protocol" resizable>
@@ -212,6 +223,7 @@
                   class="gnc-checkbox"
                 />
                 <span class="gnc-title" :title="node.name">{{ node.name }}</span>
+                <el-tag size="small" :type="getSourceTagType(node.source)" effect="plain">{{ getSourceText(node.source) }}</el-tag>
                 <el-tag :type="getStatusType(node.status)" size="small" effect="dark">
                   {{ getStatusText(node.status) }}
                 </el-tag>
@@ -274,6 +286,10 @@
               <el-tag size="small" :type="getStatusType(node.status)" effect="light">{{ getStatusText(node.status) }}</el-tag>
             </div>
             <div class="card-info-grid">
+              <div class="info-item">
+                <span class="label">来源</span>
+                <span class="value"><el-tag size="small" :type="getSourceTagType(node.source)" effect="plain">{{ getSourceText(node.source) }}</el-tag></span>
+              </div>
               <div class="info-item">
                 <span class="label">协议</span>
                 <span class="value">{{ getProtocolLabel(node.protocol) }}</span>
@@ -798,7 +814,7 @@ export default {
       return acc
     }, {})
     const searchKeyword = ref('')
-    const filters = reactive({ status: '', protocol: '', is_active: '' })
+    const filters = reactive({ status: '', protocol: '', is_active: '', source: '' })
     const pagination = reactive({ page: 1, size: 10, total: 0 })
     const nodeFormRef = ref(null)
     const nodeForm = reactive({
@@ -847,6 +863,16 @@ export default {
       config: [{ required: true, message: '请输入配置', trigger: 'blur' }]
     }
     const getProtocolLabel = (protocol) => nodeTypeLabels[protocol] || protocol || '-'
+    const getSourceText = (source) => ({
+      manual: '手动添加',
+      link: '链接导入',
+      subscription: '订阅导入'
+    }[source] || '手动添加')
+    const getSourceTagType = (source) => ({
+      manual: 'info',
+      link: 'primary',
+      subscription: 'success'
+    }[source] || 'info')
     const parseConfigValue = (config) => {
       if (!config) return null
       if (typeof config === 'object') return config
@@ -876,6 +902,12 @@ export default {
           const list = Array.isArray(raw) ? raw : (raw.data || [])
           customNodes.value = list.map(n => ({...n, testing: false}))
           pagination.total = raw.total || list.length
+          // 删除后当前页可能超出总页数（如删空最后一页），自动回退到有效页并重新加载
+          const maxPage = Math.max(1, Math.ceil(pagination.total / pagination.size))
+          if (pagination.page > maxPage) {
+            pagination.page = maxPage
+            return loadCustomNodes()
+          }
         } else {
           customNodes.value = []
         }
@@ -890,7 +922,7 @@ export default {
       loadCustomNodes()
     }
     const resetFilters = () => {
-      Object.assign(filters, { status: '', protocol: '', is_active: '' })
+      Object.assign(filters, { status: '', protocol: '', is_active: '', source: '' })
       searchKeyword.value = ''
       pagination.page = 1
       loadCustomNodes()
@@ -996,6 +1028,8 @@ export default {
         })
         await adminAPI.deleteCustomNode(node.id)
         ElMessage.success('已删除')
+        selectedNodes.value = selectedNodes.value.filter(n => n.id !== node.id)
+        tableRef.value?.clearSelection()
         loadCustomNodes()
       } catch (error) {
         if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
@@ -1064,6 +1098,7 @@ export default {
         await adminAPI.batchDeleteCustomNodes(selectedNodes.value.map(n => n.id))
         ElMessage.success('批量删除成功')
         selectedNodes.value = []
+        tableRef.value?.clearSelection()
         loadCustomNodes()
       } catch (error) {
         if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
@@ -1339,7 +1374,7 @@ export default {
       batchTest, batchDelete, batchUnassign, parseNodeLink, batchImportLinks, importSubscription, viewLink, copyLink,
       testNode, testNodeFromLink, assignSingleNode, handleBatchAssignClick, handleAssign,
       handleUserSearch, handleUnassign, batchUnassignAssignedUsers, openMigrateDialog, migrateAssignments,
-      getStatusType, getStatusText, getProtocolLabel, getNodeServer, formatExpire, formatTime, isExpired,
+      getStatusType, getStatusText, getProtocolLabel, getSourceText, getSourceTagType, getNodeServer, formatExpire, formatTime, isExpired,
       isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
       Delete, Edit, Link, Refresh, Connection, User,
       editingNode
