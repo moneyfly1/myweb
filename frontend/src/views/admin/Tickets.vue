@@ -15,21 +15,23 @@
         placeholder="搜索工单编号、标题或内容"
         class="keyword-input"
         clearable
+        @input="debouncedLoadTickets"
         @clear="loadTickets"
+        @keyup.enter="loadTickets"
       />
-      <el-select v-model="filters.status" placeholder="状态筛选" clearable class="filter-select">
+      <el-select v-model="filters.status" placeholder="状态筛选" clearable class="filter-select" @change="loadTickets">
         <el-option label="待处理" value="pending" />
         <el-option label="处理中" value="processing" />
         <el-option label="已解决" value="resolved" />
         <el-option label="已关闭" value="closed" />
       </el-select>
-      <el-select v-model="filters.type" placeholder="类型筛选" clearable class="filter-select">
+      <el-select v-model="filters.type" placeholder="类型筛选" clearable class="filter-select" @change="loadTickets">
         <el-option label="技术问题" value="technical" />
         <el-option label="账单问题" value="billing" />
         <el-option label="账户问题" value="account" />
         <el-option label="其他" value="other" />
       </el-select>
-      <el-select v-model="filters.priority" placeholder="优先级筛选" clearable class="filter-select">
+      <el-select v-model="filters.priority" placeholder="优先级筛选" clearable class="filter-select" @change="loadTickets">
         <el-option label="低" value="low" />
         <el-option label="普通" value="normal" />
         <el-option label="高" value="high" />
@@ -391,6 +393,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -453,6 +456,8 @@ const loadTickets = async () => {
     loading.value = false
   }
 }
+// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+const debouncedLoadTickets = debounce(loadTickets, 500)
 const loadStatistics = async () => {
   try {
     const response = await ticketAPI.getTicketStatistics()

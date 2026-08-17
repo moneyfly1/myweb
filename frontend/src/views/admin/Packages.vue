@@ -21,10 +21,12 @@
               v-model="searchForm.name"
               placeholder="搜索套餐名称"
               clearable
+              @input="debouncedSearch"
+              @clear="handleSearch"
             />
           </el-form-item>
           <el-form-item label="状态" class="status-select-item">
-            <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="status-select">
+            <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="status-select" @change="handleSearch">
               <el-option label="启用" value="active" />
               <el-option label="禁用" value="inactive" />
             </el-select>
@@ -66,6 +68,8 @@
               placeholder="搜索套餐名称"
               clearable
               class="mobile-search-input"
+              @input="debouncedSearch"
+              @clear="handleSearch"
               @keyup.enter="handleSearch"
             />
             <el-button 
@@ -79,11 +83,12 @@
           </div>
         </div>
         <div class="mobile-filter-buttons">
-          <el-select 
-            v-model="searchForm.status" 
-            placeholder="选择状态" 
+          <el-select
+            v-model="searchForm.status"
+            placeholder="选择状态"
             clearable
             class="mobile-status-select"
+            @change="handleSearch"
           >
             <el-option label="启用" value="active" />
             <el-option label="禁用" value="inactive" />
@@ -476,6 +481,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, HomeFilled, Search, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { adminAPI, configAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -608,6 +614,7 @@ export default {
       pagination.page = 1
       fetchPackages()
     }
+    const debouncedSearch = debounce(handleSearch, 500)
     const resetSearch = () => {
       Object.assign(searchForm, {
         name: '',
@@ -899,6 +906,7 @@ export default {
       rules,
       isDescriptionManuallyEdited,
       handleSearch,
+      debouncedSearch,
       resetSearch,
       handleSizeChange,
       handleCurrentChange,

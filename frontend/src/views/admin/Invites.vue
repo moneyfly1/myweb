@@ -30,6 +30,8 @@
                   placeholder="邀请人账号或邮箱"
                   clearable
                   class="mobile-search-input"
+                  @input="debouncedSearchCodes"
+                  @clear="searchCodes"
                   @keyup.enter="searchCodes"
                 />
                 <el-button 
@@ -74,23 +76,29 @@
           <div class="desktop-only filter-section">
             <el-form :inline="true" :model="codeFilterForm" class="filter-form">
               <el-form-item label="邀请人">
-                <el-input 
-                  v-model="codeFilterForm.user_query" 
+                <el-input
+                  v-model="codeFilterForm.user_query"
                   placeholder="账号或邮箱"
                   clearable
                   class="filter-input"
+                  @input="debouncedSearchCodes"
+                  @clear="searchCodes"
+                  @keyup.enter="searchCodes"
                 />
               </el-form-item>
               <el-form-item label="邀请码">
-                <el-input 
-                  v-model="codeFilterForm.code" 
+                <el-input
+                  v-model="codeFilterForm.code"
                   placeholder="搜索邀请码"
                   clearable
                   class="filter-input"
+                  @input="debouncedSearchCodes"
+                  @clear="searchCodes"
+                  @keyup.enter="searchCodes"
                 />
               </el-form-item>
               <el-form-item label="状态">
-                <el-select v-model="codeFilterForm.is_active" clearable placeholder="全部" class="status-filter">
+                <el-select v-model="codeFilterForm.is_active" clearable placeholder="全部" class="status-filter" @change="searchCodes">
                   <el-option label="启用" :value="true" />
                   <el-option label="禁用" :value="false" />
                 </el-select>
@@ -209,6 +217,8 @@
                   placeholder="邀请人账号或邮箱"
                   clearable
                   class="mobile-search-input"
+                  @input="debouncedSearchRelations"
+                  @clear="searchRelations"
                   @keyup.enter="searchRelations"
                 />
                 <el-button 
@@ -239,6 +249,8 @@
                   placeholder="被邀请人账号或邮箱"
                   clearable
                   class="mobile-search-input"
+                  @input="debouncedSearchRelations"
+                  @clear="searchRelations"
                   @keyup.enter="searchRelations"
                 />
                 <el-button 
@@ -255,19 +267,25 @@
           <div class="desktop-only filter-section">
             <el-form :inline="true" :model="relationFilterForm" class="filter-form">
               <el-form-item label="邀请人">
-                <el-input 
-                  v-model="relationFilterForm.inviter_query" 
+                <el-input
+                  v-model="relationFilterForm.inviter_query"
                   placeholder="账号或邮箱"
                   clearable
                   class="filter-input"
+                  @input="debouncedSearchRelations"
+                  @clear="searchRelations"
+                  @keyup.enter="searchRelations"
                 />
               </el-form-item>
               <el-form-item label="被邀请人">
-                <el-input 
-                  v-model="relationFilterForm.invitee_query" 
+                <el-input
+                  v-model="relationFilterForm.invitee_query"
                   placeholder="账号或邮箱"
                   clearable
                   class="filter-input"
+                  @input="debouncedSearchRelations"
+                  @clear="searchRelations"
+                  @keyup.enter="searchRelations"
                 />
               </el-form-item>
               <el-form-item>
@@ -506,6 +524,7 @@ import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vu
 import { inviteAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -802,6 +821,8 @@ const searchCodes = () => {
   codePage.value = 1
   loadInviteCodes()
 }
+// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+const debouncedSearchCodes = debounce(searchCodes, 500)
 const resetCodeFilter = () => {
   Object.assign(codeFilterForm, {
     user_query: '',
@@ -814,6 +835,8 @@ const searchRelations = () => {
   relationPage.value = 1
   loadInviteRelations()
 }
+// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
+const debouncedSearchRelations = debounce(searchRelations, 500)
 const resetRelationFilter = () => {
   Object.assign(relationFilterForm, {
     inviter_query: '',

@@ -54,6 +54,8 @@
               placeholder="输入QQ、订阅地址或旧订阅地址查询"
               class="mobile-search-input"
               clearable
+              @input="debouncedSearchSubscriptions"
+              @clear="searchSubscriptions"
               @keyup.enter="searchSubscriptions"
             />
             <el-button 
@@ -155,23 +157,25 @@
       </div>
       <el-form :inline="true" :model="searchForm" class="search-form list-filter-form desktop-only">
         <el-form-item label="搜索">
-          <el-input 
-            v-model="searchForm.keyword" 
+          <el-input
+            v-model="searchForm.keyword"
             placeholder="输入QQ、订阅地址或旧订阅地址进行搜索"
             class="subscription-search-input"
             clearable
+            @input="debouncedSearchSubscriptions"
+            @clear="searchSubscriptions"
             @keyup.enter="searchSubscriptions"
           />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="subscription-status-select">
+          <el-select v-model="searchForm.status" placeholder="选择状态" clearable class="subscription-status-select" @change="searchSubscriptions">
             <el-option label="全部" value="" />
             <el-option label="活跃" value="active" />
             <el-option label="已过期" value="expired" />
           </el-select>
         </el-form-item>
         <el-form-item label="线路">
-          <el-select v-model="searchForm.line_type" placeholder="选择线路类型" clearable class="subscription-status-select">
+          <el-select v-model="searchForm.line_type" placeholder="选择线路类型" clearable class="subscription-status-select" @change="searchSubscriptions">
             <el-option label="全部" value="" />
             <el-option label="仅专线" value="special_only" />
             <el-option label="专线+普通线路" value="special_with_normal" />
@@ -773,6 +777,7 @@ import { safeNavigate } from '@/utils/safeOpen'
 import { formatLocation } from '@/utils/date'
 import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
+import { debounce } from '@/composables/useDebounce'
 import { confirmWarning, confirmDelete, confirmReset, confirmClear } from '@/utils/confirmAction'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -934,6 +939,7 @@ export default {
       currentPage.value = 1
       loadSubscriptions()
     }
+    const debouncedSearchSubscriptions = debounce(searchSubscriptions, 500)
     const resetSearch = () => {
       searchForm.keyword = ''
       searchForm.status = ''
@@ -2095,6 +2101,7 @@ export default {
       lineModeSaving,
       loadSubscriptions,
       searchSubscriptions,
+      debouncedSearchSubscriptions,
       resetSearch,
       handleStatusFilter,
       handleLineTypeFilter,

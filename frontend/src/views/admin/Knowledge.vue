@@ -23,7 +23,7 @@
             <el-select v-model="articleFilter.category_id" placeholder="筛选分类" clearable class="filter-select" @change="loadArticles">
               <el-option v-for="cat in categories" :key="cat.id" :label="cat.name" :value="cat.id" />
             </el-select>
-            <el-input v-model="articleFilter.keyword" placeholder="搜索标题..." clearable class="filter-search" @keyup.enter="loadArticles">
+            <el-input v-model="articleFilter.keyword" placeholder="搜索标题..." clearable class="filter-search" @input="debouncedLoadArticles" @clear="loadArticles" @keyup.enter="loadArticles">
               <template #append>
                 <el-button @click="loadArticles"><el-icon><Search /></el-icon></el-button>
               </template>
@@ -303,6 +303,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmDelete } from '@/utils/confirmAction'
+import { debounce } from '@/composables/useDebounce'
 
 const iconMap = { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View }
 const resolveIcon = (name) => iconMap[name] || Folder
@@ -409,6 +410,9 @@ const loadArticles = async () => {
     loading.value = false
   }
 }
+
+// 关键词输入实时生效，无需再点击搜索按钮（500ms 防抖）
+const debouncedLoadArticles = debounce(loadArticles, 500)
 
 const resetArticleFilter = () => {
   articleFilter.category_id = null
