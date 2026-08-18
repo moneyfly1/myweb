@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -728,13 +729,33 @@ func applyTransportMapping(node *ProxyNode, network, path, host, obfs string) {
 	}
 }
 
+// isValidShortID 校验 REALITY short-id：偶数长度的十六进制，解码后 ≤ 8 字节
+// （2..16 个 hex 字符，与 mihomo RealityMaxShortIDLen=8 一致）。12 位（6 字节）
+// 等合法值必须放行。
+func isValidShortID(s string) bool {
+	if len(s) < 2 || len(s) > 16 || len(s)%2 != 0 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func applyRealityOptions(node *ProxyNode, q url.Values) {
 	reality := make(map[string]any)
 	if pbk := q.Get("pbk"); pbk != "" {
 		reality["public-key"] = pbk
 	}
 	if sid := q.Get("sid"); sid != "" {
-		reality["short-id"] = sid
+		if isValidShortID(sid) {
+			reality["short-id"] = sid
+		} else {
+			// 非法 short-id 直接丢弃，不拒绝整条节点，坏的上游链接优雅降级
+			log.Printf("discarding invalid reality short-id %q", sid)
+		}
 	}
 	if pqv := q.Get("pqv"); pqv != "" {
 		reality["pqv"] = pqv

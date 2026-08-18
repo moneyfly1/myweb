@@ -3,6 +3,7 @@ package config_update
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1887,6 +1888,37 @@ func shouldClashSkipCertVerify(n *ProxyNode) bool {
 	}
 }
 
+var yaml11DateRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`) // YAML 1.1 timestamp 纯日期形式
+
+// yaml11NumericLike 判断字符串是否会被 YAML 1.1 解析器（如 js-yaml 3）解析为
+// 非字符串标量（数字 / 布尔 / null / 时间戳）。命中必须加引号，否则 Clash 系客户端的
+// YAML 预处理会改变类型（典型事故：short-id: 953e8078 → .inf）。
+func yaml11NumericLike(str string) bool {
+	trimmed := strings.TrimSpace(str)
+	if trimmed == "" {
+		return false
+	}
+	switch strings.ToLower(trimmed) {
+	case "true", "false", "yes", "no", "on", "off", "null", "~",
+		".inf", "+.inf", "-.inf", ".nan", "+.nan", "-.nan":
+		return true
+	}
+	plain := strings.ReplaceAll(trimmed, "_", "")
+	if _, err := strconv.ParseInt(plain, 0, 64); err == nil {
+		return true
+	}
+	if _, err := strconv.ParseUint(plain, 0, 64); err == nil {
+		return true
+	}
+	// 关键：ErrRange（数值溢出，如 953e8078 → +Inf）也是数字形式，必须加引号。
+	// 只判 err == nil 会漏掉本 bug —— yaml.v3 对它保持字符串，但 js-yaml 3
+	// 的浮点正则命中并解析成 Infinity。
+	if _, err := strconv.ParseFloat(plain, 64); err == nil || errors.Is(err, strconv.ErrRange) {
+		return true
+	}
+	return yaml11DateRe.MatchString(trimmed)
+}
+
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 	if str == "" {
 		return `""`
@@ -1895,8 +1927,7 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 		strings.HasPrefix(str, " ") || strings.HasSuffix(str, " ") ||
 		strings.HasPrefix(str, "-") || strings.HasPrefix(str, "0x")
 
-	lower := strings.ToLower(strings.TrimSpace(str))
-	if lower == "true" || lower == "false" || lower == "null" || lower == "~" {
+	if yaml11NumericLike(str) {
 		needQuote = true
 	}
 
