@@ -6,11 +6,39 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 )
 
 // CacheService 订阅配置缓存服务
 type CacheService struct{}
+
+// cacheGen 缓存代际标记：每次清除节点/订阅缓存时自增；写入缓存时附带当时的代际，
+// 读取时代际不匹配则视为未命中。这样"删除前读取、删除后异步写回"的竞态窗口内
+// 写回的旧数据不会再被读取，避免已删除节点在订阅中复活。
+var cacheGen atomic.Int64
+
+func init() {
+	cacheGen.Store(time.Now().UnixNano())
+}
+
+// systemNodesCacheEntry 系统节点缓存条目（带代际标记）
+type systemNodesCacheEntry struct {
+	Gen   int64        `json:"gen"`
+	Nodes []*ProxyNode `json:"nodes"`
+}
+
+// customNodesCacheEntry 用户专线节点缓存条目（带代际标记）
+type customNodesCacheEntry struct {
+	Gen   int64        `json:"gen"`
+	Nodes []*ProxyNode `json:"nodes"`
+}
+
+// subscriptionConfigCacheEntry 订阅配置缓存条目（带代际标记）
+type subscriptionConfigCacheEntry struct {
+	Gen    int64  `json:"gen"`
+	Config string `json:"config"`
+}
 
 // GetSystemNodesCache 获取系统节点缓存
 func (cs *CacheService) GetSystemNodesCache() ([]*ProxyNode, bool) {
@@ -24,12 +52,14 @@ func (cs *CacheService) GetSystemNodesCache() ([]*ProxyNode, bool) {
 		return nil, false
 	}
 
-	var nodes []*ProxyNode
-	if err := json.Unmarshal([]byte(cached), &nodes); err != nil {
+	var entry systemNodesCacheEntry
+	if err := json.Unmarshal([]byte(cached), &entry); err != nil || entry.Gen != cacheGen.Load() {
+		// 代际不匹配（或旧格式数据）：视为未命中，并删除过期条目
+		_ = cache.Del(cacheKey)
 		return nil, false
 	}
 
-	return nodes, true
+	return entry.Nodes, true
 }
 
 // SetSystemNodesCache 设置系统节点缓存
@@ -39,7 +69,7 @@ func (cs *CacheService) SetSystemNodesCache(nodes []*ProxyNode) error {
 	}
 
 	// #nosec G117 - Password field is proxy node password, not user credential
-	data, err := json.Marshal(nodes) // #nosec G117
+	data, err := json.Marshal(systemNodesCacheEntry{Gen: cacheGen.Load(), Nodes: nodes}) // #nosec G117
 	if err != nil {
 		return err
 	}
@@ -60,12 +90,13 @@ func (cs *CacheService) GetCustomNodesCache(userID uint) ([]*ProxyNode, bool) {
 		return nil, false
 	}
 
-	var nodes []*ProxyNode
-	if err := json.Unmarshal([]byte(cached), &nodes); err != nil {
+	var entry customNodesCacheEntry
+	if err := json.Unmarshal([]byte(cached), &entry); err != nil || entry.Gen != cacheGen.Load() {
+		_ = cache.Del(cacheKey)
 		return nil, false
 	}
 
-	return nodes, true
+	return entry.Nodes, true
 }
 
 // SetCustomNodesCache 设置用户自定义节点缓存
@@ -75,7 +106,7 @@ func (cs *CacheService) SetCustomNodesCache(userID uint, nodes []*ProxyNode) err
 	}
 
 	// #nosec G117 - Password field is proxy node password, not user credential
-	data, err := json.Marshal(nodes) // #nosec G117
+	data, err := json.Marshal(customNodesCacheEntry{Gen: cacheGen.Load(), Nodes: nodes}) // #nosec G117
 	if err != nil {
 		return err
 	}
@@ -86,6 +117,7 @@ func (cs *CacheService) SetCustomNodesCache(userID uint, nodes []*ProxyNode) err
 
 // ClearSystemNodesCache 清除系统节点缓存
 func (cs *CacheService) ClearSystemNodesCache() error {
+	cacheGen.Add(1) // 先递增代际，使并发写回的旧数据立即失效
 	if !cache.IsRedisEnabled() {
 		return nil
 	}
@@ -94,6 +126,7 @@ func (cs *CacheService) ClearSystemNodesCache() error {
 
 // ClearCustomNodesCache 清除用户自定义节点缓存
 func (cs *CacheService) ClearCustomNodesCache(userID uint) error {
+	cacheGen.Add(1) // 先递增代际，使并发写回的旧数据立即失效
 	if !cache.IsRedisEnabled() {
 		return nil
 	}
@@ -103,6 +136,7 @@ func (cs *CacheService) ClearCustomNodesCache(userID uint) error {
 
 // ClearAllSubscriptionCache 清除所有订阅配置缓存（节点变更时调用）
 func (cs *CacheService) ClearAllSubscriptionCache() error {
+	cacheGen.Add(1) // 先递增代际，使并发写回的旧数据立即失效
 	if !cache.IsRedisEnabled() {
 		return nil
 	}
@@ -151,7 +185,13 @@ func (cs *CacheService) GetSubscriptionConfigCache(subscriptionURL, format strin
 		return "", false
 	}
 
-	return cached, true
+	var entry subscriptionConfigCacheEntry
+	if err := json.Unmarshal([]byte(cached), &entry); err != nil || entry.Gen != cacheGen.Load() {
+		_ = cache.Del(cacheKey)
+		return "", false
+	}
+
+	return entry.Config, true
 }
 
 // SetSubscriptionConfigCache 设置订阅配置缓存（智能TTL）
@@ -160,12 +200,19 @@ func (cs *CacheService) SetSubscriptionConfigCache(subscriptionURL, format, conf
 		return nil
 	}
 
+	// #nosec G117 - config contains proxy node links, not user credential
+	data, err := json.Marshal(subscriptionConfigCacheEntry{Gen: cacheGen.Load(), Config: config}) // #nosec G117
+	if err != nil {
+		return err
+	}
+
 	cacheKey := fmt.Sprintf("subscription:config:%s:%s", subscriptionURL, format)
-	return cache.Set(cacheKey, config, ttl)
+	return cache.Set(cacheKey, string(data), ttl)
 }
 
 // ClearSubscriptionConfigCache 清除指定订阅的配置缓存
 func (cs *CacheService) ClearSubscriptionConfigCache(subscriptionURL string) error {
+	cacheGen.Add(1) // 先递增代际，使其他格式的缓存也因代际不匹配而失效
 	if !cache.IsRedisEnabled() {
 		return nil
 	}

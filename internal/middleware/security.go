@@ -26,6 +26,17 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 	}
 }
 
+// NoStoreMiddleware 禁止浏览器与中间代理缓存管理后台 API 响应，
+// 避免删除/修改后列表接口返回旧数据导致页面"刷新"了仍显示已删除内容
+func NoStoreMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+		c.Next()
+	}
+}
+
 // CORSMiddleware CORS跨域中间件
 func CORSMiddleware() gin.HandlerFunc {
 	cfg := config.AppConfig

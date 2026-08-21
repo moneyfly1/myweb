@@ -113,6 +113,7 @@
               border
               @selection-change="handleSelectionChange"
               class="desktop-table"
+              ref="tableRef"
             >
               <el-table-column type="selection" width="50" />
               <el-table-column prop="name" label="节点名称" min-width="180" show-overflow-tooltip />
@@ -383,6 +384,7 @@ export default {
     ]
     
     const isMobile = useMobile()
+    const tableRef = ref(null)
     const loading = ref(false)
     const testing = ref(false)
     const deleting = ref(false)
@@ -418,7 +420,8 @@ export default {
           page: pagination.page,
           size: pagination.size,
           ...filters,
-          search: searchKeyword.value
+          search: searchKeyword.value,
+          _t: Date.now() // 缓存穿透参数，避免浏览器/代理返回旧列表
         }
         Object.keys(params).forEach(k => !params[k] && delete params[k])
         const res = await adminAPI.getAdminNodes(params)
@@ -531,6 +534,11 @@ export default {
         })
         await adminAPI.deleteNode(node.id)
         ElMessage.success('删除成功')
+        // 先从本地列表立即移除，再向服务端重新拉取校准，保证页面马上不显示已删除节点
+        nodes.value = nodes.value.filter(n => n.id !== node.id)
+        if (pagination.total > 0) pagination.total -= 1
+        selectedNodes.value = selectedNodes.value.filter(n => n.id !== node.id)
+        tableRef.value?.clearSelection()
         loadNodes()
       } catch (error) {
         if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
@@ -554,16 +562,41 @@ export default {
           message: `确认删除选中的 ${selectedNodes.value.length} 个节点?`
         })
         deleting.value = true
-        const res = await adminAPI.batchDeleteNodes(selectedNodes.value.map(n => n.id))
+        const deletedIds = selectedNodes.value.map(n => n.id)
+        const res = await adminAPI.batchDeleteNodes(deletedIds)
         const deletedCount = res.data?.data?.deleted_count ?? 0
-        if (!res.data?.success || deletedCount <= 0) {
-          throw new Error(res.data?.message || '未删除任何节点')
+        if (!res.data?.success) {
+          throw new Error(res.data?.message || '批量删除失败')
         }
-        ElMessage.success(`批量删除成功，已删除 ${deletedCount} 个节点`)
+        if (deletedCount > 0) {
+          ElMessage.success(`批量删除成功，已删除 ${deletedCount} 个节点`)
+        } else {
+          // 节点实际已不存在（页面显示的是旧数据），直接刷新列表即可
+          ElMessage.info(res.data?.message || '所选节点已不存在，已刷新列表')
+        }
+        // 先从本地列表立即移除所选节点，再向服务端重新拉取校准，
+        // 避免因浏览器/代理缓存导致重新加载后仍显示旧节点
+        nodes.value = nodes.value.filter(n => !deletedIds.includes(n.id))
+        pagination.total = Math.max(0, pagination.total - deletedIds.length)
         selectedNodes.value = [] // 重置选中
+        tableRef.value?.clearSelection()
         await loadNodes()
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
+        if (error === 'cancel') return
+        const msg = error.response?.data?.message || error.message
+        // 旧版后端返回 404"未删除任何节点"/"节点不存在"说明所选节点实际已删除
+        // （页面显示的是旧数据），此时直接从本地移除并刷新列表即可，不再提示失败
+        if (msg && (msg.includes('未删除任何节点') || msg.includes('节点不存在'))) {
+          const staleIds = selectedNodes.value.map(n => n.id)
+          nodes.value = nodes.value.filter(n => !staleIds.includes(n.id))
+          pagination.total = Math.max(0, pagination.total - staleIds.length)
+          selectedNodes.value = []
+          tableRef.value?.clearSelection()
+          ElMessage.info('所选节点已不存在，已刷新列表')
+          await loadNodes()
+          return
+        }
+        ElMessage.error('批量删除失败: ' + msg)
       } finally {
         deleting.value = false
       }
@@ -638,7 +671,7 @@ export default {
       loadNodes()
     })
     return {
-      isMobile, loading, testing, deleting, saving, parsing,
+      isMobile, tableRef, loading, testing, deleting, saving, parsing,
       nodes, selectedNodes, showAddDialog, editingNode,
       filters, pagination, nodeForm, regions, types, allNodeTypes,
       searchKeyword, addNodeTab, nodeLinkInput, parsedNode, mobileNodeFields,
