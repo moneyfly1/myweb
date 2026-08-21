@@ -401,6 +401,7 @@ func SetupRouter() *gin.Engine {
 
 			admin.GET("/custom-nodes", handlers.GetCustomNodes)
 			admin.GET("/custom-nodes/:id/users", handlers.GetCustomNodeUsers)
+			admin.POST("/custom-nodes/batch-users", handlers.BatchGetCustomNodeUsers)
 			admin.POST("/custom-nodes", handlers.CreateCustomNode)
 			admin.POST("/custom-nodes/import-links", handlers.ImportCustomNodeLinks)
 			admin.POST("/custom-nodes/import-subscription", handlers.ImportCustomNodeSubscription)

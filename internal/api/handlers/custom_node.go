@@ -128,6 +128,43 @@ func GetCustomNodeUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", users)
 }
 
+// BatchGetCustomNodeUsers 一次请求返回多个节点的关联用户，按节点 ID 分组。
+// 前端批量删除前用它一次性拿到所有受影响用户，避免逐个节点串行请求导致确认框延迟弹出。
+func BatchGetCustomNodeUsers(c *gin.Context) {
+	var req struct {
+		NodeIDs []uint `json:"node_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+
+	db := database.GetDB()
+
+	var userNodes []models.UserCustomNode
+	if err := db.Preload("User").Where("custom_node_id IN ?", req.NodeIDs).Find(&userNodes).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户列表失败", err)
+		return
+	}
+
+	grouped := make(map[uint][]gin.H)
+	for _, un := range userNodes {
+		if un.User.ID != 0 {
+			grouped[un.CustomNodeID] = append(grouped[un.CustomNodeID], gin.H{
+				"id":                             un.User.ID,
+				"username":                       un.User.Username,
+				"email":                          un.User.Email,
+				"special_node_subscription_type": un.User.SpecialNodeSubscriptionType,
+				"special_node_expires_at":        un.User.SpecialNodeExpiresAt,
+				"special_node_unlimited_devices": un.User.SpecialNodeUnlimitedDevices,
+			})
+		}
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", grouped)
+}
+
 func normalizeCustomNodeConfig(configStr, protocol, domain string, port int) (string, string, string, int) {
 	trimmed := strings.TrimSpace(configStr)
 	if trimmed == "" {
