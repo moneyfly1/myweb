@@ -1175,9 +1175,19 @@ export default {
       try {
         const res = await adminAPI.importCustomNodeLinks(links)
         const imported = res.data.data?.imported ?? res.data.imported ?? 0
-        ElMessage.success(`导入成功: ${imported} 个`)
-        showAddDialog.value = false
-        loadCustomNodes()
+        const errorCount = res.data.data?.error_count ?? res.data.error_count ?? 0
+        const errors = res.data.data?.errors ?? []
+        if (imported > 0) {
+          ElMessage.success(`导入成功: ${imported} 个${errorCount ? `，失败 ${errorCount} 个` : ''}`)
+          showAddDialog.value = false
+          loadCustomNodes()
+        } else if (errorCount > 0) {
+          // 全部失败时保留弹窗，方便用户修改链接后重试
+          ElMessage.error(`导入失败 ${errorCount} 个：${errors[0] || '未知原因'}`)
+        } else {
+          ElMessage.warning('没有解析到可导入的节点')
+          showAddDialog.value = false
+        }
       } catch { ElMessage.error('导入失败') }
       finally { saving.value = false }
     }

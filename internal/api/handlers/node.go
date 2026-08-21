@@ -83,7 +83,19 @@ func resolveRegion(name, server string) string {
 	return matcher.MatchRegion(name, server)
 }
 
+// truncateNodeName 将节点名称截断到 varchar(100) 长度以内（按 rune 计数）。
+// MySQL 严格模式下超长名称会导致写入失败；SQLite 不校验长度，本地不会复现此问题。
+func truncateNodeName(name string) string {
+	const maxLen = 100
+	runes := []rune(name)
+	if len(runes) <= maxLen {
+		return name
+	}
+	return string(runes[:maxLen])
+}
+
 func buildNodeModel(node *config_update.ProxyNode, isManual bool) models.Node {
+	node.Name = truncateNodeName(node.Name)
 	// #nosec G117 - Password field is proxy node password, not user credential
 	configJSON, _ := json.Marshal(node) // #nosec G117
 	configStr := string(configJSON)
@@ -556,6 +568,7 @@ func CreateNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请填写节点名称、地区和类型", nil)
 		return
 	}
+	req.Node.Name = truncateNodeName(req.Node.Name)
 	req.Node.Status, req.Node.IsManual, req.Node.IsActive = "offline", true, true
 
 	// 读取 manual_node_position 配置，设置手动节点的 order_index
@@ -591,27 +604,42 @@ func ImportNodeLinks(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	imp, skp := 0, 0
+	imp, skp, fail := 0, 0, 0
+	failReasons := make([]string, 0)
 	for _, link := range req.Links {
-		if parsed, err := config_update.ParseNodeLink(strings.TrimSpace(link)); err == nil {
-			node := buildNodeModel(parsed, true)
-			if findExistingNode(db, generateNodeKey(node.Type, node.Name, node.Config), node.Type) == nil {
-				if db.Create(&node).Error == nil {
-					imp++
-					continue
-				}
+		parsed, err := config_update.ParseNodeLink(strings.TrimSpace(link))
+		if err != nil {
+			// 解析失败单独统计并返回原因，避免静默失败让用户以为导入成功
+			fail++
+			if len(failReasons) < 3 {
+				failReasons = append(failReasons, fmt.Sprintf("解析失败: %v", err))
 			}
-			skp++
+			continue
 		}
+		node := buildNodeModel(parsed, true)
+		if findExistingNode(db, generateNodeKey(node.Type, node.Name, node.Config), node.Type) != nil {
+			skp++
+			continue
+		}
+		if err := db.Create(&node).Error; err != nil {
+			fail++
+			if len(failReasons) < 3 {
+				failReasons = append(failReasons, fmt.Sprintf("写入失败: %v", err))
+			}
+			continue
+		}
+		imp++
 	}
-	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d", imp, skp))
+	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d 失败 %d", imp, skp, fail))
 
 	// 清除节点相关缓存
 	clearNodeCaches()
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d", imp, skp), gin.H{
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d, 失败 %d", imp, skp, fail), gin.H{
 		"imported": imp,
 		"skipped":  skp,
+		"failed":   fail,
+		"errors":   failReasons,
 	})
 }
 

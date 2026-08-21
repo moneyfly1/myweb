@@ -641,9 +641,21 @@ export default {
       try {
         const res = await adminAPI.importNodeLinks(links)
         const imported = res.data.data?.imported ?? res.data.imported ?? 0
-        ElMessage.success(`导入成功 ${imported} 个`)
-        showAddDialog.value = false
-        loadNodes()
+        const skipped = res.data.data?.skipped ?? res.data.skipped ?? 0
+        const failed = res.data.data?.failed ?? res.data.failed ?? 0
+        const errors = res.data.data?.errors ?? []
+        if (imported > 0) {
+          ElMessage.success(`导入成功 ${imported} 个${skipped ? `，跳过重复 ${skipped} 个` : ''}${failed ? `，失败 ${failed} 个` : ''}`)
+          showAddDialog.value = false
+          loadNodes()
+        } else if (failed > 0) {
+          // 全部失败时保留弹窗，方便用户修改链接后重试
+          ElMessage.error(`导入失败 ${failed} 个：${errors[0] || '未知原因'}`)
+        } else {
+          ElMessage.warning(`所选节点均已存在（重复），已跳过 ${skipped} 个`)
+          showAddDialog.value = false
+          loadNodes()
+        }
       } catch(e) {
         ElMessage.error('导入出错')
       } finally { saving.value = false }
