@@ -1009,6 +1009,17 @@ func (s *ConfigUpdateService) generateNodeKeyFromProxy(p *ProxyNode) string {
 	return key
 }
 
+// truncateProxyNodeName 将节点名称截断到 varchar(100) 长度以内（按 rune 计数）。
+// MySQL 严格模式下超长名称会导致写入失败；SQLite 不校验长度，本地不会复现此问题。
+func truncateProxyNodeName(name string) string {
+	const maxLen = 100
+	runes := []rune(name)
+	if len(runes) <= maxLen {
+		return name
+	}
+	return string(runes[:maxLen])
+}
+
 func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodes []nodeWithOrder) importStats {
 	return s.importNodesToDatabaseWithOrderTx(s.db, nodes)
 }
@@ -1048,6 +1059,7 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 	var newNodes []models.Node
 
 	for _, item := range nodes {
+		item.node.Name = truncateProxyNodeName(item.node.Name)
 		cfgJSON, _ := json.Marshal(item.node)
 		cfgStr := string(cfgJSON)
 		key := s.generateNodeKeyFromProxy(item.node)
